@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | Legacy Admin{% endblock %}
+
+{% set page_title = "Legacy Admin" %}
+{% set page_subtitle = "Deprecated bridge: legacy flask_bff links via /legacy/*" %}
+
+{% block body %}
+  <div class="card" style="max-width:920px;">
+    <div class="card__kicker">Shim</div>
+    <div class="card__title">Legacy surfaces</div>
+    <div class="card__body">
+      <p>
+        These links require the <code>portal.*</code> NGINX vhost to route
+        <code>/legacy/*</code> to the existing <code>flask_bff</code> on <code>127.0.0.1:8001</code>.
+        Prefer the new portal-native tools and APIs whenever possible.
+      </p>
+
+      <ul class="bullets">
+        <li><a href="/legacy/admin" target="_blank" rel="noopener">Legacy Admin Home</a></li>
+        <li><a href="/legacy/admin/network/aws" target="_blank" rel="noopener">Legacy AWS Admin</a></li>
+        <li><a href="/legacy/admin/network/paypal" target="_blank" rel="noopener">Legacy PayPal Admin</a></li>
+        <li><a href="/legacy/admin/data/fnd" target="_blank" rel="noopener">Legacy FND Provisioning (data_fnd.html)</a></li>
+      </ul>
+    </div>
+  </div>
+{% endblock %}

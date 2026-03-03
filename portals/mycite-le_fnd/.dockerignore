@@ -1,0 +1,7 @@
+# NOTE: Docker build context is compose/platform/dev (one directory up),
+# so this file is informational only. The effective ignore rules live in:
+#   compose/platform/dev/.dockerignore
+.venv
+__pycache__
+*.pyc
+

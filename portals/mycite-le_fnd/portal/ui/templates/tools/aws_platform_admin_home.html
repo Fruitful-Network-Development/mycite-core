@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | AWS Platform/Admin{% endblock %}
+
+{% set page_title = "AWS Platform/Admin" %}
+{% set page_subtitle = "FND-scoped AWS status via /portal/api/admin/aws/fnd/status" %}
+
+{% block body %}
+  <div class="card" style="max-width:980px;">
+    <div class="card__kicker">FND Scoped</div>
+    <div class="card__title">AWS Platform Health</div>
+    <div class="card__body">
+      <div style="margin-top:0.2rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <button id="awsp-status" class="ops-btn ops-btn--outline">FND Status</button>
+      </div>
+      <pre id="awsp-output" class="ops-status" style="margin-top:0.75rem;">Ready.</pre>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="/portal/static/tools/aws_platform_admin.js"></script>
+{% endblock %}

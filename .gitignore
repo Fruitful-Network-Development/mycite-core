@@ -1,0 +1,44 @@
+# Python runtime
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+*.log
+
+# Virtualenv / tooling
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Editor/OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Portal runtime/state (never commit)
+**/private/request_log/*.ndjson
+**/private/daemon_state/**
+**/data/cache/**
+**/data/queue/**
+**/vault/**
+**/*.pem
+**/*.key
+**/secrets/**
+**/state/**
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

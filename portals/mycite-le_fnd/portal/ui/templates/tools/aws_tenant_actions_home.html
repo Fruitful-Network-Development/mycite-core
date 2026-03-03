@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | AWS Tenant Actions{% endblock %}
+
+{% set page_title = "AWS Tenant Actions" %}
+{% set page_subtitle = "Operate on behalf of selected tenant via /portal/api/admin/aws/tenant/*" %}
+
+{% block body %}
+  <div class="card" style="max-width:980px;">
+    <div class="card__kicker">Tenant Scoped</div>
+    <div class="card__title">AWS</div>
+    <div class="card__body">
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(240px,1fr));gap:0.75rem;max-width:760px;">
+        <label>
+          <div style="font-size:0.75rem;color:var(--ink2);margin-bottom:0.2rem;">Tenant</div>
+          <select id="awst-tenant" style="width:100%;padding:0.35rem;border:1px solid var(--line);border-radius:var(--radius);"></select>
+        </label>
+        <label>
+          <div style="font-size:0.75rem;color:var(--ink2);margin-bottom:0.2rem;">Provision Action</div>
+          <input id="awst-action" type="text" value="provision"
+                 style="width:100%;padding:0.35rem;border:1px solid var(--line);border-radius:var(--radius);" />
+        </label>
+      </div>
+      <div style="margin-top:0.8rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <button id="awst-status" class="ops-btn ops-btn--outline">Tenant Status</button>
+        <button id="awst-provision" class="ops-btn">Queue Provision</button>
+      </div>
+      <pre id="awst-output" class="ops-status" style="margin-top:0.75rem;">Ready.</pre>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="/portal/static/tools/aws_tenant_actions.js"></script>
+{% endblock %}
