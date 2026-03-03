@@ -1,0 +1,15 @@
+# Build context: compose/platform/dev
+#
+# Keep images small and avoid shipping local venv/runtime artifacts.
+.git
+.flask-multi
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache
+**/.mypy_cache
+
+# Local portal venvs
+**/.venv
+

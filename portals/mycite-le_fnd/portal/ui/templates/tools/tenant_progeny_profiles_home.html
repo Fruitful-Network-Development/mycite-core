@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | Tenant Progeny Profiles{% endblock %}
+
+{% set page_title = "Tenant Progeny Profiles" %}
+{% set page_subtitle = "Tenant capability metadata (no secrets) used for act-on-behalf routing" %}
+
+{% block body %}
+  <div class="card" style="max-width:1100px;">
+    <div class="card__kicker">Tenant Metadata</div>
+    <div class="card__title">Integration capability matrix</div>
+    <div class="card__body">
+      <p>
+        Source: <code>/portal/api/progeny/tenants</code>. This profile layer stores capability + ref metadata only.
+      </p>
+      <div style="margin:0.5rem 0 1rem;">
+        <button id="tp-refresh" class="ops-btn">Refresh</button>
+      </div>
+      <table class="fnd-tbl" style="width:100%;">
+        <thead>
+          <tr>
+            <th>Tenant ID</th>
+            <th>Title</th>
+            <th>MSN</th>
+            <th>PayPal</th>
+            <th>AWS</th>
+            <th>Status</th>
+            <th>Profile Refs</th>
+          </tr>
+        </thead>
+        <tbody id="tp-body">
+          <tr><td colspan="7">Loading…</td></tr>
+        </tbody>
+      </table>
+      <pre id="tp-output" class="ops-status" style="margin-top:0.75rem;">Ready.</pre>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="/portal/static/tools/tenant_progeny_profiles.js"></script>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | Operations{% endblock %}
+
+{% set page_title = "Operations" %}
+{% set page_subtitle = "Privileged control surface (host-side control API via NGINX proxy)" %}
+
+{% block head_extra %}
+<style>
+  .ops-wrap { max-width: 980px; }
+  .ops-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media(max-width: 900px){ .ops-grid{ grid-template-columns: 1fr; } }
+  .ops-card { background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding: 1rem; box-shadow: var(--shadow); }
+  .ops-card h3 { margin:0 0 0.5rem; font-size: 0.95rem; }
+  .ops-card p { margin:0 0 0.75rem; color: var(--ink2); font-size: 0.85rem; }
+  .ops-row { display:flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+  .ops-btn {
+    display:inline-block; padding:0.3rem 0.8rem; font-size:0.78rem; font-weight:700;
+    border:1px solid var(--accent); border-radius:var(--radius);
+    background:var(--accent); color:#fff; cursor:pointer;
+  }
+  .ops-btn:hover { filter: brightness(0.95); }
+  .ops-btn--outline { background:transparent; color: var(--accent); }
+  .ops-btn--outline:hover { background: var(--accent); color:#fff; }
+  .ops-btn--danger { border-color:#b52b2b; background:transparent; color:#b52b2b; }
+  .ops-btn--danger:hover { background:#b52b2b; color:#fff; }
+  .ops-status { margin-top: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; white-space: pre-wrap; }
+  .ops-hint { margin-top: 0.75rem; font-size: 0.8rem; color: var(--ink2); }
+  code { background:#fff; border:1px solid var(--line); padding:0.1rem 0.25rem; border-radius: 3px; }
+</style>
+{% endblock %}
+
+{% block body %}
+  <div class="ops-wrap">
+    <div class="ops-card" style="margin-bottom: 1rem;">
+      <h3>How this works</h3>
+      <p>
+        The portal UI calls <code>/portal/api/admin/control/&lt;service&gt;/&lt;action&gt;</code>.
+        NGINX should proxy that to the host-side control API (localhost only), which runs narrow docker compose commands.
+      </p>
+      <div class="ops-hint">
+        If you are viewing the portal directly on <code>127.0.0.1:5101</code> (no NGINX), these controls will 404.
+      </div>
+    </div>
+
+    <div class="ops-grid">
+      {% for svc in ["fnd","paypal","aws"] %}
+        <div class="ops-card" data-ops-service="{{ svc }}">
+          <h3>{{ svc }}</h3>
+          <div class="ops-row">
+            <button class="ops-btn ops-btn--outline" type="button" data-action="status">Status</button>
+            <button class="ops-btn" type="button" data-action="start">Start</button>
+            <button class="ops-btn ops-btn--danger" type="button" data-action="stop">Stop</button>
+            <button class="ops-btn" type="button" data-action="restart">Restart</button>
+          </div>
+          <div class="ops-status" data-ops-output>Not loaded.</div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="/portal/static/tools/operations.js"></script>
+{% endblock %}
+
