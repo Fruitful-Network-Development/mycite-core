@@ -67,6 +67,10 @@ They are non-secret, and secret-like keys are blocked from card payloads.
 - Base layout includes `partials/service_header.html`
 - Header nav renders all enabled services as visible buttons/tabs, including `Tools`
 - Header service entries use symbolic icons from `portals/assets/icons/ui/`
+- Sidebar is reserved for relationship listings:
+  - top: `Home` button
+  - body: `Progeny` list + `Aliases` list
+  - footer: active portal name + `Sign out`
 - Service navigation is route-driven, not query-param tab state
 - `/portal/tools` renders tool-specific sub-tabs based on `enabled_tools`
 - Any local tab controls are page-local only and must not replace canonical service routes

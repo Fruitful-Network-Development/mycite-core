@@ -12,17 +12,45 @@
   <div class="portal-frame">
     <aside class="navcol">
       <div class="navcol__brand">
-        <a class="navcol__brandLink" href="/portal/home">MyCite</a>
-        <div class="navcol__brandSub">
-          {% if portal_title is defined and portal_title %}{{ portal_title }}{% else %}Portal{% endif %}
-        </div>
+        <a class="navcol__homeButton" href="/portal/home">
+          <img class="navcol__homeIcon" src="/portal/static/icons/ui/home.svg" alt="" aria-hidden="true" />
+          <span>Home</span>
+        </a>
       </div>
 
       <div class="navcol__section">
-        <div class="navcol__sectionTitle">Aliases</div>
+        <div class="navcol__sectionTitle">
+          <img class="navcol__sectionIcon" src="/portal/static/icons/ui/network.svg" alt="" aria-hidden="true" />
+          <span>Progeny</span>
+        </div>
+
+        <ul class="navcol__list" id="progenyList">
+          {% if sidebar_progeny is defined and sidebar_progeny %}
+            {% for p in sidebar_progeny %}
+              <li class="navcol__item">
+                <a class="navcol__link" href="{{ p.href }}">
+                  <span class="navcol__linkTitle">{{ p.title }}</span>
+                </a>
+              </li>
+            {% endfor %}
+          {% else %}
+            <li class="navcol__item">
+              <a class="navcol__link is-empty" href="#" onclick="return false;">
+                <span class="navcol__linkTitle">No progeny loaded</span>
+              </a>
+            </li>
+          {% endif %}
+        </ul>
+      </div>
+
+      <div class="navcol__section">
+        <div class="navcol__sectionTitle">
+          <img class="navcol__sectionIcon" src="/portal/static/icons/ui/info.svg" alt="" aria-hidden="true" />
+          <span>Aliases</span>
+        </div>
 
         <div class="navcol__search">
-          <input class="navcol__searchInput" id="aliasSearch" type="search" placeholder="Filter aliases…" autocomplete="off" />
+          <input class="navcol__searchInput" id="aliasSearch" type="search" placeholder="Filter aliases..." autocomplete="off" />
         </div>
 
         <ul class="navcol__list" id="aliasList">
@@ -48,10 +76,11 @@
       <div class="navcol__spacer"></div>
 
       <div class="navcol__footer">
-        <div class="navcol__footLine">Service-first shell</div>
+        <div class="navcol__footLine">Portal: {% if portal_name is defined and portal_name %}{{ portal_name }}{% else %}Portal{% endif %}</div>
         <div class="navcol__footLine navcol__footDim">
           {% if msn_id is defined and msn_id %}msn_id: {{ msn_id }}{% else %}msn_id: (unset){% endif %}
         </div>
+        <a class="navcol__signOut" href="{% if sign_out_url is defined and sign_out_url %}{{ sign_out_url }}{% else %}/oauth2/sign_out{% endif %}">Sign out</a>
       </div>
     </aside>
 

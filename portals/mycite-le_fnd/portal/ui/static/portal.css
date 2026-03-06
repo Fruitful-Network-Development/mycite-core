@@ -1323,3 +1323,60 @@ body.is-modal-open {
     margin-left: 0;
   }
 }
+
+/* Sidebar shell updates */
+.navcol__homeButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.18);
+  text-decoration: none;
+  color: #f3f2e5;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(255,255,255,0.04);
+}
+
+.navcol__homeButton:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+.navcol__homeIcon,
+.navcol__sectionIcon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.navcol__sectionTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navcol__signOut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #f3f2e5;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(255,255,255,0.04);
+}
+
+.navcol__signOut:hover {
+  background: rgba(255,255,255,0.1);
+}
