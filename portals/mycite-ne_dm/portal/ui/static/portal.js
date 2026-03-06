@@ -1,7 +1,8 @@
 /* MyCite Portal JS
- * - Home/alias tab switching
- * - Sidebar alias filter
- * - Cross-portal theme standard for alias sessions and embed widgets
+ * - Service shell tools dropdown
+ * - Local tab switching for page-internal panels
+ * - Alias sidebar filter
+ * - Theme selector
  */
 
 (function () {
@@ -21,7 +22,6 @@
       return this.themes.some(t => t.id === token) ? token : this.defaultTheme;
     }
   };
-  window.MyCiteThemeStandard = THEME_STANDARD;
 
   const PORTAL_THEME_STORAGE_KEY = "mycite.theme.portal.default";
 
@@ -46,26 +46,18 @@
   }
 
   function persistTheme(storageKey, themeId) {
-    try { window.localStorage.setItem(storageKey, themeId); } catch (_) { }
+    try { window.localStorage.setItem(storageKey, themeId); } catch (_) {}
   }
 
   function getStoredTheme(storageKey) {
     try { return window.localStorage.getItem(storageKey) || ""; } catch (_) { return ""; }
   }
 
-  function setThemeInUrl(themeId) {
-    try {
-      const next = new URL(window.location.href);
-      next.searchParams.set("theme", themeId);
-      window.history.replaceState({}, "", next);
-    } catch (_) { }
-  }
-
   function detectPreferredTheme(storageKey) {
     try {
       const urlTheme = new URL(window.location.href).searchParams.get("theme") || "";
       if (urlTheme) return THEME_STANDARD.sanitize(urlTheme);
-    } catch (_) { }
+    } catch (_) {}
     const stored = getStoredTheme(storageKey);
     return THEME_STANDARD.sanitize(stored || THEME_STANDARD.defaultTheme);
   }
@@ -84,8 +76,7 @@
   function initThemeSelector() {
     const picker = qs("[data-theme-selector]");
     if (!picker) {
-      const fallback = detectPreferredTheme(PORTAL_THEME_STORAGE_KEY);
-      applyTheme(fallback);
+      applyTheme(detectPreferredTheme(PORTAL_THEME_STORAGE_KEY));
       return;
     }
 
@@ -106,7 +97,6 @@
     picker.value = initial;
     const applied = applyTheme(initial);
     syncThemedIframes(applied);
-    setThemeInUrl(applied);
 
     picker.addEventListener("change", () => {
       const next = applyTheme(picker.value);
@@ -114,57 +104,95 @@
       persistTheme(storageKey, next);
       persistTheme(PORTAL_THEME_STORAGE_KEY, next);
       syncThemedIframes(next);
-      setThemeInUrl(next);
     });
   }
 
-  // ---- Home and alias tabs ----
-  const tabs = qsa(".hometabs__tab");
-  const panels = qsa(".panel");
+  function initToolsMenu() {
+    const toggle = qs("[data-tools-toggle]");
+    const menu = qs("[data-tools-menu]");
+    if (!toggle || !menu) return;
 
-  function setActiveTab(tabName) {
-    tabs.forEach(btn => {
-      const isActive = btn.getAttribute("data-tab") === tabName;
-      btn.classList.toggle("is-active", isActive);
+    function isOpen() { return menu.classList.contains("is-open"); }
+    function closeMenu() {
+      menu.classList.remove("is-open");
+      toggle.setAttribute("aria-expanded", "false");
+    }
+    function openMenu() {
+      menu.classList.add("is-open");
+      toggle.setAttribute("aria-expanded", "true");
+    }
+
+    toggle.addEventListener("click", (event) => {
+      event.preventDefault();
+      if (isOpen()) closeMenu(); else openMenu();
     });
-    panels.forEach(p => {
-      const isActive = p.getAttribute("data-panel") === tabName;
-      p.classList.toggle("is-active", isActive);
+
+    document.addEventListener("click", (event) => {
+      if (!isOpen()) return;
+      const target = event.target;
+      if (target instanceof Node && (menu.contains(target) || toggle.contains(target))) return;
+      closeMenu();
     });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeMenu();
+    });
+
+    menu.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("a")) closeMenu();
+    });
+
+    closeMenu();
   }
 
-  if (tabs.length && panels.length) {
-    const url = new URL(window.location.href);
-    const tab = url.searchParams.get("tab") || (tabs[0] && tabs[0].getAttribute("data-tab"));
-    if (tab) setActiveTab(tab);
+  function initLocalTabs() {
+    const tabs = qsa(".hometabs__tab");
+    const panels = qsa(".panel");
+    if (!tabs.length || !panels.length) return;
+
+    function setActiveTab(tabName) {
+      tabs.forEach(btn => {
+        const isActive = btn.getAttribute("data-tab") === tabName;
+        btn.classList.toggle("is-active", isActive);
+      });
+      panels.forEach(p => {
+        const isActive = p.getAttribute("data-panel") === tabName;
+        p.classList.toggle("is-active", isActive);
+      });
+    }
+
+    const first = tabs[0] && tabs[0].getAttribute("data-tab");
+    if (first) setActiveTab(first);
 
     tabs.forEach(btn => {
       btn.addEventListener("click", () => {
         const t = btn.getAttribute("data-tab");
         if (!t) return;
         setActiveTab(t);
-        const next = new URL(window.location.href);
-        next.searchParams.set("tab", t);
-        window.history.replaceState({}, "", next);
       });
     });
   }
 
-  // ---- Alias sidebar filter ----
-  const search = qs("#aliasSearch");
-  const list = qs("#aliasList");
-  if (search && list) {
+  function initAliasSearch() {
+    const search = qs("#aliasSearch");
+    const list = qs("#aliasList");
+    if (!search || !list) return;
+
     const items = qsa(".navcol__item", list);
     search.addEventListener("input", () => {
-      const q = (search.value || "").trim().toLowerCase();
+      const query = (search.value || "").trim().toLowerCase();
       items.forEach(li => {
-        const a = qs(".navcol__linkTitle", li);
-        const b = qs(".navcol__linkSub", li);
-        const text = ((a && a.textContent) || "") + " " + ((b && b.textContent) || "");
-        li.style.display = text.toLowerCase().includes(q) ? "" : "none";
+        const title = qs(".navcol__linkTitle", li);
+        const text = (title && title.textContent) || "";
+        li.style.display = text.toLowerCase().includes(query) ? "" : "none";
       });
     });
   }
 
+  initToolsMenu();
   initThemeSelector();
+  initLocalTabs();
+  initAliasSearch();
 })();

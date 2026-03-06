@@ -451,3 +451,165 @@ code{
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
 }
+
+/* Service-first shell */
+.serviceshell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 10px 0 14px;
+  border-bottom: 1px solid #d8d8d8;
+  margin-bottom: 12px;
+}
+
+.serviceshell__links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.serviceshell__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid #d3d3d3;
+  border-radius: 7px;
+  background: #fff;
+  color: #1f2430;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.serviceshell__link:hover {
+  border-color: #7d8fd4;
+  color: #1b2f82;
+}
+
+.serviceshell__link.is-active {
+  background: #1f4db7;
+  border-color: #1f4db7;
+  color: #fff;
+}
+
+.serviceshell__tools {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.serviceshell__button {
+  min-height: 32px;
+  border: 1px solid #d3d3d3;
+  border-radius: 7px;
+  background: #fff;
+  padding: 0 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.serviceshell__menu {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  min-width: 220px;
+  border: 1px solid #d3d3d3;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+  display: none;
+  z-index: 30;
+}
+
+.serviceshell__menu.is-open {
+  display: block;
+}
+
+.serviceshell__item {
+  display: block;
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 13px;
+  color: #1f2430;
+  text-decoration: none;
+}
+
+.serviceshell__item:hover {
+  background: #eef3ff;
+}
+
+.serviceshell__item.is-active {
+  background: #dfe8ff;
+  font-weight: 700;
+}
+
+.serviceshell__item.is-empty {
+  color: #6e7380;
+  cursor: default;
+}
+
+.serviceshell__activeWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.serviceshell__activeLabel {
+  font-size: 11px;
+  color: #6e7380;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.serviceshell__activeTab {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid #d3d3d3;
+  border-radius: 7px;
+  text-decoration: none;
+  font-size: 13px;
+  color: #1f2430;
+  background: #fff;
+}
+
+.serviceshell__activeTab.is-empty {
+  color: #6e7380;
+}
+
+.servicetabs {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.servicetabs__tab {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #d3d3d3;
+  border-radius: 7px;
+  text-decoration: none;
+  color: #1f2430;
+  font-size: 13px;
+  font-weight: 600;
+  background: #fff;
+}
+
+.servicetabs__tab.is-active {
+  background: #1f4db7;
+  border-color: #1f4db7;
+  color: #fff;
+}
