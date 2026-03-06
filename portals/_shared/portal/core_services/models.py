@@ -7,6 +7,7 @@ class ServiceNavItem(TypedDict):
     service_id: str
     label: str
     href: str
+    icon: str
     active: bool
 
 

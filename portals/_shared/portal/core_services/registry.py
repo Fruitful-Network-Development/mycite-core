@@ -12,6 +12,13 @@ SERVICE_LABELS = {
     "tools": "Tools",
     "inbox": "Inbox",
 }
+SERVICE_ICONS = {
+    "home": "/portal/static/icons/ui/home.svg",
+    "data": "/portal/static/icons/ui/data.svg",
+    "network": "/portal/static/icons/ui/network.svg",
+    "tools": "/portal/static/icons/ui/tools.svg",
+    "inbox": "/portal/static/icons/ui/inbox.svg",
+}
 
 NETWORK_TAB_ORDER = ["contracts", "magnetlinks", "progeny", "alias"]
 NETWORK_TAB_LABELS = {
@@ -76,6 +83,7 @@ def build_service_nav(config: dict[str, Any], *, active_service: str) -> list[Se
                 "service_id": service_id,
                 "label": SERVICE_LABELS.get(service_id, service_id.title()),
                 "href": service_href(service_id),
+                "icon": SERVICE_ICONS.get(service_id, ""),
                 "active": service_id == active,
             }
         )

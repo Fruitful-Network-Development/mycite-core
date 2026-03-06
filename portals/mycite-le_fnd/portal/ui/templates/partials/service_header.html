@@ -2,45 +2,19 @@
   <div class="serviceshell__links">
     {% if service_nav %}
       {% for service in service_nav %}
-        <a class="serviceshell__link {% if service.active %}is-active{% endif %}" href="{{ service.href }}">{{ service.label }}</a>
+        <a class="serviceshell__link {% if service.active %}is-active{% endif %}" href="{{ service.href }}">
+          {% if service.icon %}
+            <img class="serviceshell__icon" src="{{ service.icon }}" alt="" aria-hidden="true" />
+          {% endif %}
+          <span>{{ service.label }}</span>
+        </a>
       {% endfor %}
     {% else %}
-      <a class="serviceshell__link is-active" href="/portal/home">Home</a>
+      <a class="serviceshell__link is-active" href="/portal/home">
+        <img class="serviceshell__icon" src="/portal/static/icons/ui/home.svg" alt="" aria-hidden="true" />
+        <span>Home</span>
+      </a>
     {% endif %}
-  </div>
-
-  <div class="serviceshell__tools">
-    <button
-      class="serviceshell__button"
-      type="button"
-      data-tools-toggle
-      aria-haspopup="true"
-      aria-expanded="false"
-      aria-controls="toolsMenu"
-    >
-      Tools
-    </button>
-
-    <div class="serviceshell__menu" id="toolsMenu" data-tools-menu>
-      {% if tool_tabs %}
-        {% for tool in tool_tabs %}
-          <a class="serviceshell__item {% if active_tool_id == tool.tool_id %}is-active{% endif %}" href="{{ tool.home_path }}">
-            {{ tool.display_name }}
-          </a>
-        {% endfor %}
-      {% else %}
-        <span class="serviceshell__item is-empty">No tools enabled</span>
-      {% endif %}
-    </div>
-
-    <div class="serviceshell__activeWrap">
-      <span class="serviceshell__activeLabel">Active Tool</span>
-      {% if active_tool %}
-        <a class="serviceshell__activeTab" href="{{ active_tool.home_path }}">{{ active_tool.display_name }}</a>
-      {% else %}
-        <span class="serviceshell__activeTab is-empty">None</span>
-      {% endif %}
-    </div>
   </div>
 
   <label class="themebar" aria-label="Portal theme selector">

@@ -613,3 +613,75 @@ code{
   border-color: #1f4db7;
   color: #fff;
 }
+
+/* Service header (iconized) */
+.serviceshell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 10px;
+  background: var(--paper2);
+  border-bottom: 1px solid var(--line);
+}
+
+.serviceshell__links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.serviceshell__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  text-decoration: none;
+  color: var(--ink2);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.serviceshell__link:hover {
+  color: var(--ink);
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.serviceshell__link.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(30, 108, 147, 0.1);
+}
+
+.serviceshell__icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.serviceshell .themebar {
+  margin-left: auto;
+  padding: 0;
+}
+
+.serviceshell .themebar__select {
+  min-width: 120px;
+}
+
+@media (max-width: 860px) {
+  .serviceshell {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .serviceshell .themebar {
+    margin-left: 0;
+  }
+}

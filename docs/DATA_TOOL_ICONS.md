@@ -17,15 +17,18 @@ Mapping format:
     "icon_root": "assets/icons"
   },
   "map": {
-    "11-0-1": "tables/msn_index.svg",
-    "4-1-9": "fields/ascii_field.svg"
+    "11-0-1": "msn_index.svg",
+    "4-1-9": "ascii_field.svg"
   }
 }
 ```
 
 Notes:
 - Paths are relative to `assets/icons`.
+- Current default mode is `basename` (flat/ambiguous references) for rapid prototyping.
+- Folder paths remain supported for future taxonomy reintroduction.
 - SVG source paths are never embedded in anthology JSON.
+- UI/service-shell symbols are kept separately under `assets/icons/ui/`.
 
 ## Portal endpoints
 
@@ -50,7 +53,7 @@ Request:
   "method": "set",
   "args": {
     "datum_id": "11-0-1",
-    "icon_relpath": "tables/msn_index.svg"
+    "icon_relpath": "msn_index.svg"
   }
 }
 ```
@@ -59,6 +62,7 @@ Behavior:
 - staged into presentation state (`staged_presentation_edits.datum_icons`)
 - reflected immediately in returned view models
 - persisted to sidecar on `POST /portal/api/data/commit`
+- canonicalized according to workspace icon mode (`basename` by default)
 
 Clear mapping:
 - same directive with `"icon_relpath": ""`

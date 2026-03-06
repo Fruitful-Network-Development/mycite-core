@@ -40,6 +40,7 @@ Primary user navigation is service-based and stable:
 
 Tools remain optional route packages under `/portal/tools/<tool_id>/home`.
 They are not substitutes for the core service shell.
+The `Tools` service page owns the package tab chooser (`/portal/tools?tool=<tool_id>`).
 
 ### 3) Data as core service
 
