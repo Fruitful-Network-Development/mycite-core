@@ -211,7 +211,8 @@ Presentation metadata that should not alter datum semantics is stored in sidecar
 Current pattern:
 - Per portal sidecar: `<portal>/data/presentation/datum_icons.json`
 - Canonical icon assets: `/assets/icons/**`
-- Mapping shape: `map[datum_id] -> "tables/foo.svg"` (relative to `assets/icons`)
+- Mapping shape (current default): `map[datum_id] -> "foo.svg"` (flat/basename under `assets/icons`)
+- Foldered relpaths are optional later; they are not required in the current prototype contract.
 
 Responsibilities:
 - Engine/storage: load and persist sidecar mappings.
@@ -233,9 +234,9 @@ This makes the system portable and allows renumbering or alternate constructions
 
 ---
 
-## 8. How `data.py` should evolve (core engine plan)
+## 8. How the data workspace engine should evolve (core engine plan)
 
-The goal is to implement the **true core** of `data.py` as a rule engine over datums, while still loading from JSON (so it can later be swapped for DB storage).
+The goal is to implement the true core data workspace engine as a rule engine over datums, while still loading from JSON (so it can later be swapped for DB storage).
 
 ### 8.1 Stage 1: Graph + indexing (pure structure)
 - parse anthology entries into an in-memory `DatumGraph`
@@ -484,11 +485,12 @@ These are suggestions; the boundary constraints are the requirement.
 
 ---
 
-## 15. NIMM Data Tool packaging (intent + implementation guidance)
+## 15. NIMM Data service surface (intent + implementation guidance)
 
 ### 15.1 Intent
 
-- Data capabilities should be exposed as a **tool package** (`data_tool`) instead of hard-coded core UI.
+- Data capabilities are a **core service route** (`/portal/data`) in the service shell.
+- Optional tool packages may extend Data behavior, but do not replace the core service route.
 - NIMM state is the control surface:
   - `nav` updates navigation context
   - `inv` updates investigation context
@@ -498,9 +500,10 @@ These are suggestions; the boundary constraints are the requirement.
 
 ### 15.2 Implementation guidance (current naming)
 
-- Tool package:
-  - `portal/tools/data_tool/__init__.py`
-  - tool route: `GET /portal/tools/data_tool/home`
+- Core service route:
+  - `GET /portal/data`
+- Optional compatibility package route (legacy):
+  - `GET /portal/tools/data_tool/home`
 - Engine:
   - `data/engine/workspace.py`
   - `data/engine/nimm/state.py`
@@ -509,8 +512,8 @@ These are suggestions; the boundary constraints are the requirement.
 - Controllers:
   - `portal/api/data_workspace.py` routes under `/portal/api/data/*`
 - UI:
-  - `portal/ui/templates/tools/data_tool_home.html`
-  - `portal/ui/static/tools/data_tool.js`
+  - service shell page templates under `portal/ui/templates/services/`
+  - data UI templates/scripts may remain under `portal/ui/templates/tools/` and `portal/ui/static/tools/` while converging
 
 ### 15.3 State persistence guidance
 

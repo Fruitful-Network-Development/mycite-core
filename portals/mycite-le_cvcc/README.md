@@ -1,49 +1,34 @@
 # mycite-le_cvcc
 
-Client portal instance for CVCC operations.
+Portal instance directory in `mycite-core`.
 
-## Run locally
+## Role
+
+- Active app runtime (`app.py` present).
+- Uses shared service-shell/tool-runtime conventions from `portals/_shared`.
+
+## Local run
 
 ```bash
-cd mycite-le_cvcc
+cd /srv/repo/mycite-core/portals/mycite-le_cvcc
+python3 -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
 python app.py
 ```
 
-Notes:
+## Deployment note
 
-- `app.py` default port is `5001`.
-- `flask_apps.sh` maps this instance to `5001`.
+This directory is source-of-truth code. `compose/portals` builds directly from this repository path.
 
-## Scope
+Runtime state lives under `/srv/compose/portals/state/<portal_instance>/`.
 
-- Active portal app instance with alias-session flow and LE embed surface.
-- Board-member community workspace embed (`/portal/embed/board_member`) with Streams, Calendar, People tabs.
-
-## Board Workspace (board_member)
-
-- Workspace files:
-  - `private/workspaces/board/v1/streams.ndjson`
-  - `private/workspaces/board/v1/calendar.ndjson`
-  - `private/workspaces/board/v1/people.json`
-- Request-log audit file:
-  - `private/request_log/<cvcc_msn_id>.ndjson`
-- Example embed URL:
-  - `/portal/embed/board_member?member_msn_id=3-2-3-17-77-2-6-4-1-1&as_alias_id=demo-alias&tab=streams`
-- Example iframe snippet:
-
-```html
-<iframe
-  src="http://127.0.0.1:5001/portal/embed/board_member?member_msn_id=3-2-3-17-77-2-6-4-1-1&tab=streams"
-  title="CVCC Board Workspace"
-  style="width:100%;min-height:640px;border:0;"
-></iframe>
-```
+Do not patch code under running containers; rebuild the target portal service from `/srv/compose/portals` after updates.
 
 ## Canonical docs
 
-- [`../README.md`](../README.md)
-- [`../mss_notes.md`](../mss_notes.md)
-- [`../request_log_and_contracts.md`](../request_log_and_contracts.md)
-- [`../DEVELOPMENT_PLAN.md`](../DEVELOPMENT_PLAN.md)
-- [`../DOCUMENTATION_POLICY.md`](../DOCUMENTATION_POLICY.md)
+- [mycite-core root](../../README.md)
+- [Service Shell Standard](../../docs/TOOLS_SHELL.md)
+- [Development Plan](../../docs/DEVELOPMENT_PLAN.md)
+- [Request Log and Contracts](../../docs/request_log_and_contracts.md)
+- [Documentation Policy](../../docs/DOCUMENTATION_POLICY.md)

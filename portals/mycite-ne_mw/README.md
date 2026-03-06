@@ -1,31 +1,34 @@
 # mycite-ne_mw
 
-Demo/user natural-entity portal instance (MW).
+Portal instance directory in `mycite-core`.
 
-## Run locally
+## Role
+
+- Active app runtime (`app.py` present).
+- Uses shared service-shell/tool-runtime conventions from `portals/_shared`.
+
+## Local run
 
 ```bash
-cd mycite-ne_mw
+cd /srv/repo/mycite-core/portals/mycite-ne_mw
+python3 -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
 python app.py
 ```
 
-Notes:
+## Deployment note
 
-- `app.py` default port is `5000`.
-- `flask_apps.sh` maps this instance to `5000`.
+This directory is source-of-truth code. `compose/portals` builds directly from this repository path.
 
-## Scope
+Runtime state lives under `/srv/compose/portals/state/<portal_instance>/`.
 
-- Active portal app instance with alias sessions and full NE API stack (config/inbox/contracts/magnetlinks/public inbox).
-- Operational docs intentionally retained:
-  - `private/request_log/README.md`
-  - `vault/README.md`
+Do not patch code under running containers; rebuild the target portal service from `/srv/compose/portals` after updates.
 
 ## Canonical docs
 
-- [`../README.md`](../README.md)
-- [`../mss_notes.md`](../mss_notes.md)
-- [`../request_log_and_contracts.md`](../request_log_and_contracts.md)
-- [`../DEVELOPMENT_PLAN.md`](../DEVELOPMENT_PLAN.md)
-- [`../DOCUMENTATION_POLICY.md`](../DOCUMENTATION_POLICY.md)
+- [mycite-core root](../../README.md)
+- [Service Shell Standard](../../docs/TOOLS_SHELL.md)
+- [Development Plan](../../docs/DEVELOPMENT_PLAN.md)
+- [Request Log and Contracts](../../docs/request_log_and_contracts.md)
+- [Documentation Policy](../../docs/DOCUMENTATION_POLICY.md)

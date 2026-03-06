@@ -1,42 +1,34 @@
 # mycite-ne-example
 
-Natural-entity example portal. This directory is the NE reference implementation for portal shell behavior and API wiring.
+Portal instance directory in `mycite-core`.
 
-## Run locally
+## Role
+
+- Active app runtime (`app.py` present).
+- Uses shared service-shell/tool-runtime conventions from `portals/_shared`.
+
+## Local run
 
 ```bash
-cd mycite-ne-example
+cd /srv/repo/mycite-core/portals/mycite-ne-example
+python3 -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
 python app.py
 ```
 
-Default app port in `app.py`: `5000`.
+## Deployment note
 
-## Implemented capabilities
+This directory is source-of-truth code. `compose/portals` builds directly from this repository path.
 
-- Public contact card route: `GET /<msn_id>.json`
-- Portal UI shell: `GET /portal`
-- Alias session UI: `GET /portal/alias/<alias_id>`
-- Data workspace UI: `GET /portal/data`
-- Portal APIs:
-  - `/portal/api/config`
-  - `/portal/api/aliases`
-  - `/portal/api/inbox`
-  - `/portal/api/contracts`
-  - `/portal/api/magnetlinks`
-  - `/portal/api/progeny_config/<progeny_type>`
-  - `/portal/api/data/*` (tables, instances, view, stage_edit, revert_edit, reset, commit)
-- Signed external inbox surface:
-  - `POST /api/inbox/<msn_id>`
+Runtime state lives under `/srv/compose/portals/state/<portal_instance>/`.
 
-Data workspace note:
-
-- If demo data files are absent, `/portal/api/data/tables` returns an empty list and edit actions safely return explicit errors/warnings.
+Do not patch code under running containers; rebuild the target portal service from `/srv/compose/portals` after updates.
 
 ## Canonical docs
 
-- [`../docs/mss_notes.md`](../docs/mss_notes.md)
-- [`../docs/request_log_and_contracts.md`](../docs/request_log_and_contracts.md)
-- [`../docs/DEVELOPMENT_PLAN.md`](../docs/DEVELOPMENT_PLAN.md)
-- [`../docs/DOCUMENTATION_POLICY.md`](../docs/DOCUMENTATION_POLICY.md)
-- [`../docs/DATA_TOOL.md`](../docs/DATA_TOOL.md)
+- [mycite-core root](../../README.md)
+- [Service Shell Standard](../../docs/TOOLS_SHELL.md)
+- [Development Plan](../../docs/DEVELOPMENT_PLAN.md)
+- [Request Log and Contracts](../../docs/request_log_and_contracts.md)
+- [Documentation Policy](../../docs/DOCUMENTATION_POLICY.md)
