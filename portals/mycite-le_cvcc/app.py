@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
-from flask import Flask, abort, jsonify, make_response, redirect, render_template, request
+from flask import Flask, abort, jsonify, make_response, redirect, render_template, request, send_from_directory
 from jinja2 import TemplateNotFound
 
 from portal.api.aliases import get_alias_record, list_alias_records, register_aliases_routes
@@ -37,6 +37,8 @@ BASE_DIR = Path(__file__).resolve().parent
 PUBLIC_DIR = Path(os.environ.get("PUBLIC_DIR", str(BASE_DIR / "public")))
 PRIVATE_DIR = Path(os.environ.get("PRIVATE_DIR", str(BASE_DIR / "private")))
 FALLBACK_DIR = BASE_DIR
+REPO_ROOT = BASE_DIR.parent
+ICONS_DIR = REPO_ROOT / "assets" / "icons"
 BOARD_TABS = {"streams", "calendar", "people"}
 
 
@@ -242,6 +244,43 @@ def _shell_context() -> Dict[str, Any]:
     }
 
 
+@app.get("/portal/static/icons/<path:relpath>")
+def portal_static_icons(relpath: str):
+    token = str(relpath or "").strip().replace("\\", "/")
+    rel = Path(token)
+    if not token or rel.is_absolute() or ".." in rel.parts:
+        abort(404)
+    if rel.suffix.lower() != ".svg":
+        abort(404)
+
+    def _resolve_candidate(candidate_rel: Path) -> Path | None:
+        try:
+            candidate = (ICONS_DIR / candidate_rel).resolve()
+            candidate.relative_to(ICONS_DIR.resolve())
+        except Exception:
+            return None
+        if candidate.exists() and candidate.is_file():
+            return candidate
+        return None
+
+    resolved = _resolve_candidate(rel)
+    if resolved is None:
+        # Backward-compatible lookup for prior foldered relpaths when icons are now flat.
+        base = rel.name
+        matches = [path for path in ICONS_DIR.rglob(base) if path.is_file()]
+        if len(matches) == 1:
+            resolved = matches[0].resolve()
+
+    if resolved is None:
+        abort(404)
+
+    try:
+        resolved.relative_to(ICONS_DIR.resolve())
+    except Exception:
+        abort(404)
+    return send_from_directory(ICONS_DIR, resolved.relative_to(ICONS_DIR.resolve()).as_posix(), mimetype="image/svg+xml")
+
+
 @app.get("/healthz")
 def healthz():
     return jsonify({"ok": True, "service": "mycite-le_cvcc"})
@@ -412,7 +451,18 @@ def portal_network(tab_id: str):
 @app.get("/portal/tools")
 def portal_tools():
     aliases = list_aliases_for_sidebar(PRIVATE_DIR)
-    return render_template("services/tools.html", aliases=aliases, msn_id=MSN_ID)
+    selected_tool_id = str(request.args.get("tool") or "").strip()
+    selected_tool = next((tool for tool in TOOL_TABS if str(tool.get("tool_id") or "") == selected_tool_id), None)
+    if selected_tool is None and TOOL_TABS:
+        selected_tool = TOOL_TABS[0]
+        selected_tool_id = str(selected_tool.get("tool_id") or "")
+    return render_template(
+        "services/tools.html",
+        aliases=aliases,
+        msn_id=MSN_ID,
+        selected_tool=selected_tool,
+        selected_tool_id=selected_tool_id,
+    )
 
 
 @app.get("/portal/inbox")

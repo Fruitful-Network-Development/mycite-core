@@ -1,8 +1,7 @@
 /* MyCite Portal JS
- * - Service shell tools dropdown
+ * - Theme selector
  * - Local tab switching for page-internal panels
  * - Alias sidebar filter
- * - Theme selector
  */
 
 (function () {
@@ -107,46 +106,6 @@
     });
   }
 
-  function initToolsMenu() {
-    const toggle = qs("[data-tools-toggle]");
-    const menu = qs("[data-tools-menu]");
-    if (!toggle || !menu) return;
-
-    function isOpen() { return menu.classList.contains("is-open"); }
-    function closeMenu() {
-      menu.classList.remove("is-open");
-      toggle.setAttribute("aria-expanded", "false");
-    }
-    function openMenu() {
-      menu.classList.add("is-open");
-      toggle.setAttribute("aria-expanded", "true");
-    }
-
-    toggle.addEventListener("click", (event) => {
-      event.preventDefault();
-      if (isOpen()) closeMenu(); else openMenu();
-    });
-
-    document.addEventListener("click", (event) => {
-      if (!isOpen()) return;
-      const target = event.target;
-      if (target instanceof Node && (menu.contains(target) || toggle.contains(target))) return;
-      closeMenu();
-    });
-
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") closeMenu();
-    });
-
-    menu.addEventListener("click", (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (target.closest("a")) closeMenu();
-    });
-
-    closeMenu();
-  }
-
   function initLocalTabs() {
     const tabs = qsa(".hometabs__tab");
     const panels = qsa(".panel");
@@ -191,7 +150,6 @@
     });
   }
 
-  initToolsMenu();
   initThemeSelector();
   initLocalTabs();
   initAliasSearch();

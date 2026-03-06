@@ -3,22 +3,36 @@
 {% block title %}MyCite | Tools{% endblock %}
 
 {% set page_title = "Tools" %}
-{% set page_subtitle = "Optional packaged capabilities" %}
+{% set page_subtitle = "Optional packaged capabilities inside the Tools service" %}
+
+{% block topbar %}
+  <nav class="servicetabs" aria-label="Enabled tools">
+    {% if tool_tabs %}
+      {% for tool in tool_tabs %}
+        <a class="servicetabs__tab {% if selected_tool_id == tool.tool_id %}is-active{% endif %}" href="/portal/tools?tool={{ tool.tool_id|urlencode }}">{{ tool.display_name }}</a>
+      {% endfor %}
+    {% else %}
+      <span class="servicetabs__tab is-active">No tools enabled</span>
+    {% endif %}
+  </nav>
+{% endblock %}
 
 {% block body %}
   <div class="card" style="max-width: 980px;">
-    <div class="card__kicker">Tools</div>
-    <div class="card__title">Enabled tool packages</div>
-    <div class="card__body">
-      {% if tool_tabs %}
-        <ul class="bullets">
-          {% for tool in tool_tabs %}
-            <li><a href="{{ tool.home_path }}">{{ tool.display_name }}</a> <code>{{ tool.tool_id }}</code></li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p>No optional tools are currently enabled.</p>
-      {% endif %}
-    </div>
+    {% if selected_tool %}
+      <div class="card__kicker">Selected Tool</div>
+      <div class="card__title">{{ selected_tool.display_name }}</div>
+      <div class="card__body">
+        <p><code>{{ selected_tool.tool_id }}</code></p>
+        <p>Tools are additive packages under the core Tools service.</p>
+        <p><a href="{{ selected_tool.home_path }}">Open tool page</a></p>
+      </div>
+    {% else %}
+      <div class="card__kicker">Tools</div>
+      <div class="card__title">No optional tools enabled</div>
+      <div class="card__body">
+        <p>Add tool IDs under <code>enabled_tools</code> in private config to expose optional tool tabs here.</p>
+      </div>
+    {% endif %}
   </div>
 {% endblock %}

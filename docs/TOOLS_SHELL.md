@@ -6,7 +6,7 @@ All runnable portals must use one shared service-first shell:
 
 - top-level services: `Home`, `Data`, `Network`, `Tools`, `Inbox`
 - `Data` is a core service route, not a default optional tool package
-- `Tools` is reserved for optional packaged capabilities
+- `Tools` is a core service page whose content is optional packaged capabilities
 
 ## Canonical Routes
 
@@ -65,6 +65,9 @@ They are non-secret, and secret-like keys are blocked from card payloads.
 ## UI Requirements
 
 - Base layout includes `partials/service_header.html`
+- Header nav renders all enabled services as visible buttons/tabs, including `Tools`
+- Header service entries use symbolic icons from `portals/assets/icons/ui/`
 - Service navigation is route-driven, not query-param tab state
+- `/portal/tools` renders tool-specific sub-tabs based on `enabled_tools`
 - Any local tab controls are page-local only and must not replace canonical service routes
 - Alias session routes remain independent of the service shell

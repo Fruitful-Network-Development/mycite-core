@@ -486,7 +486,18 @@ def portal_network(tab_id: str):
 @app.get("/portal/tools")
 def portal_tools():
     aliases = list_aliases_for_sidebar(PRIVATE_DIR)
-    return render_template("services/tools.html", aliases=aliases, msn_id=MSN_ID)
+    selected_tool_id = str(request.args.get("tool") or "").strip()
+    selected_tool = next((tool for tool in TOOL_TABS if str(tool.get("tool_id") or "") == selected_tool_id), None)
+    if selected_tool is None and TOOL_TABS:
+        selected_tool = TOOL_TABS[0]
+        selected_tool_id = str(selected_tool.get("tool_id") or "")
+    return render_template(
+        "services/tools.html",
+        aliases=aliases,
+        msn_id=MSN_ID,
+        selected_tool=selected_tool,
+        selected_tool_id=selected_tool_id,
+    )
 
 
 @app.get("/portal/inbox")
