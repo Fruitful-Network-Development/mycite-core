@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | Tools{% endblock %}
+
+{% set page_title = "Tools" %}
+{% set page_subtitle = "Optional packaged capabilities" %}
+
+{% block body %}
+  <div class="card" style="max-width: 980px;">
+    <div class="card__kicker">Tools</div>
+    <div class="card__title">Enabled tool packages</div>
+    <div class="card__body">
+      {% if tool_tabs %}
+        <ul class="bullets">
+          {% for tool in tool_tabs %}
+            <li><a href="{{ tool.home_path }}">{{ tool.display_name }}</a> <code>{{ tool.tool_id }}</code></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>No optional tools are currently enabled.</p>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

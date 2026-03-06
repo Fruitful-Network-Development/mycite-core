@@ -12,11 +12,19 @@ from flask import Flask, abort, jsonify, make_response, redirect, render_templat
 from jinja2 import TemplateNotFound
 
 from portal.api.aliases import get_alias_record, list_alias_records, register_aliases_routes
+from portal.core_services.runtime import (
+    active_service_from_path,
+    build_network_cards,
+    build_network_tabs,
+    build_service_nav,
+    load_active_private_config,
+    normalize_network_tab,
+)
 from portal.services.board_access import require_board_member
 from portal.services.request_log_store import append_event as append_request_log_event
 from portal.services.workspace_store import append_event as append_workspace_event
 from portal.services.workspace_store import materialize_people, read_events, workspace_root
-from portal.tools.runtime import read_enabled_tools, register_tool_blueprints
+from portal.tools.runtime import active_tool_for_path, read_enabled_tools, register_tool_blueprints
 
 app = Flask(
     __name__,
@@ -210,7 +218,33 @@ def list_aliases_for_sidebar(private_dir: Path) -> list[Dict[str, Any]]:
 
 
 MSN_ID = _infer_local_msn_id()
+ACTIVE_PRIVATE_CONFIG = load_active_private_config(PRIVATE_DIR, MSN_ID or None)
 TOOL_TABS = register_tool_blueprints(app, read_enabled_tools(PRIVATE_DIR, msn_id=MSN_ID or None))
+DATA_HOME_TEMPLATE = BASE_DIR / "portal" / "ui" / "templates" / "tools" / "data_tool_home.html"
+DATA_HOME_AVAILABLE = DATA_HOME_TEMPLATE.exists()
+
+
+@app.context_processor
+def _shell_context() -> Dict[str, Any]:
+    active_service = active_service_from_path(request.path)
+    active_service_tab = ""
+    if active_service == "network":
+        active_service_tab = normalize_network_tab(request.path.rstrip("/").split("/")[-1])
+    active_tool = active_tool_for_path(TOOL_TABS, request.path)
+    return {
+        "tool_tabs": TOOL_TABS,
+        "active_tool": active_tool,
+        "active_tool_id": str(active_tool.get("tool_id") or "") if active_tool else "",
+        "service_nav": build_service_nav(ACTIVE_PRIVATE_CONFIG, active_service=active_service),
+        "active_service": active_service,
+        "active_service_tab": active_service_tab,
+        "network_tabs": build_network_tabs(active_service_tab),
+    }
+
+
+@app.get("/healthz")
+def healthz():
+    return jsonify({"ok": True, "service": "mycite-le_cvcc"})
 
 
 def _ensure_runtime_dirs() -> None:
@@ -323,13 +357,68 @@ def public_contact_card_options(msn_id: str):
     return resp
 
 
-@app.get("/portal")
-def portal_home():
+def _render_portal_home():
     aliases = list_aliases_for_sidebar(PRIVATE_DIR)
     try:
-        return render_template("home.html", aliases=aliases, msn_id=MSN_ID, tool_tabs=TOOL_TABS)
+        return render_template("services/home.html", aliases=aliases, msn_id=MSN_ID)
     except TemplateNotFound:
         return "<h1>MyCite Portal</h1><p>home.html missing</p>"
+
+
+@app.get("/portal/home")
+def portal_home_page():
+    return _render_portal_home()
+
+
+@app.get("/portal")
+def portal_home():
+    return redirect("/portal/home", code=302)
+
+
+@app.get("/portal/data")
+def portal_data():
+    aliases = list_aliases_for_sidebar(PRIVATE_DIR)
+    if DATA_HOME_AVAILABLE:
+        return render_template("tools/data_tool_home.html", aliases=aliases, msn_id=MSN_ID)
+    return render_template(
+        "services/data.html",
+        aliases=aliases,
+        msn_id=MSN_ID,
+        data_home_available=False,
+        data_home_path="/portal/tools/data_tool/home",
+    )
+
+
+@app.get("/portal/network")
+def portal_network_default():
+    return redirect("/portal/network/contracts", code=302)
+
+
+@app.get("/portal/network/<tab_id>")
+def portal_network(tab_id: str):
+    tab = normalize_network_tab(tab_id)
+    aliases = list_aliases_for_sidebar(PRIVATE_DIR)
+    cards = build_network_cards(PRIVATE_DIR, ACTIVE_PRIVATE_CONFIG)
+    return render_template(
+        "services/network.html",
+        aliases=aliases,
+        msn_id=MSN_ID,
+        network_cards=cards,
+        network_items=cards.get(tab, []),
+        active_service_tab=tab,
+    )
+
+
+@app.get("/portal/tools")
+def portal_tools():
+    aliases = list_aliases_for_sidebar(PRIVATE_DIR)
+    return render_template("services/tools.html", aliases=aliases, msn_id=MSN_ID)
+
+
+@app.get("/portal/inbox")
+def portal_inbox_page():
+    aliases = list_aliases_for_sidebar(PRIVATE_DIR)
+    return render_template("services/inbox.html", aliases=aliases, msn_id=MSN_ID)
 
 
 @app.route("/portal", methods=["OPTIONS"])

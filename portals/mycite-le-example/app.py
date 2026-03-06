@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
-from flask import Flask, abort, jsonify, make_response, render_template, request, send_from_directory
+from flask import Flask, abort, jsonify, make_response, redirect, render_template, request, send_from_directory
 from jinja2 import TemplateNotFound
 
 from data.engine.workspace import Workspace
@@ -18,8 +18,15 @@ from portal.api.inbox import register_inbox_routes
 from portal.api.magnetlinks import register_magnetlinks_routes
 from portal.api.progeny_config import register_progeny_config_routes
 from portal.api.public_inbox import register_public_inbox_routes
+from portal.core_services.runtime import (
+    active_service_from_path,
+    build_network_cards,
+    build_network_tabs,
+    build_service_nav,
+    normalize_network_tab,
+)
 from portal.services.policy import is_external_signed_path, is_portal_path, is_public_path
-from portal.tools.runtime import read_enabled_tools, register_tool_blueprints
+from portal.tools.runtime import active_tool_for_path, read_enabled_tools, register_tool_blueprints
 
 app = Flask(
     __name__,
@@ -177,9 +184,35 @@ WORKSPACE_CONFIG: Dict[str, Any] = dict(DATA_TOOL_CONFIG)
 WORKSPACE_CONFIG["state_path"] = str(PRIVATE_DIR / "daemon_state" / "data_workspace.json")
 WORKSPACE_CONFIG["icon_root"] = str(ICONS_DIR)
 WORKSPACE_CONFIG["icon_base_url"] = "/portal/static/icons"
+WORKSPACE_CONFIG["icon_relpath_mode"] = str(WORKSPACE_CONFIG.get("icon_relpath_mode") or "basename").strip().lower()
 
-TOOL_TABS = register_tool_blueprints(app, read_enabled_tools(PRIVATE_DIR, msn_id=MSN_ID or None))
+ENABLED_TOOL_IDS = read_enabled_tools(PRIVATE_DIR, msn_id=MSN_ID or None)
+TOOL_TABS = register_tool_blueprints(
+    app,
+    ENABLED_TOOL_IDS,
+    tools_dir=BASE_DIR / "portal" / "tools",
+)
 DATA_WORKSPACE = Workspace(JsonStorageBackend(DATA_DIR), config=WORKSPACE_CONFIG)
+DATA_HOME_TEMPLATE = BASE_DIR / "portal" / "ui" / "templates" / "tools" / "data_tool_home.html"
+DATA_HOME_AVAILABLE = DATA_HOME_TEMPLATE.exists()
+
+
+@app.context_processor
+def _tool_shell_context() -> Dict[str, Any]:
+    active_service = active_service_from_path(request.path)
+    active_service_tab = ""
+    if active_service == "network":
+        active_service_tab = normalize_network_tab(request.path.rstrip("/").split("/")[-1])
+    active_tool = active_tool_for_path(TOOL_TABS, request.path)
+    return {
+        "tool_tabs": TOOL_TABS,
+        "active_tool": active_tool,
+        "active_tool_id": str(active_tool.get("tool_id") or "") if active_tool else "",
+        "service_nav": build_service_nav(ACTIVE_PRIVATE_CONFIG, active_service=active_service),
+        "active_service": active_service,
+        "active_service_tab": active_service_tab,
+        "network_tabs": build_network_tabs(active_service_tab),
+    }
 
 
 def _format_sidebar_entity_title(raw: str) -> str:
@@ -334,16 +367,31 @@ def portal_static_icons(relpath: str):
     if rel.suffix.lower() != ".svg":
         abort(404)
 
+    def _resolve_candidate(candidate_rel: Path) -> Path | None:
+        try:
+            candidate = (ICONS_DIR / candidate_rel).resolve()
+            candidate.relative_to(ICONS_DIR.resolve())
+        except Exception:
+            return None
+        if candidate.exists() and candidate.is_file():
+            return candidate
+        return None
+
+    resolved = _resolve_candidate(rel)
+    if resolved is None:
+        base = rel.name
+        matches = [path for path in ICONS_DIR.rglob(base) if path.is_file()]
+        if len(matches) == 1:
+            resolved = matches[0].resolve()
+
+    if resolved is None:
+        abort(404)
+
     try:
-        resolved = (ICONS_DIR / rel).resolve()
         resolved.relative_to(ICONS_DIR.resolve())
     except Exception:
         abort(404)
-
-    if not resolved.exists() or not resolved.is_file():
-        abort(404)
-
-    return send_from_directory(ICONS_DIR, rel.as_posix(), mimetype="image/svg+xml")
+    return send_from_directory(ICONS_DIR, resolved.relative_to(ICONS_DIR.resolve()).as_posix(), mimetype="image/svg+xml")
 
 
 @app.get("/<msn_id>.json")
@@ -365,17 +413,72 @@ def public_contact_card_options(msn_id: str):
     return resp
 
 
-@app.get("/portal")
-def portal_home():
+def _render_portal_home():
     aliases = list_aliases_ne(PRIVATE_DIR)
     try:
-        return render_template("home.html", aliases=aliases, tool_tabs=TOOL_TABS)
+        return render_template("services/home.html", aliases=aliases, msn_id=MSN_ID)
     except TemplateNotFound:
         return (
             "<h1>MyCite Portal</h1>"
             "<p>Local dev portal (AUTH_MODE=none). Later this path is Keycloak-protected.</p>"
             "<p>UI shell not installed yet (home.html missing). Using fallback.</p>"
         )
+
+
+@app.get("/portal/home")
+def portal_home_page():
+    return _render_portal_home()
+
+
+@app.get("/portal")
+def portal_home():
+    return redirect("/portal/home", code=302)
+
+
+@app.get("/portal/data")
+def portal_data():
+    aliases = list_aliases_ne(PRIVATE_DIR)
+    if DATA_HOME_AVAILABLE:
+        return render_template("tools/data_tool_home.html", aliases=aliases, msn_id=MSN_ID)
+    return render_template(
+        "services/data.html",
+        aliases=aliases,
+        msn_id=MSN_ID,
+        data_home_available=False,
+        data_home_path="/portal/tools/data_tool/home",
+    )
+
+
+@app.get("/portal/network")
+def portal_network_default():
+    return redirect("/portal/network/contracts", code=302)
+
+
+@app.get("/portal/network/<tab_id>")
+def portal_network(tab_id: str):
+    tab = normalize_network_tab(tab_id)
+    aliases = list_aliases_ne(PRIVATE_DIR)
+    cards = build_network_cards(PRIVATE_DIR, ACTIVE_PRIVATE_CONFIG)
+    return render_template(
+        "services/network.html",
+        aliases=aliases,
+        msn_id=MSN_ID,
+        network_cards=cards,
+        network_items=cards.get(tab, []),
+        active_service_tab=tab,
+    )
+
+
+@app.get("/portal/tools")
+def portal_tools():
+    aliases = list_aliases_ne(PRIVATE_DIR)
+    return render_template("services/tools.html", aliases=aliases, msn_id=MSN_ID)
+
+
+@app.get("/portal/inbox")
+def portal_inbox_page():
+    aliases = list_aliases_ne(PRIVATE_DIR)
+    return render_template("services/inbox.html", aliases=aliases, msn_id=MSN_ID)
 
 
 @app.route("/portal", methods=["OPTIONS"])
@@ -442,7 +545,7 @@ register_data_routes(
     aliases_provider=lambda: list_aliases_ne(PRIVATE_DIR),
     options_private_fn=_options_private,
     msn_id_provider=lambda: MSN_ID,
-    include_home_redirect=True,
+    include_home_redirect=False,
     include_legacy_shims=True,
 )
 

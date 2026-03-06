@@ -1,0 +1,50 @@
+<nav class="serviceshell" aria-label="Primary services">
+  <div class="serviceshell__links">
+    {% if service_nav %}
+      {% for service in service_nav %}
+        <a class="serviceshell__link {% if service.active %}is-active{% endif %}" href="{{ service.href }}">{{ service.label }}</a>
+      {% endfor %}
+    {% else %}
+      <a class="serviceshell__link is-active" href="/portal/home">Home</a>
+    {% endif %}
+  </div>
+
+  <div class="serviceshell__tools">
+    <button
+      class="serviceshell__button"
+      type="button"
+      data-tools-toggle
+      aria-haspopup="true"
+      aria-expanded="false"
+      aria-controls="toolsMenu"
+    >
+      Tools
+    </button>
+
+    <div class="serviceshell__menu" id="toolsMenu" data-tools-menu>
+      {% if tool_tabs %}
+        {% for tool in tool_tabs %}
+          <a class="serviceshell__item {% if active_tool_id == tool.tool_id %}is-active{% endif %}" href="{{ tool.home_path }}">
+            {{ tool.display_name }}
+          </a>
+        {% endfor %}
+      {% else %}
+        <span class="serviceshell__item is-empty">No tools enabled</span>
+      {% endif %}
+    </div>
+
+    <div class="serviceshell__activeWrap">
+      <span class="serviceshell__activeLabel">Active Tool</span>
+      {% if active_tool %}
+        <a class="serviceshell__activeTab" href="{{ active_tool.home_path }}">{{ active_tool.display_name }}</a>
+      {% else %}
+        <span class="serviceshell__activeTab is-empty">None</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <label class="themebar" aria-label="Portal theme selector">
+    <span class="themebar__label">Theme</span>
+    <select class="themebar__select" data-theme-selector data-theme-scope="portal"></select>
+  </label>
+</nav>
