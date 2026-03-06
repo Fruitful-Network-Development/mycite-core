@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .models import ProfileCard
+ProfileCard = dict[str, Any]
 
 _ALIAS_EXPECTED_BY_TYPE = {
     "board_member": False,
