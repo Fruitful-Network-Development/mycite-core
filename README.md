@@ -4,24 +4,36 @@ Canonical source for the MyCite portal framework.
 
 ## Scope
 
-- NE/LE portal implementations and shared portal runtime patterns
-- NIMM data tool behavior and table/field icon guidance
-- Contract and request-log cooperation model
-- Tool runtime conventions used by portal apps
+- Shared portal runtime and service-shell UI patterns (NE/LE).
+- Core service routing (`/portal/home|data|network|tools|inbox`) plus optional tool-package runtime contracts.
+- Product/framework docs (NIMM/data model, progeny/profile cards, contracts/request-log model).
+- Portal instance source code under `portals/`.
 
-## Layout
+## Source of truth boundaries
 
-- `portals/` portal implementations and examples
-- `tools/` shared tool modules (when extracted)
-- `docs/` canonical product/framework documentation
-- `scripts/` developer and repo maintenance scripts
+- `mycite-core` owns portal framework code and product docs.
+- `srv-infra` owns server deployment, compose stacks, NGINX staging/promotion, and operational runbooks.
 
-## Non-goals
+## Repository layout
 
-- No production/deployment runtime state
-- No live server secrets, certs, or `.env` values
-- No host-level NGINX/systemd operational ownership (belongs to `srv-infra`)
+- `portals/` portal implementations and example instances.
+- `docs/` canonical framework documentation.
+- `tools/` shared tool packages (when extracted).
+- `scripts/` maintenance/developer scripts.
 
-## Related repo
+## Canonical docs
 
-Infrastructure/deployment ownership is in `/srv/repo/srv-infra`.
+- [`docs/TOOLS_SHELL.md`](docs/TOOLS_SHELL.md)
+- [`docs/DEVELOPMENT_PLAN.md`](docs/DEVELOPMENT_PLAN.md)
+- [`docs/PROGENY_PROFILE_CARDS.md`](docs/PROGENY_PROFILE_CARDS.md)
+- [`docs/request_log_and_contracts.md`](docs/request_log_and_contracts.md)
+- [`docs/DATA_TOOL.md`](docs/DATA_TOOL.md)
+- [`docs/DATA_TOOL_ICONS.md`](docs/DATA_TOOL_ICONS.md)
+- [`docs/DOCUMENTATION_POLICY.md`](docs/DOCUMENTATION_POLICY.md)
+- [`docs/repo_policy.md`](docs/repo_policy.md)
+
+## Infra report reference
+
+Operational implementation reporting is canonical in:
+
+- `/srv/repo/srv-infra/docs/fnd_portal_container_implementation_report.md`

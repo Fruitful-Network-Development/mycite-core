@@ -11,25 +11,27 @@ It separates intent from implementation guidance.
 ## Intent
 
 - Treat data as a datum graph, not fixed hard-coded UI tables.
+- Keep the current operator surface anthology-first during this phase:
+  - collapsible layers/value-groups
+  - append workflow for new datum ids
 - Drive interactions through NIMM directives:
   - `nav`: navigation context
   - `inv`: investigation context
   - `med`: mediation (mode/lens)
   - `man`: manipulation (stage/commit)
 - Keep semantic logic in the engine, not in route handlers or templates.
+- Treat UI copy/layout as provisional while the model evolves.
 
 ## Implementation Guidance
 
-### Tool packaging
+### Service surface and optional package compatibility
 
-- Tool module: `portal/tools/data_tool/__init__.py`
-- Tool metadata:
-  - `TOOL_ID = "data_tool"`
-  - `TOOL_TITLE = "Data Tool"`
-  - `TOOL_HOME_PATH = "/portal/tools/data_tool/home"`
-  - `TOOL_BLUEPRINT = <blueprint>`
-- Tool UI route:
+- Canonical Data route:
+  - `GET /portal/data`
+- Optional compatibility package route:
   - `GET /portal/tools/data_tool/home`
+- Legacy config token behavior:
+  - `data_tool` in `enabled_tools` is ignored and logged as a legacy core-service token
 
 ### Engine modules
 
@@ -103,6 +105,13 @@ Response shape:
 }
 ```
 
+Prototype metadata:
+
+- `GET /portal/api/data/model`
+- `GET /portal/api/data/state` also returns `model_meta`
+
+`model_meta` is the source of truth for current guarantees/non-guarantees.
+
 ## API Endpoints
 
 Canonical endpoints:
@@ -112,6 +121,26 @@ Canonical endpoints:
 - `POST /portal/api/data/stage_edit`
 - `POST /portal/api/data/reset_staging`
 - `POST /portal/api/data/commit`
+- `GET /portal/api/data/anthology/table`
+- `POST /portal/api/data/anthology/append`
+- `GET /portal/api/data/anthology/profile/<row_id>`
+- `POST /portal/api/data/anthology/profile/update`
+
+Anthology append contract:
+
+- Inputs: `layer`, `value_group`, `reference`, `magnitude`, optional `label`
+- Behavior: compute next identifier as `<layer>-<value_group>-<iteration>` where `iteration` is max existing for that layer/group + 1
+- Output: created datum metadata + refreshed anthology table view
+
+Datum profile update contract:
+
+- Inputs: `row_id` (or `identifier`), `label`, `icon_relpath` (empty string clears icon)
+- Behavior: updates anthology row label + icon mapping and returns refreshed anthology table view
+
+Datum profile read contract:
+
+- Input path: `<row_id>` (or identifier token)
+- Output: datum metadata + `abstraction_path` chain entries
 
 Example-portal compatibility shims (temporary):
 
@@ -138,3 +167,11 @@ Example-portal compatibility shims (temporary):
   - `data_tool.enable_dev_data_features = true`
 
 Examples must not import FND dev modules.
+
+## Current Prototype Truths
+
+- The canonical user entrypoint for Data is `/portal/data` in the service shell.
+- Optional Data tool package routes may exist for compatibility but are not the primary contract.
+- API responses and engine/controller contracts are authoritative; UI labels are advisory.
+- Table/archetype inference remains an evolving model and is not final ontology.
+- Icon assignments are presentation sidecar metadata only and do not alter anthology semantics.

@@ -1,53 +1,34 @@
 # mycite-le_fnd
 
-Company portal instance for FND operations.
+Portal instance directory in `mycite-core`.
 
-## Run locally
+## Role
+
+- Active app runtime (`app.py` present).
+- Uses shared service-shell/tool-runtime conventions from `portals/_shared`.
+
+## Local run
 
 ```bash
-cd mycite-le_fnd
+cd /srv/repo/mycite-core/portals/mycite-le_fnd
+python3 -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
 python app.py
 ```
 
-Notes:
+## Deployment note
 
-- `app.py` default port is `5001`.
-- `flask_apps.sh` runs this instance on `5002`.
+This directory is source-of-truth code. `compose/portals` builds directly from this repository path.
 
-## Scope
+Runtime state lives under `/srv/compose/portals/state/<portal_instance>/`.
 
-- Active portal app instance with company/client pages, alias sessions, embed endpoints, and JSON-backed data tab scaffolding.
-
-## Tenant PayPal Embed (Provider-Held Secrets)
-
-- Tenant embed route:
-  - `/portal/embed/tenant?tenant_msn_id=<tenant_msn_id>&contract_id=<contract_id>&as_alias_id=<alias_id>`
-- Tab surface in tenant window:
-  - Payment Processing (functional)
-  - Service Agreement (placeholder)
-  - Analytics (placeholder)
-  - Blog (placeholder)
-- PayPal storage policy:
-  - `client_id` is stored in tenant profile JSON
-  - `client_secret` is encrypted and stored as ciphertext metadata only
-  - no plaintext secrets are written to request logs or profile JSON
-- Local key material:
-  - generated in `private/vault/contracts/<contract_id>.key`
-  - local-only, ignored by git
-
-## Dev-Only Data Experimentation Policy
-
-- FND may host experimental data features under `data/dev/**`.
-- Typical examples include prototype lenses, ad-hoc parsers, and temporary recognizers.
-- Example portals (`mycite-ne-example`, `mycite-le-example`) remain minimal and stable and must not import FND dev modules.
-- A future optional config flag such as `enable_dev_data_features` can be used to gate FND-only experiments.
+Do not patch code under running containers; rebuild the target portal service from `/srv/compose/portals` after updates.
 
 ## Canonical docs
 
-- [`../README.md`](../README.md)
-- [`../docs/mss_notes.md`](../docs/mss_notes.md)
-- [`../docs/request_log_and_contracts.md`](../docs/request_log_and_contracts.md)
-- [`../docs/DEVELOPMENT_PLAN.md`](../docs/DEVELOPMENT_PLAN.md)
-- [`../docs/DOCUMENTATION_POLICY.md`](../docs/DOCUMENTATION_POLICY.md)
-- [`../docs/DATA_TOOL.md`](../docs/DATA_TOOL.md)
+- [mycite-core root](../../README.md)
+- [Service Shell Standard](../../docs/TOOLS_SHELL.md)
+- [Development Plan](../../docs/DEVELOPMENT_PLAN.md)
+- [Request Log and Contracts](../../docs/request_log_and_contracts.md)
+- [Documentation Policy](../../docs/DOCUMENTATION_POLICY.md)
