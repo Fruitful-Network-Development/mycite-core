@@ -36,6 +36,11 @@ Primary user navigation is service-based and stable:
 - `Tools`
 - `Inbox`
 
+Sidebar shell conventions are also standardized:
+- top `Home` button
+- relationship listings (`Progeny`, `Aliases`)
+- footer portal identity + sign-out action
+
 ### 2) Tools are additive packages
 
 Tools remain optional route packages under `/portal/tools/<tool_id>/home`.

@@ -233,6 +233,33 @@ def _shell_context() -> Dict[str, Any]:
     if active_service == "network":
         active_service_tab = normalize_network_tab(request.path.rstrip("/").split("/")[-1])
     active_tool = active_tool_for_path(TOOL_TABS, request.path)
+    network_cards = build_network_cards(PRIVATE_DIR, ACTIVE_PRIVATE_CONFIG)
+    progeny_cards = network_cards.get("progeny") if isinstance(network_cards, dict) else []
+    sidebar_progeny: list[Dict[str, str]] = []
+    if isinstance(progeny_cards, list):
+        for card in progeny_cards:
+            if not isinstance(card, dict):
+                continue
+            display = card.get("display") if isinstance(card.get("display"), dict) else {}
+            progeny_id = str(card.get("progeny_id") or card.get("msn_id") or "").strip()
+            title = str(display.get("title") or card.get("progeny_id") or card.get("msn_id") or "Unnamed progeny").strip()
+            sidebar_progeny.append(
+                {
+                    "progeny_id": progeny_id,
+                    "title": title,
+                    "href": "/portal/network/progeny",
+                }
+            )
+
+    display_cfg = ACTIVE_PRIVATE_CONFIG.get("display") if isinstance(ACTIVE_PRIVATE_CONFIG.get("display"), dict) else {}
+    portal_name = str(
+        display_cfg.get("title")
+        or ACTIVE_PRIVATE_CONFIG.get("portal_title")
+        or ACTIVE_PRIVATE_CONFIG.get("title")
+        or MSN_ID
+        or "Portal"
+    ).strip()
+    sign_out_url = str(os.environ.get("PORTAL_SIGN_OUT_URL") or "/oauth2/sign_out").strip() or "/oauth2/sign_out"
     return {
         "tool_tabs": TOOL_TABS,
         "active_tool": active_tool,
@@ -241,6 +268,9 @@ def _shell_context() -> Dict[str, Any]:
         "active_service": active_service,
         "active_service_tab": active_service_tab,
         "network_tabs": build_network_tabs(active_service_tab),
+        "sidebar_progeny": sidebar_progeny,
+        "portal_name": portal_name,
+        "sign_out_url": sign_out_url,
     }
 
 
