@@ -1,8 +1,21 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict
 
-from .models import NetworkTabItem, ServiceNavItem
+
+class ServiceNavItem(TypedDict):
+    service_id: str
+    label: str
+    href: str
+    icon: str
+    active: bool
+
+
+class NetworkTabItem(TypedDict):
+    tab_id: str
+    label: str
+    href: str
+    active: bool
 
 DEFAULT_SERVICE_ORDER = ["home", "data", "network", "tools", "inbox"]
 SERVICE_LABELS = {
