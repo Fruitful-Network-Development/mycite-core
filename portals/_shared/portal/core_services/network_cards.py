@@ -172,6 +172,38 @@ def _from_internal_progeny(private_dir: Path) -> list[ProfileCard]:
     return out
 
 
+def _from_unified_registry(private_dir: Path) -> list[ProfileCard]:
+    out: list[ProfileCard] = []
+    path = private_dir / "progeny" / "progeny.json"
+    payload = _read_json(path)
+    if payload is None:
+        return out
+
+    if isinstance(payload.get("items"), list):
+        entries = list(payload.get("items") or [])
+    elif isinstance(payload.get("entries"), list):
+        entries = list(payload.get("entries") or [])
+    else:
+        entries = []
+    for index, item in enumerate(entries):
+        if not isinstance(item, dict):
+            continue
+        progeny_type = str(item.get("progeny_type") or "board_member").strip().lower()
+        progeny_id = str(item.get("progeny_id") or item.get("msn_id") or f"entry-{index + 1}").strip()
+        msn_id = str(item.get("msn_id") or "").strip()
+        card = _card(
+            progeny_id=progeny_id,
+            msn_id=msn_id,
+            progeny_type=progeny_type,
+            payload=item,
+            source_kind="unified_registry",
+            source_ref=path.name,
+            source_path=path,
+        )
+        out.append(card)
+    return out
+
+
 def build_alias_cards(private_dir: Path) -> list[ProfileCard]:
     out: list[ProfileCard] = []
     alias_dir = private_dir / "aliases"
@@ -246,9 +278,15 @@ def build_magnetlink_cards(private_dir: Path) -> list[dict[str, Any]]:
 
 def build_progeny_cards(private_dir: Path, config: dict[str, Any]) -> list[ProfileCard]:
     out: list[ProfileCard] = []
-    out.extend(_from_config_refs(private_dir, config))
-
+    out.extend(_from_unified_registry(private_dir))
     seen = {str(card.get("progeny_id") or "") for card in out}
+
+    for card in _from_config_refs(private_dir, config):
+        progeny_id = str(card.get("progeny_id") or "")
+        if progeny_id in seen:
+            continue
+        seen.add(progeny_id)
+        out.append(card)
     for card in _from_internal_progeny(private_dir):
         progeny_id = str(card.get("progeny_id") or "")
         if progeny_id in seen:

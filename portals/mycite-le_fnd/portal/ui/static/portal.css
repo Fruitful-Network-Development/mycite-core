@@ -596,6 +596,80 @@ code{
   gap: 12px;
 }
 
+.data-tool__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
+  align-items: start;
+}
+
+.data-tool__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.data-tool__nimmSummary {
+  position: sticky;
+  top: 78px;
+}
+
+.data-tool__nimmSummary pre {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  background: #fafafa;
+  overflow: auto;
+  max-height: 300px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+
+.data-tool__nimmOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  grid-template-columns: 1fr min(860px, 94vw);
+}
+
+.data-tool__nimmOverlay[hidden] {
+  display: none !important;
+  pointer-events: none;
+}
+
+.data-tool__nimmBackdrop {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.data-tool__nimmPanel {
+  margin: 10px 10px 10px 0;
+  border-radius: 12px;
+  overflow: auto;
+  max-height: calc(100vh - 20px);
+}
+
+.data-tool__nimmHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 1100px) {
+  .data-tool__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .data-tool__nimmSummary {
+    position: static;
+  }
+}
+
 .data-tool__contract .card__body {
   display: flex;
   flex-direction: column;
@@ -808,6 +882,18 @@ code{
   overflow: auto;
 }
 
+.data-tool__valueGroupActions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.data-tool__layerActions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .data-tool__table {
   width: 100%;
   border-collapse: collapse;
@@ -895,9 +981,87 @@ code{
   color: var(--accent);
 }
 
+.data-tool__actionBtn--danger {
+  border-color: #c16f6f;
+  color: #9e2b2b;
+}
+
+.data-tool__actionBtn--danger:hover {
+  border-color: #9e2b2b;
+  color: #9e2b2b;
+}
+
 .data-tool__tableIconCell {
   width: 52px;
   text-align: center;
+}
+
+.data-tool__pairCards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.data-tool__pairCard {
+  min-width: 220px;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 6px 8px;
+}
+
+.data-tool__pairIcon {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  flex: 0 0 auto;
+}
+
+.data-tool__pairIcon .datum-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.data-tool__pairIcon .datum-icon--placeholder {
+  width: 16px;
+  height: 16px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.data-tool__pairBody {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.data-tool__pairAddress {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  max-width: 360px;
+}
+
+.data-tool__pairLabel {
+  font-size: 11px;
+  color: var(--ink2);
+  max-width: 360px;
+}
+
+.data-tool__pairMagnitude {
+  font-size: 12px;
+  color: var(--ink2);
+  max-width: 420px;
 }
 
 .data-tool__profileModal {
@@ -929,6 +1093,10 @@ body.is-modal-open {
   width: min(900px, calc(100vw - 24px));
   max-height: calc(100vh - 24px);
   overflow: auto;
+}
+
+.data-tool__appendDialog {
+  width: min(820px, calc(100vw - 24px));
 }
 
 .data-tool__profileHeader {
@@ -983,6 +1151,48 @@ body.is-modal-open {
 
 .data-tool__profileFooter {
   margin-top: 12px;
+}
+
+.data-tool__appendPairs {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fafafa;
+  padding: 10px;
+}
+
+.data-tool__appendPairsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.data-tool__appendPairsHeader h3 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.data-tool__appendPairsList {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.data-tool__appendPairRow {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.data-tool__appendPairRow label {
+  min-width: 0;
+}
+
+.data-tool__appendPairRow input {
+  width: 100%;
 }
 
 .data-tool__profilePath {
@@ -1087,6 +1297,10 @@ body.is-modal-open {
   .data-tool__profileDialog {
     width: calc(100vw - 12px);
     max-height: calc(100vh - 12px);
+  }
+
+  .data-tool__appendPairRow {
+    grid-template-columns: 1fr;
   }
 }
 

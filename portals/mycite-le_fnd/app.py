@@ -337,6 +337,7 @@ WORKSPACE_CONFIG["state_path"] = str(PRIVATE_DIR / "daemon_state" / "data_worksp
 WORKSPACE_CONFIG["icon_root"] = str(ICONS_DIR)
 WORKSPACE_CONFIG["icon_base_url"] = "/portal/static/icons"
 WORKSPACE_CONFIG["icon_relpath_mode"] = str(WORKSPACE_CONFIG.get("icon_relpath_mode") or "basename").strip().lower()
+WORKSPACE_CONFIG["msn_id"] = MSN_ID
 
 ENABLED_TOOL_IDS = read_enabled_tools(PRIVATE_DIR, msn_id=MSN_ID or None)
 TOOL_TABS = register_tool_blueprints(
@@ -347,6 +348,7 @@ TOOL_TABS = register_tool_blueprints(
 DATA_WORKSPACE = Workspace(JsonStorageBackend(DATA_DIR), config=WORKSPACE_CONFIG)
 DATA_HOME_TEMPLATE = BASE_DIR / "portal" / "ui" / "templates" / "tools" / "data_tool_home.html"
 DATA_HOME_AVAILABLE = DATA_HOME_TEMPLATE.exists()
+DATA_TAB_IDS = {"anthology", "time-series", "geographic", "advanced"}
 
 
 @app.context_processor
@@ -480,10 +482,29 @@ def portal_home():
 
 
 @app.get("/portal/data")
-def portal_data():
+def portal_data_root():
+    return redirect("/portal/data/anthology", code=302)
+
+
+@app.get("/portal/data/<tab_id>")
+def portal_data(tab_id: str):
     aliases = list_aliases_for_sidebar(PRIVATE_DIR)
+    tab = str(tab_id or "").strip().lower()
+    if tab not in DATA_TAB_IDS:
+        return redirect("/portal/data/anthology", code=302)
+
     if DATA_HOME_AVAILABLE:
-        return render_template("tools/data_tool_home.html", aliases=aliases, msn_id=MSN_ID)
+        return render_template(
+            "tools/data_tool_home.html",
+            aliases=aliases,
+            msn_id=MSN_ID,
+            active_data_tab=tab,
+            data_tab_routes=[
+                {"tab_id": "anthology", "label": "Anthology", "href": "/portal/data/anthology"},
+                {"tab_id": "time-series", "label": "Time Series", "href": "/portal/data/time-series"},
+                {"tab_id": "geographic", "label": "Geographic", "href": "/portal/data/geographic"},
+            ],
+        )
     return render_template(
         "services/data.html",
         aliases=aliases,

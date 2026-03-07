@@ -26,6 +26,7 @@ class Workspace:
         self._state_path = self._resolve_state_path()
         self._icon_root = self._resolve_icon_root()
         self._icon_base_url = str(self.config.get("icon_base_url") or "/portal/static/icons").rstrip("/")
+        self._icon_relpath_mode = self._resolve_icon_relpath_mode()
         self._startup_warnings: list[str] = []
 
         self._staged: dict[tuple[str, str, str], str] = {}
@@ -39,6 +40,7 @@ class Workspace:
         self._reload()
         self._state = self._load_state()
         self._sync_staging_from_state()
+        self._refresh_panes_for_icon_change()
         self._sync_state_staging()
         self._persist_state()
 
@@ -59,6 +61,12 @@ class Workspace:
             return Path(str(token)).resolve()
         except Exception:
             return None
+
+    def _resolve_icon_relpath_mode(self) -> str:
+        token = str(self.config.get("icon_relpath_mode") or "basename").strip().lower()
+        if token in {"basename", "path"}:
+            return token
+        return "basename"
 
     def _default_focus_source(self) -> str:
         return normalize_source(str(self.config.get("default_focus_source") or "auto"), "auto")
@@ -145,7 +153,7 @@ class Workspace:
             datum_id = str(key or "").strip()
             if not datum_id:
                 continue
-            icon_out[datum_id] = self._normalize_icon_relpath(value)
+            icon_out[datum_id] = self._canonical_icon_relpath(value)
         self._staged_presentation_icons = icon_out
 
     def _sync_state_staging(self) -> None:
@@ -214,16 +222,71 @@ class Workspace:
             token = token[len("assets/icons/") :]
         return token
 
+    def _safe_icon_relpath_exists(self, rel: str) -> bool:
+        if self._icon_root is None:
+            return False
+        if not rel or not rel.lower().endswith(".svg"):
+            return False
+
+        rel_path = Path(rel)
+        if rel_path.is_absolute() or ".." in rel_path.parts:
+            return False
+
+        candidate = (self._icon_root / rel_path).resolve()
+        try:
+            candidate.relative_to(self._icon_root)
+        except Exception:
+            return False
+
+        return candidate.exists() and candidate.is_file()
+
+    def _icon_relpath_candidates(self, icon_relpath: str) -> list[str]:
+        rel = self._normalize_icon_relpath(icon_relpath)
+        if not rel:
+            return []
+
+        base = Path(rel).name
+        if self._icon_relpath_mode == "basename":
+            ordered = [base, rel]
+        else:
+            ordered = [rel, base]
+
+        out: list[str] = []
+        for token in ordered:
+            token = str(token or "").strip()
+            if token and token not in out:
+                out.append(token)
+        return out
+
+    def _resolve_icon_relpath(self, icon_relpath: str) -> str:
+        for candidate in self._icon_relpath_candidates(icon_relpath):
+            if self._safe_icon_relpath_exists(candidate):
+                return candidate
+        return ""
+
+    def _canonical_icon_relpath(self, value: object) -> str:
+        rel = self._normalize_icon_relpath(value)
+        if not rel:
+            return ""
+        resolved = self._resolve_icon_relpath(rel)
+        if resolved:
+            return resolved
+        if self._icon_relpath_mode == "basename":
+            base = Path(rel).name
+            if base:
+                return base
+        return rel
+
     def _effective_icon_relpath(self, datum_id: str) -> str:
         token = str(datum_id or "").strip()
         if not token:
             return ""
         if token in self._staged_presentation_icons:
-            return self._normalize_icon_relpath(self._staged_presentation_icons[token])
-        return self._normalize_icon_relpath(self._datum_icons_map.get(token, ""))
+            return self._canonical_icon_relpath(self._staged_presentation_icons[token])
+        return self._canonical_icon_relpath(self._datum_icons_map.get(token, ""))
 
     def _icon_url(self, icon_relpath: str) -> str | None:
-        rel = self._normalize_icon_relpath(icon_relpath)
+        rel = self._resolve_icon_relpath(icon_relpath)
         if not rel:
             return None
         return f"{self._icon_base_url}/{rel}"
@@ -257,22 +320,7 @@ class Workspace:
         rel = self._normalize_icon_relpath(icon_relpath)
         if not rel:
             return True
-        if self._icon_root is None:
-            return False
-        if not rel.lower().endswith(".svg"):
-            return False
-
-        rel_path = Path(rel)
-        if rel_path.is_absolute() or ".." in rel_path.parts:
-            return False
-
-        candidate = (self._icon_root / rel_path).resolve()
-        try:
-            candidate.relative_to(self._icon_root)
-        except Exception:
-            return False
-
-        return candidate.exists() and candidate.is_file()
+        return bool(self._resolve_icon_relpath(rel))
 
     def list_available_icons(self) -> list[str]:
         if self._icon_root is None or not self._icon_root.exists() or not self._icon_root.is_dir():
@@ -287,7 +335,40 @@ class Workspace:
             except Exception:
                 continue
             rels.append(rel)
-        return rels
+        if self._icon_relpath_mode == "path":
+            return rels
+
+        by_name: dict[str, list[str]] = defaultdict(list)
+        for rel in rels:
+            by_name[Path(rel).name].append(rel)
+
+        out: list[str] = []
+        for name in sorted(by_name.keys()):
+            paths = sorted(by_name[name])
+            if len(paths) == 1:
+                out.append(name)
+            else:
+                out.extend(paths)
+        return out
+
+    def model_meta(self) -> dict[str, Any]:
+        return {
+            "status": "prototype",
+            "data_contract_schema": "mycite.data_workspace.v0",
+            "nimm_actions": ["nav", "inv", "med", "man"],
+            "focus_sources": ["auto", "anthology", "conspectus", "samras"],
+            "icon_relpath_mode": self._icon_relpath_mode,
+            "guarantees": [
+                "UI state is driven by /portal/api/data/* responses, not direct file reads.",
+                "Data and icon edits are staged before commit.",
+                "Icon assignments are presentation sidecar metadata only.",
+            ],
+            "non_guarantees": [
+                "Table inference/archetype grouping is still an evolving model.",
+                "UI labels and pane layouts are operator-facing prototypes.",
+                "Storage adapter is JSON-backed and not yet the final persistence backend.",
+            ],
+        }
 
     def list_tables(self) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
@@ -429,6 +510,1192 @@ class Workspace:
             "staged_edits": staged_edits,
             "errors": errors,
             "warnings": warnings,
+        }
+
+    @staticmethod
+    def _parse_datum_identifier(identifier: str) -> tuple[int | None, int | None, int | None]:
+        token = str(identifier or "").strip()
+        if not _DATUM_ID_RE.fullmatch(token):
+            return (None, None, None)
+        try:
+            layer_s, value_group_s, iteration_s = token.split("-", 2)
+            return (int(layer_s), int(value_group_s), int(iteration_s))
+        except Exception:
+            return (None, None, None)
+
+    @staticmethod
+    def _pairs_from_row(row: dict[str, Any]) -> list[dict[str, str]]:
+        raw_pairs = row.get("pairs")
+        pairs: list[dict[str, str]] = []
+        if isinstance(raw_pairs, list):
+            for item in raw_pairs:
+                if not isinstance(item, dict):
+                    continue
+                reference = str(item.get("reference") or "").strip()
+                magnitude = str(item.get("magnitude") or "").strip()
+                if not reference and not magnitude:
+                    continue
+                pairs.append({"reference": reference, "magnitude": magnitude})
+        if pairs:
+            return pairs
+
+        reference = str(row.get("reference") or "").strip()
+        magnitude = str(row.get("magnitude") or "").strip()
+        if not reference and not magnitude:
+            return []
+        return [{"reference": reference, "magnitude": magnitude}]
+
+    @staticmethod
+    def _first_pair(pairs: list[dict[str, str]]) -> tuple[str, str]:
+        if not pairs:
+            return ("", "")
+        first = pairs[0]
+        return (str(first.get("reference") or "").strip(), str(first.get("magnitude") or "").strip())
+
+    @staticmethod
+    def _required_pair_count(value_group: int) -> int:
+        # VG0 still requires at least one reference/magnitude pair.
+        if value_group <= 0:
+            return 1
+        return int(value_group)
+
+    @staticmethod
+    def _normalize_pairs_for_value_group(
+        value_group: int,
+        raw_pairs: list[dict[str, str]],
+    ) -> tuple[list[dict[str, str]], list[str]]:
+        normalized_pairs: list[dict[str, str]] = []
+        errors: list[str] = []
+        is_vg0 = value_group == 0
+
+        for index, item in enumerate(raw_pairs):
+            reference_token = str(item.get("reference") or "").strip()
+            magnitude_token = str(item.get("magnitude") or "").strip()
+
+            if not reference_token:
+                errors.append(f"pair {index + 1}: reference is required")
+                continue
+
+            if is_vg0:
+                normalized_pairs.append({"reference": reference_token, "magnitude": "0"})
+                continue
+
+            if not magnitude_token:
+                errors.append(f"pair {index + 1}: magnitude is required")
+                continue
+
+            normalized_pairs.append({"reference": reference_token, "magnitude": magnitude_token})
+
+        return normalized_pairs, errors
+
+    def _local_msn_id(self) -> str:
+        return str(self.config.get("msn_id") or "").strip()
+
+    @staticmethod
+    def _is_numeric_hyphen_token(token: str) -> bool:
+        parts = str(token or "").split("-")
+        return bool(parts) and all(part.isdigit() for part in parts)
+
+    @staticmethod
+    def _qualified_tail_identifier(token: str) -> str:
+        parts = str(token or "").split("-")
+        if len(parts) < 4 or not all(part.isdigit() for part in parts):
+            return ""
+        return "-".join(parts[-3:])
+
+    def _qualified_ref(self, identifier: str) -> str:
+        local_msn_id = self._local_msn_id()
+        if not local_msn_id:
+            return str(identifier or "").strip()
+        return f"{local_msn_id}-{str(identifier or '').strip()}"
+
+    def _normalize_external_ref(self, value: str, *, field_name: str = "reference") -> tuple[str, str | None]:
+        token = str(value or "").strip()
+        if not token:
+            return "", f"{field_name} is required"
+
+        if _DATUM_ID_RE.fullmatch(token):
+            local_msn_id = self._local_msn_id()
+            if not local_msn_id:
+                return "", f"{field_name}: local msn_id is not configured"
+            return f"{local_msn_id}-{token}", None
+
+        if self._is_numeric_hyphen_token(token):
+            tail = self._qualified_tail_identifier(token)
+            if _DATUM_ID_RE.fullmatch(tail):
+                return token, None
+
+        return "", f"{field_name}: expected <datum_address> or <msn_id>-<datum_address>"
+
+    def _event_identifier_candidates(self, token: str) -> list[str]:
+        candidate = str(token or "").strip()
+        if not candidate:
+            return []
+
+        out: list[str] = []
+        if _DATUM_ID_RE.fullmatch(candidate):
+            out.append(candidate)
+        tail = self._qualified_tail_identifier(candidate)
+        if _DATUM_ID_RE.fullmatch(tail) and tail not in out:
+            out.append(tail)
+        return out
+
+    def _event_rows_from_anthology(self, anthology_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for row in anthology_rows:
+            identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+            layer, value_group, iteration = self._parse_datum_identifier(identifier)
+            if layer == 4 and value_group == 1 and isinstance(iteration, int):
+                out.append(row)
+        out.sort(
+            key=lambda row: (
+                self._parse_datum_identifier(str(row.get("identifier") or row.get("row_id") or ""))[2] or 10**9,
+                str(row.get("identifier") or row.get("row_id") or ""),
+            )
+        )
+        return out
+
+    def _event_index_refs(self, anthology_rows: list[dict[str, Any]]) -> list[str]:
+        refs: list[str] = []
+        for row in self._event_rows_from_anthology(anthology_rows):
+            identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+            if not identifier:
+                continue
+            refs.append(self._qualified_ref(identifier))
+        return refs
+
+    @staticmethod
+    def _row_reference_tokens(row: dict[str, Any]) -> list[str]:
+        refs: list[str] = []
+        pairs = row.get("pairs")
+        if isinstance(pairs, list):
+            for pair in pairs:
+                if not isinstance(pair, dict):
+                    continue
+                token = str(pair.get("reference") or "").strip()
+                if token:
+                    refs.append(token)
+
+        legacy_reference = str(row.get("reference") or "").strip()
+        if legacy_reference:
+            refs.append(legacy_reference)
+
+        references_text = str(row.get("references") or "").strip()
+        if references_text:
+            refs.extend(part.strip() for part in references_text.split(",") if part.strip())
+        return refs
+
+    def _event_enabled_tables(self, anthology_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        event_rows = self._event_rows_from_anthology(anthology_rows)
+        internal_ids = {
+            str(item.get("identifier") or item.get("row_id") or "").strip()
+            for item in event_rows
+        }
+        internal_ids = {item for item in internal_ids if item}
+        qualified_ids = {self._qualified_ref(item) for item in internal_ids}
+        all_event_refs = internal_ids | qualified_ids
+
+        out: list[dict[str, Any]] = []
+        for table_meta in self.list_tables():
+            table_id = str(table_meta.get("table_id") or "").strip()
+            table = self._table(table_id)
+            if table is None:
+                continue
+            rows = list(table.get("rows") or [])
+            event_row_count = 0
+            for row in rows:
+                refs = self._row_reference_tokens(row)
+                if any(ref in all_event_refs for ref in refs):
+                    event_row_count += 1
+            if event_row_count == 0:
+                continue
+            out.append(
+                {
+                    "table_id": table_id,
+                    "title": str(table_meta.get("title") or table_id),
+                    "row_count": len(rows),
+                    "event_row_count": event_row_count,
+                }
+            )
+        out.sort(key=lambda item: str(item.get("table_id") or ""))
+        return out
+
+    def _ensure_time_series_anchor_row(self, anthology_rows: list[dict[str, Any]]) -> bool:
+        for row in anthology_rows:
+            identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+            if identifier == "4-0-1":
+                return False
+
+        anthology_rows.append(
+            {
+                "row_id": "4-0-1",
+                "identifier": "4-0-1",
+                "reference": "0",
+                "magnitude": "0",
+                "pairs": [{"reference": "0", "magnitude": "0"}],
+                "label": "time_series",
+                "_source": "anthology",
+            }
+        )
+        return True
+
+    @staticmethod
+    def _parse_int_token(raw: Any, *, field_name: str, minimum: int = 0) -> tuple[int | None, str | None]:
+        token = str(raw if raw is not None else "").strip()
+        if not token:
+            return None, f"{field_name} is required"
+        try:
+            value = int(token)
+        except Exception:
+            return None, f"{field_name} must be an integer"
+        if value < minimum:
+            return None, f"{field_name} must be >= {minimum}"
+        return value, None
+
+    def _event_payload_from_row(self, row: dict[str, Any]) -> dict[str, Any]:
+        identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+        pairs = self._pairs_from_row(row)
+        point_pair = pairs[0] if len(pairs) >= 1 else {"reference": "", "magnitude": ""}
+        duration_pair = pairs[1] if len(pairs) >= 2 else {"reference": "", "magnitude": ""}
+        start_value, _ = self._parse_int_token(point_pair.get("magnitude"), field_name="start_unix_s", minimum=0)
+        duration_value, _ = self._parse_int_token(duration_pair.get("magnitude"), field_name="duration_s", minimum=1)
+        return {
+            "row_id": str(row.get("row_id") or identifier).strip(),
+            "identifier": identifier,
+            "event_ref": self._qualified_ref(identifier),
+            "label": str(row.get("label") or identifier).strip(),
+            "point_ref": str(point_pair.get("reference") or "").strip(),
+            "duration_ref": str(duration_pair.get("reference") or "").strip(),
+            "start_unix_s": start_value,
+            "duration_s": duration_value,
+            "pair_count": len(pairs),
+        }
+
+    def _sync_conspectus_from_anthology(self, anthology_rows: list[dict[str, Any]]) -> dict[str, Any]:
+        conspectus_map: dict[str, list[str]] = {}
+
+        for row in anthology_rows:
+            identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+            if not identifier:
+                continue
+            _, value_group, _ = self._parse_datum_identifier(identifier)
+            if value_group != 0:
+                continue
+
+            refs = [str(item.get("reference") or "").strip() for item in self._pairs_from_row(row)]
+            refs = [ref for ref in refs if ref and ref != "0"]
+            conspectus_map[identifier] = refs
+            qualified_identifier = self._qualified_ref(identifier)
+            if qualified_identifier:
+                conspectus_map[qualified_identifier] = list(refs)
+
+        # Time Series index is anchored at 4-0-1 and mirrored under <msn_id>-4-0-1.
+        event_refs = self._event_index_refs(anthology_rows)
+        conspectus_map["4-0-1"] = list(event_refs)
+        qualified_anchor = self._qualified_ref("4-0-1")
+        if qualified_anchor:
+            conspectus_map[qualified_anchor] = list(event_refs)
+
+        conspectus_rows: list[dict[str, str]] = []
+        for key in sorted(conspectus_map.keys()):
+            refs = list(conspectus_map.get(key) or [])
+            conspectus_rows.append(
+                {
+                    "row_id": key,
+                    "identifier": key,
+                    "references": ", ".join(refs),
+                    "_source": "conspectus",
+                }
+            )
+        conspectus_rows.sort(key=lambda item: str(item.get("row_id") or ""))
+        return self.storage.persist_rows("conspectus", conspectus_rows)
+
+    def anthology_table_view(self) -> dict[str, Any]:
+        rows = list(self.storage.load_rows("anthology") or [])
+        conspectus_rows = list(self.storage.load_rows("conspectus") or [])
+        conspectus_by_identifier: dict[str, list[str]] = {}
+        for row in conspectus_rows:
+            identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+            if not identifier:
+                continue
+            refs_text = str(row.get("references") or "").strip()
+            refs = [token.strip() for token in refs_text.split(",") if token.strip()]
+            conspectus_by_identifier[identifier] = refs
+
+        normalized_rows: list[dict[str, Any]] = []
+        parse_warnings = list(self.storage.anthology_parse_warnings()) if hasattr(self.storage, "anthology_parse_warnings") else []
+
+        for row in rows:
+            datum_id = str(row.get("identifier") or row.get("row_id") or "").strip()
+            layer, value_group, iteration = self._parse_datum_identifier(datum_id)
+            label_text = str(row.get("label") or datum_id).strip()
+            pairs = self._pairs_from_row(row)
+            first_reference, first_magnitude = self._first_pair(pairs)
+            conspectus_references = (
+                list(conspectus_by_identifier.get(datum_id, []))
+                if value_group == 0
+                else []
+            )
+            normalized_rows.append(
+                {
+                    "row_id": str(row.get("row_id") or datum_id).strip(),
+                    "identifier": datum_id,
+                    "reference": first_reference,
+                    "magnitude": first_magnitude,
+                    "pairs": pairs,
+                    "pair_count": len(pairs),
+                    "label": label_text,
+                    "layer": layer,
+                    "value_group": value_group,
+                    "iteration": iteration,
+                    "conspectus_references": conspectus_references,
+                    "conspectus_count": len(conspectus_references),
+                    **self._icon_meta(datum_id, label_text),
+                }
+            )
+
+        normalized_rows.sort(
+            key=lambda item: (
+                10**9 if item.get("layer") is None else int(item.get("layer")),
+                10**9 if item.get("value_group") is None else int(item.get("value_group")),
+                10**9 if item.get("iteration") is None else int(item.get("iteration")),
+                str(item.get("identifier") or ""),
+            )
+        )
+
+        grouped: dict[int | None, dict[int | None, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
+        for row in normalized_rows:
+            grouped[row.get("layer")][row.get("value_group")].append(row)
+
+        layers: list[dict[str, Any]] = []
+        for layer in sorted(grouped.keys(), key=lambda value: (10**9 if value is None else int(value))):
+            value_groups: list[dict[str, Any]] = []
+            for value_group in sorted(
+                grouped[layer].keys(),
+                key=lambda value: (10**9 if value is None else int(value)),
+            ):
+                rows_for_group = list(grouped[layer][value_group])
+                value_groups.append(
+                    {
+                        "value_group": value_group,
+                        "row_count": len(rows_for_group),
+                        "rows": rows_for_group,
+                    }
+                )
+
+            layers.append(
+                {
+                    "layer": layer,
+                    "row_count": sum(item["row_count"] for item in value_groups),
+                    "value_groups": value_groups,
+                }
+            )
+
+        return {
+            "table": {"table_id": "anthology", "title": "Anthology", "row_count": len(normalized_rows)},
+            "layers": layers,
+            "rows": normalized_rows,
+            "warnings": parse_warnings,
+        }
+
+    def time_series_ensure_base(self) -> dict[str, Any]:
+        rows = list(self.storage.load_rows("anthology") or [])
+        changed = self._ensure_time_series_anchor_row(rows)
+
+        warnings: list[str] = []
+        if changed:
+            result = self.storage.persist_rows("anthology", rows)
+            if not bool(result.get("ok")):
+                return {"ok": False, "errors": list(result.get("errors") or ["failed to persist anthology"]), "warnings": []}
+            warnings.extend(list(result.get("warnings") or []))
+
+        sync_result = self._sync_conspectus_from_anthology(rows)
+        if not bool(sync_result.get("ok")):
+            return {
+                "ok": False,
+                "errors": ["failed to sync conspectus"] + list(sync_result.get("errors") or []),
+                "warnings": warnings + list(sync_result.get("warnings") or []),
+            }
+
+        warnings.extend(list(sync_result.get("warnings") or []))
+        self._reload()
+        self._refresh_panes_for_icon_change()
+        self._persist_state()
+        state_payload = self.time_series_state()
+        return {
+            "ok": True,
+            "errors": [],
+            "warnings": warnings + list(state_payload.get("warnings") or []),
+            "changed": changed,
+            "state": state_payload,
+        }
+
+    def time_series_state(self) -> dict[str, Any]:
+        anthology_rows = list(self.storage.load_rows("anthology") or [])
+        conspectus_rows = list(self.storage.load_rows("conspectus") or [])
+        events = [self._event_payload_from_row(row) for row in self._event_rows_from_anthology(anthology_rows)]
+        events.sort(
+            key=lambda item: (
+                -(item.get("start_unix_s") if isinstance(item.get("start_unix_s"), int) else -1),
+                -(self._parse_datum_identifier(str(item.get("identifier") or ""))[2] or -1),
+            )
+        )
+
+        conspectus_by_identifier: dict[str, list[str]] = {}
+        for row in conspectus_rows:
+            identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+            refs_text = str(row.get("references") or "").strip()
+            refs = [token.strip() for token in refs_text.split(",") if token.strip()]
+            conspectus_by_identifier[identifier] = refs
+
+        anchor_internal = "4-0-1"
+        anchor_qualified = self._qualified_ref(anchor_internal)
+        return {
+            "ok": True,
+            "errors": [],
+            "warnings": [],
+            "anchor_internal": anchor_internal,
+            "anchor_qualified": anchor_qualified,
+            "indexed_event_refs_internal": list(conspectus_by_identifier.get(anchor_internal, [])),
+            "indexed_event_refs_qualified": list(conspectus_by_identifier.get(anchor_qualified, [])),
+            "events": events,
+            "event_enabled_tables": self._event_enabled_tables(anthology_rows),
+        }
+
+    def _resolve_event_row(self, event_ref: str, anthology_rows: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, str]:
+        candidates = self._event_identifier_candidates(event_ref)
+        if not candidates:
+            return None, ""
+
+        for candidate in candidates:
+            layer, value_group, _ = self._parse_datum_identifier(candidate)
+            if layer != 4 or value_group != 1:
+                continue
+            for row in anthology_rows:
+                identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+                if identifier == candidate:
+                    return row, candidate
+        return None, ""
+
+    def time_series_create_event(
+        self,
+        *,
+        point_ref: str,
+        duration_ref: str,
+        start_unix_s: Any,
+        duration_s: Any,
+        label: str = "",
+    ) -> dict[str, Any]:
+        point_norm, point_err = self._normalize_external_ref(point_ref, field_name="point_ref")
+        duration_norm, duration_err = self._normalize_external_ref(duration_ref, field_name="duration_ref")
+        start_value, start_err = self._parse_int_token(start_unix_s, field_name="start_unix_s", minimum=0)
+        duration_value, duration_err = self._parse_int_token(duration_s, field_name="duration_s", minimum=1)
+
+        errors = [err for err in [point_err, duration_err, start_err, duration_err] if err]
+        if errors:
+            return {"ok": False, "errors": errors, "warnings": []}
+
+        rows = list(self.storage.load_rows("anthology") or [])
+        self._ensure_time_series_anchor_row(rows)
+        existing_ids = {
+            str(row.get("identifier") or row.get("row_id") or "").strip()
+            for row in rows
+            if str(row.get("identifier") or row.get("row_id") or "").strip()
+        }
+
+        next_iteration = 1
+        for row in rows:
+            identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+            layer, value_group, iteration = self._parse_datum_identifier(identifier)
+            if layer == 4 and value_group == 1 and isinstance(iteration, int):
+                next_iteration = max(next_iteration, iteration + 1)
+
+        next_identifier = f"4-1-{next_iteration}"
+        while next_identifier in existing_ids:
+            next_iteration += 1
+            next_identifier = f"4-1-{next_iteration}"
+
+        pair_payload = [
+            {"reference": point_norm, "magnitude": str(start_value)},
+            {"reference": duration_norm, "magnitude": str(duration_value)},
+        ]
+        new_row = {
+            "row_id": next_identifier,
+            "identifier": next_identifier,
+            "reference": point_norm,
+            "magnitude": str(start_value),
+            "pairs": pair_payload,
+            "label": str(label or "").strip(),
+            "_source": "anthology",
+        }
+        rows.append(new_row)
+
+        result = self.storage.persist_rows("anthology", rows)
+        if not bool(result.get("ok")):
+            return {"ok": False, "errors": list(result.get("errors") or ["failed to persist anthology"]), "warnings": []}
+        warnings = list(result.get("warnings") or [])
+
+        sync_result = self._sync_conspectus_from_anthology(rows)
+        if not bool(sync_result.get("ok")):
+            return {
+                "ok": False,
+                "errors": ["anthology updated, but failed to recompute conspectus"] + list(sync_result.get("errors") or []),
+                "warnings": warnings + list(sync_result.get("warnings") or []),
+            }
+        warnings.extend(list(sync_result.get("warnings") or []))
+        self._reload()
+        self._refresh_panes_for_icon_change()
+        self._persist_state()
+        return {
+            "ok": True,
+            "errors": [],
+            "warnings": warnings,
+            "event": self._event_payload_from_row(new_row),
+            "state": self.time_series_state(),
+        }
+
+    def time_series_update_event(
+        self,
+        *,
+        event_ref: str,
+        point_ref: str | None = None,
+        duration_ref: str | None = None,
+        start_unix_s: Any | None = None,
+        duration_s: Any | None = None,
+        label: str | None = None,
+    ) -> dict[str, Any]:
+        rows = list(self.storage.load_rows("anthology") or [])
+        event_row, identifier = self._resolve_event_row(event_ref, rows)
+        if event_row is None:
+            return {"ok": False, "errors": [f"unknown event_ref: {event_ref}"], "warnings": []}
+
+        existing_pairs = self._pairs_from_row(event_row)
+        existing_point = existing_pairs[0] if len(existing_pairs) >= 1 else {"reference": "", "magnitude": ""}
+        existing_duration = existing_pairs[1] if len(existing_pairs) >= 2 else {"reference": "", "magnitude": ""}
+
+        point_value = point_ref if point_ref is not None else existing_point.get("reference")
+        duration_value = duration_ref if duration_ref is not None else existing_duration.get("reference")
+        start_value_raw = start_unix_s if start_unix_s is not None else existing_point.get("magnitude")
+        duration_value_raw = duration_s if duration_s is not None else existing_duration.get("magnitude")
+
+        point_norm, point_err = self._normalize_external_ref(str(point_value or ""), field_name="point_ref")
+        duration_norm, duration_err = self._normalize_external_ref(str(duration_value or ""), field_name="duration_ref")
+        start_value, start_err = self._parse_int_token(start_value_raw, field_name="start_unix_s", minimum=0)
+        duration_value_int, duration_err = self._parse_int_token(duration_value_raw, field_name="duration_s", minimum=1)
+
+        errors = [err for err in [point_err, duration_err, start_err, duration_err] if err]
+        if errors:
+            return {"ok": False, "errors": errors, "warnings": []}
+
+        event_row["pairs"] = [
+            {"reference": point_norm, "magnitude": str(start_value)},
+            {"reference": duration_norm, "magnitude": str(duration_value_int)},
+        ]
+        event_row["reference"] = point_norm
+        event_row["magnitude"] = str(start_value)
+        if label is not None:
+            event_row["label"] = str(label or "").strip()
+
+        result = self.storage.persist_rows("anthology", rows)
+        if not bool(result.get("ok")):
+            return {"ok": False, "errors": list(result.get("errors") or ["failed to persist anthology"]), "warnings": []}
+        warnings = list(result.get("warnings") or [])
+
+        sync_result = self._sync_conspectus_from_anthology(rows)
+        if not bool(sync_result.get("ok")):
+            return {
+                "ok": False,
+                "errors": ["anthology updated, but failed to recompute conspectus"] + list(sync_result.get("errors") or []),
+                "warnings": warnings + list(sync_result.get("warnings") or []),
+            }
+        warnings.extend(list(sync_result.get("warnings") or []))
+
+        self._reload()
+        self._refresh_panes_for_icon_change()
+        self._persist_state()
+
+        # event_row may be stale after reload; resolve again for response payload.
+        rows_after = list(self.storage.load_rows("anthology") or [])
+        updated_row, _ = self._resolve_event_row(identifier, rows_after)
+        return {
+            "ok": True,
+            "errors": [],
+            "warnings": warnings,
+            "event": self._event_payload_from_row(updated_row or event_row),
+            "state": self.time_series_state(),
+        }
+
+    def time_series_delete_event(self, *, event_ref: str) -> dict[str, Any]:
+        rows = list(self.storage.load_rows("anthology") or [])
+        event_row, identifier = self._resolve_event_row(event_ref, rows)
+        if event_row is None:
+            return {"ok": False, "errors": [f"unknown event_ref: {event_ref}"], "warnings": []}
+
+        kept_rows: list[dict[str, Any]] = []
+        for row in rows:
+            row_identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+            if row_identifier == identifier:
+                continue
+            kept_rows.append(row)
+
+        result = self.storage.persist_rows("anthology", kept_rows)
+        if not bool(result.get("ok")):
+            return {"ok": False, "errors": list(result.get("errors") or ["failed to persist anthology"]), "warnings": []}
+        warnings = list(result.get("warnings") or [])
+
+        sync_result = self._sync_conspectus_from_anthology(kept_rows)
+        if not bool(sync_result.get("ok")):
+            return {
+                "ok": False,
+                "errors": ["anthology updated, but failed to recompute conspectus"] + list(sync_result.get("errors") or []),
+                "warnings": warnings + list(sync_result.get("warnings") or []),
+            }
+        warnings.extend(list(sync_result.get("warnings") or []))
+
+        self._reload()
+        self._refresh_panes_for_icon_change()
+        self._persist_state()
+        return {
+            "ok": True,
+            "errors": [],
+            "warnings": warnings,
+            "deleted_event_ref": self._qualified_ref(identifier),
+            "state": self.time_series_state(),
+        }
+
+    def time_series_event_detail(self, *, event_ref: str) -> dict[str, Any]:
+        anthology_rows = list(self.storage.load_rows("anthology") or [])
+        event_row, identifier = self._resolve_event_row(event_ref, anthology_rows)
+        if event_row is None:
+            return {"ok": False, "errors": [f"unknown event_ref: {event_ref}"], "warnings": []}
+
+        qualified_identifier = self._qualified_ref(identifier)
+        ref_candidates = {identifier, qualified_identifier}
+        referenced_by: list[dict[str, Any]] = []
+        for row in anthology_rows:
+            row_identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+            if row_identifier == identifier:
+                continue
+            refs = self._row_reference_tokens(row)
+            if not any(ref in ref_candidates for ref in refs):
+                continue
+            layer, value_group, iteration = self._parse_datum_identifier(row_identifier)
+            referenced_by.append(
+                {
+                    "row_id": str(row.get("row_id") or row_identifier).strip(),
+                    "identifier": row_identifier,
+                    "label": str(row.get("label") or row_identifier).strip(),
+                    "layer": layer,
+                    "value_group": value_group,
+                    "iteration": iteration,
+                }
+            )
+        referenced_by.sort(
+            key=lambda item: (
+                10**9 if item.get("layer") is None else int(item.get("layer")),
+                10**9 if item.get("value_group") is None else int(item.get("value_group")),
+                10**9 if item.get("iteration") is None else int(item.get("iteration")),
+                str(item.get("identifier") or ""),
+            )
+        )
+
+        return {
+            "ok": True,
+            "errors": [],
+            "warnings": [],
+            "event": self._event_payload_from_row(event_row),
+            "referenced_by": referenced_by,
+            "event_enabled_tables": self._event_enabled_tables(anthology_rows),
+        }
+
+    def time_series_table_view(self, *, table_id: str, mode: str = "normal") -> dict[str, Any]:
+        table_key = str(table_id or "").strip()
+        if not table_key:
+            return {"ok": False, "errors": ["table_id is required"], "warnings": []}
+
+        table = self._table(table_key)
+        if table is None:
+            return {"ok": False, "errors": [f"unknown table_id: {table_key}"], "warnings": []}
+
+        anthology_rows = list(self.storage.load_rows("anthology") or [])
+        event_rows = self._event_rows_from_anthology(anthology_rows)
+        event_map: dict[str, dict[str, Any]] = {}
+        for row in event_rows:
+            payload = self._event_payload_from_row(row)
+            internal_id = str(payload.get("identifier") or "").strip()
+            qualified_id = str(payload.get("event_ref") or "").strip()
+            if internal_id:
+                event_map[internal_id] = payload
+            if qualified_id:
+                event_map[qualified_id] = payload
+
+        out_rows: list[dict[str, Any]] = []
+        for row in list(table.get("rows") or []):
+            identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+            refs = self._row_reference_tokens(row)
+            event_links: list[dict[str, Any]] = []
+            for ref in refs:
+                event_payload = event_map.get(ref)
+                if not event_payload:
+                    continue
+                event_links.append(
+                    {
+                        "event_ref": str(event_payload.get("event_ref") or ""),
+                        "start_unix_s": event_payload.get("start_unix_s"),
+                        "duration_s": event_payload.get("duration_s"),
+                        "label": event_payload.get("label"),
+                    }
+                )
+            out_rows.append(
+                {
+                    "row_id": str(row.get("row_id") or identifier).strip(),
+                    "identifier": identifier,
+                    "label": str(row.get("label") or identifier).strip(),
+                    "event_links": event_links,
+                    "raw": dict(row),
+                }
+            )
+
+        mode_token = str(mode or "normal").strip().lower()
+        if mode_token not in {"normal", "time_series"}:
+            mode_token = "normal"
+
+        if mode_token == "time_series":
+            for item in out_rows:
+                links = list(item.get("event_links") or [])
+                links.sort(key=lambda link: (10**18 if link.get("start_unix_s") is None else int(link.get("start_unix_s"))))
+                item["event_links"] = links
+            out_rows.sort(
+                key=lambda item: (
+                    10**18 if not item.get("event_links") else int(item["event_links"][0].get("start_unix_s") or 10**18),
+                    str(item.get("identifier") or ""),
+                )
+            )
+        else:
+            out_rows.sort(key=lambda item: str(item.get("identifier") or ""))
+
+        groups: list[dict[str, Any]] = []
+        if mode_token == "time_series":
+            grouped: dict[str, dict[str, Any]] = {}
+            for item in out_rows:
+                if not item.get("event_links"):
+                    key = "unlinked"
+                    label = "Unlinked"
+                else:
+                    start_token = str(item["event_links"][0].get("start_unix_s"))
+                    key = start_token
+                    label = f"start_unix_s={start_token}"
+                bucket = grouped.setdefault(key, {"group_key": key, "label": label, "rows": []})
+                bucket["rows"].append(item)
+            groups = list(grouped.values())
+            groups.sort(key=lambda g: (10**18 if g.get("group_key") == "unlinked" else int(g.get("group_key") or 10**18)))
+
+        return {
+            "ok": True,
+            "errors": [],
+            "warnings": [],
+            "mode": mode_token,
+            "table": {
+                "table_id": table_key,
+                "title": str(table.get("title") or table_key),
+                "row_count": len(out_rows),
+            },
+            "rows": out_rows,
+            "groups": groups,
+        }
+
+    def append_anthology_datum(
+        self,
+        *,
+        layer: int,
+        value_group: int,
+        reference: str,
+        magnitude: str,
+        label: str = "",
+        pairs: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        if layer < 0:
+            return {"ok": False, "errors": ["layer must be >= 0"], "warnings": []}
+        if value_group < 0:
+            return {"ok": False, "errors": ["value_group must be >= 0"], "warnings": []}
+
+        raw_pairs: list[dict[str, str]] = []
+        if isinstance(pairs, list) and pairs:
+            for item in pairs:
+                if not isinstance(item, dict):
+                    continue
+                raw_pairs.append(
+                    {
+                        "reference": str(item.get("reference") or "").strip(),
+                        "magnitude": str(item.get("magnitude") or "").strip(),
+                    }
+                )
+        else:
+            raw_pairs.append(
+                {
+                    "reference": str(reference or "").strip(),
+                    "magnitude": str(magnitude or "").strip(),
+                }
+            )
+
+        label_token = str(label or "").strip()
+
+        normalized_pairs, errors = self._normalize_pairs_for_value_group(value_group, raw_pairs)
+
+        if not normalized_pairs:
+            if value_group == 0:
+                errors.append("at least one valid reference is required for value_group=0")
+            else:
+                errors.append("at least one valid reference/magnitude pair is required")
+        required_pairs = self._required_pair_count(value_group)
+        if len(normalized_pairs) < required_pairs:
+            errors.append(
+                f"value_group={value_group} requires at least {required_pairs} reference/magnitude pair(s)"
+            )
+        if errors:
+            return {"ok": False, "errors": errors, "warnings": []}
+
+        rows = list(self.storage.load_rows("anthology") or [])
+        existing_ids: set[str] = set()
+        max_iteration = 0
+        warnings: list[str] = []
+
+        for row in rows:
+            datum_id = str(row.get("identifier") or row.get("row_id") or "").strip()
+            if not datum_id:
+                continue
+            existing_ids.add(datum_id)
+            row_layer, row_value_group, row_iteration = self._parse_datum_identifier(datum_id)
+            if row_layer == layer and row_value_group == value_group and isinstance(row_iteration, int):
+                max_iteration = max(max_iteration, row_iteration)
+
+        next_iteration = max_iteration + 1
+        next_identifier = f"{layer}-{value_group}-{next_iteration}"
+        while next_identifier in existing_ids:
+            next_iteration += 1
+            next_identifier = f"{layer}-{value_group}-{next_iteration}"
+
+        for index, pair in enumerate(normalized_pairs):
+            reference_token = str(pair.get("reference") or "").strip()
+            ref_layer, _, _ = self._parse_datum_identifier(reference_token)
+            if isinstance(ref_layer, int) and ref_layer >= layer:
+                warnings.append(f"pair {index + 1}: reference layer is not lower than datum layer (check Rule A intent).")
+
+        first_reference, first_magnitude = self._first_pair(normalized_pairs)
+        new_row = {
+            "row_id": next_identifier,
+            "identifier": next_identifier,
+            "reference": first_reference,
+            "magnitude": first_magnitude,
+            "pairs": normalized_pairs,
+            "label": label_token,
+            "_source": "anthology",
+        }
+        rows.append(new_row)
+
+        result = self.storage.persist_rows("anthology", rows)
+        if not bool(result.get("ok")):
+            return {"ok": False, "errors": list(result.get("errors") or ["failed to persist anthology"]), "warnings": warnings}
+
+        sync_result = self._sync_conspectus_from_anthology(rows)
+        if not bool(sync_result.get("ok")):
+            return {
+                "ok": False,
+                "errors": ["anthology updated, but failed to recompute conspectus"] + list(sync_result.get("errors") or []),
+                "warnings": warnings + list(result.get("warnings") or []) + list(sync_result.get("warnings") or []),
+            }
+
+        self._reload()
+        self._refresh_panes_for_icon_change()
+        self._persist_state()
+
+        return {
+            "ok": True,
+            "errors": [],
+            "warnings": warnings + list(result.get("warnings") or []) + list(sync_result.get("warnings") or []),
+            "created": {
+                "row_id": next_identifier,
+                "identifier": next_identifier,
+                "layer": layer,
+                "value_group": value_group,
+                "iteration": next_iteration,
+                "reference": first_reference,
+                "magnitude": first_magnitude,
+                "pairs": normalized_pairs,
+                "pair_count": len(normalized_pairs),
+                "label": label_token,
+            },
+            "created_rows": [
+                {
+                    "row_id": next_identifier,
+                    "identifier": next_identifier,
+                    "layer": layer,
+                    "value_group": value_group,
+                    "iteration": next_iteration,
+                    "reference": first_reference,
+                    "magnitude": first_magnitude,
+                    "pairs": normalized_pairs,
+                    "pair_count": len(normalized_pairs),
+                    "label": label_token,
+                }
+            ],
+            "created_count": 1,
+        }
+
+    def delete_anthology_datum(self, *, row_id: str) -> dict[str, Any]:
+        row_token = str(row_id or "").strip()
+        if not row_token:
+            return {"ok": False, "errors": ["row_id is required"], "warnings": []}
+
+        rows = list(self.storage.load_rows("anthology") or [])
+        kept_rows: list[dict[str, Any]] = []
+        removed_row: dict[str, Any] | None = None
+
+        for row in rows:
+            candidate_row_id = str(row.get("row_id") or "").strip()
+            candidate_identifier = str(row.get("identifier") or "").strip()
+            if removed_row is None and row_token in {candidate_row_id, candidate_identifier}:
+                removed_row = row
+                continue
+            kept_rows.append(row)
+
+        if removed_row is None:
+            return {"ok": False, "errors": [f"Unknown anthology row_id: {row_token}"], "warnings": []}
+
+        row_result = self.storage.persist_rows("anthology", kept_rows)
+        if not bool(row_result.get("ok")):
+            return {"ok": False, "errors": list(row_result.get("errors") or ["failed to persist anthology"]), "warnings": []}
+
+        warnings: list[str] = list(row_result.get("warnings") or [])
+        sync_result = self._sync_conspectus_from_anthology(kept_rows)
+        if not bool(sync_result.get("ok")):
+            return {
+                "ok": False,
+                "errors": ["anthology updated, but failed to recompute conspectus"] + list(sync_result.get("errors") or []),
+                "warnings": warnings + list(sync_result.get("warnings") or []),
+            }
+        warnings.extend(list(sync_result.get("warnings") or []))
+        deleted_identifier = str(removed_row.get("identifier") or removed_row.get("row_id") or "").strip()
+        deleted_label = str(removed_row.get("label") or deleted_identifier).strip()
+        deleted_pairs = self._pairs_from_row(removed_row)
+        deleted_reference, deleted_magnitude = self._first_pair(deleted_pairs)
+
+        if deleted_identifier and deleted_identifier in self._datum_icons_map:
+            merged_icons = dict(self._datum_icons_map)
+            merged_icons.pop(deleted_identifier, None)
+            icon_result = self.storage.persist_datum_icons_map(merged_icons)
+            if bool(icon_result.get("ok")):
+                warnings.extend(list(icon_result.get("warnings") or []))
+                self._datum_icons_map = merged_icons
+            else:
+                warnings.append("deleted row but failed to prune icon mapping")
+
+        self._reload()
+        self._refresh_panes_for_icon_change()
+        self._persist_state()
+
+        return {
+            "ok": True,
+            "errors": [],
+            "warnings": warnings,
+            "deleted": {
+                "row_id": str(removed_row.get("row_id") or deleted_identifier).strip(),
+                "identifier": deleted_identifier,
+                "label": deleted_label,
+                "reference": deleted_reference,
+                "magnitude": deleted_magnitude,
+                "pairs": deleted_pairs,
+                "pair_count": len(deleted_pairs),
+            },
+        }
+
+    def update_anthology_label(self, *, row_id: str, label: str) -> dict[str, Any]:
+        return self.update_anthology_profile(row_id=row_id, label=label, icon_relpath=None)
+
+    def anthology_profile(self, *, row_id: str) -> dict[str, Any]:
+        row_token = str(row_id or "").strip()
+        if not row_token:
+            return {"ok": False, "errors": ["row_id is required"], "warnings": []}
+
+        rows = list(self.storage.load_rows("anthology") or [])
+        match: dict[str, Any] | None = None
+        for row in rows:
+            candidate_row_id = str(row.get("row_id") or "").strip()
+            candidate_identifier = str(row.get("identifier") or "").strip()
+            if row_token in {candidate_row_id, candidate_identifier}:
+                match = row
+                break
+
+        if match is None:
+            return {"ok": False, "errors": [f"Unknown anthology row_id: {row_token}"], "warnings": []}
+
+        identifier = str(match.get("identifier") or match.get("row_id") or "").strip()
+        label_text = str(match.get("label") or identifier).strip()
+        pairs = self._pairs_from_row(match)
+        reference, magnitude = self._first_pair(pairs)
+
+        datum = {
+            "row_id": str(match.get("row_id") or identifier).strip(),
+            "identifier": identifier,
+            "label": label_text,
+            "reference": reference,
+            "magnitude": magnitude,
+            "pairs": pairs,
+            "pair_count": len(pairs),
+            **self._icon_meta(identifier, label_text),
+        }
+
+        chain = resolve_chain(self._graph, identifier)
+        for item in chain:
+            item_identifier = str(item.get("identifier") or "").strip()
+            item_label = str(item.get("label") or item_identifier)
+            item.update(self._icon_meta(item_identifier, item_label))
+
+        return {
+            "ok": True,
+            "errors": [],
+            "warnings": [],
+            "datum": datum,
+            "abstraction_path": chain,
+        }
+
+    def update_anthology_profile(
+        self,
+        *,
+        row_id: str,
+        label: str,
+        magnitude: str | None = None,
+        pairs: list[dict[str, str]] | None = None,
+        icon_relpath: str | None = None,
+    ) -> dict[str, Any]:
+        row_token = str(row_id or "").strip()
+        if not row_token:
+            return {"ok": False, "errors": ["row_id is required"], "warnings": []}
+
+        next_label = str(label or "").strip()
+        rows = list(self.storage.load_rows("anthology") or [])
+        match: dict[str, Any] | None = None
+
+        for row in rows:
+            candidate_row_id = str(row.get("row_id") or "").strip()
+            candidate_identifier = str(row.get("identifier") or "").strip()
+            if row_token in {candidate_row_id, candidate_identifier}:
+                match = row
+                break
+
+        if match is None:
+            return {"ok": False, "errors": [f"Unknown anthology row_id: {row_token}"], "warnings": []}
+
+        datum_id = str(match.get("identifier") or match.get("row_id") or "").strip()
+        match["label"] = next_label
+        existing_pairs = self._pairs_from_row(match)
+
+        next_pairs = existing_pairs
+        _, row_value_group, _ = self._parse_datum_identifier(datum_id)
+        required_pairs = self._required_pair_count(row_value_group if isinstance(row_value_group, int) else 0)
+        if isinstance(pairs, list):
+            safe_pairs: list[dict[str, str]] = []
+            validation_errors: list[str] = []
+            for index, item in enumerate(pairs):
+                if not isinstance(item, dict):
+                    validation_errors.append(f"pair {index + 1}: must be an object")
+                    continue
+                safe_pairs.append(
+                    {
+                        "reference": str(item.get("reference") or "").strip(),
+                        "magnitude": str(item.get("magnitude") or "").strip(),
+                    }
+                )
+
+            validated_pairs, pair_errors = self._normalize_pairs_for_value_group(
+                row_value_group if isinstance(row_value_group, int) else 0,
+                safe_pairs,
+            )
+            validation_errors.extend(pair_errors)
+
+            if not validated_pairs:
+                if row_value_group == 0:
+                    validation_errors.append("at least one valid reference is required for value_group=0")
+                else:
+                    validation_errors.append("at least one valid reference/magnitude pair is required")
+            if len(validated_pairs) < required_pairs:
+                validation_errors.append(
+                    f"value_group={row_value_group if isinstance(row_value_group, int) else 0} requires at least "
+                    f"{required_pairs} reference/magnitude pair(s)"
+                )
+            if validation_errors:
+                return {"ok": False, "errors": validation_errors, "warnings": []}
+            next_pairs = validated_pairs
+        elif magnitude is not None:
+            next_pairs = list(existing_pairs)
+            if next_pairs:
+                next_pairs[0] = {
+                    "reference": str(next_pairs[0].get("reference") or "").strip(),
+                    "magnitude": str(magnitude or "").strip(),
+                }
+            else:
+                next_pairs = [
+                    {
+                        "reference": str(match.get("reference") or "").strip(),
+                        "magnitude": str(magnitude or "").strip(),
+                    }
+                ]
+
+        first_reference, first_magnitude = self._first_pair(next_pairs)
+        match["pairs"] = next_pairs
+        match["reference"] = first_reference
+        match["magnitude"] = first_magnitude
+
+        row_result = self.storage.persist_rows("anthology", rows)
+        if not bool(row_result.get("ok")):
+            return {"ok": False, "errors": list(row_result.get("errors") or ["failed to persist anthology"]), "warnings": []}
+
+        warnings: list[str] = list(row_result.get("warnings") or [])
+        sync_result = self._sync_conspectus_from_anthology(rows)
+        if not bool(sync_result.get("ok")):
+            return {
+                "ok": False,
+                "errors": ["anthology updated, but failed to recompute conspectus"] + list(sync_result.get("errors") or []),
+                "warnings": warnings + list(sync_result.get("warnings") or []),
+            }
+        warnings.extend(list(sync_result.get("warnings") or []))
+
+        if icon_relpath is not None:
+            canonical_icon = self._canonical_icon_relpath(icon_relpath)
+            if canonical_icon and not self._icon_exists(canonical_icon):
+                return {"ok": False, "errors": [f"Invalid icon_relpath: {canonical_icon}"], "warnings": warnings}
+
+            merged_icons = dict(self._datum_icons_map)
+            if canonical_icon:
+                merged_icons[datum_id] = canonical_icon
+            else:
+                merged_icons.pop(datum_id, None)
+
+            icon_result = self.storage.persist_datum_icons_map(merged_icons)
+            if not bool(icon_result.get("ok")):
+                return {"ok": False, "errors": list(icon_result.get("errors") or ["failed to persist icon mapping"]), "warnings": warnings}
+            warnings.extend(list(icon_result.get("warnings") or []))
+            self._datum_icons_map = merged_icons
+
+        self._reload()
+        self._refresh_panes_for_icon_change()
+        self._persist_state()
+
+        updated_icon_meta = self._icon_meta(datum_id, next_label)
+        return {
+            "ok": True,
+            "errors": [],
+            "warnings": warnings,
+            "updated": {
+                "row_id": str(match.get("row_id") or "").strip(),
+                "identifier": datum_id,
+                "label": next_label,
+                "reference": first_reference,
+                "magnitude": first_magnitude,
+                "pairs": next_pairs,
+                "pair_count": len(next_pairs),
+                **updated_icon_meta,
+            },
         }
 
     def _node_for_subject(self, subject: str):
@@ -609,6 +1876,7 @@ class Workspace:
             "datum_icons": dict(self._staged_presentation_icons)
         }
         payload["datum_icons_map"] = dict(self._datum_icons_map)
+        payload["model_meta"] = self.model_meta()
         return payload
 
     def get_state_snapshot(self) -> dict[str, Any]:
@@ -711,7 +1979,7 @@ class Workspace:
             method_token = str(method or "").strip().lower()
             if subject == "datum_icon" and method_token == "set":
                 datum_id = str(args.get("datum_id") or "").strip()
-                icon_relpath = self._normalize_icon_relpath(args.get("icon_relpath") or "")
+                icon_relpath = self._canonical_icon_relpath(args.get("icon_relpath") or "")
 
                 if not self._valid_datum_id(datum_id):
                     errors.append("datum_id must be an existing datum id or a valid id token (L-V-I).")
@@ -896,11 +2164,14 @@ class Workspace:
                     validation_errors.append(f"{table_token}/{row_token}/{field_token}: {err}")
             validation_warnings.extend(list(validation.warnings))
 
+        canonical_pending_icons: dict[str, str] = {}
         for datum_id, icon_rel in pending_icons.items():
+            canonical_icon_rel = self._canonical_icon_relpath(icon_rel)
+            canonical_pending_icons[datum_id] = canonical_icon_rel
             if not self._valid_datum_id(datum_id):
                 validation_errors.append(f"Invalid datum_id for icon assignment: {datum_id}")
-            if not self._icon_exists(icon_rel):
-                validation_errors.append(f"Invalid icon_relpath for datum {datum_id}: {icon_rel}")
+            if not self._icon_exists(canonical_icon_rel):
+                validation_errors.append(f"Invalid icon_relpath for datum {datum_id}: {canonical_icon_rel}")
 
         if validation_errors:
             return {"ok": False, "errors": validation_errors, "warnings": validation_warnings}
@@ -982,10 +2253,10 @@ class Workspace:
                         errors.extend(list(result.get("errors") or []))
 
         # Persist sidecar icon presentation edits.
-        if pending_icons:
+        if canonical_pending_icons:
             merged_icons = dict(self._datum_icons_map)
-            for datum_id, icon_rel in pending_icons.items():
-                rel = self._normalize_icon_relpath(icon_rel)
+            for datum_id, icon_rel in canonical_pending_icons.items():
+                rel = self._canonical_icon_relpath(icon_rel)
                 if rel:
                     merged_icons[datum_id] = rel
                 else:
@@ -1002,7 +2273,7 @@ class Workspace:
 
         for key in pending_data.keys():
             self._staged.pop(key, None)
-        for key in pending_icons.keys():
+        for key in canonical_pending_icons.keys():
             self._staged_presentation_icons.pop(key, None)
 
         self._reload()

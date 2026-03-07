@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, Optional
 
 from flask import abort, jsonify, make_response, request
 
-from portal.services.request_log_store import append_event
+from portal.services.request_log_store import RequestLogValidationError, append_event
 
 
 def register_request_log_routes(
@@ -29,8 +29,10 @@ def register_request_log_routes(
 
         try:
             path = append_event(private_dir, msn_id, body)
+        except RequestLogValidationError as e:
+            return jsonify({"ok": False, "errors": list(e.errors)}), 400
         except ValueError as e:
-            abort(400, description=str(e))
+            return jsonify({"ok": False, "errors": [str(e)]}), 400
 
         response: Dict[str, Any] = {"ok": True, "msn_id": msn_id, "written_to": str(path)}
         if options_private_fn is not None:

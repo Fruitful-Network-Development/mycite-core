@@ -8,8 +8,6 @@ LOG_DIR="${RUN_DIR}/logs"
 
 # Format: name|relative_dir|port|venv_dir
 APPS=(
-  "mycite-ne_mw|mycite-ne_mw|5000|.venv"
-  "mycite-le_cvcc|mycite-le_cvcc|5001|.venv"
   "mycite-le_fnd|mycite-le_fnd|5002|.venv"
 )
 

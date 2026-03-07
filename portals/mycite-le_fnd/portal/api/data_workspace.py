@@ -74,7 +74,222 @@ def register_data_routes(
 
     @app.get("/portal/api/data/icons/list")
     def portal_data_icons_list():
-        return jsonify({"ok": True, "icon_relpaths": workspace.list_available_icons()})
+        meta = workspace.model_meta() if hasattr(workspace, "model_meta") else {}
+        return jsonify(
+            {
+                "ok": True,
+                "icon_relpaths": workspace.list_available_icons(),
+                "icon_relpath_mode": str(meta.get("icon_relpath_mode") or "path"),
+            }
+        )
+
+    @app.get("/portal/api/data/model")
+    def portal_data_model():
+        meta = workspace.model_meta() if hasattr(workspace, "model_meta") else {}
+        return jsonify({"ok": True, "model_meta": meta})
+
+    @app.get("/portal/api/data/anthology/table")
+    def portal_data_anthology_table():
+        if not hasattr(workspace, "anthology_table_view"):
+            abort(501, description="anthology table view is unavailable")
+        payload = workspace.anthology_table_view()
+        payload["ok"] = True
+        return jsonify(payload)
+
+    @app.get("/portal/api/data/time_series/state")
+    def portal_data_time_series_state():
+        if not hasattr(workspace, "time_series_state"):
+            abort(501, description="time series state is unavailable")
+        payload = workspace.time_series_state()
+        payload["ok"] = bool(payload.get("ok", True))
+        return jsonify(payload), (200 if payload["ok"] else 400)
+
+    @app.post("/portal/api/data/time_series/ensure_base")
+    def portal_data_time_series_ensure_base():
+        if not hasattr(workspace, "time_series_ensure_base"):
+            abort(501, description="time series ensure_base is unavailable")
+        result = workspace.time_series_ensure_base()
+        status = 200 if bool(result.get("ok")) else 400
+        return jsonify(result), status
+
+    @app.post("/portal/api/data/time_series/event/create")
+    def portal_data_time_series_event_create():
+        if not hasattr(workspace, "time_series_create_event"):
+            abort(501, description="time series event/create is unavailable")
+        body = _json_body()
+        result = workspace.time_series_create_event(
+            point_ref=str(body.get("point_ref") or "").strip(),
+            duration_ref=str(body.get("duration_ref") or "").strip(),
+            start_unix_s=body.get("start_unix_s"),
+            duration_s=body.get("duration_s"),
+            label=str(body.get("label") or "").strip(),
+        )
+        status = 200 if bool(result.get("ok")) else 400
+        return jsonify(result), status
+
+    @app.post("/portal/api/data/time_series/event/update")
+    def portal_data_time_series_event_update():
+        if not hasattr(workspace, "time_series_update_event"):
+            abort(501, description="time series event/update is unavailable")
+        body = _json_body()
+        result = workspace.time_series_update_event(
+            event_ref=str(body.get("event_ref") or "").strip(),
+            point_ref=(str(body.get("point_ref")).strip() if "point_ref" in body else None),
+            duration_ref=(str(body.get("duration_ref")).strip() if "duration_ref" in body else None),
+            start_unix_s=(body.get("start_unix_s") if "start_unix_s" in body else None),
+            duration_s=(body.get("duration_s") if "duration_s" in body else None),
+            label=(str(body.get("label")) if "label" in body else None),
+        )
+        status = 200 if bool(result.get("ok")) else 400
+        return jsonify(result), status
+
+    @app.post("/portal/api/data/time_series/event/delete")
+    def portal_data_time_series_event_delete():
+        if not hasattr(workspace, "time_series_delete_event"):
+            abort(501, description="time series event/delete is unavailable")
+        body = _json_body()
+        result = workspace.time_series_delete_event(
+            event_ref=str(body.get("event_ref") or "").strip(),
+        )
+        status = 200 if bool(result.get("ok")) else 400
+        return jsonify(result), status
+
+    @app.get("/portal/api/data/time_series/event/<path:event_ref>")
+    def portal_data_time_series_event_detail(event_ref: str):
+        if not hasattr(workspace, "time_series_event_detail"):
+            abort(501, description="time series event detail is unavailable")
+        result = workspace.time_series_event_detail(event_ref=str(event_ref or "").strip())
+        status = 200 if bool(result.get("ok")) else 404
+        return jsonify(result), status
+
+    @app.get("/portal/api/data/time_series/table/<table_id>/view")
+    def portal_data_time_series_table_view(table_id: str):
+        if not hasattr(workspace, "time_series_table_view"):
+            abort(501, description="time series table view is unavailable")
+        mode = str(request.args.get("mode") or "normal").strip().lower()
+        result = workspace.time_series_table_view(table_id=str(table_id or "").strip(), mode=mode)
+        status = 200 if bool(result.get("ok")) else 400
+        return jsonify(result), status
+
+    @app.post("/portal/api/data/anthology/append")
+    def portal_data_anthology_append():
+        if not hasattr(workspace, "append_anthology_datum"):
+            abort(501, description="anthology append is unavailable")
+
+        body = _json_body()
+        layer_value = body.get("layer")
+        value_group_value = body.get("value_group")
+        layer_raw = "" if layer_value is None else str(layer_value).strip()
+        value_group_raw = "" if value_group_value is None else str(value_group_value).strip()
+
+        try:
+            layer = int(layer_raw)
+            value_group = int(value_group_raw)
+        except Exception:
+            abort(400, description="layer and value_group must be integers")
+
+        pairs_body = body.get("pairs")
+        pairs: list[dict[str, str]] | None = None
+        if isinstance(pairs_body, list):
+            pairs = []
+            for item in pairs_body:
+                if not isinstance(item, dict):
+                    continue
+                pairs.append(
+                    {
+                        "reference": str(item.get("reference") or "").strip(),
+                        "magnitude": str(item.get("magnitude") or "").strip(),
+                    }
+                )
+
+        result = workspace.append_anthology_datum(
+            layer=layer,
+            value_group=value_group,
+            reference=str(body.get("reference") or "").strip(),
+            magnitude=str(body.get("magnitude") or "").strip(),
+            label=str(body.get("label") or "").strip(),
+            pairs=pairs,
+        )
+
+        status = 200 if bool(result.get("ok")) else 400
+        response = dict(result)
+        if hasattr(workspace, "anthology_table_view"):
+            response["table_view"] = workspace.anthology_table_view()
+        return jsonify(response), status
+
+    @app.post("/portal/api/data/anthology/delete")
+    def portal_data_anthology_delete():
+        if not hasattr(workspace, "delete_anthology_datum"):
+            abort(501, description="anthology delete is unavailable")
+
+        body = _json_body()
+        result = workspace.delete_anthology_datum(
+            row_id=str(body.get("row_id") or body.get("identifier") or "").strip(),
+        )
+
+        status = 200 if bool(result.get("ok")) else 400
+        response = dict(result)
+        if hasattr(workspace, "anthology_table_view"):
+            response["table_view"] = workspace.anthology_table_view()
+        return jsonify(response), status
+
+    @app.post("/portal/api/data/anthology/label")
+    def portal_data_anthology_label():
+        if not hasattr(workspace, "update_anthology_label"):
+            abort(501, description="anthology label update is unavailable")
+
+        body = _json_body()
+        result = workspace.update_anthology_label(
+            row_id=str(body.get("row_id") or body.get("identifier") or "").strip(),
+            label=str(body.get("label") or ""),
+        )
+
+        status = 200 if bool(result.get("ok")) else 400
+        response = dict(result)
+        if hasattr(workspace, "anthology_table_view"):
+            response["table_view"] = workspace.anthology_table_view()
+        return jsonify(response), status
+
+    @app.get("/portal/api/data/anthology/profile/<path:row_id>")
+    def portal_data_anthology_profile(row_id: str):
+        if not hasattr(workspace, "anthology_profile"):
+            abort(501, description="anthology profile is unavailable")
+        result = workspace.anthology_profile(row_id=str(row_id or "").strip())
+        status = 200 if bool(result.get("ok")) else 404
+        return jsonify(result), status
+
+    @app.post("/portal/api/data/anthology/profile/update")
+    def portal_data_anthology_profile_update():
+        if not hasattr(workspace, "update_anthology_profile"):
+            abort(501, description="anthology profile update is unavailable")
+
+        body = _json_body()
+        pairs_body = body.get("pairs")
+        pairs: list[dict[str, str]] | None = None
+        if isinstance(pairs_body, list):
+            pairs = []
+            for item in pairs_body:
+                if not isinstance(item, dict):
+                    continue
+                pairs.append(
+                    {
+                        "reference": str(item.get("reference") or "").strip(),
+                        "magnitude": str(item.get("magnitude") or "").strip(),
+                    }
+                )
+        result = workspace.update_anthology_profile(
+            row_id=str(body.get("row_id") or body.get("identifier") or "").strip(),
+            label=str(body.get("label") or ""),
+            magnitude=body.get("magnitude"),
+            pairs=pairs,
+            icon_relpath=body.get("icon_relpath"),
+        )
+
+        status = 200 if bool(result.get("ok")) else 400
+        response = dict(result)
+        if hasattr(workspace, "anthology_table_view"):
+            response["table_view"] = workspace.anthology_table_view()
+        return jsonify(response), status
 
     @app.post("/portal/api/data/directive")
     def portal_data_directive():
