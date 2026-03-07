@@ -29,6 +29,19 @@ Canonical runtime JSON artifacts are per-portal state files:
 - `data/presentation/datum_icons.json`
 - `private/daemon_state/data_workspace.json`
 
+## Anthology abstraction exports (AWS)
+
+FND tenant AWS tooling can resolve anthology-backed emailer abstractions from tenant metadata refs:
+
+- list anchor example: `10-0-1` (`emailer_list`)
+- entry rows example: `9-2-*`
+
+Preview endpoint:
+
+- `GET /portal/api/aws/tenant/<tenant_id>/emailer_preview`
+
+See [AWS_EMAILER_ABSTRACTION.md](AWS_EMAILER_ABSTRACTION.md) for payload contract and format semantics.
+
 ## Anthology compact row contract
 
 Persisted anthology compact rows keep the existing array form:

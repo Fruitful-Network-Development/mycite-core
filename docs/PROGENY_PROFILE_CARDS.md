@@ -69,6 +69,17 @@ Profile card payloads are metadata only. Secret-like keys are not allowed:
 - `client_secret`
 - `aws_secret_access_key`
 
+## Tenant integration refs (FND)
+
+Tenant progeny metadata for FND integration routing may include:
+
+- `profile_refs.paypal_profile_id`
+- `profile_refs.aws_profile_id`
+- `profile_refs.aws_emailer_list_ref`
+- `profile_refs.aws_emailer_entry_ref`
+
+These refs are metadata pointers only and must not include credentials.
+
 ## Historical migration note
 
 Legacy non-FND profile-card migrations are preserved in archived portal snapshots under:

@@ -73,6 +73,8 @@ def _normalize_profile(tenant_id: str, payload: Dict[str, Any]) -> Dict[str, Any
         "profile_refs": {
             "paypal_profile_id": str(profile_refs.get("paypal_profile_id") or f"paypal:tenant:{tenant_id}").strip(),
             "aws_profile_id": str(profile_refs.get("aws_profile_id") or f"aws:tenant:{tenant_id}").strip(),
+            "aws_emailer_list_ref": str(profile_refs.get("aws_emailer_list_ref") or "").strip(),
+            "aws_emailer_entry_ref": str(profile_refs.get("aws_emailer_entry_ref") or "").strip(),
         },
         "contract_refs": {
             "authorization_contract_id": str(contract_refs.get("authorization_contract_id") or "").strip(),

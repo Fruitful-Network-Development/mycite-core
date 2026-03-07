@@ -643,6 +643,31 @@ class Workspace:
             out.append(tail)
         return out
 
+    def _datum_identifier_candidates(self, token: str) -> list[str]:
+        candidate = str(token or "").strip()
+        if not candidate:
+            return []
+
+        out: list[str] = []
+        if _DATUM_ID_RE.fullmatch(candidate):
+            out.append(candidate)
+        tail = self._qualified_tail_identifier(candidate)
+        if _DATUM_ID_RE.fullmatch(tail) and tail not in out:
+            out.append(tail)
+        return out
+
+    def _resolve_anthology_row(self, token: str, anthology_rows: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, str]:
+        candidates = self._datum_identifier_candidates(token)
+        if not candidates:
+            return None, ""
+
+        for candidate in candidates:
+            for row in anthology_rows:
+                identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+                if identifier == candidate:
+                    return row, candidate
+        return None, ""
+
     def _parse_event_directive_ref(self, token: str) -> tuple[str, int] | None:
         raw = str(token or "").strip()
         match = _EVENT_DIRECTIVE_RE.fullmatch(raw)
@@ -1497,6 +1522,215 @@ class Workspace:
             },
             "rows": out_rows,
             "groups": groups,
+        }
+
+    @staticmethod
+    def _truthy_magnitude(token: str) -> bool:
+        raw = str(token or "").strip().lower()
+        if raw in {"", "0", "false", "no", "off", "n"}:
+            return False
+        if raw in {"1", "true", "yes", "on", "y"}:
+            return True
+        try:
+            return int(raw) != 0
+        except Exception:
+            return True
+
+    @staticmethod
+    def _decode_hex_text(token: str) -> tuple[str, str | None]:
+        raw = str(token or "").strip()
+        if not raw:
+            return "", None
+        if len(raw) % 2 != 0:
+            return "", "hex token has odd length"
+        try:
+            as_bytes = bytes.fromhex(raw)
+        except Exception:
+            return "", "invalid hex token"
+        try:
+            return as_bytes.decode("utf-8"), None
+        except Exception:
+            return as_bytes.decode("utf-8", errors="replace"), "hex token is not strict utf-8"
+
+    def aws_emailer_preview(
+        self,
+        *,
+        tenant_id: str,
+        aws_emailer_list_ref: str,
+        aws_emailer_entry_ref: str = "",
+    ) -> dict[str, Any]:
+        tenant_token = str(tenant_id or "").strip()
+        list_ref_token = str(aws_emailer_list_ref or "").strip()
+        entry_ref_hint = str(aws_emailer_entry_ref or "").strip()
+        if not tenant_token:
+            return {"ok": False, "errors": ["tenant_id is required"], "warnings": [], "status_code": 400}
+        if not list_ref_token:
+            return {"ok": False, "errors": ["aws_emailer_list_ref is required"], "warnings": [], "status_code": 400}
+
+        anthology_rows = list(self.storage.load_rows("anthology") or [])
+        list_row, list_identifier = self._resolve_anthology_row(list_ref_token, anthology_rows)
+        if list_row is None:
+            return {
+                "ok": False,
+                "errors": [f"aws_emailer_list_ref not found in anthology: {list_ref_token}"],
+                "warnings": [],
+                "status_code": 404,
+            }
+
+        list_label = str(list_row.get("label") or list_identifier).strip()
+        list_pairs = self._pairs_from_row(list_row)
+        entry_refs = [str(pair.get("reference") or "").strip() for pair in list_pairs]
+        entry_refs = [token for token in entry_refs if token and token != "0"]
+        warnings: list[str] = []
+        if not entry_refs and entry_ref_hint:
+            entry_refs = [entry_ref_hint]
+            warnings.append("list row contained no entry refs; falling back to aws_emailer_entry_ref hint")
+        if not entry_refs:
+            return {
+                "ok": False,
+                "errors": [f"no entry references found under {list_identifier}"],
+                "warnings": warnings,
+                "status_code": 400,
+            }
+
+        entries: list[dict[str, Any]] = []
+        resolution_chain: list[dict[str, str]] = []
+        for entry_ref in entry_refs:
+            entry_row, entry_identifier = self._resolve_anthology_row(entry_ref, anthology_rows)
+            if entry_row is None:
+                warnings.append(f"unresolved entry reference under {list_identifier}: {entry_ref}")
+                continue
+
+            entry_label = str(entry_row.get("label") or entry_identifier).strip()
+            entry_pairs = self._pairs_from_row(entry_row)
+
+            subscription_ref = ""
+            subscription_magnitude = ""
+            subscribed = False
+            for pair in entry_pairs:
+                pair_ref = str(pair.get("reference") or "").strip()
+                pair_mag = str(pair.get("magnitude") or "").strip()
+                if not pair_ref:
+                    continue
+                tail = pair_ref if _DATUM_ID_RE.fullmatch(pair_ref) else self._qualified_tail_identifier(pair_ref)
+                if tail == "2-1-45":
+                    subscription_ref = pair_ref
+                    subscription_magnitude = pair_mag
+                    subscribed = self._truthy_magnitude(pair_mag)
+                    break
+            if not subscription_ref:
+                warnings.append(f"{entry_identifier}: missing bool subscription pair (expected ref 2-1-45)")
+
+            contact_collection_ref = ""
+            contact_collection_identifier = ""
+            contact_collection_row: dict[str, Any] | None = None
+            for pair in entry_pairs:
+                pair_ref = str(pair.get("reference") or "").strip()
+                if not pair_ref:
+                    continue
+                candidate_row, candidate_identifier = self._resolve_anthology_row(pair_ref, anthology_rows)
+                if candidate_row is None:
+                    continue
+                layer, value_group, _ = self._parse_datum_identifier(candidate_identifier)
+                if layer == 8 and value_group == 0:
+                    contact_collection_ref = pair_ref
+                    contact_collection_identifier = candidate_identifier
+                    contact_collection_row = candidate_row
+                    break
+
+            contacts: list[dict[str, Any]] = []
+            if contact_collection_row is None:
+                warnings.append(f"{entry_identifier}: missing contact collection ref (expected 8-0-*)")
+            else:
+                for pair in self._pairs_from_row(contact_collection_row):
+                    contact_ref = str(pair.get("reference") or "").strip()
+                    if not contact_ref or contact_ref == "0":
+                        continue
+                    contact_row, contact_identifier = self._resolve_anthology_row(contact_ref, anthology_rows)
+                    if contact_row is None:
+                        warnings.append(
+                            f"{entry_identifier}: unresolved contact ref {contact_ref} in {contact_collection_identifier}"
+                        )
+                        continue
+                    contact_label = str(contact_row.get("label") or contact_identifier).strip()
+                    display_name = contact_label.split("-", 1)[0].strip() if "-" in contact_label else contact_label
+                    email_local_hex = ""
+                    email_local_text = ""
+                    email_type_ref = ""
+                    email_type_value = ""
+                    for contact_pair in self._pairs_from_row(contact_row):
+                        pair_ref = str(contact_pair.get("reference") or "").strip()
+                        pair_mag = str(contact_pair.get("magnitude") or "").strip()
+                        if not pair_ref:
+                            continue
+                        tail = pair_ref if _DATUM_ID_RE.fullmatch(pair_ref) else self._qualified_tail_identifier(pair_ref)
+                        if tail == "3-1-3" and not email_local_hex:
+                            email_local_hex = pair_mag
+                            email_local_text, decode_warning = self._decode_hex_text(email_local_hex)
+                            if decode_warning:
+                                warnings.append(f"{contact_identifier}: {decode_warning}")
+                        elif tail == "6-1-2" and not email_type_ref:
+                            email_type_ref = pair_ref
+                            email_type_value = pair_mag
+                    contacts.append(
+                        {
+                            "contact_identifier": contact_identifier,
+                            "contact_label": contact_label,
+                            "display_name": display_name,
+                            "email_local_hex": email_local_hex,
+                            "email_local_text": email_local_text,
+                            "email_type_ref": email_type_ref,
+                            "email_type_value": email_type_value,
+                        }
+                    )
+
+            resolution_chain.append(
+                {
+                    "list_identifier": list_identifier,
+                    "entry_reference": entry_ref,
+                    "resolved_entry_identifier": entry_identifier,
+                    "contact_collection_identifier": contact_collection_identifier,
+                }
+            )
+            entries.append(
+                {
+                    "entry_identifier": entry_identifier,
+                    "entry_label": entry_label,
+                    "subscribed": subscribed,
+                    "subscription_ref": subscription_ref,
+                    "subscription_magnitude": subscription_magnitude,
+                    "contact_collection_ref": contact_collection_identifier or contact_collection_ref,
+                    "contacts": contacts,
+                }
+            )
+
+        if not entries:
+            return {
+                "ok": False,
+                "errors": [f"no resolvable entry rows found under {list_identifier}"],
+                "warnings": warnings,
+                "status_code": 404,
+            }
+
+        entries_subscribed = sum(1 for item in entries if bool(item.get("subscribed")))
+        contacts_total = sum(len(item.get("contacts") or []) for item in entries)
+        return {
+            "ok": True,
+            "tenant_id": tenant_token,
+            "source": {
+                "aws_emailer_list_ref": list_ref_token,
+                "aws_emailer_entry_ref": entry_ref_hint,
+                "resolved_list_identifier": list_identifier,
+                "resolved_list_label": list_label,
+                "resolution_chain": resolution_chain,
+            },
+            "entries": entries,
+            "summary": {
+                "entries_total": len(entries),
+                "entries_subscribed": entries_subscribed,
+                "contacts_total": contacts_total,
+            },
+            "warnings": warnings,
         }
 
     def append_anthology_datum(

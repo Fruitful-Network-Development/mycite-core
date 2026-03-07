@@ -68,12 +68,19 @@ Time series remains anthology-backed:
 - v1 payloads enforce normalized datum refs and status refs
 - typed fanout logs write to `private/request_log/types/<type>.ndjson`
 
+### 6) AWS emailer abstraction (preview + queue)
+
+- tenant metadata refs in `profile_refs` select anthology-backed emailer abstractions
+- FND preview endpoint resolves deterministic payloads from anthology (`/portal/api/aws/tenant/<tenant_id>/emailer_preview`)
+- AWS proxy accepts queued `emailer_sync_preview` actions only (no direct SES send yet)
+
 ## Next Milestones
 
 1. Stabilize NIMM overlay UX and reduce visual noise in advanced diagnostics.
 2. Add automated API tests for time-series CRUD and request-log v1 validation.
 3. Package FND-specific tools cleanly under service/tool boundaries.
 4. Define explicit re-introduction rules if additional in-repo portal instances are needed later.
+5. Formalize tenant-specific email format policies (`dns_wire_format` vs `text_byte_email_format`) before enabling outbound send.
 
 ## Canonical References
 
@@ -81,5 +88,6 @@ Time series remains anthology-backed:
 - [`DATA_TOOL.md`](DATA_TOOL.md)
 - [`TIME_SERIES_ABSTRACTION.md`](TIME_SERIES_ABSTRACTION.md)
 - [`REQUEST_LOG_V1.md`](REQUEST_LOG_V1.md)
+- [`AWS_EMAILER_ABSTRACTION.md`](AWS_EMAILER_ABSTRACTION.md)
 - [`PROGENY_PROFILE_CARDS.md`](PROGENY_PROFILE_CARDS.md)
 - [`request_log_and_contracts.md`](request_log_and_contracts.md)

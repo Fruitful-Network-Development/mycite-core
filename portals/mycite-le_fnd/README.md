@@ -30,5 +30,6 @@ Do not patch code under running containers; rebuild the target portal service fr
 - [mycite-core root](../../README.md)
 - [Service Shell Standard](../../docs/TOOLS_SHELL.md)
 - [Development Plan](../../docs/DEVELOPMENT_PLAN.md)
+- [AWS Emailer Abstraction](../../docs/AWS_EMAILER_ABSTRACTION.md)
 - [Request Log and Contracts](../../docs/request_log_and_contracts.md)
 - [Documentation Policy](../../docs/DOCUMENTATION_POLICY.md)
