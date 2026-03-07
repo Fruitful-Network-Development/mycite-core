@@ -11,6 +11,7 @@ from jinja2 import TemplateNotFound
 from data.engine.workspace import Workspace
 from data.storage_json import JsonStorageBackend
 from portal.api.aliases import get_alias_record, list_alias_records, register_aliases_routes
+from portal.api.aws_emailer import register_aws_emailer_routes
 from portal.api.config import register_config_routes
 from portal.api.contracts import register_contract_routes
 from portal.api.data_workspace import register_data_routes as register_data_workspace_routes
@@ -924,6 +925,11 @@ register_tenant_progeny_routes(
     private_dir=PRIVATE_DIR,
     options_private_fn=_options_private,
     msn_id_provider=lambda: MSN_ID,
+)
+register_aws_emailer_routes(
+    app,
+    private_dir=PRIVATE_DIR,
+    workspace=DATA_WORKSPACE,
 )
 register_request_log_routes(
     app,

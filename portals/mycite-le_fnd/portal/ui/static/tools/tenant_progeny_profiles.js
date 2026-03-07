@@ -39,7 +39,12 @@
               "<td>" + (caps.paypal ? "enabled" : "disabled") + "</td>" +
               "<td>" + (caps.aws ? "enabled" : "disabled") + "</td>" +
               "<td>" + esc(status.state || "active") + "</td>" +
-              "<td><code>" + esc(refs.paypal_profile_id || "") + "</code><br><code>" + esc(refs.aws_profile_id || "") + "</code></td>" +
+              "<td>" +
+              "<code>" + esc(refs.paypal_profile_id || "") + "</code><br>" +
+              "<code>" + esc(refs.aws_profile_id || "") + "</code><br>" +
+              "<code>" + esc(refs.aws_emailer_list_ref || "") + "</code><br>" +
+              "<code>" + esc(refs.aws_emailer_entry_ref || "") + "</code>" +
+              "</td>" +
               "</tr>"
             );
           })
