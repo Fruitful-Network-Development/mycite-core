@@ -1,177 +1,116 @@
-# Data Tool (NIMM Workspace)
+# Data Tool (JSON-Only Prototype Contract)
 
-This document defines the Data Tool contract used by:
+This document defines the active Data service contract for the JSON-only prototype phase.
 
-- `mycite-ne-example`
-- `mycite-le-example`
-- `mycite-le_fnd`
+## Scope
 
-It separates intent from implementation guidance.
+- FND is the first implementation target in this milestone.
+- Runtime model is still JSON-only (no DB for anthology/conspectus/samras).
+- Contract is structured for rollout to other runnable portals after FND validation.
 
-## Intent
+## Data service routes
 
-- Treat data as a datum graph, not fixed hard-coded UI tables.
-- Keep the current operator surface anthology-first during this phase:
-  - collapsible layers/value-groups
-  - append workflow for new datum ids
-- Drive interactions through NIMM directives:
-  - `nav`: navigation context
-  - `inv`: investigation context
-  - `med`: mediation (mode/lens)
-  - `man`: manipulation (stage/commit)
-- Keep semantic logic in the engine, not in route handlers or templates.
-- Treat UI copy/layout as provisional while the model evolves.
+- `GET /portal/data` -> redirects to `GET /portal/data/anthology`
+- `GET /portal/data/anthology`
+- `GET /portal/data/time-series`
+- `GET /portal/data/geographic`
+- `GET /portal/data/advanced` (legacy-compatible route that opens Advanced NIMM overlay)
 
-## Implementation Guidance
+Tab state is URL-driven and not query-param driven.
+Advanced NIMM controls are summarized in the right-side margin and expanded in an overlay sidebar.
 
-### Service surface and optional package compatibility
+## JSON runtime artifacts
 
-- Canonical Data route:
-  - `GET /portal/data`
-- Optional compatibility package route:
-  - `GET /portal/tools/data_tool/home`
-- Legacy config token behavior:
-  - `data_tool` in `enabled_tools` is ignored and logged as a legacy core-service token
+Canonical runtime JSON artifacts are per-portal state files:
 
-### Engine modules
-
-- Storage adapter: `data/storage_json.py`
-- Domain engine:
-  - `data/engine/graph.py`
-  - `data/engine/constraints.py`
-  - `data/engine/tables.py`
-  - `data/engine/lenses/*`
-  - `data/engine/nimm/directives.py`
-  - `data/engine/nimm/state.py`
-  - `data/engine/nimm/viewmodels.py`
-  - `data/engine/workspace.py`
-
-### Controller module
-
-- `portal/api/data_workspace.py`
-
-Controllers are thin glue only:
-
-- request validation
-- workspace method invocation
-- JSON response shaping
-
-## State Schema
-
-`DataViewState` keys:
-
-- `focus_source`: `anthology | conspectus | samras | auto`
-- `focus_subject`: string
-- `left_pane`: `{kind, payload}`
-- `right_pane`: `{kind, payload}`
-- `mode`: `general | inspect | raw | inferred`
-- `lens_context`: `{default, overrides}`
-- `staged_edits`: map of staged cells
-- `validation_errors`: list of validation messages
-- `selection`: optional active row/cell/table context
-
-Workspace state persistence (non-secret):
-
+- `data/demo-anthology.json`
+- `data/demo-conspectus.json`
+- `data/demo-SAMRAS_MSN.json`
+- `data/presentation/datum_icons.json`
 - `private/daemon_state/data_workspace.json`
 
-## Directive Schema
+## Anthology compact row contract
 
-`POST /portal/api/data/directive`
-
-Request body:
+Persisted anthology compact rows keep the existing array form:
 
 ```json
-{
-  "action": "nav|inv|med|man",
-  "subject": "string",
-  "method": "string",
-  "args": {}
-}
+"11-3-1": [["11-3-1", "ref1", "mag1", "ref2", "mag2"], ["label"]]
 ```
 
-Optional compact input is normalized when provided (for example via `directive` string).
+Rules:
 
-Response shape:
+- first token is identifier
+- remaining tokens are alternating `reference, magnitude`
+- odd trailing token is invalid and dropped with warning
 
-```json
-{
-  "ok": true,
-  "state": {},
-  "left_pane_vm": {},
-  "right_pane_vm": {},
-  "errors": [],
-  "warnings": [],
-  "staged_edits": []
-}
-```
+Normalized runtime/API row shape includes:
 
-Prototype metadata:
+- `row_id`, `identifier`, `label`
+- `pairs` (full list)
+- `pair_count`
+- compatibility fields: `reference`, `magnitude` (first pair)
 
-- `GET /portal/api/data/model`
-- `GET /portal/api/data/state` also returns `model_meta`
+## Value-group behavior
 
-`model_meta` is the source of truth for current guarantees/non-guarantees.
+- `value_group == 0`
+  - row is conspectus-linked
+  - `magnitude` is fixed to `0` for pair normalization
+  - conspectus is derived from the row's references
+- `value_group >= 1`
+  - one datum row may contain multiple reference/magnitude pairs
 
-## API Endpoints
+## Time Series abstraction (anthology-backed)
 
-Canonical endpoints:
+Time Series uses anthology+conspectus, not a new table file.
 
-- `POST /portal/api/data/directive`
-- `GET /portal/api/data/state`
-- `POST /portal/api/data/stage_edit`
-- `POST /portal/api/data/reset_staging`
-- `POST /portal/api/data/commit`
+- event index anchor row: `4-0-1`
+- event rows: `4-1-*`
+- event refs in index are qualified: `<msn_id>-4-1-<iter>`
+- index keys maintained in conspectus:
+  - internal: `4-0-1`
+  - qualified: `<msn_id>-4-0-1`
+
+Event pair semantics are fixed:
+
+1. pair 1: `point_ref` + `start_unix_s`
+2. pair 2: `duration_ref` + `duration_s`
+
+Validation:
+
+- `start_unix_s >= 0`
+- `duration_s >= 1`
+- refs are normalized to `<msn_id>-<datum_address>`
+
+## Data API contract
+
+Anthology endpoints:
+
 - `GET /portal/api/data/anthology/table`
-- `POST /portal/api/data/anthology/append`
 - `GET /portal/api/data/anthology/profile/<row_id>`
+- `POST /portal/api/data/anthology/append`
 - `POST /portal/api/data/anthology/profile/update`
+- `POST /portal/api/data/anthology/delete`
 
-Anthology append contract:
+Time Series endpoints:
 
-- Inputs: `layer`, `value_group`, `reference`, `magnitude`, optional `label`
-- Behavior: compute next identifier as `<layer>-<value_group>-<iteration>` where `iteration` is max existing for that layer/group + 1
-- Output: created datum metadata + refreshed anthology table view
+- `GET /portal/api/data/time_series/state`
+- `POST /portal/api/data/time_series/ensure_base`
+- `POST /portal/api/data/time_series/event/create`
+- `POST /portal/api/data/time_series/event/update`
+- `POST /portal/api/data/time_series/event/delete`
+- `GET /portal/api/data/time_series/event/<event_ref>`
+- `GET /portal/api/data/time_series/table/<table_id>/view?mode=normal|time_series`
 
-Datum profile update contract:
+## Geographic tab status
 
-- Inputs: `row_id` (or `identifier`), `label`, `icon_relpath` (empty string clears icon)
-- Behavior: updates anthology row label + icon mapping and returns refreshed anthology table view
+`/portal/data/geographic` is intentionally placeholder-only in this milestone.
+No mutation actions are exposed there yet.
 
-Datum profile read contract:
+## Module ownership
 
-- Input path: `<row_id>` (or identifier token)
-- Output: datum metadata + `abstraction_path` chain entries
+- workspace logic: `portals/mycite-le_fnd/data/engine/workspace.py`
+- API adapters: `portals/mycite-le_fnd/portal/api/data_workspace.py`
+- JSON storage adapter: `portals/mycite-le_fnd/data/storage_json.py`
+- shared compact-pair helper: `portals/_shared/portal/data_contract/anthology_pairs.py`
 
-Example-portal compatibility shims (temporary):
-
-- `GET /portal/api/data/tables`
-- `GET /portal/api/data/table/<table_id>/instances`
-- `GET /portal/api/data/table/<table_id>/view`
-- `POST /portal/api/data/revert_edit`
-- `POST /portal/api/data/reset`
-
-## Extension Points
-
-### Lenses
-
-- Baseline in examples:
-  - `default` lens
-  - `ascii` lens stub
-- Lens extension is through `data/engine/lenses/*` and config mapping.
-
-### FND-only experimentation
-
-- Experimental recognizers/lenses must stay under:
-  - `mycite-le_fnd/data/dev/*`
-- Load only when config enables:
-  - `data_tool.enable_dev_data_features = true`
-
-Examples must not import FND dev modules.
-
-## Current Prototype Truths
-
-- The canonical user entrypoint for Data is `/portal/data` in the service shell.
-- Optional Data tool package routes may exist for compatibility but are not the primary contract.
-- API responses and engine/controller contracts are authoritative; UI labels are advisory.
-- Table/archetype inference remains an evolving model and is not final ontology.
-- Icon assignments are presentation sidecar metadata only and do not alter anthology semantics.
+UI remains a consumer of API contracts; it does not directly mutate JSON files.

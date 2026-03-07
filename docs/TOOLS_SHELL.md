@@ -75,3 +75,4 @@ They are non-secret, and secret-like keys are blocked from card payloads.
 - `/portal/tools` renders tool-specific sub-tabs based on `enabled_tools`
 - Any local tab controls are page-local only and must not replace canonical service routes
 - Alias session routes remain independent of the service shell
+- In FND Data service, Advanced NIMM diagnostics are rendered as a right-margin summary with an overlay sidebar for full controls.

@@ -1,0 +1,28 @@
+{
+  "schema": "mycite.progeny.registry.v1",
+  "entries": [
+    {
+      "schema": "mycite.progeny.profile_card.v1",
+      "progeny_id": "board-dg",
+      "msn_id": "3-2-3-17-77-2-6-4-1-1",
+      "progeny_type": "board_member",
+      "display": {
+        "title": "DG",
+        "subtitle": "Board Member"
+      },
+      "contact": {
+        "name": "DG",
+        "email": ""
+      },
+      "alias_expected": false,
+      "status": {
+        "state": "active",
+        "note": "internal profile card"
+      },
+      "source": {
+        "kind": "internal_json",
+        "ref": "private/progeny/internal/board-dg.json"
+      }
+    }
+  ]
+}

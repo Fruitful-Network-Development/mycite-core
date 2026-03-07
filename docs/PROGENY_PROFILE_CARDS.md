@@ -41,11 +41,22 @@ They are JSON-backed and independent from UI implementation details.
 
 ## Sources used by `/portal/network/*`
 
+- Unified optional registry file:
+  - `private/progeny/progeny.json`
 - Config progeny references in `private/mycite-config-*.json`
 - Internal progeny files in `private/progeny/internal/*.json`
 - Alias records in `private/aliases/*.json`
 - Contracts in `private/contracts/*.json`
 - Magnetlinks in `private/magnetlinks/*.json`
+
+Loader precedence is:
+
+1. `private/progeny/progeny.json` entries (if file exists)
+2. config-defined progeny refs
+3. internal progeny files
+4. alias-derived cards (network alias tab)
+
+Cards are deduplicated by `progeny_id`.
 
 ## Security boundary
 
@@ -58,8 +69,14 @@ Profile card payloads are metadata only. Secret-like keys are not allowed:
 - `client_secret`
 - `aws_secret_access_key`
 
-## CVCC migration note
+## Historical migration note
 
-Retired standalone NE profile folders (`mycite-ne_dg`, `mycite-ne_eb`, `mycite-ne_jt`, `mycite-ne_ks`) were migrated into CVCC internal progeny cards under:
+Legacy non-FND profile-card migrations are preserved in archived portal snapshots under:
 
-- `portals/mycite-le_cvcc/private/progeny/internal/`
+- `/srv/compose/portals/unused_portal_sources/2026-03-07-fnd-only/`
+
+## Template reference
+
+See:
+
+- `docs/examples/progeny.unified.example.json`

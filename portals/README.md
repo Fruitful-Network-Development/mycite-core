@@ -1,32 +1,40 @@
 # Portals Directory
 
-`portals/` contains MyCite portal instances and examples.
+`portals/` is now intentionally minimal in this repository.
 
-## Active app instances
+## In-repo portal instance
 
-These directories include `app.py` and can run as Flask portal apps:
+- `mycite-le_fnd` (active canonical portal implementation)
 
-- `mycite-ne-example`
+## Shared runtime/assets
+
+- `_shared/` shared core-service and data-contract modules
+- `assets/` shared icons and UI assets
+- `scripts/` portal-adjacent helper scripts
+
+## Archived one-off instances
+
+Non-FND portal instance sources were removed from `mycite-core` and archived as runtime snapshots at:
+
+- `/srv/compose/portals/unused_portal_sources/2026-03-07-fnd-only/`
+
+Archived folders include:
+
 - `mycite-le-example`
-- `mycite-le_fnd`
 - `mycite-le_cvcc`
-- `mycite-ne_mw`
-- `mycite-ne_dm`
-
-## State-only profile folders
-
-These directories are profile/state folders (no local app entrypoint):
-
 - `mycite-le_tff`
+- `mycite-ne-example`
+- `mycite-ne_dm`
 - `mycite-ne_mt`
+- `mycite-ne_mw`
 
 ## Shell/runtime standard
 
-All active portals must follow the shared service-shell/runtime contract:
+FND still follows the shared service-shell/runtime contract:
 
 - shared service runtime: `../portals/_shared/portal/core_services/`
 - shared tool runtime: `../portals/_shared/portal/tools/runtime.py`
-- contract doc: [`../docs/TOOLS_SHELL.md`](../docs/TOOLS_SHELL.md)
+- shell contract doc: [`../docs/TOOLS_SHELL.md`](../docs/TOOLS_SHELL.md)
 
 ## Canonical docs
 
@@ -35,4 +43,4 @@ All active portals must follow the shared service-shell/runtime contract:
 - [`../docs/DOCUMENTATION_POLICY.md`](../docs/DOCUMENTATION_POLICY.md)
 - [`../docs/request_log_and_contracts.md`](../docs/request_log_and_contracts.md)
 - [`../docs/DATA_TOOL.md`](../docs/DATA_TOOL.md)
-- [`../docs/DATA_TOOL_ICONS.md`](../docs/DATA_TOOL_ICONS.md)
+- [`../docs/TIME_SERIES_ABSTRACTION.md`](../docs/TIME_SERIES_ABSTRACTION.md)
