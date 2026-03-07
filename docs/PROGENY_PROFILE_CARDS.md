@@ -74,6 +74,11 @@ Profile card payloads are metadata only. Secret-like keys are not allowed:
 Tenant progeny metadata for FND integration routing may include:
 
 - `profile_refs.paypal_profile_id`
+- `profile_refs.paypal_site_base_url`
+- `profile_refs.paypal_checkout_return_url`
+- `profile_refs.paypal_checkout_cancel_url`
+- `profile_refs.paypal_webhook_listener_url`
+- `profile_refs.paypal_checkout_brand_name`
 - `profile_refs.aws_profile_id`
 - `profile_refs.aws_emailer_list_ref`
 - `profile_refs.aws_emailer_entry_ref`

@@ -72,6 +72,11 @@ def _normalize_profile(tenant_id: str, payload: Dict[str, Any]) -> Dict[str, Any
         },
         "profile_refs": {
             "paypal_profile_id": str(profile_refs.get("paypal_profile_id") or f"paypal:tenant:{tenant_id}").strip(),
+            "paypal_site_base_url": str(profile_refs.get("paypal_site_base_url") or "").strip(),
+            "paypal_checkout_return_url": str(profile_refs.get("paypal_checkout_return_url") or "").strip(),
+            "paypal_checkout_cancel_url": str(profile_refs.get("paypal_checkout_cancel_url") or "").strip(),
+            "paypal_webhook_listener_url": str(profile_refs.get("paypal_webhook_listener_url") or "").strip(),
+            "paypal_checkout_brand_name": str(profile_refs.get("paypal_checkout_brand_name") or "").strip(),
             "aws_profile_id": str(profile_refs.get("aws_profile_id") or f"aws:tenant:{tenant_id}").strip(),
             "aws_emailer_list_ref": str(profile_refs.get("aws_emailer_list_ref") or "").strip(),
             "aws_emailer_entry_ref": str(profile_refs.get("aws_emailer_entry_ref") or "").strip(),

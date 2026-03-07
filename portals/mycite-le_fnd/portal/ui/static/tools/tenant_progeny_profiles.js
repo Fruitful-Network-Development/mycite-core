@@ -41,6 +41,11 @@
               "<td>" + esc(status.state || "active") + "</td>" +
               "<td>" +
               "<code>" + esc(refs.paypal_profile_id || "") + "</code><br>" +
+              "<code>" + esc(refs.paypal_site_base_url || "") + "</code><br>" +
+              "<code>" + esc(refs.paypal_checkout_return_url || "") + "</code><br>" +
+              "<code>" + esc(refs.paypal_checkout_cancel_url || "") + "</code><br>" +
+              "<code>" + esc(refs.paypal_webhook_listener_url || "") + "</code><br>" +
+              "<code>" + esc(refs.paypal_checkout_brand_name || "") + "</code><br>" +
               "<code>" + esc(refs.aws_profile_id || "") + "</code><br>" +
               "<code>" + esc(refs.aws_emailer_list_ref || "") + "</code><br>" +
               "<code>" + esc(refs.aws_emailer_entry_ref || "") + "</code>" +

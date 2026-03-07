@@ -38,6 +38,7 @@ Legacy/example portal instance sources were removed from this repo and archived 
 - [`docs/TIME_SERIES_ABSTRACTION.md`](docs/TIME_SERIES_ABSTRACTION.md)
 - [`docs/REQUEST_LOG_V1.md`](docs/REQUEST_LOG_V1.md)
 - [`docs/AWS_EMAILER_ABSTRACTION.md`](docs/AWS_EMAILER_ABSTRACTION.md)
+- [`docs/PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md`](docs/PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md)
 - [`docs/DOCUMENTATION_POLICY.md`](docs/DOCUMENTATION_POLICY.md)
 - [`docs/repo_policy.md`](docs/repo_policy.md)
 
