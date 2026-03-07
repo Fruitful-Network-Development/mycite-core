@@ -17,6 +17,7 @@ from portal.api.contracts import register_contract_routes
 from portal.api.data_workspace import register_data_routes as register_data_workspace_routes
 from portal.api.inbox import register_inbox_routes
 from portal.api.magnetlinks import register_magnetlinks_routes
+from portal.api.paypal_checkout import register_paypal_checkout_routes
 from portal.api.progeny_config import register_progeny_config_routes
 from portal.api.request_log import register_request_log_routes
 from portal.api.tenant_progeny import register_tenant_progeny_routes
@@ -930,6 +931,10 @@ register_aws_emailer_routes(
     app,
     private_dir=PRIVATE_DIR,
     workspace=DATA_WORKSPACE,
+)
+register_paypal_checkout_routes(
+    app,
+    private_dir=PRIVATE_DIR,
 )
 register_request_log_routes(
     app,

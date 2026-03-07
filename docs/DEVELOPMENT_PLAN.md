@@ -74,6 +74,12 @@ Time series remains anthology-backed:
 - FND preview endpoint resolves deterministic payloads from anthology (`/portal/api/aws/tenant/<tenant_id>/emailer_preview`)
 - AWS proxy accepts queued `emailer_sync_preview` actions only (no direct SES send yet)
 
+### 7) PayPal payment-processing abstraction (preview + sync queue)
+
+- tenant metadata refs in `profile_refs` define client website checkout context
+- FND preview endpoint validates/derives checkout URLs (`/portal/api/paypal/tenant/<tenant_id>/checkout_preview`)
+- PayPal proxy accepts queued `checkout_profile_sync` actions and persists non-secret checkout context
+
 ## Next Milestones
 
 1. Stabilize NIMM overlay UX and reduce visual noise in advanced diagnostics.
@@ -81,6 +87,7 @@ Time series remains anthology-backed:
 3. Package FND-specific tools cleanly under service/tool boundaries.
 4. Define explicit re-introduction rules if additional in-repo portal instances are needed later.
 5. Formalize tenant-specific email format policies (`dns_wire_format` vs `text_byte_email_format`) before enabling outbound send.
+6. Finalize per-tenant hosted website mappings (TFF/CVCC and future tenants) for PayPal checkout URLs and webhook routes.
 
 ## Canonical References
 
@@ -89,5 +96,6 @@ Time series remains anthology-backed:
 - [`TIME_SERIES_ABSTRACTION.md`](TIME_SERIES_ABSTRACTION.md)
 - [`REQUEST_LOG_V1.md`](REQUEST_LOG_V1.md)
 - [`AWS_EMAILER_ABSTRACTION.md`](AWS_EMAILER_ABSTRACTION.md)
+- [`PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md`](PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md)
 - [`PROGENY_PROFILE_CARDS.md`](PROGENY_PROFILE_CARDS.md)
 - [`request_log_and_contracts.md`](request_log_and_contracts.md)
