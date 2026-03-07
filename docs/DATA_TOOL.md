@@ -65,10 +65,12 @@ Time Series uses anthology+conspectus, not a new table file.
 
 - event index anchor row: `4-0-1`
 - event rows: `4-1-*`
-- event refs in index are qualified: `<msn_id>-4-1-<iter>`
+- event refs in index are NIMM directives:
+  - `inv;(med;<msn_id>-4-0-1;event_value);<row_number>`
 - index keys maintained in conspectus:
   - internal: `4-0-1`
   - qualified: `<msn_id>-4-0-1`
+- `4-0-1` also defines allowed event-value refs (minimum expected refs: `3-2-2`, `3-2-3`)
 
 Event pair semantics are fixed:
 
@@ -80,6 +82,7 @@ Validation:
 - `start_unix_s >= 0`
 - `duration_s >= 1`
 - refs are normalized to `<msn_id>-<datum_address>`
+- `point_ref` and `duration_ref` must be present in the `4-0-1` event-value collection
 
 ## Data API contract
 

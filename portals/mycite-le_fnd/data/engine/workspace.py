@@ -16,6 +16,9 @@ from data.engine.tables import cluster_rows, infer_tables
 
 
 _DATUM_ID_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
+_EVENT_DIRECTIVE_RE = re.compile(
+    r"^inv;\(med;(?P<anchor>[0-9]+(?:-[0-9]+)+);event_value\);(?P<row>[0-9]+)$"
+)
 
 
 class Workspace:
@@ -640,6 +643,37 @@ class Workspace:
             out.append(tail)
         return out
 
+    def _parse_event_directive_ref(self, token: str) -> tuple[str, int] | None:
+        raw = str(token or "").strip()
+        match = _EVENT_DIRECTIVE_RE.fullmatch(raw)
+        if not match:
+            return None
+        anchor = str(match.group("anchor") or "").strip()
+        try:
+            row_number = int(str(match.group("row") or ""))
+        except Exception:
+            return None
+        if row_number < 1:
+            return None
+        return (anchor, row_number)
+
+    def _event_directive_ref(self, row_number: int) -> str:
+        if int(row_number) < 1:
+            return ""
+        anchor = self._qualified_ref("4-0-1") or "4-0-1"
+        return f"inv;(med;{anchor};event_value);{int(row_number)}"
+
+    def _event_row_number_for_identifier(self, identifier: str, anthology_rows: list[dict[str, Any]]) -> int | None:
+        target = str(identifier or "").strip()
+        if not target:
+            return None
+        event_rows = self._event_rows_from_anthology(anthology_rows)
+        for index, row in enumerate(event_rows, start=1):
+            row_identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+            if row_identifier == target:
+                return index
+        return None
+
     def _event_rows_from_anthology(self, anthology_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         for row in anthology_rows:
@@ -657,11 +691,10 @@ class Workspace:
 
     def _event_index_refs(self, anthology_rows: list[dict[str, Any]]) -> list[str]:
         refs: list[str] = []
-        for row in self._event_rows_from_anthology(anthology_rows):
-            identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
-            if not identifier:
-                continue
-            refs.append(self._qualified_ref(identifier))
+        for row_number, _row in enumerate(self._event_rows_from_anthology(anthology_rows), start=1):
+            ref = self._event_directive_ref(row_number)
+            if ref:
+                refs.append(ref)
         return refs
 
     @staticmethod
@@ -693,7 +726,8 @@ class Workspace:
         }
         internal_ids = {item for item in internal_ids if item}
         qualified_ids = {self._qualified_ref(item) for item in internal_ids}
-        all_event_refs = internal_ids | qualified_ids
+        directive_ids = {self._event_directive_ref(index) for index, _item in enumerate(event_rows, start=1)}
+        all_event_refs = internal_ids | qualified_ids | directive_ids
 
         out: list[dict[str, Any]] = []
         for table_meta in self.list_tables():
@@ -720,24 +754,109 @@ class Workspace:
         out.sort(key=lambda item: str(item.get("table_id") or ""))
         return out
 
-    def _ensure_time_series_anchor_row(self, anthology_rows: list[dict[str, Any]]) -> bool:
+    def _event_anchor_allowed_refs(self, anthology_rows: list[dict[str, Any]]) -> set[str]:
+        anchor_row: dict[str, Any] | None = None
         for row in anthology_rows:
             identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
             if identifier == "4-0-1":
-                return False
+                anchor_row = row
+                break
+        if anchor_row is None:
+            return set()
 
-        anthology_rows.append(
-            {
-                "row_id": "4-0-1",
-                "identifier": "4-0-1",
-                "reference": "0",
-                "magnitude": "0",
-                "pairs": [{"reference": "0", "magnitude": "0"}],
-                "label": "time_series",
-                "_source": "anthology",
-            }
-        )
-        return True
+        allowed: set[str] = set()
+        for pair in self._pairs_from_row(anchor_row):
+            reference = str(pair.get("reference") or "").strip()
+            if not reference or reference == "0":
+                continue
+            allowed.add(reference)
+            if _DATUM_ID_RE.fullmatch(reference):
+                qualified = self._qualified_ref(reference)
+                if qualified:
+                    allowed.add(qualified)
+            tail = self._qualified_tail_identifier(reference)
+            if _DATUM_ID_RE.fullmatch(tail):
+                allowed.add(tail)
+                qualified_tail = self._qualified_ref(tail)
+                if qualified_tail:
+                    allowed.add(qualified_tail)
+        return allowed
+
+    def _ensure_time_series_anchor_row(self, anthology_rows: list[dict[str, Any]]) -> bool:
+        required_refs = ["3-2-2", "3-2-3"]
+        required_pairs = [{"reference": token, "magnitude": "0"} for token in required_refs]
+
+        anchor_row: dict[str, Any] | None = None
+        for row in anthology_rows:
+            identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+            if identifier == "4-0-1":
+                anchor_row = row
+                break
+
+        if anchor_row is None:
+            anthology_rows.append(
+                {
+                    "row_id": "4-0-1",
+                    "identifier": "4-0-1",
+                    "reference": required_pairs[0]["reference"],
+                    "magnitude": "0",
+                    "pairs": list(required_pairs),
+                    "label": "event_value_collection",
+                    "_source": "anthology",
+                }
+            )
+            return True
+
+        existing_pairs = self._pairs_from_row(anchor_row)
+        normalized_pairs: list[dict[str, str]] = []
+        seen_refs: set[str] = set()
+        seen_tails: set[str] = set()
+        changed = False
+
+        for pair in existing_pairs:
+            reference = str(pair.get("reference") or "").strip()
+            if not reference or reference == "0":
+                changed = True
+                continue
+            if reference in seen_refs:
+                changed = True
+                continue
+            normalized_pairs.append({"reference": reference, "magnitude": "0"})
+            seen_refs.add(reference)
+            tail = self._qualified_tail_identifier(reference)
+            if _DATUM_ID_RE.fullmatch(tail):
+                seen_tails.add(tail)
+            if _DATUM_ID_RE.fullmatch(reference):
+                seen_tails.add(reference)
+            if str(pair.get("magnitude") or "").strip() != "0":
+                changed = True
+
+        for required_ref in required_refs:
+            if required_ref in seen_tails or required_ref in seen_refs:
+                continue
+            normalized_pairs.append({"reference": required_ref, "magnitude": "0"})
+            changed = True
+
+        if not normalized_pairs:
+            normalized_pairs = list(required_pairs)
+            changed = True
+
+        first_reference = str(normalized_pairs[0].get("reference") or "").strip()
+        if str(anchor_row.get("reference") or "").strip() != first_reference:
+            changed = True
+        if str(anchor_row.get("magnitude") or "").strip() != "0":
+            changed = True
+        if str(anchor_row.get("label") or "").strip() == "":
+            changed = True
+
+        anchor_row["row_id"] = "4-0-1"
+        anchor_row["identifier"] = "4-0-1"
+        anchor_row["reference"] = first_reference
+        anchor_row["magnitude"] = "0"
+        anchor_row["pairs"] = normalized_pairs
+        anchor_row["label"] = str(anchor_row.get("label") or "event_value_collection").strip()
+        anchor_row["_source"] = "anthology"
+        return changed
 
     @staticmethod
     def _parse_int_token(raw: Any, *, field_name: str, minimum: int = 0) -> tuple[int | None, str | None]:
@@ -752,17 +871,23 @@ class Workspace:
             return None, f"{field_name} must be >= {minimum}"
         return value, None
 
-    def _event_payload_from_row(self, row: dict[str, Any]) -> dict[str, Any]:
+    def _event_payload_from_row(self, row: dict[str, Any], *, row_number: int | None = None) -> dict[str, Any]:
         identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
         pairs = self._pairs_from_row(row)
         point_pair = pairs[0] if len(pairs) >= 1 else {"reference": "", "magnitude": ""}
         duration_pair = pairs[1] if len(pairs) >= 2 else {"reference": "", "magnitude": ""}
         start_value, _ = self._parse_int_token(point_pair.get("magnitude"), field_name="start_unix_s", minimum=0)
         duration_value, _ = self._parse_int_token(duration_pair.get("magnitude"), field_name="duration_s", minimum=1)
+        if row_number is None:
+            _, _, parsed_iteration = self._parse_datum_identifier(identifier)
+            row_number = parsed_iteration if isinstance(parsed_iteration, int) and parsed_iteration > 0 else None
+        event_value_ref = self._event_directive_ref(row_number) if isinstance(row_number, int) and row_number > 0 else ""
         return {
             "row_id": str(row.get("row_id") or identifier).strip(),
             "identifier": identifier,
             "event_ref": self._qualified_ref(identifier),
+            "event_value_ref": event_value_ref,
+            "event_row_number": row_number,
             "label": str(row.get("label") or identifier).strip(),
             "point_ref": str(point_pair.get("reference") or "").strip(),
             "duration_ref": str(duration_pair.get("reference") or "").strip(),
@@ -933,7 +1058,11 @@ class Workspace:
     def time_series_state(self) -> dict[str, Any]:
         anthology_rows = list(self.storage.load_rows("anthology") or [])
         conspectus_rows = list(self.storage.load_rows("conspectus") or [])
-        events = [self._event_payload_from_row(row) for row in self._event_rows_from_anthology(anthology_rows)]
+        event_rows = self._event_rows_from_anthology(anthology_rows)
+        events = [
+            self._event_payload_from_row(row, row_number=index)
+            for index, row in enumerate(event_rows, start=1)
+        ]
         events.sort(
             key=lambda item: (
                 -(item.get("start_unix_s") if isinstance(item.get("start_unix_s"), int) else -1),
@@ -956,6 +1085,8 @@ class Workspace:
             "warnings": [],
             "anchor_internal": anchor_internal,
             "anchor_qualified": anchor_qualified,
+            "anchor_directive_base": f"inv;(med;{anchor_qualified or anchor_internal};event_value);<row_number>",
+            "anchor_allowed_refs": sorted(self._event_anchor_allowed_refs(anthology_rows)),
             "indexed_event_refs_internal": list(conspectus_by_identifier.get(anchor_internal, [])),
             "indexed_event_refs_qualified": list(conspectus_by_identifier.get(anchor_qualified, [])),
             "events": events,
@@ -963,6 +1094,18 @@ class Workspace:
         }
 
     def _resolve_event_row(self, event_ref: str, anthology_rows: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, str]:
+        directive = self._parse_event_directive_ref(event_ref)
+        if directive is not None:
+            anchor, row_number = directive
+            allowed_anchors = {"4-0-1", self._qualified_ref("4-0-1")}
+            if anchor in allowed_anchors:
+                event_rows = self._event_rows_from_anthology(anthology_rows)
+                if 1 <= row_number <= len(event_rows):
+                    row = event_rows[row_number - 1]
+                    identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
+                    if identifier:
+                        return row, identifier
+
         candidates = self._event_identifier_candidates(event_ref)
         if not candidates:
             return None, ""
@@ -997,6 +1140,21 @@ class Workspace:
 
         rows = list(self.storage.load_rows("anthology") or [])
         self._ensure_time_series_anchor_row(rows)
+        anchor_allowed_refs = self._event_anchor_allowed_refs(rows)
+        if not anchor_allowed_refs:
+            return {
+                "ok": False,
+                "errors": ["event anchor 4-0-1 has no allowed references; add 3-2-2 and 3-2-3 to 4-0-1 first"],
+                "warnings": [],
+            }
+        anchor_errors: list[str] = []
+        if point_norm not in anchor_allowed_refs:
+            anchor_errors.append(f"point_ref must be defined in 4-0-1 (got: {point_norm})")
+        if duration_norm not in anchor_allowed_refs:
+            anchor_errors.append(f"duration_ref must be defined in 4-0-1 (got: {duration_norm})")
+        if anchor_errors:
+            return {"ok": False, "errors": anchor_errors, "warnings": []}
+
         existing_ids = {
             str(row.get("identifier") or row.get("row_id") or "").strip()
             for row in rows
@@ -1046,11 +1204,12 @@ class Workspace:
         self._reload()
         self._refresh_panes_for_icon_change()
         self._persist_state()
+        event_row_number = self._event_row_number_for_identifier(next_identifier, rows)
         return {
             "ok": True,
             "errors": [],
             "warnings": warnings,
-            "event": self._event_payload_from_row(new_row),
+            "event": self._event_payload_from_row(new_row, row_number=event_row_number),
             "state": self.time_series_state(),
         }
 
@@ -1087,6 +1246,22 @@ class Workspace:
         if errors:
             return {"ok": False, "errors": errors, "warnings": []}
 
+        self._ensure_time_series_anchor_row(rows)
+        anchor_allowed_refs = self._event_anchor_allowed_refs(rows)
+        if not anchor_allowed_refs:
+            return {
+                "ok": False,
+                "errors": ["event anchor 4-0-1 has no allowed references; add 3-2-2 and 3-2-3 to 4-0-1 first"],
+                "warnings": [],
+            }
+        anchor_errors: list[str] = []
+        if point_norm not in anchor_allowed_refs:
+            anchor_errors.append(f"point_ref must be defined in 4-0-1 (got: {point_norm})")
+        if duration_norm not in anchor_allowed_refs:
+            anchor_errors.append(f"duration_ref must be defined in 4-0-1 (got: {duration_norm})")
+        if anchor_errors:
+            return {"ok": False, "errors": anchor_errors, "warnings": []}
+
         event_row["pairs"] = [
             {"reference": point_norm, "magnitude": str(start_value)},
             {"reference": duration_norm, "magnitude": str(duration_value_int)},
@@ -1117,11 +1292,12 @@ class Workspace:
         # event_row may be stale after reload; resolve again for response payload.
         rows_after = list(self.storage.load_rows("anthology") or [])
         updated_row, _ = self._resolve_event_row(identifier, rows_after)
+        updated_row_number = self._event_row_number_for_identifier(identifier, rows_after)
         return {
             "ok": True,
             "errors": [],
             "warnings": warnings,
-            "event": self._event_payload_from_row(updated_row or event_row),
+            "event": self._event_payload_from_row(updated_row or event_row, row_number=updated_row_number),
             "state": self.time_series_state(),
         }
 
@@ -1130,6 +1306,12 @@ class Workspace:
         event_row, identifier = self._resolve_event_row(event_ref, rows)
         if event_row is None:
             return {"ok": False, "errors": [f"unknown event_ref: {event_ref}"], "warnings": []}
+        deleted_row_number = self._event_row_number_for_identifier(identifier, rows)
+        deleted_event_value_ref = (
+            self._event_directive_ref(deleted_row_number)
+            if isinstance(deleted_row_number, int) and deleted_row_number > 0
+            else ""
+        )
 
         kept_rows: list[dict[str, Any]] = []
         for row in rows:
@@ -1160,6 +1342,7 @@ class Workspace:
             "errors": [],
             "warnings": warnings,
             "deleted_event_ref": self._qualified_ref(identifier),
+            "deleted_event_value_ref": deleted_event_value_ref,
             "state": self.time_series_state(),
         }
 
@@ -1170,7 +1353,15 @@ class Workspace:
             return {"ok": False, "errors": [f"unknown event_ref: {event_ref}"], "warnings": []}
 
         qualified_identifier = self._qualified_ref(identifier)
+        event_row_number = self._event_row_number_for_identifier(identifier, anthology_rows)
+        directive_identifier = (
+            self._event_directive_ref(event_row_number)
+            if isinstance(event_row_number, int) and event_row_number > 0
+            else ""
+        )
         ref_candidates = {identifier, qualified_identifier}
+        if directive_identifier:
+            ref_candidates.add(directive_identifier)
         referenced_by: list[dict[str, Any]] = []
         for row in anthology_rows:
             row_identifier = str(row.get("identifier") or row.get("row_id") or "").strip()
@@ -1203,7 +1394,7 @@ class Workspace:
             "ok": True,
             "errors": [],
             "warnings": [],
-            "event": self._event_payload_from_row(event_row),
+            "event": self._event_payload_from_row(event_row, row_number=event_row_number),
             "referenced_by": referenced_by,
             "event_enabled_tables": self._event_enabled_tables(anthology_rows),
         }
@@ -1220,14 +1411,17 @@ class Workspace:
         anthology_rows = list(self.storage.load_rows("anthology") or [])
         event_rows = self._event_rows_from_anthology(anthology_rows)
         event_map: dict[str, dict[str, Any]] = {}
-        for row in event_rows:
-            payload = self._event_payload_from_row(row)
+        for row_number, row in enumerate(event_rows, start=1):
+            payload = self._event_payload_from_row(row, row_number=row_number)
             internal_id = str(payload.get("identifier") or "").strip()
             qualified_id = str(payload.get("event_ref") or "").strip()
+            directive_id = str(payload.get("event_value_ref") or "").strip()
             if internal_id:
                 event_map[internal_id] = payload
             if qualified_id:
                 event_map[qualified_id] = payload
+            if directive_id:
+                event_map[directive_id] = payload
 
         out_rows: list[dict[str, Any]] = []
         for row in list(table.get("rows") or []):
@@ -1241,6 +1435,7 @@ class Workspace:
                 event_links.append(
                     {
                         "event_ref": str(event_payload.get("event_ref") or ""),
+                        "event_value_ref": str(event_payload.get("event_value_ref") or ""),
                         "start_unix_s": event_payload.get("start_unix_s"),
                         "duration_s": event_payload.get("duration_s"),
                         "label": event_payload.get("label"),

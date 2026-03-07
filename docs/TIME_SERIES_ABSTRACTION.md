@@ -9,15 +9,16 @@ Time series is an anthology+conspectus abstraction.
 
 - event index anchor datum: `4-0-1`
 - event rows: `4-1-*`
+- `4-0-1` defines the allowed event-value references (minimum: `3-2-2` and `3-2-3`)
 
 Conspectus mirrors both forms of the anchor key:
 
 - `4-0-1`
 - `<msn_id>-4-0-1`
 
-Both keys store ordered event refs in qualified form:
+Both keys store ordered event refs as NIMM investigation directives:
 
-- `<msn_id>-4-1-<iter>`
+- `inv;(med;<msn_id>-4-0-1;event_value);<row_number>`
 
 ## Event row contract
 
@@ -52,6 +53,7 @@ Event rows are anthology rows with exactly two semantic pairs for time-series AP
 `ensure_base`:
 
 - ensures anthology contains `4-0-1`
+- normalizes `4-0-1` to include required event-value refs (`3-2-2`, `3-2-3`)
 - recomputes conspectus index keys (`4-0-1` and qualified key)
 - idempotent
 
@@ -59,6 +61,7 @@ Event rows are anthology rows with exactly two semantic pairs for time-series AP
 
 - allocates next `4-1-<iter>`
 - validates start/duration ints
+- validates `point_ref` and `duration_ref` are present in the `4-0-1` collection
 - writes anthology and recomputes conspectus index
 
 `event/update`:
