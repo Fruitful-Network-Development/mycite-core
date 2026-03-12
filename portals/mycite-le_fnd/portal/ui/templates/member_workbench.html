@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ workspace_title }}</title>
+  <style>
+    :root {
+      --bg: #f2f5f7;
+      --card: #ffffff;
+      --line: #d8e0e6;
+      --ink: #24323a;
+      --muted: #617380;
+      --teal: #117d8a;
+      --teal-dark: #0f6470;
+    }
+    body {
+      margin: 0;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .classroom-shell {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 18px 14px 24px;
+    }
+    .classroom-nav {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .classroom-nav a {
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      padding: 6px 8px;
+      border-bottom: 2px solid transparent;
+    }
+    .classroom-nav a.is-active {
+      color: var(--teal-dark);
+      border-bottom-color: var(--teal-dark);
+    }
+    .classroom-hero {
+      border-radius: 10px;
+      background: linear-gradient(140deg, var(--teal) 0%, #1a9bad 75%);
+      color: #f7ffff;
+      padding: 20px 22px;
+      margin-bottom: 14px;
+      box-shadow: 0 8px 18px rgba(16, 105, 118, 0.24);
+    }
+    .classroom-hero h1 {
+      margin: 0 0 4px;
+      font-size: 30px;
+      line-height: 1.1;
+    }
+    .classroom-hero p {
+      margin: 0;
+      font-size: 13px;
+      opacity: 0.94;
+    }
+    .classroom-grid {
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .classroom-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 12px;
+    }
+    .classroom-card h2 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #435663;
+    }
+    .upcoming-item {
+      border-top: 1px solid #edf2f5;
+      padding: 8px 0;
+      font-size: 13px;
+    }
+    .upcoming-item:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+    .upcoming-item small {
+      color: var(--muted);
+      display: block;
+      margin-top: 2px;
+    }
+    .stream-post {
+      border: 1px solid #e8eef2;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      background: #fbfdff;
+    }
+    .stream-post:last-child {
+      margin-bottom: 0;
+    }
+    .stream-post strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+      color: #1f2e37;
+    }
+    .stream-post p {
+      margin: 0;
+      font-size: 13px;
+      color: #4d5f6b;
+      line-height: 1.45;
+    }
+    .stream-post time {
+      display: block;
+      margin-top: 8px;
+      font-size: 12px;
+      color: #7e919d;
+    }
+    .people-row,
+    .classwork-row {
+      border-top: 1px solid #edf2f5;
+      padding: 8px 0;
+      font-size: 13px;
+    }
+    .people-row:first-of-type,
+    .classwork-row:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+    .people-row small,
+    .classwork-row small {
+      color: var(--muted);
+      display: block;
+      margin-top: 2px;
+    }
+    .meta {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+    @media (max-width: 880px) {
+      .classroom-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="classroom-shell">
+    <nav class="classroom-nav" aria-label="Classroom tabs">
+      <a class="{% if active_tab == 'stream' %}is-active{% endif %}" href="{{ url_for('portal_embed_member_workbench', member_msn_id=member_msn_id, as_alias_id=as_alias_id, tab='stream') }}">Stream</a>
+      <a class="{% if active_tab == 'classwork' %}is-active{% endif %}" href="{{ url_for('portal_embed_member_workbench', member_msn_id=member_msn_id, as_alias_id=as_alias_id, tab='classwork') }}">Classwork</a>
+      <a class="{% if active_tab == 'people' %}is-active{% endif %}" href="{{ url_for('portal_embed_member_workbench', member_msn_id=member_msn_id, as_alias_id=as_alias_id, tab='people') }}">People</a>
+      <a class="{% if active_tab == 'workflow' %}is-active{% endif %}" href="{{ url_for('portal_embed_member_workbench', member_msn_id=member_msn_id, as_alias_id=as_alias_id, tab='workflow') }}">Workflow</a>
+    </nav>
+
+    <header class="classroom-hero">
+      <h1>{{ profile.title if profile and profile.title else "Member Workspace" }}</h1>
+      <p>member_msn_id: <code>{{ member_msn_id }}</code>{% if as_alias_id %} | alias: <code>{{ as_alias_id }}</code>{% endif %}</p>
+    </header>
+
+    <section class="classroom-grid">
+      <aside class="classroom-card">
+        <h2>Upcoming</h2>
+        <div class="upcoming-item">Contract confirmation review<small>due today</small></div>
+        <div class="upcoming-item">Alias profile sync<small>due this week</small></div>
+        <div class="upcoming-item">Progeny update push<small>next milestone</small></div>
+      </aside>
+
+      <article class="classroom-card">
+        {% if active_tab == "classwork" %}
+          <h2>Classwork</h2>
+          {% for row in classwork_items %}
+            <div class="classwork-row">
+              <strong>{{ row.title }}</strong>
+              <small>{{ row.due }}</small>
+            </div>
+          {% endfor %}
+        {% elif active_tab == "people" %}
+          <h2>People</h2>
+          {% for row in people_items %}
+            <div class="people-row">
+              <strong>{{ row.name }}</strong>
+              <small>{{ row.role }}</small>
+            </div>
+          {% endfor %}
+        {% elif active_tab == "workflow" %}
+          <h2>Workflow</h2>
+          <div class="people-row">
+            <strong>Hosted Layout</strong>
+            <small>classroom_orientation</small>
+          </div>
+          <div class="people-row">
+            <strong>Contract Ref</strong>
+            <small><code>{{ profile.contract.contract_id if profile and profile.contract else "(unset)" }}</code></small>
+          </div>
+          <div class="people-row">
+            <strong>Default Tabs</strong>
+            <small>
+              {% if profile and profile.hosted_interface and profile.hosted_interface.tabs %}
+                {{ profile.hosted_interface.tabs | join(", ") }}
+              {% else %}
+                stream, classwork, people, workflow
+              {% endif %}
+            </small>
+          </div>
+        {% else %}
+          <h2>Stream</h2>
+          {% for row in stream_cards %}
+            <article class="stream-post">
+              <strong>{{ row.title }}</strong>
+              <p>{{ row.summary }}</p>
+              {% if row.timestamp %}<time>{{ row.timestamp }}</time>{% endif %}
+            </article>
+          {% endfor %}
+        {% endif %}
+      </article>
+    </section>
+
+    <div class="meta">
+      hosted_type: <code>{{ hosted_payload.type if hosted_payload else "unknown" }}</code>
+      {% if hosted_tabs %}| default_hosted: <code>{{ hosted_tabs | tojson }}</code>{% endif %}
+    </div>
+  </section>
+</body>
+</html>

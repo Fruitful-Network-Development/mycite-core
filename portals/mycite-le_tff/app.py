@@ -14,7 +14,10 @@ from jinja2 import TemplateNotFound
 from data.engine.workspace import Workspace
 from data.storage_json import JsonStorageBackend
 from portal.api.aliases import get_alias_record, list_alias_records, register_aliases_routes
+from portal.api.contract_handshake import register_contract_handshake_routes
 from portal.api.data_workspace import register_data_routes
+from portal.api.inbox import register_inbox_routes
+from portal.api.request_log import register_request_log_routes
 from portal.core_services.runtime import (
     active_service_from_path,
     active_private_config_filename,
@@ -59,6 +62,12 @@ ICONS_DIR = REPO_ROOT / "assets" / "icons"
 PORTAL_INSTANCE_ID = str(os.environ.get("PORTAL_INSTANCE_ID") or BASE_DIR.name).strip().lower()
 IS_TFF_PORTAL = "tff" in PORTAL_INSTANCE_ID
 DEFAULT_EMBED_PORT = str(os.environ.get("DEFAULT_EMBED_PORT") or "5201").strip() or "5201"
+FND_MSN_ID = "3-2-3-17-77-1-6-4-1-4"
+TFF_MSN_ID = "3-2-3-17-77-2-6-3-1-6"
+KNOWN_EMBED_PORT_BY_MSN = {
+    FND_MSN_ID: "5101",
+    TFF_MSN_ID: "5203",
+}
 DEFAULT_FEED_TYPES = {"post.create", "board_notice"}
 DEFAULT_CALENDAR_TYPES = {"meeting", "group_event", "committee_meeting"}
 ALIAS_EXPECTED_BY_TYPE = {
@@ -182,6 +191,21 @@ def _options_private(msn_id: str) -> Dict[str, Any]:
             "methods": ["GET", "OPTIONS"],
             "auth": "keycloak_or_local",
         },
+        "inbox": {
+            "href": f"/portal/api/inbox?msn_id={msn_id}",
+            "methods": ["GET", "POST", "OPTIONS"],
+            "auth": "keycloak_or_local",
+        },
+        "request_log": {
+            "href": "/portal/api/request_log",
+            "methods": ["POST", "OPTIONS"],
+            "auth": "keycloak_or_local",
+        },
+        "contract_request": {
+            "href": "/portal/api/network/contracts/request",
+            "methods": ["POST", "OPTIONS"],
+            "auth": "keycloak_or_local",
+        },
     }
 
 
@@ -240,6 +264,9 @@ def _resolve_embed_port(alias_host: str) -> str:
         per_host_key = f"EMBED_HOST_PORT_{_sanitize_env_suffix(host)}"
         if os.environ.get(per_host_key):
             return str(os.environ.get(per_host_key)).strip()
+        known = KNOWN_EMBED_PORT_BY_MSN.get(host)
+        if known:
+            return known
 
     if os.environ.get("EMBED_HOST_PORT"):
         return str(os.environ.get("EMBED_HOST_PORT")).strip()
@@ -285,8 +312,13 @@ def _build_widget_url(alias_id: str, alias_payload: Dict[str, Any]) -> str:
 
     member_msn_id = _extract_member_msn_id(alias_payload)
     if progeny_type == "board_member" and member_msn_id:
-        query = urlencode({"member_msn_id": member_msn_id, "as_alias_id": alias_id, "tab": "feed"})
-        return f"{base_url}/portal/embed/board_member?{query}"
+        target_path = "/portal/embed/board_member"
+        tab = "feed"
+        if org_msn_id and MSN_ID and org_msn_id != MSN_ID:
+            target_path = "/portal/embed/member_workbench"
+            tab = "stream"
+        query = urlencode({"member_msn_id": member_msn_id, "as_alias_id": alias_id, "tab": tab})
+        return f"{base_url}{target_path}?{query}"
 
     query = urlencode({"org_msn_id": org_msn_id, "as_alias_id": alias_id, "org_title": org_title})
     return f"{base_url}/portal/embed/poc?{query}"
@@ -305,6 +337,7 @@ def list_aliases_for_sidebar(private_dir: Path) -> list[Dict[str, Any]]:
                 "label": _alias_label(record, alias_id),
                 "org_title": str(record.get("host_title") or "").strip(),
                 "org_msn_id": str(record.get("alias_host") or "").strip(),
+                "contract_id": str(record.get("contract_id") or "").strip(),
                 "progeny_type": str(record.get("progeny_type") or "").strip(),
                 "tenant_id": str(record.get("child_msn_id") or record.get("tenant_id") or "").strip(),
                 "member_id": _extract_member_msn_id(record),
@@ -952,12 +985,178 @@ def _network_sidebar_alias_items() -> list[Dict[str, Any]]:
                 "id": alias_id,
                 "label": str(alias.get("label") or alias_id).strip(),
                 "org_msn_id": str(alias.get("org_msn_id") or "").strip(),
+                "tenant_id": str(alias.get("tenant_id") or "").strip(),
+                "contract_id": str(alias.get("contract_id") or "").strip(),
                 "href": f"/portal/network?tab=messages&kind=alias&id={quote(alias_id, safe='')}",
                 "alias_id": alias_id,
                 "alias_label": str(alias.get("label") or alias_id).strip(),
             }
         )
     return out
+
+
+def _iter_string_values(value: Any):
+    if isinstance(value, dict):
+        for nested in value.values():
+            yield from _iter_string_values(nested)
+        return
+    if isinstance(value, list):
+        for nested in value:
+            yield from _iter_string_values(nested)
+        return
+    if value is None:
+        return
+    token = str(value).strip()
+    if token:
+        yield token
+
+
+def _event_contains_any(event: Dict[str, Any], tokens: list[str]) -> bool:
+    needles = [str(item).strip().lower() for item in tokens if str(item).strip()]
+    if not needles:
+        return False
+    for value in _iter_string_values(event):
+        lowered = value.lower()
+        if any(needle in lowered for needle in needles):
+            return True
+    return False
+
+
+def _event_channel_id(event: Dict[str, Any]) -> str:
+    transmitter = str(event.get("transmitter") or "").strip()
+    receiver = str(event.get("receiver") or "").strip()
+    if transmitter and receiver:
+        return f"{transmitter}->{receiver}"
+    return ""
+
+
+def _format_event_timestamp(ts_unix_ms: Any) -> str:
+    try:
+        stamp = int(ts_unix_ms or 0)
+    except Exception:
+        return ""
+    if stamp <= 0:
+        return ""
+    try:
+        return datetime.fromtimestamp(stamp / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        return ""
+
+
+def _initials(token: str, fallback: str = "NW") -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9]+", " ", str(token or "").strip())
+    parts = [part for part in cleaned.split() if part]
+    if not parts:
+        return fallback
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return f"{parts[0][0]}{parts[1][0]}".upper()
+
+
+def _event_actor_label(event: Dict[str, Any]) -> str:
+    transmitter = str(event.get("transmitter") or "").strip()
+    receiver = str(event.get("receiver") or "").strip()
+    if transmitter:
+        if MSN_ID and MSN_ID in transmitter:
+            return "Current Portal"
+        return transmitter
+    if receiver:
+        return receiver
+    return "Network Event"
+
+
+def _event_summary(event: Dict[str, Any]) -> str:
+    summary_parts: list[str] = []
+    for key in ("status", "receiver", "alias_id", "contract_id", "tenant_msn_id", "client_id", "event_datum"):
+        value = str(event.get(key) or "").strip()
+        if value:
+            summary_parts.append(f"{key}: {value}")
+    details = event.get("details")
+    if isinstance(details, dict) and details:
+        summary_parts.append("details: " + ", ".join(sorted(str(key) for key in details.keys())[:4]))
+    return " | ".join(summary_parts[:4])
+
+
+def _network_placeholder_item(kind: str, selected: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    label = str((selected or {}).get("label") or "conversation").strip()
+    if kind == "alias":
+        headline = "Interface ready"
+        summary = f"No request-log events have been mapped to {label} yet."
+    elif kind == "p2p":
+        headline = "Direct thread is quiet"
+        summary = f"No transmitter/receiver events have been recorded for {label} yet."
+    else:
+        headline = "Request log ready"
+        summary = "No request-log entries have been recorded yet."
+    payload = {"selection": selected or {}, "kind": kind}
+    return {
+        "side": "system",
+        "author": "Workbench",
+        "avatar": _initials(label, "WB"),
+        "role": "preview",
+        "headline": headline,
+        "summary": summary,
+        "timestamp": "",
+        "payload_json": json.dumps(payload, indent=2, sort_keys=True),
+    }
+
+
+def _network_message_feed(
+    kind: str,
+    selected_alias: Optional[Dict[str, Any]],
+    selected_log: Optional[Dict[str, Any]],
+    selected_p2p: Optional[Dict[str, Any]],
+) -> list[Dict[str, Any]]:
+    events = _iter_request_log_records()
+    filtered: list[Dict[str, Any]]
+    selected: Optional[Dict[str, Any]]
+
+    if kind == "alias":
+        selected = selected_alias
+        tokens = [
+            str((selected_alias or {}).get("id") or "").strip(),
+            str((selected_alias or {}).get("alias_id") or "").strip(),
+            str((selected_alias or {}).get("org_msn_id") or "").strip(),
+            str((selected_alias or {}).get("tenant_id") or "").strip(),
+            str((selected_alias or {}).get("label") or "").strip(),
+        ]
+        filtered = [event for event in events if _event_contains_any(event, tokens)]
+    elif kind == "p2p":
+        selected = selected_p2p
+        channel_id = str((selected_p2p or {}).get("id") or "").strip()
+        filtered = [event for event in events if _event_channel_id(event) == channel_id]
+    else:
+        selected = selected_log
+        filtered = list(events)
+
+    filtered = sorted(filtered, key=lambda item: int(item.get("ts_unix_ms") or 0))
+    if len(filtered) > 60:
+        filtered = filtered[-60:]
+
+    if not filtered:
+        return [_network_placeholder_item(kind, selected)]
+
+    feed: list[Dict[str, Any]] = []
+    for event in filtered:
+        transmitter = str(event.get("transmitter") or "").strip()
+        side = "system"
+        if transmitter:
+            side = "outbound" if MSN_ID and MSN_ID in transmitter else "inbound"
+        preview_payload = {key: value for key, value in event.items() if key != "msn_id"}
+        author = _event_actor_label(event)
+        feed.append(
+            {
+                "side": side,
+                "author": author,
+                "avatar": _initials(author, "EV"),
+                "role": str(event.get("status") or "event").strip(),
+                "headline": str(event.get("type") or "event").strip(),
+                "summary": _event_summary(event),
+                "timestamp": _format_event_timestamp(event.get("ts_unix_ms")),
+                "payload_json": json.dumps(preview_payload, indent=2, sort_keys=True),
+            }
+        )
+    return feed
 
 
 def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
@@ -1371,15 +1570,21 @@ def portal_network_default():
     profile_model = _portal_profile_model()
     geography_model = build_property_geography_model(ACTIVE_PRIVATE_CONFIG, DATA_DIR)
     hosted_payload = _read_hosted_payload()
+    message_feed = _network_message_feed(kind, selected_alias, selected_log, selected_p2p)
     return render_template(
         "services/network.html",
         aliases=list_aliases_for_sidebar(PRIVATE_DIR),
         msn_id=MSN_ID,
         network_tab=tab,
         network_kind=kind,
+        network_aliases=aliases,
+        network_logs=log_channels,
+        network_p2p=p2p_channels,
         selected_alias=selected_alias,
         selected_log=selected_log,
         selected_p2p=selected_p2p,
+        message_feed=message_feed,
+        request_log_summary=_request_log_summary(),
         network_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
         public_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
         fnd_profile_json=json.dumps(profile_model.get("fnd_profile") or {}, indent=2, sort_keys=True),
@@ -1588,6 +1793,28 @@ def portal_embed_progeny():
     )
 
 
+def _map_member_workbench_tab_to_board(tab: str) -> str:
+    token = (tab or "").strip().lower()
+    if token == "stream":
+        return "feed"
+    if token == "classwork":
+        return "calendar"
+    if token in {"people", "workflow"}:
+        return token
+    return "feed"
+
+
+@app.get("/portal/embed/member_workbench")
+def portal_embed_member_workbench():
+    member_msn_id = (request.args.get("member_msn_id") or "").strip()
+    if not member_msn_id:
+        abort(400, description="Missing required query param: member_msn_id")
+    as_alias_id = (request.args.get("as_alias_id") or "").strip()
+    tab = _map_member_workbench_tab_to_board(request.args.get("tab") or "")
+    theme = (request.args.get("theme") or "").strip()
+    return _board_redirect(member_msn_id, as_alias_id, tab, theme)
+
+
 @app.get("/portal/embed/board_member")
 def portal_embed_board_member():
     member_msn_id = (request.args.get("member_msn_id") or "").strip()
@@ -1755,6 +1982,20 @@ def portal_embed_board_member_calendar_event():
 
 
 register_aliases_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options_private)
+register_inbox_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options_private)
+register_request_log_routes(
+    app,
+    private_dir=PRIVATE_DIR,
+    msn_id_provider=lambda: MSN_ID,
+    options_private_fn=_options_private,
+)
+register_contract_handshake_routes(
+    app,
+    private_dir=PRIVATE_DIR,
+    public_dir=PUBLIC_DIR,
+    msn_id_provider=lambda: MSN_ID,
+    options_private_fn=_options_private,
+)
 register_data_routes(
     app,
     workspace=DATA_WORKSPACE,

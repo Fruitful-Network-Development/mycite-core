@@ -1,13 +1,17 @@
 {
-  "type": "broadcast",
+  "type": "classroom_workbench",
   "type_values": {
     "default_hosted": [
-      { "stream": "stream.json" },
-      { "calendar": "calendar.json" },
-      { "profiles": "profiles.json" },
-      { "workflows": "workflows.json" }
+      { "stream": "classroom/stream.json" },
+      { "classwork": "classroom/classwork.json" },
+      { "people": "classroom/people.json" },
+      { "workflow": "classroom/workflow.json" }
     ],
-    "channels": ["paypal.json", "aws.json", "keycloak.json"],
-    "members": ["members.json"]
+    "channels": ["contracts.json", "request_log.json"],
+    "members": ["members.json"],
+    "orientation": {
+      "style": "google_classroom_reference",
+      "hero_title": "TFF Member Workspace"
+    }
   }
 }
