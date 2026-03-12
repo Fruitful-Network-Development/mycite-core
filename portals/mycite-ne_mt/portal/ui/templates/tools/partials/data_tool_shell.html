@@ -1,79 +1,79 @@
-  <section class="card data-tool" id="dataToolApp" data-active-tab="anthology" data-open-nimm="1">
-
+  <section class="card data-tool" id="dataToolApp" data-active-tab="anthology" data-open-nimm="0">
     <div id="dtMessages" class="data-tool__messages" aria-live="polite"></div>
 
-    <div class="data-tool__layout">
+    <div class="data-tool__layout data-tool__layout--workbench">
       <div class="data-tool__main">
-          <section class="card data-tool__contract">
-            <div class="card__kicker">Prototype Contract</div>
-            <div class="card__title">Anthology-first workspace</div>
-            <div class="card__body">
-              <ul class="bullets">
-                <li>Primary focus is the anthology table view, grouped by collapsible layers.</li>
-                <li>Appending a datum auto-increments iteration for the selected <code>layer-value_group</code>.</li>
-                <li>Icon mapping remains presentation-only metadata in <code>datum_icons.json</code>.</li>
-              </ul>
-              <p class="data-tool__legendText">
-                This page is intentionally narrowed to anthology operations first.
-              </p>
+        <section class="card data-tool__anthologyWorkbench">
+          <header class="data-tool__graphToolbar">
+            <div class="data-tool__graphToolbarTitle">
+            <div class="card__kicker">Anthology Workbench</div>
+              <div class="card__title">Table Workbench + Graph Navigation</div>
             </div>
-          </section>
-
-          <section class="card data-tool__anthology">
-            <div class="card__kicker">Anthology Table</div>
-            <div class="card__title">Layered view with grouped append workflow</div>
-            <p class="data-tool__legendText">
-              Use this as the primary development interface for anthology datums. Expand/collapse by layer and value group. Use
-              <strong>+ Append datum</strong> at the bottom of each value group.
-            </p>
-            <p class="data-tool__legendText">
-              Rule: <code>value_group=0</code> stores selection references inside the row magnitude payload. <code>value_group&gt;=1</code> supports multi-pair rows.
-            </p>
-
-            <section class="card data-tool__graphCard">
-              <div class="card__kicker">NIMM Directive Window</div>
-              <div class="card__title">Anthology node graph</div>
-              <p class="data-tool__legendText">
-                Single-click a node to focus summary investigation. Double-click a node to open the datum profile editor.
-              </p>
-              <div class="data-tool__controlRow">
-                <button type="button" id="dtAnthologyGraphRefreshBtn">Refresh Graph</button>
-                <span id="dtAnthologyGraphStatus" class="data-tool__statusText"></span>
-              </div>
-              <div id="dtAnthologyGraph" class="data-tool__graphCanvas" role="region" aria-label="Anthology node graph"></div>
-            </section>
-
             <div class="data-tool__controlRow">
               <button type="button" id="dtAnthologyRefreshBtn">Refresh Anthology</button>
+              <button type="button" id="dtAnthologyGraphRefreshBtn">Refresh Graph</button>
+              <button type="button" id="dtOpenNimmBtn">NIMM Inspector</button>
+              <label>
+                <span>layout</span>
+                <select id="dtWorkbenchLayoutMode">
+                  <option value="table">table</option>
+                  <option value="linear">linear</option>
+                  <option value="radial">radial</option>
+                </select>
+              </label>
               <span id="dtAnthologyStatus" class="data-tool__statusText"></span>
             </div>
+          </header>
 
-            <div class="data-tool__legendText">Editable layer rows now render in the left sidebar.</div>
-          </section>
+          <div id="dtWorkbenchGrid" class="data-tool__workbenchGrid" data-layout-mode="table">
+            <article class="data-tool__graphPane">
+              <div class="data-tool__paneHead">
+                <div class="card__kicker">Graph Surface</div>
+                <div class="card__title">Lineage / Abstraction Navigation</div>
+              </div>
+              <div class="data-tool__controlRow">
+                <label>
+                  <span>context</span>
+                  <select id="dtGraphContext">
+                    <option value="local">local</option>
+                    <option value="global">global</option>
+                  </select>
+                </label>
+                <label>
+                  <span>depth</span>
+                  <input id="dtGraphDepth" type="number" min="0" step="1" value="3" style="max-width:88px;" />
+                </label>
+                <label style="min-width: 220px;">
+                  <span>focus</span>
+                  <input id="dtGraphFocus" type="text" placeholder="4-0-1" />
+                </label>
+                <button type="button" id="dtGraphApplyBtn">Apply</button>
+                <button type="button" id="dtGraphZoomOutBtn">-</button>
+                <button type="button" id="dtGraphZoomInBtn">+</button>
+                <button type="button" id="dtGraphZoomResetBtn">Reset View</button>
+              </div>
+              <span id="dtAnthologyGraphStatus" class="data-tool__statusText"></span>
+              <div id="dtAnthologyGraph" class="data-tool__graphCanvas" role="region" aria-label="Anthology node graph"></div>
+            </article>
 
-          <section class="card data-tool__legend">
-            <div class="card__kicker">Presentation Sidecar</div>
-            <p class="data-tool__legendText">
-              Icon selections are staged as presentation metadata and commit into
-              <code>data/presentation/datum_icons.json</code>.
-            </p>
-            <p class="data-tool__legendText">
-              Icons are currently treated as intentionally ambiguous references (flat filename mode by default). Folder taxonomies are optional and can be reintroduced later.
-            </p>
-          </section>
+            <article class="data-tool__tablePane">
+              <div class="data-tool__paneHead">
+                <div class="card__kicker">Workbench Table</div>
+                <div class="card__title">Layer / Value Group Rows</div>
+              </div>
+              <p id="dtDatumEditorStatus" class="data-tool__legendText">Select a graph node or row to edit it in the right inspector column.</p>
+              <div id="dtAnthologyLayers" class="data-tool__anthologyLayers"></div>
+            </article>
+          </div>
+        </section>
       </div>
-
-      <aside class="card data-tool__nimmSummary">
-        <div class="card__kicker">Advanced NIMM Prototype</div>
-        <div class="card__title">State Summary</div>
-        <p class="data-tool__legendText">Right-margin summary of current NIMM state (including AITAS context). Open the overlay for full controls and pane diagnostics.</p>
-        <pre id="dtNimmSummary">Loading state summary...</pre>
-        <div class="data-tool__controlRow">
-          <button type="button" id="dtOpenNimmBtn">Open Advanced Overlay</button>
-        </div>
-
-      </aside>
     </div>
+
+    <aside class="card data-tool__nimmSummary" hidden>
+      <div class="card__kicker">Advanced NIMM Prototype</div>
+      <div class="card__title">State Summary</div>
+      <pre id="dtNimmSummary">Loading state summary...</pre>
+    </aside>
   </section>
 
   <section id="dtNimmOverlay" class="data-tool__nimmOverlay" hidden>
