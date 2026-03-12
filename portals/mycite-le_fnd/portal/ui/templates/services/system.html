@@ -3,20 +3,15 @@
 {% block title %}MyCite | System{% endblock %}
 
 {% set page_title = "SYSTEM" %}
-{% set page_subtitle = "Portal identity and current data workbench" %}
+{% set page_subtitle = "Graph-first workbench with datum editing in the left sidebar" %}
+
+{% block viewport_class %}viewport--system{% endblock %}
 
 {% block context_sidebar %}
   <section class="ide-contextSection">
-    <header class="ide-contextTitle">Data Workspace</header>
+    <header class="ide-contextTitle">System Views</header>
     <ul class="ide-contextList">
-      <li><a class="ide-contextLink is-active" href="/portal/system"><span>Anthology Workbench</span><small>Graph + Editor</small></a></li>
-      <li><a class="ide-contextLink" href="/portal/system#dtAnthologyGraph"><span>Graph Focus</span><small>Navigate / Investigate</small></a></li>
-      <li><a class="ide-contextLink" href="/portal/system#dtDatumEditor"><span>Datum Editor</span><small>Focused edits</small></a></li>
-    </ul>
-  </section>
-  <section class="ide-contextSection">
-    <header class="ide-contextTitle">Inspector</header>
-    <ul class="ide-contextList">
+      <li><a class="ide-contextLink is-active" href="/portal/system"><span>Anthology Workbench</span><small>Graph navigation</small></a></li>
       <li>
         <button
           type="button"
@@ -28,6 +23,19 @@
       </li>
     </ul>
   </section>
+  {% if data_home_available is defined and data_home_available %}
+    <section class="ide-contextSection system-sidebar__editorSection">
+      <header class="ide-contextTitle">Datum Editor</header>
+      <p id="dtDatumEditorStatus" class="data-tool__legendText">Select a graph node or row to begin editing.</p>
+      <div id="dtDatumEditor" class="data-tool__datumEditor system-sidebar__editor">
+        <p class="data-tool__empty">No datum selected.</p>
+      </div>
+      <details class="data-tool__editorRows system-sidebar__layers">
+        <summary>Layer/Value Group Rows</summary>
+        <div id="dtAnthologyLayers" class="data-tool__anthologyLayers"></div>
+      </details>
+    </section>
+  {% endif %}
 {% endblock %}
 
 {% block body %}

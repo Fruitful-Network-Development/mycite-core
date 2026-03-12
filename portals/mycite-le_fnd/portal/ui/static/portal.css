@@ -2983,3 +2983,238 @@ body.is-modal-open {
   border-radius: 0;
   border-left: 1px solid var(--line);
 }
+
+/* Portal shell overrides: workbench splitters + network/utilities refresh */
+:root {
+  --ide-splitter-w: 8px;
+}
+
+.ide-shell {
+  --ide-context-w: 280px;
+  --ide-inspector-w: 360px;
+}
+
+.ide-body {
+  min-height: calc(100vh - var(--ide-menu-h));
+  display: grid;
+  grid-template-columns:
+    var(--ide-activity-w)
+    var(--ide-context-w)
+    var(--ide-splitter-w)
+    minmax(0, 1fr)
+    0
+    0;
+}
+
+.ide-shell[data-inspector-collapsed="false"] .ide-body {
+  grid-template-columns:
+    var(--ide-activity-w)
+    var(--ide-context-w)
+    var(--ide-splitter-w)
+    minmax(0, 1fr)
+    var(--ide-splitter-w)
+    var(--ide-inspector-w);
+}
+
+.ide-splitter {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: col-resize;
+}
+
+.ide-splitter:hover {
+  background: rgba(120, 205, 175, 0.28);
+}
+
+.ide-splitter--inspector {
+  display: none;
+}
+
+.ide-shell[data-inspector-collapsed="false"] .ide-splitter--inspector {
+  display: block;
+}
+
+.ide-activitybar,
+.ide-contextsidebar,
+.ide-workbench,
+.ide-inspector {
+  min-height: calc(100vh - var(--ide-menu-h));
+}
+
+.ide-activitylink img,
+.ide-logo img {
+  filter: brightness(0) invert(0.88);
+}
+
+.theme-paper .ide-activitylink img,
+.theme-paper .ide-logo img {
+  filter: brightness(0) invert(0.9);
+}
+
+.theme-midnight .ide-activitylink img,
+.theme-midnight .ide-logo img,
+.theme-ocean .ide-activitylink img,
+.theme-forest .ide-activitylink img {
+  filter: brightness(0) invert(0.98);
+}
+
+.ide-contextsidebar {
+  overflow: auto;
+}
+
+.ide-workbench {
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(16, 24, 28, 0.12), rgba(16, 24, 28, 0.02));
+}
+
+.ide-workbench[data-active-service="system"] {
+  background: linear-gradient(180deg, rgba(12, 26, 30, 0.38), rgba(10, 16, 20, 0.18));
+}
+
+.viewport {
+  overflow: auto;
+}
+
+.viewport--system {
+  height: 100%;
+  overflow: hidden;
+  padding: 0;
+}
+
+.network-layout,
+.workbench-panels {
+  display: grid;
+  gap: 12px;
+}
+
+.workbench-panels--double {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.workbench-panels--triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.network-svgPreview {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(12, 18, 22, 0.76);
+  color: #9ce8c8;
+}
+
+.system-sidebar__editorSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.system-sidebar__editor {
+  min-height: 180px;
+  max-height: 42vh;
+  overflow: auto;
+}
+
+.system-sidebar__layers {
+  max-height: 38vh;
+  overflow: auto;
+}
+
+.data-tool,
+.data-tool__layout,
+.data-tool__main,
+.data-tool__anthologyWorkbench,
+.data-tool__workbenchGrid,
+.data-tool__graphPane,
+.data-tool__graphCanvas {
+  height: 100%;
+}
+
+.data-tool__layout--workbench,
+.data-tool__workbenchGrid {
+  min-height: 0;
+}
+
+.data-tool__workbenchGrid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.data-tool__graphPane {
+  min-height: 0;
+}
+
+.data-tool__graphCanvas {
+  min-height: 58vh;
+}
+
+.vault-list {
+  display: grid;
+  gap: 10px;
+}
+
+.vault-entry {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.68);
+  display: grid;
+  gap: 8px;
+}
+
+.vault-entry__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.vault-entry__field {
+  display: grid;
+  gap: 4px;
+}
+
+.vault-entry__field input {
+  width: 100%;
+}
+
+.vault-entry__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.vault-entry__notes {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink2);
+}
+
+@media (max-width: 1200px) {
+  .ide-body,
+  .ide-shell[data-inspector-collapsed="false"] .ide-body {
+    grid-template-columns: 72px minmax(220px, 1fr);
+  }
+
+  .ide-splitter,
+  .ide-shell[data-inspector-collapsed="false"] .ide-splitter--inspector {
+    display: none;
+  }
+
+  .ide-inspector {
+    position: fixed;
+    top: var(--ide-menu-h);
+    right: 0;
+    bottom: 0;
+    width: min(var(--ide-inspector-w), 92vw);
+    z-index: 90;
+    box-shadow: -2px 0 16px rgba(0, 0, 0, 0.35);
+  }
+
+  .workbench-panels--double,
+  .workbench-panels--triple,
+  .network-layout__columns {
+    grid-template-columns: 1fr;
+  }
+}

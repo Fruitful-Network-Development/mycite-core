@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
+from portal.services.runtime_paths import vault_keys_dir
 
 
 class SignatureVerificationError(ValueError):
@@ -84,7 +85,8 @@ def ensure_dev_keypair(
         raise ValueError("msn_id is required")
 
     root = portal_root or _portal_root_from_module()
-    key_path = root / "vault" / "keys" / f"{msn_id}_private.pem"
+    private_dir = Path(os.environ.get("PRIVATE_DIR", str(root / "private")))
+    key_path = vault_keys_dir(private_dir) / f"{msn_id}_private.pem"
     key_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Lazy import keeps normal request handling lightweight when key bootstrap is unused.

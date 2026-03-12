@@ -35,7 +35,7 @@
   var modelMetaEl = qs("#dtModelMeta", app);
   var leftPaneEl = qs("#dtLeftPane", app);
   var rightPaneEl = qs("#dtRightPane", app);
-  var anthologyLayersEl = qs("#dtAnthologyLayers", app);
+  var anthologyLayersEl = qs("#dtAnthologyLayers");
   var anthologyStatusEl = qs("#dtAnthologyStatus", app);
   var anthologyGraphEl = qs("#dtAnthologyGraph", app);
   var anthologyGraphStatusEl = qs("#dtAnthologyGraphStatus", app);

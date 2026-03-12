@@ -3,25 +3,16 @@
 {% block title %}MyCite | Utilities{% endblock %}
 
 {% set page_title = "UTILITIES" %}
-{% set page_subtitle = "Utility launchers and utility-specific views" %}
+{% set page_subtitle = "Tooling, vault inventory, and runtime peripheral surfaces" %}
 
 {% block body %}
   <nav class="page-tabs" aria-label="Utility tabs">
-    <a class="page-tab {% if utilities_tab == 'inbox' %}is-active{% endif %}" href="/portal/utilities?tab=inbox">Inbox</a>
-    <a class="page-tab {% if utilities_tab == 'launchers' %}is-active{% endif %}" href="/portal/utilities?tab=launchers">Launchers</a>
+    <a class="page-tab {% if utilities_tab == 'tools' %}is-active{% endif %}" href="/portal/utilities?tab=tools">Tools</a>
+    <a class="page-tab {% if utilities_tab == 'vault' %}is-active{% endif %}" href="/portal/utilities?tab=vault">Vault</a>
+    <a class="page-tab {% if utilities_tab == 'peripherals' %}is-active{% endif %}" href="/portal/utilities?tab=peripherals">Peripherals</a>
   </nav>
 
-  {% if utilities_tab == "inbox" %}
-    <article class="card">
-      <div class="card__kicker">Inbox Utility</div>
-      <div class="card__title">Request/Event Stream</div>
-      <div class="card__body">
-        <p><code>files</code>: {{ request_log_summary.file_count if request_log_summary is defined else 0 }}</p>
-        <p><code>events</code>: {{ request_log_summary.event_count if request_log_summary is defined else 0 }}</p>
-        <p>Endpoint: <code>/portal/api/inbox?msn_id={{ msn_id }}</code></p>
-      </div>
-    </article>
-  {% else %}
+  {% if utilities_tab == "tools" %}
     <article class="card">
       <div class="card__kicker">Utility Launchers</div>
       <div class="card__title">Tools Mounted to UTILITIES</div>
@@ -37,5 +28,115 @@
         {% endif %}
       </div>
     </article>
+  {% elif utilities_tab == "vault" %}
+    <div class="workbench-panels workbench-panels--double">
+      <article class="card">
+        <div class="card__kicker">KeePass Inventory</div>
+        <div class="card__title">Vault Entries</div>
+        <div class="card__body">
+          <p><code>keypass_db</code>: {{ keypass_db_path if keypass_db_path is defined else "private/utilities/vault/keypass.kdbx" }}</p>
+          <p><code>inventory</code>: {{ keypass_inventory_path if keypass_inventory_path is defined else "private/utilities/vault/keypass_inventory.json" }}</p>
+          {% set inventory = vault_inventory if vault_inventory is defined and vault_inventory is mapping else {} %}
+          {% set entries = inventory.get("entries") if inventory.get("entries") is sequence else [] %}
+          {% if entries %}
+            <div class="vault-list" data-vault-list>
+              {% for entry in entries %}
+                {% if entry is mapping %}
+                  <article class="vault-entry" data-entry-id="{{ entry.get('id', '') }}">
+                    <div class="vault-entry__meta">
+                      <strong>{{ entry.get("label", entry.get("id", "entry")) }}</strong>
+                      <span>{{ entry.get("group", "") }}</span>
+                    </div>
+                    <label class="vault-entry__field">
+                      <span>Value</span>
+                      <input
+                        type="{% if entry.get('masked', True) %}password{% else %}text{% endif %}"
+                        value="{{ entry.get('value', '') }}"
+                        data-vault-value
+                        {% if not entry.get('editable', True) %}readonly{% endif %}
+                      />
+                    </label>
+                    <div class="vault-entry__actions">
+                      {% if entry.get("revealable", True) %}<button type="button" data-vault-reveal>Reveal</button>{% endif %}
+                      {% if entry.get("editable", True) %}<button type="button" data-vault-save>Save</button>{% endif %}
+                    </div>
+                    {% if entry.get("notes") %}<p class="vault-entry__notes">{{ entry.get("notes") }}</p>{% endif %}
+                  </article>
+                {% endif %}
+              {% endfor %}
+            </div>
+          {% else %}
+            <p>No vault inventory entries are defined yet.</p>
+          {% endif %}
+        </div>
+      </article>
+      <article class="card">
+        <div class="card__kicker">Raw Inventory</div>
+        <div class="card__title">keypass_inventory.json</div>
+        <div class="card__body">
+          <pre class="jsonblock">{{ vault_inventory_json if vault_inventory_json is defined else "{}" }}</pre>
+          {% if vault_contract_files %}
+            <h4>Vault Files</h4>
+            <ul class="liststack">
+              {% for filename in vault_contract_files %}
+                <li><code>{{ filename }}</code></li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      </article>
+    </div>
+  {% else %}
+    <article class="card">
+      <div class="card__kicker">Runtime Peripherals</div>
+      <div class="card__title">private/utilities/peripherals</div>
+      <div class="card__body">
+        {% if peripheral_entries %}
+          <ul class="liststack">
+            {% for entry in peripheral_entries %}
+              <li><strong>{{ entry.name }}</strong> <code>{{ entry.kind }}</code> <span>{{ entry.path }}</span></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>No peripheral runtime entries are present.</p>
+        {% endif %}
+      </div>
+    </article>
   {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    (function () {
+      var list = document.querySelector("[data-vault-list]");
+      if (!list) return;
+      list.addEventListener("click", function (event) {
+        var target = event.target;
+        if (!target || !target.closest) return;
+        var entry = target.closest(".vault-entry");
+        if (!entry) return;
+        var input = entry.querySelector("[data-vault-value]");
+        if (!input) return;
+        if (target.matches("[data-vault-reveal]")) {
+          input.type = input.type === "password" ? "text" : "password";
+          return;
+        }
+        if (!target.matches("[data-vault-save]")) return;
+        var entryId = entry.getAttribute("data-entry-id") || "";
+        if (!entryId) return;
+        fetch("/portal/api/utilities/vault/inventory/" + encodeURIComponent(entryId), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: input.value })
+        }).then(function (resp) {
+          if (!resp.ok) throw new Error("save failed");
+          target.textContent = "Saved";
+          window.setTimeout(function () { target.textContent = "Save"; }, 1200);
+        }).catch(function () {
+          target.textContent = "Error";
+          window.setTimeout(function () { target.textContent = "Save"; }, 1200);
+        });
+      });
+    })();
+  </script>
 {% endblock %}

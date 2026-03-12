@@ -58,7 +58,7 @@ class MemberProgenyApiTests(unittest.TestCase):
             self.assertEqual(payload["items"][0]["member_id"], "1")
             self.assertEqual(payload["items"][0]["tenant_id"], "1")
 
-    def test_member_put_writes_canonical_and_legacy(self):
+    def test_member_put_writes_canonical_member_profile_only(self):
         module = _load_tenant_progeny_module()
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir)
@@ -76,10 +76,10 @@ class MemberProgenyApiTests(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 200)
 
-            canonical_path = private_dir / "progeny" / "member" / "2.json"
+            canonical_path = private_dir / "network" / "progeny" / "member_progeny" / "2.json"
             legacy_path = private_dir / "progeny" / "tenant" / "2.json"
             self.assertTrue(canonical_path.exists())
-            self.assertTrue(legacy_path.exists())
+            self.assertFalse(legacy_path.exists())
 
             legacy_get = client.get("/portal/api/progeny/tenants/2")
             self.assertEqual(legacy_get.status_code, 200)

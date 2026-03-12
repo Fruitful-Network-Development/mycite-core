@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
+from portal.services.runtime_paths import request_log_path, request_log_read_paths
 
 FORBIDDEN_SECRET_KEYS = {
     "private_key", "private_key_pem", "secret", "token", "password",
@@ -20,12 +21,12 @@ class ReadResult:
 
 
 def _log_dir(private_dir: Path) -> Path:
-    return private_dir / "request_log"
+    return request_log_path(private_dir).parent
 
 
 def _log_path(private_dir: Path, msn_id: str) -> Path:
-    # Append-only NDJSON is the simplest durable log for this stage.
-    return _log_dir(private_dir) / f"{msn_id}.ndjson"
+    _ = msn_id
+    return request_log_path(private_dir)
 
 
 def append_event(private_dir: Path, msn_id: str, event: Dict[str, Any]) -> Path:
@@ -64,29 +65,43 @@ def read_events(
     - If log doesn't exist: returns empty list.
     - reverse=True returns newest-first (requires loading lines; acceptable for prototype).
     """
-    p = _log_path(private_dir, msn_id)
-    if not p.exists():
+    paths = [path for path in request_log_read_paths(private_dir, msn_id) if path.exists() and path.is_file()]
+    if not paths:
         return ReadResult(events=[], parse_errors=0, total_lines=0)
 
-    lines = p.read_text(encoding="utf-8").splitlines()
-    total = len(lines)
     parse_errors = 0
-    events: List[Dict[str, Any]] = []
+    total = 0
+    collected: List[tuple[int, Dict[str, Any]]] = []
+    seen_events: set[str] = set()
+    order_index = 0
 
-    iterable = reversed(lines) if reverse else lines
-    # Apply offset/limit after ordering
-    sliced = list(iterable)[offset : offset + limit]
-
-    for ln in sliced:
-        if not ln.strip():
-            continue
-        try:
-            obj = json.loads(ln)
-            if isinstance(obj, dict):
-                events.append(obj)
-            else:
+    for path in paths:
+        for ln in path.read_text(encoding="utf-8").splitlines():
+            if not ln.strip():
+                continue
+            total += 1
+            try:
+                obj = json.loads(ln)
+            except Exception:
                 parse_errors += 1
-        except Exception:
-            parse_errors += 1
+                continue
+            if not isinstance(obj, dict):
+                parse_errors += 1
+                continue
+            event_msn_id = str(obj.get("msn_id") or "").strip()
+            if event_msn_id and event_msn_id != msn_id:
+                continue
+            dedupe_key = json.dumps(obj, sort_keys=True, separators=(",", ":"))
+            if dedupe_key in seen_events:
+                continue
+            seen_events.add(dedupe_key)
+            order_index += 1
+            collected.append((order_index, obj))
 
+    ranked = sorted(
+        collected,
+        key=lambda item: (int(item[1].get("ts_unix_ms") or 0), item[0]),
+        reverse=reverse,
+    )
+    events = [item for _, item in ranked[offset : offset + limit]]
     return ReadResult(events=events, parse_errors=parse_errors, total_lines=total)

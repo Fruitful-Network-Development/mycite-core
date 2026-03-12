@@ -1,0 +1,12 @@
+{
+  "schema": "mycite.fnd.profile.v1",
+  "msn_id": "3-2-3-17-77-2-6-3-1-6",
+  "title": "trapp_family_farm",
+  "summary": "Brand profile for the TFF portal workbench.",
+  "logo": "",
+  "banner": "",
+  "links": [
+    { "label": "Portal", "href": "/portal/system" },
+    { "label": "Public Profile", "href": "/msn-3-2-3-17-77-2-6-3-1-6.json" }
+  ]
+}

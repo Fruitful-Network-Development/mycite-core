@@ -6,6 +6,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from portal.services.runtime_paths import contract_read_dirs, contracts_dir
+
 
 FORBIDDEN_SECRET_KEYS = {
     "private_key", "private_key_pem", "secret", "token", "password",
@@ -28,7 +30,7 @@ class ContractAlreadyExistsError(FileExistsError):
 
 
 def _contracts_dir(private_dir: Path) -> Path:
-    return private_dir / "contracts"
+    return contracts_dir(private_dir)
 
 
 def _safe_contract_id(contract_id: str) -> str:
@@ -37,6 +39,11 @@ def _safe_contract_id(contract_id: str) -> str:
 
 def _contract_path(private_dir: Path, contract_id: str) -> Path:
     return _contracts_dir(private_dir) / f"contract-{_safe_contract_id(contract_id)}.json"
+
+
+def _contract_read_paths(private_dir: Path, contract_id: str) -> list[Path]:
+    filename = f"contract-{_safe_contract_id(contract_id)}.json"
+    return [directory / filename for directory in contract_read_dirs(private_dir)]
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
@@ -102,34 +109,40 @@ def _normalize_for_update(existing: Dict[str, Any], patch: Dict[str, Any]) -> Di
 
 
 def list_contracts(private_dir: Path, filter_type: Optional[str] = None) -> List[Dict[str, Any]]:
-    d = _contracts_dir(private_dir)
-    if not d.exists():
+    directories = [path for path in contract_read_dirs(private_dir) if path.exists() and path.is_dir()]
+    if not directories:
         return []
 
     items: List[Dict[str, Any]] = []
-    for p in sorted(d.glob("contract-*.json")):
-        try:
-            data = _read_json(p)
-        except Exception:
-            continue
+    seen_contract_ids: set[str] = set()
+    for directory in directories:
+        for p in sorted(directory.glob("contract-*.json")):
+            contract_id = p.stem.replace("contract-", "", 1)
+            if contract_id in seen_contract_ids:
+                continue
+            seen_contract_ids.add(contract_id)
+            try:
+                data = _read_json(p)
+            except Exception:
+                continue
 
-        if filter_type and data.get("contract_type") != filter_type:
-            continue
+            if filter_type and data.get("contract_type") != filter_type:
+                continue
 
-        items.append({
-            "contract_id": p.stem.replace("contract-", "", 1),
-            "contract_type": data.get("contract_type"),
-            "counterparty_msn_id": data.get("counterparty_msn_id"),
-            "status": data.get("status"),
-            "updated_unix_ms": data.get("updated_unix_ms"),
-            "path": str(p),
-        })
+            items.append({
+                "contract_id": contract_id,
+                "contract_type": data.get("contract_type"),
+                "counterparty_msn_id": data.get("counterparty_msn_id"),
+                "status": data.get("status"),
+                "updated_unix_ms": data.get("updated_unix_ms"),
+                "path": str(p),
+            })
     return items
 
 
 def get_contract(private_dir: Path, contract_id: str) -> Dict[str, Any]:
-    p = _contract_path(private_dir, contract_id)
-    if not p.exists():
+    p = next((path for path in _contract_read_paths(private_dir, contract_id) if path.exists()), None)
+    if p is None:
         raise ContractNotFoundError(f"Contract not found: {contract_id}")
     return _read_json(p)
 
@@ -148,11 +161,11 @@ def create_contract(private_dir: Path, metadata: Dict[str, Any]) -> str:
 
 
 def update_contract(private_dir: Path, contract_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
-    p = _contract_path(private_dir, contract_id)
-    if not p.exists():
+    read_path = next((path for path in _contract_read_paths(private_dir, contract_id) if path.exists()), None)
+    if read_path is None:
         raise ContractNotFoundError(f"Contract not found: {contract_id}")
 
-    existing = _read_json(p)
+    existing = _read_json(read_path)
     normalized = _normalize_for_update(existing, patch)
-    _write_json(p, normalized)
+    _write_json(_contract_path(private_dir, contract_id), normalized)
     return normalized

@@ -6,6 +6,13 @@ from typing import Any
 
 from ..progeny_model.compat import LEGAL_ENTITY_BASE_TYPES, canonical_progeny_type
 from ..progeny_model.inheritance import resolve_inherited_fields
+from ..runtime_paths import (
+    alias_read_dirs,
+    contract_read_dirs,
+    internal_progeny_read_dirs,
+    network_dir,
+    unified_progeny_read_paths,
+)
 
 ProfileCard = dict[str, Any]
 
@@ -178,9 +185,19 @@ def _progeny_source_path(private_dir: Path, ref_token: str) -> Path | None:
     rel = Path(str(ref_token or "").strip())
     if not str(rel) or rel.is_absolute() or ".." in rel.parts:
         return None
-    if rel.parts and rel.parts[0] == "progeny":
-        return private_dir / rel
-    return private_dir / "progeny" / rel
+    candidates: list[Path] = []
+    if rel.parts and rel.parts[0] == "network":
+        candidates.append(private_dir / rel)
+    elif rel.parts and rel.parts[0] == "progeny":
+        candidates.append(network_dir(private_dir) / rel)
+        candidates.append(private_dir / rel)
+    else:
+        candidates.append(network_dir(private_dir) / "progeny" / rel)
+        candidates.append(private_dir / "progeny" / rel)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0] if candidates else None
 
 
 def _from_config_refs(private_dir: Path, config: dict[str, Any]) -> list[ProfileCard]:
@@ -213,110 +230,121 @@ def _from_config_refs(private_dir: Path, config: dict[str, Any]) -> list[Profile
 
 def _from_internal_progeny(private_dir: Path) -> list[ProfileCard]:
     out: list[ProfileCard] = []
-    root = private_dir / "progeny" / "internal"
-    if not root.exists() or not root.is_dir():
-        return out
-
-    for path in sorted(root.glob("*.json")):
-        payload = _read_json(path)
-        if payload is None:
+    seen_paths: set[Path] = set()
+    for root in internal_progeny_read_dirs(private_dir):
+        if not root.exists() or not root.is_dir():
             continue
-        progeny_type = canonical_progeny_type(str(payload.get("progeny_type") or "member").strip().lower())
-        progeny_id = str(payload.get("progeny_id") or path.stem).strip() or path.stem
-        msn_id = str(payload.get("msn_id") or "").strip()
-        out.append(
-            _card(
-                progeny_id=progeny_id,
-                msn_id=msn_id,
-                progeny_type=progeny_type,
-                payload=payload,
-                source_kind="internal_json",
-                source_ref=path.name,
-                source_path=path,
+        for path in sorted(root.glob("*.json")):
+            if path in seen_paths:
+                continue
+            seen_paths.add(path)
+            payload = _read_json(path)
+            if payload is None:
+                continue
+            progeny_type = canonical_progeny_type(str(payload.get("progeny_type") or "member").strip().lower())
+            progeny_id = str(payload.get("progeny_id") or path.stem).strip() or path.stem
+            msn_id = str(payload.get("msn_id") or "").strip()
+            out.append(
+                _card(
+                    progeny_id=progeny_id,
+                    msn_id=msn_id,
+                    progeny_type=progeny_type,
+                    payload=payload,
+                    source_kind="internal_json",
+                    source_ref=path.name,
+                    source_path=path,
+                )
             )
-        )
     return out
 
 
 def _from_unified_registry(private_dir: Path) -> list[ProfileCard]:
     out: list[ProfileCard] = []
-    path = private_dir / "progeny" / "progeny.json"
-    payload = _read_json(path)
-    if payload is None:
-        return out
-
-    if isinstance(payload.get("items"), list):
-        entries = list(payload.get("items") or [])
-    elif isinstance(payload.get("entries"), list):
-        entries = list(payload.get("entries") or [])
-    else:
-        entries = []
-    for index, item in enumerate(entries):
-        if not isinstance(item, dict):
+    for path in unified_progeny_read_paths(private_dir):
+        payload = _read_json(path)
+        if payload is None:
             continue
-        progeny_type = canonical_progeny_type(str(item.get("progeny_type") or "member").strip().lower())
-        progeny_id = str(item.get("progeny_id") or item.get("msn_id") or f"entry-{index + 1}").strip()
-        msn_id = str(item.get("msn_id") or "").strip()
-        card = _card(
-            progeny_id=progeny_id,
-            msn_id=msn_id,
-            progeny_type=progeny_type,
-            payload=item,
-            source_kind="unified_registry",
-            source_ref=path.name,
-            source_path=path,
-        )
-        out.append(card)
+
+        if isinstance(payload.get("items"), list):
+            entries = list(payload.get("items") or [])
+        elif isinstance(payload.get("entries"), list):
+            entries = list(payload.get("entries") or [])
+        else:
+            entries = []
+        for index, item in enumerate(entries):
+            if not isinstance(item, dict):
+                continue
+            progeny_type = canonical_progeny_type(str(item.get("progeny_type") or "member").strip().lower())
+            progeny_id = str(item.get("progeny_id") or item.get("msn_id") or f"entry-{index + 1}").strip()
+            msn_id = str(item.get("msn_id") or "").strip()
+            card = _card(
+                progeny_id=progeny_id,
+                msn_id=msn_id,
+                progeny_type=progeny_type,
+                payload=item,
+                source_kind="unified_registry",
+                source_ref=path.name,
+                source_path=path,
+            )
+            out.append(card)
+        break
     return out
 
 
 def build_alias_cards(private_dir: Path) -> list[ProfileCard]:
     out: list[ProfileCard] = []
-    alias_dir = private_dir / "aliases"
-    if not alias_dir.exists() or not alias_dir.is_dir():
-        return out
-
-    for path in sorted(alias_dir.glob("*.json")):
-        payload = _read_json(path)
-        if payload is None:
+    seen_alias_ids: set[str] = set()
+    for alias_dir in alias_read_dirs(private_dir):
+        if not alias_dir.exists() or not alias_dir.is_dir():
             continue
-        alias_id = path.stem
-        merged = dict(payload)
-        merged.setdefault("title", str(payload.get("host_title") or alias_id).strip())
-        progeny_type = canonical_progeny_type(str(payload.get("progeny_type") or "alias").strip().lower() or "alias")
-        out.append(
-            _card(
-                progeny_id=alias_id,
-                msn_id=str(payload.get("msn_id") or payload.get("alias_host") or "").strip(),
-                progeny_type=progeny_type,
-                payload=merged,
-                source_kind="alias_json",
-                source_ref=path.name,
-                source_path=path,
+        for path in sorted(alias_dir.glob("*.json")):
+            alias_id = path.stem
+            if alias_id in seen_alias_ids:
+                continue
+            seen_alias_ids.add(alias_id)
+            payload = _read_json(path)
+            if payload is None:
+                continue
+            merged = dict(payload)
+            merged.setdefault("title", str(payload.get("host_title") or alias_id).strip())
+            progeny_type = canonical_progeny_type(str(payload.get("progeny_type") or "alias").strip().lower() or "alias")
+            out.append(
+                _card(
+                    progeny_id=alias_id,
+                    msn_id=str(payload.get("msn_id") or payload.get("alias_host") or "").strip(),
+                    progeny_type=progeny_type,
+                    payload=merged,
+                    source_kind="alias_json",
+                    source_ref=path.name,
+                    source_path=path,
+                )
             )
-        )
     return out
 
 
 def build_contract_cards(private_dir: Path) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    root = private_dir / "contracts"
-    if not root.exists() or not root.is_dir():
-        return out
-
-    for path in sorted(root.glob("*.json")):
-        payload = _read_json(path)
-        if payload is None:
+    seen_contract_ids: set[str] = set()
+    for root in contract_read_dirs(private_dir):
+        if not root.exists() or not root.is_dir():
             continue
-        out.append(
-            {
-                "id": path.stem,
-                "title": str(payload.get("contract_type") or payload.get("type") or path.stem),
-                "counterparty_msn_id": str(payload.get("counterparty_msn_id") or "").strip(),
-                "status": str(payload.get("status") or "active").strip(),
-                "source": path.name,
-            }
-        )
+        for path in sorted(root.glob("*.json")):
+            contract_id = path.stem
+            if contract_id in seen_contract_ids:
+                continue
+            seen_contract_ids.add(contract_id)
+            payload = _read_json(path)
+            if payload is None:
+                continue
+            out.append(
+                {
+                    "id": contract_id,
+                    "title": str(payload.get("contract_type") or payload.get("type") or contract_id),
+                    "counterparty_msn_id": str(payload.get("counterparty_msn_id") or "").strip(),
+                    "status": str(payload.get("status") or "active").strip(),
+                    "source": path.name,
+                }
+            )
     return out
 
 

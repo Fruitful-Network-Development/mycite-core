@@ -1,0 +1,35 @@
+{
+  "profile_type": "member",
+  "msn_id": "3-2-3-17-77-2-6-3-1-6",
+  "title": "trapp_family_farm",
+  "contract": null,
+  "template_version": "1.0.0",
+  "config": {
+    "contacts": "8-0-1",
+    "status": true,
+    "email_map": {
+      "inbox_inbound": {
+        "info@trappfamilyfarm.com": ["proxy@trappfamilyfarm.com"],
+        "mark@trappfamilyfarm.com": ["proxy@trappfamilyfarm.com"],
+        "proxy@trappfamilyfarm.com": ["trapp.family.farm@gmail.com"]
+      },
+      "proxy_outbound": {
+        "proxy@trappfamilyfarm.com": [
+          "info@trappfamilyfarm.com",
+          "mark@trappfamilyfarm.com"
+        ],
+        "trapp.family.farm@gmail.com": [
+          "proxy@trappfamilyfarm.com",
+          "hermes@trappfamilyfarm.com"
+        ],
+        "hermes@trappfamilyfarm.com": ["lambda"],
+        "lambda": ["news@trappfamilyfarm.com"]
+      }
+    },
+    "paypal": {
+      "paypal_secret": null,
+      "paypal_user_id": null,
+      "paypal_webhook": null
+    }
+  }
+}

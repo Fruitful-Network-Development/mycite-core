@@ -7,10 +7,15 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from flask import abort, jsonify, make_response, request
 
 from portal.services.progeny_store import load_tenant_progeny
+from portal.services.runtime_paths import alias_read_dirs
 
 
 def _aliases_dir(private_dir: Path) -> Path:
-    return private_dir / "aliases"
+    return alias_read_dirs(private_dir)[0]
+
+
+def _alias_paths(private_dir: Path, alias_id: str) -> list[Path]:
+    return [directory / f"{alias_id}.json" for directory in alias_read_dirs(private_dir)]
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
@@ -52,32 +57,40 @@ def _enrich_tenant(private_dir: Path, record: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def list_alias_records(private_dir: Path) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
-    aliases_path = _aliases_dir(private_dir)
-    if not aliases_path.exists() or not aliases_path.is_dir():
+    directories = [path for path in alias_read_dirs(private_dir) if path.exists() and path.is_dir()]
+    if not directories:
         return [], {}
 
     items: List[Dict[str, Any]] = []
     errors: Dict[str, str] = {}
+    seen_alias_ids: set[str] = set()
 
-    for alias_path in sorted(aliases_path.glob("*.json")):
-        alias_id = alias_path.stem
-        try:
-            payload = _read_json(alias_path)
-        except Exception as e:
-            errors[alias_id] = f"Failed to read alias JSON: {e}"
-            continue
+    for aliases_path in directories:
+        for alias_path in sorted(aliases_path.glob("*.json")):
+            alias_id = alias_path.stem
+            if alias_id in seen_alias_ids:
+                continue
+            seen_alias_ids.add(alias_id)
+            try:
+                payload = _read_json(alias_path)
+            except Exception as e:
+                errors[alias_id] = f"Failed to read alias JSON: {e}"
+                continue
 
-        record = dict(payload)
-        record.setdefault("alias_id", alias_id)
-        items.append(_enrich_tenant(private_dir, record))
+            record = dict(payload)
+            record.setdefault("alias_id", alias_id)
+            items.append(_enrich_tenant(private_dir, record))
 
     return items, errors
 
 
 def get_alias_record(private_dir: Path, alias_id: str) -> Dict[str, Any]:
     safe_alias_id = _safe_alias_id(alias_id)
-    alias_path = _aliases_dir(private_dir) / f"{safe_alias_id}.json"
-    if not alias_path.exists() or not alias_path.is_file():
+    alias_path = next(
+        (path for path in _alias_paths(private_dir, safe_alias_id) if path.exists() and path.is_file()),
+        None,
+    )
+    if alias_path is None:
         raise FileNotFoundError(f"No alias record found for alias_id={safe_alias_id}")
 
     payload = _read_json(alias_path)

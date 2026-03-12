@@ -5,10 +5,12 @@
 Portal pages use a fixed IDE-like shell:
 
 1. top menu bar (`.ide-menubar`)
-2. far-left global activity bar (`.ide-activitybar`)
+2. far-left global activity bar (`.ide-activitybar`) with `NETWORK`, `UTILITIES`, `SYSTEM`
 3. left page-local context sidebar (`.ide-contextsidebar`)
 4. central workbench (`.ide-workbench`)
 5. right contextual inspector drawer (`.ide-inspector`)
+
+The left context sidebar and right inspector are resizable. The inspector is collapsible and its width is persisted locally.
 
 Primary template:
 
@@ -27,12 +29,14 @@ Primary styling:
 - global service/page switching
 - always visible
 - not page-specific content editing
+- `PERIPHERALS` is no longer a primary activity; legacy routes redirect into `NETWORK` or `UTILITIES`
 
 ### Context Sidebar (page-local)
 
 - page-local list/filter/navigation groups
 - selection lists (aliases/request logs/P2P on NETWORK)
-- mode/filter controls (SYSTEM data workspace shortcuts)
+- datum editor content for `SYSTEM`
+- utility tab navigation for `UTILITIES`
 
 ### Workbench (center)
 

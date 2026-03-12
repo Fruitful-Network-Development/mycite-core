@@ -56,7 +56,7 @@ class ProgenyInheritanceRuntimeTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir)
             _write_json(
-                private_dir / "progeny" / "internal" / "member-1.json",
+                private_dir / "network" / "progeny" / "internal" / "member-1.json",
                 {
                     "progeny_type": "member",
                     "progeny_id": "member-1",
@@ -65,7 +65,7 @@ class ProgenyInheritanceRuntimeTests(unittest.TestCase):
                 },
             )
             _write_json(
-                private_dir / "aliases" / "alias-1.json",
+                private_dir / "network" / "aliases" / "alias-1.json",
                 {
                     "progeny_type": "member",
                     "member_msn_id": "member-1",

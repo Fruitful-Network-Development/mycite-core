@@ -9,6 +9,7 @@ from types import ModuleType
 from typing import Any, Callable, Dict, Optional
 
 from flask import abort, jsonify, make_response, request
+from portal.services.runtime_paths import legacy_tenant_progeny_dir, member_progeny_dir
 
 _MEMBER_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _FORBIDDEN_KEYS = {"secret", "token", "password", "private_key", "client_secret", "aws_secret_access_key"}
@@ -29,11 +30,11 @@ normalize_member_profile = _SHARED_NORMALIZE.normalize_member_profile
 
 
 def _member_dir(private_dir: Path) -> Path:
-    return private_dir / "progeny" / "member"
+    return member_progeny_dir(private_dir)
 
 
 def _legacy_tenant_dir(private_dir: Path) -> Path:
-    return private_dir / "progeny" / "tenant"
+    return legacy_tenant_progeny_dir(private_dir)
 
 
 def _safe_member_id(value: str) -> str:
@@ -103,14 +104,9 @@ def _normalize_profile(member_id: str, payload: Dict[str, Any]) -> Dict[str, Any
 def _write_profile(private_dir: Path, profile: Dict[str, Any]) -> Path:
     member_id = str(profile.get("member_id") or "").strip()
     canonical_target = _canonical_profile_path(private_dir, member_id)
-    legacy_target = _legacy_profile_path(private_dir, member_id)
 
     canonical_target.parent.mkdir(parents=True, exist_ok=True)
     canonical_target.write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
-
-    legacy_payload = _with_legacy_aliases(profile)
-    legacy_target.parent.mkdir(parents=True, exist_ok=True)
-    legacy_target.write_text(json.dumps(legacy_payload, indent=2) + "\n", encoding="utf-8")
 
     return canonical_target
 

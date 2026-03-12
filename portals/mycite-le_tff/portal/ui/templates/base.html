@@ -10,7 +10,11 @@
 </head>
 <body>
   {% set current = current_path if current_path is defined else '' %}
-  <div class="ide-shell" data-active-service="{% if active_service is defined and active_service %}{{ active_service }}{% else %}system{% endif %}">
+  <div
+    class="ide-shell"
+    data-active-service="{% if active_service is defined and active_service %}{{ active_service }}{% else %}system{% endif %}"
+    data-inspector-collapsed="true"
+  >
     <header class="ide-menubar" aria-label="Menu bar">
       <span>File</span>
       <span>Edit</span>
@@ -42,7 +46,6 @@
             <a class="ide-activitylink is-active" href="/portal/system"><span>SYSTEM</span></a>
             <a class="ide-activitylink" href="/portal/network"><span>NETWORK</span></a>
             <a class="ide-activitylink" href="/portal/utilities"><span>UTILITIES</span></a>
-            <a class="ide-activitylink" href="/portal/peripherals"><span>PERIPHERALS</span></a>
           {% endif %}
         </nav>
 
@@ -61,9 +64,9 @@
             {% for section in context_sidebar_sections %}
               <section class="ide-contextSection">
                 <header class="ide-contextTitle">{{ section.title }}</header>
-                {% if section.items %}
+                {% if section.entries %}
                   <ul class="ide-contextList">
-                    {% for item in section.items %}
+                    {% for item in section.entries %}
                       <li>
                         <a class="ide-contextLink {% if item.active %}is-active{% endif %}" href="{{ item.href }}">
                           <span>{{ item.label }}</span>
@@ -86,7 +89,14 @@
         {% endblock %}
       </aside>
 
-      <main class="ide-workbench">
+      <button
+        type="button"
+        class="ide-splitter ide-splitter--context"
+        data-splitter="context"
+        aria-label="Resize context sidebar"
+      ></button>
+
+      <main class="ide-workbench" data-active-service="{% if active_service is defined and active_service %}{{ active_service }}{% else %}system{% endif %}">
         {% block topbar %}{% endblock %}
 
         {% block header %}
@@ -102,6 +112,13 @@
           {% block body %}{% endblock %}
         </section>
       </main>
+
+      <button
+        type="button"
+        class="ide-splitter ide-splitter--inspector"
+        data-splitter="inspector"
+        aria-label="Resize inspector"
+      ></button>
 
       <aside id="portalInspector" class="ide-inspector is-collapsed" aria-label="Inspector" aria-hidden="true">
         <header class="ide-inspector__header">

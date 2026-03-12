@@ -1,0 +1,10 @@
+{
+  "profile_type": "admin",
+  "template_version": "1.0.0",
+  "config": {
+    "contacts": "",
+    "status": true,
+    "roles": ["admin"],
+    "permissions": ["*"]
+  }
+}

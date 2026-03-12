@@ -17,25 +17,23 @@ class NetworkTabItem(TypedDict):
     href: str
     active: bool
 
-DEFAULT_SERVICE_ORDER = ["network", "utilities", "peripherals", "system"]
+DEFAULT_SERVICE_ORDER = ["network", "utilities", "system"]
 SERVICE_LABELS = {
     "system": "SYSTEM",
     "network": "NETWORK",
     "utilities": "UTILITIES",
-    "peripherals": "PERIPHERALS",
 }
 SERVICE_ICONS = {
     "system": "/portal/static/icons/ui/home.svg",
     "network": "/portal/static/icons/ui/network.svg",
     "utilities": "/portal/static/icons/ui/inbox.svg",
-    "peripherals": "/portal/static/icons/ui/tools.svg",
 }
 
-NETWORK_TAB_ORDER = ["aliases", "logs", "p2p"]
+NETWORK_TAB_ORDER = ["messages", "hosted", "profile"]
 NETWORK_TAB_LABELS = {
-    "aliases": "Aliases",
-    "logs": "Request Logs",
-    "p2p": "P2P",
+    "messages": "Messages",
+    "hosted": "Hosted",
+    "profile": "Profile",
 }
 
 
@@ -78,7 +76,7 @@ def service_href(service_id: str) -> str:
     if token == "utilities":
         return "/portal/utilities"
     if token == "peripherals":
-        return "/portal/peripherals"
+        return "/portal/utilities?tab=peripherals"
     return "/portal/system"
 
 
@@ -106,7 +104,7 @@ def build_network_tabs(active_tab: str) -> list[NetworkTabItem]:
             {
                 "tab_id": tab_id,
                 "label": NETWORK_TAB_LABELS.get(tab_id, tab_id.title()),
-                "href": f"/portal/network/{tab_id}",
+                "href": f"/portal/network?tab={tab_id}",
                 "active": tab_id == active,
             }
         )
@@ -116,13 +114,13 @@ def build_network_tabs(active_tab: str) -> list[NetworkTabItem]:
 def active_service_from_path(path: str) -> str:
     token = str(path or "").strip().lower()
     if token.startswith("/portal/peripherals"):
-        return "peripherals"
+        return "utilities"
     if token.startswith("/portal/peripheral"):
-        return "peripherals"
+        return "utilities"
     if token.startswith("/portal/clients"):
-        return "peripherals"
+        return "network"
     if token.startswith("/portal/client/"):
-        return "peripherals"
+        return "network"
     if token.startswith("/portal/alias/"):
         return "network"
     if token.startswith("/portal/utilities"):
@@ -130,13 +128,13 @@ def active_service_from_path(path: str) -> str:
     if token.startswith("/portal/network"):
         return "network"
     if token.startswith("/portal/inbox"):
-        return "utilities"
+        return "network"
     if token.startswith("/portal/data"):
         return "system"
     if token.startswith("/portal/tools"):
-        return "peripherals"
+        return "utilities"
     if token.startswith("/portal/vault"):
-        return "peripherals"
+        return "utilities"
     if token.startswith("/portal/home"):
         return "system"
     if token.startswith("/portal/system"):
