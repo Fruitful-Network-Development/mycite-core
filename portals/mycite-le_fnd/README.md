@@ -6,6 +6,7 @@ Portal instance directory in `mycite-core`.
 
 - Active app runtime (`app.py` present).
 - Uses shared service-shell/tool-runtime conventions from `portals/_shared`.
+- Footer includes account/portal hub with `Switch User`, remembered account selector, and portal availability list.
 
 ## Local run
 

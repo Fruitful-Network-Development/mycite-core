@@ -1,0 +1,24 @@
+<nav class="serviceshell" aria-label="Primary services">
+  <div class="serviceshell__links">
+    {% if service_nav %}
+      {% for service in service_nav %}
+        <a class="serviceshell__link {% if service.active %}is-active{% endif %}" href="{{ service.href }}">
+          {% if service.icon %}
+            <img class="serviceshell__icon" src="{{ service.icon }}" alt="" aria-hidden="true" />
+          {% endif %}
+          <span>{{ service.label }}</span>
+        </a>
+      {% endfor %}
+    {% else %}
+      <a class="serviceshell__link is-active" href="/portal/home">
+        <img class="serviceshell__icon" src="/portal/static/icons/ui/home.svg" alt="" aria-hidden="true" />
+        <span>Home</span>
+      </a>
+    {% endif %}
+  </div>
+
+  <label class="themebar" aria-label="Portal theme selector">
+    <span class="themebar__label">Theme</span>
+    <select class="themebar__select" data-theme-selector data-theme-scope="portal"></select>
+  </label>
+</nav>

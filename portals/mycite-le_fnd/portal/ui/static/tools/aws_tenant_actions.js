@@ -59,7 +59,7 @@
     var select = qs("#awst-tenant");
     if (!select) return;
     try {
-      var data = await api("GET", "/portal/api/progeny/tenants");
+      var data = await api("GET", "/portal/api/progeny/members");
       var items = (data.items || []).filter(function (item) {
         var caps = item.capabilities || {};
         var status = item.status || {};
@@ -67,13 +67,14 @@
       });
       tenantProfiles = {};
       items.forEach(function (item) {
-        var id = String(item.tenant_id || "").trim();
+        var id = String(item.member_id || item.tenant_id || "").trim();
         if (id) tenantProfiles[id] = item;
       });
       select.innerHTML = items
         .map(function (item) {
-          var label = (item.display || {}).title || item.tenant_id;
-          return '<option value="' + item.tenant_id + '">' + label + " (" + item.tenant_id + ")</option>";
+          var id = String(item.member_id || item.tenant_id || "").trim();
+          var label = (item.display || {}).title || id;
+          return '<option value="' + id + '">' + label + " (" + id + ")</option>";
         })
         .join("");
       if (!items.length) {
@@ -108,7 +109,7 @@
       return;
     }
     try {
-      var payload = await api("GET", "/portal/api/aws/tenant/" + encodeURIComponent(id) + "/emailer_preview");
+      var payload = await api("GET", "/portal/api/aws/member/" + encodeURIComponent(id) + "/emailer_preview");
       latestPreviewByTenant[id] = payload;
       out(payload);
       appendLog({

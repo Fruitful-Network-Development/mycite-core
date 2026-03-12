@@ -1,25 +1,45 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import time
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Callable, Dict, Optional
 
 from flask import abort, jsonify, make_response, request
 
-_TENANT_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_MEMBER_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _FORBIDDEN_KEYS = {"secret", "token", "password", "private_key", "client_secret", "aws_secret_access_key"}
 
 
-def _tenant_dir(private_dir: Path) -> Path:
+def _load_shared_progeny_normalize() -> ModuleType:
+    shared_path = Path(__file__).resolve().parents[3] / "_shared" / "portal" / "progeny_model" / "normalize.py"
+    spec = importlib.util.spec_from_file_location("mycite_shared_progeny_normalize", shared_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load shared progeny normalize module from {shared_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_SHARED_NORMALIZE = _load_shared_progeny_normalize()
+normalize_member_profile = _SHARED_NORMALIZE.normalize_member_profile
+
+
+def _member_dir(private_dir: Path) -> Path:
+    return private_dir / "progeny" / "member"
+
+
+def _legacy_tenant_dir(private_dir: Path) -> Path:
     return private_dir / "progeny" / "tenant"
 
 
-def _safe_tenant_id(value: str) -> str:
+def _safe_member_id(value: str) -> str:
     token = str(value or "").strip()
-    if not _TENANT_ID_RE.fullmatch(token):
-        raise ValueError("tenant_id must match [A-Za-z0-9._:-]{1,128}")
+    if not _MEMBER_ID_RE.fullmatch(token):
+        raise ValueError("member_id must match [A-Za-z0-9._:-]{1,128}")
     return token
 
 
@@ -36,10 +56,6 @@ def _contains_forbidden_key(obj: Any) -> bool:
     return False
 
 
-def _profile_path(private_dir: Path, tenant_id: str) -> Path:
-    return _tenant_dir(private_dir) / f"{tenant_id}.json"
-
-
 def _read_json(path: Path) -> Dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -47,56 +63,68 @@ def _read_json(path: Path) -> Dict[str, Any]:
     return payload
 
 
-def _normalize_profile(tenant_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    tenant_msn_id = str(payload.get("tenant_msn_id") or "").strip()
-    display = payload.get("display") if isinstance(payload.get("display"), dict) else {}
-    capabilities = payload.get("capabilities") if isinstance(payload.get("capabilities"), dict) else {}
-    profile_refs = payload.get("profile_refs") if isinstance(payload.get("profile_refs"), dict) else {}
-    contract_refs = payload.get("contract_refs") if isinstance(payload.get("contract_refs"), dict) else {}
-    status = payload.get("status") if isinstance(payload.get("status"), dict) else {}
+def _canonical_profile_path(private_dir: Path, member_id: str) -> Path:
+    return _member_dir(private_dir) / f"{member_id}.json"
 
-    state = str(status.get("state") or "active").strip().lower()
-    if state not in {"active", "suspended"}:
-        state = "active"
 
-    return {
-        "schema": "mycite.progeny.tenant.profile.v1",
-        "tenant_id": tenant_id,
-        "tenant_msn_id": tenant_msn_id,
-        "display": {
-            "title": str(display.get("title") or f"Tenant {tenant_id}").strip() or f"Tenant {tenant_id}",
-        },
-        "capabilities": {
-            "paypal": bool(capabilities.get("paypal", False)),
-            "aws": bool(capabilities.get("aws", False)),
-        },
-        "profile_refs": {
-            "paypal_profile_id": str(profile_refs.get("paypal_profile_id") or f"paypal:tenant:{tenant_id}").strip(),
-            "paypal_site_base_url": str(profile_refs.get("paypal_site_base_url") or "").strip(),
-            "paypal_checkout_return_url": str(profile_refs.get("paypal_checkout_return_url") or "").strip(),
-            "paypal_checkout_cancel_url": str(profile_refs.get("paypal_checkout_cancel_url") or "").strip(),
-            "paypal_webhook_listener_url": str(profile_refs.get("paypal_webhook_listener_url") or "").strip(),
-            "paypal_checkout_brand_name": str(profile_refs.get("paypal_checkout_brand_name") or "").strip(),
-            "aws_profile_id": str(profile_refs.get("aws_profile_id") or f"aws:tenant:{tenant_id}").strip(),
-            "aws_emailer_list_ref": str(profile_refs.get("aws_emailer_list_ref") or "").strip(),
-            "aws_emailer_entry_ref": str(profile_refs.get("aws_emailer_entry_ref") or "").strip(),
-        },
-        "contract_refs": {
-            "authorization_contract_id": str(contract_refs.get("authorization_contract_id") or "").strip(),
-            "service_agreement_ref": str(contract_refs.get("service_agreement_ref") or "").strip(),
-        },
-        "status": {
-            "state": state,
-            "updated_unix_ms": int(status.get("updated_unix_ms") or int(time.time() * 1000)),
-        },
-    }
+def _legacy_profile_path(private_dir: Path, member_id: str) -> Path:
+    return _legacy_tenant_dir(private_dir) / f"{member_id}.json"
+
+
+def _profile_path(private_dir: Path, member_id: str) -> Path:
+    canonical = _canonical_profile_path(private_dir, member_id)
+    if canonical.exists() and canonical.is_file():
+        return canonical
+    legacy = _legacy_profile_path(private_dir, member_id)
+    if legacy.exists() and legacy.is_file():
+        return legacy
+    return canonical
+
+
+def _with_legacy_aliases(profile: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(profile)
+    out["tenant_id"] = str(profile.get("member_id") or "").strip()
+    out["tenant_msn_id"] = str(profile.get("member_msn_id") or "").strip()
+    out.setdefault("schema_legacy", "mycite.progeny.tenant.profile.v1")
+    return out
+
+
+def _normalize_profile(member_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = normalize_member_profile(member_id, payload)
+    if not isinstance(normalized, dict):
+        raise ValueError("Expected normalized member profile object")
+
+    status = normalized.get("status") if isinstance(normalized.get("status"), dict) else {}
+    status["updated_unix_ms"] = int(status.get("updated_unix_ms") or int(time.time() * 1000))
+    normalized["status"] = status
+    return normalized
 
 
 def _write_profile(private_dir: Path, profile: Dict[str, Any]) -> Path:
-    target = _profile_path(private_dir, str(profile.get("tenant_id") or ""))
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
-    return target
+    member_id = str(profile.get("member_id") or "").strip()
+    canonical_target = _canonical_profile_path(private_dir, member_id)
+    legacy_target = _legacy_profile_path(private_dir, member_id)
+
+    canonical_target.parent.mkdir(parents=True, exist_ok=True)
+    canonical_target.write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
+
+    legacy_payload = _with_legacy_aliases(profile)
+    legacy_target.parent.mkdir(parents=True, exist_ok=True)
+    legacy_target.write_text(json.dumps(legacy_payload, indent=2) + "\n", encoding="utf-8")
+
+    return canonical_target
+
+
+def _iter_profile_paths(private_dir: Path) -> list[Path]:
+    # Canonical member dir wins on duplicate IDs; legacy tenant dir remains read-compatible.
+    by_id: dict[str, Path] = {}
+
+    for path in sorted(_legacy_tenant_dir(private_dir).glob("*.json")):
+        by_id[path.stem] = path
+    for path in sorted(_member_dir(private_dir).glob("*.json")):
+        by_id[path.stem] = path
+
+    return [by_id[key] for key in sorted(by_id.keys())]
 
 
 def register_tenant_progeny_routes(
@@ -117,45 +145,50 @@ def register_tenant_progeny_routes(
             return {"options_private": options_private_fn(msn_id)}
         return {}
 
-    @app.get("/portal/api/progeny/tenants")
-    def progeny_tenants_list():
+    def _list_members() -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
-        root = _tenant_dir(private_dir)
-        root.mkdir(parents=True, exist_ok=True)
-        for path in sorted(root.glob("*.json")):
+        _member_dir(private_dir).mkdir(parents=True, exist_ok=True)
+        _legacy_tenant_dir(private_dir).mkdir(parents=True, exist_ok=True)
+
+        for path in _iter_profile_paths(private_dir):
             try:
                 payload = _read_json(path)
-                tenant_id = _safe_tenant_id(str(payload.get("tenant_id") or path.stem))
-                profile = _normalize_profile(tenant_id, payload)
+                member_id = _safe_member_id(str(payload.get("member_id") or payload.get("tenant_id") or path.stem))
+                profile = _normalize_profile(member_id, payload)
                 out.append(profile)
             except Exception:
                 continue
+        return out
 
-        response: Dict[str, Any] = {"schema": "mycite.progeny.tenant.list.v1", "items": out}
-        response.update(_options_payload())
-        return jsonify(response)
-
-    @app.get("/portal/api/progeny/tenants/<tenant_id>")
-    def progeny_tenant_get(tenant_id: str):
-        try:
-            token = _safe_tenant_id(tenant_id)
-        except ValueError as e:
-            abort(400, description=str(e))
-
+    def _get_member(member_id: str) -> Dict[str, Any]:
+        token = _safe_member_id(member_id)
         path = _profile_path(private_dir, token)
         if not path.exists() or not path.is_file():
-            abort(404, description=f"No progeny profile found for tenant_id={token}")
-
+            abort(404, description=f"No progeny profile found for member_id={token}")
         payload = _read_json(path)
-        profile = _normalize_profile(token, payload)
-        response: Dict[str, Any] = {"item": profile}
+        return _normalize_profile(token, payload)
+
+    @app.get("/portal/api/progeny/members")
+    def progeny_members_list():
+        items = _list_members()
+        response: Dict[str, Any] = {"schema": "mycite.progeny.member.list.v1", "items": [_with_legacy_aliases(item) for item in items]}
         response.update(_options_payload())
         return jsonify(response)
 
-    @app.put("/portal/api/progeny/tenants/<tenant_id>")
-    def progeny_tenant_put(tenant_id: str):
+    @app.get("/portal/api/progeny/members/<member_id>")
+    def progeny_member_get(member_id: str):
         try:
-            token = _safe_tenant_id(tenant_id)
+            profile = _get_member(member_id)
+        except ValueError as e:
+            abort(400, description=str(e))
+        response: Dict[str, Any] = {"item": _with_legacy_aliases(profile)}
+        response.update(_options_payload())
+        return jsonify(response)
+
+    @app.put("/portal/api/progeny/members/<member_id>")
+    def progeny_member_put(member_id: str):
+        try:
+            token = _safe_member_id(member_id)
         except ValueError as e:
             abort(400, description=str(e))
 
@@ -165,18 +198,61 @@ def register_tenant_progeny_routes(
         if not isinstance(body, dict):
             abort(400, description="Expected JSON object body")
         if _contains_forbidden_key(body):
-            abort(400, description="Do not store secrets in tenant progeny metadata.")
+            abort(400, description="Do not store secrets in member progeny metadata.")
 
         profile = _normalize_profile(token, body)
         path = _write_profile(private_dir, profile)
-        response: Dict[str, Any] = {"ok": True, "item": profile, "written_to": str(path)}
+        response: Dict[str, Any] = {
+            "ok": True,
+            "item": _with_legacy_aliases(profile),
+            "written_to": str(path),
+        }
         response.update(_options_payload())
         return jsonify(response)
 
+    # Compatibility aliases for legacy tenant terminology.
+    @app.get("/portal/api/progeny/tenants")
+    def progeny_tenants_list():
+        items = _list_members()
+        response: Dict[str, Any] = {
+            "schema": "mycite.progeny.tenant.list.v1",
+            "items": [_with_legacy_aliases(item) for item in items],
+            "deprecation": {
+                "legacy_term": "tenant",
+                "canonical_term": "member",
+                "canonical_endpoint": "/portal/api/progeny/members",
+            },
+        }
+        response.update(_options_payload())
+        return jsonify(response)
+
+    @app.get("/portal/api/progeny/tenants/<tenant_id>")
+    def progeny_tenant_get(tenant_id: str):
+        try:
+            profile = _get_member(tenant_id)
+        except ValueError as e:
+            abort(400, description=str(e))
+        response: Dict[str, Any] = {
+            "item": _with_legacy_aliases(profile),
+            "deprecation": {
+                "legacy_term": "tenant",
+                "canonical_term": "member",
+                "canonical_endpoint": f"/portal/api/progeny/members/{tenant_id}",
+            },
+        }
+        response.update(_options_payload())
+        return jsonify(response)
+
+    @app.put("/portal/api/progeny/tenants/<tenant_id>")
+    def progeny_tenant_put(tenant_id: str):
+        return progeny_member_put(tenant_id)
+
+    @app.route("/portal/api/progeny/members", methods=["OPTIONS"])
+    @app.route("/portal/api/progeny/members/<member_id>", methods=["OPTIONS"])
     @app.route("/portal/api/progeny/tenants", methods=["OPTIONS"])
-    @app.route("/portal/api/progeny/tenants/<tenant_id>", methods=["OPTIONS"])
-    def progeny_tenants_options(tenant_id: str = ""):
-        _ = tenant_id
+    @app.route("/portal/api/progeny/tenants/<member_id>", methods=["OPTIONS"])
+    def progeny_members_options(member_id: str = ""):
+        _ = member_id
         resp = make_response("", 204)
         resp.headers["Allow"] = "GET, PUT, OPTIONS"
         return resp

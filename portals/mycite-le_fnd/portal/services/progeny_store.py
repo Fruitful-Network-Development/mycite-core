@@ -9,6 +9,10 @@ def _tenant_dir(private_dir: Path) -> Path:
     return private_dir / "progeny" / "tenant"
 
 
+def _member_dir(private_dir: Path) -> Path:
+    return private_dir / "progeny" / "member"
+
+
 def _read_json(path: Path) -> Dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -27,8 +31,11 @@ def _safe_lookup_id(value: str) -> str:
 
 def _match_tenant(payload: Dict[str, Any], tenant_id: str) -> bool:
     candidates = [
+        str(payload.get("member_id") or "").strip(),
+        str(payload.get("member_msn_id") or "").strip(),
         str(payload.get("child_msn_id") or "").strip(),
         str(payload.get("tenant_id") or "").strip(),
+        str(payload.get("tenant_msn_id") or "").strip(),
         str(payload.get("msn_id") or "").strip(),
     ]
     return tenant_id in {c for c in candidates if c}
@@ -40,19 +47,21 @@ def load_tenant_progeny(private_dir: Path, alias_id: str, tenant_id: str) -> Opt
     if not safe_tenant_id:
         return None
 
-    tenant_path = _tenant_dir(private_dir)
-    if not tenant_path.exists() or not tenant_path.is_dir():
+    candidate_dirs = [_member_dir(private_dir), _tenant_dir(private_dir)]
+    existing_dirs = [path for path in candidate_dirs if path.exists() and path.is_dir()]
+    if not existing_dirs:
         return None
 
-    for candidate in sorted(tenant_path.glob("*.json")):
-        if not candidate.is_file():
-            continue
-        try:
-            payload = _read_json(candidate)
-        except Exception:
-            continue
+    for directory in existing_dirs:
+        for candidate in sorted(directory.glob("*.json")):
+            if not candidate.is_file():
+                continue
+            try:
+                payload = _read_json(candidate)
+            except Exception:
+                continue
 
-        if _match_tenant(payload, safe_tenant_id):
-            return payload
+            if _match_tenant(payload, safe_tenant_id):
+                return payload
 
     return None

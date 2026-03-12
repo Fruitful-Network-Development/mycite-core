@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 
-{% block title %}MyCite | PayPal Tenant Actions{% endblock %}
+{% block title %}MyCite | PayPal Member Actions{% endblock %}
 
-{% set page_title = "PayPal Tenant Actions" %}
-{% set page_subtitle = "Tenant checkout preview/sync + order creation via /portal/api/paypal/* and /portal/api/admin/paypal/tenant/*" %}
+{% set page_title = "PayPal Member Actions" %}
+{% set page_subtitle = "Member checkout preview/sync + order creation via /portal/api/paypal/member/* and /portal/api/admin/paypal/tenant/* (legacy proxy path)" %}
 
 {% block body %}
   <div class="card" style="max-width:980px;">
-    <div class="card__kicker">Tenant Scoped</div>
+    <div class="card__kicker">Member Scoped</div>
     <div class="card__title">PayPal</div>
     <div class="card__body">
       <div style="display:grid;grid-template-columns:repeat(2,minmax(240px,1fr));gap:0.75rem;max-width:760px;">
         <label>
-          <div style="font-size:0.75rem;color:var(--ink2);margin-bottom:0.2rem;">Tenant</div>
+          <div style="font-size:0.75rem;color:var(--ink2);margin-bottom:0.2rem;">Member</div>
           <select id="ppt-tenant" style="width:100%;padding:0.35rem;border:1px solid var(--line);border-radius:var(--radius);"></select>
         </label>
         <label>
@@ -25,7 +25,7 @@
         </label>
       </div>
       <div style="margin-top:0.75rem;padding:0.65rem;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-soft);max-width:760px;">
-        <div style="font-size:0.75rem;color:var(--ink2);margin-bottom:0.25rem;">Tenant PayPal references</div>
+        <div style="font-size:0.75rem;color:var(--ink2);margin-bottom:0.25rem;">Member PayPal references</div>
         <div><strong>paypal_profile_id:</strong> <code id="ppt-ref-profile"></code></div>
         <div><strong>paypal_site_base_url:</strong> <code id="ppt-ref-site"></code></div>
         <div><strong>paypal_checkout_return_url:</strong> <code id="ppt-ref-return"></code></div>
@@ -34,7 +34,7 @@
         <div><strong>paypal_checkout_brand_name:</strong> <code id="ppt-ref-brand"></code></div>
       </div>
       <div style="margin-top:0.8rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
-        <button id="ppt-status" class="ops-btn ops-btn--outline">Tenant Status</button>
+        <button id="ppt-status" class="ops-btn ops-btn--outline">Member Status</button>
         <button id="ppt-preview" class="ops-btn ops-btn--outline">Preview Checkout Profile</button>
         <button id="ppt-sync" class="ops-btn">Queue Profile Sync</button>
         <button id="ppt-create-order" class="ops-btn ops-btn--outline">Create Order</button>

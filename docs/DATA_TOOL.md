@@ -1,132 +1,89 @@
-# Data Tool (JSON-Only Prototype Contract)
-
-This document defines the active Data service contract for the JSON-only prototype phase.
+# Data Workbench Contract
 
 ## Scope
 
-- FND is the first implementation target in this milestone.
-- Runtime model is still JSON-only (no DB for anthology/conspectus/samras).
-- Contract is structured for rollout to other runnable portals after FND validation.
+Applies to:
 
-## Data service routes
+- `portals/mycite-le_fnd`
+- `portals/mycite-le_tff`
+- `portals/mycite-ne_mt` (transitional)
 
-- `GET /portal/data` -> redirects to `GET /portal/data/anthology`
-- `GET /portal/data/anthology`
-- `GET /portal/data/time-series`
-- `GET /portal/data/geographic`
-- `GET /portal/data/advanced` (legacy-compatible route that opens Advanced NIMM overlay)
+SYSTEM page hosts the anthology-first workbench.
 
-Tab state is URL-driven and not query-param driven.
-Advanced NIMM controls are summarized in the right-side margin and expanded in an overlay sidebar.
+## Canonical Runtime
 
-## JSON runtime artifacts
+Primary runtime artifacts:
 
-Canonical runtime JSON artifacts are per-portal state files:
-
-- `data/demo-anthology.json`
-- `data/demo-conspectus.json`
-- `data/demo-SAMRAS_MSN.json`
+- `data/anthology.json` (canonical)
 - `data/presentation/datum_icons.json`
 - `private/daemon_state/data_workspace.json`
 
-## Anthology abstraction exports (AWS)
+Deterministic anthology ordering is enforced by shared normalization:
 
-FND tenant AWS tooling can resolve anthology-backed emailer abstractions from tenant metadata refs:
+- `layer -> value_group -> iteration`
+- `portals/_shared/portal/data_engine/anthology_normalization.py`
 
-- list anchor example: `10-0-1` (`emailer_list`)
-- entry rows example: `9-2-*`
+`demo-conspectus.json` is not a canonical navigation dependency.
 
-Preview endpoint:
+## NIMM + AITAS
 
-- `GET /portal/api/aws/tenant/<tenant_id>/emailer_preview`
+State facets:
 
-See [AWS_EMAILER_ABSTRACTION.md](AWS_EMAILER_ABSTRACTION.md) for payload contract and format semantics.
+- `attention`, `intention`, `temporal`, `archetype`, `spatial`
 
-## Anthology compact row contract
+Compatibility mirror:
 
-Persisted anthology compact rows keep the existing array form:
+- legacy `spacial` remains mirrored in payloads
 
-```json
-"11-3-1": [["11-3-1", "ref1", "mag1", "ref2", "mag2"], ["label"]]
-```
+State phases:
 
-Rules:
+- `navigate`, `focus`, `investigate`, `mediate`
 
-- first token is identifier
-- remaining tokens are alternating `reference, magnitude`
-- odd trailing token is invalid and dropped with warning
+Pattern hooks are active and exposed in model metadata.
 
-Normalized runtime/API row shape includes:
+## Graph + Workbench Behavior
 
-- `row_id`, `identifier`, `label`
-- `pairs` (full list)
-- `pair_count`
-- compatibility fields: `reference`, `magnitude` (first pair)
+Primary interactions:
 
-## Value-group behavior
+- single click: focus summary
+- double click: investigate (`abstraction_path`) + structured inspector
 
-- `value_group == 0`
-  - row is conspectus-linked
-  - `magnitude` is fixed to `0` for pair normalization
-  - conspectus is derived from the row's references
-- `value_group >= 1`
-  - one datum row may contain multiple reference/magnitude pairs
+Graph endpoint supports controls:
 
-## Time Series abstraction (anthology-backed)
+- `GET /portal/api/data/anthology/graph?focus=&depth=&layout=&context=`
 
-Time Series uses anthology+conspectus, not a new table file.
+Context/layout:
 
-- event index anchor row: `4-0-1`
-- event rows: `4-1-*`
-- event refs in index are NIMM directives:
-  - `inv;(med;<msn_id>-4-0-1;event_value);<row_number>`
-- index keys maintained in conspectus:
-  - internal: `4-0-1`
-  - qualified: `<msn_id>-4-0-1`
-- `4-0-1` also defines allowed event-value refs (minimum expected refs: `3-2-2`, `3-2-3`)
+- context: `global` / `local`
+- layout: `linear` / `radial`
 
-Event pair semantics are fixed:
+## API Contract (Stable)
 
-1. pair 1: `point_ref` + `start_unix_s`
-2. pair 2: `duration_ref` + `duration_s`
+Core endpoints:
 
-Validation:
-
-- `start_unix_s >= 0`
-- `duration_s >= 1`
-- refs are normalized to `<msn_id>-<datum_address>`
-- `point_ref` and `duration_ref` must be present in the `4-0-1` event-value collection
-
-## Data API contract
-
-Anthology endpoints:
-
+- `GET /portal/api/data/state`
+- `POST /portal/api/data/directive`
 - `GET /portal/api/data/anthology/table`
-- `GET /portal/api/data/anthology/profile/<row_id>`
-- `POST /portal/api/data/anthology/append`
-- `POST /portal/api/data/anthology/profile/update`
-- `POST /portal/api/data/anthology/delete`
+- `GET /portal/api/data/anthology/graph`
 
-Time Series endpoints:
+Daemon endpoints:
 
-- `GET /portal/api/data/time_series/state`
-- `POST /portal/api/data/time_series/ensure_base`
-- `POST /portal/api/data/time_series/event/create`
-- `POST /portal/api/data/time_series/event/update`
-- `POST /portal/api/data/time_series/event/delete`
-- `GET /portal/api/data/time_series/event/<event_ref>`
-- `GET /portal/api/data/time_series/table/<table_id>/view?mode=normal|time_series`
+- `GET /portal/api/data/daemon/ports`
+- `POST /portal/api/data/daemon/resolve`
+- `POST /portal/api/data/daemon/resolve_tokens`
 
-## Geographic tab status
+Legacy shim endpoints remain for compatibility.
 
-`/portal/data/geographic` is intentionally placeholder-only in this milestone.
-No mutation actions are exposed there yet.
+## Ownership
 
-## Module ownership
+Engine + adapters:
 
-- workspace logic: `portals/mycite-le_fnd/data/engine/workspace.py`
-- API adapters: `portals/mycite-le_fnd/portal/api/data_workspace.py`
-- JSON storage adapter: `portals/mycite-le_fnd/data/storage_json.py`
-- shared compact-pair helper: `portals/_shared/portal/data_contract/anthology_pairs.py`
+- `data/engine/workspace.py`
+- `data/engine/nimm/state.py`
+- `data/storage_json.py`
+- `portal/api/data_workspace.py`
 
-UI remains a consumer of API contracts; it does not directly mutate JSON files.
+UI consumer:
+
+- `portal/ui/templates/tools/partials/data_tool_shell.html`
+- `portal/ui/static/tools/data_tool.js`

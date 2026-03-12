@@ -10,15 +10,6 @@
     <button class="hometabs__tab is-active" data-tab="session" type="button">Session</button>
     <button class="hometabs__tab" data-tab="profile" type="button">Profile</button>
     <div class="hometabs__spacer"></div>
-    <label class="themebar" aria-label="Theme selector">
-      <span class="themebar__label">Theme</span>
-      <select
-        class="themebar__select"
-        data-theme-selector
-        data-theme-scope="portal"
-        data-org-msn-id="{% if org_msn_id is defined and org_msn_id %}{{ org_msn_id }}{% endif %}"
-      ></select>
-    </label>
   </nav>
 {% endblock %}
 
@@ -75,16 +66,16 @@
             <div class="kv__v">{{ alias_progeny_type }}</div>
           </div>
           {% endif %}
-          {% if alias_progeny_type is defined and alias_progeny_type == "tenant" and alias_tenant_id is defined and alias_tenant_id %}
+          {% if alias_progeny_type is defined and alias_progeny_type in ["tenant", "member"] and alias_tenant_id is defined and alias_tenant_id %}
           <div class="kv">
-            <div class="kv__k">tenant_id</div>
+            <div class="kv__k">member_id</div>
             <div class="kv__v">{{ alias_tenant_id }}</div>
           </div>
           {% endif %}
         </div>
 
         <div class="aliascard__note">
-          The profile tab shows portal-owned alias metadata for this session context.
+          Profile values shown here are a session-context snapshot for operator orientation. Treat labels/layout as prototype unless documented as stable contract.
         </div>
       </aside>
     </section>

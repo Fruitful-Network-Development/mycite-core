@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | Peripheral{% endblock %}
+
+{% set page_title = "Peripheral" %}
+{% set page_subtitle = "Progeny and alias overviews for outward-facing control surfaces" %}
+
+{% block body %}
+  <div class="cardgrid">
+    <article class="card">
+      <div class="card__kicker">Overview</div>
+      <div class="card__title">Peripheral Summary</div>
+      <div class="card__body">
+        <p><code>progeny_count</code>: {{ provision_progeny_items|length if provision_progeny_items is defined else 0 }}</p>
+        <p><code>alias_count</code>: {{ provision_alias_items|length if provision_alias_items is defined else 0 }}</p>
+        <p><code>contract_count</code>: {{ contract_items|length if contract_items is defined else 0 }}</p>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card__kicker">Request Log</div>
+      <div class="card__title">Peripheral Activity</div>
+      <div class="card__body">
+        <p><code>files</code>: {{ request_log_summary.file_count if request_log_summary is defined and request_log_summary.file_count is defined else 0 }}</p>
+        <p><code>events</code>: {{ request_log_summary.event_count if request_log_summary is defined and request_log_summary.event_count is defined else 0 }}</p>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card__kicker">Profile</div>
+      <div class="card__title">Instance Node</div>
+      <div class="card__body">
+        {% set public_profile = portal_profile.public_profile if portal_profile is defined and portal_profile.public_profile is defined else {} %}
+        <p><code>msn_id</code>: {{ public_profile.get("msn_id", portal_profile.get("msn_id", "")) if portal_profile is defined else "" }}</p>
+        <p><code>title</code>: {{ public_profile.get("title", "") }}</p>
+      </div>
+    </article>
+
+    <article class="card card--full">
+      <div class="card__kicker">Progeny</div>
+      <div class="card__title">Progeny Overview</div>
+      <div class="card__body">
+        {% if provision_progeny_items is defined and provision_progeny_items %}
+          <ul class="liststack">
+            {% for item in provision_progeny_items %}
+              {% set display = item.display if item.display is defined and item.display is mapping else {} %}
+              <li>
+                <strong>{{ display.get("title", item.get("progeny_id", "progeny")) }}</strong>
+                <span class="inline-meta"><code>type</code>: {{ item.get("progeny_type", "unknown") }}</span>
+                {% if item.get("msn_id", "") %}<span class="inline-meta"><code>msn_id</code>: {{ item.get("msn_id", "") }}</span>{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>No progeny records are currently available.</p>
+        {% endif %}
+      </div>
+    </article>
+
+    <article class="card card--full">
+      <div class="card__kicker">Aliases</div>
+      <div class="card__title">Alias Overview</div>
+      <div class="card__body">
+        {% if provision_alias_items is defined and provision_alias_items %}
+          <ul class="liststack">
+            {% for item in provision_alias_items %}
+              {% set display = item.display if item.display is defined and item.display is mapping else {} %}
+              <li>
+                <strong>{{ display.get("title", item.get("progeny_id", "alias")) }}</strong>
+                <span class="inline-meta"><code>type</code>: {{ item.get("progeny_type", "alias") }}</span>
+                {% if item.get("msn_id", "") %}<span class="inline-meta"><code>msn_id</code>: {{ item.get("msn_id", "") }}</span>{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>No alias records are currently available.</p>
+        {% endif %}
+      </div>
+    </article>
+  </div>
+{% endblock %}

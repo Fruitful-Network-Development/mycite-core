@@ -1,0 +1,81 @@
+from __future__ import annotations
+
+import json
+import sys
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+
+def _load_workspace_stack():
+    portal_root = Path(__file__).resolve().parents[1] / "portals" / "mycite-le_fnd"
+    portal_root_token = str(portal_root)
+    if portal_root_token not in sys.path:
+        sys.path.insert(0, portal_root_token)
+
+    from data.engine.workspace import Workspace  # type: ignore
+    from data.storage_json import JsonStorageBackend  # type: ignore
+
+    return Workspace, JsonStorageBackend
+
+
+class WorkspaceAitasDaemonTests(unittest.TestCase):
+    def _workspace(self):
+        Workspace, JsonStorageBackend = _load_workspace_stack()
+        tmp = TemporaryDirectory()
+        data_dir = Path(tmp.name)
+
+        anthology = {
+            "1-1-1": [["1-1-1", "", ""], ["Root"]],
+            "1-1-2": [["1-1-2", "1-1-1", "0"], ["Child"]],
+            "2-1-1": [["2-1-1", "1-1-2", "CF69268F1894171F"], ["Spatial Point"]],
+        }
+        (data_dir / "anthology.json").write_text(json.dumps(anthology, indent=2) + "\n", encoding="utf-8")
+
+        storage = JsonStorageBackend(data_dir)
+        workspace = Workspace(storage, config={})
+        return tmp, workspace
+
+    def test_aitas_phase_transitions(self):
+        tmp, workspace = self._workspace()
+        try:
+            nav = workspace.apply_directive({"action": "nav", "subject": "anthology", "method": "top_level_view", "args": {}})
+            self.assertEqual(nav["state"]["aitas_phase"], "navigate")
+
+            inv_focus = workspace.apply_directive({"action": "inv", "subject": "1-1-1", "method": "summary", "args": {}})
+            self.assertEqual(inv_focus["state"]["aitas_phase"], "focus")
+
+            inv_detail = workspace.apply_directive({"action": "inv", "subject": "1-1-1", "method": "abstraction_path", "args": {}})
+            self.assertEqual(inv_detail["state"]["aitas_phase"], "investigate")
+
+            med = workspace.apply_directive({"action": "med", "subject": "geographic", "method": "spacial", "args": {"value": "geographic"}})
+            self.assertEqual(med["state"]["aitas_phase"], "mediate")
+            self.assertEqual(med["state"]["aitas_context"].get("spatial"), "geographic")
+            self.assertEqual(med["state"]["aitas_context"].get("spacial"), "geographic")
+        finally:
+            tmp.cleanup()
+
+    def test_daemon_token_resolution_uses_mediation(self):
+        tmp, workspace = self._workspace()
+        try:
+            payload = workspace.daemon_resolve_tokens(
+                tokens=["2-1-1"],
+                standard_id="coordinate_fixed_hex",
+                context={},
+            )
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["standard_id"], "coordinate_fixed_hex")
+            self.assertEqual(len(payload["resolved"]), 1)
+            row = payload["resolved"][0]
+            self.assertEqual(row["source"], "anthology_datum")
+            self.assertEqual(row["resolved_identifier"], "2-1-1")
+            mediation = row.get("mediation") or {}
+            self.assertTrue(mediation.get("ok"))
+            self.assertEqual(mediation.get("standard_id"), "coordinate")
+            self.assertIn("value", mediation)
+        finally:
+            tmp.cleanup()
+
+
+if __name__ == "__main__":
+    unittest.main()

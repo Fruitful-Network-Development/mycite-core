@@ -1,4 +1,4 @@
-# Build context: compose/platform/dev
+# Build context: /srv/repo/mycite-core/portals (via compose/portals docker-compose.yml)
 #
 # Keep images small and avoid shipping local venv/runtime artifacts.
 .git
@@ -12,4 +12,3 @@
 
 # Local portal venvs
 **/.venv
-

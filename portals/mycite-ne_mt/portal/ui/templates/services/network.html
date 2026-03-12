@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | Network{% endblock %}
+
+{% set page_title = "NETWORK" %}
+{% set page_subtitle = "Alias interfaces, request logs, and P2P channels" %}
+
+{% block body %}
+  <section class="network-workbench">
+    <header class="network-workbench__header card">
+      <div>
+        <div class="card__kicker">Network Workspace</div>
+        <div class="card__title">
+          {% if network_view == "alias" %}
+            Alias: {% if selected_alias %}{{ selected_alias.label }}{% else %}(none){% endif %}
+          {% elif network_view == "log" %}
+            Request Log: {% if selected_log %}{{ selected_log.label }}{% else %}(none){% endif %}
+          {% else %}
+            P2P Channel: {% if selected_p2p %}{{ selected_p2p.label }}{% else %}(none){% endif %}
+          {% endif %}
+        </div>
+      </div>
+      <div class="network-workbench__actions">
+        <button
+          type="button"
+          class="inspector-trigger"
+          data-inspector-template="network-profile-inspector"
+          data-inspector-title="Portal Profile"
+          data-inspector-subtitle="msn-{{ msn_id }}.json"
+        >Profile</button>
+      </div>
+    </header>
+
+    {% if network_view == "alias" %}
+      <article class="card">
+        <div class="card__kicker">Organization Interface</div>
+        <div class="card__title">Alias Session Workbench</div>
+        <div class="card__body">
+          {% if selected_alias %}
+            <p><code>alias_id</code>: {{ selected_alias.alias_id }}</p>
+            <p><code>org_msn_id</code>: {{ selected_alias.org_msn_id }}</p>
+            <p><code>label</code>: {{ selected_alias.label }}</p>
+            <p><a href="/portal/alias/{{ selected_alias.alias_id }}">Open alias session</a></p>
+          {% else %}
+            <p>Select an alias from the left context sidebar.</p>
+          {% endif %}
+        </div>
+      </article>
+    {% elif network_view == "log" %}
+      <article class="card">
+        <div class="card__kicker">Request Channel</div>
+        <div class="card__title">Request Log Conversation</div>
+        <div class="card__body">
+          {% if selected_log %}
+            <p><code>channel</code>: {{ selected_log.label }}</p>
+            <p><code>events</code>: {{ selected_log.event_count }}</p>
+          {% else %}
+            <p>Select a request-log channel from the left context sidebar.</p>
+          {% endif %}
+          <p>API endpoint: <code>/portal/api/inbox?msn_id={{ msn_id }}</code></p>
+        </div>
+      </article>
+    {% else %}
+      <article class="card">
+        <div class="card__kicker">Direct Message</div>
+        <div class="card__title">P2P Conversation Workbench</div>
+        <div class="card__body">
+          {% if selected_p2p %}
+            <p><code>channel</code>: {{ selected_p2p.label }}</p>
+            <p><code>events</code>: {{ selected_p2p.event_count }}</p>
+          {% else %}
+            <p>Select a P2P channel from the left context sidebar.</p>
+          {% endif %}
+          <p>P2P channels are derived from request-log transmitter/receiver event data where available.</p>
+        </div>
+      </article>
+    {% endif %}
+  </section>
+
+  <template id="network-profile-inspector">
+    <article class="card">
+      <div class="card__kicker">Portal Contact Card</div>
+      <div class="card__title">msn-{{ msn_id }}.json</div>
+      <div class="card__body">
+        <pre class="jsonblock">{{ network_profile_json }}</pre>
+        <p><a href="/portal/api/config?msn_id={{ msn_id }}"><strong>Edit hook:</strong> /portal/api/config</a></p>
+      </div>
+    </article>
+  </template>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | Data{% endblock %}
+
+{% set page_title = "Data" %}
+{% set page_subtitle = "Core data service" %}
+
+{% block body %}
+  <div class="card" style="max-width: 980px;">
+    <div class="card__kicker">Data Service</div>
+    <div class="card__title">Core data surface is enabled</div>
+    <div class="card__body">
+      {% if data_home_available %}
+        <p>Data UI is available at <code>{{ data_home_path }}</code>.</p>
+        <p>
+          <a href="{{ data_home_path }}"><strong>Open Data UI</strong></a>
+        </p>
+      {% else %}
+        <p>Data API and model are available for this portal, but no specialized data UI package is present yet.</p>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

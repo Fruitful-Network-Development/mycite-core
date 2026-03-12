@@ -12,7 +12,7 @@ They are JSON-backed and independent from UI implementation details.
   "schema": "mycite.progeny.profile_card.v1",
   "progeny_id": "stable-card-id",
   "msn_id": "3-2-...",
-  "progeny_type": "board_member|poc|constituent_farm|...",
+  "progeny_type": "member|poc|user|constituent_farm|...",
   "display": {
     "title": "Human readable title",
     "subtitle": "Optional subtitle"
@@ -35,7 +35,7 @@ They are JSON-backed and independent from UI implementation details.
 
 ## Alias expectation defaults by type
 
-- `board_member`: `false`
+- `member`: `false`
 - `poc`: `true`
 - `constituent_farm`: `true`
 
@@ -43,11 +43,14 @@ They are JSON-backed and independent from UI implementation details.
 
 - Unified optional registry file:
   - `private/progeny/progeny.json`
-- Config progeny references in `private/mycite-config-*.json`
+- Config progeny references in active config:
+  - `private/config.json` (canonical)
+  - `private/mycite-config-*.json` (legacy fallback)
 - Internal progeny files in `private/progeny/internal/*.json`
 - Alias records in `private/aliases/*.json`
 - Contracts in `private/contracts/*.json`
-- Magnetlinks in `private/magnetlinks/*.json`
+- Auto-seeded local progeny profiles generated from config refs when missing:
+  - `private/progeny/<ref-from-config>.json`
 
 Loader precedence is:
 
@@ -57,6 +60,17 @@ Loader precedence is:
 4. alias-derived cards (network alias tab)
 
 Cards are deduplicated by `progeny_id`.
+
+## Local progeny seed behavior
+
+When a portal config includes progeny refs that do not have backing files yet, runtime creates local profile-card files with:
+
+- `schema = mycite.progeny.profile_card.v1`
+- `source.kind = config_ref_seed`
+- `source.local_only = true`
+- non-secret defaults only
+
+This allows local/prototype progeny to exist without alias linkage.
 
 ## Security boundary
 
@@ -69,9 +83,9 @@ Profile card payloads are metadata only. Secret-like keys are not allowed:
 - `client_secret`
 - `aws_secret_access_key`
 
-## Tenant integration refs (FND)
+## Member integration refs (FND)
 
-Tenant progeny metadata for FND integration routing may include:
+Member progeny metadata for FND integration routing may include:
 
 - `profile_refs.paypal_profile_id`
 - `profile_refs.paypal_site_base_url`
@@ -84,6 +98,12 @@ Tenant progeny metadata for FND integration routing may include:
 - `profile_refs.aws_emailer_entry_ref`
 
 These refs are metadata pointers only and must not include credentials.
+
+## Legacy terminology compatibility
+
+- `tenant` and `board_member` are accepted legacy labels.
+- Runtime normalizes both toward canonical `member` in shared card/build flows.
+- FND APIs expose canonical `member` endpoints and keep `tenant` aliases for compatibility.
 
 ## Historical migration note
 

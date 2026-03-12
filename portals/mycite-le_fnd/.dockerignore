@@ -1,7 +1,6 @@
-# NOTE: Docker build context is compose/platform/dev (one directory up),
-# so this file is informational only. The effective ignore rules live in:
-#   compose/platform/dev/.dockerignore
+# NOTE: Docker build context is /srv/repo/mycite-core/portals,
+# so effective ignore rules should be defined in:
+#   /srv/repo/mycite-core/portals/.dockerignore
 .venv
 __pycache__
 *.pyc
-

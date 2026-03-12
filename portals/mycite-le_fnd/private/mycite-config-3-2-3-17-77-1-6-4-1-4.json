@@ -7,7 +7,6 @@
   "symmetric_key_contracts": [],
   "aliases": [],
   "hosted": [],
-  "service_providers": [],
   "progeny": [],
   "enabled_tools": [
     "data_tool",
@@ -23,22 +22,28 @@
     "default_focus_source": "auto",
     "default_mode": "general",
     "default_lens": "default",
-    "enable_dev_data_features": false
+    "enable_dev_data_features": false,
+    "icon_relpath_mode": "basename"
   },
-  "contract_policy": {
-    "allow_counterparties": [
-      "3-2-3-17-77-2-6-1-1-2",
-      "3-2-3-17-77-2-6-3-1-6"
-    ],
-    "auto_accept_types": [
-      "symmetric_key",
-      "paypal_tool"
-    ],
-    "require_manual_accept": false,
-    "default_response": "decline",
-    "counterparty_base_urls": {
-      "3-2-3-17-77-2-6-1-1-2": "http://127.0.0.1:5002",
-      "3-2-3-17-77-2-6-3-1-6": "http://127.0.0.1:5003"
+  "organization_config": {
+    "file_name": "discovery_engine.json",
+    "default_values": {
+      "legal_entity_defaults": {
+        "schema": "mycite.legal_entity_type.v1",
+        "type": "discovery_engine",
+        "title": "Discovery Engine",
+        "role_groups": {
+          "members": [],
+          "users": [],
+          "poc_admin": []
+        }
+      }
+    },
+    "added_values": {
+      "broadcast_config": {
+        "enabled": true,
+        "title": "Fruitful Network Development"
+      }
     }
   }
 }
