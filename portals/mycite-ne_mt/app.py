@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import quote, urlencode
@@ -448,12 +449,177 @@ def _network_sidebar_alias_items() -> list[Dict[str, Any]]:
                 "id": alias_id,
                 "label": str(alias.get("label") or alias_id).strip(),
                 "org_msn_id": str(alias.get("org_msn_id") or "").strip(),
+                "tenant_id": str(alias.get("tenant_id") or "").strip(),
                 "href": f"/portal/network?tab=messages&kind=alias&id={quote(alias_id, safe='')}",
                 "alias_id": alias_id,
                 "alias_label": str(alias.get("label") or alias_id).strip(),
             }
         )
     return out
+
+
+def _iter_string_values(value: Any):
+    if isinstance(value, dict):
+        for nested in value.values():
+            yield from _iter_string_values(nested)
+        return
+    if isinstance(value, list):
+        for nested in value:
+            yield from _iter_string_values(nested)
+        return
+    if value is None:
+        return
+    token = str(value).strip()
+    if token:
+        yield token
+
+
+def _event_contains_any(event: Dict[str, Any], tokens: list[str]) -> bool:
+    needles = [str(item).strip().lower() for item in tokens if str(item).strip()]
+    if not needles:
+        return False
+    for value in _iter_string_values(event):
+        lowered = value.lower()
+        if any(needle in lowered for needle in needles):
+            return True
+    return False
+
+
+def _event_channel_id(event: Dict[str, Any]) -> str:
+    transmitter = str(event.get("transmitter") or "").strip()
+    receiver = str(event.get("receiver") or "").strip()
+    if transmitter and receiver:
+        return f"{transmitter}->{receiver}"
+    return ""
+
+
+def _format_event_timestamp(ts_unix_ms: Any) -> str:
+    try:
+        stamp = int(ts_unix_ms or 0)
+    except Exception:
+        return ""
+    if stamp <= 0:
+        return ""
+    try:
+        return datetime.fromtimestamp(stamp / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        return ""
+
+
+def _initials(token: str, fallback: str = "NW") -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9]+", " ", str(token or "").strip())
+    parts = [part for part in cleaned.split() if part]
+    if not parts:
+        return fallback
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return f"{parts[0][0]}{parts[1][0]}".upper()
+
+
+def _event_actor_label(event: Dict[str, Any]) -> str:
+    transmitter = str(event.get("transmitter") or "").strip()
+    receiver = str(event.get("receiver") or "").strip()
+    if transmitter:
+        if MSN_ID and MSN_ID in transmitter:
+            return "Current Portal"
+        return transmitter
+    if receiver:
+        return receiver
+    return "Network Event"
+
+
+def _event_summary(event: Dict[str, Any]) -> str:
+    summary_parts: list[str] = []
+    for key in ("status", "receiver", "alias_id", "contract_id", "tenant_msn_id", "client_id", "event_datum"):
+        value = str(event.get(key) or "").strip()
+        if value:
+            summary_parts.append(f"{key}: {value}")
+    details = event.get("details")
+    if isinstance(details, dict) and details:
+        summary_parts.append("details: " + ", ".join(sorted(str(key) for key in details.keys())[:4]))
+    return " | ".join(summary_parts[:4])
+
+
+def _network_placeholder_item(kind: str, selected: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    label = str((selected or {}).get("label") or "conversation").strip()
+    if kind == "alias":
+        headline = "Interface ready"
+        summary = f"No request-log events have been mapped to {label} yet."
+    elif kind == "p2p":
+        headline = "Direct thread is quiet"
+        summary = f"No transmitter/receiver events have been recorded for {label} yet."
+    else:
+        headline = "Request log ready"
+        summary = "No request-log entries have been recorded yet."
+    payload = {"selection": selected or {}, "kind": kind}
+    return {
+        "side": "system",
+        "author": "Workbench",
+        "avatar": _initials(label, "WB"),
+        "role": "preview",
+        "headline": headline,
+        "summary": summary,
+        "timestamp": "",
+        "payload_json": json.dumps(payload, indent=2, sort_keys=True),
+    }
+
+
+def _network_message_feed(
+    kind: str,
+    selected_alias: Optional[Dict[str, Any]],
+    selected_log: Optional[Dict[str, Any]],
+    selected_p2p: Optional[Dict[str, Any]],
+) -> list[Dict[str, Any]]:
+    events = _iter_request_log_records()
+    filtered: list[Dict[str, Any]]
+    selected: Optional[Dict[str, Any]]
+
+    if kind == "alias":
+        selected = selected_alias
+        tokens = [
+            str((selected_alias or {}).get("id") or "").strip(),
+            str((selected_alias or {}).get("alias_id") or "").strip(),
+            str((selected_alias or {}).get("org_msn_id") or "").strip(),
+            str((selected_alias or {}).get("tenant_id") or "").strip(),
+            str((selected_alias or {}).get("label") or "").strip(),
+        ]
+        filtered = [event for event in events if _event_contains_any(event, tokens)]
+    elif kind == "p2p":
+        selected = selected_p2p
+        channel_id = str((selected_p2p or {}).get("id") or "").strip()
+        filtered = [event for event in events if _event_channel_id(event) == channel_id]
+    else:
+        selected = selected_log
+        filtered = list(events)
+
+    filtered = sorted(filtered, key=lambda item: int(item.get("ts_unix_ms") or 0))
+    if len(filtered) > 60:
+        filtered = filtered[-60:]
+
+    if not filtered:
+        return [_network_placeholder_item(kind, selected)]
+
+    feed: list[Dict[str, Any]] = []
+    for event in filtered:
+        transmitter = str(event.get("transmitter") or "").strip()
+        side = "system"
+        if transmitter:
+            side = "outbound" if MSN_ID and MSN_ID in transmitter else "inbound"
+        preview_payload = {key: value for key, value in event.items() if key != "msn_id"}
+        author = _event_actor_label(event)
+        feed.append(
+            {
+                "side": side,
+                "author": author,
+                "avatar": _initials(author, "EV"),
+                "role": str(event.get("status") or "event").strip(),
+                "headline": str(event.get("type") or "event").strip(),
+                "summary": _event_summary(event),
+                "timestamp": _format_event_timestamp(event.get("ts_unix_ms")),
+                "payload_json": json.dumps(preview_payload, indent=2, sort_keys=True),
+            }
+        )
+    return feed
 
 
 def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
@@ -970,15 +1136,21 @@ def portal_network_default():
 
     profile_model = _portal_profile_model()
     hosted_payload = _read_hosted_payload()
+    message_feed = _network_message_feed(kind, selected_alias, selected_log, selected_p2p)
     return render_template(
         "services/network.html",
         aliases=list_aliases_ne(PRIVATE_DIR),
         msn_id=MSN_ID,
         network_tab=tab,
         network_kind=kind,
+        network_aliases=aliases,
+        network_logs=log_channels,
+        network_p2p=p2p_channels,
         selected_alias=selected_alias,
         selected_log=selected_log,
         selected_p2p=selected_p2p,
+        message_feed=message_feed,
+        request_log_summary=_request_log_summary(),
         network_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
         public_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
         fnd_profile_json=json.dumps(profile_model.get("fnd_profile") or {}, indent=2, sort_keys=True),

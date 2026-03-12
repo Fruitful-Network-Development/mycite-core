@@ -6,25 +6,37 @@
 {% set page_subtitle = "Messages, hosted interfaces, and public profile surfaces" %}
 {% set current_tab = network_tab if network_tab is defined else "messages" %}
 {% set current_kind = network_kind if network_kind is defined else (network_view if network_view is defined else "alias") %}
+{% set message_aliases = network_aliases if network_aliases is defined else [] %}
+{% set message_logs = network_logs if network_logs is defined else [] %}
+{% set message_p2p = network_p2p if network_p2p is defined else [] %}
+{% set selected_channel = selected_alias if current_kind == "alias" else (selected_log if current_kind == "log" else selected_p2p) %}
 
 {% block context_sidebar %}
-  <section class="ide-contextSection">
-    <header class="ide-contextTitle">Find Interface</header>
+  <section class="ide-contextSection network-contextSection network-contextSection--search">
+    <header class="ide-contextTitle network-contextTitle">Find Interface</header>
     <div class="ide-contextSearch">
       <input id="networkContextFilter" type="text" placeholder="Filter aliases, logs, P2P..." />
     </div>
   </section>
   {% if context_sidebar_sections is defined and context_sidebar_sections %}
     {% for section in context_sidebar_sections %}
-      <section class="ide-contextSection">
-        <header class="ide-contextTitle">{{ section.title }}</header>
+      <section class="ide-contextSection network-contextSection">
+        <header class="ide-contextTitle network-contextTitle">
+          <span>{{ section.title }}</span>
+          {% if section.entries %}
+            <small>{{ section.entries|length }}</small>
+          {% endif %}
+        </header>
         {% if section.entries %}
           <ul class="ide-contextList network-contextList" data-network-list="1">
             {% for item in section.entries %}
               <li class="network-contextItem" data-network-token="{{ (item.label ~ ' ' ~ (item.meta or ''))|lower }}">
-                <a class="ide-contextLink {% if item.active %}is-active{% endif %}" href="{{ item.href }}">
-                  <span>{{ item.label }}</span>
-                  {% if item.meta %}<small>{{ item.meta }}</small>{% endif %}
+                <a class="ide-contextLink network-contextLink {% if item.active %}is-active{% endif %}" href="{{ item.href }}">
+                  <span class="network-contextLink__avatar">{{ (item.label or 'NW')[:2]|upper }}</span>
+                  <span class="network-contextLink__body">
+                    <span>{{ item.label }}</span>
+                    {% if item.meta %}<small>{{ item.meta }}</small>{% endif %}
+                  </span>
                 </a>
               </li>
             {% endfor %}
@@ -46,106 +58,180 @@
     </nav>
 
     {% if current_tab == "messages" %}
-      <header class="network-workbench__header card network-toolbar">
-        <div>
-          <div class="card__kicker">Messages Workbench</div>
-          <div class="card__title">
-            {% if current_kind == "alias" %}
-              Alias: {% if selected_alias %}{{ selected_alias.label }}{% else %}(none){% endif %}
-            {% elif current_kind == "log" %}
-              Request Log: {% if selected_log %}{{ selected_log.label }}{% else %}(none){% endif %}
-            {% else %}
-              P2P Channel: {% if selected_p2p %}{{ selected_p2p.label }}{% else %}(none){% endif %}
-            {% endif %}
+      <section class="network-chatWorkbench">
+        <header class="network-chatbar">
+          <div class="network-chatbar__title">
+            <span class="network-chatbar__glyph">
+              {% if current_kind == "alias" %}AI{% elif current_kind == "log" %}RL{% else %}DM{% endif %}
+            </span>
+            <div>
+              <div class="network-chatbar__name">{{ selected_channel.label if selected_channel else "Select a conversation" }}</div>
+              <div class="network-chatbar__meta">
+                {% if current_kind == "alias" %}
+                  Organization interface{% if selected_alias and selected_alias.org_msn_id %} for {{ selected_alias.org_msn_id }}{% endif %}
+                {% elif current_kind == "log" %}
+                  Shared request log stream{% if selected_log %} with {{ selected_log.event_count }} event(s){% endif %}
+                {% else %}
+                  Direct message channel{% if selected_p2p %} with {{ selected_p2p.event_count }} event(s){% endif %}
+                {% endif %}
+              </div>
+            </div>
           </div>
-        </div>
-        <div class="network-workbench__actions">
-          <button
-            type="button"
-            class="inspector-trigger"
-            data-inspector-template="network-profile-inspector"
-            data-inspector-title="Portal Profile"
-            data-inspector-subtitle="msn-{{ msn_id }}.json"
-          >Profile</button>
-          <button
-            type="button"
-            class="inspector-trigger"
-            data-inspector-template="network-selection-inspector"
-            data-inspector-title="Selected Interface"
-            data-inspector-subtitle="{{ current_kind }}"
-          >Inspect Selection</button>
-        </div>
-      </header>
 
-      <div class="network-layout__columns">
-        <article class="card network-channel">
-          {% if current_kind == "alias" %}
-            <div class="card__kicker">Organization Interface</div>
-            <div class="card__title">Alias Workspace</div>
-            <div class="card__body network-thread">
-              {% if selected_alias %}
-                <div class="network-thread__row"><strong>alias_id</strong><code>{{ selected_alias.alias_id }}</code></div>
-                <div class="network-thread__row"><strong>org_msn_id</strong><code>{{ selected_alias.org_msn_id }}</code></div>
-                <div class="network-thread__row"><strong>label</strong><span>{{ selected_alias.label }}</span></div>
-                <div class="network-thread__row">
-                  <a href="/portal/alias/{{ selected_alias.alias_id }}">Open organization interface session</a>
+          <nav class="network-modeTabs" aria-label="Message mode">
+            <a class="network-modeTab {% if current_kind == 'alias' %}is-active{% endif %}" href="{{ selected_alias.href if selected_alias else '/portal/network?tab=messages&kind=alias' }}">Aliases</a>
+            <a class="network-modeTab {% if current_kind == 'log' %}is-active{% endif %}" href="{{ selected_log.href if selected_log else '/portal/network?tab=messages&kind=log&id=request_log' }}">Request Logs</a>
+            <a class="network-modeTab {% if current_kind == 'p2p' %}is-active{% endif %}" href="{{ selected_p2p.href if selected_p2p else '/portal/network?tab=messages&kind=p2p' }}">Direct Messages</a>
+          </nav>
+
+          <div class="network-workbench__actions">
+            {% if selected_alias %}
+              <a class="network-actionLink" href="/portal/alias/{{ selected_alias.alias_id }}">Open Interface</a>
+            {% endif %}
+            <button
+              type="button"
+              class="inspector-trigger"
+              data-inspector-template="network-profile-inspector"
+              data-inspector-title="Portal Profile"
+              data-inspector-subtitle="msn-{{ msn_id }}.json"
+            >Profile</button>
+            <button
+              type="button"
+              class="inspector-trigger"
+              data-inspector-template="network-selection-inspector"
+              data-inspector-title="Selected Interface"
+              data-inspector-subtitle="{{ current_kind }}"
+            >Inspect Selection</button>
+          </div>
+        </header>
+
+        <div class="network-chatWorkbench__body">
+          <article class="network-chatPanel">
+            <section class="network-chatHero">
+              <div class="network-chatHero__avatar">
+                {% if selected_channel %}
+                  {{ (selected_channel.label or 'NW')[:2]|upper }}
+                {% else %}
+                  NW
+                {% endif %}
+              </div>
+              <div class="network-chatHero__body">
+                <div class="network-chatHero__kicker">
+                  {% if current_kind == "alias" %}Organization Interface{% elif current_kind == "log" %}Request Log Channel{% else %}Direct Message Channel{% endif %}
                 </div>
-              {% else %}
-                <p>Select an alias interface from the left context sidebar.</p>
-              {% endif %}
-            </div>
-          {% elif current_kind == "log" %}
-            <div class="card__kicker">Request Log Channel</div>
-            <div class="card__title">Request History Workspace</div>
-            <div class="card__body network-thread">
-              {% if selected_log %}
-                <div class="network-thread__row"><strong>channel</strong><code>{{ selected_log.label }}</code></div>
-                <div class="network-thread__row"><strong>events</strong><span>{{ selected_log.event_count }}</span></div>
-                <div class="network-thread__row"><strong>inbox api</strong><code>/portal/api/inbox?msn_id={{ msn_id }}</code></div>
-              {% else %}
-                <p>Select a request-log channel from the left context sidebar.</p>
-              {% endif %}
-            </div>
-          {% else %}
-            <div class="card__kicker">P2P Channel</div>
-            <div class="card__title">Direct Conversation Workspace</div>
-            <div class="card__body network-thread">
-              {% if selected_p2p %}
-                <div class="network-thread__row"><strong>channel</strong><code>{{ selected_p2p.label }}</code></div>
-                <div class="network-thread__row"><strong>events</strong><span>{{ selected_p2p.event_count }}</span></div>
-                <div class="network-thread__row"><strong>source</strong><span>Derived from request-log transmitter/receiver events.</span></div>
-              {% else %}
-                <p>Select a P2P channel from the left context sidebar.</p>
-              {% endif %}
-            </div>
-          {% endif %}
-        </article>
+                <h2>{{ selected_channel.label if selected_channel else "Choose a conversation from the left sidebar" }}</h2>
+                <p>
+                  {% if current_kind == "alias" %}
+                    Alias interfaces behave like organization workspaces. The center pane becomes the conversation history and runtime activity for the selected organization interface.
+                  {% elif current_kind == "log" %}
+                    Request logs are treated like a direct message history for the portal itself, backed by the canonical shared NDJSON stream.
+                  {% else %}
+                    P2P channels behave like direct messages. Each thread is derived from request-log transmitter and receiver pairs.
+                  {% endif %}
+                </p>
+              </div>
+            </section>
 
-        <article class="card network-sidecard">
-          <div class="card__kicker">Configuration Mediation</div>
-          <div class="card__title">Property Geography</div>
-          <div class="card__body">
-            {% set geography = property_geography if property_geography is mapping else {} %}
-            {% set polygon = geography.get("polygon_svg") if geography.get("polygon_svg") is mapping else {} %}
-            {% if polygon.get("available") and polygon.get("points") %}
-              <svg class="network-svgPreview" viewBox="{{ polygon.get('viewbox', '0 0 420 240') }}" role="img" aria-label="Property polygon preview">
-                <polyline points="{{ polygon.get('points') }}" fill="rgba(88, 196, 145, 0.18)" stroke="currentColor" stroke-width="2" />
-              </svg>
-            {% else %}
-              <p>No polygon geometry resolved from current config references.</p>
-            {% endif %}
-            <div class="data-tool__controlRow" style="margin-top:8px;">
-              <button
-                type="button"
-                class="inspector-trigger"
-                data-inspector-template="network-config-inspector"
-                data-inspector-title="Network Config"
-                data-inspector-subtitle="property/geography"
-              >Open Config Inspector</button>
-            </div>
-          </div>
-        </article>
-      </div>
+            <section class="network-chatFeed" aria-label="Conversation feed">
+              {% for item in message_feed if message_feed is defined %}
+                <article class="network-message network-message--{{ item.side }}">
+                  <div class="network-message__avatar">{{ item.avatar }}</div>
+                  <div class="network-message__bubble">
+                    <header class="network-message__meta">
+                      <strong>{{ item.author }}</strong>
+                      {% if item.role %}<span class="network-message__badge">{{ item.role }}</span>{% endif %}
+                      {% if item.timestamp %}<time>{{ item.timestamp }}</time>{% endif %}
+                    </header>
+                    <div class="network-message__headline">{{ item.headline }}</div>
+                    {% if item.summary %}<p class="network-message__summary">{{ item.summary }}</p>{% endif %}
+                    {% if item.payload_json %}
+                      <details class="network-message__payload">
+                        <summary>Payload</summary>
+                        <pre class="jsonblock">{{ item.payload_json }}</pre>
+                      </details>
+                    {% endif %}
+                  </div>
+                </article>
+              {% endfor %}
+            </section>
+
+            <footer class="network-composer" aria-label="Conversation composer">
+              <div class="network-composer__shell">
+                {% if current_kind == "alias" and selected_alias %}
+                  Open the organization interface to continue working with {{ selected_alias.label }}.
+                {% elif current_kind == "log" %}
+                  Request-log messages are append-only and appear here as the portal records activity.
+                {% elif current_kind == "p2p" and selected_p2p %}
+                  P2P activity will render here as transmitter and receiver events are recorded for {{ selected_p2p.label }}.
+                {% else %}
+                  Select a message surface from the left sidebar to focus the workbench.
+                {% endif %}
+              </div>
+            </footer>
+          </article>
+
+          <aside class="network-presencePanel">
+            <section class="network-presenceCard">
+              <div class="network-presenceCard__kicker">Selection</div>
+              <div class="network-presenceCard__title">{{ selected_channel.label if selected_channel else "Nothing selected" }}</div>
+              <ul class="network-presenceList">
+                {% if current_kind == "alias" and selected_alias %}
+                  <li><strong>org_msn_id</strong><code>{{ selected_alias.org_msn_id }}</code></li>
+                  <li><strong>alias_id</strong><code>{{ selected_alias.alias_id }}</code></li>
+                  <li><strong>events</strong><span>{{ message_feed|length }}</span></li>
+                {% elif current_kind == "log" and selected_log %}
+                  <li><strong>channel</strong><code>{{ selected_log.label }}</code></li>
+                  <li><strong>events</strong><span>{{ selected_log.event_count }}</span></li>
+                  <li><strong>api</strong><code>/portal/api/inbox?msn_id={{ msn_id }}</code></li>
+                {% elif current_kind == "p2p" and selected_p2p %}
+                  <li><strong>channel</strong><code>{{ selected_p2p.label }}</code></li>
+                  <li><strong>events</strong><span>{{ selected_p2p.event_count }}</span></li>
+                  <li><strong>source</strong><span>request_log transmitter/receiver</span></li>
+                {% else %}
+                  <li><span>Select an alias, request log, or P2P channel from the left sidebar.</span></li>
+                {% endif %}
+              </ul>
+            </section>
+
+            <section class="network-presenceCard">
+              <div class="network-presenceCard__kicker">Network Overview</div>
+              <div class="network-presenceCard__title">Active Now</div>
+              <ul class="network-presenceList">
+                <li><strong>aliases</strong><span>{{ message_aliases|length }}</span></li>
+                <li><strong>request logs</strong><span>{{ message_logs|length }}</span></li>
+                <li><strong>direct messages</strong><span>{{ message_p2p|length }}</span></li>
+                <li><strong>events</strong><span>{{ request_log_summary.event_count if request_log_summary is defined else 0 }}</span></li>
+              </ul>
+              <p class="network-presenceHint">The left sidebar stays fixed so you can move between organization interfaces and direct-message style channels without leaving the NETWORK workbench.</p>
+            </section>
+
+            <section class="network-presenceCard">
+              <div class="network-presenceCard__kicker">Config Mediation</div>
+              <div class="network-presenceCard__title">Property Geography</div>
+              <div class="card__body">
+                {% set geography = property_geography if property_geography is mapping else {} %}
+                {% set polygon = geography.get("polygon_svg") if geography.get("polygon_svg") is mapping else {} %}
+                {% if polygon.get("available") and polygon.get("points") %}
+                  <svg class="network-svgPreview" viewBox="{{ polygon.get('viewbox', '0 0 420 240') }}" role="img" aria-label="Property polygon preview">
+                    <polyline points="{{ polygon.get('points') }}" fill="rgba(140, 225, 255, 0.16)" stroke="currentColor" stroke-width="2" />
+                  </svg>
+                {% else %}
+                  <p class="network-presenceHint">No polygon geometry resolved from current config references.</p>
+                {% endif %}
+                <div class="data-tool__controlRow" style="margin-top:8px;">
+                  <button
+                    type="button"
+                    class="inspector-trigger"
+                    data-inspector-template="network-config-inspector"
+                    data-inspector-title="Network Config"
+                    data-inspector-subtitle="property/geography"
+                  >Open Config Inspector</button>
+                </div>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </section>
     {% elif current_tab == "hosted" %}
       {% set hosted = hosted_payload if hosted_payload is defined and hosted_payload is mapping else {} %}
       <div class="workbench-panels workbench-panels--double">
