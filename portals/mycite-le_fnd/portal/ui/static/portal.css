@@ -625,9 +625,26 @@ code{
   gap: 10px;
 }
 
+.data-tool__graphToolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+.data-tool__graphToolbarTitle {
+  min-width: 0;
+}
+
+.data-tool__paneHead {
+  margin-bottom: 8px;
+}
+
 .data-tool__workbenchGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr);
   gap: 12px;
   align-items: start;
 }
@@ -635,6 +652,10 @@ code{
 .data-tool__graphPane,
 .data-tool__editorPane {
   min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+  padding: 10px;
 }
 
 .data-tool__datumEditor {
@@ -660,6 +681,37 @@ code{
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.data-tool__editorHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 2px 6px;
+}
+
+.data-tool__editorHeadline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.data-tool__editorChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.data-tool__editorChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 11px;
+  color: var(--ink2);
 }
 
 .data-tool__nimmSummary pre {
@@ -712,6 +764,11 @@ code{
     grid-template-columns: 1fr;
   }
 
+  .data-tool__graphToolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .data-tool__workbenchGrid {
     grid-template-columns: 1fr;
   }
@@ -723,12 +780,6 @@ code{
   .data-tool__nimmSummary {
     position: static;
   }
-}
-
-.data-tool__contract .card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .data-tool__controls {
@@ -914,15 +965,15 @@ code{
   border-radius: 8px;
   background: #fff;
   overflow: auto;
-  max-height: 68vh;
+  max-height: 72vh;
 }
 
 .data-tool__graphSvg {
   display: block;
   width: 100%;
-  min-width: 920px;
-  min-height: 560px;
-  background: linear-gradient(180deg, #fcfcfc 0%, #f7faf9 100%);
+  min-width: 860px;
+  min-height: 620px;
+  background: linear-gradient(180deg, #fcfcfc 0%, #f4f7f7 100%);
 }
 
 .data-tool__graphLayerLane {
@@ -939,8 +990,13 @@ code{
 }
 
 .data-tool__graphEdge {
-  stroke: rgba(107, 114, 128, 0.32);
-  stroke-width: 1;
+  stroke: rgba(100, 108, 120, 0.22);
+  stroke-width: 0.85;
+}
+
+.data-tool__graphEdge.is-dim {
+  stroke: rgba(130, 136, 148, 0.12);
+  stroke-width: 0.75;
 }
 
 .data-tool__graphEdge.is-unresolved {
@@ -949,8 +1005,13 @@ code{
 }
 
 .data-tool__graphEdge.is-focus {
-  stroke: rgba(31, 111, 67, 0.72);
-  stroke-width: 1.8;
+  stroke: rgba(18, 101, 59, 0.9);
+  stroke-width: 2.2;
+}
+
+.data-tool__graphEdge.is-path {
+  stroke: rgba(29, 78, 216, 0.72);
+  stroke-width: 1.45;
 }
 
 .data-tool__graphNodeGroup,
@@ -958,30 +1019,74 @@ code{
   cursor: pointer;
 }
 
+.data-tool__graphNodeGroup {
+  opacity: 0.95;
+}
+
+.data-tool__graphNodeGroup.is-dim {
+  opacity: 0.28;
+}
+
 .data-tool__graphNode {
-  stroke: rgba(0, 0, 0, 0.3);
-  stroke-width: 0.9;
+  stroke-width: 1.15;
 }
 
 .data-tool__graphNode:hover {
-  stroke: #0f172a;
-  stroke-width: 1.6;
+  filter: brightness(0.95);
+}
+
+.data-tool__graphNodeRect {
+  stroke: rgba(20, 26, 36, 0.26);
+  stroke-width: 1;
+}
+
+.data-tool__graphNodeLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  fill: #f8fafc;
+  pointer-events: none;
+}
+
+.data-tool__graphNodeMeta {
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  fill: rgba(236, 240, 247, 0.92);
+  pointer-events: none;
+}
+
+.data-tool__graphNodeGroup.is-path .data-tool__graphNodeRect {
+  stroke: rgba(29, 78, 216, 0.66);
+  stroke-width: 1.4;
+}
+
+.data-tool__graphNodeGroup.is-context .data-tool__graphNodeRect {
+  stroke: rgba(37, 99, 235, 0.45);
+  stroke-width: 1.2;
 }
 
 .data-tool__graphNode.is-context {
-  stroke: rgba(31, 111, 67, 0.5);
   stroke-width: 1.4;
 }
 
 .data-tool__graphNode.is-focus {
-  stroke: #1f6f43;
   stroke-width: 2.2;
+}
+
+.data-tool__graphNodeGroup.is-focus .data-tool__graphNodeRect {
+  stroke: #0f5132;
+  stroke-width: 2;
+}
+
+.data-tool__graphNodeGroup.is-focus .data-tool__graphNodeLabel {
+  fill: #ffffff;
 }
 
 .data-tool__graphLegend {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  padding-top: 4px;
 }
 
 .data-tool__graphLegendChip {

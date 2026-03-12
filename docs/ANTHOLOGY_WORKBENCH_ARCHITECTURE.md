@@ -2,7 +2,7 @@
 
 ## Purpose
 
-SYSTEM Data surface is a coordinated anthology workbench, not separate graph/table pages.
+SYSTEM Data surface is an anthology-authoritative workbench where graph navigation is primary and datum editing is synchronized in the same surface.
 
 ## Composition
 
@@ -14,17 +14,19 @@ Mirrored to TFF.
 
 Workbench regions:
 
-1. graph pane (primary navigation surface)
-2. datum editor pane (focused datum editing)
-3. layered row explorer (context rows grouped by layer/value_group)
-4. right inspector for investigation details
+1. graph-first pane (primary navigation surface)
+2. focused datum editor pane (same workbench grid)
+3. layer/value-group row explorer (context list)
+4. right inspector drawer for investigation context
+
+The pre-graph stacked explanatory cards were removed from central flow so the graph/editor workspace is immediately dominant.
 
 ## Interaction Model
 
-- single click graph node: focus datum (`inv summary`) and sync editor
-- double click graph node: investigate datum (`inv abstraction_path`) and open inspector
+- single click graph node: focus datum and sync editor
+- double click graph node: investigate datum and open inspector
 - selecting anthology row: sync graph focus + load datum editor
-- save in datum editor: persists through canonical anthology profile update route and refreshes graph/table
+- save in datum editor: persist to anthology profile update route and refresh graph/table/editor state
 
 ## Engine/API Binding
 
@@ -36,12 +38,12 @@ Core routes used:
 - `POST /portal/api/data/anthology/profile/update`
 - `POST /portal/api/data/directive`
 
-State remains engine-driven (NIMM/AITAS).
+State remains engine-driven (NIMM/AITAS), UI remains a consumer.
 
 ## Inspector Usage
 
-Investigation and contextual detail use right inspector behavior (`PortalInspector`) rather than introducing a detached inline card column.
+Investigation updates the right inspector (`PortalInspector`) with abstraction path and state context. Main editing remains in the center workbench.
 
 ## Current Limitation
 
-Advanced NIMM controls still have an overlay implementation path for compatibility; main workbench focus/investigation now centers on graph+editor synchronization.
+Advanced NIMM controls still include overlay compatibility paths; they are not yet fully re-mounted as first-class inspector tabs.
