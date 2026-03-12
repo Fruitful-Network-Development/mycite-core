@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-import importlib.util
+import importlib
+import sys
 from pathlib import Path
 from types import ModuleType
 
 
 def _load_shared_module(module_name: str) -> ModuleType:
-    shared_root = Path(__file__).resolve().parents[3] / "_shared" / "portal" / "core_services"
-    module_path = shared_root / f"{module_name}.py"
-    spec = importlib.util.spec_from_file_location(f"mycite_shared_core_{module_name}", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load shared core services module from {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    app_root = Path(__file__).resolve().parents[3]
+    app_root_token = str(app_root)
+    if app_root_token not in sys.path:
+        sys.path.insert(0, app_root_token)
+    return importlib.import_module(f"_shared.portal.core_services.{module_name}")
 
 
 _CFG = _load_shared_module("config_loader")
