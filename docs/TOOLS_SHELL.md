@@ -1,78 +1,115 @@
-# Service Shell Standard
+# IDE Shell Standard
 
-## Purpose
+## Locked Shell Layout
 
-All runnable portals must use one shared service-first shell:
+All runnable portals (`mycite-le_fnd`, `mycite-le_tff`, `mycite-ne_mt`) use one shared IDE-style shell in `portal/ui/templates/base.html`:
 
-- top-level services: `Home`, `Data`, `Network`, `Tools`, `Inbox`
-- `Data` is a core service route, not a default optional tool package
-- `Tools` is a core service page whose content is optional packaged capabilities
+- Menu bar (visual-only): `File`, `Edit`, `Selection`, `View`, `Go`, `Run`, `Terminal`, `Help`
+- Activity bar (global service navigation)
+- Left context sidebar (page-aware)
+- Workbench (main content)
+- Right inspector/drawer (collapsible, contextual)
 
-## Canonical Routes
+Persistent navigation remains on the left. Focused inspection/editing opens on the right.
 
-- `GET /portal` -> redirect to `/portal/home`
-- `GET /portal/home`
-- `GET /portal/data`
-- `GET /portal/network/contracts`
-- `GET /portal/network/magnetlinks`
-- `GET /portal/network/progeny`
-- `GET /portal/network/alias`
-- `GET /portal/tools`
-- `GET /portal/inbox`
+## Route Model
 
-Tool package routes remain additive:
+Canonical shell routes:
 
-- `GET /portal/tools/<tool_id>/home`
+- `GET /portal` -> redirect to `GET /portal/system`
+- `GET /portal/system`
+- `GET /portal/network`
+- `GET /portal/utilities`
+- `GET /portal/peripherals`
 
-## Runtime Contracts
+Compatibility redirects are preserved:
 
-Shared service metadata/runtime lives under:
+- `GET /portal/home` -> `/portal/system`
+- `GET /portal/data` (+ legacy subpaths) -> `/portal/system`
+- `GET /portal/tools` -> `/portal/peripherals?tab=tools`
+- `GET /portal/inbox` -> `/portal/utilities?tab=inbox`
+- `GET /portal/peripheral` -> `/portal/peripherals?tab=peripherals`
+- `GET /portal/network/<legacy_tab>` -> `/portal/network?view=...`
 
-- `portals/_shared/portal/core_services/`
+The shell logo routes to `GET /portal/system` and uses `assets/icons/logos/fnd.svg`.
 
-Shared tool runtime lives under:
+## Activity Bar
 
-- `portals/_shared/portal/tools/runtime.py`
+Primary activity entries are:
 
-Portal wrappers must load shared runtimes via portal-local wrapper modules:
+- `NETWORK`
+- `UTILITIES`
+- `PERIPHERALS`
+- `SYSTEM`
 
-- `portal/core_services/runtime.py`
-- `portal/tools/runtime.py`
+Legacy top-level entries (`INBOX`, `ALIASES`, `TOOLS`, `PROGENY`) are not separate activity-bar items.
 
-## Config Conventions
+Session actions in the activity footer:
 
-`enabled_services` is optional. If missing, the default order is:
+- `Switch Active Portal`
+- `Sign Out`
 
-- `home`, `data`, `network`, `tools`, `inbox`
+## Page Model
 
-`enabled_tools` controls optional tool packages. Legacy token behavior:
+### NETWORK
 
-- `data_tool` in `enabled_tools` is ignored with warning
-- Data UI is reached from `/portal/data`
+`NETWORK` uses a Discord-like interaction model:
 
-## Network Tab Model
+- left context sections: `Alias Interfaces`, `Request Logs`, `P2P`
+- workbench updates from selected alias/log/P2P item
+- profile/contact-card inspection opens in the right inspector
 
-`/portal/network/*` tabs are path-based and canonical:
+### UTILITIES
 
-- `contracts`
-- `magnetlinks`
-- `progeny`
-- `alias`
+`UTILITIES` hosts utility surfaces only:
 
-Profile cards in relationship tabs are JSON-backed metadata surfaces.
-They are non-secret, and secret-like keys are blocked from card payloads.
+- `Inbox`
+- `Launchers` (tools mounted to `utilities`)
 
-## UI Requirements
+Utilities consume the core shell and do not redefine it.
 
-- Base layout includes `partials/service_header.html`
-- Header nav renders all enabled services as visible buttons/tabs, including `Tools`
-- Header service entries use symbolic icons from `portals/assets/icons/ui/`
-- Sidebar is reserved for relationship listings:
-  - top: `Home` button
-  - body: `Progeny` list + `Aliases` list
-  - footer: active portal name + `Sign out`
-- Service navigation is route-driven, not query-param tab state
-- `/portal/tools` renders tool-specific sub-tabs based on `enabled_tools`
-- Any local tab controls are page-local only and must not replace canonical service routes
-- Alias session routes remain independent of the service shell
-- In FND Data service, Advanced NIMM diagnostics are rendered as a right-margin summary with an overlay sidebar for full controls.
+### PERIPHERALS
+
+`PERIPHERALS` is tabbed:
+
+- `Tools`
+- `Peripherals`
+- `Progeny`
+- `Configuration`
+- `Vault`
+
+Tools in this page are mounted through extension metadata (`peripherals.tools`).
+
+### SYSTEM
+
+`SYSTEM` is the shell home/splash context:
+
+- left context sidebar is profile-oriented
+- workbench hosts current data-facing workspace
+- profile/data detail panels open in the right inspector
+
+## Inspector Model
+
+Global inspector runtime is provided in `portal/ui/static/portal.js` (`window.PortalInspector`):
+
+- `open(payload)`
+- `close()`
+- `toggle(payload)`
+- `openTemplate(templateId, title, subtitle)`
+
+Pages inject contextual content by template or payload. Datum investigation can be opened from the data workbench and shown in this right-side inspector.
+
+## Extension-Point Rule
+
+Tools are mounted through shared runtime (`portals/_shared/portal/tools/runtime.py`) and must not fork shell layout/routes.
+
+Optional per-portal manifest:
+
+- `private/tools.manifest.json`
+
+Supported mount targets:
+
+- `utilities`
+- `peripherals.tools`
+
+One-off portal tools are consumers of shell slots and routes, not alternate shells.

@@ -12,6 +12,8 @@ from typing import Any, Dict, Iterable, List, Optional
 _TOOL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _LOG = logging.getLogger("mycite.tool_runtime")
 _LEGACY_CORE_TOOL_IDS = {"data_tool"}
+_ALLOWED_MOUNT_TARGETS = {"utilities", "peripherals.tools"}
+_DEFAULT_MOUNT_TARGET = "peripherals.tools"
 
 
 def _safe_tool_id(value: str) -> str:
@@ -25,7 +27,64 @@ def _default_display_name(tool_id: str) -> str:
     return tool_id.replace("_", " ").replace("-", " ").strip().title() or tool_id
 
 
+def _normalize_mount_target(value: str | None) -> str:
+    token = str(value or "").strip().lower()
+    return token if token in _ALLOWED_MOUNT_TARGETS else _DEFAULT_MOUNT_TARGET
+
+
+def _manifest_path(private_dir: Path | None) -> Path | None:
+    if private_dir is None:
+        return None
+    return Path(private_dir) / "tools.manifest.json"
+
+
+def _read_tool_mount_targets(private_dir: Path | None) -> dict[str, str]:
+    path = _manifest_path(private_dir)
+    if path is None or not path.exists() or not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+
+    out: dict[str, str] = {}
+    entries = payload.get("tools")
+    if isinstance(entries, list):
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            raw_id = item.get("tool_id") or item.get("id")
+            if not isinstance(raw_id, str):
+                continue
+            try:
+                tool_id = _safe_tool_id(raw_id)
+            except ValueError:
+                continue
+            out[tool_id] = _normalize_mount_target(item.get("mount_target"))
+        return out
+
+    # Backward-compatible shorthand:
+    # {
+    #   "mount_targets": { "operations": "peripherals.tools" }
+    # }
+    mounts = payload.get("mount_targets")
+    if isinstance(mounts, dict):
+        for raw_id, raw_target in mounts.items():
+            try:
+                tool_id = _safe_tool_id(str(raw_id))
+            except ValueError:
+                continue
+            out[tool_id] = _normalize_mount_target(str(raw_target))
+    return out
+
+
 def _config_path(private_dir: Path, msn_id: Optional[str]) -> Optional[Path]:
+    canonical = private_dir / "config.json"
+    if canonical.exists() and canonical.is_file():
+        return canonical
+
     if msn_id:
         exact = private_dir / f"mycite-config-{msn_id}.json"
         if exact.exists() and exact.is_file():
@@ -157,6 +216,9 @@ def resolve_tool_meta(module: ModuleType, fallback_tool_id: str) -> Dict[str, An
 
     icon_raw = raw.get("icon") or getattr(module, "TOOL_ICON", None)
     icon = str(icon_raw).strip() if isinstance(icon_raw, str) else ""
+    mount_target = _normalize_mount_target(
+        str(raw.get("mount_target") or getattr(module, "TOOL_MOUNT_TARGET", "")).strip()
+    )
 
     blueprint = raw.get("blueprint") or raw.get("TOOL_BLUEPRINT") or getattr(module, "TOOL_BLUEPRINT", None)
 
@@ -168,6 +230,7 @@ def resolve_tool_meta(module: ModuleType, fallback_tool_id: str) -> Dict[str, An
         "icon": icon,
         "panel_id": f"tool-{tool_id}",
         "title": display_name,
+        "mount_target": mount_target,
         "blueprint": blueprint,
     }
 
@@ -178,6 +241,7 @@ def register_tool_blueprints(
     *,
     tools_package: str = "portal.tools",
     tools_dir: Path | None = None,
+    private_dir: Path | None = None,
     logger: logging.Logger | None = None,
 ) -> list[Dict[str, Any]]:
     log = logger or _LOG
@@ -211,6 +275,7 @@ def register_tool_blueprints(
 
     tabs: List[Dict[str, Any]] = []
     registered_blueprints: set[str] = set()
+    manifest_mount_targets = _read_tool_mount_targets(private_dir)
 
     for tool_id in selected_tool_ids:
         module = load_tool_module(tool_id, tools_package=tools_package, logger=log)
@@ -218,6 +283,10 @@ def register_tool_blueprints(
             continue
 
         meta = resolve_tool_meta(module, tool_id)
+        meta["mount_target"] = manifest_mount_targets.get(
+            str(meta.get("tool_id") or ""),
+            _normalize_mount_target(str(meta.get("mount_target") or "")),
+        )
         blueprint = meta.pop("blueprint", None)
         if blueprint is not None:
             bp_name = str(getattr(blueprint, "name", "") or "")

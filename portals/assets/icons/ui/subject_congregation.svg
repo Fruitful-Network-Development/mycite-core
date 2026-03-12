@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?><!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg width="800px" height="800px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" stroke-width="3" stroke="#000000" fill="none" stroke-linejoin="round">
+  
+  <path d="M 38,48 L 32,58 L 26,48 H 6 A 4,4 0 0 1 2,44 V 12 A 4,4 0 0 1 6,8 H 58 A 4,4 0 0 1 62,12 V 44 A 4,4 0 0 1 58,48 Z" />
+
+  <circle cx="32.00" cy="23.17" r="4.46"/>
+  <path d="M40.93,39.99 A9.02,9.02,0,0,0,31.91,30.98 A9.02,9.02,0,0,0,22.90,39.99 Z"/>
+  
+  <circle cx="45.17" cy="23.17" r="4.46"/>
+  <path d="M43.90,39.99 H54.18 A9.02,9.02,0,0,0,45.17,30.98 a8.99,8.99,0,0,0,-4.23,1.06"/>
+  
+  <circle cx="18.83" cy="23.17" r="4.46"/>
+  <path d="M20.10,39.99 H9.82 A9.02,9.02,0,0,1,18.83,30.98 a8.99,8.99,0,0,1,4.23,1.06"/>
+
+</svg>

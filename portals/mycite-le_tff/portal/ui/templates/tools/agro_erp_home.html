@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | AGRO ERP{% endblock %}
+
+{% set page_title = "AGRO ERP" %}
+{% set page_subtitle = "Daemon-driven property coordinate resolution through anthology-aware NIMM-style directives." %}
+
+{% block body %}
+  <section class="agro-tool">
+    <div class="cardgrid">
+      <article class="card">
+        <div class="card__kicker">Tool Summary</div>
+        <div class="card__title">AGRO ERP Daemon Workspace</div>
+        <div class="card__body">
+          <p><code>msn_id</code>: {{ model.msn_id }}</p>
+          <p><code>portal</code>: {{ model.portal_instance_id }}</p>
+          <p><code>property.title</code>: {{ model.property_title }}</p>
+          <p><code>property.geometry.type</code>: {{ model.property_geometry_type }}</p>
+          <p><code>active_config</code>: {{ model.active_config_path }}</p>
+          <p><code>anthology</code>: {{ model.anthology_path }}</p>
+          <p><a href="/portal/tools/agro_erp/model.json">View model as JSON</a></p>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card__kicker">Config Inputs</div>
+        <div class="card__title">Raw Property Tokens</div>
+        <div class="card__body">
+          <p><strong>property.bbox</strong></p>
+          {% if model.raw_property_bbox %}
+            <ul class="liststack">
+              {% for token in model.raw_property_bbox %}
+                <li><code>{{ token }}</code></li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p>No bbox tokens were found.</p>
+          {% endif %}
+
+          <p><strong>property.geometry.coordinates</strong></p>
+          {% if model.raw_property_geometry_coordinates %}
+            <ul class="liststack">
+              {% for token in model.raw_property_geometry_coordinates %}
+                <li><code>{{ token }}</code></li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p>No geometry coordinate tokens were found.</p>
+          {% endif %}
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card__kicker">Coordinate Notation</div>
+        <div class="card__title">Fixed-Width Signed Hex Split</div>
+        <div class="card__body">
+          <p>
+            AGRO ERP decodes each coordinate token by splitting it into equal halves.
+            Upper half is longitude-axis value, lower half is latitude-axis value.
+          </p>
+          <p>
+            Each axis is decoded as signed two's-complement and scaled by
+            <code>1e7</code> to produce decimal longitude/latitude pairs.
+          </p>
+        </div>
+      </article>
+
+      <article class="card card--full">
+        <div class="card__kicker">Daemon Registry</div>
+        <div class="card__title">NIMM Directive Scripts (AGRO ERP)</div>
+        <div class="card__body">
+          <div class="agro-tool__tableWrap">
+            <table class="agro-tool__table">
+              <thead>
+                <tr>
+                  <th>Daemon</th>
+                  <th>Config Path</th>
+                  <th>Directive Script</th>
+                  <th>Tokens</th>
+                  <th>Resolved Pairs</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for daemon in model.daemons %}
+                  <tr>
+                    <td>
+                      <strong>{{ daemon.title }}</strong><br />
+                      <code>{{ daemon.daemon_id }}</code>
+                    </td>
+                    <td><code>{{ daemon.config_path }}</code></td>
+                    <td><code>{{ daemon.directive.script }}</code></td>
+                    <td>{{ daemon.token_count }}</td>
+                    <td>{{ daemon.resolved_coordinate_pairs | length }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+
+      <article class="card card--full">
+        <div class="card__kicker">Resolved Geometry</div>
+        <div class="card__title">Property Coordinates Through Daemon</div>
+        <div class="card__body">
+          {% set polygon = model.polygon_svg if model.polygon_svg is mapping else {} %}
+          {% if polygon and polygon.available %}
+            <div class="geo-plot">
+              <svg viewBox="{{ polygon.viewbox }}" role="img" aria-label="AGRO ERP geometry preview">
+                <polyline class="geo-plot__outline" points="{{ polygon.points }}" />
+                <polygon class="geo-plot__fill" points="{{ polygon.points }}" />
+              </svg>
+            </div>
+          {% else %}
+            <p>No geometry polygon preview available yet.</p>
+          {% endif %}
+
+          <div class="geo-grid">
+            <div>
+              <h3>Geometry Daemon Output</h3>
+              {% if model.geometry_daemon and model.geometry_daemon.resolved %}
+                <ul class="liststack">
+                  {% for row in model.geometry_daemon.resolved %}
+                    <li>
+                      <code>{{ row.token }}</code>
+                      <span class="inline-meta">{{ row.source }}</span>
+                      {% if row.resolved_pair %}
+                        <span class="inline-meta">[{{ row.resolved_pair[0] }}, {{ row.resolved_pair[1] }}]</span>
+                      {% else %}
+                        <span class="inline-meta">unresolved</span>
+                      {% endif %}
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p>No geometry daemon output available.</p>
+              {% endif %}
+            </div>
+
+            <div>
+              <h3>BBox Daemon Output</h3>
+              {% if model.bbox_daemon and model.bbox_daemon.resolved %}
+                <ul class="liststack">
+                  {% for row in model.bbox_daemon.resolved %}
+                    <li>
+                      <code>{{ row.token }}</code>
+                      <span class="inline-meta">{{ row.source }}</span>
+                      {% if row.resolved_pair %}
+                        <span class="inline-meta">[{{ row.resolved_pair[0] }}, {{ row.resolved_pair[1] }}]</span>
+                      {% else %}
+                        <span class="inline-meta">unresolved</span>
+                      {% endif %}
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p>No bbox daemon output available.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card card--full">
+        <div class="card__kicker">Model Payload</div>
+        <div class="card__title">AGRO ERP Runtime Model</div>
+        <div class="card__body">
+          <pre class="jsonblock">{{ model_json }}</pre>
+        </div>
+      </article>
+    </div>
+  </section>
+{% endblock %}

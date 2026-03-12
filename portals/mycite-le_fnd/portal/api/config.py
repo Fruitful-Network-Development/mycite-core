@@ -14,8 +14,27 @@ FORBIDDEN_SECRET_KEYS = {
 }
 
 
-def _config_path(private_dir: Path, msn_id: str) -> Path:
+def _canonical_path(private_dir: Path) -> Path:
+    return private_dir / "config.json"
+
+
+def _legacy_path(private_dir: Path, msn_id: str) -> Path:
     return private_dir / f"mycite-config-{msn_id}.json"
+
+
+def _active_config_path(private_dir: Path, msn_id: str) -> Path | None:
+    canonical = _canonical_path(private_dir)
+    if canonical.exists() and canonical.is_file():
+        return canonical
+    token = str(msn_id or "").strip()
+    if token:
+        legacy = _legacy_path(private_dir, token)
+        if legacy.exists() and legacy.is_file():
+            return legacy
+    for candidate in sorted(private_dir.glob("mycite-config-*.json")):
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return None
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
@@ -42,7 +61,8 @@ def register_config_routes(
     """Register portal-only config endpoints.
 
     Storage:
-      private/mycite-config-<msn_id>.json
+      private/config.json (canonical)
+      private/mycite-config-<msn_id>.json (legacy fallback)
 
     Endpoints:
     - GET     /portal/api/config?msn_id=...
@@ -53,23 +73,21 @@ def register_config_routes(
     @app.get("/portal/api/config")
     def portal_config_get():
         msn_id = (request.args.get("msn_id") or "").strip()
-        if not msn_id:
-            abort(400, description="Missing required query param: msn_id")
-
-        p = _config_path(private_dir, msn_id)
-        if not p.exists():
+        p = _active_config_path(private_dir, msn_id)
+        if p is None:
+            if not msn_id:
+                abort(400, description="Missing required query param: msn_id")
             abort(404, description=f"No config JSON found for msn_id={msn_id}")
 
         cfg = _read_json(p)
+        effective_msn_id = msn_id or str(cfg.get("msn_id") or "").strip()
         if options_private_fn is not None:
-            cfg["options_private"] = options_private_fn(msn_id)
+            cfg["options_private"] = options_private_fn(effective_msn_id)
         return jsonify(cfg)
 
     @app.put("/portal/api/config")
     def portal_config_put():
         msn_id = (request.args.get("msn_id") or "").strip()
-        if not msn_id:
-            abort(400, description="Missing required query param: msn_id")
 
         if not request.is_json:
             abort(415, description="Expected application/json body")
@@ -83,7 +101,11 @@ def register_config_routes(
         body = dict(body)
         body["updated_unix_ms"] = int(time.time() * 1000)
 
-        p = _config_path(private_dir, msn_id)
+        canonical = _canonical_path(private_dir)
+        if canonical.exists() and canonical.is_file():
+            p = canonical
+        else:
+            p = _legacy_path(private_dir, msn_id) if msn_id else canonical
         _write_json(p, body)
         return jsonify({"ok": True, "msn_id": msn_id, "written_to": str(p)})
 

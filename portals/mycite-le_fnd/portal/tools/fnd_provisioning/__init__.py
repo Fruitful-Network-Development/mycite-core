@@ -14,3 +14,13 @@ TOOL_BLUEPRINT = fnd_provisioning_bp
 def fnd_provisioning_home():
     return render_template("tools/fnd_provisioning_home.html")
 
+
+
+def get_tool() -> dict[str, object]:
+    return {
+        "tool_id": TOOL_ID,
+        "display_name": TOOL_TITLE,
+        "route_prefix": f"/portal/tools/{TOOL_ID}",
+        "home_path": TOOL_HOME_PATH,
+        "blueprint": TOOL_BLUEPRINT,
+    }

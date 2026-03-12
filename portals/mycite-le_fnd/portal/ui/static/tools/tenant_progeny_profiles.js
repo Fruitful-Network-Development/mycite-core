@@ -16,7 +16,7 @@
 
   async function loadProfiles() {
     try {
-      var res = await fetch("/portal/api/progeny/tenants", { credentials: "same-origin" });
+      var res = await fetch("/portal/api/progeny/members", { credentials: "same-origin" });
       var data = await res.json();
       if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
 
@@ -31,11 +31,13 @@
             var caps = item.capabilities || {};
             var refs = item.profile_refs || {};
             var status = item.status || {};
+            var memberId = item.member_id || item.tenant_id || "";
+            var memberMsnId = item.member_msn_id || item.tenant_msn_id || "";
             return (
               "<tr>" +
-              "<td><code>" + esc(item.tenant_id) + "</code></td>" +
+              "<td><code>" + esc(memberId) + "</code></td>" +
               "<td>" + esc((item.display || {}).title || "") + "</td>" +
-              "<td><code>" + esc(item.tenant_msn_id || "") + "</code></td>" +
+              "<td><code>" + esc(memberMsnId) + "</code></td>" +
               "<td>" + (caps.paypal ? "enabled" : "disabled") + "</td>" +
               "<td>" + (caps.aws ? "enabled" : "disabled") + "</td>" +
               "<td>" + esc(status.state || "active") + "</td>" +

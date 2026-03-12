@@ -1,0 +1,47 @@
+<nav class="toolshell" aria-label="Tools navigation">
+  <div class="toolshell__group">
+    <button
+      class="toolshell__button"
+      type="button"
+      data-tools-toggle
+      aria-haspopup="true"
+      aria-expanded="false"
+      aria-controls="toolsMenu"
+    >
+      Tools
+    </button>
+
+    <div class="toolshell__menu" id="toolsMenu" data-tools-menu>
+      {% if tool_tabs %}
+        {% for tool in tool_tabs %}
+          <a
+            class="toolshell__item {% if active_tool_id == tool.tool_id %}is-active{% endif %}"
+            href="{{ tool.home_path }}"
+            data-tool-id="{{ tool.tool_id }}"
+          >
+            {% if tool.icon %}
+              <img src="{{ tool.icon }}" alt="" class="toolshell__icon" />
+            {% endif %}
+            <span>{{ tool.display_name }}</span>
+          </a>
+        {% endfor %}
+      {% else %}
+        <span class="toolshell__item is-empty">No tools enabled</span>
+      {% endif %}
+    </div>
+
+    <div class="toolshell__activeWrap">
+      <span class="toolshell__activeLabel">Active Tool</span>
+      {% if active_tool %}
+        <a class="toolshell__activeTab" href="{{ active_tool.home_path }}">{{ active_tool.display_name }}</a>
+      {% else %}
+        <span class="toolshell__activeTab is-empty">None</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <label class="themebar" aria-label="Portal theme selector">
+    <span class="themebar__label">Theme</span>
+    <select class="themebar__select" data-theme-selector data-theme-scope="portal"></select>
+  </label>
+</nav>

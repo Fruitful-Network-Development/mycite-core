@@ -17,28 +17,25 @@ class NetworkTabItem(TypedDict):
     href: str
     active: bool
 
-DEFAULT_SERVICE_ORDER = ["home", "data", "network", "tools", "inbox"]
+DEFAULT_SERVICE_ORDER = ["network", "utilities", "peripherals", "system"]
 SERVICE_LABELS = {
-    "home": "Home",
-    "data": "Data",
-    "network": "Network",
-    "tools": "Tools",
-    "inbox": "Inbox",
+    "system": "SYSTEM",
+    "network": "NETWORK",
+    "utilities": "UTILITIES",
+    "peripherals": "PERIPHERALS",
 }
 SERVICE_ICONS = {
-    "home": "/portal/static/icons/ui/home.svg",
-    "data": "/portal/static/icons/ui/data.svg",
+    "system": "/portal/static/icons/ui/home.svg",
     "network": "/portal/static/icons/ui/network.svg",
-    "tools": "/portal/static/icons/ui/tools.svg",
-    "inbox": "/portal/static/icons/ui/inbox.svg",
+    "utilities": "/portal/static/icons/ui/inbox.svg",
+    "peripherals": "/portal/static/icons/ui/tools.svg",
 }
 
-NETWORK_TAB_ORDER = ["contracts", "magnetlinks", "progeny", "alias"]
+NETWORK_TAB_ORDER = ["aliases", "logs", "p2p"]
 NETWORK_TAB_LABELS = {
-    "contracts": "Contracts",
-    "magnetlinks": "Magnetlinks",
-    "progeny": "Progeny",
-    "alias": "Alias",
+    "aliases": "Aliases",
+    "logs": "Request Logs",
+    "p2p": "P2P",
 }
 
 
@@ -74,21 +71,19 @@ def normalize_network_tab(tab_id: str) -> str:
 
 def service_href(service_id: str) -> str:
     token = str(service_id or "").strip().lower()
-    if token == "home":
-        return "/portal/home"
-    if token == "data":
-        return "/portal/data"
+    if token == "system":
+        return "/portal/system"
     if token == "network":
-        return "/portal/network/contracts"
-    if token == "tools":
-        return "/portal/tools"
-    if token == "inbox":
-        return "/portal/inbox"
-    return "/portal/home"
+        return "/portal/network"
+    if token == "utilities":
+        return "/portal/utilities"
+    if token == "peripherals":
+        return "/portal/peripherals"
+    return "/portal/system"
 
 
 def build_service_nav(config: dict[str, Any], *, active_service: str) -> list[ServiceNavItem]:
-    active = str(active_service or "home").strip().lower()
+    active = str(active_service or "system").strip().lower()
     nav: list[ServiceNavItem] = []
     for service_id in resolve_service_order(config):
         nav.append(
@@ -120,16 +115,32 @@ def build_network_tabs(active_tab: str) -> list[NetworkTabItem]:
 
 def active_service_from_path(path: str) -> str:
     token = str(path or "").strip().lower()
+    if token.startswith("/portal/peripherals"):
+        return "peripherals"
+    if token.startswith("/portal/peripheral"):
+        return "peripherals"
+    if token.startswith("/portal/clients"):
+        return "peripherals"
+    if token.startswith("/portal/client/"):
+        return "peripherals"
+    if token.startswith("/portal/alias/"):
+        return "network"
+    if token.startswith("/portal/utilities"):
+        return "utilities"
     if token.startswith("/portal/network"):
         return "network"
-    if token.startswith("/portal/data"):
-        return "data"
-    if token.startswith("/portal/tools"):
-        return "tools"
     if token.startswith("/portal/inbox"):
-        return "inbox"
+        return "utilities"
+    if token.startswith("/portal/data"):
+        return "system"
+    if token.startswith("/portal/tools"):
+        return "peripherals"
+    if token.startswith("/portal/vault"):
+        return "peripherals"
     if token.startswith("/portal/home"):
-        return "home"
+        return "system"
+    if token.startswith("/portal/system"):
+        return "system"
     if token == "/portal":
-        return "home"
-    return "home"
+        return "system"
+    return "system"

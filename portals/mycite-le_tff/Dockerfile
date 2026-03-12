@@ -1,0 +1,16 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY mycite-le_tff/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+COPY mycite-le_tff/ /app/mycite-le_tff/
+COPY _shared/ /app/_shared/
+COPY assets/ /app/assets/
+
+WORKDIR /app/mycite-le_tff
+
+EXPOSE 5000
+
+CMD ["gunicorn", "-b", "0.0.0.0:5000", "app:app"]

@@ -24,6 +24,11 @@ def _read_json(path: Path) -> dict[str, Any] | None:
 def _candidate_paths(private_dir: Path, msn_id: str | None) -> list[Path]:
     out: list[Path] = []
 
+    # Canonical runtime config file for active portal state.
+    canonical = private_dir / "config.json"
+    if canonical.exists() and canonical.is_file():
+        out.append(canonical)
+
     token = str(msn_id or "").strip()
     if token:
         out.append(private_dir / f"mycite-config-{token}.json")
@@ -48,12 +53,29 @@ def _candidate_paths(private_dir: Path, msn_id: str | None) -> list[Path]:
     return unique
 
 
-def load_active_private_config(private_dir: Path, msn_id: str | None = None) -> dict[str, Any]:
+def resolve_active_private_config_path(private_dir: Path, msn_id: str | None = None) -> Path | None:
     for path in _candidate_paths(private_dir, msn_id):
         if not path.exists() or not path.is_file():
             continue
         payload = _read_json(path)
         if payload is None:
             continue
-        return payload
-    return {}
+        return path
+    return None
+
+
+def active_private_config_filename(private_dir: Path, msn_id: str | None = None) -> str:
+    path = resolve_active_private_config_path(private_dir, msn_id)
+    if path is None:
+        return ""
+    return path.name
+
+
+def load_active_private_config(private_dir: Path, msn_id: str | None = None) -> dict[str, Any]:
+    path = resolve_active_private_config_path(private_dir, msn_id)
+    if path is None:
+        return {}
+    payload = _read_json(path)
+    if payload is None:
+        return {}
+    return payload

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define how tenant-scoped AWS tooling consumes anthology abstractions without storing secrets in portal metadata.
+Define how member-scoped AWS tooling consumes anthology abstractions without storing secrets in portal metadata.
 
 Current prototype anchor:
 
@@ -11,13 +11,13 @@ Current prototype anchor:
 
 Portal runtime resolves this structure and produces a deterministic preview payload before queueing AWS work.
 
-## Tenant metadata keys
+## Member metadata keys
 
-Tenant profile metadata remains non-secret and now supports:
+Member profile metadata remains non-secret and now supports:
 
 ```json
 "profile_refs": {
-  "aws_profile_id": "aws:tenant:<tenant_id>",
+  "aws_profile_id": "aws:member:<member_id>",
   "aws_emailer_list_ref": "10-0-1",
   "aws_emailer_entry_ref": "9-2-1"
 }
@@ -28,11 +28,12 @@ Tenant profile metadata remains non-secret and now supports:
 
 ## Preview endpoint
 
-- `GET /portal/api/aws/tenant/<tenant_id>/emailer_preview`
+- Canonical: `GET /portal/api/aws/member/<member_id>/emailer_preview`
+- Legacy alias: `GET /portal/api/aws/tenant/<tenant_id>/emailer_preview`
 
 The endpoint:
 
-1. loads tenant `profile_refs`
+1. loads member `profile_refs`
 2. resolves `aws_emailer_list_ref` against anthology
 3. expands entry rows and contact collection rows
 4. derives subscription booleans from bool reference pairs

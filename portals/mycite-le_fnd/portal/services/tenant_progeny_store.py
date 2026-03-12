@@ -38,6 +38,16 @@ def _provider_msn_id() -> str:
     if env_msn:
         return env_msn
 
+    canonical_cfg = _private_dir() / "config.json"
+    if canonical_cfg.exists() and canonical_cfg.is_file():
+        try:
+            payload = _read_json(canonical_cfg)
+            msn_id = str(payload.get("msn_id") or "").strip()
+            if msn_id:
+                return msn_id
+        except Exception:
+            pass
+
     for cfg in sorted(_private_dir().glob("mycite-config-*.json")):
         try:
             payload = _read_json(cfg)

@@ -1,4 +1,9 @@
-from .config_loader import load_active_private_config
+from .config_loader import (
+    active_private_config_filename,
+    load_active_private_config,
+    resolve_active_private_config_path,
+)
+from .geography import build_property_geography_model
 from .network_cards import build_network_cards
 from .registry import (
     DEFAULT_SERVICE_ORDER,
@@ -16,8 +21,11 @@ __all__ = [
     "active_service_from_path",
     "build_network_tabs",
     "build_network_cards",
+    "build_property_geography_model",
     "build_service_nav",
+    "active_private_config_filename",
     "load_active_private_config",
+    "resolve_active_private_config_path",
     "normalize_network_tab",
     "resolve_service_order",
 ]

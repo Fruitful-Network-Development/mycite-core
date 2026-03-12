@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | System{% endblock %}
+
+{% set page_title = "SYSTEM" %}
+{% set page_subtitle = "Portal identity and current data workbench" %}
+
+{% block context_sidebar %}
+  <section class="ide-contextSection">
+    <header class="ide-contextTitle">Data Workspace</header>
+    <ul class="ide-contextList">
+      <li><a class="ide-contextLink is-active" href="/portal/system"><span>Anthology Workbench</span><small>Graph + Editor</small></a></li>
+      <li><a class="ide-contextLink" href="/portal/system#dtAnthologyGraph"><span>Graph Focus</span><small>Navigate / Investigate</small></a></li>
+      <li><a class="ide-contextLink" href="/portal/system#dtDatumEditor"><span>Datum Editor</span><small>Focused edits</small></a></li>
+    </ul>
+  </section>
+  <section class="ide-contextSection">
+    <header class="ide-contextTitle">Inspector</header>
+    <ul class="ide-contextList">
+      <li>
+        <button
+          type="button"
+          class="inspector-trigger ide-contextAction"
+          data-inspector-template="system-profile-inspector"
+          data-inspector-title="System Profile"
+          data-inspector-subtitle="msn-{{ msn_id }}.json"
+        >Open Contact Card</button>
+      </li>
+    </ul>
+  </section>
+{% endblock %}
+
+{% block body %}
+  <article class="card system-homecard">
+    <div class="card__kicker">System Workbench</div>
+    <div class="card__title">Portal Identity + Data Engine Surface</div>
+    <div class="card__body">
+      {% set public_profile = portal_profile.public_profile if portal_profile is defined and portal_profile.public_profile is defined else {} %}
+      <p><code>msn_id</code>: {{ public_profile.get("msn_id", msn_id) }}</p>
+      <p><code>title</code>: {{ public_profile.get("title", portal_name) }}</p>
+      <button
+        type="button"
+        class="inspector-trigger"
+        data-inspector-template="system-profile-inspector"
+        data-inspector-title="System Profile"
+        data-inspector-subtitle="msn-{{ msn_id }}.json"
+      >Open Profile Inspector</button>
+    </div>
+  </article>
+
+  {% if data_home_available is defined and data_home_available %}
+    {% include "tools/partials/data_tool_shell.html" %}
+  {% else %}
+    <article class="card">
+      <div class="card__kicker">Data Workbench</div>
+      <div class="card__title">Unavailable</div>
+      <div class="card__body">
+        <p>Data workbench template is not available in this portal package.</p>
+      </div>
+    </article>
+  {% endif %}
+
+  <template id="system-profile-inspector">
+    <article class="card">
+      <div class="card__kicker">Portal Contact Card</div>
+      <div class="card__title">msn-{{ msn_id }}.json</div>
+      <div class="card__body">
+        <pre class="jsonblock">{{ system_profile_json }}</pre>
+        <p><a href="/portal/api/config?msn_id={{ msn_id }}"><strong>Edit hook:</strong> /portal/api/config</a></p>
+      </div>
+    </article>
+  </template>
+{% endblock %}
+
+{% block scripts %}
+  {% if data_home_available is defined and data_home_available %}
+    <script src="/portal/static/tools/data_tool.js"></script>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Progeny Embed Landing{% endblock %}
+
+{% block head_extra %}
+  <style>
+    .progenyEmbed { display: grid; gap: 1rem; }
+    .progenyEmbed__panel {
+      border: 1px solid var(--border, #d0d7de);
+      background: var(--bg-alt, #f6f8fa);
+      border-radius: 12px;
+      padding: 0.9rem 1rem;
+    }
+    .progenyEmbed__panel h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--fg-light, #355f76);
+    }
+    .progenyEmbed__muted { color: var(--fg-light, #4f6f80); font-size: 0.84rem; margin: 0.15rem 0; }
+    .progenyEmbed__warn {
+      border: 1px solid #c58300;
+      background: #fff7e5;
+      color: #7a5200;
+      border-radius: 10px;
+      padding: 0.65rem 0.8rem;
+      font-size: 0.85rem;
+    }
+    .progenyEmbed__channels { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .progenyEmbed__channel {
+      border: 1px solid var(--border, #d0d7de);
+      border-radius: 10px;
+      background: #fff;
+      padding: 0.65rem 0.7rem;
+    }
+    .progenyEmbed__channel.is-ready { border-color: #2d7f4f; }
+    .progenyEmbed__status {
+      display: inline-block;
+      font-size: 0.72rem;
+      padding: 0.05rem 0.45rem;
+      border-radius: 99px;
+      border: 1px solid #a2b5c2;
+      color: #355f76;
+      margin-bottom: 0.35rem;
+    }
+    .progenyEmbed__status.is-ready {
+      border-color: #2d7f4f;
+      color: #215d3a;
+      background: #edf9f1;
+    }
+    .progenyEmbed__cards { display: grid; gap: 0.7rem; }
+    .progenyEmbed__card {
+      border: 1px solid var(--border, #d0d7de);
+      border-radius: 10px;
+      background: #fff;
+      padding: 0.75rem 0.8rem;
+      display: grid;
+      gap: 0.45rem;
+    }
+    .progenyEmbed__card.is-selected {
+      border-color: var(--accent, #1d7fa9);
+      box-shadow: 0 0 0 2px rgba(29, 127, 169, 0.16);
+    }
+    .progenyEmbed__row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: baseline; }
+    .progenyEmbed__title { font-weight: 700; }
+    .progenyEmbed__tag {
+      font-size: 0.72rem;
+      border: 1px solid var(--border, #d0d7de);
+      border-radius: 8px;
+      padding: 0.1rem 0.4rem;
+      color: var(--fg-light, #4f6f80);
+    }
+    .progenyEmbed__actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .progenyEmbed__action {
+      display: inline-block;
+      border: 1px solid #2b6f90;
+      color: #1d5b7a;
+      text-decoration: none;
+      border-radius: 8px;
+      padding: 0.2rem 0.55rem;
+      font-size: 0.8rem;
+      background: #f3fbff;
+    }
+    .progenyEmbed__action.is-secondary { border-color: #6b7f8c; color: #3f5562; background: #f7f9fa; }
+    .progenyEmbed__action.is-disabled {
+      border-color: #bcc9d1;
+      color: #6b7f8c;
+      background: #f4f7f9;
+      cursor: not-allowed;
+    }
+  </style>
+{% endblock %}
+
+{% block header %}
+  <div class="pagehead">
+    <div class="pagehead__title">Progeny Embed Landing</div>
+    <div class="pagehead__sub">Chooser surface for progeny/member cards and alias-first navigation.</div>
+  </div>
+{% endblock %}
+
+{% block body %}
+  <div class="progenyEmbed">
+    {% if warnings is defined and warnings %}
+      {% for warning in warnings %}
+        <div class="progenyEmbed__warn">{{ warning }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <section class="progenyEmbed__panel">
+      <h3>Lookup Context</h3>
+      <div class="progenyEmbed__muted">member_msn_id: {% if member_msn_id %}<code>{{ member_msn_id }}</code>{% else %}<em>not provided</em>{% endif %}</div>
+      <div class="progenyEmbed__muted">as_alias_id: {% if as_alias_id %}<code>{{ as_alias_id }}</code>{% else %}<em>not provided</em>{% endif %}</div>
+      <div class="progenyEmbed__muted">Primary action opens <code>/portal/alias/&lt;alias_id&gt;</code> when alias linkage exists.</div>
+    </section>
+
+    {% if broadcast is defined and broadcast and broadcast.enabled %}
+      <section class="progenyEmbed__panel">
+        <h3>Broadcast Channels</h3>
+        <div class="progenyEmbed__muted">{{ broadcast.title if broadcast.title else 'Broadcast configuration' }}</div>
+        <div class="progenyEmbed__channels">
+          {% for channel in broadcast.channels %}
+            <article class="progenyEmbed__channel {% if channel.status == 'eligible' %}is-ready{% endif %}">
+              <div class="progenyEmbed__status {% if channel.status == 'eligible' %}is-ready{% endif %}">{{ channel.status }}</div>
+              <div><strong>{{ channel.display_name if channel.display_name else channel.channel_id }}</strong></div>
+              {% if channel.description %}<div class="progenyEmbed__muted">{{ channel.description }}</div>{% endif %}
+              <div class="progenyEmbed__muted">eligible cards: {{ channel.eligible_count }}</div>
+            </article>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    <section class="progenyEmbed__panel">
+      <h3>Progeny / Members</h3>
+      {% if cards is defined and cards %}
+        <div class="progenyEmbed__cards">
+          {% for card in cards %}
+            <article class="progenyEmbed__card {% if card.is_selected %}is-selected{% endif %}">
+              <div class="progenyEmbed__row">
+                <span class="progenyEmbed__title">{{ card.display_name if card.display_name else 'Unnamed member' }}</span>
+                <span class="progenyEmbed__tag">{{ card.progeny_type }}</span>
+                <span class="progenyEmbed__tag">{{ card.status }}</span>
+              </div>
+              <div class="progenyEmbed__muted">member_msn_id: {% if card.member_msn_id %}<code>{{ card.member_msn_id }}</code>{% else %}<em>unset</em>{% endif %}</div>
+              <div class="progenyEmbed__muted">alias_id: {% if card.alias_id %}<code>{{ card.alias_id }}</code>{% else %}<em>not linked</em>{% endif %}</div>
+              {% if card.host_msn_id %}
+                <div class="progenyEmbed__muted">host: <code>{{ card.host_msn_id }}</code></div>
+              {% endif %}
+              <div class="progenyEmbed__actions">
+                {% if card.alias_url %}
+                  <a class="progenyEmbed__action" href="{{ card.alias_url }}">Open Alias View</a>
+                {% else %}
+                  <span class="progenyEmbed__action is-disabled">Alias Not Configured</span>
+                {% endif %}
+                {% if card.embed_url %}
+                  <a class="progenyEmbed__action is-secondary" href="{{ card.embed_url }}">Open Type Embed</a>
+                {% endif %}
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="progenyEmbed__muted">No progeny/member cards are available from local config/state.</div>
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}

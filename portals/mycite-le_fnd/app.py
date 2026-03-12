@@ -3,7 +3,7 @@ import os
 import re
 from pathlib import Path
 from typing import Any, Dict, Optional
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from flask import Flask, abort, jsonify, make_response, redirect, render_template, request, send_from_directory
 from jinja2 import TemplateNotFound
@@ -12,11 +12,11 @@ from data.engine.workspace import Workspace
 from data.storage_json import JsonStorageBackend
 from portal.api.aliases import get_alias_record, list_alias_records, register_aliases_routes
 from portal.api.aws_emailer import register_aws_emailer_routes
+from portal.api.admin_integrations import register_admin_integration_routes
 from portal.api.config import register_config_routes
 from portal.api.contracts import register_contract_routes
 from portal.api.data_workspace import register_data_routes as register_data_workspace_routes
 from portal.api.inbox import register_inbox_routes
-from portal.api.magnetlinks import register_magnetlinks_routes
 from portal.api.paypal_checkout import register_paypal_checkout_routes
 from portal.api.progeny_config import register_progeny_config_routes
 from portal.api.request_log import register_request_log_routes
@@ -25,10 +25,14 @@ from portal.core_services.runtime import (
     active_service_from_path,
     build_network_cards,
     build_network_tabs,
+    build_property_geography_model,
     build_service_nav,
+    load_active_private_config,
     normalize_network_tab,
+    active_private_config_filename,
 )
 from portal.services.alias_factory import alias_path, client_key_for_msn, merge_field_names
+from portal.services.progeny_embed import build_embed_progeny_landing
 from portal.services.progeny_config_store import get_client_config, get_config
 from portal.services.request_log_store import append_event
 from portal.services.tenant_progeny_store import load_profile, save_profile, set_paypal_config
@@ -48,6 +52,7 @@ PRIVATE_DIR = Path(os.environ.get("PRIVATE_DIR", str(BASE_DIR / "private")))
 DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR / "data")))
 FALLBACK_DIR = BASE_DIR
 ICONS_DIR = REPO_ROOT / "assets" / "icons"
+PORTAL_INSTANCE_ID = str(os.environ.get("PORTAL_INSTANCE_ID") or "fnd").strip().lower()
 
 
 for required in (
@@ -134,11 +139,6 @@ def _options_private(msn_id: str) -> Dict[str, Any]:
             "methods": ["GET", "POST", "OPTIONS"],
             "auth": "keycloak_or_local",
         },
-        "magnetlinks": {
-            "href": f"/portal/api/magnetlinks?msn_id={msn_id}",
-            "methods": ["GET", "POST", "OPTIONS"],
-            "auth": "keycloak_or_local",
-        },
         "progeny_config": {
             "href": f"/portal/api/progeny_config/tenant?msn_id={msn_id}",
             "methods": ["GET", "OPTIONS"],
@@ -160,6 +160,11 @@ def _options_private(msn_id: str) -> Dict[str, Any]:
 def _infer_local_msn_id() -> str:
     if os.environ.get("MSN_ID"):
         return str(os.environ.get("MSN_ID")).strip()
+
+    active_cfg = load_active_private_config(PRIVATE_DIR, None)
+    msn_id = str(active_cfg.get("msn_id") or "").strip() if isinstance(active_cfg, dict) else ""
+    if msn_id:
+        return msn_id
 
     for cfg in sorted(PRIVATE_DIR.glob("mycite-config-*.json")):
         try:
@@ -232,6 +237,24 @@ def _extract_member_msn_id(alias_payload: Dict[str, Any]) -> str:
     ).strip()
 
 
+def _canonical_progeny_type(value: str) -> str:
+    token = str(value or "").strip().lower()
+    if token == "tenant":
+        return "member"
+    if token == "board_member":
+        return "member"
+    return token
+
+
+def _default_portal_sign_out_url() -> str:
+    if PORTAL_INSTANCE_ID == "tff":
+        target = "/portal/tff"
+    else:
+        target = "/portal/fnd"
+    encoded_target = quote(target, safe="")
+    return f"/oauth2/sign_out?rd=%2Foauth2%2Fsign_in%3Frd%3D{encoded_target}"
+
+
 def _build_widget_url(alias_id: str, alias_payload: Dict[str, Any]) -> str:
     org_msn_id = str(alias_payload.get("alias_host") or "").strip()
     org_title = str(alias_payload.get("host_title") or "").strip()
@@ -239,6 +262,7 @@ def _build_widget_url(alias_id: str, alias_payload: Dict[str, Any]) -> str:
     base_url = f"http://127.0.0.1:{embed_port}"
 
     progeny_type = str(alias_payload.get("progeny_type") or "").strip().lower()
+    canonical_progeny_type = _canonical_progeny_type(progeny_type)
     tenant_id = _extract_tenant_msn_id(alias_payload)
     if progeny_type == "tenant" and tenant_id:
         query = urlencode(
@@ -251,7 +275,7 @@ def _build_widget_url(alias_id: str, alias_payload: Dict[str, Any]) -> str:
         return f"{base_url}/portal/embed/tenant?{query}"
 
     member_msn_id = _extract_member_msn_id(alias_payload)
-    if progeny_type == "board_member" and member_msn_id:
+    if canonical_progeny_type == "member" and member_msn_id:
         query = urlencode({"member_msn_id": member_msn_id, "as_alias_id": alias_id, "tab": "streams"})
         return f"{base_url}/portal/embed/board_member?{query}"
 
@@ -272,7 +296,7 @@ def list_aliases_for_sidebar(private_dir: Path) -> list[Dict[str, Any]]:
                 "label": _alias_label(record, alias_id),
                 "org_title": str(record.get("host_title") or "").strip(),
                 "org_msn_id": str(record.get("alias_host") or "").strip(),
-                "progeny_type": str(record.get("progeny_type") or "").strip(),
+                "progeny_type": _canonical_progeny_type(str(record.get("progeny_type") or "").strip()),
                 "tenant_id": str(record.get("child_msn_id") or record.get("tenant_id") or "").strip(),
             }
         )
@@ -306,29 +330,7 @@ def _field_names_for_alias(alias_payload: Dict[str, Any]) -> list[str]:
 MSN_ID = _infer_local_msn_id()
 
 
-def _load_active_private_config() -> Dict[str, Any]:
-    candidates: list[Path] = []
-    if MSN_ID:
-        candidates.append(PRIVATE_DIR / f"mycite-config-{MSN_ID}.json")
-    candidates.extend(sorted(PRIVATE_DIR.glob("mycite-config-*.json")))
-
-    seen: set[Path] = set()
-    for path in candidates:
-        if path in seen:
-            continue
-        seen.add(path)
-        if not path.exists() or not path.is_file():
-            continue
-        try:
-            payload = _read_json(path)
-        except Exception:
-            continue
-        if isinstance(payload, dict):
-            return payload
-    return {}
-
-
-ACTIVE_PRIVATE_CONFIG = _load_active_private_config()
+ACTIVE_PRIVATE_CONFIG = load_active_private_config(PRIVATE_DIR, MSN_ID or None)
 DATA_TOOL_CONFIG = (
     ACTIVE_PRIVATE_CONFIG.get("data_tool")
     if isinstance(ACTIVE_PRIVATE_CONFIG.get("data_tool"), dict)
@@ -346,11 +348,284 @@ TOOL_TABS = register_tool_blueprints(
     app,
     ENABLED_TOOL_IDS,
     tools_dir=BASE_DIR / "portal" / "tools",
+    private_dir=PRIVATE_DIR,
 )
 DATA_WORKSPACE = Workspace(JsonStorageBackend(DATA_DIR), config=WORKSPACE_CONFIG)
+app.config["MYCITE_ACTIVE_PRIVATE_CONFIG"] = ACTIVE_PRIVATE_CONFIG
+app.config["MYCITE_PORTAL_INSTANCE_ID"] = PORTAL_INSTANCE_ID
+app.config["MYCITE_MSN_ID"] = MSN_ID
+app.config["MYCITE_DATA_WORKSPACE"] = DATA_WORKSPACE
 DATA_HOME_TEMPLATE = BASE_DIR / "portal" / "ui" / "templates" / "tools" / "data_tool_home.html"
 DATA_HOME_AVAILABLE = DATA_HOME_TEMPLATE.exists()
-DATA_TAB_IDS = {"anthology", "time-series", "geographic", "advanced"}
+HOME_TAB_IDS = ("portal", "data", "tools", "vault")
+
+
+def _normalize_home_tab(raw: Any) -> str:
+    token = str(raw or "").strip().lower()
+    return token if token in HOME_TAB_IDS else "portal"
+
+
+def _home_tab_routes() -> list[Dict[str, str]]:
+    return [
+        {"tab_id": "portal", "label": "Portal", "href": "/portal/home?tab=portal"},
+        {"tab_id": "data", "label": "Data", "href": "/portal/home?tab=data"},
+        {"tab_id": "tools", "label": "Tools", "href": "/portal/home?tab=tools"},
+        {"tab_id": "vault", "label": "Vault", "href": "/portal/home?tab=vault"},
+    ]
+
+
+def _collect_vault_refs(payload: Any) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def _walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for value in node.values():
+                _walk(value)
+            return
+        if isinstance(node, list):
+            for value in node:
+                _walk(value)
+            return
+        if not isinstance(node, str):
+            return
+        token = node.strip()
+        if token.startswith("vault://") and token not in seen:
+            seen.add(token)
+            out.append(token)
+
+    _walk(payload)
+    return out
+
+
+def _vault_contract_files() -> list[str]:
+    root = PRIVATE_DIR / "vault" / "contracts"
+    if not root.exists() or not root.is_dir():
+        return []
+    return [path.name for path in sorted(root.glob("*.json")) if path.is_file()]
+
+
+def _portal_profile_model() -> Dict[str, Any]:
+    local_msn_id = str(MSN_ID or _infer_local_msn_id() or "").strip()
+    public_profile: Dict[str, Any] = {}
+    if local_msn_id:
+        profile_path = _resolve_public_profile_path(local_msn_id)
+        if profile_path and profile_path.exists():
+            try:
+                public_profile = _sanitize_public_profile(_read_json(profile_path))
+            except Exception:
+                public_profile = {}
+
+    config_file = active_private_config_filename(PRIVATE_DIR, MSN_ID or None)
+
+    return {
+        "msn_id": local_msn_id,
+        "public_profile": public_profile,
+        "options_public": _options_public(local_msn_id) if local_msn_id else {},
+        "fnd_profile": {
+            "status": "planned",
+            "description": "Public profile extensions (banner, avatar, bio) are reserved for the next iteration.",
+        },
+        "config_file": config_file,
+    }
+
+
+def _request_log_summary() -> Dict[str, Any]:
+    root = PRIVATE_DIR / "request_log"
+    if not root.exists() or not root.is_dir():
+        return {"file_count": 0, "event_count": 0}
+    files = sorted(path for path in root.glob("*.ndjson") if path.is_file())
+    event_count = 0
+    for path in files:
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    if line.strip():
+                        event_count += 1
+        except Exception:
+            continue
+    return {"file_count": len(files), "event_count": event_count}
+
+
+def _request_log_channels() -> list[Dict[str, Any]]:
+    root = PRIVATE_DIR / "request_log"
+    if not root.exists() or not root.is_dir():
+        return []
+    out: list[Dict[str, Any]] = []
+    for path in sorted(root.glob("*.ndjson")):
+        if not path.is_file():
+            continue
+        event_count = 0
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    if line.strip():
+                        event_count += 1
+        except Exception:
+            event_count = 0
+        channel_id = str(path.stem)
+        out.append(
+            {
+                "id": channel_id,
+                "label": channel_id,
+                "event_count": event_count,
+                "href": f"/portal/network?view=log&id={quote(channel_id, safe='')}",
+            }
+        )
+    return out
+
+
+def _p2p_channels() -> list[Dict[str, Any]]:
+    root = PRIVATE_DIR / "request_log"
+    if not root.exists() or not root.is_dir():
+        return []
+    counts: Dict[str, int] = {}
+    for path in sorted(root.glob("*.ndjson")):
+        if not path.is_file():
+            continue
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    token = line.strip()
+                    if not token:
+                        continue
+                    try:
+                        payload = json.loads(token)
+                    except Exception:
+                        continue
+                    if not isinstance(payload, dict):
+                        continue
+                    tx = str(payload.get("transmitter") or "").strip()
+                    rx = str(payload.get("receiver") or "").strip()
+                    if not tx or not rx:
+                        continue
+                    channel_id = f"{tx}->{rx}"
+                    counts[channel_id] = counts.get(channel_id, 0) + 1
+        except Exception:
+            continue
+
+    out: list[Dict[str, Any]] = []
+    for channel_id, event_count in sorted(counts.items(), key=lambda item: item[0].lower()):
+        out.append(
+            {
+                "id": channel_id,
+                "label": channel_id,
+                "event_count": event_count,
+                "href": f"/portal/network?view=p2p&id={quote(channel_id, safe='')}",
+            }
+        )
+    return out
+
+
+def _network_sidebar_alias_items() -> list[Dict[str, Any]]:
+    out: list[Dict[str, Any]] = []
+    for alias in list_aliases_for_sidebar(PRIVATE_DIR):
+        alias_id = str(alias.get("alias_id") or "").strip()
+        if not alias_id:
+            continue
+        out.append(
+            {
+                "id": alias_id,
+                "label": str(alias.get("label") or alias_id).strip(),
+                "org_msn_id": str(alias.get("org_msn_id") or "").strip(),
+                "href": f"/portal/network?view=alias&id={quote(alias_id, safe='')}",
+                "alias_id": alias_id,
+                "alias_label": str(alias.get("label") or alias_id).strip(),
+            }
+        )
+    return out
+
+
+def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
+    token = str(active_service or "system").strip().lower()
+    view = str(request.args.get("view") or "alias").strip().lower()
+    selected = str(request.args.get("id") or "").strip()
+
+    if token == "network":
+        aliases = _network_sidebar_alias_items()
+        logs = _request_log_channels()
+        p2p = _p2p_channels()
+        return [
+            {
+                "title": "Alias Interfaces",
+                "items": [
+                    {
+                        "label": item["label"],
+                        "meta": item.get("org_msn_id") or "",
+                        "href": item["href"],
+                        "active": view == "alias" and selected == item["id"],
+                    }
+                    for item in aliases
+                ],
+                "empty_text": "No aliases loaded",
+            },
+            {
+                "title": "Request Logs",
+                "items": [
+                    {
+                        "label": item["label"],
+                        "meta": f"{item['event_count']} event(s)",
+                        "href": item["href"],
+                        "active": view == "log" and selected == item["id"],
+                    }
+                    for item in logs
+                ],
+                "empty_text": "No request logs found",
+            },
+            {
+                "title": "P2P",
+                "items": [
+                    {
+                        "label": item["label"],
+                        "meta": f"{item['event_count']} event(s)",
+                        "href": item["href"],
+                        "active": view == "p2p" and selected == item["id"],
+                    }
+                    for item in p2p
+                ],
+                "empty_text": "No P2P channels derived yet",
+            },
+        ]
+
+    if token == "utilities":
+        tab = str(request.args.get("tab") or "inbox").strip().lower()
+        return [
+            {
+                "title": "Utility Views",
+                "items": [
+                    {"label": "Inbox", "href": "/portal/utilities?tab=inbox", "active": tab == "inbox", "meta": ""},
+                    {"label": "Launchers", "href": "/portal/utilities?tab=launchers", "active": tab == "launchers", "meta": ""},
+                ],
+                "empty_text": "",
+            }
+        ]
+
+    if token == "peripherals":
+        tab = str(request.args.get("tab") or "peripherals").strip().lower()
+        return [
+            {
+                "title": "Peripheral Tabs",
+                "items": [
+                    {"label": "Tools", "href": "/portal/peripherals?tab=tools", "active": tab == "tools", "meta": ""},
+                    {"label": "Peripherals", "href": "/portal/peripherals?tab=peripherals", "active": tab == "peripherals", "meta": ""},
+                    {"label": "Progeny", "href": "/portal/peripherals?tab=progeny", "active": tab == "progeny", "meta": ""},
+                    {"label": "Configuration", "href": "/portal/peripherals?tab=configuration", "active": tab == "configuration", "meta": ""},
+                    {"label": "Vault", "href": "/portal/peripherals?tab=vault", "active": tab == "vault", "meta": ""},
+                ],
+                "empty_text": "",
+            }
+        ]
+
+    return [
+        {
+            "title": "Profile",
+            "items": [
+                {"label": "Portal Contact Card", "href": "/portal/system", "active": True, "meta": f"msn-{MSN_ID}.json"},
+                {"label": "Data Workbench", "href": "/portal/system#data-workbench", "active": False, "meta": "Anthology/NIMM/AITAS"},
+            ],
+            "empty_text": "",
+        }
+    ]
 
 
 @app.context_processor
@@ -358,7 +633,7 @@ def _tool_shell_context() -> Dict[str, Any]:
     active_service = active_service_from_path(request.path)
     active_service_tab = ""
     if active_service == "network":
-        active_service_tab = normalize_network_tab(request.path.rstrip("/").split("/")[-1])
+        active_service_tab = str(request.args.get("view") or "alias").strip().lower()
     active_tool = active_tool_for_path(TOOL_TABS, request.path)
     network_cards = build_network_cards(PRIVATE_DIR, ACTIVE_PRIVATE_CONFIG)
     progeny_cards = network_cards.get("progeny") if isinstance(network_cards, dict) else []
@@ -374,7 +649,7 @@ def _tool_shell_context() -> Dict[str, Any]:
                 {
                     "progeny_id": progeny_id,
                     "title": title,
-                    "href": "/portal/network/progeny",
+                    "href": "/portal/network/provisions",
                 }
             )
 
@@ -386,7 +661,25 @@ def _tool_shell_context() -> Dict[str, Any]:
         or MSN_ID
         or "Portal"
     ).strip()
-    sign_out_url = str(os.environ.get("PORTAL_SIGN_OUT_URL") or "/oauth2/sign_out").strip() or "/oauth2/sign_out"
+    active_portal_username = str(
+        request.headers.get("X-Portal-Username")
+        or request.headers.get("X-Auth-Request-Preferred-Username")
+        or request.headers.get("X-Portal-User")
+        or ""
+    ).strip()
+    current_path = request.full_path if request.query_string else request.path
+    if current_path.endswith("?"):
+        current_path = current_path[:-1]
+    current_path = str(current_path or "/portal/system").strip() or "/portal/system"
+    if not current_path.startswith("/"):
+        current_path = "/portal/system"
+
+    sign_out_url = str(os.environ.get("PORTAL_SIGN_OUT_URL") or "").strip()
+    if not sign_out_url:
+        sign_out_url = _default_portal_sign_out_url()
+    switch_portal_url = str(os.environ.get("PORTAL_SWITCH_URL") or "/oauth2/sign_in?rd=%2Fportal%2Fsystem").strip()
+    if not switch_portal_url:
+        switch_portal_url = "/oauth2/sign_in?rd=%2Fportal%2Fsystem"
     return {
         "tool_tabs": TOOL_TABS,
         "active_tool": active_tool,
@@ -397,7 +690,11 @@ def _tool_shell_context() -> Dict[str, Any]:
         "network_tabs": build_network_tabs(active_service_tab),
         "sidebar_progeny": sidebar_progeny,
         "portal_name": portal_name,
+        "active_portal_username": active_portal_username,
         "sign_out_url": sign_out_url,
+        "switch_portal_url": switch_portal_url,
+        "current_path": current_path,
+        "context_sidebar_sections": _context_sidebar_sections(active_service),
     }
 
 
@@ -461,102 +758,159 @@ def public_contact_card_options(msn_id: str):
     return resp
 
 
-def _render_portal_home():
+def _tools_by_mount_target(mount_target: str) -> list[Dict[str, Any]]:
+    token = str(mount_target or "").strip().lower()
+    return [tool for tool in TOOL_TABS if str(tool.get("mount_target") or "peripherals.tools").strip().lower() == token]
+
+
+def _render_portal_system():
     aliases = list_aliases_for_sidebar(PRIVATE_DIR)
-    try:
-        return render_template(
-            "services/home.html",
-            aliases=aliases,
-            msn_id=MSN_ID,
-        )
-    except TemplateNotFound:
-        return "<h1>MyCite Portal</h1><p>home.html missing</p>"
+    profile_model = _portal_profile_model()
+    return render_template(
+        "services/system.html",
+        aliases=aliases,
+        msn_id=MSN_ID,
+        data_home_available=DATA_HOME_AVAILABLE,
+        portal_profile=profile_model,
+        system_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
+    )
+
+
+def _normalize_network_view(raw: str) -> str:
+    token = str(raw or "").strip().lower()
+    if token in {"alias", "log", "p2p"}:
+        return token
+    return "alias"
+
+
+@app.get("/portal/system")
+def portal_system_page():
+    return _render_portal_system()
 
 
 @app.get("/portal/home")
 def portal_home_page():
-    return _render_portal_home()
+    return redirect("/portal/system", code=302)
 
 
 @app.get("/portal")
 def portal_home():
-    return redirect("/portal/home", code=302)
+    return redirect("/portal/system", code=302)
+
+
+@app.get("/portal/vault")
+def portal_vault():
+    return redirect("/portal/peripherals?tab=vault", code=302)
 
 
 @app.get("/portal/data")
 def portal_data_root():
-    return redirect("/portal/data/anthology", code=302)
+    return redirect("/portal/system", code=302)
 
 
-@app.get("/portal/data/<tab_id>")
-def portal_data(tab_id: str):
-    aliases = list_aliases_for_sidebar(PRIVATE_DIR)
-    tab = str(tab_id or "").strip().lower()
-    if tab not in DATA_TAB_IDS:
-        return redirect("/portal/data/anthology", code=302)
-
-    if DATA_HOME_AVAILABLE:
-        return render_template(
-            "tools/data_tool_home.html",
-            aliases=aliases,
-            msn_id=MSN_ID,
-            active_data_tab=tab,
-            data_tab_routes=[
-                {"tab_id": "anthology", "label": "Anthology", "href": "/portal/data/anthology"},
-                {"tab_id": "time-series", "label": "Time Series", "href": "/portal/data/time-series"},
-                {"tab_id": "geographic", "label": "Geographic", "href": "/portal/data/geographic"},
-            ],
-        )
-    return render_template(
-        "services/data.html",
-        aliases=aliases,
-        msn_id=MSN_ID,
-        data_home_available=False,
-        data_home_path="/portal/tools/data_tool/home",
-    )
+@app.get("/portal/data/<path:tab_id>")
+def portal_data_legacy(tab_id: str):
+    _ = tab_id
+    return redirect("/portal/system", code=302)
 
 
 @app.get("/portal/network")
 def portal_network_default():
-    return redirect("/portal/network/contracts", code=302)
+    view = _normalize_network_view(request.args.get("view"))
+    selected_id = str(request.args.get("id") or "").strip()
+    aliases = _network_sidebar_alias_items()
+    log_channels = _request_log_channels()
+    p2p_channels = _p2p_channels()
+
+    selected_alias = next((item for item in aliases if item["id"] == selected_id), None) if view == "alias" else None
+    selected_log = next((item for item in log_channels if item["id"] == selected_id), None) if view == "log" else None
+    selected_p2p = next((item for item in p2p_channels if item["id"] == selected_id), None) if view == "p2p" else None
+
+    if not selected_id:
+        if view == "alias" and aliases:
+            return redirect(aliases[0]["href"], code=302)
+        if view == "log" and log_channels:
+            return redirect(log_channels[0]["href"], code=302)
+        if view == "p2p" and p2p_channels:
+            return redirect(p2p_channels[0]["href"], code=302)
+
+    profile_model = _portal_profile_model()
+    geography_model = build_property_geography_model(ACTIVE_PRIVATE_CONFIG, DATA_DIR)
+    return render_template(
+        "services/network.html",
+        aliases=list_aliases_for_sidebar(PRIVATE_DIR),
+        msn_id=MSN_ID,
+        network_view=view,
+        selected_alias=selected_alias,
+        selected_log=selected_log,
+        selected_p2p=selected_p2p,
+        network_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
+        network_config_json=json.dumps(ACTIVE_PRIVATE_CONFIG, indent=2, sort_keys=True),
+        property_geography=geography_model,
+    )
 
 
 @app.get("/portal/network/<tab_id>")
-def portal_network(tab_id: str):
-    tab = normalize_network_tab(tab_id)
-    aliases = list_aliases_for_sidebar(PRIVATE_DIR)
+def portal_network_legacy(tab_id: str):
+    token = normalize_network_tab(tab_id)
+    if token in {"aliases", "profile", "alias", "provisions"}:
+        return redirect("/portal/network?view=alias", code=302)
+    if token in {"logs", "contracts"}:
+        return redirect("/portal/network?view=log", code=302)
+    return redirect("/portal/network?view=p2p", code=302)
+
+
+@app.get("/portal/utilities")
+def portal_utilities():
+    tab = str(request.args.get("tab") or "inbox").strip().lower()
+    if tab not in {"inbox", "launchers"}:
+        tab = "inbox"
+    return render_template(
+        "services/utilities.html",
+        aliases=list_aliases_for_sidebar(PRIVATE_DIR),
+        msn_id=MSN_ID,
+        utilities_tab=tab,
+        request_log_summary=_request_log_summary(),
+        utility_tools=_tools_by_mount_target("utilities"),
+    )
+
+
+@app.get("/portal/peripherals")
+def portal_peripherals():
+    tab = str(request.args.get("tab") or "peripherals").strip().lower()
+    if tab not in {"tools", "peripherals", "progeny", "configuration", "vault"}:
+        tab = "peripherals"
     cards = build_network_cards(PRIVATE_DIR, ACTIVE_PRIVATE_CONFIG)
     return render_template(
-        "services/network.html",
-        aliases=aliases,
+        "services/peripherals.html",
+        aliases=list_aliases_for_sidebar(PRIVATE_DIR),
         msn_id=MSN_ID,
-        network_cards=cards,
-        network_items=cards.get(tab, []),
-        active_service_tab=tab,
+        peripherals_tab=tab,
+        peripheral_tools=_tools_by_mount_target("peripherals.tools"),
+        provision_progeny_items=cards.get("progeny", []),
+        provision_alias_items=cards.get("alias", []),
+        contract_items=cards.get("contracts", []),
+        request_log_summary=_request_log_summary(),
+        configuration_json=json.dumps(ACTIVE_PRIVATE_CONFIG, indent=2, sort_keys=True),
+        vault_refs=_collect_vault_refs(ACTIVE_PRIVATE_CONFIG),
+        vault_contract_files=_vault_contract_files(),
+        keypass_db_path=str(PRIVATE_DIR / "vault" / "keypass.kdbx"),
     )
+
+
+@app.get("/portal/peripheral")
+def portal_peripheral():
+    return redirect("/portal/peripherals?tab=peripherals", code=302)
 
 
 @app.get("/portal/tools")
 def portal_tools():
-    aliases = list_aliases_for_sidebar(PRIVATE_DIR)
-    selected_tool_id = str(request.args.get("tool") or "").strip()
-    selected_tool = next((tool for tool in TOOL_TABS if str(tool.get("tool_id") or "") == selected_tool_id), None)
-    if selected_tool is None and TOOL_TABS:
-        selected_tool = TOOL_TABS[0]
-        selected_tool_id = str(selected_tool.get("tool_id") or "")
-    return render_template(
-        "services/tools.html",
-        aliases=aliases,
-        msn_id=MSN_ID,
-        selected_tool=selected_tool,
-        selected_tool_id=selected_tool_id,
-    )
+    return redirect("/portal/peripherals?tab=tools", code=302)
 
 
 @app.get("/portal/inbox")
 def portal_inbox_page():
-    aliases = list_aliases_for_sidebar(PRIVATE_DIR)
-    return render_template("services/inbox.html", aliases=aliases, msn_id=MSN_ID)
+    return redirect("/portal/utilities?tab=inbox", code=302)
 
 
 @app.route("/portal", methods=["OPTIONS"])
@@ -575,7 +929,7 @@ def portal_alias_session(alias_id: str):
         abort(404, description=f"No alias record found for alias_id={alias_id}")
 
     tenant_id = str(alias_payload.get("child_msn_id") or alias_payload.get("tenant_id") or "").strip()
-    progeny_type = str(alias_payload.get("progeny_type") or "").strip().lower()
+    progeny_type = _canonical_progeny_type(str(alias_payload.get("progeny_type") or "").strip().lower())
 
     return render_template(
         "alias_shell.html",
@@ -687,6 +1041,43 @@ def portal_embed_poc():
         org_msn_id=org_msn_id,
         as_alias_id=as_alias_id,
         org_title=org_title,
+    )
+
+
+@app.get("/portal/embed/progeny")
+def portal_embed_progeny():
+    aliases = list_aliases_for_sidebar(PRIVATE_DIR)
+    records, _ = list_alias_records(PRIVATE_DIR)
+    member_msn_id = (request.args.get("member_msn_id") or "").strip()
+    as_alias_id = (request.args.get("as_alias_id") or "").strip()
+    portal_title = str(
+        ACTIVE_PRIVATE_CONFIG.get("title")
+        or ACTIVE_PRIVATE_CONFIG.get("portal_title")
+        or MSN_ID
+        or PORTAL_INSTANCE_ID
+    ).strip()
+
+    landing = build_embed_progeny_landing(
+        private_dir=PRIVATE_DIR,
+        alias_records=records,
+        member_msn_id=member_msn_id,
+        as_alias_id=as_alias_id,
+        alias_label_builder=_alias_label,
+        widget_url_builder=_build_widget_url,
+        portal_instance_id=PORTAL_INSTANCE_ID,
+        portal_title=portal_title,
+        msn_id=MSN_ID,
+        active_private_config=ACTIVE_PRIVATE_CONFIG,
+    )
+    return render_template(
+        "embed_progeny.html",
+        aliases=aliases,
+        msn_id=MSN_ID,
+        member_msn_id=member_msn_id,
+        as_alias_id=as_alias_id,
+        cards=landing.get("cards", []),
+        warnings=landing.get("warnings", []),
+        broadcast=landing.get("broadcast", {}),
     )
 
 
@@ -919,7 +1310,6 @@ register_config_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options
 register_aliases_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options_private)
 register_inbox_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options_private)
 register_contract_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options_private)
-register_magnetlinks_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options_private)
 register_progeny_config_routes(app, options_private_fn=_options_private)
 register_tenant_progeny_routes(
     app,
@@ -931,6 +1321,10 @@ register_aws_emailer_routes(
     app,
     private_dir=PRIVATE_DIR,
     workspace=DATA_WORKSPACE,
+)
+register_admin_integration_routes(
+    app,
+    private_dir=PRIVATE_DIR,
 )
 register_paypal_checkout_routes(
     app,

@@ -1,0 +1,98 @@
+{
+  "msn_id": "3-2-3-17-77-2-6-3-1-6",
+  "schema": "mycite.profile.v0",
+  "title": "trapp_family_farm",
+  "private_key": "private_key_ref",
+  "request_log": [],
+  "symmetric_key_contracts": [],
+  "aliases": [
+    {
+      "3-2-3-17-77-1-6-4-1-4": "msn-3-2-3-17-77-2-6-3-1-6-alias-3-2-3-17-77-1-6-4-1-4-tenant.json"
+    }
+  ],
+  "hosted": [],
+  "progeny": [
+    {
+      "poc": "msn-3-2-3-17-77-2-6-3-1-6-progeny-3-2-3-17-77-2-6-3-1-1-poc.json"
+    },
+    {
+      "board_member": "msn-3-2-3-17-77-2-6-3-1-6-progeny-3-2-3-17-77-2-6-3-1-1-board_member.json"
+    }
+  ],
+  "enabled_tools": [
+    "config_schema",
+    "agro_erp"
+  ],
+  "organization_config": {
+    "file_name": "subject_congregation.json",
+    "default_values": {
+      "stream_config": {
+        "allowed_post_types": [
+          "post.create",
+          "board_notice"
+        ],
+        "newest_first": true
+      },
+      "calendar_config": {
+        "allowed_event_types": [
+          "meeting",
+          "group_event",
+          "committee_meeting"
+        ],
+        "exclude_request_log_types": true
+      },
+      "people_config": {
+        "profile_source_priority": [
+          "progeny.internal",
+          "progeny.config_ref",
+          "alias"
+        ]
+      },
+      "workflow_config": {
+        "enabled": true,
+        "legal_entity_type": "subject_congregation",
+        "sections": [
+          {
+            "id": "operations",
+            "title": "Operations",
+            "description": "Core operating workflow checkpoints."
+          },
+          {
+            "id": "farm_fields",
+            "title": "Farm Fields",
+            "description": "Field inventories and seasonal status references."
+          },
+          {
+            "id": "compliance",
+            "title": "Compliance",
+            "description": "Compliance and policy milestones."
+          }
+        ],
+        "anthology_refs": {
+          "farm_fields": "",
+          "workflow_state": ""
+        }
+      },
+      "legal_entity_defaults": {
+        "schema": "mycite.legal_entity_type.v1",
+        "type": "subject_congregation",
+        "title": "Subject Congregation",
+        "role_groups": {
+          "members": [],
+          "users": [],
+          "poc_admin": []
+        },
+        "workflow_defaults": {
+          "farm_fields": [],
+          "committees": []
+        }
+      }
+    },
+    "added_values": {
+      "broadcast_config": {
+        "enabled": false,
+        "title": "Trapp Family Farm"
+      }
+    }
+  }
+}

@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Copy portal instance code + shared dev assets (icons)
 COPY mycite-le_fnd/ /app/mycite-le_fnd/
+COPY _shared/ /app/_shared/
 COPY assets/ /app/assets/
 
 WORKDIR /app/mycite-le_fnd
@@ -15,4 +16,3 @@ WORKDIR /app/mycite-le_fnd
 EXPOSE 5000
 
 CMD ["gunicorn", "-b", "0.0.0.0:5000", "app:app"]
-

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | Peripherals{% endblock %}
+
+{% set page_title = "PERIPHERALS" %}
+{% set page_subtitle = "Operational and instance-adjacent surfaces" %}
+
+{% block body %}
+  <nav class="page-tabs" aria-label="Peripheral tabs">
+    <a class="page-tab {% if peripherals_tab == 'tools' %}is-active{% endif %}" href="/portal/peripherals?tab=tools">Tools</a>
+    <a class="page-tab {% if peripherals_tab == 'peripherals' %}is-active{% endif %}" href="/portal/peripherals?tab=peripherals">Peripherals</a>
+    <a class="page-tab {% if peripherals_tab == 'progeny' %}is-active{% endif %}" href="/portal/peripherals?tab=progeny">Progeny</a>
+    <a class="page-tab {% if peripherals_tab == 'configuration' %}is-active{% endif %}" href="/portal/peripherals?tab=configuration">Configuration</a>
+    <a class="page-tab {% if peripherals_tab == 'vault' %}is-active{% endif %}" href="/portal/peripherals?tab=vault">Vault</a>
+  </nav>
+
+  {% if peripherals_tab == "tools" %}
+    <article class="card">
+      <div class="card__kicker">Tools</div>
+      <div class="card__title">Tools Mounted to PERIPHERALS</div>
+      <div class="card__body">
+        {% if peripheral_tools %}
+          <ul class="liststack">
+            {% for tool in peripheral_tools %}
+              <li><strong>{{ tool.display_name }}</strong> <a href="{{ tool.home_path }}">Open</a></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>No tools are mounted to <code>peripherals.tools</code> for this portal instance.</p>
+        {% endif %}
+      </div>
+    </article>
+  {% elif peripherals_tab == "peripherals" %}
+    <article class="card">
+      <div class="card__kicker">Peripheral Summary</div>
+      <div class="card__title">Operational Surface</div>
+      <div class="card__body">
+        <p><code>alias_count</code>: {{ provision_alias_items|length if provision_alias_items is defined else 0 }}</p>
+        <p><code>progeny_count</code>: {{ provision_progeny_items|length if provision_progeny_items is defined else 0 }}</p>
+        <p><code>contract_count</code>: {{ contract_items|length if contract_items is defined else 0 }}</p>
+      </div>
+    </article>
+  {% elif peripherals_tab == "progeny" %}
+    <article class="card">
+      <div class="card__kicker">Progeny</div>
+      <div class="card__title">Instance Progeny and Alias Interfaces</div>
+      <div class="card__body">
+        {% if provision_progeny_items %}
+          <ul class="liststack">
+            {% for item in provision_progeny_items %}
+              {% set display = item.display if item.display is defined and item.display is mapping else {} %}
+              <li><strong>{{ display.get("title", item.get("progeny_id", "progeny")) }}</strong> <code>{{ item.get("progeny_type", "unknown") }}</code></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>No progeny records available.</p>
+        {% endif %}
+      </div>
+    </article>
+  {% elif peripherals_tab == "configuration" %}
+    <article class="card">
+      <div class="card__kicker">Configuration</div>
+      <div class="card__title">Active Portal Config</div>
+      <div class="card__body">
+        <pre class="jsonblock">{{ configuration_json if configuration_json is defined else '{}' }}</pre>
+      </div>
+    </article>
+  {% else %}
+    <article class="card">
+      <div class="card__kicker">Vault</div>
+      <div class="card__title">KeePass and Vault Contracts</div>
+      <div class="card__body">
+        <p><code>keypass_db</code>: {{ keypass_db_path if keypass_db_path is defined else "private/vault/keypass.kdbx" }}</p>
+        {% if vault_contract_files %}
+          <ul class="liststack">
+            {% for filename in vault_contract_files %}
+              <li><code>{{ filename }}</code></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>No vault contract files found.</p>
+        {% endif %}
+      </div>
+    </article>
+  {% endif %}
+{% endblock %}

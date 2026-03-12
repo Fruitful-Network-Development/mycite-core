@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | Utilities{% endblock %}
+
+{% set page_title = "UTILITIES" %}
+{% set page_subtitle = "Utility launchers and utility-specific views" %}
+
+{% block body %}
+  <nav class="page-tabs" aria-label="Utility tabs">
+    <a class="page-tab {% if utilities_tab == 'inbox' %}is-active{% endif %}" href="/portal/utilities?tab=inbox">Inbox</a>
+    <a class="page-tab {% if utilities_tab == 'launchers' %}is-active{% endif %}" href="/portal/utilities?tab=launchers">Launchers</a>
+  </nav>
+
+  {% if utilities_tab == "inbox" %}
+    <article class="card">
+      <div class="card__kicker">Inbox Utility</div>
+      <div class="card__title">Request/Event Stream</div>
+      <div class="card__body">
+        <p><code>files</code>: {{ request_log_summary.file_count if request_log_summary is defined else 0 }}</p>
+        <p><code>events</code>: {{ request_log_summary.event_count if request_log_summary is defined else 0 }}</p>
+        <p>Endpoint: <code>/portal/api/inbox?msn_id={{ msn_id }}</code></p>
+      </div>
+    </article>
+  {% else %}
+    <article class="card">
+      <div class="card__kicker">Utility Launchers</div>
+      <div class="card__title">Tools Mounted to UTILITIES</div>
+      <div class="card__body">
+        {% if utility_tools %}
+          <ul class="liststack">
+            {% for tool in utility_tools %}
+              <li><strong>{{ tool.display_name }}</strong> <a href="{{ tool.home_path }}">Open</a></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>No tools are mounted to <code>utilities</code> for this portal instance.</p>
+        {% endif %}
+      </div>
+    </article>
+  {% endif %}
+{% endblock %}

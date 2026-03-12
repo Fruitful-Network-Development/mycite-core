@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define tenant-scoped, non-secret metadata needed to connect PayPal checkout flows to each client website.
+Define member-scoped, non-secret metadata needed to connect PayPal checkout flows to each client website.
 
 This abstraction is configuration-first:
 
@@ -10,13 +10,13 @@ This abstraction is configuration-first:
 - `paypal_proxy` stores runtime checkout context state
 - credentials remain in state/runtime and are never stored in tenant progeny metadata
 
-## Tenant metadata keys
+## Member metadata keys
 
-Tenant `profile_refs` now supports:
+Member `profile_refs` now supports:
 
 ```json
 "profile_refs": {
-  "paypal_profile_id": "paypal:tenant:<tenant_id>",
+  "paypal_profile_id": "paypal:member:<member_id>",
   "paypal_site_base_url": "https://client.example.com",
   "paypal_checkout_return_url": "https://client.example.com/payments/paypal/return",
   "paypal_checkout_cancel_url": "https://client.example.com/payments/paypal/cancel",
@@ -29,11 +29,12 @@ These are non-secret references only.
 
 ## Preview endpoint (FND portal)
 
-- `GET /portal/api/paypal/tenant/<tenant_id>/checkout_preview`
+- Canonical: `GET /portal/api/paypal/member/<member_id>/checkout_preview`
+- Legacy alias: `GET /portal/api/paypal/tenant/<tenant_id>/checkout_preview`
 
 The endpoint:
 
-1. loads tenant metadata refs
+1. loads member metadata refs
 2. validates URL shape
 3. derives return/cancel URLs from `paypal_site_base_url` if needed
 4. returns deterministic checkout context + order template
