@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ..datum_refs import normalize_datum_ref, parse_datum_ref
 from ..progeny_model.compat import LEGAL_ENTITY_BASE_TYPES, canonical_progeny_type
 from ..progeny_model.inheritance import resolve_inherited_fields
 from ..runtime_paths import (
@@ -416,6 +417,82 @@ def _progeny_index(cards: list[ProfileCard]) -> dict[str, list[ProfileCard]]:
     return out
 
 
+def _ref_provenance(
+    *,
+    field_id: str,
+    resolved_value: str,
+    alias_fields: dict[str, Any],
+    progeny_fields: dict[str, Any],
+) -> str:
+    alias_token = str(alias_fields.get(field_id) or "").strip()
+    progeny_token = str(progeny_fields.get(field_id) or "").strip()
+    if alias_token and alias_token == resolved_value:
+        return "alias"
+    if progeny_token and progeny_token == resolved_value:
+        return "progeny"
+    if alias_token:
+        return "alias"
+    if progeny_token:
+        return "progeny"
+    return "default"
+
+
+def _normalized_ref_map(
+    *,
+    resolved_fields: dict[str, Any],
+    alias_fields: dict[str, Any],
+    progeny_fields: dict[str, Any],
+    fallback_msn_id: str,
+) -> tuple[dict[str, dict[str, str]], dict[str, str], dict[str, str]]:
+    ref_map: dict[str, dict[str, str]] = {}
+    provenance_map: dict[str, str] = {}
+    legacy_echo: dict[str, str] = {}
+
+    for field_id, value in resolved_fields.items():
+        raw_value = str(value or "").strip()
+        if not raw_value:
+            continue
+        try:
+            parsed = parse_datum_ref(raw_value, field_name=field_id)
+        except Exception:
+            continue
+
+        normalized_dot = normalize_datum_ref(
+            raw_value,
+            local_msn_id=fallback_msn_id,
+            require_qualified=bool(fallback_msn_id),
+            write_format="dot",
+            field_name=field_id,
+        )
+        normalized_hyphen = normalize_datum_ref(
+            raw_value,
+            local_msn_id=fallback_msn_id,
+            require_qualified=bool(fallback_msn_id),
+            write_format="hyphen",
+            field_name=field_id,
+        )
+        provenance = _ref_provenance(
+            field_id=field_id,
+            resolved_value=raw_value,
+            alias_fields=alias_fields,
+            progeny_fields=progeny_fields,
+        )
+        provenance_map[field_id] = provenance
+        ref_map[field_id] = {
+            "field": field_id,
+            "raw_ref": raw_value,
+            "normalized_ref": normalized_dot,
+            "normalized_ref_hyphen": normalized_hyphen,
+            "datum_address": parsed.datum_address,
+            "msn_id": str(parsed.msn_id or fallback_msn_id or "").strip(),
+            "provenance": provenance,
+        }
+        if parsed.legacy_hyphen_source:
+            legacy_echo[field_id] = parsed.legacy_hyphen_source
+            ref_map[field_id]["legacy_hyphen_source"] = parsed.legacy_hyphen_source
+    return ref_map, provenance_map, legacy_echo
+
+
 def _link_alias_inheritance(
     *,
     alias_cards: list[ProfileCard],
@@ -440,6 +517,16 @@ def _link_alias_inheritance(
             progeny_payload=progeny_payload,
             inheritance_rules=inheritance_rules,
         )
+        resolved_fields = dict(inherited.get("resolved_fields") or {})
+        alias_fields = dict(inherited.get("alias_fields") or {})
+        progeny_fields = dict(inherited.get("progeny_fields") or {})
+        fallback_msn_id = str(alias_payload.get("msn_id") or progeny_payload.get("msn_id") or "").strip()
+        normalized_map, provenance_map, legacy_echo = _normalized_ref_map(
+            resolved_fields=resolved_fields,
+            alias_fields=alias_fields,
+            progeny_fields=progeny_fields,
+            fallback_msn_id=fallback_msn_id,
+        )
         alias["inheritance"] = {
             "matched_progeny_id": str(matched.get("progeny_id") or "") if isinstance(matched, dict) else "",
             "matched_progeny_type": (
@@ -448,11 +535,16 @@ def _link_alias_inheritance(
                 else ""
             ),
             **inherited,
+            "normalized_reference_map": normalized_map,
+            "reference_provenance": provenance_map,
+            "legacy_ref_echo": legacy_echo,
         }
         alias["resolved_profile"] = {
-            "fields": dict(inherited.get("resolved_fields") or {}),
-            "alias_fields": dict(inherited.get("alias_fields") or {}),
-            "progeny_fields": dict(inherited.get("progeny_fields") or {}),
+            "fields": resolved_fields,
+            "alias_fields": alias_fields,
+            "progeny_fields": progeny_fields,
+            "normalized_reference_map": normalized_map,
+            "reference_provenance": provenance_map,
         }
 
 

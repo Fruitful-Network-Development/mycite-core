@@ -88,6 +88,7 @@ Profile card payloads are metadata only. Secret-like keys are not allowed:
 Member progeny metadata for FND integration routing may include:
 
 - `profile_refs.paypal_profile_id`
+- `profile_refs.paypal_site_domain`
 - `profile_refs.paypal_site_base_url`
 - `profile_refs.paypal_checkout_return_url`
 - `profile_refs.paypal_checkout_cancel_url`
@@ -96,6 +97,23 @@ Member progeny metadata for FND integration routing may include:
 - `profile_refs.aws_profile_id`
 - `profile_refs.aws_emailer_list_ref`
 - `profile_refs.aws_emailer_entry_ref`
+- `profile_refs.email_transport_mode`
+- `profile_refs.email_forwarder_address`
+- `profile_refs.email_operator_inbox`
+- `profile_refs.email_poc_address`
+- `profile_refs.newsletter_ingest_address`
+- `profile_refs.newsletter_sender_address`
+
+Recommended non-secret member policy block:
+
+- `email_policy.mode = forwarder_no_smtp`
+- `email_policy.smtp_enabled = false`
+- `email_policy.inbound_aliases[]`
+- `email_policy.reply.allowed_from[]`
+- `email_policy.reply.send_as[]`
+- `email_policy.newsletter.ingest_address`
+- `email_policy.newsletter.sender_address`
+- `email_policy.newsletter.dispatch_mode`
 
 These refs are metadata pointers only and must not include credentials.
 

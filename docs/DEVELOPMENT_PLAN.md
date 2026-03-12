@@ -60,30 +60,31 @@ Time series remains anthology-backed:
 
 - endpoint remains `/portal/api/request_log`
 - legacy payloads remain accepted
-- v1 payloads enforce normalized datum refs and status refs
+- v1 payloads enforce dual-read/dot-write datum ref normalization and status refs
 - typed fanout logs write to `private/request_log/types/<type>.ndjson`
 
 ### 6) AWS emailer abstraction (preview + queue)
 
 - member metadata refs in `profile_refs` select anthology-backed emailer abstractions
+- member `email_policy` keeps SMTP disabled (`forwarder_no_smtp`) while defining forwarder/reply/newsletter routing
 - canonical FND preview endpoint resolves deterministic payloads from anthology (`/portal/api/aws/member/<member_id>/emailer_preview`)
 - legacy compatibility endpoint remains available (`/portal/api/aws/tenant/<tenant_id>/emailer_preview`)
 - AWS proxy accepts queued `emailer_sync_preview` actions only (no direct SES send yet)
 
 ### 7) PayPal payment-processing abstraction (preview + sync queue)
 
-- member metadata refs in `profile_refs` define client website checkout context
+- member metadata refs in `profile_refs` define client website checkout context (including per-member site domain/base URL)
 - canonical FND preview endpoint validates/derives checkout URLs (`/portal/api/paypal/member/<member_id>/checkout_preview`)
 - legacy compatibility endpoint remains available (`/portal/api/paypal/tenant/<tenant_id>/checkout_preview`)
 - PayPal proxy accepts queued `checkout_profile_sync` actions and persists non-secret checkout context
 
-### 9) Shared datum mediation defaults
+### 8) Shared datum mediation defaults
 
 - shared mediation lives under `portals/_shared/portal/mediation/`
 - default interpretations include boolean refs, char/ASCII, dns wire, text-byte formats, timestamps/spans, lengths, and coordinates
 - services decode/encode through shared contracts instead of portal-specific one-off handlers
 
-### 8) Multi-portal progeny UX reinstatement (CVCC/MW/MT/TFF)
+### 9) Multi-portal progeny UX reinstatement (CVCC/MW/MT/TFF)
 
 - Local-first portal instance model remains canonical for non-FND portals (`off|local|live` managed by control API).
 - CVCC and TFF provide board-member classroom surfaces:
@@ -118,4 +119,3 @@ Time series remains anthology-backed:
 - [`PROGENY_PROFILE_CARDS.md`](PROGENY_PROFILE_CARDS.md)
 - [`PROGENY_CONFIG_MODEL.md`](PROGENY_CONFIG_MODEL.md)
 - [`DATUM_MEDIATION_DEFAULTS.md`](DATUM_MEDIATION_DEFAULTS.md)
-- [`request_log_and_contracts.md`](request_log_and_contracts.md)

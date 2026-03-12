@@ -12,7 +12,7 @@ This repo uses a canonical-docs model to prevent drift.
 - [`../README.md`](../README.md)
 - [`TOOLS_SHELL.md`](TOOLS_SHELL.md)
 - [`DEVELOPMENT_PLAN.md`](DEVELOPMENT_PLAN.md)
-- [`request_log_and_contracts.md`](request_log_and_contracts.md)
+- [`REQUEST_LOG_V1.md`](REQUEST_LOG_V1.md)
 - [`DATA_TOOL.md`](DATA_TOOL.md)
 - [`DATA_TOOL_ICONS.md`](DATA_TOOL_ICONS.md)
 - [`repo_policy.md`](repo_policy.md)

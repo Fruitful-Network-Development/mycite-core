@@ -1,214 +1,26 @@
 from __future__ import annotations
 
-import json
-import re
-import time
-from dataclasses import dataclass
+import importlib.util
+import sys
 from pathlib import Path
-from typing import Any, Dict, List
-
-from portal.services.runtime_paths import request_log_path, request_log_read_paths, request_log_types_dir
-
-FORBIDDEN_SECRET_KEYS = {
-    "private_key", "private_key_pem", "secret", "token", "password",
-    "symmetric_key", "hmac_key", "hmac_key_b64", "api_key",
-}
-
-_DATUM_ADDRESS_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
-_NUMERIC_TOKEN_RE = re.compile(r"^[0-9]+(?:-[0-9]+)+$")
+from types import ModuleType
 
 
-@dataclass(frozen=True)
-class ReadResult:
-    events: List[Dict[str, Any]]
-    parse_errors: int
-    total_lines: int
+def _load_shared_request_log_store() -> ModuleType:
+    shared_path = Path(__file__).resolve().parents[3] / "_shared" / "portal" / "services" / "request_log_store.py"
+    spec = importlib.util.spec_from_file_location("mycite_shared_request_log_store", shared_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load shared request log store from {shared_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-class RequestLogValidationError(ValueError):
-    def __init__(self, errors: List[str]):
-        self.errors = [str(item) for item in errors if str(item).strip()]
-        super().__init__("; ".join(self.errors))
+_SHARED = _load_shared_request_log_store()
 
-
-def _log_dir(private_dir: Path) -> Path:
-    return request_log_path(private_dir).parent
-
-
-def _log_path(private_dir: Path, msn_id: str) -> Path:
-    _ = msn_id
-    # Canonical request_log storage is a shared append-only NDJSON stream.
-    return request_log_path(private_dir)
-
-
-def _typed_log_dir(private_dir: Path) -> Path:
-    return request_log_types_dir(private_dir)
-
-
-def _typed_log_path(private_dir: Path, event_type: str) -> Path:
-    safe_type = re.sub(r"[^A-Za-z0-9_.-]", "_", str(event_type or "").strip().lower()) or "unknown"
-    return _typed_log_dir(private_dir) / f"{safe_type}.ndjson"
-
-
-def _qualified_tail_identifier(token: str) -> str:
-    parts = str(token or "").split("-")
-    if len(parts) < 4 or not all(part.isdigit() for part in parts):
-        return ""
-    return "-".join(parts[-3:])
-
-
-def _normalize_event_datum_ref(token: str, msn_id: str) -> str:
-    raw = str(token or "").strip()
-    if not raw:
-        raise ValueError("event_datum is required for request_log v1 entries")
-    if _DATUM_ADDRESS_RE.fullmatch(raw):
-        if not str(msn_id or "").strip():
-            raise ValueError("Cannot normalize event_datum without msn_id")
-        return f"{msn_id}-{raw}"
-    if _NUMERIC_TOKEN_RE.fullmatch(raw) and _DATUM_ADDRESS_RE.fullmatch(_qualified_tail_identifier(raw)):
-        return raw
-    raise ValueError("event_datum must be <datum_address> or <msn_id>-<datum_address>")
-
-
-def _normalize_status_ref(token: str, msn_id: str) -> str:
-    status_ref = _normalize_event_datum_ref(token, msn_id)
-    if not status_ref.endswith("-3-1-5") and not status_ref.endswith("-3-1-6"):
-        raise ValueError("status must reference <msn_id>-3-1-5 or <msn_id>-3-1-6")
-    return status_ref
-
-
-def _normalize_v1_event(msn_id: str, event: Dict[str, Any]) -> Dict[str, Any]:
-    out = dict(event)
-    errors: List[str] = []
-    event_type = str(out.get("type") or "").strip()
-    transmitter = str(out.get("transmitter") or "").strip()
-    receiver = str(out.get("receiver") or "").strip()
-    if not event_type:
-        errors.append("type: required")
-    if not transmitter or not (transmitter.startswith("msn-") or transmitter.startswith("alias-")):
-        errors.append("transmitter: must start with 'msn-' or 'alias-'")
-    if not receiver:
-        errors.append("receiver: required")
-
-    out["type"] = event_type
-    out["transmitter"] = transmitter
-    out["receiver"] = receiver
-    try:
-        out["event_datum"] = _normalize_event_datum_ref(out.get("event_datum"), msn_id)
-    except ValueError as exc:
-        errors.append(f"event_datum: {exc}")
-
-    try:
-        out["status"] = _normalize_status_ref(out.get("status"), msn_id)
-    except ValueError as exc:
-        errors.append(f"status: {exc}")
-
-    if errors:
-        raise RequestLogValidationError(errors)
-
-    return out
-
-
-def _write_typed_supplement(private_dir: Path, event: Dict[str, Any]) -> None:
-    event_type = str(event.get("type") or "").strip()
-    if not event_type:
-        return
-    payload = {
-        "type": event_type,
-        "event_datum": str(event.get("event_datum") or ""),
-        "status": str(event.get("status") or ""),
-        "transmitter": str(event.get("transmitter") or ""),
-        "receiver": str(event.get("receiver") or ""),
-        "ts_unix_ms": int(event.get("ts_unix_ms") or int(time.time() * 1000)),
-        "msn_id": str(event.get("msn_id") or ""),
-        "details": event.get("details") if isinstance(event.get("details"), dict) else {},
-    }
-    path = _typed_log_path(private_dir, event_type)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(payload, separators=(",", ":")) + "\n")
-
-
-def append_event(private_dir: Path, msn_id: str, event: Dict[str, Any]) -> Path:
-    """Append a single event to the request log (NDJSON).
-
-    - Does NOT store secrets.
-    - Adds a timestamp if none exists.
-    """
-    d = _log_dir(private_dir)
-    d.mkdir(parents=True, exist_ok=True)
-
-    e = dict(event)
-    bad = set(e.keys()).intersection(FORBIDDEN_SECRET_KEYS)
-    if bad:
-        raise ValueError(f"Do not store secrets in request_log. Forbidden keys: {sorted(bad)}")
-
-    is_v1 = any(key in e for key in ("transmitter", "receiver", "event_datum", "status"))
-    if is_v1:
-        e = _normalize_v1_event(msn_id, e)
-    e.setdefault("ts_unix_ms", int(time.time() * 1000))
-    e.setdefault("msn_id", msn_id)
-
-    p = _log_path(private_dir, msn_id)
-    with p.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(e, separators=(",", ":")) + "\n")
-
-    if is_v1:
-        _write_typed_supplement(private_dir, e)
-    return p
-
-
-def read_events(
-    private_dir: Path,
-    msn_id: str,
-    *,
-    limit: int = 100,
-    offset: int = 0,
-    reverse: bool = True,
-) -> ReadResult:
-    """Read events from the request log.
-
-    Behavior:
-    - If log doesn't exist: returns empty list.
-    - reverse=True returns newest-first (requires loading lines; acceptable for prototype).
-    """
-    paths = [path for path in request_log_read_paths(private_dir, msn_id) if path.exists() and path.is_file()]
-    if not paths:
-        return ReadResult(events=[], parse_errors=0, total_lines=0)
-
-    parse_errors = 0
-    total = 0
-    collected: List[tuple[int, Dict[str, Any]]] = []
-    seen_events: set[str] = set()
-    order_index = 0
-
-    for path in paths:
-        for ln in path.read_text(encoding="utf-8").splitlines():
-            if not ln.strip():
-                continue
-            total += 1
-            try:
-                obj = json.loads(ln)
-            except Exception:
-                parse_errors += 1
-                continue
-            if not isinstance(obj, dict):
-                parse_errors += 1
-                continue
-            event_msn_id = str(obj.get("msn_id") or "").strip()
-            if event_msn_id and event_msn_id != msn_id:
-                continue
-            dedupe_key = json.dumps(obj, sort_keys=True, separators=(",", ":"))
-            if dedupe_key in seen_events:
-                continue
-            seen_events.add(dedupe_key)
-            order_index += 1
-            collected.append((order_index, obj))
-
-    ranked = sorted(
-        collected,
-        key=lambda item: (int(item[1].get("ts_unix_ms") or 0), item[0]),
-        reverse=reverse,
-    )
-    events = [item for _, item in ranked[offset : offset + limit]]
-    return ReadResult(events=events, parse_errors=parse_errors, total_lines=total)
+FORBIDDEN_SECRET_KEYS = _SHARED.FORBIDDEN_SECRET_KEYS
+ReadResult = _SHARED.ReadResult
+RequestLogValidationError = _SHARED.RequestLogValidationError
+append_event = _SHARED.append_event
+read_events = _SHARED.read_events

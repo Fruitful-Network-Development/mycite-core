@@ -2902,6 +2902,132 @@ class Workspace:
         warnings = list(decoded.get("warnings") or [])
         return str(decoded.get("value") or ""), (warnings[0] if warnings else None)
 
+    def resolve_contact_collection(
+        self,
+        *,
+        collection_ref: str,
+    ) -> dict[str, Any]:
+        source_ref = str(collection_ref or "").strip()
+        if not source_ref:
+            return {"ok": False, "errors": ["collection_ref is required"], "warnings": [], "status_code": 400}
+
+        anthology_rows = list(self.storage.load_rows("anthology") or [])
+        entry_row, entry_identifier = self._resolve_anthology_row(source_ref, anthology_rows)
+        if entry_row is None:
+            return {
+                "ok": False,
+                "errors": [f"collection_ref not found in anthology: {source_ref}"],
+                "warnings": [],
+                "status_code": 404,
+            }
+
+        warnings: list[str] = []
+        resolution_chain: list[dict[str, str]] = []
+        collection_row = entry_row
+        collection_identifier = entry_identifier
+        collection_ref_token = source_ref
+
+        layer, value_group, _ = self._parse_datum_identifier(collection_identifier)
+        if not (layer == 8 and value_group == 0):
+            resolution_chain.append(
+                {
+                    "kind": "seed",
+                    "input_ref": source_ref,
+                    "resolved_identifier": entry_identifier,
+                }
+            )
+            matched_row: dict[str, Any] | None = None
+            matched_identifier = ""
+            matched_ref = ""
+            for pair in self._pairs_from_row(entry_row):
+                pair_ref = str(pair.get("reference") or "").strip()
+                if not pair_ref or pair_ref == "0":
+                    continue
+                candidate_row, candidate_identifier = self._resolve_anthology_row(pair_ref, anthology_rows)
+                if candidate_row is None:
+                    continue
+                row_layer, row_value_group, _ = self._parse_datum_identifier(candidate_identifier)
+                if row_layer == 8 and row_value_group == 0:
+                    matched_row = candidate_row
+                    matched_identifier = candidate_identifier
+                    matched_ref = pair_ref
+                    break
+            if matched_row is None:
+                return {
+                    "ok": False,
+                    "errors": [f"collection_ref did not resolve to 8-0-* and no nested collection found: {source_ref}"],
+                    "warnings": warnings,
+                    "status_code": 404,
+                }
+            collection_row = matched_row
+            collection_identifier = matched_identifier
+            collection_ref_token = matched_ref
+            resolution_chain.append(
+                {
+                    "kind": "collection",
+                    "input_ref": matched_ref,
+                    "resolved_identifier": matched_identifier,
+                }
+            )
+
+        contacts: list[dict[str, Any]] = []
+        for pair in self._pairs_from_row(collection_row):
+            contact_ref = str(pair.get("reference") or "").strip()
+            if not contact_ref or contact_ref == "0":
+                continue
+            contact_row, contact_identifier = self._resolve_anthology_row(contact_ref, anthology_rows)
+            if contact_row is None:
+                warnings.append(f"unresolved contact ref {contact_ref} in {collection_identifier}")
+                continue
+
+            contact_label = str(contact_row.get("label") or contact_identifier).strip()
+            display_name = contact_label.split("-", 1)[0].strip() if "-" in contact_label else contact_label
+            email_local_hex = ""
+            email_local_text = ""
+            email_type_ref = ""
+            email_type_value = ""
+            for contact_pair in self._pairs_from_row(contact_row):
+                pair_ref = str(contact_pair.get("reference") or "").strip()
+                pair_mag = str(contact_pair.get("magnitude") or "").strip()
+                if not pair_ref:
+                    continue
+                tail = pair_ref if _DATUM_ID_RE.fullmatch(pair_ref) else self._qualified_tail_identifier(pair_ref)
+                if tail == "3-1-3" and not email_local_hex:
+                    email_local_hex = pair_mag
+                    email_local_text, decode_warning = self._decode_hex_text(email_local_hex)
+                    if decode_warning:
+                        warnings.append(f"{contact_identifier}: {decode_warning}")
+                elif tail == "6-1-2" and not email_type_ref:
+                    email_type_ref = pair_ref
+                    email_type_value = pair_mag
+            contacts.append(
+                {
+                    "contact_ref": contact_ref,
+                    "contact_identifier": contact_identifier,
+                    "contact_label": contact_label,
+                    "display_name": display_name,
+                    "email_local_hex": email_local_hex,
+                    "email_local_text": email_local_text,
+                    "email_type_ref": email_type_ref,
+                    "email_type_value": email_type_value,
+                }
+            )
+
+        return {
+            "ok": True,
+            "source": {
+                "collection_ref": source_ref,
+                "resolved_collection_ref": collection_ref_token,
+                "resolved_collection_identifier": collection_identifier,
+                "resolution_chain": resolution_chain,
+            },
+            "contacts": contacts,
+            "summary": {"contacts_total": len(contacts)},
+            "warnings": warnings,
+            "errors": [],
+            "status_code": 200,
+        }
+
     def aws_emailer_preview(
         self,
         *,

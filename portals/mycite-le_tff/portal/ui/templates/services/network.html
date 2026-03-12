@@ -75,6 +75,18 @@
                   Direct message channel{% if selected_p2p %} with {{ selected_p2p.event_count }} event(s){% endif %}
                 {% endif %}
               </div>
+              <div class="network-qualifierRow">
+                {% if current_kind == "alias" %}
+                  <span class="network-qualifierBadge network-qualifierBadge--anonymous">anonymous</span>
+                  <span class="network-qualifierBadge network-qualifierBadge--asymmetric">asymmetric</span>
+                  <span class="network-qualifierBadge network-qualifierBadge--symmetric">symmetric</span>
+                {% elif current_kind == "log" %}
+                  <span class="network-qualifierBadge network-qualifierBadge--asymmetric">asymmetric</span>
+                  <span class="network-qualifierBadge network-qualifierBadge--symmetric">symmetric</span>
+                {% else %}
+                  <span class="network-qualifierBadge network-qualifierBadge--asymmetric">asymmetric</span>
+                {% endif %}
+              </div>
             </div>
           </div>
 
@@ -97,6 +109,13 @@
                 data-alias-id="{{ selected_alias.alias_id }}"
                 data-contract-id="{{ selected_alias.contract_id }}"
               >Request Contract</button>
+              <button
+                type="button"
+                class="network-actionLink network-actionButton"
+                id="networkInspectContactsBtn"
+                data-alias-id="{{ selected_alias.alias_id }}"
+                data-collection-ref="{{ selected_alias.contact_collection_ref if selected_alias.contact_collection_ref is defined else '' }}"
+              >Inspect Contacts</button>
             {% endif %}
             <button
               type="button"
@@ -188,6 +207,7 @@
                 {% if current_kind == "alias" and selected_alias %}
                   <li><strong>org_msn_id</strong><code>{{ selected_alias.org_msn_id }}</code></li>
                   <li><strong>alias_id</strong><code>{{ selected_alias.alias_id }}</code></li>
+                  <li><strong>contact_ref</strong><code>{{ selected_alias.contact_collection_ref if selected_alias.contact_collection_ref is defined and selected_alias.contact_collection_ref else "(inheritance/override)" }}</code></li>
                   <li><strong>events</strong><span>{{ message_feed|length }}</span></li>
                 {% elif current_kind == "log" and selected_log %}
                   <li><strong>channel</strong><code>{{ selected_log.label }}</code></li>
@@ -308,14 +328,18 @@
           <p><strong>type:</strong> alias</p>
           <p><strong>alias_id:</strong> <code>{{ selected_alias.alias_id }}</code></p>
           <p><strong>org_msn_id:</strong> <code>{{ selected_alias.org_msn_id }}</code></p>
+          <p><strong>contact_collection_ref:</strong> <code>{{ selected_alias.contact_collection_ref if selected_alias.contact_collection_ref is defined and selected_alias.contact_collection_ref else "(inheritance/override)" }}</code></p>
+          <p><strong>qualifiers:</strong> anonymous, asymmetric, symmetric</p>
           <p><strong>label:</strong> {{ selected_alias.label }}</p>
         {% elif current_kind == "log" and selected_log %}
           <p><strong>type:</strong> request-log</p>
           <p><strong>channel:</strong> <code>{{ selected_log.label }}</code></p>
+          <p><strong>qualifiers:</strong> asymmetric, symmetric</p>
           <p><strong>events:</strong> {{ selected_log.event_count }}</p>
         {% elif current_kind == "p2p" and selected_p2p %}
           <p><strong>type:</strong> p2p</p>
           <p><strong>channel:</strong> <code>{{ selected_p2p.label }}</code></p>
+          <p><strong>qualifiers:</strong> asymmetric</p>
           <p><strong>events:</strong> {{ selected_p2p.event_count }}</p>
         {% else %}
           <p>No active network selection.</p>
@@ -410,6 +434,77 @@
           })
           .catch(function (err) {
             window.alert("Contract request failed: " + (err && err.message ? err.message : String(err)));
+          })
+          .finally(function () {
+            button.disabled = false;
+            button.textContent = originalLabel;
+          });
+      });
+    })();
+
+    (function () {
+      var button = document.getElementById("networkInspectContactsBtn");
+      if (!button) return;
+
+      function escapeHtml(raw) {
+        return String(raw || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      button.addEventListener("click", function () {
+        var aliasId = String(button.getAttribute("data-alias-id") || "").trim();
+        var collectionRef = String(button.getAttribute("data-collection-ref") || "").trim();
+        if (!aliasId && !collectionRef) {
+          window.alert("No alias context is available for contact collection inspection.");
+          return;
+        }
+
+        var query = new URLSearchParams();
+        if (aliasId) query.set("alias_id", aliasId);
+        if (collectionRef) query.set("collection_ref", collectionRef);
+        var endpoint = "/portal/api/network/contacts/collection?" + query.toString();
+
+        var originalLabel = button.textContent;
+        button.disabled = true;
+        button.textContent = "Loading...";
+
+        fetch(endpoint, { method: "GET", headers: { "Accept": "application/json" } })
+          .then(function (resp) {
+            return resp.json().catch(function () { return {}; }).then(function (body) {
+              return { ok: resp.ok, status: resp.status, body: body || {} };
+            });
+          })
+          .then(function (result) {
+            if (!result.ok || !result.body.ok) {
+              var message = "";
+              if (result.body && result.body.errors && result.body.errors.length) {
+                message = String(result.body.errors[0] || "");
+              } else if (result.body && result.body.error) {
+                message = String(result.body.error || "");
+              } else {
+                message = "HTTP " + result.status;
+              }
+              throw new Error(message || "Unable to resolve contact collection");
+            }
+
+            var contactsTotal = (((result.body || {}).summary || {}).contacts_total) || 0;
+            var payloadText = JSON.stringify(result.body, null, 2);
+            if (window.PortalInspector && typeof window.PortalInspector.open === "function") {
+              window.PortalInspector.open({
+                title: "Contacts Inspector",
+                subtitle: contactsTotal + " contact(s)",
+                html: '<article class=\"card\"><div class=\"card__kicker\">Network Contact Collection</div><div class=\"card__title\">Resolved Contacts</div><div class=\"card__body\"><pre class=\"jsonblock\">' + escapeHtml(payloadText) + '</pre></div></article>'
+              });
+              return;
+            }
+            window.alert(payloadText);
+          })
+          .catch(function (err) {
+            window.alert("Inspect Contacts failed: " + (err && err.message ? err.message : String(err)));
           })
           .finally(function () {
             button.disabled = false;

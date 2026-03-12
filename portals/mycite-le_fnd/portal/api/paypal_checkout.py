@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Dict
 from urllib.parse import urlparse
 
@@ -10,6 +12,20 @@ from flask import abort, jsonify, make_response
 from portal.services.runtime_paths import member_profile_read_dirs
 
 _MEMBER_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+
+
+def _load_shared_progeny_normalize() -> ModuleType:
+    shared_path = Path(__file__).resolve().parents[3] / "_shared" / "portal" / "progeny_model" / "normalize.py"
+    spec = importlib.util.spec_from_file_location("mycite_shared_progeny_normalize_paypal_checkout", shared_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load shared progeny normalize module from {shared_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_SHARED_NORMALIZE = _load_shared_progeny_normalize()
+normalize_member_profile = _SHARED_NORMALIZE.normalize_member_profile
 
 
 def _member_dir(private_dir: Path) -> Path:
@@ -66,10 +82,25 @@ def _checkout_preview_response(*, private_dir: Path, member_id: str, legacy_rout
         abort(404, description=f"No progeny profile found for member_id={member_id}")
 
     payload = _read_json(path)
-    profile_refs = payload.get("profile_refs") if isinstance(payload.get("profile_refs"), dict) else {}
+    normalized_profile = normalize_member_profile(member_id, payload)
+    profile_refs = (
+        normalized_profile.get("profile_refs")
+        if isinstance(normalized_profile.get("profile_refs"), dict)
+        else {}
+    )
+    email_policy = (
+        normalized_profile.get("email_policy")
+        if isinstance(normalized_profile.get("email_policy"), dict)
+        else {}
+    )
 
     profile_id = str(profile_refs.get("paypal_profile_id") or f"paypal:member:{member_id}").strip()
     site_base_url = str(profile_refs.get("paypal_site_base_url") or "").strip()
+    site_domain = str(profile_refs.get("paypal_site_domain") or "").strip().lower()
+    derived_site_base_from_domain = False
+    if not site_base_url and site_domain:
+        site_base_url = f"https://{site_domain}"
+        derived_site_base_from_domain = True
     return_url = str(profile_refs.get("paypal_checkout_return_url") or "").strip()
     cancel_url = str(profile_refs.get("paypal_checkout_cancel_url") or "").strip()
     webhook_listener_url = str(profile_refs.get("paypal_webhook_listener_url") or "").strip()
@@ -80,6 +111,8 @@ def _checkout_preview_response(*, private_dir: Path, member_id: str, legacy_rout
 
     if site_base_url and not _is_http_url(site_base_url):
         errors.append("profile_refs.paypal_site_base_url must be an absolute http/https URL")
+    if derived_site_base_from_domain:
+        warnings.append("Derived paypal_site_base_url from paypal_site_domain")
     if site_base_url and not return_url:
         return_url = _with_base_path(site_base_url, "/payments/paypal/return")
         warnings.append("Derived paypal_checkout_return_url from paypal_site_base_url")
@@ -104,6 +137,7 @@ def _checkout_preview_response(*, private_dir: Path, member_id: str, legacy_rout
 
     checkout_context = {
         "paypal_profile_id": profile_id,
+        "paypal_site_domain": site_domain,
         "site_base_url": site_base_url,
         "return_url": return_url,
         "cancel_url": cancel_url,
@@ -119,6 +153,13 @@ def _checkout_preview_response(*, private_dir: Path, member_id: str, legacy_rout
             "member_id": member_id,
             "tenant_id": member_id,
             "source": checkout_context,
+            "member_profile": {
+                "member_id": str(normalized_profile.get("member_id") or member_id),
+                "member_msn_id": str(normalized_profile.get("member_msn_id") or ""),
+                "capabilities": normalized_profile.get("capabilities") if isinstance(normalized_profile.get("capabilities"), dict) else {},
+                "profile_refs": profile_refs,
+                "email_policy": email_policy,
+            },
             "errors": errors,
             "warnings": warnings,
         }
@@ -129,6 +170,13 @@ def _checkout_preview_response(*, private_dir: Path, member_id: str, legacy_rout
             "member_id": member_id,
             "tenant_id": member_id,
             "source": checkout_context,
+            "member_profile": {
+                "member_id": str(normalized_profile.get("member_id") or member_id),
+                "member_msn_id": str(normalized_profile.get("member_msn_id") or ""),
+                "capabilities": normalized_profile.get("capabilities") if isinstance(normalized_profile.get("capabilities"), dict) else {},
+                "profile_refs": profile_refs,
+                "email_policy": email_policy,
+            },
             "order_template": {
                 "intent": "CAPTURE",
                 "purchase_units": [{"amount": {"currency_code": "USD", "value": "10.00"}}],

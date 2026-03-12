@@ -100,11 +100,17 @@
         {% block topbar %}{% endblock %}
 
         {% block header %}
-          <div class="pagehead">
-            <div class="pagehead__title">{% if page_title is defined and page_title %}{{ page_title }}{% else %}MyCite{% endif %}</div>
-            {% if page_subtitle is defined and page_subtitle %}
-              <div class="pagehead__sub">{{ page_subtitle }}</div>
-            {% endif %}
+          <div class="pagehead pagehead--withTools">
+            <div class="pagehead__meta">
+              <div class="pagehead__title">{% if page_title is defined and page_title %}{{ page_title }}{% else %}MyCite{% endif %}</div>
+              {% if page_subtitle is defined and page_subtitle %}
+                <div class="pagehead__sub">{{ page_subtitle }}</div>
+              {% endif %}
+            </div>
+            <label class="themebar pagehead__theme" aria-label="Portal theme selector">
+              <span class="themebar__label">Theme</span>
+              <select class="themebar__select" data-theme-selector data-theme-scope="portal"></select>
+            </label>
           </div>
         {% endblock %}
 

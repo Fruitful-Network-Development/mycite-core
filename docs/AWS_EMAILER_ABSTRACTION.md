@@ -26,6 +26,32 @@ Member profile metadata remains non-secret and now supports:
 - `aws_emailer_list_ref`: required for AWS emailer preview.
 - `aws_emailer_entry_ref`: optional hint/fallback for entry row typing.
 
+Forwarder/no-SMTP newsletter routing is defined in member metadata too:
+
+```json
+"email_policy": {
+  "mode": "forwarder_no_smtp",
+  "smtp_enabled": false,
+  "forwarder_address": "proxy@tenant.example",
+  "operator_inbox": "tenant.operator@gmail.com",
+  "poc_address": "mark@tenant.example",
+  "inbound_aliases": ["info@tenant.example", "mark@tenant.example"],
+  "reply": {
+    "allowed_from": ["mark@tenant.example"],
+    "send_as": ["info@tenant.example", "mark@tenant.example"],
+    "send_as_policy": "original_contacted_alias"
+  },
+  "newsletter": {
+    "allowed_from": ["mark@tenant.example"],
+    "ingest_address": "hermes@tenant.example",
+    "sender_address": "news@tenant.example",
+    "dispatch_mode": "aws_internal"
+  }
+}
+```
+
+This keeps SMTP disabled at the progeny profile layer while preserving deterministic routing metadata for queued AWS newsletter processing.
+
 ## Preview endpoint
 
 - Canonical: `GET /portal/api/aws/member/<member_id>/emailer_preview`
@@ -37,7 +63,7 @@ The endpoint:
 2. resolves `aws_emailer_list_ref` against anthology
 3. expands entry rows and contact collection rows
 4. derives subscription booleans from bool reference pairs
-5. returns summary counts and warnings
+5. returns summary counts, warnings, and non-secret member routing metadata
 
 ## Format definitions
 
