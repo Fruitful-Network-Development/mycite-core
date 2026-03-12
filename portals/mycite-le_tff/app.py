@@ -205,6 +205,63 @@ def _options_private(msn_id: str) -> Dict[str, Any]:
             "href": "/portal/api/network/contracts/request",
             "methods": ["POST", "OPTIONS"],
             "auth": "keycloak_or_local",
+            "qualifier": "asymmetric",
+        },
+        "network_anonymous_options": {
+            "href": f"/api/network/anonymous/options/{msn_id}",
+            "methods": ["GET", "OPTIONS"],
+            "auth": "none",
+            "qualifier": "anonymous",
+        },
+        "network_anonymous_contact": {
+            "href": f"/api/network/anonymous/contact/{msn_id}",
+            "methods": ["GET", "OPTIONS"],
+            "auth": "none",
+            "qualifier": "anonymous",
+        },
+        "network_asymmetric_contract_ingress": {
+            "href": f"/api/network/asymmetric/contracts/request/{msn_id}",
+            "methods": ["POST", "OPTIONS"],
+            "auth": "signed_envelope",
+            "qualifier": "asymmetric",
+            "compat_shim": f"/api/contracts/request/{msn_id}",
+        },
+        "network_asymmetric_confirmation_ingress": {
+            "href": f"/api/network/asymmetric/contracts/confirmation/{msn_id}",
+            "methods": ["POST", "OPTIONS"],
+            "auth": "signed_envelope",
+            "qualifier": "asymmetric",
+            "compat_shim": f"/api/contracts/confirmation/{msn_id}",
+        },
+        "network_symmetric_contract_due": {
+            "href": "/portal/api/network/symmetric/contracts/due",
+            "methods": ["GET", "OPTIONS"],
+            "auth": "keycloak_or_local",
+            "qualifier": "symmetric",
+        },
+        "network_symmetric_contract_renew": {
+            "href": "/portal/api/network/symmetric/contracts/<contract_id>/renew",
+            "methods": ["POST", "OPTIONS"],
+            "auth": "keycloak_or_local",
+            "qualifier": "symmetric",
+        },
+        "network_symmetric_contract_ingress": {
+            "href": "/api/network/symmetric/contracts/<contract_id>/renew/<msn_id>",
+            "methods": ["POST", "OPTIONS"],
+            "auth": "vault_symmetric",
+            "qualifier": "symmetric",
+        },
+        "network_contacts_collection": {
+            "href": "/portal/api/network/contacts/collection?alias_id=<alias_id>",
+            "methods": ["GET", "OPTIONS"],
+            "auth": "keycloak_or_local",
+            "qualifier": "anonymous",
+        },
+        "network_daemon_resolve_references": {
+            "href": "/portal/api/network/daemon/resolve_references",
+            "methods": ["POST", "OPTIONS"],
+            "auth": "keycloak_or_local",
+            "qualifier": "anonymous",
         },
     }
 
@@ -324,6 +381,16 @@ def _build_widget_url(alias_id: str, alias_payload: Dict[str, Any]) -> str:
     return f"{base_url}/portal/embed/poc?{query}"
 
 
+def _alias_contact_collection_ref(record: Dict[str, Any]) -> str:
+    profile_refs = record.get("profile_refs") if isinstance(record.get("profile_refs"), dict) else {}
+    alias_ref = str(profile_refs.get("contact_collection_ref") or "").strip()
+    if alias_ref:
+        return alias_ref
+
+    fields = record.get("fields") if isinstance(record.get("fields"), dict) else {}
+    return str(fields.get("contact_collection_ref") or "").strip()
+
+
 def list_aliases_for_sidebar(private_dir: Path) -> list[Dict[str, Any]]:
     records, _ = list_alias_records(private_dir)
     aliases: list[Dict[str, Any]] = []
@@ -341,6 +408,7 @@ def list_aliases_for_sidebar(private_dir: Path) -> list[Dict[str, Any]]:
                 "progeny_type": str(record.get("progeny_type") or "").strip(),
                 "tenant_id": str(record.get("child_msn_id") or record.get("tenant_id") or "").strip(),
                 "member_id": _extract_member_msn_id(record),
+                "contact_collection_ref": _alias_contact_collection_ref(record),
             }
         )
     return aliases
@@ -987,6 +1055,7 @@ def _network_sidebar_alias_items() -> list[Dict[str, Any]]:
                 "org_msn_id": str(alias.get("org_msn_id") or "").strip(),
                 "tenant_id": str(alias.get("tenant_id") or "").strip(),
                 "contract_id": str(alias.get("contract_id") or "").strip(),
+                "contact_collection_ref": str(alias.get("contact_collection_ref") or "").strip(),
                 "href": f"/portal/network?tab=messages&kind=alias&id={quote(alias_id, safe='')}",
                 "alias_id": alias_id,
                 "alias_label": str(alias.get("label") or alias_id).strip(),
@@ -1995,6 +2064,7 @@ register_contract_handshake_routes(
     public_dir=PUBLIC_DIR,
     msn_id_provider=lambda: MSN_ID,
     options_private_fn=_options_private,
+    workspace=DATA_WORKSPACE,
 )
 register_data_routes(
     app,

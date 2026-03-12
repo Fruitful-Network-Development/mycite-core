@@ -17,6 +17,7 @@ Member `profile_refs` now supports:
 ```json
 "profile_refs": {
   "paypal_profile_id": "paypal:member:<member_id>",
+  "paypal_site_domain": "client.example.com",
   "paypal_site_base_url": "https://client.example.com",
   "paypal_checkout_return_url": "https://client.example.com/payments/paypal/return",
   "paypal_checkout_cancel_url": "https://client.example.com/payments/paypal/cancel",
@@ -35,9 +36,12 @@ These are non-secret references only.
 The endpoint:
 
 1. loads member metadata refs
-2. validates URL shape
-3. derives return/cancel URLs from `paypal_site_base_url` if needed
-4. returns deterministic checkout context + order template
+2. derives `paypal_site_base_url` from `paypal_site_domain` if needed
+3. validates URL shape
+4. derives return/cancel URLs from `paypal_site_base_url` if needed
+5. returns deterministic checkout context + order template
+
+This ensures each member/progeny profile can point PayPal checkout to its own website domain without storing secrets.
 
 ## Queue/sync endpoint (paypal_proxy)
 

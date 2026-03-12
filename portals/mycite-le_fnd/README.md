@@ -33,5 +33,5 @@ Do not patch code under running containers; rebuild the target portal service fr
 - [Development Plan](../../docs/DEVELOPMENT_PLAN.md)
 - [AWS Emailer Abstraction](../../docs/AWS_EMAILER_ABSTRACTION.md)
 - [PayPal Payment Abstraction](../../docs/PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md)
-- [Request Log and Contracts](../../docs/request_log_and_contracts.md)
+- [Request Log v1](../../docs/REQUEST_LOG_V1.md)
 - [Documentation Policy](../../docs/DOCUMENTATION_POLICY.md)

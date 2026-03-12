@@ -49,6 +49,8 @@
   var graphZoomOutBtn = qs("#dtGraphZoomOutBtn", app);
   var graphZoomInBtn = qs("#dtGraphZoomInBtn", app);
   var graphZoomResetBtn = qs("#dtGraphZoomResetBtn", app);
+  var workbenchLayoutModeSel = qs("#dtWorkbenchLayoutMode", app);
+  var workbenchGridEl = qs("#dtWorkbenchGrid", app);
   var nimmSummaryEl = qs("#dtNimmSummary", app);
   var nimmOpenBtn = qs("#dtOpenNimmBtn", app);
   var nimmOverlay = qs("#dtNimmOverlay");
@@ -148,6 +150,11 @@
     svg: null,
     viewport: null,
   };
+
+  var workbenchUiState = {
+    layoutMode: "classic",
+  };
+  var WORKBENCH_LAYOUT_STORAGE_KEY = "mycite.data_tool.workbench_layout_mode";
 
   var timeSeriesUiState = {
     selectedEventRef: "",
@@ -290,6 +297,38 @@
 
   function valueGroupStateKey(layerValue, groupValue) {
     return layerStateKey(layerValue) + "::" + String(groupValue == null ? "unknown" : groupValue);
+  }
+
+  function normalizeWorkbenchLayoutMode(value) {
+    var token = String(value || "").trim().toLowerCase();
+    return token === "graph_first" ? "graph_first" : "classic";
+  }
+
+  function loadWorkbenchLayoutPreference() {
+    var fallback = normalizeWorkbenchLayoutMode(workbenchLayoutModeSel && workbenchLayoutModeSel.value);
+    if (typeof window === "undefined" || !window.localStorage) return fallback;
+    try {
+      var saved = window.localStorage.getItem(WORKBENCH_LAYOUT_STORAGE_KEY);
+      return normalizeWorkbenchLayoutMode(saved || fallback);
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function applyWorkbenchLayoutMode(mode, options) {
+    var opts = options && typeof options === "object" ? options : {};
+    var token = normalizeWorkbenchLayoutMode(mode);
+    workbenchUiState.layoutMode = token;
+    if (workbenchGridEl) workbenchGridEl.setAttribute("data-layout-mode", token);
+    if (app) app.setAttribute("data-layout-mode", token);
+    if (workbenchLayoutModeSel) workbenchLayoutModeSel.value = token;
+    if (opts.persist && typeof window !== "undefined" && window.localStorage) {
+      try {
+        window.localStorage.setItem(WORKBENCH_LAYOUT_STORAGE_KEY, token);
+      } catch (_) {
+        return;
+      }
+    }
   }
 
   function captureAnthologyOpenState() {
@@ -2257,6 +2296,13 @@
       return raw.slice(0, cap - 1) + "\u2026";
     }
 
+    function basenameToken(value) {
+      var raw = String(value || "").trim();
+      if (!raw) return "";
+      var parts = raw.split("/");
+      return String(parts[parts.length - 1] || raw).trim();
+    }
+
     function nodeVisualState(identifier) {
       if (!responseFocus || !hasFocus) return "normal";
       if (identifier === responseFocus) return "focus";
@@ -2279,7 +2325,11 @@
     var svg = document.createElementNS(svgNs, "svg");
     svg.setAttribute("class", "data-tool__graphSvg");
     svg.setAttribute("viewBox", "0 0 " + String(graphWidth) + " " + String(graphHeight));
-    svg.setAttribute("preserveAspectRatio", "xMinYMin meet");
+    svg.setAttribute("preserveAspectRatio", "xMinYMin");
+    svg.setAttribute("width", String(graphWidth));
+    svg.setAttribute("height", String(graphHeight));
+    svg.setAttribute("data-base-width", String(graphWidth));
+    svg.setAttribute("data-base-height", String(graphHeight));
     svg.setAttribute("role", "img");
     svg.setAttribute("aria-label", "Anthology node graph");
 
@@ -2357,9 +2407,22 @@
         var visualState = nodeVisualState(identifier);
         var labelText = compactLabel(identifier, 26);
         var labelRaw = String(node && node.label ? node.label : "").trim();
-        var useMeta = !!(labelRaw && labelRaw !== identifier && (visualState === "focus" || visualState === "path"));
-        var nodeWidth = Math.max(56, Math.min(232, 22 + (labelText.length * 6.2)));
+        var iconUrl = String(node && node.icon_url ? node.icon_url : "").trim();
+        var iconRelpath = String(node && node.icon_relpath ? node.icon_relpath : "").trim();
+        var iconBasename = basenameToken(iconRelpath);
+        var iconInfo = iconBasename ? compactLabel(iconBasename, 22) : "";
+        var metaParts = [];
+        if (labelRaw && labelRaw !== identifier && (visualState === "focus" || visualState === "path")) {
+          metaParts.push(compactLabel(labelRaw, 28));
+        }
+        if (iconInfo) metaParts.push("icon: " + iconInfo);
+        var metaText = metaParts.join(" | ");
+        var useMeta = !!metaText;
+        var hasIcon = !!iconUrl || !!iconInfo;
+        var iconSlotWidth = hasIcon ? 18 : 0;
+        var nodeWidth = Math.max(68, Math.min(260, 24 + iconSlotWidth + (labelText.length * 6.2)));
         var nodeHeight = useMeta ? 28 : 21;
+        var labelX = hasIcon ? 8 : 0;
 
         var nodeGroup = document.createElementNS(svgNs, "g");
         var nodeGroupClass = "data-tool__graphNodeGroup js-anthology-graph-node";
@@ -2389,7 +2452,7 @@
         rect.setAttribute("fill", nodeFill(visualState, layerColor(layerToken, layerIndex)));
 
         var labelNode = document.createElementNS(svgNs, "text");
-        labelNode.setAttribute("x", "0");
+        labelNode.setAttribute("x", String(labelX));
         labelNode.setAttribute("y", useMeta ? "-2" : "3");
         labelNode.setAttribute("text-anchor", "middle");
         labelNode.setAttribute("class", "data-tool__graphNodeLabel js-anthology-graph-node");
@@ -2398,18 +2461,52 @@
         labelNode.textContent = labelText;
 
         var title = document.createElementNS(svgNs, "title");
-        title.textContent = (labelRaw || identifier) + " [" + identifier + "]";
+        title.textContent = (labelRaw || identifier) + " [" + identifier + "]" + (iconRelpath ? " icon=" + iconRelpath : "");
         rect.appendChild(title);
 
         nodeGroup.appendChild(rect);
+        if (hasIcon) {
+          var iconBadge = document.createElementNS(svgNs, "circle");
+          iconBadge.setAttribute("cx", String((-nodeWidth / 2) + 12));
+          iconBadge.setAttribute("cy", useMeta ? "-2" : "0");
+          iconBadge.setAttribute("r", "7");
+          iconBadge.setAttribute("class", "data-tool__graphNodeIconBadge js-anthology-graph-node");
+          iconBadge.setAttribute("data-identifier", identifier);
+          iconBadge.setAttribute("data-row-id", rowId);
+          nodeGroup.appendChild(iconBadge);
+
+          if (iconUrl) {
+            var iconImage = document.createElementNS(svgNs, "image");
+            iconImage.setAttribute("x", String((-nodeWidth / 2) + 6));
+            iconImage.setAttribute("y", String((useMeta ? -8 : -6)));
+            iconImage.setAttribute("width", "12");
+            iconImage.setAttribute("height", "12");
+            iconImage.setAttribute("preserveAspectRatio", "xMidYMid meet");
+            iconImage.setAttribute("href", iconUrl);
+            iconImage.setAttribute("class", "data-tool__graphNodeIcon js-anthology-graph-node");
+            iconImage.setAttribute("data-identifier", identifier);
+            iconImage.setAttribute("data-row-id", rowId);
+            nodeGroup.appendChild(iconImage);
+          } else if (iconInfo) {
+            var iconInitial = document.createElementNS(svgNs, "text");
+            iconInitial.setAttribute("x", String((-nodeWidth / 2) + 12));
+            iconInitial.setAttribute("y", useMeta ? "1" : "2");
+            iconInitial.setAttribute("text-anchor", "middle");
+            iconInitial.setAttribute("class", "data-tool__graphNodeIconInitial js-anthology-graph-node");
+            iconInitial.setAttribute("data-identifier", identifier);
+            iconInitial.setAttribute("data-row-id", rowId);
+            iconInitial.textContent = iconInfo.slice(0, 1).toUpperCase();
+            nodeGroup.appendChild(iconInitial);
+          }
+        }
         nodeGroup.appendChild(labelNode);
         if (useMeta) {
           var metaNode = document.createElementNS(svgNs, "text");
-          metaNode.setAttribute("x", "0");
+          metaNode.setAttribute("x", String(labelX));
           metaNode.setAttribute("y", "9");
           metaNode.setAttribute("text-anchor", "middle");
           metaNode.setAttribute("class", "data-tool__graphNodeMeta");
-          metaNode.textContent = compactLabel(labelRaw, 32);
+          metaNode.textContent = metaText;
           nodeGroup.appendChild(metaNode);
         }
         nodesGroup.appendChild(nodeGroup);
@@ -2505,6 +2602,10 @@
     anthologyGraphUiState.tx = 0;
     anthologyGraphUiState.ty = 0;
     applyGraphTransform();
+    if (anthologyGraphUiState.viewport) {
+      anthologyGraphUiState.viewport.scrollLeft = 0;
+      anthologyGraphUiState.viewport.scrollTop = 0;
+    }
   }
 
   function setGraphFocus(identifier, contextMode) {
@@ -2520,13 +2621,14 @@
     var svg = anthologyGraphUiState.svg;
     if (!svg) return;
     var scale = Math.max(0.2, Math.min(4.0, Number(anthologyGraphUiState.scale) || 1));
-    var tx = Number(anthologyGraphUiState.tx) || 0;
-    var ty = Number(anthologyGraphUiState.ty) || 0;
+    var baseWidth = parseFloat(svg.getAttribute("data-base-width") || svg.getAttribute("width") || "0");
+    var baseHeight = parseFloat(svg.getAttribute("data-base-height") || svg.getAttribute("height") || "0");
+    if (!isFinite(baseWidth) || baseWidth <= 0) baseWidth = 920;
+    if (!isFinite(baseHeight) || baseHeight <= 0) baseHeight = 620;
     anthologyGraphUiState.scale = scale;
-    anthologyGraphUiState.tx = tx;
-    anthologyGraphUiState.ty = ty;
-    svg.style.transformOrigin = "0 0";
-    svg.style.transform = "translate(" + String(tx) + "px, " + String(ty) + "px) scale(" + String(scale) + ")";
+    svg.style.transform = "none";
+    svg.style.width = String(Math.round(baseWidth * scale)) + "px";
+    svg.style.height = String(Math.round(baseHeight * scale)) + "px";
   }
 
   function bindGraphPanZoom(viewport, svg) {
@@ -2534,35 +2636,7 @@
     anthologyGraphUiState.viewport = viewport;
     anthologyGraphUiState.svg = svg;
     applyGraphTransform();
-
-    viewport.addEventListener("wheel", function (event) {
-      event.preventDefault();
-      var delta = event.deltaY > 0 ? -0.1 : 0.1;
-      anthologyGraphUiState.scale = Math.max(0.2, Math.min(4.0, (Number(anthologyGraphUiState.scale) || 1) + delta));
-      applyGraphTransform();
-    }, { passive: false });
-
-    viewport.addEventListener("mousedown", function (event) {
-      if (event.button !== 0) return;
-      var startX = event.clientX;
-      var startY = event.clientY;
-      var startTx = Number(anthologyGraphUiState.tx) || 0;
-      var startTy = Number(anthologyGraphUiState.ty) || 0;
-
-      function onMove(moveEvent) {
-        anthologyGraphUiState.tx = startTx + (moveEvent.clientX - startX);
-        anthologyGraphUiState.ty = startTy + (moveEvent.clientY - startY);
-        applyGraphTransform();
-      }
-
-      function onUp() {
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      }
-
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    });
+    viewport.style.touchAction = "pan-x pan-y";
   }
 
   async function api(path, options) {
@@ -3589,6 +3663,12 @@
     });
   }
 
+  if (workbenchLayoutModeSel) {
+    workbenchLayoutModeSel.addEventListener("change", function () {
+      applyWorkbenchLayoutMode(workbenchLayoutModeSel.value, { persist: true });
+    });
+  }
+
   if (graphZoomOutBtn) {
     graphZoomOutBtn.addEventListener("click", function () {
       anthologyGraphUiState.scale = Math.max(0.2, (Number(anthologyGraphUiState.scale) || 1) - 0.1);
@@ -3890,6 +3970,7 @@
   }
 
   if (sourceSel) sourceSel.value = "anthology";
+  applyWorkbenchLayoutMode(loadWorkbenchLayoutPreference(), { persist: false });
   if (appendLayerInput && !appendLayerInput.value) appendLayerInput.value = "1";
   if (appendValueGroupInput && !appendValueGroupInput.value) appendValueGroupInput.value = "1";
   syncAppendPairRequirements();

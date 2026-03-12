@@ -1,14 +1,30 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Dict
 
 from flask import abort, jsonify, make_response
 from portal.services.runtime_paths import member_profile_read_dirs
 
 _MEMBER_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+
+
+def _load_shared_progeny_normalize() -> ModuleType:
+    shared_path = Path(__file__).resolve().parents[3] / "_shared" / "portal" / "progeny_model" / "normalize.py"
+    spec = importlib.util.spec_from_file_location("mycite_shared_progeny_normalize_aws_emailer", shared_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load shared progeny normalize module from {shared_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_SHARED_NORMALIZE = _load_shared_progeny_normalize()
+normalize_member_profile = _SHARED_NORMALIZE.normalize_member_profile
 
 
 def _member_dir(private_dir: Path) -> Path:
@@ -53,7 +69,17 @@ def _emailer_preview_response(
         abort(404, description=f"No progeny profile found for member_id={member_id}")
 
     payload = _read_json(path)
-    profile_refs = payload.get("profile_refs") if isinstance(payload.get("profile_refs"), dict) else {}
+    normalized_profile = normalize_member_profile(member_id, payload)
+    profile_refs = (
+        normalized_profile.get("profile_refs")
+        if isinstance(normalized_profile.get("profile_refs"), dict)
+        else {}
+    )
+    email_policy = (
+        normalized_profile.get("email_policy")
+        if isinstance(normalized_profile.get("email_policy"), dict)
+        else {}
+    )
     aws_emailer_list_ref = str(profile_refs.get("aws_emailer_list_ref") or "").strip()
     aws_emailer_entry_ref = str(profile_refs.get("aws_emailer_entry_ref") or "").strip()
     if not aws_emailer_list_ref:
@@ -64,6 +90,13 @@ def _emailer_preview_response(
                 "tenant_id": member_id,
                 "errors": ["aws_emailer_list_ref is required in profile_refs for this member"],
                 "warnings": [],
+                "member_profile": {
+                    "member_id": str(normalized_profile.get("member_id") or member_id),
+                    "member_msn_id": str(normalized_profile.get("member_msn_id") or ""),
+                    "capabilities": normalized_profile.get("capabilities") if isinstance(normalized_profile.get("capabilities"), dict) else {},
+                    "profile_refs": profile_refs,
+                    "email_policy": email_policy,
+                },
             },
             400,
         )
@@ -78,6 +111,37 @@ def _emailer_preview_response(
     )
     status_code = int(result.get("status_code") or (200 if bool(result.get("ok")) else 400))
     response = dict(result)
+    source = response.get("source") if isinstance(response.get("source"), dict) else {}
+    if isinstance(source, dict):
+        source.setdefault("aws_profile_id", str(profile_refs.get("aws_profile_id") or ""))
+        source.setdefault("email_transport_mode", str(profile_refs.get("email_transport_mode") or ""))
+        source.setdefault("newsletter_ingest_address", str(profile_refs.get("newsletter_ingest_address") or ""))
+        source.setdefault("newsletter_sender_address", str(profile_refs.get("newsletter_sender_address") or ""))
+        source.setdefault("email_operator_inbox", str(profile_refs.get("email_operator_inbox") or ""))
+        response["source"] = source
+    existing_warnings = [str(item) for item in list(response.get("warnings") or [])]
+    policy_warnings: list[str] = []
+    mode = str(email_policy.get("mode") or "").strip().lower()
+    if mode and mode != "forwarder_no_smtp":
+        policy_warnings.append(
+            "email_policy.mode is not forwarder_no_smtp; this flow is intended for forwarder/no-SMTP routing."
+        )
+    newsletter = email_policy.get("newsletter") if isinstance(email_policy.get("newsletter"), dict) else {}
+    if not str(newsletter.get("ingest_address") or "").strip():
+        policy_warnings.append("email_policy.newsletter.ingest_address is not set.")
+    if not str(newsletter.get("sender_address") or "").strip():
+        policy_warnings.append("email_policy.newsletter.sender_address is not set.")
+    response["warnings"] = policy_warnings + existing_warnings
+    response.setdefault(
+        "member_profile",
+        {
+            "member_id": str(normalized_profile.get("member_id") or member_id),
+            "member_msn_id": str(normalized_profile.get("member_msn_id") or ""),
+            "capabilities": normalized_profile.get("capabilities") if isinstance(normalized_profile.get("capabilities"), dict) else {},
+            "profile_refs": profile_refs,
+            "email_policy": email_policy,
+        },
+    )
     response.setdefault("member_id", member_id)
     response.setdefault("tenant_id", member_id)
     if legacy_route_term == "tenant":

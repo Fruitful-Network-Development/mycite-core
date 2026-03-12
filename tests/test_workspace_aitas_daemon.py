@@ -76,6 +76,44 @@ class WorkspaceAitasDaemonTests(unittest.TestCase):
         finally:
             tmp.cleanup()
 
+    def test_resolve_contact_collection(self):
+        tmp, workspace = self._workspace()
+        try:
+            contact_result = workspace.append_anthology_datum(
+                layer=7,
+                value_group=1,
+                reference="3-1-3",
+                magnitude="74657374406578616D706C652E636F6D",
+                label="Test Contact",
+                pairs=[
+                    {"reference": "3-1-3", "magnitude": "74657374406578616D706C652E636F6D"},
+                    {"reference": "6-1-2", "magnitude": "work"},
+                ],
+            )
+            self.assertTrue(contact_result.get("ok"))
+            contact_identifier = str((contact_result.get("created") or {}).get("identifier") or "")
+            self.assertTrue(contact_identifier)
+
+            collection_result = workspace.append_anthology_datum(
+                layer=8,
+                value_group=0,
+                reference=contact_identifier,
+                magnitude="0",
+                label="Contact Collection",
+            )
+            self.assertTrue(collection_result.get("ok"))
+            collection_identifier = str((collection_result.get("created") or {}).get("identifier") or "")
+            self.assertTrue(collection_identifier)
+
+            payload = workspace.resolve_contact_collection(collection_ref=collection_identifier)
+            self.assertTrue(payload.get("ok"))
+            self.assertEqual(((payload.get("source") or {}).get("resolved_collection_identifier")), collection_identifier)
+            self.assertEqual(((payload.get("summary") or {}).get("contacts_total")), 1)
+            first_contact = (payload.get("contacts") or [{}])[0]
+            self.assertEqual(str(first_contact.get("email_local_text") or "").lower(), "test@example.com")
+        finally:
+            tmp.cleanup()
+
 
 if __name__ == "__main__":
     unittest.main()

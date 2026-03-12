@@ -72,6 +72,6 @@ All portals follow the shared service-shell/runtime contract:
 - [`../docs/POC_WORKSPACE_MODEL.md`](../docs/POC_WORKSPACE_MODEL.md)
 - [`../docs/PROGENY_PROFILE_CARDS.md`](../docs/PROGENY_PROFILE_CARDS.md)
 - [`../docs/DOCUMENTATION_POLICY.md`](../docs/DOCUMENTATION_POLICY.md)
-- [`../docs/request_log_and_contracts.md`](../docs/request_log_and_contracts.md)
+- [`../docs/REQUEST_LOG_V1.md`](../docs/REQUEST_LOG_V1.md)
 - [`../docs/DATA_TOOL.md`](../docs/DATA_TOOL.md)
 - [`../docs/TIME_SERIES_ABSTRACTION.md`](../docs/TIME_SERIES_ABSTRACTION.md)

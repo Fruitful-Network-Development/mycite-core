@@ -8,7 +8,69 @@
     "counterparty_msn_id": "3-2-3-17-77-2-6-3-1-6",
     "signature_required": true
   },
-  "template_version": "1.0.0",
+  "template_version": "1.1.0",
+  "capabilities": {
+    "paypal": true,
+    "aws": true
+  },
+  "contract_refs": {
+    "authorization_contract_id": "contract-fnd-tff-member-001",
+    "service_agreement_ref": "fnd-member-service-v1"
+  },
+  "profile_refs": {
+    "contact_collection_ref": "8-0-1",
+    "aws_profile_id": "aws:member:1",
+    "aws_emailer_list_ref": "10-0-1",
+    "aws_emailer_entry_ref": "9-2-1",
+    "paypal_profile_id": "paypal:member:1",
+    "paypal_site_domain": "trappfamilyfarm.com",
+    "paypal_site_base_url": "https://trappfamilyfarm.com",
+    "paypal_checkout_return_url": "https://trappfamilyfarm.com/payments/paypal/return",
+    "paypal_checkout_cancel_url": "https://trappfamilyfarm.com/payments/paypal/cancel",
+    "paypal_webhook_listener_url": "https://api.trappfamilyfarm.com/paypal/webhook",
+    "paypal_checkout_brand_name": "Trapp Family Farm",
+    "email_transport_mode": "forwarder_no_smtp",
+    "email_forwarder_address": "proxy@trappfamilyfarm.com",
+    "email_operator_inbox": "trapp.family.farm@gmail.com",
+    "email_poc_address": "mark@trappfamilyfarm.com",
+    "email_inbound_aliases_csv": "info@trappfamilyfarm.com,mark@trappfamilyfarm.com",
+    "email_reply_allowed_from_csv": "mark@trappfamilyfarm.com",
+    "email_reply_send_as_csv": "info@trappfamilyfarm.com,mark@trappfamilyfarm.com",
+    "email_reply_send_as_policy": "original_contacted_alias",
+    "newsletter_ingest_address": "hermes@trappfamilyfarm.com",
+    "newsletter_sender_address": "news@trappfamilyfarm.com",
+    "newsletter_allowed_from_csv": "mark@trappfamilyfarm.com",
+    "newsletter_dispatch_mode": "aws_internal"
+  },
+  "email_policy": {
+    "mode": "forwarder_no_smtp",
+    "smtp_enabled": false,
+    "forwarder_address": "proxy@trappfamilyfarm.com",
+    "operator_inbox": "trapp.family.farm@gmail.com",
+    "poc_address": "mark@trappfamilyfarm.com",
+    "inbound_aliases": [
+      "info@trappfamilyfarm.com",
+      "mark@trappfamilyfarm.com"
+    ],
+    "reply": {
+      "allowed_from": [
+        "mark@trappfamilyfarm.com"
+      ],
+      "send_as": [
+        "info@trappfamilyfarm.com",
+        "mark@trappfamilyfarm.com"
+      ],
+      "send_as_policy": "original_contacted_alias"
+    },
+    "newsletter": {
+      "allowed_from": [
+        "mark@trappfamilyfarm.com"
+      ],
+      "ingest_address": "hermes@trappfamilyfarm.com",
+      "sender_address": "news@trappfamilyfarm.com",
+      "dispatch_mode": "aws_internal"
+    }
+  },
   "hosted_interface": {
     "layout": "classroom_orientation",
     "default_tab": "stream",
@@ -51,9 +113,9 @@
       }
     },
     "paypal": {
-      "paypal_secret": null,
-      "paypal_user_id": null,
-      "paypal_webhook": null
+      "website_domain": "trappfamilyfarm.com",
+      "site_base_url": "https://trappfamilyfarm.com",
+      "webhook_listener_url": "https://api.trappfamilyfarm.com/paypal/webhook"
     }
   }
 }
