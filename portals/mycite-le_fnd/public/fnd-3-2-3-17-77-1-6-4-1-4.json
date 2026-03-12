@@ -1,0 +1,12 @@
+{
+  "schema": "mycite.fnd.profile.v1",
+  "msn_id": "3-2-3-17-77-1-6-4-1-4",
+  "title": "fruitful_network_development_llc",
+  "summary": "Brand profile for the FND portal workbench.",
+  "logo": "",
+  "banner": "",
+  "links": [
+    { "label": "Portal", "href": "/portal/system" },
+    { "label": "Public Profile", "href": "/msn-3-2-3-17-77-1-6-4-1-4.json" }
+  ]
+}

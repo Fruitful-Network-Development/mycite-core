@@ -5,7 +5,7 @@ Canonical source for the MyCite core portal framework and runnable portal implem
 ## Scope
 
 - Shared portal runtime and service-shell UI patterns.
-- Core service routing (`/portal/home|data|network|tools|inbox`) and optional tool-package runtime contracts.
+- Core service routing (`/portal/system|network|utilities`) and compatibility redirects from legacy portal routes.
 - Product/framework docs (NIMM/data model, progeny/profile cards, request-log/contracts).
 - Active in-repo runnable portals:
   - `portals/mycite-le_fnd`
@@ -35,13 +35,15 @@ Canonical source for the MyCite core portal framework and runnable portal implem
 
 Portal-local, non-secret entity scaffolding is stored under each portal `private/` tree:
 
-- `private/progeny/internal/` local progeny profile-card records.
+- `private/network/aliases/`, `private/network/contracts/`, `private/network/request_log/`, `private/network/hosted.json`
+- `private/network/progeny/{admin_progeny,member_progeny,user_progeny}/`
+- `private/utilities/{tools,peripherals,vault}/`
 - `private/config.json` canonical main portal profile and behavior source.
 - `private/mycite-config-*.json` legacy fallback config shape (readable for compatibility).
 - `organization_config.file_name` in main config selects the legal-entity profile.
 - `organization_config.default_values` and `organization_config.added_values` compose portal behavior overrides.
 
-Missing progeny refs from active config (`private/config.json` or legacy fallback) are auto-seeded as local profile cards at runtime.
+Legacy root-private paths remain readable as fallbacks during rollout, but new writes target the canonical `private/network/*` and `private/utilities/*` trees.
 
 ## Canonical docs
 

@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
+from portal.services.runtime_paths import aliases_dir
+
 CLIENT_KEY_BY_MSN = {
     "3-2-3-17-77-2-6-1-1-2": "cvcc",
     "3-2-3-17-77-2-6-3-1-6": "tff",
@@ -12,7 +14,7 @@ CLIENT_KEY_BY_MSN = {
 
 
 def _aliases_dir(private_dir: Path) -> Path:
-    return private_dir / "aliases"
+    return aliases_dir(private_dir)
 
 
 def _safe_token(value: str) -> str:

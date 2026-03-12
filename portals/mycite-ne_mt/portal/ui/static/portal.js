@@ -2,6 +2,7 @@
  * - Theme selector
  * - Local tab switching for page-internal panels
  * - Alias sidebar filter
+ * - Workbench inspector + shell splitters
  */
 
 (function () {
@@ -23,6 +24,9 @@
   };
 
   const PORTAL_THEME_STORAGE_KEY = "mycite.theme.portal.default";
+  const CONTEXT_WIDTH_KEY = "mycite.layout.context.width";
+  const INSPECTOR_WIDTH_KEY = "mycite.layout.inspector.width";
+  const INSPECTOR_OPEN_KEY = "mycite.layout.inspector.open";
 
   function applyTheme(themeId) {
     const safe = THEME_STANDARD.sanitize(themeId);
@@ -48,8 +52,8 @@
     try { window.localStorage.setItem(storageKey, themeId); } catch (_) {}
   }
 
-  function getStoredTheme(storageKey) {
-    try { return window.localStorage.getItem(storageKey) || ""; } catch (_) { return ""; }
+  function getStoredValue(storageKey) {
+    try { window.localStorage.getItem(storageKey) || ""; } catch (_) { return ""; }
   }
 
   function detectPreferredTheme(storageKey) {
@@ -57,7 +61,7 @@
       const urlTheme = new URL(window.location.href).searchParams.get("theme") || "";
       if (urlTheme) return THEME_STANDARD.sanitize(urlTheme);
     } catch (_) {}
-    const stored = getStoredTheme(storageKey);
+    const stored = getStoredValue(storageKey);
     return THEME_STANDARD.sanitize(stored || THEME_STANDARD.defaultTheme);
   }
 
@@ -150,11 +154,95 @@
     });
   }
 
-  function initInspector() {
+  function initWorkbenchLayout() {
+    const shell = qs(".ide-shell");
+    const inspector = qs("#portalInspector");
+    if (!shell || !inspector) return null;
+
+    function clamp(value, min, max) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return min;
+      return Math.min(max, Math.max(min, n));
+    }
+
+    function setContextWidth(value, persist) {
+      const width = clamp(value, 220, 420);
+      shell.style.setProperty("--ide-context-w", `${width}px`);
+      if (persist) {
+        try { window.localStorage.setItem(CONTEXT_WIDTH_KEY, String(width)); } catch (_) {}
+      }
+    }
+
+    function setInspectorWidth(value, persist) {
+      const width = clamp(value, 280, 520);
+      shell.style.setProperty("--ide-inspector-w", `${width}px`);
+      if (persist) {
+        try { window.localStorage.setItem(INSPECTOR_WIDTH_KEY, String(width)); } catch (_) {}
+      }
+    }
+
+    function setInspectorOpen(open, persist) {
+      const isOpen = !!open;
+      shell.setAttribute("data-inspector-collapsed", isOpen ? "false" : "true");
+      inspector.classList.toggle("is-collapsed", !isOpen);
+      inspector.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      if (persist) {
+        try { window.localStorage.setItem(INSPECTOR_OPEN_KEY, isOpen ? "1" : "0"); } catch (_) {}
+      }
+    }
+
+    const storedContext = parseInt(getStoredValue(CONTEXT_WIDTH_KEY), 10);
+    const storedInspector = parseInt(getStoredValue(INSPECTOR_WIDTH_KEY), 10);
+    const storedInspectorOpen = getStoredValue(INSPECTOR_OPEN_KEY);
+
+    setContextWidth(storedContext || 280, false);
+    setInspectorWidth(storedInspector || 360, false);
+    setInspectorOpen(storedInspectorOpen === "1", false);
+
+    qsa("[data-splitter]", shell).forEach(splitter => {
+      splitter.addEventListener("pointerdown", event => {
+        const type = splitter.getAttribute("data-splitter") || "";
+        const startX = event.clientX;
+        const startContext = parseInt(getComputedStyle(shell).getPropertyValue("--ide-context-w"), 10) || 280;
+        const startInspector = parseInt(getComputedStyle(shell).getPropertyValue("--ide-inspector-w"), 10) || 360;
+
+        function onMove(moveEvent) {
+          if (type === "context") {
+            setContextWidth(startContext + (moveEvent.clientX - startX), false);
+            return;
+          }
+          setInspectorWidth(startInspector - (moveEvent.clientX - startX), false);
+        }
+
+        function onUp() {
+          if (type === "context") {
+            const width = parseInt(getComputedStyle(shell).getPropertyValue("--ide-context-w"), 10) || startContext;
+            setContextWidth(width, true);
+          } else {
+            const width = parseInt(getComputedStyle(shell).getPropertyValue("--ide-inspector-w"), 10) || startInspector;
+            setInspectorWidth(width, true);
+          }
+          document.removeEventListener("pointermove", onMove);
+          document.removeEventListener("pointerup", onUp);
+        }
+
+        document.addEventListener("pointermove", onMove);
+        document.addEventListener("pointerup", onUp);
+      });
+    });
+
+    return {
+      setInspectorOpen,
+      setInspectorWidth
+    };
+  }
+
+  function initInspector(layoutApi) {
+    const shell = qs(".ide-shell");
     const inspector = qs("#portalInspector");
     const titleEl = qs("#portalInspectorTitle");
     const contentEl = qs("#portalInspectorContent");
-    if (!inspector || !titleEl || !contentEl) return;
+    if (!shell || !inspector || !titleEl || !contentEl) return;
 
     function setContent(payload) {
       const title = String((payload && payload.title) || "Details").trim() || "Details";
@@ -179,17 +267,16 @@
 
     function open(payload) {
       setContent(payload || {});
-      inspector.classList.remove("is-collapsed");
-      inspector.setAttribute("aria-hidden", "false");
+      if (layoutApi) layoutApi.setInspectorOpen(true, true);
+      if (layoutApi) layoutApi.setInspectorWidth(parseInt(getStoredValue(INSPECTOR_WIDTH_KEY), 10) || 360, false);
     }
 
     function close() {
-      inspector.classList.add("is-collapsed");
-      inspector.setAttribute("aria-hidden", "true");
+      if (layoutApi) layoutApi.setInspectorOpen(false, true);
     }
 
     function toggle(payload) {
-      if (inspector.classList.contains("is-collapsed")) {
+      if (shell.getAttribute("data-inspector-collapsed") === "true") {
         open(payload || {});
       } else {
         close();
@@ -212,7 +299,7 @@
       btn.addEventListener("click", close);
     });
 
-    document.addEventListener("click", (event) => {
+    document.addEventListener("click", event => {
       const trigger = event.target && event.target.closest
         ? event.target.closest("[data-inspector-template]")
         : null;
@@ -225,11 +312,9 @@
       openTemplate(templateId, title, subtitle);
     });
 
-    document.addEventListener("click", (event) => {
+    document.addEventListener("click", event => {
       const navLink = event.target && event.target.closest ? event.target.closest(".ide-activitylink") : null;
-      if (navLink) {
-        close();
-      }
+      if (navLink) close();
     });
 
     window.PortalInspector = {
@@ -240,8 +325,9 @@
     };
   }
 
+  const layoutApi = initWorkbenchLayout();
   initThemeSelector();
   initLocalTabs();
   initAliasSearch();
-  initInspector();
+  initInspector(layoutApi);
 })();

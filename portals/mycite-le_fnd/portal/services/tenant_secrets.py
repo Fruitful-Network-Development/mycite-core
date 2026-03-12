@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import Any, Dict
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from portal.services.runtime_paths import vault_contract_read_dirs, vault_contracts_dir
 
 _CONTRACT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
 def _private_dir() -> Path:
-    return Path(__file__).resolve().parents[2] / "private"
+    return Path(os.environ.get("PRIVATE_DIR", str(Path(__file__).resolve().parents[2] / "private")))
 
 
 def _safe_contract_id(contract_id: str) -> str:
@@ -23,7 +24,7 @@ def _safe_contract_id(contract_id: str) -> str:
 
 
 def _contract_key_path(contract_id: str) -> Path:
-    return _private_dir() / "vault" / "contracts" / f"{contract_id}.key"
+    return vault_contracts_dir(_private_dir()) / f"{contract_id}.key"
 
 
 def ensure_contract_key(contract_id: str) -> bytes:
@@ -31,11 +32,22 @@ def ensure_contract_key(contract_id: str) -> bytes:
     key_path = _contract_key_path(safe_contract_id)
     key_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if key_path.exists() and key_path.is_file():
-        encoded = key_path.read_text(encoding="utf-8").strip()
+    existing_path = next(
+        (
+            path
+            for directory in vault_contract_read_dirs(_private_dir())
+            for path in [directory / f"{safe_contract_id}.key"]
+            if path.exists() and path.is_file()
+        ),
+        None,
+    )
+    if existing_path is not None:
+        encoded = existing_path.read_text(encoding="utf-8").strip()
         key = base64.b64decode(encoded)
         if len(key) != 32:
             raise ValueError("Contract key file must decode to 32 bytes")
+        if existing_path != key_path:
+            key_path.write_text(encoded + "\n", encoding="utf-8")
         return key
 
     key = os.urandom(32)

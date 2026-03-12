@@ -7,14 +7,15 @@ from pathlib import Path
 from typing import Any, Dict
 
 from portal.services.tenant_secrets import encrypt_secret
+from portal.services.runtime_paths import legacy_member_progeny_dir, legacy_tenant_progeny_dir, member_progeny_dir
 
 
 def _private_dir() -> Path:
-    return Path(__file__).resolve().parents[2] / "private"
+    return Path(os.environ.get("PRIVATE_DIR", str(Path(__file__).resolve().parents[2] / "private")))
 
 
 def _tenant_dir() -> Path:
-    return _private_dir() / "progeny" / "tenant"
+    return legacy_tenant_progeny_dir(_private_dir())
 
 
 def _safe_path_token(value: str, *, field: str) -> str:
@@ -91,12 +92,27 @@ def _default_profile(tenant_msn_id: str, contract_id: str) -> Dict[str, Any]:
 def profile_path(tenant_msn_id: str, contract_id: str) -> Path:
     safe_tenant = _safe_path_token(tenant_msn_id, field="tenant_msn_id")
     safe_contract = _safe_path_token(contract_id, field="contract_id")
-    return _tenant_dir() / f"tenant-{safe_tenant}-under-{safe_contract}.json"
+    return member_progeny_dir(_private_dir()) / f"tenant-{safe_tenant}-under-{safe_contract}.json"
+
+
+def _read_profile_path(tenant_msn_id: str, contract_id: str) -> Path:
+    safe_tenant = _safe_path_token(tenant_msn_id, field="tenant_msn_id")
+    safe_contract = _safe_path_token(contract_id, field="contract_id")
+    filename = f"tenant-{safe_tenant}-under-{safe_contract}.json"
+    candidates = [
+        profile_path(tenant_msn_id, contract_id),
+        legacy_tenant_progeny_dir(_private_dir()) / filename,
+        legacy_member_progeny_dir(_private_dir()) / filename,
+    ]
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return candidates[0]
 
 
 def load_profile(tenant_msn_id: str, contract_id: str) -> Dict[str, Any]:
-    target = profile_path(tenant_msn_id, contract_id)
-    target.parent.mkdir(parents=True, exist_ok=True)
+    target = _read_profile_path(tenant_msn_id, contract_id)
+    profile_path(tenant_msn_id, contract_id).parent.mkdir(parents=True, exist_ok=True)
 
     if target.exists() and target.is_file():
         payload = _read_json(target)

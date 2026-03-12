@@ -4,13 +4,15 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from portal.services.runtime_paths import member_profile_read_dirs
+
 
 def _tenant_dir(private_dir: Path) -> Path:
-    return private_dir / "progeny" / "tenant"
+    return member_profile_read_dirs(private_dir)[-1]
 
 
 def _member_dir(private_dir: Path) -> Path:
-    return private_dir / "progeny" / "member"
+    return member_profile_read_dirs(private_dir)[0]
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
@@ -47,8 +49,7 @@ def load_tenant_progeny(private_dir: Path, alias_id: str, tenant_id: str) -> Opt
     if not safe_tenant_id:
         return None
 
-    candidate_dirs = [_member_dir(private_dir), _tenant_dir(private_dir)]
-    existing_dirs = [path for path in candidate_dirs if path.exists() and path.is_dir()]
+    existing_dirs = [path for path in member_profile_read_dirs(private_dir) if path.exists() and path.is_dir()]
     if not existing_dirs:
         return None
 

@@ -35,10 +35,10 @@
   var modelMetaEl = qs("#dtModelMeta", app);
   var leftPaneEl = qs("#dtLeftPane", app);
   var rightPaneEl = qs("#dtRightPane", app);
-  var anthologyLayersEl = qs("#dtAnthologyLayers", app);
+  var anthologyLayersEl = qs("#dtAnthologyLayers");
   var anthologyStatusEl = qs("#dtAnthologyStatus", app);
-  var datumEditorEl = qs("#dtDatumEditor", app);
-  var datumEditorStatusEl = qs("#dtDatumEditorStatus", app);
+  var datumEditorEl = qs("#dtDatumEditor");
+  var datumEditorStatusEl = qs("#dtDatumEditorStatus");
   var anthologyGraphEl = qs("#dtAnthologyGraph", app);
   var anthologyGraphStatusEl = qs("#dtAnthologyGraphStatus", app);
   var graphLayoutSel = qs("#dtGraphLayout", app);

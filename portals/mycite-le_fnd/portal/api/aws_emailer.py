@@ -6,16 +6,17 @@ from pathlib import Path
 from typing import Any, Dict
 
 from flask import abort, jsonify, make_response
+from portal.services.runtime_paths import member_profile_read_dirs
 
 _MEMBER_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
 def _member_dir(private_dir: Path) -> Path:
-    return private_dir / "progeny" / "member"
+    return member_profile_read_dirs(private_dir)[0]
 
 
 def _legacy_tenant_dir(private_dir: Path) -> Path:
-    return private_dir / "progeny" / "tenant"
+    return member_profile_read_dirs(private_dir)[-1]
 
 
 def _safe_member_id(value: str) -> str:
@@ -26,13 +27,11 @@ def _safe_member_id(value: str) -> str:
 
 
 def _profile_path(private_dir: Path, member_id: str) -> Path:
-    canonical = _member_dir(private_dir) / f"{member_id}.json"
-    if canonical.exists() and canonical.is_file():
-        return canonical
-    legacy = _legacy_tenant_dir(private_dir) / f"{member_id}.json"
-    if legacy.exists() and legacy.is_file():
-        return legacy
-    return canonical
+    for directory in member_profile_read_dirs(private_dir):
+        candidate = directory / f"{member_id}.json"
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return _member_dir(private_dir) / f"{member_id}.json"
 
 
 def _read_json(path: Path) -> Dict[str, Any]:

@@ -1,0 +1,20 @@
+{
+  "profile_type": "member",
+  "msn_id": "",
+  "title": "",
+  "contract": null,
+  "template_version": "1.0.0",
+  "config": {
+    "contacts": "",
+    "status": true,
+    "email_map": {
+      "inbox_inbound": {},
+      "proxy_outbound": {}
+    },
+    "paypal": {
+      "paypal_secret": null,
+      "paypal_user_id": null,
+      "paypal_webhook": null
+    }
+  }
+}
