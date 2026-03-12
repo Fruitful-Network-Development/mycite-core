@@ -139,8 +139,8 @@
 
   var anthologyGraphUiState = {
     focus: "",
-    depth: 2,
-    context: "global",
+    depth: 3,
+    context: "local",
     layout: "linear",
     scale: 1,
     tx: 0,
@@ -1743,7 +1743,11 @@
     var label = String(datum.label || identifier).trim();
     var parsed = parseDatumIdentifier(identifier);
     var valueGroup = parsed && parsed.value_group != null ? parsed.value_group : 1;
+    var layerToken = parsed && parsed.layer != null ? String(parsed.layer) : "-";
+    var iterationToken = parsed && parsed.iteration != null ? String(parsed.iteration) : "-";
     var pairs = normalizePairs(datum.pairs, datum.reference, datum.magnitude);
+    var pairCount = pairs.length;
+    var patternKind = valueGroup === 0 ? "collection" : (pairCount <= 1 ? "typed_leaf" : "composite");
     var path = Array.isArray(payload.abstraction_path) ? payload.abstraction_path : [];
 
     datumWorkbenchState.rowId = rowId;
@@ -1752,6 +1756,19 @@
     setDatumEditorStatus(identifier ? ("Focused: " + identifier) : "No datum selected.");
 
     datumEditorEl.innerHTML =
+      "<div class=\"data-tool__editorHeader\">" +
+      "<div class=\"data-tool__editorHeadline\">" +
+      "<strong class=\"data-tool__clip\">" + escapeText(label || identifier) + "</strong>" +
+      "<code class=\"data-tool__clip\">" + escapeText(identifier) + "</code>" +
+      "</div>" +
+      "<div class=\"data-tool__editorChips\">" +
+      "<span class=\"data-tool__editorChip\">L" + escapeText(layerToken) + "</span>" +
+      "<span class=\"data-tool__editorChip\">VG" + escapeText(String(valueGroup)) + "</span>" +
+      "<span class=\"data-tool__editorChip\">I" + escapeText(iterationToken) + "</span>" +
+      "<span class=\"data-tool__editorChip\">" + escapeText(patternKind) + "</span>" +
+      "<span class=\"data-tool__editorChip\">" + escapeText(String(pairCount)) + " pair" + (pairCount === 1 ? "" : "s") + "</span>" +
+      "</div>" +
+      "</div>" +
       "<div class=\"data-tool__controlRow data-tool__editRow\">" +
       "<label><span>row_id</span><input id=\"dtWorkbenchRowId\" type=\"text\" readonly value=\"" + escapeText(rowId) + "\" /></label>" +
       "<label><span>identifier</span><input id=\"dtWorkbenchIdentifier\" type=\"text\" readonly value=\"" + escapeText(identifier) + "\" /></label>" +
@@ -1768,6 +1785,10 @@
       "</div>" +
       "<div id=\"dtWorkbenchPairs\" class=\"data-tool__appendPairsList\"></div>" +
       "</section>" +
+      "<details class=\"data-tool__raw\" open>" +
+      "<summary>Raw Datum</summary>" +
+      "<pre>" + escapeText(JSON.stringify(datum, null, 2)) + "</pre>" +
+      "</details>" +
       "<details class=\"data-tool__raw\" open>" +
       "<summary>Abstraction Path</summary>" +
       "<pre>" + escapeText(JSON.stringify(path, null, 2)) + "</pre>" +
@@ -2073,17 +2094,66 @@
     var layoutMeta = graph.layout && typeof graph.layout === "object" ? graph.layout : {};
     var responseLayout = String(layoutMeta.mode || "linear").trim().toLowerCase();
     var responseContext = String(focusMeta.context_mode || "global").trim().toLowerCase();
-    var responseDepth = parseInt(String(focusMeta.depth_limit || "2"), 10);
-    if (isNaN(responseDepth) || responseDepth < 0) responseDepth = 2;
+    var responseDepth = parseInt(String(focusMeta.depth_limit || "3"), 10);
+    if (isNaN(responseDepth) || responseDepth < 0) responseDepth = 3;
     var responseFocus = String(focusMeta.identifier || "").trim();
     var hasFocus = !!focusMeta.active;
-    var focusNeighbors = {};
-    if (responseFocus) {
-      edges.forEach(function (edge) {
-        var sourceToken = String(edge && edge.source ? edge.source : "").trim();
-        var targetToken = String(edge && edge.target ? edge.target : "").trim();
-        if (sourceToken === responseFocus && targetToken) focusNeighbors[targetToken] = true;
-        if (targetToken === responseFocus && sourceToken) focusNeighbors[sourceToken] = true;
+    var focusNeighbors = Object.create(null);
+    var forward = Object.create(null);
+    var reverse = Object.create(null);
+    var undirected = Object.create(null);
+
+    function addLink(map, fromToken, toToken) {
+      if (!map[fromToken]) map[fromToken] = Object.create(null);
+      map[fromToken][toToken] = true;
+    }
+
+    edges.forEach(function (edge) {
+      var sourceToken = String(edge && edge.source ? edge.source : "").trim();
+      var targetToken = String(edge && edge.target ? edge.target : "").trim();
+      if (!sourceToken || !targetToken) return;
+      if (!anthologyUiState.graphByIdentifier[sourceToken] || !anthologyUiState.graphByIdentifier[targetToken]) return;
+      addLink(forward, sourceToken, targetToken);
+      addLink(reverse, targetToken, sourceToken);
+      addLink(undirected, sourceToken, targetToken);
+      addLink(undirected, targetToken, sourceToken);
+    });
+
+    function collectReachable(seed, adjacency) {
+      var out = Object.create(null);
+      if (!seed || !adjacency || !adjacency[seed]) return out;
+      var frontier = [seed];
+      var seen = Object.create(null);
+      seen[seed] = true;
+      var guard = 0;
+      var maxGuard = Math.max(nodes.length * 2, 128);
+      while (frontier.length && guard < maxGuard) {
+        guard += 1;
+        var nextFrontier = [];
+        frontier.forEach(function (token) {
+          var neighbors = adjacency[token] || {};
+          Object.keys(neighbors).forEach(function (neighbor) {
+            if (seen[neighbor]) return;
+            seen[neighbor] = true;
+            out[neighbor] = true;
+            nextFrontier.push(neighbor);
+          });
+        });
+        frontier = nextFrontier;
+      }
+      return out;
+    }
+
+    var focusPath = Object.create(null);
+    if (responseFocus && hasFocus) {
+      var ancestors = collectReachable(responseFocus, reverse);
+      var descendants = collectReachable(responseFocus, forward);
+      focusPath[responseFocus] = true;
+      Object.keys(ancestors).forEach(function (token) { focusPath[token] = true; });
+      Object.keys(descendants).forEach(function (token) { focusPath[token] = true; });
+      var neighbors = undirected[responseFocus] || {};
+      Object.keys(neighbors).forEach(function (token) {
+        focusNeighbors[token] = true;
       });
     }
 
@@ -2179,6 +2249,30 @@
       );
     }
 
+    function compactLabel(token, maxLen) {
+      var raw = String(token || "").trim();
+      if (!raw) return "";
+      var cap = Math.max(8, parseInt(maxLen, 10) || 24);
+      if (raw.length <= cap) return raw;
+      return raw.slice(0, cap - 1) + "\u2026";
+    }
+
+    function nodeVisualState(identifier) {
+      if (!responseFocus || !hasFocus) return "normal";
+      if (identifier === responseFocus) return "focus";
+      if (focusPath[identifier]) return "path";
+      if (focusNeighbors[identifier]) return "context";
+      return "dim";
+    }
+
+    function nodeFill(state, base) {
+      if (state === "focus") return "#101820";
+      if (state === "path") return "#1d4ed8";
+      if (state === "context") return "#2563eb";
+      if (state === "dim") return "rgba(167, 176, 190, 0.45)";
+      return base;
+    }
+
     var svgNs = "http://www.w3.org/2000/svg";
     var viewport = document.createElement("div");
     viewport.className = "data-tool__graphViewport";
@@ -2260,43 +2354,64 @@
         }
         nodePositions[identifier] = { x: x, y: y };
 
+        var visualState = nodeVisualState(identifier);
+        var labelText = compactLabel(identifier, 26);
+        var labelRaw = String(node && node.label ? node.label : "").trim();
+        var useMeta = !!(labelRaw && labelRaw !== identifier && (visualState === "focus" || visualState === "path"));
+        var nodeWidth = Math.max(56, Math.min(232, 22 + (labelText.length * 6.2)));
+        var nodeHeight = useMeta ? 28 : 21;
+
         var nodeGroup = document.createElementNS(svgNs, "g");
         var nodeGroupClass = "data-tool__graphNodeGroup js-anthology-graph-node";
-        if (responseFocus && identifier === responseFocus) {
+        if (visualState === "focus") {
           nodeGroupClass += " is-focus";
-        } else if (responseFocus && focusNeighbors[identifier]) {
+        } else if (visualState === "path") {
+          nodeGroupClass += " is-path";
+        } else if (visualState === "context") {
           nodeGroupClass += " is-context";
+        } else if (visualState === "dim") {
+          nodeGroupClass += " is-dim";
         }
         nodeGroup.setAttribute("class", nodeGroupClass);
         nodeGroup.setAttribute("data-identifier", identifier);
         nodeGroup.setAttribute("data-row-id", rowId);
+        nodeGroup.setAttribute("transform", "translate(" + String(x) + "," + String(y) + ")");
 
-        var dot = document.createElementNS(svgNs, "circle");
-        dot.setAttribute("cx", String(x));
-        dot.setAttribute("cy", String(y));
-        dot.setAttribute("r", "4");
-        var dotClass = "data-tool__graphNode js-anthology-graph-node";
-        if (responseFocus && identifier === responseFocus) {
-          dotClass += " is-focus";
-        } else if (responseFocus && focusNeighbors[identifier]) {
-          dotClass += " is-context";
-        }
-        dot.setAttribute("class", dotClass);
-        dot.setAttribute("data-identifier", identifier);
-        dot.setAttribute("data-row-id", rowId);
-        dot.setAttribute("fill", layerColor(layerToken, layerIndex));
-        if (responseFocus && identifier === responseFocus) {
-          dot.setAttribute("r", "5.5");
-        } else if (responseFocus && focusNeighbors[identifier]) {
-          dot.setAttribute("r", "4.8");
-        }
+        var rect = document.createElementNS(svgNs, "rect");
+        rect.setAttribute("x", String(-nodeWidth / 2));
+        rect.setAttribute("y", String(-nodeHeight / 2));
+        rect.setAttribute("width", String(nodeWidth));
+        rect.setAttribute("height", String(nodeHeight));
+        rect.setAttribute("rx", "10");
+        rect.setAttribute("class", "data-tool__graphNodeRect data-tool__graphNode js-anthology-graph-node");
+        rect.setAttribute("data-identifier", identifier);
+        rect.setAttribute("data-row-id", rowId);
+        rect.setAttribute("fill", nodeFill(visualState, layerColor(layerToken, layerIndex)));
+
+        var labelNode = document.createElementNS(svgNs, "text");
+        labelNode.setAttribute("x", "0");
+        labelNode.setAttribute("y", useMeta ? "-2" : "3");
+        labelNode.setAttribute("text-anchor", "middle");
+        labelNode.setAttribute("class", "data-tool__graphNodeLabel js-anthology-graph-node");
+        labelNode.setAttribute("data-identifier", identifier);
+        labelNode.setAttribute("data-row-id", rowId);
+        labelNode.textContent = labelText;
 
         var title = document.createElementNS(svgNs, "title");
-        var label = String(node && node.label ? node.label : identifier).trim() || identifier;
-        title.textContent = label + " [" + identifier + "]";
-        dot.appendChild(title);
+        title.textContent = (labelRaw || identifier) + " [" + identifier + "]";
+        rect.appendChild(title);
 
-        nodeGroup.appendChild(dot);
+        nodeGroup.appendChild(rect);
+        nodeGroup.appendChild(labelNode);
+        if (useMeta) {
+          var metaNode = document.createElementNS(svgNs, "text");
+          metaNode.setAttribute("x", "0");
+          metaNode.setAttribute("y", "9");
+          metaNode.setAttribute("text-anchor", "middle");
+          metaNode.setAttribute("class", "data-tool__graphNodeMeta");
+          metaNode.textContent = compactLabel(labelRaw, 32);
+          nodeGroup.appendChild(metaNode);
+        }
         nodesGroup.appendChild(nodeGroup);
       });
     });
@@ -2318,8 +2433,12 @@
       segment.setAttribute("x2", String(end.x));
       segment.setAttribute("y2", String(end.y));
       var edgeClass = "data-tool__graphEdge" + (edge && edge.resolved === false ? " is-unresolved" : "");
-      if (responseFocus && (source === responseFocus || target === responseFocus)) {
+      if (responseFocus && hasFocus && (source === responseFocus || target === responseFocus)) {
         edgeClass += " is-focus";
+      } else if (responseFocus && hasFocus && focusPath[source] && focusPath[target]) {
+        edgeClass += " is-path";
+      } else if (responseFocus && hasFocus) {
+        edgeClass += " is-dim";
       }
       segment.setAttribute("class", edgeClass);
       segment.setAttribute("data-source", source);
@@ -2345,6 +2464,12 @@
       chip.textContent = "L" + layerToken + ": " + String(layerNodes.length);
       legend.appendChild(chip);
     });
+    if (responseFocus && hasFocus) {
+      var focusBadge = document.createElement("span");
+      focusBadge.className = "data-tool__statusText";
+      focusBadge.textContent = "Focused lineage highlighted; non-active context is dimmed.";
+      legend.appendChild(focusBadge);
+    }
     if (edges.length > maxRenderedEdges) {
       var overflow = document.createElement("span");
       overflow.className = "data-tool__statusText";
@@ -2356,11 +2481,11 @@
 
   function graphQueryParams() {
     var focus = graphFocusInput ? String(graphFocusInput.value || "").trim() : "";
-    var context = graphContextSel ? String(graphContextSel.value || "global").trim().toLowerCase() : "global";
+    var context = graphContextSel ? String(graphContextSel.value || "local").trim().toLowerCase() : "local";
     var layout = graphLayoutSel ? String(graphLayoutSel.value || "linear").trim().toLowerCase() : "linear";
     var depthToken = graphDepthInput ? String(graphDepthInput.value || "").trim() : "";
     var depth = parseInt(depthToken, 10);
-    if (isNaN(depth) || depth < 0) depth = 2;
+    if (isNaN(depth) || depth < 0) depth = 3;
 
     anthologyGraphUiState.focus = focus;
     anthologyGraphUiState.context = context === "local" ? "local" : "global";
@@ -3011,7 +3136,19 @@
     var identifier = String(datum.identifier || rowId || token);
     var label = String(datum.label || identifier);
     var pairs = normalizePairs(datum.pairs, datum.reference, datum.magnitude);
+    var parsed = parseDatumIdentifier(identifier);
+    var valueGroup = parsed && parsed.value_group != null ? parsed.value_group : 1;
+    var pairCount = pairs.length;
+    var patternKind = valueGroup === 0 ? "collection" : (pairCount <= 1 ? "typed_leaf" : "composite");
     var abstractionPath = Array.isArray(payload.abstraction_path) ? payload.abstraction_path : [];
+    var statePayload = {};
+    try {
+      statePayload = await api("/portal/api/data/state");
+    } catch (_) {
+      statePayload = {};
+    }
+    var state = statePayload && typeof statePayload === "object" ? (statePayload.state || {}) : {};
+    var aitasContext = state && typeof state === "object" ? (state.aitas_context || {}) : {};
 
     var pairsMarkup = pairs.length
       ? "<ul>" + pairs.map(function (pair) {
@@ -3035,10 +3172,28 @@
           "<div class=\"card__body\">" +
             "<p><strong>row_id:</strong> <code>" + escapeText(rowId) + "</code></p>" +
             "<p><strong>identifier:</strong> <code>" + escapeText(identifier) + "</code></p>" +
+            "<p><strong>pattern:</strong> <code>" + escapeText(patternKind) + "</code> | <strong>pairs:</strong> " + escapeText(String(pairCount)) + "</p>" +
             "<h4>Reference / Magnitude</h4>" +
             pairsMarkup +
             "<h4>Abstraction Path</h4>" +
             pathMarkup +
+            "<h4>AITAS / NIMM Context</h4>" +
+            "<pre class=\"jsonblock\">" +
+              escapeText(
+                JSON.stringify(
+                  {
+                    focus_source: state.focus_source || "",
+                    focus_subject: state.focus_subject || "",
+                    phase: state.aitas_phase || "",
+                    mode: state.mode || "",
+                    lens: state.lens_context || {},
+                    aitas_context: aitasContext,
+                  },
+                  null,
+                  2
+                )
+              ) +
+            "</pre>" +
             "<p><button type=\"button\" class=\"js-inspector-open-profile\" data-row-id=\"" + escapeText(rowId) + "\">Open Full Datum Editor</button></p>" +
           "</div>" +
         "</article>",

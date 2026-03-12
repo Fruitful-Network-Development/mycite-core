@@ -3,35 +3,26 @@
 
     <div class="data-tool__layout data-tool__layout--workbench">
       <div class="data-tool__main">
-        <section class="card data-tool__contract">
-          <div class="card__kicker">Workspace Contract</div>
-          <div class="card__title">Anthology-Authoritative IDE Workbench</div>
-          <div class="card__body">
-            <ul class="bullets">
-              <li>Graph is the primary navigation surface (focus/investigate).</li>
-              <li>Datum editor is synchronized to current focus and edits canonical anthology state.</li>
-              <li>Right-side inspector hosts advanced investigation, abstraction-path, and NIMM diagnostics.</li>
-            </ul>
-          </div>
-        </section>
-
         <section class="card data-tool__anthologyWorkbench">
-          <div class="card__kicker">Anthology Workbench</div>
-          <div class="card__title">Graph Navigation + Datum Editing</div>
-          <div class="data-tool__controlRow">
-            <button type="button" id="dtAnthologyRefreshBtn">Refresh Anthology</button>
-            <button type="button" id="dtAnthologyGraphRefreshBtn">Refresh Graph</button>
-            <button type="button" id="dtOpenNimmBtn">Open NIMM Inspector</button>
-            <span id="dtAnthologyStatus" class="data-tool__statusText"></span>
-          </div>
+          <header class="data-tool__graphToolbar">
+            <div class="data-tool__graphToolbarTitle">
+              <div class="card__kicker">Anthology Workbench</div>
+              <div class="card__title">Graph-First Navigation + Focused Datum Editing</div>
+            </div>
+            <div class="data-tool__controlRow">
+              <button type="button" id="dtAnthologyRefreshBtn">Refresh Anthology</button>
+              <button type="button" id="dtAnthologyGraphRefreshBtn">Refresh Graph</button>
+              <button type="button" id="dtOpenNimmBtn">NIMM Inspector</button>
+              <span id="dtAnthologyStatus" class="data-tool__statusText"></span>
+            </div>
+          </header>
 
           <div class="data-tool__workbenchGrid">
-            <article class="card data-tool__graphPane">
-              <div class="card__kicker">Navigation Graph</div>
-              <div class="card__title">Family / Lineage / Abstraction View</div>
-              <p class="data-tool__legendText">
-                Single-click focuses datum; double-click investigates datum. Graph and editor remain synchronized.
-              </p>
+            <article class="data-tool__graphPane">
+              <div class="data-tool__paneHead">
+                <div class="card__kicker">Graph Surface</div>
+                <div class="card__title">Lineage / Abstraction Navigation</div>
+              </div>
               <div class="data-tool__controlRow">
                 <label>
                   <span>layout</span>
@@ -43,13 +34,13 @@
                 <label>
                   <span>context</span>
                   <select id="dtGraphContext">
-                    <option value="global">global</option>
                     <option value="local">local</option>
+                    <option value="global">global</option>
                   </select>
                 </label>
                 <label>
                   <span>depth</span>
-                  <input id="dtGraphDepth" type="number" min="0" step="1" value="2" style="max-width:88px;" />
+                  <input id="dtGraphDepth" type="number" min="0" step="1" value="3" style="max-width:88px;" />
                 </label>
                 <label style="min-width: 220px;">
                   <span>focus</span>
@@ -64,9 +55,11 @@
               <div id="dtAnthologyGraph" class="data-tool__graphCanvas" role="region" aria-label="Anthology node graph"></div>
             </article>
 
-            <article class="card data-tool__editorPane">
-              <div class="card__kicker">Datum Editor</div>
-              <div class="card__title">Focused Datum</div>
+            <aside class="data-tool__editorPane">
+              <div class="data-tool__paneHead">
+                <div class="card__kicker">Datum Editor</div>
+                <div class="card__title">Focused Datum</div>
+              </div>
               <p id="dtDatumEditorStatus" class="data-tool__legendText">Select a graph node or row to begin editing.</p>
               <div id="dtDatumEditor" class="data-tool__datumEditor">
                 <p class="data-tool__empty">No datum selected.</p>
@@ -75,16 +68,8 @@
                 <summary>Layer/Value Group Rows</summary>
                 <div id="dtAnthologyLayers" class="data-tool__anthologyLayers"></div>
               </details>
-            </article>
+            </aside>
           </div>
-        </section>
-
-        <section class="card data-tool__legend">
-          <div class="card__kicker">Presentation Sidecar</div>
-          <p class="data-tool__legendText">
-            Icon selections are staged as presentation metadata and committed into
-            <code>data/presentation/datum_icons.json</code>.
-          </p>
         </section>
       </div>
     </div>

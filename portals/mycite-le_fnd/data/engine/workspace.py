@@ -1700,6 +1700,18 @@ class Workspace:
             if not identifier:
                 continue
             label_text = str(row.get("label") or identifier).strip()
+            row_pairs = list(row.get("pairs") or [])
+            try:
+                value_group_token = int(row.get("value_group"))
+            except Exception:
+                value_group_token = -1
+            pair_count = len([item for item in row_pairs if isinstance(item, dict)])
+            if value_group_token == 0:
+                pattern_kind = "collection"
+            elif pair_count <= 1:
+                pattern_kind = "typed_leaf"
+            else:
+                pattern_kind = "composite"
             nodes.append(
                 {
                     "node_id": identifier,
@@ -1709,22 +1721,20 @@ class Workspace:
                     "layer": row.get("layer"),
                     "value_group": row.get("value_group"),
                     "iteration": row.get("iteration"),
+                    "pair_count": pair_count,
+                    "pattern_kind": pattern_kind,
                     "selection_count": int(row.get("selection_count") or 0),
                     **self._icon_meta(identifier, label_text),
                 }
             )
 
             references: list[str] = []
-            try:
-                row_value_group = int(row.get("value_group"))
-            except Exception:
-                row_value_group = -1
-            if row_value_group == 0:
+            if value_group_token == 0:
                 references = [str(item or "").strip() for item in list(row.get("selection_references") or [])]
             else:
                 references = [
                     str((pair or {}).get("reference") or "").strip()
-                    for pair in list(row.get("pairs") or [])
+                    for pair in row_pairs
                     if isinstance(pair, dict)
                 ]
 
