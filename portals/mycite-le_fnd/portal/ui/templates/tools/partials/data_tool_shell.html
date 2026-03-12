@@ -6,38 +6,32 @@
         <section class="card data-tool__anthologyWorkbench">
           <header class="data-tool__graphToolbar">
             <div class="data-tool__graphToolbarTitle">
-              <div class="card__kicker">Anthology Workbench</div>
-              <div class="card__title">Classic Anthology View + Graph Navigation</div>
+            <div class="card__kicker">Anthology Workbench</div>
+              <div class="card__title">Table Workbench + Graph Navigation</div>
             </div>
             <div class="data-tool__controlRow">
               <button type="button" id="dtAnthologyRefreshBtn">Refresh Anthology</button>
               <button type="button" id="dtAnthologyGraphRefreshBtn">Refresh Graph</button>
               <button type="button" id="dtOpenNimmBtn">NIMM Inspector</button>
               <label>
-                <span>view</span>
+                <span>layout</span>
                 <select id="dtWorkbenchLayoutMode">
-                  <option value="classic">classic anthology</option>
-                  <option value="graph_first">graph first</option>
+                  <option value="table">table</option>
+                  <option value="linear">linear</option>
+                  <option value="radial">radial</option>
                 </select>
               </label>
               <span id="dtAnthologyStatus" class="data-tool__statusText"></span>
             </div>
           </header>
 
-          <div id="dtWorkbenchGrid" class="data-tool__workbenchGrid" data-layout-mode="classic">
+          <div id="dtWorkbenchGrid" class="data-tool__workbenchGrid" data-layout-mode="table">
             <article class="data-tool__graphPane">
               <div class="data-tool__paneHead">
                 <div class="card__kicker">Graph Surface</div>
                 <div class="card__title">Lineage / Abstraction Navigation</div>
               </div>
               <div class="data-tool__controlRow">
-                <label>
-                  <span>layout</span>
-                  <select id="dtGraphLayout">
-                    <option value="linear">linear</option>
-                    <option value="radial">radial</option>
-                  </select>
-                </label>
                 <label>
                   <span>context</span>
                   <select id="dtGraphContext">
@@ -62,19 +56,13 @@
               <div id="dtAnthologyGraph" class="data-tool__graphCanvas" role="region" aria-label="Anthology node graph"></div>
             </article>
 
-            <article class="data-tool__editorPane">
+            <article class="data-tool__tablePane">
               <div class="data-tool__paneHead">
-                <div class="card__kicker">Anthology View</div>
-                <div class="card__title">Classic Datum Editor + Layer Rows</div>
+                <div class="card__kicker">Workbench Table</div>
+                <div class="card__title">Layer / Value Group Rows</div>
               </div>
-              <p id="dtDatumEditorStatus" class="data-tool__legendText">Select a graph node or row to begin editing.</p>
-              <div id="dtDatumEditor" class="data-tool__datumEditor">
-                <p class="data-tool__empty">No datum selected.</p>
-              </div>
-              <details class="data-tool__editorRows" open>
-                <summary>Layer/Value Group Rows</summary>
-                <div id="dtAnthologyLayers" class="data-tool__anthologyLayers"></div>
-              </details>
+              <p id="dtDatumEditorStatus" class="data-tool__legendText">Select a graph node or row to edit it in the right inspector column.</p>
+              <div id="dtAnthologyLayers" class="data-tool__anthologyLayers"></div>
             </article>
           </div>
         </section>

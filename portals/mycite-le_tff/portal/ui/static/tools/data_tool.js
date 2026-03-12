@@ -41,7 +41,6 @@
   var datumEditorStatusEl = qs("#dtDatumEditorStatus");
   var anthologyGraphEl = qs("#dtAnthologyGraph", app);
   var anthologyGraphStatusEl = qs("#dtAnthologyGraphStatus", app);
-  var graphLayoutSel = qs("#dtGraphLayout", app);
   var graphContextSel = qs("#dtGraphContext", app);
   var graphDepthInput = qs("#dtGraphDepth", app);
   var graphFocusInput = qs("#dtGraphFocus", app);
@@ -152,7 +151,7 @@
   };
 
   var workbenchUiState = {
-    layoutMode: "classic",
+    layoutMode: "table",
   };
   var WORKBENCH_LAYOUT_STORAGE_KEY = "mycite.data_tool.workbench_layout_mode";
 
@@ -178,6 +177,7 @@
     identifier: "",
     valueGroup: 1,
   };
+  var activeDatumEditorRoot = null;
 
   function escapeText(value) {
     return String(value == null ? "" : value)
@@ -301,7 +301,8 @@
 
   function normalizeWorkbenchLayoutMode(value) {
     var token = String(value || "").trim().toLowerCase();
-    return token === "graph_first" ? "graph_first" : "classic";
+    if (token === "linear" || token === "radial" || token === "table") return token;
+    return "table";
   }
 
   function loadWorkbenchLayoutPreference() {
@@ -328,6 +329,31 @@
       } catch (_) {
         return;
       }
+    }
+  }
+
+  function isGraphWorkbenchMode(mode) {
+    var token = normalizeWorkbenchLayoutMode(mode || workbenchUiState.layoutMode);
+    return token === "linear" || token === "radial";
+  }
+
+  function syncWorkbenchControls() {
+    var graphEnabled = isGraphWorkbenchMode();
+    [
+      anthologyGraphRefreshBtn,
+      graphContextSel,
+      graphDepthInput,
+      graphFocusInput,
+      graphApplyBtn,
+      graphZoomOutBtn,
+      graphZoomInBtn,
+      graphZoomResetBtn,
+    ].forEach(function (node) {
+      if (!node) return;
+      node.disabled = !graphEnabled;
+    });
+    if (anthologyGraphStatusEl && !graphEnabled) {
+      anthologyGraphStatusEl.textContent = "Table layout active. Switch layout to linear or radial to render the graph.";
     }
   }
 
@@ -1761,20 +1787,35 @@
     datumEditorStatusEl.textContent = String(text || "");
   }
 
+  function syncDatumSelectionUI() {
+    var selectedRowId = String(datumWorkbenchState.rowId || "").trim();
+    var selectedIdentifier = String(datumWorkbenchState.identifier || "").trim();
+
+    qsa(".js-anthology-row[data-row-id]", anthologyLayersEl).forEach(function (row) {
+      var rowToken = String(row.getAttribute("data-row-id") || "").trim();
+      row.classList.toggle("is-selected", !!selectedRowId && rowToken === selectedRowId);
+    });
+
+    qsa(".js-anthology-graph-node", anthologyGraphEl).forEach(function (node) {
+      var rowToken = String(node.getAttribute("data-row-id") || "").trim();
+      var identifier = String(node.getAttribute("data-identifier") || "").trim();
+      var selected =
+        (!!selectedRowId && rowToken === selectedRowId) ||
+        (!!selectedIdentifier && identifier === selectedIdentifier);
+      node.classList.toggle("is-selected", selected);
+    });
+  }
+
   function renderDatumEditorEmpty(message) {
     datumWorkbenchState.rowId = "";
     datumWorkbenchState.identifier = "";
     datumWorkbenchState.valueGroup = 1;
-    if (!datumEditorEl) return;
-    datumEditorEl.innerHTML = "";
-    var empty = document.createElement("p");
-    empty.className = "data-tool__empty";
-    empty.textContent = String(message || "No datum selected.");
-    datumEditorEl.appendChild(empty);
+    activeDatumEditorRoot = null;
+    setDatumEditorStatus(message || "Select a graph node or anthology row to edit it in the right inspector column.");
+    syncDatumSelectionUI();
   }
 
-  function renderDatumEditor(profilePayload) {
-    if (!datumEditorEl) return;
+  function buildDatumEditorNode(profilePayload) {
     var payload = profilePayload && typeof profilePayload === "object" ? profilePayload : {};
     var datum = payload.datum && typeof payload.datum === "object" ? payload.datum : {};
     var rowId = String(datum.row_id || datum.identifier || "").trim();
@@ -1792,50 +1833,70 @@
     datumWorkbenchState.rowId = rowId;
     datumWorkbenchState.identifier = identifier;
     datumWorkbenchState.valueGroup = valueGroup;
-    setDatumEditorStatus(identifier ? ("Focused: " + identifier) : "No datum selected.");
+    setDatumEditorStatus(identifier ? ("Focused: " + identifier + " | editor open in inspector") : "No datum selected.");
+    syncDatumSelectionUI();
 
-    datumEditorEl.innerHTML =
+    var editorRoot = document.createElement("article");
+    editorRoot.className = "data-tool__datumEditor js-datum-editor-root";
+    editorRoot.setAttribute("data-row-id", rowId);
+    editorRoot.setAttribute("data-identifier", identifier);
+    editorRoot.innerHTML =
       "<div class=\"data-tool__editorHeader\">" +
-      "<div class=\"data-tool__editorHeadline\">" +
-      "<strong class=\"data-tool__clip\">" + escapeText(label || identifier) + "</strong>" +
-      "<code class=\"data-tool__clip\">" + escapeText(identifier) + "</code>" +
-      "</div>" +
-      "<div class=\"data-tool__editorChips\">" +
-      "<span class=\"data-tool__editorChip\">L" + escapeText(layerToken) + "</span>" +
-      "<span class=\"data-tool__editorChip\">VG" + escapeText(String(valueGroup)) + "</span>" +
-      "<span class=\"data-tool__editorChip\">I" + escapeText(iterationToken) + "</span>" +
-      "<span class=\"data-tool__editorChip\">" + escapeText(patternKind) + "</span>" +
-      "<span class=\"data-tool__editorChip\">" + escapeText(String(pairCount)) + " pair" + (pairCount === 1 ? "" : "s") + "</span>" +
-      "</div>" +
+        "<div class=\"data-tool__editorHeadline\">" +
+          "<strong class=\"data-tool__clip\">" + escapeText(label || identifier) + "</strong>" +
+          "<code class=\"data-tool__clip\">" + escapeText(identifier) + "</code>" +
+        "</div>" +
+        "<div class=\"data-tool__editorChips\">" +
+          "<span class=\"data-tool__editorChip\">L" + escapeText(layerToken) + "</span>" +
+          "<span class=\"data-tool__editorChip\">VG" + escapeText(String(valueGroup)) + "</span>" +
+          "<span class=\"data-tool__editorChip\">I" + escapeText(iterationToken) + "</span>" +
+          "<span class=\"data-tool__editorChip\">" + escapeText(patternKind) + "</span>" +
+          "<span class=\"data-tool__editorChip\">" + escapeText(String(pairCount)) + " pair" + (pairCount === 1 ? "" : "s") + "</span>" +
+        "</div>" +
       "</div>" +
       "<div class=\"data-tool__controlRow data-tool__editRow\">" +
-      "<label><span>row_id</span><input id=\"dtWorkbenchRowId\" type=\"text\" readonly value=\"" + escapeText(rowId) + "\" /></label>" +
-      "<label><span>identifier</span><input id=\"dtWorkbenchIdentifier\" type=\"text\" readonly value=\"" + escapeText(identifier) + "\" /></label>" +
+        "<label><span>row_id</span><input class=\"js-workbench-row-id\" type=\"text\" readonly value=\"" + escapeText(rowId) + "\" /></label>" +
+        "<label><span>identifier</span><input class=\"js-workbench-identifier\" type=\"text\" readonly value=\"" + escapeText(identifier) + "\" /></label>" +
       "</div>" +
       "<div class=\"data-tool__controlRow\">" +
-      "<label style=\"min-width:300px;\"><span>label/title</span><input id=\"dtWorkbenchLabel\" type=\"text\" value=\"" + escapeText(label) + "\" /></label>" +
-      "<button type=\"button\" class=\"data-tool__actionBtn js-workbench-save\">Save Datum</button>" +
-      "<button type=\"button\" class=\"data-tool__actionBtn js-workbench-investigate\">Investigate</button>" +
+        "<label style=\"min-width:300px;\"><span>label/title</span><input class=\"js-workbench-label\" type=\"text\" value=\"" + escapeText(label) + "\" /></label>" +
+        "<button type=\"button\" class=\"data-tool__actionBtn js-workbench-save\">Save Datum</button>" +
+        "<button type=\"button\" class=\"data-tool__actionBtn js-workbench-investigate\">Investigate</button>" +
       "</div>" +
       "<section class=\"data-tool__appendPairs data-tool__editorPairs\">" +
-      "<div class=\"data-tool__appendPairsHeader\">" +
-      "<h3>Reference / Magnitude Pairs</h3>" +
-      "<button type=\"button\" class=\"js-workbench-add-pair\">Add pair</button>" +
-      "</div>" +
-      "<div id=\"dtWorkbenchPairs\" class=\"data-tool__appendPairsList\"></div>" +
+        "<div class=\"data-tool__appendPairsHeader\">" +
+          "<h3>Reference / Magnitude Pairs</h3>" +
+          "<button type=\"button\" class=\"js-workbench-add-pair\">Add pair</button>" +
+        "</div>" +
+        "<div class=\"data-tool__appendPairsList js-workbench-pairs\"></div>" +
       "</section>" +
-      "<details class=\"data-tool__raw\" open>" +
-      "<summary>Raw Datum</summary>" +
-      "<pre>" + escapeText(JSON.stringify(datum, null, 2)) + "</pre>" +
+      "<details class=\"data-tool__raw\">" +
+        "<summary>Raw Datum</summary>" +
+        "<pre>" + escapeText(JSON.stringify(datum, null, 2)) + "</pre>" +
       "</details>" +
-      "<details class=\"data-tool__raw\" open>" +
-      "<summary>Abstraction Path</summary>" +
-      "<pre>" + escapeText(JSON.stringify(path, null, 2)) + "</pre>" +
+      "<details class=\"data-tool__raw\">" +
+        "<summary>Abstraction Path</summary>" +
+        "<pre>" + escapeText(JSON.stringify(path, null, 2)) + "</pre>" +
       "</details>";
 
-    var workbenchPairsEl = qs("#dtWorkbenchPairs", datumEditorEl);
+    var workbenchPairsEl = qs(".js-workbench-pairs", editorRoot);
     resetPairRows(workbenchPairsEl, "js-workbench-remove-pair", pairs);
     syncPairRowMode(workbenchPairsEl, valueGroup);
+    return editorRoot;
+  }
+
+  function openDatumEditorInspector(profilePayload) {
+    var editorRoot = buildDatumEditorNode(profilePayload);
+    activeDatumEditorRoot = editorRoot;
+    if (window.PortalInspector && typeof window.PortalInspector.open === "function") {
+      window.PortalInspector.open({
+        title: "Datum Editor",
+        subtitle: String(datumWorkbenchState.identifier || ""),
+        node: editorRoot,
+      });
+      return editorRoot;
+    }
+    return editorRoot;
   }
 
   async function loadDatumEditor(rowToken, options) {
@@ -1843,7 +1904,12 @@
     if (!token) return;
     var opts = options && typeof options === "object" ? options : {};
     var payload = await api("/portal/api/data/anthology/profile/" + encodeURIComponent(token));
-    renderDatumEditor(payload);
+    if (opts.openInspector === false) {
+      buildDatumEditorNode(payload);
+      activeDatumEditorRoot = null;
+    } else {
+      openDatumEditorInspector(payload);
+    }
 
     var identifier = String(payload && payload.datum && payload.datum.identifier ? payload.datum.identifier : token).trim();
     if (identifier && opts.syncGraphFocus) {
@@ -1854,12 +1920,13 @@
     return payload;
   }
 
-  async function saveDatumEditor() {
-    if (!datumEditorEl || !datumWorkbenchState.rowId) {
+  async function saveDatumEditor(editorRoot) {
+    var root = editorRoot || activeDatumEditorRoot;
+    if (!root || !datumWorkbenchState.rowId) {
       throw new Error("No focused datum selected");
     }
-    var labelInput = qs("#dtWorkbenchLabel", datumEditorEl);
-    var workbenchPairsEl = qs("#dtWorkbenchPairs", datumEditorEl);
+    var labelInput = qs(".js-workbench-label", root);
+    var workbenchPairsEl = qs(".js-workbench-pairs", root);
     var payload = await api("/portal/api/data/anthology/profile/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1876,7 +1943,7 @@
     } else {
       await getAnthologyTable();
     }
-    await loadDatumEditor(datumWorkbenchState.rowId, { syncGraphFocus: false });
+    await loadDatumEditor(datumWorkbenchState.rowId, { syncGraphFocus: false, openInspector: true });
     setMessages(payload.errors || [], payload.warnings || []);
     return payload;
   }
@@ -2112,6 +2179,7 @@
     });
 
     captureAnthologyOpenState();
+    syncDatumSelectionUI();
   }
 
   function renderAnthologyGraph(payload) {
@@ -2196,9 +2264,6 @@
       });
     }
 
-    if (graphLayoutSel && (responseLayout === "linear" || responseLayout === "radial")) {
-      graphLayoutSel.value = responseLayout;
-    }
     if (graphContextSel && (responseContext === "global" || responseContext === "local")) {
       graphContextSel.value = responseContext;
     }
@@ -2574,12 +2639,14 @@
       legend.appendChild(overflow);
     }
     anthologyGraphEl.appendChild(legend);
+    syncDatumSelectionUI();
   }
 
   function graphQueryParams() {
     var focus = graphFocusInput ? String(graphFocusInput.value || "").trim() : "";
     var context = graphContextSel ? String(graphContextSel.value || "local").trim().toLowerCase() : "local";
-    var layout = graphLayoutSel ? String(graphLayoutSel.value || "linear").trim().toLowerCase() : "linear";
+    var layoutMode = normalizeWorkbenchLayoutMode(workbenchUiState.layoutMode);
+    var layout = layoutMode === "radial" ? "radial" : "linear";
     var depthToken = graphDepthInput ? String(graphDepthInput.value || "").trim() : "";
     var depth = parseInt(depthToken, 10);
     if (isNaN(depth) || depth < 0) depth = 3;
@@ -3268,7 +3335,7 @@
                 )
               ) +
             "</pre>" +
-            "<p><button type=\"button\" class=\"js-inspector-open-profile\" data-row-id=\"" + escapeText(rowId) + "\">Open Full Datum Editor</button></p>" +
+            "<p><button type=\"button\" class=\"js-inspector-open-profile\" data-row-id=\"" + escapeText(rowId) + "\">Open Datum Editor</button></p>" +
           "</div>" +
         "</article>",
     });
@@ -3437,7 +3504,7 @@
         .then(function () {
           return Promise.all([
             getAnthologyGraph(),
-            loadDatumEditor(rowToken, { syncGraphFocus: false }).catch(function () { return null; }),
+            loadDatumEditor(rowToken, { syncGraphFocus: false, openInspector: false }).catch(function () { return null; }),
           ]);
         })
         .catch(function () {
@@ -3458,9 +3525,53 @@
     event.preventDefault();
     var rowToken = String(inspectorBtn.getAttribute("data-row-id") || "").trim();
     if (!rowToken) return;
-    openProfileModal(rowToken).catch(function (err) {
+    loadDatumEditor(rowToken, { syncGraphFocus: false, openInspector: true }).catch(function (err) {
       setMessages([err.message], []);
     });
+  });
+
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (!target || !target.closest) return;
+
+    var saveBtn = target.closest(".js-workbench-save");
+    if (saveBtn) {
+      var saveRoot = saveBtn.closest(".js-datum-editor-root") || activeDatumEditorRoot;
+      saveDatumEditor(saveRoot).catch(function (err) {
+        setMessages([err.message], []);
+      });
+      return;
+    }
+
+    var investigateBtn = target.closest(".js-workbench-investigate");
+    if (investigateBtn) {
+      var rowToken = String(datumWorkbenchState.rowId || "").trim();
+      if (!rowToken) return;
+      openInvestigationInspector(rowToken).catch(function (err) {
+        setMessages([err.message], []);
+      });
+      return;
+    }
+
+    var addPairBtn = target.closest(".js-workbench-add-pair");
+    if (addPairBtn) {
+      var addRoot = addPairBtn.closest(".js-datum-editor-root") || activeDatumEditorRoot;
+      var workbenchPairs = qs(".js-workbench-pairs", addRoot);
+      addPairRow(workbenchPairs, "", "", "js-workbench-remove-pair");
+      syncPairRowMode(workbenchPairs, datumWorkbenchState.valueGroup);
+      return;
+    }
+
+    var removePairBtn = target.closest(".js-workbench-remove-pair");
+    if (removePairBtn) {
+      var row = removePairBtn.closest(".data-tool__appendPairRow");
+      if (!row) return;
+      row.remove();
+      var removeRoot = removePairBtn.closest(".js-datum-editor-root") || activeDatumEditorRoot;
+      var pairsEl = qs(".js-workbench-pairs", removeRoot);
+      ensurePairRows(pairsEl, "js-workbench-remove-pair");
+      syncPairRowMode(pairsEl, datumWorkbenchState.valueGroup);
+    }
   });
 
   if (profileCloseBtn) profileCloseBtn.addEventListener("click", closeProfileModal);
@@ -3537,49 +3648,6 @@
       row.remove();
       ensurePairRows(profilePairsEl, "js-remove-profile-pair");
       syncPairRowMode(profilePairsEl, currentProfileValueGroup);
-    });
-  }
-
-  if (datumEditorEl) {
-    datumEditorEl.addEventListener("click", function (event) {
-      var target = event.target;
-      if (!target || !target.closest) return;
-
-      var saveBtn = target.closest(".js-workbench-save");
-      if (saveBtn) {
-        saveDatumEditor().catch(function (err) {
-          setMessages([err.message], []);
-        });
-        return;
-      }
-
-      var investigateBtn = target.closest(".js-workbench-investigate");
-      if (investigateBtn) {
-        var rowToken = String(datumWorkbenchState.rowId || "").trim();
-        if (!rowToken) return;
-        openInvestigationInspector(rowToken).catch(function (err) {
-          setMessages([err.message], []);
-        });
-        return;
-      }
-
-      var addPairBtn = target.closest(".js-workbench-add-pair");
-      if (addPairBtn) {
-        var workbenchPairs = qs("#dtWorkbenchPairs", datumEditorEl);
-        addPairRow(workbenchPairs, "", "", "js-workbench-remove-pair");
-        syncPairRowMode(workbenchPairs, datumWorkbenchState.valueGroup);
-        return;
-      }
-
-      var removePairBtn = target.closest(".js-workbench-remove-pair");
-      if (removePairBtn) {
-        var row = removePairBtn.closest(".data-tool__appendPairRow");
-        if (!row) return;
-        row.remove();
-        var pairsEl = qs("#dtWorkbenchPairs", datumEditorEl);
-        ensurePairRows(pairsEl, "js-workbench-remove-pair");
-        syncPairRowMode(pairsEl, datumWorkbenchState.valueGroup);
-      }
     });
   }
 
@@ -3666,6 +3734,12 @@
   if (workbenchLayoutModeSel) {
     workbenchLayoutModeSel.addEventListener("change", function () {
       applyWorkbenchLayoutMode(workbenchLayoutModeSel.value, { persist: true });
+      syncWorkbenchControls();
+      if (isGraphWorkbenchMode()) {
+        getAnthologyGraph().catch(function (err) {
+          setMessages([err.message], []);
+        });
+      }
     });
   }
 
@@ -3971,12 +4045,12 @@
 
   if (sourceSel) sourceSel.value = "anthology";
   applyWorkbenchLayoutMode(loadWorkbenchLayoutPreference(), { persist: false });
+  syncWorkbenchControls();
   if (appendLayerInput && !appendLayerInput.value) appendLayerInput.value = "1";
   if (appendValueGroupInput && !appendValueGroupInput.value) appendValueGroupInput.value = "1";
   syncAppendPairRequirements();
   ensurePairRows(profilePairsEl, "js-remove-profile-pair");
-  renderDatumEditorEmpty("Select a graph node or anthology row to edit the focused datum.");
-  setDatumEditorStatus("No datum selected.");
+  renderDatumEditorEmpty("Select a graph node or anthology row to edit it in the right inspector column.");
 
   var openNimmOnLoad = String(app.getAttribute("data-open-nimm") || "0").trim() === "1";
 

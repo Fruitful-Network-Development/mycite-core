@@ -674,18 +674,21 @@ code{
 
 .data-tool__workbenchGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-items: start;
 }
 
 .data-tool__graphPane,
-.data-tool__editorPane {
+.data-tool__tablePane {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfcfb;
   padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .data-tool__datumEditor {
@@ -698,19 +701,16 @@ code{
   gap: 8px;
 }
 
-.data-tool__editorRows {
-  margin-top: 8px;
-}
-
-.data-tool__editorRows summary {
-  cursor: pointer;
-  font-weight: 700;
-}
-
 .data-tool__editorPairs {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.data-tool__anthologyLayers {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 .data-tool__editorHeader {
@@ -2956,7 +2956,7 @@ body.is-modal-open {
   color: var(--accent);
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 960px) {
   .ide-body,
   .ide-body:has(.ide-inspector:not(.is-collapsed)) {
     grid-template-columns: 72px 220px minmax(0, 1fr);
@@ -3189,11 +3189,9 @@ body.is-modal-open {
   min-height: 0;
 }
 
-.data-tool__workbenchGrid[data-layout-mode="classic"] {
-  grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr);
-}
-
-.data-tool__workbenchGrid[data-layout-mode="graph_first"] {
+.data-tool__workbenchGrid[data-layout-mode="table"],
+.data-tool__workbenchGrid[data-layout-mode="linear"],
+.data-tool__workbenchGrid[data-layout-mode="radial"] {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -3201,11 +3199,16 @@ body.is-modal-open {
   min-height: 0;
 }
 
-.data-tool__editorPane {
+.data-tool__tablePane {
   min-height: 0;
 }
 
-.data-tool__workbenchGrid[data-layout-mode="graph_first"] .data-tool__editorPane {
+.data-tool__workbenchGrid[data-layout-mode="table"] .data-tool__graphPane {
+  display: none;
+}
+
+.data-tool__workbenchGrid[data-layout-mode="linear"] .data-tool__tablePane,
+.data-tool__workbenchGrid[data-layout-mode="radial"] .data-tool__tablePane {
   display: none;
 }
 
@@ -3254,7 +3257,7 @@ body.is-modal-open {
   color: var(--ink2);
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 960px) {
   .ide-body,
   .ide-shell[data-inspector-collapsed="false"] .ide-body {
     grid-template-columns: 72px minmax(220px, 1fr);

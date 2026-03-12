@@ -3,7 +3,7 @@
 {% block title %}MyCite | System{% endblock %}
 
 {% set page_title = "SYSTEM" %}
-{% set page_subtitle = "Graph-first workbench with datum editing in the left sidebar" %}
+{% set page_subtitle = "Anthology workbench with table and graph layouts plus inspector editing" %}
 
 {% block viewport_class %}viewport--system{% endblock %}
 
@@ -23,19 +23,6 @@
       </li>
     </ul>
   </section>
-  {% if data_home_available is defined and data_home_available %}
-    <section class="ide-contextSection system-sidebar__editorSection">
-      <header class="ide-contextTitle">Datum Editor</header>
-      <p id="dtDatumEditorStatus" class="data-tool__legendText">Select a graph node or row to begin editing.</p>
-      <div id="dtDatumEditor" class="data-tool__datumEditor system-sidebar__editor">
-        <p class="data-tool__empty">No datum selected.</p>
-      </div>
-      <details class="data-tool__editorRows system-sidebar__layers">
-        <summary>Layer/Value Group Rows</summary>
-        <div id="dtAnthologyLayers" class="data-tool__anthologyLayers"></div>
-      </details>
-    </section>
-  {% endif %}
 {% endblock %}
 
 {% block body %}

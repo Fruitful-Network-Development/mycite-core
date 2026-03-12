@@ -37,8 +37,19 @@
   var rightPaneEl = qs("#dtRightPane", app);
   var anthologyLayersEl = qs("#dtAnthologyLayers");
   var anthologyStatusEl = qs("#dtAnthologyStatus", app);
+  var datumEditorEl = qs("#dtDatumEditor");
+  var datumEditorStatusEl = qs("#dtDatumEditorStatus");
   var anthologyGraphEl = qs("#dtAnthologyGraph", app);
   var anthologyGraphStatusEl = qs("#dtAnthologyGraphStatus", app);
+  var graphContextSel = qs("#dtGraphContext", app);
+  var graphDepthInput = qs("#dtGraphDepth", app);
+  var graphFocusInput = qs("#dtGraphFocus", app);
+  var graphApplyBtn = qs("#dtGraphApplyBtn", app);
+  var graphZoomOutBtn = qs("#dtGraphZoomOutBtn", app);
+  var graphZoomInBtn = qs("#dtGraphZoomInBtn", app);
+  var graphZoomResetBtn = qs("#dtGraphZoomResetBtn", app);
+  var workbenchLayoutModeSel = qs("#dtWorkbenchLayoutMode", app);
+  var workbenchGridEl = qs("#dtWorkbenchGrid", app);
   var nimmSummaryEl = qs("#dtNimmSummary", app);
   var nimmOpenBtn = qs("#dtOpenNimmBtn", app);
   var nimmOverlay = qs("#dtNimmOverlay");
@@ -127,6 +138,23 @@
     graphByIdentifier: {},
   };
 
+  var anthologyGraphUiState = {
+    focus: "",
+    depth: 3,
+    context: "local",
+    layout: "linear",
+    scale: 1,
+    tx: 0,
+    ty: 0,
+    svg: null,
+    viewport: null,
+  };
+
+  var workbenchUiState = {
+    layoutMode: "table",
+  };
+  var WORKBENCH_LAYOUT_STORAGE_KEY = "mycite.data_tool.workbench_layout_mode";
+
   var timeSeriesUiState = {
     selectedEventRef: "",
     events: [],
@@ -143,6 +171,13 @@
     selectedNodeId: "",
     graphMode: "full_span",
   };
+
+  var datumWorkbenchState = {
+    rowId: "",
+    identifier: "",
+    valueGroup: 1,
+  };
+  var activeDatumEditorRoot = null;
 
   function escapeText(value) {
     return String(value == null ? "" : value)
@@ -262,6 +297,64 @@
 
   function valueGroupStateKey(layerValue, groupValue) {
     return layerStateKey(layerValue) + "::" + String(groupValue == null ? "unknown" : groupValue);
+  }
+
+  function normalizeWorkbenchLayoutMode(value) {
+    var token = String(value || "").trim().toLowerCase();
+    if (token === "linear" || token === "radial" || token === "table") return token;
+    return "table";
+  }
+
+  function loadWorkbenchLayoutPreference() {
+    var fallback = normalizeWorkbenchLayoutMode(workbenchLayoutModeSel && workbenchLayoutModeSel.value);
+    if (typeof window === "undefined" || !window.localStorage) return fallback;
+    try {
+      var saved = window.localStorage.getItem(WORKBENCH_LAYOUT_STORAGE_KEY);
+      return normalizeWorkbenchLayoutMode(saved || fallback);
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function applyWorkbenchLayoutMode(mode, options) {
+    var opts = options && typeof options === "object" ? options : {};
+    var token = normalizeWorkbenchLayoutMode(mode);
+    workbenchUiState.layoutMode = token;
+    if (workbenchGridEl) workbenchGridEl.setAttribute("data-layout-mode", token);
+    if (app) app.setAttribute("data-layout-mode", token);
+    if (workbenchLayoutModeSel) workbenchLayoutModeSel.value = token;
+    if (opts.persist && typeof window !== "undefined" && window.localStorage) {
+      try {
+        window.localStorage.setItem(WORKBENCH_LAYOUT_STORAGE_KEY, token);
+      } catch (_) {
+        return;
+      }
+    }
+  }
+
+  function isGraphWorkbenchMode(mode) {
+    var token = normalizeWorkbenchLayoutMode(mode || workbenchUiState.layoutMode);
+    return token === "linear" || token === "radial";
+  }
+
+  function syncWorkbenchControls() {
+    var graphEnabled = isGraphWorkbenchMode();
+    [
+      anthologyGraphRefreshBtn,
+      graphContextSel,
+      graphDepthInput,
+      graphFocusInput,
+      graphApplyBtn,
+      graphZoomOutBtn,
+      graphZoomInBtn,
+      graphZoomResetBtn,
+    ].forEach(function (node) {
+      if (!node) return;
+      node.disabled = !graphEnabled;
+    });
+    if (anthologyGraphStatusEl && !graphEnabled) {
+      anthologyGraphStatusEl.textContent = "Table layout active. Switch layout to linear or radial to render the graph.";
+    }
   }
 
   function captureAnthologyOpenState() {
@@ -1689,6 +1782,172 @@
     setMessages(snapshot.errors || [], snapshot.warnings || []);
   }
 
+  function setDatumEditorStatus(text) {
+    if (!datumEditorStatusEl) return;
+    datumEditorStatusEl.textContent = String(text || "");
+  }
+
+  function syncDatumSelectionUI() {
+    var selectedRowId = String(datumWorkbenchState.rowId || "").trim();
+    var selectedIdentifier = String(datumWorkbenchState.identifier || "").trim();
+
+    qsa(".js-anthology-row[data-row-id]", anthologyLayersEl).forEach(function (row) {
+      var rowToken = String(row.getAttribute("data-row-id") || "").trim();
+      row.classList.toggle("is-selected", !!selectedRowId && rowToken === selectedRowId);
+    });
+
+    qsa(".js-anthology-graph-node", anthologyGraphEl).forEach(function (node) {
+      var rowToken = String(node.getAttribute("data-row-id") || "").trim();
+      var identifier = String(node.getAttribute("data-identifier") || "").trim();
+      var selected =
+        (!!selectedRowId && rowToken === selectedRowId) ||
+        (!!selectedIdentifier && identifier === selectedIdentifier);
+      node.classList.toggle("is-selected", selected);
+    });
+  }
+
+  function renderDatumEditorEmpty(message) {
+    datumWorkbenchState.rowId = "";
+    datumWorkbenchState.identifier = "";
+    datumWorkbenchState.valueGroup = 1;
+    activeDatumEditorRoot = null;
+    setDatumEditorStatus(message || "Select a graph node or anthology row to edit it in the right inspector column.");
+    syncDatumSelectionUI();
+  }
+
+  function buildDatumEditorNode(profilePayload) {
+    var payload = profilePayload && typeof profilePayload === "object" ? profilePayload : {};
+    var datum = payload.datum && typeof payload.datum === "object" ? payload.datum : {};
+    var rowId = String(datum.row_id || datum.identifier || "").trim();
+    var identifier = String(datum.identifier || rowId).trim();
+    var label = String(datum.label || identifier).trim();
+    var parsed = parseDatumIdentifier(identifier);
+    var valueGroup = parsed && parsed.value_group != null ? parsed.value_group : 1;
+    var layerToken = parsed && parsed.layer != null ? String(parsed.layer) : "-";
+    var iterationToken = parsed && parsed.iteration != null ? String(parsed.iteration) : "-";
+    var pairs = normalizePairs(datum.pairs, datum.reference, datum.magnitude);
+    var pairCount = pairs.length;
+    var patternKind = valueGroup === 0 ? "collection" : (pairCount <= 1 ? "typed_leaf" : "composite");
+    var path = Array.isArray(payload.abstraction_path) ? payload.abstraction_path : [];
+
+    datumWorkbenchState.rowId = rowId;
+    datumWorkbenchState.identifier = identifier;
+    datumWorkbenchState.valueGroup = valueGroup;
+    setDatumEditorStatus(identifier ? ("Focused: " + identifier + " | editor open in inspector") : "No datum selected.");
+    syncDatumSelectionUI();
+
+    var editorRoot = document.createElement("article");
+    editorRoot.className = "data-tool__datumEditor js-datum-editor-root";
+    editorRoot.setAttribute("data-row-id", rowId);
+    editorRoot.setAttribute("data-identifier", identifier);
+    editorRoot.innerHTML =
+      "<div class=\"data-tool__editorHeader\">" +
+        "<div class=\"data-tool__editorHeadline\">" +
+          "<strong class=\"data-tool__clip\">" + escapeText(label || identifier) + "</strong>" +
+          "<code class=\"data-tool__clip\">" + escapeText(identifier) + "</code>" +
+        "</div>" +
+        "<div class=\"data-tool__editorChips\">" +
+          "<span class=\"data-tool__editorChip\">L" + escapeText(layerToken) + "</span>" +
+          "<span class=\"data-tool__editorChip\">VG" + escapeText(String(valueGroup)) + "</span>" +
+          "<span class=\"data-tool__editorChip\">I" + escapeText(iterationToken) + "</span>" +
+          "<span class=\"data-tool__editorChip\">" + escapeText(patternKind) + "</span>" +
+          "<span class=\"data-tool__editorChip\">" + escapeText(String(pairCount)) + " pair" + (pairCount === 1 ? "" : "s") + "</span>" +
+        "</div>" +
+      "</div>" +
+      "<div class=\"data-tool__controlRow data-tool__editRow\">" +
+        "<label><span>row_id</span><input class=\"js-workbench-row-id\" type=\"text\" readonly value=\"" + escapeText(rowId) + "\" /></label>" +
+        "<label><span>identifier</span><input class=\"js-workbench-identifier\" type=\"text\" readonly value=\"" + escapeText(identifier) + "\" /></label>" +
+      "</div>" +
+      "<div class=\"data-tool__controlRow\">" +
+        "<label style=\"min-width:300px;\"><span>label/title</span><input class=\"js-workbench-label\" type=\"text\" value=\"" + escapeText(label) + "\" /></label>" +
+        "<button type=\"button\" class=\"data-tool__actionBtn js-workbench-save\">Save Datum</button>" +
+        "<button type=\"button\" class=\"data-tool__actionBtn js-workbench-investigate\">Investigate</button>" +
+      "</div>" +
+      "<section class=\"data-tool__appendPairs data-tool__editorPairs\">" +
+        "<div class=\"data-tool__appendPairsHeader\">" +
+          "<h3>Reference / Magnitude Pairs</h3>" +
+          "<button type=\"button\" class=\"js-workbench-add-pair\">Add pair</button>" +
+        "</div>" +
+        "<div class=\"data-tool__appendPairsList js-workbench-pairs\"></div>" +
+      "</section>" +
+      "<details class=\"data-tool__raw\">" +
+        "<summary>Raw Datum</summary>" +
+        "<pre>" + escapeText(JSON.stringify(datum, null, 2)) + "</pre>" +
+      "</details>" +
+      "<details class=\"data-tool__raw\">" +
+        "<summary>Abstraction Path</summary>" +
+        "<pre>" + escapeText(JSON.stringify(path, null, 2)) + "</pre>" +
+      "</details>";
+
+    var workbenchPairsEl = qs(".js-workbench-pairs", editorRoot);
+    resetPairRows(workbenchPairsEl, "js-workbench-remove-pair", pairs);
+    syncPairRowMode(workbenchPairsEl, valueGroup);
+    return editorRoot;
+  }
+
+  function openDatumEditorInspector(profilePayload) {
+    var editorRoot = buildDatumEditorNode(profilePayload);
+    activeDatumEditorRoot = editorRoot;
+    if (window.PortalInspector && typeof window.PortalInspector.open === "function") {
+      window.PortalInspector.open({
+        title: "Datum Editor",
+        subtitle: String(datumWorkbenchState.identifier || ""),
+        node: editorRoot,
+      });
+      return editorRoot;
+    }
+    return editorRoot;
+  }
+
+  async function loadDatumEditor(rowToken, options) {
+    var token = String(rowToken || "").trim();
+    if (!token) return;
+    var opts = options && typeof options === "object" ? options : {};
+    var payload = await api("/portal/api/data/anthology/profile/" + encodeURIComponent(token));
+    if (opts.openInspector === false) {
+      buildDatumEditorNode(payload);
+      activeDatumEditorRoot = null;
+    } else {
+      openDatumEditorInspector(payload);
+    }
+
+    var identifier = String(payload && payload.datum && payload.datum.identifier ? payload.datum.identifier : token).trim();
+    if (identifier && opts.syncGraphFocus) {
+      setGraphFocus(identifier, graphContextSel && graphContextSel.value ? graphContextSel.value : "local");
+      await getAnthologyGraph();
+    }
+    if (subjectInput && identifier) subjectInput.value = identifier;
+    return payload;
+  }
+
+  async function saveDatumEditor(editorRoot) {
+    var root = editorRoot || activeDatumEditorRoot;
+    if (!root || !datumWorkbenchState.rowId) {
+      throw new Error("No focused datum selected");
+    }
+    var labelInput = qs(".js-workbench-label", root);
+    var workbenchPairsEl = qs(".js-workbench-pairs", root);
+    var payload = await api("/portal/api/data/anthology/profile/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        row_id: datumWorkbenchState.rowId,
+        label: String(labelInput ? labelInput.value : ""),
+        pairs: readPairRowsForValueGroup(workbenchPairsEl, datumWorkbenchState.valueGroup),
+      }),
+    });
+
+    if (payload.table_view) {
+      renderAnthologyTable(payload.table_view);
+      await getAnthologyGraph();
+    } else {
+      await getAnthologyTable();
+    }
+    await loadDatumEditor(datumWorkbenchState.rowId, { syncGraphFocus: false, openInspector: true });
+    setMessages(payload.errors || [], payload.warnings || []);
+    return payload;
+  }
+
   function renderAnthologyTable(view) {
     if (!anthologyLayersEl) return;
 
@@ -1783,6 +2042,11 @@
           var tr = document.createElement("tr");
           var parsed = parseDatumIdentifier(row.identifier);
           var rowToken = String(row.row_id || row.identifier || "");
+          tr.className = "js-anthology-row";
+          tr.setAttribute("data-row-id", rowToken);
+          if (datumWorkbenchState.rowId && datumWorkbenchState.rowId === rowToken) {
+            tr.classList.add("is-selected");
+          }
           var rowPairs = normalizePairs(row.pairs, row.reference, row.magnitude);
           var rowValueGroup = parseNonNegativeInt(row.value_group, parsed && parsed.value_group != null ? parsed.value_group : 0);
           var selectionRefs = normalizeSelectionReferences(row.selection_references, row.magnitude);
@@ -1915,6 +2179,7 @@
     });
 
     captureAnthologyOpenState();
+    syncDatumSelectionUI();
   }
 
   function renderAnthologyGraph(payload) {
@@ -1932,11 +2197,87 @@
       anthologyUiState.graphByIdentifier[identifier] = node;
     });
 
+    var focusMeta = graph.focus && typeof graph.focus === "object" ? graph.focus : {};
+    var layoutMeta = graph.layout && typeof graph.layout === "object" ? graph.layout : {};
+    var responseLayout = String(layoutMeta.mode || "linear").trim().toLowerCase();
+    var responseContext = String(focusMeta.context_mode || "global").trim().toLowerCase();
+    var responseDepth = parseInt(String(focusMeta.depth_limit || "3"), 10);
+    if (isNaN(responseDepth) || responseDepth < 0) responseDepth = 3;
+    var responseFocus = String(focusMeta.identifier || "").trim();
+    var hasFocus = !!focusMeta.active;
+    var focusNeighbors = Object.create(null);
+    var forward = Object.create(null);
+    var reverse = Object.create(null);
+    var undirected = Object.create(null);
+
+    function addLink(map, fromToken, toToken) {
+      if (!map[fromToken]) map[fromToken] = Object.create(null);
+      map[fromToken][toToken] = true;
+    }
+
+    edges.forEach(function (edge) {
+      var sourceToken = String(edge && edge.source ? edge.source : "").trim();
+      var targetToken = String(edge && edge.target ? edge.target : "").trim();
+      if (!sourceToken || !targetToken) return;
+      if (!anthologyUiState.graphByIdentifier[sourceToken] || !anthologyUiState.graphByIdentifier[targetToken]) return;
+      addLink(forward, sourceToken, targetToken);
+      addLink(reverse, targetToken, sourceToken);
+      addLink(undirected, sourceToken, targetToken);
+      addLink(undirected, targetToken, sourceToken);
+    });
+
+    function collectReachable(seed, adjacency) {
+      var out = Object.create(null);
+      if (!seed || !adjacency || !adjacency[seed]) return out;
+      var frontier = [seed];
+      var seen = Object.create(null);
+      seen[seed] = true;
+      var guard = 0;
+      var maxGuard = Math.max(nodes.length * 2, 128);
+      while (frontier.length && guard < maxGuard) {
+        guard += 1;
+        var nextFrontier = [];
+        frontier.forEach(function (token) {
+          var neighbors = adjacency[token] || {};
+          Object.keys(neighbors).forEach(function (neighbor) {
+            if (seen[neighbor]) return;
+            seen[neighbor] = true;
+            out[neighbor] = true;
+            nextFrontier.push(neighbor);
+          });
+        });
+        frontier = nextFrontier;
+      }
+      return out;
+    }
+
+    var focusPath = Object.create(null);
+    if (responseFocus && hasFocus) {
+      var ancestors = collectReachable(responseFocus, reverse);
+      var descendants = collectReachable(responseFocus, forward);
+      focusPath[responseFocus] = true;
+      Object.keys(ancestors).forEach(function (token) { focusPath[token] = true; });
+      Object.keys(descendants).forEach(function (token) { focusPath[token] = true; });
+      var neighbors = undirected[responseFocus] || {};
+      Object.keys(neighbors).forEach(function (token) {
+        focusNeighbors[token] = true;
+      });
+    }
+
+    if (graphContextSel && (responseContext === "global" || responseContext === "local")) {
+      graphContextSel.value = responseContext;
+    }
+    if (graphDepthInput) graphDepthInput.value = String(responseDepth);
+    if (graphFocusInput) graphFocusInput.value = responseFocus;
+
     if (anthologyGraphStatusEl) {
       anthologyGraphStatusEl.textContent =
         "Nodes: " + String(stats.node_count != null ? stats.node_count : nodes.length) +
         " | Edges: " + String(stats.edge_count != null ? stats.edge_count : edges.length) +
-        " | Unresolved: " + String(stats.unresolved_edge_count != null ? stats.unresolved_edge_count : 0);
+        " | Unresolved: " + String(stats.unresolved_edge_count != null ? stats.unresolved_edge_count : 0) +
+        " | layout=" + (responseLayout || "linear") +
+        " | context=" + (responseContext || "global") +
+        (responseFocus ? (" | focus=" + responseFocus + (hasFocus ? "" : " (not found)")) : "");
     }
 
     anthologyGraphEl.innerHTML = "";
@@ -1988,6 +2329,7 @@
     var margin = { top: 56, right: 48, bottom: 54, left: 48 };
     var usableWidth = Math.max(240, graphWidth - margin.left - margin.right);
     var usableHeight = Math.max(240, graphHeight - margin.top - margin.bottom);
+    var layoutMode = responseLayout === "radial" ? "radial" : "linear";
 
     var colorPalette = ["#1f6f43", "#2364aa", "#b26d00", "#8f2f6b", "#0f766e", "#92400e", "#374151"];
 
@@ -2011,13 +2353,48 @@
       );
     }
 
+    function compactLabel(token, maxLen) {
+      var raw = String(token || "").trim();
+      if (!raw) return "";
+      var cap = Math.max(8, parseInt(maxLen, 10) || 24);
+      if (raw.length <= cap) return raw;
+      return raw.slice(0, cap - 1) + "\u2026";
+    }
+
+    function basenameToken(value) {
+      var raw = String(value || "").trim();
+      if (!raw) return "";
+      var parts = raw.split("/");
+      return String(parts[parts.length - 1] || raw).trim();
+    }
+
+    function nodeVisualState(identifier) {
+      if (!responseFocus || !hasFocus) return "normal";
+      if (identifier === responseFocus) return "focus";
+      if (focusPath[identifier]) return "path";
+      if (focusNeighbors[identifier]) return "context";
+      return "dim";
+    }
+
+    function nodeFill(state, base) {
+      if (state === "focus") return "#101820";
+      if (state === "path") return "#1d4ed8";
+      if (state === "context") return "#2563eb";
+      if (state === "dim") return "rgba(167, 176, 190, 0.45)";
+      return base;
+    }
+
     var svgNs = "http://www.w3.org/2000/svg";
     var viewport = document.createElement("div");
     viewport.className = "data-tool__graphViewport";
     var svg = document.createElementNS(svgNs, "svg");
     svg.setAttribute("class", "data-tool__graphSvg");
     svg.setAttribute("viewBox", "0 0 " + String(graphWidth) + " " + String(graphHeight));
-    svg.setAttribute("preserveAspectRatio", "xMinYMin meet");
+    svg.setAttribute("preserveAspectRatio", "xMinYMin");
+    svg.setAttribute("width", String(graphWidth));
+    svg.setAttribute("height", String(graphHeight));
+    svg.setAttribute("data-base-width", String(graphWidth));
+    svg.setAttribute("data-base-height", String(graphHeight));
     svg.setAttribute("role", "img");
     svg.setAttribute("aria-label", "Anthology node graph");
 
@@ -2036,53 +2413,167 @@
       });
       if (!layerNodes.length) return;
 
-      var x =
-        margin.left +
-        (layerCount === 1 ? usableWidth / 2 : (layerIndex / Math.max(layerCount - 1, 1)) * usableWidth);
+      var layerGuideX = 0;
+      var centerX = margin.left + usableWidth / 2;
+      var centerY = margin.top + usableHeight / 2;
+      var radiusMax = Math.max(64, (Math.min(usableWidth, usableHeight) / 2) - 24);
+      var radius = layerCount <= 1 ? radiusMax * 0.45 : 40 + (layerIndex / Math.max(layerCount - 1, 1)) * radiusMax;
 
-      var lane = document.createElementNS(svgNs, "line");
-      lane.setAttribute("x1", String(x));
-      lane.setAttribute("y1", String(margin.top - 18));
-      lane.setAttribute("x2", String(x));
-      lane.setAttribute("y2", String(graphHeight - margin.bottom + 14));
-      lane.setAttribute("class", "data-tool__graphLayerLane");
-      guidesGroup.appendChild(lane);
+      if (layoutMode === "linear") {
+        layerGuideX =
+          margin.left +
+          (layerCount === 1 ? usableWidth / 2 : (layerIndex / Math.max(layerCount - 1, 1)) * usableWidth);
 
-      var layerLabel = document.createElementNS(svgNs, "text");
-      layerLabel.setAttribute("x", String(x));
-      layerLabel.setAttribute("y", String(margin.top - 28));
-      layerLabel.setAttribute("text-anchor", "middle");
-      layerLabel.setAttribute("class", "data-tool__graphLayerLabel");
-      layerLabel.textContent = "L" + layerToken;
-      guidesGroup.appendChild(layerLabel);
+        var lane = document.createElementNS(svgNs, "line");
+        lane.setAttribute("x1", String(layerGuideX));
+        lane.setAttribute("y1", String(margin.top - 18));
+        lane.setAttribute("x2", String(layerGuideX));
+        lane.setAttribute("y2", String(graphHeight - margin.bottom + 14));
+        lane.setAttribute("class", "data-tool__graphLayerLane");
+        guidesGroup.appendChild(lane);
+
+        var linearLabel = document.createElementNS(svgNs, "text");
+        linearLabel.setAttribute("x", String(layerGuideX));
+        linearLabel.setAttribute("y", String(margin.top - 28));
+        linearLabel.setAttribute("text-anchor", "middle");
+        linearLabel.setAttribute("class", "data-tool__graphLayerLabel");
+        linearLabel.textContent = "L" + layerToken;
+        guidesGroup.appendChild(linearLabel);
+      } else {
+        var ring = document.createElementNS(svgNs, "circle");
+        ring.setAttribute("cx", String(centerX));
+        ring.setAttribute("cy", String(centerY));
+        ring.setAttribute("r", String(radius));
+        ring.setAttribute("fill", "none");
+        ring.setAttribute("class", "data-tool__graphLayerLane");
+        guidesGroup.appendChild(ring);
+
+        var radialLabel = document.createElementNS(svgNs, "text");
+        radialLabel.setAttribute("x", String(centerX + radius + 6));
+        radialLabel.setAttribute("y", String(centerY));
+        radialLabel.setAttribute("class", "data-tool__graphLayerLabel");
+        radialLabel.textContent = "L" + layerToken;
+        guidesGroup.appendChild(radialLabel);
+      }
 
       layerNodes.forEach(function (node, nodeIndex) {
         var identifier = String(node && node.identifier ? node.identifier : "").trim();
         if (!identifier) return;
         var rowId = String(node && node.row_id ? node.row_id : identifier).trim();
+        var x = layerGuideX;
         var y = margin.top + ((nodeIndex + 1) / (layerNodes.length + 1)) * usableHeight;
+        if (layoutMode === "radial") {
+          var angle = ((Math.PI * 2) * nodeIndex) / Math.max(1, layerNodes.length);
+          x = centerX + (radius * Math.cos(angle));
+          y = centerY + (radius * Math.sin(angle));
+        }
         nodePositions[identifier] = { x: x, y: y };
 
+        var visualState = nodeVisualState(identifier);
+        var labelText = compactLabel(identifier, 26);
+        var labelRaw = String(node && node.label ? node.label : "").trim();
+        var iconUrl = String(node && node.icon_url ? node.icon_url : "").trim();
+        var iconRelpath = String(node && node.icon_relpath ? node.icon_relpath : "").trim();
+        var iconBasename = basenameToken(iconRelpath);
+        var iconInfo = iconBasename ? compactLabel(iconBasename, 22) : "";
+        var metaParts = [];
+        if (labelRaw && labelRaw !== identifier && (visualState === "focus" || visualState === "path")) {
+          metaParts.push(compactLabel(labelRaw, 28));
+        }
+        if (iconInfo) metaParts.push("icon: " + iconInfo);
+        var metaText = metaParts.join(" | ");
+        var useMeta = !!metaText;
+        var hasIcon = !!iconUrl || !!iconInfo;
+        var iconSlotWidth = hasIcon ? 18 : 0;
+        var nodeWidth = Math.max(68, Math.min(260, 24 + iconSlotWidth + (labelText.length * 6.2)));
+        var nodeHeight = useMeta ? 28 : 21;
+        var labelX = hasIcon ? 8 : 0;
+
         var nodeGroup = document.createElementNS(svgNs, "g");
-        nodeGroup.setAttribute("class", "data-tool__graphNodeGroup js-anthology-graph-node");
+        var nodeGroupClass = "data-tool__graphNodeGroup js-anthology-graph-node";
+        if (visualState === "focus") {
+          nodeGroupClass += " is-focus";
+        } else if (visualState === "path") {
+          nodeGroupClass += " is-path";
+        } else if (visualState === "context") {
+          nodeGroupClass += " is-context";
+        } else if (visualState === "dim") {
+          nodeGroupClass += " is-dim";
+        }
+        nodeGroup.setAttribute("class", nodeGroupClass);
         nodeGroup.setAttribute("data-identifier", identifier);
         nodeGroup.setAttribute("data-row-id", rowId);
+        nodeGroup.setAttribute("transform", "translate(" + String(x) + "," + String(y) + ")");
 
-        var dot = document.createElementNS(svgNs, "circle");
-        dot.setAttribute("cx", String(x));
-        dot.setAttribute("cy", String(y));
-        dot.setAttribute("r", "4");
-        dot.setAttribute("class", "data-tool__graphNode js-anthology-graph-node");
-        dot.setAttribute("data-identifier", identifier);
-        dot.setAttribute("data-row-id", rowId);
-        dot.setAttribute("fill", layerColor(layerToken, layerIndex));
+        var rect = document.createElementNS(svgNs, "rect");
+        rect.setAttribute("x", String(-nodeWidth / 2));
+        rect.setAttribute("y", String(-nodeHeight / 2));
+        rect.setAttribute("width", String(nodeWidth));
+        rect.setAttribute("height", String(nodeHeight));
+        rect.setAttribute("rx", "10");
+        rect.setAttribute("class", "data-tool__graphNodeRect data-tool__graphNode js-anthology-graph-node");
+        rect.setAttribute("data-identifier", identifier);
+        rect.setAttribute("data-row-id", rowId);
+        rect.setAttribute("fill", nodeFill(visualState, layerColor(layerToken, layerIndex)));
+
+        var labelNode = document.createElementNS(svgNs, "text");
+        labelNode.setAttribute("x", String(labelX));
+        labelNode.setAttribute("y", useMeta ? "-2" : "3");
+        labelNode.setAttribute("text-anchor", "middle");
+        labelNode.setAttribute("class", "data-tool__graphNodeLabel js-anthology-graph-node");
+        labelNode.setAttribute("data-identifier", identifier);
+        labelNode.setAttribute("data-row-id", rowId);
+        labelNode.textContent = labelText;
 
         var title = document.createElementNS(svgNs, "title");
-        var label = String(node && node.label ? node.label : identifier).trim() || identifier;
-        title.textContent = label + " [" + identifier + "]";
-        dot.appendChild(title);
+        title.textContent = (labelRaw || identifier) + " [" + identifier + "]" + (iconRelpath ? " icon=" + iconRelpath : "");
+        rect.appendChild(title);
 
-        nodeGroup.appendChild(dot);
+        nodeGroup.appendChild(rect);
+        if (hasIcon) {
+          var iconBadge = document.createElementNS(svgNs, "circle");
+          iconBadge.setAttribute("cx", String((-nodeWidth / 2) + 12));
+          iconBadge.setAttribute("cy", useMeta ? "-2" : "0");
+          iconBadge.setAttribute("r", "7");
+          iconBadge.setAttribute("class", "data-tool__graphNodeIconBadge js-anthology-graph-node");
+          iconBadge.setAttribute("data-identifier", identifier);
+          iconBadge.setAttribute("data-row-id", rowId);
+          nodeGroup.appendChild(iconBadge);
+
+          if (iconUrl) {
+            var iconImage = document.createElementNS(svgNs, "image");
+            iconImage.setAttribute("x", String((-nodeWidth / 2) + 6));
+            iconImage.setAttribute("y", String((useMeta ? -8 : -6)));
+            iconImage.setAttribute("width", "12");
+            iconImage.setAttribute("height", "12");
+            iconImage.setAttribute("preserveAspectRatio", "xMidYMid meet");
+            iconImage.setAttribute("href", iconUrl);
+            iconImage.setAttribute("class", "data-tool__graphNodeIcon js-anthology-graph-node");
+            iconImage.setAttribute("data-identifier", identifier);
+            iconImage.setAttribute("data-row-id", rowId);
+            nodeGroup.appendChild(iconImage);
+          } else if (iconInfo) {
+            var iconInitial = document.createElementNS(svgNs, "text");
+            iconInitial.setAttribute("x", String((-nodeWidth / 2) + 12));
+            iconInitial.setAttribute("y", useMeta ? "1" : "2");
+            iconInitial.setAttribute("text-anchor", "middle");
+            iconInitial.setAttribute("class", "data-tool__graphNodeIconInitial js-anthology-graph-node");
+            iconInitial.setAttribute("data-identifier", identifier);
+            iconInitial.setAttribute("data-row-id", rowId);
+            iconInitial.textContent = iconInfo.slice(0, 1).toUpperCase();
+            nodeGroup.appendChild(iconInitial);
+          }
+        }
+        nodeGroup.appendChild(labelNode);
+        if (useMeta) {
+          var metaNode = document.createElementNS(svgNs, "text");
+          metaNode.setAttribute("x", String(labelX));
+          metaNode.setAttribute("y", "9");
+          metaNode.setAttribute("text-anchor", "middle");
+          metaNode.setAttribute("class", "data-tool__graphNodeMeta");
+          metaNode.textContent = metaText;
+          nodeGroup.appendChild(metaNode);
+        }
         nodesGroup.appendChild(nodeGroup);
       });
     });
@@ -2103,7 +2594,17 @@
       segment.setAttribute("y1", String(start.y));
       segment.setAttribute("x2", String(end.x));
       segment.setAttribute("y2", String(end.y));
-      segment.setAttribute("class", "data-tool__graphEdge" + (edge && edge.resolved === false ? " is-unresolved" : ""));
+      var edgeClass = "data-tool__graphEdge" + (edge && edge.resolved === false ? " is-unresolved" : "");
+      if (responseFocus && hasFocus && (source === responseFocus || target === responseFocus)) {
+        edgeClass += " is-focus";
+      } else if (responseFocus && hasFocus && focusPath[source] && focusPath[target]) {
+        edgeClass += " is-path";
+      } else if (responseFocus && hasFocus) {
+        edgeClass += " is-dim";
+      }
+      segment.setAttribute("class", edgeClass);
+      segment.setAttribute("data-source", source);
+      segment.setAttribute("data-target", target);
       edgesGroup.appendChild(segment);
       renderedEdges += 1;
     });
@@ -2112,6 +2613,7 @@
     svg.appendChild(edgesGroup);
     svg.appendChild(nodesGroup);
     viewport.appendChild(svg);
+    bindGraphPanZoom(viewport, svg);
     anthologyGraphEl.appendChild(viewport);
 
     var legend = document.createElement("div");
@@ -2124,6 +2626,12 @@
       chip.textContent = "L" + layerToken + ": " + String(layerNodes.length);
       legend.appendChild(chip);
     });
+    if (responseFocus && hasFocus) {
+      var focusBadge = document.createElement("span");
+      focusBadge.className = "data-tool__statusText";
+      focusBadge.textContent = "Focused lineage highlighted; non-active context is dimmed.";
+      legend.appendChild(focusBadge);
+    }
     if (edges.length > maxRenderedEdges) {
       var overflow = document.createElement("span");
       overflow.className = "data-tool__statusText";
@@ -2131,6 +2639,71 @@
       legend.appendChild(overflow);
     }
     anthologyGraphEl.appendChild(legend);
+    syncDatumSelectionUI();
+  }
+
+  function graphQueryParams() {
+    var focus = graphFocusInput ? String(graphFocusInput.value || "").trim() : "";
+    var context = graphContextSel ? String(graphContextSel.value || "local").trim().toLowerCase() : "local";
+    var layoutMode = normalizeWorkbenchLayoutMode(workbenchUiState.layoutMode);
+    var layout = layoutMode === "radial" ? "radial" : "linear";
+    var depthToken = graphDepthInput ? String(graphDepthInput.value || "").trim() : "";
+    var depth = parseInt(depthToken, 10);
+    if (isNaN(depth) || depth < 0) depth = 3;
+
+    anthologyGraphUiState.focus = focus;
+    anthologyGraphUiState.context = context === "local" ? "local" : "global";
+    anthologyGraphUiState.layout = layout === "radial" ? "radial" : "linear";
+    anthologyGraphUiState.depth = depth;
+
+    var params = [];
+    params.push("layout=" + encodeURIComponent(anthologyGraphUiState.layout));
+    params.push("context=" + encodeURIComponent(anthologyGraphUiState.context));
+    params.push("depth=" + encodeURIComponent(String(anthologyGraphUiState.depth)));
+    if (focus) params.push("focus=" + encodeURIComponent(focus));
+    return params.join("&");
+  }
+
+  function resetGraphTransform() {
+    anthologyGraphUiState.scale = 1;
+    anthologyGraphUiState.tx = 0;
+    anthologyGraphUiState.ty = 0;
+    applyGraphTransform();
+    if (anthologyGraphUiState.viewport) {
+      anthologyGraphUiState.viewport.scrollLeft = 0;
+      anthologyGraphUiState.viewport.scrollTop = 0;
+    }
+  }
+
+  function setGraphFocus(identifier, contextMode) {
+    var token = String(identifier || "").trim();
+    if (graphFocusInput) graphFocusInput.value = token;
+    if (contextMode && graphContextSel) {
+      var mode = String(contextMode).trim().toLowerCase();
+      graphContextSel.value = mode === "local" ? "local" : "global";
+    }
+  }
+
+  function applyGraphTransform() {
+    var svg = anthologyGraphUiState.svg;
+    if (!svg) return;
+    var scale = Math.max(0.2, Math.min(4.0, Number(anthologyGraphUiState.scale) || 1));
+    var baseWidth = parseFloat(svg.getAttribute("data-base-width") || svg.getAttribute("width") || "0");
+    var baseHeight = parseFloat(svg.getAttribute("data-base-height") || svg.getAttribute("height") || "0");
+    if (!isFinite(baseWidth) || baseWidth <= 0) baseWidth = 920;
+    if (!isFinite(baseHeight) || baseHeight <= 0) baseHeight = 620;
+    anthologyGraphUiState.scale = scale;
+    svg.style.transform = "none";
+    svg.style.width = String(Math.round(baseWidth * scale)) + "px";
+    svg.style.height = String(Math.round(baseHeight * scale)) + "px";
+  }
+
+  function bindGraphPanZoom(viewport, svg) {
+    if (!viewport || !svg) return;
+    anthologyGraphUiState.viewport = viewport;
+    anthologyGraphUiState.svg = svg;
+    applyGraphTransform();
+    viewport.style.touchAction = "pan-x pan-y";
   }
 
   async function api(path, options) {
@@ -2170,7 +2743,7 @@
 
   async function getAnthologyGraph() {
     if (!anthologyGraphEl) return {};
-    var payload = await api("/portal/api/data/anthology/graph");
+    var payload = await api("/portal/api/data/anthology/graph?" + graphQueryParams());
     renderAnthologyGraph(payload);
     return payload;
   }
@@ -2237,6 +2810,11 @@
       await getAnthologyGraph();
     } else {
       await getAnthologyTable();
+    }
+
+    if (datumWorkbenchState.rowId && datumWorkbenchState.rowId === token) {
+      renderDatumEditorEmpty("Datum deleted. Select another datum.");
+      setDatumEditorStatus("No datum selected.");
     }
 
     setMessages(payload.errors || [], payload.warnings || []);
@@ -2699,7 +3277,19 @@
     var identifier = String(datum.identifier || rowId || token);
     var label = String(datum.label || identifier);
     var pairs = normalizePairs(datum.pairs, datum.reference, datum.magnitude);
+    var parsed = parseDatumIdentifier(identifier);
+    var valueGroup = parsed && parsed.value_group != null ? parsed.value_group : 1;
+    var pairCount = pairs.length;
+    var patternKind = valueGroup === 0 ? "collection" : (pairCount <= 1 ? "typed_leaf" : "composite");
     var abstractionPath = Array.isArray(payload.abstraction_path) ? payload.abstraction_path : [];
+    var statePayload = {};
+    try {
+      statePayload = await api("/portal/api/data/state");
+    } catch (_) {
+      statePayload = {};
+    }
+    var state = statePayload && typeof statePayload === "object" ? (statePayload.state || {}) : {};
+    var aitasContext = state && typeof state === "object" ? (state.aitas_context || {}) : {};
 
     var pairsMarkup = pairs.length
       ? "<ul>" + pairs.map(function (pair) {
@@ -2723,11 +3313,29 @@
           "<div class=\"card__body\">" +
             "<p><strong>row_id:</strong> <code>" + escapeText(rowId) + "</code></p>" +
             "<p><strong>identifier:</strong> <code>" + escapeText(identifier) + "</code></p>" +
+            "<p><strong>pattern:</strong> <code>" + escapeText(patternKind) + "</code> | <strong>pairs:</strong> " + escapeText(String(pairCount)) + "</p>" +
             "<h4>Reference / Magnitude</h4>" +
             pairsMarkup +
             "<h4>Abstraction Path</h4>" +
             pathMarkup +
-            "<p><button type=\"button\" class=\"js-inspector-open-profile\" data-row-id=\"" + escapeText(rowId) + "\">Open Full Datum Editor</button></p>" +
+            "<h4>AITAS / NIMM Context</h4>" +
+            "<pre class=\"jsonblock\">" +
+              escapeText(
+                JSON.stringify(
+                  {
+                    focus_source: state.focus_source || "",
+                    focus_subject: state.focus_subject || "",
+                    phase: state.aitas_phase || "",
+                    mode: state.mode || "",
+                    lens: state.lens_context || {},
+                    aitas_context: aitasContext,
+                  },
+                  null,
+                  2
+                )
+              ) +
+            "</pre>" +
+            "<p><button type=\"button\" class=\"js-inspector-open-profile\" data-row-id=\"" + escapeText(rowId) + "\">Open Datum Editor</button></p>" +
           "</div>" +
         "</article>",
     });
@@ -2803,22 +3411,42 @@
     var target = event.target;
     if (!target || !target.closest) return;
 
+    var tableRow = target.closest(".js-anthology-row");
+    if (tableRow && !target.closest("button")) {
+      var tableRowToken = String(tableRow.getAttribute("data-row-id") || "").trim();
+      if (tableRowToken) {
+        loadDatumEditor(tableRowToken, { syncGraphFocus: true }).catch(function (err) {
+          setMessages([err.message], []);
+        });
+      }
+      return;
+    }
+
     var graphNodeBtn = target.closest(".js-anthology-graph-node");
     if (graphNodeBtn) {
       var graphIdentifier = String(graphNodeBtn.getAttribute("data-identifier") || "").trim();
+      var graphRowToken = String(graphNodeBtn.getAttribute("data-row-id") || graphIdentifier).trim();
       if (!graphIdentifier) return;
       if (subjectInput) subjectInput.value = graphIdentifier;
       if (invMethodSel) invMethodSel.value = "summary";
-      postDirective("inv", graphIdentifier, "summary", {}).catch(function (err) {
-        setMessages([err.message], []);
-      });
+      setGraphFocus(graphIdentifier, graphContextSel && graphContextSel.value ? graphContextSel.value : "local");
+      postDirective("inv", graphIdentifier, "summary", {})
+        .then(function () {
+          return Promise.all([
+            getAnthologyGraph(),
+            loadDatumEditor(graphRowToken, { syncGraphFocus: false }),
+          ]);
+        })
+        .catch(function (err) {
+          setMessages([err.message], []);
+        });
       return;
     }
 
     var profileBtn = target.closest(".js-open-datum-profile");
     if (profileBtn) {
       var profileRowToken = profileBtn.getAttribute("data-row-id") || profileBtn.getAttribute("data-datum-id") || "";
-      openProfileModal(profileRowToken).catch(function (err) {
+      loadDatumEditor(profileRowToken, { syncGraphFocus: true }).catch(function (err) {
         setMessages([err.message], []);
       });
       return;
@@ -2862,10 +3490,32 @@
       var graphNodeBtn = target.closest(".js-anthology-graph-node");
       if (!graphNodeBtn) return;
       var rowToken = String(graphNodeBtn.getAttribute("data-row-id") || "").trim();
+      var identifier = String(graphNodeBtn.getAttribute("data-identifier") || "").trim();
       if (!rowToken) return;
-      openInvestigationInspector(rowToken).catch(function (err) {
-        setMessages([err.message], []);
-      });
+      if (identifier) {
+        if (subjectInput) subjectInput.value = identifier;
+        if (invMethodSel) invMethodSel.value = "abstraction_path";
+        setGraphFocus(identifier, "local");
+      }
+      postDirective("inv", identifier || rowToken, "abstraction_path", {})
+        .catch(function () {
+          return null;
+        })
+        .then(function () {
+          return Promise.all([
+            getAnthologyGraph(),
+            loadDatumEditor(rowToken, { syncGraphFocus: false, openInspector: false }).catch(function () { return null; }),
+          ]);
+        })
+        .catch(function () {
+          return null;
+        })
+        .then(function () {
+          return openInvestigationInspector(rowToken);
+        })
+        .catch(function (err) {
+          setMessages([err.message], []);
+        });
     });
   }
 
@@ -2875,9 +3525,53 @@
     event.preventDefault();
     var rowToken = String(inspectorBtn.getAttribute("data-row-id") || "").trim();
     if (!rowToken) return;
-    openProfileModal(rowToken).catch(function (err) {
+    loadDatumEditor(rowToken, { syncGraphFocus: false, openInspector: true }).catch(function (err) {
       setMessages([err.message], []);
     });
+  });
+
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (!target || !target.closest) return;
+
+    var saveBtn = target.closest(".js-workbench-save");
+    if (saveBtn) {
+      var saveRoot = saveBtn.closest(".js-datum-editor-root") || activeDatumEditorRoot;
+      saveDatumEditor(saveRoot).catch(function (err) {
+        setMessages([err.message], []);
+      });
+      return;
+    }
+
+    var investigateBtn = target.closest(".js-workbench-investigate");
+    if (investigateBtn) {
+      var rowToken = String(datumWorkbenchState.rowId || "").trim();
+      if (!rowToken) return;
+      openInvestigationInspector(rowToken).catch(function (err) {
+        setMessages([err.message], []);
+      });
+      return;
+    }
+
+    var addPairBtn = target.closest(".js-workbench-add-pair");
+    if (addPairBtn) {
+      var addRoot = addPairBtn.closest(".js-datum-editor-root") || activeDatumEditorRoot;
+      var workbenchPairs = qs(".js-workbench-pairs", addRoot);
+      addPairRow(workbenchPairs, "", "", "js-workbench-remove-pair");
+      syncPairRowMode(workbenchPairs, datumWorkbenchState.valueGroup);
+      return;
+    }
+
+    var removePairBtn = target.closest(".js-workbench-remove-pair");
+    if (removePairBtn) {
+      var row = removePairBtn.closest(".data-tool__appendPairRow");
+      if (!row) return;
+      row.remove();
+      var removeRoot = removePairBtn.closest(".js-datum-editor-root") || activeDatumEditorRoot;
+      var pairsEl = qs(".js-workbench-pairs", removeRoot);
+      ensurePairRows(pairsEl, "js-workbench-remove-pair");
+      syncPairRowMode(pairsEl, datumWorkbenchState.valueGroup);
+    }
   });
 
   if (profileCloseBtn) profileCloseBtn.addEventListener("click", closeProfileModal);
@@ -3026,6 +3720,64 @@
   if (anthologyGraphRefreshBtn) {
     anthologyGraphRefreshBtn.addEventListener("click", function () {
       getAnthologyGraph().catch(function (err) { setMessages([err.message], []); });
+    });
+  }
+
+  if (graphApplyBtn) {
+    graphApplyBtn.addEventListener("click", function () {
+      getAnthologyGraph().catch(function (err) {
+        setMessages([err.message], []);
+      });
+    });
+  }
+
+  if (workbenchLayoutModeSel) {
+    workbenchLayoutModeSel.addEventListener("change", function () {
+      applyWorkbenchLayoutMode(workbenchLayoutModeSel.value, { persist: true });
+      syncWorkbenchControls();
+      if (isGraphWorkbenchMode()) {
+        getAnthologyGraph().catch(function (err) {
+          setMessages([err.message], []);
+        });
+      }
+    });
+  }
+
+  if (graphZoomOutBtn) {
+    graphZoomOutBtn.addEventListener("click", function () {
+      anthologyGraphUiState.scale = Math.max(0.2, (Number(anthologyGraphUiState.scale) || 1) - 0.1);
+      applyGraphTransform();
+    });
+  }
+
+  if (graphZoomInBtn) {
+    graphZoomInBtn.addEventListener("click", function () {
+      anthologyGraphUiState.scale = Math.min(4.0, (Number(anthologyGraphUiState.scale) || 1) + 0.1);
+      applyGraphTransform();
+    });
+  }
+
+  if (graphZoomResetBtn) {
+    graphZoomResetBtn.addEventListener("click", function () {
+      resetGraphTransform();
+    });
+  }
+
+  if (graphFocusInput) {
+    graphFocusInput.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      getAnthologyGraph().catch(function (err) {
+        setMessages([err.message], []);
+      });
+    });
+  }
+
+  if (graphDepthInput) {
+    graphDepthInput.addEventListener("change", function () {
+      getAnthologyGraph().catch(function (err) {
+        setMessages([err.message], []);
+      });
     });
   }
 
@@ -3292,10 +4044,13 @@
   }
 
   if (sourceSel) sourceSel.value = "anthology";
+  applyWorkbenchLayoutMode(loadWorkbenchLayoutPreference(), { persist: false });
+  syncWorkbenchControls();
   if (appendLayerInput && !appendLayerInput.value) appendLayerInput.value = "1";
   if (appendValueGroupInput && !appendValueGroupInput.value) appendValueGroupInput.value = "1";
   syncAppendPairRequirements();
   ensurePairRows(profilePairsEl, "js-remove-profile-pair");
+  renderDatumEditorEmpty("Select a graph node or anthology row to edit it in the right inspector column.");
 
   var openNimmOnLoad = String(app.getAttribute("data-open-nimm") || "0").trim() === "1";
 
