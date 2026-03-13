@@ -2632,6 +2632,12 @@ body.is-modal-open {
   padding: 8px;
 }
 
+.ide-activitydivider {
+  height: 1px;
+  margin: 6px 4px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .ide-activitylink {
   display: flex;
   flex-direction: column;
@@ -2646,6 +2652,7 @@ body.is-modal-open {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  line-height: 1.15;
 }
 
 .ide-activitylink img {
@@ -2662,6 +2669,12 @@ body.is-modal-open {
   border-color: rgba(30, 108, 147, 0.8);
   background: rgba(30, 108, 147, 0.23);
   color: #fff;
+}
+
+.ide-activitylink--tool {
+  padding: 6px 4px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
 }
 
 .ide-activityfooter {
