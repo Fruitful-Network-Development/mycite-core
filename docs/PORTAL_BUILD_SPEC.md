@@ -14,6 +14,7 @@ Active specs:
 
 `build.json` is authoritative for:
 
+- runtime flavor selection metadata
 - portal identity metadata
 - enabled optional tools
 - tool mount targets
@@ -21,7 +22,7 @@ Active specs:
 - legacy-compatible private config payloads
 - hosted payloads
 - public profile/card payloads
-- seed-file lists for alias/progeny/profile scaffolding
+- seed-file payloads for alias/progeny/profile/presentation scaffolding
 
 Not authoritative yet:
 
@@ -61,7 +62,7 @@ Materialization writes only the state files the runtime expects for portal-speci
 - `private/network/hosted.json`
 - `private/tools.manifest.json`
 - public profile cards
-- declared seed files under `private/network/*` and related profile trees
+- declared seed payloads under `private/network/*`, `private/utilities/vault/*`, and `data/presentation/*`
 
 It does not overwrite `data/anthology.json`.
 
@@ -73,9 +74,19 @@ It does not overwrite `data/anthology.json`.
 
 ## Source-of-truth boundary
 
-Repo build specs author portal-specific configuration.
+Repo build specs author portal-specific instance configuration.
 
 Live state remains the runtime source actually mounted into containers.
+
+## Shared runtime direction
+
+The repo is moving toward a builder/runtime split:
+
+- shared executable runtime: `portals/runtime/`
+- shared flavor runtimes: `portals/_shared/runtime/flavors/*`
+- per-portal directories (`mycite-le_fnd`, `mycite-le_tff`, `mycite-le_example`) reduced toward spec-only ownership
+
+This means portal-specific state/config/profile/tool selections live in `build.json`, while executable code lives in the shared runtime tree.
 
 ## Example portal note
 

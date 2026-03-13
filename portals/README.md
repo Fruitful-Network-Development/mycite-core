@@ -1,8 +1,8 @@
 # Portals Directory
 
-`portals/` contains active portal runtimes, shared runtime modules, shared assets, and portal build/update tooling.
+`portals/` contains portal build specs, the shared runtime, shared assets, and portal build/update tooling.
 
-## Active runtimes
+## Active portal specs
 
 - `mycite-le_example`
 - `mycite-le_fnd`
@@ -12,11 +12,13 @@ Retired from active scope:
 
 - `mycite-ne_mt`
 
-Directories without an app/runtime surface should not be treated as active portal implementations.
+These directories should be treated as portal specs, not standalone runtime roots.
 
 ## Shared runtime
 
+- `runtime/` generic runtime image + app loader
 - `_shared/` shared core-service, network, data-engine, and tool-loading modules
+- `_shared/runtime/flavors/` flavor-specific runtime code (`fnd`, `tff`)
 - `assets/` shared icons and UI assets
 - `scripts/portal_build.py` capture/materialize workflow for portal build specs
 

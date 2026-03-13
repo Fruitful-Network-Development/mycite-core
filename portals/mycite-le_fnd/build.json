@@ -2,6 +2,7 @@
   "schema": "mycite.portal.build.v1",
   "portal_id": "mycite-le_fnd",
   "portal_instance_id": "fnd",
+  "runtime_flavor": "fnd",
   "state_root_hint": "/srv/compose/portals/state/fnd_portal",
   "meta": {
     "msn_id": "3-2-3-17-77-1-6-4-1-4",
@@ -175,7 +176,7 @@
             }
           }
         },
-        "source": "/srv/repo/mycite-core/portals/mycite-le_fnd/private/mycite-config-3-2-3-17-77-1-6-4-1-4.json"
+        "source": "/srv/compose/portals/state/fnd_portal/private/mycite-config-3-2-3-17-77-1-6-4-1-4.json"
       }
     ]
   },
@@ -280,36 +281,515 @@
   },
   "seed_files": [
     {
-      "source": "private/network/aliases/alias-3-2-3-17-77-2-6-3-1-6-3-2-3-17-77-1-6-4-1-4-member.json",
-      "target": "private/network/aliases/alias-3-2-3-17-77-2-6-3-1-6-3-2-3-17-77-1-6-4-1-4-member.json"
+      "target": "data/presentation/datum_icons.json",
+      "source_hint": "/srv/compose/portals/state/fnd_portal/data/presentation/datum_icons.json",
+      "payload_json": {
+        "_meta": {
+          "schema": "mycite.presentation.datum_icons.v0",
+          "icon_root": "assets/icons"
+        },
+        "map": {
+          "1-1-1": "centameter.svg",
+          "1-1-7": "lcl.svg",
+          "1-1-4": "txa.svg",
+          "1-1-5": "msn.svg",
+          "1-1-10": "time_stamp.svg",
+          "2-1-1": "second.svg",
+          "2-1-10": "watch.svg",
+          "3-2-2": "event.svg",
+          "3-2-1": "event.svg",
+          "4-0-1": "event.svg",
+          "0-0-6": "leo.svg",
+          "1-1-11": "bit.svg",
+          "2-1-2": "hexcode.svg",
+          "2-1-5": "ASCII.svg",
+          "2-1-6": "msn.svg",
+          "2-1-11": "boolean.svg",
+          "3-1-5": "boolean.svg",
+          "3-1-4": "dns.svg",
+          "2-1-9": "dns.svg",
+          "3-1-3": "ASCII.svg",
+          "3-1-2": "msn_id.svg",
+          "3-1-1": "hexcode.svg",
+          "3-1-6": "boolean.svg",
+          "1-0-7": "code.svg",
+          "1-0-2": "code.svg",
+          "1-0-3": "code.svg",
+          "1-0-4": "code.svg",
+          "1-0-5": "code.svg",
+          "1-0-6": "code.svg",
+          "1-1-9": "byte.svg",
+          "2-1-7": "www.svg",
+          "2-1-8": "www.svg",
+          "2-1-12": "mail.svg",
+          "3-1-7": "mail.svg",
+          "4-1-1": "www.svg",
+          "4-1-2": "www.svg",
+          "4-1-3": "www.svg",
+          "5-0-1": "www.svg",
+          "4-1-14": "alias.svg",
+          "4-1-13": "alias.svg",
+          "4-1-12": "alias.svg",
+          "4-1-11": "alias.svg",
+          "4-1-10": "alias.svg",
+          "4-1-9": "alias.svg",
+          "4-1-8": "alias.svg",
+          "4-1-7": "alias.svg",
+          "4-1-6": "alias.svg",
+          "4-1-5": "alias.svg",
+          "4-1-4": "alias.svg",
+          "5-0-2": "mail.svg",
+          "6-1-1": "www.svg",
+          "6-1-2": "mail.svg",
+          "7-2-1": "natural_entity.svg",
+          "7-2-2": "natural_entity.svg",
+          "7-2-3": "natural_entity.svg",
+          "7-2-4": "natural_entity.svg",
+          "7-2-5": "natural_entity.svg",
+          "7-2-6": "natural_entity.svg",
+          "7-2-7": "natural_entity.svg",
+          "4-1-15": "alias.svg",
+          "9-2-1": "message.svg",
+          "10-0-1": "addressed.svg",
+          "2-1-3": "axis-x.svg",
+          "2-1-4": "location.svg",
+          "3-1-1225": "location.svg"
+        }
+      }
     },
     {
-      "source": "private/network/contracts/contract-contract-fnd-tff-member-001.json",
-      "target": "private/network/contracts/contract-contract-fnd-tff-member-001.json"
+      "target": "private/network/aliases/alias-3-2-3-17-77-2-6-3-1-6-3-2-3-17-77-1-6-4-1-4-member.json",
+      "source_hint": "/srv/compose/portals/state/fnd_portal/private/network/aliases/alias-3-2-3-17-77-2-6-3-1-6-3-2-3-17-77-1-6-4-1-4-member.json",
+      "payload_json": {
+        "msn_id": "3-2-3-17-77-1-6-4-1-4",
+        "alias_host": "3-2-3-17-77-2-6-3-1-6",
+        "host_title": "trapp_family_farm",
+        "company_msn_id": "3-2-3-17-77-1-6-4-1-4",
+        "client_msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "contract_id": "contract-fnd-tff-member-001",
+        "progeny_type": "member",
+        "status": "active",
+        "member_msn_id": "3-2-3-17-77-2-6-3-1-1",
+        "child_msn_id": "3-2-3-17-77-2-6-3-1-1",
+        "fields": {
+          "alias_contract_ref": "contract-fnd-tff-member-001",
+          "alias_profile_host": "tff_portal",
+          "workspace_layout": "classroom_orientation"
+        }
+      }
     },
     {
-      "source": "private/network/progeny/admin_progeny/admin-config.json",
-      "target": "private/network/progeny/admin_progeny/admin-config.json"
+      "target": "private/network/contracts/contract-contract-fnd-tff-member-001.json",
+      "source_hint": "/srv/compose/portals/state/fnd_portal/private/network/contracts/contract-contract-fnd-tff-member-001.json",
+      "payload_json": {
+        "contract_id": "contract-fnd-tff-member-001",
+        "contract_type": "member_alias_profile",
+        "counterparty_msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "status": "active",
+        "template_version": "1.0.0",
+        "created_unix_ms": 1770000000000,
+        "updated_unix_ms": 1770000000000,
+        "details": {
+          "member_msn_id": "3-2-3-17-77-2-6-3-1-1",
+          "fnd_msn_id": "3-2-3-17-77-1-6-4-1-4",
+          "tff_msn_id": "3-2-3-17-77-2-6-3-1-6",
+          "hosted_layout": "classroom_orientation"
+        }
+      }
     },
     {
-      "source": "private/network/progeny/member_progeny/1.json",
-      "target": "private/network/progeny/member_progeny/1.json"
+      "target": "private/network/progeny/admin_progeny/admin-config.json",
+      "source_hint": "/srv/compose/portals/state/fnd_portal/private/network/progeny/admin_progeny/admin-config.json",
+      "payload_json": {
+        "profile_type": "admin",
+        "template_version": "1.0.0",
+        "config": {
+          "contacts": "",
+          "status": true,
+          "roles": [
+            "admin"
+          ],
+          "permissions": [
+            "*"
+          ]
+        }
+      }
     },
     {
-      "source": "private/network/progeny/member_progeny/member-config.json",
-      "target": "private/network/progeny/member_progeny/member-config.json"
+      "target": "private/network/progeny/member_progeny/1.json",
+      "source_hint": "/srv/compose/portals/state/fnd_portal/private/network/progeny/member_progeny/1.json",
+      "payload_json": {
+        "profile_type": "member",
+        "msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "title": "trapp_family_farm",
+        "contract": {
+          "contract_id": "contract-fnd-tff-member-001",
+          "status": "active",
+          "counterparty_msn_id": "3-2-3-17-77-2-6-3-1-6",
+          "signature_required": true
+        },
+        "template_version": "1.1.0",
+        "capabilities": {
+          "paypal": true,
+          "aws": true
+        },
+        "contract_refs": {
+          "authorization_contract_id": "contract-fnd-tff-member-001",
+          "service_agreement_ref": "fnd-member-service-v1"
+        },
+        "profile_refs": {
+          "contact_collection_ref": "8-0-1",
+          "aws_profile_id": "aws:member:1",
+          "aws_emailer_list_ref": "10-0-1",
+          "aws_emailer_entry_ref": "9-2-1",
+          "paypal_profile_id": "paypal:member:1",
+          "paypal_site_domain": "trappfamilyfarm.com",
+          "paypal_site_base_url": "https://trappfamilyfarm.com",
+          "paypal_checkout_return_url": "https://trappfamilyfarm.com/payments/paypal/return",
+          "paypal_checkout_cancel_url": "https://trappfamilyfarm.com/payments/paypal/cancel",
+          "paypal_webhook_listener_url": "https://api.trappfamilyfarm.com/paypal/webhook",
+          "paypal_checkout_brand_name": "Trapp Family Farm",
+          "email_transport_mode": "forwarder_no_smtp",
+          "email_forwarder_address": "proxy@trappfamilyfarm.com",
+          "email_operator_inbox": "trapp.family.farm@gmail.com",
+          "email_poc_address": "mark@trappfamilyfarm.com",
+          "email_inbound_aliases_csv": "info@trappfamilyfarm.com,mark@trappfamilyfarm.com",
+          "email_reply_allowed_from_csv": "mark@trappfamilyfarm.com",
+          "email_reply_send_as_csv": "info@trappfamilyfarm.com,mark@trappfamilyfarm.com",
+          "email_reply_send_as_policy": "original_contacted_alias",
+          "newsletter_ingest_address": "hermes@trappfamilyfarm.com",
+          "newsletter_sender_address": "news@trappfamilyfarm.com",
+          "newsletter_allowed_from_csv": "mark@trappfamilyfarm.com",
+          "newsletter_dispatch_mode": "aws_internal"
+        },
+        "email_policy": {
+          "mode": "forwarder_no_smtp",
+          "smtp_enabled": false,
+          "forwarder_address": "proxy@trappfamilyfarm.com",
+          "operator_inbox": "trapp.family.farm@gmail.com",
+          "poc_address": "mark@trappfamilyfarm.com",
+          "inbound_aliases": [
+            "info@trappfamilyfarm.com",
+            "mark@trappfamilyfarm.com"
+          ],
+          "reply": {
+            "allowed_from": [
+              "mark@trappfamilyfarm.com"
+            ],
+            "send_as": [
+              "info@trappfamilyfarm.com",
+              "mark@trappfamilyfarm.com"
+            ],
+            "send_as_policy": "original_contacted_alias"
+          },
+          "newsletter": {
+            "allowed_from": [
+              "mark@trappfamilyfarm.com"
+            ],
+            "ingest_address": "hermes@trappfamilyfarm.com",
+            "sender_address": "news@trappfamilyfarm.com",
+            "dispatch_mode": "aws_internal"
+          }
+        },
+        "hosted_interface": {
+          "layout": "classroom_orientation",
+          "default_tab": "stream",
+          "tabs": [
+            "stream",
+            "classwork",
+            "people",
+            "workflow"
+          ]
+        },
+        "alias_profile": {
+          "host_portal": "tff_portal",
+          "alias_id": "alias-3-2-3-17-77-1-6-4-1-4-3-2-3-17-77-2-6-3-1-6-board_member"
+        },
+        "config": {
+          "contacts": "8-0-1",
+          "status": true,
+          "email_map": {
+            "inbox_inbound": {
+              "info@trappfamilyfarm.com": [
+                "proxy@trappfamilyfarm.com"
+              ],
+              "mark@trappfamilyfarm.com": [
+                "proxy@trappfamilyfarm.com"
+              ],
+              "proxy@trappfamilyfarm.com": [
+                "trapp.family.farm@gmail.com"
+              ]
+            },
+            "proxy_outbound": {
+              "proxy@trappfamilyfarm.com": [
+                "info@trappfamilyfarm.com",
+                "mark@trappfamilyfarm.com"
+              ],
+              "trapp.family.farm@gmail.com": [
+                "proxy@trappfamilyfarm.com",
+                "hermes@trappfamilyfarm.com"
+              ],
+              "hermes@trappfamilyfarm.com": [
+                "lambda"
+              ],
+              "lambda": [
+                "news@trappfamilyfarm.com"
+              ]
+            }
+          },
+          "paypal": {
+            "website_domain": "trappfamilyfarm.com",
+            "site_base_url": "https://trappfamilyfarm.com",
+            "webhook_listener_url": "https://api.trappfamilyfarm.com/paypal/webhook"
+          }
+        }
+      }
     },
     {
-      "source": "private/network/progeny/member_progeny/msn-3-2-3-17-77-1-6-4-1-4-member-3-2-3-17-77-2-6-3-1-6.json",
-      "target": "private/network/progeny/member_progeny/msn-3-2-3-17-77-1-6-4-1-4-member-3-2-3-17-77-2-6-3-1-6.json"
+      "target": "private/network/progeny/member_progeny/member-config.json",
+      "source_hint": "/srv/compose/portals/state/fnd_portal/private/network/progeny/member_progeny/member-config.json",
+      "payload_json": {
+        "profile_type": "member",
+        "msn_id": "",
+        "title": "",
+        "contract": null,
+        "template_version": "1.1.0",
+        "capabilities": {
+          "paypal": true,
+          "aws": true
+        },
+        "profile_refs": {
+          "contact_collection_ref": "",
+          "aws_profile_id": "",
+          "aws_emailer_list_ref": "",
+          "aws_emailer_entry_ref": "",
+          "paypal_profile_id": "",
+          "paypal_site_domain": "",
+          "paypal_site_base_url": "",
+          "paypal_checkout_return_url": "",
+          "paypal_checkout_cancel_url": "",
+          "paypal_webhook_listener_url": "",
+          "paypal_checkout_brand_name": "",
+          "email_transport_mode": "forwarder_no_smtp",
+          "email_forwarder_address": "",
+          "email_operator_inbox": "",
+          "email_poc_address": "",
+          "email_inbound_aliases_csv": "",
+          "email_reply_allowed_from_csv": "",
+          "email_reply_send_as_csv": "",
+          "email_reply_send_as_policy": "original_contacted_alias",
+          "newsletter_ingest_address": "",
+          "newsletter_sender_address": "",
+          "newsletter_allowed_from_csv": "",
+          "newsletter_dispatch_mode": "aws_internal"
+        },
+        "email_policy": {
+          "mode": "forwarder_no_smtp",
+          "smtp_enabled": false,
+          "forwarder_address": "",
+          "operator_inbox": "",
+          "poc_address": "",
+          "inbound_aliases": [],
+          "reply": {
+            "allowed_from": [],
+            "send_as": [],
+            "send_as_policy": "original_contacted_alias"
+          },
+          "newsletter": {
+            "allowed_from": [],
+            "ingest_address": "",
+            "sender_address": "",
+            "dispatch_mode": "aws_internal"
+          }
+        },
+        "config": {
+          "contacts": "",
+          "status": true,
+          "email_map": {
+            "inbox_inbound": {},
+            "proxy_outbound": {}
+          },
+          "paypal": {
+            "website_domain": "",
+            "site_base_url": "",
+            "webhook_listener_url": ""
+          }
+        }
+      }
     },
     {
-      "source": "private/network/progeny/user_progeny/user-config.json",
-      "target": "private/network/progeny/user_progeny/user-config.json"
+      "target": "private/network/progeny/member_progeny/msn-3-2-3-17-77-1-6-4-1-4-member-3-2-3-17-77-2-6-3-1-6.json",
+      "source_hint": "/srv/compose/portals/state/fnd_portal/private/network/progeny/member_progeny/msn-3-2-3-17-77-1-6-4-1-4-member-3-2-3-17-77-2-6-3-1-6.json",
+      "payload_json": {
+        "profile_type": "member",
+        "msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "title": "trapp_family_farm",
+        "contract": {
+          "contract_id": "contract-fnd-tff-member-001",
+          "status": "active",
+          "counterparty_msn_id": "3-2-3-17-77-2-6-3-1-6",
+          "signature_required": true
+        },
+        "template_version": "1.1.0",
+        "capabilities": {
+          "paypal": true,
+          "aws": true
+        },
+        "contract_refs": {
+          "authorization_contract_id": "contract-fnd-tff-member-001",
+          "service_agreement_ref": "fnd-member-service-v1"
+        },
+        "profile_refs": {
+          "contact_collection_ref": "8-0-1",
+          "aws_profile_id": "aws:member:1",
+          "aws_emailer_list_ref": "10-0-1",
+          "aws_emailer_entry_ref": "9-2-1",
+          "paypal_profile_id": "paypal:member:1",
+          "paypal_site_domain": "trappfamilyfarm.com",
+          "paypal_site_base_url": "https://trappfamilyfarm.com",
+          "paypal_checkout_return_url": "https://trappfamilyfarm.com/payments/paypal/return",
+          "paypal_checkout_cancel_url": "https://trappfamilyfarm.com/payments/paypal/cancel",
+          "paypal_webhook_listener_url": "https://api.trappfamilyfarm.com/paypal/webhook",
+          "paypal_checkout_brand_name": "Trapp Family Farm",
+          "email_transport_mode": "forwarder_no_smtp",
+          "email_forwarder_address": "proxy@trappfamilyfarm.com",
+          "email_operator_inbox": "trapp.family.farm@gmail.com",
+          "email_poc_address": "mark@trappfamilyfarm.com",
+          "email_inbound_aliases_csv": "info@trappfamilyfarm.com,mark@trappfamilyfarm.com",
+          "email_reply_allowed_from_csv": "mark@trappfamilyfarm.com",
+          "email_reply_send_as_csv": "info@trappfamilyfarm.com,mark@trappfamilyfarm.com",
+          "email_reply_send_as_policy": "original_contacted_alias",
+          "newsletter_ingest_address": "hermes@trappfamilyfarm.com",
+          "newsletter_sender_address": "news@trappfamilyfarm.com",
+          "newsletter_allowed_from_csv": "mark@trappfamilyfarm.com",
+          "newsletter_dispatch_mode": "aws_internal"
+        },
+        "email_policy": {
+          "mode": "forwarder_no_smtp",
+          "smtp_enabled": false,
+          "forwarder_address": "proxy@trappfamilyfarm.com",
+          "operator_inbox": "trapp.family.farm@gmail.com",
+          "poc_address": "mark@trappfamilyfarm.com",
+          "inbound_aliases": [
+            "info@trappfamilyfarm.com",
+            "mark@trappfamilyfarm.com"
+          ],
+          "reply": {
+            "allowed_from": [
+              "mark@trappfamilyfarm.com"
+            ],
+            "send_as": [
+              "info@trappfamilyfarm.com",
+              "mark@trappfamilyfarm.com"
+            ],
+            "send_as_policy": "original_contacted_alias"
+          },
+          "newsletter": {
+            "allowed_from": [
+              "mark@trappfamilyfarm.com"
+            ],
+            "ingest_address": "hermes@trappfamilyfarm.com",
+            "sender_address": "news@trappfamilyfarm.com",
+            "dispatch_mode": "aws_internal"
+          }
+        },
+        "hosted_interface": {
+          "layout": "classroom_orientation",
+          "default_tab": "stream",
+          "tabs": [
+            "stream",
+            "classwork",
+            "people",
+            "workflow"
+          ]
+        },
+        "alias_profile": {
+          "host_portal": "tff_portal",
+          "alias_id": "alias-3-2-3-17-77-1-6-4-1-4-3-2-3-17-77-2-6-3-1-6-board_member"
+        },
+        "config": {
+          "contacts": "8-0-1",
+          "status": true,
+          "email_map": {
+            "inbox_inbound": {
+              "info@trappfamilyfarm.com": [
+                "proxy@trappfamilyfarm.com"
+              ],
+              "mark@trappfamilyfarm.com": [
+                "proxy@trappfamilyfarm.com"
+              ],
+              "proxy@trappfamilyfarm.com": [
+                "trapp.family.farm@gmail.com"
+              ]
+            },
+            "proxy_outbound": {
+              "proxy@trappfamilyfarm.com": [
+                "info@trappfamilyfarm.com",
+                "mark@trappfamilyfarm.com"
+              ],
+              "trapp.family.farm@gmail.com": [
+                "proxy@trappfamilyfarm.com",
+                "hermes@trappfamilyfarm.com"
+              ],
+              "hermes@trappfamilyfarm.com": [
+                "lambda"
+              ],
+              "lambda": [
+                "news@trappfamilyfarm.com"
+              ]
+            }
+          },
+          "paypal": {
+            "website_domain": "trappfamilyfarm.com",
+            "site_base_url": "https://trappfamilyfarm.com",
+            "webhook_listener_url": "https://api.trappfamilyfarm.com/paypal/webhook"
+          }
+        }
+      }
     },
     {
-      "source": "private/utilities/vault/keypass_inventory.json",
-      "target": "private/utilities/vault/keypass_inventory.json"
+      "target": "private/network/progeny/user_progeny/user-config.json",
+      "source_hint": "/srv/compose/portals/state/fnd_portal/private/network/progeny/user_progeny/user-config.json",
+      "payload_json": {
+        "profile_type": "user",
+        "template_version": "1.0.0",
+        "config": {
+          "contacts": "",
+          "status": true,
+          "preferences": {
+            "notifications": true
+          }
+        }
+      }
+    },
+    {
+      "target": "private/network/request_log/types/contract_proposal.confirmed.ndjson",
+      "source_hint": "/srv/compose/portals/state/fnd_portal/private/network/request_log/types/contract_proposal.confirmed.ndjson",
+      "payload_text": "{\"type\":\"contract_proposal.confirmed\",\"event_datum\":\"3-2-3-17-77-1-6-4-1-4-4-1-77\",\"status\":\"3-2-3-17-77-1-6-4-1-4-3-1-6\",\"transmitter\":\"msn-3-2-3-17-77-1-6-4-1-4\",\"receiver\":\"msn-3-2-3-17-77-2-6-3-1-6\",\"ts_unix_ms\":1773340548610,\"msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"details\":{\"proposal_id\":\"cp-95642a97842744a7\",\"confirmation\":{\"proposal_id\":\"cp-95642a97842744a7\",\"contract_id\":\"contract-fnd-tff-member-001\",\"sender_msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"receiver_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"event_datum\":\"4-1-77\",\"status\":\"3-1-6\",\"confirmed_unix_ms\":1773340548127,\"details\":{\"verification\":{\"contact_card_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"public_key_fingerprint\":\"ee2981bef51eea509ec26c03\"},\"result\":\"accepted\"}},\"signature\":{\"alg\":\"ed25519\",\"signer_msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"signature_b64\":\"tJ4KY29/qtvVs0djEmfI7Ua1Fv7lgsJfQsWN8v48y3AF7saurhGgXjSJunNzJnt+trlEU7YD/ZhpoZJ60B2ZDg==\",\"public_key_fingerprint\":\"246e4396d875d046f0842e65\",\"signed_unix_ms\":1773340548610}}}\n{\"type\":\"contract_proposal.confirmed\",\"event_datum\":\"3-2-3-17-77-1-6-4-1-4-4-1-77\",\"status\":\"3-2-3-17-77-1-6-4-1-4-3-1-6\",\"transmitter\":\"msn-3-2-3-17-77-1-6-4-1-4\",\"receiver\":\"msn-3-2-3-17-77-2-6-3-1-6\",\"ts_unix_ms\":1773341050061,\"msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"details\":{\"proposal_id\":\"cp-1011799a40764dcf\",\"confirmation\":{\"proposal_id\":\"cp-1011799a40764dcf\",\"contract_id\":\"contract-fnd-tff-member-001\",\"sender_msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"receiver_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"event_datum\":\"4-1-77\",\"status\":\"3-1-6\",\"confirmed_unix_ms\":1773341050057,\"details\":{\"verification\":{\"contact_card_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"public_key_fingerprint\":\"ee2981bef51eea509ec26c03\"},\"result\":\"accepted\"}},\"signature\":{\"alg\":\"ed25519\",\"signer_msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"signature_b64\":\"aj9KdJopTt0k5VMqI/XUFUti/iS5rPD5q2cw1xmN9xpG/9RnVFgiucoBWIbIaR+NEsUAbKjlgQ9u1iv3TkNuBw==\",\"public_key_fingerprint\":\"246e4396d875d046f0842e65\",\"signed_unix_ms\":1773341050060}}}\n{\"type\":\"contract_proposal.confirmed\",\"event_datum\":\"3-2-3-17-77-2-6-3-1-6.4-1-77\",\"status\":\"3-2-3-17-77-1-6-4-1-4.3-1-6\",\"transmitter\":\"msn-3-2-3-17-77-1-6-4-1-4\",\"receiver\":\"msn-3-2-3-17-77-2-6-3-1-6\",\"ts_unix_ms\":1773369872400,\"msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"details\":{\"proposal_id\":\"cp-c2c5c976e8e74c74\",\"confirmation\":{\"proposal_id\":\"cp-c2c5c976e8e74c74\",\"contract_id\":\"contract-fnd-tff-member-001\",\"sender_msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"receiver_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"event_datum\":\"3-2-3-17-77-2-6-3-1-6.4-1-77\",\"status\":\"3-2-3-17-77-1-6-4-1-4.3-1-6\",\"confirmed_unix_ms\":1773369872397,\"details\":{\"verification\":{\"contact_card_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"public_key_fingerprint\":\"ee2981bef51eea509ec26c03\"},\"result\":\"accepted\"}},\"signature\":{\"alg\":\"ed25519\",\"signer_msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"signature_b64\":\"Z2w96YwTgvpjvfYBHO0I6bibNrze/9HxpBmjvBFIEXrFy4TomNLA+Fe9FSJtu8SzxqnUURFBx7KeoIcerrcSAA==\",\"public_key_fingerprint\":\"246e4396d875d046f0842e65\",\"signed_unix_ms\":1773369872400},\"qualifier\":\"asymmetric\"}}\n"
+    },
+    {
+      "target": "private/network/request_log/types/contract_proposal.ndjson",
+      "source_hint": "/srv/compose/portals/state/fnd_portal/private/network/request_log/types/contract_proposal.ndjson",
+      "payload_text": "{\"type\":\"contract_proposal\",\"event_datum\":\"3-2-3-17-77-1-6-4-1-4-4-1-77\",\"status\":\"3-2-3-17-77-1-6-4-1-4-3-1-5\",\"transmitter\":\"msn-3-2-3-17-77-2-6-3-1-6\",\"receiver\":\"msn-3-2-3-17-77-1-6-4-1-4\",\"ts_unix_ms\":1773340548126,\"msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"details\":{\"proposal\":{\"proposal_id\":\"cp-95642a97842744a7\",\"contract_id\":\"contract-fnd-tff-member-001\",\"sender_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"receiver_msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"host_title\":\"fruitful_network_development_llc\",\"progeny_type\":\"member\",\"member_msn_id\":\"3-2-3-17-77-2-6-3-1-1\",\"template_version\":\"1.0.0\",\"event_datum\":\"4-1-77\",\"status\":\"3-1-5\",\"request_unix_ms\":1773340544923,\"confirmation_callback_url\":\"http://tff_portal:5000/api/contracts/confirmation/3-2-3-17-77-2-6-3-1-6\",\"details\":{\"alias_id\":\"alias-3-2-3-17-77-1-6-4-1-4-3-2-3-17-77-2-6-3-1-6-board_member\",\"source\":\"manual-smoke-2\"}},\"signature\":{\"alg\":\"ed25519\",\"signer_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"signature_b64\":\"11tbl5mvnqNglgtSkYMU4TL8ixR2ml8fS0Cn20PJDj0/tIRHW6gFFk0lqewA7OJ4lADBj0C5r0e13yS06hS4Dw==\",\"public_key_fingerprint\":\"ee2981bef51eea509ec26c03\",\"signed_unix_ms\":1773340546844},\"verification\":{\"contact_card_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"public_key_fingerprint\":\"ee2981bef51eea509ec26c03\"}}}\n{\"type\":\"contract_proposal\",\"event_datum\":\"3-2-3-17-77-1-6-4-1-4-4-1-77\",\"status\":\"3-2-3-17-77-1-6-4-1-4-3-1-5\",\"transmitter\":\"msn-3-2-3-17-77-2-6-3-1-6\",\"receiver\":\"msn-3-2-3-17-77-1-6-4-1-4\",\"ts_unix_ms\":1773341050056,\"msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"details\":{\"proposal\":{\"proposal_id\":\"cp-1011799a40764dcf\",\"contract_id\":\"contract-fnd-tff-member-001\",\"sender_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"receiver_msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"host_title\":\"fruitful_network_development_llc\",\"progeny_type\":\"member\",\"member_msn_id\":\"3-2-3-17-77-2-6-3-1-1\",\"template_version\":\"1.0.0\",\"event_datum\":\"4-1-77\",\"status\":\"3-1-5\",\"request_unix_ms\":1773341047418,\"confirmation_callback_url\":\"\",\"details\":{\"alias_id\":\"alias-3-2-3-17-77-1-6-4-1-4-3-2-3-17-77-2-6-3-1-6-board_member\",\"source\":\"manual-smoke-4\"}},\"signature\":{\"alg\":\"ed25519\",\"signer_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"signature_b64\":\"GkGCFZZJnzmWa8oB1yMIE0rpLRihd8byoMy2VcmQgD43wM8RG8kFpZVek0bNau2ASX0eaK0KdHbbKok8UgoRBQ==\",\"public_key_fingerprint\":\"ee2981bef51eea509ec26c03\",\"signed_unix_ms\":1773341049577},\"verification\":{\"contact_card_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"public_key_fingerprint\":\"ee2981bef51eea509ec26c03\"}}}\n{\"type\":\"contract_proposal\",\"event_datum\":\"3-2-3-17-77-2-6-3-1-6.4-1-77\",\"status\":\"3-2-3-17-77-2-6-3-1-6.3-1-5\",\"transmitter\":\"msn-3-2-3-17-77-2-6-3-1-6\",\"receiver\":\"msn-3-2-3-17-77-1-6-4-1-4\",\"ts_unix_ms\":1773369872393,\"msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"details\":{\"proposal\":{\"proposal_id\":\"cp-c2c5c976e8e74c74\",\"contract_id\":\"contract-fnd-tff-member-001\",\"sender_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"receiver_msn_id\":\"3-2-3-17-77-1-6-4-1-4\",\"host_title\":\"FRUITFUL NETWORK DEVELOPMENT LLC\",\"progeny_type\":\"member\",\"member_msn_id\":\"3-2-3-17-77-2-6-3-1-1\",\"template_version\":\"1.0.0\",\"event_datum\":\"3-2-3-17-77-2-6-3-1-6.4-1-77\",\"status\":\"3-2-3-17-77-2-6-3-1-6.3-1-5\",\"request_unix_ms\":1773369872289,\"confirmation_callback_url\":\"\",\"details\":{\"alias_id\":\"alias-3-2-3-17-77-1-6-4-1-4-3-2-3-17-77-2-6-3-1-6-board_member\",\"source\":\"network.messages.alias\"}},\"signature\":{\"alg\":\"ed25519\",\"signer_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"signature_b64\":\"dMBOlHHjqesRHWLXP4zvoNSFJeC54QHlgr9eE3Mdaal9KgBXCpeWsCoJD0mv+TsPgU8oBP+yY/Y9f7SvLZZNCA==\",\"public_key_fingerprint\":\"ee2981bef51eea509ec26c03\",\"signed_unix_ms\":1773369872339},\"verification\":{\"contact_card_msn_id\":\"3-2-3-17-77-2-6-3-1-6\",\"public_key_fingerprint\":\"ee2981bef51eea509ec26c03\"},\"qualifier\":\"asymmetric\"}}\n"
+    },
+    {
+      "target": "private/utilities/vault/keypass_inventory.json",
+      "source_hint": "/srv/compose/portals/state/fnd_portal/private/utilities/vault/keypass_inventory.json",
+      "payload_json": {
+        "schema": "mycite.utilities.vault.inventory.v1",
+        "entries": [
+          {
+            "id": "portal_support_email",
+            "label": "Portal Support Email",
+            "group": "portal",
+            "value": "",
+            "masked": false,
+            "revealable": true,
+            "editable": true,
+            "notes": "Interim plaintext inventory entry for the in-application KeyPass workbench."
+          }
+        ]
+      }
     }
   ],
   "anthology": {

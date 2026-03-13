@@ -1,10 +1,10 @@
 # mycite-core
 
-Canonical source for the MyCite portal framework, active portal implementations, and product documentation.
+Canonical source for the MyCite portal framework, shared runtime, portal build specs, and product documentation.
 
-## Active runtime scope
+## Active portal specs
 
-Active runnable portals in this repo:
+Active portal spec directories in this repo:
 
 - `portals/mycite-le_example`
 - `portals/mycite-le_fnd`
@@ -14,7 +14,7 @@ Retired from active scope:
 
 - `portals/mycite-ne_mt`
 
-Placeholder/non-runnable directories should not be treated as active portal runtimes unless they regain an app/runtime surface.
+These directories are no longer treated as standalone runnable app roots. Runtime code now lives under the shared runtime tree.
 
 ## Source-of-truth boundaries
 
@@ -50,14 +50,25 @@ Build/update script:
 - `python3 portals/scripts/portal_build.py capture`
 - `python3 portals/scripts/portal_build.py materialize`
 
+## Shared runtime model
+
+Runnable runtime code now lives under:
+
+- `portals/runtime/` generic runtime entrypoint and image
+- `portals/_shared/runtime/flavors/fnd/` FND runtime flavor
+- `portals/_shared/runtime/flavors/tff/` TFF/runtime flavor used by TFF and the current example portal
+
+Per-portal directories are being reduced toward spec-only ownership.
+
 ## Repository layout
 
 - `portals/_shared/` shared runtime, network, data-engine, and tool-loading modules
+- `portals/runtime/` generic runtime image + loader
 - `portals/assets/` shared icons/UI assets
 - `portals/scripts/` portal build/update helpers
 - `portals/mycite-le_example/` example/demo portal build spec
-- `portals/mycite-le_fnd/` FND runtime
-- `portals/mycite-le_tff/` TFF runtime
+- `portals/mycite-le_fnd/` FND portal build spec
+- `portals/mycite-le_tff/` TFF portal build spec
 - `docs/` canonical product and runtime documentation
 
 ## Canonical docs

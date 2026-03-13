@@ -8,10 +8,11 @@ from tempfile import TemporaryDirectory
 
 
 def _load_workspace_stack():
-    portal_root = Path(__file__).resolve().parents[1] / "portals" / "mycite-le_fnd"
-    portal_root_token = str(portal_root)
-    if portal_root_token not in sys.path:
-        sys.path.insert(0, portal_root_token)
+    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    flavor_root = portals_root / "_shared" / "runtime" / "flavors" / "fnd"
+    for token in (str(flavor_root), str(portals_root)):
+        if token not in sys.path:
+            sys.path.insert(0, token)
 
     from data.engine.workspace import Workspace  # type: ignore
     from data.storage_json import JsonStorageBackend  # type: ignore

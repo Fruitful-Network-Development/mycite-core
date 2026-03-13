@@ -2,11 +2,10 @@
   "schema": "mycite.portal.build.v1",
   "portal_id": "mycite-le_example",
   "portal_instance_id": "example",
-  "runtime_source_portal_id": "mycite-le_tff",
   "runtime_flavor": "tff",
   "state_root_hint": "/srv/compose/portals/state/example_portal",
   "meta": {
-    "msn_id": "3-2-3-17-77-2-6-3-1-6",
+    "msn_id": "0-0-0-0-0-0-0-0-0-0",
     "title": "example_portal"
   },
   "tools": {
@@ -22,10 +21,10 @@
   },
   "private_config": {
     "canonical": {
-      "msn_id": "3-2-3-17-77-2-6-3-1-6",
+      "msn_id": "0-0-0-0-0-0-0-0-0-0",
       "schema": "mycite.profile.v0",
       "title": "example_portal",
-      "private_key_ref": "vault://keys/3-2-3-17-77-2-6-3-1-6_private.pem",
+      "private_key_ref": "vault://keys/0-0-0-0-0-0-0-0-0-0_private.pem",
       "request_log": [],
       "symmetric_key_contracts": [],
       "aliases": [],
@@ -107,14 +106,15 @@
         }
       }
     },
+    "canonical_source": "/srv/compose/portals/state/example_portal/private/config.json",
     "legacy_compat": [
       {
-        "filename": "mycite-config-3-2-3-17-77-2-6-3-1-6.json",
+        "filename": "mycite-config-0-0-0-0-0-0-0-0-0-0.json",
         "payload": {
-          "msn_id": "3-2-3-17-77-2-6-3-1-6",
+          "msn_id": "0-0-0-0-0-0-0-0-0-0",
           "schema": "mycite.profile.v0",
           "title": "example_portal",
-          "private_key_ref": "vault://keys/3-2-3-17-77-2-6-3-1-6_private.pem",
+          "private_key_ref": "vault://keys/0-0-0-0-0-0-0-0-0-0_private.pem",
           "request_log": [],
           "symmetric_key_contracts": [],
           "aliases": [],
@@ -195,12 +195,14 @@
               }
             }
           }
-        }
+        },
+        "source": ""
       }
     ]
   },
   "hosted": {
     "filename": "hosted.json",
+    "source": "/srv/compose/portals/state/example_portal/private/network/hosted.json",
     "payload": {
       "type": "classroom_workbench",
       "type_values": {
@@ -234,9 +236,10 @@
   },
   "public_profiles": {
     "msn_card": {
-      "filename": "msn-3-2-3-17-77-2-6-3-1-6.json",
+      "filename": "msn-0-0-0-0-0-0-0-0-0-0.json",
+      "source": "/srv/compose/portals/state/example_portal/public/msn-0-0-0-0-0-0-0-0-0-0.json",
       "payload": {
-        "msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "msn_id": "0-0-0-0-0-0-0-0-0-0",
         "schema": "mycite.profile.v0",
         "title": "example_portal",
         "public_key": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEADA8D+zFdj2KPE1+GPPg3eqee8njrJ5duC3QE8mr6J7I=\n-----END PUBLIC KEY-----\n",
@@ -272,7 +275,8 @@
       }
     },
     "fnd_card": {
-      "filename": "fnd-3-2-3-17-77-2-6-3-1-6.json",
+      "filename": "fnd-0-0-0-0-0-0-0-0-0-0.json",
+      "source": "/srv/compose/portals/state/example_portal/public/fnd-0-0-0-0-0-0-0-0-0-0.json",
       "payload": {
         "schema": "mycite.fnd.profile.v1",
         "msn_id": "3-2-3-17-77-2-6-3-1-6",
@@ -295,12 +299,37 @@
   },
   "seed_files": [
     {
-      "source": "../mycite-le_tff/private/utilities/vault/keypass_inventory.json",
-      "target": "private/utilities/vault/keypass_inventory.json"
+      "target": "data/presentation/datum_icons.json",
+      "source_hint": "/srv/compose/portals/state/example_portal/data/presentation/datum_icons.json",
+      "payload_json": {
+        "_meta": {
+          "schema": "mycite.presentation.datum_icons.v0",
+          "icon_root": "assets/icons"
+        },
+        "map": {
+          "11-0-1": "msn_index.svg",
+          "4-1-9": "ascii_field.svg"
+        }
+      }
     },
     {
-      "source": "../mycite-le_tff/data/presentation/datum_icons.json",
-      "target": "data/presentation/datum_icons.json"
+      "target": "private/utilities/vault/keypass_inventory.json",
+      "source_hint": "/srv/compose/portals/state/example_portal/private/utilities/vault/keypass_inventory.json",
+      "payload_json": {
+        "schema": "mycite.utilities.vault.inventory.v1",
+        "entries": [
+          {
+            "id": "portal_support_email",
+            "label": "Portal Support Email",
+            "group": "portal",
+            "value": "",
+            "masked": false,
+            "revealable": true,
+            "editable": true,
+            "notes": "Interim plaintext inventory entry for the in-application KeyPass workbench."
+          }
+        ]
+      }
     }
   ],
   "anthology": {
@@ -308,9 +337,7 @@
     "path_hint": "/srv/compose/portals/state/example_portal/data/anthology.json",
     "sha256": "ea398e7e4556d5278593e27049bcac566baaa893532ada3541d180c197020e22",
     "notes": [
-      "State-owned anthology; phase-1 materialize never overwrites this file.",
-      "Seed the live example anthology by copying the workshop anthology into this state root.",
-      "Current portal identity borrows the TFF MSN/key material until a dedicated demo MSN is assigned."
+      "State-owned anthology; phase-1 materialize never overwrites this file."
     ]
   }
 }

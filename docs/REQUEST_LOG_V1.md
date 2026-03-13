@@ -72,4 +72,4 @@ Each typed fanout line stores non-secret v1 envelope fields:
 ## Implementation files
 
 - `portals/_shared/portal/services/request_log_store.py`
-- `portals/mycite-le_fnd/portal/api/request_log.py`
+- `portals/_shared/runtime/flavors/fnd/portal/api/request_log.py`

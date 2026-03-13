@@ -23,11 +23,12 @@ def _load_shared_datum_refs():
 
 
 def _load_fnd_request_log_store():
-    portal_root = Path(__file__).resolve().parents[1] / "portals" / "mycite-le_fnd"
-    token = str(portal_root)
-    if token in sys.path:
-        sys.path.remove(token)
-    sys.path.insert(0, token)
+    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    flavor_root = portals_root / "_shared" / "runtime" / "flavors" / "fnd"
+    for token in (str(flavor_root), str(portals_root)):
+        if token in sys.path:
+            sys.path.remove(token)
+        sys.path.insert(0, token)
     for module_name in ("portal.services.request_log_store", "portal.services.datum_refs", "portal"):
         sys.modules.pop(module_name, None)
     return importlib.import_module("portal.services.request_log_store")

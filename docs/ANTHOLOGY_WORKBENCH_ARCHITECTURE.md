@@ -8,7 +8,7 @@ SYSTEM Data surface is an anthology-authoritative workbench where graph navigati
 
 Template:
 
-- `portals/mycite-le_fnd/portal/ui/templates/tools/partials/data_tool_shell.html`
+- `portals/_shared/runtime/flavors/fnd/portal/ui/templates/tools/partials/data_tool_shell.html`
 
 Mirrored to TFF.
 

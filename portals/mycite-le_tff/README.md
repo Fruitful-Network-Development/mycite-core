@@ -1,11 +1,13 @@
 # mycite-le_tff
 
-TFF legal-entity portal runtime.
+TFF portal build spec.
 
 ## Current role
 
-- classroom-style member workspace surface
-- hosts the TFF-specific optional tools:
+- repo-owned build source for the TFF live portal instance
+- no longer a standalone runtime root
+- materializes state for the shared generic runtime plus the `tff` runtime flavor
+- classroom-style member workspace surface with the TFF-specific optional tools:
   - `config_schema`
   - `agro_erp`
 
@@ -19,14 +21,19 @@ Materialized live state:
 
 - `/srv/compose/portals/state/tff_portal/`
 
+Current shared runtime:
+
+- `../runtime/`
+- `../_shared/runtime/flavors/tff/`
+
 ## Local run
 
 ```bash
-cd /srv/repo/mycite-core/portals/mycite-le_tff
+cd /srv/repo/mycite-core/portals/runtime
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python app.py
+PORTAL_RUNTIME_FLAVOR=tff python app.py
 ```
 
 ## Canonical docs

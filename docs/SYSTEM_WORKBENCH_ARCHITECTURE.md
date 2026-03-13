@@ -5,8 +5,8 @@
 This document defines the SYSTEM page workbench composition only.
 
 - route: `/portal/system`
-- shell host: `portals/*/portal/ui/templates/base.html`
-- SYSTEM consumer: `portals/*/portal/ui/templates/services/system.html`
+- shell host: `portals/_shared/runtime/flavors/*/portal/ui/templates/base.html`
+- SYSTEM consumer: `portals/_shared/runtime/flavors/*/portal/ui/templates/services/system.html`
 
 ## Locked Composition
 
@@ -21,13 +21,13 @@ The center workbench must open directly to graph/editor workflow. Stacked explan
 ## Component Sources
 
 - workbench template:
-  - `portals/mycite-le_fnd/portal/ui/templates/tools/partials/data_tool_shell.html`
+  - `portals/_shared/runtime/flavors/fnd/portal/ui/templates/tools/partials/data_tool_shell.html`
   - mirrored to TFF
 - runtime behavior:
-  - `portals/mycite-le_fnd/portal/ui/static/tools/data_tool.js`
+  - `portals/_shared/runtime/flavors/fnd/portal/ui/static/tools/data_tool.js`
   - mirrored to TFF
 - styling:
-  - `portals/mycite-le_fnd/portal/ui/static/portal.css`
+  - `portals/_shared/runtime/flavors/fnd/portal/ui/static/portal.css`
   - mirrored to TFF
 
 ## Residual Limitation
