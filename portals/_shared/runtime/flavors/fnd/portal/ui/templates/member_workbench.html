@@ -161,15 +161,17 @@
 <body>
   <section class="classroom-shell">
     <nav class="classroom-nav" aria-label="Classroom tabs">
-      <a class="{% if active_tab == 'stream' %}is-active{% endif %}" href="{{ url_for('portal_embed_member_workbench', member_msn_id=member_msn_id, as_alias_id=as_alias_id, tab='stream') }}">Stream</a>
-      <a class="{% if active_tab == 'classwork' %}is-active{% endif %}" href="{{ url_for('portal_embed_member_workbench', member_msn_id=member_msn_id, as_alias_id=as_alias_id, tab='classwork') }}">Classwork</a>
-      <a class="{% if active_tab == 'people' %}is-active{% endif %}" href="{{ url_for('portal_embed_member_workbench', member_msn_id=member_msn_id, as_alias_id=as_alias_id, tab='people') }}">People</a>
-      <a class="{% if active_tab == 'workflow' %}is-active{% endif %}" href="{{ url_for('portal_embed_member_workbench', member_msn_id=member_msn_id, as_alias_id=as_alias_id, tab='workflow') }}">Workflow</a>
+      {% for tab in hosted_tabs %}
+        <a
+          class="{% if active_tab == tab.id %}is-active{% endif %}"
+          href="{{ url_for('portal_embed_member_workbench', member_msn_id=member_msn_id, as_alias_id=as_alias_id, progeny_type=progeny_type, tab=tab.id) }}"
+        >{{ tab.label }}</a>
+      {% endfor %}
     </nav>
 
     <header class="classroom-hero">
-      <h1>{{ profile.title if profile and profile.title else "Member Workspace" }}</h1>
-      <p>member_msn_id: <code>{{ member_msn_id }}</code>{% if as_alias_id %} | alias: <code>{{ as_alias_id }}</code>{% endif %}</p>
+      <h1>{{ profile.title if profile and profile.title else "Hosted Workspace" }}</h1>
+      <p>member_msn_id: <code>{{ member_msn_id }}</code>{% if progeny_type %} | type: <code>{{ progeny_type }}</code>{% endif %}{% if as_alias_id %} | alias: <code>{{ as_alias_id }}</code>{% endif %}</p>
     </header>
 
     <section class="classroom-grid">
@@ -200,22 +202,28 @@
         {% elif active_tab == "workflow" %}
           <h2>Workflow</h2>
           <div class="people-row">
-            <strong>Hosted Layout</strong>
-            <small>classroom_orientation</small>
+            <strong>Analytics Provider</strong>
+            <small>{{ workflow_model.provider if workflow_model else "nginx_hosted" }}</small>
           </div>
           <div class="people-row">
-            <strong>Contract Ref</strong>
-            <small><code>{{ profile.contract.contract_id if profile and profile.contract else "(unset)" }}</code></small>
+            <strong>Domain</strong>
+            <small><code>{{ workflow_model.domain if workflow_model and workflow_model.domain else "(unset)" }}</code></small>
           </div>
           <div class="people-row">
-            <strong>Default Tabs</strong>
-            <small>
-              {% if profile and profile.hosted_interface and profile.hosted_interface.tabs %}
-                {{ profile.hosted_interface.tabs | join(", ") }}
-              {% else %}
-                stream, classwork, people, workflow
-              {% endif %}
-            </small>
+            <strong>Callback Email</strong>
+            <small><code>{{ workflow_model.callback_email if workflow_model and workflow_model.callback_email else "(unset)" }}</code></small>
+          </div>
+          <div class="people-row">
+            <strong>7-day Page Views</strong>
+            <small>{{ workflow_model.metrics.page_views_7d if workflow_model and workflow_model.metrics else 0 }}</small>
+          </div>
+          <div class="people-row">
+            <strong>7-day Unique Visitors</strong>
+            <small>{{ workflow_model.metrics.unique_visitors_7d if workflow_model and workflow_model.metrics else 0 }}</small>
+          </div>
+          <div class="people-row">
+            <strong>30-day Contact Events</strong>
+            <small>{{ workflow_model.metrics.contact_events_30d if workflow_model and workflow_model.metrics else 0 }}</small>
           </div>
         {% else %}
           <h2>Stream</h2>
@@ -232,7 +240,7 @@
 
     <div class="meta">
       hosted_type: <code>{{ hosted_payload.type if hosted_payload else "unknown" }}</code>
-      {% if hosted_tabs %}| default_hosted: <code>{{ hosted_tabs | tojson }}</code>{% endif %}
+      {% if hosted_tabs %}| tabs: <code>{{ hosted_tabs | tojson }}</code>{% endif %}
     </div>
   </section>
 </body>

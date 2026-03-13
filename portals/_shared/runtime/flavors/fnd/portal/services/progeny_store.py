@@ -4,15 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from portal.services.runtime_paths import member_profile_read_dirs
-
-
-def _tenant_dir(private_dir: Path) -> Path:
-    return member_profile_read_dirs(private_dir)[-1]
-
-
-def _member_dir(private_dir: Path) -> Path:
-    return member_profile_read_dirs(private_dir)[0]
+from portal.services.progeny_workspace import find_member_instance
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
@@ -49,20 +41,9 @@ def load_tenant_progeny(private_dir: Path, alias_id: str, tenant_id: str) -> Opt
     if not safe_tenant_id:
         return None
 
-    existing_dirs = [path for path in member_profile_read_dirs(private_dir) if path.exists() and path.is_dir()]
-    if not existing_dirs:
-        return None
-
-    for directory in existing_dirs:
-        for candidate in sorted(directory.glob("*.json")):
-            if not candidate.is_file():
-                continue
-            try:
-                payload = _read_json(candidate)
-            except Exception:
-                continue
-
-            if _match_tenant(payload, safe_tenant_id):
-                return payload
-
+    record = find_member_instance(private_dir, safe_tenant_id)
+    if record is not None:
+        payload = record.get("payload")
+        if isinstance(payload, dict) and _match_tenant(payload, safe_tenant_id):
+            return payload
     return None

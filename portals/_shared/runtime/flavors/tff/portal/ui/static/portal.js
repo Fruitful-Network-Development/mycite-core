@@ -25,6 +25,7 @@
 
   const PORTAL_THEME_STORAGE_KEY = "mycite.theme.portal.default";
   const CONTEXT_WIDTH_KEY = "mycite.layout.context.width";
+  const CONTEXT_OPEN_KEY = "mycite.layout.context.open";
   const INSPECTOR_WIDTH_KEY = "mycite.layout.inspector.width";
   const INSPECTOR_OPEN_KEY = "mycite.layout.inspector.open";
 
@@ -156,13 +157,25 @@
 
   function initWorkbenchLayout() {
     const shell = qs(".ide-shell");
+    const contextSidebar = qs("#portalContextSidebar");
     const inspector = qs("#portalInspector");
-    if (!shell || !inspector) return null;
+    if (!shell || !contextSidebar || !inspector) return null;
 
     function clamp(value, min, max) {
       const n = Number(value);
       if (!Number.isFinite(n)) return min;
       return Math.min(max, Math.max(min, n));
+    }
+
+    function syncShellToggleButtons() {
+      qsa("[data-shell-toggle]", shell).forEach(button => {
+        const target = button.getAttribute("data-shell-toggle") || "";
+        const isOpen = target === "context"
+          ? shell.getAttribute("data-context-collapsed") !== "true"
+          : shell.getAttribute("data-inspector-collapsed") !== "true";
+        button.classList.toggle("is-active", isOpen);
+        button.setAttribute("aria-pressed", isOpen ? "true" : "false");
+      });
     }
 
     function setContextWidth(value, persist) {
@@ -181,22 +194,36 @@
       }
     }
 
+    function setContextOpen(open, persist) {
+      const isOpen = !!open;
+      shell.setAttribute("data-context-collapsed", isOpen ? "false" : "true");
+      contextSidebar.classList.toggle("is-collapsed", !isOpen);
+      contextSidebar.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      syncShellToggleButtons();
+      if (persist) {
+        try { window.localStorage.setItem(CONTEXT_OPEN_KEY, isOpen ? "1" : "0"); } catch (_) {}
+      }
+    }
+
     function setInspectorOpen(open, persist) {
       const isOpen = !!open;
       shell.setAttribute("data-inspector-collapsed", isOpen ? "false" : "true");
       inspector.classList.toggle("is-collapsed", !isOpen);
       inspector.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      syncShellToggleButtons();
       if (persist) {
         try { window.localStorage.setItem(INSPECTOR_OPEN_KEY, isOpen ? "1" : "0"); } catch (_) {}
       }
     }
 
     const storedContext = parseInt(getStoredValue(CONTEXT_WIDTH_KEY), 10);
+    const storedContextOpen = getStoredValue(CONTEXT_OPEN_KEY);
     const storedInspector = parseInt(getStoredValue(INSPECTOR_WIDTH_KEY), 10);
     const storedInspectorOpen = getStoredValue(INSPECTOR_OPEN_KEY);
 
     setContextWidth(storedContext || 280, false);
     setInspectorWidth(storedInspector || 360, false);
+    setContextOpen(storedContextOpen !== "0", false);
     setInspectorOpen(storedInspectorOpen === "1", false);
 
     qsa("[data-splitter]", shell).forEach(splitter => {
@@ -231,7 +258,19 @@
       });
     });
 
+    qsa("[data-shell-toggle]", shell).forEach(button => {
+      button.addEventListener("click", () => {
+        const target = button.getAttribute("data-shell-toggle") || "";
+        if (target === "context") {
+          setContextOpen(shell.getAttribute("data-context-collapsed") === "true", true);
+          return;
+        }
+        setInspectorOpen(shell.getAttribute("data-inspector-collapsed") === "true", true);
+      });
+    });
+
     return {
+      setContextOpen,
       setInspectorOpen,
       setInspectorWidth
     };

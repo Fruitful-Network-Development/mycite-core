@@ -41,6 +41,7 @@ Enabled optional tools:
 - `paypal_service_agreement`
 - `aws_tenant_actions`
 - `aws_platform_admin`
+- `website_analytics`
 - `operations`
 
 Core SYSTEM surface, not an optional tool:
@@ -51,6 +52,11 @@ Retired:
 
 - `legacy_admin`
 - `paypal_demo`
+
+Notes:
+
+- `tenant_progeny_profiles` is now a shortcut into the canonical `UTILITIES -> Progeny` workspace rather than a separate editing surface.
+- Hosted defaults, broadcaster metadata, and progeny templates are authored through `private/network/hosted.json` via the build spec.
 
 ## Local run
 

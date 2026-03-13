@@ -69,7 +69,11 @@ class MemberProgenyApiTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir)
             app = Flask(__name__)
-            module.register_tenant_progeny_routes(app, private_dir=private_dir)
+            module.register_tenant_progeny_routes(
+                app,
+                private_dir=private_dir,
+                msn_id_provider=lambda: "provider-1",
+            )
             client = app.test_client()
 
             response = client.put(
@@ -82,7 +86,7 @@ class MemberProgenyApiTests(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 200)
 
-            canonical_path = private_dir / "network" / "progeny" / "member_progeny" / "2.json"
+            canonical_path = private_dir / "network" / "progeny" / "msn-provider-1.member-2.json"
             legacy_path = private_dir / "progeny" / "tenant" / "2.json"
             self.assertTrue(canonical_path.exists())
             self.assertFalse(legacy_path.exists())

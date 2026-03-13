@@ -11,6 +11,12 @@ Current anchor:
 
 Portal runtime resolves this structure and produces a deterministic preview payload before queueing AWS work.
 
+For FND/TFF hosted alias flows, the intended shape is:
+
+1. the email list lives in the member anthology
+2. alias/progeny metadata carries refs to that list
+3. FND AWS tooling reads those refs and produces the queued provider payload
+
 ## Tool split
 
 The current tool split is intentional:
@@ -36,6 +42,7 @@ Member profile metadata remains non-secret and now supports:
 
 - `aws_emailer_list_ref`: required for AWS emailer preview.
 - `aws_emailer_entry_ref`: optional hint/fallback for entry row typing.
+- `website_analytics_profile_id`, `website_analytics_ref`, and `website_analytics_callback_email`: hosted website analytics metadata used by the workflow tab and FND analytics tooling
 
 Forwarder/no-SMTP newsletter routing is defined in member metadata too:
 
@@ -62,6 +69,16 @@ Forwarder/no-SMTP newsletter routing is defined in member metadata too:
 ```
 
 This keeps SMTP disabled at the progeny profile layer while preserving deterministic routing metadata for queued AWS newsletter processing.
+
+Current FND tooling split:
+
+- `AWS Member Actions`
+  - loads member progeny refs and forwarder-only email policy
+  - previews anthology-backed emailer source payloads
+  - queues member-scoped AWS work
+- `AWS Platform/Admin`
+  - shows FND AWS platform status
+  - edits hosted callback mailbox metadata stored in `private/network/hosted.json`
 
 ## Preview endpoint
 

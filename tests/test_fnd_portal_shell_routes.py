@@ -58,7 +58,14 @@ class FndPortalShellRouteTests(unittest.TestCase):
             module = _load_fnd_app_module(Path(temp_dir))
             client = module.app.test_client()
 
-            self.assertEqual(client.get("/portal/system").status_code, 200)
+            system_response = client.get("/portal/system")
+            self.assertEqual(system_response.status_code, 200)
+            system_html = system_response.get_data(as_text=True)
+            self.assertIn('data-context-collapsed="false"', system_html)
+            self.assertIn('data-shell-toggle="context"', system_html)
+            self.assertIn('data-shell-toggle="inspector"', system_html)
+            self.assertIn('id="portalContextSidebar"', system_html)
+
             self.assertEqual(client.get("/portal/network?tab=hosted").status_code, 200)
             self.assertEqual(client.get("/portal/network?tab=profile").status_code, 200)
             self.assertEqual(client.get("/portal/utilities?tab=vault").status_code, 200)

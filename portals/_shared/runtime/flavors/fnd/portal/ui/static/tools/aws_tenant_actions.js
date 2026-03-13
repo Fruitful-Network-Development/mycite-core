@@ -22,11 +22,27 @@
 
   function updateTenantRefView() {
     var id = tenantId();
-    var refs = ((tenantProfiles[id] || {}).profile_refs || {});
+    var profile = tenantProfiles[id] || {};
+    var refs = (profile.profile_refs || {});
+    var policy = profile.email_policy || {};
+    var newsletter = policy.newsletter || {};
     renderRefMap(refs, {
       aws_profile_id: "#awst-ref-profile",
       aws_emailer_list_ref: "#awst-ref-list",
       aws_emailer_entry_ref: "#awst-ref-entry",
+    });
+    renderRefMap({
+      email_forwarder_address: refs.email_forwarder_address || policy.forwarder_address || "",
+      email_operator_inbox: refs.email_operator_inbox || policy.operator_inbox || "",
+      email_poc_address: refs.email_poc_address || policy.poc_address || "",
+      newsletter_ingest_address: refs.newsletter_ingest_address || newsletter.ingest_address || "",
+      newsletter_sender_address: refs.newsletter_sender_address || newsletter.sender_address || ""
+    }, {
+      email_forwarder_address: "#awst-email-forwarder",
+      email_operator_inbox: "#awst-email-operator",
+      email_poc_address: "#awst-email-poc",
+      newsletter_ingest_address: "#awst-email-news-ingest",
+      newsletter_sender_address: "#awst-email-news-sender"
     });
   }
 

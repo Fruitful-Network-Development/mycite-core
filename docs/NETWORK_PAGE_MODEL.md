@@ -9,6 +9,8 @@ NETWORK is both:
 - a shell workbench page (`/portal/network`)
 - the runtime surface for portal-to-portal metadata, request logs, alias interfaces, and hosted relationship views
 
+Hosted metadata is now consolidated into `private/network/hosted.json`. In the current direction that file absorbs the metadata responsibilities that had previously been modeled as separate `subject_congregation.json`, `broadcaster.json`, and progeny-template JSON concepts.
+
 ## Qualifier model
 
 Network APIs are grouped into three qualifier classes:
@@ -41,6 +43,8 @@ Canonical alias/member contact source priority:
 
 1. `profile_refs.contact_collection_ref`
 2. explicit override for tooling/tests
+
+This is the bridge between anthology-backed contact collections and hosted alias views.
 
 ## Reference inheritance
 

@@ -10,6 +10,7 @@
     <a class="page-tab {% if utilities_tab == 'tools' %}is-active{% endif %}" href="/portal/utilities?tab=tools">Tools</a>
     <a class="page-tab {% if utilities_tab == 'vault' %}is-active{% endif %}" href="/portal/utilities?tab=vault">Vault</a>
     <a class="page-tab {% if utilities_tab == 'peripherals' %}is-active{% endif %}" href="/portal/utilities?tab=peripherals">Peripherals</a>
+    <a class="page-tab {% if utilities_tab == 'progeny' %}is-active{% endif %}" href="/portal/utilities?tab=progeny&progeny_type=member">Progeny</a>
   </nav>
 
   {% if utilities_tab == "tools" %}
@@ -86,7 +87,7 @@
         </div>
       </article>
     </div>
-  {% else %}
+  {% elif utilities_tab == "peripherals" %}
     <article class="card">
       <div class="card__kicker">Runtime Peripherals</div>
       <div class="card__title">private/utilities/peripherals</div>
@@ -102,10 +103,105 @@
         {% endif %}
       </div>
     </article>
+  {% else %}
+    {% set workbench = progeny_workbench if progeny_workbench is defined and progeny_workbench is mapping else {} %}
+    {% set storage = workbench.get("storage") if workbench.get("storage") is mapping else {} %}
+    {% set selected_type = workbench.get("selected_type", "member") %}
+    {% set selected_template = workbench.get("selected_template") if workbench.get("selected_template") is mapping else {} %}
+    {% set selected_summary = workbench.get("selected_summary") if workbench.get("selected_summary") is mapping else {} %}
+    {% set selected_instance = workbench.get("selected_instance") if workbench.get("selected_instance") is mapping else {} %}
+    <div class="workbench-panels workbench-panels--double">
+      <article class="card">
+        <div class="card__kicker">Hosted Templates</div>
+        <div class="card__title">{{ selected_type|title }} Progeny Template</div>
+        <div class="card__body">
+          <p><code>directory</code>: {{ storage.get("directory", "private/network/progeny") }}</p>
+          <p><code>filename_pattern</code>: {{ storage.get("filename_pattern", "msn-<provider_msn_id>.<progeny_type>-<alias_associated_msn_id>.json") }}</p>
+          <p><code>template_version</code>: {{ selected_template.get("template_version", "") }}</p>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+            <button
+              type="button"
+              class="ops-btn"
+              data-progeny-edit-template
+              data-progeny-type="{{ selected_type }}"
+            >Edit Template JSON</button>
+            {% if selected_summary.get("instance_id") %}
+              <button
+                type="button"
+                class="ops-btn ops-btn--outline"
+                data-progeny-edit-instance
+                data-instance-id="{{ selected_summary.get('instance_id') }}"
+                data-progeny-type="{{ selected_type }}"
+              >Edit Selected Instance</button>
+            {% endif %}
+          </div>
+          <pre class="jsonblock">{{ workbench.get("selected_template_json", "{}") }}</pre>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card__kicker">Alias Preview</div>
+        <div class="card__title">
+          {% if selected_summary.get("title") %}{{ selected_summary.get("title") }}{% else %}No instance selected{% endif %}
+        </div>
+        <div class="card__body">
+          {% if workbench.get("preview_url") %}
+            <iframe
+              data-themed-iframe
+              src="{{ workbench.get('preview_url') }}"
+              title="Progeny alias preview"
+              style="width:100%;min-height:620px;border:1px solid var(--line);border-radius:10px;background:#fff;"
+            ></iframe>
+          {% else %}
+            <p>Select a progeny instance to preview the hosted alias workbench.</p>
+          {% endif %}
+        </div>
+      </article>
+    </div>
+
+    <article class="card" style="margin-top:12px;">
+      <div class="card__kicker">Instances</div>
+      <div class="card__title">{{ selected_type|title }} Progeny Instances</div>
+      <div class="card__body">
+        {% if workbench.get("instances") %}
+          <div class="vault-list">
+            {% for record in workbench.get("instances") %}
+              {% set payload = record.get("payload") if record.get("payload") is mapping else {} %}
+              {% set display = payload.get("display") if payload.get("display") is mapping else {} %}
+              <article class="vault-entry">
+                <div class="vault-entry__meta">
+                  <strong>{{ payload.get("title") or display.get("title") or record.get("instance_id") }}</strong>
+                  <span>{{ record.get("instance_id") }}</span>
+                </div>
+                <p class="vault-entry__notes">
+                  <code>{{ record.get("alias_associated_msn_id", "") }}</code>
+                  {% if record.get("source_kind") %} | {{ record.get("source_kind") }}{% endif %}
+                </p>
+                <div class="vault-entry__actions">
+                  <a class="ops-btn ops-btn--outline" href="/portal/utilities?tab=progeny&progeny_type={{ selected_type }}&instance={{ record.get('instance_id') }}">Select</a>
+                  <button
+                    type="button"
+                    class="ops-btn"
+                    data-progeny-edit-instance
+                    data-instance-id="{{ record.get('instance_id') }}"
+                    data-progeny-type="{{ selected_type }}"
+                  >Edit Fields</button>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p>No {{ selected_type }} progeny instances are present yet.</p>
+        {% endif %}
+      </div>
+    </article>
   {% endif %}
 {% endblock %}
 
 {% block scripts %}
+  {% if utilities_tab == "progeny" %}
+    <script src="/portal/static/tools/progeny_utilities.js"></script>
+  {% endif %}
   <script>
     (function () {
       var list = document.querySelector("[data-vault-list]");

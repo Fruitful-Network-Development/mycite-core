@@ -15,6 +15,7 @@ class MemberDisplay(TypedDict):
 class MemberCapabilities(TypedDict):
     paypal: bool
     aws: bool
+    analytics: bool
 
 
 class MemberProfileRefs(TypedDict):
@@ -27,6 +28,11 @@ class MemberProfileRefs(TypedDict):
     aws_profile_id: str
     aws_emailer_list_ref: str
     aws_emailer_entry_ref: str
+    website_domain: str
+    website_base_url: str
+    website_analytics_profile_id: str
+    website_analytics_ref: str
+    website_analytics_callback_email: str
     keycloak_realm_ref: str
     keycloak_client_ref: str
 
