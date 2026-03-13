@@ -1,4 +1,4 @@
-# PayPal Payment Processing Abstraction (Prototype)
+# PayPal Payment Processing Abstraction
 
 ## Purpose
 
@@ -27,6 +27,17 @@ Member `profile_refs` now supports:
 ```
 
 These are non-secret references only.
+
+## Tool split
+
+The current tool split is intentional:
+
+- `PayPal Member Actions`
+  - member-scoped checkout preview, profile sync, and order creation
+- `PayPal Service Agreement`
+  - FND-scoped PayPal status and webhook registration
+
+These are separate because member checkout routing and FND platform configuration are different workflows.
 
 ## Preview endpoint (FND portal)
 
@@ -69,4 +80,4 @@ Behavior:
 - `POST /api/admin/paypal/tenant/<tenant_id>/orders/create`
 - response now includes resolved `checkout_context` (return/cancel URLs and brand metadata)
 
-No direct end-user browser redirect is forced in this milestone; the tool returns deterministic context for staged integration with hosted tenant websites.
+No direct end-user browser redirect is forced in this phase; the tool returns deterministic context for staged integration with hosted member websites.

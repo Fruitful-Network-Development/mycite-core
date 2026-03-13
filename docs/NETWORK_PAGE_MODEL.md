@@ -1,64 +1,80 @@
-# NETWORK Page Model
+# Network Engine and Page Model
 
-## Goal
+## Scope
 
-NETWORK is a page-specific workbench consumer with Discord-like interaction structure:
+Current active implementation scope is FND + TFF.
 
-- global activity bar remains shell-global
-- left context sidebar stays stable across the page and groups view tabs plus interface/channel selections
-- center workbench changes with selected alias/log/P2P or hosted/profile tabs
-- right inspector holds profile/context detail
+NETWORK is both:
 
-## Context Sidebar Groups
+- a shell workbench page (`/portal/network`)
+- the runtime surface for portal-to-portal metadata, request logs, alias interfaces, and hosted relationship views
 
-Provided via page-local sidebar sections:
+## Qualifier model
 
-- network view tabs: `messages`, `hosted`, `profile`
-- aliases / organization interfaces
-- request-log channels
-- P2P channels
+Network APIs are grouped into three qualifier classes:
 
-Network template adds local filter input for these lists.
+- `anonymous`
+  - public options and discoverable contact resources
+- `asymmetric`
+  - signed portal-to-portal contract request/confirmation
+- `symmetric`
+  - vault-backed contract renewal and rotation flows
 
-## Workbench Modes
+Asymmetric verification remains the canonical trust boundary for inter-portal contract requests and confirmations.
 
-Template:
+## Request-log and contract flow
 
-- `portals/mycite-le_fnd/portal/ui/templates/services/network.html`
-- mirrored in TFF
+Current contract flow:
 
-Canonical route model:
+1. requesting portal sends a signed asymmetric request
+2. receiving portal verifies signer `msn_id` and public key against the contact card
+3. receiving portal appends verified evidence to its request log
+4. receiving portal returns/pushes confirmation evidence to the counterparty request log
+
+Request logs are part of the Network Engine surface and remain file-backed.
+
+## External contact collection
+
+Network external-contact-by-collection resolution should reuse Data Engine resolution rather than duplicate graph logic.
+
+Canonical alias/member contact source priority:
+
+1. `profile_refs.contact_collection_ref`
+2. explicit override for tooling/tests
+
+## Reference inheritance
+
+Canonical network metadata ref syntax:
+
+- `<msn_id>.<datum>`
+
+Compatibility policy:
+
+- dual-read for local, hyphen-qualified, and dot-qualified refs
+- dot-write for new network metadata
+
+Reference inheritance is a network-metadata layer concern in this phase. Anthology pair storage is not being redefined here.
+
+## Daemon boundary
+
+Network wrapper routes may request reference resolution, but daemon ownership remains in the Data Engine.
+
+The Network layer should call Data Engine resolution wrappers instead of maintaining a separate token/graph runtime.
+
+## NETWORK page behavior
+
+Canonical routes:
 
 - `/portal/network?tab=messages&kind=alias|log|p2p&id=...`
 - `/portal/network?tab=hosted`
 - `/portal/network?tab=profile`
 
-Messages workbench mode changes by `kind`:
+Workbench modes:
 
-- `alias`: organization interface workspace
-- `log`: request history workspace backed by `private/network/request_log/request_log.ndjson`
-- `p2p`: direct conversation workspace derived from request-log transmitter/receiver pairs
+- `alias`: hosted/member interface relationship
+- `log`: request-log channel evidence
+- `p2p`: direct conversation channel derived from logged pairs
+- `hosted`: hosted interface payloads from `private/network/hosted.json`
+- `profile`: portal config and public-card inspection
 
-Hosted renders from `private/network/hosted.json` with canonical `type` and `type_values`.
-
-Profile renders a three-pane workbench for:
-
-- `private/config.json`
-- `public/msn-<msn_id>.json`
-- `public/fnd-<msn_id>.json`
-
-## Inspector Usage
-
-Right inspector templates on NETWORK:
-
-- portal contact card/profile
-- selected interface/channel detail
-- configuration/geography detail
-
-## Aliases / Request Logs / P2P Semantics
-
-- aliases: organization-scoped interface entries
-- request logs: request/history channel entries
-- P2P: direct-message-like conversation channels
-
-Legacy `view=alias|log|p2p` links remain redirect-compatible during rollout.
+The page keeps the existing left-context / central-workbench / right-inspector model.

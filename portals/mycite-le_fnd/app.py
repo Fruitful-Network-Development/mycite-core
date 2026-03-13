@@ -256,16 +256,6 @@ def _options_private(msn_id: str) -> Dict[str, Any]:
             "methods": ["GET", "OPTIONS"],
             "auth": "keycloak_or_local",
         },
-        "paypal_demo_update": {
-            "href": f"/portal/api/tools/paypal_demo/update?msn_id={msn_id}",
-            "methods": ["POST", "OPTIONS"],
-            "auth": "keycloak_or_local",
-        },
-        "paypal_demo_confirm": {
-            "href": f"/portal/api/tools/paypal_demo/confirm?msn_id={msn_id}",
-            "methods": ["POST", "OPTIONS"],
-            "auth": "keycloak_or_local",
-        },
     }
 
 

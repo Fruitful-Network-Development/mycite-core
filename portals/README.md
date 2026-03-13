@@ -1,77 +1,46 @@
 # Portals Directory
 
-`portals/` contains runnable portal implementations plus shared runtime modules.
+`portals/` contains active portal runtimes, shared runtime modules, shared assets, and portal build/update tooling.
 
-## Runnable portal instances
+## Active runtimes
 
 - `mycite-le_fnd`
-- `mycite-le_cvcc`
-- `mycite-ne_mw`
-- `mycite-ne_mt`
 - `mycite-le_tff`
 
-## Shared runtime/assets
+Retired from active scope:
 
-- `_shared/` shared core-service and data-contract modules
+- `mycite-ne_mt`
+
+Directories without an app/runtime surface should not be treated as active portal implementations.
+
+## Shared runtime
+
+- `_shared/` shared core-service, network, data-engine, and tool-loading modules
 - `assets/` shared icons and UI assets
-- `scripts/` portal-adjacent helper scripts
+- `scripts/portal_build.py` capture/materialize workflow for portal build specs
 
-## POC workspace model
+## Build-spec workflow
 
-- CVCC and TFF expose board-member classroom surfaces.
-- Canonical tabs: `feed`, `calendar`, `people`.
-- TFF adds `workflow`.
-- Legacy `streams` links are compatibility redirects to `feed`.
-- Event visibility is backend allowlist-driven from `organization_config.default_values/added_values` in active portal config (`private/config.json`, with legacy fallback support).
+Each active portal carries a repo-owned `build.json`:
 
-## Progeny embed landing
+- `mycite-le_fnd/build.json`
+- `mycite-le_tff/build.json`
 
-- Canonical chooser route: `GET /portal/embed/progeny`
-- Query params:
-  - `member_msn_id` (optional, highlights matching card)
-  - `as_alias_id` (optional context carry)
-- Primary action on each card: open `/portal/alias/<alias_id>`
-- Secondary action (when available): open type-specific embed route (`board_member`, `tenant`, or `poc`)
-- Landing route is intentionally read-only and does not enforce board-member allowlisting.
+Those specs materialize the live state files the runtime reads:
 
-## Broadcast Config
+- `private/config.json`
+- legacy-compatible `private/mycite-config-*.json`
+- `private/network/hosted.json`
+- `private/tools.manifest.json`
+- public profile cards
+- optional seed files under `private/network/*` and related progeny/profile trees
 
-- Supported config path: `private/config.json` (canonical), with `private/mycite-config-*.json` as fallback.
-- Config keys:
-  - `organization_config.default_values.broadcast_config`
-  - `organization_config.added_values.broadcast_config`
-  - `progeny_type_configs.broadcast` (optional)
-- Required top-level keys:
-  - `schema`
-  - `type`
-  - `channels`
-  - `members`
-  - `homepage_sections`
-  - `inheritance_rules`
-- Canonical channel keys: `paypal`, `aws`, `keycloak`
-- Default behavior:
-  - FND enables broadcast mode by default.
-  - Other portals can opt in by setting `"enabled": true`.
-
-## Local progeny behavior
-
-Portal runtimes auto-seed missing progeny refs from active config into local profile files under `private/progeny/`.
-
-## Shell/runtime standard
-
-All portals follow the shared service-shell/runtime contract:
-
-- shared service runtime: `../portals/_shared/portal/core_services/`
-- shared tool runtime: `../portals/_shared/portal/tools/runtime.py`
-- shell contract doc: [`../docs/TOOLS_SHELL.md`](../docs/TOOLS_SHELL.md)
+Anthology is intentionally not generated in this phase.
 
 ## Canonical docs
 
 - [`../README.md`](../README.md)
-- [`../docs/DEVELOPMENT_PLAN.md`](../docs/DEVELOPMENT_PLAN.md)
-- [`../docs/POC_WORKSPACE_MODEL.md`](../docs/POC_WORKSPACE_MODEL.md)
-- [`../docs/PROGENY_PROFILE_CARDS.md`](../docs/PROGENY_PROFILE_CARDS.md)
-- [`../docs/DOCUMENTATION_POLICY.md`](../docs/DOCUMENTATION_POLICY.md)
-- [`../docs/REQUEST_LOG_V1.md`](../docs/REQUEST_LOG_V1.md)
-- [`../docs/DATA_TOOL.md`](../docs/DATA_TOOL.md)
-- [`../docs/TIME_SERIES_ABSTRACTION.md`](../docs/TIME_SERIES_ABSTRACTION.md)
+- [`../docs/PORTAL_BUILD_SPEC.md`](../docs/PORTAL_BUILD_SPEC.md)
+- [`../docs/TOOLS_SHELL.md`](../docs/TOOLS_SHELL.md)
+- [`../docs/CANONICAL_DATA_ENGINE.md`](../docs/CANONICAL_DATA_ENGINE.md)
+- [`../docs/NETWORK_PAGE_MODEL.md`](../docs/NETWORK_PAGE_MODEL.md)

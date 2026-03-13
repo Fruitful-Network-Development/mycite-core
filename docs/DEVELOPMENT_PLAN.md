@@ -1,121 +1,42 @@
 # Development Plan
 
-## Current Baseline (March 2026)
+## Active baseline
 
-### Active in-repo runnable portals
+Active runnable portals in this repo:
 
 - `mycite-le_fnd`
-- `mycite-le_cvcc`
-- `mycite-ne_mw`
-- `mycite-ne_mt`
 - `mycite-le_tff`
 
-## Architectural Direction
+Retired from active scope:
 
-### 1) Service shell first
+- `mycite-ne_mt`
 
-Primary user navigation remains service-based:
+## Current architectural direction
 
-- `Home`
-- `Data`
-- `Network`
-- `Tools`
-- `Inbox`
+1. Keep the shared service-shell/runtime generic.
+2. Keep the Data Tool as a core SYSTEM workbench surface.
+3. Keep portal/network/data state file-backed rather than database-backed.
+4. Make portal-specific tool/config/hosted/public-card authoring flow through per-portal `build.json`.
+5. Keep anthology state-owned until the example/base abstraction stabilizes.
 
-### 2) Data service with right-margin NIMM summary
+## Current implementation priorities
 
-Data UI baseline:
+1. Stabilize the example portal anthology in `/srv/compose/portals/state/tff_portal/data/anthology.json`.
+2. Continue network-engine hardening around request logs, contract verification, and reference inheritance.
+3. Keep AWS and PayPal split by scope:
+   - member-scoped tools
+   - FND/platform-scoped tools
+4. Consolidate duplicate helper/runtime patterns underneath those tools instead of merging the workflows.
+5. Keep documentation canonical and remove time-stamped implementation clutter once folded into the main docs.
 
-- canonical route-driven tabs: `Anthology`, `SAMRAS`, `Time Series`, `Geographic`
-- Advanced NIMM is no longer a peer data tab in the main nav
-- Advanced NIMM is shown as a right-side summary card
-- Full advanced controls open in an overlay sidebar from that summary card
+## Canonical references
 
-SAMRAS specifics:
-
-- instance files auto-discovered by pattern `data/<msn_id>.<instance_id>.json`
-- two-column editor contract: `address_id`, `title`
-- right-side horizontal hierarchy view with collapse/expand (default depth 2)
-- new table creation writes anthology linkage through `1-0-1` via directive refs
-
-### 3) JSON-only prototype model
-
-Current runtime constraints remain locked:
-
-- anthology/conspectus/samras are JSON-only
-- anthology compact rows preserve multi-pair entries
-- `value_group == 0` rows deterministically recompute conspectus references
-- first-pair compatibility fields (`reference`, `magnitude`) remain during transition
-
-### 4) Time series abstraction
-
-Time series remains anthology-backed:
-
-- event anchor/index: `4-0-1`
-- event rows: `4-1-*`
-- event semantics: `start_unix_s` + `duration_s`
-- API contract documented in `TIME_SERIES_ABSTRACTION.md`
-
-### 5) Request log v1 dual-mode
-
-- endpoint remains `/portal/api/request_log`
-- legacy payloads remain accepted
-- v1 payloads enforce dual-read/dot-write datum ref normalization and status refs
-- typed fanout logs write to `private/request_log/types/<type>.ndjson`
-
-### 6) AWS emailer abstraction (preview + queue)
-
-- member metadata refs in `profile_refs` select anthology-backed emailer abstractions
-- member `email_policy` keeps SMTP disabled (`forwarder_no_smtp`) while defining forwarder/reply/newsletter routing
-- canonical FND preview endpoint resolves deterministic payloads from anthology (`/portal/api/aws/member/<member_id>/emailer_preview`)
-- legacy compatibility endpoint remains available (`/portal/api/aws/tenant/<tenant_id>/emailer_preview`)
-- AWS proxy accepts queued `emailer_sync_preview` actions only (no direct SES send yet)
-
-### 7) PayPal payment-processing abstraction (preview + sync queue)
-
-- member metadata refs in `profile_refs` define client website checkout context (including per-member site domain/base URL)
-- canonical FND preview endpoint validates/derives checkout URLs (`/portal/api/paypal/member/<member_id>/checkout_preview`)
-- legacy compatibility endpoint remains available (`/portal/api/paypal/tenant/<tenant_id>/checkout_preview`)
-- PayPal proxy accepts queued `checkout_profile_sync` actions and persists non-secret checkout context
-
-### 8) Shared datum mediation defaults
-
-- shared mediation lives under `portals/_shared/portal/mediation/`
-- default interpretations include boolean refs, char/ASCII, dns wire, text-byte formats, timestamps/spans, lengths, and coordinates
-- services decode/encode through shared contracts instead of portal-specific one-off handlers
-
-### 9) Multi-portal progeny UX reinstatement (CVCC/MW/MT/TFF)
-
-- Local-first portal instance model remains canonical for non-FND portals (`off|local|live` managed by control API).
-- CVCC and TFF provide board-member classroom surfaces:
-  - tabs: `feed`, `calendar`, `people`
-  - TFF adds `workflow`
-- Compatibility routing keeps `tab=streams` as a redirect to `tab=feed`.
-- Feed/calendar visibility is backend allowlist-driven from active portal config (`organization_config.default_values/added_values`).
-- Missing progeny refs in portal configs auto-seed local profile files in `private/progeny/`.
-- `private/config.json` is canonical for legal-entity page behavior defaults (with legacy fallback support).
-
-## Next Milestones
-
-1. Stabilize NIMM overlay UX and reduce visual noise in advanced diagnostics.
-2. Add automated API tests for time-series CRUD and request-log v1 validation.
-3. Add cross-portal rollout patch for SAMRAS APIs/UI after FND validation.
-4. Package FND-specific tools cleanly under service/tool boundaries.
-5. Expand board-workspace write controls (feed/calendar/workflow) with stricter role-group policies from organization-profile config layers.
-6. Formalize tenant-specific email format policies (`dns_wire_format` vs `text_byte_email_format`) before enabling outbound send.
-7. Finalize per-tenant hosted website mappings (TFF/CVCC and future tenants) for PayPal checkout URLs and webhook routes.
-8. Continue staged migration from legacy `tenant`/`board_member` terminology toward canonical `member`.
-
-## Canonical References
-
+- [`PORTAL_BUILD_SPEC.md`](PORTAL_BUILD_SPEC.md)
 - [`TOOLS_SHELL.md`](TOOLS_SHELL.md)
+- [`CANONICAL_DATA_ENGINE.md`](CANONICAL_DATA_ENGINE.md)
+- [`NETWORK_PAGE_MODEL.md`](NETWORK_PAGE_MODEL.md)
 - [`DATA_TOOL.md`](DATA_TOOL.md)
-- [`SAMRAS_PAGE.md`](SAMRAS_PAGE.md)
-- [`TIME_SERIES_ABSTRACTION.md`](TIME_SERIES_ABSTRACTION.md)
 - [`REQUEST_LOG_V1.md`](REQUEST_LOG_V1.md)
 - [`AWS_EMAILER_ABSTRACTION.md`](AWS_EMAILER_ABSTRACTION.md)
 - [`PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md`](PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md)
-- [`POC_WORKSPACE_MODEL.md`](POC_WORKSPACE_MODEL.md)
-- [`PROGENY_PROFILE_CARDS.md`](PROGENY_PROFILE_CARDS.md)
-- [`PROGENY_CONFIG_MODEL.md`](PROGENY_CONFIG_MODEL.md)
 - [`DATUM_MEDIATION_DEFAULTS.md`](DATUM_MEDIATION_DEFAULTS.md)

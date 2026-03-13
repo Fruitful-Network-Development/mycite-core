@@ -6,7 +6,6 @@ Applies to:
 
 - `portals/mycite-le_fnd`
 - `portals/mycite-le_tff`
-- `portals/mycite-ne_mt` (transitional)
 
 SYSTEM page hosts the anthology-first workbench.
 
@@ -55,7 +54,13 @@ Graph endpoint supports controls:
 Context/layout:
 
 - context: `global` / `local`
-- layout: `linear` / `radial`
+- layout: `table` / `linear` / `radial`
+
+Workbench behavior:
+
+- `table` is the default layout
+- raw datum and abstraction-path detail stay collapsed by default until opened
+- datum editing/detail is shown in the right inspector column
 
 ## API Contract (Stable)
 

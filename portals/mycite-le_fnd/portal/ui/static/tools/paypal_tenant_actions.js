@@ -1,39 +1,15 @@
 (function () {
-  function qs(sel) {
-    return document.querySelector(sel);
-  }
+  var runtime = window.ProviderToolRuntime || {};
+  var qs = runtime.qs || function (sel) { return document.querySelector(sel); };
+  var api = runtime.api;
+  var appendLog = runtime.appendLog || (async function () {});
+  var loadMemberProfiles = runtime.loadMemberProfiles;
+  var renderRefMap = runtime.renderRefMap || function () {};
 
   function out(value) {
     var node = qs("#ppt-output");
     if (!node) return;
     node.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  }
-
-  async function api(method, path, body) {
-    var res = await fetch(path, {
-      method: method,
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    var payload = {};
-    try {
-      payload = await res.json();
-    } catch (_) {
-      payload = {};
-    }
-    if (!res.ok) {
-      throw new Error(payload.error || ("HTTP " + res.status));
-    }
-    return payload;
-  }
-
-  async function appendLog(event) {
-    try {
-      await api("POST", "/portal/api/request_log", event);
-    } catch (_) {
-      // best-effort only
-    }
   }
 
   var tenantProfiles = {};
@@ -47,48 +23,29 @@
   function updateTenantRefView() {
     var id = tenantId();
     var refs = ((tenantProfiles[id] || {}).profile_refs || {});
-    var profileNode = qs("#ppt-ref-profile");
-    var siteNode = qs("#ppt-ref-site");
-    var returnNode = qs("#ppt-ref-return");
-    var cancelNode = qs("#ppt-ref-cancel");
-    var webhookNode = qs("#ppt-ref-webhook");
-    var brandNode = qs("#ppt-ref-brand");
-    if (profileNode) profileNode.textContent = String(refs.paypal_profile_id || "");
-    if (siteNode) siteNode.textContent = String(refs.paypal_site_base_url || "");
-    if (returnNode) returnNode.textContent = String(refs.paypal_checkout_return_url || "");
-    if (cancelNode) cancelNode.textContent = String(refs.paypal_checkout_cancel_url || "");
-    if (webhookNode) webhookNode.textContent = String(refs.paypal_webhook_listener_url || "");
-    if (brandNode) brandNode.textContent = String(refs.paypal_checkout_brand_name || "");
+    renderRefMap(refs, {
+      paypal_profile_id: "#ppt-ref-profile",
+      paypal_site_base_url: "#ppt-ref-site",
+      paypal_checkout_return_url: "#ppt-ref-return",
+      paypal_checkout_cancel_url: "#ppt-ref-cancel",
+      paypal_webhook_listener_url: "#ppt-ref-webhook",
+      paypal_checkout_brand_name: "#ppt-ref-brand",
+    });
   }
 
   async function loadTenants() {
-    var select = qs("#ppt-tenant");
-    if (!select) return;
+    if (!loadMemberProfiles) return;
     try {
-      var data = await api("GET", "/portal/api/progeny/members");
-      var items = (data.items || []).filter(function (item) {
-        var caps = item.capabilities || {};
-        var status = item.status || {};
-        return !!caps.paypal && (status.state || "active") === "active";
+      var loaded = await loadMemberProfiles({
+        select: "#ppt-tenant",
+        capability: "paypal",
+        emptyLabel: "No PayPal-capable members",
       });
       tenantProfiles = {};
-      items.forEach(function (item) {
-        var id = String(item.member_id || item.tenant_id || "").trim();
-        if (id) tenantProfiles[id] = item;
-      });
-      select.innerHTML = items
-        .map(function (item) {
-          var id = String(item.member_id || item.tenant_id || "").trim();
-          var label = (item.display || {}).title || id;
-          return '<option value="' + id + '">' + label + " (" + id + ")</option>";
-        })
-        .join("");
-      if (!items.length) {
-        select.innerHTML = '<option value="">No PayPal-capable tenants</option>';
-      }
+      tenantProfiles = loaded.profiles || {};
       updateTenantRefView();
     } catch (err) {
-      out("Failed to load tenants: " + err.message);
+      out("Failed to load members: " + err.message);
     }
   }
 
