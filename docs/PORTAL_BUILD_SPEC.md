@@ -1,0 +1,76 @@
+# Portal Build Spec
+
+## Purpose
+
+Each active portal now carries a repo-owned `build.json` used to materialize the live file-backed portal state.
+
+Active specs:
+
+- `portals/mycite-le_fnd/build.json`
+- `portals/mycite-le_tff/build.json`
+
+## Phase-1 authority
+
+`build.json` is authoritative for:
+
+- portal identity metadata
+- enabled optional tools
+- tool mount targets
+- canonical private config payload
+- legacy-compatible private config payloads
+- hosted payloads
+- public profile/card payloads
+- seed-file lists for alias/progeny/profile scaffolding
+
+Not authoritative yet:
+
+- anthology content
+- runtime request logs
+- vault key material
+- admin/runtime action logs
+
+## Commands
+
+Capture current source/state into build specs:
+
+```bash
+python3 portals/scripts/portal_build.py capture
+```
+
+Materialize build specs into live state:
+
+```bash
+python3 portals/scripts/portal_build.py materialize
+```
+
+Single portal variants are also supported:
+
+```bash
+python3 portals/scripts/portal_build.py capture mycite-le_fnd
+python3 portals/scripts/portal_build.py materialize mycite-le_tff
+```
+
+## Materialized outputs
+
+Materialization writes only the state files the runtime expects for portal-specific behavior:
+
+- `private/config.json`
+- `private/mycite-config-*.json`
+- `private/network/hosted.json`
+- `private/tools.manifest.json`
+- public profile cards
+- declared seed files under `private/network/*` and related profile trees
+
+It does not overwrite `data/anthology.json`.
+
+## Tool policy
+
+- `data_tool` is recorded as a core SYSTEM surface, not an optional packaged tool
+- retired/demo tools should not appear in `tools.enabled`
+- `private/tools.manifest.json` is generated from `build.json`
+
+## Source-of-truth boundary
+
+Repo build specs author portal-specific configuration.
+
+Live state remains the runtime source actually mounted into containers.

@@ -1,15 +1,26 @@
-# AWS Emailer Abstraction (Prototype)
+# AWS Emailer Abstraction
 
 ## Purpose
 
 Define how member-scoped AWS tooling consumes anthology abstractions without storing secrets in portal metadata.
 
-Current prototype anchor:
+Current anchor:
 
 - list abstraction datum: `10-0-1` (`emailer_list`)
 - entries referenced under that list (for example `9-2-*`)
 
 Portal runtime resolves this structure and produces a deterministic preview payload before queueing AWS work.
+
+## Tool split
+
+The current tool split is intentional:
+
+- `AWS Member Actions`
+  - member-scoped preview/sync/provision requests
+- `AWS Platform/Admin`
+  - FND-scoped platform status
+
+These are separate because they operate on different scopes and APIs, not because of accidental duplication.
 
 ## Member metadata keys
 
@@ -77,7 +88,7 @@ Hex rendering of the full email address as literal text bytes. It stores the ent
 
 ## Queue integration
 
-AWS proxy currently accepts queued preview payloads only:
+AWS admin/runtime currently accepts queued preview payloads only:
 
 - `POST /api/admin/aws/tenant/<tenant_id>/provision`
 - action: `emailer_sync_preview`
@@ -85,4 +96,4 @@ AWS proxy currently accepts queued preview payloads only:
   - `emailer_preview`
   - `format_hint` (optional)
 
-No direct SES send is performed in this milestone.
+No direct SES send is performed in this phase.

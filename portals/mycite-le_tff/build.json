@@ -1,0 +1,417 @@
+{
+  "schema": "mycite.portal.build.v1",
+  "portal_id": "mycite-le_tff",
+  "portal_instance_id": "tff",
+  "state_root_hint": "/srv/compose/portals/state/tff_portal",
+  "meta": {
+    "msn_id": "3-2-3-17-77-2-6-3-1-6",
+    "title": "trapp_family_farm"
+  },
+  "tools": {
+    "enabled": [
+      "config_schema",
+      "agro_erp"
+    ],
+    "core_system_surfaces": [
+      "data_tool"
+    ],
+    "retired": [
+      "legacy_admin",
+      "paypal_demo"
+    ],
+    "mount_targets": {
+      "config_schema": "peripherals.tools",
+      "agro_erp": "peripherals.tools"
+    }
+  },
+  "private_config": {
+    "canonical": {
+      "msn_id": "3-2-3-17-77-2-6-3-1-6",
+      "schema": "mycite.profile.v0",
+      "title": "trapp_family_farm",
+      "private_key_ref": "vault://keys/3-2-3-17-77-2-6-3-1-6_private.pem",
+      "request_log": [],
+      "symmetric_key_contracts": [],
+      "aliases": [
+        {
+          "3-2-3-17-77-1-6-4-1-4": "alias-3-2-3-17-77-1-6-4-1-4-3-2-3-17-77-2-6-3-1-6-board_member.json"
+        }
+      ],
+      "progeny": {
+        "admin": {
+          "poc": [
+            "msn-3-2-3-17-77-2-6-3-1-6-progeny-3-2-3-17-77-2-6-3-1-1-poc.json"
+          ]
+        },
+        "member": {
+          "board_member": [
+            "msn-3-2-3-17-77-2-6-3-1-6-progeny-3-2-3-17-77-2-6-3-1-1-board_member.json"
+          ]
+        },
+        "user": {}
+      },
+      "property": {
+        "title": "parcel-1100440",
+        "bbox": [
+          "CF67E2F01893AD7E",
+          "CF69230E1894CAD8"
+        ],
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            "CF67E46E18940B21",
+            "CF67E73C18948039",
+            "CF67B232189473D1",
+            "CF67C1AE189411B8",
+            "CF67D9BA18940D30",
+            "CF67DF0E18940C17",
+            "CF67E46E18940B21"
+          ]
+        }
+      },
+      "organization_configuration": {
+        "file_name": "subject_congregation.json",
+        "default_values": {
+          "stream_config": {
+            "allowed_post_types": [
+              "post.create",
+              "board_notice"
+            ],
+            "newest_first": true
+          },
+          "calendar_config": {
+            "allowed_event_types": [
+              "meeting",
+              "group_event",
+              "committee_meeting"
+            ],
+            "exclude_request_log_types": true
+          },
+          "people_config": {
+            "profile_source_priority": [
+              "progeny.internal",
+              "progeny.config_ref",
+              "alias"
+            ]
+          },
+          "workflow_config": {
+            "enabled": true,
+            "legal_entity_type": "subject_congregation",
+            "sections": [
+              {
+                "id": "operations",
+                "title": "Operations",
+                "description": "Core operating workflow checkpoints."
+              },
+              {
+                "id": "farm_fields",
+                "title": "Farm Fields",
+                "description": "Field inventories and seasonal status references."
+              },
+              {
+                "id": "compliance",
+                "title": "Compliance",
+                "description": "Compliance and policy milestones."
+              }
+            ],
+            "anthology_refs": {
+              "farm_fields": "",
+              "workflow_state": ""
+            }
+          },
+          "legal_entity_defaults": {
+            "schema": "mycite.legal_entity_type.v1",
+            "type": "subject_congregation",
+            "title": "Subject Congregation",
+            "role_groups": {
+              "members": [],
+              "users": [],
+              "poc_admin": []
+            },
+            "workflow_defaults": {
+              "farm_fields": [],
+              "committees": []
+            }
+          }
+        },
+        "added_values": {
+          "broadcast_config": {
+            "enabled": false,
+            "title": "Trapp Family Farm"
+          }
+        }
+      }
+    },
+    "canonical_source": "/srv/compose/portals/state/tff_portal/private/config.json",
+    "legacy_compat": [
+      {
+        "filename": "mycite-config-3-2-3-17-77-2-6-3-1-6.json",
+        "payload": {
+          "msn_id": "3-2-3-17-77-2-6-3-1-6",
+          "schema": "mycite.profile.v0",
+          "title": "trapp_family_farm",
+          "private_key_ref": "vault://keys/3-2-3-17-77-2-6-3-1-6_private.pem",
+          "request_log": [],
+          "symmetric_key_contracts": [],
+          "aliases": [
+            {
+              "3-2-3-17-77-1-6-4-1-4": "alias-3-2-3-17-77-1-6-4-1-4-3-2-3-17-77-2-6-3-1-6-board_member.json"
+            }
+          ],
+          "progeny": {
+            "admin": {
+              "poc": [
+                "msn-3-2-3-17-77-2-6-3-1-6-progeny-3-2-3-17-77-2-6-3-1-1-poc.json"
+              ]
+            },
+            "member": {
+              "board_member": [
+                "msn-3-2-3-17-77-2-6-3-1-6-progeny-3-2-3-17-77-2-6-3-1-1-board_member.json"
+              ]
+            },
+            "user": {}
+          },
+          "property": {
+            "title": "parcel-1100440",
+            "bbox": [
+              "CF67E2F01893AD7E",
+              "CF69230E1894CAD8"
+            ],
+            "geometry": {
+              "type": "Polygon",
+              "coordinates": [
+                "CF67E46E18940B21",
+                "CF67E73C18948039",
+                "CF67B232189473D1",
+                "CF67C1AE189411B8",
+                "CF67D9BA18940D30",
+                "CF67DF0E18940C17",
+                "CF67E46E18940B21"
+              ]
+            }
+          },
+          "organization_configuration": {
+            "file_name": "subject_congregation.json",
+            "default_values": {
+              "stream_config": {
+                "allowed_post_types": [
+                  "post.create",
+                  "board_notice"
+                ],
+                "newest_first": true
+              },
+              "calendar_config": {
+                "allowed_event_types": [
+                  "meeting",
+                  "group_event",
+                  "committee_meeting"
+                ],
+                "exclude_request_log_types": true
+              },
+              "people_config": {
+                "profile_source_priority": [
+                  "progeny.internal",
+                  "progeny.config_ref",
+                  "alias"
+                ]
+              },
+              "workflow_config": {
+                "enabled": true,
+                "legal_entity_type": "subject_congregation",
+                "sections": [
+                  {
+                    "id": "operations",
+                    "title": "Operations",
+                    "description": "Core operating workflow checkpoints."
+                  },
+                  {
+                    "id": "farm_fields",
+                    "title": "Farm Fields",
+                    "description": "Field inventories and seasonal status references."
+                  },
+                  {
+                    "id": "compliance",
+                    "title": "Compliance",
+                    "description": "Compliance and policy milestones."
+                  }
+                ],
+                "anthology_refs": {
+                  "farm_fields": "",
+                  "workflow_state": ""
+                }
+              },
+              "legal_entity_defaults": {
+                "schema": "mycite.legal_entity_type.v1",
+                "type": "subject_congregation",
+                "title": "Subject Congregation",
+                "role_groups": {
+                  "members": [],
+                  "users": [],
+                  "poc_admin": []
+                },
+                "workflow_defaults": {
+                  "farm_fields": [],
+                  "committees": []
+                }
+              }
+            },
+            "added_values": {
+              "broadcast_config": {
+                "enabled": false,
+                "title": "Trapp Family Farm"
+              }
+            }
+          }
+        },
+        "source": "/srv/compose/portals/state/tff_portal/private/mycite-config-3-2-3-17-77-2-6-3-1-6.json"
+      }
+    ]
+  },
+  "hosted": {
+    "filename": "hosted.json",
+    "source": "/srv/compose/portals/state/tff_portal/private/network/hosted.json",
+    "payload": {
+      "type": "classroom_workbench",
+      "type_values": {
+        "default_hosted": [
+          {
+            "stream": "classroom/stream.json"
+          },
+          {
+            "classwork": "classroom/classwork.json"
+          },
+          {
+            "people": "classroom/people.json"
+          },
+          {
+            "workflow": "classroom/workflow.json"
+          }
+        ],
+        "channels": [
+          "contracts.json",
+          "request_log.json"
+        ],
+        "members": [
+          "members.json"
+        ],
+        "orientation": {
+          "style": "google_classroom_reference",
+          "hero_title": "TFF Member Workspace"
+        }
+      }
+    }
+  },
+  "public_profiles": {
+    "msn_card": {
+      "filename": "msn-3-2-3-17-77-2-6-3-1-6.json",
+      "source": "/srv/compose/portals/state/tff_portal/public/msn-3-2-3-17-77-2-6-3-1-6.json",
+      "payload": {
+        "msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "schema": "mycite.profile.v0",
+        "title": "trapp_family_farm",
+        "public_key": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEADA8D+zFdj2KPE1+GPPg3eqee8njrJ5duC3QE8mr6J7I=\n-----END PUBLIC KEY-----\n",
+        "entity_type": "legal_entity",
+        "accessible": {},
+        "options": {
+          "self": {
+            "href": "/3-2-... .json",
+            "methods": [
+              "GET",
+              "OPTIONS"
+            ],
+            "auth": "none"
+          },
+          "portal": {
+            "href": "/portal",
+            "methods": [
+              "GET",
+              "OPTIONS"
+            ],
+            "auth": "required"
+          },
+          "config": {
+            "href": "/portal/api/config",
+            "methods": [
+              "GET",
+              "PUT",
+              "OPTIONS"
+            ],
+            "auth": "required"
+          }
+        }
+      }
+    },
+    "fnd_card": {
+      "filename": "fnd-3-2-3-17-77-2-6-3-1-6.json",
+      "source": "/srv/compose/portals/state/tff_portal/public/fnd-3-2-3-17-77-2-6-3-1-6.json",
+      "payload": {
+        "schema": "mycite.fnd.profile.v1",
+        "msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "title": "trapp_family_farm",
+        "summary": "Brand profile for the TFF portal workbench.",
+        "logo": "",
+        "banner": "",
+        "links": [
+          {
+            "label": "Portal",
+            "href": "/portal/system"
+          },
+          {
+            "label": "Public Profile",
+            "href": "/msn-3-2-3-17-77-2-6-3-1-6.json"
+          }
+        ]
+      }
+    }
+  },
+  "seed_files": [
+    {
+      "source": "private/network/aliases/alias-3-2-3-17-77-1-6-4-1-4-3-2-3-17-77-2-6-3-1-6-board_member.json",
+      "target": "private/network/aliases/alias-3-2-3-17-77-1-6-4-1-4-3-2-3-17-77-2-6-3-1-6-board_member.json"
+    },
+    {
+      "source": "private/network/contracts/contract-contract-fnd-tff-member-001.json",
+      "target": "private/network/contracts/contract-contract-fnd-tff-member-001.json"
+    },
+    {
+      "source": "private/network/progeny/admin_progeny/admin-config.json",
+      "target": "private/network/progeny/admin_progeny/admin-config.json"
+    },
+    {
+      "source": "private/network/progeny/member_progeny/member-config.json",
+      "target": "private/network/progeny/member_progeny/member-config.json"
+    },
+    {
+      "source": "private/network/progeny/user_progeny/user-config.json",
+      "target": "private/network/progeny/user_progeny/user-config.json"
+    },
+    {
+      "source": "private/progeny/internal.archived.20260307/board-member-dg.json",
+      "target": "private/progeny/internal.archived.20260307/board-member-dg.json"
+    },
+    {
+      "source": "private/progeny/internal.archived.20260307/board-member-eb.json",
+      "target": "private/progeny/internal.archived.20260307/board-member-eb.json"
+    },
+    {
+      "source": "private/progeny/internal.archived.20260307/board-member-jt.json",
+      "target": "private/progeny/internal.archived.20260307/board-member-jt.json"
+    },
+    {
+      "source": "private/progeny/internal.archived.20260307/board-member-ks.json",
+      "target": "private/progeny/internal.archived.20260307/board-member-ks.json"
+    },
+    {
+      "source": "private/utilities/vault/keypass_inventory.json",
+      "target": "private/utilities/vault/keypass_inventory.json"
+    }
+  ],
+  "anthology": {
+    "authoritative": false,
+    "path_hint": "/srv/compose/portals/state/tff_portal/data/anthology.json",
+    "sha256": "ea398e7e4556d5278593e27049bcac566baaa893532ada3541d180c197020e22",
+    "notes": [
+      "State-owned anthology; phase-1 materialize never overwrites this file."
+    ]
+  }
+}

@@ -9,7 +9,6 @@
   "hosted": [],
   "progeny": [],
   "enabled_tools": [
-    "data_tool",
     "tenant_progeny_profiles",
     "fnd_provisioning",
     "paypal_tenant_actions",

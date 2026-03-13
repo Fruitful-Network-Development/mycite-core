@@ -1,39 +1,15 @@
 (function () {
-  function qs(sel) {
-    return document.querySelector(sel);
-  }
+  var runtime = window.ProviderToolRuntime || {};
+  var qs = runtime.qs || function (sel) { return document.querySelector(sel); };
+  var api = runtime.api;
+  var appendLog = runtime.appendLog || (async function () {});
+  var loadMemberProfiles = runtime.loadMemberProfiles;
+  var renderRefMap = runtime.renderRefMap || function () {};
 
   function out(value) {
     var node = qs("#awst-output");
     if (!node) return;
     node.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  }
-
-  async function api(method, path, body) {
-    var res = await fetch(path, {
-      method: method,
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    var payload = {};
-    try {
-      payload = await res.json();
-    } catch (_) {
-      payload = {};
-    }
-    if (!res.ok) {
-      throw new Error(payload.error || ("HTTP " + res.status));
-    }
-    return payload;
-  }
-
-  async function appendLog(event) {
-    try {
-      await api("POST", "/portal/api/request_log", event);
-    } catch (_) {
-      // best-effort only
-    }
   }
 
   var tenantProfiles = {};
@@ -47,42 +23,26 @@
   function updateTenantRefView() {
     var id = tenantId();
     var refs = ((tenantProfiles[id] || {}).profile_refs || {});
-    var profileNode = qs("#awst-ref-profile");
-    var listNode = qs("#awst-ref-list");
-    var entryNode = qs("#awst-ref-entry");
-    if (profileNode) profileNode.textContent = String(refs.aws_profile_id || "");
-    if (listNode) listNode.textContent = String(refs.aws_emailer_list_ref || "");
-    if (entryNode) entryNode.textContent = String(refs.aws_emailer_entry_ref || "");
+    renderRefMap(refs, {
+      aws_profile_id: "#awst-ref-profile",
+      aws_emailer_list_ref: "#awst-ref-list",
+      aws_emailer_entry_ref: "#awst-ref-entry",
+    });
   }
 
   async function loadTenants() {
-    var select = qs("#awst-tenant");
-    if (!select) return;
+    if (!loadMemberProfiles) return;
     try {
-      var data = await api("GET", "/portal/api/progeny/members");
-      var items = (data.items || []).filter(function (item) {
-        var caps = item.capabilities || {};
-        var status = item.status || {};
-        return !!caps.aws && (status.state || "active") === "active";
+      var loaded = await loadMemberProfiles({
+        select: "#awst-tenant",
+        capability: "aws",
+        emptyLabel: "No AWS-capable members",
       });
       tenantProfiles = {};
-      items.forEach(function (item) {
-        var id = String(item.member_id || item.tenant_id || "").trim();
-        if (id) tenantProfiles[id] = item;
-      });
-      select.innerHTML = items
-        .map(function (item) {
-          var id = String(item.member_id || item.tenant_id || "").trim();
-          var label = (item.display || {}).title || id;
-          return '<option value="' + id + '">' + label + " (" + id + ")</option>";
-        })
-        .join("");
-      if (!items.length) {
-        select.innerHTML = '<option value="">No AWS-capable tenants</option>';
-      }
+      tenantProfiles = loaded.profiles || {};
       updateTenantRefView();
     } catch (err) {
-      out("Failed to load tenants: " + err.message);
+      out("Failed to load members: " + err.message);
     }
   }
 

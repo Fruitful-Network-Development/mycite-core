@@ -102,10 +102,10 @@ def _config_path(private_dir: Path, msn_id: Optional[str]) -> Optional[Path]:
     return None
 
 
-def read_enabled_tools(private_dir: Path, msn_id: str | None) -> list[str]:
+def read_enabled_tools(private_dir: Path, msn_id: str | None) -> list[str] | None:
     path = _config_path(private_dir, msn_id)
     if path is None:
-        return []
+        return None
 
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -113,6 +113,9 @@ def read_enabled_tools(private_dir: Path, msn_id: str | None) -> list[str]:
         return []
 
     if not isinstance(payload, dict):
+        return []
+
+    if "enabled_tools" not in payload:
         return []
 
     raw = payload.get("enabled_tools")
@@ -245,6 +248,7 @@ def register_tool_blueprints(
     logger: logging.Logger | None = None,
 ) -> list[Dict[str, Any]]:
     log = logger or _LOG
+    explicit_tool_ids = enabled_tool_ids is not None
 
     configured: list[str] = []
     seen = set()
@@ -264,7 +268,7 @@ def register_tool_blueprints(
         seen.add(tool_id)
         configured.append(tool_id)
 
-    if configured:
+    if explicit_tool_ids:
         selected_tool_ids = configured
     else:
         selected_tool_ids = [

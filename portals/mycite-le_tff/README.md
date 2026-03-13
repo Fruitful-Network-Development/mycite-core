@@ -1,12 +1,30 @@
 # mycite-le_tff
 
-TFF legal-entity portal runtime (`trapp_family_farm`).
+TFF legal-entity portal runtime and current example portal.
 
-## Role in current milestone
+## Current role
 
-- Board-member classroom surface for TFF.
-- Tabs: `feed`, `calendar`, `people`, and `workflow`.
-- Workflow content is config-driven from active config (`private/config.json`, with legacy fallback) via `organization_config`/`organization_configuration` (`file_name`, `default_values`, and `added_values`).
+- example/base portal for evolving the starter anthology abstraction
+- classroom-style member workspace surface
+- hosts the TFF-specific optional tools:
+  - `config_schema`
+  - `agro_erp`
+
+## Build spec
+
+Repo-owned build source:
+
+- [`build.json`](build.json)
+
+Materialized live state:
+
+- `/srv/compose/portals/state/tff_portal/`
+
+Current example anthology in live state:
+
+- `/srv/compose/portals/state/tff_portal/data/anthology.json`
+
+That anthology file remains state-owned and is not overwritten by phase-1 materialization.
 
 ## Local run
 
@@ -18,12 +36,10 @@ pip install -r requirements.txt
 python app.py
 ```
 
-## Runtime notes
+## Canonical docs
 
-- Source of truth is this repo path.
-- Compose runtime state is under `/srv/compose/portals/state/tff_portal/`.
-- Missing config progeny refs are auto-seeded into `private/progeny/` local profile files.
-- Config structure/default-field inspector is available at `/portal/tools/config_schema/home`.
-- AGRO ERP daemon tool is available at `/portal/tools/agro_erp/home` for anthology-aware property coordinate resolution.
-- Auth model matches FND via Keycloak `fruitful` realm (portal oauth2-proxy client).
-- Footer auth action is `Sign out`; switch-user session fanout is intentionally disabled.
+- [mycite-core root](../../README.md)
+- [Portal Build Spec](../../docs/PORTAL_BUILD_SPEC.md)
+- [Canonical Data Engine](../../docs/CANONICAL_DATA_ENGINE.md)
+- [Network Page Model](../../docs/NETWORK_PAGE_MODEL.md)
+- [AGRO ERP Tool](../../docs/AGRO_ERP_TOOL.md)

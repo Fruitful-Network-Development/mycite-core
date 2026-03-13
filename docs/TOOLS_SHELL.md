@@ -1,115 +1,74 @@
-# IDE Shell Standard
+# Service Shell Standard
 
-## Locked Shell Layout
+## Current shell contract
 
-All runnable portals (`mycite-le_fnd`, `mycite-le_tff`, `mycite-ne_mt`) use one shared IDE-style shell in `portal/ui/templates/base.html`:
+Active portals use one shared shell composed of:
 
-- Menu bar (visual-only): `File`, `Edit`, `Selection`, `View`, `Go`, `Run`, `Terminal`, `Help`
-- Activity bar (global service navigation)
-- Left context sidebar (page-aware)
-- Workbench (main content)
-- Right inspector/drawer (collapsible, contextual)
+- top menu bar
+- activity bar
+- left context sidebar
+- central workbench
+- right inspector column
 
-Persistent navigation remains on the left. Focused inspection/editing opens on the right.
+The workbench viewport is the primary scroll region. Sidebars and the activity bar stay pinned to the shell frame.
 
-## Route Model
+## Canonical routes
 
-Canonical shell routes:
-
-- `GET /portal` -> redirect to `GET /portal/system`
+- `GET /portal` -> `/portal/system`
 - `GET /portal/system`
 - `GET /portal/network`
 - `GET /portal/utilities`
-- `GET /portal/peripherals`
 
-Compatibility redirects are preserved:
+Compatibility redirects remain:
 
-- `GET /portal/home` -> `/portal/system`
-- `GET /portal/data` (+ legacy subpaths) -> `/portal/system`
-- `GET /portal/tools` -> `/portal/peripherals?tab=tools`
-- `GET /portal/inbox` -> `/portal/utilities?tab=inbox`
-- `GET /portal/peripheral` -> `/portal/peripherals?tab=peripherals`
-- `GET /portal/network/<legacy_tab>` -> `/portal/network?view=...`
+- `/portal/home` -> `/portal/system`
+- `/portal/data` -> `/portal/system`
+- `/portal/tools` -> `/portal/utilities?tab=tools`
+- `/portal/inbox` -> `/portal/network?tab=messages&kind=log&id=request_log`
+- `/portal/peripheral` -> `/portal/utilities?tab=peripherals`
 
-The shell logo routes to `GET /portal/system` and uses `assets/icons/logos/fnd.svg`.
+## Activity bar
 
-## Activity Bar
+Primary service entries are:
 
-Primary activity entries are:
-
+- `SYSTEM`
 - `NETWORK`
 - `UTILITIES`
-- `PERIPHERALS`
-- `SYSTEM`
 
-Legacy top-level entries (`INBOX`, `ALIASES`, `TOOLS`, `PROGENY`) are not separate activity-bar items.
+FND adds compact activity-bar shortcuts for its enabled organization tools. Those shortcuts are derived from the materialized tool state, not from hard-coded shell forks.
 
-Session actions in the activity footer:
+## Tool runtime contract
 
-- `Switch Active Portal`
-- `Sign Out`
+Optional tools are loaded through the shared runtime:
 
-## Page Model
+- `portals/_shared/portal/tools/runtime.py`
 
-### NETWORK
+Authoring source:
 
-`NETWORK` uses a Discord-like interaction model:
+- per-portal `build.json`
 
-- left context sections: `Alias Interfaces`, `Request Logs`, `P2P`
-- workbench updates from selected alias/log/P2P item
-- profile/contact-card inspection opens in the right inspector
+Materialized runtime inputs:
 
-### UTILITIES
-
-`UTILITIES` hosts utility surfaces only:
-
-- `Inbox`
-- `Launchers` (tools mounted to `utilities`)
-
-Utilities consume the core shell and do not redefine it.
-
-### PERIPHERALS
-
-`PERIPHERALS` is tabbed:
-
-- `Tools`
-- `Peripherals`
-- `Progeny`
-- `Configuration`
-- `Vault`
-
-Tools in this page are mounted through extension metadata (`peripherals.tools`).
-
-### SYSTEM
-
-`SYSTEM` is the shell home/splash context:
-
-- left context sidebar is profile-oriented
-- workbench hosts current data-facing workspace
-- profile/data detail panels open in the right inspector
-
-## Inspector Model
-
-Global inspector runtime is provided in `portal/ui/static/portal.js` (`window.PortalInspector`):
-
-- `open(payload)`
-- `close()`
-- `toggle(payload)`
-- `openTemplate(templateId, title, subtitle)`
-
-Pages inject contextual content by template or payload. Datum investigation can be opened from the data workbench and shown in this right-side inspector.
-
-## Extension-Point Rule
-
-Tools are mounted through shared runtime (`portals/_shared/portal/tools/runtime.py`) and must not fork shell layout/routes.
-
-Optional per-portal manifest:
-
+- `private/config.json`
+- `private/mycite-config-*.json` (legacy compatibility)
 - `private/tools.manifest.json`
 
-Supported mount targets:
+Rules:
 
-- `utilities`
-- `peripherals.tools`
+- `data_tool` is a core SYSTEM surface, not an optional packaged tool
+- missing `enabled_tools` in a real config means no optional tools are enabled
+- package auto-discovery is only a fallback when no portal config exists
 
-One-off portal tools are consumers of shell slots and routes, not alternate shells.
+## Inspector model
+
+Global inspector runtime is provided by `portal/ui/static/portal.js` (`window.PortalInspector`).
+
+Pages may:
+
+- open contextual cards/templates
+- show selected alias/member detail
+- move datum editing into the right inspector instead of overlaying the workbench
+
+## Extension rule
+
+Tools consume shell slots and core APIs. They do not define alternate shells or alternate top-level route models.

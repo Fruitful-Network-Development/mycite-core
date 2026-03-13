@@ -1,12 +1,45 @@
 # mycite-le_fnd
 
-Portal instance directory in `mycite-core`.
+FND legal-entity portal runtime.
 
-## Role
+## Current role
 
-- Active app runtime (`app.py` present).
-- Uses shared service-shell/tool-runtime conventions from `portals/_shared`.
-- Footer includes account/portal hub with `Switch User`, remembered account selector, and portal availability list.
+- primary organization/admin portal
+- hosts FND-scoped and member-scoped AWS/PayPal admin tools
+- provides the canonical SYSTEM/NETWORK/UTILITIES shell for the organization-facing runtime
+
+## Build spec
+
+Repo-owned build source:
+
+- [`build.json`](build.json)
+
+Materialized live state:
+
+- `/srv/compose/portals/state/fnd_portal/`
+
+Phase-1 build material covers tools/config/hosted/public cards plus seed files. Anthology remains state-owned.
+
+## Normalized tool inventory
+
+Enabled optional tools:
+
+- `tenant_progeny_profiles`
+- `fnd_provisioning`
+- `paypal_tenant_actions`
+- `paypal_service_agreement`
+- `aws_tenant_actions`
+- `aws_platform_admin`
+- `operations`
+
+Core SYSTEM surface, not an optional tool:
+
+- `data_tool`
+
+Retired:
+
+- `legacy_admin`
+- `paypal_demo`
 
 ## Local run
 
@@ -18,20 +51,10 @@ pip install -r requirements.txt
 python app.py
 ```
 
-## Deployment note
-
-This directory is source-of-truth code. `compose/portals` builds directly from this repository path.
-
-Runtime state lives under `/srv/compose/portals/state/<portal_instance>/`.
-
-Do not patch code under running containers; rebuild the target portal service from `/srv/compose/portals` after updates.
-
 ## Canonical docs
 
 - [mycite-core root](../../README.md)
+- [Portal Build Spec](../../docs/PORTAL_BUILD_SPEC.md)
 - [Service Shell Standard](../../docs/TOOLS_SHELL.md)
-- [Development Plan](../../docs/DEVELOPMENT_PLAN.md)
 - [AWS Emailer Abstraction](../../docs/AWS_EMAILER_ABSTRACTION.md)
 - [PayPal Payment Abstraction](../../docs/PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md)
-- [Request Log v1](../../docs/REQUEST_LOG_V1.md)
-- [Documentation Policy](../../docs/DOCUMENTATION_POLICY.md)
