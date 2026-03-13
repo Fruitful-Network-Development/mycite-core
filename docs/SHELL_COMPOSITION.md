@@ -14,13 +14,13 @@ The left context sidebar and right inspector are resizable. The inspector is col
 
 Primary template:
 
-- `portals/mycite-le_fnd/portal/ui/templates/base.html`
-- mirrored in TFF package
+- `portals/_shared/runtime/flavors/fnd/portal/ui/templates/base.html`
+- mirrored in `portals/_shared/runtime/flavors/tff/`
 
 Primary styling:
 
-- `portals/mycite-le_fnd/portal/ui/static/portal.css`
-- mirrored in TFF package
+- `portals/_shared/runtime/flavors/fnd/portal/ui/static/portal.css`
+- mirrored in `portals/_shared/runtime/flavors/tff/`
 
 ## Responsibility Split
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -16,7 +17,12 @@ except ModuleNotFoundError:  # pragma: no cover - environment-dependent
 
 
 def _load_tenant_progeny_module():
-    path = Path(__file__).resolve().parents[1] / "portals" / "mycite-le_fnd" / "portal" / "api" / "tenant_progeny.py"
+    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    flavor_root = portals_root / "_shared" / "runtime" / "flavors" / "fnd"
+    for token in (str(portals_root), str(flavor_root)):
+        if token not in sys.path:
+            sys.path.insert(0, token)
+    path = flavor_root / "portal" / "api" / "tenant_progeny.py"
     spec = importlib.util.spec_from_file_location("fnd_tenant_progeny_api_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

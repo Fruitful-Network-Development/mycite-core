@@ -22,19 +22,23 @@ _TOOL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 ACTIVE_PORTALS: dict[str, dict[str, str]] = {
     "mycite-le_example": {
         "portal_instance_id": "example",
+        "runtime_flavor": "tff",
         "state_dir": "/srv/compose/portals/state/example_portal",
     },
     "mycite-le_fnd": {
         "portal_instance_id": "fnd",
+        "runtime_flavor": "fnd",
         "state_dir": "/srv/compose/portals/state/fnd_portal",
     },
     "mycite-le_tff": {
         "portal_instance_id": "tff",
+        "runtime_flavor": "tff",
         "state_dir": "/srv/compose/portals/state/tff_portal",
     },
 }
 
 SEED_PATTERNS = (
+    "data/presentation/**/*.json",
     "private/network/aliases/**/*.json",
     "private/network/contracts/**/*.json",
     "private/network/progeny/**/*.json",
@@ -129,22 +133,47 @@ def _matching_legacy_config(private_root: Path, msn_id: str) -> tuple[dict[str, 
     return payload, filename, str(path) if payload is not None else ""
 
 
-def _collect_seed_files(portal_dir: Path) -> list[dict[str, str]]:
-    out: list[dict[str, str]] = []
+def _serialize_seed_file(path: Path, target_rel: str) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "target": target_rel,
+        "source_hint": str(path),
+    }
+    text = path.read_text(encoding="utf-8")
+    if path.suffix.lower() == ".json":
+        try:
+            entry["payload_json"] = json.loads(text)
+            return entry
+        except Exception:
+            pass
+    entry["payload_text"] = text
+    return entry
+
+
+def _collect_seed_files(portal_dir: Path, state_root: Path) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for pattern in SEED_PATTERNS:
-        for path in sorted(portal_dir.glob(pattern)):
-            if not path.is_file():
-                continue
-            rel = path.relative_to(portal_dir).as_posix()
-            if rel in seen:
-                continue
-            seen.add(rel)
-            out.append({"source": rel, "target": rel})
+    for root in (portal_dir, state_root):
+        if not root.exists() or not root.is_dir():
+            continue
+        for pattern in SEED_PATTERNS:
+            for path in sorted(root.glob(pattern)):
+                if not path.is_file():
+                    continue
+                rel = path.relative_to(root).as_posix()
+                if rel in seen:
+                    continue
+                seen.add(rel)
+                out.append(_serialize_seed_file(path, rel))
     return out
 
 
-def build_portal_spec(portal_id: str, portal_dir: Path, state_root: Path, portal_instance_id: str) -> dict[str, Any]:
+def build_portal_spec(
+    portal_id: str,
+    portal_dir: Path,
+    state_root: Path,
+    portal_instance_id: str,
+    runtime_flavor: str,
+) -> dict[str, Any]:
     repo_private = portal_dir / "private"
     repo_public = portal_dir / "public"
     state_private = state_root / "private"
@@ -216,6 +245,7 @@ def build_portal_spec(portal_id: str, portal_dir: Path, state_root: Path, portal
         "schema": BUILD_SCHEMA,
         "portal_id": portal_id,
         "portal_instance_id": portal_instance_id,
+        "runtime_flavor": str(runtime_flavor or "").strip().lower() or portal_instance_id,
         "state_root_hint": str(state_root),
         "meta": {
             "msn_id": msn_id,
@@ -250,7 +280,7 @@ def build_portal_spec(portal_id: str, portal_dir: Path, state_root: Path, portal
                 "payload": public_fnd or {},
             },
         },
-        "seed_files": _collect_seed_files(portal_dir),
+        "seed_files": _collect_seed_files(portal_dir, state_root),
         "anthology": anthology,
     }
     return spec
@@ -324,15 +354,23 @@ def materialize_build_spec(build_path: Path, target_state_root: Path | None = No
     for entry in spec.get("seed_files") or []:
         if not isinstance(entry, dict):
             continue
-        source_rel = str(entry.get("source") or "").strip()
         target_rel = str(entry.get("target") or "").strip()
-        if not source_rel or not target_rel:
+        if not target_rel:
+            continue
+        target_path = (target_root / target_rel).resolve()
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        if "payload_json" in entry:
+            target_path.write_text(json.dumps(entry.get("payload_json"), indent=2) + "\n", encoding="utf-8")
+            continue
+        if "payload_text" in entry:
+            target_path.write_text(str(entry.get("payload_text") or ""), encoding="utf-8")
+            continue
+        source_rel = str(entry.get("source") or "").strip()
+        if not source_rel:
             continue
         source_path = (portal_dir / source_rel).resolve()
         if not source_path.exists() or not source_path.is_file():
             continue
-        target_path = (target_root / target_rel).resolve()
-        target_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, target_path)
 
     return target_root
@@ -359,11 +397,18 @@ def _portal_instance_id_for(portal_id: str) -> str:
     return str(ACTIVE_PORTALS[portal_id]["portal_instance_id"])
 
 
+def _runtime_flavor_for(portal_id: str) -> str:
+    if portal_id not in ACTIVE_PORTALS:
+        raise ValueError(f"No default runtime_flavor configured for {portal_id}")
+    return str(ACTIVE_PORTALS[portal_id].get("runtime_flavor") or ACTIVE_PORTALS[portal_id]["portal_instance_id"])
+
+
 def capture_portal(portal_id: str, state_root: Path | None = None) -> Path:
     portal_dir = _portal_dir(portal_id)
     resolved_state_root = state_root or _state_root_for(portal_id)
     portal_instance_id = _portal_instance_id_for(portal_id)
-    spec = build_portal_spec(portal_id, portal_dir, resolved_state_root, portal_instance_id)
+    runtime_flavor = _runtime_flavor_for(portal_id)
+    spec = build_portal_spec(portal_id, portal_dir, resolved_state_root, portal_instance_id, runtime_flavor)
     return write_build_spec(portal_dir, spec)
 
 

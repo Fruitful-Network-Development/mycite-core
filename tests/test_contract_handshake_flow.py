@@ -27,8 +27,9 @@ def _write_json(path: Path, payload: dict) -> None:
 
 
 def _load_fnd_app_module(temp_root: Path):
-    portal_root = Path(__file__).resolve().parents[1] / "portals" / "mycite-le_fnd"
-    token = str(portal_root)
+    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    runtime_root = portals_root / "runtime"
+    token = str(portals_root)
     if token not in sys.path:
         sys.path.insert(0, token)
 
@@ -50,8 +51,10 @@ def _load_fnd_app_module(temp_root: Path):
     os.environ["MSN_ID"] = FND_MSN_ID
     os.environ["MYCITE_ENABLE_DEV_KEYGEN"] = "1"
     os.environ["MYCITE_ALLOW_INSECURE_SIGNATURES"] = "0"
+    os.environ["PORTAL_RUNTIME_FLAVOR"] = "fnd"
+    os.environ["MYCITE_PORTALS_ROOT"] = str(portals_root)
 
-    path = portal_root / "app.py"
+    path = runtime_root / "app.py"
     spec = importlib.util.spec_from_file_location("fnd_contract_flow_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

@@ -1,6 +1,0 @@
-# NOTE: Docker build context is /srv/repo/mycite-core/portals,
-# so effective ignore rules should be defined in:
-#   /srv/repo/mycite-core/portals/.dockerignore
-.venv
-__pycache__
-*.pyc

@@ -4,8 +4,8 @@
 
 Applies to:
 
-- `portals/mycite-le_fnd`
-- `portals/mycite-le_tff`
+- `portals/_shared/runtime/flavors/fnd`
+- `portals/_shared/runtime/flavors/tff`
 
 SYSTEM page hosts the anthology-first workbench.
 
@@ -92,3 +92,5 @@ UI consumer:
 
 - `portal/ui/templates/tools/partials/data_tool_shell.html`
 - `portal/ui/static/tools/data_tool.js`
+
+In the repo, these paths now live under the shared runtime flavor trees rather than under the per-portal spec directories.

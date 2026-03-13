@@ -18,6 +18,11 @@ Materialized live state:
 
 - `/srv/compose/portals/state/example_portal/`
 
+Current shared runtime:
+
+- `../runtime/`
+- `../_shared/runtime/flavors/tff/`
+
 Workshop anthology in live state:
 
 - `/srv/compose/portals/state/example_portal/data/anthology.json`

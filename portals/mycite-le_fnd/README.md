@@ -1,6 +1,6 @@
 # mycite-le_fnd
 
-FND legal-entity portal runtime.
+FND portal build spec.
 
 ## Current role
 
@@ -8,15 +8,26 @@ FND legal-entity portal runtime.
 - hosts FND-scoped and member-scoped AWS/PayPal admin tools
 - provides the canonical SYSTEM/NETWORK/UTILITIES shell for the organization-facing runtime
 
+## Current role
+
+- repo-owned build source for the FND live portal instance
+- no longer a standalone runtime root
+- materializes state for the shared generic runtime plus the `fnd` runtime flavor
+
 ## Build spec
 
-Repo-owned build source:
+Repo-owned spec:
 
 - [`build.json`](build.json)
 
 Materialized live state:
 
 - `/srv/compose/portals/state/fnd_portal/`
+
+Current shared runtime:
+
+- `../runtime/`
+- `../_shared/runtime/flavors/fnd/`
 
 Phase-1 build material covers tools/config/hosted/public cards plus seed files. Anthology remains state-owned.
 
@@ -44,11 +55,11 @@ Retired:
 ## Local run
 
 ```bash
-cd /srv/repo/mycite-core/portals/mycite-le_fnd
+cd /srv/repo/mycite-core/portals/runtime
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python app.py
+PORTAL_RUNTIME_FLAVOR=fnd python app.py
 ```
 
 ## Canonical docs

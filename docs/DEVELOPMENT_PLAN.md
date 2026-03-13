@@ -2,7 +2,7 @@
 
 ## Active baseline
 
-Active runnable portals in this repo:
+Active portal specs in this repo:
 
 - `mycite-le_example`
 - `mycite-le_fnd`
@@ -19,6 +19,7 @@ Retired from active scope:
 3. Keep portal/network/data state file-backed rather than database-backed.
 4. Make portal-specific tool/config/hosted/public-card authoring flow through per-portal `build.json`.
 5. Keep anthology state-owned until the example/base abstraction stabilizes.
+6. Continue shrinking per-portal repo directories toward spec-only ownership while executable runtime code lives in the shared runtime tree.
 
 ## Current implementation priorities
 

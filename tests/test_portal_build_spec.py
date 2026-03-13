@@ -59,10 +59,11 @@ class PortalBuildSpecTests(unittest.TestCase):
             (state_root / "private" / "config.json").write_text(json.dumps(state_config) + "\n", encoding="utf-8")
             (state_root / "data" / "anthology.json").write_text(json.dumps({"4-0-1": {"magnitude": "demo"}}) + "\n", encoding="utf-8")
 
-            spec_a = module.build_portal_spec("mycite-demo", portal_dir, state_root, "demo")
-            spec_b = module.build_portal_spec("mycite-demo", portal_dir, state_root, "demo")
+            spec_a = module.build_portal_spec("mycite-demo", portal_dir, state_root, "demo", "demo")
+            spec_b = module.build_portal_spec("mycite-demo", portal_dir, state_root, "demo", "demo")
 
             self.assertEqual(spec_a, spec_b)
+            self.assertEqual(spec_a["runtime_flavor"], "demo")
             self.assertEqual(spec_a["tools"]["enabled"], ["keep_one", "keep_two"])
             self.assertEqual(spec_a["tools"]["core_system_surfaces"], ["data_tool"])
             self.assertEqual(spec_a["private_config"]["canonical"]["property"]["title"], "state-property")
