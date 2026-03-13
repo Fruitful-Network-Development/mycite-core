@@ -20,6 +20,10 @@ RETIRED_TOOL_IDS = {"legacy_admin", "paypal_demo"}
 _TOOL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 ACTIVE_PORTALS: dict[str, dict[str, str]] = {
+    "mycite-le_example": {
+        "portal_instance_id": "example",
+        "state_dir": "/srv/compose/portals/state/example_portal",
+    },
     "mycite-le_fnd": {
         "portal_instance_id": "fnd",
         "state_dir": "/srv/compose/portals/state/fnd_portal",

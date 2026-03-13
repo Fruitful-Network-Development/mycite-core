@@ -6,6 +6,7 @@ Canonical source for the MyCite portal framework, active portal implementations,
 
 Active runnable portals in this repo:
 
+- `portals/mycite-le_example`
 - `portals/mycite-le_fnd`
 - `portals/mycite-le_tff`
 
@@ -24,12 +25,13 @@ Placeholder/non-runnable directories should not be treated as active portal runt
 
 Example anthology currently being evolved as the base abstraction:
 
-- `/srv/compose/portals/state/tff_portal/data/anthology.json`
+- `/srv/compose/portals/state/example_portal/data/anthology.json`
 
 ## Portal build model
 
 Portal-specific authoring now starts from per-portal repo specs:
 
+- `portals/mycite-le_example/build.json`
 - `portals/mycite-le_fnd/build.json`
 - `portals/mycite-le_tff/build.json`
 
@@ -53,8 +55,9 @@ Build/update script:
 - `portals/_shared/` shared runtime, network, data-engine, and tool-loading modules
 - `portals/assets/` shared icons/UI assets
 - `portals/scripts/` portal build/update helpers
+- `portals/mycite-le_example/` example/demo portal build spec
 - `portals/mycite-le_fnd/` FND runtime
-- `portals/mycite-le_tff/` TFF/example runtime
+- `portals/mycite-le_tff/` TFF runtime
 - `docs/` canonical product and runtime documentation
 
 ## Canonical docs

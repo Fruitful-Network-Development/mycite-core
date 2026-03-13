@@ -4,6 +4,7 @@
 
 ## Active runtimes
 
+- `mycite-le_example`
 - `mycite-le_fnd`
 - `mycite-le_tff`
 
@@ -23,6 +24,7 @@ Directories without an app/runtime surface should not be treated as active porta
 
 Each active portal carries a repo-owned `build.json`:
 
+- `mycite-le_example/build.json`
 - `mycite-le_fnd/build.json`
 - `mycite-le_tff/build.json`
 

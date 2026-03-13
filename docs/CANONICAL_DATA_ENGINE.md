@@ -6,7 +6,7 @@ Portal data runtime is file-backed.
 
 - canonical anthology: `data/anthology.json`
 - canonical example anthology currently under active development:
-  - `/srv/compose/portals/state/tff_portal/data/anthology.json`
+  - `/srv/compose/portals/state/example_portal/data/anthology.json`
 
 Repo `build.json` files may record anthology metadata/checksum, but anthology content remains state-owned in this phase and is never overwritten by materialization.
 

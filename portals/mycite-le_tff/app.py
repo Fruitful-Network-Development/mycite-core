@@ -60,7 +60,12 @@ FALLBACK_DIR = BASE_DIR
 REPO_ROOT = BASE_DIR.parent
 ICONS_DIR = REPO_ROOT / "assets" / "icons"
 PORTAL_INSTANCE_ID = str(os.environ.get("PORTAL_INSTANCE_ID") or BASE_DIR.name).strip().lower()
-IS_TFF_PORTAL = "tff" in PORTAL_INSTANCE_ID
+PORTAL_RUNTIME_FLAVOR = str(os.environ.get("PORTAL_RUNTIME_FLAVOR") or PORTAL_INSTANCE_ID or BASE_DIR.name).strip().lower()
+IS_TFF_PORTAL = PORTAL_RUNTIME_FLAVOR == "tff" or "tff" in PORTAL_RUNTIME_FLAVOR
+PORTAL_ENTRY_PATH = (
+    str(os.environ.get("PORTAL_ENTRY_PATH") or ("/portal/tff" if IS_TFF_PORTAL else "/portal/fnd")).strip()
+    or ("/portal/tff" if IS_TFF_PORTAL else "/portal/fnd")
+)
 DEFAULT_EMBED_PORT = str(os.environ.get("DEFAULT_EMBED_PORT") or "5201").strip() or "5201"
 FND_MSN_ID = "3-2-3-17-77-1-6-4-1-4"
 TFF_MSN_ID = "3-2-3-17-77-2-6-3-1-6"
@@ -100,11 +105,7 @@ LEGAL_ENTITY_PROFILE_DEFAULTS: Dict[str, Dict[str, Any]] = {
 
 
 def _default_portal_sign_out_url() -> str:
-    if "tff" in PORTAL_INSTANCE_ID:
-        target = "/portal/tff"
-    else:
-        target = "/portal/fnd"
-    encoded_target = quote(target, safe="")
+    encoded_target = quote(PORTAL_ENTRY_PATH, safe="")
     return f"/oauth2/sign_out?rd=%2Foauth2%2Fsign_in%3Frd%3D{encoded_target}"
 
 

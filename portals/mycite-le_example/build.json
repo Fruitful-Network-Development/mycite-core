@@ -1,0 +1,316 @@
+{
+  "schema": "mycite.portal.build.v1",
+  "portal_id": "mycite-le_example",
+  "portal_instance_id": "example",
+  "runtime_source_portal_id": "mycite-le_tff",
+  "runtime_flavor": "tff",
+  "state_root_hint": "/srv/compose/portals/state/example_portal",
+  "meta": {
+    "msn_id": "3-2-3-17-77-2-6-3-1-6",
+    "title": "example_portal"
+  },
+  "tools": {
+    "enabled": [],
+    "core_system_surfaces": [
+      "data_tool"
+    ],
+    "retired": [
+      "legacy_admin",
+      "paypal_demo"
+    ],
+    "mount_targets": {}
+  },
+  "private_config": {
+    "canonical": {
+      "msn_id": "3-2-3-17-77-2-6-3-1-6",
+      "schema": "mycite.profile.v0",
+      "title": "example_portal",
+      "private_key_ref": "vault://keys/3-2-3-17-77-2-6-3-1-6_private.pem",
+      "request_log": [],
+      "symmetric_key_contracts": [],
+      "aliases": [],
+      "progeny": {
+        "admin": {},
+        "member": {},
+        "user": {}
+      },
+      "organization_configuration": {
+        "file_name": "subject_congregation.json",
+        "default_values": {
+          "stream_config": {
+            "allowed_post_types": [
+              "post.create",
+              "board_notice"
+            ],
+            "newest_first": true
+          },
+          "calendar_config": {
+            "allowed_event_types": [
+              "meeting",
+              "group_event",
+              "committee_meeting"
+            ],
+            "exclude_request_log_types": true
+          },
+          "people_config": {
+            "profile_source_priority": [
+              "progeny.internal",
+              "progeny.config_ref",
+              "alias"
+            ]
+          },
+          "workflow_config": {
+            "enabled": true,
+            "legal_entity_type": "subject_congregation",
+            "sections": [
+              {
+                "id": "operations",
+                "title": "Operations",
+                "description": "Core operating workflow checkpoints."
+              },
+              {
+                "id": "farm_fields",
+                "title": "Farm Fields",
+                "description": "Field inventories and seasonal status references."
+              },
+              {
+                "id": "compliance",
+                "title": "Compliance",
+                "description": "Compliance and policy milestones."
+              }
+            ],
+            "anthology_refs": {
+              "farm_fields": "",
+              "workflow_state": ""
+            }
+          },
+          "legal_entity_defaults": {
+            "schema": "mycite.legal_entity_type.v1",
+            "type": "subject_congregation",
+            "title": "Subject Congregation",
+            "role_groups": {
+              "members": [],
+              "users": [],
+              "poc_admin": []
+            },
+            "workflow_defaults": {
+              "farm_fields": [],
+              "committees": []
+            }
+          }
+        },
+        "added_values": {
+          "broadcast_config": {
+            "enabled": false,
+            "title": "Example Portal"
+          }
+        }
+      }
+    },
+    "legacy_compat": [
+      {
+        "filename": "mycite-config-3-2-3-17-77-2-6-3-1-6.json",
+        "payload": {
+          "msn_id": "3-2-3-17-77-2-6-3-1-6",
+          "schema": "mycite.profile.v0",
+          "title": "example_portal",
+          "private_key_ref": "vault://keys/3-2-3-17-77-2-6-3-1-6_private.pem",
+          "request_log": [],
+          "symmetric_key_contracts": [],
+          "aliases": [],
+          "progeny": {
+            "admin": {},
+            "member": {},
+            "user": {}
+          },
+          "organization_configuration": {
+            "file_name": "subject_congregation.json",
+            "default_values": {
+              "stream_config": {
+                "allowed_post_types": [
+                  "post.create",
+                  "board_notice"
+                ],
+                "newest_first": true
+              },
+              "calendar_config": {
+                "allowed_event_types": [
+                  "meeting",
+                  "group_event",
+                  "committee_meeting"
+                ],
+                "exclude_request_log_types": true
+              },
+              "people_config": {
+                "profile_source_priority": [
+                  "progeny.internal",
+                  "progeny.config_ref",
+                  "alias"
+                ]
+              },
+              "workflow_config": {
+                "enabled": true,
+                "legal_entity_type": "subject_congregation",
+                "sections": [
+                  {
+                    "id": "operations",
+                    "title": "Operations",
+                    "description": "Core operating workflow checkpoints."
+                  },
+                  {
+                    "id": "farm_fields",
+                    "title": "Farm Fields",
+                    "description": "Field inventories and seasonal status references."
+                  },
+                  {
+                    "id": "compliance",
+                    "title": "Compliance",
+                    "description": "Compliance and policy milestones."
+                  }
+                ],
+                "anthology_refs": {
+                  "farm_fields": "",
+                  "workflow_state": ""
+                }
+              },
+              "legal_entity_defaults": {
+                "schema": "mycite.legal_entity_type.v1",
+                "type": "subject_congregation",
+                "title": "Subject Congregation",
+                "role_groups": {
+                  "members": [],
+                  "users": [],
+                  "poc_admin": []
+                },
+                "workflow_defaults": {
+                  "farm_fields": [],
+                  "committees": []
+                }
+              }
+            },
+            "added_values": {
+              "broadcast_config": {
+                "enabled": false,
+                "title": "Example Portal"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "hosted": {
+    "filename": "hosted.json",
+    "payload": {
+      "type": "classroom_workbench",
+      "type_values": {
+        "default_hosted": [
+          {
+            "stream": "classroom/stream.json"
+          },
+          {
+            "classwork": "classroom/classwork.json"
+          },
+          {
+            "people": "classroom/people.json"
+          },
+          {
+            "workflow": "classroom/workflow.json"
+          }
+        ],
+        "channels": [
+          "contracts.json",
+          "request_log.json"
+        ],
+        "members": [
+          "members.json"
+        ],
+        "orientation": {
+          "style": "google_classroom_reference",
+          "hero_title": "Example Portal Workbench"
+        }
+      }
+    }
+  },
+  "public_profiles": {
+    "msn_card": {
+      "filename": "msn-3-2-3-17-77-2-6-3-1-6.json",
+      "payload": {
+        "msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "schema": "mycite.profile.v0",
+        "title": "example_portal",
+        "public_key": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEADA8D+zFdj2KPE1+GPPg3eqee8njrJ5duC3QE8mr6J7I=\n-----END PUBLIC KEY-----\n",
+        "entity_type": "legal_entity",
+        "accessible": {},
+        "options": {
+          "self": {
+            "href": "/msn-3-2-3-17-77-2-6-3-1-6.json",
+            "methods": [
+              "GET",
+              "OPTIONS"
+            ],
+            "auth": "none"
+          },
+          "portal": {
+            "href": "/portal",
+            "methods": [
+              "GET",
+              "OPTIONS"
+            ],
+            "auth": "required"
+          },
+          "config": {
+            "href": "/portal/api/config",
+            "methods": [
+              "GET",
+              "PUT",
+              "OPTIONS"
+            ],
+            "auth": "required"
+          }
+        }
+      }
+    },
+    "fnd_card": {
+      "filename": "fnd-3-2-3-17-77-2-6-3-1-6.json",
+      "payload": {
+        "schema": "mycite.fnd.profile.v1",
+        "msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "title": "example_portal",
+        "summary": "Starter/example portal workbench for anthology abstraction development.",
+        "logo": "",
+        "banner": "",
+        "links": [
+          {
+            "label": "Portal",
+            "href": "/portal/system"
+          },
+          {
+            "label": "Public Profile",
+            "href": "/msn-3-2-3-17-77-2-6-3-1-6.json"
+          }
+        ]
+      }
+    }
+  },
+  "seed_files": [
+    {
+      "source": "../mycite-le_tff/private/utilities/vault/keypass_inventory.json",
+      "target": "private/utilities/vault/keypass_inventory.json"
+    },
+    {
+      "source": "../mycite-le_tff/data/presentation/datum_icons.json",
+      "target": "data/presentation/datum_icons.json"
+    }
+  ],
+  "anthology": {
+    "authoritative": false,
+    "path_hint": "/srv/compose/portals/state/example_portal/data/anthology.json",
+    "sha256": "ea398e7e4556d5278593e27049bcac566baaa893532ada3541d180c197020e22",
+    "notes": [
+      "State-owned anthology; phase-1 materialize never overwrites this file.",
+      "Seed the live example anthology by copying the workshop anthology into this state root.",
+      "Current portal identity borrows the TFF MSN/key material until a dedicated demo MSN is assigned."
+    ]
+  }
+}
