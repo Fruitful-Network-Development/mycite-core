@@ -4,6 +4,7 @@
 
 Active runnable portals in this repo:
 
+- `mycite-le_example`
 - `mycite-le_fnd`
 - `mycite-le_tff`
 
@@ -21,7 +22,7 @@ Retired from active scope:
 
 ## Current implementation priorities
 
-1. Stabilize the example portal anthology in `/srv/compose/portals/state/tff_portal/data/anthology.json`.
+1. Stabilize the example portal anthology in `/srv/compose/portals/state/example_portal/data/anthology.json`.
 2. Continue network-engine hardening around request logs, contract verification, and reference inheritance.
 3. Keep AWS and PayPal split by scope:
    - member-scoped tools

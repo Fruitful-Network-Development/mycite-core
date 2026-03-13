@@ -6,6 +6,7 @@ Each active portal now carries a repo-owned `build.json` used to materialize the
 
 Active specs:
 
+- `portals/mycite-le_example/build.json`
 - `portals/mycite-le_fnd/build.json`
 - `portals/mycite-le_tff/build.json`
 
@@ -48,6 +49,7 @@ Single portal variants are also supported:
 ```bash
 python3 portals/scripts/portal_build.py capture mycite-le_fnd
 python3 portals/scripts/portal_build.py materialize mycite-le_tff
+python3 portals/scripts/portal_build.py materialize mycite-le_example
 ```
 
 ## Materialized outputs
@@ -74,3 +76,15 @@ It does not overwrite `data/anthology.json`.
 Repo build specs author portal-specific configuration.
 
 Live state remains the runtime source actually mounted into containers.
+
+## Example portal note
+
+The example portal is currently materialized into:
+
+- `/srv/compose/portals/state/example_portal`
+
+Its anthology remains state-owned at:
+
+- `/srv/compose/portals/state/example_portal/data/anthology.json`
+
+For now the example portal uses the current TFF runtime flavor to preserve the familiar workshop UI, but it should get its own demo MSN/key/domain before public exposure.

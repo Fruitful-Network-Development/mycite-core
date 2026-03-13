@@ -1,10 +1,9 @@
 # mycite-le_tff
 
-TFF legal-entity portal runtime and current example portal.
+TFF legal-entity portal runtime.
 
 ## Current role
 
-- example/base portal for evolving the starter anthology abstraction
 - classroom-style member workspace surface
 - hosts the TFF-specific optional tools:
   - `config_schema`
@@ -19,12 +18,6 @@ Repo-owned build source:
 Materialized live state:
 
 - `/srv/compose/portals/state/tff_portal/`
-
-Current example anthology in live state:
-
-- `/srv/compose/portals/state/tff_portal/data/anthology.json`
-
-That anthology file remains state-owned and is not overwritten by phase-1 materialization.
 
 ## Local run
 
