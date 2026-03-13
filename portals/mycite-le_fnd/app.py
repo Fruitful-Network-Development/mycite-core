@@ -645,6 +645,43 @@ def _utility_tool_items() -> list[Dict[str, Any]]:
     return out
 
 
+_ACTIVITY_TOOL_PRESENTATION: Dict[str, Dict[str, str]] = {
+    "data_tool": {"label": "Data Tool", "icon": "/portal/static/icons/ui/data.svg"},
+    "tenant_progeny_profiles": {"label": "Profiles", "icon": "/portal/static/icons/progeny.svg"},
+    "fnd_provisioning": {"label": "Provision", "icon": "/portal/static/icons/ui/launch.svg"},
+    "paypal_tenant_actions": {"label": "PayPal Mbr", "icon": "/portal/static/icons/logos/paypal.svg"},
+    "paypal_service_agreement": {"label": "PayPal FND", "icon": "/portal/static/icons/logos/paypal.svg"},
+    "aws_tenant_actions": {"label": "AWS Mbr", "icon": "/portal/static/icons/logos/aws.svg"},
+    "aws_platform_admin": {"label": "AWS FND", "icon": "/portal/static/icons/logos/aws.svg"},
+    "operations": {"label": "Ops", "icon": "/portal/static/icons/ui/settings.svg"},
+}
+
+
+def _activity_tool_items(active_tool_id: str) -> list[Dict[str, Any]]:
+    if PORTAL_INSTANCE_ID != "fnd":
+        return []
+
+    out: list[Dict[str, Any]] = []
+    for tool in _utility_tool_items():
+        tool_id = str(tool.get("tool_id") or "").strip().lower()
+        home_path = str(tool.get("home_path") or "").strip()
+        if not tool_id or not home_path:
+            continue
+        display_name = str(tool.get("display_name") or tool_id).strip() or tool_id
+        presentation = _ACTIVITY_TOOL_PRESENTATION.get(tool_id, {})
+        out.append(
+            {
+                "tool_id": tool_id,
+                "label": str(presentation.get("label") or display_name).strip() or display_name,
+                "title": display_name,
+                "href": home_path,
+                "icon": str(presentation.get("icon") or tool.get("icon") or "/portal/static/icons/ui/tools.svg").strip(),
+                "active": tool_id == str(active_tool_id or "").strip().lower(),
+            }
+        )
+    return out
+
+
 def _utility_peripheral_entries() -> list[Dict[str, Any]]:
     root = utility_peripherals_dir(PRIVATE_DIR)
     if not root.exists() or not root.is_dir():
@@ -1091,6 +1128,7 @@ def _tool_shell_context() -> Dict[str, Any]:
         "tool_tabs": TOOL_TABS,
         "active_tool": active_tool,
         "active_tool_id": str(active_tool.get("tool_id") or "") if active_tool else "",
+        "activity_tool_nav": _activity_tool_items(str(active_tool.get("tool_id") or "") if active_tool else ""),
         "service_nav": build_service_nav(ACTIVE_PRIVATE_CONFIG, active_service=active_service),
         "active_service": active_service,
         "active_service_tab": active_service_tab,
