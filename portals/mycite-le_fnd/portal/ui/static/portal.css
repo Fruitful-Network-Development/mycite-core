@@ -28,6 +28,7 @@ body{
   color: var(--ink);
   font-size: 14px;
   line-height: 1.45;
+  overflow:hidden;
 }
 
 
@@ -3043,10 +3044,14 @@ body.is-modal-open {
 .ide-shell {
   --ide-context-w: 280px;
   --ide-inspector-w: 360px;
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
 }
 
 .ide-body {
-  min-height: calc(100vh - var(--ide-menu-h));
+  height: calc(100vh - var(--ide-menu-h));
+  min-height: 0;
   display: grid;
   grid-template-columns:
     var(--ide-activity-w)
@@ -3055,6 +3060,7 @@ body.is-modal-open {
     minmax(0, 1fr)
     0
     0;
+  overflow: hidden;
 }
 
 .ide-shell[data-inspector-collapsed="false"] .ide-body {
@@ -3092,7 +3098,8 @@ body.is-modal-open {
 .ide-contextsidebar,
 .ide-workbench,
 .ide-inspector {
-  min-height: calc(100vh - var(--ide-menu-h));
+  height: calc(100vh - var(--ide-menu-h));
+  min-height: 0;
 }
 
 .ide-activitylink img,
@@ -3117,8 +3124,21 @@ body.is-modal-open {
 }
 
 .ide-workbench {
+  min-height: 0;
   overflow: hidden;
   background: linear-gradient(180deg, rgba(16, 24, 28, 0.12), rgba(16, 24, 28, 0.02));
+}
+
+.ide-inspector {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ide-inspector__content {
+  min-height: 0;
+  overflow: auto;
 }
 
 .ide-workbench[data-active-service="system"] {
@@ -3126,7 +3146,10 @@ body.is-modal-open {
 }
 
 .viewport {
+  min-height: 0;
+  height: 100%;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .viewport--system {
