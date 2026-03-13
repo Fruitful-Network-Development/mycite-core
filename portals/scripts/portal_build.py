@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -41,11 +42,22 @@ SEED_PATTERNS = (
     "data/presentation/**/*.json",
     "private/network/aliases/**/*.json",
     "private/network/contracts/**/*.json",
-    "private/network/progeny/**/*.json",
+    "private/network/progeny/*.json",
     "private/network/request_log/types/**/*.ndjson",
-    "private/progeny/**/*.json",
     "private/utilities/vault/keypass_inventory.json",
 )
+
+
+def _load_shared_hosted_model():
+    token = str(PORTALS_ROOT)
+    if token not in sys.path:
+        sys.path.insert(0, token)
+    import _shared.portal.hosted_model as module
+
+    return module
+
+
+_HOSTED = _load_shared_hosted_model()
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -223,6 +235,9 @@ def build_portal_spec(
         state_private / "network" / "hosted.json",
         repo_private / "network" / "hosted.json",
     )
+    normalized_hosted = _HOSTED.normalize_hosted_payload(hosted or {})
+    normalized_hosted.pop("raw", None)
+    normalized_hosted.pop("path", None)
 
     anthology_path = state_data / "anthology.json"
     anthology = {
@@ -266,7 +281,7 @@ def build_portal_spec(
         "hosted": {
             "filename": "hosted.json",
             "source": hosted_source,
-            "payload": hosted or {},
+            "payload": normalized_hosted,
         },
         "public_profiles": {
             "msn_card": {
@@ -316,6 +331,17 @@ def materialize_build_spec(build_path: Path, target_state_root: Path | None = No
     canonical_config = _with_enabled_tools((spec.get("private_config") or {}).get("canonical") or {}, enabled_tools)
     _write_json(target_root / "private" / "config.json", canonical_config)
 
+    expected_legacy = {
+        str(entry.get("filename") or "").strip()
+        for entry in ((spec.get("private_config") or {}).get("legacy_compat") or [])
+        if isinstance(entry, dict) and str(entry.get("filename") or "").strip()
+    }
+    private_dir = target_root / "private"
+    if private_dir.exists():
+        for path in sorted(private_dir.glob("mycite-config-*.json")):
+            if path.name not in expected_legacy:
+                path.unlink()
+
     for entry in (spec.get("private_config") or {}).get("legacy_compat") or []:
         if not isinstance(entry, dict):
             continue
@@ -327,7 +353,10 @@ def materialize_build_spec(build_path: Path, target_state_root: Path | None = No
 
     hosted = (spec.get("hosted") or {}).get("payload")
     if isinstance(hosted, dict):
-        _write_json(target_root / "private" / "network" / "hosted.json", hosted)
+        clean_hosted = _HOSTED.normalize_hosted_payload(hosted)
+        clean_hosted.pop("raw", None)
+        clean_hosted.pop("path", None)
+        _write_json(target_root / "private" / "network" / "hosted.json", clean_hosted)
 
     public_profiles = spec.get("public_profiles") or {}
     for key in ("msn_card", "fnd_card"):

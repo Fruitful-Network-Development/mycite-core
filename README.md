@@ -39,9 +39,9 @@ Build specs are phase-1 authoritative for:
 
 - enabled tools and mount behavior
 - canonical private config payloads
-- hosted payloads
+- hosted payloads, including hosted subject-congregation metadata, broadcaster metadata, and default progeny templates
 - public profile/card payloads
-- seed file lists for progeny/alias/profile scaffolding
+- seed file lists for alias/profile scaffolding plus unified progeny instances
 
 Anthology remains state-owned in this phase. Build specs record anthology metadata/checksum only and do not overwrite anthology files during materialization.
 
@@ -59,6 +59,13 @@ Runnable runtime code now lives under:
 - `portals/_shared/runtime/flavors/tff/` TFF/runtime flavor used by TFF and the current example portal
 
 Per-portal directories are being reduced toward spec-only ownership.
+
+Hosted/progeny direction in the current phase:
+
+- `private/network/hosted.json` is the canonical hosted metadata container
+- default progeny templates live inside hosted metadata
+- canonical progeny instance storage is `private/network/progeny/msn-<provider_msn_id>.<progeny_type>-<alias_associated_msn_id>.json`
+- FND keeps AWS/PayPal split by operational scope and now carries a separate `website_analytics` tool for hosted member websites
 
 ## Repository layout
 

@@ -21,8 +21,10 @@ from portal.api.data_workspace import register_data_routes as register_data_work
 from portal.api.inbox import register_inbox_routes
 from portal.api.paypal_checkout import register_paypal_checkout_routes
 from portal.api.progeny_config import register_progeny_config_routes
+from portal.api.progeny_workbench import register_progeny_workbench_routes
 from portal.api.request_log import register_request_log_routes
 from portal.api.tenant_progeny import register_tenant_progeny_routes
+from portal.api.website_analytics import register_website_analytics_routes
 from portal.core_services.runtime import (
     active_service_from_path,
     build_network_cards,
@@ -34,20 +36,19 @@ from portal.core_services.runtime import (
     active_private_config_filename,
 )
 from portal.services.alias_factory import alias_path, client_key_for_msn, merge_field_names
+from portal.services.hosted_store import DEFAULT_TABS as HOSTED_DEFAULT_TABS, read_hosted_payload
 from portal.services.progeny_embed import build_embed_progeny_landing
 from portal.services.progeny_config_store import get_client_config, get_config
+from portal.services.progeny_workspace import find_profile_by_associated_msn, list_instances
 from portal.services.request_log_store import append_event
 from portal.services.runtime_paths import (
-    admin_progeny_dir,
     aliases_dir,
     contracts_dir,
-    hosted_read_paths,
     keypass_db_path,
     keypass_inventory_path,
-    member_progeny_dir,
+    progeny_root,
     request_log_read_paths,
     request_log_types_dir,
-    user_progeny_dir,
     utility_peripherals_dir,
     utility_tools_dir,
     vault_contract_read_dirs,
@@ -55,6 +56,7 @@ from portal.services.runtime_paths import (
     vault_keys_dir,
 )
 from portal.services.tenant_progeny_store import load_profile, save_profile, set_paypal_config
+from portal.services.website_analytics_store import load_member_analytics, list_member_analytics
 from portal.tools.runtime import active_tool_for_path, read_enabled_tools, register_tool_blueprints
 
 app = Flask(
@@ -95,9 +97,7 @@ for required in (
     contracts_dir(PRIVATE_DIR),
     request_log_types_dir(PRIVATE_DIR).parent,
     request_log_types_dir(PRIVATE_DIR),
-    admin_progeny_dir(PRIVATE_DIR),
-    member_progeny_dir(PRIVATE_DIR),
-    user_progeny_dir(PRIVATE_DIR),
+    progeny_root(PRIVATE_DIR),
     utility_tools_dir(PRIVATE_DIR),
     utility_peripherals_dir(PRIVATE_DIR),
     vault_contracts_dir(PRIVATE_DIR),
@@ -593,43 +593,7 @@ def _normalize_network_kind(raw: Any) -> str:
 
 def _normalize_utilities_tab(raw: Any) -> str:
     token = str(raw or "").strip().lower()
-    return token if token in {"tools", "vault", "peripherals"} else "tools"
-
-
-def _normalize_hosted_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
-    if not isinstance(payload, dict):
-        return {"type": "unknown", "type_values": {}, "raw": {}}
-    hosted_type = str(payload.get("type") or payload.get("hosted_type") or "unknown").strip() or "unknown"
-    if isinstance(payload.get("type_values"), dict):
-        type_values = dict(payload.get("type_values") or {})
-    else:
-        type_values = {}
-        default_hosted = payload.get("default_hosted")
-        if isinstance(default_hosted, list):
-            type_values["default_hosted"] = default_hosted
-        addendum = payload.get("addendum")
-        if isinstance(addendum, dict):
-            for key, value in addendum.items():
-                type_values[key] = value
-    return {
-        "type": hosted_type,
-        "type_values": type_values,
-        "raw": payload,
-    }
-
-
-def _read_hosted_payload() -> Dict[str, Any]:
-    for path in hosted_read_paths(PRIVATE_DIR):
-        if not path.exists() or not path.is_file():
-            continue
-        try:
-            payload = _read_json(path)
-        except Exception:
-            continue
-        normalized = _normalize_hosted_payload(payload)
-        normalized["path"] = str(path)
-        return normalized
-    return {"type": "unknown", "type_values": {}, "raw": {}, "path": str(hosted_read_paths(PRIVATE_DIR)[0])}
+    return token if token in {"tools", "vault", "peripherals", "progeny"} else "tools"
 
 
 def _utility_tool_items() -> list[Dict[str, Any]]:
@@ -653,6 +617,7 @@ _ACTIVITY_TOOL_PRESENTATION: Dict[str, Dict[str, str]] = {
     "paypal_service_agreement": {"label": "PayPal FND", "icon": "/portal/static/icons/logos/paypal.svg"},
     "aws_tenant_actions": {"label": "AWS Mbr", "icon": "/portal/static/icons/logos/aws.svg"},
     "aws_platform_admin": {"label": "AWS FND", "icon": "/portal/static/icons/logos/aws.svg"},
+    "website_analytics": {"label": "Analytics", "icon": "/portal/static/icons/statistics.svg"},
     "operations": {"label": "Ops", "icon": "/portal/static/icons/ui/settings.svg"},
 }
 
@@ -696,6 +661,93 @@ def _utility_peripheral_entries() -> list[Dict[str, Any]]:
             }
         )
     return out
+
+
+def _progeny_preview_url(selected_type: str, associated_msn_id: str, alias_id: str) -> str:
+    progeny_type = str(selected_type or "").strip().lower()
+    associated = str(associated_msn_id or "").strip()
+    if not associated:
+        return ""
+    query = urlencode(
+        {
+            "member_msn_id": associated,
+            "progeny_type": progeny_type,
+            "as_alias_id": alias_id,
+            "tab": "stream",
+        }
+    )
+    return f"/portal/embed/member_workbench?{query}"
+
+
+def _progeny_workbench_model(selected_type: str = "", selected_instance_id: str = "") -> Dict[str, Any]:
+    hosted_payload = read_hosted_payload(PRIVATE_DIR)
+    instances = list_instances(PRIVATE_DIR)
+    selected_type_token = str(selected_type or "").strip().lower()
+    if selected_type_token not in {"admin", "member", "user"}:
+        selected_type_token = "member"
+
+    template_map = {
+        token: hosted_payload.get("progeny", {}).get("templates", {}).get(token, {})
+        for token in ("admin", "member", "user")
+    }
+    type_cards: list[Dict[str, Any]] = []
+    for token in ("member", "user", "admin"):
+        matching = [record for record in instances if str(record.get("progeny_type") or "") == token]
+        template = template_map.get(token) if isinstance(template_map.get(token), dict) else {}
+        type_cards.append(
+            {
+                "progeny_type": token,
+                "label": token.title(),
+                "count": len(matching),
+                "template_version": str(template.get("template_version") or ""),
+                "href": f"/portal/utilities?tab=progeny&progeny_type={token}",
+                "active": token == selected_type_token,
+            }
+        )
+
+    selected_records = [record for record in instances if str(record.get("progeny_type") or "") == selected_type_token]
+    selected_record = None
+    if selected_instance_id:
+        for record in selected_records:
+            if str(record.get("instance_id") or "") == selected_instance_id:
+                selected_record = record
+                break
+    if selected_record is None and selected_records:
+        selected_record = selected_records[0]
+
+    selected_payload = selected_record.get("payload") if isinstance((selected_record or {}).get("payload"), dict) else {}
+    selected_display = selected_payload.get("display") if isinstance(selected_payload.get("display"), dict) else {}
+    selected_alias_id = str((selected_payload.get("alias_profile") or {}).get("alias_id") or "").strip()
+    associated_msn_id = str(
+        selected_payload.get("alias_associated_msn_id")
+        or selected_payload.get("member_msn_id")
+        or selected_payload.get("tenant_msn_id")
+        or selected_payload.get("msn_id")
+        or ""
+    ).strip()
+    selected_summary = {
+        "instance_id": str((selected_record or {}).get("instance_id") or ""),
+        "title": str(selected_payload.get("title") or selected_display.get("title") or selected_type_token.title()).strip(),
+        "associated_msn_id": associated_msn_id,
+        "alias_id": selected_alias_id,
+        "path": str((selected_record or {}).get("path") or ""),
+        "source_kind": str((selected_record or {}).get("source_kind") or ""),
+    }
+
+    selected_template = template_map.get(selected_type_token) if isinstance(template_map.get(selected_type_token), dict) else {}
+    return {
+        "hosted_payload": hosted_payload,
+        "type_cards": type_cards,
+        "selected_type": selected_type_token,
+        "selected_template": selected_template,
+        "selected_template_json": json.dumps(selected_template, indent=2, sort_keys=True),
+        "instances": selected_records,
+        "selected_instance": selected_record,
+        "selected_summary": selected_summary,
+        "selected_instance_json": json.dumps(selected_payload, indent=2, sort_keys=True) if selected_payload else "{}",
+        "storage": ((hosted_payload.get("progeny") or {}).get("storage") if isinstance(hosted_payload.get("progeny"), dict) else {}) or {},
+        "preview_url": _progeny_preview_url(selected_type_token, associated_msn_id, selected_alias_id),
+    }
 
 
 def _default_vault_inventory() -> Dict[str, Any]:
@@ -1046,6 +1098,21 @@ def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
         ]
 
     if token == "utilities":
+        progeny_type = str(request.args.get("progeny_type") or "").strip().lower()
+        workbench = _progeny_workbench_model(progeny_type, str(request.args.get("instance") or "").strip()) if utilities_tab == "progeny" else {}
+        type_entries = []
+        if isinstance(workbench, dict):
+            for item in workbench.get("type_cards") or []:
+                if not isinstance(item, dict):
+                    continue
+                type_entries.append(
+                    {
+                        "label": str(item.get("label") or "").strip(),
+                        "href": str(item.get("href") or "").strip(),
+                        "active": bool(item.get("active")),
+                        "meta": f"{int(item.get('count') or 0)} instance(s)",
+                    }
+                )
         return [
             {
                 "title": "Utility Views",
@@ -1053,9 +1120,15 @@ def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
                     {"label": "Tools", "href": "/portal/utilities?tab=tools", "active": utilities_tab == "tools", "meta": "launchers + mounts"},
                     {"label": "Vault", "href": "/portal/utilities?tab=vault", "active": utilities_tab == "vault", "meta": "KeePass inventory"},
                     {"label": "Peripherals", "href": "/portal/utilities?tab=peripherals", "active": utilities_tab == "peripherals", "meta": "runtime directory"},
+                    {"label": "Progeny", "href": "/portal/utilities?tab=progeny&progeny_type=member", "active": utilities_tab == "progeny", "meta": "templates + instances"},
                 ],
                 "empty_text": "",
-            }
+            },
+            {
+                "title": "Progeny Types",
+                "entries": type_entries,
+                "empty_text": "Select the Progeny utility view to browse templates and instances.",
+            },
         ]
 
     return [
@@ -1292,7 +1365,7 @@ def portal_network_default():
 
     profile_model = _portal_profile_model()
     geography_model = build_property_geography_model(ACTIVE_PRIVATE_CONFIG, DATA_DIR)
-    hosted_payload = _read_hosted_payload()
+    hosted_payload = read_hosted_payload(PRIVATE_DIR)
     message_feed = _network_message_feed(kind, selected_alias, selected_log, selected_p2p)
     return render_template(
         "services/network.html",
@@ -1336,6 +1409,9 @@ def portal_network_legacy(tab_id: str):
 def portal_utilities():
     tab = _normalize_utilities_tab(request.args.get("tab"))
     inventory = _load_vault_inventory()
+    selected_type = str(request.args.get("progeny_type") or "").strip().lower()
+    selected_instance = str(request.args.get("instance") or "").strip()
+    progeny_workbench = _progeny_workbench_model(selected_type, selected_instance) if tab == "progeny" else {}
     return render_template(
         "services/utilities.html",
         aliases=list_aliases_for_sidebar(PRIVATE_DIR),
@@ -1349,6 +1425,7 @@ def portal_utilities():
         vault_contract_files=_vault_contract_files(),
         keypass_db_path=str(keypass_db_path(PRIVATE_DIR)),
         keypass_inventory_path=str(keypass_inventory_path(PRIVATE_DIR)),
+        progeny_workbench=progeny_workbench,
     )
 
 
@@ -1360,7 +1437,7 @@ def portal_peripherals():
     if legacy_tab == "vault":
         return redirect("/portal/utilities?tab=vault", code=302)
     if legacy_tab in {"progeny", "configuration"}:
-        return redirect("/portal/network?tab=profile", code=302)
+        return redirect("/portal/utilities?tab=progeny&progeny_type=member", code=302)
     return redirect("/portal/utilities?tab=peripherals", code=302)
 
 
@@ -1567,23 +1644,34 @@ def _normalize_member_workbench_tab(raw: Any) -> str:
     return token if token in {"stream", "classwork", "people", "workflow"} else "stream"
 
 
-def _load_member_workbench_profile(member_msn_id: str) -> Dict[str, Any]:
+def _load_member_workbench_profile(member_msn_id: str, progeny_type: str = "") -> Dict[str, Any]:
     token = str(member_msn_id or "").strip()
     if not token:
         return {}
-    root = member_progeny_dir(PRIVATE_DIR)
-    if not root.exists() or not root.is_dir():
+    record = find_profile_by_associated_msn(PRIVATE_DIR, token, progeny_type)
+    if record is None:
         return {}
+    payload = record.get("payload")
+    return dict(payload) if isinstance(payload, dict) else {}
 
-    for path in sorted(root.glob("*.json")):
-        try:
-            payload = _read_json(path)
-        except Exception:
+
+def _member_workbench_tab_items(hosted_payload: Dict[str, Any]) -> list[Dict[str, str]]:
+    subject = hosted_payload.get("subject_congregation") if isinstance(hosted_payload.get("subject_congregation"), dict) else {}
+    tabs = subject.get("tabs") if isinstance(subject.get("tabs"), list) else []
+    out: list[Dict[str, str]] = []
+    for raw in tabs:
+        if isinstance(raw, str):
+            tab_id = str(raw).strip().lower()
+            if tab_id:
+                out.append({"id": tab_id, "label": tab_id.title()})
             continue
-        candidate = str(payload.get("msn_id") or payload.get("member_msn_id") or "").strip()
-        if candidate == token:
-            return payload
-    return {}
+        if not isinstance(raw, dict):
+            continue
+        tab_id = str(raw.get("id") or "").strip().lower()
+        if not tab_id:
+            continue
+        out.append({"id": tab_id, "label": str(raw.get("label") or tab_id.title()).strip() or tab_id.title()})
+    return out or [{"id": item["id"], "label": item["label"]} for item in HOSTED_DEFAULT_TABS]
 
 
 def _member_workbench_stream_cards(member_msn_id: str) -> list[Dict[str, str]]:
@@ -1608,7 +1696,7 @@ def _member_workbench_stream_cards(member_msn_id: str) -> list[Dict[str, str]]:
     return [
         {
             "title": "Welcome to the Member Workbench",
-            "summary": "This default hosted stream is ready for contract-backed alias updates.",
+            "summary": "This hosted stream is ready for contract-backed alias updates and subscription notices.",
             "timestamp": _format_event_timestamp(int(datetime.now(tz=timezone.utc).timestamp() * 1000)),
         },
         {
@@ -1619,35 +1707,53 @@ def _member_workbench_stream_cards(member_msn_id: str) -> list[Dict[str, str]]:
     ]
 
 
+def _member_workbench_people_items(profile: Dict[str, Any], hosted_payload: Dict[str, Any]) -> list[Dict[str, str]]:
+    broadcaster = hosted_payload.get("broadcaster") if isinstance(hosted_payload.get("broadcaster"), dict) else {}
+    people_cfg = broadcaster.get("people") if isinstance(broadcaster.get("people"), dict) else {}
+    title = str(profile.get("title") or profile.get("member_msn_id") or profile.get("msn_id") or "Member Alias").strip()
+    profile_refs = profile.get("profile_refs") if isinstance(profile.get("profile_refs"), dict) else {}
+    return [
+        {"name": title, "role": "Alias Subject"},
+        {"name": str(ACTIVE_PRIVATE_CONFIG.get("title") or "fruitful_network_development_llc"), "role": "Host Organization"},
+        {"name": str(people_cfg.get("search_key") or "msn_id"), "role": "Broadcaster search key"},
+        {"name": str(profile_refs.get("contact_collection_ref") or "(unset)"), "role": "Contact collection ref"},
+    ]
+
+
+def _member_workbench_workflow_model(member_msn_id: str, profile: Dict[str, Any], hosted_payload: Dict[str, Any]) -> Dict[str, Any]:
+    token = str(member_msn_id or "").strip()
+    if not token:
+        return {}
+    return load_member_analytics(PRIVATE_DIR, token, profile, hosted_payload)
+
+
 @app.get("/portal/embed/member_workbench")
 def portal_embed_member_workbench():
     member_msn_id = (request.args.get("member_msn_id") or "").strip()
     if not member_msn_id:
         abort(400, description="Missing required query param: member_msn_id")
     as_alias_id = (request.args.get("as_alias_id") or "").strip()
+    progeny_type = (request.args.get("progeny_type") or "").strip().lower()
     tab = _normalize_member_workbench_tab(request.args.get("tab"))
 
-    profile = _load_member_workbench_profile(member_msn_id)
-    hosted_payload = _read_hosted_payload()
-    hosted_values = hosted_payload.get("type_values") if isinstance(hosted_payload.get("type_values"), dict) else {}
-    hosted_tabs = hosted_values.get("default_hosted") if isinstance(hosted_values.get("default_hosted"), list) else []
+    profile = _load_member_workbench_profile(member_msn_id, progeny_type)
+    hosted_payload = read_hosted_payload(PRIVATE_DIR)
+    hosted_tabs = _member_workbench_tab_items(hosted_payload)
 
     classwork_items = [
         {"title": "Review contract proposal flow", "due": "Today"},
         {"title": "Update alias profile JSON fields", "due": "This week"},
-        {"title": "Publish progeny profile revision", "due": "Next milestone"},
+        {"title": "Publish progeny template revision", "due": "Next milestone"},
     ]
-    people_items = [
-        {"name": str(profile.get("title") or member_msn_id).strip(), "role": "Member Alias"},
-        {"name": "fruitful_network_development_llc", "role": "Host Organization"},
-        {"name": "trapp_family_farm", "role": "Counterparty Portal"},
-    ]
+    people_items = _member_workbench_people_items(profile, hosted_payload)
+    workflow_model = _member_workbench_workflow_model(member_msn_id, profile, hosted_payload)
 
     return render_template(
         "member_workbench.html",
         workspace_title="Member Workbench",
         member_msn_id=member_msn_id,
         as_alias_id=as_alias_id,
+        progeny_type=progeny_type,
         active_tab=tab,
         profile=profile,
         hosted_payload=hosted_payload,
@@ -1655,6 +1761,7 @@ def portal_embed_member_workbench():
         stream_cards=_member_workbench_stream_cards(member_msn_id),
         classwork_items=classwork_items,
         people_items=people_items,
+        workflow_model=workflow_model,
     )
 
 
@@ -1935,6 +2042,18 @@ register_aws_emailer_routes(
     app,
     private_dir=PRIVATE_DIR,
     workspace=DATA_WORKSPACE,
+)
+register_progeny_workbench_routes(
+    app,
+    private_dir=PRIVATE_DIR,
+    options_private_fn=_options_private,
+    msn_id_provider=lambda: MSN_ID,
+)
+register_website_analytics_routes(
+    app,
+    private_dir=PRIVATE_DIR,
+    options_private_fn=_options_private,
+    msn_id_provider=lambda: MSN_ID,
 )
 register_admin_integration_routes(
     app,

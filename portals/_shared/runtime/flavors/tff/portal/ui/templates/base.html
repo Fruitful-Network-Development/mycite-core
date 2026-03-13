@@ -13,17 +13,37 @@
   <div
     class="ide-shell"
     data-active-service="{% if active_service is defined and active_service %}{{ active_service }}{% else %}system{% endif %}"
+    data-context-collapsed="false"
     data-inspector-collapsed="true"
   >
     <header class="ide-menubar" aria-label="Menu bar">
-      <span>File</span>
-      <span>Edit</span>
-      <span>Selection</span>
-      <span>View</span>
-      <span>Go</span>
-      <span>Run</span>
-      <span>Terminal</span>
-      <span>Help</span>
+      <nav class="ide-menubar__menu" aria-label="Application menu">
+        <span>File</span>
+        <span>Edit</span>
+        <span>Selection</span>
+        <span>View</span>
+        <span>Go</span>
+        <span>Run</span>
+        <span>Terminal</span>
+        <span>Help</span>
+      </nav>
+      <div class="ide-menubar__spacer" aria-hidden="true"></div>
+      <div class="ide-menubar__actions" aria-label="Shell layout controls">
+        <button
+          type="button"
+          class="ide-menubar__toggle is-active"
+          data-shell-toggle="context"
+          aria-controls="portalContextSidebar"
+          aria-pressed="true"
+        >Sidebar</button>
+        <button
+          type="button"
+          class="ide-menubar__toggle"
+          data-shell-toggle="inspector"
+          aria-controls="portalInspector"
+          aria-pressed="false"
+        >Inspector</button>
+      </div>
     </header>
 
     <div class="ide-body">
@@ -58,7 +78,7 @@
         </div>
       </aside>
 
-      <aside class="ide-contextsidebar" aria-label="Context sidebar">
+      <aside id="portalContextSidebar" class="ide-contextsidebar" aria-label="Context sidebar" aria-hidden="false">
         {% block context_sidebar %}
           {% if context_sidebar_sections is defined and context_sidebar_sections %}
             {% for section in context_sidebar_sections %}

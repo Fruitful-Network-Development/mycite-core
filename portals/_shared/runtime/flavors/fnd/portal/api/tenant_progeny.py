@@ -1,40 +1,31 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import re
+import sys
 import time
 from pathlib import Path
-from types import ModuleType
 from typing import Any, Callable, Dict, Optional
 
 from flask import abort, jsonify, make_response, request
-from portal.services.runtime_paths import legacy_tenant_progeny_dir, member_progeny_dir
+from portal.services.progeny_workspace import find_member_instance, list_instances, save_instance
 
 _MEMBER_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _FORBIDDEN_KEYS = {"secret", "token", "password", "private_key", "client_secret", "aws_secret_access_key"}
 
 
-def _load_shared_progeny_normalize() -> ModuleType:
-    shared_path = Path(__file__).resolve().parents[3] / "_shared" / "portal" / "progeny_model" / "normalize.py"
-    spec = importlib.util.spec_from_file_location("mycite_shared_progeny_normalize", shared_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load shared progeny normalize module from {shared_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+def _load_shared_progeny_normalize():
+    portals_root = Path(__file__).resolve().parents[6]
+    token = str(portals_root)
+    if token not in sys.path:
+        sys.path.insert(0, token)
+    import _shared.portal.progeny_model.normalize as module
+
     return module
 
 
 _SHARED_NORMALIZE = _load_shared_progeny_normalize()
 normalize_member_profile = _SHARED_NORMALIZE.normalize_member_profile
-
-
-def _member_dir(private_dir: Path) -> Path:
-    return member_progeny_dir(private_dir)
-
-
-def _legacy_tenant_dir(private_dir: Path) -> Path:
-    return legacy_tenant_progeny_dir(private_dir)
 
 
 def _safe_member_id(value: str) -> str:
@@ -64,24 +55,6 @@ def _read_json(path: Path) -> Dict[str, Any]:
     return payload
 
 
-def _canonical_profile_path(private_dir: Path, member_id: str) -> Path:
-    return _member_dir(private_dir) / f"{member_id}.json"
-
-
-def _legacy_profile_path(private_dir: Path, member_id: str) -> Path:
-    return _legacy_tenant_dir(private_dir) / f"{member_id}.json"
-
-
-def _profile_path(private_dir: Path, member_id: str) -> Path:
-    canonical = _canonical_profile_path(private_dir, member_id)
-    if canonical.exists() and canonical.is_file():
-        return canonical
-    legacy = _legacy_profile_path(private_dir, member_id)
-    if legacy.exists() and legacy.is_file():
-        return legacy
-    return canonical
-
-
 def _with_legacy_aliases(profile: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(profile)
     out["tenant_id"] = str(profile.get("member_id") or "").strip()
@@ -102,25 +75,19 @@ def _normalize_profile(member_id: str, payload: Dict[str, Any]) -> Dict[str, Any
 
 
 def _write_profile(private_dir: Path, profile: Dict[str, Any]) -> Path:
-    member_id = str(profile.get("member_id") or "").strip()
-    canonical_target = _canonical_profile_path(private_dir, member_id)
-
-    canonical_target.parent.mkdir(parents=True, exist_ok=True)
-    canonical_target.write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
-
-    return canonical_target
-
-
-def _iter_profile_paths(private_dir: Path) -> list[Path]:
-    # Canonical member dir wins on duplicate IDs; legacy tenant dir remains read-compatible.
-    by_id: dict[str, Path] = {}
-
-    for path in sorted(_legacy_tenant_dir(private_dir).glob("*.json")):
-        by_id[path.stem] = path
-    for path in sorted(_member_dir(private_dir).glob("*.json")):
-        by_id[path.stem] = path
-
-    return [by_id[key] for key in sorted(by_id.keys())]
+    profile["profile_type"] = "member"
+    provider_msn_id = str(
+        profile.get("provider_msn_id")
+        or profile.get("provider")
+        or profile.get("host_msn_id")
+        or "local"
+    )
+    return save_instance(
+        private_dir,
+        profile,
+        provider_msn_id,
+        instance_id=str(profile.get("instance_id") or ""),
+    )
 
 
 def register_tenant_progeny_routes(
@@ -143,13 +110,20 @@ def register_tenant_progeny_routes(
 
     def _list_members() -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
-        _member_dir(private_dir).mkdir(parents=True, exist_ok=True)
-        _legacy_tenant_dir(private_dir).mkdir(parents=True, exist_ok=True)
-
-        for path in _iter_profile_paths(private_dir):
+        for record in list_instances(private_dir, "member"):
             try:
-                payload = _read_json(path)
-                member_id = _safe_member_id(str(payload.get("member_id") or payload.get("tenant_id") or path.stem))
+                payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+                member_id = _safe_member_id(
+                    str(
+                        payload.get("member_id")
+                        or payload.get("member_msn_id")
+                        or payload.get("tenant_id")
+                        or payload.get("tenant_msn_id")
+                        or payload.get("msn_id")
+                        or record.get("alias_associated_msn_id")
+                        or record.get("instance_id")
+                    )
+                )
                 profile = _normalize_profile(member_id, payload)
                 out.append(profile)
             except Exception:
@@ -158,10 +132,10 @@ def register_tenant_progeny_routes(
 
     def _get_member(member_id: str) -> Dict[str, Any]:
         token = _safe_member_id(member_id)
-        path = _profile_path(private_dir, token)
-        if not path.exists() or not path.is_file():
+        record = find_member_instance(private_dir, token)
+        if record is None:
             abort(404, description=f"No progeny profile found for member_id={token}")
-        payload = _read_json(path)
+        payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
         return _normalize_profile(token, payload)
 
     @app.get("/portal/api/progeny/members")
@@ -197,6 +171,14 @@ def register_tenant_progeny_routes(
             abort(400, description="Do not store secrets in member progeny metadata.")
 
         profile = _normalize_profile(token, body)
+        if msn_id_provider is not None:
+            try:
+                profile["provider_msn_id"] = str(msn_id_provider() or "").strip()
+            except Exception:
+                profile["provider_msn_id"] = ""
+        existing = find_member_instance(private_dir, token)
+        if existing is not None:
+            profile["instance_id"] = str(existing.get("instance_id") or "")
         path = _write_profile(private_dir, profile)
         response: Dict[str, Any] = {
             "ok": True,

@@ -20,9 +20,9 @@ Active specs:
 - tool mount targets
 - canonical private config payload
 - legacy-compatible private config payloads
-- hosted payloads
+- hosted payloads, including subject congregation metadata, broadcaster metadata, default progeny templates, and workflow/AWS callback metadata
 - public profile/card payloads
-- seed-file payloads for alias/progeny/profile/presentation scaffolding
+- seed-file payloads for alias/profile/presentation scaffolding plus unified progeny instances
 
 Not authoritative yet:
 
@@ -66,6 +66,8 @@ Materialization writes only the state files the runtime expects for portal-speci
 
 It does not overwrite `data/anthology.json`.
 
+Materialization also normalizes `private/network/hosted.json` to the canonical `mycite.network.hosted.v2` shape and removes stale legacy `private/mycite-config-*.json` files that are not declared in the build spec.
+
 ## Tool policy
 
 - `data_tool` is recorded as a core SYSTEM surface, not an optional packaged tool
@@ -88,6 +90,22 @@ The repo is moving toward a builder/runtime split:
 
 This means portal-specific state/config/profile/tool selections live in `build.json`, while executable code lives in the shared runtime tree.
 
+## Hosted and progeny direction
+
+`private/network/hosted.json` is now the canonical hosted metadata container for:
+
+- subject congregation/workbench metadata
+- broadcaster/people-tab metadata
+- default progeny templates for `admin`, `member`, and `user`
+- workflow and AWS callback metadata
+
+Canonical progeny instance storage direction:
+
+- directory: `private/network/progeny/`
+- filename pattern: `msn-<provider_msn_id>.<progeny_type>-<alias_associated_msn_id>.json`
+
+Legacy typed progeny directories remain read-compatible in runtime helpers, but build capture/materialize now favors the single-directory model.
+
 ## Example portal note
 
 The example portal is currently materialized into:
@@ -98,4 +116,4 @@ Its anthology remains state-owned at:
 
 - `/srv/compose/portals/state/example_portal/data/anthology.json`
 
-For now the example portal uses the current TFF runtime flavor to preserve the familiar workshop UI, but it should get its own demo MSN/key/domain before public exposure.
+For now the example portal uses the shared `tff` runtime flavor to preserve the familiar workshop UI. Its anthology remains state-owned and is not overwritten by repo materialization.

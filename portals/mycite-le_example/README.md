@@ -7,6 +7,7 @@ Dedicated example/demo portal state for anthology base-abstraction workshop.
 - isolated workshop instance for the starter anthology abstraction
 - separate from `tff_portal` so example edits do not land in the TFF working portal
 - uses the current TFF-style legal-entity runtime flavor for now to preserve the familiar UI/workbench behavior
+- carries its own placeholder MSN identity: `0-0-0-0-0-0-0-0-0-0`
 
 ## Build spec
 
@@ -31,9 +32,9 @@ The anthology file remains state-owned and is not overwritten by phase-1 materia
 
 ## Current recourse
 
-For now, the example portal borrows the current TFF MSN/key material so the existing runtime continues to function without inventing a fake network identity.
+The example portal is isolated from TFF and keeps its workshop anthology in live state only.
 
-Before public/demo exposure, assign a dedicated demo MSN/public key/domain and update the build spec accordingly.
+Before public/demo exposure, replace the placeholder MSN/key/domain with the real demo identity you want to publish.
 
 ## Canonical docs
 

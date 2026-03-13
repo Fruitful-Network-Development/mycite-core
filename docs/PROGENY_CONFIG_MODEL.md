@@ -43,11 +43,19 @@ Progeny instance JSON should hold resolved instance values while supporting:
 - local portal fields
 - future shift toward anthology-reference values over literal scalars
 
+Current canonical instance-storage direction:
+
+- `private/network/progeny/`
+- `msn-<provider_msn_id>.<progeny_type>-<alias_associated_msn_id>.json`
+
+Default type templates are no longer expected to live as separate per-type config files. They now live in `private/network/hosted.json -> progeny.templates`.
+
 ## Compatibility posture
 
 - Existing APIs and files using `tenant`/`board_member` remain accepted.
 - Runtime normalizes to canonical `member` where possible.
 - New API surfaces use `member` while legacy aliases remain available.
+- Legacy typed progeny directories remain readable during migration, but build capture/materialize now favors the single-directory storage contract.
 
 ## Property coordinate notation
 

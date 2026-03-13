@@ -258,6 +258,17 @@ def normalize_member_profile_refs(
     if site_domain and not site_base_url:
         site_base_url = f"https://{site_domain}"
 
+    website_base_url = _as_text(refs.get("website_base_url"))
+    website_domain = _extract_host(_as_text(refs.get("website_domain")))
+    if not website_domain and website_base_url:
+        website_domain = _extract_host(website_base_url)
+    if not website_domain and site_domain:
+        website_domain = site_domain
+    if not website_base_url and site_base_url:
+        website_base_url = site_base_url
+    if website_domain and not website_base_url:
+        website_base_url = f"https://{website_domain}"
+
     out: dict[str, str] = {
         "contact_collection_ref": _as_text(refs.get("contact_collection_ref")),
         "paypal_profile_id": _as_text(refs.get("paypal_profile_id") or f"paypal:member:{member_token}"),
@@ -270,6 +281,11 @@ def normalize_member_profile_refs(
         "aws_profile_id": _as_text(refs.get("aws_profile_id") or f"aws:member:{member_token}"),
         "aws_emailer_list_ref": _as_text(refs.get("aws_emailer_list_ref")),
         "aws_emailer_entry_ref": _as_text(refs.get("aws_emailer_entry_ref")),
+        "website_domain": website_domain,
+        "website_base_url": website_base_url,
+        "website_analytics_profile_id": _as_text(refs.get("website_analytics_profile_id") or f"analytics:member:{member_token}"),
+        "website_analytics_ref": _as_text(refs.get("website_analytics_ref")),
+        "website_analytics_callback_email": _as_text(refs.get("website_analytics_callback_email")),
         "keycloak_realm_ref": _as_text(refs.get("keycloak_realm_ref")),
         "keycloak_client_ref": _as_text(refs.get("keycloak_client_ref")),
         "email_transport_mode": _as_text(policy.get("mode") or "forwarder_no_smtp"),
@@ -350,8 +366,22 @@ def normalize_member_profile(member_id: str, payload: dict[str, Any]) -> dict[st
         email_map = raw_config.get("email_map") if isinstance(raw_config.get("email_map"), dict) else {}
         aws_inferred = bool(email_map) or bool(_as_text(raw_refs.get("contact_collection_ref")))
 
+    analytics_inferred = any(
+        _as_text(raw_refs.get(key))
+        for key in (
+            "website_domain",
+            "website_base_url",
+            "website_analytics_profile_id",
+            "website_analytics_ref",
+            "website_analytics_callback_email",
+            "paypal_site_domain",
+            "paypal_site_base_url",
+        )
+    )
+
     paypal_enabled = _as_bool(capabilities.get("paypal"), paypal_inferred)
     aws_enabled = _as_bool(capabilities.get("aws"), aws_inferred)
+    analytics_enabled = _as_bool(capabilities.get("analytics"), analytics_inferred or paypal_inferred)
 
     title = _as_text(display.get("title") or payload.get("title") or f"Member {member_token}") or f"Member {member_token}"
     authorization_contract_id = _as_text(
@@ -371,6 +401,7 @@ def normalize_member_profile(member_id: str, payload: dict[str, Any]) -> dict[st
         "capabilities": {
             "paypal": paypal_enabled,
             "aws": aws_enabled,
+            "analytics": analytics_enabled,
         },
         "profile_refs": normalize_member_profile_refs(payload, member_token, email_policy),
         "email_policy": email_policy,

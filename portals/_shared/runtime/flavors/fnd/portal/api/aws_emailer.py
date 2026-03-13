@@ -1,25 +1,24 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import re
+import sys
 from pathlib import Path
-from types import ModuleType
 from typing import Any, Dict
 
 from flask import abort, jsonify, make_response
-from portal.services.runtime_paths import member_profile_read_dirs
+from portal.services.progeny_workspace import find_member_instance
 
 _MEMBER_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
-def _load_shared_progeny_normalize() -> ModuleType:
-    shared_path = Path(__file__).resolve().parents[3] / "_shared" / "portal" / "progeny_model" / "normalize.py"
-    spec = importlib.util.spec_from_file_location("mycite_shared_progeny_normalize_aws_emailer", shared_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load shared progeny normalize module from {shared_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+def _load_shared_progeny_normalize():
+    portals_root = Path(__file__).resolve().parents[6]
+    token = str(portals_root)
+    if token not in sys.path:
+        sys.path.insert(0, token)
+    import _shared.portal.progeny_model.normalize as module
+
     return module
 
 
@@ -27,27 +26,11 @@ _SHARED_NORMALIZE = _load_shared_progeny_normalize()
 normalize_member_profile = _SHARED_NORMALIZE.normalize_member_profile
 
 
-def _member_dir(private_dir: Path) -> Path:
-    return member_profile_read_dirs(private_dir)[0]
-
-
-def _legacy_tenant_dir(private_dir: Path) -> Path:
-    return member_profile_read_dirs(private_dir)[-1]
-
-
 def _safe_member_id(value: str) -> str:
     token = str(value or "").strip()
     if not _MEMBER_ID_RE.fullmatch(token):
         raise ValueError("member_id must match [A-Za-z0-9._:-]{1,128}")
     return token
-
-
-def _profile_path(private_dir: Path, member_id: str) -> Path:
-    for directory in member_profile_read_dirs(private_dir):
-        candidate = directory / f"{member_id}.json"
-        if candidate.exists() and candidate.is_file():
-            return candidate
-    return _member_dir(private_dir) / f"{member_id}.json"
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
@@ -64,11 +47,11 @@ def _emailer_preview_response(
     member_id: str,
     legacy_route_term: str,
 ) -> tuple[dict[str, Any], int]:
-    path = _profile_path(private_dir, member_id)
-    if not path.exists() or not path.is_file():
+    record = find_member_instance(private_dir, member_id)
+    if record is None:
         abort(404, description=f"No progeny profile found for member_id={member_id}")
 
-    payload = _read_json(path)
+    payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
     normalized_profile = normalize_member_profile(member_id, payload)
     profile_refs = (
         normalized_profile.get("profile_refs")
