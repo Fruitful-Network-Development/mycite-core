@@ -51,6 +51,44 @@
       </article>
 
       <article class="card">
+        <div class="card__kicker">Inherited Data</div>
+        <div class="card__title">FND Taxonomy Collection</div>
+        <div class="card__body">
+          {% set taxonomy = model.taxonomy if model.taxonomy is mapping else {} %}
+          {% if taxonomy and taxonomy.ok %}
+            <p>
+              <strong>taxonomy_ref</strong>:
+              <code>{{ taxonomy.ref }}</code>
+            </p>
+            <p>
+              <strong>scope</strong>:
+              <code>{{ taxonomy.scope }}</code>
+            </p>
+            {% set tree = taxonomy.tree if taxonomy.tree is mapping else {} %}
+            {% if tree %}
+              <h3>Taxonomy Tree (Preview)</h3>
+              <ul class="liststack">
+                <li>
+                  <strong>{{ tree.label or tree.id }}</strong>
+                  {% if tree.children %}
+                    <ul class="liststack">
+                      {% for child in tree.children %}
+                        <li>{{ child.label or child.id }}</li>
+                      {% endfor %}
+                    </ul>
+                  {% endif %}
+                </li>
+              </ul>
+            {% else %}
+              <p>No taxonomy tree structure was resolved.</p>
+            {% endif %}
+          {% else %}
+            <p>No inherited taxonomy context is available yet.</p>
+          {% endif %}
+        </div>
+      </article>
+
+      <article class="card">
         <div class="card__kicker">Coordinate Notation</div>
         <div class="card__title">Fixed-Width Signed Hex Split</div>
         <div class="card__body">
@@ -158,6 +196,42 @@
               {% endif %}
             </div>
           </div>
+        </div>
+      </article>
+
+      <article class="card card--full">
+        <div class="card__kicker">AGRO ERP Archetypes</div>
+        <div class="card__title">Product Type Definition</div>
+        <div class="card__body">
+          {% set archetype = model.product_type_archetype if model.product_type_archetype is mapping else {} %}
+          {% if archetype and archetype.fields %}
+            <p>
+              <strong>schema</strong>:
+              <code>{{ archetype.schema }}</code>
+            </p>
+            <table class="agro-tool__table">
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Type</th>
+                  <th>Required</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for field in archetype.fields %}
+                  <tr>
+                    <td><code>{{ field.id }}</code></td>
+                    <td><code>{{ field.type }}</code></td>
+                    <td>{{ "yes" if field.required else "no" }}</td>
+                    <td>{{ field.description }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <p>No product-type archetype metadata is available.</p>
+          {% endif %}
         </div>
       </article>
 

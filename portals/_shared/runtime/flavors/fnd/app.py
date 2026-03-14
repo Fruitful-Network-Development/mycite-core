@@ -37,6 +37,8 @@ from portal.core_services.runtime import (
 )
 from portal.services.alias_factory import alias_path, client_key_for_msn, merge_field_names
 from portal.services.hosted_store import DEFAULT_TABS as HOSTED_DEFAULT_TABS, read_hosted_payload
+from portal.services.contract_store import get_contract, list_contracts
+from portal.services.mss import preview_mss_context, resolve_contract_datum_ref
 from portal.services.progeny_embed import build_embed_progeny_landing
 from portal.services.progeny_config_store import get_client_config, get_config
 from portal.services.progeny_workspace import find_profile_by_associated_msn, list_instances
@@ -120,6 +122,99 @@ def _write_json(path: Path, payload: Dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
+def _anthology_path() -> Path:
+    return DATA_DIR / "anthology.json"
+
+
+def _load_local_anthology_payload() -> Dict[str, Any]:
+    path = _anthology_path()
+    if not path.exists() or not path.is_file():
+        return {}
+    try:
+        return _read_json(path)
+    except Exception:
+        return {}
+
+
+def _contract_records() -> list[Dict[str, Any]]:
+    out: list[Dict[str, Any]] = []
+    for item in list_contracts(PRIVATE_DIR):
+        contract_id = str(item.get("contract_id") or "").strip()
+        if not contract_id:
+            continue
+        try:
+            out.append(get_contract(PRIVATE_DIR, contract_id))
+        except Exception:
+            continue
+    return out
+
+
+def _contract_preview(contract_payload: Dict[str, Any]) -> Dict[str, Any]:
+    owner_selected_refs = list(contract_payload.get("owner_selected_refs") or [])
+    owner_preview = preview_mss_context(
+        anthology_payload=_load_local_anthology_payload(),
+        selected_refs=owner_selected_refs,
+        bitstring="" if owner_selected_refs else str(contract_payload.get("owner_mss") or ""),
+        local_msn_id=str(MSN_ID or ""),
+    )
+    counterparty_preview = preview_mss_context(bitstring=str(contract_payload.get("counterparty_mss") or ""))
+    return {
+        "owner_selected_refs": owner_selected_refs,
+        "owner": owner_preview,
+        "counterparty": counterparty_preview,
+    }
+
+
+def _network_contract_items() -> list[Dict[str, Any]]:
+    out: list[Dict[str, Any]] = []
+    for item in list_contracts(PRIVATE_DIR):
+        contract_id = str(item.get("contract_id") or "").strip()
+        if not contract_id:
+            continue
+        try:
+            contract_payload = get_contract(PRIVATE_DIR, contract_id)
+        except Exception:
+            contract_payload = {"contract_id": contract_id}
+        preview = _contract_preview(contract_payload)
+        out.append(
+            {
+                "id": contract_id,
+                "contract_id": contract_id,
+                "label": str(contract_payload.get("contract_type") or contract_id).strip() or contract_id,
+                "counterparty_msn_id": str(contract_payload.get("counterparty_msn_id") or "").strip(),
+                "status": str(contract_payload.get("status") or "pending").strip(),
+                "owner_selected_refs": list(contract_payload.get("owner_selected_refs") or []),
+                "owner_mss_present": bool(str(contract_payload.get("owner_mss") or "").strip()),
+                "counterparty_mss_present": bool(str(contract_payload.get("counterparty_mss") or "").strip()),
+                "href": f"/portal/network?tab=contracts&id={quote(contract_id, safe='')}",
+                "payload": contract_payload,
+                "preview": preview,
+            }
+        )
+    return out
+
+
+def _network_resolved_refs(payload: Dict[str, Any], *, preferred_contract_id: str = "") -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    contracts = _contract_records()
+    anthology = _load_local_anthology_payload()
+    for key in ("event_datum", "status"):
+        token = str(payload.get(key) or "").strip()
+        if not token:
+            continue
+        try:
+            out[key] = resolve_contract_datum_ref(
+                token,
+                local_msn_id=str(MSN_ID or ""),
+                anthology_payload=anthology,
+                contract_payloads=contracts,
+                preferred_contract_id=preferred_contract_id,
+            )
+        except Exception:
+            continue
+    return out
+
+
 def _find_first(paths) -> Optional[Path]:
     for path in paths:
         if path.exists() and path.is_file():
@@ -196,7 +291,12 @@ def _options_private(msn_id: str) -> Dict[str, Any]:
         },
         "contracts": {
             "href": f"/portal/api/contracts?msn_id={msn_id}",
-            "methods": ["GET", "POST", "OPTIONS"],
+            "methods": ["GET", "POST", "PATCH", "OPTIONS"],
+            "auth": "keycloak_or_local",
+        },
+        "contract_mss_preview": {
+            "href": f"/portal/api/contracts/mss/preview?msn_id={msn_id}",
+            "methods": ["POST", "OPTIONS"],
             "auth": "keycloak_or_local",
         },
         "contract_request": {
@@ -252,12 +352,6 @@ def _options_private(msn_id: str) -> Dict[str, Any]:
         "network_contacts_collection": {
             "href": "/portal/api/network/contacts/collection?alias_id=<alias_id>",
             "methods": ["GET", "OPTIONS"],
-            "auth": "keycloak_or_local",
-            "qualifier": "anonymous",
-        },
-        "network_daemon_resolve_references": {
-            "href": "/portal/api/network/daemon/resolve_references",
-            "methods": ["POST", "OPTIONS"],
             "auth": "keycloak_or_local",
             "qualifier": "anonymous",
         },
@@ -583,7 +677,7 @@ def _iter_request_log_records() -> list[Dict[str, Any]]:
 
 def _normalize_network_query_tab(raw: Any) -> str:
     token = str(raw or "").strip().lower()
-    return token if token in {"messages", "hosted", "profile"} else "messages"
+    return token if token in {"messages", "hosted", "profile", "contracts"} else "messages"
 
 
 def _normalize_network_kind(raw: Any) -> str:
@@ -1019,6 +1113,9 @@ def _network_message_feed(
         if transmitter:
             side = "outbound" if MSN_ID and MSN_ID in transmitter else "inbound"
         preview_payload = {key: value for key, value in event.items() if key != "msn_id"}
+        resolved_refs = _network_resolved_refs(event, preferred_contract_id=str(event.get("contract_id") or "").strip())
+        if resolved_refs:
+            preview_payload["mss_resolution"] = resolved_refs
         author = _event_actor_label(event)
         feed.append(
             {
@@ -1046,6 +1143,7 @@ def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
         aliases = _network_sidebar_alias_items()
         logs = _request_log_channels()
         p2p = _p2p_channels()
+        contracts = _network_contract_items()
         return [
             {
                 "title": "Network Views",
@@ -1053,6 +1151,7 @@ def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
                     {"label": "Messages", "meta": "aliases / logs / p2p", "href": "/portal/network?tab=messages&kind=alias", "active": network_tab == "messages"},
                     {"label": "Hosted", "meta": "hosted.json", "href": "/portal/network?tab=hosted", "active": network_tab == "hosted"},
                     {"label": "Profile", "meta": "config + public cards", "href": "/portal/network?tab=profile", "active": network_tab == "profile"},
+                    {"label": "Contracts", "meta": "shared MSS context", "href": "/portal/network?tab=contracts", "active": network_tab == "contracts"},
                 ],
                 "empty_text": "",
             },
@@ -1094,6 +1193,19 @@ def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
                     for item in p2p
                 ],
                 "empty_text": "No P2P channels derived yet",
+            },
+            {
+                "title": "Contracts",
+                "entries": [
+                    {
+                        "label": item["label"],
+                        "meta": item.get("counterparty_msn_id") or item.get("status") or "",
+                        "href": item["href"],
+                        "active": network_tab == "contracts" and selected == item["id"],
+                    }
+                    for item in contracts
+                ],
+                "empty_text": "No contracts saved",
             },
         ]
 
@@ -1350,10 +1462,12 @@ def portal_network_default():
     aliases = _network_sidebar_alias_items()
     log_channels = _request_log_channels()
     p2p_channels = _p2p_channels()
+    contracts = _network_contract_items()
 
     selected_alias = next((item for item in aliases if item["id"] == selected_id), None) if tab == "messages" and kind == "alias" else None
     selected_log = next((item for item in log_channels if item["id"] == selected_id), None) if tab == "messages" and kind == "log" else None
     selected_p2p = next((item for item in p2p_channels if item["id"] == selected_id), None) if tab == "messages" and kind == "p2p" else None
+    selected_contract = next((item for item in contracts if item["id"] == selected_id), None) if tab == "contracts" else None
 
     if tab == "messages" and not selected_id:
         if kind == "alias" and aliases:
@@ -1362,6 +1476,8 @@ def portal_network_default():
             return redirect(log_channels[0]["href"], code=302)
         if kind == "p2p" and p2p_channels:
             return redirect(p2p_channels[0]["href"], code=302)
+    if tab == "contracts" and not selected_id and contracts:
+        return redirect(contracts[0]["href"], code=302)
 
     profile_model = _portal_profile_model()
     geography_model = build_property_geography_model(ACTIVE_PRIVATE_CONFIG, DATA_DIR)
@@ -1379,6 +1495,8 @@ def portal_network_default():
         selected_alias=selected_alias,
         selected_log=selected_log,
         selected_p2p=selected_p2p,
+        network_contracts=contracts,
+        selected_contract=selected_contract,
         message_feed=message_feed,
         request_log_summary=_request_log_summary(),
         network_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
@@ -1396,8 +1514,10 @@ def portal_network_legacy(tab_id: str):
     token = str(tab_id or "").strip().lower()
     if token in {"aliases", "alias", "provisions"}:
         return redirect("/portal/network?tab=messages&kind=alias", code=302)
-    if token in {"logs", "contracts"}:
+    if token in {"logs"}:
         return redirect("/portal/network?tab=messages&kind=log", code=302)
+    if token in {"contracts", "contract"}:
+        return redirect("/portal/network?tab=contracts", code=302)
     if token in {"p2p", "messages"}:
         return redirect("/portal/network?tab=messages&kind=p2p", code=302)
     if token == "hosted":
@@ -2030,7 +2150,12 @@ def embed_tenant_paypal_webhook_register():
 register_config_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options_private)
 register_aliases_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options_private)
 register_inbox_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options_private)
-register_contract_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options_private)
+register_contract_routes(
+    app,
+    private_dir=PRIVATE_DIR,
+    options_private_fn=_options_private,
+    anthology_path_fn=_anthology_path,
+)
 register_progeny_config_routes(app, options_private_fn=_options_private)
 register_tenant_progeny_routes(
     app,

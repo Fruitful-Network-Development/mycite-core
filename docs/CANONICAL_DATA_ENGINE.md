@@ -4,27 +4,13 @@
 
 Portal data runtime is file-backed.
 
-- canonical anthology: `data/anthology.json`
-- canonical example anthology currently under active development:
-  - `/srv/compose/portals/state/example_portal/data/anthology.json`
+Canonical data artifacts:
 
-Repo `build.json` files may record anthology metadata/checksum, but anthology content remains state-owned in this phase and is never overwritten by materialization.
+- `data/anthology.json`
+- `data/presentation/datum_icons.json`
+- request logs and hosted/network metadata under `private/network/**`
 
-## Workbench contract
-
-The Data Tool is a core SYSTEM workbench surface, not an optional packaged tool.
-
-Workbench layouts:
-
-- `table` (default)
-- `linear`
-- `radial`
-
-Graph behavior:
-
-- panning/scrolling is done through the graph surface/viewport
-- zoom is controlled by the explicit `+` / `-` UI controls
-- node selection opens datum editing/detail in the right inspector column
+Repo `build.json` files may seed contract/network data, but anthology content remains state-owned and is not overwritten by materialization.
 
 ## Datum and mediation model
 
@@ -34,19 +20,15 @@ Canonical datum ordering remains:
 2. value group
 3. iteration
 
-Shared anthology normalization:
+Shared helpers:
 
-- `portals/_shared/portal/data_engine/anthology_normalization.py`
-
-Shared mediation registry:
-
-- `portals/_shared/portal/mediation/registry.py`
-
-Compatibility aliases remain accepted for legacy magnitudes, but canonical behavior is driven through the shared mediation registry.
+- anthology normalization: `portals/_shared/portal/data_engine/anthology_normalization.py`
+- mediation registry: `portals/_shared/portal/mediation/registry.py`
+- MSS contract context: `docs/MSS_COMPACT_ARRAY_SPEC.md`
 
 ## Reference model
 
-Within portal/runtime metadata, datum references should converge on:
+Canonical network-facing datum refs:
 
 - `<msn_id>.<datum>`
 
@@ -54,13 +36,11 @@ Compatibility policy:
 
 - local refs remain readable
 - legacy hyphen-qualified refs remain readable
-- new network-facing writes should use dot-qualified refs
+- new network-facing writes use dot-qualified refs
 
 ## Daemon ownership
 
 Daemon resolution remains owned by the Data Engine.
-
-Network-facing daemon endpoints are wrappers over Data Engine resolution and should not duplicate graph/token logic.
 
 Canonical Data Engine daemon routes:
 
@@ -68,6 +48,24 @@ Canonical Data Engine daemon routes:
 - `POST /portal/api/data/daemon/resolve`
 - `POST /portal/api/data/daemon/resolve_tokens`
 
+These routes are retained for Data Tool and tool-package usage. NETWORK foreign datum resolution does not use a separate daemon wrapper; it resolves through contract MSS context.
+
+## MSS contract sync boundary
+
+The Data Engine is responsible for keeping anthology-derived contract context coherent after anthology mutations.
+
+Current rule:
+
+- after anthology compaction and VG0 synchronization, recompile `owner_mss` for local contracts with non-empty `owner_selected_refs`
+- do not rewrite manual `owner_mss` values when no `owner_selected_refs` are stored
+
+Current mutation surfaces covered:
+
+- anthology append
+- anthology delete
+- anthology profile update
+- time-series mutations that write anthology rows
+
 ## Storage boundary
 
-There is no portal application database in this runtime. Portal data, hosted metadata, request logs, progeny profiles, and workbench state remain JSON/ndjson/file backed.
+There is no portal application database in this runtime. Portal data, hosted metadata, request logs, progeny profiles, vault state, and workbench state remain JSON/ndjson/file backed.

@@ -16,6 +16,8 @@ from typing import Any, Callable, Dict, Optional
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from flask import abort, jsonify, make_response, request
 
+from portal.services.mss import compile_mss_payload
+from portal.services.contract_store import upsert_contract
 from portal.services.crypto_signatures import ensure_dev_keypair, sign_payload, verify_payload_signature
 from portal.services.datum_refs import normalize_datum_ref, parse_datum_ref
 from portal.services.request_log_store import append_event
@@ -53,6 +55,31 @@ def _write_json(path: Path, payload: Dict[str, Any]) -> None:
 
 def _as_str(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _as_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        token = _as_str(item)
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return out
+
+
+def _mss_value(value: Any) -> str:
+    if isinstance(value, list) and not value:
+        return ""
+    token = _as_str(value)
+    if not token:
+        return ""
+    if any(char not in {"0", "1"} for char in token):
+        raise ValueError("MSS contract values must be raw bitstrings")
+    return token
 
 
 def _safe_identifier(value: str, *, fallback: str = "item") -> str:
@@ -598,15 +625,17 @@ def _contract_payload_rows(private_dir: Path) -> list[tuple[str, Dict[str, Any]]
     for directory in contract_read_dirs(private_dir):
         if not directory.exists() or not directory.is_dir():
             continue
-        for path in sorted(directory.glob("contract-*.json")):
-            contract_id = path.stem.replace("contract-", "", 1)
-            if contract_id in seen:
-                continue
-            seen.add(contract_id)
+        for path in sorted(directory.glob("*.json")):
             try:
                 payload = _read_json(path)
             except Exception:
                 continue
+            contract_id = _as_str(payload.get("contract_id"))
+            if not contract_id:
+                contract_id = path.stem.replace("contract-", "", 1) if path.stem.startswith("contract-") else path.stem
+            if contract_id in seen:
+                continue
+            seen.add(contract_id)
             payload.setdefault("contract_id", contract_id)
             out.append((contract_id, payload))
     return out
@@ -822,6 +851,33 @@ def register_contract_handshake_routes(
             abort(400, description="Expected JSON object body")
         return body
 
+    def _workspace_anthology_payload() -> Dict[str, Any]:
+        if workspace is None:
+            return {}
+        storage = getattr(workspace, "storage", None)
+        if storage is None or not hasattr(storage, "read_payload"):
+            return {}
+        try:
+            payload = storage.read_payload("anthology")
+        except Exception:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _compiled_owner_contract_context(body: Dict[str, Any], local_msn_id: str) -> tuple[str, list[str]]:
+        selected_refs = _as_string_list(body.get("owner_selected_refs"))
+        if not selected_refs:
+            return _mss_value(body.get("owner_mss")), []
+        anthology_payload = _workspace_anthology_payload()
+        if not anthology_payload:
+            raise ValueError("owner_selected_refs require a readable local anthology to compile owner_mss")
+        compiled = compile_mss_payload(
+            anthology_payload,
+            selected_refs,
+            local_msn_id=local_msn_id,
+            include_selection_root=True,
+        )
+        return _as_str(compiled.get("bitstring")), selected_refs
+
     def _qualifier_endpoints(local_msn_id: str) -> Dict[str, Dict[str, Any]]:
         return {
             "network_anonymous_options": {
@@ -880,12 +936,6 @@ def register_contract_handshake_routes(
                 "auth": "keycloak_or_local",
                 "qualifier": "anonymous",
             },
-            "network_daemon_resolve_references": {
-                "href": "/portal/api/network/daemon/resolve_references",
-                "methods": ["POST", "OPTIONS"],
-                "auth": "keycloak_or_local",
-                "qualifier": "anonymous",
-            },
         }
 
     def _compose_options_private(local_msn_id: str) -> Dict[str, Any]:
@@ -912,22 +962,46 @@ def register_contract_handshake_routes(
         request_status = _normalize_status_ref(body.get("status"), local_msn_id, default_value=DEFAULT_REQUEST_STATUS)
         details = body.get("details") if isinstance(body.get("details"), dict) else {}
         callback_url = _as_str(body.get("confirmation_callback_url"))
+        try:
+            owner_mss, owner_selected_refs = _compiled_owner_contract_context(body, local_msn_id)
+        except ValueError as exc:
+            abort(400, description=str(exc))
 
         proposal = {
             "proposal_id": proposal_id,
             "contract_id": _as_str(body.get("contract_id")) or f"contract-{proposal_id}",
+            "contract_type": _as_str(body.get("contract_type")) or "portal_contract",
             "sender_msn_id": local_msn_id,
             "receiver_msn_id": target_msn_id,
             "host_title": _as_str(body.get("host_title")),
             "progeny_type": _as_str(body.get("progeny_type")) or "member",
             "member_msn_id": _as_str(body.get("member_msn_id")),
             "template_version": _as_str(body.get("template_version")) or "1.0.0",
+            "owner_mss": owner_mss,
+            "owner_selected_refs": owner_selected_refs,
             "event_datum": event_datum,
             "status": request_status,
             "request_unix_ms": int(time.time() * 1000),
             "confirmation_callback_url": callback_url,
             "details": details,
         }
+        upsert_contract(
+            private_dir,
+            proposal["contract_id"],
+            {
+                "contract_type": proposal["contract_type"],
+                "owner_msn_id": local_msn_id,
+                "counterparty_msn_id": target_msn_id,
+                "status": "pending",
+                "template_version": proposal["template_version"],
+                "host_title": proposal["host_title"],
+                "progeny_type": proposal["progeny_type"],
+                "details": details,
+                "owner_mss": proposal["owner_mss"],
+                "owner_selected_refs": proposal["owner_selected_refs"],
+            },
+            owner_msn_id=local_msn_id,
+        )
 
         signed_request = _build_signed_payload(
             local_msn_id=local_msn_id,
@@ -1077,11 +1151,36 @@ def register_contract_handshake_routes(
             },
         )
 
+        upsert_contract(
+            private_dir,
+            _as_str(proposal.get("contract_id")) or f"contract-{proposal_id}",
+            {
+                "contract_type": _as_str(proposal.get("contract_type")) or "portal_contract",
+                "owner_msn_id": local_msn_id,
+                "counterparty_msn_id": sender_msn_id,
+                "status": "pending",
+                "template_version": _as_str(proposal.get("template_version")) or "1.0.0",
+                "host_title": _as_str(proposal.get("host_title")),
+                "progeny_type": _as_str(proposal.get("progeny_type")),
+                "details": proposal.get("details") if isinstance(proposal.get("details"), dict) else {},
+                "counterparty_mss": _mss_value(proposal.get("owner_mss")),
+                "counterparty_selected_refs": _as_string_list(proposal.get("owner_selected_refs")),
+            },
+            owner_msn_id=local_msn_id,
+        )
+
+        stored_contract = _load_contract_payload(private_dir, _as_str(proposal.get("contract_id")) or f"contract-{proposal_id}")
+        owner_mss = _mss_value(stored_contract.get("owner_mss"))
+        owner_selected_refs = _as_string_list(stored_contract.get("owner_selected_refs"))
+
         confirmation = {
             "proposal_id": proposal_id,
             "contract_id": _as_str(proposal.get("contract_id")) or f"contract-{proposal_id}",
+            "contract_type": _as_str(proposal.get("contract_type")) or "portal_contract",
             "sender_msn_id": local_msn_id,
             "receiver_msn_id": sender_msn_id,
+            "owner_mss": owner_mss,
+            "owner_selected_refs": owner_selected_refs,
             "event_datum": _normalize_event_ref(event_datum, sender_msn_id, default_value=DEFAULT_EVENT_DATUM),
             "status": _normalize_status_ref(DEFAULT_CONFIRM_STATUS, local_msn_id, default_value=DEFAULT_CONFIRM_STATUS),
             "confirmed_unix_ms": int(time.time() * 1000),
@@ -1182,6 +1281,19 @@ def register_contract_handshake_routes(
                     "qualifier": "asymmetric",
                 },
             },
+        )
+        upsert_contract(
+            private_dir,
+            _as_str(confirmation.get("contract_id")) or f"contract-{_as_str(confirmation.get('proposal_id'))}",
+            {
+                "contract_type": _as_str(confirmation.get("contract_type")) or "portal_contract",
+                "owner_msn_id": local_msn_id,
+                "counterparty_msn_id": sender_msn_id,
+                "status": "active",
+                "counterparty_mss": _mss_value(confirmation.get("owner_mss")),
+                "counterparty_selected_refs": _as_string_list(confirmation.get("owner_selected_refs")),
+            },
+            owner_msn_id=local_msn_id,
         )
         return jsonify({"ok": True, "accepted": True, "proposal_id": confirmation.get("proposal_id"), "qualifier": "asymmetric"}), 202
 
@@ -1560,120 +1672,6 @@ def register_contract_handshake_routes(
         payload["options_private"] = _compose_options_private(local_msn_id)
         return jsonify(payload), status_code
 
-    @app.post("/portal/api/network/daemon/resolve_references")
-    def network_daemon_resolve_references():
-        local_msn_id = _local_msn_id()
-        if workspace is None or not hasattr(workspace, "daemon_resolve_tokens"):
-            abort(501, description="network daemon wrapper is unavailable")
-
-        body = _json_body()
-        alias_id = _as_str(body.get("alias_id"))
-        standard_id = _as_str(body.get("standard_id") or "coordinate").lower() or "coordinate"
-        context = body.get("context") if isinstance(body.get("context"), dict) else {}
-
-        refs_payload = body.get("refs")
-        refs: Dict[str, str] = {}
-        provenance: Dict[str, str] = {}
-
-        if isinstance(refs_payload, dict):
-            for key, value in refs_payload.items():
-                token = _as_str(value)
-                if token:
-                    refs[_as_str(key) or f"ref_{len(refs) + 1}"] = token
-                    provenance[_as_str(key) or f"ref_{len(refs) + 1}"] = "input"
-        elif isinstance(refs_payload, list):
-            for index, value in enumerate(refs_payload):
-                token = _as_str(value)
-                if token:
-                    key = f"ref_{index + 1}"
-                    refs[key] = token
-                    provenance[key] = "input"
-
-        if alias_id:
-            alias_payload = _load_alias_record(private_dir, alias_id)
-            if alias_payload is None:
-                abort(404, description=f"No alias record found for alias_id={alias_id}")
-            member_payload = _load_member_profile_for_alias(private_dir, alias_payload)
-            alias_refs, alias_provenance = _alias_reference_map(alias_payload, member_payload)
-            for key, value in alias_refs.items():
-                if key in refs:
-                    continue
-                refs[key] = value
-                provenance[key] = alias_provenance.get(key) or "default"
-
-        if not refs:
-            abort(400, description="No datum references were supplied")
-
-        normalized_refs: Dict[str, Dict[str, str]] = {}
-        tokens: list[str] = []
-        warnings: list[str] = []
-        for key, raw_ref in refs.items():
-            try:
-                parsed = parse_datum_ref(raw_ref, field_name=key)
-                normalized_dot = normalize_datum_ref(
-                    raw_ref,
-                    local_msn_id=local_msn_id,
-                    require_qualified=True,
-                    write_format="dot",
-                    field_name=key,
-                )
-                normalized_hyphen = normalize_datum_ref(
-                    raw_ref,
-                    local_msn_id=local_msn_id,
-                    require_qualified=True,
-                    write_format="hyphen",
-                    field_name=key,
-                )
-            except ValueError as exc:
-                warnings.append(f"{key}: {exc}")
-                continue
-
-            normalized_refs[key] = {
-                "raw": raw_ref,
-                "source_format": parsed.source_format,
-                "normalized_dot": normalized_dot,
-                "normalized_hyphen": normalized_hyphen,
-                "datum_address": parsed.datum_address,
-                "msn_id": parsed.msn_id or local_msn_id,
-            }
-            tokens.append(normalized_hyphen)
-
-        if not tokens:
-            return jsonify(
-                {
-                    "ok": False,
-                    "errors": ["No valid datum references were supplied"],
-                    "warnings": warnings,
-                    "normalized_refs": normalized_refs,
-                }
-            ), 400
-
-        result = workspace.daemon_resolve_tokens(tokens=tokens, standard_id=standard_id, context=context)
-        resolved_rows = list(result.get("resolved") or []) if isinstance(result.get("resolved"), list) else []
-        resolved_by_token: Dict[str, Dict[str, Any]] = {}
-        for row in resolved_rows:
-            if not isinstance(row, dict):
-                continue
-            token = _as_str(row.get("token"))
-            if token:
-                resolved_by_token[token] = row
-
-        resolved_by_ref: Dict[str, Any] = {}
-        for key, payload in normalized_refs.items():
-            resolved_by_ref[key] = resolved_by_token.get(payload.get("normalized_hyphen", ""), {})
-
-        out = {
-            "ok": bool(result.get("ok")) and not bool(result.get("errors")),
-            "standard_id": standard_id,
-            "normalized_refs": normalized_refs,
-            "resolved": resolved_by_ref,
-            "provenance": provenance,
-            "errors": list(result.get("errors") or []),
-            "warnings": warnings + list(result.get("warnings") or []),
-        }
-        out["options_private"] = _compose_options_private(local_msn_id)
-        return jsonify(out), (200 if out["ok"] else 400)
-
     @app.get("/api/network/anonymous/options/<msn_id>")
     def network_anonymous_options(msn_id: str):
         local_msn_id = _local_msn_id()
@@ -1737,7 +1735,6 @@ def register_contract_handshake_routes(
     @app.route("/portal/api/network/symmetric/contracts/<contract_id>/renew", methods=["OPTIONS"])
     @app.route("/portal/api/network/symmetric/contracts/due", methods=["OPTIONS"])
     @app.route("/portal/api/network/contacts/collection", methods=["OPTIONS"])
-    @app.route("/portal/api/network/daemon/resolve_references", methods=["OPTIONS"])
     def portal_network_options(contract_id: str | None = None):
         _ = contract_id
         resp = make_response("", 204)

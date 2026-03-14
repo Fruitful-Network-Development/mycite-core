@@ -7,9 +7,9 @@ from typing import Any
 from ..datum_refs import normalize_datum_ref, parse_datum_ref
 from ..progeny_model.compat import LEGAL_ENTITY_BASE_TYPES, canonical_progeny_type
 from ..progeny_model.inheritance import resolve_inherited_fields
+from ..services.contract_store import list_contracts
 from ..runtime_paths import (
     alias_read_dirs,
-    contract_read_dirs,
     internal_progeny_read_dirs,
     network_dir,
     unified_progeny_read_paths,
@@ -324,27 +324,21 @@ def build_alias_cards(private_dir: Path) -> list[ProfileCard]:
 
 def build_contract_cards(private_dir: Path) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    seen_contract_ids: set[str] = set()
-    for root in contract_read_dirs(private_dir):
-        if not root.exists() or not root.is_dir():
+    for item in list_contracts(private_dir):
+        contract_id = str(item.get("contract_id") or "").strip()
+        if not contract_id:
             continue
-        for path in sorted(root.glob("*.json")):
-            contract_id = path.stem
-            if contract_id in seen_contract_ids:
-                continue
-            seen_contract_ids.add(contract_id)
-            payload = _read_json(path)
-            if payload is None:
-                continue
-            out.append(
-                {
-                    "id": contract_id,
-                    "title": str(payload.get("contract_type") or payload.get("type") or contract_id),
-                    "counterparty_msn_id": str(payload.get("counterparty_msn_id") or "").strip(),
-                    "status": str(payload.get("status") or "active").strip(),
-                    "source": path.name,
-                }
-            )
+        out.append(
+            {
+                "id": contract_id,
+                "title": str(item.get("contract_type") or contract_id).strip(),
+                "counterparty_msn_id": str(item.get("counterparty_msn_id") or "").strip(),
+                "status": str(item.get("status") or "active").strip(),
+                "owner_mss_present": bool(item.get("owner_mss_present")),
+                "counterparty_mss_present": bool(item.get("counterparty_mss_present")),
+                "source": Path(str(item.get("path") or "")).name,
+            }
+        )
     return out
 
 

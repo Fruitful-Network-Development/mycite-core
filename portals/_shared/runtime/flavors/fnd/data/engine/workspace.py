@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import json
 import re
+import sys
 from collections import defaultdict
 from pathlib import Path
 from types import ModuleType
@@ -71,6 +73,18 @@ parse_datum_identifier = _SHARED_ANTHOLOGY_NORMALIZATION.parse_datum_identifier
 compact_iterations = _SHARED_ANTHOLOGY_NORMALIZATION.compact_iterations
 
 
+def _load_shared_contract_mss_sync() -> ModuleType:
+    portals_root = Path(__file__).resolve().parents[6]
+    token = str(portals_root)
+    if token not in sys.path:
+        sys.path.insert(0, token)
+    return importlib.import_module("_shared.portal.services.contract_mss_sync")
+
+
+_SHARED_CONTRACT_MSS_SYNC = _load_shared_contract_mss_sync()
+sync_owner_contract_mss = _SHARED_CONTRACT_MSS_SYNC.sync_owner_contract_mss
+
+
 class Workspace:
     def __init__(self, storage_backend, config: dict[str, Any] | None = None):
         self.storage = storage_backend
@@ -120,6 +134,64 @@ class Workspace:
         if token in {"basename", "path"}:
             return token
         return "basename"
+
+    def _private_dir(self) -> Path | None:
+        token = self.config.get("private_dir")
+        if token:
+            try:
+                return Path(str(token))
+            except Exception:
+                return None
+        if self._state_path is not None:
+            parent = self._state_path.parent
+            if parent.name == "daemon_state":
+                return parent.parent
+        return None
+
+    def _anthology_path(self) -> Path | None:
+        data_dir = getattr(self.storage, "data_dir", None)
+        if data_dir is None:
+            return None
+        try:
+            return Path(data_dir) / "anthology.json"
+        except Exception:
+            return None
+
+    def _sync_contract_mss(self, *, identifier_map: dict[str, str] | None = None) -> dict[str, Any]:
+        private_dir = self._private_dir()
+        anthology_path = self._anthology_path()
+        local_msn_id = str(self.config.get("msn_id") or "").strip()
+        if private_dir is None or anthology_path is None:
+            return {
+                "ok": True,
+                "skipped": True,
+                "reason": "contract_mss_sync_unconfigured",
+                "recompiled_contract_ids": [],
+                "unchanged_contract_ids": [],
+                "skipped_manual_contract_ids": [],
+                "skipped_unowned_contract_ids": [],
+                "failed_contracts": [],
+                "warnings": [],
+            }
+        try:
+            return sync_owner_contract_mss(
+                private_dir=private_dir,
+                owner_msn_id=local_msn_id,
+                anthology_path=anthology_path,
+                identifier_map=identifier_map,
+            )
+        except Exception as exc:
+            return {
+                "ok": False,
+                "skipped": False,
+                "reason": "contract_mss_sync_failed",
+                "recompiled_contract_ids": [],
+                "unchanged_contract_ids": [],
+                "skipped_manual_contract_ids": [],
+                "skipped_unowned_contract_ids": [],
+                "failed_contracts": [{"contract_id": "", "error": str(exc)}],
+                "warnings": [],
+            }
 
     def _default_focus_source(self) -> str:
         return normalize_source(str(self.config.get("default_focus_source") or "auto"), "auto")
@@ -1875,6 +1947,12 @@ class Workspace:
             }
 
         warnings.extend(list(sync_result.get("warnings") or []))
+        identifier_map = (
+            sync_result.get("identifier_map")
+            if isinstance(sync_result.get("identifier_map"), dict)
+            else {}
+        )
+        contract_mss_sync = self._sync_contract_mss(identifier_map=identifier_map)
         self._reload()
         self._refresh_panes_for_icon_change()
         self._persist_state()
@@ -1885,6 +1963,7 @@ class Workspace:
             "warnings": warnings + list(state_payload.get("warnings") or []),
             "changed": changed,
             "state": state_payload,
+            "contract_mss_sync": contract_mss_sync,
         }
 
     def time_series_state(self) -> dict[str, Any]:
@@ -2032,6 +2111,7 @@ class Workspace:
             else {}
         )
         final_identifier = str(identifier_map.get(next_identifier) or next_identifier).strip()
+        contract_mss_sync = self._sync_contract_mss(identifier_map=identifier_map)
         self._reload()
         self._refresh_panes_for_icon_change()
         self._persist_state()
@@ -2045,6 +2125,7 @@ class Workspace:
             "warnings": warnings,
             "event": self._event_payload_from_row(final_event_row or new_row, row_number=event_row_number),
             "state": self.time_series_state(),
+            "contract_mss_sync": contract_mss_sync,
         }
 
     def time_series_update_event(
@@ -2118,6 +2199,12 @@ class Workspace:
                 "warnings": warnings + list(sync_result.get("warnings") or []),
             }
         warnings.extend(list(sync_result.get("warnings") or []))
+        identifier_map = (
+            sync_result.get("identifier_map")
+            if isinstance(sync_result.get("identifier_map"), dict)
+            else {}
+        )
+        contract_mss_sync = self._sync_contract_mss(identifier_map=identifier_map)
 
         self._reload()
         self._refresh_panes_for_icon_change()
@@ -2133,6 +2220,7 @@ class Workspace:
             "warnings": warnings,
             "event": self._event_payload_from_row(updated_row or event_row, row_number=updated_row_number),
             "state": self.time_series_state(),
+            "contract_mss_sync": contract_mss_sync,
         }
 
     def time_series_delete_event(self, *, event_ref: str) -> dict[str, Any]:
@@ -2167,6 +2255,12 @@ class Workspace:
                 "warnings": warnings + list(sync_result.get("warnings") or []),
             }
         warnings.extend(list(sync_result.get("warnings") or []))
+        identifier_map = (
+            sync_result.get("identifier_map")
+            if isinstance(sync_result.get("identifier_map"), dict)
+            else {}
+        )
+        contract_mss_sync = self._sync_contract_mss(identifier_map=identifier_map)
 
         self._reload()
         self._refresh_panes_for_icon_change()
@@ -2178,6 +2272,7 @@ class Workspace:
             "deleted_event_ref": self._qualified_ref(identifier),
             "deleted_event_value_ref": deleted_event_value_ref,
             "state": self.time_series_state(),
+            "contract_mss_sync": contract_mss_sync,
         }
 
     def time_series_event_detail(self, *, event_ref: str) -> dict[str, Any]:
@@ -3319,6 +3414,7 @@ class Workspace:
         if not isinstance(final_iteration, int) or final_iteration < 1:
             final_iteration = next_iteration
 
+        contract_mss_sync = self._sync_contract_mss(identifier_map=identifier_map)
         self._reload()
         self._refresh_panes_for_icon_change()
         self._persist_state()
@@ -3354,6 +3450,7 @@ class Workspace:
                 }
             ],
             "created_count": 1,
+            "contract_mss_sync": contract_mss_sync,
         }
 
     def delete_anthology_datum(self, *, row_id: str) -> dict[str, Any]:
@@ -3393,6 +3490,11 @@ class Workspace:
         deleted_label = str(removed_row.get("label") or deleted_identifier).strip()
         deleted_pairs = self._pairs_from_row(removed_row)
         deleted_reference, deleted_magnitude = self._first_pair(deleted_pairs)
+        identifier_map = (
+            sync_result.get("identifier_map")
+            if isinstance(sync_result.get("identifier_map"), dict)
+            else {}
+        )
 
         if deleted_identifier and deleted_identifier in self._datum_icons_map:
             merged_icons = dict(self._datum_icons_map)
@@ -3404,6 +3506,7 @@ class Workspace:
             else:
                 warnings.append("deleted row but failed to prune icon mapping")
 
+        contract_mss_sync = self._sync_contract_mss(identifier_map=identifier_map)
         self._reload()
         self._refresh_panes_for_icon_change()
         self._persist_state()
@@ -3421,6 +3524,7 @@ class Workspace:
                 "pairs": deleted_pairs,
                 "pair_count": len(deleted_pairs),
             },
+            "contract_mss_sync": contract_mss_sync,
         }
 
     def update_anthology_label(self, *, row_id: str, label: str) -> dict[str, Any]:
@@ -3598,6 +3702,7 @@ class Workspace:
             warnings.extend(list(icon_result.get("warnings") or []))
             self._datum_icons_map = merged_icons
 
+        contract_mss_sync = self._sync_contract_mss(identifier_map=identifier_map)
         self._reload()
         self._refresh_panes_for_icon_change()
         self._persist_state()
@@ -3617,6 +3722,7 @@ class Workspace:
                 "pair_count": len(next_pairs),
                 **updated_icon_meta,
             },
+            "contract_mss_sync": contract_mss_sync,
         }
 
     def _node_for_subject(self, subject: str):

@@ -69,27 +69,6 @@ class _WorkspaceStub:
             "errors": [],
         }
 
-    def daemon_resolve_tokens(self, *, tokens: list[str], standard_id: str, context: dict) -> dict:
-        _ = context
-        self.last_tokens = list(tokens)
-        return {
-            "ok": True,
-            "standard_id": standard_id,
-            "errors": [],
-            "warnings": [],
-            "resolved": [
-                {
-                    "token": token,
-                    "source": "stub",
-                    "resolved_identifier": "8-0-7",
-                    "resolved_reference": "",
-                    "resolved_magnitude": token,
-                    "mediation": {"ok": True, "standard_id": standard_id, "value": token},
-                }
-                for token in tokens
-            ],
-        }
-
 
 @unittest.skipUnless(HAS_FLASK, "flask is not installed in host python")
 class NetworkContractHandshakePhase1Tests(unittest.TestCase):
@@ -186,7 +165,7 @@ class NetworkContractHandshakePhase1Tests(unittest.TestCase):
         finally:
             temp.cleanup()
 
-    def test_contact_collection_source_priority_and_daemon_wrapper(self):
+    def test_contact_collection_source_priority_and_options_drop_daemon_wrapper(self):
         temp, _module, app, workspace, private_dir, _public_dir, _sender_keys = self._stack()
         try:
             client = app.test_client()
@@ -231,23 +210,10 @@ class NetworkContractHandshakePhase1Tests(unittest.TestCase):
             self.assertEqual(override_payload.get("selected_source"), "api.collection_ref_override")
             self.assertEqual(workspace.last_collection_ref, f"{FND_MSN_ID}-8-0-9")
 
-            daemon_resp = client.post(
-                "/portal/api/network/daemon/resolve_references",
-                json={"refs": {"event_datum": "4-1-77", "status": "3-1-5"}, "standard_id": "coordinate"},
-            )
-            self.assertEqual(daemon_resp.status_code, 200)
-            daemon_payload = daemon_resp.get_json()
-            self.assertTrue(daemon_payload.get("ok"))
-            normalized_refs = daemon_payload.get("normalized_refs") or {}
-            self.assertEqual(
-                (normalized_refs.get("event_datum") or {}).get("normalized_dot"),
-                f"{FND_MSN_ID}.4-1-77",
-            )
-            self.assertEqual(
-                (normalized_refs.get("status") or {}).get("normalized_dot"),
-                f"{FND_MSN_ID}.3-1-5",
-            )
-            self.assertEqual(workspace.last_tokens, [f"{FND_MSN_ID}-4-1-77", f"{FND_MSN_ID}-3-1-5"])
+            options_resp = client.get(f"/api/network/anonymous/options/{FND_MSN_ID}")
+            self.assertEqual(options_resp.status_code, 200)
+            endpoints = options_resp.get_json().get("endpoints") or {}
+            self.assertNotIn("network_daemon_resolve_references", endpoints)
         finally:
             temp.cleanup()
 

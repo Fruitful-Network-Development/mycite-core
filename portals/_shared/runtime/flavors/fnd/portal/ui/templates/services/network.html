@@ -9,7 +9,9 @@
 {% set message_aliases = network_aliases if network_aliases is defined else [] %}
 {% set message_logs = network_logs if network_logs is defined else [] %}
 {% set message_p2p = network_p2p if network_p2p is defined else [] %}
+{% set contract_items = network_contracts if network_contracts is defined else [] %}
 {% set selected_channel = selected_alias if current_kind == "alias" else (selected_log if current_kind == "log" else selected_p2p) %}
+{% set selected_contract_record = selected_contract if selected_contract is defined else None %}
 
 {% block context_sidebar %}
   <section class="ide-contextSection network-contextSection network-contextSection--search">
@@ -52,9 +54,9 @@
 {% block body %}
   <section class="network-layout">
     <nav class="page-tabs" aria-label="Network tabs">
-      <a class="page-tab {% if current_tab == 'messages' %}is-active{% endif %}" href="/portal/network?tab=messages&kind={{ current_kind if current_kind in ['alias', 'log', 'p2p'] else 'alias' }}">Messages</a>
-      <a class="page-tab {% if current_tab == 'hosted' %}is-active{% endif %}" href="/portal/network?tab=hosted">Hosted</a>
-      <a class="page-tab {% if current_tab == 'profile' %}is-active{% endif %}" href="/portal/network?tab=profile">Profile</a>
+      {% for tab in network_tabs if network_tabs is defined %}
+        <a class="page-tab {% if tab.active %}is-active{% endif %}" href="{{ tab.href }}">{{ tab.label }}</a>
+      {% endfor %}
     </nav>
 
     {% if current_tab == "messages" %}
@@ -262,6 +264,139 @@
           </aside>
         </div>
       </section>
+    {% elif current_tab == "contracts" %}
+      <section class="network-chatWorkbench">
+        <header class="network-chatbar">
+          <div class="network-chatbar__title">
+            <span class="network-chatbar__glyph">CT</span>
+            <div>
+              <div class="network-chatbar__name">{{ selected_contract_record.label if selected_contract_record else "Contracts" }}</div>
+              <div class="network-chatbar__meta">Shared MSS context between this portal and a counterparty.</div>
+              <div class="network-qualifierRow">
+                <span class="network-qualifierBadge network-qualifierBadge--asymmetric">asymmetric</span>
+                <span class="network-qualifierBadge network-qualifierBadge--symmetric">symmetric</span>
+              </div>
+            </div>
+          </div>
+          <div class="network-workbench__actions">
+            <button
+              type="button"
+              class="inspector-trigger"
+              data-inspector-template="network-contract-inspector"
+              data-inspector-title="Contract Context"
+              data-inspector-subtitle="{{ selected_contract_record.contract_id if selected_contract_record else 'create' }}"
+            >Inspect Contract</button>
+          </div>
+        </header>
+
+        <div class="network-chatWorkbench__body">
+          <article class="network-chatPanel">
+            <section class="network-chatHero">
+              <div class="network-chatHero__avatar">
+                {% if selected_contract_record %}
+                  {{ (selected_contract_record.label or 'CT')[:2]|upper }}
+                {% else %}
+                  CT
+                {% endif %}
+              </div>
+              <div class="network-chatHero__body">
+                <div class="network-chatHero__kicker">Contract Workbench</div>
+                <h2>{{ selected_contract_record.label if selected_contract_record else "Create or select a contract" }}</h2>
+                <p>Contracts carry shared MSS context so foreign datum refs can resolve through a scoped anthology path without exposing the full anthology. Local editing is driven by <code>owner_selected_refs</code>, and <code>owner_mss</code> is the compiled debug view of that selection.</p>
+              </div>
+            </section>
+
+            {% if selected_contract_record %}
+              {% set contract_payload = selected_contract_record.payload if selected_contract_record.payload is mapping else {} %}
+              {% set owner_preview = selected_contract_record.preview.owner if selected_contract_record.preview is mapping and selected_contract_record.preview.owner is mapping else {} %}
+              {% set counterparty_preview = selected_contract_record.preview.counterparty if selected_contract_record.preview is mapping and selected_contract_record.preview.counterparty is mapping else {} %}
+              <section class="card">
+                <div class="card__kicker">Metadata</div>
+                <div class="card__title">{{ selected_contract_record.contract_id }}</div>
+                <div class="card__body">
+                  <ul class="network-presenceList">
+                    <li><strong>contract_type</strong><code>{{ contract_payload.contract_type }}</code></li>
+                    <li><strong>counterparty_msn_id</strong><code>{{ contract_payload.counterparty_msn_id }}</code></li>
+                    <li><strong>status</strong><span>{{ contract_payload.status }}</span></li>
+                    <li><strong>schema</strong><code>{{ contract_payload.schema }}</code></li>
+                  </ul>
+                </div>
+              </section>
+
+              <section class="card">
+                <div class="card__kicker">Selected Datums</div>
+                <div class="card__title">owner_selected_refs</div>
+                <div class="card__body">
+                  <textarea id="contractOwnerSelectedRefs" class="jsonblock" rows="6">{{ (contract_payload.owner_selected_refs or [])|join('\n') }}</textarea>
+                  <p>This list is authoritative for the local contract context. Preview and save recompile <code>owner_mss</code> from the current anthology.</p>
+                  <div class="data-tool__controlRow" style="margin-top:8px;">
+                    <button type="button" id="contractPreviewBtn">Preview MSS</button>
+                    <button type="button" id="contractSaveBtn" data-contract-id="{{ selected_contract_record.contract_id }}">Save Contract</button>
+                  </div>
+                  <pre class="jsonblock" id="contractOwnerPreviewJson">{{ owner_preview|tojson(indent=2) }}</pre>
+                </div>
+              </section>
+
+              <section class="card">
+                <div class="card__kicker">Raw Owner MSS</div>
+                <div class="card__title">owner_mss</div>
+                <div class="card__body">
+                  <p>Advanced/raw debug field. When <code>owner_selected_refs</code> is set, local saves rewrite this field from the compiled canonical MSS form.</p>
+                  <textarea id="contractOwnerMss" class="jsonblock" rows="8">{{ contract_payload.owner_mss }}</textarea>
+                </div>
+              </section>
+
+              <section class="card">
+                <div class="card__kicker">Counterparty MSS</div>
+                <div class="card__title">counterparty_mss</div>
+                <div class="card__body">
+                  <textarea id="contractCounterpartyMss" class="jsonblock" rows="6" readonly>{{ contract_payload.counterparty_mss }}</textarea>
+                  <pre class="jsonblock" id="contractCounterpartyPreviewJson">{{ counterparty_preview|tojson(indent=2) }}</pre>
+                </div>
+              </section>
+            {% else %}
+              <section class="card">
+                <div class="card__kicker">No Contract Selected</div>
+                <div class="card__title">Create a shared context</div>
+                <div class="card__body">
+                  <p>Select a contract from the sidebar or use the create form on the right to start a new contract context.</p>
+                </div>
+              </section>
+            {% endif %}
+          </article>
+
+          <aside class="network-presencePanel">
+            <section class="network-presenceCard">
+              <div class="network-presenceCard__kicker">Contract Overview</div>
+              <div class="network-presenceCard__title">Saved Contexts</div>
+              <ul class="network-presenceList">
+                <li><strong>contracts</strong><span>{{ contract_items|length }}</span></li>
+                <li><strong>with owner_mss</strong><span>{{ contract_items|selectattr('owner_mss_present')|list|length }}</span></li>
+                <li><strong>with remote_mss</strong><span>{{ contract_items|selectattr('counterparty_mss_present')|list|length }}</span></li>
+              </ul>
+            </section>
+
+            <section class="network-presenceCard">
+              <div class="network-presenceCard__kicker">Create Contract</div>
+              <div class="network-presenceCard__title">New Shared Context</div>
+              <div class="card__body">
+                <label for="contractCreateType"><strong>contract_type</strong></label>
+                <input id="contractCreateType" type="text" value="portal_contract" />
+                <label for="contractCreateCounterparty"><strong>counterparty_msn_id</strong></label>
+                <input id="contractCreateCounterparty" type="text" value="" />
+                <label for="contractCreateRefs"><strong>owner_selected_refs</strong></label>
+                <textarea id="contractCreateRefs" class="jsonblock" rows="5"></textarea>
+                <label for="contractCreateOwnerMss"><strong>owner_mss</strong></label>
+                <textarea id="contractCreateOwnerMss" class="jsonblock" rows="5"></textarea>
+                <p>If you provide selected refs, the contract will compile canonical <code>owner_mss</code> from the anthology. Leave refs blank only when entering a raw debug bitstring on purpose.</p>
+                <div class="data-tool__controlRow" style="margin-top:8px;">
+                  <button type="button" id="contractCreateBtn">Create Contract</button>
+                </div>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </section>
     {% elif current_tab == "hosted" %}
       {% set hosted = hosted_payload if hosted_payload is defined and hosted_payload is mapping else {} %}
       <div class="workbench-panels workbench-panels--double">
@@ -360,6 +495,20 @@
         {% endif %}
         <h4>Config JSON</h4>
         <pre class="jsonblock">{{ network_config_json if network_config_json is defined else "{}" }}</pre>
+      </div>
+    </article>
+  </template>
+
+  <template id="network-contract-inspector">
+    <article class="card">
+      <div class="card__kicker">Contract Inspector</div>
+      <div class="card__title">{{ selected_contract_record.contract_id if selected_contract_record else "new_contract" }}</div>
+      <div class="card__body">
+        {% if selected_contract_record %}
+          <pre class="jsonblock">{{ (selected_contract_record.payload if selected_contract_record.payload is mapping else {})|tojson(indent=2) }}</pre>
+        {% else %}
+          <p>No contract is currently selected.</p>
+        {% endif %}
       </div>
     </article>
   </template>
@@ -509,8 +658,99 @@
           .finally(function () {
             button.disabled = false;
             button.textContent = originalLabel;
-          });
+        });
       });
+    })();
+
+    (function () {
+      function linesFromTextarea(node) {
+        if (!node) return [];
+        return String(node.value || "")
+          .split(/[\n,]/)
+          .map(function (item) { return String(item || "").trim(); })
+          .filter(Boolean);
+      }
+
+      function requestJson(url, method, payload) {
+        return fetch(url, {
+          method: method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }).then(function (resp) {
+          return resp.json().catch(function () { return {}; }).then(function (body) {
+            return { ok: resp.ok, status: resp.status, body: body || {} };
+          });
+        });
+      }
+
+      var previewBtn = document.getElementById("contractPreviewBtn");
+      if (previewBtn) {
+        previewBtn.addEventListener("click", function () {
+          var ownerRefs = document.getElementById("contractOwnerSelectedRefs");
+          var ownerMss = document.getElementById("contractOwnerMss");
+          var counterpartyMss = document.getElementById("contractCounterpartyMss");
+          requestJson("/portal/api/contracts/mss/preview?msn_id={{ msn_id }}", "POST", {
+            owner_selected_refs: linesFromTextarea(ownerRefs),
+            owner_mss: ownerMss ? String(ownerMss.value || "").trim() : "",
+            counterparty_mss: counterpartyMss ? String(counterpartyMss.value || "").trim() : ""
+          }).then(function (result) {
+            if (!result.ok || !result.body.ok) {
+              throw new Error((result.body && result.body.error) || ("HTTP " + result.status));
+            }
+            var mss = (result.body || {}).mss || {};
+            var ownerPreview = document.getElementById("contractOwnerPreviewJson");
+            var counterpartyPreview = document.getElementById("contractCounterpartyPreviewJson");
+            if (ownerPreview) ownerPreview.textContent = JSON.stringify(mss.owner_preview || {}, null, 2);
+            if (counterpartyPreview) counterpartyPreview.textContent = JSON.stringify(mss.counterparty_preview || {}, null, 2);
+            if (ownerMss && mss.owner_mss) ownerMss.value = String(mss.owner_mss);
+          }).catch(function (err) {
+            window.alert("MSS preview failed: " + (err && err.message ? err.message : String(err)));
+          });
+        });
+      }
+
+      var saveBtn = document.getElementById("contractSaveBtn");
+      if (saveBtn) {
+        saveBtn.addEventListener("click", function () {
+          var contractId = String(saveBtn.getAttribute("data-contract-id") || "").trim();
+          if (!contractId) return;
+          requestJson("/portal/api/contracts/" + encodeURIComponent(contractId) + "?msn_id={{ msn_id }}", "PATCH", {
+            owner_selected_refs: linesFromTextarea(document.getElementById("contractOwnerSelectedRefs")),
+            owner_mss: document.getElementById("contractOwnerMss") ? document.getElementById("contractOwnerMss").value : ""
+          }).then(function (result) {
+            if (!result.ok || !result.body.ok) {
+              throw new Error((result.body && result.body.error) || ("HTTP " + result.status));
+            }
+            window.location.reload();
+          }).catch(function (err) {
+            window.alert("Contract save failed: " + (err && err.message ? err.message : String(err)));
+          });
+        });
+      }
+
+      var createBtn = document.getElementById("contractCreateBtn");
+      if (createBtn) {
+        createBtn.addEventListener("click", function () {
+          requestJson("/portal/api/contracts?msn_id={{ msn_id }}", "POST", {
+            contract_type: document.getElementById("contractCreateType") ? document.getElementById("contractCreateType").value : "portal_contract",
+            counterparty_msn_id: document.getElementById("contractCreateCounterparty") ? document.getElementById("contractCreateCounterparty").value : "",
+            owner_selected_refs: linesFromTextarea(document.getElementById("contractCreateRefs")),
+            owner_mss: document.getElementById("contractCreateOwnerMss") ? document.getElementById("contractCreateOwnerMss").value : ""
+          }).then(function (result) {
+            if (!result.ok || !result.body.ok) {
+              throw new Error((result.body && result.body.error) || ("HTTP " + result.status));
+            }
+            var contractId = String((result.body || {}).contract_id || "").trim();
+            if (!contractId) {
+              window.location.reload();
+              return;
+            }
+            window.location.href = "/portal/network?tab=contracts&id=" + encodeURIComponent(contractId);
+          }).catch(function (err) {
+            window.alert("Contract create failed: " + (err && err.message ? err.message : String(err)));
+          });
+        });
+      }
     })();
   </script>
 {% endblock %}

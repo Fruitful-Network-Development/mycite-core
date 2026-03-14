@@ -1,5 +1,12 @@
 # MSS Notes: Datums, Constraints, Lenses, and Emergent Tables
 
+Canonical compact-array and contract-context behavior now lives in:
+
+- `docs/MSS_COMPACT_ARRAY_SPEC.md`
+- `docs/MSS_CONTRACT_CONTEXT_STATUS.md`
+
+These notes remain useful as design background and mental-model context, but they are no longer the canonical storage/wire contract for local MSS writes.
+
 These notes capture the current working mental model for the **MSS / Mycite** data representation approach as implemented in the JSON *anthology* and *conspectus* prototypes, and how the portal UI (`data.py`) should begin interpreting and editing that data.
 
 The key idea is that the system is **not “a set of tables” first**—it is a **graph of datums**. “Tables”, “rows”, “fields”, and even “meaning” are *derived* by a small number of structural rules plus optional interpretive “lenses”.
