@@ -1,3 +1,19 @@
+"""
+Shared tool data-spec schema and loader.
+
+Tools declare:
+  - inherited_inputs: list of inputs (e.g. from contract or public export). Each entry
+    may include canonical_datum_path (msn_id.datum_address) or role so resolution uses
+    the datum-identity layer and compiled index, not raw MSS row order.
+  - outputs: list of datum shapes the tool creates. Each entry may describe
+    field_structure or linked primitives; when a base anthology schema exists, prefer
+    canonical datum paths for references rather than local row ids.
+  - mediation: optional hints for encoding/decoding.
+
+Specs are expressed in terms of canonical datum paths and (when available) base
+anthology schema, not storage addresses. See CONTRACT_COMPACT_INDEX.md and
+CANONICAL_DATA_ENGINE.md.
+"""
 from __future__ import annotations
 
 import json

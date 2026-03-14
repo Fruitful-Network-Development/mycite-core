@@ -467,15 +467,23 @@ def _default_portal_sign_out_url() -> str:
 def _build_widget_url(alias_id: str, alias_payload: Dict[str, Any]) -> str:
     org_msn_id = str(alias_payload.get("alias_host") or "").strip()
     org_title = str(alias_payload.get("host_title") or "").strip()
-    # Use the same host/scheme the user is viewing so the iframe can connect (avoids 127.0.0.1 when accessed via another host).
-    try:
-        if request and getattr(request, "host", None):
-            base_url = request.url_root.rstrip("/")
-        else:
-            raise ValueError("no request")
-    except Exception:
-        embed_port = _resolve_embed_port(org_msn_id)
-        base_url = f"http://127.0.0.1:{embed_port}"
+    # When the alias is hosted by another portal (org_msn_id != current MSN), the iframe must load
+    # that host's origin so the host serves member_workbench/tenant/poc content.
+    if org_msn_id and MSN_ID and org_msn_id != MSN_ID:
+        url_key = f"EMBED_HOST_URL_{_sanitize_env_suffix(org_msn_id)}"
+        base_url = (os.environ.get(url_key) or "").strip().rstrip("/")
+        if not base_url:
+            embed_port = _resolve_embed_port(org_msn_id)
+            base_url = f"http://127.0.0.1:{embed_port}"
+    else:
+        try:
+            if request and getattr(request, "host", None):
+                base_url = request.url_root.rstrip("/")
+            else:
+                raise ValueError("no request")
+        except Exception:
+            embed_port = _resolve_embed_port(org_msn_id)
+            base_url = f"http://127.0.0.1:{embed_port}"
 
     progeny_type = str(alias_payload.get("progeny_type") or "").strip().lower()
     canonical_progeny_type = _canonical_progeny_type(progeny_type)

@@ -1,6 +1,8 @@
 from .anthology_normalization import CompactionResult, compact_iterations, datum_sort_key, parse_datum_identifier, sort_rows
 from .datum_identity import (
+    CompiledDatumIndex,
     DatumResolution,
+    build_compiled_index,
     compile_compact_array_entries_keyed_by_path,
     datum_paths_equivalent,
     parse_datum_path,
@@ -11,7 +13,9 @@ from .datum_identity import (
 )
 
 __all__ = [
+    "CompiledDatumIndex",
     "CompactionResult",
+    "build_compiled_index",
     "compile_compact_array_entries_keyed_by_path",
     "compact_iterations",
     "datum_sort_key",

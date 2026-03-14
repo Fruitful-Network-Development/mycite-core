@@ -19,6 +19,8 @@ The tool’s full API contract is **not** finalized; it will evolve as the share
 
 Tool-spec inputs/outputs and capability buckets are described in the tool spec (`private/tools/agro_erp.spec.json`) and in [AGRO_ERP_INTENTION.md](AGRO_ERP_INTENTION.md). Storage bindings (e.g. layer/value_group for product types) are not frozen in the base anthology schema.
 
+**Datum resolution:** When using inherited or contract-backed data (e.g. taxonomy), the tool should resolve datums via the **datum-identity layer** and **compiled compact-array index** (or **public_datum_resolver** for contact-card exports), not by raw MSS row order or storage addresses. Use canonical datum paths (`msn_id.datum_address`) for lookups and comparisons. See [CONTRACT_COMPACT_INDEX.md](CONTRACT_COMPACT_INDEX.md) and [CANONICAL_DATA_ENGINE.md](CANONICAL_DATA_ENGINE.md).
+
 ---
 
 ## Routes

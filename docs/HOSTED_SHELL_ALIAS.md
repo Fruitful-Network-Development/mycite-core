@@ -21,7 +21,7 @@ This route:
   - a widget URL pointing to the embedded member board or hosted view (see below)
   - the **alias progeny type** and **tenant id** that hosted pages use to select layout
 
-**Widget URL:** The iframe `src` for the organization session widget is built by `_build_widget_url()`. To avoid "Unable to connect" when the portal is accessed via a host other than localhost (e.g. a reverse proxy), the base URL uses the current request’s host and scheme (`request.url_root`) when available, instead of hardcoding `http://127.0.0.1:<port>`. Fallback to `127.0.0.1` remains for contexts where no request is present.
+**Widget URL:** Built by `_build_widget_url()`. When the alias is hosted by the current portal, base URL is `request.url_root`. When the alias is hosted by another portal (`alias_host` != current MSN), base URL is the host's origin (`EMBED_HOST_URL_<sanitized_msn>` or `http://127.0.0.1:<embed_port>`) so the iframe loads the host's member_workbench/tenant/poc and content renders.
 
 The shell itself is intentionally thin: it knows how to render navigation and an iframe/embedded workbench, but it does not know about contracts, MSS, or analytics.
 
@@ -46,7 +46,11 @@ The shell uses:
 
 to decide which subject-congregation view to render.
 
-### 3. Current breakage and direction (TFF)
+### 3. Why the TFF alias interface was blank (fixed)
+
+When the alias is **hosted by another portal** (e.g. `alias_host` = FND) but the user is on TFF, the iframe previously used TFF's `request.url_root`, so it loaded TFF's `/portal/embed/member_workbench`. That route on TFF only redirects to TFF's board_member; the actual content (stream, workflow, calendar) for that member is served by **FND**. The fix: when `alias_host` != current portal's MSN, `_build_widget_url()` now uses the **host** portal's origin (`EMBED_HOST_URL_<msn>` if set, else `http://127.0.0.1:<embed_port>`), so the iframe loads the host and the host renders the content. Resolution chain: alias → contract → progeny instance + template → `hosted.json` → embed URL points at the host portal.
+
+### 4. Current breakage and direction (TFF)
 
 On TFF, the alias interface is currently not wired to the new hosted metadata and subject-congregation defaults. Fixing it should:
 
@@ -61,7 +65,7 @@ This means future work on TFF’s alias shell should start by:
 - using `portal.hosted_model.read_hosted_payload` and `get_progeny_template`
 - following the same `/portal/alias/<alias_id>` routing conventions as FND
 
-### 4. Future subject-congregation hosting
+### 5. Future subject-congregation hosting
 
 The current style (`google_classroom_reference`) is one subject-congregation layout. Future hosting styles (for example a more minimal “board” or a multi-column dashboard) should:
 
