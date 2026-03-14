@@ -117,6 +117,20 @@ Current mutation surfaces:
 
 Responses from those mutations now include `contract_mss_sync`.
 
+### Relation to compiled indexes and datum identity
+
+- The MSS bitstring (`owner_mss` / `counterparty_mss`) is the **wire and storage form** for a contract’s compact array.
+- The **compiled datum index** described in `CONTRACT_COMPACT_INDEX.md` is a **derived view** built from:
+  - decoding the MSS payload into rows, and
+  - keying those rows by **canonical datum path** using the datum-identity layer.
+- The helper `datum_identity.compile_compact_array_entries_keyed_by_path` turns decoded rows and a `source_msn_id` into an `entries` map keyed by canonical path.
+- Tools and higher-level services should resolve datums via the compiled index and canonical paths rather than by raw MSS row order or binary offsets.
+
+This separation ensures that:
+
+- **semantic identity** (`msn_id.datum_address`) remains stable across recompilations, and
+- **storage addresses** (`layer-value_group-iteration` inside a specific MSS snapshot) can change without breaking contracts or tool behavior.
+
 ## Archived references
 
 Reference materials that informed the canonical model:

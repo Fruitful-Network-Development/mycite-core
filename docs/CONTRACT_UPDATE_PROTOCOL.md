@@ -54,7 +54,7 @@ Optional: `payload` (e.g. new snapshot or patch), `details` (operation-specific)
   - This portal **acknowledges** a revision to the counterparty.
 - **Do not** use request_log for:
   - Purely local contract edits (only this portal’s state changed).
-  - Local tool CRUD (e.g. AGRO-ERP product-type creates). Use the local audit/action log instead.
+  - Local tool CRUD (e.g. AGRO-ERP product-type creates). Use the **local audit log** (`portal.services.local_audit_log.append_audit_event`) instead. See AGRO_ERP_INTENTION.md and HOSTED_SESSIONS.md.
 
 ---
 
@@ -68,3 +68,10 @@ To support the protocol and relationship modes without breaking existing contrac
 - `revision`: monotonic integer for the current compact-array snapshot
 
 Existing contracts that omit these fields remain valid; defaults can be inferred (e.g. `relationship_mode` default from presence of counterparty_mss).
+
+---
+
+## Implementation
+
+- **Local PATCH** (`PATCH /portal/api/contracts/<contract_id>`): When `owner_mss` or `owner_selected_refs` change, the API bumps `compact_index_revision` and sets `compact_index_compiled_at_unix_ms`. No request_log entry (local-only).
+- **Apply external update** (`POST /portal/api/contracts/<contract_id>/compact-array/apply-update`): Body must include `from_revision`, `to_revision`, `change_type`, `source_msn_id`, `target_msn_id`, and optionally `ts_unix_ms`, `payload` (e.g. `counterparty_mss`). Validates `from_revision` matches stored revision; applies payload; persists; appends a `compact_array.update_applied` event to the request_log so the update is recorded for external/audit purposes.

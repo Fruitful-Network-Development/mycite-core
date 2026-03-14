@@ -179,6 +179,22 @@ def normalize_contract_payload(
         base.get("counterparty_selected_refs"),
         field_name="counterparty_selected_refs",
     )
+    # Optional compact-array index / update-protocol fields (CONTRACT_COMPACT_INDEX, CONTRACT_UPDATE_PROTOCOL)
+    for key in ("relationship_mode", "access_mode", "sync_mode", "source_card_revision"):
+        if key in base and _as_text(base.get(key)):
+            out[key] = _as_text(base[key])
+    rev = base.get("compact_index_revision", base.get("revision"))
+    if rev is not None:
+        try:
+            out["compact_index_revision"] = int(rev)
+        except (TypeError, ValueError):
+            pass
+    compiled_ms = base.get("compact_index_compiled_at_unix_ms")
+    if compiled_ms is not None:
+        try:
+            out["compact_index_compiled_at_unix_ms"] = int(compiled_ms)
+        except (TypeError, ValueError):
+            pass
     _normalize_status(out)
     return out
 
@@ -329,3 +345,42 @@ def update_contract(private_dir: Path, contract_id: str, patch: dict[str, Any], 
     merged["contract_id"] = contract_id
     merged["created_unix_ms"] = int(existing.get("created_unix_ms") or int(time.time() * 1000))
     return upsert_contract(private_dir, contract_id, merged, owner_msn_id=owner_msn_id or _as_text(existing.get("owner_msn_id")))
+
+
+def apply_compact_array_update(
+    private_dir: Path,
+    contract_id: str,
+    *,
+    from_revision: int,
+    to_revision: int,
+    change_type: str,
+    source_msn_id: str,
+    target_msn_id: str,
+    ts_unix_ms: int,
+    payload: dict[str, Any] | None = None,
+    local_msn_id: str = "",
+) -> dict[str, Any]:
+    """
+    Apply an external compact-array update: validate from_revision, apply payload, persist.
+    Used when this portal receives an update from a counterparty (e.g. new counterparty_mss).
+    Caller is responsible for appending request_log evidence.
+    """
+    existing = get_contract(private_dir, contract_id)
+    current_rev = int(existing.get("compact_index_revision") or existing.get("revision") or 0)
+    if from_revision != current_rev:
+        raise ContractValidationError(
+            f"Revision mismatch: expected from_revision={current_rev}, got {from_revision}"
+        )
+    payload = dict(payload or {})
+    patch: dict[str, Any] = {
+        "compact_index_revision": to_revision,
+        "compact_index_compiled_at_unix_ms": ts_unix_ms,
+        "updated_unix_ms": ts_unix_ms,
+    }
+    if _as_text(payload.get("counterparty_mss")):
+        patch["counterparty_mss"] = _normalize_mss_value(
+            payload.get("counterparty_mss"), field_name="counterparty_mss"
+        )
+    return update_contract(
+        private_dir, contract_id, patch, owner_msn_id=local_msn_id or _as_text(existing.get("owner_msn_id"))
+    )

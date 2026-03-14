@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any, Callable
 
 from flask import abort, jsonify, make_response, request
 
+from ..data_engine import build_compiled_index
 from ..mss import load_anthology_payload, preview_mss_context
 
 try:
@@ -32,6 +34,7 @@ from portal.services.contract_store import (
     ContractAlreadyExistsError,
     ContractNotFoundError,
     ContractValidationError,
+    apply_compact_array_update,
     create_contract,
     get_contract,
     list_contracts,
@@ -245,11 +248,39 @@ def register_contract_routes(
 
         out: dict[str, Any] = {"msn_id": msn_id, "contract_id": contract_id, "contract": contract}
         if include_mss:
-            out["mss"] = _mss_preview_payload(
+            mss_preview = _mss_preview_payload(
                 body=contract,
                 anthology_path_fn=anthology_path_fn,
                 local_msn_id=msn_id,
             )
+            out["mss"] = mss_preview
+
+            owner_rows = (mss_preview.get("owner_preview") or {}).get("rows") or []
+            if owner_rows:
+                compiled_index = build_compiled_index(
+                    contract_id=contract_id,
+                    source_msn_id=msn_id,
+                    target_msn_id=_as_str(contract.get("counterparty_msn_id")),
+                    decoded_rows=list(owner_rows),
+                    relationship_mode=_as_str(contract.get("relationship_mode") or ""),
+                    access_mode=_as_str(contract.get("access_mode") or ""),
+                    sync_mode=_as_str(contract.get("sync_mode") or ""),
+                    revision=int(_as_str(contract.get("compact_index_revision") or "0") or 0),
+                    compiled_at_unix_ms=int(_as_str(contract.get("compact_index_compiled_at_unix_ms") or "0") or 0),
+                    source_card_revision=_as_str(contract.get("source_card_revision") or ""),
+                )
+                out["compiled_index"] = {
+                    "contract_id": compiled_index.contract_id,
+                    "relationship_mode": compiled_index.relationship_mode,
+                    "access_mode": compiled_index.access_mode,
+                    "sync_mode": compiled_index.sync_mode,
+                    "source_msn_id": compiled_index.source_msn_id,
+                    "target_msn_id": compiled_index.target_msn_id,
+                    "revision": compiled_index.revision,
+                    "compiled_at_unix_ms": compiled_index.compiled_at_unix_ms,
+                    "source_card_revision": compiled_index.source_card_revision,
+                    "entries": compiled_index.entries,
+                }
         if options_private_fn is not None:
             out["options_private"] = options_private_fn(msn_id)
         return jsonify(out)
@@ -293,6 +324,17 @@ def register_contract_routes(
 
         body = _maybe_compile_owner_mss(body=_json_body(), anthology_path_fn=anthology_path_fn, local_msn_id=msn_id)
         try:
+            existing = get_contract(private_dir, contract_id)
+        except ContractNotFoundError as exc:
+            abort(404, description=str(exc))
+        current_rev = int(existing.get("compact_index_revision") or existing.get("revision") or 0)
+        if (
+            _as_str(body.get("owner_mss")) != _as_str(existing.get("owner_mss"))
+            or body.get("owner_selected_refs") != existing.get("owner_selected_refs")
+        ):
+            body["compact_index_revision"] = current_rev + 1
+            body["compact_index_compiled_at_unix_ms"] = int(time.time() * 1000)
+        try:
             contract = update_contract(private_dir, contract_id, body, owner_msn_id=msn_id)
         except ContractNotFoundError as exc:
             abort(404, description=str(exc))
@@ -305,6 +347,62 @@ def register_contract_routes(
             "contract_id": contract_id,
             "contract": contract,
             "mss": _mss_preview_payload(body=contract, anthology_path_fn=anthology_path_fn, local_msn_id=msn_id),
+        }
+        if options_private_fn is not None:
+            out["options_private"] = options_private_fn(msn_id)
+        return jsonify(out)
+
+    @app.post("/portal/api/contracts/<contract_id>/compact-array/apply-update")
+    def contracts_apply_compact_array_update(contract_id: str):
+        msn_id = _as_str(request.args.get("msn_id"))
+        if not msn_id:
+            abort(400, description="Missing required query param: msn_id")
+        body = _json_body()
+        from_revision = int(body.get("from_revision", 0))
+        to_revision = int(body.get("to_revision", 0))
+        change_type = _as_str(body.get("change_type")) or "replace_snapshot"
+        source_msn_id = _as_str(body.get("source_msn_id"))
+        target_msn_id = _as_str(body.get("target_msn_id"))
+        ts_unix_ms = int(body.get("ts_unix_ms") or (time.time() * 1000))
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
+        try:
+            contract = apply_compact_array_update(
+                private_dir,
+                contract_id,
+                from_revision=from_revision,
+                to_revision=to_revision,
+                change_type=change_type,
+                source_msn_id=source_msn_id,
+                target_msn_id=target_msn_id,
+                ts_unix_ms=ts_unix_ms,
+                payload=payload,
+                local_msn_id=msn_id,
+            )
+        except ContractNotFoundError as exc:
+            abort(404, description=str(exc))
+        except ContractValidationError as exc:
+            abort(400, description=str(exc))
+        append_event(
+            private_dir,
+            msn_id,
+            {
+                "type": "compact_array.update_applied",
+                "contract_id": contract_id,
+                "from_revision": from_revision,
+                "to_revision": to_revision,
+                "change_type": change_type,
+                "source_msn_id": source_msn_id,
+                "target_msn_id": target_msn_id,
+                "ts_unix_ms": ts_unix_ms,
+            },
+        )
+        out = {
+            "ok": True,
+            "msn_id": msn_id,
+            "contract_id": contract_id,
+            "contract": contract,
         }
         if options_private_fn is not None:
             out["options_private"] = options_private_fn(msn_id)

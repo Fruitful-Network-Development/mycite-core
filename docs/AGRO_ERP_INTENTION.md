@@ -12,7 +12,7 @@ This document captures **goals, design decisions, and boundaries** for the AGRO-
 - **Contracts**: allow one-sided storage (only the referencing portal holds the contract). When both portals use the contract, either may update the compact array; recompilation and update flow must be defined.
 - **AGRO-ERP direction**: evolve into a **broader agricultural data tool**; docs/API contract will be rewritten over time. Current scope: property geometry; planned: inherited taxonomy, product types, field records, crop references.
 - **Public resolution**: anonymous/public resolver path driven from the contact card’s **accessible / exported datum metadata**; public datums resolvable without requiring a contract.
-- **Request log**: used **only** when TFF actually accesses or negotiates external FND resources (remote access, compact-array refresh, update notices, contract negotiation). **Not** used for local AGRO-ERP CRUD on product types or other local tool writes.
+- **Request log**: used **only** when TFF actually accesses or negotiates external FND resources (remote access, compact-array refresh, update notices, contract negotiation). **Not** used for local AGRO-ERP CRUD on product types or other local tool writes. Local tool CRUD must use the **local audit log** (`portal.services.local_audit_log.append_audit_event`); see CONTRACT_UPDATE_PROTOCOL and HOSTED_SESSIONS for the same rule.
 
 ---
 

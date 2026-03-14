@@ -220,3 +220,69 @@ def compile_compact_array_entries_keyed_by_path(
             "row": dict(row),
         }
     return result
+
+
+# ---------------------------------------------------------------------------
+# Compiled compact-array index (contract-level view)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CompiledDatumIndex:
+    """
+    Contract-level compiled view of a compact array (MSS bitstring).
+
+    This is the concrete shape described in docs/CONTRACT_COMPACT_INDEX.md:
+      - top-level snapshot metadata (contract_id, relationship/access/sync modes)
+      - entries keyed by canonical datum path
+    """
+
+    contract_id: str
+    relationship_mode: str
+    access_mode: str
+    sync_mode: str
+    source_msn_id: str
+    target_msn_id: str
+    revision: int
+    compiled_at_unix_ms: int
+    source_card_revision: Optional[str]
+    entries: Dict[str, Dict[str, Any]]
+
+
+def build_compiled_index(
+    *,
+    contract_id: str,
+    source_msn_id: str,
+    target_msn_id: str,
+    decoded_rows: List[Dict[str, Any]],
+    relationship_mode: str = "",
+    access_mode: str = "",
+    sync_mode: str = "",
+    revision: int = 0,
+    compiled_at_unix_ms: int = 0,
+    source_card_revision: Optional[str] = None,
+) -> CompiledDatumIndex:
+    """
+    Build a CompiledDatumIndex from decoded MSS rows and contract metadata.
+
+    - decoded_rows: list of rows from decode_mss_payload / preview_mss_context
+    - source_msn_id: MSN that authored this snapshot (owner or counterparty)
+    - target_msn_id: MSN this snapshot is for (counterparty or owner)
+
+    Entries are keyed by canonical datum path so recompilation and
+    reordering do not break identity.
+    """
+
+    entries = compile_compact_array_entries_keyed_by_path(decoded_rows, source_msn_id=source_msn_id)
+    return CompiledDatumIndex(
+        contract_id=str(contract_id or "").strip(),
+        relationship_mode=str(relationship_mode or "").strip() or "unilateral_local",
+        access_mode=str(access_mode or "").strip() or "contract",
+        sync_mode=str(sync_mode or "").strip() or "none",
+        source_msn_id=_as_text(source_msn_id),
+        target_msn_id=_as_text(target_msn_id),
+        revision=int(revision or 0),
+        compiled_at_unix_ms=int(compiled_at_unix_ms or 0),
+        source_card_revision=_as_text(source_card_revision) or None,
+        entries=entries,
+    )

@@ -100,3 +100,7 @@ Putting it together:
 
 This is the pattern future legal‑entity portals and subject‑congregation styles should follow: contracts identify the relationship, progeny instances capture per‑member configuration, and `hosted.json` + hosted model define how a session is presented.
 
+### 6. Logging: request_log vs local audit log
+
+**request_log** is used only for external resource access and negotiation (e.g. contract handshake, compact-array update evidence, cross-portal events). **Local** tool or data-engine actions (e.g. AGRO-ERP product-type CRUD, local anthology writes) must use the **local audit log** (`portal.services.local_audit_log.append_audit_event`), not the request_log. See CONTRACT_UPDATE_PROTOCOL.md and AGRO_ERP_INTENTION.md.
+

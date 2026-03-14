@@ -26,6 +26,18 @@ Shared helpers:
 - mediation registry: `portals/_shared/portal/mediation/registry.py`
 - MSS contract context: `docs/MSS_COMPACT_ARRAY_SPEC.md`
 
+## Resolution order (canonical datum identity)
+
+Datum resolution must use **canonical datum paths** (semantic identity), not storage addresses or raw MSS row order. The canonical resolution order is:
+
+1. **Local anthology** — `datum_identity.resolve_to_local_row` with the portal’s anthology rows.
+2. **Local projection/cache** — any cached or projected view keyed by canonical path.
+3. **Compiled compact-array snapshot** — contract’s compiled index (`build_compiled_index` / `entries[datum_path]`); use `datum_identity.resolve_to_contract_entry` or look up by path in the index.
+4. **Public contact-card export** — `public_datum_resolver` using contact-card exported datum metadata (no contract required).
+5. **Remote fetch / negotiated contract** — out-of-band or future sync.
+
+Implementations must use `datum_identity.parse_datum_path` / `to_canonical_dot` for normalization and `datum_paths_equivalent` for comparison. Do not compare datums by row address or MSS bit offset. See `portals/_shared/portal/data_engine/datum_identity.py`, `portals/_shared/portal/services/public_datum_resolver.py`, and CONTRACT_COMPACT_INDEX.md.
+
 ## Reference model
 
 Canonical network-facing datum refs:
