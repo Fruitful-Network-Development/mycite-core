@@ -537,6 +537,11 @@
           "page_views_7d",
           "unique_visitors_7d",
           "contact_events_30d"
+        ],
+        "services": [
+          "nginx_analytics",
+          "paypal_transactions",
+          "aws_newsletters"
         ]
       }
     }
@@ -709,9 +714,18 @@
       "target": "private/network/contracts/contract-contract-fnd-tff-member-001.json",
       "source_hint": "/srv/compose/portals/state/fnd_portal/private/network/contracts/contract-contract-fnd-tff-member-001.json",
       "payload_json": {
+        "schema": "mycite.portal.contract.v2",
         "contract_id": "contract-fnd-tff-member-001",
         "contract_type": "member_alias_profile",
+        "owner_msn_id": "3-2-3-17-77-1-6-4-1-4",
         "counterparty_msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "owner_mss": "0000000011111001001101001001001101101010101000000100000010000000110100001011001100010011100101000000000110101100001010001100101100111101001011011100101011101111111111000111111001001100101100101001100110000000000000000000000000000000100100001110000000000110110",
+        "counterparty_mss": "",
+        "owner_selected_refs": [
+          "1-1-1",
+          "1-1-2"
+        ],
+        "counterparty_selected_refs": [],
         "status": "active",
         "template_version": "1.0.0",
         "created_unix_ms": 1770000000000,
@@ -728,11 +742,18 @@
       "target": "private/network/contracts/msn-3-2-3-17-77-1-6-4-1-4.contract-3-2-3-17-77-2-6-3-1-6.json",
       "source_hint": "/srv/compose/portals/state/fnd_portal/private/network/contracts/msn-3-2-3-17-77-1-6-4-1-4.contract-3-2-3-17-77-2-6-3-1-6.json",
       "payload_json": {
-        "schema": "mycite.portal.contract.v1",
+        "schema": "mycite.portal.contract.v2",
         "contract_id": "msn-3-2-3-17-77-1-6-4-1-4.contract-3-2-3-17-77-2-6-3-1-6",
         "contract_type": "portal_demo_contract",
         "owner_msn_id": "3-2-3-17-77-1-6-4-1-4",
         "counterparty_msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "owner_mss": "0000000011111001001101001001001101101010101000000100000010000000110100001011001100010011100101000000000110101100001010001100101100111101001011011100101011101111111111000111111001001100101100101001100110000000000000000000000000000000100100001110000000000110110",
+        "counterparty_mss": "",
+        "owner_selected_refs": [
+          "1-1-1",
+          "1-1-2"
+        ],
+        "counterparty_selected_refs": [],
         "status": "active",
         "template_version": "1.0.0",
         "created_unix_ms": 1773433064000,

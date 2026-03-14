@@ -29,11 +29,12 @@ SERVICE_ICONS = {
     "utilities": "/portal/static/icons/ui/inbox.svg",
 }
 
-NETWORK_TAB_ORDER = ["messages", "hosted", "profile"]
+NETWORK_TAB_ORDER = ["messages", "hosted", "profile", "contracts"]
 NETWORK_TAB_LABELS = {
     "messages": "Messages",
     "hosted": "Hosted",
     "profile": "Profile",
+    "contracts": "Contracts",
 }
 
 

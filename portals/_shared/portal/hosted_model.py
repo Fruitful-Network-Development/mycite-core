@@ -12,7 +12,8 @@ DEFAULT_HOSTED_SCHEMA = "mycite.network.hosted.v2"
 DEFAULT_TABS = [
     {"id": "stream", "label": "Stream", "description": "Subscription updates and hosted activity."},
     {"id": "classwork", "label": "Classwork", "description": "Subject congregation tasks and assignments."},
-    {"id": "people", "label": "People", "description": "Broadcaster directory for MSN/resource lookup."},
+    {"id": "discover", "label": "Discover", "description": "Browse people, organizations, groups, and tools."},
+    {"id": "calendar", "label": "Calendar", "description": "Events and scheduled activity."},
     {"id": "workflow", "label": "Workflow", "description": "Hosted website analytics and operations."},
 ]
 
@@ -163,25 +164,29 @@ def default_hosted_payload(hero_title: str = "Member Orientation") -> dict[str, 
             "style": "google_classroom_reference",
             "hero_title": hero_title,
             "tabs": tabs,
-            "calendar_enabled": False,
+            "calendar_enabled": True,
         },
         "broadcaster": {
             "schema": "mycite.network.broadcaster.v1",
             "enabled": True,
             "stream": {
-                "title": "Subscriptions",
+                "title": "Stream",
                 "description": "Updates for followed subscriptions and hosted surfaces.",
             },
-            "people": {
-                "title": "People",
-                "description": "Search portals and resources by msn_id.",
+            "discover": {
+                "title": "Discover",
+                "description": "Search people, organizations, groups, and tools.",
                 "search_key": "msn_id",
+            },
+            "calendar": {
+                "title": "Calendar",
+                "description": "Events and scheduled activity.",
             },
             "workflow": {
                 "title": "Workflow",
                 "description": "Website analytics for hosted domains.",
             },
-            "resource_types": ["portal", "resource"],
+            "resource_types": ["portal", "resource", "organization", "group", "tool"],
         },
         "progeny": {
             "storage": {

@@ -68,6 +68,10 @@ class FndPortalShellRouteTests(unittest.TestCase):
 
             self.assertEqual(client.get("/portal/network?tab=hosted").status_code, 200)
             self.assertEqual(client.get("/portal/network?tab=profile").status_code, 200)
+            contracts_response = client.get("/portal/network?tab=contracts")
+            self.assertIn(contracts_response.status_code, {200, 302})
+            contracts_html = client.get("/portal/network?tab=contracts&id=missing").get_data(as_text=True)
+            self.assertIn("Contracts", contracts_html)
             self.assertEqual(client.get("/portal/utilities?tab=vault").status_code, 200)
 
             self.assertEqual(client.get("/portal/tools").status_code, 302)

@@ -8,37 +8,27 @@ Active portal specs in this repo:
 - `mycite-le_fnd`
 - `mycite-le_tff`
 
-Retired from active scope:
-
-- `mycite-ne_mt`
-
 ## Current architectural direction
 
-1. Keep the shared service-shell/runtime generic.
-2. Keep the Data Tool as a core SYSTEM workbench surface.
-3. Keep portal/network/data state file-backed rather than database-backed.
-4. Make portal-specific tool/config/hosted/public-card authoring flow through per-portal `build.json`.
-5. Keep anthology state-owned until the example/base abstraction stabilizes.
-6. Continue shrinking per-portal repo directories toward spec-only ownership while executable runtime code lives in the shared runtime tree.
+1. keep the shared runtime generic
+2. keep the Data Tool as a core SYSTEM workbench surface
+3. keep portal/network/data state file-backed rather than database-backed
+4. keep anthology state-owned while contract context is transmitted through MSS compact arrays
+5. keep per-portal repo directories moving toward spec-only ownership
 
 ## Current implementation priorities
 
-1. Stabilize the example portal anthology in `/srv/compose/portals/state/example_portal/data/anthology.json`.
-2. Continue network-engine hardening around request logs, contract verification, and reference inheritance.
-3. Keep AWS and PayPal split by scope:
-   - member-scoped tools
-   - FND/platform-scoped tools
-4. Consolidate duplicate helper/runtime patterns underneath those tools instead of merging the workflows.
-5. Keep documentation canonical and remove time-stamped implementation clutter once folded into the main docs.
+1. stabilize the shared MSS contract context model and its documentation
+2. keep anthology mutation and contract recompilation behavior coherent
+3. continue network-engine hardening around request logs, contract verification, and foreign datum inheritance
+4. keep Data Tool daemon ownership separate from NETWORK MSS resolution
+5. remove superseded wrapper language and drift from canonical docs
 
 ## Canonical references
 
-- [`PORTAL_BUILD_SPEC.md`](PORTAL_BUILD_SPEC.md)
-- [`TOOLS_SHELL.md`](TOOLS_SHELL.md)
-- [`CANONICAL_DATA_ENGINE.md`](CANONICAL_DATA_ENGINE.md)
-- [`NETWORK_PAGE_MODEL.md`](NETWORK_PAGE_MODEL.md)
-- [`DATA_TOOL.md`](DATA_TOOL.md)
-- [`REQUEST_LOG_V1.md`](REQUEST_LOG_V1.md)
-- [`AWS_EMAILER_ABSTRACTION.md`](AWS_EMAILER_ABSTRACTION.md)
-- [`PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md`](PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md)
-- [`DATUM_MEDIATION_DEFAULTS.md`](DATUM_MEDIATION_DEFAULTS.md)
+- `docs/MSS_COMPACT_ARRAY_SPEC.md`
+- `docs/MSS_CONTRACT_CONTEXT_STATUS.md`
+- `docs/PORTAL_BUILD_SPEC.md`
+- `docs/CANONICAL_DATA_ENGINE.md`
+- `docs/NETWORK_PAGE_MODEL.md`
+- `docs/DATA_TOOL.md`

@@ -6,79 +6,77 @@ Current active implementation scope is FND + TFF.
 
 NETWORK is both:
 
-- a shell workbench page (`/portal/network`)
-- the runtime surface for portal-to-portal metadata, request logs, alias interfaces, and hosted relationship views
+- a shell workbench page at `/portal/network`
+- the runtime surface for portal-to-portal metadata, request logs, aliases, hosted views, and contract context
 
-Hosted metadata is now consolidated into `private/network/hosted.json`. In the current direction that file absorbs the metadata responsibilities that had previously been modeled as separate `subject_congregation.json`, `broadcaster.json`, and progeny-template JSON concepts.
+## Tabs
 
-## Qualifier model
+Canonical NETWORK tabs:
 
-Network APIs are grouped into three qualifier classes:
-
-- `anonymous`
-  - public options and discoverable contact resources
-- `asymmetric`
-  - signed portal-to-portal contract request/confirmation
-- `symmetric`
-  - vault-backed contract renewal and rotation flows
-
-Asymmetric verification remains the canonical trust boundary for inter-portal contract requests and confirmations.
-
-## Request-log and contract flow
-
-Current contract flow:
-
-1. requesting portal sends a signed asymmetric request
-2. receiving portal verifies signer `msn_id` and public key against the contact card
-3. receiving portal appends verified evidence to its request log
-4. receiving portal returns/pushes confirmation evidence to the counterparty request log
-
-Request logs are part of the Network Engine surface and remain file-backed.
-
-## External contact collection
-
-Network external-contact-by-collection resolution should reuse Data Engine resolution rather than duplicate graph logic.
-
-Canonical alias/member contact source priority:
-
-1. `profile_refs.contact_collection_ref`
-2. explicit override for tooling/tests
-
-This is the bridge between anthology-backed contact collections and hosted alias views.
-
-## Reference inheritance
-
-Canonical network metadata ref syntax:
-
-- `<msn_id>.<datum>`
-
-Compatibility policy:
-
-- dual-read for local, hyphen-qualified, and dot-qualified refs
-- dot-write for new network metadata
-
-Reference inheritance is a network-metadata layer concern in this phase. Anthology pair storage is not being redefined here.
-
-## Daemon boundary
-
-Network wrapper routes may request reference resolution, but daemon ownership remains in the Data Engine.
-
-The Network layer should call Data Engine resolution wrappers instead of maintaining a separate token/graph runtime.
-
-## NETWORK page behavior
+- `Messages`
+- `Hosted`
+- `Profile`
+- `Contracts`
 
 Canonical routes:
 
 - `/portal/network?tab=messages&kind=alias|log|p2p&id=...`
 - `/portal/network?tab=hosted`
 - `/portal/network?tab=profile`
+- `/portal/network?tab=contracts&id=<contract_id>`
 
-Workbench modes:
+`NETWORK > Contracts` is the canonical contract editor.
 
-- `alias`: hosted/member interface relationship
-- `log`: request-log channel evidence
-- `p2p`: direct conversation channel derived from logged pairs
-- `hosted`: hosted interface payloads from `private/network/hosted.json`
-- `profile`: portal config and public-card inspection
+## Qualifier model
 
-The page keeps the existing left-context / central-workbench / right-inspector model.
+Network APIs remain grouped into:
+
+- `anonymous`
+- `asymmetric`
+- `symmetric`
+
+Asymmetric verification remains the canonical trust boundary for request and confirmation ingress.
+
+## Contract context model
+
+Contracts carry shared MSS context so foreign datum refs can be understood without transferring a full anthology.
+
+Canonical contract context fields:
+
+- `owner_selected_refs`
+- `owner_mss`
+- `counterparty_mss`
+
+Local behavior:
+
+- `owner_selected_refs` is the editable local source
+- `owner_mss` is compiled from the local anthology when refs are present
+- `counterparty_mss` is read-only in the editor
+
+Foreign datum resolution:
+
+- local `<msn_id>.<datum>` resolves from the local anthology
+- foreign `<msn_id>.<datum>` resolves through the matching contract MSS context
+
+See:
+
+- `docs/MSS_COMPACT_ARRAY_SPEC.md`
+- `docs/MSS_CONTRACT_CONTEXT_STATUS.md`
+
+## Request-log and handshake flow
+
+Current contract flow:
+
+1. requesting portal sends a signed asymmetric proposal
+2. proposal carries the sender-side `owner_mss` and `owner_selected_refs`
+3. receiving portal verifies signer identity and persists the remote MSS as `counterparty_mss`
+4. receiving portal returns confirmation with its own local-side MSS
+5. each side stores its own local compiled MSS as `owner_mss` and the remote side as `counterparty_mss`
+
+Request logs remain part of the Network Engine surface and remain file-backed.
+
+## Daemon boundary
+
+NETWORK no longer maintains a separate daemon wrapper for foreign datum resolution.
+
+The Network layer may still use Data Engine APIs for anthology-backed local tools, but contract-scoped foreign datum resolution is MSS-backed, not daemon-wrapper-backed.

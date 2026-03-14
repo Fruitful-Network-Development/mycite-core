@@ -81,8 +81,11 @@ class ContractHandshakeFlowTests(unittest.TestCase):
             proposal = {
                 "proposal_id": "cp-test-001",
                 "contract_id": "contract-fnd-tff-member-001",
+                "contract_type": "portal_demo_contract",
                 "sender_msn_id": SENDER_MSN_ID,
                 "receiver_msn_id": FND_MSN_ID,
+                "owner_mss": "1010101",
+                "owner_selected_refs": ["4-2-1", "4-2-2"],
                 "event_datum": "4-1-77",
                 "status": "3-1-5",
                 "confirmation_callback_url": "",
@@ -103,12 +106,24 @@ class ContractHandshakeFlowTests(unittest.TestCase):
             payload = response.get_json()
             self.assertTrue(payload["ok"])
             self.assertIn("confirmation", payload)
+            stored_contract = json.loads(
+                (
+                    module.PRIVATE_DIR
+                    / "network"
+                    / "contracts"
+                    / "contract-contract-fnd-tff-member-001.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(stored_contract["counterparty_mss"], "1010101")
 
             confirmation_payload = {
                 "proposal_id": "cp-test-001",
                 "contract_id": "contract-fnd-tff-member-001",
+                "contract_type": "portal_demo_contract",
                 "sender_msn_id": SENDER_MSN_ID,
                 "receiver_msn_id": FND_MSN_ID,
+                "owner_mss": "1110001",
+                "owner_selected_refs": ["5-0-1"],
                 "event_datum": "4-1-77",
                 "status": "3-1-6",
                 "confirmed_unix_ms": 1770000002000,
@@ -131,6 +146,15 @@ class ContractHandshakeFlowTests(unittest.TestCase):
             )
             self.assertEqual(confirm_response.status_code, 202)
             self.assertTrue(confirm_response.get_json()["ok"])
+            stored_contract = json.loads(
+                (
+                    module.PRIVATE_DIR
+                    / "network"
+                    / "contracts"
+                    / "contract-contract-fnd-tff-member-001.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(stored_contract["counterparty_mss"], "1110001")
 
             log_text = (
                 module.PRIVATE_DIR / "network" / "request_log" / "request_log.ndjson"

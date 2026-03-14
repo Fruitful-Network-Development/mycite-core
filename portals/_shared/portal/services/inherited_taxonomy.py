@@ -1,0 +1,266 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+
+from ..datum_refs import ParsedDatumRef, normalize_datum_ref, parse_datum_ref
+from ..mss.core import preview_mss_context, resolve_contract_datum_ref
+
+
+def _as_text(value: object) -> str:
+    return "" if value is None else str(value).strip()
+
+
+@dataclass(frozen=True)
+class TaxonomyNode:
+    identifier: str
+    label: str
+    pairs: List[Dict[str, str]]
+    children: List[str]
+
+
+def _rows_to_adjacency(rows: List[Dict[str, Any]]) -> Dict[str, TaxonomyNode]:
+    """
+    Build a simple parent→children adjacency map from MSS/anthology-style rows.
+
+    Each row's `pairs[].reference` is treated as a parent identifier; rows that
+    reference a given identifier become that identifier's children. This is a
+    generic mediation that works for taxonomy-like graphs where rows reference
+    their logical parents or grouping keys.
+    """
+    by_id: Dict[str, Dict[str, Any]] = {}
+    children_by_parent: Dict[str, List[str]] = {}
+
+    for row in rows or []:
+        identifier = _as_text(row.get("identifier") or row.get("row_id"))
+        if not identifier:
+            continue
+        by_id[identifier] = row
+
+    for row in rows or []:
+        child_id = _as_text(row.get("identifier") or row.get("row_id"))
+        if not child_id:
+            continue
+        raw_pairs = row.get("pairs") if isinstance(row.get("pairs"), list) else []
+        for pair in raw_pairs:
+            if not isinstance(pair, dict):
+                continue
+            parent_id = _as_text(pair.get("reference"))
+            if not parent_id:
+                continue
+            children_by_parent.setdefault(parent_id, []).append(child_id)
+
+    adjacency: Dict[str, TaxonomyNode] = {}
+    for identifier, row in by_id.items():
+        label = _as_text(row.get("label"))
+        raw_pairs = row.get("pairs") if isinstance(row.get("pairs"), list) else []
+        pairs: List[Dict[str, str]] = []
+        for pair in raw_pairs:
+            if not isinstance(pair, dict):
+                continue
+            pairs.append(
+                {
+                    "reference": _as_text(pair.get("reference")),
+                    "magnitude": _as_text(pair.get("magnitude")),
+                }
+            )
+        adjacency[identifier] = TaxonomyNode(
+            identifier=identifier,
+            label=label,
+            pairs=pairs,
+            children=children_by_parent.get(identifier, []),
+        )
+    return adjacency
+
+
+def _normalize_ref(datum_ref: str, *, local_msn_id: str) -> ParsedDatumRef:
+    parsed = parse_datum_ref(datum_ref, field_name="taxonomy_ref")
+    # Ensure we always have a canonical MSN qualifier for network writes.
+    canonical = normalize_datum_ref(
+        datum_ref,
+        local_msn_id=local_msn_id,
+        require_qualified=True,
+        write_format="dot",
+        field_name="taxonomy_ref",
+    )
+    canonical_parsed = parse_datum_ref(canonical, field_name="taxonomy_ref")
+    return canonical_parsed
+
+
+def _local_taxonomy_context(
+    *,
+    parsed: ParsedDatumRef,
+    local_msn_id: str,
+    anthology_payload: Dict[str, Any],
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """
+    For local taxonomy references, compile a minimal MSS payload using the
+    anthology and the selected ref closure via preview_mss_context.
+    """
+    # Use preview_mss_context in compile mode to build a compact closure.
+    preview = preview_mss_context(
+        anthology_payload=anthology_payload,
+        selected_refs=[parsed.datum_address],
+        bitstring="",
+        local_msn_id=local_msn_id,
+    )
+    rows = list(preview.get("rows") or [])
+    return preview, rows
+
+
+def _foreign_taxonomy_context(
+    *,
+    datum_ref: str,
+    parsed: ParsedDatumRef,
+    local_msn_id: str,
+    anthology_payload: Dict[str, Any],
+    contract_payloads: List[Dict[str, Any]],
+    preferred_contract_id: str = "",
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """
+    For foreign taxonomy references, resolve the datum via contract MSS context
+    using resolve_contract_datum_ref. This surfaces both the specific row and
+    the decoded MSS payload that defines the inherited anthology slice.
+    """
+    resolution = resolve_contract_datum_ref(
+        datum_ref,
+        local_msn_id=local_msn_id,
+        anthology_payload=anthology_payload,
+        contract_payloads=contract_payloads,
+        preferred_contract_id=preferred_contract_id,
+    )
+    decoded = resolution.get("decoded") if isinstance(resolution.get("decoded"), dict) else {}
+    rows = list(decoded.get("rows") or [])
+    return resolution, rows
+
+
+def load_inherited_taxonomy(
+    *,
+    datum_ref: str,
+    local_msn_id: str,
+    anthology_payload: Optional[Dict[str, Any]] = None,
+    contract_payloads: Optional[List[Dict[str, Any]]] = None,
+    preferred_contract_id: str = "",
+) -> Dict[str, Any]:
+    """
+    Resolve a taxonomy collection datum reference into a normalized tree
+    structure suitable for portal tools.
+
+    - Accepts any supported datum_ref syntax and normalizes it to canonical
+      dot-qualified form for use in network and request-log events.
+    - For local references (no msn_id or msn_id == local_msn_id), compiles a
+      compact MSS closure from the local anthology and builds a tree.
+    - For foreign references (msn_id != local_msn_id), uses contract MSS
+      decoding via resolve_contract_datum_ref and builds a tree from the
+      decoded rows.
+
+    Returns a payload with:
+    - ok: bool
+    - reason: optional error string when ok is False
+    - taxonomy_ref: canonical dot-qualified token
+    - root_identifier: identifier within the decoded rows matching the datum
+    - nodes: flat list of {id, label, pairs, children}
+    - tree: nested {id, label, children:[...]} form for convenience
+    - scope: "local" or "contract_mss"
+    - raw_context: minimal raw context from MSS/contract resolution
+    """
+    local_msn_id = _as_text(local_msn_id)
+    if not local_msn_id:
+        return {
+            "ok": False,
+            "reason": "local_msn_id is required",
+            "taxonomy_ref": _as_text(datum_ref),
+        }
+
+    try:
+        canonical_parsed = _normalize_ref(datum_ref, local_msn_id=local_msn_id)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": f"Invalid taxonomy datum_ref: {exc}",
+            "taxonomy_ref": _as_text(datum_ref),
+        }
+
+    canonical_ref = canonical_parsed.canonical_dot
+    anthology_payload = dict(anthology_payload or {})
+    contract_payloads = list(contract_payloads or [])
+
+    if not canonical_parsed.msn_id or canonical_parsed.msn_id == local_msn_id:
+        scope = "local"
+        context, rows = _local_taxonomy_context(
+            parsed=canonical_parsed,
+            local_msn_id=local_msn_id,
+            anthology_payload=anthology_payload,
+        )
+    else:
+        scope = "contract_mss"
+        if not contract_payloads:
+            return {
+                "ok": False,
+                "reason": "No contract_payloads provided for foreign taxonomy reference",
+                "taxonomy_ref": canonical_ref,
+                "scope": scope,
+            }
+        context, rows = _foreign_taxonomy_context(
+            datum_ref=canonical_ref,
+            parsed=canonical_parsed,
+            local_msn_id=local_msn_id,
+            anthology_payload=anthology_payload,
+            contract_payloads=contract_payloads,
+            preferred_contract_id=preferred_contract_id,
+        )
+
+    if not rows:
+        return {
+            "ok": False,
+            "reason": "No rows available for taxonomy context",
+            "taxonomy_ref": canonical_ref,
+            "scope": scope,
+            "raw_context": context,
+        }
+
+    root_identifier = canonical_parsed.datum_address
+    has_root = any(
+        _as_text(row.get("identifier") or row.get("row_id")) == root_identifier for row in rows
+    )
+    if not has_root:
+        # Fall back to last row as root if the requested identifier is not present.
+        fallback_identifier = _as_text(rows[-1].get("identifier") or rows[-1].get("row_id"))
+        root_identifier = fallback_identifier or root_identifier
+
+    adjacency = _rows_to_adjacency(rows)
+
+    def _build_tree(node_id: str) -> Dict[str, Any]:
+        node = adjacency.get(node_id)
+        if node is None:
+            return {"id": node_id, "label": "", "children": []}
+        return {
+            "id": node.identifier,
+            "label": node.label,
+            "children": [_build_tree(child_id) for child_id in node.children],
+        }
+
+    tree = _build_tree(root_identifier)
+    nodes = [
+        {
+            "id": node.identifier,
+            "label": node.label,
+            "pairs": list(node.pairs),
+            "children": list(node.children),
+        }
+        for node in adjacency.values()
+    ]
+
+    return {
+        "ok": True,
+        "taxonomy_ref": canonical_ref,
+        "scope": scope,
+        "root_identifier": root_identifier,
+        "nodes": nodes,
+        "tree": tree,
+        "raw_context": {
+            "rows_count": len(rows),
+            "context": context,
+        },
+    }
+
