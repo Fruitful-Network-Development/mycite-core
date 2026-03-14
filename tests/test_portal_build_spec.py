@@ -43,6 +43,17 @@ class PortalBuildSpecTests(unittest.TestCase):
                 "msn_id": msn_id,
                 "schema": "mycite.profile.v0",
                 "title": "demo",
+                "progeny": {
+                    "admin": {"poc": ["alias-poc.json"]},
+                    "member": {"tenant": ["member-tenant.json"], "board_member": ["member-board_member.json"]},
+                },
+                "organization_config": {
+                    "default_values": {
+                        "legal_entity_defaults": {
+                            "role_groups": {"members": ["m1"], "users": [], "poc_admin": ["a1"]},
+                        }
+                    }
+                },
                 "property": {"title": "state-property"},
             }
             hosted = {"type": "demo_hosted", "type_values": {"hero": "demo"}}
@@ -68,6 +79,20 @@ class PortalBuildSpecTests(unittest.TestCase):
             self.assertEqual(spec_a["tools"]["core_system_surfaces"], ["data_tool"])
             self.assertEqual(spec_a["private_config"]["canonical"]["property"]["title"], "state-property")
             self.assertIn("data_tool", spec_a["private_config"]["canonical"])
+            self.assertEqual(
+                spec_a["private_config"]["canonical"]["progeny"],
+                {
+                    "admin": ["alias-admin.json"],
+                    "member": ["member-member.json"],
+                    "user": [],
+                },
+            )
+            role_groups = (
+                spec_a["private_config"]["canonical"]["organization_config"]["default_values"]["legal_entity_defaults"]["role_groups"]
+            )
+            self.assertEqual(role_groups["admins"], ["a1"])
+            self.assertEqual(role_groups["members"], ["m1"])
+            self.assertEqual(role_groups["users"], [])
 
     def test_materialize_writes_state_without_touching_anthology(self):
         module = _load_portal_build_module()
