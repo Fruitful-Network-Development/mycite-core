@@ -86,9 +86,9 @@ KNOWN_EMBED_PORT_BY_MSN = {
 DEFAULT_FEED_TYPES = {"post.create", "board_notice"}
 DEFAULT_CALENDAR_TYPES = {"meeting", "group_event", "committee_meeting"}
 ALIAS_EXPECTED_BY_TYPE = {
-    "board_member": False,
-    "poc": True,
-    "constituent_farm": True,
+    "admin": True,
+    "member": False,
+    "user": False,
 }
 DEFAULT_PROFILE_SOURCE_PRIORITY = ["progeny.internal", "progeny.config_ref", "alias"]
 LEGAL_ENTITY_PROFILE_DEFAULTS: Dict[str, Dict[str, Any]] = {
@@ -96,22 +96,31 @@ LEGAL_ENTITY_PROFILE_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "schema": "mycite.legal_entity_type.v1",
         "type": "discovery_engine",
         "title": "Discovery Engine",
-        "role_groups": {"members": [], "users": [], "poc_admin": []},
+        "role_groups": {"admins": [], "members": [], "users": []},
     },
     "social_network.json": {
         "schema": "mycite.legal_entity_type.v1",
         "type": "social_network",
         "title": "Social Network",
-        "role_groups": {"members": [], "users": [], "poc_admin": []},
+        "role_groups": {"admins": [], "members": [], "users": []},
     },
     "subject_congregation.json": {
         "schema": "mycite.legal_entity_type.v1",
         "type": "subject_congregation",
         "title": "Subject Congregation",
-        "role_groups": {"members": [], "users": [], "poc_admin": []},
+        "role_groups": {"admins": [], "members": [], "users": []},
         "workflow_defaults": {"farm_fields": [], "committees": []},
     },
 }
+
+
+def _canonical_progeny_type(value: str) -> str:
+    token = str(value or "").strip().lower()
+    if token in {"board_member", "constituent_farm", "tenant"}:
+        return "member"
+    if token == "poc":
+        return "admin"
+    return token
 
 
 def _default_portal_sign_out_url() -> str:
@@ -366,20 +375,10 @@ def _build_widget_url(alias_id: str, alias_payload: Dict[str, Any]) -> str:
     embed_port = _resolve_embed_port(org_msn_id)
     base_url = f"http://127.0.0.1:{embed_port}"
 
-    progeny_type = str(alias_payload.get("progeny_type") or "").strip().lower()
+    progeny_type = _canonical_progeny_type(str(alias_payload.get("progeny_type") or "").strip().lower())
     tenant_msn_id = _extract_tenant_msn_id(alias_payload)
-    if progeny_type == "tenant" and tenant_msn_id:
-        query = urlencode(
-            {
-                "tenant_msn_id": tenant_msn_id,
-                "contract_id": _extract_contract_id(alias_payload),
-                "as_alias_id": alias_id,
-            }
-        )
-        return f"{base_url}/portal/embed/tenant?{query}"
-
     member_msn_id = _extract_member_msn_id(alias_payload)
-    if progeny_type == "board_member" and member_msn_id:
+    if progeny_type == "member" and member_msn_id:
         target_path = "/portal/embed/board_member"
         tab = "feed"
         if org_msn_id and MSN_ID and org_msn_id != MSN_ID:
@@ -416,7 +415,7 @@ def list_aliases_for_sidebar(private_dir: Path) -> list[Dict[str, Any]]:
                 "org_title": str(record.get("host_title") or "").strip(),
                 "org_msn_id": str(record.get("alias_host") or "").strip(),
                 "contract_id": str(record.get("contract_id") or "").strip(),
-                "progeny_type": str(record.get("progeny_type") or "").strip(),
+                "progeny_type": _canonical_progeny_type(str(record.get("progeny_type") or "").strip()),
                 "tenant_id": str(record.get("child_msn_id") or record.get("tenant_id") or "").strip(),
                 "member_id": _extract_member_msn_id(record),
                 "contact_collection_ref": _alias_contact_collection_ref(record),
@@ -565,7 +564,7 @@ def _generic_legal_entity_defaults(file_name: str) -> Dict[str, Any]:
         "schema": "mycite.legal_entity_type.v1",
         "type": legal_type,
         "title": title,
-        "role_groups": {"members": [], "users": [], "poc_admin": []},
+        "role_groups": {"admins": [], "members": [], "users": []},
     }
 
 
@@ -716,7 +715,7 @@ def _build_portal_behavior_config(active_cfg: Dict[str, Any]) -> Dict[str, Any]:
     legal_defaults.setdefault("type", legal_type)
     legal_defaults.setdefault("title", legal_type.replace("_", " ").replace("-", " ").title())
     if not isinstance(legal_defaults.get("role_groups"), dict):
-        legal_defaults["role_groups"] = {"members": [], "users": [], "poc_admin": []}
+        legal_defaults["role_groups"] = {"admins": [], "members": [], "users": []}
     merged["legal_entity_defaults"] = legal_defaults
     return merged
 
@@ -1804,7 +1803,7 @@ def portal_alias_session(alias_id: str):
         abort(404, description=f"No alias record found for alias_id={alias_id}")
 
     tenant_id = str(alias_payload.get("child_msn_id") or alias_payload.get("tenant_id") or "").strip()
-    progeny_type = str(alias_payload.get("progeny_type") or "").strip().lower()
+    progeny_type = _canonical_progeny_type(str(alias_payload.get("progeny_type") or "").strip().lower())
 
     return render_template(
         "alias_shell.html",

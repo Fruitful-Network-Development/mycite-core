@@ -5,6 +5,8 @@ from urllib.parse import urlparse
 from typing import Any
 
 _LEGACY_TYPE_MAP = {
+    "constituent_farm": "member",
+    "poc": "admin",
     "tenant": "member",
     "board_member": "member",
 }

@@ -7,7 +7,12 @@ from typing import Any, Callable, Dict, List, Optional
 
 
 _KEYCLOAK_ALIASES = {"key_glock", "keyglock", "key-clock", "key clock", "identity"}
-_LEGACY_PROGENY_TYPE_MAP = {"tenant": "member", "board_member": "member"}
+_LEGACY_PROGENY_TYPE_MAP = {
+    "board_member": "member",
+    "constituent_farm": "member",
+    "poc": "admin",
+    "tenant": "member",
+}
 _DEFAULT_CHANNELS = [
     {
         "channel_id": "paypal",
@@ -290,14 +295,18 @@ def _infer_progeny_type(payload: Dict[str, Any], path: Path) -> str:
     if token:
         return _canonical_progeny_type(token)
     name = path.name.lower()
+    if "admin" in name or "poc" in name:
+        return "admin"
     if "board_member" in name:
         return "member"
     if "constituent_farm" in name:
-        return "constituent_farm"
-    if "poc" in name:
-        return "poc"
+        return "member"
     if "tenant" in name:
         return "member"
+    if "member" in name:
+        return "member"
+    if "user" in name:
+        return "user"
     return "unknown"
 
 

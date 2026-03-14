@@ -159,12 +159,82 @@
     const shell = qs(".ide-shell");
     const contextSidebar = qs("#portalContextSidebar");
     const inspector = qs("#portalInspector");
+    const ideBody = qs(".ide-body");
     if (!shell || !contextSidebar || !inspector) return null;
+    const MIN_CONTEXT_WIDTH = 220;
+    const MAX_CONTEXT_WIDTH = 420;
+    const MIN_INSPECTOR_WIDTH = 280;
+    const MAX_INSPECTOR_WIDTH = 520;
+    const MIN_WORKBENCH_WIDTH = 720;
 
     function clamp(value, min, max) {
       const n = Number(value);
       if (!Number.isFinite(n)) return min;
       return Math.min(max, Math.max(min, n));
+    }
+
+    function readShellPxVar(name, fallback) {
+      const raw = getComputedStyle(shell).getPropertyValue(name);
+      const value = parseInt(raw, 10);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function applyContextWidth(value) {
+      const width = clamp(value, MIN_CONTEXT_WIDTH, MAX_CONTEXT_WIDTH);
+      shell.style.setProperty("--ide-context-w", `${width}px`);
+      return width;
+    }
+
+    function applyInspectorWidth(value) {
+      const width = clamp(value, MIN_INSPECTOR_WIDTH, MAX_INSPECTOR_WIDTH);
+      shell.style.setProperty("--ide-inspector-w", `${width}px`);
+      return width;
+    }
+
+    function rebalanceWorkbench() {
+      if (!ideBody || window.matchMedia("(max-width: 960px)").matches) return;
+      const bodyWidth = ideBody.clientWidth || window.innerWidth || 0;
+      if (!bodyWidth) return;
+
+      const activityWidth = readShellPxVar("--ide-activity-w", 72);
+      const splitterWidth = readShellPxVar("--ide-splitter-w", 8);
+      const contextOpen = shell.getAttribute("data-context-collapsed") !== "true";
+      const inspectorOpen = shell.getAttribute("data-inspector-collapsed") !== "true";
+      let contextWidth = contextOpen ? readShellPxVar("--ide-context-w", 280) : 0;
+      let inspectorWidth = inspectorOpen ? readShellPxVar("--ide-inspector-w", 360) : 0;
+      let workbenchWidth = bodyWidth
+        - activityWidth
+        - contextWidth
+        - inspectorWidth
+        - (contextOpen ? splitterWidth : 0)
+        - (inspectorOpen ? splitterWidth : 0);
+
+      if (workbenchWidth >= MIN_WORKBENCH_WIDTH) return;
+
+      let deficit = MIN_WORKBENCH_WIDTH - workbenchWidth;
+      if (inspectorOpen && inspectorWidth > MIN_INSPECTOR_WIDTH) {
+        const nextInspectorWidth = Math.max(MIN_INSPECTOR_WIDTH, inspectorWidth - deficit);
+        deficit -= inspectorWidth - nextInspectorWidth;
+        inspectorWidth = applyInspectorWidth(nextInspectorWidth);
+      }
+
+      if (deficit > 0 && contextOpen && contextWidth > MIN_CONTEXT_WIDTH) {
+        const nextContextWidth = Math.max(MIN_CONTEXT_WIDTH, contextWidth - deficit);
+        deficit -= contextWidth - nextContextWidth;
+        contextWidth = applyContextWidth(nextContextWidth);
+      }
+
+      workbenchWidth = bodyWidth
+        - activityWidth
+        - contextWidth
+        - inspectorWidth
+        - (contextOpen ? splitterWidth : 0)
+        - (inspectorOpen ? splitterWidth : 0);
+      if (workbenchWidth < MIN_WORKBENCH_WIDTH) {
+        shell.classList.add("ide-shell--workbench-tight");
+      } else {
+        shell.classList.remove("ide-shell--workbench-tight");
+      }
     }
 
     function syncShellToggleButtons() {
@@ -179,19 +249,19 @@
     }
 
     function setContextWidth(value, persist) {
-      const width = clamp(value, 220, 420);
-      shell.style.setProperty("--ide-context-w", `${width}px`);
+      const width = applyContextWidth(value);
       if (persist) {
         try { window.localStorage.setItem(CONTEXT_WIDTH_KEY, String(width)); } catch (_) {}
       }
+      rebalanceWorkbench();
     }
 
     function setInspectorWidth(value, persist) {
-      const width = clamp(value, 280, 520);
-      shell.style.setProperty("--ide-inspector-w", `${width}px`);
+      const width = applyInspectorWidth(value);
       if (persist) {
         try { window.localStorage.setItem(INSPECTOR_WIDTH_KEY, String(width)); } catch (_) {}
       }
+      rebalanceWorkbench();
     }
 
     function setContextOpen(open, persist) {
@@ -203,6 +273,7 @@
       if (persist) {
         try { window.localStorage.setItem(CONTEXT_OPEN_KEY, isOpen ? "1" : "0"); } catch (_) {}
       }
+      rebalanceWorkbench();
     }
 
     function setInspectorOpen(open, persist) {
@@ -214,6 +285,7 @@
       if (persist) {
         try { window.localStorage.setItem(INSPECTOR_OPEN_KEY, isOpen ? "1" : "0"); } catch (_) {}
       }
+      rebalanceWorkbench();
     }
 
     const storedContext = parseInt(getStoredValue(CONTEXT_WIDTH_KEY), 10);
@@ -225,6 +297,7 @@
     setInspectorWidth(storedInspector || 360, false);
     setContextOpen(storedContextOpen !== "0", false);
     setInspectorOpen(storedInspectorOpen === "1", false);
+    rebalanceWorkbench();
 
     qsa("[data-splitter]", shell).forEach(splitter => {
       splitter.addEventListener("pointerdown", event => {
@@ -268,6 +341,8 @@
         setInspectorOpen(shell.getAttribute("data-inspector-collapsed") === "true", true);
       });
     });
+
+    window.addEventListener("resize", rebalanceWorkbench);
 
     return {
       setContextOpen,

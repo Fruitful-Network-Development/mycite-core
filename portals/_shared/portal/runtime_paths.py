@@ -127,9 +127,9 @@ def unified_progeny_read_paths(private_dir: Path) -> list[Path]:
 def member_profile_read_dirs(private_dir: Path) -> list[Path]:
     return _existing_or_declared(
         [
+            progeny_root(private_dir),
             member_progeny_dir(private_dir),
             legacy_member_progeny_dir(private_dir),
-            legacy_tenant_progeny_dir(private_dir),
         ]
     )
 

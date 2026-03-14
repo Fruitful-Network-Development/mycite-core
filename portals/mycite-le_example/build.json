@@ -29,9 +29,9 @@
       "symmetric_key_contracts": [],
       "aliases": [],
       "progeny": {
-        "admin": {},
-        "member": {},
-        "user": {}
+        "admin": [],
+        "member": [],
+        "user": []
       },
       "organization_configuration": {
         "file_name": "subject_congregation.json",
@@ -88,9 +88,9 @@
             "type": "subject_congregation",
             "title": "Subject Congregation",
             "role_groups": {
+              "admins": [],
               "members": [],
-              "users": [],
-              "poc_admin": []
+              "users": []
             },
             "workflow_defaults": {
               "farm_fields": [],
@@ -119,9 +119,9 @@
           "symmetric_key_contracts": [],
           "aliases": [],
           "progeny": {
-            "admin": {},
-            "member": {},
-            "user": {}
+            "admin": [],
+            "member": [],
+            "user": []
           },
           "organization_configuration": {
             "file_name": "subject_congregation.json",
@@ -178,9 +178,9 @@
                 "type": "subject_congregation",
                 "title": "Subject Congregation",
                 "role_groups": {
+                  "admins": [],
                   "members": [],
-                  "users": [],
-                  "poc_admin": []
+                  "users": []
                 },
                 "workflow_defaults": {
                   "farm_fields": [],
@@ -286,13 +286,7 @@
           "mode": "single_directory",
           "directory": "private/network/progeny",
           "filename_pattern": "msn-<provider_msn_id>.<progeny_type>-<alias_associated_msn_id>.json",
-          "legacy_read_dirs": [
-            "private/network/progeny/admin_progeny",
-            "private/network/progeny/member_progeny",
-            "private/network/progeny/user_progeny",
-            "private/progeny/member",
-            "private/progeny/tenant"
-          ]
+          "legacy_read_dirs": []
         },
         "templates": {
           "admin": {

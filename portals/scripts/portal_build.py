@@ -19,6 +19,13 @@ DEFAULT_MOUNT_TARGET = "peripherals.tools"
 CORE_SYSTEM_SURFACES = ["data_tool"]
 RETIRED_TOOL_IDS = {"legacy_admin", "paypal_demo"}
 _TOOL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+SUPPORTED_PROGENY_TYPES = ("admin", "member", "user")
+LEGACY_PROGENY_TYPE_MAP = {
+    "board_member": "member",
+    "constituent_farm": "member",
+    "poc": "admin",
+    "tenant": "member",
+}
 
 ACTIVE_PORTALS: dict[str, dict[str, str]] = {
     "mycite-le_example": {
@@ -114,6 +121,132 @@ def _normalize_enabled_tools(values: Any) -> list[str]:
         seen.add(token)
         out.append(token)
     return out
+
+
+def _canonical_progeny_type(value: Any) -> str:
+    token = str(value or "").strip().lower()
+    if not token:
+        return ""
+    return LEGACY_PROGENY_TYPE_MAP.get(token, token)
+
+
+def _canonicalize_progeny_ref_filename(value: Any) -> str:
+    token = str(value or "").strip()
+    if not token:
+        return ""
+    token = re.sub(
+        r"\.(board_member|constituent_farm|poc|tenant)-",
+        lambda match: f".{_canonical_progeny_type(match.group(1))}-",
+        token,
+    )
+    token = re.sub(
+        r"-(board_member|constituent_farm|poc|tenant)(\.json)$",
+        lambda match: f"-{_canonical_progeny_type(match.group(1))}{match.group(2)}",
+        token,
+    )
+    return token
+
+
+def _normalize_alias_entries(values: Any) -> list[dict[str, str]]:
+    if not isinstance(values, list):
+        return []
+    out: list[dict[str, str]] = []
+    for item in values:
+        if not isinstance(item, dict):
+            continue
+        normalized: dict[str, str] = {}
+        for key, value in item.items():
+            host = str(key or "").strip()
+            ref = _canonicalize_progeny_ref_filename(value)
+            if host and ref:
+                normalized[host] = ref
+        if normalized:
+            out.append(normalized)
+    return out
+
+
+def _collect_progeny_refs(node: Any, fallback_type: str = "") -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+
+    def _push(progeny_type: Any, ref_token: Any) -> None:
+        token = _canonical_progeny_type(progeny_type)
+        ref = _canonicalize_progeny_ref_filename(ref_token)
+        if token not in SUPPORTED_PROGENY_TYPES or not ref:
+            return
+        out.append((token, ref))
+
+    def _walk(value: Any, fallback: str = "") -> None:
+        if isinstance(value, str):
+            _push(fallback, value)
+            return
+        if isinstance(value, list):
+            for item in value:
+                _walk(item, fallback)
+            return
+        if not isinstance(value, dict):
+            return
+
+        explicit_type = _canonical_progeny_type(value.get("progeny_type") or value.get("type") or fallback)
+        explicit_ref = value.get("ref") or value.get("path") or value.get("file") or value.get("source")
+        if explicit_type and explicit_ref:
+            _push(explicit_type, explicit_ref)
+            refs = value.get("refs")
+            if isinstance(refs, list):
+                for ref_item in refs:
+                    _push(explicit_type, ref_item)
+            return
+
+        for key, item in value.items():
+            key_token = str(key or "").strip().lower()
+            if key_token in {"progeny_type", "type", "ref", "path", "file", "source", "refs"}:
+                continue
+            next_fallback = _canonical_progeny_type(key_token) or fallback
+            _walk(item, next_fallback)
+
+    _walk(node, fallback_type)
+    return out
+
+
+def _normalize_progeny_config(values: Any) -> dict[str, list[str]]:
+    merged: dict[str, list[str]] = {token: [] for token in SUPPORTED_PROGENY_TYPES}
+    seen: dict[str, set[str]] = {token: set() for token in SUPPORTED_PROGENY_TYPES}
+    for progeny_type, ref_token in _collect_progeny_refs(values):
+        if ref_token in seen[progeny_type]:
+            continue
+        seen[progeny_type].add(ref_token)
+        merged[progeny_type].append(ref_token)
+    return merged
+
+
+def _normalize_role_groups(value: Any) -> Any:
+    if isinstance(value, list):
+        return [_normalize_role_groups(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    normalized: dict[str, Any] = {}
+    for key, item in value.items():
+        if key == "role_groups" and isinstance(item, dict):
+            admins = item.get("admins")
+            if admins is None:
+                admins = item.get("poc_admin")
+            normalized[key] = {
+                "admins": admins if isinstance(admins, list) else [],
+                "members": item.get("members") if isinstance(item.get("members"), list) else [],
+                "users": item.get("users") if isinstance(item.get("users"), list) else [],
+            }
+            continue
+        normalized[key] = _normalize_role_groups(item)
+    return normalized
+
+
+def _normalize_private_config(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = _normalize_role_groups(copy.deepcopy(payload))
+    if not isinstance(normalized, dict):
+        return {}
+    normalized["aliases"] = _normalize_alias_entries(normalized.get("aliases"))
+    normalized["progeny"] = _normalize_progeny_config(normalized.get("progeny"))
+    return normalized
 
 
 def _deep_fill_missing(primary: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
@@ -217,7 +350,7 @@ def build_portal_spec(
     canonical = state_config or state_legacy or repo_config or repo_legacy or {}
     for fallback in (state_legacy or {}, repo_config or {}, repo_legacy or {}):
         canonical = _deep_fill_missing(canonical, fallback)
-    canonical = copy.deepcopy(canonical)
+    canonical = _normalize_private_config(canonical)
 
     raw_enabled_tools = canonical.pop("enabled_tools", None)
     if raw_enabled_tools is None:
@@ -328,7 +461,7 @@ def materialize_build_spec(build_path: Path, target_state_root: Path | None = No
         raise ValueError("Target state root is required")
 
     enabled_tools = _normalize_enabled_tools(((spec.get("tools") or {}).get("enabled") or []))
-    canonical_config = _with_enabled_tools((spec.get("private_config") or {}).get("canonical") or {}, enabled_tools)
+    canonical_config = _with_enabled_tools(_normalize_private_config((spec.get("private_config") or {}).get("canonical") or {}), enabled_tools)
     _write_json(target_root / "private" / "config.json", canonical_config)
 
     expected_legacy = {
@@ -348,7 +481,7 @@ def materialize_build_spec(build_path: Path, target_state_root: Path | None = No
         filename = str(entry.get("filename") or "").strip()
         if not filename:
             continue
-        payload = _with_enabled_tools(entry.get("payload") or {}, enabled_tools)
+        payload = _with_enabled_tools(_normalize_private_config(entry.get("payload") or {}), enabled_tools)
         _write_json(target_root / "private" / filename, payload)
 
     hosted = (spec.get("hosted") or {}).get("payload")

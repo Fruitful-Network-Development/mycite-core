@@ -18,10 +18,9 @@ from ..runtime_paths import (
 ProfileCard = dict[str, Any]
 
 _ALIAS_EXPECTED_BY_TYPE = {
+    "admin": True,
     "member": False,
-    "board_member": False,
-    "poc": True,
-    "constituent_farm": True,
+    "user": False,
 }
 
 _FORBIDDEN_KEYS = {

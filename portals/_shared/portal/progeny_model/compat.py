@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 LEGACY_TYPE_MAP = {
+    "constituent_farm": "member",
+    "poc": "admin",
     "tenant": "member",
     "board_member": "member",
 }
 
-LEGAL_ENTITY_BASE_TYPES = ("poc", "member", "user")
+LEGAL_ENTITY_BASE_TYPES = ("admin", "member", "user")
 
 
 def canonical_progeny_type(value: str) -> str:
