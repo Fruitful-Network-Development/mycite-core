@@ -467,8 +467,15 @@ def _default_portal_sign_out_url() -> str:
 def _build_widget_url(alias_id: str, alias_payload: Dict[str, Any]) -> str:
     org_msn_id = str(alias_payload.get("alias_host") or "").strip()
     org_title = str(alias_payload.get("host_title") or "").strip()
-    embed_port = _resolve_embed_port(org_msn_id)
-    base_url = f"http://127.0.0.1:{embed_port}"
+    # Use the same host/scheme the user is viewing so the iframe can connect (avoids 127.0.0.1 when accessed via another host).
+    try:
+        if request and getattr(request, "host", None):
+            base_url = request.url_root.rstrip("/")
+        else:
+            raise ValueError("no request")
+    except Exception:
+        embed_port = _resolve_embed_port(org_msn_id)
+        base_url = f"http://127.0.0.1:{embed_port}"
 
     progeny_type = str(alias_payload.get("progeny_type") or "").strip().lower()
     canonical_progeny_type = _canonical_progeny_type(progeny_type)
@@ -1140,47 +1147,12 @@ def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
     selected = str(request.args.get("id") or "").strip()
 
     if token == "network":
-        aliases = _network_sidebar_alias_items()
-        logs = _request_log_channels()
+        # Navigation (Messages, Hosted, Profile, Contracts) is via tabs only; do not duplicate in sidebar.
+        # Request log is the underlying feed for Messages; do not list as a separate sidebar section.
+        # Contracts list belongs under the Contracts tab; do not list in sidebar.
+        # FND does not host alias profiles (only progeny interfaces for TFF-hosted aliases); omit Alias Interfaces.
         p2p = _p2p_channels()
-        contracts = _network_contract_items()
         return [
-            {
-                "title": "Network Views",
-                "entries": [
-                    {"label": "Messages", "meta": "aliases / logs / p2p", "href": "/portal/network?tab=messages&kind=alias", "active": network_tab == "messages"},
-                    {"label": "Hosted", "meta": "hosted.json", "href": "/portal/network?tab=hosted", "active": network_tab == "hosted"},
-                    {"label": "Profile", "meta": "config + public cards", "href": "/portal/network?tab=profile", "active": network_tab == "profile"},
-                    {"label": "Contracts", "meta": "shared MSS context", "href": "/portal/network?tab=contracts", "active": network_tab == "contracts"},
-                ],
-                "empty_text": "",
-            },
-            {
-                "title": "Alias Interfaces",
-                "entries": [
-                    {
-                        "label": item["label"],
-                        "meta": item.get("org_msn_id") or "",
-                        "href": item["href"],
-                        "active": network_tab == "messages" and kind == "alias" and selected == item["id"],
-                    }
-                    for item in aliases
-                ],
-                "empty_text": "No aliases loaded",
-            },
-            {
-                "title": "Request Logs",
-                "entries": [
-                    {
-                        "label": item["label"],
-                        "meta": f"{item['event_count']} event(s)",
-                        "href": item["href"],
-                        "active": network_tab == "messages" and kind == "log" and selected == item["id"],
-                    }
-                    for item in logs
-                ],
-                "empty_text": "No request logs found",
-            },
             {
                 "title": "Direct Messages",
                 "entries": [
@@ -1193,19 +1165,6 @@ def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
                     for item in p2p
                 ],
                 "empty_text": "No P2P channels derived yet",
-            },
-            {
-                "title": "Contracts",
-                "entries": [
-                    {
-                        "label": item["label"],
-                        "meta": item.get("counterparty_msn_id") or item.get("status") or "",
-                        "href": item["href"],
-                        "active": network_tab == "contracts" and selected == item["id"],
-                    }
-                    for item in contracts
-                ],
-                "empty_text": "No contracts saved",
             },
         ]
 

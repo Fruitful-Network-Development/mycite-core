@@ -62,7 +62,7 @@
                 <span>{{ service.label }}</span>
               </a>
             {% endfor %}
-            {% if activity_tool_nav %}
+            {% if activity_tool_nav is defined and activity_tool_nav %}
               <div class="ide-activitydivider" aria-hidden="true"></div>
               {% for tool in activity_tool_nav %}
                 <a

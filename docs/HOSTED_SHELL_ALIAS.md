@@ -18,8 +18,10 @@ This route:
   - `alias_host` / `host_title`
 - renders `alias_shell.html` with:
   - a host/organization header
-  - a widget URL pointing to the embedded member board or hosted view
+  - a widget URL pointing to the embedded member board or hosted view (see below)
   - the **alias progeny type** and **tenant id** that hosted pages use to select layout
+
+**Widget URL:** The iframe `src` for the organization session widget is built by `_build_widget_url()`. To avoid "Unable to connect" when the portal is accessed via a host other than localhost (e.g. a reverse proxy), the base URL uses the current request’s host and scheme (`request.url_root`) when available, instead of hardcoding `http://127.0.0.1:<port>`. Fallback to `127.0.0.1` remains for contexts where no request is present.
 
 The shell itself is intentionally thin: it knows how to render navigation and an iframe/embedded workbench, but it does not know about contracts, MSS, or analytics.
 

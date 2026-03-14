@@ -1,5 +1,7 @@
 ## Portal shell UI model (context / workbench / inspector)
 
+For portal-wide drift, consolidation, and modularization, see [MYCITE_CORE_DEVELOPMENT_REPORT.md](MYCITE_CORE_DEVELOPMENT_REPORT.md).
+
 This document records the **intended behavior** of the shared portal shell and its layout columns. It is a design target for the FND/TFF flavors and any future portals.
 
 ### 1. Shell mental model
@@ -19,9 +21,21 @@ This document records the **intended behavior** of the shared portal shell and i
 
 In VS Code terms, the left sidebar is the Explorer/Outline plus a small editor, the center is the editor group, and the right inspector is the optional details or problems pane.
 
-### 2. Current implementation snapshot
+### 2. Network page sidebar policy
 
-Shared across FND and TFF:
+Navigation for the Network page (Messages, Hosted, Profile, Contracts) is **tabs only**; the left context sidebar must not duplicate these as a "Network Views" section.
+
+- **Do not** render "Network Views" (Messages / Hosted / Profile / Contracts) in the sidebar; the page tabs control that navigation.
+- **Do not** render a "Contracts" list in the sidebar; contract list and "New Contract" belong under the Contracts tab (and optionally in the inspector).
+- **Do not** render "Request Logs" as a separate sidebar section; the request log is the underlying feed for the Messages tab. Messages (and Direct Messages) are filtered views over that feed; users switch via the existing kind filter (alias / p2p / log) in the Messages tab.
+- **Alias Interfaces** in the sidebar: only when the portal **hosts** alias profiles (e.g. TFF). FND does not host alias profiles; it provides progeny interfaces for aliases hosted on TFF, so FND must **omit** the "Alias Interfaces" section from the Network sidebar entirely.
+- **Direct Messages** (P2P channels) may remain in the sidebar as the only Network-specific context list; the right-hand inspector can show relationship/contract details for the selected thread.
+
+Implementation: `_context_sidebar_sections(active_service)` in each flavor’s `app.py` builds the sidebar; for `active_service == "network"` it must return only the sections that match the above (e.g. Direct Messages only on FND; Alias Interfaces + Direct Messages on TFF when aliases exist).
+
+### 3. Current implementation snapshot
+
+Shared across FND and TFF (layout only; Network sidebar content follows §2):
 
 - Templates:
   - `[portals/_shared/runtime/flavors/fnd/portal/ui/templates/base.html]`
@@ -56,7 +70,7 @@ Implication for users:
 - Opening the inspector on narrower windows can obscure the workbench.
 - The left sidebar is under‑utilised for editing; most edits happen only in the inspector.
 
-### 3. Target behavior (design)
+### 4. Target behavior (design)
 
 #### 3.1 Controls
 
@@ -88,7 +102,7 @@ Implication for users:
   - keep the workbench visible as the base layer,
   - require explicit user action to show the overlay and to dismiss it.
 
-### 4. Shared shell refactor plan (high level)
+### 5. Shared shell refactor plan (high level)
 
 - Introduce a shared base template:
   - `[portals/_shared/portal/ui/templates/base_shell.html]`
@@ -112,7 +126,7 @@ Implication for users:
   - FND/TFF `base.html` templates extend `base_shell.html` and drop duplicated layout code.
   - When changing shell behavior (e.g. inspector lifecycle), only `portal_shell.js` and `base_shell.html` need to be updated.
 
-### 5. Context/inspector behavior (detailed)
+### 6. Context/inspector behavior (detailed)
 
 - **Selection → context**
   - Clicking a row, node, or item in the workbench updates the left sidebar’s context editor immediately.
@@ -124,7 +138,7 @@ Implication for users:
     - injects content into `#portalInspectorContent` (either via templates or client-side rendering).
   - The global *Inspector* menubar toggle is not required in this model.
 
-### 6. Responsive & CSS notes
+### 7. Responsive & CSS notes
 
 - Define `.ide-shell--workbench-tight` in `portal.css` to:
   - slightly reduce padding and gaps in the workbench,
@@ -134,7 +148,7 @@ Implication for users:
   - below ~960 px, columns can still coexist as long as the workbench is >= a configurable minimum,
   - below a smaller breakpoint (e.g. 768 px), the inspector becomes an overlay that slides over the right edge while leaving a visible workbench background.
 
-### 7. UX checklist for SYSTEM and other workbenches
+### 8. UX checklist for SYSTEM and other workbenches
 
 Use this checklist when evaluating or updating shell-based pages:
 
