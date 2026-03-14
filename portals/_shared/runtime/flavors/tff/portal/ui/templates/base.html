@@ -62,6 +62,21 @@
                 <span>{{ service.label }}</span>
               </a>
             {% endfor %}
+            {% if activity_tool_nav is defined and activity_tool_nav %}
+              <div class="ide-activitydivider" aria-hidden="true"></div>
+              {% for tool in activity_tool_nav %}
+                <a
+                  class="ide-activitylink ide-activitylink--tool {% if tool.active %}is-active{% endif %}"
+                  href="{{ tool.href }}"
+                  title="{{ tool.title }}"
+                >
+                  {% if tool.icon %}
+                    <img src="{{ tool.icon }}" alt="" aria-hidden="true" />
+                  {% endif %}
+                  <span>{{ tool.label }}</span>
+                </a>
+              {% endfor %}
+            {% endif %}
           {% else %}
             <a class="ide-activitylink is-active" href="/portal/system"><span>SYSTEM</span></a>
             <a class="ide-activitylink" href="/portal/network"><span>NETWORK</span></a>
