@@ -78,6 +78,11 @@ class FndPortalShellRouteTests(unittest.TestCase):
             self.assertIn("/portal/utilities?tab=tools", client.get("/portal/tools").headers.get("Location", ""))
             self.assertIn("/portal/utilities?tab=vault", client.get("/portal/vault").headers.get("Location", ""))
             self.assertIn("/portal/network?tab=messages&kind=log&id=request_log", client.get("/portal/inbox").headers.get("Location", ""))
+            self.assertIn("/portal/tools/data_tool/home", client.get("/portal/data").headers.get("Location", ""))
+            self.assertIn("/portal/tools/data_tool/home", client.get("/portal/data/legacy").headers.get("Location", ""))
+
+            self.assertEqual(client.get("/portal/api/data/state").status_code, 200)
+            self.assertEqual(client.get("/portal/api/data/anthology/table").status_code, 200)
 
 
 if __name__ == "__main__":

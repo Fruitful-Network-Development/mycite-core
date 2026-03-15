@@ -12,7 +12,9 @@ Active specs:
 
 ## Authority boundary
 
-`build.json` is authoritative for seeded portal configuration and network/runtime scaffolding, including:
+`build.json` is a bootstrap/seeding manifest, not a broad runtime source of truth.
+
+It is authoritative for initial materialization inputs only, including:
 
 - portal identity metadata
 - **tools**: enabled tools and tool mounts
@@ -21,7 +23,9 @@ Active specs:
 - **profiles/cards**: public profile/card payloads
 - **network seeds**: seeded alias/profile/request-log/contract payloads under `private/network/**`
 
-It is not authoritative for live anthology content.
+It is not authoritative for live runtime state after materialization (including anthology, request logs, and contract/runtime mutations).
+
+Runtime authority is file-backed canonical artifacts and shared services under `portals/_shared/portal/**`.
 
 ### Hosted vs tools vs profiles
 

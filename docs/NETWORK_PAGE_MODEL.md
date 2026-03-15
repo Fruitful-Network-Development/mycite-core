@@ -9,6 +9,8 @@ NETWORK is both:
 - a shell workbench page at `/portal/network`
 - the runtime surface for portal-to-portal metadata, request logs, aliases, hosted views, and contract context
 
+Data Tool entry is now canonical at `/portal/data` (`/portal/tools/data_tool/home`), while Network remains the canonical contract editing surface.
+
 ## Tabs
 
 Canonical NETWORK tabs:
