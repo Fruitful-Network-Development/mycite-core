@@ -81,5 +81,5 @@ UI renders these fields only; no direct filesystem scanning in templates.
 ## Separation of concerns
 
 - Engine (`data/engine/*`): icon mapping semantics, validation, staging, commit.
-- Controllers (`portal/api/data_workspace.py` + icon static route): HTTP wiring only.
+- Controllers (`portals/_shared/portal/api/data_workspace.py` + icon static route): HTTP wiring only.
 - UI (`portal/ui/templates/tools/*`, `portal/ui/static/tools/*`): rendering and directive dispatch.

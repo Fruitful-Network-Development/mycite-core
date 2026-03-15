@@ -507,9 +507,9 @@ These are suggestions; the boundary constraints are the requirement.
 
 ### 15.2 Implementation guidance (current naming)
 
-- Core service route:
-  - `GET /portal/data`
-- Optional compatibility package route (legacy):
+- Canonical browser entry route:
+  - `GET /portal/data` (canonical entry to the Data Tool surface)
+- Data Tool home implementation route:
   - `GET /portal/tools/data_tool/home`
 - Engine:
   - `data/engine/workspace.py`
@@ -517,7 +517,7 @@ These are suggestions; the boundary constraints are the requirement.
   - `data/engine/nimm/directives.py`
   - `data/engine/nimm/viewmodels.py`
 - Controllers:
-  - `portal/api/data_workspace.py` routes under `/portal/api/data/*`
+  - `portals/_shared/portal/api/data_workspace.py` routes under `/portal/api/data/*`
 - UI:
   - service shell page templates under `portal/ui/templates/services/`
   - data UI templates/scripts may remain under `portal/ui/templates/tools/` and `portal/ui/static/tools/` while converging

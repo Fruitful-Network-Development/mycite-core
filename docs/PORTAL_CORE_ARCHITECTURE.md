@@ -16,6 +16,8 @@ Flavor runtime files under `portals/_shared/runtime/flavors/*` are composition w
 - flavor-only routes/extensions
 - shared shell/service wiring
 
+Canonical data route registration now lives directly in `portals/_shared/portal/api/data_workspace.py` (no flavor-level compatibility loader/indirection).
+
 ## Canonical shell/service surfaces
 
 - canonical Data Tool browser entry: `GET /portal/data` -> `/portal/tools/data_tool/home`
@@ -38,4 +40,4 @@ Shared shell assets/templates are canonicalized to one source and reused across 
 
 - TFF legacy data shim routes under `/portal/api/data/tables` and `/portal/api/data/table/*` are removed.
 - Existing compatibility redirects for `/portal/tools`, `/portal/inbox`, `/portal/peripheral` remain.
-- `/portal/data` is no longer a compatibility redirect to `/portal/system`; it is the canonical Data Tool entry.
+- `/portal/data` is the canonical Data Tool browser entry route.
