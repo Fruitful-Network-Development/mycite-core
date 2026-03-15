@@ -4,6 +4,8 @@
 
 Portal data runtime is file-backed.
 
+Canonical browser entry for the Data Tool is `/portal/data` (redirect target `/portal/tools/data_tool/home`), while `/portal/api/data/*` remains the canonical data-service API surface.
+
 Canonical data artifacts:
 
 - `data/anthology.json`

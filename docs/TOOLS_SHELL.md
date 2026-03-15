@@ -18,14 +18,16 @@ The workbench viewport is the primary scroll region. Sidebars and the activity b
 - `GET /portal/system`
 - `GET /portal/network`
 - `GET /portal/utilities`
+- `GET /portal/data` -> `/portal/tools/data_tool/home`
 
 Compatibility redirects remain:
 
 - `/portal/home` -> `/portal/system`
-- `/portal/data` -> `/portal/system`
 - `/portal/tools` -> `/portal/utilities?tab=tools`
 - `/portal/inbox` -> `/portal/network?tab=messages&kind=log&id=request_log`
 - `/portal/peripheral` -> `/portal/utilities?tab=peripherals`
+
+`/portal/data/<path:tab_id>` also redirects to `/portal/tools/data_tool/home`.
 
 ## Activity bar
 
@@ -64,6 +66,15 @@ Rules:
 - `data_tool` is a core SYSTEM surface, not an optional packaged tool
 - missing `enabled_tools` in a real config means no optional tools are enabled
 - package auto-discovery is only a fallback when no portal config exists
+
+## Shared shell assets
+
+Canonical shell static/template assets are served from the shared shell source under:
+
+- `portals/_shared/runtime/flavors/fnd/portal/ui/templates`
+- `portals/_shared/runtime/flavors/fnd/portal/ui/static`
+
+Flavor runtimes compose this shared shell rather than maintaining duplicated copies.
 
 ## Inspector model
 

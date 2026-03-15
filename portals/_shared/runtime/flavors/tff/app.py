@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import quote, urlencode
 
 from flask import Flask, abort, jsonify, make_response, redirect, render_template, request, send_from_directory
-from jinja2 import TemplateNotFound
+from jinja2 import ChoiceLoader, FileSystemLoader, TemplateNotFound
 
 from data.engine.workspace import Workspace
 from data.storage_json import JsonStorageBackend
@@ -30,6 +30,7 @@ from portal.core_services.runtime import (
     resolve_active_private_config_path,
     normalize_network_tab,
 )
+from _shared.portal.core_services.runtime_config import build_runtime_config
 from portal.services.board_access import require_board_member
 from portal.services.contract_store import get_contract, list_contracts
 from portal.services.mss import preview_mss_context, resolve_contract_datum_ref
@@ -47,6 +48,23 @@ from portal.services.runtime_paths import (
 from portal.services.workspace_store import append_event as append_workspace_event
 from portal.services.workspace_store import materialize_people, read_events, workspace_root
 from portal.tools.runtime import active_tool_for_path, read_enabled_tools, register_tool_blueprints
+from _shared.portal.services.app_io import load_object_json_if_exists, read_object_json, write_object_json
+from _shared.portal.services.alias_utils import (
+    alias_contact_collection_ref as shared_alias_contact_collection_ref,
+    alias_label as shared_alias_label,
+    canonical_progeny_type as shared_canonical_progeny_type,
+    extract_contract_id as shared_extract_contract_id,
+    extract_member_msn_id as shared_extract_member_msn_id,
+    extract_tenant_msn_id as shared_extract_tenant_msn_id,
+    format_sidebar_entity_title as shared_format_sidebar_entity_title,
+    list_aliases_for_sidebar as shared_list_aliases_for_sidebar,
+)
+from _shared.portal.services.embed_urls import build_widget_url as shared_build_widget_url
+from _shared.portal.services.network_contract import (
+    build_network_contract_items as shared_build_network_contract_items,
+    resolve_network_refs as shared_resolve_network_refs,
+)
+from _shared.portal.shell import canonical_shell_static_dir, canonical_shell_template_dir
 
 app = Flask(
     __name__,
@@ -72,6 +90,8 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR / "data")))
 FALLBACK_DIR = BASE_DIR
 REPO_ROOT = _resolve_portals_root()
 ICONS_DIR = REPO_ROOT / "assets" / "icons"
+SHARED_SHELL_TEMPLATE_DIR = canonical_shell_template_dir(REPO_ROOT)
+SHARED_SHELL_STATIC_DIR = canonical_shell_static_dir(REPO_ROOT)
 PORTAL_INSTANCE_ID = str(os.environ.get("PORTAL_INSTANCE_ID") or BASE_DIR.name).strip().lower()
 PORTAL_RUNTIME_FLAVOR = str(os.environ.get("PORTAL_RUNTIME_FLAVOR") or PORTAL_INSTANCE_ID or BASE_DIR.name).strip().lower()
 IS_TFF_PORTAL = PORTAL_RUNTIME_FLAVOR == "tff" or "tff" in PORTAL_RUNTIME_FLAVOR
@@ -116,14 +136,17 @@ LEGAL_ENTITY_PROFILE_DEFAULTS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+app.jinja_loader = ChoiceLoader(
+    [
+        FileSystemLoader(str(BASE_DIR / "portal" / "ui" / "templates")),
+        FileSystemLoader(str(SHARED_SHELL_TEMPLATE_DIR)),
+    ]
+)
+app.static_folder = str(SHARED_SHELL_STATIC_DIR)
+
 
 def _canonical_progeny_type(value: str) -> str:
-    token = str(value or "").strip().lower()
-    if token in {"board_member", "constituent_farm", "tenant"}:
-        return "member"
-    if token == "poc":
-        return "admin"
-    return token
+    return shared_canonical_progeny_type(value)
 
 
 def _default_portal_sign_out_url() -> str:
@@ -132,10 +155,7 @@ def _default_portal_sign_out_url() -> str:
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise RuntimeError(f"Expected object JSON in {path}")
-    return payload
+    return read_object_json(path)
 
 
 def _read_json_relaxed(path: Path) -> Dict[str, Any]:
@@ -151,8 +171,7 @@ def _read_json_relaxed(path: Path) -> Dict[str, Any]:
 
 
 def _write_json(path: Path, payload: Dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_object_json(path, payload)
 
 
 def _anthology_path() -> Path:
@@ -160,13 +179,7 @@ def _anthology_path() -> Path:
 
 
 def _load_local_anthology_payload() -> Dict[str, Any]:
-    path = _anthology_path()
-    if not path.exists() or not path.is_file():
-        return {}
-    try:
-        return _read_json(path)
-    except Exception:
-        return {}
+    return load_object_json_if_exists(_anthology_path())
 
 
 def _contract_records() -> list[Dict[str, Any]]:
@@ -199,53 +212,25 @@ def _contract_preview(contract_payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _network_contract_items() -> list[Dict[str, Any]]:
-    out: list[Dict[str, Any]] = []
-    for item in list_contracts(PRIVATE_DIR):
-        contract_id = str(item.get("contract_id") or "").strip()
-        if not contract_id:
-            continue
-        try:
-            contract_payload = get_contract(PRIVATE_DIR, contract_id)
-        except Exception:
-            contract_payload = {"contract_id": contract_id}
-        preview = _contract_preview(contract_payload)
-        out.append(
-            {
-                "id": contract_id,
-                "contract_id": contract_id,
-                "label": str(contract_payload.get("contract_type") or contract_id).strip() or contract_id,
-                "counterparty_msn_id": str(contract_payload.get("counterparty_msn_id") or "").strip(),
-                "status": str(contract_payload.get("status") or "pending").strip(),
-                "owner_selected_refs": list(contract_payload.get("owner_selected_refs") or []),
-                "owner_mss_present": bool(str(contract_payload.get("owner_mss") or "").strip()),
-                "counterparty_mss_present": bool(str(contract_payload.get("counterparty_mss") or "").strip()),
-                "href": f"/portal/network?tab=contracts&id={quote(contract_id, safe='')}",
-                "payload": contract_payload,
-                "preview": preview,
-            }
-        )
-    return out
+    return shared_build_network_contract_items(
+        private_dir=PRIVATE_DIR,
+        list_contracts_fn=list_contracts,
+        get_contract_fn=get_contract,
+        preview_mss_context_fn=preview_mss_context,
+        load_anthology_payload_fn=_load_local_anthology_payload,
+        local_msn_id=str(MSN_ID or ""),
+    )
 
 
 def _network_resolved_refs(payload: Dict[str, Any], *, preferred_contract_id: str = "") -> Dict[str, Any]:
-    out: Dict[str, Any] = {}
-    contracts = _contract_records()
-    anthology = _load_local_anthology_payload()
-    for key in ("event_datum", "status"):
-        token = str(payload.get(key) or "").strip()
-        if not token:
-            continue
-        try:
-            out[key] = resolve_contract_datum_ref(
-                token,
-                local_msn_id=str(MSN_ID or ""),
-                anthology_payload=anthology,
-                contract_payloads=contracts,
-                preferred_contract_id=preferred_contract_id,
-            )
-        except Exception:
-            continue
-    return out
+    return shared_resolve_network_refs(
+        payload,
+        local_msn_id=str(MSN_ID or ""),
+        anthology_payload=_load_local_anthology_payload(),
+        contract_payloads=_contract_records(),
+        resolve_contract_datum_ref_fn=resolve_contract_datum_ref,
+        preferred_contract_id=preferred_contract_id,
+    )
 
 
 def _find_first(paths) -> Optional[Path]:
@@ -417,20 +402,11 @@ def _infer_local_msn_id() -> str:
 
 
 def _format_sidebar_entity_title(raw: str) -> str:
-    token = re.sub(r"[_-]+", " ", str(raw or "").strip())
-    token = re.sub(r"\s+", " ", token).strip()
-    return token.upper()
+    return shared_format_sidebar_entity_title(raw)
 
 
 def _alias_label(alias_payload: Dict[str, Any], alias_id: Optional[str] = None) -> str:
-    host_title = str(alias_payload.get("host_title") or "").strip()
-    if host_title:
-        return _format_sidebar_entity_title(host_title)
-
-    if alias_id:
-        return _format_sidebar_entity_title(alias_id)
-
-    return "UNNAMED ALIAS"
+    return shared_alias_label(alias_payload, alias_id)
 def _sanitize_env_suffix(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9]", "_", value).upper()
 
@@ -452,93 +428,49 @@ def _resolve_embed_port(alias_host: str) -> str:
 
 
 def _extract_tenant_msn_id(alias_payload: Dict[str, Any]) -> str:
-    return str(alias_payload.get("child_msn_id") or alias_payload.get("tenant_id") or "").strip()
+    return shared_extract_tenant_msn_id(alias_payload)
 
 
 def _extract_contract_id(alias_payload: Dict[str, Any]) -> str:
-    return str(alias_payload.get("contract_id") or alias_payload.get("symmetric_key_contract") or "").strip()
+    return shared_extract_contract_id(alias_payload)
 
 
 def _extract_member_msn_id(alias_payload: Dict[str, Any]) -> str:
-    return str(
-        alias_payload.get("member_msn_id")
-        or alias_payload.get("child_msn_id")
-        or alias_payload.get("tenant_id")
-        or alias_payload.get("msn_id")
-        or ""
-    ).strip()
+    return shared_extract_member_msn_id(alias_payload)
 
 
 def _build_widget_url(alias_id: str, alias_payload: Dict[str, Any]) -> str:
-    org_msn_id = str(alias_payload.get("alias_host") or "").strip()
-    org_title = str(alias_payload.get("host_title") or "").strip()
-    # When the alias is hosted by another portal (org_msn_id != current MSN), the iframe must load
-    # that host's origin so the host serves member_workbench/tenant/poc content. Otherwise the
-    # iframe would load the current portal's embed route and show blank or wrong content (e.g. TFF
-    # viewing an FND-hosted alias must load FND's member_workbench, not TFF's).
-    if org_msn_id and MSN_ID and org_msn_id != MSN_ID:
-        url_key = f"EMBED_HOST_URL_{_sanitize_env_suffix(org_msn_id)}"
-        base_url = (os.environ.get(url_key) or "").strip().rstrip("/")
-        if not base_url:
-            embed_port = _resolve_embed_port(org_msn_id)
-            base_url = f"http://127.0.0.1:{embed_port}"
-    else:
-        try:
-            if request and getattr(request, "host", None):
-                base_url = request.url_root.rstrip("/")
-            else:
-                raise ValueError("no request")
-        except Exception:
-            embed_port = _resolve_embed_port(org_msn_id)
-            base_url = f"http://127.0.0.1:{embed_port}"
-
-    progeny_type = _canonical_progeny_type(str(alias_payload.get("progeny_type") or "").strip().lower())
-    tenant_msn_id = _extract_tenant_msn_id(alias_payload)
-    member_msn_id = _extract_member_msn_id(alias_payload)
-    if progeny_type == "member" and member_msn_id:
-        target_path = "/portal/embed/board_member"
-        tab = "feed"
-        if org_msn_id and MSN_ID and org_msn_id != MSN_ID:
-            target_path = "/portal/embed/member_workbench"
-            tab = "stream"
-        query = urlencode({"member_msn_id": member_msn_id, "as_alias_id": alias_id, "tab": tab})
-        return f"{base_url}{target_path}?{query}"
-
-    query = urlencode({"org_msn_id": org_msn_id, "as_alias_id": alias_id, "org_title": org_title})
-    return f"{base_url}/portal/embed/poc?{query}"
+    request_host_url: str | None = None
+    try:
+        if request and getattr(request, "host", None):
+            request_host_url = request.url_root
+    except Exception:
+        request_host_url = None
+    return shared_build_widget_url(
+        alias_id=alias_id,
+        alias_payload=alias_payload,
+        local_msn_id=str(MSN_ID or ""),
+        known_embed_port_by_msn=KNOWN_EMBED_PORT_BY_MSN,
+        default_embed_port=DEFAULT_EMBED_PORT,
+        canonical_progeny_type_fn=_canonical_progeny_type,
+        extract_tenant_msn_id_fn=_extract_tenant_msn_id,
+        extract_contract_id_fn=_extract_contract_id,
+        extract_member_msn_id_fn=_extract_member_msn_id,
+        local_member_path="/portal/embed/board_member",
+        remote_member_path="/portal/embed/member_workbench",
+        local_member_tab="feed",
+        remote_member_tab="stream",
+        support_tenant_embed=False,
+        request_host_url=request_host_url,
+    )
 
 
 def _alias_contact_collection_ref(record: Dict[str, Any]) -> str:
-    profile_refs = record.get("profile_refs") if isinstance(record.get("profile_refs"), dict) else {}
-    alias_ref = str(profile_refs.get("contact_collection_ref") or "").strip()
-    if alias_ref:
-        return alias_ref
-
-    fields = record.get("fields") if isinstance(record.get("fields"), dict) else {}
-    return str(fields.get("contact_collection_ref") or "").strip()
+    return shared_alias_contact_collection_ref(record)
 
 
 def list_aliases_for_sidebar(private_dir: Path) -> list[Dict[str, Any]]:
-    records, _ = list_alias_records(private_dir)
-    aliases: list[Dict[str, Any]] = []
-    for record in records:
-        alias_id = str(record.get("alias_id") or "").strip()
-        if not alias_id:
-            continue
-        aliases.append(
-            {
-                "alias_id": alias_id,
-                "label": _alias_label(record, alias_id),
-                "org_title": str(record.get("host_title") or "").strip(),
-                "org_msn_id": str(record.get("alias_host") or "").strip(),
-                "contract_id": str(record.get("contract_id") or "").strip(),
-                "progeny_type": _canonical_progeny_type(str(record.get("progeny_type") or "").strip()),
-                "tenant_id": str(record.get("child_msn_id") or record.get("tenant_id") or "").strip(),
-                "member_id": _extract_member_msn_id(record),
-                "contact_collection_ref": _alias_contact_collection_ref(record),
-            }
-        )
-    return aliases
+    return shared_list_aliases_for_sidebar(private_dir, list_alias_records_fn=list_alias_records)
 
 
 def _safe_progeny_ref_path(ref_token: str) -> Optional[Path]:
@@ -922,6 +854,13 @@ TOOL_TABS = register_tool_blueprints(
 )
 DATA_WORKSPACE = Workspace(JsonStorageBackend(DATA_DIR), config=WORKSPACE_CONFIG)
 app.config["MYCITE_DATA_WORKSPACE"] = DATA_WORKSPACE
+app.config["MYCITE_RUNTIME_CONFIG"] = build_runtime_config(
+    private_dir=PRIVATE_DIR,
+    public_dir=PUBLIC_DIR,
+    data_dir=DATA_DIR,
+    msn_id=MSN_ID,
+    portal_instance_id=PORTAL_INSTANCE_ID,
+)
 DATA_HOME_TEMPLATE = BASE_DIR / "portal" / "ui" / "templates" / "tools" / "data_tool_home.html"
 DATA_HOME_AVAILABLE = DATA_HOME_TEMPLATE.exists()
 HOME_TAB_IDS = ("portal", "data", "tools", "vault")
@@ -1766,13 +1705,13 @@ def portal_vault():
 
 @app.get("/portal/data")
 def portal_data():
-    return redirect("/portal/system", code=302)
+    return redirect("/portal/tools/data_tool/home", code=302)
 
 
 @app.get("/portal/data/<path:tab_id>")
 def portal_data_legacy(tab_id: str):
     _ = tab_id
-    return redirect("/portal/system", code=302)
+    return redirect("/portal/tools/data_tool/home", code=302)
 
 
 @app.get("/portal/network")
@@ -2247,7 +2186,7 @@ register_data_routes(
     options_private_fn=_options_private,
     msn_id_provider=lambda: MSN_ID,
     include_home_redirect=False,
-    include_legacy_shims=True,
+    include_legacy_shims=False,
 )
 
 
