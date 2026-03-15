@@ -11,6 +11,10 @@ from .datum_identity import (
     stable_datum_id,
     to_canonical_dot,
 )
+from .field_contracts import FieldContract, default_profile_field_contracts
+from .geometry_datums import GEOMETRY_TEMPLATES, geometry_template_spec
+from .profile_config_refs import get_path, set_path
+from .write_pipeline import WriteApplyResult, WritePreviewResult, apply_write_preview, preview_write_intent
 
 __all__ = [
     "CompiledDatumIndex",
@@ -28,4 +32,14 @@ __all__ = [
     "sort_rows",
     "stable_datum_id",
     "to_canonical_dot",
+    "FieldContract",
+    "default_profile_field_contracts",
+    "GEOMETRY_TEMPLATES",
+    "geometry_template_spec",
+    "get_path",
+    "set_path",
+    "WriteApplyResult",
+    "WritePreviewResult",
+    "apply_write_preview",
+    "preview_write_intent",
 ]

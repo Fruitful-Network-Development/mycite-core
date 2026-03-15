@@ -9,6 +9,7 @@ Shared core authority lives under `portals/_shared/portal/**`:
 - data-engine semantics and anthology normalization
 - runtime helper services (alias/embed/network contract helpers)
 - typed runtime config contract (`core_services/runtime_config.py`)
+- external resource isolate planning (`data_engine/external_resources/*`)
 
 Flavor runtime files under `portals/_shared/runtime/flavors/*` are composition wrappers:
 
@@ -17,6 +18,8 @@ Flavor runtime files under `portals/_shared/runtime/flavors/*` are composition w
 - shared shell/service wiring
 
 Canonical data route registration now lives directly in `portals/_shared/portal/api/data_workspace.py` (no flavor-level compatibility loader/indirection).
+
+Canonical shared external-resource endpoints under `/portal/api/data/*` are shared-core owned and reusable by tools/profiles/aliases.
 
 ## Canonical shell/service surfaces
 

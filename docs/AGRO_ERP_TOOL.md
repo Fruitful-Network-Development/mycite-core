@@ -8,14 +8,18 @@ The tool’s full API contract is **not** finalized; it will evolve as the share
 
 ---
 
-## Capability buckets
+## Capability model
 
-- **Current**
-  - Property geometry: resolve coordinate tokens (config hex or anthology-backed) via daemon; decode fixed-width hex to lon/lat.
-- **Planned**
-  - Inherited taxonomy: view and use taxonomy data from FND (or other portals) via contract or public contact-card exported metadata.
-  - Product types: define and save product-type datums (e.g. `txa_id`, `title`, `gestation_time`) to the local anthology.
-  - Field records, crop references, and related agricultural entities (to be specified later).
+AGRO-ERP declares capabilities in a machine-readable registry:
+
+- `portals/_shared/runtime/flavors/tff/portal/tools/agro_erp/capabilities.json`
+
+The registry defines:
+
+- accepted public resource families (for example `taxonomy.txa_collection`, `identity.msn_collection`)
+- datum templates AGRO-ERP can create
+- prerequisite abstraction chains per template
+- auto-create rules for missing prerequisites
 
 Tool-spec inputs/outputs and capability buckets are described in the tool spec (`private/tools/agro_erp.spec.json`) and in [AGRO_ERP_INTENTION.md](AGRO_ERP_INTENTION.md). Storage bindings (e.g. layer/value_group for product types) are not frozen in the base anthology schema.
 
@@ -27,8 +31,22 @@ Tool-spec inputs/outputs and capability buckets are described in the tool spec (
 
 - `GET /portal/tools/agro_erp/home`
 - `GET /portal/tools/agro_erp/model.json`
+- `GET /portal/tools/agro_erp/capabilities.json`
+- `GET /portal/tools/agro_erp/resources` (thin delegate to canonical data API)
+- `POST /portal/tools/agro_erp/plan_preview` (thin orchestration over canonical planner services)
+- `POST /portal/tools/agro_erp/apply` (plan-first apply through canonical data mutation routes)
 - `POST /portal/tools/agro_erp/daemon/resolve`
-- `POST /portal/tools/agro_erp/product_types` — create a product-type datum (persisted to anthology; audit via local audit log, not request log).
+- `POST /portal/tools/agro_erp/product_types` — compatibility route delegating to planner-driven product-type apply.
+
+Canonical core semantics remain on `/portal/api/data/*`:
+
+- `/portal/api/data/external/resources`
+- `/portal/api/data/write/field_contracts`
+- `/portal/api/data/write/preview`
+- `/portal/api/data/write/apply`
+- `/portal/api/data/geometry/preview`
+- `/portal/api/data/geometry/apply`
+- external planner endpoints under `/portal/api/data/external/*` (used when template/resource family requires remote closure/materialization)
 
 ---
 
@@ -46,6 +64,19 @@ Each daemon exposes a NIMM-style directive payload (`action`, `subject`, `method
 **Runtime inputs:** active private config (`private/config.json`), anthology payload (`data/anthology.json`). Taxonomy and product-type features also use tool spec and (when available) inherited taxonomy service and contracts.
 
 ---
+
+## Planner preview and sparse materialization
+
+Before apply, AGRO-ERP obtains and displays a structured write preview including:
+
+- selected public resource and isolate/provenance context
+- existing local prerequisites
+- missing prerequisites
+- prerequisites satisfiable from bundle
+- prerequisites requiring auto-create
+- ordered write actions from the shared write plan
+
+AGRO-ERP then applies only shared write-pipeline-approved writes through canonical data-engine routes.
 
 ## Local tool writes and audit
 

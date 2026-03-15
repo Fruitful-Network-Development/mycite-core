@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from flask import abort, jsonify, redirect, request
+from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
+from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
 
 
 def register_data_routes(
@@ -12,6 +14,10 @@ def register_data_routes(
     aliases_provider: Callable[[], list[dict]] | None = None,
     options_private_fn: Callable[[str], dict[str, Any]] | None = None,
     msn_id_provider: Callable[[], str] | None = None,
+    external_resource_resolver: Any | None = None,
+    anthology_payload_provider: Callable[[], dict[str, Any]] | None = None,
+    active_config_provider: Callable[[], dict[str, Any]] | None = None,
+    active_config_saver: Callable[[dict[str, Any]], bool] | None = None,
     include_home_redirect: bool = True,
     include_legacy_shims: bool = True,
 ) -> None:
@@ -60,6 +66,40 @@ def register_data_routes(
             "warnings": list(result.get("warnings") or []),
         }
 
+    def _load_active_config() -> dict[str, Any]:
+        if active_config_provider is None:
+            return {}
+        try:
+            payload = active_config_provider() or {}
+            return payload if isinstance(payload, dict) else {}
+        except Exception:
+            return {}
+
+    def _save_active_config(payload: dict[str, Any]) -> bool:
+        if active_config_saver is None:
+            return False
+        try:
+            return bool(active_config_saver(payload if isinstance(payload, dict) else {}))
+        except Exception:
+            return False
+
+    def _external_plan_for_intent(payload: dict[str, Any]) -> tuple[bool, dict[str, Any], str]:
+        if external_resource_resolver is None or anthology_payload_provider is None:
+            return True, {"ok": True, "ordered_writes": []}, ""
+        try:
+            plan = external_resource_resolver.plan_materialization(
+                source_msn_id=str(payload.get("source_msn_id") or "").strip(),
+                resource_id=str(payload.get("resource_id") or "").strip(),
+                target_ref=str(payload.get("target_ref") or "").strip(),
+                required_refs=[str(item or "").strip() for item in list(payload.get("required_refs") or [])],
+                anthology_payload=anthology_payload_provider() or {},
+                allow_auto_create=bool(payload.get("allow_auto_create", False)),
+            )
+            out = plan.to_dict() if hasattr(plan, "to_dict") else dict(plan)
+            return bool(out.get("ok")), out, str(out.get("error") or "")
+        except Exception as exc:
+            return False, {}, str(exc)
+
     if include_home_redirect:
         @app.get("/portal/data")
         def portal_data_home_redirect():
@@ -94,6 +134,165 @@ def register_data_routes(
     def portal_data_model():
         meta = workspace.model_meta() if hasattr(workspace, "model_meta") else {}
         return jsonify({"ok": True, "model_meta": meta})
+
+    @app.get("/portal/api/data/write/field_contracts")
+    def portal_data_write_field_contracts():
+        contracts = default_profile_field_contracts()
+        return jsonify(
+            {
+                "ok": True,
+                "contracts": {key: value.to_dict() for key, value in contracts.items()},
+                "schema": "mycite.portal.write.field_contracts.v1",
+            }
+        )
+
+    @app.post("/portal/api/data/write/preview")
+    def portal_data_write_preview():
+        body = _json_body()
+        intent = body.get("intent") if isinstance(body.get("intent"), dict) else body
+        preview = preview_write_intent(
+            intent=intent if isinstance(intent, dict) else {},
+            current_config=_load_active_config(),
+            external_plan_fn=_external_plan_for_intent,
+        )
+        payload = preview.to_dict()
+        payload["schema"] = "mycite.portal.write.preview.v1"
+        return jsonify(payload), (200 if preview.ok else 400)
+
+    @app.post("/portal/api/data/write/apply")
+    def portal_data_write_apply():
+        body = _json_body()
+        intent = body.get("intent") if isinstance(body.get("intent"), dict) else {}
+        if body.get("preview") and isinstance(body.get("preview"), dict):
+            preview_payload = dict(body.get("preview"))
+            preview_payload.pop("schema", None)
+            preview = preview_write_intent(
+                intent=preview_payload.get("intent") if isinstance(preview_payload.get("intent"), dict) else {},
+                current_config=_load_active_config(),
+                external_plan_fn=_external_plan_for_intent,
+            )
+        else:
+            preview = preview_write_intent(
+                intent=intent,
+                current_config=_load_active_config(),
+                external_plan_fn=_external_plan_for_intent,
+            )
+        result = apply_write_preview(
+            preview=preview,
+            workspace=workspace,
+            load_config_fn=_load_active_config,
+            save_config_fn=_save_active_config,
+        )
+        payload = result.to_dict()
+        payload["schema"] = "mycite.portal.write.apply.v1"
+        return jsonify(payload), (200 if result.ok else 400)
+
+    @app.post("/portal/api/data/geometry/preview")
+    def portal_data_geometry_preview():
+        body = _json_body()
+        intent = body.get("intent") if isinstance(body.get("intent"), dict) else dict(body)
+        intent["intent_type"] = "geometry_datum"
+        preview = preview_write_intent(
+            intent=intent,
+            current_config=_load_active_config(),
+            external_plan_fn=_external_plan_for_intent,
+        )
+        payload = preview.to_dict()
+        payload["schema"] = "mycite.portal.geometry.preview.v1"
+        return jsonify(payload), (200 if preview.ok else 400)
+
+    @app.post("/portal/api/data/geometry/apply")
+    def portal_data_geometry_apply():
+        body = _json_body()
+        intent = body.get("intent") if isinstance(body.get("intent"), dict) else dict(body)
+        intent["intent_type"] = "geometry_datum"
+        preview = preview_write_intent(
+            intent=intent,
+            current_config=_load_active_config(),
+            external_plan_fn=_external_plan_for_intent,
+        )
+        result = apply_write_preview(
+            preview=preview,
+            workspace=workspace,
+            load_config_fn=_load_active_config,
+            save_config_fn=_save_active_config,
+        )
+        payload = result.to_dict()
+        payload["schema"] = "mycite.portal.geometry.apply.v1"
+        return jsonify(payload), (200 if result.ok else 400)
+
+    @app.get("/portal/api/data/external/resources")
+    def portal_data_external_resources():
+        if external_resource_resolver is None:
+            abort(501, description="external resource resolver is unavailable")
+        source_msn_id = str(request.args.get("source_msn_id") or request.args.get("msn_id") or "").strip()
+        if not source_msn_id:
+            abort(400, description="source_msn_id is required")
+        resources = external_resource_resolver.list_public_resources(source_msn_id=source_msn_id)
+        return jsonify({"ok": True, "source_msn_id": source_msn_id, "resources": resources})
+
+    @app.post("/portal/api/data/external/fetch")
+    def portal_data_external_fetch():
+        if external_resource_resolver is None:
+            abort(501, description="external resource resolver is unavailable")
+        body = _json_body()
+        source_msn_id = str(body.get("source_msn_id") or body.get("msn_id") or "").strip()
+        resource_id = str(body.get("resource_id") or "").strip()
+        if not source_msn_id or not resource_id:
+            abort(400, description="source_msn_id and resource_id are required")
+        force_refresh = bool(body.get("force_refresh"))
+        result = external_resource_resolver.fetch_and_cache_bundle(
+            source_msn_id=source_msn_id,
+            resource_id=resource_id,
+            force_refresh=force_refresh,
+        )
+        return jsonify(result), (200 if bool(result.get("ok")) else 400)
+
+    @app.post("/portal/api/data/external/preview_closure")
+    def portal_data_external_preview_closure():
+        if external_resource_resolver is None:
+            abort(501, description="external resource resolver is unavailable")
+        body = _json_body()
+        source_msn_id = str(body.get("source_msn_id") or body.get("msn_id") or "").strip()
+        resource_id = str(body.get("resource_id") or "").strip()
+        target_refs = body.get("target_refs")
+        if not source_msn_id or not resource_id:
+            abort(400, description="source_msn_id and resource_id are required")
+        if not isinstance(target_refs, list):
+            abort(400, description="target_refs[] is required")
+        result = external_resource_resolver.preview_required_closure(
+            source_msn_id=source_msn_id,
+            resource_id=resource_id,
+            target_refs=[str(item or "").strip() for item in target_refs],
+        )
+        return jsonify(result), (200 if bool(result.get("ok")) else 400)
+
+    @app.post("/portal/api/data/external/plan_materialization")
+    def portal_data_external_plan_materialization():
+        if external_resource_resolver is None:
+            abort(501, description="external resource resolver is unavailable")
+        if anthology_payload_provider is None:
+            abort(501, description="anthology payload provider is unavailable")
+        body = _json_body()
+        source_msn_id = str(body.get("source_msn_id") or body.get("msn_id") or "").strip()
+        resource_id = str(body.get("resource_id") or "").strip()
+        target_ref = str(body.get("target_ref") or "").strip()
+        required_refs = body.get("required_refs")
+        allow_auto_create = bool(body.get("allow_auto_create", False))
+        if not source_msn_id or not resource_id or not target_ref:
+            abort(400, description="source_msn_id, resource_id, and target_ref are required")
+        if not isinstance(required_refs, list):
+            abort(400, description="required_refs[] is required")
+        plan = external_resource_resolver.plan_materialization(
+            source_msn_id=source_msn_id,
+            resource_id=resource_id,
+            target_ref=target_ref,
+            required_refs=[str(item or "").strip() for item in required_refs],
+            anthology_payload=anthology_payload_provider() or {},
+            allow_auto_create=allow_auto_create,
+        )
+        payload = plan.to_dict() if hasattr(plan, "to_dict") else dict(plan)
+        return jsonify({"ok": bool(payload.get("ok")), "plan": payload}), (200 if bool(payload.get("ok")) else 400)
 
     @app.get("/portal/api/data/anthology/table")
     def portal_data_anthology_table():

@@ -34,6 +34,51 @@
           <p><code>active_config</code>: {{ model.active_config_path }}</p>
           <p><code>anthology</code>: {{ model.anthology_path }}</p>
           <p><a href="/portal/tools/agro_erp/model.json">View model as JSON</a></p>
+          <p><a href="/portal/tools/agro_erp/capabilities.json">View capabilities JSON</a></p>
+        </div>
+      </article>
+
+      <article class="card card--full">
+        <div class="card__kicker">Planner-Driven Creation</div>
+        <div class="card__title">Public Resource -> Template -> Plan -> Apply</div>
+        <div class="card__body">
+          <p>
+            AGRO-ERP remains an orchestration layer. It delegates resource discovery, isolate bundle resolution,
+            and write planning to canonical shared services under <code>/portal/api/data/*</code>.
+          </p>
+          <div class="geo-grid">
+            <div>
+              <label>
+                <strong>Source Portal MSN</strong><br />
+                <input id="agroSourceMsn" type="text" value="{{ model.taxonomy.ref.split('.')[0] if model.taxonomy and model.taxonomy.ref else '' }}" />
+              </label>
+            </div>
+            <div>
+              <button id="agroLoadResources" type="button">Load Public Resources</button>
+            </div>
+          </div>
+          <div id="agroResourceList" class="jsonblock">No resources loaded.</div>
+          <div class="geo-grid">
+            <div>
+              <label>
+                <strong>Resource</strong><br />
+                <select id="agroResourceId"></select>
+              </label>
+            </div>
+            <div>
+              <label>
+                <strong>Template</strong><br />
+                <select id="agroTemplateId"></select>
+              </label>
+            </div>
+          </div>
+          <div id="agroTemplateFields"></div>
+          <div class="geo-grid">
+            <div><button id="agroPlanPreview" type="button">Preview Materialization Plan</button></div>
+            <div><button id="agroApplyPlan" type="button">Apply Planned Writes</button></div>
+          </div>
+          <h3>Planner Preview</h3>
+          <pre id="agroPlanOutput" class="jsonblock">No plan preview generated yet.</pre>
         </div>
       </article>
 
@@ -250,4 +295,130 @@
       </article>
     </div>
   </section>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script>
+    (function () {
+      const model = {{ model_json|safe }};
+      const capabilities = (model.capabilities && Array.isArray(model.capabilities.templates)) ? model.capabilities : { templates: [] };
+      const routes = model.agro_routes || {};
+      const sourceInput = document.getElementById("agroSourceMsn");
+      const loadBtn = document.getElementById("agroLoadResources");
+      const resourceList = document.getElementById("agroResourceList");
+      const resourceSelect = document.getElementById("agroResourceId");
+      const templateSelect = document.getElementById("agroTemplateId");
+      const fieldsRoot = document.getElementById("agroTemplateFields");
+      const planBtn = document.getElementById("agroPlanPreview");
+      const applyBtn = document.getElementById("agroApplyPlan");
+      const planOutput = document.getElementById("agroPlanOutput");
+      let lastPreview = null;
+
+      function renderTemplateOptions() {
+        templateSelect.innerHTML = "";
+        for (const item of capabilities.templates) {
+          const opt = document.createElement("option");
+          opt.value = item.template_id || "";
+          opt.textContent = (item.title || item.template_id || "");
+          templateSelect.appendChild(opt);
+        }
+      }
+
+      function renderTemplateFields() {
+        const template = capabilities.templates.find((item) => (item.template_id || "") === templateSelect.value);
+        fieldsRoot.innerHTML = "";
+        if (!template || !Array.isArray(template.fields)) {
+          return;
+        }
+        for (const field of template.fields) {
+          const wrap = document.createElement("div");
+          const label = document.createElement("label");
+          label.innerHTML = "<strong>" + (field.title || field.id || "field") + "</strong>";
+          const input = document.createElement("input");
+          input.type = "text";
+          input.id = "agroField_" + (field.id || "");
+          input.placeholder = String(field.type || "value");
+          if (field.required) {
+            input.required = true;
+          }
+          label.appendChild(document.createElement("br"));
+          label.appendChild(input);
+          wrap.appendChild(label);
+          fieldsRoot.appendChild(wrap);
+        }
+      }
+
+      async function loadResources() {
+        const msn = String(sourceInput.value || "").trim();
+        if (!msn) {
+          resourceList.textContent = "source_msn_id is required.";
+          return;
+        }
+        const path = (routes.resources || "/portal/api/data/external/resources") + "?source_msn_id=" + encodeURIComponent(msn);
+        const response = await fetch(path);
+        const payload = await response.json();
+        resourceList.textContent = JSON.stringify(payload, null, 2);
+        resourceSelect.innerHTML = "";
+        const resources = Array.isArray(payload.resources) ? payload.resources : [];
+        for (const item of resources) {
+          const opt = document.createElement("option");
+          opt.value = item.resource_id || "";
+          opt.textContent = (item.resource_id || "") + " [" + (item.export_family || "") + "]";
+          resourceSelect.appendChild(opt);
+        }
+      }
+
+      function collectFields() {
+        const template = capabilities.templates.find((item) => (item.template_id || "") === templateSelect.value);
+        const out = {};
+        if (!template || !Array.isArray(template.fields)) {
+          return out;
+        }
+        for (const field of template.fields) {
+          const input = document.getElementById("agroField_" + (field.id || ""));
+          out[field.id] = input ? String(input.value || "").trim() : "";
+        }
+        return out;
+      }
+
+      async function previewPlan() {
+        const body = {
+          template_id: templateSelect.value,
+          source_msn_id: String(sourceInput.value || "").trim(),
+          resource_id: String(resourceSelect.value || "").trim(),
+          fields: collectFields()
+        };
+        const response = await fetch(routes.plan_preview || "/portal/tools/agro_erp/plan_preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const payload = await response.json();
+        lastPreview = payload;
+        planOutput.textContent = JSON.stringify(payload, null, 2);
+      }
+
+      async function applyPlan() {
+        if (!lastPreview || !lastPreview.ok) {
+          planOutput.textContent = "Generate a successful plan preview before apply.";
+          return;
+        }
+        const response = await fetch(routes.apply || "/portal/tools/agro_erp/apply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ preview: lastPreview })
+        });
+        const payload = await response.json();
+        planOutput.textContent = JSON.stringify(payload, null, 2);
+      }
+
+      renderTemplateOptions();
+      renderTemplateFields();
+      templateSelect.addEventListener("change", renderTemplateFields);
+      loadBtn.addEventListener("click", loadResources);
+      planBtn.addEventListener("click", previewPlan);
+      applyBtn.addEventListener("click", applyPlan);
+    })();
+  </script>
 {% endblock %}
