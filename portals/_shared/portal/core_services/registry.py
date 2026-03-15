@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import re
 from typing import Any, TypedDict
+
+_TOOL_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
 class ServiceNavItem(TypedDict):
@@ -132,6 +135,11 @@ def active_service_from_path(path: str) -> str:
         return "network"
     if token.startswith("/portal/data"):
         return "system"
+    if token.startswith("/portal/tools/"):
+        rest = token[len("/portal/tools/"):].lstrip("/")
+        parts = rest.split("/")
+        if parts and parts[0] and _TOOL_ID_RE.match(parts[0]):
+            return parts[0].lower()
     if token.startswith("/portal/tools"):
         return "utilities"
     if token.startswith("/portal/vault"):

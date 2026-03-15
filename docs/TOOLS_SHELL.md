@@ -37,6 +37,12 @@ Primary service entries are:
 
 FND adds compact activity-bar shortcuts for its enabled organization tools. Those shortcuts are derived from the materialized tool state, not from hard-coded shell forks.
 
+## Use vs configure
+
+- **Activity bar tool entries** (icons below SYSTEM / NETWORK / UTILITIES): each links to the tool’s **home** (`home_path`, e.g. `/portal/tools/agro_erp/home`). Purpose: **use** the tool (e.g. view AGRO ERP taxonomy, run tool features). The shell treats the current context as that tool (tool highlighted in activity bar, tool-use sidebar).
+- **Utilities → Tools tab**: purpose is **configure / manage** tools (which tools are enabled, mount targets, etc.). Not the place to “run” a tool; use the activity bar to open the tool home.
+- **`/portal/tools`** (no tool id): redirects to `/portal/utilities?tab=tools` (configuration).
+
 ## Tool runtime contract
 
 Optional tools are loaded through the shared runtime:

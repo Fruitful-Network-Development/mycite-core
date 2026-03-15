@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}MyCite | AGRO ERP{% endblock %}
+
+{% set page_title = "AGRO ERP" %}
+{% set page_subtitle = "Read-only MSS-decoded taxonomy hierarchy view." %}
+
+{% block body %}
+  {% macro render_taxonomy_node(node) %}
+    <li>
+      <code>{{ node.id }}</code>
+      {% if node.path %}
+        <span class="inline-meta">path={{ node.path }}</span>
+      {% endif %}
+      {% if node.children %}
+        <ul class="liststack">
+          {% for child in node.children %}
+            {{ render_taxonomy_node(child) }}
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </li>
+  {% endmacro %}
+
+  <section class="agro-tool">
+    <div class="cardgrid">
+      <article class="card card--full">
+        <div class="card__kicker">Inherited Data</div>
+        <div class="card__title">Taxonomy Hierarchy (Contract MSS Decode)</div>
+        <div class="card__body">
+          {% set taxonomy = model.taxonomy if model.taxonomy is mapping else {} %}
+          {% if taxonomy and taxonomy.ok %}
+            <p><strong>taxonomy_ref</strong>: <code>{{ taxonomy.ref }}</code></p>
+            <p><strong>scope</strong>: <code>{{ taxonomy.scope }}</code></p>
+            <p><strong>root_identifier</strong>: <code>{{ taxonomy.root_identifier }}</code></p>
+            {% set tree = taxonomy.tree if taxonomy.tree is mapping else {} %}
+            {% if tree %}
+              <ul class="liststack">
+                {{ render_taxonomy_node(tree) }}
+              </ul>
+            {% else %}
+              <p>No taxonomy tree structure was resolved.</p>
+            {% endif %}
+          {% else %}
+            <p>No inherited taxonomy context is available yet.</p>
+          {% endif %}
+        </div>
+      </article>
+    </div>
+  </section>
+{% endblock %}
+

@@ -202,11 +202,12 @@
       const inspectorOpen = shell.getAttribute("data-inspector-collapsed") !== "true";
       let contextWidth = contextOpen ? readShellPxVar("--ide-context-w", 280) : 0;
       let inspectorWidth = inspectorOpen ? readShellPxVar("--ide-inspector-w", 360) : 0;
+      const contextSplitterW = contextOpen ? splitterWidth : 0;
       let workbenchWidth = bodyWidth
         - activityWidth
         - contextWidth
         - inspectorWidth
-        - (contextOpen ? splitterWidth : 0)
+        - contextSplitterW
         - (inspectorOpen ? splitterWidth : 0);
 
       if (workbenchWidth >= MIN_WORKBENCH_WIDTH) return;
@@ -228,7 +229,7 @@
         - activityWidth
         - contextWidth
         - inspectorWidth
-        - (contextOpen ? splitterWidth : 0)
+        - contextSplitterW
         - (inspectorOpen ? splitterWidth : 0);
       if (workbenchWidth < MIN_WORKBENCH_WIDTH) {
         shell.classList.add("ide-shell--workbench-tight");
@@ -309,9 +310,9 @@
         function onMove(moveEvent) {
           if (type === "context") {
             setContextWidth(startContext + (moveEvent.clientX - startX), false);
-            return;
+          } else {
+            setInspectorWidth(startInspector - (moveEvent.clientX - startX), false);
           }
-          setInspectorWidth(startInspector - (moveEvent.clientX - startX), false);
         }
 
         function onUp() {

@@ -12,16 +12,10 @@
     <header class="ide-contextTitle">System Views</header>
     <ul class="ide-contextList">
       <li><a class="ide-contextLink is-active" href="/portal/system"><span>Anthology Workbench</span><small>Graph navigation</small></a></li>
-      <li>
-        <button
-          type="button"
-          class="inspector-trigger ide-contextAction"
-          data-inspector-template="system-profile-inspector"
-          data-inspector-title="System Profile"
-          data-inspector-subtitle="msn-{{ msn_id }}.json"
-        >Open Contact Card</button>
-      </li>
     </ul>
+    <div id="dtSystemContext" class="data-tool__systemContext" aria-label="Datum search or selected datum inspector">
+      <!-- Filled by data_tool.js: search bar when no datum selected; datum editor + icon when one is selected -->
+    </div>
   </section>
 {% endblock %}
 

@@ -9,11 +9,12 @@ This document records the **intended behavior** of the shared portal shell and i
 - **Left sidebar – context**
   - Primary role: navigation and lightweight editing for the *currently focused* context (e.g. anthology rows, contracts, tool-specific entities).
   - Contains contextual lists, filters, and a compact editor for the selected item.
-  - Can be toggled open/closed via a single “Sidebar” control in the header.
+  - Can be toggled open/closed via a single “Sidebar” (workbench stays stable; inspector opens from context only).
 - **Center – workbench**
   - Primary role: main content and interaction surface (tables, graphs, hosted tabs, tools).
   - Must remain **visible whenever possible**; sidebars should shrink or become overlays before the workbench disappears.
   - Uses the existing `ide-workbench` container and `viewport` sections in `base.html`.
+  - When the current path is a tool route (`/portal/tools/<tool_id>/...`), the shell treats the active context as that tool (that tool is highlighted in the activity bar, and the left sidebar shows the tool-use section with “Using &lt;name&gt;” and “Configure tools”), not utilities.
 - **Right sidebar – inspector**
   - Primary role: optional, richer “details” pane for inspecting or editing the focused item.
   - Should **open contextually** (when a user clicks an “Inspect” affordance) rather than via a global toggle.
@@ -41,10 +42,11 @@ Shared across FND and TFF (layout only; Network sidebar content follows §2):
   - `[portals/_shared/runtime/flavors/fnd/portal/ui/templates/base.html]`
   - `[portals/_shared/runtime/flavors/tff/portal/ui/templates/base.html]`
   - Both define:
-    - a menubar with **Sidebar** and **Inspector** buttons (`data-shell-toggle="context|inspector"`),
     - an `.ide-activitybar` (SYSTEM/NETWORK/UTILITIES),
     - `.ide-contextsidebar`, `.ide-workbench`, and `.ide-inspector` columns,
-    - splitters (`data-splitter="context|inspector"`).
+    - a **context splitter** (`data-splitter="context"`) between context and workbench so the left sidebar is resizable like the right,
+    - an **inspector splitter** (`data-splitter="inspector"`) between workbench and inspector.
+    - No menubar Sidebar/Inspector toggles; the inspector opens only from context/sidebar actions.
 - Shell JS:
   - `[portals/_shared/runtime/flavors/fnd/portal/ui/static/portal.js]`
   - `[portals/_shared/runtime/flavors/tff/portal/ui/static/portal.js]`
@@ -55,8 +57,8 @@ Shared across FND and TFF (layout only; Network sidebar content follows §2):
       - bails out entirely below `max-width: 960px`,
       - toggles the unused `ide-shell--workbench-tight` class when the workbench is too small.
   - Inspector logic:
-    - uses `data-shell-toggle="inspector"` and `data-inspector-close` to show/hide the inspector,
-    - does not currently open automatically from context actions.
+    - uses `data-inspector-close` to close the inspector; there is no global Inspector toggle (inspector opens from context/sidebar actions only),
+    - opens when the user selects a datum or uses an "Inspect" affordance from the context sidebar.
 - Shell CSS:
   - `[portals/_shared/runtime/flavors/fnd/portal/ui/static/portal.css]` (and TFF copy) define:
     - high-level layout and themes,
@@ -66,17 +68,15 @@ Shared across FND and TFF (layout only; Network sidebar content follows §2):
 
 Implication for users:
 
-- They see **two separate menubar toggles** (Sidebar, Inspector).
-- Opening the inspector on narrower windows can obscure the workbench.
-- The left sidebar is under‑utilised for editing; most edits happen only in the inspector.
+- **No menubar toggles** for Sidebar or Inspector; the workbench stays stable and is not squeezed when the inspector opens.
+- The left sidebar holds context (e.g. System Views, Anthology Workbench); datum details and inspection are opened from the workbench or sidebar, and the right inspector shows details only when opened that way.
 
 ### 4. Target behavior (design)
 
 #### 3.1 Controls
 
 - **Header**
-  - Keep a single *Sidebar* toggle controlling `data-context-collapsed`.
-  - Remove or hide the global *Inspector* toggle; the inspector opens via context actions instead.
+  - No Sidebar or Inspector toggles in the menubar; the context sidebar is always shown (unless collapsed by future per-page logic), and the inspector opens only via context actions (e.g. selecting a datum, or an "Inspect" action from the sidebar).
 - **Left sidebar**
   - When a datum is selected in the workbench (e.g. a row in the SYSTEM Anthology table), the sidebar shows a small editor for that datum (fields, quick actions).
   - The sidebar can expose a secondary “Inspect” button/icon per item to open the full inspector when needed.

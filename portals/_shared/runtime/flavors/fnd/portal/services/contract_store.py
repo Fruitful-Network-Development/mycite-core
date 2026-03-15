@@ -23,6 +23,7 @@ FORBIDDEN_SECRET_KEYS = _SHARED.FORBIDDEN_SECRET_KEYS
 ContractAlreadyExistsError = _SHARED.ContractAlreadyExistsError
 ContractNotFoundError = _SHARED.ContractNotFoundError
 ContractValidationError = _SHARED.ContractValidationError
+apply_compact_array_update = _SHARED.apply_compact_array_update
 create_contract = _SHARED.create_contract
 get_contract = _SHARED.get_contract
 list_contracts = _SHARED.list_contracts
@@ -38,6 +39,7 @@ __all__ = [
     "ContractAlreadyExistsError",
     "ContractNotFoundError",
     "ContractValidationError",
+    "apply_compact_array_update",
     "create_contract",
     "get_contract",
     "list_contracts",
