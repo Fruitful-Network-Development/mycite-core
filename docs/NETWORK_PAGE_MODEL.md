@@ -29,6 +29,14 @@ Canonical routes:
 
 `NETWORK > Contracts` is the canonical contract editor.
 
+`NETWORK > Profile` now uses shared datum-backed field contracts and write intents:
+
+- field contract schema from `/portal/api/data/write/field_contracts`
+- preview via `/portal/api/data/write/preview`
+- apply via `/portal/api/data/write/apply`
+
+Profile/config JSON edits should flow through shared write preview/apply so config values can point at canonical local datum refs.
+
 ## Qualifier model
 
 Network APIs remain grouped into:

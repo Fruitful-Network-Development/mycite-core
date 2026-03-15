@@ -30,9 +30,7 @@ _COORD_SCALE = 10_000_000.0
 # This value can be overridden in future iterations via tool-specific
 # configuration/specs, but is wired here to support the initial taxonomy viewer.
 _DEFAULT_TAXONOMY_REF = "3-2-3-17-77-1-6-4-1-4.5-0-4"
-_PRODUCT_LAYER = 20
-_PRODUCT_VALUE_GROUP = 1
-_PRODUCT_REFERENCE = "0-0-1"
+_CAPABILITIES_PATH = Path(__file__).resolve().with_name("capabilities.json")
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -65,6 +63,209 @@ def _data_dir() -> Path:
 
 def _workspace():
     return current_app.config.get("MYCITE_DATA_WORKSPACE")
+
+
+def _capability_payload() -> dict[str, Any]:
+    payload = _read_json_object(_CAPABILITIES_PATH)
+    if not payload:
+        return {"schema": "mycite.agro_erp.capabilities.v1", "tool_id": TOOL_ID, "accepted_public_resource_families": [], "templates": []}
+    payload.setdefault("schema", "mycite.agro_erp.capabilities.v1")
+    payload.setdefault("tool_id", TOOL_ID)
+    payload["accepted_public_resource_families"] = [
+        str(item).strip() for item in list(payload.get("accepted_public_resource_families") or []) if str(item).strip()
+    ]
+    templates = payload.get("templates")
+    payload["templates"] = [dict(item) for item in templates if isinstance(item, dict)] if isinstance(templates, list) else []
+    return payload
+
+
+def _validate_capability_payload(payload: dict[str, Any]) -> tuple[bool, list[str]]:
+    errors: list[str] = []
+    if str(payload.get("schema") or "").strip() != "mycite.agro_erp.capabilities.v1":
+        errors.append("invalid schema")
+    if str(payload.get("tool_id") or "").strip() != TOOL_ID:
+        errors.append("invalid tool_id")
+    templates = payload.get("templates")
+    if not isinstance(templates, list) or not templates:
+        errors.append("templates[] is required")
+        return False, errors
+    for item in templates:
+        if not isinstance(item, dict):
+            errors.append("template entry must be object")
+            continue
+        if not str(item.get("template_id") or "").strip():
+            errors.append("template_id is required")
+        if not isinstance(item.get("fields"), list):
+            errors.append(f"template {item.get('template_id')}: fields[] is required")
+        storage = item.get("storage")
+        if not isinstance(storage, dict):
+            errors.append(f"template {item.get('template_id')}: storage object is required")
+        else:
+            if storage.get("layer") is None or storage.get("value_group") is None:
+                errors.append(f"template {item.get('template_id')}: storage.layer and storage.value_group are required")
+    return len(errors) == 0, errors
+
+
+def _template_by_id(template_id: str) -> dict[str, Any] | None:
+    token = str(template_id or "").strip()
+    if not token:
+        return None
+    for item in _capability_payload().get("templates") or []:
+        if str(item.get("template_id") or "").strip() == token:
+            return dict(item)
+    return None
+
+
+def _call_data_api(method: str, path: str, payload: dict[str, Any] | None = None) -> tuple[int, dict[str, Any]]:
+    client = current_app.test_client()
+    headers = {"Content-Type": "application/json"} if payload is not None else {}
+    response = client.open(path, method=method.upper(), json=payload, headers=headers)
+    body = response.get_json(silent=True)
+    return int(response.status_code), body if isinstance(body, dict) else {}
+
+
+def _canonical_target_ref(local_id: str, *, local_msn_id: str) -> str:
+    token = str(local_id or "").strip()
+    if "." in token:
+        return token
+    if local_msn_id:
+        return f"{local_msn_id}.{token}"
+    return token
+
+
+def _required_refs_for_template(template: dict[str, Any], fields: dict[str, Any], *, local_msn_id: str) -> list[str]:
+    refs: list[str] = []
+    taxonomy_ref = str(fields.get("taxonomy_ref") or fields.get("txa_id") or "").strip()
+    if taxonomy_ref:
+        try:
+            refs.append(
+                normalize_datum_ref(
+                    taxonomy_ref,
+                    local_msn_id=local_msn_id,
+                    require_qualified=True,
+                    write_format="dot",
+                    field_name="taxonomy_ref",
+                )
+            )
+        except Exception:
+            refs.append(taxonomy_ref)
+    explicit = template.get("required_refs")
+    if isinstance(explicit, list):
+        refs.extend([str(item).strip() for item in explicit if str(item).strip()])
+    dedupe: list[str] = []
+    seen: set[str] = set()
+    for item in refs:
+        if item and item not in seen:
+            seen.add(item)
+            dedupe.append(item)
+    return dedupe
+
+
+def _template_payload(template: dict[str, Any], fields: dict[str, Any], *, local_msn_id: str) -> dict[str, Any]:
+    taxonomy_ref = str(fields.get("taxonomy_ref") or fields.get("txa_id") or "").strip()
+    taxonomy_canonical = ""
+    if taxonomy_ref:
+        try:
+            taxonomy_canonical = normalize_datum_ref(
+                taxonomy_ref,
+                local_msn_id=local_msn_id,
+                require_qualified=True,
+                write_format="dot",
+                field_name="taxonomy_ref",
+            )
+        except Exception:
+            taxonomy_canonical = taxonomy_ref
+    return {
+        "template_id": str(template.get("template_id") or "").strip(),
+        "schema": str(template.get("schema") or "").strip() or "mycite.agro.template_record.v1",
+        "title": str(fields.get("title") or "").strip(),
+        "local_id": str(fields.get("local_id") or "").strip(),
+        "taxonomy_ref": taxonomy_canonical,
+        "duration_days": str(fields.get("duration_days") or "").strip(),
+        "notes": str(fields.get("notes") or "").strip(),
+    }
+
+
+def _plan_preview_for_request(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    template_id = str(body.get("template_id") or "").strip()
+    source_msn_id = str(body.get("source_msn_id") or "").strip()
+    resource_id = str(body.get("resource_id") or "").strip()
+    fields = body.get("fields") if isinstance(body.get("fields"), dict) else {}
+    if not source_msn_id:
+        taxonomy_hint = str(fields.get("taxonomy_ref") or fields.get("txa_id") or "").strip()
+        if "." in taxonomy_hint:
+            source_msn_id = taxonomy_hint.split(".", 1)[0].strip()
+    template = _template_by_id(template_id)
+    if template is None:
+        return 404, {"ok": False, "error": f"Unknown template_id: {template_id}"}
+    resource_family = str(template.get("resource_family") or "").strip()
+    requires_external = resource_family.startswith("taxonomy.")
+    if requires_external and not source_msn_id:
+        return 400, {"ok": False, "error": "source_msn_id is required for taxonomy-backed templates"}
+    local_msn_id = str(current_app.config.get("MYCITE_MSN_ID") or "").strip()
+    local_id = str(fields.get("local_id") or "").strip()
+    if not local_id:
+        return 400, {"ok": False, "error": "fields.local_id is required"}
+    target_ref = _canonical_target_ref(local_id, local_msn_id=local_msn_id)
+    required_refs = _required_refs_for_template(template, fields, local_msn_id=local_msn_id)
+    intent = {
+        "intent_type": "agro_template",
+        "template_id": template_id,
+        "field_id": "agro_template",
+        "source_msn_id": source_msn_id,
+        "resource_id": resource_id,
+        "required_refs": required_refs,
+        "allow_auto_create": bool(template.get("auto_create_missing_prerequisites", False)),
+        "fields": {
+            **fields,
+            "local_id": local_id,
+            "target_ref": target_ref,
+        },
+    }
+    write_status, write_payload = _call_data_api(
+        "POST",
+        "/portal/api/data/write/preview",
+        {"intent": intent},
+    )
+    ok = write_status == 200 and bool(write_payload.get("ok"))
+    return (200 if ok else 400), {
+        "ok": ok,
+        "template_id": template_id,
+        "source_msn_id": source_msn_id,
+        "resource_id": resource_id,
+        "target_ref": target_ref,
+        "required_refs": required_refs,
+        "template_payload": _template_payload(template, fields, local_msn_id=local_msn_id),
+        "write_preview": write_payload,
+        "plan": write_payload.get("plan") if isinstance(write_payload, dict) else {},
+        "errors": [
+            str(item)
+            for item in [
+                write_payload.get("error") if isinstance(write_payload, dict) else "",
+            ]
+            if str(item or "").strip()
+        ],
+    }
+
+
+def _apply_materialization(preview_payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    if not isinstance(preview_payload, dict):
+        return 400, {"ok": False, "error": "preview payload is required"}
+    intent = {
+        "intent_type": "agro_template",
+        "template_id": str(preview_payload.get("template_id") or "").strip(),
+        "field_id": "agro_template",
+        "source_msn_id": str(preview_payload.get("source_msn_id") or "").strip(),
+        "resource_id": str(preview_payload.get("resource_id") or "").strip(),
+        "required_refs": list(preview_payload.get("required_refs") or []),
+        "allow_auto_create": True,
+        "fields": {
+            **(preview_payload.get("template_payload") if isinstance(preview_payload.get("template_payload"), dict) else {}),
+            "local_id": str((preview_payload.get("template_payload") or {}).get("local_id") or "").strip(),
+        },
+    }
+    status, payload = _call_data_api("POST", "/portal/api/data/write/apply", {"intent": intent, "preview": preview_payload.get("write_preview")})
+    return status, payload
 
 
 def _tool_spec() -> ToolDataSpec | None:
@@ -464,6 +665,8 @@ def _build_model_payload() -> dict[str, Any]:
                 "scope": "contract_mss",
                 "reason": "Exception while loading inherited taxonomy context",
             }
+    capabilities = _capability_payload()
+    capabilities_ok, capability_errors = _validate_capability_payload(capabilities)
 
     return {
         "tool_id": TOOL_ID,
@@ -489,6 +692,15 @@ def _build_model_payload() -> dict[str, Any]:
             "tree": taxonomy_context.get("tree") if isinstance(taxonomy_context, dict) else {},
         },
         "product_type_archetype": _product_type_archetype(),
+        "capabilities": capabilities,
+        "capabilities_ok": capabilities_ok,
+        "capability_errors": capability_errors,
+        "agro_routes": {
+            "capabilities": "/portal/tools/agro_erp/capabilities.json",
+            "resources": "/portal/api/data/external/resources",
+            "plan_preview": "/portal/tools/agro_erp/plan_preview",
+            "apply": "/portal/tools/agro_erp/apply",
+        },
     }
 
 
@@ -505,6 +717,65 @@ def agro_erp_home():
 @agro_erp_bp.get("/portal/tools/agro_erp/model.json")
 def agro_erp_model_json():
     return jsonify(_build_model_payload())
+
+
+@agro_erp_bp.get("/portal/tools/agro_erp/capabilities.json")
+def agro_erp_capabilities_json():
+    payload = _capability_payload()
+    ok, errors = _validate_capability_payload(payload)
+    return jsonify({"ok": ok, "errors": errors, "capabilities": payload}), (200 if ok else 500)
+
+
+@agro_erp_bp.get("/portal/tools/agro_erp/resources")
+def agro_erp_public_resources():
+    source_msn_id = str(request.args.get("source_msn_id") or "").strip()
+    if not source_msn_id:
+        abort(400, description="source_msn_id is required")
+    status, payload = _call_data_api("GET", f"/portal/api/data/external/resources?source_msn_id={source_msn_id}")
+    return jsonify(payload), status
+
+
+@agro_erp_bp.post("/portal/tools/agro_erp/plan_preview")
+def agro_erp_plan_preview():
+    if not request.is_json:
+        abort(415, description="Expected application/json body")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(400, description="Expected JSON object body")
+    status, payload = _plan_preview_for_request(body)
+    return jsonify(payload), status
+
+
+@agro_erp_bp.post("/portal/tools/agro_erp/apply")
+def agro_erp_apply():
+    if not request.is_json:
+        abort(415, description="Expected application/json body")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(400, description="Expected JSON object body")
+    preview = body.get("preview") if isinstance(body.get("preview"), dict) else None
+    if preview is None:
+        status, preview_payload = _plan_preview_for_request(body)
+        if status != 200:
+            return jsonify(preview_payload), status
+        preview = preview_payload
+    status, payload = _apply_materialization(preview)
+    if status == 200:
+        try:
+            append_audit_event(
+                _private_dir(),
+                {
+                    "type": "agro.template.materialized",
+                    "template_id": str(preview.get("template_id") or ""),
+                    "resource_id": str(preview.get("resource_id") or ""),
+                    "source_msn_id": str(preview.get("source_msn_id") or ""),
+                    "target_ref": str(preview.get("target_ref") or ""),
+                    "ordered_writes": list(((preview.get("plan") or {}).get("ordered_writes") or [])),
+                },
+            )
+        except Exception:
+            pass
+    return jsonify(payload), status
 
 
 @agro_erp_bp.post("/portal/tools/agro_erp/daemon/resolve")
@@ -592,95 +863,33 @@ def agro_erp_daemon_resolve():
 
 @agro_erp_bp.post("/portal/tools/agro_erp/product_types")
 def agro_erp_product_types_save():
-    """
-    Create a new product-type datum in the local anthology.
-
-    The payload is a simple JSON object with fields aligned to the
-    product_type_archetype (txa_id, title, gestation_time). The record is
-    persisted via the shared data engine so that anthology compaction and
-    mediation remain consistent with the Data Tool.
-    """
+    """Compatibility route that delegates to planner-driven template apply flow."""
     if not request.is_json:
         abort(415, description="Expected application/json body")
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         abort(400, description="Expected JSON object body")
-
-    txa_raw = str(body.get("txa_id") or "").strip()
-    title = str(body.get("title") or "").strip()
-    gestation_raw = body.get("gestation_time")
-
-    if not txa_raw or not title:
-        abort(400, description="txa_id and title are required fields")
-
-    msn_id = str(current_app.config.get("MYCITE_MSN_ID") or "").strip()
-    try:
-        txa_canonical = normalize_datum_ref(
-            txa_raw,
-            local_msn_id=msn_id,
-            require_qualified=True,
-            write_format="dot",
-            field_name="txa_id",
-        )
-    except Exception as exc:
-        abort(400, description=f"Invalid txa_id: {exc}")
-
-    if isinstance(gestation_raw, (int, float)):
-        gestation_token = str(int(gestation_raw))
-    else:
-        gestation_token = str(gestation_raw or "").strip()
-
-    magnitude_payload = {
-        "txa_id": txa_canonical,
-        "title": title,
-        "gestation_time": gestation_token,
+    fields = {
+        "local_id": str(body.get("local_id") or "20-1-1").strip() or "20-1-1",
+        "taxonomy_ref": str(body.get("txa_id") or body.get("taxonomy_ref") or "").strip(),
+        "title": str(body.get("title") or "").strip(),
+        "duration_days": str(body.get("gestation_time") or "").strip(),
+        "notes": str(body.get("notes") or "").strip(),
     }
-
-    workspace = _workspace()
-    if workspace is None or not hasattr(workspace, "append_anthology_datum"):
-        abort(500, description="Data workspace is not available for anthology writes")
-
-    result = workspace.append_anthology_datum(
-        layer=_PRODUCT_LAYER,
-        value_group=_PRODUCT_VALUE_GROUP,
-        reference=_PRODUCT_REFERENCE,
-        magnitude=json.dumps(magnitude_payload, separators=(",", ":")),
-        label=title,
-    )
-
-    ok = bool(result.get("ok"))
-    if not ok:
-        errors = [str(item) for item in list(result.get("errors") or [])]
-        abort(400, description="; ".join(errors) or "Failed to append product-type datum")
-
-    identifier = str(result.get("identifier") or "")
-    row = result.get("row") or {}
-
-    private_dir = _private_dir()
-    try:
-        append_audit_event(
-            private_dir,
-            {
-                "type": "agro.product_type.created",
-                "scope": "local_product_type",
-                "identifier": identifier,
-                "title": title,
-                "gestation_time": gestation_token,
-                "txa_id": txa_canonical,
-                "msn_id": msn_id or "",
-            },
-        )
-    except Exception:
-        # Audit log failures should not block primary persistence.
-        pass
-
-    return jsonify(
+    source_msn_id = str(body.get("source_msn_id") or "").strip()
+    resource_id = str(body.get("resource_id") or "farm_metrics").strip() or "farm_metrics"
+    status, preview = _plan_preview_for_request(
         {
-            "ok": True,
-            "identifier": identifier,
-            "row": row,
+            "template_id": "livestock.product_type",
+            "source_msn_id": source_msn_id,
+            "resource_id": resource_id,
+            "fields": fields,
         }
     )
+    if status != 200:
+        return jsonify(preview), status
+    apply_status, apply_payload = _apply_materialization(preview)
+    return jsonify(apply_payload), apply_status
 
 
 def get_tool() -> dict[str, object]:

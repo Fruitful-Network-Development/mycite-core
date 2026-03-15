@@ -100,6 +100,8 @@ The lowest-risk approach is to build the **shared identity + resolver + contract
 
 Define tool-spec **inputs/outputs** and **capability buckets**, but avoid hardcoding current coordinate-only semantics as the permanent identity of the tool. Do not lock the full API contract until the three foundations (datum identity, public resolver, compact-array contract update model) are stable.
 
+Current implementation uses planner-first orchestration over canonical `/portal/api/data/*` write preview/apply routes (plus external-resource planner endpoints when needed); AGRO-ERP remains an operational layer, not the semantic authority.
+
 ---
 
 ## Implementation Order (preferred)

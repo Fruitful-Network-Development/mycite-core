@@ -416,6 +416,45 @@
           </div>
         </article>
       </div>
+    {% elif current_tab == "profile" %}
+      <div class="workbench-panels workbench-panels--double">
+        <article class="card">
+          <div class="card__kicker">Datum-Backed Profile Editor</div>
+          <div class="card__title">Preview + Apply via Shared Write Pipeline</div>
+          <div class="card__body">
+            <label for="profileFieldContract"><strong>field_contract</strong></label>
+            <select id="profileFieldContract">
+              <option value="portal_title">portal_title</option>
+              <option value="property_title">property_title</option>
+              <option value="property_boundary">property_boundary</option>
+            </select>
+            <label for="profileTemplateId"><strong>template_id</strong></label>
+            <input id="profileTemplateId" type="text" value="geometry.parcel" />
+            <label for="profileLocalId"><strong>local_id</strong></label>
+            <input id="profileLocalId" type="text" value="31-1-1" />
+            <label for="profileFieldTitle"><strong>title</strong></label>
+            <input id="profileFieldTitle" type="text" value="" />
+            <label for="profileFieldTaxonomyRef"><strong>taxonomy_ref / parent_ref</strong></label>
+            <input id="profileFieldTaxonomyRef" type="text" value="" />
+            <label for="profileSourceMsn"><strong>source_msn_id</strong></label>
+            <input id="profileSourceMsn" type="text" value="" />
+            <label for="profileResourceId"><strong>resource_id</strong></label>
+            <input id="profileResourceId" type="text" value="" />
+            <div class="data-tool__controlRow" style="margin-top:8px;">
+              <button type="button" id="profileWritePreviewBtn">Preview Write</button>
+              <button type="button" id="profileWriteApplyBtn">Apply Write</button>
+            </div>
+            <pre class="jsonblock" id="profileWriteResultJson">{}</pre>
+          </div>
+        </article>
+        <article class="card">
+          <div class="card__kicker">Field Contracts</div>
+          <div class="card__title">/portal/api/data/write/field_contracts</div>
+          <div class="card__body">
+            <pre class="jsonblock" id="profileFieldContractsJson">{}</pre>
+          </div>
+        </article>
+      </div>
     {% else %}
       <div class="workbench-panels workbench-panels--triple">
         <article class="card">
@@ -751,6 +790,74 @@
           });
         });
       }
+    })();
+
+    (function () {
+      function requestJson(url, method, payload) {
+        return fetch(url, {
+          method: method,
+          headers: { "Content-Type": "application/json" },
+          body: payload ? JSON.stringify(payload) : undefined
+        }).then(function (resp) {
+          return resp.json().catch(function () { return {}; }).then(function (body) {
+            return { ok: resp.ok, status: resp.status, body: body || {} };
+          });
+        });
+      }
+
+      var contractsNode = document.getElementById("profileFieldContractsJson");
+      if (contractsNode) {
+        requestJson("/portal/api/data/write/field_contracts", "GET").then(function (result) {
+          contractsNode.textContent = JSON.stringify(result.body || {}, null, 2);
+        });
+      }
+
+      var previewBtn = document.getElementById("profileWritePreviewBtn");
+      var applyBtn = document.getElementById("profileWriteApplyBtn");
+      var outputNode = document.getElementById("profileWriteResultJson");
+      var pendingPreview = null;
+      if (!previewBtn || !applyBtn || !outputNode) return;
+
+      function buildIntent() {
+        return {
+          intent_type: "profile_field",
+          field_id: String((document.getElementById("profileFieldContract") || {}).value || "").trim(),
+          template_id: String((document.getElementById("profileTemplateId") || {}).value || "").trim(),
+          source_msn_id: String((document.getElementById("profileSourceMsn") || {}).value || "").trim(),
+          resource_id: String((document.getElementById("profileResourceId") || {}).value || "").trim(),
+          fields: {
+            local_id: String((document.getElementById("profileLocalId") || {}).value || "").trim(),
+            title: String((document.getElementById("profileFieldTitle") || {}).value || "").trim(),
+            taxonomy_ref: String((document.getElementById("profileFieldTaxonomyRef") || {}).value || "").trim(),
+            parent_ref: String((document.getElementById("profileFieldTaxonomyRef") || {}).value || "").trim()
+          }
+        };
+      }
+
+      previewBtn.addEventListener("click", function () {
+        requestJson("/portal/api/data/write/preview", "POST", { intent: buildIntent() })
+          .then(function (result) {
+            pendingPreview = result.body || {};
+            outputNode.textContent = JSON.stringify(result.body || {}, null, 2);
+          })
+          .catch(function (err) {
+            window.alert("Write preview failed: " + (err && err.message ? err.message : String(err)));
+          });
+      });
+
+      applyBtn.addEventListener("click", function () {
+        var payload = pendingPreview && pendingPreview.intent
+          ? { preview: pendingPreview, intent: pendingPreview.intent }
+          : { intent: buildIntent() };
+        requestJson("/portal/api/data/write/apply", "POST", payload)
+          .then(function (result) {
+            outputNode.textContent = JSON.stringify(result.body || {}, null, 2);
+            if (result.ok && result.body && result.body.ok) window.location.reload();
+          })
+          .catch(function (err) {
+            window.alert("Write apply failed: " + (err && err.message ? err.message : String(err)));
+          });
+      });
     })();
   </script>
 {% endblock %}

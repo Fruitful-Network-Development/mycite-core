@@ -1,0 +1,302 @@
+{
+  "schema": "mycite.agro_erp.capabilities.v1",
+  "tool_id": "agro_erp",
+  "accepted_public_resource_families": [
+    "taxonomy.txa_collection",
+    "identity.msn_collection"
+  ],
+  "templates": [
+    {
+      "template_id": "livestock.product_type",
+      "title": "Livestock Product Type",
+      "description": "Create a taxonomy-backed livestock product type datum.",
+      "resource_family": "taxonomy.txa_collection",
+      "fields": [
+        {
+          "id": "local_id",
+          "type": "local_id",
+          "title": "Local Datum ID",
+          "required": true
+        },
+        {
+          "id": "taxonomy_ref",
+          "type": "taxonomy_selector",
+          "title": "Taxonomy Identity",
+          "required": true
+        },
+        {
+          "id": "title",
+          "type": "ascii_string",
+          "title": "Product Title",
+          "required": true
+        },
+        {
+          "id": "notes",
+          "type": "ascii_string",
+          "title": "Notes",
+          "required": false
+        }
+      ],
+      "prerequisite_chain": [
+        "taxonomy_selector",
+        "local_id_field",
+        "title_field"
+      ],
+      "auto_create_missing_prerequisites": true,
+      "storage": {
+        "layer": 20,
+        "value_group": 1,
+        "reference": "0-0-1"
+      }
+    },
+    {
+      "template_id": "livestock.gestation_period",
+      "title": "Livestock Gestation Period",
+      "description": "Create a gestation-period datum linked to a taxonomy-backed product type.",
+      "resource_family": "taxonomy.txa_collection",
+      "fields": [
+        {
+          "id": "local_id",
+          "type": "local_id",
+          "title": "Local Datum ID",
+          "required": true
+        },
+        {
+          "id": "taxonomy_ref",
+          "type": "taxonomy_selector",
+          "title": "Product Type Taxonomy Identity",
+          "required": true
+        },
+        {
+          "id": "duration_days",
+          "type": "duration",
+          "title": "Gestation Duration (days)",
+          "required": true
+        },
+        {
+          "id": "title",
+          "type": "ascii_string",
+          "title": "Record Title",
+          "required": true
+        }
+      ],
+      "prerequisite_chain": [
+        "taxonomy_selector",
+        "duration_field"
+      ],
+      "auto_create_missing_prerequisites": true,
+      "storage": {
+        "layer": 20,
+        "value_group": 1,
+        "reference": "0-0-2"
+      }
+    },
+    {
+      "template_id": "livestock.health_record",
+      "title": "Livestock Health Record",
+      "description": "Create a basic livestock health record keyed by taxonomy identity.",
+      "resource_family": "taxonomy.txa_collection",
+      "fields": [
+        {
+          "id": "local_id",
+          "type": "local_id",
+          "title": "Local Datum ID",
+          "required": true
+        },
+        {
+          "id": "taxonomy_ref",
+          "type": "taxonomy_selector",
+          "title": "Taxonomy Identity",
+          "required": true
+        },
+        {
+          "id": "title",
+          "type": "ascii_string",
+          "title": "Health Record Title",
+          "required": true
+        }
+      ],
+      "prerequisite_chain": [
+        "taxonomy_selector",
+        "local_id_field"
+      ],
+      "auto_create_missing_prerequisites": true,
+      "storage": {
+        "layer": 20,
+        "value_group": 1,
+        "reference": "0-0-3"
+      }
+    },
+    {
+      "template_id": "geometry.coordinate_point",
+      "title": "Coordinate Point",
+      "description": "Create a point datum for property geometry workflows.",
+      "resource_family": "identity.msn_collection",
+      "fields": [
+        {
+          "id": "local_id",
+          "type": "local_id",
+          "title": "Local Datum ID",
+          "required": true
+        },
+        {
+          "id": "title",
+          "type": "ascii_string",
+          "title": "Point Label",
+          "required": true
+        }
+      ],
+      "prerequisite_chain": [
+        "local_id_field",
+        "title_field"
+      ],
+      "auto_create_missing_prerequisites": true,
+      "storage": {
+        "layer": 30,
+        "value_group": 1,
+        "reference": "0-0-10"
+      }
+    },
+    {
+      "template_id": "geometry.polygon_boundary",
+      "title": "Polygon Boundary",
+      "description": "Create a property boundary polygon datum.",
+      "resource_family": "identity.msn_collection",
+      "fields": [
+        {
+          "id": "local_id",
+          "type": "local_id",
+          "title": "Local Datum ID",
+          "required": true
+        },
+        {
+          "id": "title",
+          "type": "ascii_string",
+          "title": "Boundary Label",
+          "required": true
+        }
+      ],
+      "prerequisite_chain": [
+        "local_id_field",
+        "title_field"
+      ],
+      "auto_create_missing_prerequisites": true,
+      "storage": {
+        "layer": 30,
+        "value_group": 1,
+        "reference": "0-0-11"
+      }
+    },
+    {
+      "template_id": "geometry.parcel",
+      "title": "Parcel",
+      "description": "Create a parcel datum for property area planning.",
+      "resource_family": "identity.msn_collection",
+      "fields": [
+        {
+          "id": "local_id",
+          "type": "local_id",
+          "title": "Local Datum ID",
+          "required": true
+        },
+        {
+          "id": "boundary_ref",
+          "type": "datum_ref",
+          "title": "Boundary Datum Ref",
+          "required": false
+        },
+        {
+          "id": "title",
+          "type": "ascii_string",
+          "title": "Parcel Title",
+          "required": true
+        }
+      ],
+      "prerequisite_chain": [
+        "local_id_field",
+        "boundary_ref",
+        "title_field"
+      ],
+      "auto_create_missing_prerequisites": true,
+      "storage": {
+        "layer": 31,
+        "value_group": 1,
+        "reference": "0-0-20"
+      }
+    },
+    {
+      "template_id": "geometry.field",
+      "title": "Field",
+      "description": "Create an agricultural field datum under a parcel.",
+      "resource_family": "identity.msn_collection",
+      "fields": [
+        {
+          "id": "local_id",
+          "type": "local_id",
+          "title": "Local Datum ID",
+          "required": true
+        },
+        {
+          "id": "parent_ref",
+          "type": "datum_ref",
+          "title": "Parent Parcel Ref",
+          "required": false
+        },
+        {
+          "id": "title",
+          "type": "ascii_string",
+          "title": "Field Title",
+          "required": true
+        }
+      ],
+      "prerequisite_chain": [
+        "local_id_field",
+        "parent_ref",
+        "title_field"
+      ],
+      "auto_create_missing_prerequisites": true,
+      "storage": {
+        "layer": 31,
+        "value_group": 1,
+        "reference": "0-0-21"
+      }
+    },
+    {
+      "template_id": "geometry.plot",
+      "title": "Plot",
+      "description": "Create a plot datum under a field for crop planning.",
+      "resource_family": "identity.msn_collection",
+      "fields": [
+        {
+          "id": "local_id",
+          "type": "local_id",
+          "title": "Local Datum ID",
+          "required": true
+        },
+        {
+          "id": "parent_ref",
+          "type": "datum_ref",
+          "title": "Parent Field Ref",
+          "required": false
+        },
+        {
+          "id": "title",
+          "type": "ascii_string",
+          "title": "Plot Title",
+          "required": true
+        }
+      ],
+      "prerequisite_chain": [
+        "local_id_field",
+        "parent_ref",
+        "title_field"
+      ],
+      "auto_create_missing_prerequisites": true,
+      "storage": {
+        "layer": 31,
+        "value_group": 1,
+        "reference": "0-0-22"
+      }
+    }
+  ]
+}

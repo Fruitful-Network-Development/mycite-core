@@ -35,6 +35,30 @@ def _load_fnd_app_module(temp_root: Path):
     (private_dir / "config.json").write_text(json.dumps({"msn_id": msn_id}) + "\n", encoding="utf-8")
     (public_dir / f"msn-{msn_id}.json").write_text(json.dumps({"msn_id": msn_id, "title": "FND"}) + "\n", encoding="utf-8")
     (public_dir / f"fnd-{msn_id}.json").write_text(json.dumps({"schema": "mycite.fnd.profile.v1", "msn_id": msn_id, "title": "FND", "summary": "Brand"}) + "\n", encoding="utf-8")
+    remote_msn = "9-9-9-9"
+    (public_dir / f"msn-{remote_msn}.json").write_text(
+        json.dumps(
+            {
+                "msn_id": remote_msn,
+                "title": "Remote",
+                "public_resources": [
+                    {
+                        "resource_id": "farm_metrics",
+                        "kind": "datum_export",
+                        "export_family": "mycite.public.resource.v1",
+                        "href": f"{remote_msn}-farm_metrics.json",
+                        "lens_hint": "datum",
+                    }
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (public_dir / f"{remote_msn}-farm_metrics.json").write_text(
+        json.dumps({"rows": [{"identifier": "5-0-1", "label": "Farm Metric"}]}) + "\n",
+        encoding="utf-8",
+    )
 
     os.environ["PRIVATE_DIR"] = str(private_dir)
     os.environ["PUBLIC_DIR"] = str(public_dir)
@@ -83,6 +107,61 @@ class FndPortalShellRouteTests(unittest.TestCase):
 
             self.assertEqual(client.get("/portal/api/data/state").status_code, 200)
             self.assertEqual(client.get("/portal/api/data/anthology/table").status_code, 200)
+            resources = client.get("/portal/api/data/external/resources?source_msn_id=9-9-9-9")
+            self.assertEqual(resources.status_code, 200)
+            resources_payload = resources.get_json() or {}
+            self.assertTrue(any(str(item.get("resource_id") or "") == "farm_metrics" for item in resources_payload.get("resources") or []))
+
+            fetch = client.post(
+                "/portal/api/data/external/fetch",
+                json={"source_msn_id": "9-9-9-9", "resource_id": "farm_metrics"},
+            )
+            self.assertEqual(fetch.status_code, 200)
+            self.assertTrue((fetch.get_json() or {}).get("ok"))
+            preview = client.post(
+                "/portal/api/data/external/preview_closure",
+                json={
+                    "source_msn_id": "9-9-9-9",
+                    "resource_id": "farm_metrics",
+                    "target_refs": ["9-9-9-9.5-0-1"],
+                },
+            )
+            self.assertEqual(preview.status_code, 200)
+            plan = client.post(
+                "/portal/api/data/external/plan_materialization",
+                json={
+                    "source_msn_id": "9-9-9-9",
+                    "resource_id": "farm_metrics",
+                    "target_ref": "5-9-9",
+                    "required_refs": ["9-9-9-9.5-0-1"],
+                    "allow_auto_create": False,
+                },
+            )
+            self.assertEqual(plan.status_code, 200)
+            self.assertTrue(((plan.get_json() or {}).get("plan") or {}).get("ok"))
+            contracts = client.get("/portal/api/data/write/field_contracts")
+            self.assertEqual(contracts.status_code, 200)
+            self.assertTrue((contracts.get_json() or {}).get("ok"))
+            write_preview = client.post(
+                "/portal/api/data/write/preview",
+                json={
+                    "intent": {
+                        "intent_type": "profile_field",
+                        "field_id": "portal_title",
+                        "template_id": "geometry.parcel",
+                        "fields": {"local_id": "31-1-1", "title": "Parcel A"},
+                    }
+                },
+            )
+            self.assertIn(write_preview.status_code, {200, 400})
+            geometry_preview = client.post(
+                "/portal/api/data/geometry/preview",
+                json={
+                    "template_id": "geometry.parcel",
+                    "fields": {"local_id": "31-1-2", "title": "Parcel B"},
+                },
+            )
+            self.assertIn(geometry_preview.status_code, {200, 400})
 
 
 if __name__ == "__main__":

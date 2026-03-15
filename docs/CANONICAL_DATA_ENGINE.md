@@ -8,6 +8,10 @@ Canonical browser entry for the Data Tool is `/portal/data` (redirect target `/p
 
 Canonical data API route registration is shared-core owned in `portals/_shared/portal/api/data_workspace.py`; flavor runtimes compose it and do not maintain divergent registrars.
 
+External public-resource acquisition and isolate planning are shared-core services under `portals/_shared/portal/data_engine/external_resources/`. Public-resource flows are isolate/provenance-driven and distinct from relationship-scoped contract MSS context.
+
+Canonical datum-native write intents are shared-core services under `portals/_shared/portal/data_engine/write_pipeline.py`, `field_contracts.py`, `profile_config_refs.py`, and `geometry_datums.py`.
+
 Canonical data artifacts:
 
 - `data/anthology.json`
@@ -42,6 +46,8 @@ Datum resolution must use **canonical datum paths** (semantic identity), not sto
 
 Implementations must use `datum_identity.parse_datum_path` / `to_canonical_dot` for normalization and `datum_paths_equivalent` for comparison. Do not compare datums by row address or MSS bit offset. See `portals/_shared/portal/data_engine/datum_identity.py`, `portals/_shared/portal/services/public_datum_resolver.py`, and CONTRACT_COMPACT_INDEX.md.
 
+See also: `docs/EXTERNAL_RESOURCE_ISOLATES.md`.
+
 ## Reference model
 
 Canonical network-facing datum refs:
@@ -65,6 +71,24 @@ Canonical Data Engine daemon routes:
 - `POST /portal/api/data/daemon/resolve_tokens`
 
 These routes are retained for Data Tool and tool-package usage. NETWORK foreign datum resolution does not use a separate daemon wrapper; it resolves through contract MSS context.
+
+## Shared write pipeline
+
+UI and tool flows that perform semantic writes should use shared preview/apply routes (instead of calling low-level append directly):
+
+- `GET /portal/api/data/write/field_contracts`
+- `POST /portal/api/data/write/preview`
+- `POST /portal/api/data/write/apply`
+- `POST /portal/api/data/geometry/preview`
+- `POST /portal/api/data/geometry/apply`
+
+Low-level primitives still exist and remain engine-owned:
+
+- `POST /portal/api/data/anthology/append`
+- `POST /portal/api/data/anthology/profile/update`
+- `POST /portal/api/data/anthology/delete`
+
+Config/profile JSON remains a reference surface into anthology datums; anthology remains the local semantic authority.
 
 ## MSS contract sync boundary
 

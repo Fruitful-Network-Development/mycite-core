@@ -78,6 +78,7 @@ from _shared.portal.services.request_log_ui import (
 )
 from _shared.portal.services.sidebar_context import build_context_sidebar_sections
 from _shared.portal.services.shell_context import build_shell_context
+from _shared.portal.data_engine.external_resources import ExternalResourceResolver
 
 app = Flask(
     __name__,
@@ -193,6 +194,26 @@ def _anthology_path() -> Path:
 
 def _load_local_anthology_payload() -> Dict[str, Any]:
     return load_object_json_if_exists(_anthology_path())
+
+
+def _load_active_config_for_write() -> Dict[str, Any]:
+    return dict(ACTIVE_PRIVATE_CONFIG if isinstance(ACTIVE_PRIVATE_CONFIG, dict) else {})
+
+
+def _save_active_config_for_write(payload: Dict[str, Any]) -> bool:
+    global ACTIVE_PRIVATE_CONFIG
+    if not isinstance(payload, dict):
+        return False
+    cfg_path = resolve_active_private_config_path(PRIVATE_DIR, MSN_ID or None)
+    if cfg_path is None:
+        return False
+    try:
+        write_object_json(cfg_path, payload)
+        ACTIVE_PRIVATE_CONFIG = dict(payload)
+        app.config["MYCITE_ACTIVE_PRIVATE_CONFIG"] = ACTIVE_PRIVATE_CONFIG
+        return True
+    except Exception:
+        return False
 
 
 def _contract_records() -> list[Dict[str, Any]]:
@@ -846,6 +867,11 @@ TOOL_TABS = register_tool_blueprints(
     private_dir=PRIVATE_DIR,
 )
 DATA_WORKSPACE = Workspace(JsonStorageBackend(DATA_DIR), config=WORKSPACE_CONFIG)
+EXTERNAL_RESOURCE_RESOLVER = ExternalResourceResolver(
+    data_dir=DATA_DIR,
+    public_dir=PUBLIC_DIR,
+    local_msn_id=MSN_ID,
+)
 app.config["MYCITE_DATA_WORKSPACE"] = DATA_WORKSPACE
 app.config["MYCITE_RUNTIME_CONFIG"] = build_runtime_config(
     private_dir=PRIVATE_DIR,
@@ -1991,6 +2017,10 @@ register_data_routes(
     aliases_provider=lambda: list_aliases_for_sidebar(PRIVATE_DIR),
     options_private_fn=_options_private,
     msn_id_provider=lambda: MSN_ID,
+    external_resource_resolver=EXTERNAL_RESOURCE_RESOLVER,
+    anthology_payload_provider=_load_local_anthology_payload,
+    active_config_provider=_load_active_config_for_write,
+    active_config_saver=_save_active_config_for_write,
     include_home_redirect=False,
     include_legacy_shims=False,
 )
