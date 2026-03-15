@@ -1154,6 +1154,25 @@ def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
     utilities_tab = _normalize_utilities_tab(request.args.get("tab"))
     selected = str(request.args.get("id") or "").strip()
 
+    # When on a tool route (/portal/tools/<tool_id>/...), show tool-use sidebar, not utilities.
+    active_tool_meta = next(
+        (t for t in TOOL_TABS if str(t.get("tool_id") or "").strip().lower() == token),
+        None,
+    )
+    if active_tool_meta:
+        display_name = str(active_tool_meta.get("display_name") or active_tool_meta.get("tool_id") or token).strip() or token
+        home_path = str(active_tool_meta.get("home_path") or "").strip() or f"/portal/tools/{token}/home"
+        return [
+            {
+                "title": "Tool",
+                "entries": [
+                    {"label": f"Using {display_name}", "href": home_path, "active": True, "meta": "tool home"},
+                    {"label": "Configure tools", "href": "/portal/utilities?tab=tools", "active": False, "meta": "Utilities"},
+                ],
+                "empty_text": "",
+            }
+        ]
+
     if token == "network":
         # Navigation (Messages, Hosted, Profile, Contracts) is via tabs only; do not duplicate in sidebar.
         # Request log is the underlying feed for Messages; do not list as a separate sidebar section.
@@ -2178,6 +2197,34 @@ register_data_workspace_routes(
     include_home_redirect=False,
     include_legacy_shims=False,
 )
+
+
+@app.post("/portal/api/data/mss/compile")
+def portal_data_mss_compile():
+    """Compile selected anthology datum refs into MSS compact array (bitstring). Uses shared MSS algorithm."""
+    body = request.get_json(silent=True) or {}
+    selected_refs = list(body.get("selected_refs") or [])
+    selected_refs = [str(r).strip() for r in selected_refs if str(r).strip()]
+    if not selected_refs:
+        return jsonify({"ok": False, "error": "selected_refs required (non-empty list of datum identifiers)"}), 400
+    try:
+        anthology_payload = _load_local_anthology_payload()
+        result = preview_mss_context(
+            anthology_payload=anthology_payload,
+            selected_refs=selected_refs,
+            bitstring="",
+            local_msn_id=str(MSN_ID or ""),
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    bitstring = str(result.get("bitstring") or "")
+    return jsonify({
+        "ok": True,
+        "bitstring": bitstring,
+        "metadata": result.get("metadata") or {},
+        "rows": result.get("rows") or [],
+        "selected_source_refs": result.get("selected_source_refs") or selected_refs,
+    })
 
 
 if __name__ == "__main__":

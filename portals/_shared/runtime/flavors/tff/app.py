@@ -1365,6 +1365,25 @@ def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
     utilities_tab = _normalize_utilities_tab(request.args.get("tab"))
     selected = str(request.args.get("id") or "").strip()
 
+    # When on a tool route (/portal/tools/<tool_id>/...), show tool-use sidebar, not utilities.
+    active_tool_meta = next(
+        (t for t in TOOL_TABS if str(t.get("tool_id") or "").strip().lower() == token),
+        None,
+    )
+    if active_tool_meta:
+        display_name = str(active_tool_meta.get("display_name") or active_tool_meta.get("tool_id") or token).strip() or token
+        home_path = str(active_tool_meta.get("home_path") or "").strip() or f"/portal/tools/{token}/home"
+        return [
+            {
+                "title": "Tool",
+                "entries": [
+                    {"label": f"Using {display_name}", "href": home_path, "active": True, "meta": "tool home"},
+                    {"label": "Configure tools", "href": "/portal/utilities?tab=tools", "active": False, "meta": "Utilities"},
+                ],
+                "empty_text": "",
+            }
+        ]
+
     if token == "network":
         # Navigation (Messages, Hosted, Profile, Contracts) is via tabs only; do not duplicate in sidebar.
         # Request log is the underlying feed for Messages; do not list as a separate sidebar section.
@@ -1480,10 +1499,12 @@ def _shell_context() -> Dict[str, Any]:
     switch_portal_url = str(os.environ.get("PORTAL_SWITCH_URL") or "/oauth2/sign_in?rd=%2Fportal%2Fsystem").strip()
     if not switch_portal_url:
         switch_portal_url = "/oauth2/sign_in?rd=%2Fportal%2Fsystem"
+    active_tool_id = str(active_tool.get("tool_id") or "") if active_tool else ""
     return {
         "tool_tabs": TOOL_TABS,
         "active_tool": active_tool,
-        "active_tool_id": str(active_tool.get("tool_id") or "") if active_tool else "",
+        "active_tool_id": active_tool_id,
+        "activity_tool_nav": _activity_tool_nav(active_tool_id),
         "service_nav": build_service_nav(ACTIVE_PRIVATE_CONFIG, active_service=active_service),
         "active_service": active_service,
         "active_service_tab": active_service_tab,
@@ -1680,6 +1701,34 @@ def public_fnd_profile_options(msn_id: str):
 def _tools_by_mount_target(mount_target: str) -> list[Dict[str, Any]]:
     token = str(mount_target or "").strip().lower()
     return [tool for tool in TOOL_TABS if str(tool.get("mount_target") or "peripherals.tools").strip().lower() == token]
+
+
+# Activity bar tool icon paths (relative to /portal/static/icons/). Used for tool buttons below SYSTEM/NETWORK/UTILITIES.
+_ACTIVITY_TOOL_ICONS: Dict[str, str] = {
+    "agro_erp": "farm.svg",
+}
+
+
+def _activity_tool_nav(active_tool_id: str) -> list[Dict[str, Any]]:
+    """Build activity bar entries for tools mounted to peripherals.tools (shown below service nav)."""
+    out: list[Dict[str, Any]] = []
+    for tool in _tools_by_mount_target("peripherals.tools"):
+        tool_id = str(tool.get("tool_id") or "").strip().lower()
+        home_path = str(tool.get("home_path") or "").strip()
+        if not tool_id or not home_path:
+            continue
+        display_name = str(tool.get("display_name") or tool_id).strip() or tool_id
+        icon_rel = _ACTIVITY_TOOL_ICONS.get(tool_id, "")
+        icon_url = ("/portal/static/icons/" + icon_rel) if icon_rel else ""
+        out.append({
+            "tool_id": tool_id,
+            "label": display_name,
+            "title": display_name,
+            "href": home_path,
+            "icon": icon_url,
+            "active": tool_id == str(active_tool_id or "").strip().lower(),
+        })
+    return out
 
 
 def _render_portal_system():
@@ -2200,6 +2249,34 @@ register_data_routes(
     include_home_redirect=False,
     include_legacy_shims=True,
 )
+
+
+@app.post("/portal/api/data/mss/compile")
+def portal_data_mss_compile():
+    """Compile selected anthology datum refs into MSS compact array (bitstring). Uses shared MSS algorithm."""
+    body = request.get_json(silent=True) or {}
+    selected_refs = list(body.get("selected_refs") or [])
+    selected_refs = [str(r).strip() for r in selected_refs if str(r).strip()]
+    if not selected_refs:
+        return jsonify({"ok": False, "error": "selected_refs required (non-empty list of datum identifiers)"}), 400
+    try:
+        anthology_payload = _load_local_anthology_payload()
+        result = preview_mss_context(
+            anthology_payload=anthology_payload,
+            selected_refs=selected_refs,
+            bitstring="",
+            local_msn_id=str(MSN_ID or ""),
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    bitstring = str(result.get("bitstring") or "")
+    return jsonify({
+        "ok": True,
+        "bitstring": bitstring,
+        "metadata": result.get("metadata") or {},
+        "rows": result.get("rows") or [],
+        "selected_source_refs": result.get("selected_source_refs") or selected_refs,
+    })
 
 
 if __name__ == "__main__":

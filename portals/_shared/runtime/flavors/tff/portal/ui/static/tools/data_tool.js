@@ -120,6 +120,11 @@
   var appendPairAddBtn = qs("#dtAppendPairAddBtn");
   var appendSaveBtn = qs("#dtAppendSaveBtn");
 
+  var systemContextEl = qs("#dtSystemContext");
+  var currentAppendRoot = null;
+  var selectMode = false;
+  var selectedForCompact = [];
+
   var iconCatalog = [];
   var iconCatalogLoaded = false;
   var iconRelpathMode = "path";
@@ -1811,8 +1816,297 @@
     datumWorkbenchState.identifier = "";
     datumWorkbenchState.valueGroup = 1;
     activeDatumEditorRoot = null;
-    setDatumEditorStatus(message || "Select a graph node or anthology row to edit it in the right inspector column.");
+    setDatumEditorStatus(message || "Select a graph node or anthology row.");
     syncDatumSelectionUI();
+    if (systemContextEl) {
+      renderSystemContextSearch();
+    }
+  }
+
+  function renderSystemContextSearch() {
+    if (!systemContextEl) return;
+    systemContextEl.innerHTML = "";
+    var label = document.createElement("label");
+    label.className = "data-tool__systemContextSearch";
+    label.setAttribute("for", "dtSystemContextSearchInput");
+    label.textContent = "Search datums";
+    var input = document.createElement("input");
+    input.id = "dtSystemContextSearchInput";
+    input.type = "text";
+    input.placeholder = "Filter by identifier or label...";
+    input.className = "data-tool__systemContextSearchInput";
+    input.setAttribute("aria-label", "Search datums");
+    systemContextEl.appendChild(label);
+    systemContextEl.appendChild(input);
+    input.addEventListener("input", function () {
+      var q = String(input.value || "").trim().toLowerCase();
+      if (!anthologyLayersEl) return;
+      qsa(".js-anthology-row", anthologyLayersEl).forEach(function (row) {
+        var id = String(row.getAttribute("data-identifier") || row.getAttribute("data-row-id") || "").toLowerCase();
+        var labelEl = row.querySelector(".data-tool__datumLabel, .data-tool__clip");
+        var labelText = (labelEl && labelEl.textContent) ? String(labelEl.textContent).toLowerCase() : "";
+        var show = !q || id.indexOf(q) !== -1 || labelText.indexOf(q) !== -1;
+        row.style.display = show ? "" : "none";
+      });
+    });
+    var selectModeBtn = document.createElement("button");
+    selectModeBtn.type = "button";
+    selectModeBtn.className = "data-tool__actionBtn data-tool__selectModeBtn";
+    selectModeBtn.textContent = "Select mode";
+    selectModeBtn.addEventListener("click", function () {
+      selectMode = true;
+      selectedForCompact = [];
+      syncSelectModeRowHighlights();
+      renderSelectModeView();
+    });
+    systemContextEl.appendChild(selectModeBtn);
+  }
+
+  function syncSelectModeRowHighlights() {
+    if (!anthologyLayersEl) return;
+    qsa(".js-anthology-row", anthologyLayersEl).forEach(function (row) {
+      var id = String(row.getAttribute("data-identifier") || row.getAttribute("data-row-id") || "").trim();
+      row.classList.toggle("is-compact-selected", selectMode && selectedForCompact.indexOf(id) !== -1);
+    });
+  }
+
+  function renderSelectModeView() {
+    if (!systemContextEl) return;
+    systemContextEl.innerHTML = "";
+    var wrap = document.createElement("div");
+    wrap.className = "data-tool__selectModeWrap";
+    var exitBtn = document.createElement("button");
+    exitBtn.type = "button";
+    exitBtn.className = "data-tool__actionBtn data-tool__selectModeExit";
+    exitBtn.textContent = "Exit select mode";
+    exitBtn.addEventListener("click", function () {
+      selectMode = false;
+      selectedForCompact = [];
+      syncSelectModeRowHighlights();
+      renderSystemContextSearch();
+    });
+    wrap.appendChild(exitBtn);
+    var hint = document.createElement("p");
+    hint.className = "data-tool__selectModeHint";
+    hint.textContent = "Click rows in the workbench to add or remove from selection. Each selection includes its abstraction path for the compact array.";
+    wrap.appendChild(hint);
+    var listLabel = document.createElement("div");
+    listLabel.className = "data-tool__selectModeListLabel";
+    listLabel.textContent = "Selected (top-level): " + (selectedForCompact.length ? selectedForCompact.length + " datum(s)" : "none");
+    wrap.appendChild(listLabel);
+    var listEl = document.createElement("ul");
+    listEl.className = "data-tool__selectModeList";
+    selectedForCompact.forEach(function (id) {
+      var li = document.createElement("li");
+      li.textContent = id;
+      listEl.appendChild(li);
+    });
+    wrap.appendChild(listEl);
+    var compileBtn = document.createElement("button");
+    compileBtn.type = "button";
+    compileBtn.className = "data-tool__actionBtn data-tool__selectModeCompile";
+    compileBtn.textContent = "Compile";
+    compileBtn.disabled = selectedForCompact.length === 0;
+    compileBtn.addEventListener("click", function () {
+      if (!selectedForCompact.length) return;
+      api("/portal/api/data/mss/compile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selected_refs: selectedForCompact }),
+      }).then(function (data) {
+        if (!data || !data.ok) { setMessages([(data && data.error) || "Compile failed"], []); return; }
+        showCompiledMssResult(data);
+      }).catch(function (err) {
+        setMessages([err.message || "Compile failed"], []);
+      });
+    });
+    wrap.appendChild(compileBtn);
+    var resultEl = document.createElement("div");
+    resultEl.className = "data-tool__selectModeResult";
+    resultEl.id = "dtSelectModeResult";
+    wrap.appendChild(resultEl);
+    systemContextEl.appendChild(wrap);
+  }
+
+  function showCompiledMssResult(data) {
+    var resultEl = document.getElementById("dtSelectModeResult");
+    if (!resultEl) return;
+    resultEl.innerHTML = "";
+    var bitstring = String(data.bitstring || "");
+    var pre = document.createElement("pre");
+    pre.className = "data-tool__mssBitstring";
+    pre.textContent = bitstring || "(empty)";
+    resultEl.appendChild(pre);
+    var copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "data-tool__actionBtn data-tool__mssCopyBtn";
+    copyBtn.textContent = "Copy";
+    copyBtn.addEventListener("click", function () {
+      if (!bitstring) return;
+      try {
+        navigator.clipboard.writeText(bitstring);
+        copyBtn.textContent = "Copied";
+        setTimeout(function () { copyBtn.textContent = "Copy"; }, 1500);
+      } catch (e) {
+        setMessages([e.message || "Copy failed"], []);
+      }
+    });
+    resultEl.appendChild(copyBtn);
+  }
+
+  function renderIconOptionsInto(containerEl, currentRelpath, onSelect) {
+    if (!containerEl) return;
+    containerEl.innerHTML = "";
+    var filtered = iconCatalog.filter(function (rel) {
+      var token = normalizeIconToken(rel);
+      return !datumEditorIconFilterValue || token.indexOf(datumEditorIconFilterValue) !== -1;
+    });
+    if (!filtered.length) {
+      var empty = document.createElement("p");
+      empty.className = "data-tool__empty";
+      empty.textContent = "No icons match.";
+      containerEl.appendChild(empty);
+      return;
+    }
+    filtered.slice(0, 80).forEach(function (rel) {
+      var relToken = String(rel || "").trim();
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "data-tool__iconOption";
+      btn.setAttribute("data-icon-relpath", relToken);
+      var img = document.createElement("img");
+      img.src = "/portal/static/icons/" + relToken;
+      img.alt = "";
+      img.className = "datum-icon";
+      btn.appendChild(img);
+      var textWrap = document.createElement("span");
+      textWrap.className = "data-tool__iconOptionText";
+      textWrap.textContent = relToken.split("/").pop() || relToken;
+      btn.appendChild(textWrap);
+      btn.addEventListener("click", function () {
+        if (typeof onSelect === "function") onSelect(relToken);
+      });
+      containerEl.appendChild(btn);
+    });
+  }
+
+  var datumEditorIconFilterValue = "";
+
+  function buildLeftSidebarDatumPanel(profilePayload) {
+    if (!systemContextEl) return null;
+    var editorRoot = buildDatumEditorNode(profilePayload);
+    var datum = (profilePayload && profilePayload.datum) || {};
+    var iconRelpath = String(datum.icon_relpath || "").trim();
+    editorRoot.setAttribute("data-icon-relpath", iconRelpath);
+
+    var iconBlock = document.createElement("div");
+    iconBlock.className = "data-tool__iconBlock";
+    iconBlock.innerHTML =
+      "<div class=\"data-tool__iconBlockHead\">Icon</div>" +
+      "<div class=\"js-datum-editor-icon-preview data-tool__profileIconCurrent\"></div>" +
+      "<div class=\"data-tool__iconBlockActions\">" +
+        "<button type=\"button\" class=\"data-tool__actionBtn js-datum-editor-icon-change\">Change icon</button>" +
+        "<button type=\"button\" class=\"data-tool__actionBtn js-datum-editor-icon-clear\">Clear icon</button>" +
+      "</div>" +
+      "<div class=\"js-datum-editor-icon-picker-wrap data-tool__iconPickerWrap is-hidden\" aria-hidden=\"true\">" +
+        "<label><span>Search</span><input type=\"text\" class=\"js-datum-editor-icon-search\" placeholder=\"Filter icons...\" /></label>" +
+        "<div class=\"js-datum-editor-icon-list data-tool__iconList\"></div>" +
+      "</div>";
+    editorRoot.appendChild(iconBlock);
+
+    var previewEl = qs(".js-datum-editor-icon-preview", editorRoot);
+    var listEl = qs(".js-datum-editor-icon-list", editorRoot);
+    var pickerWrap = qs(".js-datum-editor-icon-picker-wrap", editorRoot);
+    var searchInput = qs(".js-datum-editor-icon-search", editorRoot);
+    var clearBtn = qs(".js-datum-editor-icon-clear", editorRoot);
+    var changeBtn = qs(".js-datum-editor-icon-change", editorRoot);
+
+    function updateLeftSidebarIconPreview() {
+      if (!previewEl) return;
+      previewEl.innerHTML = "";
+      var token = editorRoot.getAttribute("data-icon-relpath") || "";
+      var wrap = document.createElement("div");
+      wrap.className = "data-tool__datumCell";
+      var icon = document.createElement("span");
+      icon.className = "data-tool__datumIcon";
+      if (token) {
+        var img = document.createElement("img");
+        img.src = "/portal/static/icons/" + token;
+        img.alt = "";
+        img.className = "datum-icon";
+        icon.appendChild(img);
+      } else {
+        var ph = document.createElement("span");
+        ph.className = "datum-icon datum-icon--placeholder";
+        ph.textContent = "+";
+        icon.appendChild(ph);
+      }
+      var name = document.createElement("span");
+      name.className = "data-tool__iconOptionText";
+      name.textContent = token || "No icon selected";
+      wrap.appendChild(icon);
+      wrap.appendChild(name);
+      previewEl.appendChild(wrap);
+    }
+
+    function refreshIconList() {
+      datumEditorIconFilterValue = searchInput ? String(searchInput.value || "").trim().toLowerCase() : "";
+      loadIconCatalog().then(function () {
+        renderIconOptionsInto(listEl, iconRelpath, function (rel) {
+          editorRoot.setAttribute("data-icon-relpath", rel || "");
+          updateLeftSidebarIconPreview();
+          if (pickerWrap) {
+            pickerWrap.classList.add("is-hidden");
+            pickerWrap.setAttribute("aria-hidden", "true");
+          }
+        });
+      }).catch(function () {});
+    }
+
+    function showIconPicker() {
+      if (!pickerWrap) return;
+      pickerWrap.classList.remove("is-hidden");
+      pickerWrap.setAttribute("aria-hidden", "false");
+      if (!listEl.innerHTML) refreshIconList();
+    }
+
+    if (changeBtn) {
+      changeBtn.addEventListener("click", showIconPicker);
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener("click", function () {
+        editorRoot.setAttribute("data-icon-relpath", "");
+        updateLeftSidebarIconPreview();
+      });
+    }
+    if (searchInput) {
+      searchInput.addEventListener("input", refreshIconList);
+    }
+    updateLeftSidebarIconPreview();
+
+    var wrap = document.createElement("div");
+    wrap.className = "data-tool__systemContextInspectWrap";
+    var header = document.createElement("div");
+    header.className = "data-tool__systemContextInspectHeader";
+    var title = document.createElement("span");
+    title.className = "data-tool__systemContextInspectTitle";
+    title.textContent = "Inspect: " + (datumWorkbenchState.identifier || "");
+    var exitBtn = document.createElement("button");
+    exitBtn.type = "button";
+    exitBtn.className = "data-tool__actionBtn data-tool__systemContextExit";
+    exitBtn.setAttribute("aria-label", "Exit inspection");
+    exitBtn.textContent = "\u00D7";
+    exitBtn.addEventListener("click", function () {
+      renderDatumEditorEmpty("Select a graph node or row.");
+    });
+    header.appendChild(title);
+    header.appendChild(exitBtn);
+    wrap.appendChild(header);
+    wrap.appendChild(editorRoot);
+    systemContextEl.innerHTML = "";
+    systemContextEl.appendChild(wrap);
+    activeDatumEditorRoot = editorRoot;
+    return editorRoot;
   }
 
   function buildDatumEditorNode(profilePayload) {
@@ -1907,6 +2201,8 @@
     if (opts.openInspector === false) {
       buildDatumEditorNode(payload);
       activeDatumEditorRoot = null;
+    } else if (systemContextEl) {
+      buildLeftSidebarDatumPanel(payload);
     } else {
       openDatumEditorInspector(payload);
     }
@@ -1927,14 +2223,17 @@
     }
     var labelInput = qs(".js-workbench-label", root);
     var workbenchPairsEl = qs(".js-workbench-pairs", root);
+    var iconRelpath = root.getAttribute && root.getAttribute("data-icon-relpath");
+    var body = {
+      row_id: datumWorkbenchState.rowId,
+      label: String(labelInput ? labelInput.value : ""),
+      pairs: readPairRowsForValueGroup(workbenchPairsEl, datumWorkbenchState.valueGroup),
+    };
+    if (iconRelpath !== null && iconRelpath !== undefined) body.icon_relpath = String(iconRelpath || "");
     var payload = await api("/portal/api/data/anthology/profile/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        row_id: datumWorkbenchState.rowId,
-        label: String(labelInput ? labelInput.value : ""),
-        pairs: readPairRowsForValueGroup(workbenchPairsEl, datumWorkbenchState.valueGroup),
-      }),
+      body: JSON.stringify(body),
     });
 
     if (payload.table_view) {
@@ -2044,6 +2343,7 @@
           var rowToken = String(row.row_id || row.identifier || "");
           tr.className = "js-anthology-row";
           tr.setAttribute("data-row-id", rowToken);
+          tr.setAttribute("data-identifier", String(row.identifier || rowToken));
           if (datumWorkbenchState.rowId && datumWorkbenchState.rowId === rowToken) {
             tr.classList.add("is-selected");
           }
@@ -2749,13 +3049,29 @@
   }
 
   async function appendAnthologyDatum() {
-    var valueGroupToken = appendValueGroupInput ? String(appendValueGroupInput.value || "").trim() : "";
-    var pairs = readPairRowsForValueGroup(appendPairsEl, valueGroupToken || "1");
-    var requiredPairs = requiredPairCountForValueGroup(valueGroupToken || "1");
+    var layerVal, vgVal, labelVal, pairsElForRead;
+    if (currentAppendRoot) {
+      var layerInput = qs(".js-append-layer", currentAppendRoot);
+      var vgInput = qs(".js-append-value-group", currentAppendRoot);
+      var labelInput = qs(".js-append-label", currentAppendRoot);
+      var pairsContainer = qs(".js-append-pairs", currentAppendRoot);
+      layerVal = layerInput ? layerInput.value : "";
+      vgVal = vgInput ? String(vgInput.value || "").trim() : "";
+      labelVal = labelInput ? labelInput.value : "";
+      pairsElForRead = pairsContainer;
+    } else {
+      layerVal = appendLayerInput ? appendLayerInput.value : "";
+      vgVal = appendValueGroupInput ? String(appendValueGroupInput.value || "").trim() : "";
+      labelVal = appendLabelInput ? appendLabelInput.value : "";
+      pairsElForRead = appendPairsEl;
+    }
+    var valueGroupToken = vgVal || "1";
+    var pairs = readPairRowsForValueGroup(pairsElForRead, valueGroupToken);
+    var requiredPairs = requiredPairCountForValueGroup(valueGroupToken);
     if (pairs.length < requiredPairs) {
       throw new Error(
         "value_group=" +
-          String(valueGroupToken || "1") +
+          String(valueGroupToken) +
           " requires at least " +
           String(requiredPairs) +
           " reference/magnitude pair" +
@@ -2769,9 +3085,9 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        layer: appendLayerInput ? appendLayerInput.value : "",
-        value_group: appendValueGroupInput ? appendValueGroupInput.value : "",
-        label: appendLabelInput ? appendLabelInput.value : "",
+        layer: layerVal,
+        value_group: valueGroupToken,
+        label: labelVal || "",
         pairs: pairs,
       }),
     });
@@ -2784,9 +3100,11 @@
     }
 
     if (payload.created_count) closeAppendModal();
-    if (appendLabelInput) appendLabelInput.value = "";
-    resetPairRows(appendPairsEl, "js-remove-append-pair", []);
-    syncAppendPairRequirements();
+    if (!currentAppendRoot && appendLabelInput) appendLabelInput.value = "";
+    if (!currentAppendRoot && appendPairsEl) {
+      resetPairRows(appendPairsEl, "js-remove-append-pair", []);
+      syncAppendPairRequirements();
+    }
 
     setMessages(payload.errors || [], payload.warnings || []);
     return payload;
@@ -2956,6 +3274,12 @@
   }
 
   function closeAppendModal() {
+    if (currentAppendRoot) {
+      currentAppendRoot = null;
+      if (window.PortalInspector && typeof window.PortalInspector.close === "function") {
+        window.PortalInspector.close();
+      }
+    }
     if (!appendModal) return;
     appendModal.hidden = true;
     appendModal.setAttribute("aria-hidden", "true");
@@ -2963,7 +3287,67 @@
     updateBodyModalState();
   }
 
+  function buildAppendFormForInspector(layerToken, valueGroupToken) {
+    var root = document.createElement("div");
+    root.className = "data-tool__appendInInspector card";
+    root.innerHTML =
+      "<header class=\"data-tool__profileHeader\">" +
+        "<div><div class=\"card__kicker\">Append Datum</div><div class=\"card__title\">Create anthology datum(s)</div></div>" +
+        "<button type=\"button\" class=\"js-append-close data-tool__actionBtn\">Close</button>" +
+      "</header>" +
+      "<div class=\"data-tool__controlRow\">" +
+        "<label><span>layer</span><input type=\"number\" min=\"0\" step=\"1\" class=\"js-append-layer\" value=\"" + escapeText(String(layerToken || "1")) + "\" /></label>" +
+        "<label><span>value_group</span><input type=\"number\" min=\"0\" step=\"1\" class=\"js-append-value-group\" value=\"" + escapeText(String(valueGroupToken || "1")) + "\" /></label>" +
+        "<label><span>label (optional)</span><input type=\"text\" class=\"js-append-label\" placeholder=\"optional label\" /></label>" +
+      "</div>" +
+      "<section class=\"data-tool__appendPairs\">" +
+        "<div class=\"data-tool__appendPairsHeader\"><h3>Reference/Magnitude pairs</h3><button type=\"button\" class=\"js-append-add-pair data-tool__actionBtn\">Add pair</button></div>" +
+        "<div class=\"data-tool__appendPairsList js-append-pairs\"></div>" +
+      "</section>" +
+      "<footer class=\"data-tool__profileFooter\"><button type=\"button\" class=\"js-append-save data-tool__actionBtn\">Save</button></footer>";
+    var pairsEl = qs(".js-append-pairs", root);
+    var vgInput = qs(".js-append-value-group", root);
+    var layerInput = qs(".js-append-layer", root);
+    var requiredPairs = requiredPairCountForValueGroup(String(valueGroupToken || "1"));
+    ensurePairRowsMin(pairsEl, "js-remove-append-pair", requiredPairs);
+    syncPairRowMode(pairsEl, String(valueGroupToken || "1"));
+
+    function syncAppendInInspector() {
+      var vg = vgInput ? String(vgInput.value || "1").trim() : "1";
+      var req = requiredPairCountForValueGroup(vg);
+      ensurePairRowsMin(pairsEl, "js-remove-append-pair", req);
+      syncPairRowMode(pairsEl, vg);
+    }
+
+    qs(".js-append-add-pair", root).addEventListener("click", function () {
+      addPairRow(pairsEl, "", "", "js-remove-append-pair");
+      syncAppendInInspector();
+    });
+    pairsEl.addEventListener("click", function (e) {
+      var removeBtn = e.target && e.target.closest ? e.target.closest(".js-remove-append-pair") : null;
+      if (!removeBtn) return;
+      var row = removeBtn.closest(".data-tool__appendPairRow");
+      if (row) row.remove();
+      syncAppendInInspector();
+    });
+    if (vgInput) vgInput.addEventListener("input", syncAppendInInspector);
+    qs(".js-append-save", root).addEventListener("click", function () {
+      appendAnthologyDatum().catch(function (err) { setMessages([err.message], []); });
+    });
+    qs(".js-append-close", root).addEventListener("click", closeAppendModal);
+    return root;
+  }
+
   function openAppendModal(layerToken, valueGroupToken) {
+    if (window.PortalInspector && typeof window.PortalInspector.open === "function") {
+      currentAppendRoot = buildAppendFormForInspector(layerToken, valueGroupToken);
+      window.PortalInspector.open({
+        title: "Append Datum",
+        subtitle: "Create anthology datum(s)",
+        node: currentAppendRoot,
+      });
+      return;
+    }
     if (!appendModal) return;
     resetPairRows(appendPairsEl, "js-remove-append-pair", []);
     if (appendLayerInput) appendLayerInput.value = String(layerToken || "1");
@@ -3413,7 +3797,17 @@
 
     var tableRow = target.closest(".js-anthology-row");
     if (tableRow && !target.closest("button")) {
-      var tableRowToken = String(tableRow.getAttribute("data-row-id") || "").trim();
+      var tableRowToken = String(tableRow.getAttribute("data-row-id") || tableRow.getAttribute("data-identifier") || "").trim();
+      var identifier = String(tableRow.getAttribute("data-identifier") || tableRowToken).trim();
+      if (selectMode && systemContextEl) {
+        if (!identifier) return;
+        var idx = selectedForCompact.indexOf(identifier);
+        if (idx === -1) selectedForCompact.push(identifier);
+        else selectedForCompact.splice(idx, 1);
+        syncSelectModeRowHighlights();
+        renderSelectModeView();
+        return;
+      }
       if (tableRowToken) {
         loadDatumEditor(tableRowToken, { syncGraphFocus: true }).catch(function (err) {
           setMessages([err.message], []);

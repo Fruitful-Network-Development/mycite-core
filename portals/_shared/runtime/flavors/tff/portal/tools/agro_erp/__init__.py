@@ -29,7 +29,7 @@ _COORD_SCALE = 10_000_000.0
 # Default FND taxonomy collection reference for AGRO ERP.
 # This value can be overridden in future iterations via tool-specific
 # configuration/specs, but is wired here to support the initial taxonomy viewer.
-_DEFAULT_TAXONOMY_REF = "3-2-3-17-77-1-6-4-1-4.4-0-2"
+_DEFAULT_TAXONOMY_REF = "3-2-3-17-77-1-6-4-1-4.5-0-4"
 _PRODUCT_LAYER = 20
 _PRODUCT_VALUE_GROUP = 1
 _PRODUCT_REFERENCE = "0-0-1"

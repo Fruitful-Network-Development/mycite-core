@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..datum_refs import ParsedDatumRef, normalize_datum_ref, parse_datum_ref
@@ -17,6 +18,54 @@ class TaxonomyNode:
     label: str
     pairs: List[Dict[str, str]]
     children: List[str]
+
+
+_IDENT_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
+
+
+def _parse_identifier(identifier: str) -> Tuple[int, int, int] | None:
+    token = _as_text(identifier)
+    if not _IDENT_RE.fullmatch(token):
+        return None
+    layer_s, value_group_s, iteration_s = token.split("-", 2)
+    try:
+        return int(layer_s), int(value_group_s), int(iteration_s)
+    except Exception:
+        return None
+
+
+def _pairs_from_row(row: Dict[str, Any]) -> List[Dict[str, str]]:
+    raw_pairs = row.get("pairs") if isinstance(row.get("pairs"), list) else []
+    out: List[Dict[str, str]] = []
+    for pair in raw_pairs:
+        if not isinstance(pair, dict):
+            continue
+        out.append(
+            {
+                "reference": _as_text(pair.get("reference")),
+                "magnitude": _as_text(pair.get("magnitude")),
+            }
+        )
+    if out:
+        return out
+    ref = _as_text(row.get("reference"))
+    mag = _as_text(row.get("magnitude"))
+    if ref or mag:
+        return [{"reference": ref, "magnitude": mag}]
+    return []
+
+
+def _split_path(path_token: str) -> List[str]:
+    token = _as_text(path_token)
+    if not token:
+        return []
+    return [part for part in token.split("-") if part]
+
+
+def _path_key(parts: List[str]) -> str:
+    if not parts:
+        return ""
+    return "-".join(parts)
 
 
 def _rows_to_adjacency(rows: List[Dict[str, Any]]) -> Dict[str, TaxonomyNode]:
@@ -71,6 +120,125 @@ def _rows_to_adjacency(rows: List[Dict[str, Any]]) -> Dict[str, TaxonomyNode]:
             children=children_by_parent.get(identifier, []),
         )
     return adjacency
+
+
+def _build_txa_hierarchy_from_collection(
+    rows: List[Dict[str, Any]],
+    *,
+    preferred_collection_id: str = "",
+) -> Tuple[str, List[Dict[str, Any]], Dict[str, Any]] | None:
+    """
+    Build a hierarchy view from a decompiled MSS collection row.
+
+    MSS decoding intentionally omits labels/icons today. This view derives parent
+    relationships from txa-style magnitude paths (e.g. 1-1-2-4 -> parent 1-1-2).
+    """
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for row in rows or []:
+        identifier = _as_text(row.get("identifier") or row.get("row_id"))
+        if identifier:
+            by_id[identifier] = row
+
+    if not by_id:
+        return None
+
+    candidates: List[Tuple[int, str, List[str]]] = []
+    for identifier, row in by_id.items():
+        parsed = _parse_identifier(identifier)
+        if parsed is None or parsed[1] != 0:
+            continue
+        ref_ids = [pair.get("reference") or "" for pair in _pairs_from_row(row) if _as_text(pair.get("reference"))]
+        score = 0
+        for ref_id in ref_ids:
+            child = by_id.get(ref_id)
+            if not isinstance(child, dict):
+                continue
+            child_pairs = _pairs_from_row(child)
+            if not child_pairs:
+                continue
+            magnitude = _as_text(child_pairs[0].get("magnitude"))
+            if _split_path(magnitude):
+                score += 1
+        if score > 0:
+            candidates.append((score, identifier, ref_ids))
+
+    if not candidates:
+        return None
+
+    preferred = _as_text(preferred_collection_id)
+    selected_collection = ""
+    selected_refs: List[str] = []
+    if preferred:
+        for _score, cand_id, ref_ids in candidates:
+            if cand_id == preferred:
+                selected_collection = cand_id
+                selected_refs = list(ref_ids)
+                break
+    if not selected_collection:
+        candidates.sort(key=lambda item: (-item[0], item[1]))
+        selected_collection = candidates[0][1]
+        selected_refs = list(candidates[0][2])
+
+    selected_refs = [item for item in selected_refs if item in by_id]
+    if not selected_refs:
+        return None
+
+    path_to_id: Dict[str, str] = {}
+    node_meta: Dict[str, Dict[str, Any]] = {}
+    for ref_id in selected_refs:
+        row = by_id.get(ref_id) or {}
+        pairs = _pairs_from_row(row)
+        magnitude = _as_text(pairs[0].get("magnitude")) if pairs else ""
+        path_parts = _split_path(magnitude)
+        path_key = _path_key(path_parts)
+        if path_key and path_key not in path_to_id:
+            path_to_id[path_key] = ref_id
+        node_meta[ref_id] = {
+            "id": ref_id,
+            "label": _as_text(row.get("label")) or ref_id,
+            "path": magnitude,
+            "pairs": pairs,
+            "children": [],
+        }
+
+    roots: List[str] = []
+    for ref_id in selected_refs:
+        item = node_meta.get(ref_id) or {}
+        path_parts = _split_path(_as_text(item.get("path")))
+        parent_id = ""
+        if len(path_parts) > 1:
+            parent_key = _path_key(path_parts[:-1])
+            parent_id = _as_text(path_to_id.get(parent_key))
+        if parent_id and parent_id in node_meta:
+            node_meta[parent_id]["children"].append(ref_id)
+        else:
+            roots.append(ref_id)
+
+    for meta in node_meta.values():
+        children = list(dict.fromkeys(meta.get("children") or []))
+        children.sort()
+        meta["children"] = children
+    roots = sorted(list(dict.fromkeys(roots)))
+
+    def _build(node_id: str) -> Dict[str, Any]:
+        meta = node_meta.get(node_id)
+        if not isinstance(meta, dict):
+            return {"id": node_id, "label": node_id, "path": "", "children": []}
+        return {
+            "id": _as_text(meta.get("id")),
+            "label": _as_text(meta.get("label")),
+            "path": _as_text(meta.get("path")),
+            "children": [_build(child_id) for child_id in list(meta.get("children") or [])],
+        }
+
+    tree = {
+        "id": selected_collection,
+        "label": _as_text((by_id.get(selected_collection) or {}).get("label")) or selected_collection,
+        "path": "",
+        "children": [_build(root_id) for root_id in roots],
+    }
+    nodes = [dict(value) for value in node_meta.values()]
+    return selected_collection, nodes, tree
 
 
 def _normalize_ref(datum_ref: str, *, local_msn_id: str) -> ParsedDatumRef:
@@ -228,28 +396,34 @@ def load_inherited_taxonomy(
         fallback_identifier = _as_text(rows[-1].get("identifier") or rows[-1].get("row_id"))
         root_identifier = fallback_identifier or root_identifier
 
-    adjacency = _rows_to_adjacency(rows)
+    hierarchy = _build_txa_hierarchy_from_collection(rows, preferred_collection_id=root_identifier)
+    if hierarchy is not None:
+        root_identifier, nodes, tree = hierarchy
+    else:
+        adjacency = _rows_to_adjacency(rows)
 
-    def _build_tree(node_id: str) -> Dict[str, Any]:
-        node = adjacency.get(node_id)
-        if node is None:
-            return {"id": node_id, "label": "", "children": []}
-        return {
-            "id": node.identifier,
-            "label": node.label,
-            "children": [_build_tree(child_id) for child_id in node.children],
-        }
+        def _build_tree(node_id: str) -> Dict[str, Any]:
+            node = adjacency.get(node_id)
+            if node is None:
+                return {"id": node_id, "label": "", "path": "", "children": []}
+            return {
+                "id": node.identifier,
+                "label": node.label,
+                "path": "",
+                "children": [_build_tree(child_id) for child_id in node.children],
+            }
 
-    tree = _build_tree(root_identifier)
-    nodes = [
-        {
-            "id": node.identifier,
-            "label": node.label,
-            "pairs": list(node.pairs),
-            "children": list(node.children),
-        }
-        for node in adjacency.values()
-    ]
+        tree = _build_tree(root_identifier)
+        nodes = [
+            {
+                "id": node.identifier,
+                "label": node.label,
+                "path": "",
+                "pairs": list(node.pairs),
+                "children": list(node.children),
+            }
+            for node in adjacency.values()
+        ]
 
     return {
         "ok": True,

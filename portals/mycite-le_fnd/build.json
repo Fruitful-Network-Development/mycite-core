@@ -10,6 +10,7 @@
   },
   "tools": {
     "enabled": [
+      "agro_erp",
       "tenant_progeny_profiles",
       "fnd_provisioning",
       "paypal_tenant_actions",
@@ -27,6 +28,7 @@
       "paypal_demo"
     ],
     "mount_targets": {
+      "agro_erp": "peripherals.tools",
       "tenant_progeny_profiles": "peripherals.tools",
       "fnd_provisioning": "peripherals.tools",
       "paypal_tenant_actions": "peripherals.tools",
