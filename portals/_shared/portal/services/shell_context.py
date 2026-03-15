@@ -1,0 +1,40 @@
+from __future__ import annotations
+
+from typing import Any, Callable
+
+
+def build_shell_context(
+    *,
+    active_service: str,
+    active_service_tab: str,
+    active_tool: dict[str, Any] | None,
+    tool_tabs: list[dict[str, Any]],
+    build_activity_tool_nav_fn: Callable[[str], list[dict[str, Any]]],
+    service_nav: list[dict[str, Any]],
+    network_tabs: list[dict[str, Any]],
+    sidebar_progeny: list[dict[str, Any]],
+    portal_name: str,
+    active_portal_username: str,
+    sign_out_url: str,
+    switch_portal_url: str,
+    current_path: str,
+    context_sidebar_sections: list[dict[str, Any]],
+) -> dict[str, Any]:
+    active_tool_id = str(active_tool.get("tool_id") or "") if active_tool else ""
+    return {
+        "tool_tabs": tool_tabs,
+        "active_tool": active_tool,
+        "active_tool_id": active_tool_id,
+        "activity_tool_nav": build_activity_tool_nav_fn(active_tool_id),
+        "service_nav": service_nav,
+        "active_service": active_service,
+        "active_service_tab": active_service_tab,
+        "network_tabs": network_tabs,
+        "sidebar_progeny": sidebar_progeny,
+        "portal_name": portal_name,
+        "active_portal_username": active_portal_username,
+        "sign_out_url": sign_out_url,
+        "switch_portal_url": switch_portal_url,
+        "current_path": current_path,
+        "context_sidebar_sections": context_sidebar_sections,
+    }

@@ -17,7 +17,7 @@ from portal.api.admin_integrations import register_admin_integration_routes
 from portal.api.config import register_config_routes
 from portal.api.contract_handshake import register_contract_handshake_routes
 from portal.api.contracts import register_contract_routes
-from portal.api.data_workspace import register_data_routes as register_data_workspace_routes
+from _shared.portal.api.data_workspace import register_data_routes as register_data_workspace_routes
 from portal.api.inbox import register_inbox_routes
 from portal.api.paypal_checkout import register_paypal_checkout_routes
 from portal.api.progeny_config import register_progeny_config_routes
@@ -77,6 +77,19 @@ from _shared.portal.services.network_contract import (
     build_network_contract_items as shared_build_network_contract_items,
     resolve_network_refs as shared_resolve_network_refs,
 )
+from _shared.portal.services.request_log_ui import (
+    build_network_message_feed as shared_build_network_message_feed,
+    event_actor_label as shared_event_actor_label,
+    event_channel_id as shared_event_channel_id,
+    event_contains_any as shared_event_contains_any,
+    event_summary as shared_event_summary,
+    format_event_timestamp as shared_format_event_timestamp,
+    initials as shared_initials,
+    iter_string_values as shared_iter_string_values,
+    network_placeholder_item as shared_network_placeholder_item,
+)
+from _shared.portal.services.sidebar_context import build_context_sidebar_sections
+from _shared.portal.services.shell_context import build_shell_context
 
 app = Flask(
     __name__,
@@ -378,26 +391,6 @@ def _format_sidebar_entity_title(raw: str) -> str:
 
 def _alias_label(alias_payload: Dict[str, Any], alias_id: Optional[str] = None) -> str:
     return shared_alias_label(alias_payload, alias_id)
-def _sanitize_env_suffix(value: str) -> str:
-    return re.sub(r"[^A-Za-z0-9]", "_", value).upper()
-
-
-def _resolve_embed_port(alias_host: str) -> str:
-    host = (alias_host or "").strip()
-    if host:
-        per_host_key = f"EMBED_HOST_PORT_{_sanitize_env_suffix(host)}"
-        if os.environ.get(per_host_key):
-            return str(os.environ.get(per_host_key)).strip()
-        known = KNOWN_EMBED_PORT_BY_MSN.get(host)
-        if known:
-            return known
-
-    if os.environ.get("EMBED_HOST_PORT"):
-        return str(os.environ.get("EMBED_HOST_PORT")).strip()
-
-    return "5001"
-
-
 def _extract_tenant_msn_id(alias_payload: Dict[str, Any]) -> str:
     return shared_extract_tenant_msn_id(alias_payload)
 
@@ -901,109 +894,35 @@ def _network_sidebar_alias_items() -> list[Dict[str, Any]]:
 
 
 def _iter_string_values(value: Any):
-    if isinstance(value, dict):
-        for nested in value.values():
-            yield from _iter_string_values(nested)
-        return
-    if isinstance(value, list):
-        for nested in value:
-            yield from _iter_string_values(nested)
-        return
-    if value is None:
-        return
-    token = str(value).strip()
-    if token:
-        yield token
+    yield from shared_iter_string_values(value)
 
 
 def _event_contains_any(event: Dict[str, Any], tokens: list[str]) -> bool:
-    needles = [str(item).strip().lower() for item in tokens if str(item).strip()]
-    if not needles:
-        return False
-    for value in _iter_string_values(event):
-        lowered = value.lower()
-        if any(needle in lowered for needle in needles):
-            return True
-    return False
+    return shared_event_contains_any(event, tokens)
 
 
 def _event_channel_id(event: Dict[str, Any]) -> str:
-    transmitter = str(event.get("transmitter") or "").strip()
-    receiver = str(event.get("receiver") or "").strip()
-    if transmitter and receiver:
-        return f"{transmitter}->{receiver}"
-    return ""
+    return shared_event_channel_id(event)
 
 
 def _format_event_timestamp(ts_unix_ms: Any) -> str:
-    try:
-        stamp = int(ts_unix_ms or 0)
-    except Exception:
-        return ""
-    if stamp <= 0:
-        return ""
-    try:
-        return datetime.fromtimestamp(stamp / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    except Exception:
-        return ""
+    return shared_format_event_timestamp(ts_unix_ms)
 
 
 def _initials(token: str, fallback: str = "NW") -> str:
-    cleaned = re.sub(r"[^A-Za-z0-9]+", " ", str(token or "").strip())
-    parts = [part for part in cleaned.split() if part]
-    if not parts:
-        return fallback
-    if len(parts) == 1:
-        return parts[0][:2].upper()
-    return f"{parts[0][0]}{parts[1][0]}".upper()
+    return shared_initials(token, fallback)
 
 
 def _event_actor_label(event: Dict[str, Any]) -> str:
-    transmitter = str(event.get("transmitter") or "").strip()
-    receiver = str(event.get("receiver") or "").strip()
-    if transmitter:
-        if MSN_ID and MSN_ID in transmitter:
-            return "Current Portal"
-        return transmitter
-    if receiver:
-        return receiver
-    return "Network Event"
+    return shared_event_actor_label(event, local_msn_id=str(MSN_ID or ""))
 
 
 def _event_summary(event: Dict[str, Any]) -> str:
-    summary_parts: list[str] = []
-    for key in ("status", "receiver", "alias_id", "contract_id", "tenant_msn_id", "client_id", "event_datum"):
-        value = str(event.get(key) or "").strip()
-        if value:
-            summary_parts.append(f"{key}: {value}")
-    details = event.get("details")
-    if isinstance(details, dict) and details:
-        summary_parts.append("details: " + ", ".join(sorted(str(key) for key in details.keys())[:4]))
-    return " | ".join(summary_parts[:4])
+    return shared_event_summary(event)
 
 
 def _network_placeholder_item(kind: str, selected: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    label = str((selected or {}).get("label") or "conversation").strip()
-    if kind == "alias":
-        headline = "Interface ready"
-        summary = f"No request-log events have been mapped to {label} yet."
-    elif kind == "p2p":
-        headline = "Direct thread is quiet"
-        summary = f"No transmitter/receiver events have been recorded for {label} yet."
-    else:
-        headline = "Request log ready"
-        summary = "No request-log entries have been recorded yet."
-    payload = {"selection": selected or {}, "kind": kind}
-    return {
-        "side": "system",
-        "author": "Workbench",
-        "avatar": _initials(label, "WB"),
-        "role": "preview",
-        "headline": headline,
-        "summary": summary,
-        "timestamp": "",
-        "payload_json": json.dumps(payload, indent=2, sort_keys=True),
-    }
+    return shared_network_placeholder_item(kind, selected)
 
 
 def _network_message_feed(
@@ -1012,153 +931,51 @@ def _network_message_feed(
     selected_log: Optional[Dict[str, Any]],
     selected_p2p: Optional[Dict[str, Any]],
 ) -> list[Dict[str, Any]]:
-    events = _iter_request_log_records()
-    filtered: list[Dict[str, Any]]
-    selected: Optional[Dict[str, Any]]
-
-    if kind == "alias":
-        selected = selected_alias
-        tokens = [
-            str((selected_alias or {}).get("id") or "").strip(),
-            str((selected_alias or {}).get("alias_id") or "").strip(),
-            str((selected_alias or {}).get("org_msn_id") or "").strip(),
-            str((selected_alias or {}).get("tenant_id") or "").strip(),
-            str((selected_alias or {}).get("label") or "").strip(),
-        ]
-        filtered = [event for event in events if _event_contains_any(event, tokens)]
-    elif kind == "p2p":
-        selected = selected_p2p
-        channel_id = str((selected_p2p or {}).get("id") or "").strip()
-        filtered = [event for event in events if _event_channel_id(event) == channel_id]
-    else:
-        selected = selected_log
-        filtered = list(events)
-
-    filtered = sorted(filtered, key=lambda item: int(item.get("ts_unix_ms") or 0))
-    if len(filtered) > 60:
-        filtered = filtered[-60:]
-
-    if not filtered:
-        return [_network_placeholder_item(kind, selected)]
-
-    feed: list[Dict[str, Any]] = []
-    for event in filtered:
-        transmitter = str(event.get("transmitter") or "").strip()
-        side = "system"
-        if transmitter:
-            side = "outbound" if MSN_ID and MSN_ID in transmitter else "inbound"
-        preview_payload = {key: value for key, value in event.items() if key != "msn_id"}
-        resolved_refs = _network_resolved_refs(event, preferred_contract_id=str(event.get("contract_id") or "").strip())
-        if resolved_refs:
-            preview_payload["mss_resolution"] = resolved_refs
-        author = _event_actor_label(event)
-        feed.append(
-            {
-                "side": side,
-                "author": author,
-                "avatar": _initials(author, "EV"),
-                "role": str(event.get("status") or "event").strip(),
-                "headline": str(event.get("type") or "event").strip(),
-                "summary": _event_summary(event),
-                "timestamp": _format_event_timestamp(event.get("ts_unix_ms")),
-                "payload_json": json.dumps(preview_payload, indent=2, sort_keys=True),
-            }
-        )
-    return feed
+    return shared_build_network_message_feed(
+        kind=kind,
+        selected_alias=selected_alias,
+        selected_log=selected_log,
+        selected_p2p=selected_p2p,
+        local_msn_id=str(MSN_ID or ""),
+        iter_request_log_records_fn=_iter_request_log_records,
+        resolve_refs_fn=lambda event, preferred: _network_resolved_refs(event, preferred_contract_id=preferred),
+    )
 
 
 def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
-    token = str(active_service or "system").strip().lower()
     network_tab = _normalize_network_query_tab(request.args.get("tab"))
     kind = _normalize_network_kind(request.args.get("kind"))
     utilities_tab = _normalize_utilities_tab(request.args.get("tab"))
     selected = str(request.args.get("id") or "").strip()
-
-    # When on a tool route (/portal/tools/<tool_id>/...), show tool-use sidebar, not utilities.
-    active_tool_meta = next(
-        (t for t in TOOL_TABS if str(t.get("tool_id") or "").strip().lower() == token),
-        None,
+    progeny_type = str(request.args.get("progeny_type") or "").strip().lower()
+    workbench = _progeny_workbench_model(progeny_type, str(request.args.get("instance") or "").strip()) if utilities_tab == "progeny" else {}
+    type_entries: list[Dict[str, Any]] = []
+    if isinstance(workbench, dict):
+        for item in workbench.get("type_cards") or []:
+            if not isinstance(item, dict):
+                continue
+            type_entries.append(
+                {
+                    "label": str(item.get("label") or "").strip(),
+                    "href": str(item.get("href") or "").strip(),
+                    "active": bool(item.get("active")),
+                    "meta": f"{int(item.get('count') or 0)} instance(s)",
+                }
+            )
+    return build_context_sidebar_sections(
+        active_service=active_service,
+        network_tab=network_tab,
+        network_kind=kind,
+        utilities_tab=utilities_tab,
+        selected_id=selected,
+        tool_tabs=TOOL_TABS,
+        aliases=[],
+        p2p_channels=_p2p_channels(),
+        include_alias_interfaces=False,
+        include_progeny_utility=True,
+        progeny_type_entries=type_entries,
+        local_msn_id=str(MSN_ID or ""),
     )
-    if active_tool_meta:
-        display_name = str(active_tool_meta.get("display_name") or active_tool_meta.get("tool_id") or token).strip() or token
-        home_path = str(active_tool_meta.get("home_path") or "").strip() or f"/portal/tools/{token}/home"
-        return [
-            {
-                "title": "Tool",
-                "entries": [
-                    {"label": f"Using {display_name}", "href": home_path, "active": True, "meta": "tool home"},
-                    {"label": "Configure tools", "href": "/portal/utilities?tab=tools", "active": False, "meta": "Utilities"},
-                ],
-                "empty_text": "",
-            }
-        ]
-
-    if token == "network":
-        # Navigation (Messages, Hosted, Profile, Contracts) is via tabs only; do not duplicate in sidebar.
-        # Request log is the underlying feed for Messages; do not list as a separate sidebar section.
-        # Contracts list belongs under the Contracts tab; do not list in sidebar.
-        # FND does not host alias profiles (only progeny interfaces for TFF-hosted aliases); omit Alias Interfaces.
-        p2p = _p2p_channels()
-        return [
-            {
-                "title": "Direct Messages",
-                "entries": [
-                    {
-                        "label": item["label"],
-                        "meta": f"{item['event_count']} event(s)",
-                        "href": item["href"],
-                        "active": network_tab == "messages" and kind == "p2p" and selected == item["id"],
-                    }
-                    for item in p2p
-                ],
-                "empty_text": "No P2P channels derived yet",
-            },
-        ]
-
-    if token == "utilities":
-        progeny_type = str(request.args.get("progeny_type") or "").strip().lower()
-        workbench = _progeny_workbench_model(progeny_type, str(request.args.get("instance") or "").strip()) if utilities_tab == "progeny" else {}
-        type_entries = []
-        if isinstance(workbench, dict):
-            for item in workbench.get("type_cards") or []:
-                if not isinstance(item, dict):
-                    continue
-                type_entries.append(
-                    {
-                        "label": str(item.get("label") or "").strip(),
-                        "href": str(item.get("href") or "").strip(),
-                        "active": bool(item.get("active")),
-                        "meta": f"{int(item.get('count') or 0)} instance(s)",
-                    }
-                )
-        return [
-            {
-                "title": "Utility Views",
-                "entries": [
-                    {"label": "Tools", "href": "/portal/utilities?tab=tools", "active": utilities_tab == "tools", "meta": "launchers + mounts"},
-                    {"label": "Vault", "href": "/portal/utilities?tab=vault", "active": utilities_tab == "vault", "meta": "KeePass inventory"},
-                    {"label": "Peripherals", "href": "/portal/utilities?tab=peripherals", "active": utilities_tab == "peripherals", "meta": "runtime directory"},
-                    {"label": "Progeny", "href": "/portal/utilities?tab=progeny&progeny_type=member", "active": utilities_tab == "progeny", "meta": "templates + instances"},
-                ],
-                "empty_text": "",
-            },
-            {
-                "title": "Progeny Types",
-                "entries": type_entries,
-                "empty_text": "Select the Progeny utility view to browse templates and instances.",
-            },
-        ]
-
-    return [
-        {
-            "title": "Profile",
-            "entries": [
-                {"label": "Portal Contact Card", "href": "/portal/system", "active": True, "meta": f"msn-{MSN_ID}.json"},
-                {"label": "Data Workbench", "href": "/portal/system#data-workbench", "active": False, "meta": "Anthology/NIMM/AITAS"},
-            ],
-            "empty_text": "",
-        }
-    ]
 
 
 @app.context_processor
@@ -1215,23 +1032,22 @@ def _tool_shell_context() -> Dict[str, Any]:
     switch_portal_url = str(os.environ.get("PORTAL_SWITCH_URL") or "/oauth2/sign_in?rd=%2Fportal%2Fsystem").strip()
     if not switch_portal_url:
         switch_portal_url = "/oauth2/sign_in?rd=%2Fportal%2Fsystem"
-    return {
-        "tool_tabs": TOOL_TABS,
-        "active_tool": active_tool,
-        "active_tool_id": str(active_tool.get("tool_id") or "") if active_tool else "",
-        "activity_tool_nav": _activity_tool_items(str(active_tool.get("tool_id") or "") if active_tool else ""),
-        "service_nav": build_service_nav(ACTIVE_PRIVATE_CONFIG, active_service=active_service),
-        "active_service": active_service,
-        "active_service_tab": active_service_tab,
-        "network_tabs": build_network_tabs(active_service_tab),
-        "sidebar_progeny": sidebar_progeny,
-        "portal_name": portal_name,
-        "active_portal_username": active_portal_username,
-        "sign_out_url": sign_out_url,
-        "switch_portal_url": switch_portal_url,
-        "current_path": current_path,
-        "context_sidebar_sections": _context_sidebar_sections(active_service),
-    }
+    return build_shell_context(
+        active_service=active_service,
+        active_service_tab=active_service_tab,
+        active_tool=active_tool,
+        tool_tabs=TOOL_TABS,
+        build_activity_tool_nav_fn=_activity_tool_items,
+        service_nav=build_service_nav(ACTIVE_PRIVATE_CONFIG, active_service=active_service),
+        network_tabs=build_network_tabs(active_service_tab),
+        sidebar_progeny=sidebar_progeny,
+        portal_name=portal_name,
+        active_portal_username=active_portal_username,
+        sign_out_url=sign_out_url,
+        switch_portal_url=switch_portal_url,
+        current_path=current_path,
+        context_sidebar_sections=_context_sidebar_sections(active_service),
+    )
 
 
 @app.get("/portal/static/icons/<path:relpath>")

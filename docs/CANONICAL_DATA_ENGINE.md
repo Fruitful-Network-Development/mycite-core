@@ -6,6 +6,8 @@ Portal data runtime is file-backed.
 
 Canonical browser entry for the Data Tool is `/portal/data` (redirect target `/portal/tools/data_tool/home`), while `/portal/api/data/*` remains the canonical data-service API surface.
 
+Canonical data API route registration is shared-core owned in `portals/_shared/portal/api/data_workspace.py`; flavor runtimes compose it and do not maintain divergent registrars.
+
 Canonical data artifacts:
 
 - `data/anthology.json`
