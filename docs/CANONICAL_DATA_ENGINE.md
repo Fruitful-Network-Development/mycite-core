@@ -110,6 +110,28 @@ Pure engine-only write tests (no Flask requirement):
 
 - `python3 -m unittest tests/test_write_pipeline_engine.py`
 
+## AITAS context foundation
+
+Shared core now includes an AITAS context foundation under:
+
+- `portals/_shared/portal/data_engine/aitas_context.py`
+- `portals/_shared/portal/data_engine/archetypes.py`
+
+Current implemented facet is **Archetype** only. Initial anchor definition:
+
+- `ascii_babel_64`
+
+Archetype recognition is derived from anthology-resolved chain + compiled constraint context. It is not authoritative storage and does not replace datum identity or contract MSS logic.
+
+Shared routes:
+
+- `GET /portal/api/data/aitas/archetypes`
+- `POST /portal/api/data/aitas/archetype/inspect`
+- `POST /portal/api/data/aitas/archetype/trace`
+- `GET /portal/api/data/aitas/archetype/bindings`
+
+See `docs/AITAS_CONTEXT_MODEL.md` for details.
+
 ## MSS contract sync boundary
 
 The Data Engine is responsible for keeping anthology-derived contract context coherent after anthology mutations.
