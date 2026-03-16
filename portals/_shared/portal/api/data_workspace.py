@@ -244,6 +244,13 @@ def register_data_routes(
         out["schema"] = "mycite.portal.sandbox.save.v1"
         return jsonify(out), (200 if result.ok else 400)
 
+    @app.post("/portal/api/data/sandbox/resources/<path:resource_id>/compile")
+    def portal_data_sandbox_resource_compile(resource_id: str):
+        result = _sandbox_engine().compile_isolated_mss_resource(resource_id=resource_id)
+        out = result.to_dict()
+        out["schema"] = "mycite.portal.sandbox.resource_compile.v1"
+        return jsonify(out), (200 if result.ok else 400)
+
     @app.post("/portal/api/data/sandbox/mss/compile")
     def portal_data_sandbox_mss_compile():
         body = _json_body()

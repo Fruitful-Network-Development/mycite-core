@@ -287,8 +287,8 @@ class DataWritePipelineRouteTests(unittest.TestCase):
                 "2-1-1": [["2-1-1", "1-1-2", "1"], ["second-isolette"]],
                 "3-1-1": [["3-1-1", "2-1-1", "0"], ["utc-babelette"]],
                 "4-2-1": [["4-2-1", "1-1-1", "63072000000", "3-1-1", "1"], ["y2k-event"]],
-                "5-0-1": [["5-0-1", "4-2-1", "0"], ["txa_samras_stub"]],
-                "5-0-2": [["5-0-2", "4-2-1", "0"], ["msn_samras_stub"]],
+                "5-0-1": [["5-0-1", "4-2-1", "[\"4-2-1\"]"], ["samras_set_local_txa"]],
+                "5-0-2": [["5-0-2", "4-2-1", "[\"4-2-1\"]"], ["samras_set_local_msn"]],
             }
         )
         listed = self.client.get("/portal/api/data/sandbox/resources")
@@ -319,11 +319,41 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertEqual(staged.status_code, 200)
         self.assertTrue((staged.get_json() or {}).get("ok"))
 
+        singular_seed = {
+            "schema": "mycite.sandbox.singular_mss_resource.v1",
+            "resource_id": "route-singular",
+            "resource_kind": "txa",
+            "origin_kind": "local",
+            "source_portal": "9-9-9",
+            "source_ref": "5-0-1",
+            "draft_state": {"selected_ids": ["4-2-1"], "compact_payload": self.anthology_rows},
+            "canonical_state": {"selected_ids": ["4-2-1"], "compact_payload": self.anthology_rows},
+            "mss_form": {"bitstring": "", "wire_variant": ""},
+            "abstraction_root": "4-2-1",
+            "compile_metadata": {"compiled": False, "warnings": []},
+            "updated_at": 0,
+        }
+        saved = self.client.post("/portal/api/data/sandbox/resources/route-singular/save", json={"payload": singular_seed})
+        self.assertEqual(saved.status_code, 200)
+        compiled_singular = self.client.post("/portal/api/data/sandbox/resources/route-singular/compile", json={})
+        self.assertEqual(compiled_singular.status_code, 200)
+        self.assertTrue((compiled_singular.get_json() or {}).get("ok"))
+        contact_exposed = self.client.get("/portal/api/data/sandbox/exposed/contact_card")
+        self.assertEqual(contact_exposed.status_code, 200)
+        exposed_payload = contact_exposed.get_json() or {}
+        sandbox_resources = exposed_payload.get("sandbox_exposed_resources") or []
+        picked = [item for item in sandbox_resources if str(item.get("resource_id")) == "route-singular"]
+        self.assertTrue(picked)
+        first_value = ((picked[0] or {}).get("value") or {}) if isinstance(picked[0], dict) else {}
+        self.assertIn("published_value", first_value)
+
         anthology_path = Path(self._tmpdir.name) / "anthology.json"
         anthology_path.write_text(json.dumps(self.anthology_rows, indent=2) + "\n", encoding="utf-8")
         migrated = self.client.post("/portal/api/data/sandbox/migrate/fnd_samras", json={"apply": False})
         self.assertEqual(migrated.status_code, 200)
-        self.assertTrue((migrated.get_json() or {}).get("ok"))
+        migrated_payload = migrated.get_json() or {}
+        self.assertTrue(migrated_payload.get("ok"))
+        self.assertIn("5-0-1", migrated_payload.get("exact_live_txa_msn_rows") or [])
 
     def test_anthology_overlay_migration_route_dry_run_and_apply(self):
         anthology_path = Path(self._tmpdir.name) / "anthology.json"
