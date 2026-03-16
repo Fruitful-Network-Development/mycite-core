@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from ..data_engine.external_resources.contact_card_catalog import parse_public_resource_catalog
+from ..data_engine.samras_descriptor_compiler import compile_samras_descriptors_from_rows
 from ..datum_refs import normalize_datum_ref, parse_datum_ref
 from ..mss import decode_mss_payload, preview_mss_context
 from .models import (
@@ -26,6 +28,9 @@ from .samras import (
 
 def _as_text(value: object) -> str:
     return "" if value is None else str(value).strip()
+
+
+_DATUM_TOKEN_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
 
 
 class SandboxEngine:
@@ -398,6 +403,111 @@ class SandboxEngine:
             warnings=[],
             errors=[],
         )
+
+    @staticmethod
+    def _collect_ref_tokens(payload: Any) -> list[str]:
+        out: list[str] = []
+        seen: set[str] = set()
+
+        def _walk(value: Any) -> None:
+            if isinstance(value, dict):
+                for item in value.values():
+                    _walk(item)
+                return
+            if isinstance(value, list):
+                for item in value:
+                    _walk(item)
+                return
+            if isinstance(value, (str, int, float)):
+                token = _as_text(value)
+                if not token or token in seen:
+                    return
+                # Accept canonical refs and raw datum ids; keep permissive for provisional ingest.
+                if "." in token:
+                    left, _, right = token.partition(".")
+                    if left and right and _DATUM_TOKEN_RE.fullmatch(right):
+                        seen.add(token)
+                        out.append(token)
+                        return
+                if _DATUM_TOKEN_RE.fullmatch(token):
+                    seen.add(token)
+                    out.append(token)
+
+        _walk(payload)
+        return out
+
+    @staticmethod
+    def _is_txa_ref(token: str) -> bool:
+        raw = _as_text(token).lower()
+        if not raw:
+            return False
+        if "txa" in raw:
+            return True
+        if ".8-4-" in raw or ".8-5-" in raw:
+            return True
+        if raw.startswith("8-4-") or raw.startswith("8-5-"):
+            return True
+        return False
+
+    def compile_txa_inherited_context(
+        self,
+        *,
+        resource_ref: str,
+        local_msn_id: str,
+        external_resolver: Any | None = None,
+        merged_rows_by_id: dict[str, dict[str, Any]] | None = None,
+        inherited_refs: list[str] | None = None,
+    ) -> dict[str, Any]:
+        context = self.resolve_inherited_resource_context(
+            resource_ref=resource_ref,
+            local_msn_id=local_msn_id,
+            external_resolver=external_resolver,
+        )
+        if not context.ok:
+            return {
+                "ok": False,
+                "resource_ref": _as_text(resource_ref),
+                "errors": list(context.errors),
+                "warnings": list(context.warnings),
+            }
+        context_payload = context.to_dict()
+        discovered = self._collect_ref_tokens(context.resource_value)
+        explicit = [_as_text(item) for item in list(inherited_refs or []) if _as_text(item)]
+        candidates = []
+        seen: set[str] = set()
+        for token in explicit + discovered:
+            if token in seen:
+                continue
+            seen.add(token)
+            candidates.append(token)
+        txa_refs = [token for token in candidates if self._is_txa_ref(token)]
+        if not txa_refs and context.canonical_ref and self._is_txa_ref(context.canonical_ref):
+            txa_refs.append(context.canonical_ref)
+
+        descriptors = compile_samras_descriptors_from_rows(
+            merged_rows_by_id if isinstance(merged_rows_by_id, dict) else {},
+            context_source="sandbox.txa_inherited_context",
+        )
+        txa_descriptor = {}
+        for item in descriptors:
+            if _as_text(item.get("value_kind")) == "txa_id":
+                txa_descriptor = dict(item)
+                break
+        if not txa_descriptor and descriptors:
+            txa_descriptor = dict(descriptors[0])
+
+        return {
+            "ok": True,
+            "resource_ref": _as_text(resource_ref),
+            "inherited_context": context_payload,
+            "constraint_family": "samras",
+            "txa_descriptor": txa_descriptor,
+            "txa_refs": txa_refs,
+            "field_usable_refs": list(txa_refs),
+            "context_source": "inherited_compact_or_contact_card",
+            "warnings": list(context.warnings),
+            "errors": [],
+        }
 
     def generate_contact_card_public_resources(
         self,

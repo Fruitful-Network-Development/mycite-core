@@ -108,6 +108,26 @@ class AitasArchetypeContextTests(unittest.TestCase):
         self.assertEqual(len(bindings), 1)
         self.assertEqual((bindings[0] or {}).get("archetype_key"), "ascii_babel_64")
 
+    def test_compiled_constraint_includes_samras_structure_when_chain_is_samras_backed(self):
+        payload = {
+            "rows": [
+                {"identifier": "1-1-3", "label": "txa-SAMRAS", "pairs": [], "magnitude": "3-3-0-0-1-1-4,0-0-0-0-8"},
+                {"identifier": "2-1-12", "label": "SAMRAS-space-txa", "pairs": [{"reference": "1-1-3", "magnitude": "1"}], "magnitude": "1"},
+                {"identifier": "3-1-5", "label": "txa_id-babelette-txa_id", "pairs": [{"reference": "2-1-12", "magnitude": "0"}], "magnitude": "0"},
+                {"identifier": "8-5-1", "label": "product-profile", "pairs": [{"reference": "3-1-5", "magnitude": "abc"}], "magnitude": "abc"},
+            ]
+        }
+        inspected = inspect_archetype_context(
+            datum_ref="8-5-1",
+            local_msn_id="1-2-3",
+            anthology_payload=payload,
+        )
+        self.assertTrue(inspected.get("ok"))
+        compiled = (((inspected.get("aitas") or {}).get("archetype") or {}).get("compiled_constraint") or {})
+        self.assertEqual(compiled.get("constraint_family"), "samras")
+        self.assertEqual(compiled.get("value_kind"), "txa_id")
+        self.assertTrue(compiled.get("descriptor_digest"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,6 +9,7 @@ from typing import Any, Callable
 from ..datum_refs import normalize_datum_ref, parse_datum_ref
 from .archetypes import ArchetypeDefinition, get_archetype_definition, list_archetype_definitions
 from .datum_identity import resolve_to_local_row
+from .samras_descriptor_compiler import compile_samras_constraint_for_chain
 
 
 def _as_text(value: object) -> str:
@@ -111,7 +112,12 @@ def _int_from_payload(payload: dict[str, Any], *keys: str) -> int | None:
     return None
 
 
-def _compile_constraint_summary(row: dict[str, Any], chain: list[dict[str, Any]]) -> dict[str, Any]:
+def _compile_constraint_summary(
+    row: dict[str, Any],
+    chain: list[dict[str, Any]],
+    *,
+    rows_by_id: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     constraints: dict[str, Any] = {
         "field_length": None,
         "alphabet_cardinality": None,
@@ -143,6 +149,19 @@ def _compile_constraint_summary(row: dict[str, Any], chain: list[dict[str, Any]]
         if constraints["alphabet_cardinality"] is None and ("256" in chain_text or "ascii" in chain_text):
             constraints["alphabet_cardinality"] = 256
             constraints["evidence"].append("chain_text.256_or_ascii")
+    samras_constraint = compile_samras_constraint_for_chain(
+        chain=chain,
+        rows_by_id=rows_by_id if isinstance(rows_by_id, dict) else {},
+    )
+    if samras_constraint:
+        constraints["samras"] = dict(samras_constraint)
+        constraints["constraint_family"] = _as_text(samras_constraint.get("constraint_family") or "samras")
+        constraints["descriptor_digest"] = _as_text(samras_constraint.get("descriptor_digest"))
+        constraints["value_kind"] = _as_text(samras_constraint.get("value_kind"))
+        constraints["role"] = _as_text(samras_constraint.get("role"))
+        constraints["context_source"] = _as_text(samras_constraint.get("context_source"))
+        constraints["provisional_state"] = _as_text(samras_constraint.get("provisional_state"))
+        constraints["evidence"].append("samras_descriptor_compiler")
     return constraints
 
 
@@ -267,7 +286,7 @@ def inspect_archetype_context(
     row = dict(resolution.row)
     rows_by_id = _build_rows_by_id(rows)
     chain = _build_chain(rows_by_id, _as_text(resolution.storage_address or parsed.datum_address))
-    compiled_constraint = _compile_constraint_summary(row, chain)
+    compiled_constraint = _compile_constraint_summary(row, chain, rows_by_id=rows_by_id)
     definition_matches: list[dict[str, Any]] = []
     binding_payload: dict[str, Any] = {}
     for definition in list_archetype_definitions():

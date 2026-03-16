@@ -51,8 +51,11 @@ Shared routes are registered in `portals/_shared/portal/api/data_workspace.py`:
 - `POST /portal/api/data/sandbox/samras/upsert`
 - `GET /portal/api/data/sandbox/samras/<resource_id>/decode`
 - `POST /portal/api/data/sandbox/inherited/resolve`
+- `POST /portal/api/data/sandbox/inherited/compile_txa`
 - `GET /portal/api/data/sandbox/exposed/contact_card`
 - `POST /portal/api/data/sandbox/migrate/fnd_samras`
+
+`/sandbox/inherited/compile_txa` is a narrow shared-core compiler path for txa-only inherited context. It produces field-usable inherited refs and a provisional SAMRAS descriptor without materializing full foreign txa/msn paths locally.
 
 ## Anthology migration model (FND)
 
