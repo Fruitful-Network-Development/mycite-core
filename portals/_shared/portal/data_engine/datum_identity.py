@@ -176,7 +176,8 @@ def resolve_to_contract_entry(
     rows = list(decoded_mss_rows or [])
     for row in rows:
         rid = _as_text(row.get("identifier") or row.get("row_id"))
-        if rid in candidates or rid == datum_address:
+        source_id = _as_text(row.get("source_identifier"))
+        if rid in candidates or rid == datum_address or source_id in candidates or source_id == datum_address:
             return DatumResolution(
                 ok=True,
                 datum_path=canonical_dot,
@@ -210,12 +211,14 @@ def compile_compact_array_entries_keyed_by_path(
     result: Dict[str, Dict[str, Any]] = {}
     for row in rows or []:
         rid = _as_text(row.get("identifier") or row.get("row_id"))
+        semantic_id = _as_text(row.get("source_identifier")) or rid
         if not rid:
             continue
-        path = stable_datum_id(rid, local_msn_id=source_msn_id, field_name="identifier")
+        path = stable_datum_id(semantic_id, local_msn_id=source_msn_id, field_name="identifier")
         result[path] = {
             "datum_path": path,
             "storage_address": rid,
+            "semantic_address": semantic_id,
             "label": _as_text(row.get("label")),
             "row": dict(row),
         }

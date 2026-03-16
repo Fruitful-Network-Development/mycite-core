@@ -78,6 +78,13 @@ Before apply, AGRO-ERP obtains and displays a structured write preview including
 
 AGRO-ERP then applies only shared write-pipeline-approved writes through canonical data-engine routes.
 
+AGRO-ERP boundary in hardened write model:
+
+- AGRO-ERP is a thin consumer of `/portal/api/data/write/*` and `/portal/api/data/geometry/*`
+- shared contracts/templates in `field_contracts.py` and `geometry_datums.py` own datum-family semantics, prerequisites, and reuse policy
+- AGRO-ERP may provide template selection and user inputs, but should not sequence low-level anthology mutations itself
+- config/profile updates remain write-pipeline outputs, preserving anthology authority and ref-surface separation
+
 ## Local tool writes and audit
 
 Product-type creation (and other local tool CRUD) is persisted via the data engine and recorded in the **local audit log** (`private/audit/tool_actions.ndjson`), not in the request log. The request log is reserved for external resource access and negotiation (see [AGRO_ERP_INTENTION.md](AGRO_ERP_INTENTION.md) and [REQUEST_LOG_V1.md](REQUEST_LOG_V1.md)).

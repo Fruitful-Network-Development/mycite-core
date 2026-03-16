@@ -152,6 +152,10 @@ def _required_refs_for_template(template: dict[str, Any], fields: dict[str, Any]
     explicit = template.get("required_refs")
     if isinstance(explicit, list):
         refs.extend([str(item).strip() for item in explicit if str(item).strip()])
+    for key in ("boundary_ref", "parcel_ref", "field_ref", "plot_ref"):
+        token = str(fields.get(key) or "").strip()
+        if token:
+            refs.append(token)
     dedupe: list[str] = []
     seen: set[str] = set()
     for item in refs:
@@ -212,6 +216,8 @@ def _plan_preview_for_request(body: dict[str, Any]) -> tuple[int, dict[str, Any]
         "intent_type": "agro_template",
         "template_id": template_id,
         "field_id": "agro_template",
+        "write_mode": "create_new_local_datum",
+        "local_msn_id": local_msn_id,
         "source_msn_id": source_msn_id,
         "resource_id": resource_id,
         "required_refs": required_refs,
@@ -219,7 +225,6 @@ def _plan_preview_for_request(body: dict[str, Any]) -> tuple[int, dict[str, Any]
         "fields": {
             **fields,
             "local_id": local_id,
-            "target_ref": target_ref,
         },
     }
     write_status, write_payload = _call_data_api(
@@ -255,6 +260,8 @@ def _apply_materialization(preview_payload: dict[str, Any]) -> tuple[int, dict[s
         "intent_type": "agro_template",
         "template_id": str(preview_payload.get("template_id") or "").strip(),
         "field_id": "agro_template",
+        "write_mode": "create_new_local_datum",
+        "local_msn_id": str(current_app.config.get("MYCITE_MSN_ID") or "").strip(),
         "source_msn_id": str(preview_payload.get("source_msn_id") or "").strip(),
         "resource_id": str(preview_payload.get("resource_id") or "").strip(),
         "required_refs": list(preview_payload.get("required_refs") or []),

@@ -27,3 +27,13 @@ def set_path(payload: dict[str, Any], path: str, value: Any) -> dict[str, Any]:
         node = child
     node[tokens[-1]] = value
     return out
+
+
+def append_unique_path_value(payload: dict[str, Any], path: str, value: Any) -> dict[str, Any]:
+    current = get_path(payload if isinstance(payload, dict) else {}, path)
+    current_items = current if isinstance(current, list) else []
+    token = value
+    out_list = [item for item in current_items if str(item or "").strip()]
+    if str(token or "").strip() and token not in out_list:
+        out_list.append(token)
+    return set_path(payload if isinstance(payload, dict) else {}, path, out_list)

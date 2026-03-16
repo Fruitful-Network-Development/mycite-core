@@ -82,6 +82,14 @@ UI and tool flows that perform semantic writes should use shared preview/apply r
 - `POST /portal/api/data/geometry/preview`
 - `POST /portal/api/data/geometry/apply`
 
+Write-intent hardening baseline:
+
+- field contracts are engine-owned semantics (datum family, constraint family, allowed write modes, target ref-surface path, and required inputs), not just UI metadata
+- geometry/property templates define required inputs, prerequisite refs, parent/child intent, and duplicate policy (`reuse_if_local_ref_exists`)
+- preview/apply canonicalize write targets to semantic dot refs (`<msn_id>.<datum>`) and keep config/profile JSON as a ref surface
+- apply is deterministic: ordered writes are preserved, local reuse actions are explicit, and mutation summaries separate created vs reused refs
+- `contract_mss_sync` remains an engine side effect of anthology mutations; write pipeline surfaces it but does not own MSS policy
+
 Low-level primitives still exist and remain engine-owned:
 
 - `POST /portal/api/data/anthology/append`

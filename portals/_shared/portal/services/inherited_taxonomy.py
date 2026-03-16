@@ -389,7 +389,9 @@ def load_inherited_taxonomy(
 
     root_identifier = canonical_parsed.datum_address
     has_root = any(
-        _as_text(row.get("identifier") or row.get("row_id")) == root_identifier for row in rows
+        _as_text(row.get("identifier") or row.get("row_id")) == root_identifier
+        or _as_text(row.get("source_identifier")) == root_identifier
+        for row in rows
     )
     if not has_root:
         # Fall back to last row as root if the requested identifier is not present.
