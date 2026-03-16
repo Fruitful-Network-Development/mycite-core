@@ -127,3 +127,20 @@ AGRO-ERP should consume:
 - Declared output archetypes  
 
 It should **not** implement contract snapshot recompilation or compact-array compilation rules. That logic belongs in shared services; the tool depends on them via clear interfaces.
+
+---
+
+## MVP execution lock (TXA-first)
+
+Near-term MVP is intentionally narrow:
+
+- inherited **txa** resource is required for product-profile and invoice-log flows
+- inherited msn workflow is deferred unless required by a concrete MVP write path
+- AGRO backend orchestrates shared-core services, not route-local MSS/SAMRAS semantics
+- AGRO UI remains thin and tab-based (`Resource`, `Product Types`, `Invoice Log`)
+
+Core invariants for MVP:
+
+- sandbox resource JSON is source-of-truth for full txa/msn resource content
+- anthology does not re-materialize full `4-1-*` txa subtree after preview/apply
+- writes remain minimal-local and config-ref surfaced through shared write pipeline

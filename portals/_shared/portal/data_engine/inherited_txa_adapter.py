@@ -17,6 +17,21 @@ def _is_datum_id(token: str) -> bool:
     return len(parts) == 3 and all(part.isdigit() for part in parts)
 
 
+def _is_numeric_hyphen_token(token: str) -> bool:
+    parts = token.split("-")
+    return len(parts) >= 2 and all(part.isdigit() for part in parts)
+
+
+def _is_datum_ref_like(token: str) -> bool:
+    raw = _as_text(token)
+    if not raw:
+        return False
+    if "." in raw:
+        left, _sep, right = raw.partition(".")
+        return _is_numeric_hyphen_token(left) and _is_datum_id(right)
+    return _is_datum_id(raw)
+
+
 def _canonicalize_ref(token: str, *, source_msn_id: str) -> str:
     ref = _as_text(token)
     if not ref:
@@ -44,7 +59,7 @@ def build_field_ref_bindings(
     seen: set[str] = set()
     for item in refs:
         canonical = _canonicalize_ref(item, source_msn_id=source_msn_id)
-        if not canonical or canonical in seen:
+        if not canonical or not _is_datum_ref_like(canonical) or canonical in seen:
             continue
         seen.add(canonical)
         all_refs.append(canonical)
@@ -53,6 +68,9 @@ def build_field_ref_bindings(
             product_profile_refs.append(canonical)
         if raw.endswith(".8-4-1") or ".8-4-" in raw or raw.startswith("8-4-"):
             invoice_log_refs.append(canonical)
+    all_refs = sorted(all_refs)
+    product_profile_refs = sorted(product_profile_refs)
+    invoice_log_refs = sorted(invoice_log_refs)
     return {
         "all_refs": all_refs,
         "product_profile_refs": product_profile_refs,
@@ -60,23 +78,64 @@ def build_field_ref_bindings(
     }
 
 
+def _refs_from_external_bundle(bundle: dict[str, Any], *, source_msn_id: str) -> list[str]:
+    out: list[str] = []
+    for item in list(bundle.get("isolates") or []):
+        if not isinstance(item, dict):
+            continue
+        canonical = _as_text(item.get("canonical_ref"))
+        if canonical:
+            out.append(_canonicalize_ref(canonical, source_msn_id=source_msn_id))
+            continue
+        row = _to_dict(item.get("row"))
+        rid = _as_text(row.get("identifier") or row.get("row_id"))
+        if rid:
+            out.append(_canonicalize_ref(rid, source_msn_id=source_msn_id))
+    return out
+
+
+def select_inherited_binding_for_field(
+    *,
+    field_id: str,
+    field_ref_bindings: dict[str, Any] | None,
+) -> dict[str, Any]:
+    bindings = _to_dict(field_ref_bindings)
+    token = _as_text(field_id)
+    fallback = [str(item).strip() for item in list(bindings.get("all_refs") or []) if str(item).strip()]
+    if token == "inherited_product_profile_ref":
+        preferred = [str(item).strip() for item in list(bindings.get("product_profile_refs") or []) if str(item).strip()]
+        if preferred:
+            return {"selected_ref": preferred[0], "selection_source": "product_profile_refs", "warnings": []}
+        if fallback:
+            return {
+                "selected_ref": fallback[0],
+                "selection_source": "all_refs_fallback",
+                "warnings": ["no product_profile_refs found; fell back to all_refs"],
+            }
+        return {"selected_ref": "", "selection_source": "none", "warnings": ["no candidate inherited refs found"]}
+    if token == "inherited_supply_log_ref":
+        preferred = [str(item).strip() for item in list(bindings.get("invoice_log_refs") or []) if str(item).strip()]
+        if preferred:
+            return {"selected_ref": preferred[0], "selection_source": "invoice_log_refs", "warnings": []}
+        if fallback:
+            return {
+                "selected_ref": fallback[0],
+                "selection_source": "all_refs_fallback",
+                "warnings": ["no invoice_log_refs found; fell back to all_refs"],
+            }
+        return {"selected_ref": "", "selection_source": "none", "warnings": ["no candidate inherited refs found"]}
+    if fallback:
+        return {"selected_ref": fallback[0], "selection_source": "all_refs", "warnings": []}
+    return {"selected_ref": "", "selection_source": "none", "warnings": ["no candidate inherited refs found"]}
+
+
 def select_inherited_ref_for_field(
     *,
     field_id: str,
     field_ref_bindings: dict[str, Any] | None,
 ) -> str:
-    bindings = _to_dict(field_ref_bindings)
-    token = _as_text(field_id)
-    if token == "inherited_product_profile_ref":
-        preferred = [str(item).strip() for item in list(bindings.get("product_profile_refs") or []) if str(item).strip()]
-        if preferred:
-            return preferred[0]
-    if token == "inherited_supply_log_ref":
-        preferred = [str(item).strip() for item in list(bindings.get("invoice_log_refs") or []) if str(item).strip()]
-        if preferred:
-            return preferred[0]
-    fallback = [str(item).strip() for item in list(bindings.get("all_refs") or []) if str(item).strip()]
-    return fallback[0] if fallback else ""
+    selected = select_inherited_binding_for_field(field_id=field_id, field_ref_bindings=field_ref_bindings)
+    return _as_text(selected.get("selected_ref"))
 
 
 def adapt_published_txa_resource_value(
@@ -120,11 +179,13 @@ def adapt_published_txa_resource_value(
             bitstring=bitstring,
         )
     explicit_bindings = _to_dict(published_value.get("field_ref_bindings"))
-    fallback_refs = []
+    fallback_refs: list[str] = []
     for key in ("resource_ref", "target_ref", "inherited_ref"):
         token = _as_text(published_value.get(key))
         if token:
             fallback_refs.append(token)
+    if _as_text(item.get("schema")) == "mycite.external.isolate_bundle.v1":
+        fallback_refs.extend(_refs_from_external_bundle(item, source_msn_id=source_msn_id))
     if explicit_bindings:
         bindings = {
             "all_refs": [str(x).strip() for x in list(explicit_bindings.get("all_refs") or []) if str(x).strip()],
@@ -135,7 +196,8 @@ def adapt_published_txa_resource_value(
         }
     else:
         bindings = build_field_ref_bindings(fallback_refs, source_msn_id=source_msn_id)
-    inherited_resource_ref = select_inherited_ref_for_field(field_id="", field_ref_bindings=bindings)
+    selected = select_inherited_binding_for_field(field_id="", field_ref_bindings=bindings)
+    inherited_resource_ref = _as_text(selected.get("selected_ref"))
     provisional_state = _as_text(item.get("provisional_state") or compile_metadata.get("provisional_state") or "compiled")
     return {
         "ok": bool(resource_id),
@@ -151,6 +213,8 @@ def adapt_published_txa_resource_value(
         "role": "value",
         "field_ref_bindings": bindings,
         "inherited_resource_ref": inherited_resource_ref,
+        "binding_selection_source": _as_text(selected.get("selection_source") or "none"),
+        "warnings": [str(item).strip() for item in list(selected.get("warnings") or []) if str(item).strip()],
         "provisional_state": provisional_state,
         "context_source": _as_text(context_source) or "published_resource",
     }

@@ -15,7 +15,7 @@ from _shared.portal.data_engine.anthology_context import build_canonical_antholo
 from _shared.portal.data_engine.anthology_overlay import strip_base_duplicates_from_overlay
 from _shared.portal.data_engine.anthology_registry import load_base_registry
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
-from _shared.portal.data_engine.inherited_txa_adapter import select_inherited_ref_for_field
+from _shared.portal.data_engine.inherited_txa_adapter import select_inherited_binding_for_field
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
 from _shared.portal.sandbox import SandboxEngine, migrate_fnd_samras_rows_to_sandbox
 
@@ -366,9 +366,12 @@ def register_data_routes(
     def portal_data_sandbox_exposed_contact_card():
         source_msn_id = _msn_id()
         card_payload = {}
-        if source_msn_id and external_resource_resolver is not None and hasattr(external_resource_resolver, "_load_public_card"):
+        if source_msn_id and external_resource_resolver is not None:
             try:
-                card_payload = dict(external_resource_resolver._load_public_card(source_msn_id) or {})
+                if hasattr(external_resource_resolver, "_load_public_card"):
+                    card_payload = dict(external_resource_resolver._load_public_card(source_msn_id) or {})
+                elif hasattr(external_resource_resolver, "_load_contact_card"):
+                    card_payload = dict(external_resource_resolver._load_contact_card(source_msn_id) or {})
             except Exception:
                 card_payload = {}
         payload = _sandbox_engine().generate_contact_card_public_resources(
@@ -469,7 +472,7 @@ def register_data_routes(
                 external_resolver=external_resource_resolver,
                 merged_rows_by_id=_canonical_anthology_context().rows_by_id,
             )
-            inherited_ref = select_inherited_ref_for_field(
+            selected = select_inherited_binding_for_field(
                 field_id=str(intent.get("field_id") or "").strip(),
                 field_ref_bindings=(
                     (txa_context or {}).get("field_ref_bindings")
@@ -477,6 +480,9 @@ def register_data_routes(
                     else {}
                 ),
             )
+            inherited_ref = str(selected.get("selected_ref") or "").strip()
+            if selected.get("warnings"):
+                txa_context["binding_warnings"] = [str(item).strip() for item in list(selected.get("warnings") or []) if str(item).strip()]
             if inherited_ref:
                 fields["inherited_ref"] = inherited_ref
                 intent["fields"] = fields
@@ -506,7 +512,7 @@ def register_data_routes(
                 external_resolver=external_resource_resolver,
                 merged_rows_by_id=_canonical_anthology_context().rows_by_id,
             )
-            inherited_ref = select_inherited_ref_for_field(
+            selected = select_inherited_binding_for_field(
                 field_id=str(intent.get("field_id") or "").strip(),
                 field_ref_bindings=(
                     (txa_context or {}).get("field_ref_bindings")
@@ -514,6 +520,9 @@ def register_data_routes(
                     else {}
                 ),
             )
+            inherited_ref = str(selected.get("selected_ref") or "").strip()
+            if selected.get("warnings"):
+                txa_context["binding_warnings"] = [str(item).strip() for item in list(selected.get("warnings") or []) if str(item).strip()]
             if inherited_ref:
                 fields["inherited_ref"] = inherited_ref
                 intent["fields"] = fields

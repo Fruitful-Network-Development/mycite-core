@@ -673,10 +673,11 @@ class SandboxEngine:
             ),
             "field_ref_bindings": dict(bindings),
             "field_usable_refs": refs,
+            "binding_selection_source": _as_text(adapted.get("binding_selection_source")),
             "provisional_state": _as_text(adapted.get("provisional_state") or "compiled"),
             "context_source": _as_text(adapted.get("context_source") or context_source),
             "errors": [],
-            "warnings": [],
+            "warnings": [str(item).strip() for item in list(adapted.get("warnings") or []) if str(item).strip()],
         }
 
     def generate_contact_card_public_resources(

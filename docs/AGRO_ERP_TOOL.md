@@ -37,6 +37,13 @@ Tool-spec inputs/outputs and capability buckets are described in the tool spec (
 - `POST /portal/tools/agro_erp/apply` (plan-first apply through canonical data mutation routes)
 - `POST /portal/tools/agro_erp/daemon/resolve`
 - `POST /portal/tools/agro_erp/product_types` — compatibility route delegating to planner-driven product-type apply.
+- `GET /portal/tools/agro_erp/mvp/live_state_gate`
+- `POST /portal/tools/agro_erp/mvp/resource/select_or_load`
+- `POST /portal/tools/agro_erp/mvp/product/preview`
+- `POST /portal/tools/agro_erp/mvp/product/apply`
+- `POST /portal/tools/agro_erp/mvp/invoice/preview`
+- `POST /portal/tools/agro_erp/mvp/invoice/apply`
+- `GET /portal/tools/agro_erp/mvp/workflow/readback`
 
 Canonical core semantics remain on `/portal/api/data/*`:
 
@@ -77,6 +84,48 @@ Before apply, AGRO-ERP obtains and displays a structured write preview including
 - ordered write actions from the shared write plan
 
 AGRO-ERP then applies only shared write-pipeline-approved writes through canonical data-engine routes.
+
+## MVP workflow (TXA-first)
+
+The MVP operator loop is:
+
+1. select/load inherited txa resource
+2. inspect resource summary in `Resource` tab
+3. preview/apply inherited product-profile write
+4. preview/apply inherited invoice-log write
+5. read back both tabs from shared-core readback view model
+
+MVP read/write boundaries:
+
+- AGRO endpoints orchestrate shared-core services directly where practical
+- AGRO templates render engine summaries only
+- MSS/SAMRAS semantics stay in shared core
+- no full txa tree is materialized back into anthology
+
+## Readback contract (MVP)
+
+`GET /portal/tools/agro_erp/mvp/workflow/readback` returns:
+
+- `product_types.items[]`
+- `invoice_log.items[]`
+
+Each item includes:
+
+- `canonical_ref`
+- `local_id`
+- `source_scope`
+- `resource_id_used`
+- `written_locally`
+- `reused_ref`
+- `updated_at`
+
+Summary shape:
+
+- `summary.created_count`
+- `summary.reused_count`
+- `summary.warnings[]`
+- `summary.count`
+- `empty_reason` (when no items)
 
 AGRO-ERP boundary in hardened write model:
 

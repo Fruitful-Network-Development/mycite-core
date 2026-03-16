@@ -8,6 +8,13 @@ from typing import Any
 
 from flask import Blueprint, abort, current_app, jsonify, render_template, request
 
+from _shared.portal.data_engine.anthology_context import build_canonical_anthology_context
+from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
+from _shared.portal.data_engine.inherited_txa_adapter import select_inherited_binding_for_field
+from _shared.portal.data_engine.profile_config_refs import get_path
+from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
+from _shared.portal.data_engine.external_resources.resolver import ExternalResourceResolver
+from _shared.portal.sandbox.engine import SandboxEngine
 from portal.core_services.runtime import resolve_active_private_config_path
 from portal.services.contract_store import get_contract, list_contracts
 from portal.services.datum_refs import normalize_datum_ref
@@ -64,6 +71,149 @@ def _data_dir() -> Path:
 def _workspace():
     return current_app.config.get("MYCITE_DATA_WORKSPACE")
 
+
+def _sandbox_engine() -> SandboxEngine:
+    return SandboxEngine(data_root=_data_dir())
+
+
+def _external_resolver() -> ExternalResourceResolver:
+    return ExternalResourceResolver(
+        data_dir=_data_dir(),
+        public_dir=Path(str(os.environ.get("PUBLIC_DIR") or "")).resolve()
+        if str(os.environ.get("PUBLIC_DIR") or "").strip()
+        else (_data_dir().parent / "public"),
+        local_msn_id=str(current_app.config.get("MYCITE_MSN_ID") or "").strip(),
+    )
+
+
+def _load_active_config_for_write() -> dict[str, Any]:
+    payload, _path = _active_config()
+    return payload if isinstance(payload, dict) else {}
+
+
+def _save_active_config_for_write(payload: dict[str, Any]) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    msn_id = str(current_app.config.get("MYCITE_MSN_ID") or "").strip()
+    target = resolve_active_private_config_path(_private_dir(), msn_id or None)
+    if target is None:
+        return False
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        current_app.config["MYCITE_ACTIVE_PRIVATE_CONFIG"] = dict(payload)
+        return True
+    except Exception:
+        return False
+
+
+def _canonical_anthology_context():
+    overlay_path = _data_dir() / "anthology.json"
+    if overlay_path.exists():
+        return build_canonical_anthology_context(overlay_path=overlay_path)
+    return build_canonical_anthology_context(overlay_payload={})
+
+
+def _no_external_plan(_payload: dict[str, Any]) -> tuple[bool, dict[str, Any], str]:
+    return True, {"ok": True, "ordered_writes": []}, ""
+
+
+def _split_refs(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    token = str(value or "").strip()
+    return [token] if token else []
+
+
+def _safe_local_id(canonical_ref: str) -> str:
+    token = str(canonical_ref or "").strip()
+    if "." in token:
+        return token.split(".", 1)[1]
+    return token
+
+
+def _extract_updated_at(row: dict[str, Any]) -> int:
+    magnitude = str((row or {}).get("magnitude") or "").strip()
+    if magnitude.startswith("{") and magnitude.endswith("}"):
+        try:
+            payload = json.loads(magnitude)
+        except Exception:
+            payload = {}
+        if isinstance(payload, dict):
+            try:
+                return int(payload.get("updated_at") or 0)
+            except Exception:
+                return 0
+    return 0
+
+
+def _build_readback_items(
+    *,
+    canonical_refs: list[str],
+    resource_id_used: str,
+    source_scope_hint: str,
+) -> list[dict[str, Any]]:
+    context = _canonical_anthology_context()
+    rows_by_id = context.rows_by_id if isinstance(context.rows_by_id, dict) else {}
+    out: list[dict[str, Any]] = []
+    for canonical in canonical_refs:
+        local_id = _safe_local_id(canonical)
+        row = rows_by_id.get(local_id) if isinstance(rows_by_id, dict) else {}
+        row = row if isinstance(row, dict) else {}
+        source_scope = str(row.get("source_scope") or source_scope_hint or "inherited").strip() or "inherited"
+        updated_at = _extract_updated_at(row)
+        out.append(
+            {
+                "canonical_ref": canonical,
+                "local_id": local_id,
+                "source_scope": source_scope,
+                "resource_id_used": resource_id_used,
+                "written_locally": bool(source_scope == "portal"),
+                "reused_ref": True,
+                "updated_at": updated_at,
+            }
+        )
+    out.sort(key=lambda item: (-int(item.get("updated_at") or 0), str(item.get("canonical_ref") or "")))
+    return out
+
+
+def _readback_for_field(field_id: str, *, resource_id_used: str, mutation_summary: dict[str, Any] | None = None) -> dict[str, Any]:
+    contracts = default_profile_field_contracts()
+    contract = contracts.get(str(field_id or "").strip())
+    if contract is None:
+        return {
+            "items": [],
+            "summary": {"created_count": 0, "reused_count": 0, "warnings": ["unknown field contract"], "count": 0},
+            "empty_reason": "unknown_field_contract",
+        }
+    config = _load_active_config_for_write()
+    raw = get_path(config, contract.target_path)
+    refs = _split_refs(raw)
+    items = _build_readback_items(canonical_refs=refs, resource_id_used=resource_id_used, source_scope_hint="inherited")
+    summary = mutation_summary if isinstance(mutation_summary, dict) else {}
+    created_count = int(summary.get("created_count") or 0)
+    reused_count = int(summary.get("reused_count") or 0)
+    warnings = [str(item).strip() for item in list(summary.get("warnings") or []) if str(item).strip()]
+    return {
+        "items": items,
+        "summary": {
+            "created_count": created_count,
+            "reused_count": reused_count,
+            "warnings": warnings,
+            "count": len(items),
+        },
+        "empty_reason": "" if items else "no_entries",
+    }
+
+
+def _no_materialization_invariants(*, expected_max_created: int = 0) -> dict[str, Any]:
+    anthology_payload = _read_json_object(_data_dir() / "anthology.json")
+    has_txa_tree = any(str(key).startswith("4-1-") for key in anthology_payload.keys())
+    return {
+        "no_txa_tree_materialized": not has_txa_tree,
+        "sandbox_source_of_truth_assumed": True,
+        "expected_max_created": int(expected_max_created),
+    }
 
 def _capability_payload() -> dict[str, Any]:
     payload = _read_json_object(_CAPABILITIES_PATH)
@@ -707,9 +857,170 @@ def _build_model_payload() -> dict[str, Any]:
             "resources": "/portal/api/data/external/resources",
             "plan_preview": "/portal/tools/agro_erp/plan_preview",
             "apply": "/portal/tools/agro_erp/apply",
+            "mvp_live_state_gate": "/portal/tools/agro_erp/mvp/live_state_gate",
+            "mvp_resource_select": "/portal/tools/agro_erp/mvp/resource/select_or_load",
+            "mvp_product_preview": "/portal/tools/agro_erp/mvp/product/preview",
+            "mvp_product_apply": "/portal/tools/agro_erp/mvp/product/apply",
+            "mvp_invoice_preview": "/portal/tools/agro_erp/mvp/invoice/preview",
+            "mvp_invoice_apply": "/portal/tools/agro_erp/mvp/invoice/apply",
+            "mvp_readback": "/portal/tools/agro_erp/mvp/workflow/readback",
         },
     }
 
+
+def _live_state_gate_payload() -> dict[str, Any]:
+    data_root = _data_dir()
+    anthology_path = data_root / "anthology.json"
+    anthology_payload = _read_json_object(anthology_path)
+    sandbox_resources = data_root / "sandbox" / "resources"
+    resource_files = sorted([item.name for item in sandbox_resources.glob("*.json")]) if sandbox_resources.exists() else []
+    txa_resource_ids: list[str] = []
+    msn_resource_ids: list[str] = []
+    for filename in resource_files:
+        path = sandbox_resources / filename
+        payload = _read_json_object(path)
+        rid = str(payload.get("resource_id") or filename.rsplit(".", 1)[0]).strip()
+        kind = str(payload.get("resource_kind") or payload.get("kind") or "").strip().lower()
+        if kind == "txa":
+            txa_resource_ids.append(rid)
+        if kind == "msn":
+            msn_resource_ids.append(rid)
+    txa_resource_ids = sorted(set(txa_resource_ids))
+    msn_resource_ids = sorted(set(msn_resource_ids))
+
+    has_layer4_tree = any(str(key).startswith("4-1-") for key in anthology_payload.keys())
+    has_selector_rows = any(str(key) in {"5-0-1", "5-0-2"} for key in anthology_payload.keys())
+    config = _load_active_config_for_write()
+    product_ref = str(get_path(config, "agro.inherited.product_profile_ref") or "").strip()
+    invoice_ref = str(get_path(config, "agro.inherited.supply_log_ref") or "").strip()
+    refs_ok = True
+    refs_errors: list[str] = []
+    for field_name, token in (("product_profile_ref", product_ref), ("supply_log_ref", invoice_ref)):
+        if token and "." not in token:
+            refs_ok = False
+            refs_errors.append(f"{field_name} is not canonical ref: {token}")
+    hidden_dependency = False
+    hidden_details: list[str] = []
+    for token in [product_ref, invoice_ref]:
+        if ".4-1-" in token:
+            hidden_dependency = True
+            hidden_details.append(token)
+    for key, value in anthology_payload.items():
+        row_text = json.dumps(value, ensure_ascii=True) if isinstance(value, (dict, list)) else str(value)
+        if "4-1-" in row_text and str(key).startswith(("8-4-", "8-5-")):
+            hidden_dependency = True
+            hidden_details.append(str(key))
+
+    checks = [
+        {
+            "check_id": "isolated_resource_files_exist",
+            "status": "PASS" if bool(txa_resource_ids) else "FAIL",
+            "detail": {"resource_files": resource_files, "txa_resource_ids": txa_resource_ids, "msn_resource_ids": msn_resource_ids},
+            "remediation": "Run sandbox migration/compile so txa resource JSON files exist." if not txa_resource_ids else "",
+        },
+        {
+            "check_id": "anthology_owns_no_full_txa_tree",
+            "status": "PASS" if not has_layer4_tree and not has_selector_rows else "FAIL",
+            "detail": {"has_layer4_1_rows": has_layer4_tree, "has_5_0_selectors": has_selector_rows},
+            "remediation": "Re-run extraction migration to remove txa/msn trees from anthology." if has_layer4_tree or has_selector_rows else "",
+        },
+        {
+            "check_id": "txa_resource_ids_known",
+            "status": "PASS" if bool(txa_resource_ids) else "FAIL",
+            "detail": {"txa_resource_ids": txa_resource_ids},
+            "remediation": "Pin one txa resource_id for MVP workflow fixtures." if not txa_resource_ids else "",
+        },
+        {
+            "check_id": "product_invoice_reads_ok_after_migration",
+            "status": "PASS" if refs_ok else "FAIL",
+            "detail": {"product_profile_ref": product_ref, "supply_log_ref": invoice_ref, "errors": refs_errors},
+            "remediation": "Normalize config refs to canonical msn_id.datum_id format." if not refs_ok else "",
+        },
+        {
+            "check_id": "no_hidden_local_txa_subtree_dependency",
+            "status": "PASS" if not hidden_dependency else "FAIL",
+            "detail": {"hits": hidden_details},
+            "remediation": "Remove direct 4-1-* dependencies from profile/invoice paths and use inherited refs only." if hidden_dependency else "",
+        },
+    ]
+    overall_ok = all(item.get("status") == "PASS" for item in checks)
+    return {
+        "ok": overall_ok,
+        "checks": checks,
+        "committed_resource_ids": {"txa_resource_ids": txa_resource_ids, "msn_resource_ids": msn_resource_ids},
+        "anthology_path": str(anthology_path),
+        "sandbox_resource_dir": str(sandbox_resources),
+    }
+
+
+def _compile_and_adapt_resource_context(*, resource_ref: str) -> dict[str, Any]:
+    local_msn_id = str(current_app.config.get("MYCITE_MSN_ID") or "").strip()
+    resolver = _external_resolver()
+    sandbox = _sandbox_engine()
+    canonical_context = _canonical_anthology_context()
+    token = str(resource_ref or "").strip()
+    if token.startswith("sandbox:") or "." not in token:
+        rid = token.split(":", 1)[1] if token.startswith("sandbox:") else token
+        sandbox.compile_isolated_mss_resource(resource_id=rid)
+        token = f"sandbox:{rid}"
+    inherited = sandbox.compile_txa_inherited_context(
+        resource_ref=token,
+        local_msn_id=local_msn_id,
+        external_resolver=resolver,
+        merged_rows_by_id=canonical_context.rows_by_id,
+    )
+    resolved = sandbox.resolve_inherited_resource_context(
+        resource_ref=token,
+        local_msn_id=local_msn_id,
+        external_resolver=resolver,
+    )
+    adapted = sandbox.adapt_published_txa_context(
+        published_resource_value=resolved.resource_value if resolved.ok and isinstance(resolved.resource_value, dict) else {},
+        context_source="agro_erp.mvp.resource_select",
+    )
+    return {
+        "resource_ref": token,
+        "inherited_context": inherited,
+        "resolved_context": resolved.to_dict(),
+        "adapted_context": adapted,
+    }
+
+
+def _preview_inherited_write(*, field_id: str, resource_ref: str, inherited_ref_override: str = "") -> dict[str, Any]:
+    built = _compile_and_adapt_resource_context(resource_ref=resource_ref)
+    inherited = built.get("inherited_context") if isinstance(built.get("inherited_context"), dict) else {}
+    selection: dict[str, Any]
+    if str(inherited_ref_override or "").strip():
+        selection = {"selected_ref": str(inherited_ref_override).strip(), "selection_source": "explicit_input", "warnings": []}
+    else:
+        selection = select_inherited_binding_for_field(
+            field_id=field_id,
+            field_ref_bindings=(inherited.get("field_ref_bindings") if isinstance(inherited.get("field_ref_bindings"), dict) else {}),
+        )
+    local_msn_id = str(current_app.config.get("MYCITE_MSN_ID") or "").strip()
+    intent = {
+        "intent_type": "profile_field",
+        "field_id": field_id,
+        "write_mode": "stage_inherited_ref",
+        "resource_ref": resource_ref,
+        "local_msn_id": local_msn_id,
+        "fields": {"inherited_ref": str(selection.get("selected_ref") or "").strip()},
+        "inherited_context": inherited,
+    }
+    preview = preview_write_intent(
+        intent=intent,
+        current_config=_load_active_config_for_write(),
+        local_anthology_payload=_canonical_anthology_context().rows_payload,
+        external_plan_fn=_no_external_plan,
+    )
+    return {
+        "ok": preview.ok,
+        "preview": preview.to_dict(),
+        "selection": selection,
+        "resource_context": built,
+        "errors": list(preview.errors),
+        "warnings": list(preview.warnings) + [str(item).strip() for item in list(selection.get("warnings") or []) if str(item).strip()],
+    }
 
 @agro_erp_bp.get("/portal/tools/agro_erp/home")
 def agro_erp_home():
@@ -897,6 +1208,185 @@ def agro_erp_product_types_save():
         return jsonify(preview), status
     apply_status, apply_payload = _apply_materialization(preview)
     return jsonify(apply_payload), apply_status
+
+
+@agro_erp_bp.get("/portal/tools/agro_erp/mvp/live_state_gate")
+def agro_erp_mvp_live_state_gate():
+    payload = _live_state_gate_payload()
+    return jsonify(payload), (200 if bool(payload.get("ok")) else 409)
+
+
+@agro_erp_bp.post("/portal/tools/agro_erp/mvp/resource/select_or_load")
+def agro_erp_mvp_resource_select_or_load():
+    if not request.is_json:
+        abort(415, description="Expected application/json body")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(400, description="Expected JSON object body")
+    resource_ref = str(body.get("resource_ref") or "").strip()
+    if not resource_ref:
+        source_msn_id = str(body.get("source_msn_id") or "").strip()
+        resource_id = str(body.get("resource_id") or "").strip()
+        local_resource_id = str(body.get("local_resource_id") or "").strip()
+        if source_msn_id and resource_id:
+            resource_ref = f"{source_msn_id}.{resource_id}"
+        elif local_resource_id:
+            resource_ref = f"sandbox:{local_resource_id}"
+    if not resource_ref:
+        abort(400, description="resource_ref or source_msn_id/resource_id is required")
+    payload = _compile_and_adapt_resource_context(resource_ref=resource_ref)
+    adapted = payload.get("adapted_context") if isinstance(payload.get("adapted_context"), dict) else {}
+    ok = bool((payload.get("inherited_context") or {}).get("ok")) and bool(adapted.get("ok"))
+    return jsonify({"ok": ok, **payload}), (200 if ok else 400)
+
+
+@agro_erp_bp.post("/portal/tools/agro_erp/mvp/product/preview")
+def agro_erp_mvp_product_preview():
+    if not request.is_json:
+        abort(415, description="Expected application/json body")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(400, description="Expected JSON object body")
+    resource_ref = str(body.get("resource_ref") or "").strip()
+    if not resource_ref:
+        abort(400, description="resource_ref is required")
+    payload = _preview_inherited_write(
+        field_id="inherited_product_profile_ref",
+        resource_ref=resource_ref,
+        inherited_ref_override=str(body.get("inherited_ref") or "").strip(),
+    )
+    return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+
+@agro_erp_bp.post("/portal/tools/agro_erp/mvp/product/apply")
+def agro_erp_mvp_product_apply():
+    if not request.is_json:
+        abort(415, description="Expected application/json body")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(400, description="Expected JSON object body")
+    resource_ref = str(body.get("resource_ref") or "").strip()
+    if not resource_ref:
+        abort(400, description="resource_ref is required")
+    preview_payload = _preview_inherited_write(
+        field_id="inherited_product_profile_ref",
+        resource_ref=resource_ref,
+        inherited_ref_override=str(body.get("inherited_ref") or "").strip(),
+    )
+    if not bool(preview_payload.get("ok")):
+        return jsonify(preview_payload), 400
+    preview = preview_payload.get("preview") if isinstance(preview_payload.get("preview"), dict) else {}
+    from _shared.portal.data_engine.write_pipeline import WritePreviewResult
+
+    obj = WritePreviewResult(
+        ok=bool(preview.get("ok")),
+        intent=dict(preview.get("intent") or {}),
+        validation=dict(preview.get("validation") or {}),
+        plan=dict(preview.get("plan") or {}),
+        config_updates=[dict(item) for item in list(preview.get("config_updates") or []) if isinstance(item, dict)],
+        write_actions=[dict(item) for item in list(preview.get("write_actions") or []) if isinstance(item, dict)],
+        warnings=[str(item) for item in list(preview.get("warnings") or [])],
+        errors=[str(item) for item in list(preview.get("errors") or [])],
+    )
+    result = apply_write_preview(
+        preview=obj,
+        workspace=_workspace(),
+        load_config_fn=_load_active_config_for_write,
+        save_config_fn=_save_active_config_for_write,
+    )
+    readback = _readback_for_field(
+        "inherited_product_profile_ref",
+        resource_id_used=str((preview_payload.get("resource_context") or {}).get("resource_ref") or resource_ref),
+        mutation_summary=result.to_dict().get("mutation_summary") if isinstance(result.to_dict(), dict) else {},
+    )
+    out = result.to_dict()
+    out["readback"] = readback
+    out["preview"] = preview_payload
+    out["invariants"] = _no_materialization_invariants(expected_max_created=0)
+    out["invariants"]["minimal_local_rows_bound_ok"] = int((out.get("mutation_summary") or {}).get("created_count") or 0) <= 0
+    return jsonify(out), (200 if result.ok else 400)
+
+
+@agro_erp_bp.post("/portal/tools/agro_erp/mvp/invoice/preview")
+def agro_erp_mvp_invoice_preview():
+    if not request.is_json:
+        abort(415, description="Expected application/json body")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(400, description="Expected JSON object body")
+    resource_ref = str(body.get("resource_ref") or "").strip()
+    if not resource_ref:
+        abort(400, description="resource_ref is required")
+    payload = _preview_inherited_write(
+        field_id="inherited_supply_log_ref",
+        resource_ref=resource_ref,
+        inherited_ref_override=str(body.get("inherited_ref") or "").strip(),
+    )
+    return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+
+@agro_erp_bp.post("/portal/tools/agro_erp/mvp/invoice/apply")
+def agro_erp_mvp_invoice_apply():
+    if not request.is_json:
+        abort(415, description="Expected application/json body")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(400, description="Expected JSON object body")
+    resource_ref = str(body.get("resource_ref") or "").strip()
+    if not resource_ref:
+        abort(400, description="resource_ref is required")
+    preview_payload = _preview_inherited_write(
+        field_id="inherited_supply_log_ref",
+        resource_ref=resource_ref,
+        inherited_ref_override=str(body.get("inherited_ref") or "").strip(),
+    )
+    if not bool(preview_payload.get("ok")):
+        return jsonify(preview_payload), 400
+    preview = preview_payload.get("preview") if isinstance(preview_payload.get("preview"), dict) else {}
+    from _shared.portal.data_engine.write_pipeline import WritePreviewResult
+
+    obj = WritePreviewResult(
+        ok=bool(preview.get("ok")),
+        intent=dict(preview.get("intent") or {}),
+        validation=dict(preview.get("validation") or {}),
+        plan=dict(preview.get("plan") or {}),
+        config_updates=[dict(item) for item in list(preview.get("config_updates") or []) if isinstance(item, dict)],
+        write_actions=[dict(item) for item in list(preview.get("write_actions") or []) if isinstance(item, dict)],
+        warnings=[str(item) for item in list(preview.get("warnings") or [])],
+        errors=[str(item) for item in list(preview.get("errors") or [])],
+    )
+    result = apply_write_preview(
+        preview=obj,
+        workspace=_workspace(),
+        load_config_fn=_load_active_config_for_write,
+        save_config_fn=_save_active_config_for_write,
+    )
+    readback = _readback_for_field(
+        "inherited_supply_log_ref",
+        resource_id_used=str((preview_payload.get("resource_context") or {}).get("resource_ref") or resource_ref),
+        mutation_summary=result.to_dict().get("mutation_summary") if isinstance(result.to_dict(), dict) else {},
+    )
+    out = result.to_dict()
+    out["readback"] = readback
+    out["preview"] = preview_payload
+    out["invariants"] = _no_materialization_invariants(expected_max_created=0)
+    out["invariants"]["minimal_local_rows_bound_ok"] = int((out.get("mutation_summary") or {}).get("created_count") or 0) <= 0
+    return jsonify(out), (200 if result.ok else 400)
+
+
+@agro_erp_bp.get("/portal/tools/agro_erp/mvp/workflow/readback")
+def agro_erp_mvp_workflow_readback():
+    resource_ref = str(request.args.get("resource_ref") or "").strip()
+    product = _readback_for_field("inherited_product_profile_ref", resource_id_used=resource_ref, mutation_summary={})
+    invoice = _readback_for_field("inherited_supply_log_ref", resource_id_used=resource_ref, mutation_summary={})
+    return jsonify(
+        {
+            "ok": True,
+            "resource_ref": resource_ref,
+            "product_types": product,
+            "invoice_log": invoice,
+        }
+    )
 
 
 def get_tool() -> dict[str, object]:

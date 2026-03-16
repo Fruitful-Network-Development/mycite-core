@@ -3,297 +3,83 @@
 {% block title %}MyCite | AGRO ERP{% endblock %}
 
 {% set page_title = "AGRO ERP" %}
-{% set page_subtitle = "Daemon-driven property coordinate resolution through anthology-aware NIMM-style directives." %}
+{% set page_subtitle = "TXA-first inherited workflow MVP." %}
 
 {% block body %}
-  {% macro render_taxonomy_node(node) %}
-    <li>
-      <code>{{ node.id }}</code>
-      {% if node.path %}
-        <span class="inline-meta">path={{ node.path }}</span>
-      {% endif %}
-      {% if node.children %}
-        <ul class="liststack">
-          {% for child in node.children %}
-            {{ render_taxonomy_node(child) }}
-          {% endfor %}
-        </ul>
-      {% endif %}
-    </li>
-  {% endmacro %}
-  <section class="agro-tool">
-    <div class="cardgrid">
-      <article class="card">
-        <div class="card__kicker">Tool Summary</div>
-        <div class="card__title">AGRO ERP Daemon Workspace</div>
-        <div class="card__body">
-          <p><code>msn_id</code>: {{ model.msn_id }}</p>
-          <p><code>portal</code>: {{ model.portal_instance_id }}</p>
-          <p><code>property.title</code>: {{ model.property_title }}</p>
-          <p><code>property.geometry.type</code>: {{ model.property_geometry_type }}</p>
-          <p><code>active_config</code>: {{ model.active_config_path }}</p>
-          <p><code>anthology</code>: {{ model.anthology_path }}</p>
-          <p><a href="/portal/tools/agro_erp/model.json">View model as JSON</a></p>
-          <p><a href="/portal/tools/agro_erp/capabilities.json">View capabilities JSON</a></p>
+  <section class="agro-mvp">
+    <div class="card">
+      <div class="card__kicker">MVP Workflow</div>
+      <div class="card__title">Inherited TXA -> Product + Invoice</div>
+      <div class="card__body">
+        <div>
+          <button type="button" data-tab="resource">Resource</button>
+          <button type="button" data-tab="product">Product Types</button>
+          <button type="button" data-tab="invoice">Invoice Log</button>
         </div>
-      </article>
-
-      <article class="card card--full">
-        <div class="card__kicker">Planner-Driven Creation</div>
-        <div class="card__title">Public Resource -> Template -> Plan -> Apply</div>
-        <div class="card__body">
-          <p>
-            AGRO-ERP remains an orchestration layer. It delegates resource discovery, isolate bundle resolution,
-            and write planning to canonical shared services under <code>/portal/api/data/*</code>.
-          </p>
-          <div class="geo-grid">
-            <div>
-              <label>
-                <strong>Source Portal MSN</strong><br />
-                <input id="agroSourceMsn" type="text" value="{{ model.taxonomy.ref.split('.')[0] if model.taxonomy and model.taxonomy.ref else '' }}" />
-              </label>
-            </div>
-            <div>
-              <button id="agroLoadResources" type="button">Load Public Resources</button>
-            </div>
-          </div>
-          <div id="agroResourceList" class="jsonblock">No resources loaded.</div>
-          <div class="geo-grid">
-            <div>
-              <label>
-                <strong>Resource</strong><br />
-                <select id="agroResourceId"></select>
-              </label>
-            </div>
-            <div>
-              <label>
-                <strong>Template</strong><br />
-                <select id="agroTemplateId"></select>
-              </label>
-            </div>
-          </div>
-          <div id="agroTemplateFields"></div>
-          <div class="geo-grid">
-            <div><button id="agroPlanPreview" type="button">Preview Materialization Plan</button></div>
-            <div><button id="agroApplyPlan" type="button">Apply Planned Writes</button></div>
-          </div>
-          <h3>Planner Preview</h3>
-          <pre id="agroPlanOutput" class="jsonblock">No plan preview generated yet.</pre>
-        </div>
-      </article>
-
-      <article class="card">
-        <div class="card__kicker">Config Inputs</div>
-        <div class="card__title">Raw Property Tokens</div>
-        <div class="card__body">
-          <p><strong>property.bbox</strong></p>
-          {% if model.raw_property_bbox %}
-            <ul class="liststack">
-              {% for token in model.raw_property_bbox %}
-                <li><code>{{ token }}</code></li>
-              {% endfor %}
-            </ul>
-          {% else %}
-            <p>No bbox tokens were found.</p>
-          {% endif %}
-
-          <p><strong>property.geometry.coordinates</strong></p>
-          {% if model.raw_property_geometry_coordinates %}
-            <ul class="liststack">
-              {% for token in model.raw_property_geometry_coordinates %}
-                <li><code>{{ token }}</code></li>
-              {% endfor %}
-            </ul>
-          {% else %}
-            <p>No geometry coordinate tokens were found.</p>
-          {% endif %}
-        </div>
-      </article>
-
-      <article class="card">
-        <div class="card__kicker">Inherited Data</div>
-        <div class="card__title">FND Taxonomy Collection</div>
-        <div class="card__body">
-          {% set taxonomy = model.taxonomy if model.taxonomy is mapping else {} %}
-          {% if taxonomy and taxonomy.ok %}
-            <p>
-              <strong>taxonomy_ref</strong>:
-              <code>{{ taxonomy.ref }}</code>
-            </p>
-            <p>
-              <strong>scope</strong>:
-              <code>{{ taxonomy.scope }}</code>
-            </p>
-            {% set tree = taxonomy.tree if taxonomy.tree is mapping else {} %}
-            {% if tree %}
-              <h3>Taxonomy Tree (MSS-derived, read-only)</h3>
-              <ul class="liststack">
-                {{ render_taxonomy_node(tree) }}
-              </ul>
-            {% else %}
-              <p>No taxonomy tree structure was resolved.</p>
-            {% endif %}
-          {% else %}
-            <p>No inherited taxonomy context is available yet.</p>
-          {% endif %}
-        </div>
-      </article>
-
-      <article class="card">
-        <div class="card__kicker">Coordinate Notation</div>
-        <div class="card__title">Fixed-Width Signed Hex Split</div>
-        <div class="card__body">
-          <p>
-            AGRO ERP decodes each coordinate token by splitting it into equal halves.
-            Upper half is longitude-axis value, lower half is latitude-axis value.
-          </p>
-          <p>
-            Each axis is decoded as signed two's-complement and scaled by
-            <code>1e7</code> to produce decimal longitude/latitude pairs.
-          </p>
-        </div>
-      </article>
-
-      <article class="card card--full">
-        <div class="card__kicker">Daemon Registry</div>
-        <div class="card__title">NIMM Directive Scripts (AGRO ERP)</div>
-        <div class="card__body">
-          <div class="agro-tool__tableWrap">
-            <table class="agro-tool__table">
-              <thead>
-                <tr>
-                  <th>Daemon</th>
-                  <th>Config Path</th>
-                  <th>Directive Script</th>
-                  <th>Tokens</th>
-                  <th>Resolved Pairs</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for daemon in model.daemons %}
-                  <tr>
-                    <td>
-                      <strong>{{ daemon.title }}</strong><br />
-                      <code>{{ daemon.daemon_id }}</code>
-                    </td>
-                    <td><code>{{ daemon.config_path }}</code></td>
-                    <td><code>{{ daemon.directive.script }}</code></td>
-                    <td>{{ daemon.token_count }}</td>
-                    <td>{{ daemon.resolved_coordinate_pairs | length }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </article>
-
-      <article class="card card--full">
-        <div class="card__kicker">Resolved Geometry</div>
-        <div class="card__title">Property Coordinates Through Daemon</div>
-        <div class="card__body">
-          {% set polygon = model.polygon_svg if model.polygon_svg is mapping else {} %}
-          {% if polygon and polygon.available %}
-            <div class="geo-plot">
-              <svg viewBox="{{ polygon.viewbox }}" role="img" aria-label="AGRO ERP geometry preview">
-                <polyline class="geo-plot__outline" points="{{ polygon.points }}" />
-                <polygon class="geo-plot__fill" points="{{ polygon.points }}" />
-              </svg>
-            </div>
-          {% else %}
-            <p>No geometry polygon preview available yet.</p>
-          {% endif %}
-
-          <div class="geo-grid">
-            <div>
-              <h3>Geometry Daemon Output</h3>
-              {% if model.geometry_daemon and model.geometry_daemon.resolved %}
-                <ul class="liststack">
-                  {% for row in model.geometry_daemon.resolved %}
-                    <li>
-                      <code>{{ row.token }}</code>
-                      <span class="inline-meta">{{ row.source }}</span>
-                      {% if row.resolved_pair %}
-                        <span class="inline-meta">[{{ row.resolved_pair[0] }}, {{ row.resolved_pair[1] }}]</span>
-                      {% else %}
-                        <span class="inline-meta">unresolved</span>
-                      {% endif %}
-                    </li>
-                  {% endfor %}
-                </ul>
-              {% else %}
-                <p>No geometry daemon output available.</p>
-              {% endif %}
-            </div>
-
-            <div>
-              <h3>BBox Daemon Output</h3>
-              {% if model.bbox_daemon and model.bbox_daemon.resolved %}
-                <ul class="liststack">
-                  {% for row in model.bbox_daemon.resolved %}
-                    <li>
-                      <code>{{ row.token }}</code>
-                      <span class="inline-meta">{{ row.source }}</span>
-                      {% if row.resolved_pair %}
-                        <span class="inline-meta">[{{ row.resolved_pair[0] }}, {{ row.resolved_pair[1] }}]</span>
-                      {% else %}
-                        <span class="inline-meta">unresolved</span>
-                      {% endif %}
-                    </li>
-                  {% endfor %}
-                </ul>
-              {% else %}
-                <p>No bbox daemon output available.</p>
-              {% endif %}
-            </div>
-          </div>
-        </div>
-      </article>
-
-      <article class="card card--full">
-        <div class="card__kicker">AGRO ERP Archetypes</div>
-        <div class="card__title">Product Type Definition</div>
-        <div class="card__body">
-          {% set archetype = model.product_type_archetype if model.product_type_archetype is mapping else {} %}
-          {% if archetype and archetype.fields %}
-            <p>
-              <strong>schema</strong>:
-              <code>{{ archetype.schema }}</code>
-            </p>
-            <table class="agro-tool__table">
-              <thead>
-                <tr>
-                  <th>Field</th>
-                  <th>Type</th>
-                  <th>Required</th>
-                  <th>Description</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for field in archetype.fields %}
-                  <tr>
-                    <td><code>{{ field.id }}</code></td>
-                    <td><code>{{ field.type }}</code></td>
-                    <td>{{ "yes" if field.required else "no" }}</td>
-                    <td>{{ field.description }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          {% else %}
-            <p>No product-type archetype metadata is available.</p>
-          {% endif %}
-        </div>
-      </article>
-
-      <article class="card card--full">
-        <div class="card__kicker">Model Payload</div>
-        <div class="card__title">AGRO ERP Runtime Model</div>
-        <div class="card__body">
-          <pre class="jsonblock">{{ model_json }}</pre>
-        </div>
-      </article>
+      </div>
     </div>
+
+    <article id="tab-resource" class="card card--full">
+      <div class="card__kicker">Resource</div>
+      <div class="card__title">Select/Load Inherited TXA Resource</div>
+      <div class="card__body">
+        <p><code>msn_id</code>: {{ model.msn_id }}</p>
+        <label>
+          <strong>Resource Ref</strong><br />
+          <input id="resourceRef" type="text" placeholder="sandbox:txa.samras.5-0-1 or <msn_id>.<resource_id>" />
+        </label>
+        <div style="margin-top:8px">
+          <button id="resourceSelectBtn" type="button">Load Resource Context</button>
+          <button id="resourceGateBtn" type="button">Run Live-State Gate</button>
+        </div>
+        <h3>Resource Summary</h3>
+        <pre id="resourceSummary" class="jsonblock">No resource selected.</pre>
+        <h3>Live-State Gate</h3>
+        <pre id="liveGateSummary" class="jsonblock">Gate not run yet.</pre>
+      </div>
+    </article>
+
+    <article id="tab-product" class="card card--full" style="display:none">
+      <div class="card__kicker">Product Types</div>
+      <div class="card__title">Inherited Product/Profile Write</div>
+      <div class="card__body">
+        <p>Uses shared-core preview/apply with <code>inherited_product_profile_ref</code>.</p>
+        <label>
+          <strong>Optional Product Inherited Ref Override</strong><br />
+          <input id="productInheritedRef" type="text" placeholder="<msn_id>.8-5-*" />
+        </label>
+        <div>
+          <button id="productPreviewBtn" type="button">Preview Product Write</button>
+          <button id="productApplyBtn" type="button">Apply Product Write</button>
+          <button id="productReadbackBtn" type="button">Refresh Product Readback</button>
+        </div>
+        <h3>Product Preview/Apply</h3>
+        <pre id="productOutput" class="jsonblock">No product action yet.</pre>
+        <h3>Product Readback</h3>
+        <pre id="productReadback" class="jsonblock">No product readback yet.</pre>
+      </div>
+    </article>
+
+    <article id="tab-invoice" class="card card--full" style="display:none">
+      <div class="card__kicker">Invoice Log</div>
+      <div class="card__title">Inherited Invoice/Log Write</div>
+      <div class="card__body">
+        <p>Uses shared-core preview/apply with <code>inherited_supply_log_ref</code>.</p>
+        <label>
+          <strong>Optional Invoice Inherited Ref Override</strong><br />
+          <input id="invoiceInheritedRef" type="text" placeholder="<msn_id>.8-4-*" />
+        </label>
+        <div>
+          <button id="invoicePreviewBtn" type="button">Preview Invoice Write</button>
+          <button id="invoiceApplyBtn" type="button">Apply Invoice Write</button>
+          <button id="invoiceReadbackBtn" type="button">Refresh Invoice Readback</button>
+        </div>
+        <h3>Invoice Preview/Apply</h3>
+        <pre id="invoiceOutput" class="jsonblock">No invoice action yet.</pre>
+        <h3>Invoice Readback</h3>
+        <pre id="invoiceReadback" class="jsonblock">No invoice readback yet.</pre>
+      </div>
+    </article>
   </section>
 {% endblock %}
 
@@ -302,123 +88,107 @@
   <script>
     (function () {
       const model = {{ model_json|safe }};
-      const capabilities = (model.capabilities && Array.isArray(model.capabilities.templates)) ? model.capabilities : { templates: [] };
       const routes = model.agro_routes || {};
-      const sourceInput = document.getElementById("agroSourceMsn");
-      const loadBtn = document.getElementById("agroLoadResources");
-      const resourceList = document.getElementById("agroResourceList");
-      const resourceSelect = document.getElementById("agroResourceId");
-      const templateSelect = document.getElementById("agroTemplateId");
-      const fieldsRoot = document.getElementById("agroTemplateFields");
-      const planBtn = document.getElementById("agroPlanPreview");
-      const applyBtn = document.getElementById("agroApplyPlan");
-      const planOutput = document.getElementById("agroPlanOutput");
-      let lastPreview = null;
+      const tabs = {
+        resource: document.getElementById("tab-resource"),
+        product: document.getElementById("tab-product"),
+        invoice: document.getElementById("tab-invoice")
+      };
+      let selectedResourceRef = "";
 
-      function renderTemplateOptions() {
-        templateSelect.innerHTML = "";
-        for (const item of capabilities.templates) {
-          const opt = document.createElement("option");
-          opt.value = item.template_id || "";
-          opt.textContent = (item.title || item.template_id || "");
-          templateSelect.appendChild(opt);
+      function setTab(tabId) {
+        for (const key of Object.keys(tabs)) {
+          tabs[key].style.display = (key === tabId) ? "" : "none";
         }
       }
 
-      function renderTemplateFields() {
-        const template = capabilities.templates.find((item) => (item.template_id || "") === templateSelect.value);
-        fieldsRoot.innerHTML = "";
-        if (!template || !Array.isArray(template.fields)) {
-          return;
-        }
-        for (const field of template.fields) {
-          const wrap = document.createElement("div");
-          const label = document.createElement("label");
-          label.innerHTML = "<strong>" + (field.title || field.id || "field") + "</strong>";
-          const input = document.createElement("input");
-          input.type = "text";
-          input.id = "agroField_" + (field.id || "");
-          input.placeholder = String(field.type || "value");
-          if (field.required) {
-            input.required = true;
-          }
-          label.appendChild(document.createElement("br"));
-          label.appendChild(input);
-          wrap.appendChild(label);
-          fieldsRoot.appendChild(wrap);
-        }
+      for (const btn of document.querySelectorAll("[data-tab]")) {
+        btn.addEventListener("click", function () {
+          setTab(this.getAttribute("data-tab"));
+        });
       }
 
-      async function loadResources() {
-        const msn = String(sourceInput.value || "").trim();
-        if (!msn) {
-          resourceList.textContent = "source_msn_id is required.";
-          return;
-        }
-        const path = (routes.resources || "/portal/api/data/external/resources") + "?source_msn_id=" + encodeURIComponent(msn);
-        const response = await fetch(path);
-        const payload = await response.json();
-        resourceList.textContent = JSON.stringify(payload, null, 2);
-        resourceSelect.innerHTML = "";
-        const resources = Array.isArray(payload.resources) ? payload.resources : [];
-        for (const item of resources) {
-          const opt = document.createElement("option");
-          opt.value = item.resource_id || "";
-          opt.textContent = (item.resource_id || "") + " [" + (item.export_family || "") + "]";
-          resourceSelect.appendChild(opt);
-        }
-      }
-
-      function collectFields() {
-        const template = capabilities.templates.find((item) => (item.template_id || "") === templateSelect.value);
-        const out = {};
-        if (!template || !Array.isArray(template.fields)) {
-          return out;
-        }
-        for (const field of template.fields) {
-          const input = document.getElementById("agroField_" + (field.id || ""));
-          out[field.id] = input ? String(input.value || "").trim() : "";
-        }
-        return out;
-      }
-
-      async function previewPlan() {
-        const body = {
-          template_id: templateSelect.value,
-          source_msn_id: String(sourceInput.value || "").trim(),
-          resource_id: String(resourceSelect.value || "").trim(),
-          fields: collectFields()
-        };
-        const response = await fetch(routes.plan_preview || "/portal/tools/agro_erp/plan_preview", {
+      async function postJson(url, body) {
+        const response = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
+          body: JSON.stringify(body || {})
         });
         const payload = await response.json();
-        lastPreview = payload;
-        planOutput.textContent = JSON.stringify(payload, null, 2);
+        return { status: response.status, payload: payload };
       }
 
-      async function applyPlan() {
-        if (!lastPreview || !lastPreview.ok) {
-          planOutput.textContent = "Generate a successful plan preview before apply.";
-          return;
+      async function getJson(url) {
+        const response = await fetch(url);
+        const payload = await response.json();
+        return { status: response.status, payload: payload };
+      }
+
+      document.getElementById("resourceSelectBtn").addEventListener("click", async function () {
+        const resourceRefInput = document.getElementById("resourceRef");
+        const resourceRef = String(resourceRefInput.value || "").trim();
+        const result = await postJson(routes.mvp_resource_select || "/portal/tools/agro_erp/mvp/resource/select_or_load", {
+          resource_ref: resourceRef
+        });
+        document.getElementById("resourceSummary").textContent = JSON.stringify(result.payload, null, 2);
+        if (result.payload && result.payload.ok) {
+          selectedResourceRef = resourceRef || String((result.payload.resource_context || {}).resource_ref || "");
+          resourceRefInput.value = selectedResourceRef;
         }
-        const response = await fetch(routes.apply || "/portal/tools/agro_erp/apply", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ preview: lastPreview })
-        });
-        const payload = await response.json();
-        planOutput.textContent = JSON.stringify(payload, null, 2);
-      }
+      });
 
-      renderTemplateOptions();
-      renderTemplateFields();
-      templateSelect.addEventListener("change", renderTemplateFields);
-      loadBtn.addEventListener("click", loadResources);
-      planBtn.addEventListener("click", previewPlan);
-      applyBtn.addEventListener("click", applyPlan);
+      document.getElementById("resourceGateBtn").addEventListener("click", async function () {
+        const result = await getJson(routes.mvp_live_state_gate || "/portal/tools/agro_erp/mvp/live_state_gate");
+        document.getElementById("liveGateSummary").textContent = JSON.stringify(result.payload, null, 2);
+      });
+
+      document.getElementById("productPreviewBtn").addEventListener("click", async function () {
+        const result = await postJson(routes.mvp_product_preview || "/portal/tools/agro_erp/mvp/product/preview", {
+          resource_ref: selectedResourceRef,
+          inherited_ref: String((document.getElementById("productInheritedRef") || {}).value || "").trim()
+        });
+        document.getElementById("productOutput").textContent = JSON.stringify(result.payload, null, 2);
+      });
+
+      document.getElementById("productApplyBtn").addEventListener("click", async function () {
+        const result = await postJson(routes.mvp_product_apply || "/portal/tools/agro_erp/mvp/product/apply", {
+          resource_ref: selectedResourceRef,
+          inherited_ref: String((document.getElementById("productInheritedRef") || {}).value || "").trim()
+        });
+        document.getElementById("productOutput").textContent = JSON.stringify(result.payload, null, 2);
+        if (result.payload && result.payload.readback) {
+          document.getElementById("productReadback").textContent = JSON.stringify(result.payload.readback, null, 2);
+        }
+      });
+
+      document.getElementById("productReadbackBtn").addEventListener("click", async function () {
+        const result = await getJson((routes.mvp_readback || "/portal/tools/agro_erp/mvp/workflow/readback") + "?resource_ref=" + encodeURIComponent(selectedResourceRef));
+        document.getElementById("productReadback").textContent = JSON.stringify((result.payload || {}).product_types || {}, null, 2);
+      });
+
+      document.getElementById("invoicePreviewBtn").addEventListener("click", async function () {
+        const result = await postJson(routes.mvp_invoice_preview || "/portal/tools/agro_erp/mvp/invoice/preview", {
+          resource_ref: selectedResourceRef,
+          inherited_ref: String((document.getElementById("invoiceInheritedRef") || {}).value || "").trim()
+        });
+        document.getElementById("invoiceOutput").textContent = JSON.stringify(result.payload, null, 2);
+      });
+
+      document.getElementById("invoiceApplyBtn").addEventListener("click", async function () {
+        const result = await postJson(routes.mvp_invoice_apply || "/portal/tools/agro_erp/mvp/invoice/apply", {
+          resource_ref: selectedResourceRef,
+          inherited_ref: String((document.getElementById("invoiceInheritedRef") || {}).value || "").trim()
+        });
+        document.getElementById("invoiceOutput").textContent = JSON.stringify(result.payload, null, 2);
+        if (result.payload && result.payload.readback) {
+          document.getElementById("invoiceReadback").textContent = JSON.stringify(result.payload.readback, null, 2);
+        }
+      });
+
+      document.getElementById("invoiceReadbackBtn").addEventListener("click", async function () {
+        const result = await getJson((routes.mvp_readback || "/portal/tools/agro_erp/mvp/workflow/readback") + "?resource_ref=" + encodeURIComponent(selectedResourceRef));
+        document.getElementById("invoiceReadback").textContent = JSON.stringify((result.payload || {}).invoice_log || {}, null, 2);
+      });
     })();
   </script>
 {% endblock %}
