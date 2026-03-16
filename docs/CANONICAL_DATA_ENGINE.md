@@ -12,6 +12,12 @@ External public-resource acquisition and isolate planning are shared-core servic
 
 Canonical datum-native write intents are shared-core services under `portals/_shared/portal/data_engine/write_pipeline.py`, `field_contracts.py`, `profile_config_refs.py`, and `geometry_datums.py`.
 
+Anthology loading uses a base+overlay merge model:
+
+- base registry: repo `anthology-base.json`
+- portal overlay: `data/anthology.json` in each portal state
+- merged runtime view produced in shared core (`anthology_registry.py`, `anthology_overlay.py`, `anthology_schema.py`)
+
 Canonical data artifacts:
 
 - `data/anthology.json`
@@ -98,6 +104,26 @@ Low-level primitives still exist and remain engine-owned:
 
 Config/profile JSON remains a reference surface into anthology datums; anthology remains the local semantic authority.
 
+## Anthology base + overlay
+
+Shared-core anthology modules:
+
+- `portals/_shared/portal/data_engine/anthology_schema.py`
+- `portals/_shared/portal/data_engine/anthology_registry.py`
+- `portals/_shared/portal/data_engine/anthology_overlay.py`
+
+Key rules:
+
+- base registry rows are canonical reserved datums
+- portal anthologies store local overlay rows and explicit local overrides
+- runtime merge order is base first, overlay second
+- merge output remains compact-row compatible for existing runtime consumers
+- icon metadata stays in `data/presentation/datum_icons.json` sidecar
+
+Migration route:
+
+- `POST /portal/api/data/anthology/overlay/migration` (`apply=false|true`) for duplicate-base-row stripping in local overlays
+
 ## Shared sandbox engine
 
 Shared core now exposes a sandbox service layer under `portals/_shared/portal/sandbox/` as the canonical ownership boundary for:
@@ -124,6 +150,7 @@ Use a Flask-capable Python environment for route suites. Example from repo root:
 - `.venv/bin/pip install flask cryptography`
 - `PYTHONPATH="/srv/repo/mycite-core/portals:/srv/repo/mycite-core/portals/_shared/runtime/flavors/tff" .venv/bin/python -m unittest tests/test_data_write_pipeline_routes.py tests/test_agro_erp_tool_flow.py`
 - `.venv/bin/python -m unittest tests/test_data_write_pipeline_routes.py tests/test_sandbox_engine.py`
+- `.venv/bin/python -m unittest tests/test_anthology_registry_overlay.py`
 
 Pure engine-only write tests (no Flask requirement):
 

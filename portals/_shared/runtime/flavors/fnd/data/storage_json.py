@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import importlib
 import json
 import re
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -53,6 +55,62 @@ _SHARED_NORMALIZATION = _load_shared_anthology_normalization()
 datum_sort_key = _SHARED_NORMALIZATION.datum_sort_key
 
 
+def _load_shared_anthology_overlay() -> ModuleType:
+    portals_root = Path(__file__).resolve().parents[5]
+    token = str(portals_root)
+    if token not in sys.path:
+        sys.path.insert(0, token)
+    try:
+        return importlib.import_module("_shared.portal.data_engine.anthology_overlay")
+    except Exception:
+        pass
+    shared_path = (
+        Path(__file__).resolve().parents[2]
+        / "_shared"
+        / "portal"
+        / "data_engine"
+        / "anthology_overlay.py"
+    )
+    spec = importlib.util.spec_from_file_location("mycite_shared_data_engine_anthology_overlay", shared_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load shared anthology overlay module from {shared_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_shared_anthology_registry() -> ModuleType:
+    portals_root = Path(__file__).resolve().parents[5]
+    token = str(portals_root)
+    if token not in sys.path:
+        sys.path.insert(0, token)
+    try:
+        return importlib.import_module("_shared.portal.data_engine.anthology_registry")
+    except Exception:
+        pass
+    shared_path = (
+        Path(__file__).resolve().parents[2]
+        / "_shared"
+        / "portal"
+        / "data_engine"
+        / "anthology_registry.py"
+    )
+    spec = importlib.util.spec_from_file_location("mycite_shared_data_engine_anthology_registry", shared_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load shared anthology registry module from {shared_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_SHARED_OVERLAY = _load_shared_anthology_overlay()
+_SHARED_REGISTRY = _load_shared_anthology_registry()
+load_base_registry = _SHARED_REGISTRY.load_base_registry
+default_base_registry_path = _SHARED_REGISTRY.default_base_registry_path
+merge_base_and_overlay = _SHARED_OVERLAY.merge_base_and_overlay
+strip_base_duplicates_from_overlay = _SHARED_OVERLAY.strip_base_duplicates_from_overlay
+
+
 class JsonStorageBackend:
     """JSON-backed adapter for anthology/SAMRAS payloads and presentation sidecars."""
 
@@ -60,6 +118,7 @@ class JsonStorageBackend:
         self.data_dir = Path(data_dir)
         self._anthology_parse_warnings: list[str] = []
         self._anthology_payload_valid = True
+        self._anthology_source_scope: dict[str, str] = {}
 
     def known_tables(self) -> list[str]:
         return list(TABLE_SPECS.keys())
@@ -83,6 +142,23 @@ class JsonStorageBackend:
         except Exception:
             return {}
         return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _base_registry_path() -> Path:
+        return default_base_registry_path()
+
+    def _merge_anthology_payload(self, overlay_payload: dict[str, Any]) -> dict[str, Any]:
+        registry = load_base_registry(base_path=self._base_registry_path(), strict=False)
+        report = merge_base_and_overlay(
+            base_registry=registry,
+            overlay_payload=overlay_payload if isinstance(overlay_payload, dict) else {},
+            strict=False,
+            allow_overlay_override=True,
+        )
+        self._anthology_source_scope = dict(report.source_scope_by_id)
+        self._anthology_parse_warnings = list(report.warnings or [])
+        self._anthology_payload_valid = bool(report.ok)
+        return dict(report.merged_payload if isinstance(report.merged_payload, dict) else {})
 
     @staticmethod
     def _samras_instance_filename(msn_id: str, instance_id: str) -> str:
@@ -187,13 +263,19 @@ class JsonStorageBackend:
 
     def read_payload(self, table_id: str) -> dict[str, Any]:
         path = self._table_path(table_id)
+        token = str(table_id or "").strip().lower()
+        if token == "anthology" and (not path.exists() or not path.is_file()):
+            return self._merge_anthology_payload({})
         if not path.exists() or not path.is_file():
             return {}
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             return {}
-        return payload if isinstance(payload, dict) else {}
+        out = payload if isinstance(payload, dict) else {}
+        if token == "anthology":
+            return self._merge_anthology_payload(out)
+        return out
 
     def write_payload(self, table_id: str, payload: dict[str, Any]) -> None:
         path = self._table_path(table_id)
@@ -226,7 +308,14 @@ class JsonStorageBackend:
                         "errors": ["anthology payload contains odd compact pair token(s); fix JSON before saving edits"],
                         "warnings": list(self._anthology_parse_warnings),
                     }
-                payload = self._rows_to_anthology(rows)
+                merged_payload = self._rows_to_anthology(rows)
+                registry = load_base_registry(base_path=self._base_registry_path(), strict=False)
+                overlay_report = strip_base_duplicates_from_overlay(
+                    overlay_payload=merged_payload,
+                    base_registry=registry,
+                )
+                payload = dict(overlay_report.output_payload)
+                self._anthology_parse_warnings = list(overlay_report.warnings or [])
             elif token == "samras":
                 payload = self._rows_to_samras(rows)
             else:
@@ -310,12 +399,13 @@ class JsonStorageBackend:
 
     def _anthology_rows(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
-        warnings: list[str] = []
+        warnings: list[str] = list(self._anthology_parse_warnings)
         payload_valid = True
 
         for key, value in payload.items():
             record, row_warnings, row_valid = compact_row_to_record(str(key), value)
             record["_source"] = "anthology"
+            record["source_scope"] = str(self._anthology_source_scope.get(str(record.get("identifier") or key)) or "portal")
             rows.append(record)
             warnings.extend(list(row_warnings or []))
             payload_valid = payload_valid and bool(row_valid)

@@ -218,6 +218,27 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertEqual(migrated.status_code, 200)
         self.assertTrue((migrated.get_json() or {}).get("ok"))
 
+    def test_anthology_overlay_migration_route_dry_run_and_apply(self):
+        anthology_path = Path(self._tmpdir.name) / "anthology.json"
+        overlay_payload = {
+            "1-1-2": [["1-1-2", "0-0-6", "16"], ["nominal-bacillete-16"]],
+            "8-1-9": [["8-1-9", "1-1-2", "portal"], ["portal-specific"]],
+        }
+        anthology_path.write_text(json.dumps(overlay_payload, indent=2) + "\n", encoding="utf-8")
+
+        dry = self.client.post("/portal/api/data/anthology/overlay/migration", json={"apply": False})
+        self.assertEqual(dry.status_code, 200)
+        dry_payload = dry.get_json() or {}
+        self.assertTrue(dry_payload.get("ok"))
+        self.assertIn("1-1-2", dry_payload.get("removed_duplicate_ids") or [])
+        self.assertIn("8-1-9", dry_payload.get("kept_ids") or [])
+
+        apply_resp = self.client.post("/portal/api/data/anthology/overlay/migration", json={"apply": True})
+        self.assertEqual(apply_resp.status_code, 200)
+        updated_payload = json.loads(anthology_path.read_text(encoding="utf-8"))
+        self.assertNotIn("1-1-2", updated_payload)
+        self.assertIn("8-1-9", updated_payload)
+
     def test_apply_updates_anthology_and_config_ref(self):
         response = self.client.post(
             "/portal/api/data/write/apply",
