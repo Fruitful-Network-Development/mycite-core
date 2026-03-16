@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable
 
 from flask import abort, jsonify, redirect, request
@@ -11,6 +12,7 @@ from _shared.portal.data_engine.aitas_context import (
 )
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
+from _shared.portal.sandbox import SandboxEngine, migrate_fnd_samras_rows_to_sandbox
 
 
 def register_data_routes(
@@ -115,6 +117,19 @@ def register_data_routes(
         except Exception as exc:
             return False, {}, str(exc)
 
+    def _sandbox_engine() -> SandboxEngine:
+        storage = getattr(workspace, "storage", None)
+        data_root = getattr(storage, "data_dir", None)
+        if data_root is None:
+            data_root = "."
+        return SandboxEngine(data_root=Path(str(data_root)))
+
+    def _anthology_payload_for_mss_compile() -> dict[str, Any]:
+        payload = _local_anthology_payload()
+        if isinstance(payload, dict) and isinstance(payload.get("rows"), dict):
+            return dict(payload.get("rows") or {})
+        return payload if isinstance(payload, dict) else {}
+
     if include_home_redirect:
         @app.get("/portal/data")
         def portal_data_home_redirect():
@@ -149,6 +164,137 @@ def register_data_routes(
     def portal_data_model():
         meta = workspace.model_meta() if hasattr(workspace, "model_meta") else {}
         return jsonify({"ok": True, "model_meta": meta})
+
+    @app.get("/portal/api/data/sandbox/resources")
+    def portal_data_sandbox_resources():
+        engine = _sandbox_engine()
+        return jsonify({"ok": True, "resources": engine.list_resources(), "schema": "mycite.portal.sandbox.resources.v1"})
+
+    @app.get("/portal/api/data/sandbox/resources/<path:resource_id>")
+    def portal_data_sandbox_resource(resource_id: str):
+        engine = _sandbox_engine()
+        payload = engine.get_resource(resource_id)
+        return jsonify({"ok": not bool(payload.get("missing")), "resource": payload})
+
+    @app.post("/portal/api/data/sandbox/resources/<path:resource_id>/stage")
+    def portal_data_sandbox_resource_stage(resource_id: str):
+        body = _json_body()
+        payload = body.get("payload") if isinstance(body.get("payload"), dict) else body
+        result = _sandbox_engine().stage_resource(resource_id, payload if isinstance(payload, dict) else {})
+        out = result.to_dict()
+        out["schema"] = "mycite.portal.sandbox.stage.v1"
+        return jsonify(out), (200 if result.ok else 400)
+
+    @app.post("/portal/api/data/sandbox/resources/<path:resource_id>/save")
+    def portal_data_sandbox_resource_save(resource_id: str):
+        body = _json_body()
+        payload = body.get("payload") if isinstance(body.get("payload"), dict) else body
+        result = _sandbox_engine().save_resource(resource_id, payload if isinstance(payload, dict) else {})
+        out = result.to_dict()
+        out["schema"] = "mycite.portal.sandbox.save.v1"
+        return jsonify(out), (200 if result.ok else 400)
+
+    @app.post("/portal/api/data/sandbox/mss/compile")
+    def portal_data_sandbox_mss_compile():
+        body = _json_body()
+        selected_refs = [str(item).strip() for item in list(body.get("selected_refs") or []) if str(item).strip()]
+        resource_id = str(body.get("resource_id") or "mss_resource").strip()
+        result = _sandbox_engine().compile_mss_resource(
+            resource_id=resource_id,
+            selected_refs=selected_refs,
+            anthology_payload=_anthology_payload_for_mss_compile(),
+            local_msn_id=_msn_id(),
+        )
+        out = result.to_dict()
+        out["schema"] = "mycite.portal.sandbox.mss_compile.v1"
+        return jsonify(out), (200 if result.ok else 400)
+
+    @app.post("/portal/api/data/sandbox/mss/decode")
+    def portal_data_sandbox_mss_decode():
+        body = _json_body()
+        bitstring = str(body.get("bitstring") or "").strip()
+        resource_id = str(body.get("resource_id") or "mss_decode").strip()
+        result = _sandbox_engine().decode_mss_resource(bitstring=bitstring, resource_id=resource_id)
+        out = result.to_dict()
+        out["schema"] = "mycite.portal.sandbox.mss_decode.v1"
+        return jsonify(out), (200 if result.ok else 400)
+
+    @app.post("/portal/api/data/sandbox/samras/upsert")
+    def portal_data_sandbox_samras_upsert():
+        body = _json_body()
+        resource_id = str(body.get("resource_id") or "").strip()
+        structure_payload = str(body.get("structure_payload") or "").strip()
+        rows = body.get("rows") if isinstance(body.get("rows"), list) else []
+        value_kind = str(body.get("value_kind") or "address_id").strip()
+        if not resource_id:
+            abort(400, description="resource_id is required")
+        if not structure_payload:
+            abort(400, description="structure_payload is required")
+        result = _sandbox_engine().create_or_update_samras_resource(
+            resource_id=resource_id,
+            structure_payload=structure_payload,
+            rows=[dict(item) for item in rows if isinstance(item, dict)],
+            value_kind=value_kind,
+            source="local_api",
+        )
+        out = result.to_dict()
+        out["schema"] = "mycite.portal.sandbox.samras_upsert.v1"
+        return jsonify(out), (200 if result.ok else 400)
+
+    @app.get("/portal/api/data/sandbox/samras/<path:resource_id>/decode")
+    def portal_data_sandbox_samras_decode(resource_id: str):
+        result = _sandbox_engine().decode_samras_resource(resource_id)
+        out = result.to_dict()
+        out["schema"] = "mycite.portal.sandbox.samras_decode.v1"
+        return jsonify(out), (200 if result.ok else 400)
+
+    @app.post("/portal/api/data/sandbox/inherited/resolve")
+    def portal_data_sandbox_inherited_resolve():
+        body = _json_body()
+        resource_ref = str(body.get("resource_ref") or "").strip()
+        if not resource_ref:
+            abort(400, description="resource_ref is required")
+        context = _sandbox_engine().resolve_inherited_resource_context(
+            resource_ref=resource_ref,
+            local_msn_id=_msn_id(),
+            external_resolver=external_resource_resolver,
+        )
+        out = context.to_dict()
+        out["schema"] = "mycite.portal.sandbox.inherited_context.v1"
+        return jsonify(out), (200 if context.ok else 400)
+
+    @app.get("/portal/api/data/sandbox/exposed/contact_card")
+    def portal_data_sandbox_exposed_contact_card():
+        source_msn_id = _msn_id()
+        card_payload = {}
+        if source_msn_id and external_resource_resolver is not None and hasattr(external_resource_resolver, "_load_public_card"):
+            try:
+                card_payload = dict(external_resource_resolver._load_public_card(source_msn_id) or {})
+            except Exception:
+                card_payload = {}
+        payload = _sandbox_engine().generate_contact_card_public_resources(
+            card_payload=card_payload,
+            local_msn_id=source_msn_id,
+        )
+        payload["schema"] = "mycite.portal.sandbox.contact_card_exposed.v1"
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/sandbox/migrate/fnd_samras")
+    def portal_data_sandbox_migrate_fnd_samras():
+        body = _json_body()
+        apply_changes = bool(body.get("apply"))
+        data_root = Path(str(getattr(getattr(workspace, "storage", None), "data_dir", ".")))
+        anthology_path = data_root / "anthology.json"
+        result = migrate_fnd_samras_rows_to_sandbox(
+            anthology_path=anthology_path,
+            data_root=data_root,
+            apply_changes=apply_changes,
+        )
+        out = result.to_dict()
+        out["schema"] = "mycite.portal.sandbox.migrate_fnd_samras.v1"
+        out["anthology_path"] = str(anthology_path)
+        out["apply"] = apply_changes
+        return jsonify(out), (200 if result.ok else 400)
 
     @app.get("/portal/api/data/aitas/archetypes")
     def portal_data_aitas_archetypes():

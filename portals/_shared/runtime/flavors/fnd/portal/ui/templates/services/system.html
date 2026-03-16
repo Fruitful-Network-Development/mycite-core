@@ -4,6 +4,7 @@
 
 {% set page_title = "SYSTEM" %}
 {% set page_subtitle = "Anthology workbench with table and graph layouts plus inspector editing" %}
+{% set current_tab = system_tab if system_tab is defined and system_tab else "workbench" %}
 
 {% block viewport_class %}viewport--system{% endblock %}
 
@@ -11,7 +12,8 @@
   <section class="ide-contextSection">
     <header class="ide-contextTitle">System Views</header>
     <ul class="ide-contextList">
-      <li><a class="ide-contextLink is-active" href="/portal/system"><span>Anthology Workbench</span><small>Graph navigation</small></a></li>
+      <li><a class="ide-contextLink {% if current_tab == 'workbench' %}is-active{% endif %}" href="/portal/system?tab=workbench"><span>Anthology Workbench</span><small>Graph navigation</small></a></li>
+      <li><a class="ide-contextLink {% if current_tab == 'sandbox' %}is-active{% endif %}" href="/portal/system?tab=sandbox"><span>Sandbox</span><small>MSS/SAMRAS resources</small></a></li>
     </ul>
     <div id="dtSystemContext" class="data-tool__systemContext" aria-label="Datum search or selected datum inspector">
       <!-- Filled by data_tool.js: search bar when no datum selected; datum editor + icon when one is selected -->
@@ -20,7 +22,44 @@
 {% endblock %}
 
 {% block body %}
-  {% if data_home_available is defined and data_home_available %}
+  {% if system_tabs is defined and system_tabs %}
+    <nav class="page-tabs" aria-label="System tabs">
+      {% for tab in system_tabs %}
+        <a class="page-tab {% if tab.active %}is-active{% endif %}" href="{{ tab.href }}">{{ tab.label }}</a>
+      {% endfor %}
+    </nav>
+  {% endif %}
+
+  {% if current_tab == "sandbox" %}
+    <section class="workbench-panels workbench-panels--double">
+      <article class="card">
+        <div class="card__kicker">Shared Sandbox Engine</div>
+        <div class="card__title">Resources + Compile/Decode</div>
+        <div class="card__body">
+          <div class="data-tool__controlRow">
+            <button type="button" id="sandboxRefreshBtn">Refresh Resources</button>
+            <button type="button" id="sandboxMigrateDryRunBtn">FND SAMRAS Migration (Dry Run)</button>
+          </div>
+          <label for="sandboxMssRefs"><strong>MSS selected_refs (comma/newline)</strong></label>
+          <textarea id="sandboxMssRefs" class="jsonblock" rows="3">1-1-1</textarea>
+          <label for="sandboxMssBitstring"><strong>MSS bitstring (decode)</strong></label>
+          <textarea id="sandboxMssBitstring" class="jsonblock" rows="3"></textarea>
+          <div class="data-tool__controlRow">
+            <button type="button" id="sandboxMssCompileBtn">Compile MSS</button>
+            <button type="button" id="sandboxMssDecodeBtn">Decode MSS</button>
+          </div>
+          <pre class="jsonblock" id="sandboxResultJson">{}</pre>
+        </div>
+      </article>
+      <article class="card">
+        <div class="card__kicker">Sandbox Resources</div>
+        <div class="card__title">/portal/api/data/sandbox/resources</div>
+        <div class="card__body">
+          <pre class="jsonblock" id="sandboxResourcesJson">{}</pre>
+        </div>
+      </article>
+    </section>
+  {% elif data_home_available is defined and data_home_available %}
     {% include "tools/partials/data_tool_shell.html" %}
   {% else %}
     <article class="card">
@@ -47,5 +86,62 @@
 {% block scripts %}
   {% if data_home_available is defined and data_home_available %}
     <script src="/portal/static/tools/data_tool.js"></script>
+  {% endif %}
+  {% if current_tab == "sandbox" %}
+    <script>
+      (function () {
+        function requestJson(url, method, payload) {
+          return fetch(url, {
+            method: method || "GET",
+            headers: payload ? { "Content-Type": "application/json" } : undefined,
+            body: payload ? JSON.stringify(payload) : undefined
+          }).then(function (resp) {
+            return resp.json().catch(function () { return {}; }).then(function (body) {
+              return { ok: resp.ok, status: resp.status, body: body || {} };
+            });
+          });
+        }
+        var resourcesNode = document.getElementById("sandboxResourcesJson");
+        var resultNode = document.getElementById("sandboxResultJson");
+        if (!resourcesNode || !resultNode) return;
+        function refreshResources() {
+          requestJson("/portal/api/data/sandbox/resources", "GET").then(function (result) {
+            resourcesNode.textContent = JSON.stringify(result.body || {}, null, 2);
+          });
+        }
+        var refreshBtn = document.getElementById("sandboxRefreshBtn");
+        if (refreshBtn) refreshBtn.addEventListener("click", refreshResources);
+        refreshResources();
+
+        var compileBtn = document.getElementById("sandboxMssCompileBtn");
+        if (compileBtn) {
+          compileBtn.addEventListener("click", function () {
+            var refs = String((document.getElementById("sandboxMssRefs") || {}).value || "")
+              .split(/[\n,]/)
+              .map(function (item) { return String(item || "").trim(); })
+              .filter(Boolean);
+            requestJson("/portal/api/data/sandbox/mss/compile", "POST", { resource_id: "system-sandbox-mss", selected_refs: refs })
+              .then(function (result) { resultNode.textContent = JSON.stringify(result.body || {}, null, 2); refreshResources(); });
+          });
+        }
+
+        var decodeBtn = document.getElementById("sandboxMssDecodeBtn");
+        if (decodeBtn) {
+          decodeBtn.addEventListener("click", function () {
+            var bitstring = String((document.getElementById("sandboxMssBitstring") || {}).value || "").trim();
+            requestJson("/portal/api/data/sandbox/mss/decode", "POST", { resource_id: "system-sandbox-mss-decode", bitstring: bitstring })
+              .then(function (result) { resultNode.textContent = JSON.stringify(result.body || {}, null, 2); });
+          });
+        }
+
+        var migrateBtn = document.getElementById("sandboxMigrateDryRunBtn");
+        if (migrateBtn) {
+          migrateBtn.addEventListener("click", function () {
+            requestJson("/portal/api/data/sandbox/migrate/fnd_samras", "POST", { apply: false })
+              .then(function (result) { resultNode.textContent = JSON.stringify(result.body || {}, null, 2); refreshResources(); });
+          });
+        }
+      })();
+    </script>
   {% endif %}
 {% endblock %}

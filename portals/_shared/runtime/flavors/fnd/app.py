@@ -29,10 +29,12 @@ from portal.core_services.runtime import (
     active_service_from_path,
     build_network_cards,
     build_network_tabs,
+    build_system_tabs,
     build_property_geography_model,
     build_service_nav,
     load_active_private_config,
     normalize_network_tab,
+    normalize_system_tab,
     active_private_config_filename,
     resolve_active_private_config_path,
 )
@@ -645,6 +647,10 @@ def _normalize_utilities_tab(raw: Any) -> str:
     return token if token in {"tools", "vault", "peripherals", "progeny"} else "tools"
 
 
+def _normalize_system_query_tab(raw: Any) -> str:
+    return normalize_system_tab(str(raw or "").strip())
+
+
 def _utility_tool_items() -> list[Dict[str, Any]]:
     seen: set[str] = set()
     out: list[Dict[str, Any]] = []
@@ -1013,6 +1019,8 @@ def _tool_shell_context() -> Dict[str, Any]:
         active_service_tab = _normalize_network_query_tab(request.args.get("tab"))
     elif active_service == "utilities":
         active_service_tab = _normalize_utilities_tab(request.args.get("tab"))
+    elif active_service == "system":
+        active_service_tab = _normalize_system_query_tab(request.args.get("tab"))
     active_tool = active_tool_for_path(TOOL_TABS, request.path)
     network_cards = build_network_cards(PRIVATE_DIR, ACTIVE_PRIVATE_CONFIG)
     progeny_cards = network_cards.get("progeny") if isinstance(network_cards, dict) else []
@@ -1067,6 +1075,7 @@ def _tool_shell_context() -> Dict[str, Any]:
         build_activity_tool_nav_fn=_activity_tool_items,
         service_nav=build_service_nav(ACTIVE_PRIVATE_CONFIG, active_service=active_service),
         network_tabs=build_network_tabs(active_service_tab),
+        system_tabs=build_system_tabs(active_service_tab),
         sidebar_progeny=sidebar_progeny,
         portal_name=portal_name,
         active_portal_username=active_portal_username,
@@ -1159,13 +1168,15 @@ def _tools_by_mount_target(mount_target: str) -> list[Dict[str, Any]]:
     return [tool for tool in TOOL_TABS if str(tool.get("mount_target") or "peripherals.tools").strip().lower() == token]
 
 
-def _render_portal_system():
+def _render_portal_system(*, system_tab: str):
     aliases = list_aliases_for_sidebar(PRIVATE_DIR)
     profile_model = _portal_profile_model()
     return render_template(
         "services/system.html",
         aliases=aliases,
         msn_id=MSN_ID,
+        system_tab=system_tab,
+        system_tabs=build_system_tabs(system_tab),
         data_home_available=DATA_HOME_AVAILABLE,
         portal_profile=profile_model,
         system_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
@@ -1174,7 +1185,8 @@ def _render_portal_system():
 
 @app.get("/portal/system")
 def portal_system_page():
-    return _render_portal_system()
+    system_tab = _normalize_system_query_tab(request.args.get("tab"))
+    return _render_portal_system(system_tab=system_tab)
 
 
 @app.get("/portal/home")
@@ -1975,23 +1987,31 @@ def portal_data_mss_compile():
     if not selected_refs:
         return jsonify({"ok": False, "error": "selected_refs required (non-empty list of datum identifiers)"}), 400
     try:
+        from _shared.portal.sandbox import SandboxEngine
+
         anthology_payload = _load_local_anthology_payload()
-        result = preview_mss_context(
-            anthology_payload=anthology_payload,
+        engine = SandboxEngine(data_root=DATA_DIR)
+        result = engine.compile_mss_resource(
+            resource_id=str(body.get("resource_id") or "mss_compile").strip(),
             selected_refs=selected_refs,
-            bitstring="",
+            anthology_payload=anthology_payload,
             local_msn_id=str(MSN_ID or ""),
         )
+        payload = dict(result.compiled_payload if isinstance(result.compiled_payload, dict) else {})
+        # Backward-compatible route shape for existing UI callers.
+        return jsonify(
+            {
+                "ok": result.ok,
+                "bitstring": str(payload.get("bitstring") or ""),
+                "metadata": payload.get("metadata") or {},
+                "rows": payload.get("rows") or [],
+                "selected_source_refs": payload.get("selected_refs") or selected_refs,
+                "sandbox_resource_id": payload.get("resource_id") or "",
+                "warnings": list(result.warnings),
+            }
+        ), (200 if result.ok else 400)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
-    bitstring = str(result.get("bitstring") or "")
-    return jsonify({
-        "ok": True,
-        "bitstring": bitstring,
-        "metadata": result.get("metadata") or {},
-        "rows": result.get("rows") or [],
-        "selected_source_refs": result.get("selected_source_refs") or selected_refs,
-    })
 
 
 if __name__ == "__main__":

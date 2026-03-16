@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -28,10 +29,11 @@ def _load_register_data_routes():
 
 
 class _WorkspaceStub:
-    def __init__(self, *, anthology_rows: dict[str, object] | None = None) -> None:
+    def __init__(self, *, anthology_rows: dict[str, object] | None = None, data_dir: str = ".") -> None:
         self.calls: list[dict[str, object]] = []
         self._counter = 0
         self._anthology_rows = anthology_rows if isinstance(anthology_rows, dict) else {}
+        self.storage = type("StorageStub", (), {"data_dir": data_dir})()
 
     def append_anthology_datum(self, *, layer, value_group, reference, magnitude, label, pairs=None):
         self._counter += 1
@@ -67,8 +69,9 @@ class _WorkspaceStub:
 class DataWritePipelineRouteTests(unittest.TestCase):
     def setUp(self):
         register_data_routes = _load_register_data_routes()
+        self._tmpdir = tempfile.TemporaryDirectory()
         self.anthology_rows: dict[str, object] = {}
-        self.workspace = _WorkspaceStub(anthology_rows=self.anthology_rows)
+        self.workspace = _WorkspaceStub(anthology_rows=self.anthology_rows, data_dir=self._tmpdir.name)
         self.config_payload = {"display": {"title": "Before"}}
         self.app = Flask(__name__)
         register_data_routes(
@@ -82,6 +85,9 @@ class DataWritePipelineRouteTests(unittest.TestCase):
             include_legacy_shims=False,
         )
         self.client = self.app.test_client()
+
+    def tearDown(self):
+        self._tmpdir.cleanup()
 
     def _save_config(self, payload):
         self.config_payload = dict(payload)
@@ -163,6 +169,54 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         bindings_payload = bindings.get_json() or {}
         self.assertTrue(bindings_payload.get("ok"))
         self.assertEqual(bindings_payload.get("count"), 1)
+
+    def test_sandbox_routes_compile_decode_stage_and_migration_dry_run(self):
+        self.anthology_rows.update(
+            {
+                "0-0-1": [["0-0-1", "0", "0"], ["top"]],
+                "0-0-2": [["0-0-2", "0", "0"], ["tiu"]],
+                "1-1-1": [["1-1-1", "0-0-2", "315569254450000000000000000000000000000"], ["sec-babel"]],
+                "1-1-2": [["1-1-2", "0-0-1", "946707763350000000"], ["utc-bacillete"]],
+                "2-1-1": [["2-1-1", "1-1-2", "1"], ["second-isolette"]],
+                "3-1-1": [["3-1-1", "2-1-1", "0"], ["utc-babelette"]],
+                "4-2-1": [["4-2-1", "1-1-1", "63072000000", "3-1-1", "1"], ["y2k-event"]],
+                "5-0-1": [["5-0-1", "4-2-1", "0"], ["txa_samras_stub"]],
+                "5-0-2": [["5-0-2", "4-2-1", "0"], ["msn_samras_stub"]],
+            }
+        )
+        listed = self.client.get("/portal/api/data/sandbox/resources")
+        self.assertEqual(listed.status_code, 200)
+        self.assertTrue((listed.get_json() or {}).get("ok"))
+
+        compiled = self.client.post(
+            "/portal/api/data/sandbox/mss/compile",
+            json={"resource_id": "route-test-mss", "selected_refs": ["4-2-1"]},
+        )
+        self.assertEqual(compiled.status_code, 200)
+        compiled_payload = compiled.get_json() or {}
+        self.assertTrue(compiled_payload.get("ok"))
+        bitstring = str(((compiled_payload.get("compiled_payload") or {}).get("bitstring")) or "")
+        self.assertTrue(bitstring)
+
+        decoded = self.client.post(
+            "/portal/api/data/sandbox/mss/decode",
+            json={"resource_id": "route-test-mss-decode", "bitstring": bitstring},
+        )
+        self.assertEqual(decoded.status_code, 200)
+        self.assertTrue((decoded.get_json() or {}).get("ok"))
+
+        staged = self.client.post(
+            "/portal/api/data/sandbox/resources/route-test-resource/stage",
+            json={"payload": {"kind": "manual", "value": {"a": 1}}},
+        )
+        self.assertEqual(staged.status_code, 200)
+        self.assertTrue((staged.get_json() or {}).get("ok"))
+
+        anthology_path = Path(self._tmpdir.name) / "anthology.json"
+        anthology_path.write_text(json.dumps(self.anthology_rows, indent=2) + "\n", encoding="utf-8")
+        migrated = self.client.post("/portal/api/data/sandbox/migrate/fnd_samras", json={"apply": False})
+        self.assertEqual(migrated.status_code, 200)
+        self.assertTrue((migrated.get_json() or {}).get("ok"))
 
     def test_apply_updates_anthology_and_config_ref(self):
         response = self.client.post(

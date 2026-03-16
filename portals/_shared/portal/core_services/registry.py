@@ -20,6 +20,13 @@ class NetworkTabItem(TypedDict):
     href: str
     active: bool
 
+
+class SystemTabItem(TypedDict):
+    tab_id: str
+    label: str
+    href: str
+    active: bool
+
 DEFAULT_SERVICE_ORDER = ["network", "utilities", "system"]
 SERVICE_LABELS = {
     "system": "SYSTEM",
@@ -38,6 +45,12 @@ NETWORK_TAB_LABELS = {
     "hosted": "Hosted",
     "profile": "Profile",
     "contracts": "Contracts",
+}
+
+SYSTEM_TAB_ORDER = ["workbench", "sandbox"]
+SYSTEM_TAB_LABELS = {
+    "workbench": "Workbench",
+    "sandbox": "Sandbox",
 }
 
 
@@ -69,6 +82,13 @@ def normalize_network_tab(tab_id: str) -> str:
     if token in NETWORK_TAB_ORDER:
         return token
     return NETWORK_TAB_ORDER[0]
+
+
+def normalize_system_tab(tab_id: str) -> str:
+    token = str(tab_id or "").strip().lower()
+    if token in SYSTEM_TAB_ORDER:
+        return token
+    return SYSTEM_TAB_ORDER[0]
 
 
 def service_href(service_id: str) -> str:
@@ -109,6 +129,21 @@ def build_network_tabs(active_tab: str) -> list[NetworkTabItem]:
                 "tab_id": tab_id,
                 "label": NETWORK_TAB_LABELS.get(tab_id, tab_id.title()),
                 "href": f"/portal/network?tab={tab_id}",
+                "active": tab_id == active,
+            }
+        )
+    return out
+
+
+def build_system_tabs(active_tab: str) -> list[SystemTabItem]:
+    active = normalize_system_tab(active_tab)
+    out: list[SystemTabItem] = []
+    for tab_id in SYSTEM_TAB_ORDER:
+        out.append(
+            {
+                "tab_id": tab_id,
+                "label": SYSTEM_TAB_LABELS.get(tab_id, tab_id.title()),
+                "href": f"/portal/system?tab={tab_id}",
                 "active": tab_id == active,
             }
         )
