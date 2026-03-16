@@ -84,6 +84,7 @@ AGRO-ERP boundary in hardened write model:
 - shared contracts/templates in `field_contracts.py` and `geometry_datums.py` own datum-family semantics, prerequisites, and reuse policy
 - AGRO-ERP may provide template selection and user inputs, but should not sequence low-level anthology mutations itself
 - config/profile updates remain write-pipeline outputs, preserving anthology authority and ref-surface separation
+- no additional AGRO-local semantic ownership is required for write ordering or reuse decisions
 
 ## Local tool writes and audit
 

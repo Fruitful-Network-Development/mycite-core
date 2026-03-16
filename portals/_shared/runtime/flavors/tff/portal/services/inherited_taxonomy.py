@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import importlib
 import importlib.util
 from pathlib import Path
 from types import ModuleType
 
 
 def _load_shared_inherited_taxonomy() -> ModuleType:
+    try:
+        return importlib.import_module("_shared.portal.services.inherited_taxonomy")
+    except Exception:
+        pass
     shared_path = Path(__file__).resolve().parents[3] / "_shared" / "portal" / "services" / "inherited_taxonomy.py"
     spec = importlib.util.spec_from_file_location("mycite_shared_inherited_taxonomy", shared_path)
     if spec is None or spec.loader is None:

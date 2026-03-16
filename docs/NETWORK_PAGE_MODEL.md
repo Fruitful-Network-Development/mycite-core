@@ -35,6 +35,15 @@ Canonical routes:
 - preview via `/portal/api/data/write/preview`
 - apply via `/portal/api/data/write/apply`
 
+Current datum-backed Profile field contracts:
+
+- `portal_title` -> `display.title`
+- `property_title` -> `property.title`
+- `property_bbox` -> `property.bbox` (multi-ref)
+- `property_boundary` -> `property.geometry.coordinates` (multi-ref)
+- `property_parcel_ref` -> `property.parcel_ref`
+- `property_plot_refs` -> `property.plot_refs` (multi-ref)
+
 Profile/config JSON edits flow through shared write preview/apply so config values remain canonical datum refs (dot-qualified when portal MSN is known). The profile tab should treat JSON as a ref surface, not as semantic datum storage.
 
 Current write-model guarantees for Profile:
