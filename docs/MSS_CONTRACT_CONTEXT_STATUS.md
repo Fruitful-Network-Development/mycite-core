@@ -17,18 +17,19 @@ The canonical contract editor is `NETWORK > Contracts`.
 
 - local contract create/patch recompiles `owner_mss` from `owner_selected_refs`
 - current canonical MSS payloads round-trip through compile/decode
+- canonical writer now emits `wire_variant = canonical_v2` with dual-read support for older `canonical` payloads
 - multi-datum selections create a synthetic `L+1-0-1` selection root
 - archived reference fixture decoding is supported as `wire_variant = legacy_reference_fixture`
 - anthology mutation paths now report `contract_mss_sync`
 - local contracts with `owner_selected_refs` are recompiled after anthology compaction/VG0 sync
 - selected refs are remapped when identifier compaction changes their addresses
-- all currently shipped contract MSS bitstrings in the repo decode successfully under the active canonical/fixture reader paths
+- all currently shipped contract MSS bitstrings in the repo decode successfully under active dual-read paths (`canonical_v2`, prior `canonical`, and `legacy_reference_fixture`)
 - Data Tool daemon endpoints remain available and separate from MSS contract resolution
 
 ## Verified gaps / constraints
 
 - archived fixture support is read-only compatibility support, not the canonical local writer
-- canonical metadata packing is the cleaned shared-runtime implementation, not a byte-for-byte reproduction of the archived example bitstream
+- canonical_v2 metadata/stream semantics are aligned to the corrected compact-array reference model; archived fixture support remains decode-only compatibility
 - manual `owner_mss` without `owner_selected_refs` is intentionally left untouched by anthology-driven recompilation
 - contract editing remains on NETWORK; Utilities can link to it later, but there is no second canonical editor in this pass
 

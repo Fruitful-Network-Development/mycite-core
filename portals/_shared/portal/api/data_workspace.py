@@ -83,6 +83,15 @@ def register_data_routes(
         except Exception:
             return False
 
+    def _local_anthology_payload() -> dict[str, Any]:
+        if anthology_payload_provider is None:
+            return {}
+        try:
+            payload = anthology_payload_provider() or {}
+            return payload if isinstance(payload, dict) else {}
+        except Exception:
+            return {}
+
     def _external_plan_for_intent(payload: dict[str, Any]) -> tuple[bool, dict[str, Any], str]:
         if external_resource_resolver is None or anthology_payload_provider is None:
             return True, {"ok": True, "ordered_writes": []}, ""
@@ -150,9 +159,14 @@ def register_data_routes(
     def portal_data_write_preview():
         body = _json_body()
         intent = body.get("intent") if isinstance(body.get("intent"), dict) else body
+        if not isinstance(intent, dict):
+            intent = {}
+        if not str(intent.get("local_msn_id") or "").strip():
+            intent["local_msn_id"] = _msn_id()
         preview = preview_write_intent(
             intent=intent if isinstance(intent, dict) else {},
             current_config=_load_active_config(),
+            local_anthology_payload=_local_anthology_payload(),
             external_plan_fn=_external_plan_for_intent,
         )
         payload = preview.to_dict()
@@ -166,15 +180,22 @@ def register_data_routes(
         if body.get("preview") and isinstance(body.get("preview"), dict):
             preview_payload = dict(body.get("preview"))
             preview_payload.pop("schema", None)
+            preview_intent = preview_payload.get("intent") if isinstance(preview_payload.get("intent"), dict) else {}
+            if not str(preview_intent.get("local_msn_id") or "").strip():
+                preview_intent["local_msn_id"] = _msn_id()
             preview = preview_write_intent(
-                intent=preview_payload.get("intent") if isinstance(preview_payload.get("intent"), dict) else {},
+                intent=preview_intent,
                 current_config=_load_active_config(),
+                local_anthology_payload=_local_anthology_payload(),
                 external_plan_fn=_external_plan_for_intent,
             )
         else:
+            if not str(intent.get("local_msn_id") or "").strip():
+                intent["local_msn_id"] = _msn_id()
             preview = preview_write_intent(
                 intent=intent,
                 current_config=_load_active_config(),
+                local_anthology_payload=_local_anthology_payload(),
                 external_plan_fn=_external_plan_for_intent,
             )
         result = apply_write_preview(
@@ -192,9 +213,12 @@ def register_data_routes(
         body = _json_body()
         intent = body.get("intent") if isinstance(body.get("intent"), dict) else dict(body)
         intent["intent_type"] = "geometry_datum"
+        if not str(intent.get("local_msn_id") or "").strip():
+            intent["local_msn_id"] = _msn_id()
         preview = preview_write_intent(
             intent=intent,
             current_config=_load_active_config(),
+            local_anthology_payload=_local_anthology_payload(),
             external_plan_fn=_external_plan_for_intent,
         )
         payload = preview.to_dict()
@@ -206,9 +230,12 @@ def register_data_routes(
         body = _json_body()
         intent = body.get("intent") if isinstance(body.get("intent"), dict) else dict(body)
         intent["intent_type"] = "geometry_datum"
+        if not str(intent.get("local_msn_id") or "").strip():
+            intent["local_msn_id"] = _msn_id()
         preview = preview_write_intent(
             intent=intent,
             current_config=_load_active_config(),
+            local_anthology_payload=_local_anthology_payload(),
             external_plan_fn=_external_plan_for_intent,
         )
         result = apply_write_preview(

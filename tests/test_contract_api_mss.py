@@ -114,7 +114,7 @@ class ContractApiMssTests(unittest.TestCase):
             contract_id = create_payload["contract_id"]
             self.assertTrue(create_payload["mss"]["owner_mss"])
             self.assertNotEqual(create_payload["mss"]["owner_mss"], "10101")
-            self.assertEqual(create_payload["mss"]["owner_preview"]["wire_variant"], "canonical")
+            self.assertEqual(create_payload["mss"]["owner_preview"]["wire_variant"], "canonical_v2")
 
             get_resp = client.get(
                 f"/portal/api/contracts/{contract_id}?msn_id={MSN_ID}&include_mss=1"
@@ -122,7 +122,7 @@ class ContractApiMssTests(unittest.TestCase):
             self.assertEqual(get_resp.status_code, 200)
             get_payload = get_resp.get_json()
             self.assertEqual(get_payload["mss"]["owner_preview"]["root_identifier"], "5-0-1")
-            self.assertEqual(get_payload["mss"]["owner_preview"]["wire_variant"], "canonical")
+            self.assertEqual(get_payload["mss"]["owner_preview"]["wire_variant"], "canonical_v2")
 
             patch_resp = client.patch(
                 f"/portal/api/contracts/{contract_id}?msn_id={MSN_ID}",

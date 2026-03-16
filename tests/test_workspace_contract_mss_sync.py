@@ -20,10 +20,10 @@ def _load_stack():
 
     from data.engine.workspace import Workspace  # type: ignore
     from data.storage_json import JsonStorageBackend  # type: ignore
-    from _shared.portal.mss import compile_mss_payload  # type: ignore
+    from _shared.portal.mss import compile_mss_payload, decode_mss_payload  # type: ignore
     from _shared.portal.services.contract_store import create_contract, get_contract  # type: ignore
 
-    return Workspace, JsonStorageBackend, compile_mss_payload, create_contract, get_contract
+    return Workspace, JsonStorageBackend, compile_mss_payload, decode_mss_payload, create_contract, get_contract
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
@@ -33,7 +33,7 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
 
 class WorkspaceContractMssSyncTests(unittest.TestCase):
     def _workspace(self):
-        Workspace, JsonStorageBackend, compile_mss_payload, create_contract, get_contract = _load_stack()
+        Workspace, JsonStorageBackend, compile_mss_payload, decode_mss_payload, create_contract, get_contract = _load_stack()
         temp = TemporaryDirectory()
         root = Path(temp.name)
         data_dir = root / "data"
@@ -73,10 +73,10 @@ class WorkspaceContractMssSyncTests(unittest.TestCase):
             },
             owner_msn_id=MSN_ID,
         )
-        return temp, workspace, private_dir, get_contract, compile_mss_payload, contract_id
+        return temp, workspace, private_dir, get_contract, compile_mss_payload, decode_mss_payload, contract_id
 
     def test_delete_recompiles_contract_and_remaps_selected_refs(self):
-        temp, workspace, private_dir, get_contract, compile_mss_payload, contract_id = self._workspace()
+        temp, workspace, private_dir, get_contract, compile_mss_payload, decode_mss_payload, contract_id = self._workspace()
         try:
             result = workspace.delete_anthology_datum(row_id="1-1-1")
             self.assertTrue(result["ok"])
@@ -88,11 +88,12 @@ class WorkspaceContractMssSyncTests(unittest.TestCase):
             self.assertEqual(stored_contract["owner_selected_refs"], ["1-1-1"])
             expected = compile_mss_payload(anthology_payload, ["1-1-1"], local_msn_id=MSN_ID)
             self.assertEqual(stored_contract["owner_mss"], expected["bitstring"])
+            self.assertEqual((decode_mss_payload(stored_contract["owner_mss"]) or {}).get("wire_variant"), "canonical_v2")
         finally:
             temp.cleanup()
 
     def test_append_update_and_time_series_mutations_report_contract_sync(self):
-        temp, workspace, _private_dir, _get_contract, _compile_mss_payload, _contract_id = self._workspace()
+        temp, workspace, _private_dir, _get_contract, _compile_mss_payload, _decode_mss_payload, _contract_id = self._workspace()
         try:
             append_result = workspace.append_anthology_datum(
                 layer=2,

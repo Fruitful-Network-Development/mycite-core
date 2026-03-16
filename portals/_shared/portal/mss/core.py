@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import importlib.util
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +15,7 @@ from ..datum_refs import ParsedDatumRef, parse_datum_ref
 MSS_SCHEMA = "mycite.portal.mss.v1"
 MSS_ENCODING = "cobm-layered-bitstring"
 MSS_WIRE_VARIANT_CANONICAL = "canonical"
+MSS_WIRE_VARIANT_CANONICAL_V2 = "canonical_v2"
 MSS_WIRE_VARIANT_REFERENCE_FIXTURE = "legacy_reference_fixture"
 
 _ROW_ID_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
@@ -984,6 +987,7 @@ def resolve_contract_datum_ref(
             item
             for item in list(decoded.get("rows") or [])
             if _as_text(item.get("identifier") or item.get("row_id")) == parsed.datum_address
+            or _as_text(item.get("source_identifier")) == parsed.datum_address
         ),
         None,
     )
@@ -1021,3 +1025,318 @@ def preview_mss_context(
             include_selection_root=True,
         ),
     }
+
+
+_MSS_V2_PREFIX = "11101110"
+
+
+@lru_cache(maxsize=1)
+def _reference_module():
+    path = Path(__file__).resolve().parents[4] / "mss_compact_array_reference.py"
+    if not path.exists() or not path.is_file():
+        raise RuntimeError("mss_compact_array_reference.py is required for canonical_v2 MSS")
+    spec = importlib.util.spec_from_file_location("mycite_mss_reference", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("unable to load mss_compact_array_reference.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _encode_sd_uint(value: int) -> str:
+    number = int(value)
+    if number < 0:
+        raise ValueError("self-delimiting integer must be non-negative")
+    payload = format(number, "b")
+    return ("0" * (len(payload) - 1)) + "1" + payload
+
+
+def _decode_sd_uint(bits: str, cursor: int) -> tuple[int, int]:
+    zeros = 0
+    while True:
+        if cursor >= len(bits):
+            raise ValueError("unexpected EOF while decoding self-delimiting integer")
+        if bits[cursor] == "1":
+            cursor += 1
+            break
+        zeros += 1
+        cursor += 1
+    width = zeros + 1
+    end = cursor + width
+    if end > len(bits):
+        raise ValueError("unexpected EOF while reading self-delimiting integer payload")
+    return int(bits[cursor:end], 2), end
+
+
+def _encode_source_identifier_list(source_identifiers: list[str]) -> str:
+    bits: list[str] = [_encode_sd_uint(len(source_identifiers))]
+    for token in source_identifiers:
+        raw = _as_text(token).encode("utf-8")
+        bits.append(_encode_sd_uint(len(raw)))
+        bits.extend(format(byte, "08b") for byte in raw)
+    return "".join(bits)
+
+
+def _decode_source_identifier_list(bits: str) -> list[str]:
+    cursor = 0
+    count, cursor = _decode_sd_uint(bits, cursor)
+    out: list[str] = []
+    for _ in range(count):
+        length, cursor = _decode_sd_uint(bits, cursor)
+        end = cursor + (length * 8)
+        if end > len(bits):
+            raise ValueError("unexpected EOF while decoding source identifier bytes")
+        payload = bits[cursor:end]
+        cursor = end
+        try:
+            out.append(bytes(int(payload[index : index + 8], 2) for index in range(0, len(payload), 8)).decode("utf-8"))
+        except Exception as exc:
+            raise ValueError(f"invalid UTF-8 source identifier payload: {exc}") from exc
+    if cursor != len(bits):
+        raise ValueError("unexpected trailing bits in source identifier extension")
+    return out
+
+
+def _pack_v2_bitstring(base_bitstream: str, source_identifiers: list[str]) -> str:
+    base_bits = str(base_bitstream or "").strip()
+    if not base_bits or not _BITSTRING_RE.fullmatch(base_bits):
+        raise ValueError("base MSS bitstream must be non-empty binary payload")
+    ext_bits = _encode_source_identifier_list(source_identifiers)
+    return (
+        _MSS_V2_PREFIX
+        + _encode_sd_uint(len(base_bits))
+        + base_bits
+        + _encode_sd_uint(len(ext_bits))
+        + ext_bits
+    )
+
+
+def _unpack_v2_bitstring(token: str) -> tuple[str, list[str]]:
+    bits = _as_text(token)
+    if not bits.startswith(_MSS_V2_PREFIX):
+        raise ValueError("bitstring does not start with canonical_v2 prefix")
+    cursor = len(_MSS_V2_PREFIX)
+    base_len, cursor = _decode_sd_uint(bits, cursor)
+    end_base = cursor + base_len
+    if end_base > len(bits):
+        raise ValueError("canonical_v2 bitstring truncated before base payload")
+    base_bits = bits[cursor:end_base]
+    cursor = end_base
+    ext_len, cursor = _decode_sd_uint(bits, cursor)
+    end_ext = cursor + ext_len
+    if end_ext > len(bits):
+        raise ValueError("canonical_v2 bitstring truncated before source extension")
+    ext_bits = bits[cursor:end_ext]
+    if end_ext != len(bits):
+        raise ValueError("unexpected trailing bits after canonical_v2 payload")
+    source_ids = _decode_source_identifier_list(ext_bits)
+    return base_bits, source_ids
+
+
+def _row_to_reference_model(ref_mod: Any, row: dict[str, Any]) -> Any:
+    layer, value_group, iteration = _parse_row_identifier(_as_text(row.get("identifier") or row.get("row_id")))
+    pairs = _pairs_from_row(row)
+    if value_group == 0:
+        refs_only = []
+        if layer > 0:
+            refs_only = [_as_text(item.get("reference")) for item in pairs if _as_text(item.get("reference"))]
+        return ref_mod.DatumRow(
+            layer=layer,
+            value_group=value_group,
+            iteration=iteration,
+            refs_only=refs_only,
+            tuples=[],
+            source_identifier=_as_text(row.get("identifier") or row.get("row_id")),
+        )
+    tuples = []
+    for pair in pairs:
+        ref = _as_text(pair.get("reference"))
+        magnitude_raw = _as_text(pair.get("magnitude"))
+        if not ref:
+            continue
+        if not magnitude_raw or not re.fullmatch(r"-?[0-9]+", magnitude_raw):
+            raise ValueError(f"canonical_v2 requires integer magnitudes; got '{magnitude_raw}'")
+        tuples.append(ref_mod.RefMagTuple(ref=ref, magnitude=int(magnitude_raw)))
+    return ref_mod.DatumRow(
+        layer=layer,
+        value_group=value_group,
+        iteration=iteration,
+        refs_only=[],
+        tuples=tuples,
+        source_identifier=_as_text(row.get("identifier") or row.get("row_id")),
+    )
+
+
+def _reference_row_to_runtime(row: Any) -> dict[str, Any]:
+    identifier = _as_text(row.identifier)
+    if int(row.value_group) == 0:
+        pairs = [{"reference": _as_text(ref), "magnitude": ""} for ref in list(row.refs_only or [])]
+        if not pairs:
+            pairs = [{"reference": "0", "magnitude": "0"}]
+    else:
+        pairs = [
+            {"reference": _as_text(item.ref), "magnitude": str(int(item.magnitude))}
+            for item in list(row.tuples or [])
+        ]
+    return {
+        "row_id": identifier,
+        "identifier": identifier,
+        "source_identifier": _as_text(getattr(row, "source_identifier", "")) or identifier,
+        "label": "",
+        "pairs": pairs,
+        "pair_count": len(pairs),
+        "reference": _as_text((pairs[0] if pairs else {}).get("reference")),
+        "magnitude": _as_text((pairs[0] if pairs else {}).get("magnitude")),
+    }
+
+
+def _compile_mss_payload_v2(
+    anthology_payload: dict[str, Any],
+    selected_refs: list[str],
+    *,
+    local_msn_id: str = "",
+    include_selection_root: bool = True,
+) -> dict[str, Any]:
+    ref_mod = _reference_module()
+    rows = compact_payload_to_rows(anthology_payload, strict=False)
+    rows_by_id = {_as_text(row.get("identifier") or row.get("row_id")): row for row in rows}
+    selected_ids = _normalize_selected_refs(selected_refs, local_msn_id=local_msn_id)
+    if not selected_ids:
+        raise ValueError("At least one selected anthology datum is required to compile MSS")
+    included_ids = _closure_rows(rows_by_id, selected_ids)
+    included_rows = [_row_to_reference_model(ref_mod, dict(rows_by_id[identifier])) for identifier in included_ids]
+    isolated_rows, source_map = ref_mod.reindex_into_isolated_anthology(included_rows)
+
+    selected_compact_refs = [_as_text(source_map[source_id]) for source_id in selected_ids]
+    root_identifier = selected_compact_refs[0] if selected_compact_refs else ""
+    if include_selection_root and selected_compact_refs:
+        highest_layer = max((int(row.layer) for row in isolated_rows), default=-1)
+        root_identifier = f"{highest_layer + 1}-0-1"
+        isolated_rows.append(
+            ref_mod.DatumRow(
+                layer=highest_layer + 1,
+                value_group=0,
+                iteration=1,
+                refs_only=list(selected_compact_refs),
+                tuples=[],
+                source_identifier="__selection_root__",
+            )
+        )
+    isolated_rows = ref_mod.sort_rows(isolated_rows)
+    encoded = ref_mod.encode_mss_from_isolated_rows(isolated_rows)
+    source_identifiers = [_as_text(getattr(row, "source_identifier", "")) or _as_text(row.identifier) for row in isolated_rows]
+    bitstring = _pack_v2_bitstring(encoded.bitstream, source_identifiers)
+    compact_rows = [_reference_row_to_runtime(row) for row in isolated_rows]
+    compact_payload = rows_to_compact_payload(compact_rows)
+    return {
+        "schema": MSS_SCHEMA,
+        "encoding": MSS_ENCODING,
+        "wire_variant": MSS_WIRE_VARIANT_CANONICAL_V2,
+        "bitstring": bitstring,
+        "metadata": {
+            "layer_max": int(encoded.metadata.layer_max),
+            "layer_count": int(encoded.metadata.layer_count),
+            "value_groups_per_layer": list(encoded.metadata.value_group_count_per_layer),
+            "iteration_counts": list(encoded.metadata.iteration_count_per_value_group),
+            "value_group_values": list(encoded.metadata.value_group_value_per_value_group),
+            "object_count": len(list(encoded.debug_objects or [])),
+            "stop_width": int(encoded.stop_width),
+            "stop_indexes": list(encoded.stop_indexes),
+        },
+        "source_map": {str(old): str(new) for old, new in dict(source_map).items()},
+        "selected_source_refs": selected_ids,
+        "selected_compact_refs": selected_compact_refs,
+        "root_identifier": root_identifier,
+        "rows": compact_rows,
+        "compact_payload": compact_payload,
+        "save_state": rows_to_save_state(compact_rows),
+        "cobm": [
+            {"layer": int(tag.split("L", 1)[1]), "bits": bits, "active_identifiers": []}
+            for tag, bits in list(encoded.debug_objects or [])
+            if str(tag).startswith("cobm:")
+        ],
+    }
+
+
+def _decode_mss_payload_v2(bitstring: str) -> dict[str, Any]:
+    ref_mod = _reference_module()
+    token = _as_text(bitstring)
+    if not token:
+        return _empty_decoded_payload("", wire_variant=MSS_WIRE_VARIANT_CANONICAL_V2)
+    if not _BITSTRING_RE.fullmatch(token):
+        raise ValueError("MSS bitstring must contain only 0 and 1 characters")
+    base_bits, source_identifiers = _unpack_v2_bitstring(token)
+    decoded = ref_mod.decode_mss(base_bits)
+    rows: list[dict[str, Any]] = []
+    for idx, row in enumerate(list(decoded.decoded_rows or [])):
+        runtime_row = _reference_row_to_runtime(row)
+        if idx < len(source_identifiers):
+            runtime_row["source_identifier"] = _as_text(source_identifiers[idx]) or runtime_row["source_identifier"]
+        rows.append(runtime_row)
+    compact_payload = rows_to_compact_payload(rows)
+    metadata = decoded.metadata
+    return {
+        "schema": MSS_SCHEMA,
+        "encoding": MSS_ENCODING,
+        "wire_variant": MSS_WIRE_VARIANT_CANONICAL_V2,
+        "bitstring": token,
+        "metadata": {
+            "layer_max": int(metadata.layer_max),
+            "layer_count": int(metadata.layer_count),
+            "value_groups_per_layer": list(metadata.value_group_count_per_layer),
+            "iteration_counts": list(metadata.iteration_count_per_value_group),
+            "value_group_values": list(metadata.value_group_value_per_value_group),
+            "object_count": len(list(decoded.debug_objects or [])),
+            "stop_width": int(decoded.stop_width),
+            "stop_indexes": list(decoded.stop_indexes),
+        },
+        "rows": rows,
+        "compact_payload": compact_payload,
+        "save_state": rows_to_save_state(rows),
+        "root_identifier": _as_text((rows[-1] if rows else {}).get("identifier")),
+        "cobm": [
+            {"layer": int(tag.split("L", 1)[1]), "bits": bits, "active_identifiers": []}
+            for tag, bits in list(decoded.debug_objects or [])
+            if str(tag).startswith("cobm:")
+        ],
+        "legacy_unsupported": False,
+    }
+
+
+_compile_mss_payload_v1 = compile_mss_payload
+_decode_mss_payload_v1 = decode_mss_payload
+
+
+def compile_mss_payload(
+    anthology_payload: dict[str, Any],
+    selected_refs: list[str],
+    *,
+    local_msn_id: str = "",
+    include_selection_root: bool = True,
+) -> dict[str, Any]:
+    try:
+        return _compile_mss_payload_v2(
+            anthology_payload,
+            selected_refs,
+            local_msn_id=local_msn_id,
+            include_selection_root=include_selection_root,
+        )
+    except Exception:
+        # Keep write-path alive even when encountering legacy non-integer magnitudes.
+        return _compile_mss_payload_v1(
+            anthology_payload,
+            selected_refs,
+            local_msn_id=local_msn_id,
+            include_selection_root=include_selection_root,
+        )
+
+
+def decode_mss_payload(bitstring: str) -> dict[str, Any]:
+    token = _as_text(bitstring)
+    if token.startswith(_MSS_V2_PREFIX):
+        try:
+            return _decode_mss_payload_v2(token)
+        except Exception:
+            pass
+    return _decode_mss_payload_v1(token)

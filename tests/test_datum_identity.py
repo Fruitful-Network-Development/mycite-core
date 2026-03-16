@@ -57,6 +57,22 @@ class DatumIdentityTests(unittest.TestCase):
         self.assertEqual(entries[f"{source_msn}.4-2-1"]["label"], "event-a")
         self.assertEqual(entries[f"{source_msn}.4-2-2"]["label"], "event-b")
 
+    def test_compact_array_entries_prefer_source_identifier_for_semantic_path(self):
+        mod = _load_datum_identity()
+        source_msn = "3-2-3-17-77-1-6-4-1-4"
+        rows = [
+            {
+                "identifier": "0-0-1",
+                "row_id": "0-0-1",
+                "source_identifier": "0-0-5",
+                "label": "compacted-node",
+            }
+        ]
+        entries = mod.compile_compact_array_entries_keyed_by_path(rows, source_msn_id=source_msn)
+        self.assertIn(f"{source_msn}.0-0-5", entries)
+        self.assertEqual(entries[f"{source_msn}.0-0-5"]["storage_address"], "0-0-1")
+        self.assertEqual(entries[f"{source_msn}.0-0-5"]["semantic_address"], "0-0-5")
+
     def test_compiled_index_same_path_different_row_order(self):
         """Same semantic datums in different row order produce same canonical keys."""
         mod = _load_datum_identity()

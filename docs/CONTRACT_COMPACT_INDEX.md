@@ -50,9 +50,10 @@ Each key in `entries` is a **canonical datum path** (`msn_id.datum_address`). Ea
 | `updated_unix_ms` | When this entry was last updated. |
 | `revision` | Entry-level revision if needed. |
 | `storage_address` | Row id in the snapshot (`layer-value_group-iteration`). |
+| `semantic_address` | Source datum address when present (for example decoded `source_identifier`). |
 | `row` | Optional full row payload for convenience. |
 
-Recompilation may change `storage_address` or order; the key (`datum_path`) remains the stable identity.
+Recompilation may change `storage_address` or order; the key (`datum_path`) remains the stable identity. `semantic_address` should be used when available to preserve source identity across isolated reindexing.
 
 ---
 

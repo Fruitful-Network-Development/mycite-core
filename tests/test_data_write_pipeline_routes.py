@@ -64,6 +64,7 @@ class DataWritePipelineRouteTests(unittest.TestCase):
             anthology_payload_provider=lambda: {"rows": []},
             active_config_provider=lambda: dict(self.config_payload),
             active_config_saver=self._save_config,
+            msn_id_provider=lambda: "9-9-9",
             include_home_redirect=False,
             include_legacy_shims=False,
         )
@@ -109,7 +110,7 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertTrue(payload.get("ok"))
         self.assertTrue(payload.get("created_datum_refs"))
         self.assertEqual(((payload.get("contract_mss_sync") or {}).get("triggered")), True)
-        self.assertEqual((((self.config_payload.get("display") or {})).get("title")), "31-1-9")
+        self.assertEqual((((self.config_payload.get("display") or {})).get("title")), "9-9-9.31-1-9")
 
     def test_geometry_preview_and_apply_routes(self):
         preview = self.client.post(

@@ -35,7 +35,13 @@ Canonical routes:
 - preview via `/portal/api/data/write/preview`
 - apply via `/portal/api/data/write/apply`
 
-Profile/config JSON edits should flow through shared write preview/apply so config values can point at canonical local datum refs.
+Profile/config JSON edits flow through shared write preview/apply so config values remain canonical datum refs (dot-qualified when portal MSN is known). The profile tab should treat JSON as a ref surface, not as semantic datum storage.
+
+Current write-model guarantees for Profile:
+
+- field contracts define allowed write modes and required inputs per profile field
+- write preview validates contract + template semantics before any mutation
+- apply emits deterministic mutation summaries (created/reused actions) and surfaces `contract_mss_sync` pass-through from anthology writes
 
 ## Qualifier model
 

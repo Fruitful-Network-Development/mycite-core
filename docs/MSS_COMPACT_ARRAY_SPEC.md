@@ -98,11 +98,15 @@ Decoder responses expose `wire_variant`.
 Current variants:
 
 - `canonical`
-  - current shared runtime writer output
+  - previous shared runtime writer output (kept for decode compatibility)
+- `canonical_v2`
+  - current shared runtime writer output aligned to the corrected closure/COBM-width model
+  - carries a compact source-identifier extension so semantic datum paths survive isolated reindexing
 - `legacy_reference_fixture`
   - the archived contract example under `repo/mycite-core/mss`
 
 The archived fixture is kept as a reference/compatibility read target, not as the canonical writer format for new saves.
+Current write behavior is migrate-on-write: owner-side recompiles write `canonical_v2`, while decoders still dual-read `canonical` and `legacy_reference_fixture`.
 
 ## Data-engine integration
 
@@ -124,6 +128,7 @@ Responses from those mutations now include `contract_mss_sync`.
   - decoding the MSS payload into rows, and
   - keying those rows by **canonical datum path** using the datum-identity layer.
 - The helper `datum_identity.compile_compact_array_entries_keyed_by_path` turns decoded rows and a `source_msn_id` into an `entries` map keyed by canonical path.
+- For `canonical_v2`, decoded rows may include `source_identifier`; this semantic address should be preferred for path keying, while `identifier` remains snapshot-local storage address.
 - Tools and higher-level services should resolve datums via the compiled index and canonical paths rather than by raw MSS row order or binary offsets.
 
 This separation ensures that:
