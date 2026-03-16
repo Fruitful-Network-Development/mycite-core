@@ -15,6 +15,7 @@ from _shared.portal.data_engine.anthology_context import build_canonical_antholo
 from _shared.portal.data_engine.anthology_overlay import strip_base_duplicates_from_overlay
 from _shared.portal.data_engine.anthology_registry import load_base_registry
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
+from _shared.portal.data_engine.inherited_txa_adapter import select_inherited_ref_for_field
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
 from _shared.portal.sandbox import SandboxEngine, migrate_fnd_samras_rows_to_sandbox
 
@@ -338,6 +339,29 @@ def register_data_routes(
         payload["schema"] = "mycite.portal.sandbox.inherited_compile_txa.v1"
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
+    @app.post("/portal/api/data/sandbox/inherited/adapt_txa")
+    def portal_data_sandbox_inherited_adapt_txa():
+        body = _json_body()
+        published_value = body.get("published_resource_value")
+        if not isinstance(published_value, dict):
+            resource_ref = str(body.get("resource_ref") or "").strip()
+            if not resource_ref:
+                abort(400, description="published_resource_value or resource_ref is required")
+            resolved = _sandbox_engine().resolve_inherited_resource_context(
+                resource_ref=resource_ref,
+                local_msn_id=_msn_id(),
+                external_resolver=external_resource_resolver,
+            )
+            if not resolved.ok:
+                return jsonify({"ok": False, "errors": list(resolved.errors), "warnings": list(resolved.warnings)}), 400
+            published_value = resolved.resource_value if isinstance(resolved.resource_value, dict) else {}
+        payload = _sandbox_engine().adapt_published_txa_context(
+            published_resource_value=published_value,
+            context_source="sandbox.inherited.adapt_txa",
+        )
+        payload["schema"] = "mycite.portal.sandbox.inherited_adapt_txa.v1"
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
     @app.get("/portal/api/data/sandbox/exposed/contact_card")
     def portal_data_sandbox_exposed_contact_card():
         source_msn_id = _msn_id()
@@ -445,9 +469,16 @@ def register_data_routes(
                 external_resolver=external_resource_resolver,
                 merged_rows_by_id=_canonical_anthology_context().rows_by_id,
             )
-            txa_refs = [str(item).strip() for item in list((txa_context or {}).get("field_usable_refs") or []) if str(item).strip()]
-            if txa_refs:
-                fields["inherited_ref"] = txa_refs[0]
+            inherited_ref = select_inherited_ref_for_field(
+                field_id=str(intent.get("field_id") or "").strip(),
+                field_ref_bindings=(
+                    (txa_context or {}).get("field_ref_bindings")
+                    if isinstance((txa_context or {}).get("field_ref_bindings"), dict)
+                    else {}
+                ),
+            )
+            if inherited_ref:
+                fields["inherited_ref"] = inherited_ref
                 intent["fields"] = fields
             intent["inherited_context"] = txa_context
         if not str(intent.get("local_msn_id") or "").strip():
@@ -475,9 +506,16 @@ def register_data_routes(
                 external_resolver=external_resource_resolver,
                 merged_rows_by_id=_canonical_anthology_context().rows_by_id,
             )
-            txa_refs = [str(item).strip() for item in list((txa_context or {}).get("field_usable_refs") or []) if str(item).strip()]
-            if txa_refs:
-                fields["inherited_ref"] = txa_refs[0]
+            inherited_ref = select_inherited_ref_for_field(
+                field_id=str(intent.get("field_id") or "").strip(),
+                field_ref_bindings=(
+                    (txa_context or {}).get("field_ref_bindings")
+                    if isinstance((txa_context or {}).get("field_ref_bindings"), dict)
+                    else {}
+                ),
+            )
+            if inherited_ref:
+                fields["inherited_ref"] = inherited_ref
                 intent["fields"] = fields
             intent["inherited_context"] = txa_context
         if body.get("preview") and isinstance(body.get("preview"), dict):

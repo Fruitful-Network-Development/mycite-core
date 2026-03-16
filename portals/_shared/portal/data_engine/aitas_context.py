@@ -9,6 +9,7 @@ from typing import Any, Callable
 from ..datum_refs import normalize_datum_ref, parse_datum_ref
 from .archetypes import ArchetypeDefinition, get_archetype_definition, list_archetype_definitions
 from .datum_identity import resolve_to_local_row
+from .inherited_txa_adapter import adapt_published_txa_resource_value
 from .samras_descriptor_compiler import compile_samras_constraint_for_chain
 
 
@@ -138,6 +139,21 @@ def _compile_constraint_summary(
             if alphabet_cardinality is not None:
                 constraints["alphabet_cardinality"] = alphabet_cardinality
                 constraints["evidence"].append("magnitude.alphabet_cardinality")
+            inherited_payload = payload.get("inherited_context")
+            if isinstance(inherited_payload, dict):
+                adapted = adapt_published_txa_resource_value(
+                    payload=inherited_payload,
+                    context_source="aitas.compiled_constraint.inherited_context",
+                )
+                if adapted.get("ok"):
+                    constraints["inherited_resource_ref"] = _as_text(adapted.get("inherited_resource_ref"))
+                    constraints["constraint_family"] = _as_text(adapted.get("constraint_family") or "samras")
+                    constraints["descriptor_digest"] = _as_text(adapted.get("descriptor_digest"))
+                    constraints["value_kind"] = _as_text(adapted.get("value_kind") or "txa_id")
+                    constraints["role"] = _as_text(adapted.get("role") or "value")
+                    constraints["context_source"] = _as_text(adapted.get("context_source"))
+                    constraints["provisional_state"] = _as_text(adapted.get("provisional_state"))
+                    constraints["evidence"].append("inherited_txa_adapter")
     if constraints["field_length"] is None or constraints["alphabet_cardinality"] is None:
         chain_text = " ".join(
             _as_text(item.get("label")) + " " + _as_text(item.get("magnitude")) + " " + _as_text(item.get("identifier"))
@@ -155,12 +171,12 @@ def _compile_constraint_summary(
     )
     if samras_constraint:
         constraints["samras"] = dict(samras_constraint)
-        constraints["constraint_family"] = _as_text(samras_constraint.get("constraint_family") or "samras")
-        constraints["descriptor_digest"] = _as_text(samras_constraint.get("descriptor_digest"))
-        constraints["value_kind"] = _as_text(samras_constraint.get("value_kind"))
-        constraints["role"] = _as_text(samras_constraint.get("role"))
-        constraints["context_source"] = _as_text(samras_constraint.get("context_source"))
-        constraints["provisional_state"] = _as_text(samras_constraint.get("provisional_state"))
+        constraints.setdefault("constraint_family", _as_text(samras_constraint.get("constraint_family") or "samras"))
+        constraints.setdefault("descriptor_digest", _as_text(samras_constraint.get("descriptor_digest")))
+        constraints.setdefault("value_kind", _as_text(samras_constraint.get("value_kind")))
+        constraints.setdefault("role", _as_text(samras_constraint.get("role")))
+        constraints.setdefault("context_source", _as_text(samras_constraint.get("context_source")))
+        constraints.setdefault("provisional_state", _as_text(samras_constraint.get("provisional_state")))
         constraints["evidence"].append("samras_descriptor_compiler")
     return constraints
 

@@ -7,6 +7,7 @@ from typing import Any, Callable
 from _shared.portal.datum_refs import parse_datum_ref
 from .field_contracts import default_profile_field_contracts
 from .geometry_datums import geometry_template_spec, validate_template_fields
+from .inherited_txa_adapter import select_inherited_ref_for_field
 from .profile_config_refs import append_unique_path_value, get_path, set_path
 
 
@@ -148,6 +149,19 @@ def preview_write_intent(
         warnings.extend(template_warnings)
 
     inherited_ref = _as_text(fields.get("inherited_ref") or intent.get("inherited_ref"))
+    inherited_context = intent.get("inherited_context") if isinstance(intent.get("inherited_context"), dict) else {}
+    if write_mode == "stage_inherited_ref" and not inherited_ref:
+        inherited_ref = select_inherited_ref_for_field(
+            field_id=field_id,
+            field_ref_bindings=(
+                inherited_context.get("field_ref_bindings")
+                if isinstance(inherited_context.get("field_ref_bindings"), dict)
+                else {}
+            ),
+        )
+        if inherited_ref:
+            fields = dict(fields)
+            fields["inherited_ref"] = inherited_ref
     if write_mode == "stage_inherited_ref":
         if not inherited_ref:
             errors.append("inherited_ref is required for write_mode='stage_inherited_ref'")
