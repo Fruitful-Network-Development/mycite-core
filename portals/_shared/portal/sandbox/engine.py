@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from ..data_engine.external_resources.contact_card_catalog import parse_public_resource_catalog
+from ..data_engine.inherited_txa_adapter import (
+    adapt_published_txa_resource_value,
+    build_field_ref_bindings,
+)
 from ..data_engine.samras_descriptor_compiler import compile_samras_descriptors_from_rows
 from ..datum_refs import normalize_datum_ref, parse_datum_ref
 from ..mss import decode_mss_payload, preview_mss_context
@@ -300,10 +304,12 @@ class SandboxEngine:
             if schema == "mycite.sandbox.singular_mss_resource.v1":
                 compiled_state = resource_payload.get("compile_metadata") if isinstance(resource_payload.get("compile_metadata"), dict) else {}
                 published_value = resource_payload.get("published_value") if isinstance(resource_payload.get("published_value"), dict) else {}
+                mss_form = resource_payload.get("mss_form") if isinstance(resource_payload.get("mss_form"), dict) else {}
                 value_payload = {
                     "resource_id": resource_id,
                     "resource_kind": _as_text(resource_payload.get("resource_kind")),
                     "origin_kind": _as_text(resource_payload.get("origin_kind")),
+                    "mss_form": dict(mss_form),
                     "compile_metadata": dict(compiled_state),
                     "published_value": dict(published_value),
                     "local_msn_id": _as_text(local_msn_id),
@@ -352,6 +358,7 @@ class SandboxEngine:
         selected = canonical.get("selected_ids") if isinstance(canonical.get("selected_ids"), list) else []
         selected_refs = [_as_text(item) for item in selected if _as_text(item)]
         local_msn_id = _as_text(payload.get("source_portal")) or "local"
+        resource_kind = _as_text(payload.get("resource_kind") or "txa")
         try:
             preview = preview_mss_context(
                 anthology_payload=compact_payload,
@@ -367,6 +374,18 @@ class SandboxEngine:
                 "row_count": len(list(preview.get("rows") or [])),
                 "compiled_at": int(time.time()),
             }
+            field_ref_bindings = build_field_ref_bindings(selected_refs, source_msn_id=local_msn_id)
+            descriptor_digest = adapt_published_txa_resource_value(
+                payload={
+                    "resource_id": _as_text(payload.get("resource_id") or resource_id),
+                    "resource_kind": resource_kind,
+                    "mss_form": {"bitstring": compiled_bitstring},
+                },
+                context_source="sandbox.compile_isolated_mss_resource.digest_seed",
+            ).get("descriptor_digest")
+            compile_metadata["descriptor_digest"] = _as_text(descriptor_digest)
+            compile_metadata["mss_form_bitstring"] = compiled_bitstring
+            compile_metadata["provisional_state"] = "compiled"
             payload["mss_form"] = {
                 "bitstring": compiled_bitstring,
                 "wire_variant": "canonical_v2",
@@ -374,8 +393,10 @@ class SandboxEngine:
             payload["compile_metadata"] = compile_metadata
             payload["published_value"] = {
                 "resource_ref": _as_text(payload.get("source_ref")) or _as_text(resource_id),
-                "resource_kind": _as_text(payload.get("resource_kind")),
+                "resource_kind": resource_kind,
                 "mss_form_bitstring": compiled_bitstring,
+                "field_ref_bindings": field_ref_bindings,
+                "descriptor_digest": _as_text(descriptor_digest),
             }
             payload["updated_at"] = int(time.time())
             self._write_json(self._resource_path(resource_id), payload)
@@ -560,18 +581,25 @@ class SandboxEngine:
                 "warnings": list(context.warnings),
             }
         context_payload = context.to_dict()
-        discovered = self._collect_ref_tokens(context.resource_value)
-        explicit = [_as_text(item) for item in list(inherited_refs or []) if _as_text(item)]
-        candidates = []
-        seen: set[str] = set()
-        for token in explicit + discovered:
-            if token in seen:
-                continue
-            seen.add(token)
-            candidates.append(token)
-        txa_refs = [token for token in candidates if self._is_txa_ref(token)]
-        if not txa_refs and context.canonical_ref and self._is_txa_ref(context.canonical_ref):
-            txa_refs.append(context.canonical_ref)
+        adapted = adapt_published_txa_resource_value(
+            payload=context.resource_value if isinstance(context.resource_value, dict) else {},
+            context_source="sandbox.resolve_inherited_resource_context",
+        )
+        bindings = adapted.get("field_ref_bindings") if isinstance(adapted.get("field_ref_bindings"), dict) else {}
+        txa_refs = [str(item).strip() for item in list(bindings.get("all_refs") or []) if str(item).strip()]
+        if not txa_refs:
+            discovered = self._collect_ref_tokens(context.resource_value)
+            explicit = [_as_text(item) for item in list(inherited_refs or []) if _as_text(item)]
+            candidates = []
+            seen: set[str] = set()
+            for token in explicit + discovered:
+                if token in seen:
+                    continue
+                seen.add(token)
+                candidates.append(token)
+            txa_refs = [token for token in candidates if self._is_txa_ref(token)]
+            if not txa_refs and context.canonical_ref and self._is_txa_ref(context.canonical_ref):
+                txa_refs.append(context.canonical_ref)
 
         descriptors = compile_samras_descriptors_from_rows(
             merged_rows_by_id if isinstance(merged_rows_by_id, dict) else {},
@@ -584,6 +612,13 @@ class SandboxEngine:
                 break
         if not txa_descriptor and descriptors:
             txa_descriptor = dict(descriptors[0])
+        if bool(adapted.get("descriptor_digest")):
+            txa_descriptor.setdefault("descriptor_digest", _as_text(adapted.get("descriptor_digest")))
+            txa_descriptor.setdefault("value_kind", _as_text(adapted.get("value_kind") or "txa_id"))
+            txa_descriptor.setdefault("constraint_family", _as_text(adapted.get("constraint_family") or "samras"))
+            txa_descriptor.setdefault("role", _as_text(adapted.get("role") or "value"))
+            txa_descriptor.setdefault("context_source", _as_text(adapted.get("context_source") or "published_resource"))
+            txa_descriptor.setdefault("provisional_state", _as_text(adapted.get("provisional_state") or "compiled"))
 
         return {
             "ok": True,
@@ -593,9 +628,55 @@ class SandboxEngine:
             "txa_descriptor": txa_descriptor,
             "txa_refs": txa_refs,
             "field_usable_refs": list(txa_refs),
+            "field_ref_bindings": dict(bindings),
+            "resource_adapter": dict(adapted),
             "context_source": "inherited_compact_or_contact_card",
             "warnings": list(context.warnings),
             "errors": [],
+        }
+
+    def adapt_published_txa_context(
+        self,
+        *,
+        published_resource_value: dict[str, Any],
+        context_source: str = "sandbox.published_resource_value",
+    ) -> dict[str, Any]:
+        adapted = adapt_published_txa_resource_value(
+            payload=published_resource_value if isinstance(published_resource_value, dict) else {},
+            context_source=context_source,
+        )
+        if not bool(adapted.get("ok")):
+            return {
+                "ok": False,
+                "errors": ["unable to adapt published resource value"],
+                "warnings": [],
+            }
+        refs = []
+        bindings = adapted.get("field_ref_bindings") if isinstance(adapted.get("field_ref_bindings"), dict) else {}
+        for token in list(bindings.get("all_refs") or []):
+            text = _as_text(token)
+            if text:
+                refs.append(text)
+        return {
+            "ok": True,
+            "constraint_family": _as_text(adapted.get("constraint_family") or "samras"),
+            "descriptor_digest": _as_text(adapted.get("descriptor_digest")),
+            "value_kind": _as_text(adapted.get("value_kind") or "txa_id"),
+            "role": _as_text(adapted.get("role") or "value"),
+            "resource_id": _as_text(adapted.get("resource_id")),
+            "resource_kind": _as_text(adapted.get("resource_kind") or "txa"),
+            "origin_kind": _as_text(adapted.get("origin_kind") or "local"),
+            "published_value": dict(adapted.get("published_value") if isinstance(adapted.get("published_value"), dict) else {}),
+            "mss_form": dict(adapted.get("mss_form") if isinstance(adapted.get("mss_form"), dict) else {}),
+            "compile_metadata": dict(
+                adapted.get("compile_metadata") if isinstance(adapted.get("compile_metadata"), dict) else {}
+            ),
+            "field_ref_bindings": dict(bindings),
+            "field_usable_refs": refs,
+            "provisional_state": _as_text(adapted.get("provisional_state") or "compiled"),
+            "context_source": _as_text(adapted.get("context_source") or context_source),
+            "errors": [],
+            "warnings": [],
         }
 
     def generate_contact_card_public_resources(
