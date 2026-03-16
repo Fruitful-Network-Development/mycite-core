@@ -76,11 +76,12 @@ class SandboxEngine:
             return out
         for path in sorted(self._resources_root.glob("*.json"), key=lambda item: item.name):
             payload = self._read_json(path)
+            kind = _as_text(payload.get("kind")) or _as_text(payload.get("resource_kind"))
             out.append(
                 {
                     "resource_id": _as_text(payload.get("resource_id")) or path.stem,
                     "schema": _as_text(payload.get("schema")),
-                    "kind": _as_text(payload.get("kind")),
+                    "kind": kind,
                     "path": str(path),
                 }
             )
