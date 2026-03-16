@@ -98,6 +98,24 @@ Low-level primitives still exist and remain engine-owned:
 
 Config/profile JSON remains a reference surface into anthology datums; anthology remains the local semantic authority.
 
+## Shared sandbox engine
+
+Shared core now exposes a sandbox service layer under `portals/_shared/portal/sandbox/` as the canonical ownership boundary for:
+
+- MSS form compile/decode/edit staging (`SandboxEngine.compile_mss_resource`, `decode_mss_resource`)
+- MSS compact-array decode/context payloads (same service boundary as MSS form compile/decode)
+- SAMRAS resource encode/decode/normalize/validation (`portals/_shared/portal/sandbox/samras.py`)
+- contact-card exposed resource value generation (`SandboxEngine.generate_contact_card_public_resources`)
+- inherited resource context resolution for local and foreign refs (`SandboxEngine.resolve_inherited_resource_context`)
+
+Route surface is shared-core under `/portal/api/data/sandbox/*` (registered in `portals/_shared/portal/api/data_workspace.py`), and SYSTEM now includes a `Sandbox` tab that consumes this shared surface.
+
+Migration boundary:
+
+- Full SAMRAS payload rows are migrated to sandbox-managed resource objects (for FND: `5-0-1 -> txa-samras`, `5-0-2 -> msn-samras`)
+- anthology rows remain as compatibility pointers (`sandbox://samras/<resource_id>`) so higher-layer refs do not break
+- migration helper is `migrate_fnd_samras_rows_to_sandbox(...)`; it supports dry-run and apply modes
+
 ## Runtime validation commands
 
 Use a Flask-capable Python environment for route suites. Example from repo root:
@@ -105,6 +123,7 @@ Use a Flask-capable Python environment for route suites. Example from repo root:
 - `python3 -m venv .venv`
 - `.venv/bin/pip install flask cryptography`
 - `PYTHONPATH="/srv/repo/mycite-core/portals:/srv/repo/mycite-core/portals/_shared/runtime/flavors/tff" .venv/bin/python -m unittest tests/test_data_write_pipeline_routes.py tests/test_agro_erp_tool_flow.py`
+- `.venv/bin/python -m unittest tests/test_data_write_pipeline_routes.py tests/test_sandbox_engine.py`
 
 Pure engine-only write tests (no Flask requirement):
 

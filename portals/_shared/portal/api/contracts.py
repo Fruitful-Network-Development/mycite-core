@@ -8,6 +8,7 @@ from flask import abort, jsonify, make_response, request
 
 from ..data_engine import build_compiled_index
 from ..mss import load_anthology_payload, preview_mss_context
+from ..sandbox import SandboxEngine
 
 try:
     from portal.services.alias_factory import (
@@ -92,6 +93,19 @@ def _selected_refs_from_body(body: dict[str, Any]) -> list[str]:
     return []
 
 
+def _sandbox_engine_from_anthology_path(anthology_path_fn: Callable[[], Path] | None) -> SandboxEngine | None:
+    if anthology_path_fn is None:
+        return None
+    try:
+        path = anthology_path_fn()
+    except Exception:
+        return None
+    data_root = path.parent if isinstance(path, Path) else None
+    if data_root is None:
+        return None
+    return SandboxEngine(data_root=data_root)
+
+
 def _maybe_compile_owner_mss(
     *,
     body: dict[str, Any],
@@ -103,11 +117,21 @@ def _maybe_compile_owner_mss(
     if not selected_refs:
         compiled["owner_selected_refs"] = selected_refs
         return compiled
-    preview = preview_mss_context(
-        anthology_payload=_anthology_payload(anthology_path_fn),
-        selected_refs=selected_refs,
-        local_msn_id=local_msn_id,
-    )
+    sandbox_engine = _sandbox_engine_from_anthology_path(anthology_path_fn)
+    if sandbox_engine is not None:
+        compiled_result = sandbox_engine.compile_mss_resource(
+            resource_id=f"contract:{_as_str(compiled.get('contract_id') or 'preview')}:owner_mss",
+            selected_refs=selected_refs,
+            anthology_payload=_anthology_payload(anthology_path_fn),
+            local_msn_id=local_msn_id,
+        )
+        preview = dict(compiled_result.compiled_payload if isinstance(compiled_result.compiled_payload, dict) else {})
+    else:
+        preview = preview_mss_context(
+            anthology_payload=_anthology_payload(anthology_path_fn),
+            selected_refs=selected_refs,
+            local_msn_id=local_msn_id,
+        )
     compiled["owner_selected_refs"] = selected_refs
     compiled["owner_mss"] = _as_str(preview.get("bitstring"))
     return compiled
@@ -120,13 +144,32 @@ def _mss_preview_payload(
     local_msn_id: str,
 ) -> dict[str, Any]:
     selected_refs = _selected_refs_from_body(body)
-    owner_preview = preview_mss_context(
-        anthology_payload=_anthology_payload(anthology_path_fn),
-        selected_refs=selected_refs,
-        bitstring="" if selected_refs else _as_str(body.get("owner_mss")),
-        local_msn_id=local_msn_id,
-    )
-    counterparty_preview = preview_mss_context(bitstring=_as_str(body.get("counterparty_mss")))
+    sandbox_engine = _sandbox_engine_from_anthology_path(anthology_path_fn)
+    if sandbox_engine is not None and selected_refs:
+        owner_compiled = sandbox_engine.compile_mss_resource(
+            resource_id=f"contract:{_as_str(body.get('contract_id') or 'preview')}:owner_mss",
+            selected_refs=selected_refs,
+            anthology_payload=_anthology_payload(anthology_path_fn),
+            local_msn_id=local_msn_id,
+        )
+        owner_preview = dict(owner_compiled.compiled_payload if isinstance(owner_compiled.compiled_payload, dict) else {})
+    else:
+        owner_preview = preview_mss_context(
+            anthology_payload=_anthology_payload(anthology_path_fn),
+            selected_refs=selected_refs,
+            bitstring="" if selected_refs else _as_str(body.get("owner_mss")),
+            local_msn_id=local_msn_id,
+        )
+    if sandbox_engine is not None:
+        counterparty_decoded = sandbox_engine.decode_mss_resource(
+            bitstring=_as_str(body.get("counterparty_mss")),
+            resource_id=f"contract:{_as_str(body.get('contract_id') or 'preview')}:counterparty_mss",
+        )
+        counterparty_preview = dict(
+            counterparty_decoded.compiled_payload if isinstance(counterparty_decoded.compiled_payload, dict) else {}
+        )
+    else:
+        counterparty_preview = preview_mss_context(bitstring=_as_str(body.get("counterparty_mss")))
     return {
         "owner_selected_refs": selected_refs,
         "owner_preview": owner_preview,

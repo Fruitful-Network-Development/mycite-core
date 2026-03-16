@@ -19,6 +19,7 @@ def build_shell_context(
     switch_portal_url: str,
     current_path: str,
     context_sidebar_sections: list[dict[str, Any]],
+    system_tabs: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     active_tool_id = str(active_tool.get("tool_id") or "") if active_tool else ""
     return {
@@ -30,6 +31,7 @@ def build_shell_context(
         "active_service": active_service,
         "active_service_tab": active_service_tab,
         "network_tabs": network_tabs,
+        "system_tabs": list(system_tabs or []),
         "sidebar_progeny": sidebar_progeny,
         "portal_name": portal_name,
         "active_portal_username": active_portal_username,
