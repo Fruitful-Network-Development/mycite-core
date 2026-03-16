@@ -67,19 +67,23 @@ class SandboxEngineTests(unittest.TestCase):
             row_ids = [str(item.get("identifier") or "") for item in ((decoded.compiled_payload or {}).get("rows") or [])]
             self.assertIn("5-0-1", row_ids)
 
-    def test_migration_replaces_fnd_rows_with_sandbox_pointers(self):
+    def test_migration_extracts_samras_trees_into_isolated_resources(self):
         sandbox = _load_sandbox_module()
         with tempfile.TemporaryDirectory() as tmp:
             data_root = Path(tmp)
             anthology_path = data_root / "anthology.json"
-            anthology_path.write_text(json.dumps(_example_payload(), indent=2) + "\n", encoding="utf-8")
+            payload = _example_payload()
+            payload["5-0-1"] = [["5-0-1", "4-2-1", "[\"4-2-1\"]"], ["samras_set_local_txa"]]
+            payload["5-0-2"] = [["5-0-2", "4-2-1", "[\"4-2-1\"]"], ["samras_set_local_msn"]]
+            anthology_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
             dry = sandbox.migrate_fnd_samras_rows_to_sandbox(
                 anthology_path=anthology_path,
                 data_root=data_root,
                 apply_changes=False,
             )
             self.assertTrue(dry.ok)
-            self.assertIn("5-0-1", dry.migrated_rows)
+            self.assertIn("5-0-1", dry.exact_live_txa_msn_rows)
+            self.assertTrue(dry.resource_payload_paths)
             applied = sandbox.migrate_fnd_samras_rows_to_sandbox(
                 anthology_path=anthology_path,
                 data_root=data_root,
@@ -87,10 +91,38 @@ class SandboxEngineTests(unittest.TestCase):
             )
             self.assertTrue(applied.ok)
             updated = json.loads(anthology_path.read_text(encoding="utf-8"))
-            self.assertIn("5-0-1", updated)
-            self.assertTrue(str(updated["5-0-1"][0][2]).startswith("sandbox://samras/"))
-            self.assertTrue((data_root / "sandbox" / "resources" / "txa-samras.json").exists())
-            self.assertTrue((data_root / "sandbox" / "resources" / "msn-samras.json").exists())
+            self.assertNotIn("5-0-1", updated)
+            self.assertNotIn("5-0-2", updated)
+            for rid in applied.sandbox_resources:
+                self.assertTrue((data_root / "sandbox" / "resources" / f"{rid}.json").exists())
+
+    def test_isolated_resource_compile_updates_publication_state(self):
+        sandbox = _load_sandbox_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = sandbox.SandboxEngine(data_root=Path(tmp))
+            seed = {
+                "schema": "mycite.sandbox.singular_mss_resource.v1",
+                "resource_id": "txa.samras.5-0-1",
+                "resource_kind": "txa",
+                "origin_kind": "local",
+                "source_portal": "3-2-3-17-77-1-6-4-1-4",
+                "source_ref": "5-0-1",
+                "draft_state": {"selected_ids": ["4-2-1"], "compact_payload": _example_payload()},
+                "canonical_state": {"selected_ids": ["4-2-1"], "compact_payload": _example_payload()},
+                "mss_form": {"bitstring": "", "wire_variant": ""},
+                "abstraction_root": "4-2-1",
+                "compile_metadata": {"compiled": False, "warnings": []},
+                "updated_at": 0,
+            }
+            saved = engine.save_resource("txa.samras.5-0-1", seed)
+            self.assertTrue(saved.ok)
+            compiled = engine.compile_isolated_mss_resource(resource_id="txa.samras.5-0-1")
+            self.assertTrue(compiled.ok)
+            compiled_payload = compiled.compiled_payload or {}
+            mss_form = compiled_payload.get("mss_form") if isinstance(compiled_payload.get("mss_form"), dict) else {}
+            self.assertTrue(str(mss_form.get("bitstring") or ""))
+            exposed = engine.generate_exposed_resource_values(local_msn_id="3-2-3-17-77-1-6-4-1-4")
+            self.assertTrue(any(str(item.get("resource_id")) == "txa.samras.5-0-1" for item in exposed))
 
 
 if __name__ == "__main__":

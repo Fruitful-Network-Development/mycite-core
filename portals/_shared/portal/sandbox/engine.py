@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +97,7 @@ class SandboxEngine:
         try:
             out = dict(payload if isinstance(payload, dict) else {})
             out.setdefault("resource_id", _as_text(resource_id))
+            out.setdefault("updated_at", int(time.time()))
             self._write_json(self._resource_path(resource_id), out)
             return SandboxStageResult(
                 ok=True,
@@ -119,6 +121,7 @@ class SandboxEngine:
         try:
             out = dict(payload if isinstance(payload, dict) else {})
             out.setdefault("resource_id", _as_text(resource_id))
+            out.setdefault("updated_at", int(time.time()))
             self._write_json(self._stage_path(resource_id), out)
             return SandboxStageResult(
                 ok=True,
@@ -291,6 +294,26 @@ class SandboxEngine:
             resource_payload = self.get_resource(resource_id)
             if bool(resource_payload.get("missing")):
                 continue
+            schema = _as_text(resource_payload.get("schema"))
+            kind = _as_text(resource_payload.get("kind") or resource_payload.get("resource_kind"))
+            if schema == "mycite.sandbox.singular_mss_resource.v1":
+                compiled_state = resource_payload.get("compile_metadata") if isinstance(resource_payload.get("compile_metadata"), dict) else {}
+                published_value = resource_payload.get("published_value") if isinstance(resource_payload.get("published_value"), dict) else {}
+                value_payload = {
+                    "resource_id": resource_id,
+                    "resource_kind": _as_text(resource_payload.get("resource_kind")),
+                    "origin_kind": _as_text(resource_payload.get("origin_kind")),
+                    "compile_metadata": dict(compiled_state),
+                    "published_value": dict(published_value),
+                    "local_msn_id": _as_text(local_msn_id),
+                }
+            else:
+                value_payload = {
+                    "resource_id": resource_id,
+                    "schema": schema,
+                    "kind": kind,
+                    "local_msn_id": _as_text(local_msn_id),
+                }
             value = ExposedResourceValue(
                 resource_id=resource_id,
                 kind="sandbox_resource",
@@ -298,15 +321,80 @@ class SandboxEngine:
                 lens_hint="sandbox",
                 href=f"/portal/api/data/sandbox/resources/{resource_id}/value",
                 availability="public",
-                value={
-                    "resource_id": resource_id,
-                    "schema": _as_text(resource_payload.get("schema")),
-                    "kind": _as_text(resource_payload.get("kind")),
-                    "local_msn_id": _as_text(local_msn_id),
-                },
+                value=value_payload,
             )
             out.append(value.to_dict())
         return out
+
+    def compile_isolated_mss_resource(self, *, resource_id: str) -> SandboxCompileResult:
+        payload = self.get_resource(resource_id)
+        if bool(payload.get("missing")):
+            return SandboxCompileResult(
+                ok=False,
+                resource_type="singular_mss_resource",
+                resource_id=_as_text(resource_id),
+                compiled_payload={},
+                warnings=[],
+                errors=[f"resource not found: {resource_id}"],
+            )
+        if _as_text(payload.get("schema")) != "mycite.sandbox.singular_mss_resource.v1":
+            return SandboxCompileResult(
+                ok=False,
+                resource_type="singular_mss_resource",
+                resource_id=_as_text(resource_id),
+                compiled_payload={},
+                warnings=[],
+                errors=["resource schema is not mycite.sandbox.singular_mss_resource.v1"],
+            )
+        canonical = payload.get("canonical_state") if isinstance(payload.get("canonical_state"), dict) else {}
+        compact_payload = canonical.get("compact_payload") if isinstance(canonical.get("compact_payload"), dict) else {}
+        selected = canonical.get("selected_ids") if isinstance(canonical.get("selected_ids"), list) else []
+        selected_refs = [_as_text(item) for item in selected if _as_text(item)]
+        local_msn_id = _as_text(payload.get("source_portal")) or "local"
+        try:
+            preview = preview_mss_context(
+                anthology_payload=compact_payload,
+                selected_refs=selected_refs,
+                bitstring="",
+                local_msn_id=local_msn_id,
+            )
+            compiled_bitstring = _as_text(preview.get("bitstring"))
+            compile_metadata = {
+                "compiled": True,
+                "warnings": [str(item) for item in list(preview.get("warnings") or [])],
+                "selected_ref_count": len(selected_refs),
+                "row_count": len(list(preview.get("rows") or [])),
+                "compiled_at": int(time.time()),
+            }
+            payload["mss_form"] = {
+                "bitstring": compiled_bitstring,
+                "wire_variant": "canonical_v2",
+            }
+            payload["compile_metadata"] = compile_metadata
+            payload["published_value"] = {
+                "resource_ref": _as_text(payload.get("source_ref")) or _as_text(resource_id),
+                "resource_kind": _as_text(payload.get("resource_kind")),
+                "mss_form_bitstring": compiled_bitstring,
+            }
+            payload["updated_at"] = int(time.time())
+            self._write_json(self._resource_path(resource_id), payload)
+            return SandboxCompileResult(
+                ok=True,
+                resource_type="singular_mss_resource",
+                resource_id=_as_text(resource_id),
+                compiled_payload=dict(payload),
+                warnings=list(compile_metadata.get("warnings") or []),
+                errors=[],
+            )
+        except Exception as exc:
+            return SandboxCompileResult(
+                ok=False,
+                resource_type="singular_mss_resource",
+                resource_id=_as_text(resource_id),
+                compiled_payload={},
+                warnings=[],
+                errors=[str(exc)],
+            )
 
     def resolve_inherited_resource_context(
         self,
