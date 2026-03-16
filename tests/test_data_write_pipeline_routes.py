@@ -114,6 +114,56 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertIn("property_parcel_ref", contracts)
         self.assertIn("property_plot_refs", contracts)
 
+    def test_aitas_archetype_routes_inspect_trace_and_bindings(self):
+        self.anthology_rows.update(
+            {
+                "10-1-1": {
+                    "identifier": "10-1-1",
+                    "label": "ASCII root",
+                    "pairs": [],
+                    "magnitude": '{"family":"ascii"}',
+                },
+                "10-1-2": {
+                    "identifier": "10-1-2",
+                    "label": "Babel bridge",
+                    "pairs": [{"reference": "10-1-1", "magnitude": "inherits"}],
+                    "magnitude": '{"kind":"babel"}',
+                },
+                "10-1-3": {
+                    "identifier": "10-1-3",
+                    "label": "ASCII Babel 64 Field",
+                    "pairs": [{"reference": "10-1-2", "magnitude": "inherits"}],
+                    "magnitude": '{"field_length":64,"alphabet_cardinality":256}',
+                },
+            }
+        )
+        defs = self.client.get("/portal/api/data/aitas/archetypes")
+        self.assertEqual(defs.status_code, 200)
+        self.assertTrue((defs.get_json() or {}).get("ok"))
+        self.assertTrue(
+            any(str(item.get("archetype_key")) == "ascii_babel_64" for item in (defs.get_json() or {}).get("definitions") or [])
+        )
+
+        inspect = self.client.post("/portal/api/data/aitas/archetype/inspect", json={"datum_ref": "10-1-3"})
+        self.assertEqual(inspect.status_code, 200)
+        inspect_payload = inspect.get_json() or {}
+        self.assertTrue(inspect_payload.get("ok"))
+        self.assertEqual(
+            (((inspect_payload.get("aitas") or {}).get("archetype") or {}).get("binding") or {}).get("archetype_key"),
+            "ascii_babel_64",
+        )
+
+        trace = self.client.post("/portal/api/data/aitas/archetype/trace", json={"datum_ref": "10-1-3"})
+        self.assertEqual(trace.status_code, 200)
+        self.assertTrue((trace.get_json() or {}).get("ok"))
+        self.assertTrue(((trace.get_json() or {}).get("trace") or {}).get("edges"))
+
+        bindings = self.client.get("/portal/api/data/aitas/archetype/bindings?limit=20")
+        self.assertEqual(bindings.status_code, 200)
+        bindings_payload = bindings.get_json() or {}
+        self.assertTrue(bindings_payload.get("ok"))
+        self.assertEqual(bindings_payload.get("count"), 1)
+
     def test_apply_updates_anthology_and_config_ref(self):
         response = self.client.post(
             "/portal/api/data/write/apply",

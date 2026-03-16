@@ -3,6 +3,12 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from flask import abort, jsonify, redirect, request
+from _shared.portal.data_engine.aitas_context import (
+    inspect_archetype_context,
+    inspect_archetype_trace,
+    list_archetype_registry_payload,
+    list_derived_archetype_bindings,
+)
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
 
@@ -143,6 +149,54 @@ def register_data_routes(
     def portal_data_model():
         meta = workspace.model_meta() if hasattr(workspace, "model_meta") else {}
         return jsonify({"ok": True, "model_meta": meta})
+
+    @app.get("/portal/api/data/aitas/archetypes")
+    def portal_data_aitas_archetypes():
+        payload = list_archetype_registry_payload()
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/aitas/archetype/inspect")
+    def portal_data_aitas_archetype_inspect():
+        body = _json_body()
+        datum_ref = str(body.get("datum_ref") or body.get("ref") or "").strip()
+        if not datum_ref:
+            abort(400, description="datum_ref is required")
+        payload = inspect_archetype_context(
+            datum_ref=datum_ref,
+            local_msn_id=_msn_id(),
+            anthology_payload=_local_anthology_payload(),
+        )
+        payload["schema"] = "mycite.portal.aitas.inspect.v1"
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/aitas/archetype/trace")
+    def portal_data_aitas_archetype_trace():
+        body = _json_body()
+        datum_ref = str(body.get("datum_ref") or body.get("ref") or "").strip()
+        if not datum_ref:
+            abort(400, description="datum_ref is required")
+        payload = inspect_archetype_trace(
+            datum_ref=datum_ref,
+            local_msn_id=_msn_id(),
+            anthology_payload=_local_anthology_payload(),
+        )
+        payload["schema"] = "mycite.portal.aitas.trace.v1"
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.get("/portal/api/data/aitas/archetype/bindings")
+    def portal_data_aitas_archetype_bindings():
+        limit_raw = str(request.args.get("limit") or "200").strip()
+        try:
+            limit = max(1, min(1000, int(limit_raw)))
+        except Exception:
+            limit = 200
+        payload = list_derived_archetype_bindings(
+            local_msn_id=_msn_id(),
+            anthology_payload=_local_anthology_payload(),
+            limit=limit,
+        )
+        payload["schema"] = "mycite.portal.aitas.bindings.v1"
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
     @app.get("/portal/api/data/write/field_contracts")
     def portal_data_write_field_contracts():
