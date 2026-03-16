@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Callable
 
@@ -10,6 +11,8 @@ from _shared.portal.data_engine.aitas_context import (
     list_archetype_registry_payload,
     list_derived_archetype_bindings,
 )
+from _shared.portal.data_engine.anthology_overlay import strip_base_duplicates_from_overlay
+from _shared.portal.data_engine.anthology_registry import load_base_registry
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
 from _shared.portal.sandbox import SandboxEngine, migrate_fnd_samras_rows_to_sandbox
@@ -124,6 +127,11 @@ def register_data_routes(
             data_root = "."
         return SandboxEngine(data_root=Path(str(data_root)))
 
+    def _overlay_anthology_path() -> Path:
+        storage = getattr(workspace, "storage", None)
+        data_root = getattr(storage, "data_dir", None)
+        return Path(str(data_root or ".")) / "anthology.json"
+
     def _anthology_payload_for_mss_compile() -> dict[str, Any]:
         payload = _local_anthology_payload()
         if isinstance(payload, dict) and isinstance(payload.get("rows"), dict):
@@ -164,6 +172,41 @@ def register_data_routes(
     def portal_data_model():
         meta = workspace.model_meta() if hasattr(workspace, "model_meta") else {}
         return jsonify({"ok": True, "model_meta": meta})
+
+    @app.post("/portal/api/data/anthology/overlay/migration")
+    def portal_data_anthology_overlay_migration():
+        body = _json_body()
+        apply_changes = bool(body.get("apply"))
+        overlay_path = _overlay_anthology_path()
+        try:
+            overlay_payload = json.loads(overlay_path.read_text(encoding="utf-8")) if overlay_path.exists() else {}
+        except Exception:
+            overlay_payload = {}
+        if not isinstance(overlay_payload, dict):
+            overlay_payload = {}
+        base_registry = load_base_registry(strict=False)
+        report = strip_base_duplicates_from_overlay(
+            overlay_payload=overlay_payload,
+            base_registry=base_registry,
+        )
+        if apply_changes:
+            overlay_path.parent.mkdir(parents=True, exist_ok=True)
+            overlay_path.write_text(json.dumps(report.output_payload, indent=2) + "\n", encoding="utf-8")
+        return jsonify(
+            {
+                "ok": True,
+                "apply": apply_changes,
+                "overlay_path": str(overlay_path),
+                "base_registry_path": str(base_registry.path),
+                "removed_duplicate_ids": list(report.removed_duplicate_ids),
+                "kept_ids": list(report.kept_ids),
+                "warnings": list(report.warnings),
+                "counts": {
+                    "removed_duplicate_count": len(report.removed_duplicate_ids),
+                    "kept_count": len(report.kept_ids),
+                },
+            }
+        )
 
     @app.get("/portal/api/data/sandbox/resources")
     def portal_data_sandbox_resources():

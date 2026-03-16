@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from ..data_contract import compact_payload_to_rows, rows_to_compact_payload, rows_to_save_state
+from ..data_engine.anthology_overlay import merge_base_and_overlay
+from ..data_engine.anthology_registry import load_base_registry
 from ..datum_refs import ParsedDatumRef, parse_datum_ref
 
 
@@ -67,7 +69,14 @@ def _load_json_object(path: Path) -> dict[str, Any]:
 
 
 def load_anthology_payload(path: str | Path) -> dict[str, Any]:
-    return _load_json_object(Path(path))
+    overlay_payload = _load_json_object(Path(path))
+    report = merge_base_and_overlay(
+        base_registry=load_base_registry(strict=False),
+        overlay_payload=overlay_payload,
+        strict=False,
+        allow_overlay_override=True,
+    )
+    return dict(report.merged_payload if isinstance(report.merged_payload, dict) else {})
 
 
 def _empty_decoded_payload(
