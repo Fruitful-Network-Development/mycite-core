@@ -124,6 +124,11 @@ Migration route:
 
 - `POST /portal/api/data/anthology/overlay/migration` (`apply=false|true`) for duplicate-base-row stripping in local overlays
 
+Merged anthology canonical seam:
+
+- `build_canonical_anthology_context(...)` (`portals/_shared/portal/data_engine/anthology_context.py`)
+- consumed by AITAS inspect/trace/bindings, sandbox txa inherited compiler, and write preview/apply local-ref existence checks
+
 ## Shared sandbox engine
 
 Shared core now exposes a sandbox service layer under `portals/_shared/portal/sandbox/` as the canonical ownership boundary for:

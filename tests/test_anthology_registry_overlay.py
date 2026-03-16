@@ -183,6 +183,20 @@ class AnthologyRegistryOverlayTests(unittest.TestCase):
             # This row exists in anthology-base.json and should be stripped from overlay output.
             self.assertNotIn("1-1-2", overlay_after)
 
+    def test_canonical_anthology_context_builds_rows_and_compact_payload(self):
+        context_mod = _load_module("_shared.portal.data_engine.anthology_context")
+        payload = {
+            "rows": {
+                "8-5-1": {"identifier": "8-5-1", "label": "product", "pairs": [{"reference": "3-1-5", "magnitude": "x"}]},
+                "8-4-1": {"identifier": "8-4-1", "label": "supply", "pairs": [{"reference": "3-1-5", "magnitude": "y"}]},
+            }
+        }
+        context = context_mod.build_canonical_anthology_context(overlay_payload=payload)
+        self.assertTrue(context.ok)
+        self.assertIn("8-5-1", context.rows_by_id)
+        self.assertIn("8-4-1", context.rows_by_id)
+        self.assertIn("8-5-1", context.compact_payload)
+
 
 if __name__ == "__main__":
     unittest.main()

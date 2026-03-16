@@ -99,7 +99,7 @@ def _ref_exists_locally(canonical_ref: str, anthology_payload: dict[str, Any]) -
 
 def _build_default_required_refs(intent: dict[str, Any]) -> list[str]:
     out: list[str] = []
-    for key in ("taxonomy_ref", "resource_ref", "parent_ref", "boundary_ref", "parcel_ref", "field_ref", "plot_ref"):
+    for key in ("taxonomy_ref", "resource_ref", "parent_ref", "boundary_ref", "parcel_ref", "field_ref", "plot_ref", "inherited_ref"):
         token = _as_text((intent.get("fields") or {}).get(key))
         if token:
             out.append(token)
@@ -147,10 +147,17 @@ def preview_write_intent(
         errors.extend(template_errors)
         warnings.extend(template_warnings)
 
-    local_id = _as_text(fields.get("local_id") or intent.get("local_id") or intent.get("target_ref"))
-    if not local_id:
-        errors.append("local_id is required")
-    target_ref = _canonical_ref(local_id, local_msn_id)
+    inherited_ref = _as_text(fields.get("inherited_ref") or intent.get("inherited_ref"))
+    if write_mode == "stage_inherited_ref":
+        if not inherited_ref:
+            errors.append("inherited_ref is required for write_mode='stage_inherited_ref'")
+        local_id = _as_text(intent.get("target_ref"))
+        target_ref = _canonical_ref(inherited_ref or local_id, local_msn_id)
+    else:
+        local_id = _as_text(fields.get("local_id") or intent.get("local_id") or intent.get("target_ref"))
+        if not local_id:
+            errors.append("local_id is required")
+        target_ref = _canonical_ref(local_id, local_msn_id)
     required_refs = [str(item).strip() for item in list(intent.get("required_refs") or []) if str(item).strip()]
     if not required_refs:
         required_refs = _build_default_required_refs(intent)
@@ -191,7 +198,15 @@ def preview_write_intent(
                 )
             else:
                 write_actions.append(action)
-    if target_ref and _ref_exists_locally(target_ref, local_payload):
+    if write_mode == "stage_inherited_ref":
+        write_actions.append(
+            {
+                "action": "stage_inherited_ref",
+                "canonical_ref": target_ref,
+                "materialization": "none",
+            }
+        )
+    elif target_ref and _ref_exists_locally(target_ref, local_payload):
         write_actions.append({"action": "reuse_existing_target", "canonical_ref": target_ref})
     else:
         write_actions.append({"action": "create_target", "canonical_ref": target_ref})
@@ -271,6 +286,17 @@ def apply_write_preview(
             if canonical_ref:
                 reused_refs.append(canonical_ref)
             mutation_rows.append({"action": kind, "identifier": canonical_ref, "result": {"ok": True, "reused": True}})
+            continue
+        if kind == "stage_inherited_ref":
+            if canonical_ref:
+                reused_refs.append(canonical_ref)
+            mutation_rows.append(
+                {
+                    "action": kind,
+                    "identifier": canonical_ref,
+                    "result": {"ok": True, "reused": True, "materialization": "none"},
+                }
+            )
             continue
         if kind == "create_target":
             magnitude_payload = {

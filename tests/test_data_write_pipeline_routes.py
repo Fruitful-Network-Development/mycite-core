@@ -119,6 +119,8 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         contracts = payload.get("contracts") if isinstance(payload.get("contracts"), dict) else {}
         self.assertIn("property_parcel_ref", contracts)
         self.assertIn("property_plot_refs", contracts)
+        self.assertIn("inherited_product_profile_ref", contracts)
+        self.assertIn("inherited_supply_log_ref", contracts)
 
     def test_aitas_archetype_routes_inspect_trace_and_bindings(self):
         self.anthology_rows.update(
@@ -169,6 +171,111 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         bindings_payload = bindings.get_json() or {}
         self.assertTrue(bindings_payload.get("ok"))
         self.assertEqual(bindings_payload.get("count"), 1)
+
+    def test_aitas_inspect_includes_samras_compiled_constraint(self):
+        self.anthology_rows.update(
+            {
+                "1-1-3": {
+                    "identifier": "1-1-3",
+                    "label": "txa-SAMRAS",
+                    "pairs": [{"reference": "0-0-5", "magnitude": "def"}],
+                    "magnitude": "3-3-0-0-1-1-4,0-0-0-0-8",
+                },
+                "2-1-12": {
+                    "identifier": "2-1-12",
+                    "label": "SAMRAS-space-txa",
+                    "pairs": [{"reference": "1-1-3", "magnitude": "1"}],
+                    "magnitude": "1",
+                },
+                "3-1-5": {
+                    "identifier": "3-1-5",
+                    "label": "txa_id-babelette-txa_id",
+                    "pairs": [{"reference": "2-1-12", "magnitude": "0"}],
+                    "magnitude": "0",
+                },
+                "8-5-1": {
+                    "identifier": "8-5-1",
+                    "label": "product-profile-row",
+                    "pairs": [{"reference": "3-1-5", "magnitude": "3-2-3-1"}],
+                    "magnitude": "3-2-3-1",
+                },
+            }
+        )
+        inspect = self.client.post("/portal/api/data/aitas/archetype/inspect", json={"datum_ref": "8-5-1"})
+        self.assertEqual(inspect.status_code, 200)
+        payload = inspect.get_json() or {}
+        compiled = (((payload.get("aitas") or {}).get("archetype") or {}).get("compiled_constraint") or {})
+        self.assertEqual(compiled.get("constraint_family"), "samras")
+        self.assertEqual(compiled.get("value_kind"), "txa_id")
+        self.assertTrue(compiled.get("descriptor_digest"))
+
+    def test_sandbox_compile_txa_inherited_context_route(self):
+        self.anthology_rows.update(
+            {
+                "1-1-3": {"identifier": "1-1-3", "label": "txa-SAMRAS", "pairs": [], "magnitude": "3-3-0-0-1-1-4"},
+                "3-1-5": {"identifier": "3-1-5", "label": "txa_id-babelette-txa_id", "pairs": [], "magnitude": "0"},
+            }
+        )
+        upsert = self.client.post(
+            "/portal/api/data/sandbox/samras/upsert",
+            json={
+                "resource_id": "txa-samras-test",
+                "structure_payload": "3-3-0-0-1-1-4",
+                "value_kind": "txa_id",
+                "rows": [{"address_id": "8-5-1", "title": "product row"}],
+            },
+        )
+        self.assertEqual(upsert.status_code, 200)
+        compiled = self.client.post(
+            "/portal/api/data/sandbox/inherited/compile_txa",
+            json={"resource_ref": "sandbox:txa-samras-test", "inherited_refs": ["7-7-7.8-5-1", "7-7-7.8-4-1"]},
+        )
+        self.assertEqual(compiled.status_code, 200)
+        payload = compiled.get_json() or {}
+        self.assertTrue(payload.get("ok"))
+        self.assertTrue(payload.get("txa_refs"))
+        self.assertEqual(((payload.get("txa_descriptor") or {}).get("constraint_family")), "samras")
+
+    def test_write_pipeline_inherited_ref_slice_for_8_5_and_8_4(self):
+        self.config_payload = {"agro": {"inherited": {}}}
+        intent_profile = {
+            "intent_type": "profile_field",
+            "field_id": "inherited_product_profile_ref",
+            "write_mode": "stage_inherited_ref",
+            "fields": {"inherited_ref": "7-7-7.8-5-1"},
+        }
+        preview_profile = self.client.post("/portal/api/data/write/preview", json={"intent": intent_profile})
+        self.assertEqual(preview_profile.status_code, 200)
+        preview_profile_payload = preview_profile.get_json() or {}
+        actions = [item.get("action") for item in preview_profile_payload.get("write_actions") or []]
+        self.assertIn("stage_inherited_ref", actions)
+        self.assertNotIn("create_target", actions)
+        apply_profile = self.client.post("/portal/api/data/write/apply", json={"intent": intent_profile})
+        self.assertEqual(apply_profile.status_code, 200)
+        apply_profile_payload = apply_profile.get_json() or {}
+        summary_profile = apply_profile_payload.get("mutation_summary") or {}
+        self.assertEqual(summary_profile.get("created_count"), 0)
+        self.assertEqual(summary_profile.get("reused_count"), 1)
+        self.assertEqual((((self.config_payload.get("agro") or {}).get("inherited") or {}).get("product_profile_ref")), "7-7-7.8-5-1")
+
+        intent_log = {
+            "intent_type": "profile_field",
+            "field_id": "inherited_supply_log_ref",
+            "write_mode": "stage_inherited_ref",
+            "fields": {"inherited_ref": "7-7-7.8-4-1"},
+        }
+        preview_log = self.client.post("/portal/api/data/write/preview", json={"intent": intent_log})
+        self.assertEqual(preview_log.status_code, 200)
+        preview_log_payload = preview_log.get_json() or {}
+        actions_log = [item.get("action") for item in preview_log_payload.get("write_actions") or []]
+        self.assertIn("stage_inherited_ref", actions_log)
+        apply_log = self.client.post("/portal/api/data/write/apply", json={"intent": intent_log})
+        self.assertEqual(apply_log.status_code, 200)
+        apply_log_payload = apply_log.get_json() or {}
+        summary_log = apply_log_payload.get("mutation_summary") or {}
+        self.assertEqual(summary_log.get("created_count"), 0)
+        self.assertEqual(summary_log.get("reused_count"), 1)
+        self.assertEqual((((self.config_payload.get("agro") or {}).get("inherited") or {}).get("supply_log_ref")), "7-7-7.8-4-1")
 
     def test_sandbox_routes_compile_decode_stage_and_migration_dry_run(self):
         self.anthology_rows.update(

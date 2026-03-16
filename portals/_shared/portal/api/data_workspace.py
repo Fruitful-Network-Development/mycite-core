@@ -11,6 +11,7 @@ from _shared.portal.data_engine.aitas_context import (
     list_archetype_registry_payload,
     list_derived_archetype_bindings,
 )
+from _shared.portal.data_engine.anthology_context import build_canonical_anthology_context
 from _shared.portal.data_engine.anthology_overlay import strip_base_duplicates_from_overlay
 from _shared.portal.data_engine.anthology_registry import load_base_registry
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
@@ -112,7 +113,7 @@ def register_data_routes(
                 resource_id=str(payload.get("resource_id") or "").strip(),
                 target_ref=str(payload.get("target_ref") or "").strip(),
                 required_refs=[str(item or "").strip() for item in list(payload.get("required_refs") or [])],
-                anthology_payload=anthology_payload_provider() or {},
+                anthology_payload=_anthology_payload_for_mss_compile(),
                 allow_auto_create=bool(payload.get("allow_auto_create", False)),
             )
             out = plan.to_dict() if hasattr(plan, "to_dict") else dict(plan)
@@ -132,11 +133,17 @@ def register_data_routes(
         data_root = getattr(storage, "data_dir", None)
         return Path(str(data_root or ".")) / "anthology.json"
 
+    def _canonical_anthology_context():
+        overlay_path = _overlay_anthology_path()
+        if overlay_path.exists():
+            return build_canonical_anthology_context(overlay_path=overlay_path)
+        return build_canonical_anthology_context(overlay_payload=_local_anthology_payload())
+
+    def _canonical_rows_payload() -> dict[str, Any]:
+        return _canonical_anthology_context().rows_payload
+
     def _anthology_payload_for_mss_compile() -> dict[str, Any]:
-        payload = _local_anthology_payload()
-        if isinstance(payload, dict) and isinstance(payload.get("rows"), dict):
-            return dict(payload.get("rows") or {})
-        return payload if isinstance(payload, dict) else {}
+        return dict(_canonical_anthology_context().compact_payload)
 
     if include_home_redirect:
         @app.get("/portal/data")
@@ -306,6 +313,24 @@ def register_data_routes(
         out["schema"] = "mycite.portal.sandbox.inherited_context.v1"
         return jsonify(out), (200 if context.ok else 400)
 
+    @app.post("/portal/api/data/sandbox/inherited/compile_txa")
+    def portal_data_sandbox_inherited_compile_txa():
+        body = _json_body()
+        resource_ref = str(body.get("resource_ref") or "").strip()
+        if not resource_ref:
+            abort(400, description="resource_ref is required")
+        inherited_refs = [str(item).strip() for item in list(body.get("inherited_refs") or []) if str(item).strip()]
+        context = _canonical_anthology_context()
+        payload = _sandbox_engine().compile_txa_inherited_context(
+            resource_ref=resource_ref,
+            local_msn_id=_msn_id(),
+            external_resolver=external_resource_resolver,
+            merged_rows_by_id=context.rows_by_id,
+            inherited_refs=inherited_refs,
+        )
+        payload["schema"] = "mycite.portal.sandbox.inherited_compile_txa.v1"
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
     @app.get("/portal/api/data/sandbox/exposed/contact_card")
     def portal_data_sandbox_exposed_contact_card():
         source_msn_id = _msn_id()
@@ -353,7 +378,7 @@ def register_data_routes(
         payload = inspect_archetype_context(
             datum_ref=datum_ref,
             local_msn_id=_msn_id(),
-            anthology_payload=_local_anthology_payload(),
+            anthology_payload=_canonical_rows_payload(),
         )
         payload["schema"] = "mycite.portal.aitas.inspect.v1"
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
@@ -367,7 +392,7 @@ def register_data_routes(
         payload = inspect_archetype_trace(
             datum_ref=datum_ref,
             local_msn_id=_msn_id(),
-            anthology_payload=_local_anthology_payload(),
+            anthology_payload=_canonical_rows_payload(),
         )
         payload["schema"] = "mycite.portal.aitas.trace.v1"
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
@@ -381,7 +406,7 @@ def register_data_routes(
             limit = 200
         payload = list_derived_archetype_bindings(
             local_msn_id=_msn_id(),
-            anthology_payload=_local_anthology_payload(),
+            anthology_payload=_canonical_rows_payload(),
             limit=limit,
         )
         payload["schema"] = "mycite.portal.aitas.bindings.v1"
@@ -404,12 +429,26 @@ def register_data_routes(
         intent = body.get("intent") if isinstance(body.get("intent"), dict) else body
         if not isinstance(intent, dict):
             intent = {}
+        fields = intent.get("fields") if isinstance(intent.get("fields"), dict) else {}
+        write_mode = str(intent.get("write_mode") or "").strip()
+        if write_mode == "stage_inherited_ref" and not str(fields.get("inherited_ref") or "").strip():
+            txa_context = _sandbox_engine().compile_txa_inherited_context(
+                resource_ref=str(intent.get("resource_ref") or intent.get("resource_id") or "").strip(),
+                local_msn_id=_msn_id(),
+                external_resolver=external_resource_resolver,
+                merged_rows_by_id=_canonical_anthology_context().rows_by_id,
+            )
+            txa_refs = [str(item).strip() for item in list((txa_context or {}).get("field_usable_refs") or []) if str(item).strip()]
+            if txa_refs:
+                fields["inherited_ref"] = txa_refs[0]
+                intent["fields"] = fields
+            intent["inherited_context"] = txa_context
         if not str(intent.get("local_msn_id") or "").strip():
             intent["local_msn_id"] = _msn_id()
         preview = preview_write_intent(
             intent=intent if isinstance(intent, dict) else {},
             current_config=_load_active_config(),
-            local_anthology_payload=_local_anthology_payload(),
+            local_anthology_payload=_canonical_rows_payload(),
             external_plan_fn=_external_plan_for_intent,
         )
         payload = preview.to_dict()
@@ -420,6 +459,20 @@ def register_data_routes(
     def portal_data_write_apply():
         body = _json_body()
         intent = body.get("intent") if isinstance(body.get("intent"), dict) else {}
+        fields = intent.get("fields") if isinstance(intent.get("fields"), dict) else {}
+        write_mode = str(intent.get("write_mode") or "").strip()
+        if write_mode == "stage_inherited_ref" and not str(fields.get("inherited_ref") or "").strip():
+            txa_context = _sandbox_engine().compile_txa_inherited_context(
+                resource_ref=str(intent.get("resource_ref") or intent.get("resource_id") or "").strip(),
+                local_msn_id=_msn_id(),
+                external_resolver=external_resource_resolver,
+                merged_rows_by_id=_canonical_anthology_context().rows_by_id,
+            )
+            txa_refs = [str(item).strip() for item in list((txa_context or {}).get("field_usable_refs") or []) if str(item).strip()]
+            if txa_refs:
+                fields["inherited_ref"] = txa_refs[0]
+                intent["fields"] = fields
+            intent["inherited_context"] = txa_context
         if body.get("preview") and isinstance(body.get("preview"), dict):
             preview_payload = dict(body.get("preview"))
             preview_payload.pop("schema", None)
@@ -429,7 +482,7 @@ def register_data_routes(
             preview = preview_write_intent(
                 intent=preview_intent,
                 current_config=_load_active_config(),
-                local_anthology_payload=_local_anthology_payload(),
+                local_anthology_payload=_canonical_rows_payload(),
                 external_plan_fn=_external_plan_for_intent,
             )
         else:
@@ -438,7 +491,7 @@ def register_data_routes(
             preview = preview_write_intent(
                 intent=intent,
                 current_config=_load_active_config(),
-                local_anthology_payload=_local_anthology_payload(),
+                local_anthology_payload=_canonical_rows_payload(),
                 external_plan_fn=_external_plan_for_intent,
             )
         result = apply_write_preview(
@@ -461,7 +514,7 @@ def register_data_routes(
         preview = preview_write_intent(
             intent=intent,
             current_config=_load_active_config(),
-            local_anthology_payload=_local_anthology_payload(),
+            local_anthology_payload=_canonical_rows_payload(),
             external_plan_fn=_external_plan_for_intent,
         )
         payload = preview.to_dict()
@@ -478,7 +531,7 @@ def register_data_routes(
         preview = preview_write_intent(
             intent=intent,
             current_config=_load_active_config(),
-            local_anthology_payload=_local_anthology_payload(),
+            local_anthology_payload=_canonical_rows_payload(),
             external_plan_fn=_external_plan_for_intent,
         )
         result = apply_write_preview(

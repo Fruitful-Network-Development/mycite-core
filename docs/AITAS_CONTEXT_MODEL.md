@@ -41,6 +41,7 @@ Recognition is definition-driven and derived from:
 1. resolved local datum row from anthology (via canonical datum ref)
 2. inheritance/abstraction chain derived from row references
 3. compiled constraint summary derived from row/chain context
+4. merged anthology base+overlay context (shared canonical loader)
 
 For `ascii_babel_64`, matcher requires both:
 
@@ -50,6 +51,18 @@ For `ascii_babel_64`, matcher requires both:
   - `alphabet_cardinality = 256`
 
 MSS/closure-related fields are optional supporting evidence in derived binding metadata. They are not sole semantic matchers.
+
+SAMRAS-aware compiled constraints are now supported in compatibility mode for provisional payloads. When chain/graph evidence is SAMRAS-backed, compiled constraints can include:
+
+- `constraint_family = "samras"`
+- `descriptor_digest`
+- `value_kind`
+- `role`
+- `context_source`
+- `provisional_state`
+- nested `samras` descriptor payload
+
+This is a shared-core ingest/compiler step and does not enforce strict lexical canonicalization yet.
 
 ## Derived binding shape
 

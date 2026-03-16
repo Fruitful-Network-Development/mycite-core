@@ -1,4 +1,5 @@
 from .anthology_normalization import CompactionResult, compact_iterations, datum_sort_key, parse_datum_identifier, sort_rows
+from .anthology_context import AnthologyContext, build_canonical_anthology_context
 from .anthology_overlay import (
     MergeReport,
     OverlayMigrationReport,
@@ -42,11 +43,17 @@ from .datum_identity import (
 from .field_contracts import FieldContract, default_profile_field_contracts
 from .geometry_datums import GEOMETRY_TEMPLATES, geometry_template_spec
 from .profile_config_refs import get_path, set_path
+from .samras_descriptor_compiler import (
+    compile_provisional_samras_descriptor,
+    compile_samras_constraint_for_chain,
+    compile_samras_descriptors_from_rows,
+)
 from .write_pipeline import WriteApplyResult, WritePreviewResult, apply_write_preview, preview_write_intent
 
 __all__ = [
     "CompiledDatumIndex",
     "CompactionResult",
+    "AnthologyContext",
     "BaseRegistry",
     "MergeReport",
     "OverlayMigrationReport",
@@ -57,6 +64,7 @@ __all__ = [
     "build_compiled_index",
     "compile_compact_array_entries_keyed_by_path",
     "compact_iterations",
+    "build_canonical_anthology_context",
     "default_base_registry_path",
     "denormalize_compact_row",
     "denormalize_row",
@@ -93,6 +101,9 @@ __all__ = [
     "geometry_template_spec",
     "get_path",
     "set_path",
+    "compile_provisional_samras_descriptor",
+    "compile_samras_descriptors_from_rows",
+    "compile_samras_constraint_for_chain",
     "WriteApplyResult",
     "WritePreviewResult",
     "apply_write_preview",
