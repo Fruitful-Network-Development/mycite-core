@@ -98,6 +98,18 @@ Low-level primitives still exist and remain engine-owned:
 
 Config/profile JSON remains a reference surface into anthology datums; anthology remains the local semantic authority.
 
+## Runtime validation commands
+
+Use a Flask-capable Python environment for route suites. Example from repo root:
+
+- `python3 -m venv .venv`
+- `.venv/bin/pip install flask cryptography`
+- `PYTHONPATH="/srv/repo/mycite-core/portals:/srv/repo/mycite-core/portals/_shared/runtime/flavors/tff" .venv/bin/python -m unittest tests/test_data_write_pipeline_routes.py tests/test_agro_erp_tool_flow.py`
+
+Pure engine-only write tests (no Flask requirement):
+
+- `python3 -m unittest tests/test_write_pipeline_engine.py`
+
 ## MSS contract sync boundary
 
 The Data Engine is responsible for keeping anthology-derived contract context coherent after anthology mutations.
