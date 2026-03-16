@@ -46,12 +46,14 @@ Shared routes are registered in `portals/_shared/portal/api/data_workspace.py`:
 - `GET /portal/api/data/sandbox/resources/<resource_id>`
 - `POST /portal/api/data/sandbox/resources/<resource_id>/stage`
 - `POST /portal/api/data/sandbox/resources/<resource_id>/save`
+- `POST /portal/api/data/sandbox/resources/<resource_id>/compile`
 - `POST /portal/api/data/sandbox/mss/compile`
 - `POST /portal/api/data/sandbox/mss/decode`
 - `POST /portal/api/data/sandbox/samras/upsert`
 - `GET /portal/api/data/sandbox/samras/<resource_id>/decode`
 - `POST /portal/api/data/sandbox/inherited/resolve`
 - `POST /portal/api/data/sandbox/inherited/compile_txa`
+- `POST /portal/api/data/sandbox/inherited/adapt_txa`
 - `GET /portal/api/data/sandbox/exposed/contact_card`
 - `POST /portal/api/data/sandbox/migrate/fnd_samras`
 
@@ -59,14 +61,25 @@ Shared routes are registered in `portals/_shared/portal/api/data_workspace.py`:
 
 ## Anthology migration model (FND)
 
-The migration helper (`migrate_fnd_samras_rows_to_sandbox`) converts full SAMRAS payload rows into sandbox-managed resource objects and rewrites anthology rows to compatibility pointers.
+The migration helper (`migrate_fnd_samras_rows_to_sandbox`) extracts full txa/msn SAMRAS trees into isolated sandbox resource JSON files and removes those full trees from portal anthology ownership.
 
-Current mapping:
+Current FND canonical resources:
 
-- `5-0-1` -> `sandbox://samras/txa-samras`
-- `5-0-2` -> `sandbox://samras/msn-samras`
+- `txa.samras.5-0-1`
+- `msn.samras.5-0-2`
 
-This keeps higher-layer references stable while removing full SAMRAS payload ownership from ordinary anthology row magnitudes.
+No full `4-1-*` txa tree should remain in anthology after migration.
+
+## MVP inherited-write boundary
+
+For AGRO MVP, sandbox provides the txa source-of-truth path:
+
+1. load isolated resource JSON
+2. compile MSS form
+3. publish stable resource value
+4. adapt to inherited txa context (`adapt_txa`)
+
+Downstream product/invoice writes consume this context through shared write preview/apply and do not materialize full txa trees locally.
 
 ## Runtime validation
 

@@ -3,50 +3,193 @@
 {% block title %}MyCite | AGRO ERP{% endblock %}
 
 {% set page_title = "AGRO ERP" %}
-{% set page_subtitle = "Read-only MSS-decoded taxonomy hierarchy view." %}
+{% set page_subtitle = "TXA-first inherited workflow MVP." %}
 
 {% block body %}
-  {% macro render_taxonomy_node(node) %}
-    <li>
-      <code>{{ node.id }}</code>
-      {% if node.path %}
-        <span class="inline-meta">path={{ node.path }}</span>
-      {% endif %}
-      {% if node.children %}
-        <ul class="liststack">
-          {% for child in node.children %}
-            {{ render_taxonomy_node(child) }}
-          {% endfor %}
-        </ul>
-      {% endif %}
-    </li>
-  {% endmacro %}
-
-  <section class="agro-tool">
-    <div class="cardgrid">
-      <article class="card card--full">
-        <div class="card__kicker">Inherited Data</div>
-        <div class="card__title">Taxonomy Hierarchy (Contract MSS Decode)</div>
-        <div class="card__body">
-          {% set taxonomy = model.taxonomy if model.taxonomy is mapping else {} %}
-          {% if taxonomy and taxonomy.ok %}
-            <p><strong>taxonomy_ref</strong>: <code>{{ taxonomy.ref }}</code></p>
-            <p><strong>scope</strong>: <code>{{ taxonomy.scope }}</code></p>
-            <p><strong>root_identifier</strong>: <code>{{ taxonomy.root_identifier }}</code></p>
-            {% set tree = taxonomy.tree if taxonomy.tree is mapping else {} %}
-            {% if tree %}
-              <ul class="liststack">
-                {{ render_taxonomy_node(tree) }}
-              </ul>
-            {% else %}
-              <p>No taxonomy tree structure was resolved.</p>
-            {% endif %}
-          {% else %}
-            <p>No inherited taxonomy context is available yet.</p>
-          {% endif %}
+  <section class="agro-mvp">
+    <div class="card">
+      <div class="card__kicker">MVP Workflow</div>
+      <div class="card__title">Inherited TXA -> Product + Invoice</div>
+      <div class="card__body">
+        <div>
+          <button type="button" data-tab="resource">Resource</button>
+          <button type="button" data-tab="product">Product Types</button>
+          <button type="button" data-tab="invoice">Invoice Log</button>
         </div>
-      </article>
+      </div>
     </div>
+
+    <article id="tab-resource" class="card card--full">
+      <div class="card__kicker">Resource</div>
+      <div class="card__title">Select/Load Inherited TXA Resource</div>
+      <div class="card__body">
+        <p><code>msn_id</code>: {{ model.msn_id }}</p>
+        <label>
+          <strong>Resource Ref</strong><br />
+          <input id="resourceRef" type="text" placeholder="sandbox:txa.samras.5-0-1 or <msn_id>.<resource_id>" />
+        </label>
+        <div style="margin-top:8px">
+          <button id="resourceSelectBtn" type="button">Load Resource Context</button>
+          <button id="resourceGateBtn" type="button">Run Live-State Gate</button>
+        </div>
+        <h3>Resource Summary</h3>
+        <pre id="resourceSummary" class="jsonblock">No resource selected.</pre>
+        <h3>Live-State Gate</h3>
+        <pre id="liveGateSummary" class="jsonblock">Gate not run yet.</pre>
+      </div>
+    </article>
+
+    <article id="tab-product" class="card card--full" style="display:none">
+      <div class="card__kicker">Product Types</div>
+      <div class="card__title">Inherited Product/Profile Write</div>
+      <div class="card__body">
+        <p>Uses shared-core preview/apply with <code>inherited_product_profile_ref</code>.</p>
+        <label>
+          <strong>Optional Product Inherited Ref Override</strong><br />
+          <input id="productInheritedRef" type="text" placeholder="<msn_id>.8-5-*" />
+        </label>
+        <div>
+          <button id="productPreviewBtn" type="button">Preview Product Write</button>
+          <button id="productApplyBtn" type="button">Apply Product Write</button>
+          <button id="productReadbackBtn" type="button">Refresh Product Readback</button>
+        </div>
+        <h3>Product Preview/Apply</h3>
+        <pre id="productOutput" class="jsonblock">No product action yet.</pre>
+        <h3>Product Readback</h3>
+        <pre id="productReadback" class="jsonblock">No product readback yet.</pre>
+      </div>
+    </article>
+
+    <article id="tab-invoice" class="card card--full" style="display:none">
+      <div class="card__kicker">Invoice Log</div>
+      <div class="card__title">Inherited Invoice/Log Write</div>
+      <div class="card__body">
+        <p>Uses shared-core preview/apply with <code>inherited_supply_log_ref</code>.</p>
+        <label>
+          <strong>Optional Invoice Inherited Ref Override</strong><br />
+          <input id="invoiceInheritedRef" type="text" placeholder="<msn_id>.8-4-*" />
+        </label>
+        <div>
+          <button id="invoicePreviewBtn" type="button">Preview Invoice Write</button>
+          <button id="invoiceApplyBtn" type="button">Apply Invoice Write</button>
+          <button id="invoiceReadbackBtn" type="button">Refresh Invoice Readback</button>
+        </div>
+        <h3>Invoice Preview/Apply</h3>
+        <pre id="invoiceOutput" class="jsonblock">No invoice action yet.</pre>
+        <h3>Invoice Readback</h3>
+        <pre id="invoiceReadback" class="jsonblock">No invoice readback yet.</pre>
+      </div>
+    </article>
   </section>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script>
+    (function () {
+      const model = {{ model_json|safe }};
+      const routes = model.agro_routes || {};
+      const tabs = {
+        resource: document.getElementById("tab-resource"),
+        product: document.getElementById("tab-product"),
+        invoice: document.getElementById("tab-invoice")
+      };
+      let selectedResourceRef = "";
+
+      function setTab(tabId) {
+        for (const key of Object.keys(tabs)) {
+          tabs[key].style.display = (key === tabId) ? "" : "none";
+        }
+      }
+
+      for (const btn of document.querySelectorAll("[data-tab]")) {
+        btn.addEventListener("click", function () {
+          setTab(this.getAttribute("data-tab"));
+        });
+      }
+
+      async function postJson(url, body) {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body || {})
+        });
+        const payload = await response.json();
+        return { status: response.status, payload: payload };
+      }
+
+      async function getJson(url) {
+        const response = await fetch(url);
+        const payload = await response.json();
+        return { status: response.status, payload: payload };
+      }
+
+      document.getElementById("resourceSelectBtn").addEventListener("click", async function () {
+        const resourceRefInput = document.getElementById("resourceRef");
+        const resourceRef = String(resourceRefInput.value || "").trim();
+        const result = await postJson(routes.mvp_resource_select || "/portal/tools/agro_erp/mvp/resource/select_or_load", {
+          resource_ref: resourceRef
+        });
+        document.getElementById("resourceSummary").textContent = JSON.stringify(result.payload, null, 2);
+        if (result.payload && result.payload.ok) {
+          selectedResourceRef = resourceRef || String((result.payload.resource_context || {}).resource_ref || "");
+          resourceRefInput.value = selectedResourceRef;
+        }
+      });
+
+      document.getElementById("resourceGateBtn").addEventListener("click", async function () {
+        const result = await getJson(routes.mvp_live_state_gate || "/portal/tools/agro_erp/mvp/live_state_gate");
+        document.getElementById("liveGateSummary").textContent = JSON.stringify(result.payload, null, 2);
+      });
+
+      document.getElementById("productPreviewBtn").addEventListener("click", async function () {
+        const result = await postJson(routes.mvp_product_preview || "/portal/tools/agro_erp/mvp/product/preview", {
+          resource_ref: selectedResourceRef,
+          inherited_ref: String((document.getElementById("productInheritedRef") || {}).value || "").trim()
+        });
+        document.getElementById("productOutput").textContent = JSON.stringify(result.payload, null, 2);
+      });
+
+      document.getElementById("productApplyBtn").addEventListener("click", async function () {
+        const result = await postJson(routes.mvp_product_apply || "/portal/tools/agro_erp/mvp/product/apply", {
+          resource_ref: selectedResourceRef,
+          inherited_ref: String((document.getElementById("productInheritedRef") || {}).value || "").trim()
+        });
+        document.getElementById("productOutput").textContent = JSON.stringify(result.payload, null, 2);
+        if (result.payload && result.payload.readback) {
+          document.getElementById("productReadback").textContent = JSON.stringify(result.payload.readback, null, 2);
+        }
+      });
+
+      document.getElementById("productReadbackBtn").addEventListener("click", async function () {
+        const result = await getJson((routes.mvp_readback || "/portal/tools/agro_erp/mvp/workflow/readback") + "?resource_ref=" + encodeURIComponent(selectedResourceRef));
+        document.getElementById("productReadback").textContent = JSON.stringify((result.payload || {}).product_types || {}, null, 2);
+      });
+
+      document.getElementById("invoicePreviewBtn").addEventListener("click", async function () {
+        const result = await postJson(routes.mvp_invoice_preview || "/portal/tools/agro_erp/mvp/invoice/preview", {
+          resource_ref: selectedResourceRef,
+          inherited_ref: String((document.getElementById("invoiceInheritedRef") || {}).value || "").trim()
+        });
+        document.getElementById("invoiceOutput").textContent = JSON.stringify(result.payload, null, 2);
+      });
+
+      document.getElementById("invoiceApplyBtn").addEventListener("click", async function () {
+        const result = await postJson(routes.mvp_invoice_apply || "/portal/tools/agro_erp/mvp/invoice/apply", {
+          resource_ref: selectedResourceRef,
+          inherited_ref: String((document.getElementById("invoiceInheritedRef") || {}).value || "").trim()
+        });
+        document.getElementById("invoiceOutput").textContent = JSON.stringify(result.payload, null, 2);
+        if (result.payload && result.payload.readback) {
+          document.getElementById("invoiceReadback").textContent = JSON.stringify(result.payload.readback, null, 2);
+        }
+      });
+
+      document.getElementById("invoiceReadbackBtn").addEventListener("click", async function () {
+        const result = await getJson((routes.mvp_readback || "/portal/tools/agro_erp/mvp/workflow/readback") + "?resource_ref=" + encodeURIComponent(selectedResourceRef));
+        document.getElementById("invoiceReadback").textContent = JSON.stringify((result.payload || {}).invoice_log || {}, null, 2);
+      });
+    })();
+  </script>
 {% endblock %}
 

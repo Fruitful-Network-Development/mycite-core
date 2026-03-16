@@ -42,7 +42,12 @@ from .datum_identity import (
 )
 from .field_contracts import FieldContract, default_profile_field_contracts
 from .geometry_datums import GEOMETRY_TEMPLATES, geometry_template_spec
-from .inherited_txa_adapter import adapt_published_txa_resource_value, build_field_ref_bindings, select_inherited_ref_for_field
+from .inherited_txa_adapter import (
+    adapt_published_txa_resource_value,
+    build_field_ref_bindings,
+    select_inherited_binding_for_field,
+    select_inherited_ref_for_field,
+)
 from .profile_config_refs import get_path, set_path
 from .samras_descriptor_compiler import (
     compile_provisional_samras_descriptor,
@@ -102,6 +107,7 @@ __all__ = [
     "geometry_template_spec",
     "adapt_published_txa_resource_value",
     "build_field_ref_bindings",
+    "select_inherited_binding_for_field",
     "select_inherited_ref_for_field",
     "get_path",
     "set_path",

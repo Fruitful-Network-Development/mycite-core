@@ -143,9 +143,11 @@ Route surface is shared-core under `/portal/api/data/sandbox/*` (registered in `
 
 Migration boundary:
 
-- Full SAMRAS payload rows are migrated to sandbox-managed resource objects (for FND: `5-0-1 -> txa-samras`, `5-0-2 -> msn-samras`)
-- anthology rows remain as compatibility pointers (`sandbox://samras/<resource_id>`) so higher-layer refs do not break
+- Full SAMRAS payload rows are migrated to sandbox-managed isolated resource JSONs (for FND: `txa.samras.5-0-1`, `msn.samras.5-0-2`)
+- anthology does not retain full txa/msn resource trees after extraction
 - migration helper is `migrate_fnd_samras_rows_to_sandbox(...)`; it supports dry-run and apply modes
+
+AGRO inherited-write MVP consumes published txa resource context from sandbox and stages inherited refs through shared write preview/apply. No full `4-1-*` txa subtree should be re-materialized into anthology during these flows.
 
 ## Runtime validation commands
 
