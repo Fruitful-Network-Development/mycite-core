@@ -3,27 +3,81 @@
 {% block title %}MyCite | AGRO ERP{% endblock %}
 
 {% set page_title = "AGRO ERP" %}
-{% set page_subtitle = "TXA-first inherited workflow MVP." %}
+{% set page_subtitle = "Planning workspace with inherited TXA continuity." %}
 
 {% block body %}
   <section class="agro-mvp">
     <div class="card">
-      <div class="card__kicker">MVP Workflow</div>
-      <div class="card__title">Inherited TXA -> Product + Invoice</div>
+      <div class="card__kicker">Workspace</div>
+      <div class="card__title">Plan, Inventory, Products, Taxonomy</div>
       <div class="card__body">
         <div>
-          <button type="button" data-tab="resource">Resource</button>
-          <button type="button" data-tab="product">Product Types</button>
-          <button type="button" data-tab="invoice">Invoice Log</button>
+          <button type="button" data-tab="plan">Plan</button>
+          <button type="button" data-tab="inventory">Inventory</button>
+          <button type="button" data-tab="products">Products</button>
+          <button type="button" data-tab="taxonomy">Taxonomy</button>
         </div>
       </div>
     </div>
 
-    <article id="tab-resource" class="card card--full">
-      <div class="card__kicker">Resource</div>
-      <div class="card__title">Select/Load Inherited TXA Resource</div>
+    <article id="tab-plan" class="card card--full">
+      <div class="card__kicker">Plan</div>
+      <div class="card__title">Parcel Workspace + Plot Grid Draft</div>
       <div class="card__body">
         <p><code>msn_id</code>: {{ model.msn_id }}</p>
+        <label>
+          <strong>Active Parcel</strong><br />
+          <select id="parcelSelect"></select>
+        </label>
+        <h3>Parcel Summary</h3>
+        <pre id="parcelSummary" class="jsonblock">No parcel selected.</pre>
+        <h3>Parcel Geometry</h3>
+        <svg id="parcelSvg" viewBox="0 0 420 240" width="420" height="240" style="border:1px solid #d5d5d5; border-radius:8px;">
+          <polygon id="parcelSvgPolygon" points="" fill="rgba(66, 133, 244, 0.24)" stroke="#1a73e8" stroke-width="2"></polygon>
+        </svg>
+        <h3>Grid / Plot Arrangement</h3>
+        <label>
+          <strong>Rows</strong><br />
+          <input id="gridRows" type="number" min="1" value="4" />
+        </label>
+        <label>
+          <strong>Columns</strong><br />
+          <input id="gridColumns" type="number" min="1" value="4" />
+        </label>
+        <label>
+          <strong>Orientation</strong><br />
+          <input id="gridOrientation" type="number" value="0" />
+        </label>
+        <label>
+          <strong>Spacing</strong><br />
+          <input id="gridSpacing" type="number" value="0" step="0.00001" />
+        </label>
+        <label>
+          <strong>Inset</strong><br />
+          <input id="gridInset" type="number" value="0" step="0.00001" />
+        </label>
+        <div style="margin-top:8px">
+          <button id="gridPreviewBtn" type="button">Preview Grid Overlay</button>
+          <button id="draftSaveBtn" type="button">Save Draft</button>
+        </div>
+        <label>
+          <strong>Draft Resource ID</strong><br />
+          <input id="draftResourceId" type="text" placeholder="plot_plan.parcel-1" />
+        </label>
+        <div style="margin-top:8px">
+          <button id="draftLoadBtn" type="button">Load Draft</button>
+        </div>
+        <h3>Overlay Preview</h3>
+        <pre id="overlaySummary" class="jsonblock">No overlay preview yet.</pre>
+        <h3>Draft Resource</h3>
+        <pre id="draftSummary" class="jsonblock">No draft action yet.</pre>
+      </div>
+    </article>
+
+    <article id="tab-inventory" class="card card--full" style="display:none">
+      <div class="card__kicker">Inventory</div>
+      <div class="card__title">Inherited Invoice/Log Workflow</div>
+      <div class="card__body">
         <label>
           <strong>Resource Ref</strong><br />
           <input id="resourceRef" type="text" placeholder="sandbox:txa.samras.5-0-1 or <msn_id>.<resource_id>" />
@@ -36,12 +90,25 @@
         <pre id="resourceSummary" class="jsonblock">No resource selected.</pre>
         <h3>Live-State Gate</h3>
         <pre id="liveGateSummary" class="jsonblock">Gate not run yet.</pre>
+        <label>
+          <strong>Optional Invoice Inherited Ref Override</strong><br />
+          <input id="invoiceInheritedRef" type="text" placeholder="<msn_id>.8-4-*" />
+        </label>
+        <div>
+          <button id="invoicePreviewBtn" type="button">Preview Invoice Write</button>
+          <button id="invoiceApplyBtn" type="button">Apply Invoice Write</button>
+          <button id="invoiceReadbackBtn" type="button">Refresh Invoice Readback</button>
+        </div>
+        <h3>Invoice Preview/Apply</h3>
+        <pre id="invoiceOutput" class="jsonblock">No invoice action yet.</pre>
+        <h3>Invoice Readback</h3>
+        <pre id="invoiceReadback" class="jsonblock">No invoice readback yet.</pre>
       </div>
     </article>
 
-    <article id="tab-product" class="card card--full" style="display:none">
-      <div class="card__kicker">Product Types</div>
-      <div class="card__title">Inherited Product/Profile Write</div>
+    <article id="tab-products" class="card card--full" style="display:none">
+      <div class="card__kicker">Products</div>
+      <div class="card__title">Inherited Product/Profile Workflow</div>
       <div class="card__body">
         <p>Uses shared-core preview/apply with <code>inherited_product_profile_ref</code>.</p>
         <label>
@@ -60,24 +127,12 @@
       </div>
     </article>
 
-    <article id="tab-invoice" class="card card--full" style="display:none">
-      <div class="card__kicker">Invoice Log</div>
-      <div class="card__title">Inherited Invoice/Log Write</div>
+    <article id="tab-taxonomy" class="card card--full" style="display:none">
+      <div class="card__kicker">Taxonomy</div>
+      <div class="card__title">TXA SAMRAS Resource View</div>
       <div class="card__body">
-        <p>Uses shared-core preview/apply with <code>inherited_supply_log_ref</code>.</p>
-        <label>
-          <strong>Optional Invoice Inherited Ref Override</strong><br />
-          <input id="invoiceInheritedRef" type="text" placeholder="<msn_id>.8-4-*" />
-        </label>
-        <div>
-          <button id="invoicePreviewBtn" type="button">Preview Invoice Write</button>
-          <button id="invoiceApplyBtn" type="button">Apply Invoice Write</button>
-          <button id="invoiceReadbackBtn" type="button">Refresh Invoice Readback</button>
-        </div>
-        <h3>Invoice Preview/Apply</h3>
-        <pre id="invoiceOutput" class="jsonblock">No invoice action yet.</pre>
-        <h3>Invoice Readback</h3>
-        <pre id="invoiceReadback" class="jsonblock">No invoice readback yet.</pre>
+        <p><code>taxonomy_ref</code>: {{ model.taxonomy.ref }}</p>
+        <pre id="taxonomySummary" class="jsonblock">{{ model.taxonomy | tojson(indent=2) }}</pre>
       </div>
     </article>
   </section>
@@ -89,12 +144,16 @@
     (function () {
       const model = {{ model_json|safe }};
       const routes = model.agro_routes || {};
+      const parcelWorkspace = (model.parcel_workspace || {});
+      const parcels = Array.isArray(parcelWorkspace.parcels) ? parcelWorkspace.parcels : [];
       const tabs = {
-        resource: document.getElementById("tab-resource"),
-        product: document.getElementById("tab-product"),
-        invoice: document.getElementById("tab-invoice")
+        plan: document.getElementById("tab-plan"),
+        inventory: document.getElementById("tab-inventory"),
+        products: document.getElementById("tab-products"),
+        taxonomy: document.getElementById("tab-taxonomy")
       };
       let selectedResourceRef = "";
+      let selectedParcelId = String(model.active_parcel_id || "");
 
       function setTab(tabId) {
         for (const key of Object.keys(tabs)) {
@@ -106,6 +165,58 @@
         btn.addEventListener("click", function () {
           setTab(this.getAttribute("data-tab"));
         });
+      }
+
+      function selectedParcel() {
+        for (const item of parcels) {
+          if (String((item || {}).parcel_id || "") === selectedParcelId) {
+            return item;
+          }
+        }
+        return parcels.length ? parcels[0] : null;
+      }
+
+      function drawParcelSvg(parcel) {
+        const polygonEl = document.getElementById("parcelSvgPolygon");
+        const points = Array.isArray((parcel || {}).polygon) ? parcel.polygon : [];
+        if (!points.length) {
+          polygonEl.setAttribute("points", "");
+          return;
+        }
+        const lons = points.map((p) => Number(p.longitude || 0));
+        const lats = points.map((p) => Number(p.latitude || 0));
+        const minLon = Math.min.apply(null, lons);
+        const maxLon = Math.max.apply(null, lons);
+        const minLat = Math.min.apply(null, lats);
+        const maxLat = Math.max.apply(null, lats);
+        const spanLon = Math.max(maxLon - minLon, 0.0000001);
+        const spanLat = Math.max(maxLat - minLat, 0.0000001);
+        const width = 420;
+        const height = 240;
+        const pad = 16;
+        const scale = Math.min((width - (2 * pad)) / spanLon, (height - (2 * pad)) / spanLat);
+        const svgPoints = points.map((p) => {
+          const x = pad + ((Number(p.longitude || 0) - minLon) * scale);
+          const y = height - pad - ((Number(p.latitude || 0) - minLat) * scale);
+          return x.toFixed(2) + "," + y.toFixed(2);
+        });
+        polygonEl.setAttribute("points", svgPoints.join(" "));
+      }
+
+      function refreshParcelUi() {
+        const parcel = selectedParcel();
+        document.getElementById("parcelSummary").textContent = JSON.stringify(parcel || {}, null, 2);
+        drawParcelSvg(parcel);
+      }
+
+      function gridSpecFromInputs() {
+        return {
+          rows: Number((document.getElementById("gridRows") || {}).value || 4),
+          columns: Number((document.getElementById("gridColumns") || {}).value || 4),
+          orientation: Number((document.getElementById("gridOrientation") || {}).value || 0),
+          spacing: Number((document.getElementById("gridSpacing") || {}).value || 0),
+          inset: Number((document.getElementById("gridInset") || {}).value || 0)
+        };
       }
 
       async function postJson(url, body) {
@@ -123,6 +234,51 @@
         const payload = await response.json();
         return { status: response.status, payload: payload };
       }
+
+      const parcelSelect = document.getElementById("parcelSelect");
+      for (const parcel of parcels) {
+        const option = document.createElement("option");
+        option.value = String(parcel.parcel_id || "");
+        option.textContent = String(parcel.title || parcel.parcel_id || "parcel");
+        parcelSelect.appendChild(option);
+      }
+      if (selectedParcelId) {
+        parcelSelect.value = selectedParcelId;
+      } else if (parcels.length) {
+        selectedParcelId = String(parcels[0].parcel_id || "");
+        parcelSelect.value = selectedParcelId;
+      }
+      parcelSelect.addEventListener("change", function () {
+        selectedParcelId = String(this.value || "");
+        refreshParcelUi();
+      });
+      refreshParcelUi();
+
+      document.getElementById("gridPreviewBtn").addEventListener("click", async function () {
+        const result = await postJson(routes.plan_grid_preview || "/portal/tools/agro_erp/plan/grid_preview", {
+          parcel_id: selectedParcelId,
+          grid_spec: gridSpecFromInputs()
+        });
+        document.getElementById("overlaySummary").textContent = JSON.stringify(result.payload, null, 2);
+      });
+
+      document.getElementById("draftSaveBtn").addEventListener("click", async function () {
+        const result = await postJson(routes.plot_plan_draft_save || "/portal/tools/agro_erp/plan/draft/save", {
+          parcel_id: selectedParcelId,
+          grid_spec: gridSpecFromInputs(),
+          resource_id: String((document.getElementById("draftResourceId") || {}).value || "").trim()
+        });
+        document.getElementById("draftSummary").textContent = JSON.stringify(result.payload, null, 2);
+        if (result.payload && result.payload.resource_id) {
+          document.getElementById("draftResourceId").value = String(result.payload.resource_id);
+        }
+      });
+
+      document.getElementById("draftLoadBtn").addEventListener("click", async function () {
+        const rid = String((document.getElementById("draftResourceId") || {}).value || "").trim();
+        const result = await getJson((routes.plot_plan_draft_load || "/portal/tools/agro_erp/plan/draft/load") + "?resource_id=" + encodeURIComponent(rid));
+        document.getElementById("draftSummary").textContent = JSON.stringify(result.payload, null, 2);
+      });
 
       document.getElementById("resourceSelectBtn").addEventListener("click", async function () {
         const resourceRefInput = document.getElementById("resourceRef");

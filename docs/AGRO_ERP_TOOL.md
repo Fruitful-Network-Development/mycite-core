@@ -44,6 +44,9 @@ Tool-spec inputs/outputs and capability buckets are described in the tool spec (
 - `POST /portal/tools/agro_erp/mvp/invoice/preview`
 - `POST /portal/tools/agro_erp/mvp/invoice/apply`
 - `GET /portal/tools/agro_erp/mvp/workflow/readback`
+- `POST /portal/tools/agro_erp/plan/grid_preview`
+- `POST /portal/tools/agro_erp/plan/draft/save`
+- `GET /portal/tools/agro_erp/plan/draft/load`
 
 Canonical core semantics remain on `/portal/api/data/*`:
 
@@ -101,6 +104,44 @@ MVP read/write boundaries:
 - AGRO templates render engine summaries only
 - MSS/SAMRAS semantics stay in shared core
 - no full txa tree is materialized back into anthology
+
+## Workspace tabs (current)
+
+AGRO-ERP now exposes four tabs:
+
+1. `Plan`
+2. `Inventory`
+3. `Products`
+4. `Taxonomy`
+
+Tab boundaries:
+
+- `Plan`: reads `config.property` and resolves geometry through shared-core `property_workspace` logic against anthology rows; supports draft grid/plot planning only.
+- `Inventory`: continues inherited invoice/supply-log preview/apply/readback workflow.
+- `Products`: continues inherited product-profile preview/apply/readback workflow.
+- `Taxonomy`: exposes inherited TXA/SAMRAS resource context view.
+
+## Plan tab geometry + draft policy
+
+- Property polygons are sourced from `config.json` (`property[]`) and resolved via shared-core geometry mediation in `portal/data_engine/property_workspace.py`.
+- Geometry normalization remains in shared core; AGRO route/template layers consume normalized parcel objects and warnings only.
+- Plot planning is **draft-first** and sandbox-managed (`resource_kind = plot_plan`), saved as JSON resources under sandbox.
+- Plot plan drafts are reusable planning artifacts (selected parcel, geometry snapshot/refs, grid spec, overlay, compile metadata); they are not generic UI tab/session state.
+
+## Deferred datum policy
+
+The following are explicitly deferred for a later phase:
+
+- canonical plot anthology families
+- plot selectors/fields
+- `plot_contract_log`
+
+Before canonical plot datums are introduced, the implementation must keep stable:
+
+- selected farmable parcel semantics
+- grid/arrangement semantics and plot identity strategy
+- sandbox draft lifecycle (`save -> load -> update`)
+- geometry normalization/readback behavior across config + anthology
 
 ## Readback contract (MVP)
 
