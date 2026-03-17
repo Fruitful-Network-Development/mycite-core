@@ -6,8 +6,11 @@ This document tracks **current state, completed work, and next steps** for the A
 
 ## Current State (summary)
 
+- **Workspace shape**: AGRO-ERP now exposes four tabs (`Plan`, `Inventory`, `Products`, `Taxonomy`) with inherited TXA write continuity preserved for inventory/products.
+- **Plan foundation**: parcel workspace is resolved from `config.property[]` + anthology through shared-core `property_workspace` resolver; route/template layers consume normalized parcel objects.
+- **Draft planning**: plot grid/arrangement is draft-only in this phase, persisted as sandbox `plot_plan` resources; no canonical plot anthology datums are written.
 - **Runtime wiring**: AGRO-ERP is enabled in TFF `build.json`, mounted under `peripherals.tools`, and registered via `get_tool()`; it appears in the activity bar.
-- **Existing AGRO-ERP code**: Handles property geometry only (config tokens, daemon resolution, coordinate decoding). No datum-identity layer or public resolver yet; taxonomy and product-type features were added on top of the current contract/MSS path.
+- **Existing AGRO-ERP code**: now includes a plan workspace foundation (parcel selection + draft grid overlay) while retaining inherited TXA inventory/products MVP routes.
 - **Implemented (pre-tune)**:
   - Shared `inherited_taxonomy` service: loads taxonomy from contract MSS or local anthology via `load_inherited_taxonomy()`.
   - Tool data-spec schema and loader (`portal/tools/specs.py`), plus AGRO-ERP spec at `private/tools/agro_erp.spec.json` (inherited inputs, outputs, mediation).

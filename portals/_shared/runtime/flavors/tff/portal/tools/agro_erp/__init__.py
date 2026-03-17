@@ -3,14 +3,17 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from flask import Blueprint, abort, current_app, jsonify, render_template, request
 
 from _shared.portal.data_engine.anthology_context import build_canonical_anthology_context
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
 from _shared.portal.data_engine.inherited_txa_adapter import select_inherited_binding_for_field
+from _shared.portal.data_engine.property_workspace import resolve_property_workspace
 from _shared.portal.data_engine.profile_config_refs import get_path
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
 from _shared.portal.data_engine.external_resources.resolver import ExternalResourceResolver
@@ -112,6 +115,117 @@ def _canonical_anthology_context():
     if overlay_path.exists():
         return build_canonical_anthology_context(overlay_path=overlay_path)
     return build_canonical_anthology_context(overlay_payload={})
+
+
+def _parcel_workspace_payload() -> dict[str, Any]:
+    config, _ = _active_config()
+    context = _canonical_anthology_context()
+    rows_by_id = context.rows_by_id if isinstance(context.rows_by_id, dict) else {}
+    return resolve_property_workspace(config=config, rows_by_id=rows_by_id)
+
+
+def _parcel_by_id(parcel_workspace: dict[str, Any], parcel_id: str) -> dict[str, Any] | None:
+    token = str(parcel_id or "").strip()
+    for item in list(parcel_workspace.get("parcels") or []):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("parcel_id") or "").strip() == token:
+            return item
+    return None
+
+
+def _coerce_number(value: Any, *, default: float) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    token = str(value or "").strip()
+    if not token:
+        return default
+    try:
+        return float(token)
+    except Exception:
+        return default
+
+
+def _polygon_svg_for_parcel(parcel: dict[str, Any]) -> dict[str, Any]:
+    coords = parcel.get("polygon") if isinstance(parcel.get("polygon"), list) else []
+    if not coords:
+        return {"available": False, "viewbox": "0 0 420 240", "points": "", "focus": {}}
+    rows: list[dict[str, Any]] = []
+    for item in coords:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "decoded": {
+                    "longitude": item.get("longitude"),
+                    "latitude": item.get("latitude"),
+                }
+            }
+        )
+    svg = _polygon_svg(rows)
+    svg["focus"] = dict(parcel.get("focus_hint") if isinstance(parcel.get("focus_hint"), dict) else {})
+    return svg
+
+
+def _plot_overlay_for_parcel(parcel: dict[str, Any], grid_spec: dict[str, Any]) -> dict[str, Any]:
+    polygon = parcel.get("polygon") if isinstance(parcel.get("polygon"), list) else []
+    bbox = parcel.get("bbox_summary") if isinstance(parcel.get("bbox_summary"), dict) else {}
+    if not polygon or not bbox:
+        return {"ok": False, "error": "selected parcel has no resolvable geometry"}
+    rows = max(1, int(_coerce_number(grid_spec.get("rows"), default=4)))
+    cols = max(1, int(_coerce_number(grid_spec.get("columns"), default=4)))
+    spacing = max(0.0, _coerce_number(grid_spec.get("spacing"), default=0.0))
+    inset = max(0.0, _coerce_number(grid_spec.get("inset"), default=0.0))
+    orientation = _coerce_number(grid_spec.get("orientation"), default=0.0)
+    min_lon = float(bbox.get("longitude_min") or 0.0) + inset
+    max_lon = float(bbox.get("longitude_max") or 0.0) - inset
+    min_lat = float(bbox.get("latitude_min") or 0.0) + inset
+    max_lat = float(bbox.get("latitude_max") or 0.0) - inset
+    if max_lon <= min_lon or max_lat <= min_lat:
+        return {"ok": False, "error": "grid inset exceeds parcel bounds"}
+    lon_span = max_lon - min_lon
+    lat_span = max_lat - min_lat
+    cell_lon = max((lon_span - (spacing * (cols - 1))) / cols, 0.0)
+    cell_lat = max((lat_span - (spacing * (rows - 1))) / rows, 0.0)
+    plots: list[dict[str, Any]] = []
+    for row_idx in range(rows):
+        for col_idx in range(cols):
+            left = min_lon + (col_idx * (cell_lon + spacing))
+            right = left + cell_lon
+            bottom = min_lat + (row_idx * (cell_lat + spacing))
+            top = bottom + cell_lat
+            if right > max_lon or top > max_lat:
+                continue
+            plots.append(
+                {
+                    "plot_id": f"r{row_idx + 1}c{col_idx + 1}",
+                    "row": row_idx + 1,
+                    "column": col_idx + 1,
+                    "bbox": {
+                        "longitude_min": left,
+                        "longitude_max": right,
+                        "latitude_min": bottom,
+                        "latitude_max": top,
+                    },
+                }
+            )
+    return {
+        "ok": True,
+        "selected_parcel_id": str(parcel.get("parcel_id") or ""),
+        "grid_spec": {
+            "rows": rows,
+            "columns": cols,
+            "orientation": orientation,
+            "spacing": spacing,
+            "inset": inset,
+        },
+        "plot_count": len(plots),
+        "plots": plots,
+        "policy": {
+            "draft_only": True,
+            "writes_anthology": False,
+        },
+    }
 
 
 def _no_external_plan(_payload: dict[str, Any]) -> tuple[bool, dict[str, Any], str]:
@@ -591,8 +705,38 @@ def _polygon_svg(resolved_rows: list[dict[str, Any]]) -> dict[str, Any]:
     height = 240.0
     padding = 16.0
 
-    longitudes = [float(row.get("longitude") or 0.0) for row in decoded_rows]
-    latitudes = [float(row.get("latitude") or 0.0) for row in decoded_rows]
+    def _coerce_float(value: Any) -> float | None:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            token = value.strip()
+            if not token:
+                return None
+            try:
+                return float(token)
+            except Exception:
+                return None
+        if isinstance(value, dict):
+            # Handle engine-backed decoded variants that may wrap coordinates.
+            for key in ("value", "lon", "lat", "longitude", "latitude", "signed_value"):
+                nested = value.get(key)
+                coerced = _coerce_float(nested)
+                if coerced is not None:
+                    return coerced
+        return None
+
+    coordinates: list[tuple[float, float]] = []
+    for row in decoded_rows:
+        lon = _coerce_float(row.get("longitude"))
+        lat = _coerce_float(row.get("latitude"))
+        if lon is None or lat is None:
+            continue
+        coordinates.append((lon, lat))
+    if not coordinates:
+        return {"available": False, "viewbox": "0 0 420 240", "points": ""}
+
+    longitudes = [item[0] for item in coordinates]
+    latitudes = [item[1] for item in coordinates]
     min_lon = min(longitudes)
     max_lon = max(longitudes)
     min_lat = min(latitudes)
@@ -602,9 +746,7 @@ def _polygon_svg(resolved_rows: list[dict[str, Any]]) -> dict[str, Any]:
     scale = min((width - (2 * padding)) / span_lon, (height - (2 * padding)) / span_lat)
 
     points: list[str] = []
-    for row in decoded_rows:
-        longitude = float(row.get("longitude") or 0.0)
-        latitude = float(row.get("latitude") or 0.0)
+    for longitude, latitude in coordinates:
         x = padding + ((longitude - min_lon) * scale)
         y = height - padding - ((latitude - min_lat) * scale)
         points.append(f"{x:.2f},{y:.2f}")
@@ -786,8 +928,9 @@ def _run_daemon(spec: dict[str, Any], config: dict[str, Any], anthology: dict[st
 def _build_model_payload() -> dict[str, Any]:
     config, config_path = _active_config()
     anthology, anthology_path = _anthology_payload()
-    property_cfg = _as_dict(config.get("property"))
-    geometry_cfg = _as_dict(property_cfg.get("geometry"))
+    parcel_workspace = _parcel_workspace_payload()
+    parcels = [dict(item) for item in list(parcel_workspace.get("parcels") or []) if isinstance(item, dict)]
+    active_parcel = next((item for item in parcels if bool(item.get("valid"))), parcels[0] if parcels else {})
 
     daemon_specs = _daemon_specs()
     daemon_runs = [_run_daemon(spec, config, anthology) for spec in daemon_specs]
@@ -831,10 +974,14 @@ def _build_model_payload() -> dict[str, Any]:
         "msn_id": str(current_app.config.get("MYCITE_MSN_ID") or ""),
         "active_config_path": config_path,
         "anthology_path": anthology_path,
-        "property_title": str(property_cfg.get("title") or "property").strip(),
-        "property_geometry_type": str(geometry_cfg.get("type") or "Polygon").strip() or "Polygon",
-        "raw_property_bbox": _resolve_path_tokens(config, "property.bbox"),
-        "raw_property_geometry_coordinates": _resolve_path_tokens(config, "property.geometry.coordinates"),
+        "tabs": ["plan", "inventory", "products", "taxonomy"],
+        "parcel_workspace": parcel_workspace,
+        "active_parcel_id": str(active_parcel.get("parcel_id") or ""),
+        "active_parcel_polygon_svg": _polygon_svg_for_parcel(active_parcel if isinstance(active_parcel, dict) else {}),
+        "property_title": str(active_parcel.get("title") or "property").strip(),
+        "property_geometry_type": str(active_parcel.get("geometry_type") or "Polygon").strip() or "Polygon",
+        "raw_property_bbox": list(active_parcel.get("bbox_refs") or []),
+        "raw_property_geometry_coordinates": list(active_parcel.get("geometry_refs") or []),
         "daemons": daemon_runs,
         "geometry_daemon": geometry_daemon or {},
         "bbox_daemon": bbox_daemon or {},
@@ -864,6 +1011,9 @@ def _build_model_payload() -> dict[str, Any]:
             "mvp_invoice_preview": "/portal/tools/agro_erp/mvp/invoice/preview",
             "mvp_invoice_apply": "/portal/tools/agro_erp/mvp/invoice/apply",
             "mvp_readback": "/portal/tools/agro_erp/mvp/workflow/readback",
+            "plan_grid_preview": "/portal/tools/agro_erp/plan/grid_preview",
+            "plot_plan_draft_save": "/portal/tools/agro_erp/plan/draft/save",
+            "plot_plan_draft_load": "/portal/tools/agro_erp/plan/draft/load",
         },
     }
 
@@ -1094,6 +1244,89 @@ def agro_erp_apply():
         except Exception:
             pass
     return jsonify(payload), status
+
+
+@agro_erp_bp.post("/portal/tools/agro_erp/plan/grid_preview")
+def agro_erp_plan_grid_preview():
+    if not request.is_json:
+        abort(415, description="Expected application/json body")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(400, description="Expected JSON object body")
+    parcel_id = str(body.get("parcel_id") or "").strip()
+    if not parcel_id:
+        abort(400, description="parcel_id is required")
+    workspace = _parcel_workspace_payload()
+    parcel = _parcel_by_id(workspace, parcel_id)
+    if parcel is None:
+        abort(404, description=f"Unknown parcel_id: {parcel_id}")
+    grid_spec = body.get("grid_spec") if isinstance(body.get("grid_spec"), dict) else {}
+    overlay = _plot_overlay_for_parcel(parcel, grid_spec)
+    ok = bool(overlay.get("ok"))
+    return jsonify({"ok": ok, "selected_parcel": parcel, "overlay": overlay}), (200 if ok else 400)
+
+
+@agro_erp_bp.post("/portal/tools/agro_erp/plan/draft/save")
+def agro_erp_plan_draft_save():
+    if not request.is_json:
+        abort(415, description="Expected application/json body")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(400, description="Expected JSON object body")
+    parcel_id = str(body.get("parcel_id") or "").strip()
+    if not parcel_id:
+        abort(400, description="parcel_id is required")
+    workspace = _parcel_workspace_payload()
+    parcel = _parcel_by_id(workspace, parcel_id)
+    if parcel is None:
+        abort(404, description=f"Unknown parcel_id: {parcel_id}")
+    grid_spec = body.get("grid_spec") if isinstance(body.get("grid_spec"), dict) else {}
+    overlay = _plot_overlay_for_parcel(parcel, grid_spec)
+    if not bool(overlay.get("ok")):
+        return jsonify({"ok": False, "error": str(overlay.get("error") or "grid preview failed"), "overlay": overlay}), 400
+    resource_id = str(body.get("resource_id") or "").strip() or f"plot_plan.{parcel_id}.{uuid4().hex[:8]}"
+    draft_payload = {
+        "schema": "mycite.sandbox.plot_plan.v1",
+        "resource_id": resource_id,
+        "resource_kind": "plot_plan",
+        "origin_kind": "agro_erp.plan",
+        "selected_parcel_id": parcel_id,
+        "parcel_geometry_snapshot": {
+            "parcel_id": parcel_id,
+            "title": str(parcel.get("title") or ""),
+            "bbox_summary": dict(parcel.get("bbox_summary") if isinstance(parcel.get("bbox_summary"), dict) else {}),
+            "polygon": [dict(item) for item in list(parcel.get("polygon") or []) if isinstance(item, dict)],
+            "geometry_refs": list(parcel.get("geometry_refs") or []),
+            "bbox_refs": list(parcel.get("bbox_refs") or []),
+        },
+        "grid_spec": dict(overlay.get("grid_spec") if isinstance(overlay.get("grid_spec"), dict) else {}),
+        "plot_overlay": {
+            "plot_count": int(overlay.get("plot_count") or 0),
+            "plots": [dict(item) for item in list(overlay.get("plots") or []) if isinstance(item, dict)],
+        },
+        "compile_metadata": {
+            "draft_only": True,
+            "writes_anthology": False,
+            "phase": "agro_plan_grid_mvp",
+        },
+        "updated_at": int(time.time()),
+    }
+    result = _sandbox_engine().save_resource(resource_id, draft_payload)
+    out = result.to_dict()
+    out["draft"] = draft_payload
+    out["ok"] = bool(result.ok)
+    return jsonify(out), (200 if result.ok else 400)
+
+
+@agro_erp_bp.get("/portal/tools/agro_erp/plan/draft/load")
+def agro_erp_plan_draft_load():
+    resource_id = str(request.args.get("resource_id") or "").strip()
+    if not resource_id:
+        abort(400, description="resource_id is required")
+    payload = _sandbox_engine().get_resource(resource_id)
+    if bool(payload.get("missing")):
+        return jsonify({"ok": False, "error": f"resource not found: {resource_id}"}), 404
+    return jsonify({"ok": True, "draft": payload})
 
 
 @agro_erp_bp.post("/portal/tools/agro_erp/daemon/resolve")
