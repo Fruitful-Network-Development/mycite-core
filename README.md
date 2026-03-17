@@ -80,6 +80,7 @@ Hosted/progeny direction in the current phase:
 
 ## Canonical docs
 
+- [`docs/README.md`](docs/README.md)
 - [`docs/PORTAL_BUILD_SPEC.md`](docs/PORTAL_BUILD_SPEC.md)
 - [`docs/TOOLS_SHELL.md`](docs/TOOLS_SHELL.md)
 - [`docs/CANONICAL_DATA_ENGINE.md`](docs/CANONICAL_DATA_ENGINE.md)

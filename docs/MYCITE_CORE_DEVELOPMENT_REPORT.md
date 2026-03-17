@@ -1,5 +1,8 @@
 # MyCite portal core: development report
 
+> **Status: Historical consolidation/hardening report (non-canonical).**
+> Use `PORTAL_CORE_ARCHITECTURE.md`, `TOOLS_SHELL.md`, `PORTAL_BUILD_SPEC.md`, and `docs/README.md` for current runtime contracts.
+
 This report summarizes the current state of the MyCite portal core, identifies drift and legacy code, and recommends hardening and modularization. It is intended to guide consolidation and to keep portal implementations aligned.
 
 **Related docs:** [PORTAL_SHELL_UI.md](PORTAL_SHELL_UI.md), [HOSTED_SHELL_ALIAS.md](HOSTED_SHELL_ALIAS.md), [PORTAL_BUILD_SPEC.md](PORTAL_BUILD_SPEC.md).

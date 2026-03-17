@@ -149,6 +149,17 @@ Migration boundary:
 
 AGRO inherited-write MVP consumes published txa resource context from sandbox and stages inherited refs through shared write preview/apply. No full `4-1-*` txa subtree should be re-materialized into anthology during these flows.
 
+## Property/polygon workspace resolution
+
+Shared property workspace mediation is implemented in `portals/_shared/portal/data_engine/property_workspace.py`.
+
+Current behavior:
+
+- resolves `config.property[]` entries against merged anthology rows (`rows_by_id`)
+- decodes coordinate tokens through shared mediation (`coordinate_fixed_hex`)
+- emits normalized parcel records (`polygon`, `bbox_summary`, `focus_hint`, validity/warnings)
+- AGRO plan routes consume this resolver output; route/template layers do not own coordinate-decoding semantics
+
 ## Runtime validation commands
 
 Use a Flask-capable Python environment for route suites. Example from repo root:

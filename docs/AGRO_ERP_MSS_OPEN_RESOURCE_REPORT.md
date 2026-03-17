@@ -1,5 +1,8 @@
 # AGRO ERP MSS Open-Resource Report
 
+> **Status: Historical implementation report (non-canonical).**
+> Keep for lineage/reference only. Current contract behavior is documented in `MSS_COMPACT_ARRAY_SPEC.md`, `MSS_CONTRACT_CONTEXT_STATUS.md`, and `AGRO_ERP_TOOL.md`.
+
 ## Scope
 
 This report captures the portal-core work completed to make the FND open MSS resource usable through the FND<->TFF contract path and render a read-only taxonomy hierarchy in AGRO ERP.
