@@ -39,6 +39,25 @@ Shared shell assets/templates are canonicalized to one source and reused across 
 
 `build.json` is treated as bootstrap-only materialization input. Runtime semantics are served from canonical state artifacts and shared service layers, not from `build.json` at request time.
 
+## Flavor runtime boundary
+
+Flavor entrypoints (`portals/_shared/runtime/flavors/fnd/app.py`, `portals/_shared/runtime/flavors/tff/app.py`) compose shared services and shell behavior but do not own divergent data/MSS contracts.
+
+Current shared-boundary invariants:
+
+- shared data route registrar: `portals/_shared/portal/api/data_workspace.py`
+- shared MSS implementation: `portals/_shared/portal/mss/`
+- shared sandbox service ownership: `portals/_shared/portal/sandbox/`
+- shared write-intent engine: `portals/_shared/portal/data_engine/write_pipeline.py`
+
+## Compatibility and legacy shims
+
+Current compatibility posture is explicit:
+
+- `/portal/data` and `/portal/data/<path:tab_id>` redirect to `/portal/tools/data_tool/home`
+- `/portal/tools`, `/portal/inbox`, and `/portal/peripheral` remain redirect shims into canonical shell routes
+- shared data API registration is called with `include_legacy_shims=False` in both active flavors, so deprecated `/portal/api/data/tables` and `/portal/api/data/table/*` shims are intentionally disabled
+
 ## Migration notes
 
 - TFF legacy data shim routes under `/portal/api/data/tables` and `/portal/api/data/table/*` are removed.

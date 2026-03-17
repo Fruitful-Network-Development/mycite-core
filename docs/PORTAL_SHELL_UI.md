@@ -1,5 +1,8 @@
 ## Portal shell UI model (context / workbench / inspector)
 
+> **Status: Supporting design + behavior guidance (non-canonical for API/storage contracts).**
+> Runtime ownership and hard boundaries are canonical in `PORTAL_CORE_ARCHITECTURE.md` and `TOOLS_SHELL.md`.
+
 For portal-wide drift, consolidation, and modularization, see [MYCITE_CORE_DEVELOPMENT_REPORT.md](MYCITE_CORE_DEVELOPMENT_REPORT.md).
 
 This document records the **intended behavior** of the shared portal shell and its layout columns. It is a design target for the FND/TFF flavors and any future portals.

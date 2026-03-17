@@ -1,5 +1,8 @@
 # AGRO-ERP and Portal Data Foundation — Progress
 
+> **Status: Historical progress log (non-canonical).**
+> Current implementation contracts live in `AGRO_ERP_TOOL.md`, `CANONICAL_DATA_ENGINE.md`, and `SANDBOX_ENGINE.md`.
+
 This document tracks **current state, completed work, and next steps** for the AGRO-ERP tool and the shared data/contract foundation. It is updated as implementation advances.
 
 ---

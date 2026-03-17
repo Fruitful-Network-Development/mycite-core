@@ -81,6 +81,22 @@ For AGRO MVP, sandbox provides the txa source-of-truth path:
 
 Downstream product/invoice writes consume this context through shared write preview/apply and do not materialize full txa trees locally.
 
+## Plot-plan draft resources
+
+Sandbox also owns AGRO plan-draft resources (`resource_kind = plot_plan`) created from parcel geometry workspace resolution.
+
+Current AGRO draft routes:
+
+- `POST /portal/tools/agro_erp/plan/grid_preview`
+- `POST /portal/tools/agro_erp/plan/draft/save`
+- `GET /portal/tools/agro_erp/plan/draft/load`
+
+Draft policy:
+
+- draft artifacts are sandbox JSON resources, not anthology semantic rows
+- saved payload captures selected parcel, geometry snapshot/refs, grid spec, and overlay compile metadata
+- draft lifecycle is `save -> load -> update` within sandbox resource ownership
+
 ## Runtime validation
 
 From repo root (`/srv/repo/mycite-core`):

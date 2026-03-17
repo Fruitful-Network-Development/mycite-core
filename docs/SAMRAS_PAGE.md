@@ -1,5 +1,8 @@
 # SAMRAS Data Sub-Tab (FND First)
 
+> **Status: Historical UI milestone doc (non-canonical).**
+> Current SAMRAS runtime ownership is documented in `SANDBOX_ENGINE.md` and `CANONICAL_DATA_ENGINE.md`.
+
 ## Purpose
 
 Define the active SAMRAS page contract under the Data service.
@@ -7,10 +10,10 @@ SAMRAS stands for **Shape-Addressed Mixed-Radix Address Space**.
 
 This milestone implements FND-first, JSON-only SAMRAS instances with a two-column table editor and hierarchy view.
 
-## Route and Placement
+## Route and Placement (historical milestone)
 
-- `GET /portal/data/samras`
-- SAMRAS is a Data sub-tab, not a top-level service route in this milestone.
+- historical UI route target in this milestone: `GET /portal/data/samras`
+- current active API surface remains under `/portal/api/data/samras/*` in shared data routes
 
 ## Instance Discovery
 

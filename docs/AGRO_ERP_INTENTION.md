@@ -1,5 +1,8 @@
 # AGRO-ERP and Portal Data Foundation — Intention
 
+> **Status: Background/design-intent document (non-canonical).**
+> Canonical current behavior is in `AGRO_ERP_TOOL.md`, `CANONICAL_DATA_ENGINE.md`, and `SANDBOX_ENGINE.md`.
+
 This document captures **goals, design decisions, and boundaries** for the AGRO-ERP tool and the shared foundation it depends on. It is separate from implementation and progress tracking.
 
 ---

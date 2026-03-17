@@ -1,5 +1,8 @@
 # AGRO-ERP MVP Contract (TXA-First)
 
+> **Status: Historical MVP scope baseline (non-canonical).**
+> This file preserves the original MVP scope language; current AGRO implementation contract is `AGRO_ERP_TOOL.md`.
+
 ## Happy Path
 
 1. Operator opens AGRO-ERP.

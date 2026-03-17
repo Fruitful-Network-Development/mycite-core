@@ -1,5 +1,8 @@
 # Development Plan
 
+> **Status: Historical planning snapshot (non-canonical).**
+> For current contracts and subsystem boundaries, use `docs/README.md` and the linked canonical docs.
+
 ## Active baseline
 
 Active portal specs in this repo:

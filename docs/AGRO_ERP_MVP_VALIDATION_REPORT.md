@@ -1,5 +1,8 @@
 # AGRO-ERP MVP Validation Report
 
+> **Status: Historical MVP validation snapshot (non-canonical).**
+> Use `AGRO_ERP_TOOL.md` and `SANDBOX_ENGINE.md` for current behavior.
+
 ## Live-State Gate (FND state snapshot)
 
 State checked against:
