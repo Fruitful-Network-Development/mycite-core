@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import quote
 from urllib.request import urlopen
 
+from ...services.profile_resolver import find_local_contact_card
 from .cache import ExternalResourceCache
 from .contact_card_catalog import PublicResourceDescriptor, parse_public_resource_catalog
 from .isolate_bundle import IsolateBundle, build_isolate_bundle
@@ -31,14 +32,14 @@ class ExternalResourceResolver:
         token = str(msn_id or "").strip()
         if not token:
             return {}
-        local_candidates = [
-            self._public_dir / f"{token}.json",
-            self._public_dir / f"msn-{token}.json",
-            self._public_dir / f"fnd-{token}.json",
-        ]
-        for path in local_candidates:
-            if path.exists() and path.is_file():
-                return self._read_json(path)
+        local_path = find_local_contact_card(
+            public_dir=self._public_dir,
+            fallback_dir=None,
+            msn_id=token,
+            include_fnd=True,
+        )
+        if local_path is not None:
+            return self._read_json(local_path)
         base = str(os.environ.get("MYCITE_CONTACT_BASE_URL") or "").strip().rstrip("/")
         if not base:
             return {}

@@ -7,6 +7,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List
 
+from _shared.portal.services.progeny_refs import iter_progeny_refs
+
 RESOURCE_NAMES = {"streams", "feed", "calendar"}
 BOARD_MEMBER_FILENAME_RE = re.compile(r"-progeny-(?P<member>[^/]+)-board_member\.json$", re.IGNORECASE)
 
@@ -128,44 +130,6 @@ def _config_paths() -> list[Path]:
     return paths
 
 
-def _iter_progeny_refs(raw: Any) -> list[tuple[str, str]]:
-    out: list[tuple[str, str]] = []
-
-    def _push(progeny_type: str, ref_token: Any) -> None:
-        t = str(progeny_type or "").strip().lower()
-        r = str(ref_token or "").strip()
-        if not t or not r:
-            return
-        out.append((t, r))
-
-    def _walk(node: Any, fallback_type: str = "") -> None:
-        if isinstance(node, list):
-            for item in node:
-                _walk(item, fallback_type=fallback_type)
-            return
-        if isinstance(node, dict):
-            explicit_type = str(node.get("progeny_type") or node.get("type") or fallback_type or "").strip().lower()
-            explicit_ref = node.get("ref") or node.get("path") or node.get("file") or node.get("source")
-            if explicit_type and explicit_ref:
-                _push(explicit_type, explicit_ref)
-                refs = node.get("refs")
-                if isinstance(refs, list):
-                    for ref in refs:
-                        _push(explicit_type, ref)
-                return
-            for key, value in node.items():
-                key_token = str(key or "").strip().lower()
-                if key_token in {"progeny_type", "type", "ref", "path", "file", "source", "refs"}:
-                    continue
-                if isinstance(value, str):
-                    _push(key_token or fallback_type, value)
-                else:
-                    _walk(value, fallback_type=key_token or fallback_type)
-
-    _walk(raw)
-    return out
-
-
 def _people_from_board_member_files(people: Dict[str, Dict[str, str]]) -> None:
     progeny_dir = _private_dir() / "progeny"
     if not progeny_dir.exists():
@@ -214,7 +178,7 @@ def _people_from_config(people: Dict[str, Dict[str, str]]) -> None:
         try:
             payload = _read_json_relaxed(cfg)
             progeny = payload.get("progeny")
-            for progeny_type, ref in _iter_progeny_refs(progeny):
+            for progeny_type, ref in iter_progeny_refs(progeny):
                 if progeny_type not in {"board_member", "member"}:
                     continue
                 member_id = _extract_member_id_from_filename(ref)

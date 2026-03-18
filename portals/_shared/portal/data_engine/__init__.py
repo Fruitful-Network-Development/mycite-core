@@ -55,6 +55,17 @@ from .samras_descriptor_compiler import (
     compile_samras_descriptors_from_rows,
 )
 from .write_pipeline import WriteApplyResult, WritePreviewResult, apply_write_preview, preview_write_intent
+from .rules import (
+    DatumRow,
+    DatumUnderstanding,
+    DatumUnderstandingReport,
+    RuleContext,
+    RuleDefinition,
+    reference_filter_options,
+    resolve_lens_for_datum,
+    understand_datums,
+    validate_rule_create,
+)
 
 __all__ = [
     "CompiledDatumIndex",
@@ -118,4 +129,13 @@ __all__ = [
     "WritePreviewResult",
     "apply_write_preview",
     "preview_write_intent",
+    "DatumRow",
+    "DatumUnderstanding",
+    "DatumUnderstandingReport",
+    "RuleContext",
+    "RuleDefinition",
+    "understand_datums",
+    "reference_filter_options",
+    "validate_rule_create",
+    "resolve_lens_for_datum",
 ]

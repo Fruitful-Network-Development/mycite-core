@@ -17,6 +17,20 @@ def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]
     return out
 
 
+def legacy_portal_model_keys_used(payload: dict[str, Any]) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    legacy_keys = [
+        "organization_config",
+        "organization_configuration",
+        "orangization_configuration",
+        "organization_config_file",
+        "legal_entity_config_file",
+        "legal_entity_type",
+    ]
+    return [key for key in legacy_keys if key in payload]
+
+
 def canonicalize_portal_model_config(payload: dict[str, Any]) -> dict[str, Any]:
     body = dict(payload if isinstance(payload, dict) else {})
 

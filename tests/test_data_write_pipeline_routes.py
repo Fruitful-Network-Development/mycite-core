@@ -65,6 +65,17 @@ class _WorkspaceStub:
         }
 
 
+class _ExternalResolverStub:
+    def fetch_and_cache_bundle(self, *, source_msn_id: str, resource_id: str, force_refresh: bool = False):
+        payload = {
+            "schema": "mycite.external.bundle.v1",
+            "source_msn_id": source_msn_id,
+            "resource_id": resource_id,
+            "refs": [{"canonical_ref": f"{source_msn_id}.8-5-1"}],
+        }
+        return {"ok": True, "from_cache": not force_refresh, "bundle": payload}
+
+
 @unittest.skipUnless(HAS_FLASK, "flask is not installed in host python")
 class DataWritePipelineRouteTests(unittest.TestCase):
     def setUp(self):
@@ -74,11 +85,13 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.private_dir.mkdir(parents=True, exist_ok=True)
         self.anthology_rows: dict[str, object] = {}
         self.workspace = _WorkspaceStub(anthology_rows=self.anthology_rows, data_dir=self._tmpdir.name)
+        self.external_resolver = _ExternalResolverStub()
         self.config_payload = {"display": {"title": "Before"}}
         self.app = Flask(__name__)
         register_data_routes(
             self.app,
             workspace=self.workspace,
+            external_resource_resolver=self.external_resolver,
             anthology_payload_provider=lambda: {"rows": self.anthology_rows},
             active_config_provider=lambda: dict(self.config_payload),
             active_config_saver=self._save_config,
@@ -382,6 +395,46 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         ids = [str(item.get("resource_id") or "") for item in resources]
         self.assertIn("local:samras.msn", ids)
 
+    def test_local_resource_create_and_publish_update_registry_index(self):
+        created = self.client.post(
+            "/portal/api/data/resources/local/create",
+            json={
+                "resource_name": "unit.sample",
+                "resource_kind": "samras_txa",
+                "seed_payload": {"4-1-9": [["4-1-9", "2-1-1", "9"], ["seeded"]]},
+            },
+        )
+        self.assertEqual(created.status_code, 200)
+        created_payload = created.get_json() or {}
+        self.assertTrue(created_payload.get("ok"))
+        self.assertEqual(created_payload.get("resource_id"), "local:unit.sample")
+
+        stage = self.client.post(
+            "/portal/api/data/sandbox/resources/publish-resource/stage",
+            json={
+                "payload": {
+                    "resource_kind": "samras_txa",
+                    "canonical_state": {"compact_payload": {"4-1-3": [["4-1-3", "2-1-1", "3"], ["publishable"]]}}
+                }
+            },
+        )
+        self.assertEqual(stage.status_code, 200)
+        publish = self.client.post(
+            "/portal/api/data/resources/local/publish",
+            json={"resource_id": "publish-resource", "resource_name": "unit.publish", "resource_kind": "samras_txa"},
+        )
+        self.assertEqual(publish.status_code, 200)
+        publish_payload = publish.get_json() or {}
+        self.assertTrue(publish_payload.get("ok"))
+        self.assertEqual(publish_payload.get("resource_id"), "local:unit.publish")
+
+        local = self.client.get("/portal/api/data/resources/local")
+        self.assertEqual(local.status_code, 200)
+        resources = (local.get_json() or {}).get("resources") or []
+        ids = [str(item.get("resource_id") or "") for item in resources]
+        self.assertIn("local:unit.sample", ids)
+        self.assertIn("local:unit.publish", ids)
+
     def test_inherited_disconnect_cleans_index_files_and_contract_sync(self):
         from _shared.portal.services.contract_store import create_contract, get_contract
         from _shared.portal.data_engine.resource_registry import (
@@ -473,6 +526,40 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         resources = sync.get("resources") or []
         self.assertTrue(resources)
         self.assertTrue(all(str(item.get("status") or "") == "disconnected" for item in resources))
+
+    def test_inherited_subscription_register_and_unregister(self):
+        from _shared.portal.services.contract_store import create_contract, get_contract
+
+        contract_id = create_contract(
+            self.private_dir,
+            {
+                "contract_id": "contract-test-register",
+                "contract_type": "resource_subscription",
+                "owner_msn_id": "9-9-9",
+                "counterparty_msn_id": "7-7-7",
+                "status": "active",
+                "details": {},
+            },
+            owner_msn_id="9-9-9",
+        )
+        register = self.client.post(
+            "/portal/api/data/resources/inherited/subscriptions/register",
+            json={"contract_id": contract_id, "resource_ids": ["samras.txa", "samras.msn"]},
+        )
+        self.assertEqual(register.status_code, 200)
+        reg_payload = register.get_json() or {}
+        self.assertEqual(set(reg_payload.get("tracked_resource_ids") or []), {"samras.txa", "samras.msn"})
+
+        contract_after = get_contract(self.private_dir, contract_id)
+        self.assertEqual(set(contract_after.get("tracked_resource_ids") or []), {"samras.txa", "samras.msn"})
+
+        unregister = self.client.post(
+            "/portal/api/data/resources/inherited/subscriptions/unregister",
+            json={"contract_id": contract_id, "resource_ids": ["samras.msn"]},
+        )
+        self.assertEqual(unregister.status_code, 200)
+        unreg_payload = unregister.get_json() or {}
+        self.assertEqual(unreg_payload.get("tracked_resource_ids"), ["samras.txa"])
 
     def test_anthology_overlay_migration_route_dry_run_and_apply(self):
         anthology_path = Path(self._tmpdir.name) / "anthology.json"

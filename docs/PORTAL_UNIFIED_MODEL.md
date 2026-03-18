@@ -22,6 +22,11 @@ Legacy keys remain compatibility-readable:
 
 Runtime reads can still consume these keys when present, but canonical writes should emit the unified model.
 
+Compatibility observability:
+
+- config write responses now include `compat_legacy_keys_used` when legacy keys are present in input payloads
+- migration/report flows annotate legacy-source usage to support compatibility deprecation gates
+
 ## Write behavior
 
 Config write canonicalization is handled in:
@@ -36,6 +41,11 @@ Writes now normalize legacy shape into:
 - `portal_behavior.defaults`
 - `portal_behavior.overrides`
 - `portal_features.workflow_enabled`
+
+Removal gate recommendation:
+
+1. Monitor `compat_legacy_keys_used` and legacy-source migration warnings for at least one release cycle.
+2. Only remove legacy-read fallbacks when telemetry shows no active legacy writes.
 
 ## Runtime behavior
 

@@ -14,26 +14,27 @@ from _shared.portal.data_engine.aitas_context import (
 from _shared.portal.data_engine.anthology_context import build_canonical_anthology_context
 from _shared.portal.data_engine.anthology_overlay import strip_base_duplicates_from_overlay
 from _shared.portal.data_engine.inherited_contract_resources import (
+    InheritedSubscriptionService,
     discover_contract_subscription_status,
-    disconnect_source_subscriptions,
-    refresh_all_for_source,
-    refresh_contract_resource,
 )
 from _shared.portal.data_engine.resource_registry import (
     INHERITED_SCOPE,
-    LOCAL_SCOPE,
     ensure_layout,
     inherited_resources_dir,
     load_index,
-    local_resources_dir,
-    migrate_legacy_samras_root_files,
     remove_inherited_source,
 )
 from _shared.portal.data_engine.anthology_registry import load_base_registry
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
 from _shared.portal.data_engine.inherited_txa_adapter import select_inherited_binding_for_field
+from _shared.portal.data_engine.rules import (
+    reference_filter_options,
+    resolve_lens_for_datum,
+    understand_datums,
+    validate_rule_create,
+)
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
-from _shared.portal.sandbox import SandboxEngine, migrate_fnd_samras_rows_to_sandbox
+from _shared.portal.sandbox import LocalResourceLifecycleService, SandboxEngine, migrate_fnd_samras_rows_to_sandbox
 
 
 def register_data_routes(
@@ -146,6 +147,9 @@ def register_data_routes(
             data_root = "."
         return SandboxEngine(data_root=Path(str(data_root)))
 
+    def _local_resource_service() -> LocalResourceLifecycleService:
+        return LocalResourceLifecycleService(data_root=_data_root(), sandbox_engine=_sandbox_engine())
+
     def _data_root() -> Path:
         storage = getattr(workspace, "storage", None)
         data_root = getattr(storage, "data_dir", None)
@@ -155,6 +159,16 @@ def register_data_routes(
         if isinstance(private_dir, Path):
             return private_dir
         return _data_root().parent / "private"
+
+    def _inherited_subscription_service() -> InheritedSubscriptionService:
+        if external_resource_resolver is None:
+            raise RuntimeError("external resource resolver is unavailable")
+        return InheritedSubscriptionService(
+            data_root=_data_root(),
+            private_dir=_private_dir(),
+            resolver=external_resource_resolver,
+            owner_msn_id=_msn_id(),
+        )
 
     def _overlay_anthology_path() -> Path:
         return _data_root() / "anthology.json"
@@ -170,6 +184,23 @@ def register_data_routes(
 
     def _anthology_payload_for_mss_compile() -> dict[str, Any]:
         return dict(_canonical_anthology_context().compact_payload)
+
+    def _rule_rows_payload_from_sandbox_resource(resource_id: str) -> dict[str, Any]:
+        resource = _sandbox_engine().get_resource(resource_id)
+        if bool(resource.get("missing")):
+            return {"rows": {}}
+        anthology_payload = (
+            resource.get("anthology_compatible_payload")
+            if isinstance(resource.get("anthology_compatible_payload"), dict)
+            else {}
+        )
+        if anthology_payload:
+            return anthology_payload
+        canonical_state = resource.get("canonical_state") if isinstance(resource.get("canonical_state"), dict) else {}
+        compact_payload = canonical_state.get("compact_payload") if isinstance(canonical_state.get("compact_payload"), dict) else {}
+        if compact_payload:
+            return compact_payload
+        return {"rows": {}}
 
     def _group_inherited_index(index_payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
         grouped: dict[str, list[dict[str, Any]]] = {}
@@ -264,18 +295,7 @@ def register_data_routes(
 
     @app.get("/portal/api/data/resources/local")
     def portal_data_resources_local():
-        root = _data_root()
-        ensure_layout(root)
-        index_payload = load_index(root, scope=LOCAL_SCOPE)
-        return jsonify(
-            {
-                "ok": True,
-                "schema": "mycite.portal.resources.local_inventory.v1",
-                "resources_root": str(local_resources_dir(root)),
-                "index_path": str(root / "resources" / "index.local.json"),
-                "resources": list(index_payload.get("resources") or []),
-            }
-        )
+        return jsonify(_local_resource_service().list_local_inventory())
 
     @app.get("/portal/api/data/resources/inherited")
     def portal_data_resources_inherited():
@@ -297,14 +317,61 @@ def register_data_routes(
     def portal_data_resources_inherited_subscriptions():
         return jsonify(discover_contract_subscription_status(_private_dir()))
 
+    @app.post("/portal/api/data/resources/inherited/subscriptions/register")
+    def portal_data_resources_inherited_subscriptions_register():
+        if external_resource_resolver is None:
+            abort(501, description="external resource resolver is unavailable")
+        body = _json_body()
+        contract_id = str(body.get("contract_id") or "").strip()
+        resource_ids = [str(item).strip() for item in list(body.get("resource_ids") or []) if str(item).strip()]
+        if not contract_id:
+            abort(400, description="contract_id is required")
+        if not resource_ids:
+            abort(400, description="resource_ids is required")
+        payload = _inherited_subscription_service().register_subscription(contract_id=contract_id, resource_ids=resource_ids)
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/resources/inherited/subscriptions/unregister")
+    def portal_data_resources_inherited_subscriptions_unregister():
+        if external_resource_resolver is None:
+            abort(501, description="external resource resolver is unavailable")
+        body = _json_body()
+        contract_id = str(body.get("contract_id") or "").strip()
+        resource_ids = [str(item).strip() for item in list(body.get("resource_ids") or []) if str(item).strip()]
+        if not contract_id:
+            abort(400, description="contract_id is required")
+        if not resource_ids:
+            abort(400, description="resource_ids is required")
+        payload = _inherited_subscription_service().unregister_subscription(contract_id=contract_id, resource_ids=resource_ids)
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
     @app.post("/portal/api/data/resources/local/migrate_legacy_samras")
     def portal_data_resources_local_migrate_legacy_samras():
         body = _json_body()
-        apply_changes = bool(body.get("apply", True))
-        report = migrate_legacy_samras_root_files(_data_root(), apply_changes=apply_changes)
-        payload = report.to_dict()
-        payload["apply"] = apply_changes
-        payload["schema"] = "mycite.portal.resources.local_migration.v1"
+        payload = _local_resource_service().migrate_legacy_samras(apply_changes=bool(body.get("apply", True)))
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/resources/local/create")
+    def portal_data_resources_local_create():
+        body = _json_body()
+        payload = _local_resource_service().create(
+            resource_kind=str(body.get("resource_kind") or "resource"),
+            resource_name=str(body.get("resource_name") or body.get("resource_id") or "resource").strip(),
+            seed_payload=body.get("seed_payload") if isinstance(body.get("seed_payload"), dict) else {},
+        )
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/resources/local/publish")
+    def portal_data_resources_local_publish():
+        body = _json_body()
+        resource_id = str(body.get("resource_id") or "").strip()
+        if not resource_id:
+            abort(400, description="resource_id is required")
+        payload = _local_resource_service().publish(
+            resource_id=resource_id,
+            resource_name=str(body.get("resource_name") or "").strip(),
+            resource_kind=str(body.get("resource_kind") or "").strip(),
+        )
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
     @app.post("/portal/api/data/resources/inherited/refresh")
@@ -316,13 +383,9 @@ def register_data_routes(
         resource_id = str(body.get("resource_id") or "").strip()
         if not contract_id or not resource_id:
             abort(400, description="contract_id and resource_id are required")
-        payload = refresh_contract_resource(
-            data_root=_data_root(),
-            private_dir=_private_dir(),
-            resolver=external_resource_resolver,
+        payload = _inherited_subscription_service().refresh_resource(
             contract_id=contract_id,
             resource_id=resource_id,
-            owner_msn_id=_msn_id(),
             force_refresh=bool(body.get("force_refresh", True)),
         )
         payload["schema"] = "mycite.portal.resources.inherited_refresh.v1"
@@ -336,12 +399,8 @@ def register_data_routes(
         source_msn_id = str(body.get("source_msn_id") or "").strip()
         if not source_msn_id:
             abort(400, description="source_msn_id is required")
-        payload = refresh_all_for_source(
-            data_root=_data_root(),
-            private_dir=_private_dir(),
-            resolver=external_resource_resolver,
+        payload = _inherited_subscription_service().refresh_source(
             source_msn_id=source_msn_id,
-            owner_msn_id=_msn_id(),
             force_refresh=bool(body.get("force_refresh", True)),
         )
         payload["schema"] = "mycite.portal.resources.inherited_refresh_source.v1"
@@ -354,11 +413,7 @@ def register_data_routes(
         if not source_msn_id:
             abort(400, description="source_msn_id is required")
         payload = remove_inherited_source(_data_root(), source_msn_id=source_msn_id)
-        payload["contract_sync"] = disconnect_source_subscriptions(
-            private_dir=_private_dir(),
-            source_msn_id=source_msn_id,
-            owner_msn_id=_msn_id(),
-        )
+        payload["contract_sync"] = _inherited_subscription_service().disconnect_source(source_msn_id=source_msn_id)
         payload["ok"] = True
         payload["schema"] = "mycite.portal.resources.inherited_disconnect_source.v1"
         return jsonify(payload), 200
@@ -373,26 +428,20 @@ def register_data_routes(
     def portal_data_sandbox_resource_stage(resource_id: str):
         body = _json_body()
         payload = body.get("payload") if isinstance(body.get("payload"), dict) else body
-        result = _sandbox_engine().stage_resource(resource_id, payload if isinstance(payload, dict) else {})
-        out = result.to_dict()
-        out["schema"] = "mycite.portal.sandbox.stage.v1"
-        return jsonify(out), (200 if result.ok else 400)
+        out = _local_resource_service().stage(resource_id=resource_id, payload=payload if isinstance(payload, dict) else {})
+        return jsonify(out), (200 if bool(out.get("ok")) else 400)
 
     @app.post("/portal/api/data/sandbox/resources/<path:resource_id>/save")
     def portal_data_sandbox_resource_save(resource_id: str):
         body = _json_body()
         payload = body.get("payload") if isinstance(body.get("payload"), dict) else body
-        result = _sandbox_engine().save_resource(resource_id, payload if isinstance(payload, dict) else {})
-        out = result.to_dict()
-        out["schema"] = "mycite.portal.sandbox.save.v1"
-        return jsonify(out), (200 if result.ok else 400)
+        out = _local_resource_service().update(resource_id=resource_id, payload=payload if isinstance(payload, dict) else {})
+        return jsonify(out), (200 if bool(out.get("ok")) else 400)
 
     @app.post("/portal/api/data/sandbox/resources/<path:resource_id>/compile")
     def portal_data_sandbox_resource_compile(resource_id: str):
-        result = _sandbox_engine().compile_isolated_mss_resource(resource_id=resource_id)
-        out = result.to_dict()
-        out["schema"] = "mycite.portal.sandbox.resource_compile.v1"
-        return jsonify(out), (200 if result.ok else 400)
+        out = _local_resource_service().compile(resource_id=resource_id)
+        return jsonify(out), (200 if bool(out.get("ok")) else 400)
 
     @app.post("/portal/api/data/sandbox/mss/compile")
     def portal_data_sandbox_mss_compile():
@@ -447,6 +496,88 @@ def register_data_routes(
         out = result.to_dict()
         out["schema"] = "mycite.portal.sandbox.samras_decode.v1"
         return jsonify(out), (200 if result.ok else 400)
+
+    @app.get("/portal/api/data/sandbox/samras/<path:resource_id>/structure")
+    def portal_data_sandbox_samras_structure(resource_id: str):
+        result = _sandbox_engine().decode_samras_resource(resource_id)
+        out = result.to_dict()
+        out["schema"] = "mycite.portal.sandbox.samras_structure.v1"
+        return jsonify(out), (200 if result.ok else 400)
+
+    @app.post("/portal/api/data/sandbox/samras/<path:resource_id>/node/inspect")
+    def portal_data_sandbox_samras_node_inspect(resource_id: str):
+        body = _json_body()
+        address_id = str(body.get("address_id") or "").strip()
+        if not address_id:
+            abort(400, description="address_id is required")
+        try:
+            payload = _sandbox_engine().inspect_samras_node(resource_id=resource_id, address_id=address_id)
+        except Exception as exc:
+            return jsonify({"ok": False, "schema": "mycite.portal.sandbox.samras.inspect_node.v1", "errors": [str(exc)]}), 400
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/sandbox/samras/<path:resource_id>/node/set")
+    def portal_data_sandbox_samras_node_set(resource_id: str):
+        body = _json_body()
+        address_id = str(body.get("address_id") or "").strip()
+        if not address_id:
+            abort(400, description="address_id is required")
+        value = body.get("value")
+        try:
+            payload = _sandbox_engine().set_samras_node(
+                resource_id=resource_id,
+                address_id=address_id,
+                value=int(value if value is not None else 0),
+            )
+        except Exception as exc:
+            return jsonify({"ok": False, "schema": "mycite.portal.sandbox.samras.set_node.v1", "errors": [str(exc)]}), 400
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/sandbox/samras/<path:resource_id>/node/create_child")
+    def portal_data_sandbox_samras_node_create_child(resource_id: str):
+        body = _json_body()
+        parent_address = str(body.get("parent_address") or "").strip()
+        if not parent_address:
+            abort(400, description="parent_address is required")
+        value = body.get("value")
+        try:
+            payload = _sandbox_engine().create_samras_child(
+                resource_id=resource_id,
+                parent_address=parent_address,
+                value=int(value if value is not None else 0),
+            )
+        except Exception as exc:
+            return jsonify({"ok": False, "schema": "mycite.portal.sandbox.samras.create_child.v1", "errors": [str(exc)]}), 400
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/sandbox/samras/<path:resource_id>/node/delete")
+    def portal_data_sandbox_samras_node_delete(resource_id: str):
+        body = _json_body()
+        address_id = str(body.get("address_id") or "").strip()
+        if not address_id:
+            abort(400, description="address_id is required")
+        try:
+            payload = _sandbox_engine().delete_samras_address(resource_id=resource_id, address_id=address_id)
+        except Exception as exc:
+            return jsonify({"ok": False, "schema": "mycite.portal.sandbox.samras.delete_address.v1", "errors": [str(exc)]}), 400
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/sandbox/samras/<path:resource_id>/branch/move")
+    def portal_data_sandbox_samras_branch_move(resource_id: str):
+        body = _json_body()
+        from_address = str(body.get("from_address") or "").strip()
+        to_parent_address = str(body.get("to_parent_address") or "").strip()
+        if not from_address or not to_parent_address:
+            abort(400, description="from_address and to_parent_address are required")
+        try:
+            payload = _sandbox_engine().move_samras_branch(
+                resource_id=resource_id,
+                from_address=from_address,
+                to_parent_address=to_parent_address,
+            )
+        except Exception as exc:
+            return jsonify({"ok": False, "schema": "mycite.portal.sandbox.samras.move_branch.v1", "errors": [str(exc)]}), 400
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
     @app.post("/portal/api/data/sandbox/inherited/resolve")
     def portal_data_sandbox_inherited_resolve():
@@ -587,6 +718,81 @@ def register_data_routes(
         )
         payload["schema"] = "mycite.portal.aitas.bindings.v1"
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.get("/portal/api/data/rules/understanding/anthology")
+    def portal_data_rules_understanding_anthology():
+        payload = understand_datums(_canonical_rows_payload())
+        out = payload.to_dict()
+        out["schema"] = "mycite.portal.datum_rules.understanding.v1"
+        out["scope"] = "anthology"
+        return jsonify(out), (200 if bool(out.get("ok")) else 400)
+
+    @app.get("/portal/api/data/rules/understanding/resource/<path:resource_id>")
+    def portal_data_rules_understanding_resource(resource_id: str):
+        payload = understand_datums(_rule_rows_payload_from_sandbox_resource(resource_id))
+        out = payload.to_dict()
+        out["schema"] = "mycite.portal.datum_rules.understanding.v1"
+        out["scope"] = "sandbox_resource"
+        out["resource_id"] = str(resource_id or "").strip()
+        return jsonify(out), (200 if bool(out.get("ok")) else 400)
+
+    @app.post("/portal/api/data/rules/reference_filter")
+    def portal_data_rules_reference_filter():
+        body = _json_body()
+        rule_key = str(body.get("rule_key") or "").strip()
+        scope = str(body.get("scope") or "anthology").strip().lower()
+        if not rule_key:
+            abort(400, description="rule_key is required")
+        rows_payload = (
+            _canonical_rows_payload()
+            if scope == "anthology"
+            else _rule_rows_payload_from_sandbox_resource(str(body.get("resource_id") or "").strip())
+        )
+        out = reference_filter_options(rows_payload, rule_key=rule_key)
+        out["scope"] = scope
+        return jsonify(out), (200 if bool(out.get("ok")) else 400)
+
+    @app.post("/portal/api/data/rules/validate_create")
+    def portal_data_rules_validate_create():
+        body = _json_body()
+        rule_key = str(body.get("rule_key") or "").strip()
+        scope = str(body.get("scope") or "anthology").strip().lower()
+        reference = str(body.get("reference") or "").strip()
+        magnitude = str(body.get("magnitude") or "").strip()
+        if not rule_key:
+            abort(400, description="rule_key is required")
+        rows_payload = (
+            _canonical_rows_payload()
+            if scope == "anthology"
+            else _rule_rows_payload_from_sandbox_resource(str(body.get("resource_id") or "").strip())
+        )
+        out = validate_rule_create(
+            rows_payload,
+            rule_key=rule_key,
+            reference=reference,
+            magnitude=magnitude,
+            value_group=body.get("value_group"),
+            label=str(body.get("label") or "").strip(),
+        )
+        out["scope"] = scope
+        out["schema"] = "mycite.portal.datum_rules.validate_create.v1"
+        return jsonify(out), (200 if bool(out.get("ok")) else 400)
+
+    @app.post("/portal/api/data/rules/lens")
+    def portal_data_rules_lens():
+        body = _json_body()
+        datum_id = str(body.get("datum_id") or body.get("row_id") or "").strip()
+        scope = str(body.get("scope") or "anthology").strip().lower()
+        if not datum_id:
+            abort(400, description="datum_id is required")
+        rows_payload = (
+            _canonical_rows_payload()
+            if scope == "anthology"
+            else _rule_rows_payload_from_sandbox_resource(str(body.get("resource_id") or "").strip())
+        )
+        out = resolve_lens_for_datum(rows_payload, datum_id=datum_id)
+        out["scope"] = scope
+        return jsonify(out), (200 if bool(out.get("ok")) else 400)
 
     @app.get("/portal/api/data/write/field_contracts")
     def portal_data_write_field_contracts():
@@ -819,6 +1025,11 @@ def register_data_routes(
             abort(501, description="anthology table view is unavailable")
         payload = workspace.anthology_table_view()
         payload["ok"] = True
+        try:
+            rule_report = understand_datums(_canonical_rows_payload())
+            payload["datum_understanding"] = rule_report.to_dict()
+        except Exception:
+            payload["datum_understanding"] = {"ok": False, "understandings": [], "by_id": {}, "warnings": [], "errors": []}
         return jsonify(payload)
 
     @app.get("/portal/api/data/anthology/graph")
@@ -1074,6 +1285,25 @@ def register_data_routes(
                         "magnitude": str(item.get("magnitude") or "").strip(),
                     }
                 )
+        rule_key = str(body.get("rule_key") or "").strip()
+        if rule_key:
+            validation = validate_rule_create(
+                _canonical_rows_payload(),
+                rule_key=rule_key,
+                reference=str(body.get("reference") or "").strip(),
+                magnitude=str(body.get("magnitude") or "").strip(),
+                value_group=value_group,
+                label=str(body.get("label") or "").strip(),
+            )
+            if not bool(validation.get("ok")):
+                return jsonify(
+                    {
+                        "ok": False,
+                        "error": "datum creation violates rule-family constraints",
+                        "validation": validation,
+                        "schema": "mycite.portal.datum_rules.append_validation.v1",
+                    }
+                ), 400
         result = workspace.append_anthology_datum(
             layer=layer,
             value_group=value_group,

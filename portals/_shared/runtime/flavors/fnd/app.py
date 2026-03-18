@@ -66,6 +66,8 @@ from portal.services.website_analytics_store import load_member_analytics, list_
 from portal.tools.runtime import active_tool_for_path, read_enabled_tools, register_tool_blueprints
 from _shared.portal.services.app_io import load_object_json_if_exists, read_object_json, write_object_json
 from _shared.portal.services.portal_model import canonicalize_portal_model_config
+from _shared.portal.services.profile_resolver import resolve_fnd_profile_path, resolve_public_profile_path
+from _shared.portal.core_services.shell_models import build_portal_profile_model
 from _shared.portal.services.alias_utils import (
     alias_contact_collection_ref as shared_alias_contact_collection_ref,
     alias_label as shared_alias_label,
@@ -233,34 +235,12 @@ def _network_resolved_refs(payload: Dict[str, Any], *, preferred_contract_id: st
     )
 
 
-def _find_first(paths) -> Optional[Path]:
-    for path in paths:
-        if path.exists() and path.is_file():
-            return path
-    return None
-
-
 def _resolve_public_profile_path(msn_id: str) -> Optional[Path]:
-    candidates = [
-        PUBLIC_DIR / f"{msn_id}.json",
-        PUBLIC_DIR / f"msn-{msn_id}.json",
-        PUBLIC_DIR / f"mss-{msn_id}.json",
-        FALLBACK_DIR / f"{msn_id}.json",
-        FALLBACK_DIR / f"msn-{msn_id}.json",
-        FALLBACK_DIR / f"mss-{msn_id}.json",
-    ]
-    return _find_first(candidates)
+    return resolve_public_profile_path(public_dir=PUBLIC_DIR, fallback_dir=FALLBACK_DIR, msn_id=msn_id)
 
 
 def _resolve_fnd_profile_path(msn_id: str) -> Optional[Path]:
-    token = str(msn_id or "").strip()
-    if not token:
-        return None
-    candidates = [
-        PUBLIC_DIR / f"fnd-{token}.json",
-        FALLBACK_DIR / f"fnd-{token}.json",
-    ]
-    return _find_first(candidates)
+    return resolve_fnd_profile_path(public_dir=PUBLIC_DIR, fallback_dir=FALLBACK_DIR, msn_id=msn_id)
 
 
 def _sanitize_public_profile(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -839,29 +819,20 @@ def _write_vault_inventory(payload: Dict[str, Any]) -> Path:
 
 def _portal_profile_model() -> Dict[str, Any]:
     local_msn_id = str(MSN_ID or _infer_local_msn_id() or "").strip()
-    public_profile: Dict[str, Any] = {}
-    fnd_profile: Dict[str, Any] = {}
-    if local_msn_id:
-        profile_path = _resolve_public_profile_path(local_msn_id)
-        if profile_path and profile_path.exists():
-            try:
-                public_profile = _sanitize_public_profile(_read_json(profile_path))
-            except Exception:
-                public_profile = {}
-        fnd_profile_path = _resolve_fnd_profile_path(local_msn_id)
-        if fnd_profile_path and fnd_profile_path.exists():
-            try:
-                fnd_profile = _sanitize_fnd_profile(_read_json(fnd_profile_path))
-            except Exception:
-                fnd_profile = {}
+    shared_profile = build_portal_profile_model(
+        local_msn_id=local_msn_id,
+        read_json_fn=_read_json,
+        resolve_public_profile_path_fn=_resolve_public_profile_path,
+        resolve_fnd_profile_path_fn=_resolve_fnd_profile_path,
+    )
 
     config_file = active_private_config_filename(PRIVATE_DIR, MSN_ID or None)
 
     return {
         "msn_id": local_msn_id,
-        "public_profile": public_profile,
+        "public_profile": dict(shared_profile.get("public_profile") or {}),
         "options_public": _options_public(local_msn_id) if local_msn_id else {},
-        "fnd_profile": fnd_profile,
+        "fnd_profile": dict(shared_profile.get("fnd_profile") or {}),
         "config_file": config_file,
     }
 

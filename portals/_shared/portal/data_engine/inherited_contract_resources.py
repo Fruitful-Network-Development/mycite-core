@@ -65,6 +65,18 @@ def _contract_resources(payload: dict[str, Any]) -> list[str]:
     return []
 
 
+def _normalize_resource_ids(raw_ids: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw_ids:
+        token = _as_text(item)
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return out
+
+
 def _upsert_contract_sync_metadata(
     private_dir: Path,
     *,
@@ -303,3 +315,83 @@ def disconnect_source_subscriptions(
         "source_msn_id": token_source,
         "updated_contracts": affected,
     }
+
+
+class InheritedSubscriptionService:
+    """Canonical subscription/sync facade for inherited resource lifecycle."""
+
+    def __init__(self, *, data_root: Path, private_dir: Path, resolver: ExternalResourceResolver, owner_msn_id: str = ""):
+        self._data_root = Path(data_root)
+        self._private_dir = Path(private_dir)
+        self._resolver = resolver
+        self._owner_msn_id = _as_text(owner_msn_id)
+
+    def register_subscription(self, *, contract_id: str, resource_ids: list[str]) -> dict[str, Any]:
+        contract = get_contract(self._private_dir, contract_id)
+        merged = _normalize_resource_ids(_contract_resources(contract) + list(resource_ids or []))
+        details = contract.get("details") if isinstance(contract.get("details"), dict) else {}
+        details = dict(details)
+        details["tracked_resource_ids"] = list(merged)
+        updated = update_contract(
+            self._private_dir,
+            contract_id,
+            {"tracked_resource_ids": list(merged), "details": details},
+            owner_msn_id=self._owner_msn_id or _as_text(contract.get("owner_msn_id")),
+        )
+        return {
+            "ok": True,
+            "schema": "mycite.portal.inherited_subscription.register.v1",
+            "contract_id": contract_id,
+            "tracked_resource_ids": list(updated.get("tracked_resource_ids") or []),
+        }
+
+    def unregister_subscription(self, *, contract_id: str, resource_ids: list[str]) -> dict[str, Any]:
+        contract = get_contract(self._private_dir, contract_id)
+        remove_set = set(_normalize_resource_ids(list(resource_ids or [])))
+        next_ids = [rid for rid in _contract_resources(contract) if rid not in remove_set]
+        details = contract.get("details") if isinstance(contract.get("details"), dict) else {}
+        details = dict(details)
+        details["tracked_resource_ids"] = list(next_ids)
+        updated = update_contract(
+            self._private_dir,
+            contract_id,
+            {"tracked_resource_ids": list(next_ids), "details": details},
+            owner_msn_id=self._owner_msn_id or _as_text(contract.get("owner_msn_id")),
+        )
+        return {
+            "ok": True,
+            "schema": "mycite.portal.inherited_subscription.unregister.v1",
+            "contract_id": contract_id,
+            "tracked_resource_ids": list(updated.get("tracked_resource_ids") or []),
+        }
+
+    def refresh_resource(self, *, contract_id: str, resource_id: str, force_refresh: bool = True) -> dict[str, Any]:
+        return refresh_contract_resource(
+            data_root=self._data_root,
+            private_dir=self._private_dir,
+            resolver=self._resolver,
+            contract_id=contract_id,
+            resource_id=resource_id,
+            owner_msn_id=self._owner_msn_id,
+            force_refresh=force_refresh,
+        )
+
+    def refresh_source(self, *, source_msn_id: str, force_refresh: bool = True) -> dict[str, Any]:
+        return refresh_all_for_source(
+            data_root=self._data_root,
+            private_dir=self._private_dir,
+            resolver=self._resolver,
+            source_msn_id=source_msn_id,
+            owner_msn_id=self._owner_msn_id,
+            force_refresh=force_refresh,
+        )
+
+    def disconnect_source(self, *, source_msn_id: str) -> dict[str, Any]:
+        return disconnect_source_subscriptions(
+            private_dir=self._private_dir,
+            source_msn_id=source_msn_id,
+            owner_msn_id=self._owner_msn_id,
+        )
+
+    def list_subscriptions(self) -> dict[str, Any]:
+        return discover_contract_subscription_status(self._private_dir)
