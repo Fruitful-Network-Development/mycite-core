@@ -110,6 +110,25 @@ def _normalize_selected_refs(value: Any, *, field_name: str) -> list[str]:
     return out
 
 
+def _normalize_tracked_resource_ids(payload: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    candidates: list[Any] = []
+    candidates.append(payload.get("tracked_resource_ids"))
+    details = payload.get("details") if isinstance(payload.get("details"), dict) else {}
+    candidates.append(details.get("tracked_resource_ids"))
+    for candidate in candidates:
+        if not isinstance(candidate, list):
+            continue
+        for item in candidate:
+            token = _as_text(item)
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            out.append(token)
+    return out
+
+
 def _infer_contract_id(payload: dict[str, Any], filename: str = "") -> str:
     explicit = _as_text(payload.get("contract_id"))
     if explicit:
@@ -179,6 +198,8 @@ def normalize_contract_payload(
         base.get("counterparty_selected_refs"),
         field_name="counterparty_selected_refs",
     )
+    out["tracked_resource_ids"] = _normalize_tracked_resource_ids(base)
+    out["details"]["tracked_resource_ids"] = list(out["tracked_resource_ids"])
     # Optional compact-array index / update-protocol fields (CONTRACT_COMPACT_INDEX, CONTRACT_UPDATE_PROTOCOL)
     for key in ("relationship_mode", "access_mode", "sync_mode", "source_card_revision"):
         if key in base and _as_text(base.get(key)):

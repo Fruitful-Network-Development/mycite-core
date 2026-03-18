@@ -29,6 +29,7 @@ from portal.services.runtime_paths import (
     vault_key_read_dirs,
     vault_keys_dir,
 )
+from _shared.portal.services.profile_resolver import find_local_contact_card
 
 FND_MSN_ID = "3-2-3-17-77-1-6-4-1-4"
 TFF_MSN_ID = "3-2-3-17-77-2-6-3-1-6"
@@ -93,18 +94,7 @@ def _sanitize_env_suffix(value: str) -> str:
 
 
 def _find_local_public_card(public_dir: Path, msn_id: str) -> Optional[Path]:
-    token = _as_str(msn_id)
-    if not token:
-        return None
-    candidates = [
-        public_dir / f"{token}.json",
-        public_dir / f"msn-{token}.json",
-        public_dir / f"mss-{token}.json",
-    ]
-    for path in candidates:
-        if path.exists() and path.is_file():
-            return path
-    return None
+    return find_local_contact_card(public_dir=public_dir, fallback_dir=None, msn_id=msn_id, include_fnd=False)
 
 
 def _fetch_remote_contact_card(sender_msn_id: str) -> Dict[str, Any]:

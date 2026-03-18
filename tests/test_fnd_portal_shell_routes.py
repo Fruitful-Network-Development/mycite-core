@@ -110,6 +110,14 @@ class FndPortalShellRouteTests(unittest.TestCase):
 
             self.assertEqual(client.get("/portal/api/data/state").status_code, 200)
             self.assertEqual(client.get("/portal/api/data/anthology/table").status_code, 200)
+            self.assertEqual(client.get("/portal/api/config?msn_id=3-2-3-17-77-1-6-4-1-4").status_code, 200)
+            mss_compile_legacy = client.post("/portal/api/data/mss/compile", json={"resource_id": "x", "selected_refs": []})
+            self.assertEqual(mss_compile_legacy.status_code, 400)
+            mss_compile_shared = client.post(
+                "/portal/api/data/sandbox/mss/compile",
+                json={"resource_id": "x", "selected_refs": []},
+            )
+            self.assertEqual(mss_compile_shared.status_code, 400)
             local_inventory = client.get("/portal/api/data/resources/local")
             self.assertEqual(local_inventory.status_code, 200)
             self.assertTrue((local_inventory.get_json() or {}).get("ok"))

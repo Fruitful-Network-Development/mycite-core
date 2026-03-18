@@ -1,4 +1,5 @@
 from .engine import SandboxEngine
+from .local_resource_lifecycle import LocalResourceLifecycleService
 from .migration import SandboxAnthologyMigrationResult, migrate_fnd_samras_rows_to_sandbox
 from .models import (
     ExposedResourceValue,
@@ -10,8 +11,16 @@ from .models import (
     SandboxStageResult,
 )
 from .samras import (
+    SamrasStructure,
+    build_samras_structure_from_address_map,
+    compile_canonical_samras_bitstring,
+    create_child_address,
+    decode_canonical_samras_bitstring,
     SamrasDescriptor,
     SamrasRole,
+    decode_legacy_samras_value,
+    decode_samras_structure,
+    delete_address,
     decode_node_value,
     decode_structure_payload,
     decode_structure_payload_from_row_magnitude,
@@ -19,7 +28,11 @@ from .samras import (
     encode_structure_payload,
     ensure_resource_object,
     ensure_resource_row,
+    inspect_node_by_address,
+    move_branch,
     normalize_descriptor,
+    set_node_value_by_address,
+    validate_samras_structure,
     validate_node_value,
 )
 
@@ -33,9 +46,22 @@ __all__ = [
     "MSSResource",
     "SAMRASResource",
     "SandboxCompileResult",
+    "LocalResourceLifecycleService",
     "SandboxStageResult",
     "SamrasDescriptor",
+    "SamrasStructure",
     "SamrasRole",
+    "decode_samras_structure",
+    "decode_legacy_samras_value",
+    "decode_canonical_samras_bitstring",
+    "compile_canonical_samras_bitstring",
+    "build_samras_structure_from_address_map",
+    "validate_samras_structure",
+    "inspect_node_by_address",
+    "set_node_value_by_address",
+    "create_child_address",
+    "delete_address",
+    "move_branch",
     "decode_node_value",
     "decode_structure_payload",
     "decode_structure_payload_from_row_magnitude",

@@ -25,10 +25,21 @@ from .models import (
     SandboxStageResult,
 )
 from .samras import (
+    SamrasStructure,
+    build_samras_structure_from_address_map,
+    compile_canonical_samras_bitstring,
+    create_child_address,
+    decode_canonical_samras_bitstring,
+    decode_samras_structure,
+    delete_address,
     decode_resource_rows,
     decode_structure_payload,
     encode_resource_rows,
     ensure_resource_object,
+    inspect_node_by_address,
+    move_branch,
+    set_node_value_by_address,
+    validate_samras_structure,
 )
 
 
@@ -230,8 +241,41 @@ class SandboxEngine:
         source: str = "local",
     ) -> SandboxStageResult:
         try:
-            descriptor = decode_structure_payload(
+            decoded_structure = decode_samras_structure(
                 _as_text(structure_payload),
+                root_ref="0-0-5",
+            )
+            address_map = dict(decoded_structure.address_map or {})
+            for row in rows if isinstance(rows, list) else []:
+                address_id = _as_text(row.get("address_id"))
+                if not address_id:
+                    continue
+                title = _as_text(row.get("title"))
+                if title and address_id not in address_map:
+                    # New rows are editable by address in structure mode.
+                    address_map[address_id] = 0
+            structure = build_samras_structure_from_address_map(
+                address_map,
+                root_ref="0-0-5",
+                source_format=decoded_structure.source_format,
+                canonical_state="canonical",
+                warnings=list(decoded_structure.warnings or []),
+            )
+            title_by_address = (
+                {
+                    _as_text(item.get("address_id")): _as_text(item.get("title"))
+                    for item in rows
+                    if isinstance(item, dict)
+                }
+                if isinstance(rows, list)
+                else {}
+            )
+            validation = validate_samras_structure(structure)
+            if not bool(validation.get("ok")):
+                raise ValueError("; ".join(list(validation.get("errors") or [])) or "invalid SAMRAS structure")
+            canonical_magnitude = compile_canonical_samras_bitstring(structure)
+            descriptor = decode_structure_payload(
+                canonical_magnitude,
                 value_kind=_as_text(value_kind) or "address_id",
                 source_ref=_as_text(source),
             )
@@ -240,18 +284,35 @@ class SandboxEngine:
                     "kind": "samras_resource",
                     "source": _as_text(source) or "local",
                     "value_kind": _as_text(value_kind) or "address_id",
+                    "root_ref": "0-0-5",
+                    "source_format": decoded_structure.source_format,
+                    "canonical_state": "canonical",
+                    "samras_structure": structure.to_dict(),
+                    "legacy_structure_payload_input": _as_text(structure_payload),
+                    "canonical_magnitude": canonical_magnitude,
                 },
                 resource_id=_as_text(resource_id),
                 descriptor=descriptor,
-                rows_by_address=encode_resource_rows(rows if isinstance(rows, list) else []),
+                rows_by_address=encode_resource_rows(
+                    [
+                        {
+                            "address_id": key,
+                            "title": _as_text(title_by_address.get(key, "")),
+                        }
+                        for key in sorted(address_map.keys(), key=lambda token: tuple(int(part) for part in token.split("-")))
+                    ]
+                    if isinstance(rows, list)
+                    else [{"address_id": key, "title": ""} for key in sorted(address_map.keys(), key=lambda token: tuple(int(part) for part in token.split("-")))]
+                ),
             )
+            payload["structure_payload"] = canonical_magnitude
             self._write_json(self._resource_path(resource_id), payload)
             return SandboxStageResult(
                 ok=True,
                 resource_type="samras_resource",
                 resource_id=_as_text(resource_id),
                 staged_payload=payload,
-                warnings=[],
+                warnings=list(validation.get("warnings") or []),
                 errors=[],
             )
         except Exception as exc:
@@ -276,6 +337,20 @@ class SandboxEngine:
                 errors=[f"resource not found: {resource_id}"],
             )
         descriptor = payload.get("descriptor") if isinstance(payload.get("descriptor"), dict) else {}
+        structure_payload = _as_text(payload.get("structure_payload"))
+        if not structure_payload:
+            structure_payload = _as_text(payload.get("canonical_magnitude"))
+        warnings: list[str] = []
+        structure_dict: dict[str, Any] = {}
+        if structure_payload:
+            try:
+                structure = decode_samras_structure(structure_payload, root_ref="0-0-5")
+                structure_dict = structure.to_dict()
+                validation = validate_samras_structure(structure)
+                warnings.extend([str(item) for item in list(validation.get("warnings") or [])])
+                payload["canonical_magnitude"] = compile_canonical_samras_bitstring(structure)
+            except Exception as exc:
+                warnings.append(f"unable to decode structure payload: {exc}")
         rows = decode_resource_rows(payload)
         model = SAMRASResource(
             resource_id=_as_text(payload.get("resource_id") or resource_id),
@@ -284,14 +359,110 @@ class SandboxEngine:
             rows=[dict(item) for item in rows],
             source=_as_text(payload.get("source")) or "local",
         )
+        compiled = model.to_dict()
+        compiled["samras_structure"] = dict(payload.get("samras_structure") if isinstance(payload.get("samras_structure"), dict) else structure_dict)
+        compiled["canonical_magnitude"] = _as_text(payload.get("canonical_magnitude") or structure_payload)
+        compiled["root_ref"] = _as_text(payload.get("root_ref")) or "0-0-5"
+        compiled["canonical_state"] = _as_text(payload.get("canonical_state")) or "canonical"
         return SandboxCompileResult(
             ok=True,
             resource_type="samras_resource",
             resource_id=model.resource_id,
-            compiled_payload=model.to_dict(),
-            warnings=[],
+            compiled_payload=compiled,
+            warnings=warnings,
             errors=[],
         )
+
+    def _load_samras_structure(self, resource_id: str) -> SamrasStructure:
+        payload = self.get_resource(resource_id)
+        if bool(payload.get("missing")):
+            raise ValueError(f"resource not found: {resource_id}")
+        raw = _as_text(payload.get("structure_payload") or payload.get("canonical_magnitude"))
+        if not raw:
+            raw = _as_text(payload.get("legacy_structure_payload_input"))
+        if not raw:
+            raise ValueError("resource does not contain structure payload")
+        return decode_samras_structure(raw, root_ref="0-0-5")
+
+    def _persist_samras_structure(self, resource_id: str, *, structure: SamrasStructure) -> dict[str, Any]:
+        payload = self.get_resource(resource_id)
+        if bool(payload.get("missing")):
+            raise ValueError(f"resource not found: {resource_id}")
+        validation = validate_samras_structure(structure)
+        if not bool(validation.get("ok")):
+            raise ValueError("; ".join(list(validation.get("errors") or [])) or "invalid SAMRAS structure")
+        canonical = compile_canonical_samras_bitstring(structure)
+        payload["structure_payload"] = canonical
+        payload["canonical_magnitude"] = canonical
+        payload["samras_structure"] = structure.to_dict()
+        payload["root_ref"] = "0-0-5"
+        payload["source_format"] = "canonical_binary"
+        payload["canonical_state"] = "canonical"
+        payload["updated_at"] = int(time.time())
+        self._write_json(self._resource_path(resource_id), payload)
+        return payload
+
+    def inspect_samras_node(self, *, resource_id: str, address_id: str) -> dict[str, Any]:
+        structure = self._load_samras_structure(resource_id)
+        result = inspect_node_by_address(structure, address_id)
+        result["resource_id"] = _as_text(resource_id)
+        result["schema"] = "mycite.portal.sandbox.samras.inspect_node.v1"
+        return result
+
+    def set_samras_node(self, *, resource_id: str, address_id: str, value: int) -> dict[str, Any]:
+        structure = self._load_samras_structure(resource_id)
+        updated = set_node_value_by_address(structure, address_id=address_id, value=int(value))
+        payload = self._persist_samras_structure(resource_id, structure=updated)
+        return {
+            "ok": True,
+            "schema": "mycite.portal.sandbox.samras.set_node.v1",
+            "resource_id": _as_text(resource_id),
+            "address_id": _as_text(address_id),
+            "value": int(value),
+            "canonical_magnitude": _as_text(payload.get("canonical_magnitude")),
+            "samras_structure": dict(payload.get("samras_structure") if isinstance(payload.get("samras_structure"), dict) else {}),
+        }
+
+    def create_samras_child(self, *, resource_id: str, parent_address: str, value: int = 0) -> dict[str, Any]:
+        structure = self._load_samras_structure(resource_id)
+        updated, created = create_child_address(structure, parent_address=parent_address, value=int(value))
+        payload = self._persist_samras_structure(resource_id, structure=updated)
+        return {
+            "ok": True,
+            "schema": "mycite.portal.sandbox.samras.create_child.v1",
+            "resource_id": _as_text(resource_id),
+            "parent_address": _as_text(parent_address),
+            "created_address": created,
+            "canonical_magnitude": _as_text(payload.get("canonical_magnitude")),
+            "samras_structure": dict(payload.get("samras_structure") if isinstance(payload.get("samras_structure"), dict) else {}),
+        }
+
+    def delete_samras_address(self, *, resource_id: str, address_id: str) -> dict[str, Any]:
+        structure = self._load_samras_structure(resource_id)
+        updated = delete_address(structure, address_id=address_id)
+        payload = self._persist_samras_structure(resource_id, structure=updated)
+        return {
+            "ok": True,
+            "schema": "mycite.portal.sandbox.samras.delete_address.v1",
+            "resource_id": _as_text(resource_id),
+            "deleted_address": _as_text(address_id),
+            "canonical_magnitude": _as_text(payload.get("canonical_magnitude")),
+            "samras_structure": dict(payload.get("samras_structure") if isinstance(payload.get("samras_structure"), dict) else {}),
+        }
+
+    def move_samras_branch(self, *, resource_id: str, from_address: str, to_parent_address: str) -> dict[str, Any]:
+        structure = self._load_samras_structure(resource_id)
+        updated = move_branch(structure, from_address=from_address, to_parent_address=to_parent_address)
+        payload = self._persist_samras_structure(resource_id, structure=updated)
+        return {
+            "ok": True,
+            "schema": "mycite.portal.sandbox.samras.move_branch.v1",
+            "resource_id": _as_text(resource_id),
+            "from_address": _as_text(from_address),
+            "to_parent_address": _as_text(to_parent_address),
+            "canonical_magnitude": _as_text(payload.get("canonical_magnitude")),
+            "samras_structure": dict(payload.get("samras_structure") if isinstance(payload.get("samras_structure"), dict) else {}),
+        }
 
     def generate_exposed_resource_values(self, *, local_msn_id: str) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []

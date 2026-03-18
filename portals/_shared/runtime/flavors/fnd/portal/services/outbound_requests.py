@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from portal.services.request_log_store import append_event
+from _shared.portal.services.profile_resolver import find_local_contact_card
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
@@ -19,15 +20,7 @@ def _read_json(path: Path) -> Dict[str, Any]:
 
 
 def _find_local_public_card(public_dir: Path, msn_id: str) -> Optional[Path]:
-    candidates = [
-        public_dir / f"{msn_id}.json",
-        public_dir / f"msn-{msn_id}.json",
-        public_dir / f"mss-{msn_id}.json",
-    ]
-    for path in candidates:
-        if path.exists() and path.is_file():
-            return path
-    return None
+    return find_local_contact_card(public_dir=public_dir, fallback_dir=None, msn_id=msn_id, include_fnd=False)
 
 
 def fetch_contact_card(

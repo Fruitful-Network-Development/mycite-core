@@ -14,6 +14,7 @@ from jinja2 import ChoiceLoader, FileSystemLoader, TemplateNotFound
 from data.engine.workspace import Workspace
 from data.storage_json import JsonStorageBackend
 from portal.api.aliases import get_alias_record, list_alias_records, register_aliases_routes
+from portal.api.config import register_config_routes
 from portal.api.contract_handshake import register_contract_handshake_routes
 from portal.api.contracts import register_contract_routes
 from _shared.portal.api.data_workspace import register_data_routes
@@ -63,6 +64,15 @@ from _shared.portal.services.alias_utils import (
     list_aliases_for_sidebar as shared_list_aliases_for_sidebar,
 )
 from _shared.portal.services.embed_urls import build_widget_url as shared_build_widget_url
+from _shared.portal.services.progeny_refs import iter_progeny_refs
+from _shared.portal.services.profile_resolver import resolve_fnd_profile_path, resolve_public_profile_path
+from _shared.portal.core_services.behavior_builder import (
+    build_portal_behavior_config as shared_build_portal_behavior_config,
+    collect_org_layers as shared_collect_org_layers,
+    default_portal_behavior as shared_default_portal_behavior,
+    organization_config_filename as shared_organization_config_filename,
+)
+from _shared.portal.core_services.shell_models import build_portal_profile_model
 from _shared.portal.services.network_contract import (
     build_network_contract_items as shared_build_network_contract_items,
     resolve_network_refs as shared_resolve_network_refs,
@@ -271,30 +281,12 @@ def _network_resolved_refs(payload: Dict[str, Any], *, preferred_contract_id: st
     )
 
 
-def _find_first(paths) -> Optional[Path]:
-    for path in paths:
-        if path.exists() and path.is_file():
-            return path
-    return None
-
-
 def _resolve_public_profile_path(msn_id: str) -> Optional[Path]:
-    candidates = [
-        PUBLIC_DIR / f"{msn_id}.json",
-        PUBLIC_DIR / f"msn-{msn_id}.json",
-        PUBLIC_DIR / f"mss-{msn_id}.json",
-        FALLBACK_DIR / f"{msn_id}.json",
-        FALLBACK_DIR / f"msn-{msn_id}.json",
-        FALLBACK_DIR / f"mss-{msn_id}.json",
-    ]
-    return _find_first(candidates)
+    return resolve_public_profile_path(public_dir=PUBLIC_DIR, fallback_dir=FALLBACK_DIR, msn_id=msn_id)
 
 
 def _resolve_fnd_profile_path(msn_id: str) -> Optional[Path]:
-    token = str(msn_id or "").strip()
-    if not token:
-        return None
-    return _find_first([PUBLIC_DIR / f"fnd-{token}.json", FALLBACK_DIR / f"fnd-{token}.json"])
+    return resolve_fnd_profile_path(public_dir=PUBLIC_DIR, fallback_dir=FALLBACK_DIR, msn_id=msn_id)
 
 
 def _sanitize_public_profile(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -510,44 +502,6 @@ def _infer_msn_id_from_progeny_ref(ref_token: str) -> str:
     return ""
 
 
-def _iter_progeny_refs(raw: Any) -> list[tuple[str, str]]:
-    out: list[tuple[str, str]] = []
-
-    def _push(progeny_type: str, ref_token: Any) -> None:
-        t = str(progeny_type or "").strip().lower()
-        r = str(ref_token or "").strip()
-        if not t or not r:
-            return
-        out.append((t, r))
-
-    def _walk(node: Any, fallback_type: str = "") -> None:
-        if isinstance(node, list):
-            for item in node:
-                _walk(item, fallback_type=fallback_type)
-            return
-        if isinstance(node, dict):
-            explicit_type = str(node.get("progeny_type") or node.get("type") or fallback_type or "").strip().lower()
-            explicit_ref = node.get("ref") or node.get("path") or node.get("file") or node.get("source")
-            if explicit_type and explicit_ref:
-                _push(explicit_type, explicit_ref)
-                refs = node.get("refs")
-                if isinstance(refs, list):
-                    for ref in refs:
-                        _push(explicit_type, ref)
-                return
-            for key, value in node.items():
-                key_token = str(key or "").strip().lower()
-                if key_token in {"progeny_type", "type", "ref", "path", "file", "source", "refs"}:
-                    continue
-                if isinstance(value, str):
-                    _push(key_token or fallback_type, value)
-                else:
-                    _walk(value, fallback_type=key_token or fallback_type)
-
-    _walk(raw)
-    return out
-
-
 def _seed_missing_local_progeny_profiles() -> None:
     candidate_cfg_paths: list[Path] = []
     active_cfg_path = resolve_active_private_config_path(PRIVATE_DIR, MSN_ID or None)
@@ -570,7 +524,7 @@ def _seed_missing_local_progeny_profiles() -> None:
             cfg = _read_json_relaxed(cfg_path)
         except Exception:
             continue
-        for progeny_type, ref_token in _iter_progeny_refs(cfg.get("progeny")):
+        for progeny_type, ref_token in iter_progeny_refs(cfg.get("progeny")):
             if not progeny_type or not ref_token:
                 continue
 
@@ -604,208 +558,34 @@ def _seed_missing_local_progeny_profiles() -> None:
             _write_json(target, payload)
 
 
-def _deep_merge_dict(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
-    out = dict(base)
-    for key, value in overlay.items():
-        if isinstance(value, dict) and isinstance(out.get(key), dict):
-            out[key] = _deep_merge_dict(dict(out.get(key) or {}), value)
-        else:
-            out[key] = value
-    return out
-
-
-def _normalize_org_config_filename(value: str, *, fallback: str) -> str:
-    token = str(value or "").strip()
-    if not token:
-        token = fallback
-    token = Path(token).name
-    if "." not in token:
-        token = f"{token}.json"
-    return token.lower()
-
-
-def _generic_legal_entity_defaults(file_name: str) -> Dict[str, Any]:
-    legal_type = Path(file_name).stem.lower().strip() or "subject_congregation"
-    title = legal_type.replace("_", " ").replace("-", " ").title()
-    return {
-        "schema": "mycite.legal_entity_type.v1",
-        "type": legal_type,
-        "title": title,
-        "role_groups": {"admins": [], "members": [], "users": []},
-    }
-
-
 def _organization_config_filename(active_cfg: Dict[str, Any]) -> str:
-    portal_profile = active_cfg.get("portal_profile") if isinstance(active_cfg.get("portal_profile"), dict) else {}
-    org_cfg = active_cfg.get("organization_config") if isinstance(active_cfg.get("organization_config"), dict) else {}
-    org_cfg_alt = (
-        active_cfg.get("organization_configuration")
-        if isinstance(active_cfg.get("organization_configuration"), dict)
-        else {}
-    )
-    org_cfg_typo = (
-        active_cfg.get("orangization_configuration")
-        if isinstance(active_cfg.get("orangization_configuration"), dict)
-        else {}
-    )
-    fallback = "subject_congregation.json" if IS_TFF_PORTAL else "discovery_engine.json"
-    loose_org_cfg_value = (
-        active_cfg.get("organization_configuration")
-        if isinstance(active_cfg.get("organization_configuration"), str)
-        else active_cfg.get("orangization_configuration")
-        if isinstance(active_cfg.get("orangization_configuration"), str)
-        else ""
-    )
-    candidates = [
-        portal_profile.get("organization_config_file"),
-        portal_profile.get("profile_kind"),
-        org_cfg.get("file_name"),
-        org_cfg.get("config_file"),
-        org_cfg.get("legal_entity_config_file"),
-        org_cfg.get("legal_entity_type"),
-        org_cfg.get("type"),
-        org_cfg_alt.get("file_name"),
-        org_cfg_alt.get("config_file"),
-        org_cfg_alt.get("legal_entity_config_file"),
-        org_cfg_alt.get("legal_entity_type"),
-        org_cfg_alt.get("type"),
-        org_cfg_typo.get("file_name"),
-        org_cfg_typo.get("config_file"),
-        org_cfg_typo.get("legal_entity_config_file"),
-        org_cfg_typo.get("legal_entity_type"),
-        org_cfg_typo.get("type"),
-        loose_org_cfg_value,
-        active_cfg.get("organization_config_file"),
-        active_cfg.get("legal_entity_config_file"),
-        active_cfg.get("legal_entity_type"),
-    ]
-    for candidate in candidates:
-        token = str(candidate or "").strip()
-        if token:
-            return _normalize_org_config_filename(token, fallback=fallback)
-    return _normalize_org_config_filename("", fallback=fallback)
+    return shared_organization_config_filename(active_cfg, is_tff_portal=IS_TFF_PORTAL)
 
 
 def _collect_org_layers(active_cfg: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, Any]]:
-    defaults: Dict[str, Any] = {}
-    added: Dict[str, Any] = {}
-
-    portal_behavior = active_cfg.get("portal_behavior") if isinstance(active_cfg.get("portal_behavior"), dict) else {}
-    pb_defaults = portal_behavior.get("defaults") if isinstance(portal_behavior.get("defaults"), dict) else {}
-    pb_overrides = portal_behavior.get("overrides") if isinstance(portal_behavior.get("overrides"), dict) else {}
-    if pb_defaults:
-        defaults = _deep_merge_dict(defaults, pb_defaults)
-    if pb_overrides:
-        added = _deep_merge_dict(added, pb_overrides)
-
-    org_cfg = active_cfg.get("organization_config") if isinstance(active_cfg.get("organization_config"), dict) else {}
-    org_cfg_alt = (
-        active_cfg.get("organization_configuration")
-        if isinstance(active_cfg.get("organization_configuration"), dict)
-        else {}
-    )
-    org_cfg_typo = (
-        active_cfg.get("orangization_configuration")
-        if isinstance(active_cfg.get("orangization_configuration"), dict)
-        else {}
-    )
-    containers = [active_cfg, org_cfg, org_cfg_alt, org_cfg_typo]
-    for container in containers:
-        for key in ("default_values", "defaults"):
-            section = container.get(key)
-            if isinstance(section, dict):
-                defaults = _deep_merge_dict(defaults, section)
-        for key in ("added_values", "added", "overrides"):
-            section = container.get(key)
-            if isinstance(section, dict):
-                added = _deep_merge_dict(added, section)
-
-    for container in containers:
-        for section_key in ("stream_config", "calendar_config", "people_config", "workflow_config", "legal_entity_defaults"):
-            section = container.get(section_key)
-            if isinstance(section, dict):
-                existing = added.get(section_key) if isinstance(added.get(section_key), dict) else {}
-                added[section_key] = _deep_merge_dict(existing, section)
-    return defaults, added
+    return shared_collect_org_layers(active_cfg)
 
 
 def _default_portal_behavior(active_cfg: Dict[str, Any]) -> Dict[str, Any]:
-    portal_profile = active_cfg.get("portal_profile") if isinstance(active_cfg.get("portal_profile"), dict) else {}
-    org_config_file = _organization_config_filename(active_cfg)
-    legal_type = (
-        str(portal_profile.get("profile_kind") or "").strip().lower()
-        or Path(org_config_file).stem.lower().strip()
-        or "subject_congregation"
+    return shared_default_portal_behavior(
+        active_cfg=active_cfg,
+        is_tff_portal=IS_TFF_PORTAL,
+        legal_entity_profile_defaults=LEGAL_ENTITY_PROFILE_DEFAULTS,
+        default_feed_types=DEFAULT_FEED_TYPES,
+        default_calendar_types=DEFAULT_CALENDAR_TYPES,
+        default_profile_source_priority=DEFAULT_PROFILE_SOURCE_PRIORITY,
     )
-    legal_defaults = LEGAL_ENTITY_PROFILE_DEFAULTS.get(org_config_file) or _generic_legal_entity_defaults(org_config_file)
-
-    return {
-        "organization_config_file": org_config_file,
-        "legal_entity_type": legal_type,
-        "stream_config": {
-            "schema": "mycite.portal.stream_config.v1",
-            "allowed_post_types": sorted(DEFAULT_FEED_TYPES),
-            "newest_first": True,
-        },
-        "calendar_config": {
-            "schema": "mycite.portal.calendar_config.v1",
-            "allowed_event_types": sorted(DEFAULT_CALENDAR_TYPES),
-            "exclude_request_log_types": True,
-        },
-        "people_config": {
-            "schema": "mycite.portal.people_config.v1",
-            "profile_source_priority": list(DEFAULT_PROFILE_SOURCE_PRIORITY),
-        },
-        "workflow_config": {
-            "schema": "mycite.portal.workflow_config.v1",
-            "enabled": IS_TFF_PORTAL,
-            "legal_entity_type": legal_type,
-            "sections": [
-                {"id": "operations", "title": "Operations", "description": "Core operating workflow checkpoints."},
-                {
-                    "id": "farm_fields",
-                    "title": "Farm Fields",
-                    "description": "Field inventories and seasonal status references.",
-                },
-                {"id": "compliance", "title": "Compliance", "description": "Compliance and policy milestones."},
-            ],
-            "anthology_refs": {
-                "farm_fields": "",
-                "workflow_state": "",
-            },
-        },
-        "legal_entity_defaults": dict(legal_defaults),
-    }
 
 
 def _build_portal_behavior_config(active_cfg: Dict[str, Any]) -> Dict[str, Any]:
-    portal_profile = active_cfg.get("portal_profile") if isinstance(active_cfg.get("portal_profile"), dict) else {}
-    base = _default_portal_behavior(active_cfg)
-    defaults, added = _collect_org_layers(active_cfg)
-    merged = _deep_merge_dict(base, defaults)
-    merged = _deep_merge_dict(merged, added)
-
-    org_config_file = _organization_config_filename(active_cfg)
-    legal_type = (
-        str(portal_profile.get("profile_kind") or "").strip().lower()
-        or Path(org_config_file).stem.lower().strip()
-        or "subject_congregation"
+    return shared_build_portal_behavior_config(
+        active_cfg=active_cfg,
+        is_tff_portal=IS_TFF_PORTAL,
+        legal_entity_profile_defaults=LEGAL_ENTITY_PROFILE_DEFAULTS,
+        default_feed_types=DEFAULT_FEED_TYPES,
+        default_calendar_types=DEFAULT_CALENDAR_TYPES,
+        default_profile_source_priority=DEFAULT_PROFILE_SOURCE_PRIORITY,
     )
-    merged["organization_config_file"] = org_config_file
-    merged["legal_entity_type"] = legal_type
-
-    workflow_cfg = merged.get("workflow_config") if isinstance(merged.get("workflow_config"), dict) else {}
-    workflow_cfg.setdefault("legal_entity_type", legal_type)
-    merged["workflow_config"] = workflow_cfg
-
-    legal_defaults = merged.get("legal_entity_defaults") if isinstance(merged.get("legal_entity_defaults"), dict) else {}
-    legal_defaults.setdefault("schema", "mycite.legal_entity_type.v1")
-    legal_defaults.setdefault("type", legal_type)
-    legal_defaults.setdefault("title", legal_type.replace("_", " ").replace("-", " ").title())
-    if not isinstance(legal_defaults.get("role_groups"), dict):
-        legal_defaults["role_groups"] = {"admins": [], "members": [], "users": []}
-    merged["legal_entity_defaults"] = legal_defaults
-    return merged
 
 
 def _workflow_enabled() -> bool:
@@ -1101,29 +881,20 @@ def _write_vault_inventory(payload: Dict[str, Any]) -> Path:
 
 def _portal_profile_model() -> Dict[str, Any]:
     local_msn_id = str(MSN_ID or _infer_local_msn_id() or "").strip()
-    public_profile: Dict[str, Any] = {}
-    fnd_profile: Dict[str, Any] = {}
-    if local_msn_id:
-        profile_path = _resolve_public_profile_path(local_msn_id)
-        if profile_path and profile_path.exists():
-            try:
-                public_profile = _sanitize_public_profile(_read_json(profile_path))
-            except Exception:
-                public_profile = {}
-        fnd_profile_path = _resolve_fnd_profile_path(local_msn_id)
-        if fnd_profile_path and fnd_profile_path.exists():
-            try:
-                fnd_profile = _sanitize_fnd_profile(_read_json(fnd_profile_path))
-            except Exception:
-                fnd_profile = {}
+    shared_profile = build_portal_profile_model(
+        local_msn_id=local_msn_id,
+        read_json_fn=_read_json,
+        resolve_public_profile_path_fn=_resolve_public_profile_path,
+        resolve_fnd_profile_path_fn=_resolve_fnd_profile_path,
+    )
 
     config_file = active_private_config_filename(PRIVATE_DIR, MSN_ID or None)
 
     return {
         "msn_id": local_msn_id,
-        "public_profile": public_profile,
+        "public_profile": dict(shared_profile.get("public_profile") or {}),
         "options_public": _options_public(local_msn_id) if local_msn_id else {},
-        "fnd_profile": fnd_profile,
+        "fnd_profile": dict(shared_profile.get("fnd_profile") or {}),
         "config_file": config_file,
     }
 
@@ -2030,6 +1801,7 @@ def portal_embed_board_member_calendar_event():
 
 
 register_aliases_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options_private)
+register_config_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options_private)
 register_inbox_routes(app, private_dir=PRIVATE_DIR, options_private_fn=_options_private)
 register_contract_routes(
     app,

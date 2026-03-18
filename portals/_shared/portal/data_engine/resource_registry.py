@@ -14,6 +14,8 @@ from ..data_contract import compact_payload_to_rows, rows_to_compact_payload
 LOCAL_SCOPE = "local"
 INHERITED_SCOPE = "inherited"
 SCOPES = {LOCAL_SCOPE, INHERITED_SCOPE}
+_BIN_RE = re.compile(r"^[01]+$")
+_NUMERIC_HYPHEN_RE = re.compile(r"^[0-9]+(?:-[0-9]+)*$")
 
 
 def _as_text(value: object) -> str:
@@ -222,8 +224,77 @@ def _normalize_row_iterations(rows: list[dict[str, Any]]) -> list[dict[str, Any]
     return out
 
 
+def _bit_width(value: int) -> int:
+    token = int(value)
+    return 1 if token <= 0 else len(format(token, "b"))
+
+
+def _compile_samras_value_stream(node_values: list[int]) -> tuple[str, list[int]]:
+    stream_parts: list[str] = []
+    stops: list[int] = []
+    cursor = 0
+    for index, value in enumerate(list(node_values or [])):
+        bits = str(int(value))
+        if any(ch not in {"0", "1"} for ch in bits):
+            bits = format(int(value), "b")
+        stream_parts.append(bits if bits else "0")
+        cursor += len(stream_parts[-1])
+        if index < len(node_values) - 1:
+            stops.append(cursor)
+    return "".join(stream_parts), stops
+
+
+def _encode_canonical_samras_from_legacy(token: str) -> str:
+    node_values = [int(item) for item in token.split("-")]
+    value_stream, stops = _compile_samras_value_stream(node_values)
+    address_width_bits = max(1, _bit_width(max(stops) if stops else 0))
+    stop_count_width_bits = max(1, _bit_width(len(stops)))
+    header_a = format(address_width_bits, "08b")
+    header_b = format(stop_count_width_bits, "08b")
+    count_bits = format(len(stops), f"0{stop_count_width_bits}b")
+    stop_bits = "".join(format(item, f"0{address_width_bits}b") for item in stops)
+    return f"{header_a}{header_b}{count_bits}{stop_bits}{value_stream}"
+
+
+def _normalize_samras_magnitude_if_needed(reference: str, magnitude: str) -> tuple[str, str]:
+    if _as_text(reference) != "0-0-5":
+        return magnitude, ""
+    token = _as_text(magnitude)
+    if not token:
+        return token, ""
+    if _BIN_RE.fullmatch(token):
+        return token, ""
+    if _NUMERIC_HYPHEN_RE.fullmatch(token):
+        try:
+            return _encode_canonical_samras_from_legacy(token), "legacy_hyphen"
+        except Exception:
+            return token, "unsupported_legacy"
+    return token, "unsupported_legacy"
+
+
 def normalize_anthology_compatible_payload(raw_payload: dict[str, Any]) -> dict[str, Any]:
     rows = compact_payload_to_rows(raw_payload if isinstance(raw_payload, dict) else {}, strict=False)
+    for row in rows:
+        reference = _as_text(row.get("reference"))
+        magnitude = _as_text(row.get("magnitude"))
+        normalized, status = _normalize_samras_magnitude_if_needed(reference, magnitude)
+        if status == "unsupported_legacy":
+            continue
+        if normalized != magnitude:
+            row["magnitude"] = normalized
+            pairs = row.get("pairs")
+            if isinstance(pairs, list) and pairs:
+                first = pairs[0] if isinstance(pairs[0], dict) else {}
+                first_ref = _as_text(first.get("reference"))
+                if first_ref == "0-0-5":
+                    first["magnitude"] = normalized
+                pairs[0] = first
+                row["pairs"] = pairs
+            labels = row.get("labels")
+            labels_list = list(labels) if isinstance(labels, list) else []
+            if "samras_canonical_binary" not in [str(item) for item in labels_list]:
+                labels_list.append("samras_canonical_binary")
+            row["labels"] = labels_list
     normalized_rows = _normalize_row_iterations(rows)
     return rows_to_compact_payload(normalized_rows)
 
@@ -352,8 +423,11 @@ def migrate_legacy_samras_root_files(data_root: Path, *, apply_changes: bool = T
         if not legacy_path.exists() or not legacy_path.is_file():
             warnings.append(f"legacy file missing: {legacy_candidates[0]}")
             continue
+        if str(legacy_path.name).endswith(".legacy.json"):
+            warnings.append(f"compat_legacy_source_used: {legacy_path.name}")
         raw_payload = _read_json(legacy_path)
         if not raw_payload:
+            warnings.append(f"compat_fallback_sandbox_source_used: {kind}")
             raw_payload = _extract_payload_from_sandbox_resource(data_root, kind=kind)
         anthology_payload = normalize_anthology_compatible_payload(raw_payload)
         target_path = resource_file_path(data_root, scope=LOCAL_SCOPE, resource_name=next_name)
