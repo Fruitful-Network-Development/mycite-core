@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from flask import abort, jsonify, make_response, request
+from _shared.portal.services.portal_model import canonicalize_portal_model_config
 
 
 FORBIDDEN_SECRET_KEYS = {
@@ -98,7 +99,7 @@ def register_config_routes(
 
         _reject_obvious_secrets(body)
 
-        body = dict(body)
+        body = canonicalize_portal_model_config(dict(body))
         body["updated_unix_ms"] = int(time.time() * 1000)
 
         canonical = _canonical_path(private_dir)

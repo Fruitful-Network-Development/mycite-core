@@ -20,6 +20,8 @@ This repo uses a canonical-docs model to prevent drift.
 - [`DATA_TOOL.md`](DATA_TOOL.md)
 - [`SANDBOX_ENGINE.md`](SANDBOX_ENGINE.md)
 - [`AGRO_ERP_TOOL.md`](AGRO_ERP_TOOL.md)
+- [`RESOURCE_STORAGE_CONVENTIONS.md`](RESOURCE_STORAGE_CONVENTIONS.md)
+- [`PORTAL_UNIFIED_MODEL.md`](PORTAL_UNIFIED_MODEL.md)
 
 ## Portal-level docs policy
 

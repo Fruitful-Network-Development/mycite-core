@@ -86,6 +86,10 @@ class TffPortalShellRouteTests(unittest.TestCase):
             client = module.app.test_client()
 
             self.assertEqual(client.get("/portal/system").status_code, 200)
+            system_html = client.get("/portal/system").get_data(as_text=True)
+            self.assertIn("Local Resources", system_html)
+            self.assertIn("Inheritance", system_html)
+            self.assertNotIn("Sandbox</span><small>MSS/SAMRAS resources</small>", system_html)
             self.assertEqual(client.get("/portal/network?tab=contracts").status_code, 200)
             self.assertEqual(client.get("/portal/utilities?tab=vault").status_code, 200)
 
@@ -94,6 +98,8 @@ class TffPortalShellRouteTests(unittest.TestCase):
 
             self.assertEqual(client.get("/portal/api/data/state").status_code, 200)
             self.assertEqual(client.get("/portal/api/data/anthology/table").status_code, 200)
+            self.assertEqual(client.get("/portal/api/data/resources/local").status_code, 200)
+            self.assertEqual(client.get("/portal/api/data/resources/inherited").status_code, 200)
             self.assertEqual(client.get("/portal/api/data/tables").status_code, 404)
             self.assertEqual(client.get("/portal/api/data/table/main/view").status_code, 404)
             resources = client.get("/portal/api/data/external/resources?source_msn_id=9-9-9-9")

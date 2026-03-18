@@ -13,6 +13,8 @@ This pass introduces first working ownership for:
 - inherited resource context resolution (local + foreign)
 - FND SAMRAS anthology migration helpers
 
+Sandbox does **not** own the cross-scope inventory model. Canonical local/inherited inventories are index-backed under `data/resources/index.local.json` and `data/resources/index.inherited.json`.
+
 ## Service surface
 
 Primary entrypoint: `SandboxEngine` in `portals/_shared/portal/sandbox/engine.py`.
@@ -56,6 +58,15 @@ Shared routes are registered in `portals/_shared/portal/api/data_workspace.py`:
 - `POST /portal/api/data/sandbox/inherited/adapt_txa`
 - `GET /portal/api/data/sandbox/exposed/contact_card`
 - `POST /portal/api/data/sandbox/migrate/fnd_samras`
+
+Resource index routes (outside sandbox ownership but adjacent to sandbox lifecycle):
+
+- `GET /portal/api/data/resources/local`
+- `GET /portal/api/data/resources/inherited`
+- `POST /portal/api/data/resources/local/migrate_legacy_samras`
+- `POST /portal/api/data/resources/inherited/refresh`
+- `POST /portal/api/data/resources/inherited/refresh_source`
+- `POST /portal/api/data/resources/inherited/disconnect_source`
 
 `/sandbox/inherited/compile_txa` is a narrow shared-core compiler path for txa-only inherited context. It produces field-usable inherited refs and a provisional SAMRAS descriptor without materializing full foreign txa/msn paths locally.
 
