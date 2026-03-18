@@ -21,6 +21,8 @@ This index is the canonical navigation point for repository docs under `docs/`.
 - `SANDBOX_ENGINE.md`
 - `ANTHOLOGY_BASE_OVERLAY.md`
 - `AGRO_ERP_TOOL.md`
+- `RESOURCE_STORAGE_CONVENTIONS.md`
+- `PORTAL_UNIFIED_MODEL.md`
 
 ## Supporting docs (current, non-authoritative)
 
@@ -28,6 +30,7 @@ This index is the canonical navigation point for repository docs under `docs/`.
 - `CONTRACT_UPDATE_PROTOCOL.md`
 - `AITAS_CONTEXT_MODEL.md`
 - `EXTERNAL_RESOURCE_ISOLATES.md`
+- `INHERITED_RESOURCE_CONTRACT_MODULE.md`
 - `DATA_TOOL_ICONS.md`
 - `TOOLS_SHELL.md`
 - `REQUEST_LOG_V1.md`

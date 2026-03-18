@@ -72,6 +72,8 @@ Canonical contract context fields:
 - `owner_mss`
 - `counterparty_mss`
 
+Contracts also own inherited-resource subscription/sync metadata (source linkage, tracked resource ids, version hashes, sync timestamps/status). They do not own full inherited snapshot payload storage.
+
 Local behavior:
 
 - `owner_selected_refs` is the editable local source

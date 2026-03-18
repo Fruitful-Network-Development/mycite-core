@@ -18,6 +18,7 @@ from _shared.portal.data_engine.profile_config_refs import get_path
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
 from _shared.portal.data_engine.external_resources.resolver import ExternalResourceResolver
 from _shared.portal.sandbox.engine import SandboxEngine
+from _shared.portal.services.portal_model import canonicalize_portal_model_config
 from portal.core_services.runtime import resolve_active_private_config_path
 from portal.services.contract_store import get_contract, list_contracts
 from portal.services.datum_refs import normalize_datum_ref
@@ -102,9 +103,10 @@ def _save_active_config_for_write(payload: dict[str, Any]) -> bool:
     if target is None:
         return False
     try:
+        canonical_payload = canonicalize_portal_model_config(dict(payload))
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        current_app.config["MYCITE_ACTIVE_PRIVATE_CONFIG"] = dict(payload)
+        target.write_text(json.dumps(canonical_payload, indent=2) + "\n", encoding="utf-8")
+        current_app.config["MYCITE_ACTIVE_PRIVATE_CONFIG"] = dict(canonical_payload)
         return True
     except Exception:
         return False

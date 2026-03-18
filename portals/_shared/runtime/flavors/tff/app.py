@@ -51,6 +51,7 @@ from portal.services.workspace_store import append_event as append_workspace_eve
 from portal.services.workspace_store import materialize_people, read_events, workspace_root
 from portal.tools.runtime import active_tool_for_path, read_enabled_tools, register_tool_blueprints
 from _shared.portal.services.app_io import load_object_json_if_exists, read_object_json, write_object_json
+from _shared.portal.services.portal_model import canonicalize_portal_model_config
 from _shared.portal.services.alias_utils import (
     alias_contact_collection_ref as shared_alias_contact_collection_ref,
     alias_label as shared_alias_label,
@@ -210,8 +211,9 @@ def _save_active_config_for_write(payload: Dict[str, Any]) -> bool:
     if cfg_path is None:
         return False
     try:
-        write_object_json(cfg_path, payload)
-        ACTIVE_PRIVATE_CONFIG = dict(payload)
+        canonical_payload = canonicalize_portal_model_config(dict(payload))
+        write_object_json(cfg_path, canonical_payload)
+        ACTIVE_PRIVATE_CONFIG = dict(canonical_payload)
         app.config["MYCITE_ACTIVE_PRIVATE_CONFIG"] = ACTIVE_PRIVATE_CONFIG
         return True
     except Exception:
@@ -634,6 +636,7 @@ def _generic_legal_entity_defaults(file_name: str) -> Dict[str, Any]:
 
 
 def _organization_config_filename(active_cfg: Dict[str, Any]) -> str:
+    portal_profile = active_cfg.get("portal_profile") if isinstance(active_cfg.get("portal_profile"), dict) else {}
     org_cfg = active_cfg.get("organization_config") if isinstance(active_cfg.get("organization_config"), dict) else {}
     org_cfg_alt = (
         active_cfg.get("organization_configuration")
@@ -654,6 +657,8 @@ def _organization_config_filename(active_cfg: Dict[str, Any]) -> str:
         else ""
     )
     candidates = [
+        portal_profile.get("organization_config_file"),
+        portal_profile.get("profile_kind"),
         org_cfg.get("file_name"),
         org_cfg.get("config_file"),
         org_cfg.get("legal_entity_config_file"),
@@ -684,6 +689,14 @@ def _organization_config_filename(active_cfg: Dict[str, Any]) -> str:
 def _collect_org_layers(active_cfg: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, Any]]:
     defaults: Dict[str, Any] = {}
     added: Dict[str, Any] = {}
+
+    portal_behavior = active_cfg.get("portal_behavior") if isinstance(active_cfg.get("portal_behavior"), dict) else {}
+    pb_defaults = portal_behavior.get("defaults") if isinstance(portal_behavior.get("defaults"), dict) else {}
+    pb_overrides = portal_behavior.get("overrides") if isinstance(portal_behavior.get("overrides"), dict) else {}
+    if pb_defaults:
+        defaults = _deep_merge_dict(defaults, pb_defaults)
+    if pb_overrides:
+        added = _deep_merge_dict(added, pb_overrides)
 
     org_cfg = active_cfg.get("organization_config") if isinstance(active_cfg.get("organization_config"), dict) else {}
     org_cfg_alt = (
@@ -717,8 +730,13 @@ def _collect_org_layers(active_cfg: Dict[str, Any]) -> tuple[Dict[str, Any], Dic
 
 
 def _default_portal_behavior(active_cfg: Dict[str, Any]) -> Dict[str, Any]:
+    portal_profile = active_cfg.get("portal_profile") if isinstance(active_cfg.get("portal_profile"), dict) else {}
     org_config_file = _organization_config_filename(active_cfg)
-    legal_type = Path(org_config_file).stem.lower().strip() or "subject_congregation"
+    legal_type = (
+        str(portal_profile.get("profile_kind") or "").strip().lower()
+        or Path(org_config_file).stem.lower().strip()
+        or "subject_congregation"
+    )
     legal_defaults = LEGAL_ENTITY_PROFILE_DEFAULTS.get(org_config_file) or _generic_legal_entity_defaults(org_config_file)
 
     return {
@@ -761,13 +779,18 @@ def _default_portal_behavior(active_cfg: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _build_portal_behavior_config(active_cfg: Dict[str, Any]) -> Dict[str, Any]:
+    portal_profile = active_cfg.get("portal_profile") if isinstance(active_cfg.get("portal_profile"), dict) else {}
     base = _default_portal_behavior(active_cfg)
     defaults, added = _collect_org_layers(active_cfg)
     merged = _deep_merge_dict(base, defaults)
     merged = _deep_merge_dict(merged, added)
 
     org_config_file = _organization_config_filename(active_cfg)
-    legal_type = Path(org_config_file).stem.lower().strip() or "subject_congregation"
+    legal_type = (
+        str(portal_profile.get("profile_kind") or "").strip().lower()
+        or Path(org_config_file).stem.lower().strip()
+        or "subject_congregation"
+    )
     merged["organization_config_file"] = org_config_file
     merged["legal_entity_type"] = legal_type
 
@@ -786,6 +809,9 @@ def _build_portal_behavior_config(active_cfg: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _workflow_enabled() -> bool:
+    features_cfg = ACTIVE_PRIVATE_CONFIG.get("portal_features") if isinstance(ACTIVE_PRIVATE_CONFIG, dict) else {}
+    if isinstance(features_cfg, dict) and "workflow_enabled" in features_cfg:
+        return bool(features_cfg.get("workflow_enabled"))
     if not IS_TFF_PORTAL:
         return False
     workflow_cfg = PORTAL_BEHAVIOR_CONFIG.get("workflow_config") if isinstance(PORTAL_BEHAVIOR_CONFIG, dict) else {}
@@ -828,8 +854,10 @@ def _workflow_model() -> Dict[str, Any]:
         return {}
     config = PORTAL_BEHAVIOR_CONFIG.get("workflow_config") if isinstance(PORTAL_BEHAVIOR_CONFIG, dict) else {}
     config = dict(config) if isinstance(config, dict) else {}
+    portal_profile = ACTIVE_PRIVATE_CONFIG.get("portal_profile") if isinstance(ACTIVE_PRIVATE_CONFIG, dict) else {}
     legal_type = str(
-        config.get("legal_entity_type")
+        (portal_profile.get("profile_kind") if isinstance(portal_profile, dict) else "")
+        or config.get("legal_entity_type")
         or PORTAL_BEHAVIOR_CONFIG.get("legal_entity_type")
         or "subject_congregation"
     ).strip().lower()
@@ -2033,6 +2061,7 @@ register_data_routes(
     anthology_payload_provider=_load_local_anthology_payload,
     active_config_provider=_load_active_config_for_write,
     active_config_saver=_save_active_config_for_write,
+    private_dir=PRIVATE_DIR,
     include_home_redirect=False,
     include_legacy_shims=False,
 )

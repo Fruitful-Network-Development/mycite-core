@@ -21,6 +21,10 @@ Anthology loading uses a base+overlay merge model:
 Canonical data artifacts:
 
 - `data/anthology.json`
+- `data/resources/local/*.json`
+- `data/resources/inherited/<source_msn_id>/*.json`
+- `data/resources/index.local.json`
+- `data/resources/index.inherited.json`
 - `data/presentation/datum_icons.json`
 - request logs and hosted/network metadata under `private/network/**`
 
@@ -139,7 +143,20 @@ Shared core now exposes a sandbox service layer under `portals/_shared/portal/sa
 - contact-card exposed resource value generation (`SandboxEngine.generate_contact_card_public_resources`)
 - inherited resource context resolution for local and foreign refs (`SandboxEngine.resolve_inherited_resource_context`)
 
-Route surface is shared-core under `/portal/api/data/sandbox/*` (registered in `portals/_shared/portal/api/data_workspace.py`), and SYSTEM now includes a `Sandbox` tab that consumes this shared surface.
+Route surface is shared-core under `/portal/api/data/sandbox/*` (registered in `portals/_shared/portal/api/data_workspace.py`), while SYSTEM now separates user-facing resource surfaces into `Local Resources` and `Inheritance`.
+
+Resource inventory ownership is separate from sandbox:
+
+- resource registry/index layer: `portals/_shared/portal/data_engine/resource_registry.py`
+- inherited subscription/sync layer: `portals/_shared/portal/data_engine/inherited_contract_resources.py`
+- user-facing inventory routes:
+  - `GET /portal/api/data/resources/local`
+  - `GET /portal/api/data/resources/inherited`
+  - `GET /portal/api/data/resources/inherited/subscriptions`
+  - `POST /portal/api/data/resources/local/migrate_legacy_samras`
+  - `POST /portal/api/data/resources/inherited/refresh`
+  - `POST /portal/api/data/resources/inherited/refresh_source`
+  - `POST /portal/api/data/resources/inherited/disconnect_source`
 
 Migration boundary:
 

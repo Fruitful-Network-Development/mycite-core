@@ -13,7 +13,8 @@
     <header class="ide-contextTitle">System Views</header>
     <ul class="ide-contextList">
       <li><a class="ide-contextLink {% if current_tab == 'workbench' %}is-active{% endif %}" href="/portal/system?tab=workbench"><span>Anthology Workbench</span><small>Graph navigation</small></a></li>
-      <li><a class="ide-contextLink {% if current_tab == 'sandbox' %}is-active{% endif %}" href="/portal/system?tab=sandbox"><span>Sandbox</span><small>MSS/SAMRAS resources</small></a></li>
+      <li><a class="ide-contextLink {% if current_tab == 'local_resources' %}is-active{% endif %}" href="/portal/system?tab=local_resources"><span>Local Resources</span><small>Draft, compile, publish</small></a></li>
+      <li><a class="ide-contextLink {% if current_tab == 'inheritance' %}is-active{% endif %}" href="/portal/system?tab=inheritance"><span>Inheritance</span><small>Foreign resource cache</small></a></li>
     </ul>
     <div id="dtSystemContext" class="data-tool__systemContext" aria-label="Datum search or selected datum inspector">
       <!-- Filled by data_tool.js: search bar when no datum selected; datum editor + icon when one is selected -->
@@ -30,14 +31,25 @@
     </nav>
   {% endif %}
 
-  {% if current_tab == "sandbox" %}
+  {% if current_tab == "local_resources" %}
     <section class="workbench-panels workbench-panels--double">
       <article class="card">
-        <div class="card__kicker">Shared Sandbox Engine</div>
-        <div class="card__title">Resources + Compile/Decode</div>
+        <div class="card__kicker">Local Resource Inventory</div>
+        <div class="card__title">data/resources/index.local.json</div>
         <div class="card__body">
           <div class="data-tool__controlRow">
-            <button type="button" id="sandboxRefreshBtn">Refresh Resources</button>
+            <button type="button" id="localResourcesRefreshBtn">Refresh Local Inventory</button>
+            <button type="button" id="localResourcesMigrateBtn">Migrate Legacy SAMRAS</button>
+          </div>
+          <pre class="jsonblock" id="localResourcesJson">{}</pre>
+        </div>
+      </article>
+      <article class="card">
+        <div class="card__kicker">Local Lifecycle (Sandbox Service)</div>
+        <div class="card__title">Compile + Decode + Draft Helpers</div>
+        <div class="card__body">
+          <div class="data-tool__controlRow">
+            <button type="button" id="sandboxRefreshBtn">Refresh Sandbox Resources</button>
             <button type="button" id="sandboxMigrateDryRunBtn">FND SAMRAS Migration (Dry Run)</button>
           </div>
           <label for="sandboxMssRefs"><strong>MSS selected_refs (comma/newline)</strong></label>
@@ -51,11 +63,35 @@
           <pre class="jsonblock" id="sandboxResultJson">{}</pre>
         </div>
       </article>
+    </section>
+  {% elif current_tab == "inheritance" %}
+    <section class="workbench-panels workbench-panels--double">
       <article class="card">
-        <div class="card__kicker">Sandbox Resources</div>
-        <div class="card__title">/portal/api/data/sandbox/resources</div>
+        <div class="card__kicker">Inherited Resource Inventory</div>
+        <div class="card__title">data/resources/index.inherited.json</div>
         <div class="card__body">
-          <pre class="jsonblock" id="sandboxResourcesJson">{}</pre>
+          <div class="data-tool__controlRow">
+            <button type="button" id="inheritanceRefreshBtn">Refresh Inheritance Inventory</button>
+          </div>
+          <pre class="jsonblock" id="inheritanceResourcesJson">{}</pre>
+        </div>
+      </article>
+      <article class="card">
+        <div class="card__kicker">Contract Subscription Sync</div>
+        <div class="card__title">Refresh / Disconnect Source</div>
+        <div class="card__body">
+          <label for="inheritanceSourceMsn"><strong>Source msn_id</strong></label>
+          <input id="inheritanceSourceMsn" type="text" placeholder="3-2-3-..." />
+          <label for="inheritanceContractId"><strong>Contract ID (optional for single refresh)</strong></label>
+          <input id="inheritanceContractId" type="text" placeholder="contract-..." />
+          <label for="inheritanceResourceId"><strong>Resource ID (optional for single refresh)</strong></label>
+          <input id="inheritanceResourceId" type="text" placeholder="samras.txa" />
+          <div class="data-tool__controlRow">
+            <button type="button" id="inheritanceRefreshSingleBtn">Refresh One</button>
+            <button type="button" id="inheritanceRefreshSourceBtn">Refresh Source</button>
+            <button type="button" id="inheritanceDisconnectBtn">Disconnect Source</button>
+          </div>
+          <pre class="jsonblock" id="inheritanceStatusJson">{}</pre>
         </div>
       </article>
     </section>
@@ -87,7 +123,7 @@
   {% if data_home_available is defined and data_home_available %}
     <script src="/portal/static/tools/data_tool.js"></script>
   {% endif %}
-  {% if current_tab == "sandbox" %}
+  {% if current_tab == "local_resources" or current_tab == "inheritance" %}
     <script>
       (function () {
         function requestJson(url, method, payload) {
@@ -103,15 +139,43 @@
         }
         var resourcesNode = document.getElementById("sandboxResourcesJson");
         var resultNode = document.getElementById("sandboxResultJson");
-        if (!resourcesNode || !resultNode) return;
+        var localResourcesNode = document.getElementById("localResourcesJson");
+        var inheritedResourcesNode = document.getElementById("inheritanceResourcesJson");
+        var inheritedStatusNode = document.getElementById("inheritanceStatusJson");
         function refreshResources() {
-          requestJson("/portal/api/data/sandbox/resources", "GET").then(function (result) {
-            resourcesNode.textContent = JSON.stringify(result.body || {}, null, 2);
-          });
+          if (resourcesNode) {
+            requestJson("/portal/api/data/sandbox/resources", "GET").then(function (result) {
+              resourcesNode.textContent = JSON.stringify(result.body || {}, null, 2);
+            });
+          }
+          if (localResourcesNode) {
+            requestJson("/portal/api/data/resources/local", "GET").then(function (result) {
+              localResourcesNode.textContent = JSON.stringify(result.body || {}, null, 2);
+            });
+          }
+          if (inheritedResourcesNode) {
+            requestJson("/portal/api/data/resources/inherited", "GET").then(function (result) {
+              inheritedResourcesNode.textContent = JSON.stringify(result.body || {}, null, 2);
+            });
+          }
         }
+        if (!resourcesNode && !localResourcesNode && !inheritedResourcesNode) return;
         var refreshBtn = document.getElementById("sandboxRefreshBtn");
         if (refreshBtn) refreshBtn.addEventListener("click", refreshResources);
+        var localRefreshBtn = document.getElementById("localResourcesRefreshBtn");
+        if (localRefreshBtn) localRefreshBtn.addEventListener("click", refreshResources);
         refreshResources();
+
+        var migrateLegacyBtn = document.getElementById("localResourcesMigrateBtn");
+        if (migrateLegacyBtn) {
+          migrateLegacyBtn.addEventListener("click", function () {
+            requestJson("/portal/api/data/resources/local/migrate_legacy_samras", "POST", { apply: true })
+              .then(function (result) {
+                if (resultNode) resultNode.textContent = JSON.stringify(result.body || {}, null, 2);
+                refreshResources();
+              });
+          });
+        }
 
         var compileBtn = document.getElementById("sandboxMssCompileBtn");
         if (compileBtn) {
@@ -139,6 +203,48 @@
           migrateBtn.addEventListener("click", function () {
             requestJson("/portal/api/data/sandbox/migrate/fnd_samras", "POST", { apply: false })
               .then(function (result) { resultNode.textContent = JSON.stringify(result.body || {}, null, 2); refreshResources(); });
+          });
+        }
+
+        var inheritanceRefreshBtn = document.getElementById("inheritanceRefreshBtn");
+        if (inheritanceRefreshBtn) inheritanceRefreshBtn.addEventListener("click", refreshResources);
+
+        function inheritanceInputs() {
+          return {
+            source_msn_id: String((document.getElementById("inheritanceSourceMsn") || {}).value || "").trim(),
+            contract_id: String((document.getElementById("inheritanceContractId") || {}).value || "").trim(),
+            resource_id: String((document.getElementById("inheritanceResourceId") || {}).value || "").trim()
+          };
+        }
+        function setInheritanceStatus(body) {
+          if (inheritedStatusNode) inheritedStatusNode.textContent = JSON.stringify(body || {}, null, 2);
+          refreshResources();
+        }
+        var inheritanceRefreshSingleBtn = document.getElementById("inheritanceRefreshSingleBtn");
+        if (inheritanceRefreshSingleBtn) {
+          inheritanceRefreshSingleBtn.addEventListener("click", function () {
+            var payload = inheritanceInputs();
+            requestJson("/portal/api/data/resources/inherited/refresh", "POST", payload).then(function (result) {
+              setInheritanceStatus(result.body || {});
+            });
+          });
+        }
+        var inheritanceRefreshSourceBtn = document.getElementById("inheritanceRefreshSourceBtn");
+        if (inheritanceRefreshSourceBtn) {
+          inheritanceRefreshSourceBtn.addEventListener("click", function () {
+            var payload = inheritanceInputs();
+            requestJson("/portal/api/data/resources/inherited/refresh_source", "POST", payload).then(function (result) {
+              setInheritanceStatus(result.body || {});
+            });
+          });
+        }
+        var inheritanceDisconnectBtn = document.getElementById("inheritanceDisconnectBtn");
+        if (inheritanceDisconnectBtn) {
+          inheritanceDisconnectBtn.addEventListener("click", function () {
+            var payload = inheritanceInputs();
+            requestJson("/portal/api/data/resources/inherited/disconnect_source", "POST", payload).then(function (result) {
+              setInheritanceStatus(result.body || {});
+            });
           });
         }
       })();

@@ -47,10 +47,11 @@ NETWORK_TAB_LABELS = {
     "contracts": "Contracts",
 }
 
-SYSTEM_TAB_ORDER = ["workbench", "sandbox"]
+SYSTEM_TAB_ORDER = ["workbench", "local_resources", "inheritance"]
 SYSTEM_TAB_LABELS = {
     "workbench": "Workbench",
-    "sandbox": "Sandbox",
+    "local_resources": "Local Resources",
+    "inheritance": "Inheritance",
 }
 
 
@@ -86,6 +87,9 @@ def normalize_network_tab(tab_id: str) -> str:
 
 def normalize_system_tab(tab_id: str) -> str:
     token = str(tab_id or "").strip().lower()
+    # Compatibility alias during system tab migration.
+    if token == "sandbox":
+        token = "local_resources"
     if token in SYSTEM_TAB_ORDER:
         return token
     return SYSTEM_TAB_ORDER[0]

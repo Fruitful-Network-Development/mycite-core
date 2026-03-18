@@ -70,6 +70,8 @@ class DataWritePipelineRouteTests(unittest.TestCase):
     def setUp(self):
         register_data_routes = _load_register_data_routes()
         self._tmpdir = tempfile.TemporaryDirectory()
+        self.private_dir = Path(self._tmpdir.name) / "private"
+        self.private_dir.mkdir(parents=True, exist_ok=True)
         self.anthology_rows: dict[str, object] = {}
         self.workspace = _WorkspaceStub(anthology_rows=self.anthology_rows, data_dir=self._tmpdir.name)
         self.config_payload = {"display": {"title": "Before"}}
@@ -81,6 +83,7 @@ class DataWritePipelineRouteTests(unittest.TestCase):
             active_config_provider=lambda: dict(self.config_payload),
             active_config_saver=self._save_config,
             msn_id_provider=lambda: "9-9-9",
+            private_dir=self.private_dir,
             include_home_redirect=False,
             include_legacy_shims=False,
         )
@@ -354,6 +357,122 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         migrated_payload = migrated.get_json() or {}
         self.assertTrue(migrated_payload.get("ok"))
         self.assertIn("5-0-1", migrated_payload.get("exact_live_txa_msn_rows") or [])
+
+    def test_resource_inventory_routes_are_index_backed_and_ignore_legacy_root_files(self):
+        root = Path(self._tmpdir.name)
+        (root / "samras-msn.legacy.json").write_text(
+            json.dumps({"4-1-9": [["4-1-9", "2-1-7", "9"], ["legacy-root"]]}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        local = self.client.get("/portal/api/data/resources/local")
+        self.assertEqual(local.status_code, 200)
+        local_payload = local.get_json() or {}
+        self.assertTrue(local_payload.get("ok"))
+        self.assertEqual(local_payload.get("resources"), [])
+
+        migrate = self.client.post("/portal/api/data/resources/local/migrate_legacy_samras", json={"apply": True})
+        self.assertEqual(migrate.status_code, 200)
+        migrated_payload = migrate.get_json() or {}
+        migrated = migrated_payload.get("migrated") or []
+        self.assertTrue(any(str(item.get("resource_name") or "") == "samras.msn.json" for item in migrated))
+
+        local_after = self.client.get("/portal/api/data/resources/local")
+        self.assertEqual(local_after.status_code, 200)
+        resources = (local_after.get_json() or {}).get("resources") or []
+        ids = [str(item.get("resource_id") or "") for item in resources]
+        self.assertIn("local:samras.msn", ids)
+
+    def test_inherited_disconnect_cleans_index_files_and_contract_sync(self):
+        from _shared.portal.services.contract_store import create_contract, get_contract
+        from _shared.portal.data_engine.resource_registry import (
+            INHERITED_SCOPE,
+            resource_file_path,
+            upsert_index_entry,
+            write_resource_file,
+        )
+
+        source_msn_id = "7-7-7"
+        contract_id = create_contract(
+            self.private_dir,
+            {
+                "contract_id": "contract-test-disconnect",
+                "contract_type": "resource_subscription",
+                "owner_msn_id": "9-9-9",
+                "counterparty_msn_id": source_msn_id,
+                "status": "active",
+                "tracked_resource_ids": ["samras.txa"],
+                "inherited_resource_sync": {
+                    "resources": [
+                        {
+                            "source_msn_id": source_msn_id,
+                            "contract_id": "contract-test-disconnect",
+                            "resource_id": "samras.txa",
+                            "resource_name": "samras.txa",
+                            "version_hash": "before",
+                            "last_sync_unix_ms": 1,
+                            "next_poll_unix_ms": 2,
+                            "status": "synced",
+                        }
+                    ]
+                },
+            },
+            owner_msn_id="9-9-9",
+        )
+        inherited_path = resource_file_path(
+            Path(self._tmpdir.name),
+            scope=INHERITED_SCOPE,
+            source_msn_id=source_msn_id,
+            resource_name="samras.txa",
+        )
+        write_resource_file(
+            inherited_path,
+            {
+                "schema": "mycite.portal.resource.inherited.v1",
+                "resource_id": f"foreign:{source_msn_id}:samras.txa",
+                "resource_kind": "inherited_snapshot",
+                "scope": "inherited",
+                "source_msn_id": source_msn_id,
+                "anthology_compatible_payload": {"4-1-1": [["4-1-1", "2-1-1", "1"], ["txa"]]},
+            },
+        )
+        upsert_index_entry(
+            Path(self._tmpdir.name),
+            scope=INHERITED_SCOPE,
+            entry={
+                "resource_id": f"foreign:{source_msn_id}:samras.txa",
+                "resource_name": "samras.txa.json",
+                "resource_kind": "inherited_snapshot",
+                "scope": "inherited",
+                "source_msn_id": source_msn_id,
+                "path": str(inherited_path),
+                "version_hash": "before",
+                "updated_at": 1,
+                "status": "synced",
+            },
+        )
+
+        disconnect = self.client.post(
+            "/portal/api/data/resources/inherited/disconnect_source",
+            json={"source_msn_id": source_msn_id},
+        )
+        self.assertEqual(disconnect.status_code, 200)
+        disconnect_payload = disconnect.get_json() or {}
+        self.assertTrue(disconnect_payload.get("ok"))
+        self.assertEqual(disconnect_payload.get("removed_count"), 1)
+        contract_sync = disconnect_payload.get("contract_sync") or {}
+        self.assertTrue(any(str(item.get("contract_id") or "") == contract_id for item in contract_sync.get("updated_contracts") or []))
+
+        inherited_after = self.client.get("/portal/api/data/resources/inherited")
+        self.assertEqual(inherited_after.status_code, 200)
+        grouped = (inherited_after.get_json() or {}).get("grouped_by_source") or {}
+        self.assertNotIn(source_msn_id, grouped)
+
+        contract_after = get_contract(self.private_dir, contract_id)
+        sync = contract_after.get("inherited_resource_sync") or {}
+        self.assertEqual(sync.get("status"), "disconnected")
+        resources = sync.get("resources") or []
+        self.assertTrue(resources)
+        self.assertTrue(all(str(item.get("status") or "") == "disconnected" for item in resources))
 
     def test_anthology_overlay_migration_route_dry_run_and_apply(self):
         anthology_path = Path(self._tmpdir.name) / "anthology.json"

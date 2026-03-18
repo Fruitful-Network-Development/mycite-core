@@ -8,6 +8,23 @@ This document defines the SYSTEM page workbench composition only.
 - shell host: `portals/_shared/runtime/flavors/*/portal/ui/templates/base.html`
 - SYSTEM consumer: `portals/_shared/runtime/flavors/*/portal/ui/templates/services/system.html`
 
+## Canonical SYSTEM tabs
+
+- `Workbench`
+- `Local Resources`
+- `Inheritance`
+
+`Sandbox` remains an engine concept and local-resource lifecycle service, not the primary user-facing category label.
+
+## Canonical editor boundaries
+
+- `SYSTEM > Workbench` (and Data Tool) is the canonical editor for local anthology datum state.
+- `SYSTEM > Local Resources` is the inventory/controller for local isolated resources.
+- `SYSTEM > Inheritance` is the inventory/controller for inherited snapshots plus refresh/disconnect controls.
+- `NETWORK > Contracts` remains the canonical editor for contract metadata, tracked refs, compact-array/MSS relationship context.
+
+`SYSTEM > Inheritance` must not become a second full contract editor; it orchestrates refresh/disconnect and snapshot visibility only.
+
 ## Locked Composition
 
 Inside the existing IDE shell, SYSTEM uses:

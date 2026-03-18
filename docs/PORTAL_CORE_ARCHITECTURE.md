@@ -25,6 +25,7 @@ Canonical shared external-resource endpoints under `/portal/api/data/*` are shar
 
 - canonical Data Tool browser entry: `GET /portal/data` -> `/portal/tools/data_tool/home`
 - canonical data service API: `/portal/api/data/*`
+- canonical system resource tabs: `Workbench`, `Local Resources`, `Inheritance`
 - canonical contract editor: `NETWORK > Contracts`
 - canonical contract MSS fields:
   - `owner_selected_refs`

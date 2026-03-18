@@ -89,6 +89,9 @@ class FndPortalShellRouteTests(unittest.TestCase):
             self.assertIn('data-shell-toggle="context"', system_html)
             self.assertIn('data-shell-toggle="inspector"', system_html)
             self.assertIn('id="portalContextSidebar"', system_html)
+            self.assertIn("Local Resources", system_html)
+            self.assertIn("Inheritance", system_html)
+            self.assertNotIn("Sandbox</span><small>MSS/SAMRAS resources</small>", system_html)
 
             self.assertEqual(client.get("/portal/network?tab=hosted").status_code, 200)
             self.assertEqual(client.get("/portal/network?tab=profile").status_code, 200)
@@ -107,6 +110,12 @@ class FndPortalShellRouteTests(unittest.TestCase):
 
             self.assertEqual(client.get("/portal/api/data/state").status_code, 200)
             self.assertEqual(client.get("/portal/api/data/anthology/table").status_code, 200)
+            local_inventory = client.get("/portal/api/data/resources/local")
+            self.assertEqual(local_inventory.status_code, 200)
+            self.assertTrue((local_inventory.get_json() or {}).get("ok"))
+            inherited_inventory = client.get("/portal/api/data/resources/inherited")
+            self.assertEqual(inherited_inventory.status_code, 200)
+            self.assertTrue((inherited_inventory.get_json() or {}).get("ok"))
             resources = client.get("/portal/api/data/external/resources?source_msn_id=9-9-9-9")
             self.assertEqual(resources.status_code, 200)
             resources_payload = resources.get_json() or {}

@@ -13,6 +13,22 @@ from _shared.portal.data_engine.aitas_context import (
 )
 from _shared.portal.data_engine.anthology_context import build_canonical_anthology_context
 from _shared.portal.data_engine.anthology_overlay import strip_base_duplicates_from_overlay
+from _shared.portal.data_engine.inherited_contract_resources import (
+    discover_contract_subscription_status,
+    disconnect_source_subscriptions,
+    refresh_all_for_source,
+    refresh_contract_resource,
+)
+from _shared.portal.data_engine.resource_registry import (
+    INHERITED_SCOPE,
+    LOCAL_SCOPE,
+    ensure_layout,
+    inherited_resources_dir,
+    load_index,
+    local_resources_dir,
+    migrate_legacy_samras_root_files,
+    remove_inherited_source,
+)
 from _shared.portal.data_engine.anthology_registry import load_base_registry
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
 from _shared.portal.data_engine.inherited_txa_adapter import select_inherited_binding_for_field
@@ -31,6 +47,7 @@ def register_data_routes(
     anthology_payload_provider: Callable[[], dict[str, Any]] | None = None,
     active_config_provider: Callable[[], dict[str, Any]] | None = None,
     active_config_saver: Callable[[dict[str, Any]], bool] | None = None,
+    private_dir: Path | None = None,
     include_home_redirect: bool = True,
     include_legacy_shims: bool = True,
 ) -> None:
@@ -129,10 +146,18 @@ def register_data_routes(
             data_root = "."
         return SandboxEngine(data_root=Path(str(data_root)))
 
-    def _overlay_anthology_path() -> Path:
+    def _data_root() -> Path:
         storage = getattr(workspace, "storage", None)
         data_root = getattr(storage, "data_dir", None)
-        return Path(str(data_root or ".")) / "anthology.json"
+        return Path(str(data_root or "."))
+
+    def _private_dir() -> Path:
+        if isinstance(private_dir, Path):
+            return private_dir
+        return _data_root().parent / "private"
+
+    def _overlay_anthology_path() -> Path:
+        return _data_root() / "anthology.json"
 
     def _canonical_anthology_context():
         overlay_path = _overlay_anthology_path()
@@ -145,6 +170,22 @@ def register_data_routes(
 
     def _anthology_payload_for_mss_compile() -> dict[str, Any]:
         return dict(_canonical_anthology_context().compact_payload)
+
+    def _group_inherited_index(index_payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for item in list(index_payload.get("resources") or []):
+            if not isinstance(item, dict):
+                continue
+            source = str(item.get("source_msn_id") or "").strip() or "unknown"
+            grouped.setdefault(source, []).append(dict(item))
+        for source in grouped:
+            grouped[source].sort(
+                key=lambda row: (
+                    str(row.get("resource_name") or ""),
+                    str(row.get("resource_id") or ""),
+                )
+            )
+        return grouped
 
     if include_home_redirect:
         @app.get("/portal/data")
@@ -220,6 +261,107 @@ def register_data_routes(
     def portal_data_sandbox_resources():
         engine = _sandbox_engine()
         return jsonify({"ok": True, "resources": engine.list_resources(), "schema": "mycite.portal.sandbox.resources.v1"})
+
+    @app.get("/portal/api/data/resources/local")
+    def portal_data_resources_local():
+        root = _data_root()
+        ensure_layout(root)
+        index_payload = load_index(root, scope=LOCAL_SCOPE)
+        return jsonify(
+            {
+                "ok": True,
+                "schema": "mycite.portal.resources.local_inventory.v1",
+                "resources_root": str(local_resources_dir(root)),
+                "index_path": str(root / "resources" / "index.local.json"),
+                "resources": list(index_payload.get("resources") or []),
+            }
+        )
+
+    @app.get("/portal/api/data/resources/inherited")
+    def portal_data_resources_inherited():
+        root = _data_root()
+        ensure_layout(root)
+        index_payload = load_index(root, scope=INHERITED_SCOPE)
+        return jsonify(
+            {
+                "ok": True,
+                "schema": "mycite.portal.resources.inherited_inventory.v1",
+                "resources_root": str(inherited_resources_dir(root)),
+                "index_path": str(root / "resources" / "index.inherited.json"),
+                "resources": list(index_payload.get("resources") or []),
+                "grouped_by_source": _group_inherited_index(index_payload),
+            }
+        )
+
+    @app.get("/portal/api/data/resources/inherited/subscriptions")
+    def portal_data_resources_inherited_subscriptions():
+        return jsonify(discover_contract_subscription_status(_private_dir()))
+
+    @app.post("/portal/api/data/resources/local/migrate_legacy_samras")
+    def portal_data_resources_local_migrate_legacy_samras():
+        body = _json_body()
+        apply_changes = bool(body.get("apply", True))
+        report = migrate_legacy_samras_root_files(_data_root(), apply_changes=apply_changes)
+        payload = report.to_dict()
+        payload["apply"] = apply_changes
+        payload["schema"] = "mycite.portal.resources.local_migration.v1"
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/resources/inherited/refresh")
+    def portal_data_resources_inherited_refresh():
+        if external_resource_resolver is None:
+            abort(501, description="external resource resolver is unavailable")
+        body = _json_body()
+        contract_id = str(body.get("contract_id") or "").strip()
+        resource_id = str(body.get("resource_id") or "").strip()
+        if not contract_id or not resource_id:
+            abort(400, description="contract_id and resource_id are required")
+        payload = refresh_contract_resource(
+            data_root=_data_root(),
+            private_dir=_private_dir(),
+            resolver=external_resource_resolver,
+            contract_id=contract_id,
+            resource_id=resource_id,
+            owner_msn_id=_msn_id(),
+            force_refresh=bool(body.get("force_refresh", True)),
+        )
+        payload["schema"] = "mycite.portal.resources.inherited_refresh.v1"
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/resources/inherited/refresh_source")
+    def portal_data_resources_inherited_refresh_source():
+        if external_resource_resolver is None:
+            abort(501, description="external resource resolver is unavailable")
+        body = _json_body()
+        source_msn_id = str(body.get("source_msn_id") or "").strip()
+        if not source_msn_id:
+            abort(400, description="source_msn_id is required")
+        payload = refresh_all_for_source(
+            data_root=_data_root(),
+            private_dir=_private_dir(),
+            resolver=external_resource_resolver,
+            source_msn_id=source_msn_id,
+            owner_msn_id=_msn_id(),
+            force_refresh=bool(body.get("force_refresh", True)),
+        )
+        payload["schema"] = "mycite.portal.resources.inherited_refresh_source.v1"
+        return jsonify(payload), 200
+
+    @app.post("/portal/api/data/resources/inherited/disconnect_source")
+    def portal_data_resources_inherited_disconnect_source():
+        body = _json_body()
+        source_msn_id = str(body.get("source_msn_id") or "").strip()
+        if not source_msn_id:
+            abort(400, description="source_msn_id is required")
+        payload = remove_inherited_source(_data_root(), source_msn_id=source_msn_id)
+        payload["contract_sync"] = disconnect_source_subscriptions(
+            private_dir=_private_dir(),
+            source_msn_id=source_msn_id,
+            owner_msn_id=_msn_id(),
+        )
+        payload["ok"] = True
+        payload["schema"] = "mycite.portal.resources.inherited_disconnect_source.v1"
+        return jsonify(payload), 200
 
     @app.get("/portal/api/data/sandbox/resources/<path:resource_id>")
     def portal_data_sandbox_resource(resource_id: str):

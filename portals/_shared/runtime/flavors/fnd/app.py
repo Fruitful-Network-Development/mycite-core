@@ -65,6 +65,7 @@ from portal.services.tenant_progeny_store import load_profile, save_profile, set
 from portal.services.website_analytics_store import load_member_analytics, list_member_analytics
 from portal.tools.runtime import active_tool_for_path, read_enabled_tools, register_tool_blueprints
 from _shared.portal.services.app_io import load_object_json_if_exists, read_object_json, write_object_json
+from _shared.portal.services.portal_model import canonicalize_portal_model_config
 from _shared.portal.services.alias_utils import (
     alias_contact_collection_ref as shared_alias_contact_collection_ref,
     alias_label as shared_alias_label,
@@ -172,8 +173,9 @@ def _save_active_config_for_write(payload: Dict[str, Any]) -> bool:
     if cfg_path is None:
         return False
     try:
-        write_object_json(cfg_path, payload)
-        ACTIVE_PRIVATE_CONFIG = dict(payload)
+        canonical_payload = canonicalize_portal_model_config(dict(payload))
+        write_object_json(cfg_path, canonical_payload)
+        ACTIVE_PRIVATE_CONFIG = dict(canonical_payload)
         app.config["MYCITE_ACTIVE_PRIVATE_CONFIG"] = ACTIVE_PRIVATE_CONFIG
         return True
     except Exception:
@@ -1973,6 +1975,7 @@ register_data_workspace_routes(
     anthology_payload_provider=_load_local_anthology_payload,
     active_config_provider=_load_active_config_for_write,
     active_config_saver=_save_active_config_for_write,
+    private_dir=PRIVATE_DIR,
     include_home_redirect=False,
     include_legacy_shims=False,
 )

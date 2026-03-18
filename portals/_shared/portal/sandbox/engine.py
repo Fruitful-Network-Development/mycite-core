@@ -11,6 +11,7 @@ from ..data_engine.inherited_txa_adapter import (
     adapt_published_txa_resource_value,
     build_field_ref_bindings,
 )
+from ..data_engine.resource_registry import INHERITED_SCOPE, read_resource_file, resource_file_path
 from ..data_engine.samras_descriptor_compiler import compile_samras_descriptors_from_rows
 from ..datum_refs import normalize_datum_ref, parse_datum_ref
 from ..mss import decode_mss_payload, preview_mss_context
@@ -473,6 +474,26 @@ class SandboxEngine:
         source_msn, rid = token.split(".", 1)
         source_msn = _as_text(source_msn)
         rid = _as_text(rid)
+        cached_path = resource_file_path(
+            self._data_root,
+            scope=INHERITED_SCOPE,
+            source_msn_id=source_msn,
+            resource_name=rid,
+        )
+        cached_payload = read_resource_file(cached_path)
+        if isinstance(cached_payload, dict) and cached_payload:
+            return InheritedResourceContext(
+                ok=True,
+                scope="foreign_cached",
+                local_ref=rid,
+                canonical_ref=token,
+                source_msn_id=source_msn,
+                resource_id=rid,
+                resource_value=dict(cached_payload.get("anthology_compatible_payload") or cached_payload),
+                provenance={"origin": "inherited_cache", "path": str(cached_path), "source_msn_id": source_msn},
+                warnings=[],
+                errors=[],
+            )
         if external_resolver is None:
             return InheritedResourceContext(
                 ok=False,
