@@ -296,8 +296,31 @@ def build_txa_sandbox_view_model(
     }
 
 
+def build_samras_workspace_view_model(
+    resource_payload: Mapping[str, Any],
+    *,
+    selected_address_id: str = "",
+    staged_entries: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """
+    SAMRAS title-tree workspace view (TXA, MSN, future SAMRAS-backed resources).
+
+    Same row/branch grammar as :func:`build_txa_sandbox_view_model`; schema id reflects
+    shared SAMRAS capability rather than TXA-only naming.
+    """
+    vm = build_txa_sandbox_view_model(
+        resource_payload,
+        selected_address_id=selected_address_id,
+        staged_entries=staged_entries,
+    )
+    vm["schema"] = "mycite.portal.sandbox.samras_workspace.view_model.v1"
+    vm["workspace_family"] = "samras_title_tree"
+    return vm
+
+
 __all__ = [
     "build_branch_context",
+    "build_samras_workspace_view_model",
     "build_title_table_rows",
     "build_txa_sandbox_view_model",
     "normalize_staged_entries",

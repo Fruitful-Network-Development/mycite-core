@@ -12,17 +12,22 @@ from flask import Blueprint, abort, current_app, jsonify, render_template, reque
 
 from _shared.portal.data_engine.anthology_context import build_canonical_anthology_context
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
-from _shared.portal.data_engine.inherited_txa_adapter import select_inherited_binding_for_field
 from _shared.portal.data_engine.property_workspace import resolve_property_workspace
 from _shared.portal.data_engine.profile_config_refs import get_path
-from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
 from _shared.portal.data_engine.external_resources.resolver import ExternalResourceResolver
 from _shared.portal.sandbox import AGRO_ERP_SANDBOX_DECLARATION, LocalResourceLifecycleService
+from _shared.portal.sandbox.agro_mvp_session import (
+    AGRO_MVP_EPHEMERAL_KEY,
+    compile_agro_mvp_resource_context,
+    preview_agro_mvp_inherited_field_with_msn,
+)
 from _shared.portal.sandbox.engine import SandboxEngine
+from _shared.portal.sandbox.promotion_hooks import build_tool_sandbox_promotion_hooks
 from _shared.portal.sandbox.session_registry import get_tool_sandbox_session_manager
 from _shared.portal.sandbox.tool_sandbox_session import (
     ToolSandboxPromotionHooks,
     ToolSandboxRuntimeDeps,
+    ToolSandboxSession,
     ToolSandboxSessionManager,
 )
 from _shared.portal.services.portal_model import canonicalize_portal_model_config
@@ -89,6 +94,37 @@ def _sandbox_engine() -> SandboxEngine:
 
 def _tool_sandbox_manager() -> ToolSandboxSessionManager:
     return get_tool_sandbox_session_manager(current_app)
+
+
+def _ensure_agro_tool_session(
+    sandbox_session_id: str | None,
+    *,
+    reopen: bool = False,
+) -> tuple[ToolSandboxSession | None, str, list[str]]:
+    """
+    Return (session, session_id, errors). Opens a new session when id is empty.
+    ``reopen`` forces reload of declared resources from disk (same id).
+    """
+    mgr = _tool_sandbox_manager()
+    deps = _tool_sandbox_runtime_deps()
+    decl = dict(AGRO_ERP_SANDBOX_DECLARATION)
+    sid_in = str(sandbox_session_id or "").strip()
+    if sid_in:
+        sess = mgr.get(sid_in)
+        if sess is None:
+            return None, sid_in, [f"sandbox_session_id not found: {sid_in}"]
+        if str(sess.tool_key or "").strip() != TOOL_ID:
+            return None, sid_in, ["sandbox_session_id does not belong to agro_erp"]
+        if reopen:
+            sess = mgr.reopen_session(
+                deps,
+                session_id=sid_in,
+                tool_key=TOOL_ID,
+                declaration=decl,  # type: ignore[arg-type]
+            )
+        return sess, sess.session_id, list(sess.errors)
+    sess = mgr.open_session(deps, tool_key=TOOL_ID, declaration=decl)  # type: ignore[arg-type]
+    return sess, sess.session_id, list(sess.errors)
 
 
 def _tool_sandbox_runtime_deps() -> ToolSandboxRuntimeDeps:
@@ -1035,6 +1071,9 @@ def _build_model_payload() -> dict[str, Any]:
             "mvp_invoice_preview": "/portal/tools/agro_erp/mvp/invoice/preview",
             "mvp_invoice_apply": "/portal/tools/agro_erp/mvp/invoice/apply",
             "mvp_readback": "/portal/tools/agro_erp/mvp/workflow/readback",
+            "mvp_session_promote": "/portal/tools/agro_erp/mvp/session/promote",
+            "tool_session_open": "/portal/api/data/sandbox/tool_session/open",
+            "samras_workspace": "/portal/api/data/sandbox/samras_workspace",
             "plan_grid_preview": "/portal/tools/agro_erp/plan/grid_preview",
             "plot_plan_draft_save": "/portal/tools/agro_erp/plan/draft/save",
             "plot_plan_draft_load": "/portal/tools/agro_erp/plan/draft/load",
@@ -1128,73 +1167,107 @@ def _live_state_gate_payload() -> dict[str, Any]:
 
 
 def _compile_and_adapt_resource_context(*, resource_ref: str) -> dict[str, Any]:
-    local_msn_id = str(current_app.config.get("MYCITE_MSN_ID") or "").strip()
-    resolver = _external_resolver()
-    sandbox = _sandbox_engine()
-    canonical_context = _canonical_anthology_context()
-    token = str(resource_ref or "").strip()
-    if token.startswith("sandbox:") or "." not in token:
-        rid = token.split(":", 1)[1] if token.startswith("sandbox:") else token
-        sandbox.compile_isolated_mss_resource(resource_id=rid)
-        token = f"sandbox:{rid}"
-    inherited = sandbox.compile_txa_inherited_context(
-        resource_ref=token,
-        local_msn_id=local_msn_id,
-        external_resolver=resolver,
-        merged_rows_by_id=canonical_context.rows_by_id,
+    """Shared-core compile/resolve path (also used by session-native MVP flows)."""
+    return compile_agro_mvp_resource_context(
+        sandbox_engine=_sandbox_engine(),
+        external_resolver=_external_resolver(),
+        merged_rows_by_id=_canonical_anthology_context().rows_by_id,
+        local_msn_id=str(current_app.config.get("MYCITE_MSN_ID") or "").strip(),
+        resource_ref=resource_ref,
     )
-    resolved = sandbox.resolve_inherited_resource_context(
-        resource_ref=token,
-        local_msn_id=local_msn_id,
-        external_resolver=resolver,
-    )
-    adapted = sandbox.adapt_published_txa_context(
-        published_resource_value=resolved.resource_value if resolved.ok and isinstance(resolved.resource_value, dict) else {},
-        context_source="agro_erp.mvp.resource_select",
-    )
-    return {
-        "resource_ref": token,
-        "inherited_context": inherited,
-        "resolved_context": resolved.to_dict(),
-        "adapted_context": adapted,
-    }
 
 
-def _preview_inherited_write(*, field_id: str, resource_ref: str, inherited_ref_override: str = "") -> dict[str, Any]:
-    built = _compile_and_adapt_resource_context(resource_ref=resource_ref)
-    inherited = built.get("inherited_context") if isinstance(built.get("inherited_context"), dict) else {}
-    selection: dict[str, Any]
-    if str(inherited_ref_override or "").strip():
-        selection = {"selected_ref": str(inherited_ref_override).strip(), "selection_source": "explicit_input", "warnings": []}
-    else:
-        selection = select_inherited_binding_for_field(
-            field_id=field_id,
-            field_ref_bindings=(inherited.get("field_ref_bindings") if isinstance(inherited.get("field_ref_bindings"), dict) else {}),
-        )
-    local_msn_id = str(current_app.config.get("MYCITE_MSN_ID") or "").strip()
-    intent = {
-        "intent_type": "profile_field",
-        "field_id": field_id,
-        "write_mode": "stage_inherited_ref",
-        "resource_ref": resource_ref,
-        "local_msn_id": local_msn_id,
-        "fields": {"inherited_ref": str(selection.get("selected_ref") or "").strip()},
-        "inherited_context": inherited,
-    }
-    preview = preview_write_intent(
-        intent=intent,
-        current_config=_load_active_config_for_write(),
-        local_anthology_payload=_canonical_anthology_context().rows_payload,
+def _preview_inherited_write(
+    *,
+    field_id: str,
+    resource_ref: str,
+    inherited_ref_override: str = "",
+    resource_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    built = resource_context if isinstance(resource_context, dict) and resource_context else _compile_and_adapt_resource_context(
+        resource_ref=resource_ref
+    )
+    return preview_agro_mvp_inherited_field_with_msn(
+        field_id=field_id,
+        resource_ref=str(built.get("resource_ref") or resource_ref or "").strip(),
+        inherited_ref_override=inherited_ref_override,
+        local_msn_id=str(current_app.config.get("MYCITE_MSN_ID") or "").strip(),
+        resource_context=built,
+        load_active_config=_load_active_config_for_write,
+        local_anthology_rows_payload=_canonical_anthology_context().rows_payload,
         external_plan_fn=_no_external_plan,
     )
-    return {
-        "ok": preview.ok,
-        "preview": preview.to_dict(),
-        "selection": selection,
-        "resource_context": built,
-        "errors": list(preview.errors),
-        "warnings": list(preview.warnings) + [str(item).strip() for item in list(selection.get("warnings") or []) if str(item).strip()],
-    }
+
+
+def _agro_promotion_hooks() -> ToolSandboxPromotionHooks:
+    return build_tool_sandbox_promotion_hooks(
+        workspace=_workspace(),
+        load_config_fn=_load_active_config_for_write,
+        save_config_fn=_save_active_config_for_write,
+    )
+
+
+def _mvp_apply_profile_field(*, field_id: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    """Apply a staged inherited profile preview via ``ToolSandboxSession.promote``."""
+    sess, sid, sess_errors = _ensure_agro_tool_session(str(body.get("sandbox_session_id") or "").strip())
+    if sess is None:
+        return 400, {"ok": False, "errors": sess_errors or ["sandbox_session_id is required"], "schema": "mycite.portal.agro_erp.mvp.apply.v1"}
+    resource_ref = str(body.get("resource_ref") or "").strip()
+    inherited_ref = str(body.get("inherited_ref") or "").strip()
+    ephemeral = sess.ephemeral_tool_state.setdefault(AGRO_MVP_EPHEMERAL_KEY, {})
+    compile_ctx = ephemeral.get("compile") if isinstance(ephemeral.get("compile"), dict) else {}
+    if not resource_ref and isinstance(compile_ctx, dict):
+        resource_ref = str(compile_ctx.get("resource_ref") or "").strip()
+    if not resource_ref:
+        return 400, {"ok": False, "error": "resource_ref is required (or load resource context into the session first)"}
+    if isinstance(compile_ctx, dict) and str(compile_ctx.get("resource_ref") or "").strip() not in {"", resource_ref}:
+        compile_ctx = {}
+    if not compile_ctx:
+        compile_ctx = _compile_and_adapt_resource_context(resource_ref=resource_ref)
+        ephemeral["compile"] = compile_ctx
+
+    if field_id not in sess.staged_tool_config_writes:
+        preview_payload = _preview_inherited_write(
+            field_id=field_id,
+            resource_ref=resource_ref,
+            inherited_ref_override=inherited_ref,
+            resource_context=compile_ctx,
+        )
+        if not bool(preview_payload.get("ok")):
+            return 400, {**preview_payload, "sandbox_session_id": sid, "schema": "mycite.portal.agro_erp.mvp.apply.v1"}
+        inner = preview_payload.get("preview") if isinstance(preview_payload.get("preview"), dict) else {}
+        sess.stage_tool_config_write(
+            field_id,
+            {
+                "write_preview": inner,
+                "resource_ref": resource_ref,
+                "mvp_envelope": {"selection": preview_payload.get("selection"), "warnings": preview_payload.get("warnings")},
+            },
+        )
+
+    prom = sess.promote(hooks=_agro_promotion_hooks())
+    prom["sandbox_session_id"] = sid
+    prom["schema"] = "mycite.portal.agro_erp.mvp.apply.v1"
+    prom["session"] = sess.to_public_dict()
+    saved = [item for item in list(prom.get("saved_tool_config_writes") or []) if isinstance(item, dict)]
+    hit = next((item for item in saved if str(item.get("field_id") or "") == field_id), None)
+    apply_dict = hit.get("result") if isinstance(hit, dict) else {}
+    if not isinstance(apply_dict, dict):
+        apply_dict = {}
+    readback = _readback_for_field(
+        field_id,
+        resource_id_used=str(resource_ref),
+        mutation_summary=apply_dict.get("mutation_summary") if isinstance(apply_dict.get("mutation_summary"), dict) else {},
+    )
+    out = dict(apply_dict)
+    apply_ok = bool(apply_dict.get("ok")) if apply_dict else bool(prom.get("ok"))
+    out["ok"] = bool(prom.get("ok")) and apply_ok
+    out["readback"] = readback
+    out["promotion"] = prom
+    out["invariants"] = _no_materialization_invariants(expected_max_created=0)
+    if isinstance(out.get("mutation_summary"), dict):
+        out["invariants"]["minimal_local_rows_bound_ok"] = int((out.get("mutation_summary") or {}).get("created_count") or 0) <= 0
+    return (200 if out.get("ok") else 400), out
 
 @agro_erp_bp.get("/portal/tools/agro_erp/home")
 def agro_erp_home():
@@ -1538,10 +1611,29 @@ def agro_erp_mvp_resource_select_or_load():
             resource_ref = f"sandbox:{local_resource_id}"
     if not resource_ref:
         abort(400, description="resource_ref or source_msn_id/resource_id is required")
+    sess, sid, sess_errors = _ensure_agro_tool_session(
+        str(body.get("sandbox_session_id") or "").strip(),
+        reopen=bool(body.get("reopen_session")),
+    )
+    if sess is None:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "errors": sess_errors,
+                    "schema": "mycite.portal.agro_erp.mvp.resource_select.v1",
+                }
+            ),
+            400,
+        )
     payload = _compile_and_adapt_resource_context(resource_ref=resource_ref)
+    ephemeral = sess.ephemeral_tool_state.setdefault(AGRO_MVP_EPHEMERAL_KEY, {})
+    ephemeral["compile"] = payload
     adapted = payload.get("adapted_context") if isinstance(payload.get("adapted_context"), dict) else {}
     ok = bool((payload.get("inherited_context") or {}).get("ok")) and bool(adapted.get("ok"))
-    return jsonify({"ok": ok, **payload}), (200 if ok else 400)
+    out = {"ok": ok, "sandbox_session_id": sid, "session": sess.to_public_dict(), **payload}
+    out["schema"] = "mycite.portal.agro_erp.mvp.resource_select.v1"
+    return jsonify(out), (200 if ok else 400)
 
 
 @agro_erp_bp.post("/portal/tools/agro_erp/mvp/product/preview")
@@ -1551,15 +1643,45 @@ def agro_erp_mvp_product_preview():
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         abort(400, description="Expected JSON object body")
+    sess, sid, sess_errors = _ensure_agro_tool_session(str(body.get("sandbox_session_id") or "").strip())
+    if sess is None:
+        return (
+            jsonify({"ok": False, "errors": sess_errors, "schema": "mycite.portal.agro_erp.mvp.product.preview.v1"}),
+            400,
+        )
     resource_ref = str(body.get("resource_ref") or "").strip()
+    ephemeral = sess.ephemeral_tool_state.setdefault(AGRO_MVP_EPHEMERAL_KEY, {})
+    compile_ctx = ephemeral.get("compile") if isinstance(ephemeral.get("compile"), dict) else {}
     if not resource_ref:
-        abort(400, description="resource_ref is required")
+        resource_ref = str(compile_ctx.get("resource_ref") or "").strip()
+    if not resource_ref:
+        abort(400, description="resource_ref is required (or load resource context into the session first)")
+    if isinstance(compile_ctx, dict) and str(compile_ctx.get("resource_ref") or "").strip() not in {"", resource_ref}:
+        compile_ctx = {}
+    if not compile_ctx:
+        compile_ctx = _compile_and_adapt_resource_context(resource_ref=resource_ref)
+        ephemeral["compile"] = compile_ctx
     payload = _preview_inherited_write(
         field_id="inherited_product_profile_ref",
         resource_ref=resource_ref,
         inherited_ref_override=str(body.get("inherited_ref") or "").strip(),
+        resource_context=compile_ctx,
     )
-    return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+    if bool(payload.get("ok")):
+        inner = payload.get("preview") if isinstance(payload.get("preview"), dict) else {}
+        sess.stage_tool_config_write(
+            "inherited_product_profile_ref",
+            {
+                "write_preview": inner,
+                "resource_ref": resource_ref,
+                "mvp_envelope": {"selection": payload.get("selection"), "warnings": payload.get("warnings")},
+            },
+        )
+    out = dict(payload)
+    out["sandbox_session_id"] = sid
+    out["session"] = sess.to_public_dict()
+    out["schema"] = "mycite.portal.agro_erp.mvp.product.preview.v1"
+    return jsonify(out), (200 if bool(payload.get("ok")) else 400)
 
 
 @agro_erp_bp.post("/portal/tools/agro_erp/mvp/product/apply")
@@ -1569,46 +1691,8 @@ def agro_erp_mvp_product_apply():
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         abort(400, description="Expected JSON object body")
-    resource_ref = str(body.get("resource_ref") or "").strip()
-    if not resource_ref:
-        abort(400, description="resource_ref is required")
-    preview_payload = _preview_inherited_write(
-        field_id="inherited_product_profile_ref",
-        resource_ref=resource_ref,
-        inherited_ref_override=str(body.get("inherited_ref") or "").strip(),
-    )
-    if not bool(preview_payload.get("ok")):
-        return jsonify(preview_payload), 400
-    preview = preview_payload.get("preview") if isinstance(preview_payload.get("preview"), dict) else {}
-    from _shared.portal.data_engine.write_pipeline import WritePreviewResult
-
-    obj = WritePreviewResult(
-        ok=bool(preview.get("ok")),
-        intent=dict(preview.get("intent") or {}),
-        validation=dict(preview.get("validation") or {}),
-        plan=dict(preview.get("plan") or {}),
-        config_updates=[dict(item) for item in list(preview.get("config_updates") or []) if isinstance(item, dict)],
-        write_actions=[dict(item) for item in list(preview.get("write_actions") or []) if isinstance(item, dict)],
-        warnings=[str(item) for item in list(preview.get("warnings") or [])],
-        errors=[str(item) for item in list(preview.get("errors") or [])],
-    )
-    result = apply_write_preview(
-        preview=obj,
-        workspace=_workspace(),
-        load_config_fn=_load_active_config_for_write,
-        save_config_fn=_save_active_config_for_write,
-    )
-    readback = _readback_for_field(
-        "inherited_product_profile_ref",
-        resource_id_used=str((preview_payload.get("resource_context") or {}).get("resource_ref") or resource_ref),
-        mutation_summary=result.to_dict().get("mutation_summary") if isinstance(result.to_dict(), dict) else {},
-    )
-    out = result.to_dict()
-    out["readback"] = readback
-    out["preview"] = preview_payload
-    out["invariants"] = _no_materialization_invariants(expected_max_created=0)
-    out["invariants"]["minimal_local_rows_bound_ok"] = int((out.get("mutation_summary") or {}).get("created_count") or 0) <= 0
-    return jsonify(out), (200 if result.ok else 400)
+    status, out = _mvp_apply_profile_field(field_id="inherited_product_profile_ref", body=body)
+    return jsonify(out), status
 
 
 @agro_erp_bp.post("/portal/tools/agro_erp/mvp/invoice/preview")
@@ -1618,15 +1702,45 @@ def agro_erp_mvp_invoice_preview():
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         abort(400, description="Expected JSON object body")
+    sess, sid, sess_errors = _ensure_agro_tool_session(str(body.get("sandbox_session_id") or "").strip())
+    if sess is None:
+        return (
+            jsonify({"ok": False, "errors": sess_errors, "schema": "mycite.portal.agro_erp.mvp.invoice.preview.v1"}),
+            400,
+        )
     resource_ref = str(body.get("resource_ref") or "").strip()
+    ephemeral = sess.ephemeral_tool_state.setdefault(AGRO_MVP_EPHEMERAL_KEY, {})
+    compile_ctx = ephemeral.get("compile") if isinstance(ephemeral.get("compile"), dict) else {}
     if not resource_ref:
-        abort(400, description="resource_ref is required")
+        resource_ref = str(compile_ctx.get("resource_ref") or "").strip()
+    if not resource_ref:
+        abort(400, description="resource_ref is required (or load resource context into the session first)")
+    if isinstance(compile_ctx, dict) and str(compile_ctx.get("resource_ref") or "").strip() not in {"", resource_ref}:
+        compile_ctx = {}
+    if not compile_ctx:
+        compile_ctx = _compile_and_adapt_resource_context(resource_ref=resource_ref)
+        ephemeral["compile"] = compile_ctx
     payload = _preview_inherited_write(
         field_id="inherited_supply_log_ref",
         resource_ref=resource_ref,
         inherited_ref_override=str(body.get("inherited_ref") or "").strip(),
+        resource_context=compile_ctx,
     )
-    return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+    if bool(payload.get("ok")):
+        inner = payload.get("preview") if isinstance(payload.get("preview"), dict) else {}
+        sess.stage_tool_config_write(
+            "inherited_supply_log_ref",
+            {
+                "write_preview": inner,
+                "resource_ref": resource_ref,
+                "mvp_envelope": {"selection": payload.get("selection"), "warnings": payload.get("warnings")},
+            },
+        )
+    out = dict(payload)
+    out["sandbox_session_id"] = sid
+    out["session"] = sess.to_public_dict()
+    out["schema"] = "mycite.portal.agro_erp.mvp.invoice.preview.v1"
+    return jsonify(out), (200 if bool(payload.get("ok")) else 400)
 
 
 @agro_erp_bp.post("/portal/tools/agro_erp/mvp/invoice/apply")
@@ -1636,46 +1750,35 @@ def agro_erp_mvp_invoice_apply():
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         abort(400, description="Expected JSON object body")
-    resource_ref = str(body.get("resource_ref") or "").strip()
-    if not resource_ref:
-        abort(400, description="resource_ref is required")
-    preview_payload = _preview_inherited_write(
-        field_id="inherited_supply_log_ref",
-        resource_ref=resource_ref,
-        inherited_ref_override=str(body.get("inherited_ref") or "").strip(),
-    )
-    if not bool(preview_payload.get("ok")):
-        return jsonify(preview_payload), 400
-    preview = preview_payload.get("preview") if isinstance(preview_payload.get("preview"), dict) else {}
-    from _shared.portal.data_engine.write_pipeline import WritePreviewResult
+    status, out = _mvp_apply_profile_field(field_id="inherited_supply_log_ref", body=body)
+    return jsonify(out), status
 
-    obj = WritePreviewResult(
-        ok=bool(preview.get("ok")),
-        intent=dict(preview.get("intent") or {}),
-        validation=dict(preview.get("validation") or {}),
-        plan=dict(preview.get("plan") or {}),
-        config_updates=[dict(item) for item in list(preview.get("config_updates") or []) if isinstance(item, dict)],
-        write_actions=[dict(item) for item in list(preview.get("write_actions") or []) if isinstance(item, dict)],
-        warnings=[str(item) for item in list(preview.get("warnings") or [])],
-        errors=[str(item) for item in list(preview.get("errors") or [])],
+
+@agro_erp_bp.post("/portal/tools/agro_erp/mvp/session/promote")
+def agro_erp_mvp_session_promote():
+    """Explicit promotion for the AGRO tool sandbox session (resources + staged config writes)."""
+    if not request.is_json:
+        abort(415, description="Expected application/json body")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(400, description="Expected JSON object body")
+    sess, sid, sess_errors = _ensure_agro_tool_session(str(body.get("sandbox_session_id") or "").strip())
+    if sess is None:
+        return (
+            jsonify({"ok": False, "errors": sess_errors, "schema": "mycite.portal.agro_erp.mvp.session.promote.v1"}),
+            400,
+        )
+    override = bool(body.get("rule_write_override"))
+    reason = str(body.get("rule_write_override_reason") or "").strip()
+    prom = sess.promote(
+        hooks=_agro_promotion_hooks(),
+        rule_write_override=override,
+        rule_write_override_reason=reason,
     )
-    result = apply_write_preview(
-        preview=obj,
-        workspace=_workspace(),
-        load_config_fn=_load_active_config_for_write,
-        save_config_fn=_save_active_config_for_write,
-    )
-    readback = _readback_for_field(
-        "inherited_supply_log_ref",
-        resource_id_used=str((preview_payload.get("resource_context") or {}).get("resource_ref") or resource_ref),
-        mutation_summary=result.to_dict().get("mutation_summary") if isinstance(result.to_dict(), dict) else {},
-    )
-    out = result.to_dict()
-    out["readback"] = readback
-    out["preview"] = preview_payload
-    out["invariants"] = _no_materialization_invariants(expected_max_created=0)
-    out["invariants"]["minimal_local_rows_bound_ok"] = int((out.get("mutation_summary") or {}).get("created_count") or 0) <= 0
-    return jsonify(out), (200 if result.ok else 400)
+    prom["sandbox_session_id"] = sid
+    prom["session"] = sess.to_public_dict()
+    prom["schema"] = "mycite.portal.agro_erp.mvp.session.promote.v1"
+    return jsonify(prom), (200 if bool(prom.get("ok")) else 400)
 
 
 @agro_erp_bp.get("/portal/tools/agro_erp/mvp/workflow/readback")

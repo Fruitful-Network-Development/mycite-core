@@ -80,7 +80,13 @@ class AgroErpToolFlowTests(unittest.TestCase):
         )
         self.app.config["MYCITE_MSN_ID"] = "3-2-3-17-77-2-6-3-1-6"
         self.app.config["MYCITE_PORTAL_INSTANCE_ID"] = "tff"
-        self.app.config["MYCITE_ACTIVE_PRIVATE_CONFIG"] = {"property": {"title": "Test Farm", "geometry": {"type": "Polygon"}}}
+        active_cfg = {"property": {"title": "Test Farm", "geometry": {"type": "Polygon"}}}
+        self.app.config["MYCITE_ACTIVE_PRIVATE_CONFIG"] = active_cfg
+        # ``resolve_active_private_config_path`` only resolves existing files; seed disk so
+        # ``_save_active_config_for_write`` can persist profile updates during MVP apply.
+        msn_id = str(self.app.config["MYCITE_MSN_ID"] or "").strip()
+        cfg_path = private_dir / f"mycite-config-{msn_id}.json"
+        cfg_path.write_text(json.dumps(active_cfg, indent=2) + "\n", encoding="utf-8")
         self.app.config["MYCITE_DATA_WORKSPACE"] = type("WorkspaceStub", (), {"append_anthology_datum": lambda *args, **kwargs: {"ok": True}})()
         self.old_private = self.module.os.environ.get("PRIVATE_DIR")
         self.old_public = self.module.os.environ.get("PUBLIC_DIR")
@@ -209,15 +215,18 @@ class AgroErpToolFlowTests(unittest.TestCase):
         self.assertEqual(selected.status_code, 200)
         selected_payload = selected.get_json() or {}
         self.assertTrue(selected_payload.get("ok"))
+        session_id = str(selected_payload.get("sandbox_session_id") or "").strip()
+        self.assertTrue(session_id)
+        self.assertEqual(str((selected_payload.get("session") or {}).get("session_id") or ""), session_id)
 
         product_preview = self.client.post(
             "/portal/tools/agro_erp/mvp/product/preview",
-            json={"resource_ref": "sandbox:txa.mvp.local"},
+            json={"resource_ref": "sandbox:txa.mvp.local", "sandbox_session_id": session_id},
         )
         self.assertEqual(product_preview.status_code, 200)
         product_apply = self.client.post(
             "/portal/tools/agro_erp/mvp/product/apply",
-            json={"resource_ref": "sandbox:txa.mvp.local"},
+            json={"resource_ref": "sandbox:txa.mvp.local", "sandbox_session_id": session_id},
         )
         self.assertEqual(product_apply.status_code, 200)
         product_apply_payload = product_apply.get_json() or {}
@@ -229,12 +238,12 @@ class AgroErpToolFlowTests(unittest.TestCase):
 
         invoice_preview = self.client.post(
             "/portal/tools/agro_erp/mvp/invoice/preview",
-            json={"resource_ref": "sandbox:txa.mvp.local"},
+            json={"resource_ref": "sandbox:txa.mvp.local", "sandbox_session_id": session_id},
         )
         self.assertEqual(invoice_preview.status_code, 200)
         invoice_apply = self.client.post(
             "/portal/tools/agro_erp/mvp/invoice/apply",
-            json={"resource_ref": "sandbox:txa.mvp.local"},
+            json={"resource_ref": "sandbox:txa.mvp.local", "sandbox_session_id": session_id},
         )
         self.assertEqual(invoice_apply.status_code, 200)
         invoice_apply_payload = invoice_apply.get_json() or {}
