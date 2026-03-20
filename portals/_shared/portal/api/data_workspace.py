@@ -27,6 +27,7 @@ from _shared.portal.data_engine.resource_registry import (
 from _shared.portal.data_engine.anthology_registry import load_base_registry
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
 from _shared.portal.data_engine.inherited_txa_adapter import select_inherited_binding_for_field
+from _shared.portal.data_engine.profile_config_refs import get_path
 from _shared.portal.data_engine.rules import (
     build_append_row_dict,
     build_updated_row_dict,
@@ -43,6 +44,13 @@ from _shared.portal.data_engine.rules import (
 from _shared.portal.data_engine.rules.base import parse_datum_id
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
 from _shared.portal.sandbox import LocalResourceLifecycleService, SandboxEngine, migrate_fnd_samras_rows_to_sandbox
+from _shared.portal.sandbox.txa_sandbox_workspace import build_txa_sandbox_view_model
+from _shared.portal.sandbox.tool_sandbox_session import (
+    ToolSandboxPromotionHooks,
+    ToolSandboxRuntimeDeps,
+    ToolSandboxSessionManager,
+)
+from _shared.portal.sandbox.workspace_contract import AGRO_ERP_SANDBOX_DECLARATION
 
 
 def register_data_routes(
@@ -315,6 +323,133 @@ def register_data_routes(
         engine = _sandbox_engine()
         return jsonify({"ok": True, "resources": engine.list_resources(), "schema": "mycite.portal.sandbox.resources.v1"})
 
+    def _tool_sandbox_manager() -> ToolSandboxSessionManager:
+        key = "MYCITE_TOOL_SANDBOX_SESSION_MANAGER"
+        existing = app.config.get(key)
+        if existing is None:
+            existing = ToolSandboxSessionManager()
+            app.config[key] = existing
+        return existing
+
+    def _tool_sandbox_runtime_deps() -> ToolSandboxRuntimeDeps:
+        return ToolSandboxRuntimeDeps(
+            data_root=_data_root(),
+            sandbox_engine=_sandbox_engine(),
+            local_resource_service=_local_resource_service(),
+            get_active_config=_load_active_config,
+            get_canonical_rows_payload=_canonical_rows_payload,
+            get_path=get_path,
+        )
+
+    def _declaration_for_tool_session(tool_key: str, body_decl: Any) -> dict[str, Any]:
+        if isinstance(body_decl, dict) and body_decl:
+            return dict(body_decl)
+        tk = str(tool_key or "").strip().lower()
+        if tk == "agro_erp":
+            return dict(AGRO_ERP_SANDBOX_DECLARATION)
+        abort(400, description="declaration is required for this tool_key")
+
+    def _anthology_row_promote_hook(datum_id: str, row: dict[str, Any]) -> dict[str, Any]:
+        if not hasattr(workspace, "update_anthology_profile"):
+            return {"ok": False, "errors": ["update_anthology_profile is unavailable"], "warnings": []}
+        rid = str(row.get("id") or row.get("row_id") or row.get("identifier") or datum_id).strip()
+        label = str(row.get("label") or row.get("name") or "").strip()
+        pairs_obj = row.get("pairs")
+        if not isinstance(pairs_obj, list):
+            avp = row.get("attribute_value_pairs")
+            if isinstance(avp, list):
+                pairs_obj = [
+                    {
+                        "reference": str(p.get("reference") or p.get("attribute") or "").strip(),
+                        "magnitude": str(p.get("magnitude") or p.get("value") or "").strip(),
+                    }
+                    for p in avp
+                    if isinstance(p, dict)
+                ]
+            else:
+                pairs_obj = None
+        return workspace.update_anthology_profile(row_id=rid, label=label, pairs=pairs_obj)
+
+    @app.post("/portal/api/data/sandbox/tool_session/open")
+    def portal_data_sandbox_tool_session_open():
+        body = _json_body()
+        tool_key = str(body.get("tool_key") or body.get("tool_id") or "").strip()
+        if not tool_key:
+            abort(400, description="tool_key is required")
+        decl = _declaration_for_tool_session(tool_key, body.get("declaration"))
+        ctx = body.get("initial_context") if isinstance(body.get("initial_context"), dict) else None
+        sid = str(body.get("session_id") or "").strip() or None
+        try:
+            sess = _tool_sandbox_manager().open_session(
+                _tool_sandbox_runtime_deps(),
+                tool_key=tool_key,
+                declaration=decl,  # type: ignore[arg-type]
+                session_id=sid,
+                initial_context=ctx,
+            )
+        except ValueError as exc:
+            return (
+                jsonify({"ok": False, "error": str(exc), "schema": "mycite.portal.sandbox.tool_session.open.v1"}),
+                400,
+            )
+        out = sess.to_public_dict()
+        out["ok"] = not bool(sess.errors)
+        return jsonify(out), (200 if out["ok"] else 400)
+
+    @app.get("/portal/api/data/sandbox/tool_session/<session_id>")
+    def portal_data_sandbox_tool_session_get(session_id: str):
+        sess = _tool_sandbox_manager().get(session_id)
+        if sess is None:
+            return (
+                jsonify({"ok": False, "error": "session not found", "schema": "mycite.portal.sandbox.tool_session.get.v1"}),
+                404,
+            )
+        out = sess.to_public_dict()
+        out["ok"] = True
+        return jsonify(out)
+
+    @app.post("/portal/api/data/sandbox/tool_session/<session_id>/stage")
+    def portal_data_sandbox_tool_session_stage(session_id: str):
+        body = _json_body()
+        sess = _tool_sandbox_manager().get(session_id)
+        if sess is None:
+            return jsonify({"ok": False, "error": "session not found"}), 404
+        resources = body.get("resources") if isinstance(body.get("resources"), dict) else {}
+        anthology_rows = body.get("anthology_rows") if isinstance(body.get("anthology_rows"), dict) else {}
+        for rid, payload in resources.items():
+            if isinstance(payload, dict):
+                sess.stage_resource(str(rid), payload)
+        for did, row in anthology_rows.items():
+            if isinstance(row, dict):
+                sess.stage_anthology_row(str(did), row)
+        out = sess.to_public_dict()
+        out["ok"] = True
+        return jsonify(out)
+
+    @app.post("/portal/api/data/sandbox/tool_session/<session_id>/promote")
+    def portal_data_sandbox_tool_session_promote(session_id: str):
+        body = _json_body()
+        sess = _tool_sandbox_manager().get(session_id)
+        if sess is None:
+            return jsonify({"ok": False, "error": "session not found"}), 404
+        override = bool(body.get("rule_write_override"))
+        reason = str(body.get("rule_write_override_reason") or "").strip()
+        hooks = ToolSandboxPromotionHooks(update_anthology_row=_anthology_row_promote_hook)
+        prom = sess.promote(
+            hooks=hooks,
+            rule_write_override=override,
+            rule_write_override_reason=reason,
+        )
+        if override and not reason:
+            prom.setdefault("warnings", []).append("rule_write_override used without rule_write_override_reason")
+        prom["session"] = sess.to_public_dict()
+        return jsonify(prom), (200 if bool(prom.get("ok")) else 400)
+
+    @app.delete("/portal/api/data/sandbox/tool_session/<session_id>")
+    def portal_data_sandbox_tool_session_close(session_id: str):
+        closed = _tool_sandbox_manager().close(session_id)
+        return jsonify({"ok": bool(closed), "schema": "mycite.portal.sandbox.tool_session.close.v1"})
+
     @app.get("/portal/api/data/resources/local")
     def portal_data_resources_local():
         return jsonify(_local_resource_service().list_local_inventory())
@@ -538,6 +673,30 @@ def register_data_routes(
         out = result.to_dict()
         out["schema"] = "mycite.portal.sandbox.samras_upsert.v1"
         return jsonify(out), (200 if result.ok else 400)
+
+    @app.post("/portal/api/data/sandbox/txa_workspace/view_model")
+    def portal_data_sandbox_txa_workspace_view_model():
+        """Assemble TXA sandbox title table + branch context (staged entries are preview-only)."""
+        body = _json_body()
+        rid = str(body.get("resource_id") or "").strip()
+        if not rid:
+            abort(400, description="resource_id is required")
+        payload = _sandbox_engine().get_resource(rid)
+        if bool(payload.get("missing")):
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": f"resource not found: {rid}",
+                        "schema": "mycite.portal.sandbox.txa_workspace.view_model.v1",
+                    }
+                ),
+                404,
+            )
+        selected = str(body.get("selected_address_id") or "").strip()
+        staged = body.get("staged_entries") if isinstance(body.get("staged_entries"), list) else []
+        vm = build_txa_sandbox_view_model(payload, selected_address_id=selected, staged_entries=staged)
+        return jsonify({"ok": True, **vm})
 
     @app.get("/portal/api/data/sandbox/samras/<path:resource_id>/decode")
     def portal_data_sandbox_samras_decode(resource_id: str):

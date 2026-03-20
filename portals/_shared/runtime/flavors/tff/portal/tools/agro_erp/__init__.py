@@ -17,7 +17,13 @@ from _shared.portal.data_engine.property_workspace import resolve_property_works
 from _shared.portal.data_engine.profile_config_refs import get_path
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
 from _shared.portal.data_engine.external_resources.resolver import ExternalResourceResolver
+from _shared.portal.sandbox import AGRO_ERP_SANDBOX_DECLARATION, LocalResourceLifecycleService
 from _shared.portal.sandbox.engine import SandboxEngine
+from _shared.portal.sandbox.tool_sandbox_session import (
+    ToolSandboxPromotionHooks,
+    ToolSandboxRuntimeDeps,
+    ToolSandboxSessionManager,
+)
 from _shared.portal.services.portal_model import canonicalize_portal_model_config
 from portal.core_services.runtime import resolve_active_private_config_path
 from portal.services.contract_store import get_contract, list_contracts
@@ -78,6 +84,24 @@ def _workspace():
 
 def _sandbox_engine() -> SandboxEngine:
     return SandboxEngine(data_root=_data_dir())
+
+
+def _tool_sandbox_manager() -> ToolSandboxSessionManager:
+    key = "MYCITE_TOOL_SANDBOX_SESSION_MANAGER"
+    if key not in current_app.config:
+        current_app.config[key] = ToolSandboxSessionManager()
+    return current_app.config[key]
+
+
+def _tool_sandbox_runtime_deps() -> ToolSandboxRuntimeDeps:
+    return ToolSandboxRuntimeDeps(
+        data_root=_data_dir(),
+        sandbox_engine=_sandbox_engine(),
+        local_resource_service=LocalResourceLifecycleService(data_root=_data_dir(), sandbox_engine=_sandbox_engine()),
+        get_active_config=_load_active_config_for_write,
+        get_canonical_rows_payload=lambda: _canonical_anthology_context().rows_payload,
+        get_path=get_path,
+    )
 
 
 def _external_resolver() -> ExternalResourceResolver:
@@ -1313,11 +1337,34 @@ def agro_erp_plan_draft_save():
         },
         "updated_at": int(time.time()),
     }
-    result = _sandbox_engine().save_resource(resource_id, draft_payload)
-    out = result.to_dict()
+    decl = dict(AGRO_ERP_SANDBOX_DECLARATION)
+    sess = _tool_sandbox_manager().open_session(
+        _tool_sandbox_runtime_deps(),
+        tool_key=TOOL_ID,
+        declaration=decl,  # type: ignore[arg-type]
+        initial_context={"parcel_workspace": workspace},
+    )
+    if sess.errors:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "errors": list(sess.errors),
+                    "warnings": list(sess.warnings),
+                    "schema": "mycite.portal.agro_erp.plot_plan_draft.v1",
+                }
+            ),
+            400,
+        )
+    sess.stage_resource(resource_id, draft_payload)
+    prom = sess.promote(hooks=ToolSandboxPromotionHooks())
+    out = dict(prom)
     out["draft"] = draft_payload
-    out["ok"] = bool(result.ok)
-    return jsonify(out), (200 if result.ok else 400)
+    out["resource_id"] = resource_id
+    out["sandbox_session_id"] = sess.session_id
+    out["schema"] = "mycite.portal.agro_erp.plot_plan_draft.v1"
+    out.setdefault("ok", bool(prom.get("ok")))
+    return jsonify(out), (200 if bool(prom.get("ok")) else 400)
 
 
 @agro_erp_bp.get("/portal/tools/agro_erp/plan/draft/load")
@@ -1325,10 +1372,34 @@ def agro_erp_plan_draft_load():
     resource_id = str(request.args.get("resource_id") or "").strip()
     if not resource_id:
         abort(400, description="resource_id is required")
-    payload = _sandbox_engine().get_resource(resource_id)
-    if bool(payload.get("missing")):
-        return jsonify({"ok": False, "error": f"resource not found: {resource_id}"}), 404
-    return jsonify({"ok": True, "draft": payload})
+    decl = dict(AGRO_ERP_SANDBOX_DECLARATION)
+    decl["required_resources"] = [{"resource_id": resource_id, "required": True}]
+    sess = _tool_sandbox_manager().open_session(
+        _tool_sandbox_runtime_deps(),
+        tool_key=TOOL_ID,
+        declaration=decl,  # type: ignore[arg-type]
+    )
+    if sess.errors or resource_id not in sess.loaded_resources:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": sess.errors or [f"resource not found: {resource_id}"],
+                    "warnings": sess.warnings,
+                    "schema": "mycite.portal.agro_erp.plot_plan_draft_load.v1",
+                }
+            ),
+            404,
+        )
+    inner = sess.working_resources.get(resource_id) or sess.loaded_resources.get(resource_id)
+    return jsonify(
+        {
+            "ok": True,
+            "draft": inner,
+            "sandbox_session_id": sess.session_id,
+            "schema": "mycite.portal.agro_erp.plot_plan_draft_load.v1",
+        }
+    )
 
 
 @agro_erp_bp.post("/portal/tools/agro_erp/daemon/resolve")

@@ -118,13 +118,34 @@ def build_updated_row_dict(
 
 
 def graph_write_violation_message(report) -> str | None:
-    """If merged graph should block writes without override, return reason."""
+    """Block only when the graph contains **invalid** rows (``report.ok`` is false).
+
+    ``ambiguous`` / ``unknown`` rows do not block writes; they are surfaced via
+    :func:`graph_evolving_state_warnings` and per-datum ``RulePolicy.guidance_notes``.
+    """
     if not report.ok:
         return "datum rule graph contains invalid row(s)"
-    amb = [u.datum_id for u in report.understandings if as_text(u.status) == "ambiguous"]
-    if amb:
-        return "datum rule graph contains ambiguous row(s): " + ", ".join(sorted(amb)[:12]) + ("…" if len(amb) > 12 else "")
     return None
+
+
+def graph_evolving_state_warnings(report) -> list[str]:
+    """Non-blocking notices for ambiguous/unknown rows (rules still evolving)."""
+    out: list[str] = []
+    amb = sorted({as_text(u.datum_id) for u in report.understandings if as_text(u.status) == "ambiguous"})
+    unk = sorted({as_text(u.datum_id) for u in report.understandings if as_text(u.status) == "unknown"})
+    if amb:
+        tail = "…" if len(amb) > 12 else ""
+        out.append(
+            "ambiguous datum rows (edits allowed; review classification): "
+            + ", ".join(amb[:12])
+            + tail
+        )
+    if unk:
+        tail = "…" if len(unk) > 12 else ""
+        out.append(
+            "unknown-rule datum rows (edits allowed; neutral/manual path): " + ", ".join(unk[:12]) + tail
+        )
+    return out
 
 
 def evaluate_probe_write(
@@ -148,6 +169,7 @@ def evaluate_probe_write(
     errors: list[str] = []
 
     graph_err = graph_write_violation_message(report)
+    warnings.extend(graph_evolving_state_warnings(report))
     if graph_err and rule_write_override:
         warnings.append(f"rule_write_override: {graph_err}")
     elif graph_err:
@@ -219,6 +241,7 @@ def evaluate_resource_payload_write(
     graph_err = graph_write_violation_message(report)
     errors: list[str] = []
     warnings: list[str] = []
+    warnings.extend(graph_evolving_state_warnings(report))
     if graph_err and not rule_write_override:
         errors.append(graph_err)
     elif graph_err and rule_write_override:
@@ -291,6 +314,7 @@ __all__ = [
     "build_append_row_dict",
     "build_updated_row_dict",
     "graph_write_violation_message",
+    "graph_evolving_state_warnings",
     "evaluate_probe_write",
     "evaluate_resource_payload_write",
     "infer_reference_filter_rule_key",

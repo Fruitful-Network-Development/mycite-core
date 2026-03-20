@@ -1,6 +1,12 @@
   <section class="card data-tool" id="dataToolApp" data-active-tab="anthology" data-open-nimm="0">
     <div id="dtMessages" class="data-tool__messages" aria-live="polite"></div>
 
+    <nav class="data-tool__workspaceTabs servicetabs" aria-label="Data workspace mode">
+      <button type="button" class="servicetabs__tab is-active" data-dt-workspace-tab="anthology">Anthology workbench</button>
+      <button type="button" class="servicetabs__tab" data-dt-workspace-tab="txa_sandbox">TXA sandbox (resource)</button>
+    </nav>
+
+    <div id="dtWorkspaceAnthology" class="data-tool__workspacePanel" data-workspace-panel="anthology">
     <div class="data-tool__layout data-tool__layout--workbench">
       <div class="data-tool__main">
         <section class="card data-tool__anthologyWorkbench">
@@ -66,6 +72,95 @@
             </article>
           </div>
         </section>
+      </div>
+    </div>
+    </div>
+
+    <div id="dtWorkspaceTxaSandbox" class="data-tool__workspacePanel" data-workspace-panel="txa_sandbox" hidden>
+      <div class="data-tool__layout data-tool__layout--txaSandbox">
+        <div class="data-tool__main">
+          <section class="card data-tool__txaSandboxCard">
+            <header class="data-tool__graphToolbar">
+              <div class="data-tool__graphToolbarTitle">
+                <div class="card__kicker">Sandbox resource</div>
+                <div class="card__title">Title-carrying TXA / SAMRAS table</div>
+              </div>
+              <div class="data-tool__controlRow data-tool__controlRow--wrap">
+                <label class="data-tool__growLabel">
+                  <span>resource_id</span>
+                  <input id="dtTxaResourceId" type="text" placeholder="e.g. txa.samras.species_demo" style="min-width:220px;" />
+                </label>
+                <button type="button" id="dtTxaLoadBtn">Load</button>
+                <button type="button" id="dtTxaRefreshBtn">Refresh</button>
+                <button type="button" id="dtTxaClearStagedBtn">Clear staged</button>
+                <span id="dtTxaStatus" class="data-tool__statusText"></span>
+              </div>
+            </header>
+            <p id="dtTxaHelp" class="data-tool__legendText">
+              Uses <code>rows_by_address</code> on a sandbox SAMRAS-style resource. <strong>Staged</strong> rows are browser-local preview only until promoted through sandbox save / lifecycle (not auto-persisted here).
+            </p>
+            <div class="data-tool__txaSandboxGrid">
+              <article class="data-tool__graphPane data-tool__txaGraphPane">
+                <div class="data-tool__paneHead">
+                  <div class="card__kicker">Structure</div>
+                  <div class="card__title">Path + children</div>
+                </div>
+                <div id="dtTxaStructureGraph" class="data-tool__txaMiniGraph" role="region" aria-label="TXA address path"></div>
+              </article>
+              <article class="data-tool__tablePane">
+                <div class="data-tool__paneHead">
+                  <div class="card__kicker">Title table</div>
+                  <div class="card__title">TXA address + title / name</div>
+                </div>
+                <div class="data-tool__tableWrap">
+                  <table class="data-tool__table data-tool__table--compact">
+                    <thead>
+                      <tr>
+                        <th scope="col">Status</th>
+                        <th scope="col">Address</th>
+                        <th scope="col">Title</th>
+                        <th scope="col">Parent</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dtTxaTitleTableBody"></tbody>
+                  </table>
+                </div>
+                <p id="dtTxaTableEmpty" class="data-tool__empty" hidden>No rows loaded. Enter a sandbox resource_id and load.</p>
+              </article>
+            </div>
+            <div class="data-tool__controlRow data-tool__controlRow--wrap data-tool__txaStageRow">
+              <label class="data-tool__growLabel">
+                <span>New cultivar / title</span>
+                <input id="dtTxaNewTitle" type="text" placeholder="e.g. purple_passion" />
+              </label>
+              <button type="button" id="dtTxaStageAddBtn">Stage as next child</button>
+            </div>
+            <p id="dtTxaStagedHint" class="data-tool__legendText"></p>
+          </section>
+        </div>
+        <aside class="card data-tool__txaBranchAside" aria-label="Branch context for selected node">
+          <div class="data-tool__paneHead">
+            <div class="card__kicker">Right inspector</div>
+            <div class="card__title">Branch context</div>
+          </div>
+          <p id="dtTxaBranchIntro" class="data-tool__legendText">Select a row or path segment. Shows parent, siblings, children, and the next child slot.</p>
+          <section class="data-tool__txaBranchSection">
+            <h3 class="data-tool__txaBranchHeading">Path to root</h3>
+            <div id="dtTxaBranchPath" class="data-tool__txaBranchPath"></div>
+          </section>
+          <section class="data-tool__txaBranchSection">
+            <h3 class="data-tool__txaBranchHeading">Siblings</h3>
+            <div id="dtTxaBranchSiblings" class="data-tool__txaBranchList"></div>
+          </section>
+          <section class="data-tool__txaBranchSection">
+            <h3 class="data-tool__txaBranchHeading">Children</h3>
+            <div id="dtTxaBranchChildren" class="data-tool__txaBranchList"></div>
+          </section>
+          <section class="data-tool__txaBranchSection">
+            <h3 class="data-tool__txaBranchHeading">Next child slot</h3>
+            <div id="dtTxaBranchNext" class="data-tool__txaBranchNext"></div>
+          </section>
+        </aside>
       </div>
     </div>
 
