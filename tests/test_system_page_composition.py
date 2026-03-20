@@ -14,7 +14,10 @@ class SystemPageCompositionTests(unittest.TestCase):
         self.assertNotIn('id="dtAnthologyInspector"', text)
         self.assertNotIn("data-tool__workbenchWithInspector", text)
         self.assertNotIn('class="page-tabs"', text)
+        self.assertNotIn("data-dt-workspace-tab", text)
         self.assertIn('id="dtWorkbenchGrid"', text)
+        self.assertIn('id="dtWorkspaceResources"', text)
+        self.assertIn('id="dtResourcesTableBody"', text)
         self.assertIn('data-layout-mode="table"', text)
         self.assertIn('option value="table"', text)
         self.assertIn('option value="grouped"', text)
@@ -44,13 +47,13 @@ class SystemPageCompositionTests(unittest.TestCase):
             self.assertIn('id="lrSamrasActionRow"', text)
             self.assertIn('id="lrBtnPromoteSamras"', text)
 
-    def test_data_tool_shell_samras_workspace_controls(self) -> None:
+    def test_data_tool_shell_resources_workbench_controls(self) -> None:
         partial = REPO_ROOT / "portals/_shared/runtime/flavors/fnd/portal/ui/templates/tools/partials/data_tool_shell.html"
         text = partial.read_text(encoding="utf-8")
-        self.assertIn("SAMRAS resource_id", text)
-        self.assertIn('id="dtSamrasPresetTxa"', text)
-        self.assertIn('id="dtSamrasPresetMsn"', text)
-        self.assertIn("SAMRAS workspace", text)
+        self.assertIn('id="dtResourcesRefreshBtn"', text)
+        self.assertIn('id="dtResourcesStatus"', text)
+        self.assertIn('id="dtResourcesFilesJson"', text)
+        self.assertIn('id="dtWorkspaceResources"', text)
 
     def test_system_inheritance_workbench_markup(self) -> None:
         for flavor in ("fnd", "tff"):
@@ -75,6 +78,7 @@ class SystemPageCompositionTests(unittest.TestCase):
         body = data_workspace.read_text(encoding="utf-8")
         self.assertIn('"grouped_by_source"', body)
         self.assertIn("_group_inherited_index", body)
+        self.assertIn("/portal/api/data/system/resource_workbench", body)
 
 
 if __name__ == "__main__":

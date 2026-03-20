@@ -94,8 +94,15 @@
   var samrasSelectedNodeMetaEl = qs("#dtsamrasSelectedNodeMeta", app);
 
   var dtWorkspaceTabButtons = qsa("[data-dt-workspace-tab]", app);
+  var systemWorkbenchMode = String(app.getAttribute("data-system-workbench-mode") || "anthology").trim().toLowerCase();
   var dtWorkspaceAnthology = qs("#dtWorkspaceAnthology", app);
-  var dtWorkspaceTxaSandbox = qs("#dtWorkspaceTxaSandbox", app);
+  var dtWorkspaceResources = qs("#dtWorkspaceResources", app);
+  var dtResourcesRefreshBtn = qs("#dtResourcesRefreshBtn", app);
+  var dtResourcesStatus = qs("#dtResourcesStatus", app);
+  var dtResourcesTableBody = qs("#dtResourcesTableBody", app);
+  var dtResourcesTableEmpty = qs("#dtResourcesTableEmpty", app);
+  var dtResourcesFilesJson = qs("#dtResourcesFilesJson", app);
+  var dtResourcesInspectorMount = document.getElementById("dtResourcesInspectorMount");
   var dtTxaResourceId = qs("#dtTxaResourceId", app);
   var dtTxaLoadBtn = qs("#dtTxaLoadBtn", app);
   var dtTxaRefreshBtn = qs("#dtTxaRefreshBtn", app);
@@ -358,6 +365,10 @@
     return document.getElementById("systemInspectorPanelTxa");
   }
 
+  function systemInspectorPanelResourcesEl() {
+    return document.getElementById("systemInspectorPanelResources");
+  }
+
   function ensureTxaAsideInShellHost() {
     var host = systemInspectorPanelTxaEl();
     var aside = qs(".data-tool__txaBranchAside", app);
@@ -369,10 +380,12 @@
   function syncSystemShellDataToolPanels(workspaceMode) {
     var anth = systemInspectorPanelAnthologyEl();
     var txa = systemInspectorPanelTxaEl();
-    if (!anth || !txa) return;
+    var resources = systemInspectorPanelResourcesEl();
+    if (!anth || !txa || !resources) return;
     var m = String(workspaceMode || "anthology").trim();
     anth.hidden = m !== "anthology";
     txa.hidden = m !== "txa_sandbox";
+    resources.hidden = m !== "resources";
   }
 
   function loadWorkbenchLayoutPreference() {
@@ -3184,17 +3197,102 @@
     return payload;
   }
 
+  function renderSystemResourceInspectorRow(row) {
+    if (!dtResourcesInspectorMount) return;
+    if (!row) {
+      dtResourcesInspectorMount.innerHTML = '<p class="data-tool__empty">Select a resource datum row from the center table.</p>';
+      return;
+    }
+    dtResourcesInspectorMount.innerHTML =
+      "<p><strong>File</strong><br/><code>" +
+      escapeText(row.filename || "") +
+      "</code></p>" +
+      "<p><strong>Identifier</strong><br/><code>" +
+      escapeText(row.identifier || "") +
+      "</code></p>" +
+      "<p><strong>Label</strong><br/>" +
+      escapeText(row.label || "") +
+      "</p>" +
+      "<p><strong>Reference</strong><br/><code>" +
+      escapeText(row.reference || "") +
+      "</code></p>" +
+      "<p><strong>Magnitude</strong><br/><code>" +
+      escapeText(row.magnitude || "") +
+      "</code></p>" +
+      "<p><strong>Layer / VG</strong><br/><code>" +
+      escapeText(String(row.layer == null ? "" : row.layer)) +
+      " / " +
+      escapeText(String(row.value_group == null ? "" : row.value_group)) +
+      "</code></p>";
+  }
+
+  function renderSystemResourceWorkbench(payload) {
+    if (!dtResourcesTableBody) return;
+    var rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+    dtResourcesTableBody.innerHTML = "";
+    if (dtResourcesTableEmpty) dtResourcesTableEmpty.hidden = rows.length > 0;
+    if (dtResourcesStatus) {
+      dtResourcesStatus.textContent = "Rows: " + String(rows.length);
+    }
+    if (dtResourcesFilesJson) {
+      var files = Array.isArray(payload && payload.files) ? payload.files : [];
+      dtResourcesFilesJson.textContent = JSON.stringify(files, null, 2);
+    }
+    rows.forEach(function (row) {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td><code>" +
+        escapeText(row.file_key || "") +
+        "</code></td><td><code>" +
+        escapeText(row.identifier || "") +
+        "</code></td><td>" +
+        escapeText(row.label || "") +
+        "</td><td><code>" +
+        escapeText(row.reference || "") +
+        "</code></td><td><code>" +
+        escapeText(row.magnitude || "") +
+        "</code></td><td>" +
+        escapeText(String(row.layer == null ? "" : row.layer)) +
+        "</td><td>" +
+        escapeText(String(row.value_group == null ? "" : row.value_group)) +
+        "</td>";
+      tr.addEventListener("click", function () {
+        qsa("tr.is-selected", dtResourcesTableBody).forEach(function (it) {
+          it.classList.remove("is-selected");
+        });
+        tr.classList.add("is-selected");
+        renderSystemResourceInspectorRow(row);
+      });
+      dtResourcesTableBody.appendChild(tr);
+    });
+    renderSystemResourceInspectorRow(null);
+  }
+
+  async function loadSystemResourceWorkbench() {
+    var payload = await api("/portal/api/data/system/resource_workbench");
+    renderSystemResourceWorkbench(payload || {});
+    return payload;
+  }
+
   function setDtWorkspaceTab(mode) {
     var m = String(mode || "anthology").trim();
-    if (!dtWorkspaceAnthology || !dtWorkspaceTxaSandbox) return;
-    dtWorkspaceAnthology.hidden = m !== "anthology";
-    dtWorkspaceTxaSandbox.hidden = m !== "txa_sandbox";
+    if (m !== "anthology" && m !== "resources") m = "anthology";
+    if (dtWorkspaceAnthology) dtWorkspaceAnthology.hidden = m !== "anthology";
+    if (dtWorkspaceResources) dtWorkspaceResources.hidden = m !== "resources";
     dtWorkspaceTabButtons.forEach(function (b) {
       var id = String(b.getAttribute("data-dt-workspace-tab") || "").trim();
       if (id === m) b.classList.add("is-active");
       else b.classList.remove("is-active");
     });
-    ensureTxaAsideInShellHost();
+    if (m === "resources") {
+      if (typeof loadSystemResourceWorkbench === "function") {
+        loadSystemResourceWorkbench().catch(function (err) {
+          setMessages([err && err.message ? err.message : "Failed to load resource workbench"], []);
+        });
+      }
+    } else {
+      ensureTxaAsideInShellHost();
+    }
     syncSystemShellDataToolPanels(m);
     try {
       window.sessionStorage.setItem(WORKSPACE_TAB_STORAGE_KEY, m);
@@ -5039,14 +5137,14 @@
       if (mode) setDtWorkspaceTab(mode);
     });
   });
-  try {
-    var savedWs = window.sessionStorage.getItem(WORKSPACE_TAB_STORAGE_KEY);
-    if (savedWs === "txa_sandbox" || savedWs === "anthology") {
-      setDtWorkspaceTab(savedWs);
-    }
-  } catch (_) {
-    /* ignore */
+  if (dtResourcesRefreshBtn) {
+    dtResourcesRefreshBtn.addEventListener("click", function () {
+      loadSystemResourceWorkbench().catch(function (err) {
+        setMessages([err && err.message ? err.message : "Failed to refresh resource workbench"], []);
+      });
+    });
   }
+  setDtWorkspaceTab(systemWorkbenchMode === "resources" ? "resources" : "anthology");
 
   function applySamrasWorkbenchPreset(resourceId) {
     if (!dtTxaResourceId) return;
