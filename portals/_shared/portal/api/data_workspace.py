@@ -28,11 +28,19 @@ from _shared.portal.data_engine.anthology_registry import load_base_registry
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
 from _shared.portal.data_engine.inherited_txa_adapter import select_inherited_binding_for_field
 from _shared.portal.data_engine.rules import (
+    build_append_row_dict,
+    build_updated_row_dict,
+    compute_next_append_datum_id,
+    derive_rule_policy,
+    evaluate_probe_write,
+    evaluate_resource_payload_write,
+    extract_rows_payload_from_resource_body,
+    infer_reference_filter_rule_key,
     reference_filter_options,
     resolve_lens_for_datum,
     understand_datums,
-    validate_rule_create,
 )
+from _shared.portal.data_engine.rules.base import parse_datum_id
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
 from _shared.portal.sandbox import LocalResourceLifecycleService, SandboxEngine, migrate_fnd_samras_rows_to_sandbox
 
@@ -201,6 +209,20 @@ def register_data_routes(
         if compact_payload:
             return compact_payload
         return {"rows": {}}
+
+    def _canonical_row_entry(row_token: str) -> tuple[str, dict[str, Any]] | None:
+        token = str(row_token or "").strip()
+        if not token:
+            return None
+        ctx = _canonical_anthology_context()
+        if token in ctx.rows_by_id:
+            return token, dict(ctx.rows_by_id[token])
+        for key, row in ctx.rows_by_id.items():
+            rid = str(row.get("row_id") or "").strip()
+            ident = str(row.get("identifier") or "").strip()
+            if token in {rid, ident}:
+                return str(key), dict(row)
+        return None
 
     def _group_inherited_index(index_payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
         grouped: dict[str, list[dict[str, Any]]] = {}
@@ -422,7 +444,13 @@ def register_data_routes(
     def portal_data_sandbox_resource(resource_id: str):
         engine = _sandbox_engine()
         payload = engine.get_resource(resource_id)
-        return jsonify({"ok": not bool(payload.get("missing")), "resource": payload})
+        out: dict[str, Any] = {"ok": not bool(payload.get("missing")), "resource": payload}
+        rows_payload = _rule_rows_payload_from_sandbox_resource(str(resource_id or "").strip())
+        if rows_payload.get("rows"):
+            report = understand_datums(rows_payload)
+            out["datum_understanding"] = report.to_dict()
+            out["rule_policy_by_id"] = {k: derive_rule_policy(v).to_dict() for k, v in report.by_id.items()}
+        return jsonify(out)
 
     @app.post("/portal/api/data/sandbox/resources/<path:resource_id>/stage")
     def portal_data_sandbox_resource_stage(resource_id: str):
@@ -435,7 +463,28 @@ def register_data_routes(
     def portal_data_sandbox_resource_save(resource_id: str):
         body = _json_body()
         payload = body.get("payload") if isinstance(body.get("payload"), dict) else body
+        override = bool(body.get("rule_write_override"))
+        reason = str(body.get("rule_write_override_reason") or "").strip()
+        datum_rules: dict[str, Any] | None = None
+        if isinstance(payload, dict):
+            rp = extract_rows_payload_from_resource_body(payload)
+            if rp is not None:
+                ev = evaluate_resource_payload_write(rp, rule_write_override=override)
+                datum_rules = ev
+                if not bool(ev.get("ok")):
+                    return jsonify(
+                        {
+                            "ok": False,
+                            "datum_rules": ev,
+                            "schema": "mycite.portal.sandbox.resource_save_rules.v1",
+                            "rule_write_override_reason": reason,
+                        }
+                    ), 400
+                if override and not reason:
+                    ev.setdefault("warnings", []).append("rule_write_override used without rule_write_override_reason")
         out = _local_resource_service().update(resource_id=resource_id, payload=payload if isinstance(payload, dict) else {})
+        if datum_rules is not None and isinstance(out, dict):
+            out["datum_rules"] = datum_rules
         return jsonify(out), (200 if bool(out.get("ok")) else 400)
 
     @app.post("/portal/api/data/sandbox/resources/<path:resource_id>/compile")
@@ -721,16 +770,18 @@ def register_data_routes(
 
     @app.get("/portal/api/data/rules/understanding/anthology")
     def portal_data_rules_understanding_anthology():
-        payload = understand_datums(_canonical_rows_payload())
-        out = payload.to_dict()
+        report = understand_datums(_canonical_rows_payload())
+        out = report.to_dict()
+        out["rule_policy_by_id"] = {k: derive_rule_policy(v).to_dict() for k, v in report.by_id.items()}
         out["schema"] = "mycite.portal.datum_rules.understanding.v1"
         out["scope"] = "anthology"
         return jsonify(out), (200 if bool(out.get("ok")) else 400)
 
     @app.get("/portal/api/data/rules/understanding/resource/<path:resource_id>")
     def portal_data_rules_understanding_resource(resource_id: str):
-        payload = understand_datums(_rule_rows_payload_from_sandbox_resource(resource_id))
-        out = payload.to_dict()
+        report = understand_datums(_rule_rows_payload_from_sandbox_resource(resource_id))
+        out = report.to_dict()
+        out["rule_policy_by_id"] = {k: derive_rule_policy(v).to_dict() for k, v in report.by_id.items()}
         out["schema"] = "mycite.portal.datum_rules.understanding.v1"
         out["scope"] = "sandbox_resource"
         out["resource_id"] = str(resource_id or "").strip()
@@ -741,16 +792,54 @@ def register_data_routes(
         body = _json_body()
         rule_key = str(body.get("rule_key") or "").strip()
         scope = str(body.get("scope") or "anthology").strip().lower()
+        resource_id = str(body.get("resource_id") or "").strip()
+        if scope != "anthology" and not resource_id:
+            abort(400, description="resource_id is required when scope is not anthology")
+        rows_payload = _canonical_rows_payload() if scope == "anthology" else _rule_rows_payload_from_sandbox_resource(resource_id)
+        report = understand_datums(rows_payload)
         if not rule_key:
-            abort(400, description="rule_key is required")
-        rows_payload = (
-            _canonical_rows_payload()
-            if scope == "anthology"
-            else _rule_rows_payload_from_sandbox_resource(str(body.get("resource_id") or "").strip())
-        )
+            vg_raw = body.get("value_group")
+            try:
+                vgi = int(vg_raw) if vg_raw is not None and str(vg_raw).strip() != "" else None
+            except Exception:
+                vgi = None
+            mag = str(body.get("magnitude_hint") or body.get("magnitude") or "").strip()
+            parent = str(body.get("parent_datum_id") or "").strip()
+            rule_key = infer_reference_filter_rule_key(
+                value_group=vgi,
+                magnitude_hint=mag,
+                parent_datum_id=parent,
+                report=report,
+            ) or ""
+        if not rule_key:
+            abort(
+                400,
+                description="rule_key is required, or supply inference hints (value_group, optional magnitude_hint, parent_datum_id)",
+            )
         filter_ctx = body.get("filter_context") if isinstance(body.get("filter_context"), dict) else {}
         out = reference_filter_options(rows_payload, rule_key=rule_key, filter_context=filter_ctx)
         out["scope"] = scope
+        out["resolved_rule_key"] = rule_key
+        out["datum_understanding"] = report.to_dict()
+        out["rule_policy_by_id"] = {k: derive_rule_policy(v).to_dict() for k, v in report.by_id.items()}
+        ref_mode = str(body.get("ref_entry_mode") or "filtered").strip().lower()
+        if ref_mode == "manual":
+            if not bool(body.get("rule_ref_manual_ack")):
+                abort(400, description="ref_entry_mode=manual requires rule_ref_manual_ack=true")
+            catalog: list[dict[str, Any]] = []
+            for datum_id, u in sorted(report.by_id.items(), key=lambda item: item[0]):
+                catalog.append(
+                    {
+                        "datum_id": datum_id,
+                        "family": u.family,
+                        "status": u.status,
+                        "ui_hints": dict(u.ui_hints),
+                    }
+                )
+            out["references"] = catalog
+            out["ref_mode_resolved"] = "manual_catalog"
+        else:
+            out["ref_mode_resolved"] = "filtered"
         return jsonify(out), (200 if bool(out.get("ok")) else 400)
 
     @app.post("/portal/api/data/rules/validate_create")
@@ -758,29 +847,57 @@ def register_data_routes(
         body = _json_body()
         rule_key = str(body.get("rule_key") or "").strip()
         scope = str(body.get("scope") or "anthology").strip().lower()
+        resource_id = str(body.get("resource_id") or "").strip()
+        if scope != "anthology" and not resource_id:
+            abort(400, description="resource_id is required when scope is not anthology")
         reference = str(body.get("reference") or "").strip()
         magnitude = str(body.get("magnitude") or "").strip()
-        if not rule_key:
-            abort(400, description="rule_key is required")
-        rows_payload = (
-            _canonical_rows_payload()
-            if scope == "anthology"
-            else _rule_rows_payload_from_sandbox_resource(str(body.get("resource_id") or "").strip())
-        )
+        rows_payload = _canonical_rows_payload() if scope == "anthology" else _rule_rows_payload_from_sandbox_resource(resource_id)
         pairs_body = body.get("pairs")
         pairs_list = [dict(item) for item in pairs_body if isinstance(item, dict)] if isinstance(pairs_body, list) else None
-        out = validate_rule_create(
-            rows_payload,
-            rule_key=rule_key,
+        try:
+            value_group = int(body.get("value_group"))
+        except Exception:
+            abort(400, description="value_group must be an integer")
+        layer_raw = body.get("layer")
+        try:
+            layer_i = int(layer_raw) if layer_raw is not None and str(layer_raw).strip() != "" else 999
+        except Exception:
+            layer_i = 999
+        override = bool(body.get("rule_write_override"))
+        probe_id = compute_next_append_datum_id(rows_payload, layer_i, value_group)
+        pair_rows: list[dict[str, str]] = []
+        if isinstance(pairs_body, list):
+            for item in pairs_body:
+                if not isinstance(item, dict):
+                    continue
+                pair_rows.append(
+                    {
+                        "reference": str(item.get("reference") or "").strip(),
+                        "magnitude": str(item.get("magnitude") or "").strip(),
+                    }
+                )
+        if not pair_rows:
+            pair_rows = [{"reference": reference, "magnitude": magnitude}]
+        row_dict = build_append_row_dict(
+            datum_id=probe_id,
+            label=str(body.get("label") or "").strip(),
+            pairs=pair_rows,
             reference=reference,
             magnitude=magnitude,
-            value_group=body.get("value_group"),
-            label=str(body.get("label") or "").strip(),
-            pairs=pairs_list,
         )
-        out["scope"] = scope
-        out["schema"] = "mycite.portal.datum_rules.validate_create.v1"
-        return jsonify(out), (200 if bool(out.get("ok")) else 400)
+        ev = evaluate_probe_write(
+            rows_payload,
+            probe_row_id=probe_id,
+            probe_row_dict=row_dict,
+            rule_key_hint=rule_key,
+            rule_write_override=override,
+            pairs_for_hint=pairs_list,
+            value_group_hint=value_group,
+        )
+        ev["scope"] = scope
+        ev["schema"] = "mycite.portal.datum_rules.validate_create.v1"
+        return jsonify(ev), (200 if bool(ev.get("ok")) else 400)
 
     @app.post("/portal/api/data/rules/lens")
     def portal_data_rules_lens():
@@ -1032,8 +1149,10 @@ def register_data_routes(
         try:
             rule_report = understand_datums(_canonical_rows_payload())
             payload["datum_understanding"] = rule_report.to_dict()
+            payload["rule_policy_by_id"] = {k: derive_rule_policy(v).to_dict() for k, v in rule_report.by_id.items()}
         except Exception:
             payload["datum_understanding"] = {"ok": False, "understandings": [], "by_id": {}, "warnings": [], "errors": []}
+            payload["rule_policy_by_id"] = {}
         return jsonify(payload)
 
     @app.get("/portal/api/data/anthology/graph")
@@ -1290,24 +1409,42 @@ def register_data_routes(
                     }
                 )
         rule_key = str(body.get("rule_key") or "").strip()
-        if rule_key:
-            validation = validate_rule_create(
-                _canonical_rows_payload(),
-                rule_key=rule_key,
-                reference=str(body.get("reference") or "").strip(),
-                magnitude=str(body.get("magnitude") or "").strip(),
-                value_group=value_group,
-                label=str(body.get("label") or "").strip(),
-            )
-            if not bool(validation.get("ok")):
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": "datum creation violates rule-family constraints",
-                        "validation": validation,
-                        "schema": "mycite.portal.datum_rules.append_validation.v1",
-                    }
-                ), 400
+        override = bool(body.get("rule_write_override"))
+        ref = str(body.get("reference") or "").strip()
+        mag = str(body.get("magnitude") or "").strip()
+        label_token = str(body.get("label") or "").strip()
+        pair_rows: list[dict[str, str]]
+        if pairs:
+            pair_rows = list(pairs)
+        else:
+            pair_rows = [{"reference": ref, "magnitude": mag}]
+        base_rows = _canonical_rows_payload()
+        probe_id = compute_next_append_datum_id(base_rows, layer, value_group)
+        probe_row = build_append_row_dict(
+            datum_id=probe_id,
+            label=label_token,
+            pairs=pair_rows,
+            reference=ref,
+            magnitude=mag,
+        )
+        ev = evaluate_probe_write(
+            base_rows,
+            probe_row_id=probe_id,
+            probe_row_dict=probe_row,
+            rule_key_hint=rule_key,
+            rule_write_override=override,
+            pairs_for_hint=pairs,
+            value_group_hint=value_group,
+        )
+        if not bool(ev.get("ok")):
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "datum creation blocked by datum rule policy",
+                    "datum_rules_write": ev,
+                    "schema": "mycite.portal.datum_rules.append_validation.v1",
+                }
+            ), 400
         result = workspace.append_anthology_datum(
             layer=layer,
             value_group=value_group,
@@ -1320,6 +1457,12 @@ def register_data_routes(
         response = dict(result)
         if hasattr(workspace, "anthology_table_view"):
             response["table_view"] = workspace.anthology_table_view()
+        response["datum_rules_write"] = {
+            "datum_understanding": ev.get("datum_understanding"),
+            "rule_policy": ev.get("rule_policy"),
+            "warnings": list(ev.get("warnings") or []),
+        }
+        response.setdefault("warnings", []).extend(list(ev.get("warnings") or []))
         return jsonify(response), status
 
     @app.post("/portal/api/data/anthology/delete")
@@ -1341,14 +1484,46 @@ def register_data_routes(
         if not hasattr(workspace, "update_anthology_label"):
             abort(501, description="anthology label update is unavailable")
         body = _json_body()
+        row_token = str(body.get("row_id") or body.get("identifier") or "").strip()
+        entry = _canonical_row_entry(row_token)
+        if entry is None:
+            return jsonify({"ok": False, "errors": [f"Unknown anthology row_id: {row_token}"], "warnings": []}), 400
+        row_key, cur = entry
+        override = bool(body.get("rule_write_override"))
+        updated = build_updated_row_dict(cur, label=str(body.get("label") or ""), pairs=None)
+        _, vg_hint, _ = parse_datum_id(row_key)
+        ev = evaluate_probe_write(
+            _canonical_rows_payload(),
+            probe_row_id=row_key,
+            probe_row_dict=updated,
+            rule_key_hint=str(body.get("rule_key") or "").strip(),
+            rule_write_override=override,
+            pairs_for_hint=None,
+            value_group_hint=vg_hint,
+        )
+        if not bool(ev.get("ok")):
+            return jsonify(
+                {
+                    "ok": False,
+                    "errors": list(ev.get("errors") or ["label update blocked by datum rules"]),
+                    "warnings": list(ev.get("warnings") or []),
+                    "datum_rules_write": ev,
+                }
+            ), 400
         result = workspace.update_anthology_label(
-            row_id=str(body.get("row_id") or body.get("identifier") or "").strip(),
+            row_id=row_token,
             label=str(body.get("label") or ""),
         )
         status = 200 if bool(result.get("ok")) else 400
         response = dict(result)
         if hasattr(workspace, "anthology_table_view"):
             response["table_view"] = workspace.anthology_table_view()
+        response["datum_rules_write"] = {
+            "datum_understanding": ev.get("datum_understanding"),
+            "rule_policy": ev.get("rule_policy"),
+            "warnings": list(ev.get("warnings") or []),
+        }
+        response.setdefault("warnings", []).extend(list(ev.get("warnings") or []))
         return jsonify(response), status
 
     @app.get("/portal/api/data/anthology/profile/<path:row_id>")
@@ -1357,6 +1532,14 @@ def register_data_routes(
             abort(501, description="anthology profile is unavailable")
         result = workspace.anthology_profile(row_id=str(row_id or "").strip())
         status = 200 if bool(result.get("ok")) else 404
+        if bool(result.get("ok")):
+            datum = result.get("datum") if isinstance(result.get("datum"), dict) else {}
+            ident = str(datum.get("identifier") or datum.get("row_id") or "").strip()
+            if ident:
+                rr = understand_datums(_canonical_rows_payload())
+                u = rr.by_id.get(ident)
+                result["datum_understanding"] = u.to_dict() if u else None
+                result["rule_policy"] = derive_rule_policy(u).to_dict()
         return jsonify(result), status
 
     @app.post("/portal/api/data/anthology/profile/update")
@@ -1377,9 +1560,42 @@ def register_data_routes(
                         "magnitude": str(item.get("magnitude") or "").strip(),
                     }
                 )
+        row_token = str(body.get("row_id") or body.get("identifier") or "").strip()
+        entry = _canonical_row_entry(row_token)
+        if entry is None:
+            return jsonify({"ok": False, "errors": [f"Unknown anthology row_id: {row_token}"], "warnings": []}), 400
+        row_key, cur = entry
+        override = bool(body.get("rule_write_override"))
+        label_token = str(body.get("label") or "")
+        magnitude_param = body.get("magnitude")
+        if isinstance(pairs_body, list):
+            updated = build_updated_row_dict(cur, label=label_token, pairs=pairs)
+        elif magnitude_param is not None:
+            updated = build_updated_row_dict(cur, label=label_token, pairs=None, magnitude_override=str(magnitude_param))
+        else:
+            updated = build_updated_row_dict(cur, label=label_token, pairs=None)
+        _, vg_hint, _ = parse_datum_id(row_key)
+        ev = evaluate_probe_write(
+            _canonical_rows_payload(),
+            probe_row_id=row_key,
+            probe_row_dict=updated,
+            rule_key_hint=str(body.get("rule_key") or "").strip(),
+            rule_write_override=override,
+            pairs_for_hint=pairs,
+            value_group_hint=vg_hint,
+        )
+        if not bool(ev.get("ok")):
+            return jsonify(
+                {
+                    "ok": False,
+                    "errors": list(ev.get("errors") or ["profile update blocked by datum rules"]),
+                    "warnings": list(ev.get("warnings") or []),
+                    "datum_rules_write": ev,
+                }
+            ), 400
         result = workspace.update_anthology_profile(
-            row_id=str(body.get("row_id") or body.get("identifier") or "").strip(),
-            label=str(body.get("label") or ""),
+            row_id=row_token,
+            label=label_token,
             magnitude=body.get("magnitude"),
             pairs=pairs,
             icon_relpath=body.get("icon_relpath"),
@@ -1388,6 +1604,12 @@ def register_data_routes(
         response = dict(result)
         if hasattr(workspace, "anthology_table_view"):
             response["table_view"] = workspace.anthology_table_view()
+        response["datum_rules_write"] = {
+            "datum_understanding": ev.get("datum_understanding"),
+            "rule_policy": ev.get("rule_policy"),
+            "warnings": list(ev.get("warnings") or []),
+        }
+        response.setdefault("warnings", []).extend(list(ev.get("warnings") or []))
         return jsonify(response), status
 
     @app.post("/portal/api/data/directive")
