@@ -78,6 +78,14 @@
       <div class="card__kicker">Inventory</div>
       <div class="card__title">Inherited Invoice/Log Workflow</div>
       <div class="card__body">
+        <p>
+          <strong>AGRO tool sandbox session</strong><br />
+          <code id="agroSessionId">(load a resource to mint a session id)</code>
+        </p>
+        <p class="muted">
+          Staged vs saved: preview stages profile writes on the session; apply runs <code>ToolSandboxSession.promote</code>
+          (shared with <code>/portal/api/data/sandbox/tool_session/.../promote</code>).
+        </p>
         <label>
           <strong>Resource Ref</strong><br />
           <input id="resourceRef" type="text" placeholder="sandbox:txa.samras.5-0-1 or <msn_id>.<resource_id>" />
@@ -129,9 +137,47 @@
 
     <article id="tab-taxonomy" class="card card--full" style="display:none">
       <div class="card__kicker">Taxonomy</div>
-      <div class="card__title">TXA SAMRAS Resource View</div>
+      <div class="card__title">SAMRAS title workspace (session-backed)</div>
       <div class="card__body">
+        <p>
+          Shared SAMRAS structural UI (TXA + MSN clients). Uses
+          <code>{{ model.agro_routes.samras_workspace or "/portal/api/data/sandbox/samras_workspace" }}</code>
+          with optional <code>sandbox_session_id</code> for staged overlays.
+        </p>
         <p><code>taxonomy_ref</code>: {{ model.taxonomy.ref }}</p>
+        <label>
+          <strong>TXA / SAMRAS resource id</strong><br />
+          <input id="samrasResourceId" type="text" placeholder="txa.mvp.local" />
+        </label>
+        <label>
+          <strong>Selected address</strong><br />
+          <input id="samrasSelectedAddress" type="text" placeholder="1-1" />
+        </label>
+        <div style="margin-top:8px">
+          <button id="samrasRefreshBtn" type="button">Refresh SAMRAS workspace</button>
+        </div>
+        <div class="samras-split" style="display:flex; gap:16px; align-items:flex-start; margin-top:12px;">
+          <div style="flex:2; min-width:280px;">
+            <h3>Title table (saved vs staged)</h3>
+            <div style="overflow:auto; max-height:320px; border:1px solid #e0e0e0; border-radius:8px;">
+              <table id="samrasTitleTable" style="width:100%; border-collapse:collapse; font-size:13px;">
+                <thead>
+                  <tr style="text-align:left; background:#f5f5f5;">
+                    <th style="padding:6px;">Status</th>
+                    <th style="padding:6px;">Address</th>
+                    <th style="padding:6px;">Title</th>
+                  </tr>
+                </thead>
+                <tbody id="samrasTitleBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div style="flex:1; min-width:260px;">
+            <h3>SAMRAS detail (branch context)</h3>
+            <pre id="samrasBranchDetail" class="jsonblock" style="max-height:320px;">Select a row or refresh.</pre>
+          </div>
+        </div>
+        <h3>Taxonomy bundle (read-only)</h3>
         <pre id="taxonomySummary" class="jsonblock">{{ model.taxonomy | tojson(indent=2) }}</pre>
       </div>
     </article>
@@ -153,6 +199,7 @@
         taxonomy: document.getElementById("tab-taxonomy")
       };
       let selectedResourceRef = "";
+      let agroSandboxSessionId = "";
       let selectedParcelId = String(model.active_parcel_id || "");
 
       function setTab(tabId) {
@@ -284,12 +331,23 @@
         const resourceRefInput = document.getElementById("resourceRef");
         const resourceRef = String(resourceRefInput.value || "").trim();
         const result = await postJson(routes.mvp_resource_select || "/portal/tools/agro_erp/mvp/resource/select_or_load", {
-          resource_ref: resourceRef
+          resource_ref: resourceRef,
+          sandbox_session_id: agroSandboxSessionId || undefined
         });
         document.getElementById("resourceSummary").textContent = JSON.stringify(result.payload, null, 2);
         if (result.payload && result.payload.ok) {
-          selectedResourceRef = resourceRef || String((result.payload.resource_context || {}).resource_ref || "");
+          selectedResourceRef = resourceRef || String((result.payload.resource_ref || result.payload.resource_context || {}).resource_ref || "");
           resourceRefInput.value = selectedResourceRef;
+          agroSandboxSessionId = String(result.payload.sandbox_session_id || agroSandboxSessionId || "");
+          const sidEl = document.getElementById("agroSessionId");
+          if (sidEl) {
+            sidEl.textContent = agroSandboxSessionId || "(no session id)";
+          }
+          const rid = selectedResourceRef.startsWith("sandbox:") ? selectedResourceRef.split(":", 2)[1] : "";
+          const samrasInput = document.getElementById("samrasResourceId");
+          if (samrasInput && rid && !String(samrasInput.value || "").trim()) {
+            samrasInput.value = rid;
+          }
         }
       });
 
@@ -301,15 +359,24 @@
       document.getElementById("productPreviewBtn").addEventListener("click", async function () {
         const result = await postJson(routes.mvp_product_preview || "/portal/tools/agro_erp/mvp/product/preview", {
           resource_ref: selectedResourceRef,
-          inherited_ref: String((document.getElementById("productInheritedRef") || {}).value || "").trim()
+          inherited_ref: String((document.getElementById("productInheritedRef") || {}).value || "").trim(),
+          sandbox_session_id: agroSandboxSessionId
         });
         document.getElementById("productOutput").textContent = JSON.stringify(result.payload, null, 2);
+        if (result.payload && result.payload.sandbox_session_id) {
+          agroSandboxSessionId = String(result.payload.sandbox_session_id);
+          const sidEl = document.getElementById("agroSessionId");
+          if (sidEl) {
+            sidEl.textContent = agroSandboxSessionId;
+          }
+        }
       });
 
       document.getElementById("productApplyBtn").addEventListener("click", async function () {
         const result = await postJson(routes.mvp_product_apply || "/portal/tools/agro_erp/mvp/product/apply", {
           resource_ref: selectedResourceRef,
-          inherited_ref: String((document.getElementById("productInheritedRef") || {}).value || "").trim()
+          inherited_ref: String((document.getElementById("productInheritedRef") || {}).value || "").trim(),
+          sandbox_session_id: agroSandboxSessionId
         });
         document.getElementById("productOutput").textContent = JSON.stringify(result.payload, null, 2);
         if (result.payload && result.payload.readback) {
@@ -325,15 +392,24 @@
       document.getElementById("invoicePreviewBtn").addEventListener("click", async function () {
         const result = await postJson(routes.mvp_invoice_preview || "/portal/tools/agro_erp/mvp/invoice/preview", {
           resource_ref: selectedResourceRef,
-          inherited_ref: String((document.getElementById("invoiceInheritedRef") || {}).value || "").trim()
+          inherited_ref: String((document.getElementById("invoiceInheritedRef") || {}).value || "").trim(),
+          sandbox_session_id: agroSandboxSessionId
         });
         document.getElementById("invoiceOutput").textContent = JSON.stringify(result.payload, null, 2);
+        if (result.payload && result.payload.sandbox_session_id) {
+          agroSandboxSessionId = String(result.payload.sandbox_session_id);
+          const sidEl = document.getElementById("agroSessionId");
+          if (sidEl) {
+            sidEl.textContent = agroSandboxSessionId;
+          }
+        }
       });
 
       document.getElementById("invoiceApplyBtn").addEventListener("click", async function () {
         const result = await postJson(routes.mvp_invoice_apply || "/portal/tools/agro_erp/mvp/invoice/apply", {
           resource_ref: selectedResourceRef,
-          inherited_ref: String((document.getElementById("invoiceInheritedRef") || {}).value || "").trim()
+          inherited_ref: String((document.getElementById("invoiceInheritedRef") || {}).value || "").trim(),
+          sandbox_session_id: agroSandboxSessionId
         });
         document.getElementById("invoiceOutput").textContent = JSON.stringify(result.payload, null, 2);
         if (result.payload && result.payload.readback) {
@@ -344,6 +420,67 @@
       document.getElementById("invoiceReadbackBtn").addEventListener("click", async function () {
         const result = await getJson((routes.mvp_readback || "/portal/tools/agro_erp/mvp/workflow/readback") + "?resource_ref=" + encodeURIComponent(selectedResourceRef));
         document.getElementById("invoiceReadback").textContent = JSON.stringify((result.payload || {}).invoice_log || {}, null, 2);
+      });
+
+      function renderSamrasWorkspace(vm) {
+        const body = document.getElementById("samrasTitleBody");
+        const detail = document.getElementById("samrasBranchDetail");
+        if (!body || !detail) {
+          return;
+        }
+        body.innerHTML = "";
+        const rows = Array.isArray(vm.title_table_rows) ? vm.title_table_rows : [];
+        for (const row of rows) {
+          const tr = document.createElement("tr");
+          const statusTd = document.createElement("td");
+          statusTd.style.padding = "6px";
+          statusTd.textContent = String(row.status || "");
+          const addrTd = document.createElement("td");
+          addrTd.style.padding = "6px";
+          addrTd.textContent = String(row.address_id || "");
+          const titleTd = document.createElement("td");
+          titleTd.style.padding = "6px";
+          titleTd.textContent = String(row.title || "");
+          tr.appendChild(statusTd);
+          tr.appendChild(addrTd);
+          tr.appendChild(titleTd);
+          tr.style.cursor = "pointer";
+          tr.addEventListener("click", function () {
+            detail.textContent = JSON.stringify(
+              {
+                selected_row: row,
+                branch_context: vm.branch_context || {},
+                workspace_family: vm.workspace_family || "samras_title_tree",
+                schema: vm.schema || ""
+              },
+              null,
+              2
+            );
+          });
+          body.appendChild(tr);
+        }
+        detail.textContent = JSON.stringify(vm.branch_context || {}, null, 2);
+      }
+
+      document.getElementById("samrasRefreshBtn").addEventListener("click", async function () {
+        const base = routes.samras_workspace || "/portal/api/data/sandbox/samras_workspace";
+        const rid = String((document.getElementById("samrasResourceId") || {}).value || "").trim();
+        const selected = String((document.getElementById("samrasSelectedAddress") || {}).value || "").trim();
+        if (!rid) {
+          alert("resource id is required");
+          return;
+        }
+        const params = new URLSearchParams({ resource_id: rid, selected_address: selected });
+        if (agroSandboxSessionId) {
+          params.set("sandbox_session_id", agroSandboxSessionId);
+        }
+        const result = await getJson(base + "?" + params.toString());
+        const payload = result.payload || {};
+        if (!payload.ok) {
+          document.getElementById("samrasBranchDetail").textContent = JSON.stringify(payload, null, 2);
+          return;
+        }
+        renderSamrasWorkspace(payload.view_model || {});
       });
     })();
   </script>

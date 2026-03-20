@@ -221,6 +221,34 @@ class ToolSandboxSessionServiceTests(unittest.TestCase):
         )
         self.assertEqual(sess.loaded_anthology_refs.get("9-9-9", {}).get("label"), "L2")
 
+    def test_staged_tool_config_write_promotes_via_hook(self):
+        decl = {"tool_id": "t1"}
+        sess = self.mgr.open_session(self._deps(), tool_key="t1", declaration=decl)  # type: ignore[arg-type]
+        preview = {
+            "ok": True,
+            "intent": {},
+            "validation": {},
+            "plan": {},
+            "config_updates": [],
+            "write_actions": [],
+            "warnings": [],
+            "errors": [],
+        }
+        sess.stage_tool_config_write(
+            "inherited_product_profile_ref",
+            {"write_preview": preview, "resource_ref": "sandbox:txa.demo"},
+        )
+        calls: list[tuple[str, dict]] = []
+
+        def _hook(field_id: str, bundle: dict):
+            calls.append((field_id, bundle))
+            return {"ok": True, "errors": [], "warnings": [], "mutation_summary": {}}
+
+        prom = sess.promote(hooks=ToolSandboxPromotionHooks(apply_tool_config_write=_hook))
+        self.assertTrue(prom.get("ok"))
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(sess.staged_tool_config_writes)
+
     @patch("_shared.portal.sandbox.tool_sandbox_session.evaluate_resource_payload_write")
     def test_promote_blocked_when_resource_row_eval_fails(self, mock_ev):
         mock_ev.return_value = {"ok": False, "errors": ["invalid graph"], "warnings": []}
@@ -380,6 +408,32 @@ class ToolSandboxSessionRouteTests(unittest.TestCase):
         self.assertEqual(st.status_code, 200)
         body = st.get_json() or {}
         self.assertIn("1-1-1", body.get("staged_rows") or [])
+
+    def test_samras_workspace_route_returns_view_model(self):
+        from _shared.portal.sandbox.engine import SandboxEngine
+
+        eng = SandboxEngine(data_root=Path(self.root))
+        eng.save_resource(
+            "txa.samras.demo",
+            {
+                "resource_id": "txa.samras.demo",
+                "resource_kind": "txa",
+                "rows_by_address": {"1": ["Root"], "1-1": ["Child"]},
+            },
+        )
+        op = self.client.post("/portal/api/data/sandbox/tool_session/open", json={"tool_key": "agro_erp"})
+        sid = (op.get_json() or {}).get("session_id")
+        url = (
+            "/portal/api/data/sandbox/samras_workspace?resource_id=txa.samras.demo"
+            f"&selected_address=1-1&sandbox_session_id={sid}"
+        )
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        self.assertTrue(payload.get("ok"))
+        vm = payload.get("view_model") if isinstance(payload.get("view_model"), dict) else {}
+        self.assertEqual(vm.get("schema"), "mycite.portal.sandbox.samras_workspace.view_model.v1")
+        self.assertEqual((vm.get("branch_context") or {}).get("selected_address_id"), "1-1")
 
 
 if __name__ == "__main__":

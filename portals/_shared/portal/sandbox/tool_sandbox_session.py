@@ -149,6 +149,9 @@ class ToolSandboxPromotionHooks:
     update_anthology_row: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
     """(datum_id, row_snapshot) -> {ok, errors, warnings, ...}"""
 
+    apply_tool_config_write: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
+    """(field_id, bundle) -> apply result dict (e.g. WriteApplyResult.to_dict())."""
+
 
 @dataclass
 class ToolSandboxSession:
@@ -169,6 +172,10 @@ class ToolSandboxSession:
     datum_understanding: dict[str, Any] = field(default_factory=dict)
     rule_policy: dict[str, Any] = field(default_factory=dict)
     promotion_targets: dict[str, Any] = field(default_factory=dict)
+    # In-memory tool workspace (compile snapshots, UI context) — not promoted to disk.
+    ephemeral_tool_state: dict[str, Any] = field(default_factory=dict)
+    # Staged profile/config write previews keyed by stable field_id (e.g. inherited_* refs).
+    staged_tool_config_writes: dict[str, dict[str, Any]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=_utc_ts)
@@ -194,6 +201,8 @@ class ToolSandboxSession:
             "datum_understanding": _deepcopy_jsonish(self.datum_understanding),
             "rule_policy": dict(self.rule_policy),
             "promotion_targets": _deepcopy_jsonish(self.promotion_targets),
+            "ephemeral_tool_state": _deepcopy_jsonish(self.ephemeral_tool_state),
+            "staged_tool_config_field_ids": sorted(self.staged_tool_config_writes.keys()),
             "warnings": list(self.warnings),
             "errors": list(self.errors),
             "created_at": self.created_at,
@@ -236,6 +245,16 @@ class ToolSandboxSession:
         self.working_resources[rid] = _deepcopy_jsonish(dict(body))
         self._touch()
         self.recompute_understanding()
+
+    def stage_tool_config_write(self, field_id: str, bundle: Mapping[str, Any]) -> None:
+        """Stage a profile/config write preview for promotion via ``apply_tool_config_write`` hook."""
+        fid = str(field_id or "").strip()
+        if not fid:
+            self.errors.append("stage_tool_config_write: field_id is required")
+            return
+        self.staged_tool_config_writes[fid] = dict(bundle)
+        self._touch()
+        self.build_promotion_targets()
 
     def stage_anthology_row(self, datum_id: str, row: Mapping[str, Any]) -> None:
         did = str(datum_id or "").strip()
@@ -298,6 +317,7 @@ class ToolSandboxSession:
         targets: dict[str, Any] = {
             "resources": sorted(self.staged_resources.keys()),
             "anthology_rows": sorted(self.staged_anthology_rows.keys()),
+            "tool_config_writes": sorted(self.staged_tool_config_writes.keys()),
         }
         self.promotion_targets = targets
         self._touch()
@@ -405,9 +425,30 @@ class ToolSandboxSession:
                     out["ok"] = False
                     out["errors"].append(f"anthology {did}: {exc}")
 
+        # Staged portal model / profile writes (preview → apply_write_preview via flavor hook)
+        if self.staged_tool_config_writes:
+            if hooks.apply_tool_config_write is None:
+                out["ok"] = False
+                out["errors"].append(
+                    "apply_tool_config_write hook not configured but staged tool config writes are present"
+                )
+            else:
+                for fid, bundle in list(self.staged_tool_config_writes.items()):
+                    try:
+                        res = hooks.apply_tool_config_write(str(fid), dict(bundle))
+                        out.setdefault("saved_tool_config_writes", []).append({"field_id": fid, "result": res})
+                        if isinstance(res, dict) and res.get("ok") is False:
+                            errs = res.get("errors") or []
+                            out["errors"].extend([f"tool_config {fid}: {e}" for e in errs])
+                            out["ok"] = False
+                    except Exception as exc:
+                        out["ok"] = False
+                        out["errors"].append(f"tool_config {fid}: {exc}")
+
         if out["ok"]:
             self.staged_resources.clear()
             self.staged_anthology_rows.clear()
+            self.staged_tool_config_writes.clear()
         self._touch()
         return out
 

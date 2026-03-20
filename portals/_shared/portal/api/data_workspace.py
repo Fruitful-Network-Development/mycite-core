@@ -44,13 +44,10 @@ from _shared.portal.data_engine.rules import (
 from _shared.portal.data_engine.rules.base import parse_datum_id
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
 from _shared.portal.sandbox import LocalResourceLifecycleService, SandboxEngine, migrate_fnd_samras_rows_to_sandbox
-from _shared.portal.sandbox.txa_sandbox_workspace import build_txa_sandbox_view_model
+from _shared.portal.sandbox.promotion_hooks import build_tool_sandbox_promotion_hooks
 from _shared.portal.sandbox.session_registry import get_tool_sandbox_session_manager
-from _shared.portal.sandbox.tool_sandbox_session import (
-    ToolSandboxPromotionHooks,
-    ToolSandboxRuntimeDeps,
-    ToolSandboxSessionManager,
-)
+from _shared.portal.sandbox.tool_sandbox_session import ToolSandboxRuntimeDeps, ToolSandboxSessionManager
+from _shared.portal.sandbox.txa_sandbox_workspace import build_samras_workspace_view_model, build_txa_sandbox_view_model
 from _shared.portal.sandbox.workspace_contract import AGRO_ERP_SANDBOX_DECLARATION
 
 
@@ -345,26 +342,12 @@ def register_data_routes(
             return dict(AGRO_ERP_SANDBOX_DECLARATION)
         abort(400, description="declaration is required for this tool_key")
 
-    def _anthology_row_promote_hook(datum_id: str, row: dict[str, Any]) -> dict[str, Any]:
-        if not hasattr(workspace, "update_anthology_profile"):
-            return {"ok": False, "errors": ["update_anthology_profile is unavailable"], "warnings": []}
-        rid = str(row.get("id") or row.get("row_id") or row.get("identifier") or datum_id).strip()
-        label = str(row.get("label") or row.get("name") or "").strip()
-        pairs_obj = row.get("pairs")
-        if not isinstance(pairs_obj, list):
-            avp = row.get("attribute_value_pairs")
-            if isinstance(avp, list):
-                pairs_obj = [
-                    {
-                        "reference": str(p.get("reference") or p.get("attribute") or "").strip(),
-                        "magnitude": str(p.get("magnitude") or p.get("value") or "").strip(),
-                    }
-                    for p in avp
-                    if isinstance(p, dict)
-                ]
-            else:
-                pairs_obj = None
-        return workspace.update_anthology_profile(row_id=rid, label=label, pairs=pairs_obj)
+    def _tool_sandbox_promotion_hooks():
+        return build_tool_sandbox_promotion_hooks(
+            workspace=workspace,
+            load_config_fn=_load_active_config,
+            save_config_fn=_save_active_config,
+        )
 
     @app.post("/portal/api/data/sandbox/tool_session/open")
     def portal_data_sandbox_tool_session_open():
@@ -443,7 +426,7 @@ def register_data_routes(
             return jsonify({"ok": False, "error": "session not found"}), 404
         override = bool(body.get("rule_write_override"))
         reason = str(body.get("rule_write_override_reason") or "").strip()
-        hooks = ToolSandboxPromotionHooks(update_anthology_row=_anthology_row_promote_hook)
+        hooks = _tool_sandbox_promotion_hooks()
         prom = sess.promote(
             hooks=hooks,
             rule_write_override=override,
@@ -495,6 +478,55 @@ def register_data_routes(
                 "promotion_targets": sess.promotion_targets,
             }
         )
+
+    @app.get("/portal/api/data/sandbox/samras_workspace")
+    def portal_data_sandbox_samras_workspace():
+        """
+        Generic SAMRAS structural / title-table workspace view for TXA, MSN, and future
+        SAMRAS-backed sandbox resources. Optional ``sandbox_session_id`` overlays
+        ``working_resources`` when the resource id is present in the session.
+        """
+        resource_id = str(request.args.get("resource_id") or "").strip()
+        if not resource_id:
+            abort(400, description="resource_id is required")
+        selected_address = str(request.args.get("selected_address") or "").strip()
+        session_id = str(request.args.get("sandbox_session_id") or "").strip()
+        staged_entries = []
+        raw_staged = request.args.get("staged_entries_json", "").strip()
+        if raw_staged:
+            try:
+                parsed = json.loads(raw_staged)
+                if isinstance(parsed, list):
+                    staged_entries = [item for item in parsed if isinstance(item, dict)]
+            except Exception:
+                abort(400, description="staged_entries_json must be JSON array of objects")
+
+        engine = _sandbox_engine()
+        snap = engine.get_resource(resource_id)
+        if bool(snap.get("missing")):
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": f"resource not found: {resource_id}",
+                        "schema": "mycite.portal.sandbox.samras_workspace.v1",
+                    }
+                ),
+                404,
+            )
+        body = snap.get("resource") if isinstance(snap.get("resource"), dict) else {}
+        if session_id:
+            sess = _tool_sandbox_manager().get(session_id)
+            if sess is not None:
+                overlay = sess.working_resources.get(resource_id) or sess.loaded_resources.get(resource_id)
+                if isinstance(overlay, dict):
+                    body = overlay
+        vm = build_samras_workspace_view_model(
+            body,
+            selected_address_id=selected_address,
+            staged_entries=staged_entries,
+        )
+        return jsonify({"ok": True, "schema": "mycite.portal.sandbox.samras_workspace.v1", "view_model": vm})
 
     @app.get("/portal/api/data/resources/local")
     def portal_data_resources_local():

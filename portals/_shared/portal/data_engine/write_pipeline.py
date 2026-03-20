@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from _shared.portal.datum_refs import parse_datum_ref
 from .field_contracts import default_profile_field_contracts
@@ -33,6 +33,20 @@ class WritePreviewResult:
             "warnings": list(self.warnings),
             "errors": list(self.errors),
         }
+
+
+def write_preview_result_from_dict(preview: Mapping[str, Any]) -> WritePreviewResult:
+    """Rehydrate a frozen preview object from ``WritePreviewResult.to_dict()`` output."""
+    return WritePreviewResult(
+        ok=bool(preview.get("ok")),
+        intent=dict(preview.get("intent") or {}),
+        validation=dict(preview.get("validation") or {}),
+        plan=dict(preview.get("plan") or {}),
+        config_updates=[dict(item) for item in list(preview.get("config_updates") or []) if isinstance(item, dict)],
+        write_actions=[dict(item) for item in list(preview.get("write_actions") or []) if isinstance(item, dict)],
+        warnings=[str(item) for item in list(preview.get("warnings") or [])],
+        errors=[str(item) for item in list(preview.get("errors") or [])],
+    )
 
 
 @dataclass(frozen=True)
