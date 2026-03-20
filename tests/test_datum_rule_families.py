@@ -135,6 +135,74 @@ class DatumRuleFamilyTests(unittest.TestCase):
         self.assertEqual(lens.get("lens_key"), "lens.text.ascii_like.v1")
         self.assertTrue(lens.get("renderable"))
         self.assertEqual(lens.get("decoded_text"), "A")
+        pol = out.get("rule_policy") if isinstance(out.get("rule_policy"), dict) else {}
+        self.assertEqual(pol.get("status"), "standard")
+        self.assertTrue(pol.get("can_use_default_lens"))
+
+    def test_derive_rule_policy_matrix(self):
+        rules = _load_rules_module()
+        report = rules.understand_datums(_rows_payload())
+        std = rules.derive_rule_policy(report.by_id["4-1-1"])
+        self.assertTrue(std.write_allowed and std.can_publish)
+        amb = rules.derive_rule_policy(report.by_id["4-1-2"])
+        self.assertFalse(amb.write_allowed)
+        self.assertTrue(amb.requires_manual_override)
+        inv = rules.derive_rule_policy(report.by_id["3-1-2"])
+        self.assertFalse(inv.write_allowed)
+        tr = rules.derive_rule_policy(report.by_id["3-1-1"])
+        self.assertEqual(tr.edit_mode, "limited")
+        self.assertFalse(tr.can_publish)
+
+    def test_evaluate_probe_write_without_rule_key_hint(self):
+        rules = _load_rules_module()
+        base = {
+            "rows": {
+                "1-1-1": {"identifier": "1-1-1", "reference": "0-0-6", "magnitude": "2"},
+                "2-1-1": {"identifier": "2-1-1", "reference": "1-1-1", "magnitude": "3"},
+                "3-1-1": {"identifier": "3-1-1", "reference": "2-1-1", "magnitude": "0"},
+            }
+        }
+        probe_id = rules.compute_next_append_datum_id(base, 9, 1)
+        row = rules.build_append_row_dict(
+            datum_id=probe_id,
+            label="probe",
+            pairs=[{"reference": "3-1-1", "magnitude": "111"}],
+            reference="3-1-1",
+            magnitude="111",
+        )
+        ev = rules.evaluate_probe_write(
+            base,
+            probe_row_id=probe_id,
+            probe_row_dict=row,
+            rule_key_hint="",
+            rule_write_override=False,
+            pairs_for_hint=[{"reference": "3-1-1", "magnitude": "111"}],
+            value_group_hint=1,
+        )
+        self.assertTrue(ev.get("ok"))
+        self.assertEqual((ev.get("datum_understanding") or {}).get("family"), "isolate")
+
+    def test_rule_key_hint_can_still_fail_stricter_than_engine(self):
+        rules = _load_rules_module()
+        base = _rows_payload()
+        probe_id = rules.compute_next_append_datum_id(base, 9, 1)
+        row = rules.build_append_row_dict(
+            datum_id=probe_id,
+            label="probe",
+            pairs=[{"reference": "3-1-1", "magnitude": "01000011"}],
+            reference="3-1-1",
+            magnitude="01000011",
+        )
+        ev = rules.evaluate_probe_write(
+            base,
+            probe_row_id=probe_id,
+            probe_row_dict=row,
+            rule_key_hint="baciloid.sequence_space.v1",
+            rule_write_override=False,
+            pairs_for_hint=[{"reference": "3-1-1", "magnitude": "01000011"}],
+            value_group_hint=1,
+        )
+        self.assertFalse(ev.get("ok"))
 
 
 class _WorkspaceStub:
@@ -176,6 +244,8 @@ class DatumRulesRouteTests(unittest.TestCase):
         by_id = payload.get("by_id") if isinstance(payload.get("by_id"), dict) else {}
         self.assertEqual(((by_id.get("3-1-1") or {}).get("status")), "transitional")
         self.assertEqual(((by_id.get("4-1-1") or {}).get("status")), "standard")
+        pol = payload.get("rule_policy_by_id") if isinstance(payload.get("rule_policy_by_id"), dict) else {}
+        self.assertEqual(((pol.get("4-1-1") or {}).get("ref_mode")), "filtered_default")
 
         filter_resp = self.client.post(
             "/portal/api/data/rules/reference_filter",
@@ -184,6 +254,14 @@ class DatumRulesRouteTests(unittest.TestCase):
         self.assertEqual(filter_resp.status_code, 200)
         refs = [str(item.get("datum_id")) for item in ((filter_resp.get_json() or {}).get("references") or [])]
         self.assertIn("2-1-1", refs)
+
+        inferred = self.client.post(
+            "/portal/api/data/rules/reference_filter",
+            json={"scope": "anthology", "value_group": 0},
+        )
+        self.assertEqual(inferred.status_code, 200)
+        inferred_payload = inferred.get_json() or {}
+        self.assertEqual(inferred_payload.get("resolved_rule_key"), "collection.namespace_order.v1")
 
         validate_resp = self.client.post(
             "/portal/api/data/rules/validate_create",
@@ -196,6 +274,29 @@ class DatumRulesRouteTests(unittest.TestCase):
             },
         )
         self.assertEqual(validate_resp.status_code, 200)
+
+        validate_no_key = self.client.post(
+            "/portal/api/data/rules/validate_create",
+            json={
+                "scope": "anthology",
+                "layer": 9,
+                "reference": "3-1-1",
+                "magnitude": "01000001",
+                "value_group": 1,
+                "label": "no-rule-key",
+            },
+        )
+        self.assertEqual(validate_no_key.status_code, 200)
+        vj = validate_no_key.get_json() or {}
+        self.assertTrue(vj.get("ok"))
+        self.assertEqual((vj.get("datum_understanding") or {}).get("family"), "isolate")
+
+        lens = self.client.post(
+            "/portal/api/data/rules/lens",
+            json={"scope": "anthology", "datum_id": "4-1-1"},
+        )
+        self.assertEqual(lens.status_code, 200)
+        self.assertIn("rule_policy", lens.get_json() or {})
 
         save_resource = self.client.post(
             "/portal/api/data/sandbox/resources/rule-resource/save",
@@ -211,6 +312,21 @@ class DatumRulesRouteTests(unittest.TestCase):
         self.assertEqual(resource_understanding.status_code, 200)
         resource_by_id = (resource_understanding.get_json() or {}).get("by_id") or {}
         self.assertEqual(((resource_by_id.get("1-1-1") or {}).get("family")), "bacillete")
+
+        bad_save = self.client.post(
+            "/portal/api/data/sandbox/resources/bad-rule-resource/save",
+            json={"payload": {"resource_id": "bad", "anthology_compatible_payload": {"rows": _rows_payload()["rows"]}}},
+        )
+        self.assertEqual(bad_save.status_code, 400)
+        ok_save = self.client.post(
+            "/portal/api/data/sandbox/resources/bad-rule-resource/save",
+            json={
+                "rule_write_override": True,
+                "rule_write_override_reason": "test suite",
+                "payload": {"resource_id": "bad", "anthology_compatible_payload": {"rows": _rows_payload()["rows"]}},
+            },
+        )
+        self.assertEqual(ok_save.status_code, 200)
 
 
 if __name__ == "__main__":

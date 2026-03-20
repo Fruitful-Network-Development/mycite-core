@@ -119,6 +119,11 @@
   var appendPairsEl = qs("#dtAppendPairs");
   var appendPairAddBtn = qs("#dtAppendPairAddBtn");
   var appendSaveBtn = qs("#dtAppendSaveBtn");
+  var profileRuleOverrideChk = qs("#dtProfileRuleOverride");
+  var profileOverrideReasonInput = qs("#dtProfileOverrideReason");
+  var profileRuleMetaEl = qs("#dtProfileRuleMeta");
+  var appendRuleOverrideChk = qs("#dtAppendRuleOverride");
+  var appendOverrideReasonInput = qs("#dtAppendOverrideReason");
 
   var systemContextEl = qs("#dtSystemContext");
   var currentAppendRoot = null;
@@ -2103,6 +2108,24 @@
     var pairCount = pairs.length;
     var patternKind = valueGroup === 0 ? "collection" : (pairCount <= 1 ? "typed_leaf" : "composite");
     var path = Array.isArray(payload.abstraction_path) ? payload.abstraction_path : [];
+    var ruleChipHtml = "";
+    var ru = payload.rule_policy && typeof payload.rule_policy === "object" ? payload.rule_policy : null;
+    var du = payload.datum_understanding && typeof payload.datum_understanding === "object" ? payload.datum_understanding : null;
+    if (du && du.family) {
+      ruleChipHtml +=
+        "<span class=\"data-tool__editorChip data-tool__editorChip--family\">fam " + escapeText(String(du.family)) + "</span>";
+    }
+    if (du && du.status) {
+      ruleChipHtml +=
+        "<span class=\"data-tool__editorChip data-tool__editorChip--status\">" + escapeText(String(du.status)) + "</span>";
+    }
+    if (ru && ru.ref_mode) {
+      ruleChipHtml +=
+        "<span class=\"data-tool__editorChip\">ref " + escapeText(String(ru.ref_mode)) + "</span>";
+    }
+    if (ru && ru.requires_manual_override) {
+      ruleChipHtml += "<span class=\"data-tool__editorChip\">override required</span>";
+    }
 
     datumWorkbenchState.rowId = rowId;
     datumWorkbenchState.identifier = identifier;
@@ -2126,7 +2149,14 @@
           "<span class=\"data-tool__editorChip\">I" + escapeText(iterationToken) + "</span>" +
           "<span class=\"data-tool__editorChip\">" + escapeText(patternKind) + "</span>" +
           "<span class=\"data-tool__editorChip\">" + escapeText(String(pairCount)) + " pair" + (pairCount === 1 ? "" : "s") + "</span>" +
+          ruleChipHtml +
         "</div>" +
+      "</div>" +
+      "<div class=\"data-tool__ruleOverrideBanner\">" +
+        "<label class=\"data-tool__ruleOverrideLabel\">" +
+          "<input type=\"checkbox\" class=\"js-workbench-rule-override\" /> Admin rule write override" +
+        "</label>" +
+        "<input type=\"text\" class=\"js-workbench-override-reason data-tool__ruleOverrideReason\" placeholder=\"override reason\" />" +
       "</div>" +
       "<div class=\"data-tool__controlRow data-tool__editRow\">" +
         "<label><span>row_id</span><input class=\"js-workbench-row-id\" type=\"text\" readonly value=\"" + escapeText(rowId) + "\" /></label>" +
@@ -2209,6 +2239,12 @@
       label: String(labelInput ? labelInput.value : ""),
       pairs: readPairRowsForValueGroup(workbenchPairsEl, datumWorkbenchState.valueGroup),
     };
+    var wbOverride = root ? qs(".js-workbench-rule-override", root) : null;
+    var wbReason = root ? qs(".js-workbench-override-reason", root) : null;
+    if (wbOverride && wbOverride.checked) {
+      body.rule_write_override = true;
+      body.rule_write_override_reason = wbReason ? String(wbReason.value || "") : "";
+    }
     if (iconRelpath !== null && iconRelpath !== undefined) body.icon_relpath = String(iconRelpath || "");
     var payload = await api("/portal/api/data/anthology/profile/update", {
       method: "POST",
@@ -2233,6 +2269,10 @@
     var table = view && view.table ? view.table : {};
     var layers = Array.isArray(view && view.layers) ? view.layers : [];
     var rowsForLookup = Array.isArray(view && view.rows) ? view.rows : [];
+    var duPayload = view && view.datum_understanding ? view.datum_understanding : {};
+    var understandingById =
+      duPayload && duPayload.by_id && typeof duPayload.by_id === "object" ? duPayload.by_id : {};
+    var policies = view && view.rule_policy_by_id && typeof view.rule_policy_by_id === "object" ? view.rule_policy_by_id : {};
     var datumLookup = buildDatumLookup(rowsForLookup);
     anthologyUiState.rowByIdentifier = {};
     anthologyUiState.rowById = {};
@@ -2324,6 +2364,22 @@
           tr.className = "js-anthology-row";
           tr.setAttribute("data-row-id", rowToken);
           tr.setAttribute("data-identifier", String(row.identifier || rowToken));
+          var identKey = String(row.identifier || rowToken || "").trim();
+          var rowU = identKey && understandingById[identKey] ? understandingById[identKey] : null;
+          var shade = rowU && rowU.ui_hints && rowU.ui_hints.row_shading ? String(rowU.ui_hints.row_shading) : "";
+          if (shade) {
+            tr.classList.add("data-tool__row--shade-" + shade);
+          }
+          if (rowU && rowU.status) {
+            tr.setAttribute("data-rule-status", String(rowU.status));
+          }
+          if (rowU && rowU.family) {
+            tr.setAttribute("data-rule-family", String(rowU.family));
+          }
+          var rowPol = identKey && policies[identKey] ? policies[identKey] : null;
+          if (rowPol && rowPol.ref_mode) {
+            tr.setAttribute("data-ref-mode", String(rowPol.ref_mode));
+          }
           if (datumWorkbenchState.rowId && datumWorkbenchState.rowId === rowToken) {
             tr.classList.add("is-selected");
           }
@@ -2369,6 +2425,19 @@
 
           datumMain.appendChild(datumName);
           datumMain.appendChild(datumId);
+          if (rowU && rowU.family) {
+            var famBadge = document.createElement("span");
+            famBadge.className = "data-tool__familyBadge";
+            famBadge.textContent = String(rowU.family || "");
+            famBadge.title = String(rowU.rule_key || rowU.family || "");
+            datumMain.appendChild(famBadge);
+          }
+          if (rowU && rowU.lens_key) {
+            var lensHint = document.createElement("div");
+            lensHint.className = "data-tool__lensHint";
+            lensHint.textContent = "lens: " + String(rowU.lens_key);
+            datumMain.appendChild(lensHint);
+          }
 
           datumCell.appendChild(icon);
           datumCell.appendChild(datumMain);
@@ -3061,15 +3130,20 @@
     }
 
     captureAnthologyOpenState();
+    var appendBody = {
+      layer: layerVal,
+      value_group: valueGroupToken,
+      label: labelVal || "",
+      pairs: pairs,
+    };
+    if (appendRuleOverrideChk && appendRuleOverrideChk.checked) {
+      appendBody.rule_write_override = true;
+      appendBody.rule_write_override_reason = appendOverrideReasonInput ? String(appendOverrideReasonInput.value || "") : "";
+    }
     var payload = await api("/portal/api/data/anthology/append", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        layer: layerVal,
-        value_group: valueGroupToken,
-        label: labelVal || "",
-        pairs: pairs,
-      }),
+      body: JSON.stringify(appendBody),
     });
 
     if (payload.table_view) {
@@ -3617,6 +3691,25 @@
     renderProfileIconOptions();
     switchProfileTab("details");
 
+    if (profileRuleMetaEl) {
+      var pDu = payload.datum_understanding && typeof payload.datum_understanding === "object" ? payload.datum_understanding : null;
+      var pPol = payload.rule_policy && typeof payload.rule_policy === "object" ? payload.rule_policy : null;
+      if (pDu || pPol) {
+        var bits = [];
+        if (pDu && pDu.family) bits.push("family: " + String(pDu.family));
+        if (pDu && pDu.status) bits.push("status: " + String(pDu.status));
+        if (pPol && pPol.ref_mode) bits.push("refs: " + String(pPol.ref_mode));
+        if (pPol && pPol.requires_manual_override) bits.push("override required to write");
+        profileRuleMetaEl.textContent = bits.join(" | ");
+        profileRuleMetaEl.hidden = false;
+      } else {
+        profileRuleMetaEl.textContent = "";
+        profileRuleMetaEl.hidden = true;
+      }
+    }
+    if (profileRuleOverrideChk) profileRuleOverrideChk.checked = false;
+    if (profileOverrideReasonInput) profileOverrideReasonInput.value = "";
+
     profileModal.hidden = false;
     profileModal.setAttribute("aria-hidden", "false");
     profileModal.style.display = "grid";
@@ -3708,15 +3801,20 @@
     var pairs = readPairRowsForValueGroup(profilePairsEl, currentProfileValueGroup);
 
     captureAnthologyOpenState();
+    var profileBody = {
+      row_id: currentProfileRowId,
+      label: String(labelValue || ""),
+      pairs: pairs,
+      icon_relpath: String(currentProfileIconRelpath || ""),
+    };
+    if (profileRuleOverrideChk && profileRuleOverrideChk.checked) {
+      profileBody.rule_write_override = true;
+      profileBody.rule_write_override_reason = profileOverrideReasonInput ? String(profileOverrideReasonInput.value || "") : "";
+    }
     var payload = await api("/portal/api/data/anthology/profile/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        row_id: currentProfileRowId,
-        label: String(labelValue || ""),
-        pairs: pairs,
-        icon_relpath: String(currentProfileIconRelpath || ""),
-      }),
+      body: JSON.stringify(profileBody),
     });
 
     if (payload.table_view) {

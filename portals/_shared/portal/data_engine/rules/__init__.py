@@ -18,7 +18,18 @@ from .base import (
 )
 from .collection_rules import default_collection_family_rules, ordered_pairs_from_row
 from .lenses import resolve_lens_payload
+from .policy import RulePolicy, derive_rule_policy, gate_write_attempt
 from .samras_rules import build_samras_rule
+from .write_evaluation import (
+    build_append_row_dict,
+    build_updated_row_dict,
+    compute_next_append_datum_id,
+    evaluate_probe_write,
+    evaluate_resource_payload_write,
+    extract_rows_payload_from_resource_body,
+    infer_reference_filter_rule_key,
+    merge_row_into_rows_payload,
+)
 
 
 def _datum_id_pattern():
@@ -457,10 +468,12 @@ def resolve_lens_for_datum(
         understanding=understanding.to_dict(),
         row=row.raw,
     )
+    policy = derive_rule_policy(understanding)
     return {
         "ok": True,
         "datum_id": as_text(datum_id),
         "understanding": understanding.to_dict(),
+        "rule_policy": policy.to_dict(),
         "lens": lens_payload,
         "schema": "mycite.portal.datum_rules.lens_resolution.v1",
     }
@@ -471,12 +484,23 @@ __all__ = [
     "value_group_as_int",
     "DatumUnderstanding",
     "DatumUnderstandingReport",
+    "RulePolicy",
     "RuleDefinition",
     "RuleContext",
     "DatumRow",
     "ordered_pairs_from_row",
     "understand_datums",
+    "derive_rule_policy",
+    "gate_write_attempt",
     "reference_filter_options",
     "validate_rule_create",
     "resolve_lens_for_datum",
+    "merge_row_into_rows_payload",
+    "compute_next_append_datum_id",
+    "build_append_row_dict",
+    "build_updated_row_dict",
+    "evaluate_probe_write",
+    "evaluate_resource_payload_write",
+    "infer_reference_filter_rule_key",
+    "extract_rows_payload_from_resource_body",
 ]

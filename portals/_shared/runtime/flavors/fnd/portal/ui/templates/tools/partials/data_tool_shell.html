@@ -208,6 +208,18 @@
           </div>
           <div class="data-tool__profileMeta">
             <div><strong>Identifier:</strong> <code id="dtProfileIdentifier"></code></div>
+            <div id="dtProfileRuleMeta" class="data-tool__ruleMeta" hidden></div>
+          </div>
+          <div class="data-tool__ruleOverrideRow">
+            <label class="data-tool__ruleOverrideLabel"
+              ><input type="checkbox" id="dtProfileRuleOverride" /> Admin: rule write override</label
+            >
+            <input
+              type="text"
+              id="dtProfileOverrideReason"
+              class="data-tool__ruleOverrideReason"
+              placeholder="override reason (recommended)"
+            />
           </div>
           <section class="data-tool__appendPairs data-tool__profilePairs">
             <div class="data-tool__appendPairsHeader">
@@ -269,6 +281,18 @@
           </div>
           <div id="dtAppendPairs" class="data-tool__appendPairsList"></div>
         </section>
+
+        <div class="data-tool__ruleOverrideRow">
+          <label class="data-tool__ruleOverrideLabel"
+            ><input type="checkbox" id="dtAppendRuleOverride" /> Admin: rule write override</label
+          >
+          <input
+            type="text"
+            id="dtAppendOverrideReason"
+            class="data-tool__ruleOverrideReason"
+            placeholder="override reason (recommended)"
+          />
+        </div>
 
         <footer class="data-tool__profileFooter">
           <button type="button" id="dtAppendSaveBtn">Save Changes</button>
