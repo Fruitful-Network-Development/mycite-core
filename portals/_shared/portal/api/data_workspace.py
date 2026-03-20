@@ -47,7 +47,11 @@ from _shared.portal.sandbox import LocalResourceLifecycleService, SandboxEngine,
 from _shared.portal.sandbox.promotion_hooks import build_tool_sandbox_promotion_hooks
 from _shared.portal.sandbox.session_registry import get_tool_sandbox_session_manager
 from _shared.portal.sandbox.tool_sandbox_session import ToolSandboxRuntimeDeps, ToolSandboxSessionManager
-from _shared.portal.sandbox.resource_workbench import build_resource_workbench_view_model, is_samras_backed_resource
+from _shared.portal.sandbox.resource_workbench import (
+    build_resource_workbench_view_model,
+    build_system_resource_workbench_view_model,
+    is_samras_backed_resource,
+)
 from _shared.portal.sandbox.samras_workspace_promotion import promote_staged_samras_title_entries
 from _shared.portal.sandbox.txa_sandbox_workspace import build_samras_workspace_view_model, build_txa_sandbox_view_model
 from _shared.portal.sandbox.workspace_contract import AGRO_ERP_SANDBOX_DECLARATION
@@ -568,6 +572,11 @@ def register_data_routes(
     @app.get("/portal/api/data/resources/local")
     def portal_data_resources_local():
         return jsonify(_local_resource_service().list_local_inventory())
+
+    @app.get("/portal/api/data/system/resource_workbench")
+    def portal_data_system_resource_workbench():
+        vm = build_system_resource_workbench_view_model(data_root=_data_root())
+        return jsonify(vm)
 
     @app.get("/portal/api/data/resources/inherited")
     def portal_data_resources_inherited():

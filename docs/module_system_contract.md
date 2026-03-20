@@ -31,17 +31,17 @@ Modules **must not**: render shell page titles, duplicate left-nav sections, emb
 - **Center:** source list + resource list; default view is management, not raw index JSON.
 - **Inspector:** selected resource summary + refresh/disconnect actions; raw API JSON only under advanced.
 
-### SAMRAS editor (Workbench submode)
-- **Truth:** shared `samras_workspace` view-model and APIs for **TXA, MSN,** and future SAMRAS-backed sandbox resources.
-- **Center:** editable/navigable title table + path/children affordances; session staging until promote.
-- **Inspector:** shared SAMRAS inspector panel (`systemInspectorPanelTxa` host) for path, siblings, children, next child, structural detail, staged previews.
-- **Session staging:** Local Resources and the Data Tool SAMRAS workspace share the same `sessionStorage` key prefix (`mycite.data_tool.txa_staged.v1:` + `resource_id`) so staged rows appear in both surfaces for the same resource.
+### Resource workbench baseline (System workbench mode = resources)
+- **Truth:** table-first interface over three canonical JSON files: `anthology.json`, `samras-txa.json`, `samras-msn.json`.
+- **Center:** anthology-esque datum table only for this pass (no in-body Anthology/SAMRAS tabs).
+- **Inspector:** selected row detail in shell-owned right inspector (`systemInspectorPanelResources`).
+- **Switching:** query-state based (`/portal/system?tab=workbench&workbench=resources|anthology`) from left sidebar controls; body tabs are removed.
 
 ## Implementation map (FND)
 
 - `portals/.../templates/services/system.html` — tab bodies + inspector roots
-- `portals/.../templates/tools/partials/data_tool_shell.html` — anthology + SAMRAS submode workspace
-- `portals/.../static/tools/data_tool.js` — anthology + SAMRAS sandbox client
+- `portals/.../templates/tools/partials/data_tool_shell.html` — anthology workspace + resources-table workspace (query-state)
+- `portals/.../static/tools/data_tool.js` — anthology + resources-table workbench client
 - `portals/.../static/tools/local_resources_workbench.js` — Local Resources client
 - `portals/.../static/tools/inheritance_workbench.js` — Inheritance client
 - `portals/_shared/portal/api/data_workspace.py` — sandbox resource, `samras_workspace`, inherited inventory APIs

@@ -11,7 +11,7 @@ The **System** area should read as a **workbench** (selection → workspace → 
 | Region | Responsibility |
 |--------|----------------|
 | **Left context sidebar** (`dtSystemContext` on System) | Navigation is in the IDE shell; this pane holds **search / select-mode** and other compact scope controls. |
-| **Center** | Primary **workspace**: anthology grouped graph, SAMRAS sandbox structure + title table, local resource workspace tab, inheritance resource list. |
+| **Center** | Primary **workspace**: anthology surface or resources-table surface (query-state), local resource workspace tab, inheritance resource list. |
 | **Right** | **Inspector**: datum editor + investigation embed (anthology), SAMRAS branch/structural inspector (sandbox), resource SAMRAS sidebar (local resources), inherited resource detail + sync actions (inheritance). |
 
 ## Anthology workbench (`data_tool_shell.html` + `data_tool.js`)
@@ -22,12 +22,13 @@ The **System** area should read as a **workbench** (selection → workspace → 
 - **Inspector (shell)**: `#dtAnthologyInspectorBody` + `#dtAnthologyInvMount` — datum editor / investigation; NIMM opened from a compact **Advanced** control.
 - **Left `dtSystemContext`**: search / select-mode only.
 
-## SAMRAS workspace (Data Tool submode)
+## Resource workbench baseline (`workbench=resources`)
 
-- **Shared capability** for **TXA and MSN** (and future SAMRAS-backed sandbox resources) via `POST /portal/api/data/sandbox/samras_workspace/view_model`.
-- **Center**: title table + path/children mini-surface (`data-tool__txaWorkspaceStack`).
-- **Inspector**: `#systemInspectorPanelTxa` hosts the moved `data-tool__txaBranchAside` (path, siblings, children, next child, structural burst).
-- **Quick presets** in the toolbar load `local:samras.txa` / `local:samras.msn` when those sandbox files exist.
+- **Switching** is query-state based from the left sidebar context links: `?tab=workbench&workbench=resources|anthology`.
+- **No in-body mode tabs**: Anthology/SAMRAS navigation rows are removed from the center surface.
+- **Center (resources)**: table-first datum surface from `GET /portal/api/data/system/resource_workbench`.
+- **Canonical files (fixed for this pass)**: `anthology.json`, `samras-txa.json`, `samras-msn.json`.
+- **Inspector (resources)**: selected row detail mounted in `#systemInspectorPanelResources`.
 
 ## Local Resources (`system.html` + `local_resources_workbench.js`)
 

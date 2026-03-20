@@ -107,8 +107,8 @@ This file is an auto-generated snapshot of `/srv/compose` (excluding `.svg` file
             local/
               samras.msn.json
               samras.txa.json
-          samras-msn.legacy.json
-          samras-txa.legacy.json
+          samras-msn.json
+          samras-txa.json
           sandbox/
             resources/
               msn.samras.5-0-2.json

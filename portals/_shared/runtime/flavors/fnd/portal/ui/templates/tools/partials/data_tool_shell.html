@@ -1,10 +1,5 @@
-  <section class="card data-tool" id="dataToolApp" data-active-tab="anthology" data-open-nimm="0">
+  <section class="card data-tool" id="dataToolApp" data-active-tab="anthology" data-open-nimm="0" data-system-workbench-mode="{{ current_workbench_mode if current_workbench_mode is defined else 'anthology' }}">
     <div id="dtMessages" class="data-tool__messages" aria-live="polite"></div>
-
-    <nav class="data-tool__workspaceTabs servicetabs" aria-label="Workbench submode">
-      <button type="button" class="servicetabs__tab is-active" data-dt-workspace-tab="anthology">Anthology</button>
-      <button type="button" class="servicetabs__tab" data-dt-workspace-tab="txa_sandbox">SAMRAS workspace</button>
-    </nav>
 
     <div id="dtWorkspaceAnthology" class="data-tool__workspacePanel" data-workspace-panel="anthology">
     <div class="data-tool__layout data-tool__layout--workbench">
@@ -69,78 +64,40 @@
     </div>
     </div>
 
-    <div id="dtWorkspaceTxaSandbox" class="data-tool__workspacePanel" data-workspace-panel="txa_sandbox" hidden>
+    <div id="dtWorkspaceResources" class="data-tool__workspacePanel" data-workspace-panel="resources" hidden>
       <div class="data-tool__layout data-tool__layout--workbench">
         <div class="data-tool__main data-tool__main--workspaceOnly">
           <section class="card data-tool__txaSandboxCard data-tool__moduleSurface">
             <header class="data-tool__graphToolbar data-tool__graphToolbar--compact">
               <div class="data-tool__controlRow data-tool__controlRow--wrap">
-                <label class="data-tool__growLabel">
-                  <span>SAMRAS resource_id</span>
-                  <input id="dtTxaResourceId" type="text" placeholder="e.g. local:samras.txa or local:samras.msn" style="min-width:220px;" />
-                </label>
-                <button type="button" id="dtTxaLoadBtn">Load</button>
-                <button type="button" id="dtTxaRefreshBtn">Refresh</button>
-                <button type="button" id="dtTxaClearStagedBtn">Clear staged</button>
-                <button type="button" id="dtTxaPromoteBtn">Promote staged</button>
-                <span id="dtTxaStatus" class="data-tool__statusText"></span>
-              </div>
-              <div class="data-tool__controlRow data-tool__controlRow--wrap data-tool__samrasQuickRow">
-                <span class="data-tool__legendText">Quick:</span>
-                <button type="button" id="dtSamrasPresetTxa" class="data-tool__ghostBtn">Load TXA preset</button>
-                <button type="button" id="dtSamrasPresetMsn" class="data-tool__ghostBtn">Load MSN preset</button>
+                <button type="button" id="dtResourcesRefreshBtn">Refresh resources</button>
+                <span id="dtResourcesStatus" class="data-tool__statusText"></span>
               </div>
             </header>
-            <div class="data-tool__txaWorkspaceStack">
-              <div id="dtTxaStructureGraph" class="data-tool__txaMiniGraph data-tool__txaMiniGraph--workspace" role="region" aria-label="SAMRAS path"></div>
-              <div class="data-tool__tableWrap data-tool__txaTableWrap">
-                <table class="data-tool__table data-tool__table--compact">
-                  <thead>
-                    <tr>
-                      <th scope="col">Status</th>
-                      <th scope="col">Address</th>
-                      <th scope="col">Title</th>
-                      <th scope="col">Parent</th>
-                    </tr>
-                  </thead>
-                  <tbody id="dtTxaTitleTableBody"></tbody>
-                </table>
-              </div>
-              <p id="dtTxaTableEmpty" class="data-tool__empty" hidden>No rows loaded.</p>
+            <div class="data-tool__tableWrap data-tool__txaTableWrap">
+              <table class="data-tool__table data-tool__table--compact">
+                <thead>
+                  <tr>
+                    <th scope="col">File</th>
+                    <th scope="col">Identifier</th>
+                    <th scope="col">Label / title</th>
+                    <th scope="col">Reference</th>
+                    <th scope="col">Magnitude</th>
+                    <th scope="col">Layer</th>
+                    <th scope="col">VG</th>
+                  </tr>
+                </thead>
+                <tbody id="dtResourcesTableBody"></tbody>
+              </table>
             </div>
-            <div class="data-tool__controlRow data-tool__controlRow--wrap data-tool__txaStageRow">
-              <label class="data-tool__growLabel">
-                <span>New title</span>
-                <input id="dtTxaNewTitle" type="text" placeholder="e.g. purple_passion" />
-              </label>
-              <button type="button" id="dtTxaStageAddBtn">Stage as next child</button>
-            </div>
-            <p id="dtTxaStagedHint" class="data-tool__statusInline"></p>
+            <p id="dtResourcesTableEmpty" class="data-tool__empty" hidden>No resource rows loaded.</p>
+            <details class="data-tool__advanced">
+              <summary>Advanced: resource file status</summary>
+              <pre id="dtResourcesFilesJson" class="jsonblock">{}</pre>
+            </details>
           </section>
         </div>
       </div>
-      <aside class="card data-tool__txaBranchAside" aria-label="SAMRAS structural inspector" hidden>
-        <section class="data-tool__txaBranchSection">
-          <h3 class="data-tool__txaBranchHeading">Path to root</h3>
-          <div id="dtTxaBranchPath" class="data-tool__txaBranchPath"></div>
-        </section>
-        <section class="data-tool__txaBranchSection">
-          <h3 class="data-tool__txaBranchHeading">Siblings</h3>
-          <div id="dtTxaBranchSiblings" class="data-tool__txaBranchList"></div>
-        </section>
-        <section class="data-tool__txaBranchSection">
-          <h3 class="data-tool__txaBranchHeading">Children</h3>
-          <div id="dtTxaBranchChildren" class="data-tool__txaBranchList"></div>
-        </section>
-        <section class="data-tool__txaBranchSection">
-          <h3 class="data-tool__txaBranchHeading">Next child slot</h3>
-          <div id="dtTxaBranchNext" class="data-tool__txaBranchNext"></div>
-        </section>
-        <section class="data-tool__txaBranchSection" aria-label="SAMRAS structural detail">
-          <h3 class="data-tool__txaBranchHeading">Structural detail</h3>
-          <div id="dtSamrasStructuralBurst" class="data-tool__samrasBurst"></div>
-        </section>
-      </aside>
     </div>
 
     <aside class="card data-tool__nimmSummary" hidden>

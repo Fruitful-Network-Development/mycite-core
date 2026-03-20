@@ -7,7 +7,10 @@ import unittest
 from pathlib import Path
 
 from _shared.portal.sandbox.engine import SandboxEngine
-from _shared.portal.sandbox.resource_workbench import build_resource_workbench_view_model
+from _shared.portal.sandbox.resource_workbench import (
+    build_resource_workbench_view_model,
+    build_system_resource_workbench_view_model,
+)
 
 
 class ResourceWorkbenchVmTests(unittest.TestCase):
@@ -63,6 +66,26 @@ class ResourceWorkbenchVmTests(unittest.TestCase):
         ok, snap2 = eng.peek_stage_payload("r1")
         self.assertTrue(ok)
         self.assertTrue(snap2.get("staged"))
+        tmp.cleanup()
+
+    def test_system_resource_workbench_materializes_canonical_files(self):
+        tmp = tempfile.TemporaryDirectory()
+        root = Path(tmp.name)
+        (root / "anthology.json").write_text(
+            '{"rows":{"1-0-1":{"row_id":"1-0-1","identifier":"1-0-1","label":"A","reference":"2-0-1","magnitude":"1","layer":1,"value_group":0}}}\n',
+            encoding="utf-8",
+        )
+        (root / "samras-txa.legacy.json").write_text(
+            '{"rows":{"2-0-1":{"row_id":"2-0-1","identifier":"2-0-1","label":"TXA","reference":"1-0-1","magnitude":"1","layer":2,"value_group":0}}}\n',
+            encoding="utf-8",
+        )
+        vm = build_system_resource_workbench_view_model(data_root=root)
+        names = {str(item.get("filename") or "") for item in list(vm.get("files") or [])}
+        self.assertEqual(names, {"anthology.json", "samras-txa.json", "samras-msn.json"})
+        self.assertTrue((root / "samras-txa.json").is_file())
+        self.assertTrue((root / "samras-msn.json").is_file())
+        lines = (root / "samras-txa.json").read_text(encoding="utf-8").splitlines()
+        self.assertGreaterEqual(len(lines), 3)
         tmp.cleanup()
 
 

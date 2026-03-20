@@ -94,6 +94,9 @@ class FndPortalShellRouteTests(unittest.TestCase):
             self.assertIn('id="portalContextSidebar"', system_html)
             self.assertIn("Local Resources", system_html)
             self.assertIn("Inheritance", system_html)
+            self.assertIn("/portal/system?tab=workbench&workbench=resources", system_html)
+            resources_mode_html = client.get("/portal/system?tab=workbench&workbench=resources").get_data(as_text=True)
+            self.assertIn('data-system-workbench-mode="resources"', resources_mode_html)
 
             lr_html = client.get("/portal/system?tab=local_resources").get_data(as_text=True)
             self.assertIn('id="lrTabWorkspace"', lr_html)
@@ -132,6 +135,12 @@ class FndPortalShellRouteTests(unittest.TestCase):
             local_inventory = client.get("/portal/api/data/resources/local")
             self.assertEqual(local_inventory.status_code, 200)
             self.assertTrue((local_inventory.get_json() or {}).get("ok"))
+            resource_wb = client.get("/portal/api/data/system/resource_workbench")
+            self.assertEqual(resource_wb.status_code, 200)
+            resource_wb_payload = resource_wb.get_json() or {}
+            self.assertTrue(resource_wb_payload.get("ok"))
+            filenames = {str(item.get("filename") or "") for item in list(resource_wb_payload.get("files") or [])}
+            self.assertEqual(filenames, {"anthology.json", "samras-txa.json", "samras-msn.json"})
             inherited_inventory = client.get("/portal/api/data/resources/inherited")
             self.assertEqual(inherited_inventory.status_code, 200)
             self.assertTrue((inherited_inventory.get_json() or {}).get("ok"))

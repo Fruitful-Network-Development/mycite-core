@@ -89,6 +89,7 @@ class TffPortalShellRouteTests(unittest.TestCase):
             system_html = client.get("/portal/system").get_data(as_text=True)
             self.assertIn("Local Resources", system_html)
             self.assertIn("Inheritance", system_html)
+            self.assertIn("/portal/system?tab=workbench&workbench=resources", system_html)
             self.assertNotIn("Sandbox</span><small>MSS/SAMRAS resources</small>", system_html)
             self.assertEqual(client.get("/portal/network?tab=contracts").status_code, 200)
             self.assertEqual(client.get("/portal/utilities?tab=vault").status_code, 200)
@@ -111,6 +112,10 @@ class TffPortalShellRouteTests(unittest.TestCase):
                 400,
             )
             self.assertEqual(client.get("/portal/api/data/resources/local").status_code, 200)
+            resource_wb = client.get("/portal/api/data/system/resource_workbench")
+            self.assertEqual(resource_wb.status_code, 200)
+            filenames = {str(item.get("filename") or "") for item in list((resource_wb.get_json() or {}).get("files") or [])}
+            self.assertEqual(filenames, {"anthology.json", "samras-txa.json", "samras-msn.json"})
             self.assertEqual(client.get("/portal/api/data/resources/inherited").status_code, 200)
             self.assertEqual(client.get("/portal/api/data/tables").status_code, 404)
             self.assertEqual(client.get("/portal/api/data/table/main/view").status_code, 404)

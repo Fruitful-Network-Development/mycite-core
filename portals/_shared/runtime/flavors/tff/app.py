@@ -92,6 +92,7 @@ from _shared.portal.services.request_log_ui import (
 from _shared.portal.services.sidebar_context import build_context_sidebar_sections
 from _shared.portal.services.shell_context import build_shell_context
 from _shared.portal.data_engine.external_resources import ExternalResourceResolver
+from _shared.portal.sandbox.resource_workbench import build_system_resource_workbench_view_model
 
 app = Flask(
     __name__,
@@ -170,6 +171,12 @@ app.jinja_loader = ChoiceLoader(
     ]
 )
 app.static_folder = str(SHARED_SHELL_STATIC_DIR)
+
+# Ensure canonical resource workbench files exist on startup (anthology/txa/msn).
+try:
+    build_system_resource_workbench_view_model(data_root=DATA_DIR)
+except Exception:
+    pass
 
 
 def _canonical_progeny_type(value: str) -> str:
@@ -797,6 +804,11 @@ def _normalize_system_query_tab(raw: Any) -> str:
     return normalize_system_tab(str(raw or "").strip())
 
 
+def _normalize_system_workbench_mode(raw: Any) -> str:
+    token = str(raw or "").strip().lower()
+    return token if token in {"anthology", "resources"} else "anthology"
+
+
 def _normalize_hosted_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         return {"type": "unknown", "type_values": {}, "raw": {}}
@@ -1310,7 +1322,7 @@ def _activity_tool_nav(active_tool_id: str) -> list[Dict[str, Any]]:
     return out
 
 
-def _render_portal_system(*, system_tab: str):
+def _render_portal_system(*, system_tab: str, workbench_mode: str = "anthology"):
     aliases = list_aliases_for_sidebar(PRIVATE_DIR)
     profile_model = _portal_profile_model()
     return render_template(
@@ -1318,6 +1330,7 @@ def _render_portal_system(*, system_tab: str):
         aliases=aliases,
         msn_id=MSN_ID,
         system_tab=system_tab,
+        system_workbench_mode=_normalize_system_workbench_mode(workbench_mode),
         system_tabs=build_system_tabs(system_tab),
         data_home_available=DATA_HOME_AVAILABLE,
         portal_profile=profile_model,
@@ -1328,7 +1341,8 @@ def _render_portal_system(*, system_tab: str):
 @app.get("/portal/system")
 def portal_system_page():
     system_tab = _normalize_system_query_tab(request.args.get("tab"))
-    return _render_portal_system(system_tab=system_tab)
+    workbench_mode = _normalize_system_workbench_mode(request.args.get("workbench"))
+    return _render_portal_system(system_tab=system_tab, workbench_mode=workbench_mode)
 
 
 @app.get("/portal/home")
