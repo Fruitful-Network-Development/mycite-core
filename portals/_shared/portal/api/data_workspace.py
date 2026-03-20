@@ -47,6 +47,8 @@ from _shared.portal.sandbox import LocalResourceLifecycleService, SandboxEngine,
 from _shared.portal.sandbox.promotion_hooks import build_tool_sandbox_promotion_hooks
 from _shared.portal.sandbox.session_registry import get_tool_sandbox_session_manager
 from _shared.portal.sandbox.tool_sandbox_session import ToolSandboxRuntimeDeps, ToolSandboxSessionManager
+from _shared.portal.sandbox.resource_workbench import build_resource_workbench_view_model, is_samras_backed_resource
+from _shared.portal.sandbox.samras_workspace_promotion import promote_staged_samras_title_entries
 from _shared.portal.sandbox.txa_sandbox_workspace import build_samras_workspace_view_model, build_txa_sandbox_view_model
 from _shared.portal.sandbox.workspace_contract import AGRO_ERP_SANDBOX_DECLARATION
 
@@ -528,6 +530,41 @@ def register_data_routes(
         )
         return jsonify({"ok": True, "schema": "mycite.portal.sandbox.samras_workspace.v1", "view_model": vm})
 
+    @app.post("/portal/api/data/sandbox/samras_workspace/view_model")
+    def portal_data_sandbox_samras_workspace_view_model_post():
+        """Generic SAMRAS workspace view-model (TXA, MSN, other SAMRAS-backed resources)."""
+        body = _json_body()
+        rid = str(body.get("resource_id") or "").strip()
+        if not rid:
+            abort(400, description="resource_id is required")
+        payload = _sandbox_engine().get_resource(rid)
+        if bool(payload.get("missing")):
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": f"resource not found: {rid}",
+                        "schema": "mycite.portal.sandbox.samras_workspace.view_model.v1",
+                    }
+                ),
+                404,
+            )
+        selected = str(body.get("selected_address_id") or "").strip()
+        staged = body.get("staged_entries") if isinstance(body.get("staged_entries"), list) else []
+        vm = build_samras_workspace_view_model(payload, selected_address_id=selected, staged_entries=staged)
+        return jsonify({"ok": True, **vm})
+
+    @app.post("/portal/api/data/sandbox/resources/<path:resource_id>/promote_staged_samras_titles")
+    def portal_data_sandbox_promote_staged_samras_titles(resource_id: str):
+        """Persist staged SAMRAS title rows via SandboxEngine (structure-aware when available)."""
+        body = _json_body()
+        staged = body.get("staged_entries") if isinstance(body.get("staged_entries"), list) else []
+        entries = [dict(item) for item in staged if isinstance(item, dict)]
+        result = promote_staged_samras_title_entries(_sandbox_engine(), resource_id, staged_entries=entries)
+        out = result.to_dict()
+        out["schema"] = "mycite.portal.sandbox.samras_promote_staged_titles.v1"
+        return jsonify(out), (200 if bool(result.ok) else 400)
+
     @app.get("/portal/api/data/resources/local")
     def portal_data_resources_local():
         return jsonify(_local_resource_service().list_local_inventory())
@@ -657,12 +694,41 @@ def register_data_routes(
     def portal_data_sandbox_resource(resource_id: str):
         engine = _sandbox_engine()
         payload = engine.get_resource(resource_id)
-        out: dict[str, Any] = {"ok": not bool(payload.get("missing")), "resource": payload}
-        rows_payload = _rule_rows_payload_from_sandbox_resource(str(resource_id or "").strip())
+        rid = str(resource_id or "").strip()
+        has_staged, staged_snapshot = engine.peek_stage_payload(rid)
+        out: dict[str, Any] = {
+            "ok": not bool(payload.get("missing")),
+            "resource": payload,
+            "staged_present": has_staged,
+            "staged_payload": dict(staged_snapshot) if has_staged else {},
+            "schema": "mycite.portal.sandbox.resource.detail.v1",
+        }
+        rows_payload = _rule_rows_payload_from_sandbox_resource(rid)
+        datum_u: dict[str, Any] | None = None
+        rule_pol: dict[str, Any] | None = None
         if rows_payload.get("rows"):
             report = understand_datums(rows_payload)
-            out["datum_understanding"] = report.to_dict()
-            out["rule_policy_by_id"] = {k: derive_rule_policy(v).to_dict() for k, v in report.by_id.items()}
+            datum_u = report.to_dict()
+            rule_pol = {k: derive_rule_policy(v).to_dict() for k, v in report.by_id.items()}
+            out["datum_understanding"] = datum_u
+            out["rule_policy_by_id"] = rule_pol
+        if not bool(payload.get("missing")):
+            out["workbench"] = build_resource_workbench_view_model(
+                resource_body=dict(payload),
+                staged_present=has_staged,
+                staged_payload=dict(staged_snapshot) if has_staged else {},
+                datum_understanding=datum_u,
+                rule_policy_by_id=rule_pol,
+            )
+            if is_samras_backed_resource(dict(payload)):
+                try:
+                    out["samras_workspace"] = build_samras_workspace_view_model(
+                        dict(payload),
+                        selected_address_id="",
+                        staged_entries=[],
+                    )
+                except Exception as exc:  # pragma: no cover - defensive
+                    out["samras_workspace_error"] = str(exc)
         return jsonify(out)
 
     @app.post("/portal/api/data/sandbox/resources/<path:resource_id>/stage")
@@ -1397,7 +1463,7 @@ def register_data_routes(
         if not hasattr(workspace, "anthology_graph_view"):
             abort(501, description="anthology graph view is unavailable")
         focus = str(request.args.get("focus") or "").strip()
-        layout = str(request.args.get("layout") or "linear").strip().lower()
+        layout = str(request.args.get("layout") or "grouped").strip().lower()
         context_mode = str(request.args.get("context") or "global").strip().lower()
         depth_raw = str(request.args.get("depth") or "").strip()
         depth: int | None = None

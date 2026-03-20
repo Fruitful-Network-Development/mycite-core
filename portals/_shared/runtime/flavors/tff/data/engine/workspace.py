@@ -73,6 +73,22 @@ parse_datum_identifier = _SHARED_ANTHOLOGY_NORMALIZATION.parse_datum_identifier
 compact_iterations = _SHARED_ANTHOLOGY_NORMALIZATION.compact_iterations
 
 
+def _load_shared_workbench_composition() -> ModuleType:
+    shared_path = (
+        Path(__file__).resolve().parents[3] / "_shared" / "portal" / "workbench" / "workbench_composition.py"
+    )
+    spec = importlib.util.spec_from_file_location("mycite_shared_portal_workbench_composition", shared_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load shared workbench composition from {shared_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_SHARED_WORKBENCH = _load_shared_workbench_composition()
+build_grouped_workbench_bundle = _SHARED_WORKBENCH.build_grouped_workbench_bundle
+
+
 def _load_shared_contract_mss_sync() -> ModuleType:
     portals_root = Path(__file__).resolve().parents[6]
     token = str(portals_root)
@@ -1752,7 +1768,7 @@ class Workspace:
         *,
         focus_identifier: str = "",
         depth_limit: int | None = None,
-        layout_mode: str = "linear",
+        layout_mode: str = "grouped",
         context_mode: str = "global",
     ) -> dict[str, Any]:
         table_view = self.anthology_table_view()
@@ -1845,9 +1861,15 @@ class Workspace:
         )
         edges.sort(key=lambda item: (str(item.get("source") or ""), str(item.get("target") or ""), str(item.get("reference") or "")))
 
-        layout_token = str(layout_mode or "linear").strip().lower() or "linear"
-        if layout_token not in {"linear", "radial"}:
-            layout_token = "linear"
+        requested_layout = str(layout_mode or "grouped").strip().lower() or "grouped"
+        layout_token = requested_layout
+        layout_notes: list[str] = []
+        if layout_token in {"linear", "radial"}:
+            layout_notes.append(f"layout mode {layout_token!r} is retired; using grouped workbench layout")
+            layout_token = "grouped"
+        if layout_token != "grouped":
+            layout_notes.append(f"layout mode {layout_token!r} is unsupported; using grouped")
+            layout_token = "grouped"
         context_token = str(context_mode or "global").strip().lower() or "global"
         if context_token not in {"global", "local"}:
             context_token = "global"
@@ -1903,13 +1925,50 @@ class Workspace:
 
         unresolved_filtered = sum(1 for edge in filtered_edges if not bool(edge.get("resolved")))
 
+        vg_bucket: dict[Any, dict[Any, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
+        for node in filtered_nodes:
+            vg_bucket[node.get("layer")][node.get("value_group")].append(node)
+        grouped_bands: list[dict[str, Any]] = []
+        for layer_key in sorted(vg_bucket.keys(), key=lambda value: (10**9 if value is None else int(value))):
+            columns: list[dict[str, Any]] = []
+            for vg_key in sorted(
+                vg_bucket[layer_key].keys(),
+                key=lambda value: (10**9 if value is None else int(value)),
+            ):
+                col_nodes = list(vg_bucket[layer_key][vg_key])
+                col_nodes.sort(
+                    key=lambda item: (
+                        10**9 if item.get("layer") is None else int(item.get("layer")),
+                        10**9 if item.get("value_group") is None else int(item.get("value_group")),
+                        10**9 if item.get("iteration") is None else int(item.get("iteration")),
+                        str(item.get("identifier") or ""),
+                    )
+                )
+                columns.append(
+                    {
+                        "value_group": vg_key,
+                        "node_count": len(col_nodes),
+                        "nodes": col_nodes,
+                    }
+                )
+            grouped_bands.append(
+                {
+                    "layer": layer_key,
+                    "column_count": len(columns),
+                    "columns": columns,
+                }
+            )
+
+        graph_warnings = list(table_view.get("warnings") or []) + list(layout_notes)
+
         return {
             "ok": True,
             "errors": [],
-            "warnings": list(table_view.get("warnings") or []),
+            "warnings": graph_warnings,
             "nodes": filtered_nodes,
             "edges": filtered_edges,
             "layers": layers,
+            "grouped_bands": grouped_bands,
             "focus": {
                 "identifier": focus_token,
                 "active": bool(focus_token and focus_token in by_identifier),
@@ -1917,8 +1976,9 @@ class Workspace:
                 "depth_limit": depth_token,
             },
             "layout": {
-                "mode": layout_token,
-                "supported_modes": ["linear", "radial"],
+                "mode": "grouped",
+                "supported_modes": ["grouped"],
+                "requested_mode": requested_layout,
             },
             "stats": {
                 "node_count": len(filtered_nodes),
@@ -3899,6 +3959,16 @@ class Workspace:
         payload["datum_icons_map"] = dict(self._datum_icons_map)
         payload["daemon_ports"] = self.daemon_port_catalog()
         payload["model_meta"] = self.model_meta()
+        try:
+            payload["workbench_grouped"] = build_grouped_workbench_bundle(self.anthology_table_view())
+        except Exception as exc:  # pragma: no cover - defensive for partial workspaces
+            payload["workbench_grouped"] = {
+                "schema": "mycite.portal.workbench.grouped_bundle.v1",
+                "bands": [],
+                "row_count": 0,
+                "warnings": [f"workbench_grouped unavailable: {exc}"],
+                "table": {},
+            }
         return payload
 
     def get_state_snapshot(self) -> dict[str, Any]:
