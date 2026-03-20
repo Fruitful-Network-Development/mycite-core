@@ -35,7 +35,7 @@
     sourceFilter: document.getElementById("inheritanceSourceFilter"),
     resourceList: document.getElementById("inheritanceResourceList"),
     centerTitle: document.getElementById("inheritanceCenterTitle"),
-    centerHint: document.getElementById("inheritanceCenterHint"),
+    selectedSummary: document.getElementById("inheritanceSelectedSummary"),
     inspectorEmpty: document.getElementById("inheritanceInspectorEmpty"),
     inspectorDetail: document.getElementById("inheritanceInspectorDetail"),
     rawPre: document.getElementById("inheritanceResourcesJson"),
@@ -103,17 +103,36 @@
     }
   }
 
+  function renderSelectedSummary(picked) {
+    if (!el.selectedSummary) return;
+    if (!picked) {
+      el.selectedSummary.hidden = true;
+      el.selectedSummary.innerHTML = "";
+      return;
+    }
+    el.selectedSummary.hidden = false;
+    var name = String(picked.resource_name || picked.resource_id || "").trim();
+    var rid = String(picked.resource_id || "").trim();
+    el.selectedSummary.innerHTML =
+      '<div class="inh-workbench__summaryCard">' +
+      "<strong>" +
+      esc(name || rid || "Resource") +
+      "</strong>" +
+      '<div class="inh-workbench__summaryMeta"><code>' +
+      esc(rid) +
+      "</code></div>" +
+      '<p class="data-tool__legendText">Use the inspector for refresh/disconnect and contract fields.</p>' +
+      "</div>";
+  }
+
   function renderResources() {
     if (!el.resourceList) return;
     var map = groupedMap();
     var list = Array.isArray(map[state.selectedSource]) ? map[state.selectedSource] : [];
     if (el.centerTitle) {
       el.centerTitle.textContent = state.selectedSource
-        ? "Resources — " + state.selectedSource
+        ? "Inherited resources — " + state.selectedSource
         : "Select a source";
-    }
-    if (el.centerHint) {
-      el.centerHint.hidden = !!state.selectedSource;
     }
     el.resourceList.innerHTML = "";
     list.forEach(function (row) {
@@ -145,6 +164,11 @@
       empty.textContent = "No resources for this source.";
       el.resourceList.appendChild(empty);
     }
+    var picked0 =
+      list.find(function (r) {
+        return r && String(r.resource_id || "").trim() === state.selectedResourceId;
+      }) || null;
+    renderSelectedSummary(picked0);
   }
 
   function renderInspector() {
@@ -159,13 +183,19 @@
       el.inspectorEmpty.hidden = false;
       el.inspectorDetail.hidden = true;
       el.inspectorDetail.innerHTML = "";
+      renderSelectedSummary(null);
       return;
     }
     el.inspectorEmpty.hidden = true;
     el.inspectorDetail.hidden = false;
+    var actions =
+      '<div class="data-tool__controlRow data-tool__controlRow--wrap inh-workbench__inspectorActions">' +
+      '<button type="button" class="js-inh-refresh-one">Refresh this resource</button>' +
+      "</div>";
     var lines = [
+      actions,
+      "<p><strong>Display name</strong><br/>" + esc(String(picked.resource_name || picked.resource_id || "")) + "</p>",
       "<p><strong>resource_id</strong><br/><code>" + esc(String(picked.resource_id || "")) + "</code></p>",
-      "<p><strong>resource_name</strong><br/>" + esc(String(picked.resource_name || "")) + "</p>",
       "<p><strong>source_msn_id</strong><br/><code>" + esc(String(picked.source_msn_id || state.selectedSource || "")) + "</code></p>",
     ];
     if (picked.contract_id) {
@@ -179,6 +209,15 @@
       );
     }
     el.inspectorDetail.innerHTML = '<div class="inh-workbench__detail">' + lines.join("") + "</div>";
+    var btn = el.inspectorDetail.querySelector(".js-inh-refresh-one");
+    if (btn) {
+      btn.addEventListener("click", function () {
+        requestJson("/portal/api/data/resources/inherited/refresh", "POST", inheritanceInputs()).then(function (result) {
+          setInheritanceStatus(result.body || {});
+        });
+      });
+    }
+    renderSelectedSummary(picked);
   }
 
   function syncFormFromSelection() {

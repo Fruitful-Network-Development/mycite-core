@@ -1,5 +1,7 @@
 # System page UI composition (workbench-first)
 
+**Shell ownership** is defined in [`portal_shell_contract.md`](portal_shell_contract.md) (menu, left nav, center workspace, right inspector). **Module content contracts** are in [`module_system_contract.md`](module_system_contract.md). This document complements both with composition notes.
+
 ## Goals
 
 The **System** area should read as a **workbench** (selection → workspace → inspector), not as stacked debug/report panels. Raw JSON, route blobs, schema strings, and storage-path notes remain available only as **secondary / advanced** surfaces.
@@ -14,33 +16,40 @@ The **System** area should read as a **workbench** (selection → workspace → 
 
 ## Anthology workbench (`data_tool_shell.html` + `data_tool.js`)
 
-- **Center column**: `dtWorkbenchGrid` — in **grouped** mode the graph is the dominant row; the anthology table is a **context** band below (CSS `grid-template-rows`).
-- **Graph tuning** (context, depth, focus, zoom) is folded under **“Graph focus, depth, and zoom”** (`<details>`).
-- **Right column**: `#dtAnthologyInspector` with `#dtAnthologyInspectorBody` (datum editor + icon block) and `#dtAnthologyInvMount` (embedded investigation list; raw payload under **Advanced**).
-- **Default layout mode** in markup: **grouped**; table-only remains available.
-- **Left `dtSystemContext`**: no longer receives the full datum editor when the inspector column exists — it stays search/select-mode oriented.
+- **Truth:** UI for canonical **`anthology.json`** through the shared engine (not a generic dashboard).
+- **Center column**: `dtWorkbenchGrid` — **table** is the default primary surface; **graph** is an alternate mode (mutually exclusive via `data-layout-mode` + CSS).
+- **Graph tuning** (context, depth, focus, zoom) lives under **Advanced: Graph controls** (`<details>`).
+- **Inspector (shell)**: `#dtAnthologyInspectorBody` + `#dtAnthologyInvMount` — datum editor / investigation; NIMM opened from a compact **Advanced** control.
+- **Left `dtSystemContext`**: search / select-mode only.
 
-## SAMRAS resource sandbox (Data Tool workspace tab)
+## SAMRAS workspace (Data Tool submode)
 
-- **Center** uses `data-tool__txaWorkspaceStack`: structure path/children **above** the title table so the workspace is one continuous surface.
-- **Inspector** (`data-tool__txaBranchAside`): path segments are **clickable buttons** with depth index (shared pattern for TXA/MSN and future SAMRAS resources).
+- **Shared capability** for **TXA and MSN** (and future SAMRAS-backed sandbox resources) via `POST /portal/api/data/sandbox/samras_workspace/view_model`.
+- **Center**: title table + path/children mini-surface (`data-tool__txaWorkspaceStack`).
+- **Inspector**: `#systemInspectorPanelTxa` hosts the moved `data-tool__txaBranchAside` (path, siblings, children, next child, structural burst).
+- **Quick presets** in the toolbar load `local:samras.txa` / `local:samras.msn` when those sandbox files exist.
 
 ## Local Resources (`system.html` + `local_resources_workbench.js`)
 
-Tab order (default **Workspace**):
+- **Truth:** each selection maps to a **sandbox JSON file** `sandbox/resources/<resource_id>.json` (plus optional staging); the center makes that explicit (path line + file card).
+- **Left**: merged sandbox + local index list; first sandbox file **auto-selects** on refresh when nothing is selected.
+- Tab order (default **Workspace**):
 
-1. **Workspace** — summary chips (understanding, row counts, staged flag) + guidance; not raw JSON.  
-2. **Structured** — tables / grouped rows.  
-3. **Raw JSON** — full document editor; storage path note under **Advanced**.  
-4. **Staged** — readonly snapshot when present.
+1. **Workspace** — non-SAMRAS: compact summary; **SAMRAS-backed**: shared title table + path/children + session staging + promote (mirrors workbench SAMRAS APIs).  
+2. **Structured** — anthology-shaped + `rows_by_address` tables.  
+3. **Raw JSON** — full document editor.  
+4. **Staged** — on-disk staging snapshot when present.
 
-Advanced index/MSS blocks unchanged under **Advanced: index JSON, MSS, migration**.
+- **Inspector**: full SAMRAS branch inspector (path, siblings, children, next slot, structural detail) when applicable.
+
+Advanced index/MSS/migration blocks stay under **Advanced: index JSON, MSS, migration**.
 
 ## Inheritance (`system.html` + `inheritance_workbench.js`)
 
-- **Left**: sources from `GET /portal/api/data/resources/inherited` → `grouped_by_source` (no backend change).  
-- **Center**: resources for the selected source.  
-- **Right**: selected resource fields + refresh/disconnect controls; **last API JSON** under **Advanced**.  
+- **Truth:** inherited resource **manager** (not a JSON dump by default).
+- **Left**: sources from `GET /portal/api/data/resources/inherited` → `grouped_by_source`.  
+- **Center**: resources for the selected source + **selected summary** card.  
+- **Right**: selected resource detail + **Refresh this resource**; bulk source/contract actions under **Source & contract actions**; **last API JSON** under **Advanced**.  
 - **Full index JSON** under **Advanced: raw inherited index JSON**.
 
 ## Styling

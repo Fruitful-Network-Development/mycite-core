@@ -1,185 +1,146 @@
   <section class="card data-tool" id="dataToolApp" data-active-tab="anthology" data-open-nimm="0">
     <div id="dtMessages" class="data-tool__messages" aria-live="polite"></div>
 
-    <nav class="data-tool__workspaceTabs servicetabs" aria-label="Data workspace mode">
-      <button type="button" class="servicetabs__tab is-active" data-dt-workspace-tab="anthology">Anthology workbench</button>
-      <button type="button" class="servicetabs__tab" data-dt-workspace-tab="txa_sandbox">SAMRAS resource sandbox</button>
+    <nav class="data-tool__workspaceTabs servicetabs" aria-label="Workbench submode">
+      <button type="button" class="servicetabs__tab is-active" data-dt-workspace-tab="anthology">Anthology</button>
+      <button type="button" class="servicetabs__tab" data-dt-workspace-tab="txa_sandbox">SAMRAS workspace</button>
     </nav>
 
     <div id="dtWorkspaceAnthology" class="data-tool__workspacePanel" data-workspace-panel="anthology">
     <div class="data-tool__layout data-tool__layout--workbench">
-      <div class="data-tool__main">
-        <section class="card data-tool__anthologyWorkbench">
-          <header class="data-tool__graphToolbar">
-            <div class="data-tool__graphToolbarTitle">
-            <div class="card__kicker">Anthology Workbench</div>
-              <div class="card__title">Select in the graph; edit in the inspector</div>
-            </div>
-            <div class="data-tool__controlRow">
+      <div class="data-tool__main data-tool__main--workspaceOnly">
+        <div class="data-tool__anthologyWorkbench data-tool__moduleSurface">
+          <header class="data-tool__graphToolbar data-tool__graphToolbar--compact">
+            <div class="data-tool__controlRow data-tool__controlRow--wrap">
               <button type="button" id="dtAnthologyRefreshBtn">Refresh Anthology</button>
               <button type="button" id="dtAnthologyGraphRefreshBtn">Refresh Graph</button>
-              <button type="button" id="dtOpenNimmBtn">NIMM (advanced)</button>
+              <details class="data-tool__advanced data-tool__advanced--inline">
+                <summary>NIMM</summary>
+                <button type="button" id="dtOpenNimmBtn">Open NIMM</button>
+              </details>
               <label>
-                <span>layout</span>
+                <span>View</span>
                 <select id="dtWorkbenchLayoutMode">
-                  <option value="grouped" selected>grouped (graph)</option>
-                  <option value="table">table only</option>
+                  <option value="table" selected>table</option>
+                  <option value="grouped">graph</option>
                 </select>
               </label>
               <span id="dtAnthologyStatus" class="data-tool__statusText"></span>
             </div>
           </header>
 
-          <div class="data-tool__workbenchWithInspector">
-            <div class="data-tool__workbenchCenter">
-              <div id="dtWorkbenchGrid" class="data-tool__workbenchGrid" data-layout-mode="grouped">
-                <article class="data-tool__graphPane">
-                  <div class="data-tool__paneHead data-tool__paneHead--compact">
-                    <div class="card__kicker">Primary surface</div>
-                    <div class="card__title">Grouped graph</div>
-                  </div>
-                  <details class="data-tool__advanced data-tool__graphToolSheet">
-                    <summary>Graph focus, depth, and zoom</summary>
-                    <div class="data-tool__controlRow data-tool__controlRow--wrap">
-                      <label>
-                        <span>context</span>
-                        <select id="dtGraphContext">
-                          <option value="local">local</option>
-                          <option value="global">global</option>
-                        </select>
-                      </label>
-                      <label>
-                        <span>depth</span>
-                        <input id="dtGraphDepth" type="number" min="0" step="1" value="3" style="max-width:88px;" />
-                      </label>
-                      <label class="data-tool__growLabel">
-                        <span>focus</span>
-                        <input id="dtGraphFocus" type="text" placeholder="4-0-1" />
-                      </label>
-                      <button type="button" id="dtGraphApplyBtn">Apply</button>
-                      <button type="button" id="dtGraphZoomOutBtn">−</button>
-                      <button type="button" id="dtGraphZoomInBtn">+</button>
-                      <button type="button" id="dtGraphZoomResetBtn">Reset view</button>
-                    </div>
-                  </details>
-                  <span id="dtAnthologyGraphStatus" class="data-tool__statusText"></span>
-                  <div id="dtAnthologyGraph" class="data-tool__graphCanvas" role="region" aria-label="Anthology node graph"></div>
-                </article>
+          <div id="dtWorkbenchGrid" class="data-tool__workbenchGrid" data-layout-mode="table">
+            <article class="data-tool__graphPane" aria-label="Anthology graph">
+              <details class="data-tool__advanced data-tool__graphToolSheet">
+                <summary>Graph controls</summary>
+                <div class="data-tool__controlRow data-tool__controlRow--wrap">
+                  <label>
+                    <span>context</span>
+                    <select id="dtGraphContext">
+                      <option value="local">local</option>
+                      <option value="global">global</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>depth</span>
+                    <input id="dtGraphDepth" type="number" min="0" step="1" value="3" style="max-width:88px;" />
+                  </label>
+                  <label class="data-tool__growLabel">
+                    <span>focus</span>
+                    <input id="dtGraphFocus" type="text" placeholder="4-0-1" />
+                  </label>
+                  <button type="button" id="dtGraphApplyBtn">Apply</button>
+                  <button type="button" id="dtGraphZoomOutBtn">−</button>
+                  <button type="button" id="dtGraphZoomInBtn">+</button>
+                  <button type="button" id="dtGraphZoomResetBtn">Reset view</button>
+                </div>
+              </details>
+              <span id="dtAnthologyGraphStatus" class="data-tool__statusText"></span>
+              <div id="dtAnthologyGraph" class="data-tool__graphCanvas" role="region" aria-label="Anthology node graph"></div>
+            </article>
 
-                <article class="data-tool__tablePane data-tool__tablePane--contextual">
-                  <div class="data-tool__paneHead data-tool__paneHead--compact">
-                    <div class="card__kicker">Context</div>
-                    <div class="card__title">Rows for the current table</div>
-                  </div>
-                  <p id="dtDatumEditorStatus" class="data-tool__legendText">Rows mirror the anthology table; the graph is the main selector.</p>
-                  <div id="dtAnthologyLayers" class="data-tool__anthologyLayers"></div>
-                </article>
-              </div>
-            </div>
-
-            <aside id="dtAnthologyInspector" class="card data-tool__anthologyInspector" aria-label="Anthology workbench inspector">
-              <div class="data-tool__anthologyInspectorHead">
-                <div class="card__kicker">Inspector</div>
-                <div class="card__title">Datum &amp; investigation</div>
-              </div>
-              <div id="dtAnthologyInspectorBody" class="data-tool__anthologyInspectorBody"></div>
-              <section class="data-tool__anthologyInvSection" aria-label="Investigation context">
-                <h3 class="data-tool__inspectorSectionTitle">Investigation</h3>
-                <p class="data-tool__legendText data-tool__inspectorHint">Updates when you run <strong>inv</strong> from NIMM or click a graph node (summary).</p>
-                <div id="dtAnthologyInvMount" class="data-tool__anthologyInvMount"></div>
-              </section>
-            </aside>
+            <article class="data-tool__tablePane data-tool__anthologyTableHost">
+              <p id="dtDatumEditorStatus" class="data-tool__statusInline" aria-live="polite"></p>
+              <div id="dtAnthologyLayers" class="data-tool__anthologyLayers"></div>
+            </article>
           </div>
-        </section>
+        </div>
       </div>
     </div>
     </div>
 
     <div id="dtWorkspaceTxaSandbox" class="data-tool__workspacePanel" data-workspace-panel="txa_sandbox" hidden>
-      <div class="data-tool__layout data-tool__layout--txaSandbox">
-        <div class="data-tool__main">
-          <section class="card data-tool__txaSandboxCard">
-            <header class="data-tool__graphToolbar">
-              <div class="data-tool__graphToolbarTitle">
-                <div class="card__kicker">Sandbox resource</div>
-                <div class="card__title">Title-carrying TXA / SAMRAS table</div>
-              </div>
+      <div class="data-tool__layout data-tool__layout--workbench">
+        <div class="data-tool__main data-tool__main--workspaceOnly">
+          <section class="card data-tool__txaSandboxCard data-tool__moduleSurface">
+            <header class="data-tool__graphToolbar data-tool__graphToolbar--compact">
               <div class="data-tool__controlRow data-tool__controlRow--wrap">
                 <label class="data-tool__growLabel">
-                  <span>resource_id</span>
-                  <input id="dtTxaResourceId" type="text" placeholder="e.g. txa.samras.species_demo" style="min-width:220px;" />
+                  <span>SAMRAS resource_id</span>
+                  <input id="dtTxaResourceId" type="text" placeholder="e.g. local:samras.txa or local:samras.msn" style="min-width:220px;" />
                 </label>
                 <button type="button" id="dtTxaLoadBtn">Load</button>
                 <button type="button" id="dtTxaRefreshBtn">Refresh</button>
                 <button type="button" id="dtTxaClearStagedBtn">Clear staged</button>
-                <button type="button" id="dtTxaPromoteBtn">Promote staged (sandbox)</button>
+                <button type="button" id="dtTxaPromoteBtn">Promote staged</button>
                 <span id="dtTxaStatus" class="data-tool__statusText"></span>
               </div>
+              <div class="data-tool__controlRow data-tool__controlRow--wrap data-tool__samrasQuickRow">
+                <span class="data-tool__legendText">Quick:</span>
+                <button type="button" id="dtSamrasPresetTxa" class="data-tool__ghostBtn">Load TXA preset</button>
+                <button type="button" id="dtSamrasPresetMsn" class="data-tool__ghostBtn">Load MSN preset</button>
+              </div>
             </header>
-            <p id="dtTxaHelp" class="data-tool__legendText">
-              SAMRAS-backed sandbox resource (TXA, MSN, …). Use the <strong>center workspace</strong> to navigate structure and titles; the <strong>right inspector</strong> mirrors selection (path, siblings, children, next slot, structural detail).
-            </p>
             <div class="data-tool__txaWorkspaceStack">
-              <article class="data-tool__txaWorkspacePrimary">
-                <div class="data-tool__paneHead data-tool__paneHead--compact">
-                  <div class="card__kicker">Center workspace</div>
-                  <div class="card__title">Structure + title table</div>
-                </div>
-                <div id="dtTxaStructureGraph" class="data-tool__txaMiniGraph data-tool__txaMiniGraph--workspace" role="region" aria-label="SAMRAS address path and children"></div>
-                <div class="data-tool__tableWrap data-tool__txaTableWrap">
-                  <table class="data-tool__table data-tool__table--compact">
-                    <thead>
-                      <tr>
-                        <th scope="col">Status</th>
-                        <th scope="col">Address</th>
-                        <th scope="col">Title</th>
-                        <th scope="col">Parent</th>
-                      </tr>
-                    </thead>
-                    <tbody id="dtTxaTitleTableBody"></tbody>
-                  </table>
-                </div>
-                <p id="dtTxaTableEmpty" class="data-tool__empty" hidden>No rows loaded. Enter a sandbox resource_id and load.</p>
-              </article>
+              <div id="dtTxaStructureGraph" class="data-tool__txaMiniGraph data-tool__txaMiniGraph--workspace" role="region" aria-label="SAMRAS path"></div>
+              <div class="data-tool__tableWrap data-tool__txaTableWrap">
+                <table class="data-tool__table data-tool__table--compact">
+                  <thead>
+                    <tr>
+                      <th scope="col">Status</th>
+                      <th scope="col">Address</th>
+                      <th scope="col">Title</th>
+                      <th scope="col">Parent</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dtTxaTitleTableBody"></tbody>
+                </table>
+              </div>
+              <p id="dtTxaTableEmpty" class="data-tool__empty" hidden>No rows loaded.</p>
             </div>
             <div class="data-tool__controlRow data-tool__controlRow--wrap data-tool__txaStageRow">
               <label class="data-tool__growLabel">
-                <span>New cultivar / title</span>
+                <span>New title</span>
                 <input id="dtTxaNewTitle" type="text" placeholder="e.g. purple_passion" />
               </label>
               <button type="button" id="dtTxaStageAddBtn">Stage as next child</button>
             </div>
-            <p id="dtTxaStagedHint" class="data-tool__legendText"></p>
+            <p id="dtTxaStagedHint" class="data-tool__statusInline"></p>
           </section>
         </div>
-        <aside class="card data-tool__txaBranchAside" aria-label="SAMRAS structural inspector">
-          <div class="data-tool__paneHead">
-            <div class="card__kicker">Inspector</div>
-            <div class="card__title">Branch &amp; structure</div>
-          </div>
-          <p id="dtTxaBranchIntro" class="data-tool__legendText">Select a row or path segment in the workspace. Path segments are clickable; siblings/children update the same selection model for any SAMRAS-backed resource.</p>
-          <section class="data-tool__txaBranchSection">
-            <h3 class="data-tool__txaBranchHeading">Path to root</h3>
-            <div id="dtTxaBranchPath" class="data-tool__txaBranchPath"></div>
-          </section>
-          <section class="data-tool__txaBranchSection">
-            <h3 class="data-tool__txaBranchHeading">Siblings</h3>
-            <div id="dtTxaBranchSiblings" class="data-tool__txaBranchList"></div>
-          </section>
-          <section class="data-tool__txaBranchSection">
-            <h3 class="data-tool__txaBranchHeading">Children</h3>
-            <div id="dtTxaBranchChildren" class="data-tool__txaBranchList"></div>
-          </section>
-          <section class="data-tool__txaBranchSection">
-            <h3 class="data-tool__txaBranchHeading">Next child slot</h3>
-            <div id="dtTxaBranchNext" class="data-tool__txaBranchNext"></div>
-          </section>
-          <section class="data-tool__txaBranchSection" aria-label="SAMRAS structural detail">
-            <h3 class="data-tool__txaBranchHeading">Structural detail (SAMRAS)</h3>
-            <div id="dtSamrasStructuralBurst" class="data-tool__samrasBurst"></div>
-          </section>
-        </aside>
       </div>
+      <aside class="card data-tool__txaBranchAside" aria-label="SAMRAS structural inspector" hidden>
+        <section class="data-tool__txaBranchSection">
+          <h3 class="data-tool__txaBranchHeading">Path to root</h3>
+          <div id="dtTxaBranchPath" class="data-tool__txaBranchPath"></div>
+        </section>
+        <section class="data-tool__txaBranchSection">
+          <h3 class="data-tool__txaBranchHeading">Siblings</h3>
+          <div id="dtTxaBranchSiblings" class="data-tool__txaBranchList"></div>
+        </section>
+        <section class="data-tool__txaBranchSection">
+          <h3 class="data-tool__txaBranchHeading">Children</h3>
+          <div id="dtTxaBranchChildren" class="data-tool__txaBranchList"></div>
+        </section>
+        <section class="data-tool__txaBranchSection">
+          <h3 class="data-tool__txaBranchHeading">Next child slot</h3>
+          <div id="dtTxaBranchNext" class="data-tool__txaBranchNext"></div>
+        </section>
+        <section class="data-tool__txaBranchSection" aria-label="SAMRAS structural detail">
+          <h3 class="data-tool__txaBranchHeading">Structural detail</h3>
+          <div id="dtSamrasStructuralBurst" class="data-tool__samrasBurst"></div>
+        </section>
+      </aside>
     </div>
 
     <aside class="card data-tool__nimmSummary" hidden>

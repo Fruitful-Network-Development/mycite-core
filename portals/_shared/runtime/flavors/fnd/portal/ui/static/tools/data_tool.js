@@ -50,9 +50,8 @@
   var graphZoomResetBtn = qs("#dtGraphZoomResetBtn", app);
   var workbenchLayoutModeSel = qs("#dtWorkbenchLayoutMode", app);
   var workbenchGridEl = qs("#dtWorkbenchGrid", app);
-  var anthologyInspectorEl = qs("#dtAnthologyInspector", app);
-  var anthologyInspectorBodyEl = qs("#dtAnthologyInspectorBody", app);
-  var anthologyInvMountEl = qs("#dtAnthologyInvMount", app);
+  var anthologyInspectorBodyEl = document.getElementById("dtAnthologyInspectorBody");
+  var anthologyInvMountEl = document.getElementById("dtAnthologyInvMount");
   var nimmSummaryEl = qs("#dtNimmSummary", app);
   var nimmOpenBtn = qs("#dtOpenNimmBtn", app);
   var nimmOverlay = qs("#dtNimmOverlay");
@@ -109,12 +108,13 @@
   var dtTxaNewTitle = qs("#dtTxaNewTitle", app);
   var dtTxaStageAddBtn = qs("#dtTxaStageAddBtn", app);
   var dtTxaStagedHint = qs("#dtTxaStagedHint", app);
-  var dtTxaBranchIntro = qs("#dtTxaBranchIntro", app);
   var dtTxaBranchPath = qs("#dtTxaBranchPath", app);
   var dtTxaBranchSiblings = qs("#dtTxaBranchSiblings", app);
   var dtTxaBranchChildren = qs("#dtTxaBranchChildren", app);
   var dtTxaBranchNext = qs("#dtTxaBranchNext", app);
   var dtSamrasStructuralBurst = qs("#dtSamrasStructuralBurst", app);
+  var dtSamrasPresetTxa = qs("#dtSamrasPresetTxa", app);
+  var dtSamrasPresetMsn = qs("#dtSamrasPresetMsn", app);
 
   var profileModal = qs("#dtProfileModal");
   var profileCloseBtn = qs("#dtProfileCloseBtn");
@@ -348,6 +348,31 @@
     if (token === "linear" || token === "radial") return "grouped";
     if (token === "grouped" || token === "table") return token;
     return "table";
+  }
+
+  function systemInspectorPanelAnthologyEl() {
+    return document.getElementById("systemInspectorPanelAnthology");
+  }
+
+  function systemInspectorPanelTxaEl() {
+    return document.getElementById("systemInspectorPanelTxa");
+  }
+
+  function ensureTxaAsideInShellHost() {
+    var host = systemInspectorPanelTxaEl();
+    var aside = qs(".data-tool__txaBranchAside", app);
+    if (!host || !aside) return;
+    aside.removeAttribute("hidden");
+    if (aside.parentNode !== host) host.appendChild(aside);
+  }
+
+  function syncSystemShellDataToolPanels(workspaceMode) {
+    var anth = systemInspectorPanelAnthologyEl();
+    var txa = systemInspectorPanelTxaEl();
+    if (!anth || !txa) return;
+    var m = String(workspaceMode || "anthology").trim();
+    anth.hidden = m !== "anthology";
+    txa.hidden = m !== "txa_sandbox";
   }
 
   function loadWorkbenchLayoutPreference() {
@@ -1885,14 +1910,13 @@
     datumWorkbenchState.identifier = "";
     datumWorkbenchState.valueGroup = 1;
     activeDatumEditorRoot = null;
-    setDatumEditorStatus(message || "Select a graph node or anthology row.");
+    setDatumEditorStatus(message || "Select a graph node or table row.");
     syncDatumSelectionUI();
     if (anthologyInspectorBodyEl) {
       anthologyInspectorBodyEl.innerHTML = "";
       var placeholder = document.createElement("p");
       placeholder.className = "data-tool__empty";
-      placeholder.textContent =
-        message || "Select a graph node or row. Datum editing and icon controls appear in this inspector.";
+      placeholder.textContent = message || "Select a datum in the table or graph.";
       anthologyInspectorBodyEl.appendChild(placeholder);
     }
     if (systemContextEl && !selectMode) renderSystemContextSearch();
@@ -3170,6 +3194,8 @@
       if (id === m) b.classList.add("is-active");
       else b.classList.remove("is-active");
     });
+    ensureTxaAsideInShellHost();
+    syncSystemShellDataToolPanels(m);
     try {
       window.sessionStorage.setItem(WORKSPACE_TAB_STORAGE_KEY, m);
     } catch (_) {
@@ -3460,17 +3486,6 @@
           escapeText(next) +
           "</code></p><p class=\"data-tool__legendText\">Example: one child <code>…-1</code> → next is <code>…-2</code>.</p>"
         : "<p class=\"data-tool__empty\">Select a node to preview the next child slot.</p>";
-    }
-    if (dtTxaBranchIntro) {
-      dtTxaBranchIntro.textContent = sel
-        ? "Selected: " +
-          sel +
-          ". Parent: " +
-          String((branch && branch.parent_address) || "none") +
-          ". Child count: " +
-          String((branch && branch.child_count) != null ? branch.child_count : "?") +
-          "."
-        : "Select a row in the table or a segment in the path.";
     }
   }
 
@@ -5033,6 +5048,26 @@
     /* ignore */
   }
 
+  function applySamrasWorkbenchPreset(resourceId) {
+    if (!dtTxaResourceId) return;
+    dtTxaResourceId.value = String(resourceId || "").trim();
+    txaSandboxUiState.selectedAddressId = "";
+    refreshTxaSandboxView().catch(function (err) {
+      setMessages([err.message], []);
+    });
+  }
+
+  if (dtSamrasPresetTxa) {
+    dtSamrasPresetTxa.addEventListener("click", function () {
+      applySamrasWorkbenchPreset("local:samras.txa");
+    });
+  }
+  if (dtSamrasPresetMsn) {
+    dtSamrasPresetMsn.addEventListener("click", function () {
+      applySamrasWorkbenchPreset("local:samras.msn");
+    });
+  }
+
   if (dtTxaLoadBtn) {
     dtTxaLoadBtn.addEventListener("click", function () {
       txaSandboxUiState.selectedAddressId = "";
@@ -5098,7 +5133,10 @@
   if (appendValueGroupInput && !appendValueGroupInput.value) appendValueGroupInput.value = "1";
   syncAppendPairRequirements();
   ensurePairRows(profilePairsEl, "js-remove-profile-pair");
-  renderDatumEditorEmpty("Select a graph node or anthology row to edit it in the right inspector column.");
+  renderDatumEditorEmpty("");
+
+  ensureTxaAsideInShellHost();
+  syncSystemShellDataToolPanels("anthology");
 
   var openNimmOnLoad = String(app.getAttribute("data-open-nimm") || "0").trim() === "1";
 
