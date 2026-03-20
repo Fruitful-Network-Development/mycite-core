@@ -8,6 +8,14 @@ from typing import Any, Callable
 
 _DATUM_ID_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
 
+# Exposed for constraints / API consumers (do not duplicate ad hoc in routes).
+ORDINAL_SEMANTICS_V1: dict[str, Any] = {
+    "ordinal_basis": "one_based_inclusive",
+    "ordinal_spec": "datum_rules.collection.v1",
+    "ordinal_domain_min_default": 1,
+    "notes": "Field/table_like magnitudes index ordered_member_refs by position (1 = first member).",
+}
+
 
 def as_text(value: object) -> str:
     return "" if value is None else str(value).strip()
@@ -22,6 +30,24 @@ def parse_positive_int(raw: object) -> int | None:
     except Exception:
         return None
     if value <= 0:
+        return None
+    return value
+
+
+def parse_ordinal_magnitude(raw: object) -> int | None:
+    """Parse table-like / field ordinal magnitudes.
+
+    **Frozen semantics (datum_rules.collection.v1)**:
+    - Ordinals are **1-based** inclusive indices into the collection's `ordered_member_refs`.
+    - The first selected isolate in collection order maps to ordinal **1**.
+    - Legal range for a collection with ``N`` members is ``1 .. N`` (inclusive).
+    """
+    token = as_text(raw)
+    if not token:
+        return None
+    try:
+        value = int(token, 10)
+    except Exception:
         return None
     return value
 
@@ -78,6 +104,17 @@ class DatumRow:
             "layer": self.layer,
             "iteration": self.iteration,
         }
+
+
+def value_group_as_int(row: DatumRow) -> int | None:
+    """Middle segment of datum id; ``0`` is valid — never write ``row.value_group or -1``."""
+    v = row.value_group
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except Exception:
+        return None
 
 
 @dataclass(frozen=True)

@@ -748,7 +748,8 @@ def register_data_routes(
             if scope == "anthology"
             else _rule_rows_payload_from_sandbox_resource(str(body.get("resource_id") or "").strip())
         )
-        out = reference_filter_options(rows_payload, rule_key=rule_key)
+        filter_ctx = body.get("filter_context") if isinstance(body.get("filter_context"), dict) else {}
+        out = reference_filter_options(rows_payload, rule_key=rule_key, filter_context=filter_ctx)
         out["scope"] = scope
         return jsonify(out), (200 if bool(out.get("ok")) else 400)
 
@@ -766,6 +767,8 @@ def register_data_routes(
             if scope == "anthology"
             else _rule_rows_payload_from_sandbox_resource(str(body.get("resource_id") or "").strip())
         )
+        pairs_body = body.get("pairs")
+        pairs_list = [dict(item) for item in pairs_body if isinstance(item, dict)] if isinstance(pairs_body, list) else None
         out = validate_rule_create(
             rows_payload,
             rule_key=rule_key,
@@ -773,6 +776,7 @@ def register_data_routes(
             magnitude=magnitude,
             value_group=body.get("value_group"),
             label=str(body.get("label") or "").strip(),
+            pairs=pairs_list,
         )
         out["scope"] = scope
         out["schema"] = "mycite.portal.datum_rules.validate_create.v1"

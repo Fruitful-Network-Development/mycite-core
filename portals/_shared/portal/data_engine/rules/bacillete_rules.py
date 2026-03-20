@@ -8,12 +8,13 @@ from .base import (
     make_ui_state,
     parse_binary_int,
     parse_positive_int,
+    value_group_as_int,
 )
 
 
 def build_bacillete_rule() -> RuleDefinition:
     def _match(context: RuleContext) -> bool:
-        return as_text(context.row.reference) == "0-0-6" and int(context.row.value_group or -1) == 1
+        return as_text(context.row.reference) == "0-0-6" and value_group_as_int(context.row) == 1
 
     def _derive(context: RuleContext) -> dict[str, object]:
         cardinality = parse_positive_int(context.row.magnitude)
@@ -50,7 +51,7 @@ def build_bacillete_rule() -> RuleDefinition:
 def build_baciloid_rule() -> RuleDefinition:
     def _match(context: RuleContext) -> bool:
         parent = context.parent_understanding
-        return parent is not None and as_text(parent.family) == "bacillete" and int(context.row.value_group or -1) == 1
+        return parent is not None and as_text(parent.family) == "bacillete" and value_group_as_int(context.row) == 1
 
     def _derive(context: RuleContext) -> dict[str, object]:
         parent = context.parent_understanding
@@ -90,7 +91,7 @@ def build_baciloid_rule() -> RuleDefinition:
 def build_babellette_rule() -> RuleDefinition:
     def _match(context: RuleContext) -> bool:
         parent = context.parent_understanding
-        return parent is not None and as_text(parent.family) == "baciloid" and int(context.row.value_group or -1) == 1
+        return parent is not None and as_text(parent.family) == "baciloid" and value_group_as_int(context.row) == 1
 
     def _derive(context: RuleContext) -> dict[str, object]:
         parent = context.parent_understanding
