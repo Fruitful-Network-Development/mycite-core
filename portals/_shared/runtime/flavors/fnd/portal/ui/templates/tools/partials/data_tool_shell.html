@@ -3,7 +3,7 @@
 
     <nav class="data-tool__workspaceTabs servicetabs" aria-label="Data workspace mode">
       <button type="button" class="servicetabs__tab is-active" data-dt-workspace-tab="anthology">Anthology workbench</button>
-      <button type="button" class="servicetabs__tab" data-dt-workspace-tab="txa_sandbox">TXA sandbox (resource)</button>
+      <button type="button" class="servicetabs__tab" data-dt-workspace-tab="txa_sandbox">SAMRAS resource sandbox</button>
     </nav>
 
     <div id="dtWorkspaceAnthology" class="data-tool__workspacePanel" data-workspace-panel="anthology">
@@ -13,7 +13,7 @@
           <header class="data-tool__graphToolbar">
             <div class="data-tool__graphToolbarTitle">
             <div class="card__kicker">Anthology Workbench</div>
-              <div class="card__title">Table Workbench + Graph Navigation</div>
+              <div class="card__title">Grouped workbench + graph navigation</div>
             </div>
             <div class="data-tool__controlRow">
               <button type="button" id="dtAnthologyRefreshBtn">Refresh Anthology</button>
@@ -23,8 +23,7 @@
                 <span>layout</span>
                 <select id="dtWorkbenchLayoutMode">
                   <option value="table">table</option>
-                  <option value="linear">linear</option>
-                  <option value="radial">radial</option>
+                  <option value="grouped">grouped</option>
                 </select>
               </label>
               <span id="dtAnthologyStatus" class="data-tool__statusText"></span>
@@ -35,7 +34,7 @@
             <article class="data-tool__graphPane">
               <div class="data-tool__paneHead">
                 <div class="card__kicker">Graph Surface</div>
-                <div class="card__title">Lineage / Abstraction Navigation</div>
+                <div class="card__title">Layer / family graph</div>
               </div>
               <div class="data-tool__controlRow">
                 <label>
@@ -93,11 +92,12 @@
                 <button type="button" id="dtTxaLoadBtn">Load</button>
                 <button type="button" id="dtTxaRefreshBtn">Refresh</button>
                 <button type="button" id="dtTxaClearStagedBtn">Clear staged</button>
+                <button type="button" id="dtTxaPromoteBtn">Promote staged (sandbox)</button>
                 <span id="dtTxaStatus" class="data-tool__statusText"></span>
               </div>
             </header>
             <p id="dtTxaHelp" class="data-tool__legendText">
-              Uses <code>rows_by_address</code> on a sandbox SAMRAS-style resource. <strong>Staged</strong> rows are browser-local preview only until promoted through sandbox save / lifecycle (not auto-persisted here).
+              Uses <code>rows_by_address</code> on a sandbox SAMRAS-style resource (TXA, MSN, etc.). <strong>Staged</strong> rows preview in-browser; <strong>Promote staged</strong> persists through <code>SandboxEngine</code> (structure-aware when <code>structure_payload</code> is present).
             </p>
             <div class="data-tool__txaSandboxGrid">
               <article class="data-tool__graphPane data-tool__txaGraphPane">
@@ -159,6 +159,10 @@
           <section class="data-tool__txaBranchSection">
             <h3 class="data-tool__txaBranchHeading">Next child slot</h3>
             <div id="dtTxaBranchNext" class="data-tool__txaBranchNext"></div>
+          </section>
+          <section class="data-tool__txaBranchSection" aria-label="SAMRAS structural detail">
+            <h3 class="data-tool__txaBranchHeading">Structural detail (SAMRAS)</h3>
+            <div id="dtSamrasStructuralBurst" class="data-tool__samrasBurst"></div>
           </section>
         </aside>
       </div>

@@ -6,6 +6,7 @@ import unittest
 
 from _shared.portal.sandbox.txa_sandbox_workspace import (
     build_branch_context,
+    build_samras_workspace_view_model,
     build_title_table_rows,
     build_txa_sandbox_view_model,
     normalize_staged_entries,
@@ -73,6 +74,17 @@ class TxaSandboxWorkspaceTests(unittest.TestCase):
         ]
         bc = build_branch_context("1-1-1", rows)
         self.assertEqual(len(bc["siblings"]), 2)
+
+    def test_build_samras_workspace_view_model_includes_structural_detail(self):
+        resource = {
+            "resource_id": "msn.demo",
+            "resource_kind": "msn",
+            "rows_by_address": {"1": ["R"], "1-1": ["C"]},
+        }
+        vm = build_samras_workspace_view_model(resource, selected_address_id="1-1", staged_entries=[])
+        detail = vm.get("structural_detail") if isinstance(vm.get("structural_detail"), dict) else {}
+        self.assertEqual(detail.get("schema"), "mycite.portal.samras.structural_detail.v1")
+        self.assertEqual(detail.get("selected_address_id"), "1-1")
 
 
 if __name__ == "__main__":

@@ -110,6 +110,14 @@ class SandboxEngine:
             return payload
         return {"schema": "", "resource_id": _as_text(resource_id), "kind": "", "missing": True}
 
+    def peek_stage_payload(self, resource_id: str) -> tuple[bool, dict[str, Any]]:
+        """Return whether a staging file exists and its payload (empty dict if unreadable)."""
+        path = self._stage_path(resource_id)
+        if not path.is_file():
+            return False, {}
+        payload = self._read_json(path)
+        return True, payload
+
     def save_resource(self, resource_id: str, payload: dict[str, Any]) -> SandboxStageResult:
         try:
             out = dict(payload if isinstance(payload, dict) else {})

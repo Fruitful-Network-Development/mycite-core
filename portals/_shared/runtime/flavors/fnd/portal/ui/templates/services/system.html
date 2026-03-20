@@ -32,38 +32,95 @@
   {% endif %}
 
   {% if current_tab == "local_resources" %}
-    <section class="workbench-panels workbench-panels--double">
-      <article class="card">
-        <div class="card__kicker">Local Resource Inventory</div>
-        <div class="card__title">data/resources/index.local.json</div>
-        <div class="card__body">
-          <div class="data-tool__controlRow">
-            <button type="button" id="localResourcesRefreshBtn">Refresh Local Inventory</button>
-            <button type="button" id="localResourcesMigrateBtn">Migrate Legacy SAMRAS</button>
+    <div id="lrWorkbenchRoot" class="lr-workbench">
+      <div class="lr-workbench__layout">
+        <aside class="card lr-workbench__col lr-workbench__col--inventory">
+          <div class="card__kicker">Sandbox + local index</div>
+          <div class="card__title">Resources</div>
+          <div class="card__body">
+            <div class="data-tool__controlRow">
+              <button type="button" id="lrBtnReload">Refresh lists</button>
+            </div>
+            <label class="lr-workbench__searchLabel" for="lrInventorySearch">Filter</label>
+            <input type="search" id="lrInventorySearch" class="lr-workbench__search" placeholder="resource_id…" autocomplete="off" />
+            <div id="lrInventoryList" class="lr-workbench__inventoryList" role="list"></div>
           </div>
-          <pre class="jsonblock" id="localResourcesJson">{}</pre>
+        </aside>
+        <section class="card lr-workbench__col lr-workbench__col--center">
+          <div class="card__kicker">Selected sandbox resource</div>
+          <div class="card__title lr-workbench__titleRow">
+            <span id="lrResourceTitle">Select a resource</span>
+            <span id="lrBadgeStaged" class="lr-workbench__stagedBadge" hidden>staged</span>
+          </div>
+          <div class="card__body">
+            <p id="lrStatusBar" class="lr-workbench__status" aria-live="polite"></p>
+            <div class="lr-workbench__tabs" role="tablist">
+              <button type="button" class="lr-workbench__tab is-active" data-lr-tab="raw" id="lrTabRaw" role="tab">Raw JSON</button>
+              <button type="button" class="lr-workbench__tab" data-lr-tab="structured" id="lrTabStructured" role="tab">Structured</button>
+              <button type="button" class="lr-workbench__tab" data-lr-tab="staged" id="lrTabStaged" role="tab" disabled>Staged file</button>
+            </div>
+            <div id="lrPanelRaw" data-lr-panel="raw" class="lr-workbench__panel" role="tabpanel">
+              <label for="lrRawEditor" class="lr-workbench__editorLabel">Body written to <code>sandbox/resources/&lt;id&gt;.json</code> on Save</label>
+              <textarea id="lrRawEditor" class="lr-workbench__editor jsonblock" rows="22" spellcheck="false"></textarea>
+            </div>
+            <div id="lrPanelStructured" data-lr-panel="structured" class="lr-workbench__panel" role="tabpanel" hidden>
+              <div id="lrStructuredMount"></div>
+            </div>
+            <div id="lrPanelStaged" data-lr-panel="staged" class="lr-workbench__panel" role="tabpanel" hidden>
+              <p class="data-tool__legendText">Staging file snapshot (<code>sandbox/staging/*.stage.json</code>). To update staging, edit Raw JSON and click <strong>Stage current JSON</strong>.</p>
+              <textarea id="lrStagedEditor" class="lr-workbench__editor jsonblock" rows="14" readonly spellcheck="false"></textarea>
+            </div>
+            <div class="data-tool__controlRow lr-workbench__actions">
+              <button type="button" id="lrBtnSave">Save</button>
+              <button type="button" id="lrBtnStage">Stage current JSON</button>
+              <button type="button" id="lrBtnCompile">Compile</button>
+            </div>
+          </div>
+        </section>
+        <aside class="card lr-workbench__col lr-workbench__col--sidebar">
+          <div class="card__kicker">Sidebar</div>
+          <div class="card__title" id="lrSidebarTitle">Detail</div>
+          <div class="card__body lr-workbench__sidebarBody" id="lrSidebarMount"></div>
+        </aside>
+      </div>
+      <details class="card lr-workbench__advanced">
+        <summary>Advanced: index JSON, MSS, migration</summary>
+        <div class="lr-workbench__advancedGrid">
+          <article class="card lr-workbench__advancedCard">
+            <div class="card__kicker">Local index</div>
+            <div class="card__title">data/resources/index.local.json</div>
+            <div class="card__body">
+              <div class="data-tool__controlRow">
+                <button type="button" id="localResourcesMigrateBtn">Migrate Legacy SAMRAS</button>
+              </div>
+              <pre class="jsonblock lr-workbench__miniPre" id="localResourcesJson">{}</pre>
+            </div>
+          </article>
+          <article class="card lr-workbench__advancedCard">
+            <div class="card__kicker">MSS + migration</div>
+            <div class="card__title">Diagnostics</div>
+            <div class="card__body">
+              <div class="data-tool__controlRow">
+                <button type="button" id="sandboxRefreshBtn">Refresh lists</button>
+                <button type="button" id="sandboxMigrateDryRunBtn">FND SAMRAS migration (dry run)</button>
+              </div>
+              <label for="sandboxMssRefs"><strong>MSS selected_refs</strong></label>
+              <textarea id="sandboxMssRefs" class="jsonblock" rows="3">1-1-1</textarea>
+              <label for="sandboxMssBitstring"><strong>MSS bitstring (decode)</strong></label>
+              <textarea id="sandboxMssBitstring" class="jsonblock" rows="3"></textarea>
+              <div class="data-tool__controlRow">
+                <button type="button" id="sandboxMssCompileBtn">Compile MSS</button>
+                <button type="button" id="sandboxMssDecodeBtn">Decode MSS</button>
+              </div>
+            </div>
+          </article>
         </div>
-      </article>
-      <article class="card">
-        <div class="card__kicker">Local Lifecycle (Sandbox Service)</div>
-        <div class="card__title">Compile + Decode + Draft Helpers</div>
         <div class="card__body">
-          <div class="data-tool__controlRow">
-            <button type="button" id="sandboxRefreshBtn">Refresh Sandbox Resources</button>
-            <button type="button" id="sandboxMigrateDryRunBtn">FND SAMRAS Migration (Dry Run)</button>
-          </div>
-          <label for="sandboxMssRefs"><strong>MSS selected_refs (comma/newline)</strong></label>
-          <textarea id="sandboxMssRefs" class="jsonblock" rows="3">1-1-1</textarea>
-          <label for="sandboxMssBitstring"><strong>MSS bitstring (decode)</strong></label>
-          <textarea id="sandboxMssBitstring" class="jsonblock" rows="3"></textarea>
-          <div class="data-tool__controlRow">
-            <button type="button" id="sandboxMssCompileBtn">Compile MSS</button>
-            <button type="button" id="sandboxMssDecodeBtn">Decode MSS</button>
-          </div>
+          <div class="card__kicker">Last API result</div>
           <pre class="jsonblock" id="sandboxResultJson">{}</pre>
         </div>
-      </article>
-    </section>
+      </details>
+    </div>
   {% elif current_tab == "inheritance" %}
     <section class="workbench-panels workbench-panels--double">
       <article class="card">
@@ -123,7 +180,10 @@
   {% if data_home_available is defined and data_home_available %}
     <script src="/portal/static/tools/data_tool.js"></script>
   {% endif %}
-  {% if current_tab == "local_resources" or current_tab == "inheritance" %}
+  {% if current_tab == "local_resources" %}
+    <script src="/portal/static/tools/local_resources_workbench.js"></script>
+  {% endif %}
+  {% if current_tab == "inheritance" %}
     <script>
       (function () {
         function requestJson(url, method, payload) {
@@ -137,17 +197,11 @@
             });
           });
         }
-        var resourcesNode = document.getElementById("sandboxResourcesJson");
         var resultNode = document.getElementById("sandboxResultJson");
         var localResourcesNode = document.getElementById("localResourcesJson");
         var inheritedResourcesNode = document.getElementById("inheritanceResourcesJson");
         var inheritedStatusNode = document.getElementById("inheritanceStatusJson");
         function refreshResources() {
-          if (resourcesNode) {
-            requestJson("/portal/api/data/sandbox/resources", "GET").then(function (result) {
-              resourcesNode.textContent = JSON.stringify(result.body || {}, null, 2);
-            });
-          }
           if (localResourcesNode) {
             requestJson("/portal/api/data/resources/local", "GET").then(function (result) {
               localResourcesNode.textContent = JSON.stringify(result.body || {}, null, 2);
@@ -159,52 +213,8 @@
             });
           }
         }
-        if (!resourcesNode && !localResourcesNode && !inheritedResourcesNode) return;
-        var refreshBtn = document.getElementById("sandboxRefreshBtn");
-        if (refreshBtn) refreshBtn.addEventListener("click", refreshResources);
-        var localRefreshBtn = document.getElementById("localResourcesRefreshBtn");
-        if (localRefreshBtn) localRefreshBtn.addEventListener("click", refreshResources);
+        if (!localResourcesNode && !inheritedResourcesNode) return;
         refreshResources();
-
-        var migrateLegacyBtn = document.getElementById("localResourcesMigrateBtn");
-        if (migrateLegacyBtn) {
-          migrateLegacyBtn.addEventListener("click", function () {
-            requestJson("/portal/api/data/resources/local/migrate_legacy_samras", "POST", { apply: true })
-              .then(function (result) {
-                if (resultNode) resultNode.textContent = JSON.stringify(result.body || {}, null, 2);
-                refreshResources();
-              });
-          });
-        }
-
-        var compileBtn = document.getElementById("sandboxMssCompileBtn");
-        if (compileBtn) {
-          compileBtn.addEventListener("click", function () {
-            var refs = String((document.getElementById("sandboxMssRefs") || {}).value || "")
-              .split(/[\n,]/)
-              .map(function (item) { return String(item || "").trim(); })
-              .filter(Boolean);
-            requestJson("/portal/api/data/sandbox/mss/compile", "POST", { resource_id: "system-sandbox-mss", selected_refs: refs })
-              .then(function (result) { resultNode.textContent = JSON.stringify(result.body || {}, null, 2); refreshResources(); });
-          });
-        }
-
-        var decodeBtn = document.getElementById("sandboxMssDecodeBtn");
-        if (decodeBtn) {
-          decodeBtn.addEventListener("click", function () {
-            var bitstring = String((document.getElementById("sandboxMssBitstring") || {}).value || "").trim();
-            requestJson("/portal/api/data/sandbox/mss/decode", "POST", { resource_id: "system-sandbox-mss-decode", bitstring: bitstring })
-              .then(function (result) { resultNode.textContent = JSON.stringify(result.body || {}, null, 2); });
-          });
-        }
-
-        var migrateBtn = document.getElementById("sandboxMigrateDryRunBtn");
-        if (migrateBtn) {
-          migrateBtn.addEventListener("click", function () {
-            requestJson("/portal/api/data/sandbox/migrate/fnd_samras", "POST", { apply: false })
-              .then(function (result) { resultNode.textContent = JSON.stringify(result.body || {}, null, 2); refreshResources(); });
-          });
-        }
 
         var inheritanceRefreshBtn = document.getElementById("inheritanceRefreshBtn");
         if (inheritanceRefreshBtn) inheritanceRefreshBtn.addEventListener("click", refreshResources);

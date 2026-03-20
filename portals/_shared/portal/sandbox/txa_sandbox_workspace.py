@@ -15,6 +15,7 @@ import re
 from typing import Any, Mapping, Sequence
 
 from _shared.portal.sandbox.samras import decode_resource_rows
+from _shared.portal.workbench.samras_structural_detail import build_samras_structural_detail_vm
 
 _ADDR_RE = re.compile(r"^[0-9]+(?:-[0-9]+)*$")
 
@@ -315,6 +316,10 @@ def build_samras_workspace_view_model(
     )
     vm["schema"] = "mycite.portal.sandbox.samras_workspace.view_model.v1"
     vm["workspace_family"] = "samras_title_tree"
+    vm["structural_detail"] = build_samras_structural_detail_vm(
+        vm.get("branch_context") if isinstance(vm.get("branch_context"), dict) else {},
+        normalized_staged_entries=[dict(x) for x in list(vm.get("normalized_staged_entries") or []) if isinstance(x, dict)],
+    )
     return vm
 
 

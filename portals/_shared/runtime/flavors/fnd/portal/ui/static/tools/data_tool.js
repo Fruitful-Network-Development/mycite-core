@@ -98,6 +98,7 @@
   var dtTxaLoadBtn = qs("#dtTxaLoadBtn", app);
   var dtTxaRefreshBtn = qs("#dtTxaRefreshBtn", app);
   var dtTxaClearStagedBtn = qs("#dtTxaClearStagedBtn", app);
+  var dtTxaPromoteBtn = qs("#dtTxaPromoteBtn", app);
   var dtTxaStatus = qs("#dtTxaStatus", app);
   var dtTxaStructureGraph = qs("#dtTxaStructureGraph", app);
   var dtTxaTitleTableBody = qs("#dtTxaTitleTableBody", app);
@@ -110,6 +111,7 @@
   var dtTxaBranchSiblings = qs("#dtTxaBranchSiblings", app);
   var dtTxaBranchChildren = qs("#dtTxaBranchChildren", app);
   var dtTxaBranchNext = qs("#dtTxaBranchNext", app);
+  var dtSamrasStructuralBurst = qs("#dtSamrasStructuralBurst", app);
 
   var profileModal = qs("#dtProfileModal");
   var profileCloseBtn = qs("#dtProfileCloseBtn");
@@ -172,7 +174,7 @@
     focus: "",
     depth: 3,
     context: "local",
-    layout: "linear",
+    layout: "grouped",
     scale: 1,
     tx: 0,
     ty: 0,
@@ -340,7 +342,8 @@
 
   function normalizeWorkbenchLayoutMode(value) {
     var token = String(value || "").trim().toLowerCase();
-    if (token === "linear" || token === "radial" || token === "table") return token;
+    if (token === "linear" || token === "radial") return "grouped";
+    if (token === "grouped" || token === "table") return token;
     return "table";
   }
 
@@ -373,7 +376,7 @@
 
   function isGraphWorkbenchMode(mode) {
     var token = normalizeWorkbenchLayoutMode(mode || workbenchUiState.layoutMode);
-    return token === "linear" || token === "radial";
+    return token === "grouped";
   }
 
   function syncWorkbenchControls() {
@@ -392,7 +395,7 @@
       node.disabled = !graphEnabled;
     });
     if (anthologyGraphStatusEl && !graphEnabled) {
-      anthologyGraphStatusEl.textContent = "Table layout active. Switch layout to linear or radial to render the graph.";
+      anthologyGraphStatusEl.textContent = "Table layout active. Switch layout to grouped to render the graph.";
     }
   }
 
@@ -2577,7 +2580,7 @@
 
     var focusMeta = graph.focus && typeof graph.focus === "object" ? graph.focus : {};
     var layoutMeta = graph.layout && typeof graph.layout === "object" ? graph.layout : {};
-    var responseLayout = String(layoutMeta.mode || "linear").trim().toLowerCase();
+    var responseLayout = String(layoutMeta.mode || "grouped").trim().toLowerCase();
     var responseContext = String(focusMeta.context_mode || "global").trim().toLowerCase();
     var responseDepth = parseInt(String(focusMeta.depth_limit || "3"), 10);
     if (isNaN(responseDepth) || responseDepth < 0) responseDepth = 3;
@@ -2653,7 +2656,7 @@
         "Nodes: " + String(stats.node_count != null ? stats.node_count : nodes.length) +
         " | Edges: " + String(stats.edge_count != null ? stats.edge_count : edges.length) +
         " | Unresolved: " + String(stats.unresolved_edge_count != null ? stats.unresolved_edge_count : 0) +
-        " | layout=" + (responseLayout || "linear") +
+        " | layout=" + (responseLayout || "grouped") +
         " | context=" + (responseContext || "global") +
         (responseFocus ? (" | focus=" + responseFocus + (hasFocus ? "" : " (not found)")) : "");
     }
@@ -2695,19 +2698,44 @@
       return a.localeCompare(b);
     });
 
-    var maxLayerNodes = 1;
-    orderedLayers.forEach(function (layerToken) {
-      var count = Array.isArray(fallbackByLayer[layerToken]) ? fallbackByLayer[layerToken].length : 0;
-      if (count > maxLayerNodes) maxLayerNodes = count;
-    });
+    var groupedBands = Array.isArray(graph.grouped_bands) ? graph.grouped_bands : [];
+    var useGroupedBands = groupedBands.length > 0;
 
-    var layerCount = Math.max(orderedLayers.length, 1);
-    var graphWidth = Math.max(920, layerCount * 220);
-    var graphHeight = Math.max(560, Math.min(2400, maxLayerNodes * 6 + 180));
+    var layoutColumns = [];
+    if (useGroupedBands) {
+      groupedBands.forEach(function (band) {
+        var cols = Array.isArray(band.columns) ? band.columns : [];
+        var layerTok = String(band.layer == null ? "unknown" : band.layer);
+        cols.forEach(function (col) {
+          layoutColumns.push({
+            layerToken: layerTok,
+            valueGroup: col.value_group,
+            nodes: Array.isArray(col.nodes) ? col.nodes.slice() : [],
+          });
+        });
+      });
+    } else {
+      orderedLayers.forEach(function (layerToken) {
+        layoutColumns.push({
+          layerToken: layerToken,
+          valueGroup: null,
+          nodes: Array.isArray(fallbackByLayer[layerToken]) ? fallbackByLayer[layerToken].slice() : [],
+        });
+      });
+    }
+
+    var maxColNodes = 1;
+    layoutColumns.forEach(function (spec) {
+      if (spec.nodes.length > maxColNodes) maxColNodes = spec.nodes.length;
+    });
+    if (maxColNodes < 1) maxColNodes = 1;
+
+    var columnCount = Math.max(layoutColumns.length, 1);
+    var graphWidth = Math.max(920, columnCount * 210 + 96);
+    var graphHeight = Math.max(560, Math.min(2600, maxColNodes * 34 + 220));
     var margin = { top: 56, right: 48, bottom: 54, left: 48 };
     var usableWidth = Math.max(240, graphWidth - margin.left - margin.right);
     var usableHeight = Math.max(240, graphHeight - margin.top - margin.bottom);
-    var layoutMode = responseLayout === "radial" ? "radial" : "linear";
 
     var colorPalette = ["#1f6f43", "#2364aa", "#b26d00", "#8f2f6b", "#0f766e", "#92400e", "#374151"];
 
@@ -2784,55 +2812,36 @@
     nodesGroup.setAttribute("class", "data-tool__graphNodes");
 
     var nodePositions = {};
-    orderedLayers.forEach(function (layerToken, layerIndex) {
-      var layerNodes = Array.isArray(fallbackByLayer[layerToken]) ? fallbackByLayer[layerToken].slice() : [];
+    layoutColumns.forEach(function (colSpec, colIndex) {
+      var layerToken = colSpec.layerToken;
+      var layerNodes = Array.isArray(colSpec.nodes) ? colSpec.nodes.slice() : [];
       layerNodes.sort(function (a, b) {
         return nodeSortKey(a).localeCompare(nodeSortKey(b));
       });
       if (!layerNodes.length) return;
 
-      var layerGuideX = 0;
-      var centerX = margin.left + usableWidth / 2;
-      var centerY = margin.top + usableHeight / 2;
-      var radiusMax = Math.max(64, (Math.min(usableWidth, usableHeight) / 2) - 24);
-      var radius = layerCount <= 1 ? radiusMax * 0.45 : 40 + (layerIndex / Math.max(layerCount - 1, 1)) * radiusMax;
+      var layerGuideX =
+        margin.left +
+        (columnCount === 1 ? usableWidth / 2 : (colIndex / Math.max(columnCount - 1, 1)) * usableWidth);
 
-      if (layoutMode === "linear") {
-        layerGuideX =
-          margin.left +
-          (layerCount === 1 ? usableWidth / 2 : (layerIndex / Math.max(layerCount - 1, 1)) * usableWidth);
+      var lane = document.createElementNS(svgNs, "line");
+      lane.setAttribute("x1", String(layerGuideX));
+      lane.setAttribute("y1", String(margin.top - 18));
+      lane.setAttribute("x2", String(layerGuideX));
+      lane.setAttribute("y2", String(graphHeight - margin.bottom + 14));
+      lane.setAttribute("class", "data-tool__graphLayerLane");
+      guidesGroup.appendChild(lane);
 
-        var lane = document.createElementNS(svgNs, "line");
-        lane.setAttribute("x1", String(layerGuideX));
-        lane.setAttribute("y1", String(margin.top - 18));
-        lane.setAttribute("x2", String(layerGuideX));
-        lane.setAttribute("y2", String(graphHeight - margin.bottom + 14));
-        lane.setAttribute("class", "data-tool__graphLayerLane");
-        guidesGroup.appendChild(lane);
-
-        var linearLabel = document.createElementNS(svgNs, "text");
-        linearLabel.setAttribute("x", String(layerGuideX));
-        linearLabel.setAttribute("y", String(margin.top - 28));
-        linearLabel.setAttribute("text-anchor", "middle");
-        linearLabel.setAttribute("class", "data-tool__graphLayerLabel");
-        linearLabel.textContent = "L" + layerToken;
-        guidesGroup.appendChild(linearLabel);
-      } else {
-        var ring = document.createElementNS(svgNs, "circle");
-        ring.setAttribute("cx", String(centerX));
-        ring.setAttribute("cy", String(centerY));
-        ring.setAttribute("r", String(radius));
-        ring.setAttribute("fill", "none");
-        ring.setAttribute("class", "data-tool__graphLayerLane");
-        guidesGroup.appendChild(ring);
-
-        var radialLabel = document.createElementNS(svgNs, "text");
-        radialLabel.setAttribute("x", String(centerX + radius + 6));
-        radialLabel.setAttribute("y", String(centerY));
-        radialLabel.setAttribute("class", "data-tool__graphLayerLabel");
-        radialLabel.textContent = "L" + layerToken;
-        guidesGroup.appendChild(radialLabel);
-      }
+      var colLabel = document.createElementNS(svgNs, "text");
+      colLabel.setAttribute("x", String(layerGuideX));
+      colLabel.setAttribute("y", String(margin.top - 28));
+      colLabel.setAttribute("text-anchor", "middle");
+      colLabel.setAttribute("class", "data-tool__graphLayerLabel");
+      colLabel.textContent =
+        colSpec.valueGroup == null || colSpec.valueGroup === ""
+          ? "L" + layerToken
+          : "L" + layerToken + "\u00b7VG" + String(colSpec.valueGroup);
+      guidesGroup.appendChild(colLabel);
 
       layerNodes.forEach(function (node, nodeIndex) {
         var identifier = String(node && node.identifier ? node.identifier : "").trim();
@@ -2840,11 +2849,6 @@
         var rowId = String(node && node.row_id ? node.row_id : identifier).trim();
         var x = layerGuideX;
         var y = margin.top + ((nodeIndex + 1) / (layerNodes.length + 1)) * usableHeight;
-        if (layoutMode === "radial") {
-          var angle = ((Math.PI * 2) * nodeIndex) / Math.max(1, layerNodes.length);
-          x = centerX + (radius * Math.cos(angle));
-          y = centerY + (radius * Math.sin(angle));
-        }
         nodePositions[identifier] = { x: x, y: y };
 
         var visualState = nodeVisualState(identifier);
@@ -2892,7 +2896,7 @@
         rect.setAttribute("class", "data-tool__graphNodeRect data-tool__graphNode js-anthology-graph-node");
         rect.setAttribute("data-identifier", identifier);
         rect.setAttribute("data-row-id", rowId);
-        rect.setAttribute("fill", nodeFill(visualState, layerColor(layerToken, layerIndex)));
+        rect.setAttribute("fill", nodeFill(visualState, layerColor(layerToken, colIndex)));
 
         var labelNode = document.createElementNS(svgNs, "text");
         labelNode.setAttribute("x", String(labelX));
@@ -2967,11 +2971,24 @@
       var end = nodePositions[target];
       if (!start || !end) return;
 
-      var segment = document.createElementNS(svgNs, "line");
-      segment.setAttribute("x1", String(start.x));
-      segment.setAttribute("y1", String(start.y));
-      segment.setAttribute("x2", String(end.x));
-      segment.setAttribute("y2", String(end.y));
+      var segment = document.createElementNS(svgNs, "path");
+      var mx = (start.x + end.x) / 2;
+      var bend = (start.y - end.y) * 0.2;
+      var d =
+        "M " +
+        String(start.x) +
+        " " +
+        String(start.y) +
+        " Q " +
+        String(mx) +
+        " " +
+        String((start.y + end.y) / 2 - bend) +
+        " " +
+        String(end.x) +
+        " " +
+        String(end.y);
+      segment.setAttribute("d", d);
+      segment.setAttribute("fill", "none");
       var edgeClass = "data-tool__graphEdge" + (edge && edge.resolved === false ? " is-unresolved" : "");
       if (responseFocus && hasFocus && (source === responseFocus || target === responseFocus)) {
         edgeClass += " is-focus";
@@ -2996,12 +3013,15 @@
 
     var legend = document.createElement("div");
     legend.className = "data-tool__graphLegend";
-    orderedLayers.forEach(function (layerToken, layerIndex) {
+    layoutColumns.forEach(function (colSpec, colIndex) {
       var chip = document.createElement("span");
       chip.className = "data-tool__graphLegendChip";
-      chip.style.borderColor = layerColor(layerToken, layerIndex);
-      var layerNodes = Array.isArray(fallbackByLayer[layerToken]) ? fallbackByLayer[layerToken] : [];
-      chip.textContent = "L" + layerToken + ": " + String(layerNodes.length);
+      chip.style.borderColor = layerColor(colSpec.layerToken, colIndex);
+      var n = Array.isArray(colSpec.nodes) ? colSpec.nodes.length : 0;
+      chip.textContent =
+        colSpec.valueGroup == null || colSpec.valueGroup === ""
+          ? "L" + colSpec.layerToken + ": " + String(n)
+          : "L" + colSpec.layerToken + "\u00b7VG" + String(colSpec.valueGroup) + ": " + String(n);
       legend.appendChild(chip);
     });
     if (responseFocus && hasFocus) {
@@ -3023,19 +3043,17 @@
   function graphQueryParams() {
     var focus = graphFocusInput ? String(graphFocusInput.value || "").trim() : "";
     var context = graphContextSel ? String(graphContextSel.value || "local").trim().toLowerCase() : "local";
-    var layoutMode = normalizeWorkbenchLayoutMode(workbenchUiState.layoutMode);
-    var layout = layoutMode === "radial" ? "radial" : "linear";
     var depthToken = graphDepthInput ? String(graphDepthInput.value || "").trim() : "";
     var depth = parseInt(depthToken, 10);
     if (isNaN(depth) || depth < 0) depth = 3;
 
     anthologyGraphUiState.focus = focus;
     anthologyGraphUiState.context = context === "local" ? "local" : "global";
-    anthologyGraphUiState.layout = layout === "radial" ? "radial" : "linear";
+    anthologyGraphUiState.layout = "grouped";
     anthologyGraphUiState.depth = depth;
 
     var params = [];
-    params.push("layout=" + encodeURIComponent(anthologyGraphUiState.layout));
+    params.push("layout=" + encodeURIComponent("grouped"));
     params.push("context=" + encodeURIComponent(anthologyGraphUiState.context));
     params.push("depth=" + encodeURIComponent(String(anthologyGraphUiState.depth)));
     if (focus) params.push("focus=" + encodeURIComponent(focus));
@@ -3239,6 +3257,74 @@
     dtTxaStructureGraph.appendChild(chWrap);
   }
 
+  function renderSamrasStructuralBurst(payload) {
+    if (!dtSamrasStructuralBurst) return;
+    dtSamrasStructuralBurst.innerHTML = "";
+    var detail = payload && typeof payload.structural_detail === "object" ? payload.structural_detail : null;
+    if (!detail) {
+      dtSamrasStructuralBurst.innerHTML = '<p class="data-tool__empty">No structural detail.</p>';
+      return;
+    }
+    var wrap = document.createElement("div");
+    wrap.className = "data-tool__samrasBurstColumns";
+    var levels = Array.isArray(detail.levels) ? detail.levels : [];
+    levels.forEach(function (lvl) {
+      var col = document.createElement("div");
+      col.className = "data-tool__samrasBurstCol";
+      var h = document.createElement("div");
+      h.className = "data-tool__samrasBurstColTitle";
+      h.textContent = String((lvl && lvl.label) || (lvl && lvl.key) || "level");
+      col.appendChild(h);
+      var items = Array.isArray(lvl && lvl.items) ? lvl.items : [];
+      if (!items.length) {
+        var empty = document.createElement("p");
+        empty.className = "data-tool__empty";
+        empty.textContent = "—";
+        col.appendChild(empty);
+      } else {
+        items.forEach(function (it) {
+          var row = document.createElement("button");
+          row.type = "button";
+          row.className = "data-tool__samrasBurstRow";
+          var aid = String((it && it.address_id) || "").trim();
+          var title = String((it && it.title) || "").trim();
+          row.textContent = aid + (title ? " — " + title : "");
+          row.addEventListener("click", function () {
+            if (!aid) return;
+            txaSandboxUiState.selectedAddressId = aid;
+            refreshTxaSandboxView().catch(function (err) {
+              setMessages([err.message], []);
+            });
+          });
+          col.appendChild(row);
+        });
+      }
+      wrap.appendChild(col);
+    });
+    var staged = Array.isArray(detail.staged_structural_preview) ? detail.staged_structural_preview : [];
+    if (staged.length) {
+      var st = document.createElement("div");
+      st.className = "data-tool__samrasBurstStaged";
+      var head = document.createElement("div");
+      head.className = "data-tool__samrasBurstColTitle";
+      head.textContent = "Staged structural preview";
+      st.appendChild(head);
+      staged.forEach(function (s) {
+        var p = document.createElement("p");
+        p.className = "data-tool__legendText";
+        p.textContent =
+          String((s && s.provisional_child_address) || "") +
+          " under " +
+          String((s && s.parent_address) || "") +
+          ": " +
+          String((s && s.title) || "");
+        st.appendChild(p);
+      });
+      wrap.appendChild(st);
+    }
+    dtSamrasStructuralBurst.appendChild(wrap);
+  }
+
   function renderTxaBranchAside(branch) {
     var sel = String(txaSandboxUiState.selectedAddressId || "").trim();
     if (dtTxaBranchPath) {
@@ -3342,7 +3428,7 @@
     };
     var payload;
     try {
-      payload = await api("/portal/api/data/sandbox/txa_workspace/view_model", {
+      payload = await api("/portal/api/data/sandbox/samras_workspace/view_model", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -3359,7 +3445,7 @@
     if (!txaSandboxUiState.selectedAddressId && Array.isArray(payload.title_table_rows) && payload.title_table_rows.length) {
       txaSandboxUiState.selectedAddressId = String(payload.title_table_rows[0].address_id || "").trim();
       body.selected_address_id = txaSandboxUiState.selectedAddressId;
-      payload = await api("/portal/api/data/sandbox/txa_workspace/view_model", {
+      payload = await api("/portal/api/data/sandbox/samras_workspace/view_model", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -3384,12 +3470,47 @@
       var n = (payload.normalized_staged_entries || []).length;
       dtTxaStagedHint.textContent = n
         ? n +
-          " staged row(s) in this browser — promote via sandbox SAMRAS upsert / resource save when the server path is ready."
+          " staged row(s) — use “Promote staged (sandbox)” to persist via shared SandboxEngine, or clear staged."
         : "No staged rows. Select a parent node, enter a name, then “Stage as next child”.";
     }
     renderTxaTitleTable(payload.title_table_rows || []);
     renderTxaStructureGraph(payload.branch_context || {});
     renderTxaBranchAside(payload.branch_context || {});
+    renderSamrasStructuralBurst(payload);
+  }
+
+  async function promoteTxaStagedTitles() {
+    if (!dtTxaResourceId) return;
+    var rid = String(dtTxaResourceId.value || "").trim();
+    if (!rid) {
+      setMessages(["Enter resource_id and load before promoting"], []);
+      return;
+    }
+    var staged = txaLoadStaged(rid);
+    if (!staged.length) {
+      setMessages(["No staged rows to promote"], []);
+      return;
+    }
+    try {
+      var res = await api(
+        "/portal/api/data/sandbox/resources/" + encodeURIComponent(rid) + "/promote_staged_samras_titles",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ staged_entries: staged }),
+        }
+      );
+      if (!res.ok) {
+        var msg = (res.errors && res.errors[0]) || res.error || "Promote failed";
+        setMessages([String(msg)], Array.isArray(res.warnings) ? res.warnings : []);
+        return;
+      }
+      txaSaveStaged(rid, []);
+      setMessages([], Array.isArray(res.warnings) ? res.warnings : []);
+      await refreshTxaSandboxView();
+    } catch (err) {
+      setMessages([err && err.message ? err.message : "Promote failed"], []);
+    }
   }
 
   async function getState() {
@@ -4870,6 +4991,13 @@
       var rid = String(dtTxaResourceId && dtTxaResourceId.value ? dtTxaResourceId.value : "").trim();
       if (rid) txaSaveStaged(rid, []);
       refreshTxaSandboxView().catch(function (err) {
+        setMessages([err.message], []);
+      });
+    });
+  }
+  if (dtTxaPromoteBtn) {
+    dtTxaPromoteBtn.addEventListener("click", function () {
+      promoteTxaStagedTitles().catch(function (err) {
         setMessages([err.message], []);
       });
     });
