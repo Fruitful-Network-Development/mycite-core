@@ -91,6 +91,26 @@
   var samrasSelectedNodeTitleEl = qs("#dtsamrasSelectedNodeTitle", app);
   var samrasSelectedNodeMetaEl = qs("#dtsamrasSelectedNodeMeta", app);
 
+  var dtWorkspaceTabButtons = qsa("[data-dt-workspace-tab]", app);
+  var dtWorkspaceAnthology = qs("#dtWorkspaceAnthology", app);
+  var dtWorkspaceTxaSandbox = qs("#dtWorkspaceTxaSandbox", app);
+  var dtTxaResourceId = qs("#dtTxaResourceId", app);
+  var dtTxaLoadBtn = qs("#dtTxaLoadBtn", app);
+  var dtTxaRefreshBtn = qs("#dtTxaRefreshBtn", app);
+  var dtTxaClearStagedBtn = qs("#dtTxaClearStagedBtn", app);
+  var dtTxaStatus = qs("#dtTxaStatus", app);
+  var dtTxaStructureGraph = qs("#dtTxaStructureGraph", app);
+  var dtTxaTitleTableBody = qs("#dtTxaTitleTableBody", app);
+  var dtTxaTableEmpty = qs("#dtTxaTableEmpty", app);
+  var dtTxaNewTitle = qs("#dtTxaNewTitle", app);
+  var dtTxaStageAddBtn = qs("#dtTxaStageAddBtn", app);
+  var dtTxaStagedHint = qs("#dtTxaStagedHint", app);
+  var dtTxaBranchIntro = qs("#dtTxaBranchIntro", app);
+  var dtTxaBranchPath = qs("#dtTxaBranchPath", app);
+  var dtTxaBranchSiblings = qs("#dtTxaBranchSiblings", app);
+  var dtTxaBranchChildren = qs("#dtTxaBranchChildren", app);
+  var dtTxaBranchNext = qs("#dtTxaBranchNext", app);
+
   var profileModal = qs("#dtProfileModal");
   var profileCloseBtn = qs("#dtProfileCloseBtn");
   var profileTargetEl = qs("#dtProfileTarget");
@@ -180,6 +200,15 @@
     expandedByInstance: {},
     selectedNodeId: "",
     graphMode: "full_span",
+  };
+
+  var WORKSPACE_TAB_STORAGE_KEY = "mycite.data_tool.workspace_tab_v1";
+  var TXA_STAGED_STORAGE_PREFIX = "mycite.data_tool.txa_staged.v1:";
+  var txaSandboxUiState = {
+    resourceId: "",
+    selectedAddressId: "",
+    stagedEntries: [],
+    lastPayload: null,
   };
 
   var datumWorkbenchState = {
@@ -3064,9 +3093,303 @@
       payload = {};
     }
     if (!res.ok) {
-      throw new Error(payload.description || payload.message || "Request failed");
+      throw new Error(payload.description || payload.message || payload.error || "Request failed");
     }
     return payload;
+  }
+
+  function setDtWorkspaceTab(mode) {
+    var m = String(mode || "anthology").trim();
+    if (!dtWorkspaceAnthology || !dtWorkspaceTxaSandbox) return;
+    dtWorkspaceAnthology.hidden = m !== "anthology";
+    dtWorkspaceTxaSandbox.hidden = m !== "txa_sandbox";
+    dtWorkspaceTabButtons.forEach(function (b) {
+      var id = String(b.getAttribute("data-dt-workspace-tab") || "").trim();
+      if (id === m) b.classList.add("is-active");
+      else b.classList.remove("is-active");
+    });
+    try {
+      window.sessionStorage.setItem(WORKSPACE_TAB_STORAGE_KEY, m);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function txaLoadStaged(rid) {
+    try {
+      var raw = window.sessionStorage.getItem(TXA_STAGED_STORAGE_PREFIX + String(rid || "").trim());
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function txaSaveStaged(rid, entries) {
+    try {
+      window.sessionStorage.setItem(TXA_STAGED_STORAGE_PREFIX + String(rid || "").trim(), JSON.stringify(entries || []));
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function renderTxaTitleTable(rows) {
+    if (!dtTxaTitleTableBody) return;
+    dtTxaTitleTableBody.innerHTML = "";
+    var list = Array.isArray(rows) ? rows : [];
+    if (dtTxaTableEmpty) dtTxaTableEmpty.hidden = list.length > 0;
+    var sel = String(txaSandboxUiState.selectedAddressId || "").trim();
+    list.forEach(function (row) {
+      var aid = String(row.address_id || "").trim();
+      var tr = document.createElement("tr");
+      if (aid && aid === sel) tr.classList.add("is-selected");
+      var st = String(row.status || "").trim();
+      var badge =
+        st === "staged"
+          ? '<span class="data-tool__badge data-tool__badge--staged">staged</span>'
+          : '<span class="data-tool__badge data-tool__badge--saved">saved</span>';
+      tr.innerHTML =
+        "<td>" +
+        badge +
+        "</td>" +
+        "<td><code>" +
+        escapeText(aid) +
+        "</code></td>" +
+        "<td>" +
+        escapeText(row.title || "") +
+        "</td>" +
+        "<td><code>" +
+        escapeText(row.parent_address || "") +
+        "</code></td>";
+      tr.addEventListener("click", function () {
+        txaSandboxUiState.selectedAddressId = aid;
+        refreshTxaSandboxView().catch(function (err) {
+          setMessages([err.message], []);
+        });
+      });
+      dtTxaTitleTableBody.appendChild(tr);
+    });
+  }
+
+  function renderTxaStructureGraph(branch /* , _combinedRows */) {
+    if (!dtTxaStructureGraph) return;
+    dtTxaStructureGraph.innerHTML = "";
+    var path = Array.isArray(branch && branch.path_to_root) ? branch.path_to_root : [];
+    if (!path.length) {
+      var empty = document.createElement("p");
+      empty.className = "data-tool__empty";
+      empty.textContent = "Select a row to see the path from root through this branch.";
+      dtTxaStructureGraph.appendChild(empty);
+      return;
+    }
+    var chip = document.createElement("div");
+    chip.className = "data-tool__txaPathChip";
+    var sel = String(txaSandboxUiState.selectedAddressId || "").trim();
+    path.forEach(function (seg, idx) {
+      var token = String(seg || "").trim();
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "data-tool__txaPathSeg";
+      if (token === sel) btn.classList.add("is-selected");
+      btn.textContent = token;
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        txaSandboxUiState.selectedAddressId = token;
+        refreshTxaSandboxView().catch(function (err) {
+          setMessages([err.message], []);
+        });
+      });
+      chip.appendChild(btn);
+      if (idx < path.length - 1) {
+        var sep = document.createElement("span");
+        sep.textContent = " › ";
+        sep.setAttribute("aria-hidden", "true");
+        chip.appendChild(sep);
+      }
+    });
+    dtTxaStructureGraph.appendChild(chip);
+
+    var chWrap = document.createElement("div");
+    chWrap.className = "data-tool__txaMiniChildren";
+    var chHead = document.createElement("div");
+    chHead.innerHTML = "<strong>Direct children</strong>";
+    chWrap.appendChild(chHead);
+    var kids = Array.isArray(branch && branch.children) ? branch.children : [];
+    if (!kids.length) {
+      var none = document.createElement("p");
+      none.className = "data-tool__empty";
+      none.textContent = "No children under this node.";
+      chWrap.appendChild(none);
+    } else {
+      kids.forEach(function (c) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "data-tool__txaBranchItem";
+        b.textContent = String(c.address_id || "") + (c.title ? " — " + String(c.title) : "");
+        b.addEventListener("click", function () {
+          txaSandboxUiState.selectedAddressId = String(c.address_id || "").trim();
+          refreshTxaSandboxView().catch(function (err) {
+            setMessages([err.message], []);
+          });
+        });
+        chWrap.appendChild(b);
+      });
+    }
+    dtTxaStructureGraph.appendChild(chWrap);
+  }
+
+  function renderTxaBranchAside(branch) {
+    var sel = String(txaSandboxUiState.selectedAddressId || "").trim();
+    if (dtTxaBranchPath) {
+      dtTxaBranchPath.innerHTML = "";
+      var path = Array.isArray(branch && branch.path_to_root) ? branch.path_to_root : [];
+      if (!path.length) {
+        dtTxaBranchPath.innerHTML = '<p class="data-tool__empty">No selection.</p>';
+      } else {
+        var ol = document.createElement("ol");
+        ol.className = "data-tool__txaBreadcrumb";
+        path.forEach(function (seg) {
+          var li = document.createElement("li");
+          li.innerHTML = "<code>" + escapeText(String(seg)) + "</code>";
+          ol.appendChild(li);
+        });
+        dtTxaBranchPath.appendChild(ol);
+      }
+    }
+    if (dtTxaBranchSiblings) {
+      dtTxaBranchSiblings.innerHTML = "";
+      var sibs = Array.isArray(branch && branch.siblings) ? branch.siblings : [];
+      sibs.forEach(function (s) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "data-tool__txaBranchItem" + (s.is_selected ? " is-selected" : "");
+        btn.textContent = String(s.address_id || "") + (s.title ? " — " + String(s.title) : "");
+        btn.addEventListener("click", function () {
+          txaSandboxUiState.selectedAddressId = String(s.address_id || "").trim();
+          refreshTxaSandboxView().catch(function (err) {
+            setMessages([err.message], []);
+          });
+        });
+        dtTxaBranchSiblings.appendChild(btn);
+      });
+      if (!sibs.length) {
+        var p = document.createElement("p");
+        p.className = "data-tool__empty";
+        p.textContent = "No siblings.";
+        dtTxaBranchSiblings.appendChild(p);
+      }
+    }
+    if (dtTxaBranchChildren) {
+      dtTxaBranchChildren.innerHTML = "";
+      var ch = Array.isArray(branch && branch.children) ? branch.children : [];
+      ch.forEach(function (c) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "data-tool__txaBranchItem";
+        btn.textContent = String(c.address_id || "") + (c.title ? " — " + String(c.title) : "");
+        btn.addEventListener("click", function () {
+          txaSandboxUiState.selectedAddressId = String(c.address_id || "").trim();
+          refreshTxaSandboxView().catch(function (err) {
+            setMessages([err.message], []);
+          });
+        });
+        dtTxaBranchChildren.appendChild(btn);
+      });
+      if (!ch.length) {
+        var p2 = document.createElement("p");
+        p2.className = "data-tool__empty";
+        p2.textContent = "No children.";
+        dtTxaBranchChildren.appendChild(p2);
+      }
+    }
+    if (dtTxaBranchNext) {
+      var next = String((branch && branch.next_child_preview) || "").trim();
+      dtTxaBranchNext.innerHTML = next
+        ? "<p>Next free child under <code>" +
+          escapeText(sel) +
+          "</code>:</p><p><code>" +
+          escapeText(next) +
+          "</code></p><p class=\"data-tool__legendText\">Example: one child <code>…-1</code> → next is <code>…-2</code>.</p>"
+        : "<p class=\"data-tool__empty\">Select a node to preview the next child slot.</p>";
+    }
+    if (dtTxaBranchIntro) {
+      dtTxaBranchIntro.textContent = sel
+        ? "Selected: " +
+          sel +
+          ". Parent: " +
+          String((branch && branch.parent_address) || "none") +
+          ". Child count: " +
+          String((branch && branch.child_count) != null ? branch.child_count : "?") +
+          "."
+        : "Select a row in the table or a segment in the path.";
+    }
+  }
+
+  async function refreshTxaSandboxView() {
+    if (!dtTxaResourceId) return;
+    var rid = String(dtTxaResourceId.value || "").trim();
+    if (!rid) {
+      if (dtTxaStatus) dtTxaStatus.textContent = "Enter a sandbox resource_id.";
+      return;
+    }
+    txaSandboxUiState.resourceId = rid;
+    txaSandboxUiState.stagedEntries = txaLoadStaged(rid);
+    var body = {
+      resource_id: rid,
+      selected_address_id: txaSandboxUiState.selectedAddressId,
+      staged_entries: txaSandboxUiState.stagedEntries,
+    };
+    var payload;
+    try {
+      payload = await api("/portal/api/data/sandbox/txa_workspace/view_model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      if (dtTxaStatus) dtTxaStatus.textContent = "Error: " + (err && err.message ? err.message : "load failed");
+      throw err;
+    }
+    if (!payload.ok) {
+      var msg = payload.error || "Load failed";
+      if (dtTxaStatus) dtTxaStatus.textContent = msg;
+      throw new Error(msg);
+    }
+    if (!txaSandboxUiState.selectedAddressId && Array.isArray(payload.title_table_rows) && payload.title_table_rows.length) {
+      txaSandboxUiState.selectedAddressId = String(payload.title_table_rows[0].address_id || "").trim();
+      body.selected_address_id = txaSandboxUiState.selectedAddressId;
+      payload = await api("/portal/api/data/sandbox/txa_workspace/view_model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!payload.ok) {
+        var msg2 = payload.error || "Load failed";
+        if (dtTxaStatus) dtTxaStatus.textContent = msg2;
+        throw new Error(msg2);
+      }
+    }
+    txaSandboxUiState.lastPayload = payload;
+    if (dtTxaStatus) {
+      var sw = Array.isArray(payload.stage_warnings) ? payload.stage_warnings : [];
+      dtTxaStatus.textContent =
+        "Rows: " +
+        String((payload.title_table_rows || []).length) +
+        " | staged: " +
+        String((payload.normalized_staged_entries || []).length) +
+        (sw.length ? " | warnings: " + sw.length : "");
+    }
+    if (dtTxaStagedHint) {
+      var n = (payload.normalized_staged_entries || []).length;
+      dtTxaStagedHint.textContent = n
+        ? n +
+          " staged row(s) in this browser — promote via sandbox SAMRAS upsert / resource save when the server path is ready."
+        : "No staged rows. Select a parent node, enter a name, then “Stage as next child”.";
+    }
+    renderTxaTitleTable(payload.title_table_rows || []);
+    renderTxaStructureGraph(payload.branch_context || {});
+    renderTxaBranchAside(payload.branch_context || {});
   }
 
   async function getState() {
@@ -4509,6 +4832,72 @@
         if (!nodeId) return;
         setSamrasSelection(nodeId);
       }
+    });
+  }
+
+  dtWorkspaceTabButtons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var mode = String(btn.getAttribute("data-dt-workspace-tab") || "").trim();
+      if (mode) setDtWorkspaceTab(mode);
+    });
+  });
+  try {
+    var savedWs = window.sessionStorage.getItem(WORKSPACE_TAB_STORAGE_KEY);
+    if (savedWs === "txa_sandbox" || savedWs === "anthology") {
+      setDtWorkspaceTab(savedWs);
+    }
+  } catch (_) {
+    /* ignore */
+  }
+
+  if (dtTxaLoadBtn) {
+    dtTxaLoadBtn.addEventListener("click", function () {
+      txaSandboxUiState.selectedAddressId = "";
+      refreshTxaSandboxView().catch(function (err) {
+        setMessages([err.message], []);
+      });
+    });
+  }
+  if (dtTxaRefreshBtn) {
+    dtTxaRefreshBtn.addEventListener("click", function () {
+      refreshTxaSandboxView().catch(function (err) {
+        setMessages([err.message], []);
+      });
+    });
+  }
+  if (dtTxaClearStagedBtn) {
+    dtTxaClearStagedBtn.addEventListener("click", function () {
+      var rid = String(dtTxaResourceId && dtTxaResourceId.value ? dtTxaResourceId.value : "").trim();
+      if (rid) txaSaveStaged(rid, []);
+      refreshTxaSandboxView().catch(function (err) {
+        setMessages([err.message], []);
+      });
+    });
+  }
+  if (dtTxaStageAddBtn) {
+    dtTxaStageAddBtn.addEventListener("click", function () {
+      var parent = String(txaSandboxUiState.selectedAddressId || "").trim();
+      if (!parent) {
+        setMessages(["Select a parent node in the table first"], []);
+        return;
+      }
+      var title = String(dtTxaNewTitle && dtTxaNewTitle.value ? dtTxaNewTitle.value : "").trim();
+      if (!title) {
+        setMessages(["Enter a cultivar / title name"], []);
+        return;
+      }
+      var rid = String(dtTxaResourceId && dtTxaResourceId.value ? dtTxaResourceId.value : "").trim();
+      if (!rid) {
+        setMessages(["Enter resource_id and load"], []);
+        return;
+      }
+      var entries = txaLoadStaged(rid).slice();
+      entries.push({ parent_address: parent, title: title });
+      txaSaveStaged(rid, entries);
+      if (dtTxaNewTitle) dtTxaNewTitle.value = "";
+      refreshTxaSandboxView().catch(function (err) {
+        setMessages([err.message], []);
+      });
     });
   }
 

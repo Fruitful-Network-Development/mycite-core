@@ -3656,6 +3656,169 @@ body.is-modal-open {
   min-height: 58vh;
 }
 
+/* TXA sandbox workspace (sandbox SAMRAS resource + title table + branch aside) */
+.data-tool__workspaceTabs {
+  margin: 0 0 12px;
+  flex-wrap: wrap;
+}
+
+.data-tool__workspacePanel {
+  min-height: 0;
+}
+
+.data-tool__layout--txaSandbox {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 34%);
+  gap: 14px;
+  align-items: start;
+  min-height: 0;
+}
+
+@media (max-width: 1100px) {
+  .data-tool__layout--txaSandbox {
+    grid-template-columns: 1fr;
+  }
+}
+
+.data-tool__txaSandboxCard {
+  min-height: 0;
+}
+
+.data-tool__txaSandboxGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 12px;
+  margin-top: 8px;
+}
+
+@media (max-width: 900px) {
+  .data-tool__txaSandboxGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.data-tool__txaGraphPane {
+  min-height: 140px;
+}
+
+.data-tool__txaMiniGraph {
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.14));
+  border-radius: 8px;
+  padding: 10px;
+  min-height: 120px;
+  background: rgba(12, 18, 22, 0.35);
+}
+
+.data-tool__txaPathChip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0;
+}
+
+.data-tool__txaPathSeg {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.18));
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.data-tool__txaPathSeg.is-selected {
+  outline: 2px solid #5ab0ff;
+  background: rgba(90, 176, 255, 0.15);
+}
+
+.data-tool__txaMiniChildren {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.data-tool__txaBranchAside {
+  position: sticky;
+  top: 8px;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+}
+
+.data-tool__txaBranchSection {
+  margin-top: 12px;
+}
+
+.data-tool__txaBranchHeading {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink2, #647076);
+}
+
+.data-tool__txaBranchList .data-tool__txaBranchItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 4px 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.data-tool__txaBranchItem.is-selected {
+  outline: 2px solid #5ab0ff;
+}
+
+.data-tool__txaBranchNext code {
+  font-size: 13px;
+}
+
+.data-tool__controlRow--wrap {
+  flex-wrap: wrap;
+}
+
+.data-tool__growLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 200px;
+}
+
+.data-tool__table--compact td,
+.data-tool__table--compact th {
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.data-tool__badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.data-tool__badge--staged {
+  background: rgba(255, 193, 7, 0.25);
+  color: #b8860b;
+}
+
+.data-tool__badge--saved {
+  background: rgba(76, 175, 80, 0.2);
+  color: #2e7d32;
+}
+
+.data-tool__txaBreadcrumb {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 13px;
+}
+
 .vault-list {
   display: grid;
   gap: 10px;

@@ -1,30 +1,28 @@
-"""Engine-owned rule policy derived from ``DatumUnderstanding.status`` (frozen v1).
+"""Engine-owned rule policy derived from ``DatumUnderstanding.status`` (frozen v2).
 
-This is not a UI skin: routes and services should use ``RulePolicy`` to decide
-whether writes, reference picking, and lens usage are permitted. UI consumes the
-same payloads returned by the API.
+Routes and services use ``RulePolicy`` for write/picker/lens behavior; UI consumes
+the same payloads. Classification and warnings always apply; only ``invalid`` is
+blocked by default (rules still evolving — ``ambiguous`` / ``unknown`` stay writable).
 
-Status → policy defaults (v1)
-----------------------------
+Status → policy defaults (v2)
+-----------------------------
 ``standard``
-    Normal create/edit; references should use filtered engine lists; lens active;
-    writes allowed.
+    Writes allowed; guided/filtered reference UI by default; lens active.
 
 ``transitional``
-    Limited create/edit; lens active; warnings expected; publish discouraged;
-    writes still allowed (caller may surface warnings).
+    Writes allowed; guided UI + engine/list warnings; publish discouraged.
 
 ``ambiguous``
-    Writes blocked unless ``rule_write_override``; reference picking blocked
-    unless manual/admin path; lens degraded.
-
-``invalid``
-    Writes blocked unless ``rule_write_override``; error lens / error state;
-    no default filtered refs.
+    Writes allowed; strong UI + API warnings; visually distinct; prefer guided
+    picks when inference exists; manual/freeform always available — no override
+    required for normal users.
 
 ``unknown``
-    Neutral / manual mode only: writes allowed without family-specific
-    assumptions; freeform reference entry is the default; no family lens.
+    Writes allowed; neutral/manual path; warn clearly; not treated as invalid.
+
+``invalid``
+    Writes blocked by default; error lens; ``rule_write_override`` for explicit
+    admin bypass when justified.
 """
 
 from __future__ import annotations
@@ -54,6 +52,7 @@ class RulePolicy:
     can_save: bool
     can_publish: bool
     can_use_default_lens: bool
+    guidance_notes: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -72,7 +71,8 @@ class RulePolicy:
             "can_save": self.can_save,
             "can_publish": self.can_publish,
             "can_use_default_lens": self.can_use_default_lens,
-            "schema": "mycite.portal.datum_rules.rule_policy.v1",
+            "guidance_notes": list(self.guidance_notes),
+            "schema": "mycite.portal.datum_rules.rule_policy.v2",
         }
 
 
@@ -102,6 +102,7 @@ def derive_rule_policy(understanding: DatumUnderstanding | None) -> RulePolicy:
             can_save=True,
             can_publish=True,
             can_use_default_lens=True,
+            guidance_notes=(),
         )
     if status == "transitional":
         return RulePolicy(
@@ -120,24 +121,31 @@ def derive_rule_policy(understanding: DatumUnderstanding | None) -> RulePolicy:
             can_save=True,
             can_publish=False,
             can_use_default_lens=True,
+            guidance_notes=(
+                "transitional rule family state: review engine warnings before publish",
+            ),
         )
     if status == "ambiguous":
         return RulePolicy(
             status=status,
             family=family,
             rule_key=rule_key,
-            create_mode="blocked",
-            edit_mode="blocked",
-            ref_mode="blocked",
+            create_mode="evolving",
+            edit_mode="evolving",
+            ref_mode="guided_prefer_filtered",
             lens_mode="degraded",
-            requires_manual_override=True,
-            write_allowed=False,
-            can_create=False,
-            can_edit=False,
-            can_pick_refs=False,
-            can_save=False,
+            requires_manual_override=False,
+            write_allowed=True,
+            can_create=True,
+            can_edit=True,
+            can_pick_refs=True,
+            can_save=True,
             can_publish=False,
-            can_use_default_lens=False,
+            can_use_default_lens=True,
+            guidance_notes=(
+                "ambiguous rule classification — edits allowed while rules evolve",
+                "prefer filtered reference lists when the engine can infer them; manual entry remains available",
+            ),
         )
     if status == "invalid":
         return RulePolicy(
@@ -156,6 +164,9 @@ def derive_rule_policy(understanding: DatumUnderstanding | None) -> RulePolicy:
             can_save=False,
             can_publish=False,
             can_use_default_lens=False,
+            guidance_notes=(
+                "invalid under current rule constraints — fix datum shape/refs or use explicit admin override",
+            ),
         )
     # unknown (or unrecognized token): neutral manual path
     return _unknown_policy(family=family, rule_key=rule_key, status="unknown")
@@ -178,6 +189,9 @@ def _unknown_policy(*, family: str, rule_key: str, status: str) -> RulePolicy:
         can_save=True,
         can_publish=False,
         can_use_default_lens=False,
+        guidance_notes=(
+            "no matching rule family — neutral/manual editing; confirm references against live anthology/resource rows",
+        ),
     )
 
 

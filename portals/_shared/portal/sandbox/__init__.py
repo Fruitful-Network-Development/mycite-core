@@ -1,5 +1,18 @@
 from .engine import SandboxEngine
 from .local_resource_lifecycle import LocalResourceLifecycleService
+from .txa_sandbox_workspace import build_txa_sandbox_view_model
+from .tool_sandbox_session import (
+    ToolSandboxPromotionHooks,
+    ToolSandboxRuntimeDeps,
+    ToolSandboxSession,
+    ToolSandboxSessionManager,
+)
+from .workspace_contract import (
+    AGRO_ERP_SANDBOX_DECLARATION,
+    AGRO_ERP_SANDBOX_DECLARATION_EXAMPLE,
+    SandboxResourceRef,
+    ToolSandboxDeclaration,
+)
 from .migration import SandboxAnthologyMigrationResult, migrate_fnd_samras_rows_to_sandbox
 from .models import (
     ExposedResourceValue,
@@ -37,6 +50,15 @@ from .samras import (
 )
 
 __all__ = [
+    "build_txa_sandbox_view_model",
+    "AGRO_ERP_SANDBOX_DECLARATION",
+    "AGRO_ERP_SANDBOX_DECLARATION_EXAMPLE",
+    "SandboxResourceRef",
+    "ToolSandboxDeclaration",
+    "ToolSandboxPromotionHooks",
+    "ToolSandboxRuntimeDeps",
+    "ToolSandboxSession",
+    "ToolSandboxSessionManager",
     "SandboxEngine",
     "SandboxAnthologyMigrationResult",
     "migrate_fnd_samras_rows_to_sandbox",

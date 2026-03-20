@@ -145,8 +145,9 @@ class DatumRuleFamilyTests(unittest.TestCase):
         std = rules.derive_rule_policy(report.by_id["4-1-1"])
         self.assertTrue(std.write_allowed and std.can_publish)
         amb = rules.derive_rule_policy(report.by_id["4-1-2"])
-        self.assertFalse(amb.write_allowed)
-        self.assertTrue(amb.requires_manual_override)
+        self.assertTrue(amb.write_allowed)
+        self.assertFalse(amb.requires_manual_override)
+        self.assertEqual(amb.ref_mode, "guided_prefer_filtered")
         inv = rules.derive_rule_policy(report.by_id["3-1-2"])
         self.assertFalse(inv.write_allowed)
         tr = rules.derive_rule_policy(report.by_id["3-1-1"])
@@ -181,6 +182,30 @@ class DatumRuleFamilyTests(unittest.TestCase):
         )
         self.assertTrue(ev.get("ok"))
         self.assertEqual((ev.get("datum_understanding") or {}).get("family"), "isolate")
+
+    def test_graph_blocks_only_invalid_not_ambiguous(self):
+        import importlib
+
+        we = importlib.import_module("_shared.portal.data_engine.rules.write_evaluation")
+
+        class U:
+            __slots__ = ("datum_id", "status")
+
+            def __init__(self, datum_id: str, status: str) -> None:
+                self.datum_id = datum_id
+                self.status = status
+
+        class R:
+            def __init__(self, ok: bool, understandings: list) -> None:
+                self.ok = ok
+                self.understandings = understandings
+
+        amb_only = R(True, [U("9-9-9", "ambiguous")])
+        self.assertIsNone(we.graph_write_violation_message(amb_only))
+        self.assertTrue(we.graph_evolving_state_warnings(amb_only))
+
+        invalid_graph = R(False, [])
+        self.assertIsNotNone(we.graph_write_violation_message(invalid_graph))
 
     def test_rule_key_hint_can_still_fail_stricter_than_engine(self):
         rules = _load_rules_module()
