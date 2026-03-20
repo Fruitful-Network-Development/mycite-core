@@ -1,5 +1,6 @@
 from .engine import SandboxEngine
 from .local_resource_lifecycle import LocalResourceLifecycleService
+from .session_registry import TOOL_SANDBOX_MANAGER_APP_KEY, get_tool_sandbox_session_manager
 from .txa_sandbox_workspace import build_txa_sandbox_view_model
 from .tool_sandbox_session import (
     ToolSandboxPromotionHooks,
@@ -50,6 +51,8 @@ from .samras import (
 )
 
 __all__ = [
+    "TOOL_SANDBOX_MANAGER_APP_KEY",
+    "get_tool_sandbox_session_manager",
     "build_txa_sandbox_view_model",
     "AGRO_ERP_SANDBOX_DECLARATION",
     "AGRO_ERP_SANDBOX_DECLARATION_EXAMPLE",

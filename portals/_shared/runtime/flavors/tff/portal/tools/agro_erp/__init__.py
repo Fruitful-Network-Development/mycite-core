@@ -19,6 +19,7 @@ from _shared.portal.data_engine.write_pipeline import apply_write_preview, previ
 from _shared.portal.data_engine.external_resources.resolver import ExternalResourceResolver
 from _shared.portal.sandbox import AGRO_ERP_SANDBOX_DECLARATION, LocalResourceLifecycleService
 from _shared.portal.sandbox.engine import SandboxEngine
+from _shared.portal.sandbox.session_registry import get_tool_sandbox_session_manager
 from _shared.portal.sandbox.tool_sandbox_session import (
     ToolSandboxPromotionHooks,
     ToolSandboxRuntimeDeps,
@@ -87,10 +88,7 @@ def _sandbox_engine() -> SandboxEngine:
 
 
 def _tool_sandbox_manager() -> ToolSandboxSessionManager:
-    key = "MYCITE_TOOL_SANDBOX_SESSION_MANAGER"
-    if key not in current_app.config:
-        current_app.config[key] = ToolSandboxSessionManager()
-    return current_app.config[key]
+    return get_tool_sandbox_session_manager(current_app)
 
 
 def _tool_sandbox_runtime_deps() -> ToolSandboxRuntimeDeps:

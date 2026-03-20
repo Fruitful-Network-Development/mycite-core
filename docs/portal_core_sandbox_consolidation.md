@@ -13,6 +13,7 @@ This document answers Phases 1–13 from the sandbox/tool consolidation request.
 |------|-----------|
 | Sandbox engine (stage/save/compile, SAMRAS, MSS) | `portals/_shared/portal/sandbox/engine.py` |
 | **Tool sandbox session** (runtime staging + promote) | `portals/_shared/portal/sandbox/tool_sandbox_session.py` |
+| **Session manager on Flask app** | `portals/_shared/portal/sandbox/session_registry.py` (`get_tool_sandbox_session_manager`) |
 | Local resource lifecycle facade | `portals/_shared/portal/sandbox/local_resource_lifecycle.py` |
 | Anthology canonical context | `portals/_shared/portal/data_engine/anthology_context.py` |
 | Rule families + lenses + **RulePolicy v2** | `portals/_shared/portal/data_engine/rules/` |
@@ -28,7 +29,7 @@ This document answers Phases 1–13 from the sandbox/tool consolidation request.
 |------|--------|
 | **FND vs TFF** | ~310 files under `runtime/flavors/`; `fnd` and `tff` each carry `app.py`, portal API shims, `workspace.py` (large). Goal: thin flavor wrappers only. |
 | **Workspace implementation** | `flavors/*/data/engine/workspace.py` — twin copies; anthology authority and NIMM live here while rules/sandbox are shared — further extraction possible. |
-| **AGRO flows** | Tests (`test_agro_*`) and config keys (`agro`, `agro_erp` icon) imply tool-specific paths; ERP should move to **declared sandbox session** + shared save/publish, not bespoke storage. |
+| **AGRO flows** | Plot draft uses **`ToolSandboxSession`**; MVP/compile paths still partially direct — see `docs/portal_core_tool_sandbox_consolidation_audit.md`. |
 
 ### Still bypassing sandbox / shared engine
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 try:
     from flask import Flask
@@ -163,6 +164,117 @@ class ToolSandboxSessionServiceTests(unittest.TestCase):
         self.assertEqual(sess.tool_key, "agro_erp")
         self.assertFalse(sess.errors)
 
+    def test_reopen_session_reloads_resource_from_disk(self):
+        self.engine.save_resource("r1", {"resource_id": "r1", "version": 1})
+        decl = {"tool_id": "t1", "required_resources": [{"resource_id": "r1", "required": True}]}
+        deps = self._deps()
+        s1 = self.mgr.open_session(deps, tool_key="t1", declaration=decl, session_id="session-stable")  # type: ignore[arg-type]
+        self.assertEqual(s1.loaded_resources.get("r1", {}).get("version"), 1)
+        self.engine.save_resource("r1", {"resource_id": "r1", "version": 2})
+        s2 = self.mgr.reopen_session(
+            deps,
+            session_id="session-stable",
+            tool_key="t1",
+            declaration=decl,  # type: ignore[arg-type]
+        )
+        self.assertEqual(s2.session_id, "session-stable")
+        self.assertEqual(s2.loaded_resources.get("r1", {}).get("version"), 2)
+
+    def test_refresh_canonical_snapshot_updates_rows(self):
+        rows = {
+            "rows": {
+                "9-9-9": {
+                    "row_id": "9-9-9",
+                    "identifier": "9-9-9",
+                    "label": "L",
+                    "pairs": [{"reference": "2-1-1", "magnitude": "1"}],
+                    "reference": "2-1-1",
+                    "magnitude": "1",
+                }
+            }
+        }
+        decl = {"tool_id": "t1", "consumes_anthology_datum_ids": ["9-9-9"]}
+        deps = self._deps(rows=rows)
+        sess = self.mgr.open_session(deps, tool_key="t1", declaration=decl)  # type: ignore[arg-type]
+        self.assertIn("9-9-9", sess.loaded_anthology_refs)
+        rows2 = {
+            "rows": {
+                "9-9-9": {
+                    "row_id": "9-9-9",
+                    "identifier": "9-9-9",
+                    "label": "L2",
+                    "pairs": [{"reference": "2-1-1", "magnitude": "1"}],
+                    "reference": "2-1-1",
+                    "magnitude": "1",
+                }
+            }
+        }
+        sess.refresh_canonical_snapshot(
+            ToolSandboxRuntimeDeps(
+                data_root=self.root,
+                sandbox_engine=self.engine,
+                local_resource_service=self.lr,
+                get_active_config=lambda: {},
+                get_canonical_rows_payload=lambda: rows2,
+                get_path=get_path,
+            )
+        )
+        self.assertEqual(sess.loaded_anthology_refs.get("9-9-9", {}).get("label"), "L2")
+
+    @patch("_shared.portal.sandbox.tool_sandbox_session.evaluate_resource_payload_write")
+    def test_promote_blocked_when_resource_row_eval_fails(self, mock_ev):
+        mock_ev.return_value = {"ok": False, "errors": ["invalid graph"], "warnings": []}
+        self.engine.save_resource(
+            "rx",
+            {
+                "resource_id": "rx",
+                "anthology_compatible_payload": {"rows": {"1-1-1": {"row_id": "1-1-1"}}},
+            },
+        )
+        decl = {"tool_id": "t1", "required_resources": [{"resource_id": "rx", "required": True}]}
+        sess = self.mgr.open_session(self._deps(), tool_key="t1", declaration=decl)  # type: ignore[arg-type]
+        sess.stage_resource(
+            "rx",
+            {
+                "resource_id": "rx",
+                "anthology_compatible_payload": {"rows": {"1-1-1": {"row_id": "1-1-1"}}},
+            },
+        )
+        prom = sess.promote(hooks=ToolSandboxPromotionHooks())
+        self.assertFalse(prom.get("ok"))
+        self.assertTrue(mock_ev.called)
+
+    @patch("_shared.portal.sandbox.tool_sandbox_session.evaluate_resource_payload_write")
+    def test_promote_resource_allowed_under_rule_write_override(self, mock_ev):
+        def _side_effect(_payload, *, rule_write_override=False):
+            if rule_write_override:
+                return {"ok": True, "errors": [], "warnings": ["override used"]}
+            return {"ok": False, "errors": ["would block"], "warnings": []}
+
+        mock_ev.side_effect = _side_effect
+        self.engine.save_resource(
+            "rx",
+            {
+                "resource_id": "rx",
+                "anthology_compatible_payload": {"rows": {"1-1-1": {"row_id": "1-1-1"}}},
+            },
+        )
+        decl = {"tool_id": "t1", "required_resources": [{"resource_id": "rx", "required": True}]}
+        sess = self.mgr.open_session(self._deps(), tool_key="t1", declaration=decl)  # type: ignore[arg-type]
+        sess.stage_resource(
+            "rx",
+            {
+                "resource_id": "rx",
+                "anthology_compatible_payload": {"rows": {"1-1-1": {"row_id": "1-1-1"}}},
+            },
+        )
+        prom = sess.promote(
+            hooks=ToolSandboxPromotionHooks(),
+            rule_write_override=True,
+            rule_write_override_reason="unit test override",
+        )
+        self.assertTrue(prom.get("ok"))
+
 
 @unittest.skipUnless(HAS_FLASK, "flask is not installed in host python")
 class ToolSandboxSessionRouteTests(unittest.TestCase):
@@ -213,6 +325,61 @@ class ToolSandboxSessionRouteTests(unittest.TestCase):
         cl = self.client.delete(f"/portal/api/data/sandbox/tool_session/{sid}")
         self.assertEqual(cl.status_code, 200)
         self.assertTrue((cl.get_json() or {}).get("ok"))
+
+    def test_tool_session_open_reopen_reloads_resource(self):
+        from _shared.portal.sandbox.engine import SandboxEngine
+
+        eng = SandboxEngine(data_root=Path(self.root))
+        eng.save_resource("r1", {"resource_id": "r1", "version": 1})
+        decl = {"tool_id": "t1", "required_resources": [{"resource_id": "r1", "required": True}]}
+        op1 = self.client.post(
+            "/portal/api/data/sandbox/tool_session/open",
+            json={"tool_key": "t1", "declaration": decl, "session_id": "ab"},
+        )
+        self.assertEqual(op1.status_code, 200, op1.get_data(as_text=True))
+        eng.save_resource("r1", {"resource_id": "r1", "version": 2})
+        op2 = self.client.post(
+            "/portal/api/data/sandbox/tool_session/open",
+            json={"tool_key": "t1", "declaration": decl, "session_id": "ab", "reopen": True},
+        )
+        self.assertEqual(op2.status_code, 200)
+        body = op2.get_json() or {}
+        self.assertEqual(((body.get("loaded_resources") or {}).get("r1") or {}).get("version"), 2)
+
+    def test_tool_session_understanding_and_refresh_routes(self):
+        op = self.client.post("/portal/api/data/sandbox/tool_session/open", json={"tool_key": "agro_erp"})
+        self.assertEqual(op.status_code, 200)
+        sid = (op.get_json() or {}).get("session_id")
+        self.assertTrue(sid)
+        un = self.client.get(f"/portal/api/data/sandbox/tool_session/{sid}/understanding")
+        self.assertEqual(un.status_code, 200)
+        uj = un.get_json() or {}
+        self.assertTrue(uj.get("ok"))
+        self.assertIn("datum_understanding", uj)
+        rf = self.client.post(f"/portal/api/data/sandbox/tool_session/{sid}/refresh", json={})
+        self.assertEqual(rf.status_code, 200)
+
+    def test_stage_accepts_staged_rows_alias(self):
+        op = self.client.post("/portal/api/data/sandbox/tool_session/open", json={"tool_key": "agro_erp"})
+        sid = (op.get_json() or {}).get("session_id")
+        st = self.client.post(
+            f"/portal/api/data/sandbox/tool_session/{sid}/stage",
+            json={
+                "staged_rows": {
+                    "1-1-1": {
+                        "row_id": "1-1-1",
+                        "identifier": "1-1-1",
+                        "label": "z",
+                        "pairs": [{"reference": "2-1-1", "magnitude": "1"}],
+                        "reference": "2-1-1",
+                        "magnitude": "1",
+                    }
+                }
+            },
+        )
+        self.assertEqual(st.status_code, 200)
+        body = st.get_json() or {}
+        self.assertIn("1-1-1", body.get("staged_rows") or [])
 
 
 if __name__ == "__main__":
