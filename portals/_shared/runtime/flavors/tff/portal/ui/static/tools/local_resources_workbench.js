@@ -11,12 +11,15 @@
     inventorySearch: document.getElementById("lrInventorySearch"),
     statusBar: document.getElementById("lrStatusBar"),
     resourceTitle: document.getElementById("lrResourceTitle"),
+    tabWorkspace: document.getElementById("lrTabWorkspace"),
     tabRaw: document.getElementById("lrTabRaw"),
     tabStructured: document.getElementById("lrTabStructured"),
     tabStaged: document.getElementById("lrTabStaged"),
+    panelWorkspace: document.getElementById("lrPanelWorkspace"),
     panelRaw: document.getElementById("lrPanelRaw"),
     panelStructured: document.getElementById("lrPanelStructured"),
     panelStaged: document.getElementById("lrPanelStaged"),
+    workspaceMount: document.getElementById("lrWorkspaceMount"),
     rawEditor: document.getElementById("lrRawEditor"),
     stagedEditor: document.getElementById("lrStagedEditor"),
     structuredMount: document.getElementById("lrStructuredMount"),
@@ -70,8 +73,8 @@
   }
 
   function activateTab(name) {
-    var tabs = [el.tabRaw, el.tabStructured, el.tabStaged];
-    var panels = [el.panelRaw, el.panelStructured, el.panelStaged];
+    var tabs = [el.tabWorkspace, el.tabStructured, el.tabRaw, el.tabStaged];
+    var panels = [el.panelWorkspace, el.panelStructured, el.panelRaw, el.panelStaged];
     tabs.forEach(function (t) {
       if (!t) return;
       t.classList.toggle("is-active", t.getAttribute("data-lr-tab") === name);
@@ -82,6 +85,10 @@
     });
   }
 
+  if (el.tabWorkspace)
+    el.tabWorkspace.addEventListener("click", function () {
+      activateTab("workspace");
+    });
   if (el.tabRaw)
     el.tabRaw.addEventListener("click", function () {
       activateTab("raw");
@@ -149,6 +156,55 @@
       empty.className = "data-tool__empty";
       empty.textContent = "No resources found. Refresh or create sandbox/local entries.";
       el.inventoryList.appendChild(empty);
+    }
+  }
+
+  function renderWorkspace(detail) {
+    if (!el.workspaceMount) return;
+    el.workspaceMount.innerHTML = "";
+    var res = detail && detail.resource && typeof detail.resource === "object" ? detail.resource : {};
+    var missing = !!res.missing;
+    var wb = detail && detail.workbench && typeof detail.workbench === "object" ? detail.workbench : {};
+    var u = wb.understanding && typeof wb.understanding === "object" ? wb.understanding : {};
+    var hero = document.createElement("div");
+    hero.className = "lr-workbench__workspaceHero";
+    var h = document.createElement("h3");
+    h.textContent = missing ? "Resource missing in sandbox" : "Resource workspace";
+    hero.appendChild(h);
+    var meta = document.createElement("div");
+    meta.className = "lr-workbench__workspaceMeta";
+    var chips = [];
+    chips.push(
+      '<span class="lr-workbench__workspaceChip">understanding: ' + (u.ok === false ? "issues" : "ok") + "</span>"
+    );
+    var anthLayers = Array.isArray(wb.anthology_layers) ? wb.anthology_layers : [];
+    var anthRows = anthLayers.reduce(function (acc, layer) {
+      return acc + (Array.isArray(layer && layer.rows) ? layer.rows.length : 0);
+    }, 0);
+    var samCount = Array.isArray(wb.samras_row_summaries) ? wb.samras_row_summaries.length : 0;
+    chips.push('<span class="lr-workbench__workspaceChip">anthology rows: ' + String(anthRows) + "</span>");
+    chips.push('<span class="lr-workbench__workspaceChip">SAMRAS rows: ' + String(samCount) + "</span>");
+    if (detail && detail.staged_present) {
+      chips.push('<span class="lr-workbench__workspaceChip">staged snapshot present</span>');
+    }
+    meta.innerHTML = chips.join(" ");
+    hero.appendChild(meta);
+    el.workspaceMount.appendChild(hero);
+    var hint = document.createElement("p");
+    hint.className = "data-tool__legendText";
+    hint.innerHTML =
+      "The <strong>Structured</strong> tab lists layer/value-group and SAMRAS tables. Use <strong>Raw JSON</strong> for full-document edits. Branch/path context for SAMRAS-backed bodies is in the right inspector.";
+    el.workspaceMount.appendChild(hint);
+    if ((u.warnings || []).length || (u.errors || []).length) {
+      var w = document.createElement("div");
+      w.className = "lr-workbench__understanding";
+      if ((u.warnings || []).length) {
+        w.innerHTML += '<div class="lr-workbench__warn">warnings: ' + esc(u.warnings.join("; ")) + "</div>";
+      }
+      if ((u.errors || []).length) {
+        w.innerHTML += '<div class="lr-workbench__err">errors: ' + esc(u.errors.join("; ")) + "</div>";
+      }
+      el.workspaceMount.appendChild(w);
     }
   }
 
@@ -361,9 +417,10 @@
         : "";
       if (el.tabStaged) el.tabStaged.disabled = !detail.staged_present;
       if (!detail.staged_present && el.tabStaged && el.tabStaged.classList.contains("is-active")) {
-        activateTab("raw");
+        activateTab("workspace");
       }
     }
+    renderWorkspace(detail);
     renderStructured(detail.workbench, detail);
     renderSamrasSidebar(detail);
     setStatus(missing ? "Resource not found in sandbox/resources." : "Loaded sandbox resource.", missing);
@@ -543,6 +600,6 @@
     });
   }
 
-  activateTab("raw");
+  activateTab("workspace");
   refreshLists();
 })();

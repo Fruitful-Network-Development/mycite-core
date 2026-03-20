@@ -50,6 +50,9 @@
   var graphZoomResetBtn = qs("#dtGraphZoomResetBtn", app);
   var workbenchLayoutModeSel = qs("#dtWorkbenchLayoutMode", app);
   var workbenchGridEl = qs("#dtWorkbenchGrid", app);
+  var anthologyInspectorEl = qs("#dtAnthologyInspector", app);
+  var anthologyInspectorBodyEl = qs("#dtAnthologyInspectorBody", app);
+  var anthologyInvMountEl = qs("#dtAnthologyInvMount", app);
   var nimmSummaryEl = qs("#dtNimmSummary", app);
   var nimmOpenBtn = qs("#dtOpenNimmBtn", app);
   var nimmOverlay = qs("#dtNimmOverlay");
@@ -1762,6 +1765,34 @@
     targetEl.appendChild(details);
   }
 
+  function renderInvestigationEmbed(targetEl, paneVm) {
+    if (!targetEl) return;
+    var pane = paneVm && typeof paneVm === "object" ? paneVm : {};
+    var payload = pane.payload && typeof pane.payload === "object" ? pane.payload : {};
+    var entries = extractDatumEntries(payload);
+    targetEl.innerHTML = "";
+
+    var meta = document.createElement("div");
+    meta.className = "data-tool__invEmbedMeta";
+    meta.textContent = pane.kind ? "kind: " + String(pane.kind) : "No investigation payload yet.";
+    targetEl.appendChild(meta);
+
+    var listWrap = document.createElement("div");
+    listWrap.className = "data-tool__paneList data-tool__invEmbedList";
+    renderDatumList(listWrap, entries);
+    targetEl.appendChild(listWrap);
+
+    var details = document.createElement("details");
+    details.className = "data-tool__raw data-tool__invRaw";
+    var summary = document.createElement("summary");
+    summary.textContent = "Advanced: raw investigation payload";
+    var pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(payload, null, 2);
+    details.appendChild(summary);
+    details.appendChild(pre);
+    targetEl.appendChild(details);
+  }
+
   function renderNimmSummary(snapshot) {
     if (!nimmSummaryEl) return;
     var state = snapshot && snapshot.state ? snapshot.state : {};
@@ -1812,6 +1843,7 @@
 
     renderPane(leftPaneEl, left);
     renderPane(rightPaneEl, right);
+    renderInvestigationEmbed(anthologyInvMountEl, right);
 
     if (modeSel && state.mode) modeSel.value = state.mode;
     if (sourceSel && state.focus_source) sourceSel.value = state.focus_source;
@@ -1855,7 +1887,15 @@
     activeDatumEditorRoot = null;
     setDatumEditorStatus(message || "Select a graph node or anthology row.");
     syncDatumSelectionUI();
-    if (systemContextEl) renderSystemContextSearch();
+    if (anthologyInspectorBodyEl) {
+      anthologyInspectorBodyEl.innerHTML = "";
+      var placeholder = document.createElement("p");
+      placeholder.className = "data-tool__empty";
+      placeholder.textContent =
+        message || "Select a graph node or row. Datum editing and icon controls appear in this inspector.";
+      anthologyInspectorBodyEl.appendChild(placeholder);
+    }
+    if (systemContextEl && !selectMode) renderSystemContextSearch();
   }
 
   function renderSystemContextSearch() {
@@ -2025,7 +2065,11 @@
   var datumEditorIconFilterValue = "";
 
   function buildLeftSidebarDatumPanel(profilePayload) {
-    if (!systemContextEl) return null;
+    var mountBodyEl = anthologyInspectorBodyEl || systemContextEl;
+    if (!mountBodyEl) return null;
+    if (anthologyInspectorBodyEl && systemContextEl && !selectMode) {
+      renderSystemContextSearch();
+    }
     var editorRoot = buildDatumEditorNode(profilePayload);
     var datum = (profilePayload && profilePayload.datum) || {};
     var iconRelpath = String(datum.icon_relpath || "").trim();
@@ -2120,8 +2164,8 @@
     header.appendChild(exitBtn);
     wrap.appendChild(header);
     wrap.appendChild(editorRoot);
-    systemContextEl.innerHTML = "";
-    systemContextEl.appendChild(wrap);
+    mountBodyEl.innerHTML = "";
+    mountBodyEl.appendChild(wrap);
     activeDatumEditorRoot = editorRoot;
     return editorRoot;
   }
@@ -2162,7 +2206,7 @@
     datumWorkbenchState.rowId = rowId;
     datumWorkbenchState.identifier = identifier;
     datumWorkbenchState.valueGroup = valueGroup;
-    setDatumEditorStatus(identifier ? ("Focused: " + identifier + " | editor open in inspector") : "No datum selected.");
+    setDatumEditorStatus(identifier ? "Focused: " + identifier : "No datum selected.");
     syncDatumSelectionUI();
 
     var editorRoot = document.createElement("article");
@@ -2243,7 +2287,7 @@
     if (opts.openInspector === false) {
       buildDatumEditorNode(payload);
       activeDatumEditorRoot = null;
-    } else if (systemContextEl) {
+    } else if (anthologyInspectorBodyEl || systemContextEl) {
       buildLeftSidebarDatumPanel(payload);
     } else {
       openDatumEditorInspector(payload);
@@ -3333,14 +3377,32 @@
       if (!path.length) {
         dtTxaBranchPath.innerHTML = '<p class="data-tool__empty">No selection.</p>';
       } else {
-        var ol = document.createElement("ol");
-        ol.className = "data-tool__txaBreadcrumb";
-        path.forEach(function (seg) {
-          var li = document.createElement("li");
-          li.innerHTML = "<code>" + escapeText(String(seg)) + "</code>";
-          ol.appendChild(li);
+        var stack = document.createElement("div");
+        stack.className = "data-tool__txaBranchPathStack";
+        path.forEach(function (seg, idx) {
+          var token = String(seg || "").trim();
+          var row = document.createElement("div");
+          row.className = "data-tool__txaBranchPathRow";
+          var depth = document.createElement("span");
+          depth.className = "data-tool__txaBranchPathDepth";
+          depth.textContent = String(idx + 1);
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "data-tool__txaInspectorPathSeg";
+          if (token && token === sel) btn.classList.add("is-selected");
+          btn.textContent = token || "(segment)";
+          btn.addEventListener("click", function () {
+            if (!token) return;
+            txaSandboxUiState.selectedAddressId = token;
+            refreshTxaSandboxView().catch(function (err) {
+              setMessages([err.message], []);
+            });
+          });
+          row.appendChild(depth);
+          row.appendChild(btn);
+          stack.appendChild(row);
         });
-        dtTxaBranchPath.appendChild(ol);
+        dtTxaBranchPath.appendChild(stack);
       }
     }
     if (dtTxaBranchSiblings) {

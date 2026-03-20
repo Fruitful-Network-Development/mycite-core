@@ -85,12 +85,21 @@ class FndPortalShellRouteTests(unittest.TestCase):
             system_response = client.get("/portal/system")
             self.assertEqual(system_response.status_code, 200)
             system_html = system_response.get_data(as_text=True)
+            self.assertIn('id="dtAnthologyInspector"', system_html)
             self.assertIn('data-context-collapsed="false"', system_html)
             self.assertIn('data-shell-toggle="context"', system_html)
             self.assertIn('data-shell-toggle="inspector"', system_html)
             self.assertIn('id="portalContextSidebar"', system_html)
             self.assertIn("Local Resources", system_html)
             self.assertIn("Inheritance", system_html)
+
+            lr_html = client.get("/portal/system?tab=local_resources").get_data(as_text=True)
+            self.assertIn('id="lrTabWorkspace"', lr_html)
+            self.assertIn('id="lrPanelWorkspace"', lr_html)
+
+            inh_html = client.get("/portal/system?tab=inheritance").get_data(as_text=True)
+            self.assertIn('id="inhWorkbenchRoot"', inh_html)
+            self.assertIn("inheritance_workbench.js", inh_html)
             self.assertNotIn("Sandbox</span><small>MSS/SAMRAS resources</small>", system_html)
 
             self.assertEqual(client.get("/portal/network?tab=hosted").status_code, 200)
