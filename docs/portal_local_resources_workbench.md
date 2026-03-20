@@ -5,8 +5,10 @@
 The **System → Local Resources** tab is no longer inventory-only. It is a **three-pane workbench**:
 
 1. **Left:** merged list of `GET /portal/api/data/sandbox/resources` and `GET /portal/api/data/resources/local` entries  
-2. **Center:** selected resource **raw JSON** (editable), **structured** row/table view, **staged file** snapshot  
+2. **Center:** **Workspace** (default) summary + guidance, **Structured** tables, **Raw JSON** (full document), **Staged** snapshot when present  
 3. **Right:** generic **SAMRAS** structural sidebar when the resource is SAMRAS-backed (TXA, MSN, same code path)
+
+**Tab default:** **Workspace** first so the center is not a raw JSON dump by default. Raw JSON and MSS/index diagnostics stay under secondary or **Advanced** panels.
 
 Canonical body is always the **sandbox resource file** under `data/sandbox/resources/<id>.json`, not root-level `samras-*.legacy.json` files. Legacy files may still exist on disk for migration; the UI is driven by **shared API** payloads.
 

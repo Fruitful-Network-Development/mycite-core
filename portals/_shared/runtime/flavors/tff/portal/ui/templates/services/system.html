@@ -16,8 +16,8 @@
       <li><a class="ide-contextLink {% if current_tab == 'local_resources' %}is-active{% endif %}" href="/portal/system?tab=local_resources"><span>Local Resources</span><small>Draft, compile, publish</small></a></li>
       <li><a class="ide-contextLink {% if current_tab == 'inheritance' %}is-active{% endif %}" href="/portal/system?tab=inheritance"><span>Inheritance</span><small>Foreign resource cache</small></a></li>
     </ul>
-    <div id="dtSystemContext" class="data-tool__systemContext" aria-label="Datum search or selected datum inspector">
-      <!-- Filled by data_tool.js: search bar when no datum selected; datum editor + icon when one is selected -->
+    <div id="dtSystemContext" class="data-tool__systemContext" aria-label="Datum search and compact scope controls">
+      <!-- Filled by data_tool.js: search / select-mode; primary editor mounts in the workbench inspector column -->
     </div>
   </section>
 {% endblock %}
@@ -55,19 +55,27 @@
           <div class="card__body">
             <p id="lrStatusBar" class="lr-workbench__status" aria-live="polite"></p>
             <div class="lr-workbench__tabs" role="tablist">
-              <button type="button" class="lr-workbench__tab is-active" data-lr-tab="raw" id="lrTabRaw" role="tab">Raw JSON</button>
+              <button type="button" class="lr-workbench__tab is-active" data-lr-tab="workspace" id="lrTabWorkspace" role="tab">Workspace</button>
               <button type="button" class="lr-workbench__tab" data-lr-tab="structured" id="lrTabStructured" role="tab">Structured</button>
-              <button type="button" class="lr-workbench__tab" data-lr-tab="staged" id="lrTabStaged" role="tab" disabled>Staged file</button>
+              <button type="button" class="lr-workbench__tab" data-lr-tab="raw" id="lrTabRaw" role="tab">Raw JSON</button>
+              <button type="button" class="lr-workbench__tab" data-lr-tab="staged" id="lrTabStaged" role="tab" disabled>Staged</button>
             </div>
-            <div id="lrPanelRaw" data-lr-panel="raw" class="lr-workbench__panel" role="tabpanel">
-              <label for="lrRawEditor" class="lr-workbench__editorLabel">Body written to <code>sandbox/resources/&lt;id&gt;.json</code> on Save</label>
-              <textarea id="lrRawEditor" class="lr-workbench__editor jsonblock" rows="22" spellcheck="false"></textarea>
+            <div id="lrPanelWorkspace" data-lr-panel="workspace" class="lr-workbench__panel" role="tabpanel">
+              <div id="lrWorkspaceMount"></div>
             </div>
             <div id="lrPanelStructured" data-lr-panel="structured" class="lr-workbench__panel" role="tabpanel" hidden>
               <div id="lrStructuredMount"></div>
             </div>
+            <div id="lrPanelRaw" data-lr-panel="raw" class="lr-workbench__panel" role="tabpanel" hidden>
+              <details class="data-tool__advanced">
+                <summary>Advanced: storage path</summary>
+                <p class="data-tool__legendText">Body written to <code>sandbox/resources/&lt;id&gt;.json</code> on <strong>Save</strong>.</p>
+              </details>
+              <label for="lrRawEditor" class="lr-workbench__editorLabel">Resource JSON body</label>
+              <textarea id="lrRawEditor" class="lr-workbench__editor jsonblock" rows="22" spellcheck="false"></textarea>
+            </div>
             <div id="lrPanelStaged" data-lr-panel="staged" class="lr-workbench__panel" role="tabpanel" hidden>
-              <p class="data-tool__legendText">Staging file snapshot (<code>sandbox/staging/*.stage.json</code>). To update staging, edit Raw JSON and click <strong>Stage current JSON</strong>.</p>
+              <p class="data-tool__legendText">Staging snapshot (<code>sandbox/staging/*.stage.json</code>). Update by editing Raw JSON and using <strong>Stage current JSON</strong>.</p>
               <textarea id="lrStagedEditor" class="lr-workbench__editor jsonblock" rows="14" readonly spellcheck="false"></textarea>
             </div>
             <div class="data-tool__controlRow lr-workbench__actions">
@@ -122,36 +130,61 @@
       </details>
     </div>
   {% elif current_tab == "inheritance" %}
-    <section class="workbench-panels workbench-panels--double">
-      <article class="card">
-        <div class="card__kicker">Inherited Resource Inventory</div>
-        <div class="card__title">data/resources/index.inherited.json</div>
-        <div class="card__body">
-          <div class="data-tool__controlRow">
-            <button type="button" id="inheritanceRefreshBtn">Refresh Inheritance Inventory</button>
+    <div id="inhWorkbenchRoot" class="inh-workbench">
+      <div class="inh-workbench__layout">
+        <aside class="card inh-workbench__col inh-workbench__col--sources">
+          <div class="card__kicker">Inherited inventory</div>
+          <div class="card__title">By source</div>
+          <div class="card__body">
+            <div class="data-tool__controlRow">
+              <button type="button" id="inheritanceRefreshBtn">Refresh</button>
+            </div>
+            <label class="lr-workbench__searchLabel" for="inheritanceSourceFilter">Filter sources</label>
+            <input type="search" id="inheritanceSourceFilter" class="lr-workbench__search" placeholder="msn_id…" autocomplete="off" />
+            <div id="inheritanceSourceList" class="inh-workbench__sourceList" role="list"></div>
           </div>
+        </aside>
+        <section class="card inh-workbench__col inh-workbench__col--center">
+          <div class="card__kicker">Resources</div>
+          <div class="card__title" id="inheritanceCenterTitle">Select a source</div>
+          <div class="card__body">
+            <p id="inheritanceCenterHint" class="data-tool__legendText">Choose a source on the left, then pick a resource. Details and actions stay in context.</p>
+            <div id="inheritanceResourceList" class="inh-workbench__resourceList" role="list"></div>
+          </div>
+        </section>
+        <aside class="card inh-workbench__col inh-workbench__col--inspector">
+          <div class="card__kicker">Inspector</div>
+          <div class="card__title">Detail &amp; sync</div>
+          <div class="card__body" id="inheritanceInspectorBody">
+            <p class="data-tool__empty" id="inheritanceInspectorEmpty">Select a resource to see contract fields and paths.</p>
+            <div id="inheritanceInspectorDetail" hidden></div>
+            <hr />
+            <h3 class="data-tool__inspectorSectionTitle">Refresh / disconnect</h3>
+            <label for="inheritanceSourceMsn"><strong>Source msn_id</strong></label>
+            <input id="inheritanceSourceMsn" type="text" placeholder="3-2-3-..." />
+            <label for="inheritanceContractId"><strong>Contract ID (optional)</strong></label>
+            <input id="inheritanceContractId" type="text" placeholder="contract-..." />
+            <label for="inheritanceResourceId"><strong>Resource ID (optional)</strong></label>
+            <input id="inheritanceResourceId" type="text" placeholder="samras.txa" />
+            <div class="data-tool__controlRow data-tool__controlRow--wrap">
+              <button type="button" id="inheritanceRefreshSingleBtn">Refresh one</button>
+              <button type="button" id="inheritanceRefreshSourceBtn">Refresh source</button>
+              <button type="button" id="inheritanceDisconnectBtn">Disconnect source</button>
+            </div>
+            <details class="data-tool__advanced">
+              <summary>Advanced: last API JSON</summary>
+              <pre class="jsonblock" id="inheritanceStatusJson">{}</pre>
+            </details>
+          </div>
+        </aside>
+      </div>
+      <details class="card lr-workbench__advanced">
+        <summary>Advanced: raw inherited index JSON</summary>
+        <div class="card__body">
           <pre class="jsonblock" id="inheritanceResourcesJson">{}</pre>
         </div>
-      </article>
-      <article class="card">
-        <div class="card__kicker">Contract Subscription Sync</div>
-        <div class="card__title">Refresh / Disconnect Source</div>
-        <div class="card__body">
-          <label for="inheritanceSourceMsn"><strong>Source msn_id</strong></label>
-          <input id="inheritanceSourceMsn" type="text" placeholder="3-2-3-..." />
-          <label for="inheritanceContractId"><strong>Contract ID (optional for single refresh)</strong></label>
-          <input id="inheritanceContractId" type="text" placeholder="contract-..." />
-          <label for="inheritanceResourceId"><strong>Resource ID (optional for single refresh)</strong></label>
-          <input id="inheritanceResourceId" type="text" placeholder="samras.txa" />
-          <div class="data-tool__controlRow">
-            <button type="button" id="inheritanceRefreshSingleBtn">Refresh One</button>
-            <button type="button" id="inheritanceRefreshSourceBtn">Refresh Source</button>
-            <button type="button" id="inheritanceDisconnectBtn">Disconnect Source</button>
-          </div>
-          <pre class="jsonblock" id="inheritanceStatusJson">{}</pre>
-        </div>
-      </article>
-    </section>
+      </details>
+    </div>
   {% elif data_home_available is defined and data_home_available %}
     {% include "tools/partials/data_tool_shell.html" %}
   {% else %}
@@ -184,79 +217,6 @@
     <script src="/portal/static/tools/local_resources_workbench.js"></script>
   {% endif %}
   {% if current_tab == "inheritance" %}
-    <script>
-      (function () {
-        function requestJson(url, method, payload) {
-          return fetch(url, {
-            method: method || "GET",
-            headers: payload ? { "Content-Type": "application/json" } : undefined,
-            body: payload ? JSON.stringify(payload) : undefined
-          }).then(function (resp) {
-            return resp.json().catch(function () { return {}; }).then(function (body) {
-              return { ok: resp.ok, status: resp.status, body: body || {} };
-            });
-          });
-        }
-        var localResourcesNode = document.getElementById("localResourcesJson");
-        var inheritedResourcesNode = document.getElementById("inheritanceResourcesJson");
-        var inheritedStatusNode = document.getElementById("inheritanceStatusJson");
-        function refreshResources() {
-          if (localResourcesNode) {
-            requestJson("/portal/api/data/resources/local", "GET").then(function (result) {
-              localResourcesNode.textContent = JSON.stringify(result.body || {}, null, 2);
-            });
-          }
-          if (inheritedResourcesNode) {
-            requestJson("/portal/api/data/resources/inherited", "GET").then(function (result) {
-              inheritedResourcesNode.textContent = JSON.stringify(result.body || {}, null, 2);
-            });
-          }
-        }
-        if (!localResourcesNode && !inheritedResourcesNode) return;
-        refreshResources();
-
-        var inheritanceRefreshBtn = document.getElementById("inheritanceRefreshBtn");
-        if (inheritanceRefreshBtn) inheritanceRefreshBtn.addEventListener("click", refreshResources);
-
-        function inheritanceInputs() {
-          return {
-            source_msn_id: String((document.getElementById("inheritanceSourceMsn") || {}).value || "").trim(),
-            contract_id: String((document.getElementById("inheritanceContractId") || {}).value || "").trim(),
-            resource_id: String((document.getElementById("inheritanceResourceId") || {}).value || "").trim()
-          };
-        }
-        function setInheritanceStatus(body) {
-          if (inheritedStatusNode) inheritedStatusNode.textContent = JSON.stringify(body || {}, null, 2);
-          refreshResources();
-        }
-        var inheritanceRefreshSingleBtn = document.getElementById("inheritanceRefreshSingleBtn");
-        if (inheritanceRefreshSingleBtn) {
-          inheritanceRefreshSingleBtn.addEventListener("click", function () {
-            var payload = inheritanceInputs();
-            requestJson("/portal/api/data/resources/inherited/refresh", "POST", payload).then(function (result) {
-              setInheritanceStatus(result.body || {});
-            });
-          });
-        }
-        var inheritanceRefreshSourceBtn = document.getElementById("inheritanceRefreshSourceBtn");
-        if (inheritanceRefreshSourceBtn) {
-          inheritanceRefreshSourceBtn.addEventListener("click", function () {
-            var payload = inheritanceInputs();
-            requestJson("/portal/api/data/resources/inherited/refresh_source", "POST", payload).then(function (result) {
-              setInheritanceStatus(result.body || {});
-            });
-          });
-        }
-        var inheritanceDisconnectBtn = document.getElementById("inheritanceDisconnectBtn");
-        if (inheritanceDisconnectBtn) {
-          inheritanceDisconnectBtn.addEventListener("click", function () {
-            var payload = inheritanceInputs();
-            requestJson("/portal/api/data/resources/inherited/disconnect_source", "POST", payload).then(function (result) {
-              setInheritanceStatus(result.body || {});
-            });
-          });
-        }
-      })();
-    </script>
+    <script src="/portal/static/tools/inheritance_workbench.js"></script>
   {% endif %}
 {% endblock %}
