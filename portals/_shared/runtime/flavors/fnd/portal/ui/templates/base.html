@@ -11,10 +11,11 @@
 <body>
   {% set current = current_path if current_path is defined else '' %}
   <div
-    class="ide-shell"
+    class="ide-shell{% block ide_shell_extra_class %}{% endblock %}"
     data-active-service="{% if active_service is defined and active_service %}{{ active_service }}{% else %}system{% endif %}"
     data-context-collapsed="false"
     data-inspector-collapsed="true"
+    {% block ide_shell_data_attrs %}{% endblock %}
   >
     <header class="ide-menubar" aria-label="Menu bar">
       <nav class="ide-menubar__menu" aria-label="Application menu">
@@ -154,7 +155,11 @@
           <button type="button" class="ide-inspector__close" data-inspector-close>Close</button>
         </header>
         <section id="portalInspectorContent" class="ide-inspector__content">
-          <p class="ide-inspector__empty">Select an item to inspect.</p>
+          {% block inspector_content %}
+            <p class="ide-inspector__empty" id="portalInspectorEmptyDefault">Select an item to inspect.</p>
+          {% endblock %}
+          {# Transient overlays (e.g. PortalInspector.open) must not remove persistent module mounts in inspector_content #}
+          <div id="portalInspectorTransientMount" class="ide-inspector__transient" hidden aria-hidden="true"></div>
         </section>
       </aside>
     </div>

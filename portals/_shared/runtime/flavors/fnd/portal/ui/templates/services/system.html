@@ -2,11 +2,73 @@
 
 {% block title %}MyCite | System{% endblock %}
 
+{% block head_extra %}
+  {# Default-open inspector column on System when user has no persisted preference #}
+  <script>
+    window.__PORTAL_SHELL_INSPECTOR_DEFAULT_OPEN = true;
+  </script>
+{% endblock %}
+
 {% set page_title = "SYSTEM" %}
-{% set page_subtitle = "Anthology workbench with table and graph layouts plus inspector editing" %}
 {% set current_tab = system_tab if system_tab is defined and system_tab else "workbench" %}
+{% set page_subtitle = "System workbenches" %}
+{% if current_tab == "local_resources" %}
+  {% set page_subtitle = "Sandbox JSON files · structured · raw · staged" %}
+{% elif current_tab == "inheritance" %}
+  {% set page_subtitle = "Inherited resources by source" %}
+{% elif current_tab == "workbench" %}
+  {% set page_subtitle = "Anthology (anthology.json) · shared SAMRAS workspace" %}
+{% endif %}
+
+{% block ide_shell_extra_class %} ide-shell--portal-system{% endblock %}
 
 {% block viewport_class %}viewport--system{% endblock %}
+
+{% block inspector_content %}
+  <div id="systemShellInspectorRoot" class="system-shell-inspector" data-system-tab="{{ current_tab }}">
+    {% if current_tab == "workbench" %}
+      <div id="systemInspectorPanelAnthology" class="system-inspector-panel" data-system-inspector-panel="anthology">
+        <div id="dtAnthologyInspectorBody" class="data-tool__anthologyInspectorBody"></div>
+        <section class="data-tool__anthologyInvSection" aria-label="Investigation">
+          <div id="dtAnthologyInvMount" class="data-tool__anthologyInvMount"></div>
+        </section>
+      </div>
+      <div id="systemInspectorPanelTxa" class="system-inspector-panel" data-system-inspector-panel="txa" hidden></div>
+    {% elif current_tab == "local_resources" %}
+      <div class="lr-workbench__inspectorShell">
+        <div class="ide-inspector__moduleKicker" id="lrInspectorKicker">Structure</div>
+        <div class="ide-inspector__moduleTitle" id="lrSidebarTitle">Detail</div>
+        <div id="lrSidebarMount" class="lr-workbench__sidebarBody"></div>
+      </div>
+    {% elif current_tab == "inheritance" %}
+      <div id="inheritanceInspectorBody" class="inh-workbench__inspectorShell">
+        <p class="data-tool__empty" id="inheritanceInspectorEmpty">Select an inherited resource.</p>
+        <div id="inheritanceInspectorDetail" hidden></div>
+        <hr class="inh-workbench__inspectorHr" />
+        <details class="data-tool__advanced" open>
+          <summary>Source &amp; contract actions</summary>
+          <label for="inheritanceSourceMsn"><strong>Source msn_id</strong></label>
+          <input id="inheritanceSourceMsn" type="text" placeholder="3-2-3-..." />
+          <label for="inheritanceContractId"><strong>Contract ID (optional)</strong></label>
+          <input id="inheritanceContractId" type="text" placeholder="contract-..." />
+          <label for="inheritanceResourceId"><strong>Resource ID (optional)</strong></label>
+          <input id="inheritanceResourceId" type="text" placeholder="samras.txa" />
+          <div class="data-tool__controlRow data-tool__controlRow--wrap">
+            <button type="button" id="inheritanceRefreshSingleBtn">Refresh one</button>
+            <button type="button" id="inheritanceRefreshSourceBtn">Refresh source</button>
+            <button type="button" id="inheritanceDisconnectBtn">Disconnect source</button>
+          </div>
+        </details>
+        <details class="data-tool__advanced">
+          <summary>Advanced: last API JSON</summary>
+          <pre class="jsonblock" id="inheritanceStatusJson">{}</pre>
+        </details>
+      </div>
+    {% else %}
+      <p class="ide-inspector__empty">Select an item to inspect.</p>
+    {% endif %}
+  </div>
+{% endblock %}
 
 {% block context_sidebar %}
   <section class="ide-contextSection">
@@ -17,26 +79,18 @@
       <li><a class="ide-contextLink {% if current_tab == 'inheritance' %}is-active{% endif %}" href="/portal/system?tab=inheritance"><span>Inheritance</span><small>Foreign resource cache</small></a></li>
     </ul>
     <div id="dtSystemContext" class="data-tool__systemContext" aria-label="Datum search and compact scope controls">
-      <!-- Filled by data_tool.js: search / select-mode; primary editor mounts in the workbench inspector column -->
+      <!-- data_tool.js (workbench tab): search / select-mode -->
     </div>
   </section>
 {% endblock %}
 
 {% block body %}
-  {% if system_tabs is defined and system_tabs %}
-    <nav class="page-tabs" aria-label="System tabs">
-      {% for tab in system_tabs %}
-        <a class="page-tab {% if tab.active %}is-active{% endif %}" href="{{ tab.href }}">{{ tab.label }}</a>
-      {% endfor %}
-    </nav>
-  {% endif %}
-
+  {# Section navigation lives only in the context sidebar — no duplicate body tabs. #}
+  <div class="system-center-workspace" data-system-tab="{{ current_tab }}">
   {% if current_tab == "local_resources" %}
-    <div id="lrWorkbenchRoot" class="lr-workbench">
-      <div class="lr-workbench__layout">
+    <div id="lrWorkbenchRoot" class="lr-workbench lr-workbench--shell">
+      <div class="lr-workbench__layout lr-workbench__layout--centerOnly">
         <aside class="card lr-workbench__col lr-workbench__col--inventory">
-          <div class="card__kicker">Sandbox + local index</div>
-          <div class="card__title">Resources</div>
           <div class="card__body">
             <div class="data-tool__controlRow">
               <button type="button" id="lrBtnReload">Refresh lists</button>
@@ -47,12 +101,13 @@
           </div>
         </aside>
         <section class="card lr-workbench__col lr-workbench__col--center">
-          <div class="card__kicker">Selected sandbox resource</div>
-          <div class="card__title lr-workbench__titleRow">
-            <span id="lrResourceTitle">Select a resource</span>
-            <span id="lrBadgeStaged" class="lr-workbench__stagedBadge" hidden>staged</span>
-          </div>
           <div class="card__body">
+            <div class="lr-workbench__titleRow lr-workbench__titleRow--compact">
+              <span id="lrResourceTitle" class="lr-workbench__resourceTitle">Select a resource file</span>
+              <span id="lrBadgeStaged" class="lr-workbench__stagedBadge" hidden>staged</span>
+            </div>
+            <p id="lrCanonicalPath" class="lr-workbench__canonicalPath" hidden></p>
+            <p class="lr-workbench__kindRow"><span id="lrKindChip" class="lr-workbench__kindChip" hidden></span></p>
             <p id="lrStatusBar" class="lr-workbench__status" aria-live="polite"></p>
             <div class="lr-workbench__tabs" role="tablist">
               <button type="button" class="lr-workbench__tab is-active" data-lr-tab="workspace" id="lrTabWorkspace" role="tab">Workspace</button>
@@ -75,7 +130,7 @@
               <textarea id="lrRawEditor" class="lr-workbench__editor jsonblock" rows="22" spellcheck="false"></textarea>
             </div>
             <div id="lrPanelStaged" data-lr-panel="staged" class="lr-workbench__panel" role="tabpanel" hidden>
-              <p class="data-tool__legendText">Staging snapshot (<code>sandbox/staging/*.stage.json</code>). Update by editing Raw JSON and using <strong>Stage current JSON</strong>.</p>
+              <p class="data-tool__legendText">Staging snapshot (<code>sandbox/staging/*.stage.json</code>).</p>
               <textarea id="lrStagedEditor" class="lr-workbench__editor jsonblock" rows="14" readonly spellcheck="false"></textarea>
             </div>
             <div class="data-tool__controlRow lr-workbench__actions">
@@ -83,20 +138,17 @@
               <button type="button" id="lrBtnStage">Stage current JSON</button>
               <button type="button" id="lrBtnCompile">Compile</button>
             </div>
+            <div class="data-tool__controlRow lr-workbench__actions lr-workbench__samrasActionRow" id="lrSamrasActionRow" hidden>
+              <button type="button" id="lrBtnPromoteSamras">Promote SAMRAS staged titles</button>
+              <button type="button" id="lrBtnClearSamrasStaged">Clear session SAMRAS staging</button>
+            </div>
           </div>
         </section>
-        <aside class="card lr-workbench__col lr-workbench__col--sidebar">
-          <div class="card__kicker">Sidebar</div>
-          <div class="card__title" id="lrSidebarTitle">Detail</div>
-          <div class="card__body lr-workbench__sidebarBody" id="lrSidebarMount"></div>
-        </aside>
       </div>
       <details class="card lr-workbench__advanced">
         <summary>Advanced: index JSON, MSS, migration</summary>
         <div class="lr-workbench__advancedGrid">
           <article class="card lr-workbench__advancedCard">
-            <div class="card__kicker">Local index</div>
-            <div class="card__title">data/resources/index.local.json</div>
             <div class="card__body">
               <div class="data-tool__controlRow">
                 <button type="button" id="localResourcesMigrateBtn">Migrate Legacy SAMRAS</button>
@@ -105,8 +157,6 @@
             </div>
           </article>
           <article class="card lr-workbench__advancedCard">
-            <div class="card__kicker">MSS + migration</div>
-            <div class="card__title">Diagnostics</div>
             <div class="card__body">
               <div class="data-tool__controlRow">
                 <button type="button" id="sandboxRefreshBtn">Refresh lists</button>
@@ -124,17 +174,14 @@
           </article>
         </div>
         <div class="card__body">
-          <div class="card__kicker">Last API result</div>
           <pre class="jsonblock" id="sandboxResultJson">{}</pre>
         </div>
       </details>
     </div>
   {% elif current_tab == "inheritance" %}
-    <div id="inhWorkbenchRoot" class="inh-workbench">
-      <div class="inh-workbench__layout">
+    <div id="inhWorkbenchRoot" class="inh-workbench inh-workbench--shell">
+      <div class="inh-workbench__layout inh-workbench__layout--twoCol">
         <aside class="card inh-workbench__col inh-workbench__col--sources">
-          <div class="card__kicker">Inherited inventory</div>
-          <div class="card__title">By source</div>
           <div class="card__body">
             <div class="data-tool__controlRow">
               <button type="button" id="inheritanceRefreshBtn">Refresh</button>
@@ -145,38 +192,12 @@
           </div>
         </aside>
         <section class="card inh-workbench__col inh-workbench__col--center">
-          <div class="card__kicker">Resources</div>
-          <div class="card__title" id="inheritanceCenterTitle">Select a source</div>
           <div class="card__body">
-            <p id="inheritanceCenterHint" class="data-tool__legendText">Choose a source on the left, then pick a resource. Details and actions stay in context.</p>
+            <div class="inh-workbench__centerHead" id="inheritanceCenterTitle">Select a source</div>
+            <div id="inheritanceSelectedSummary" class="inh-workbench__selectedSummary" hidden></div>
             <div id="inheritanceResourceList" class="inh-workbench__resourceList" role="list"></div>
           </div>
         </section>
-        <aside class="card inh-workbench__col inh-workbench__col--inspector">
-          <div class="card__kicker">Inspector</div>
-          <div class="card__title">Detail &amp; sync</div>
-          <div class="card__body" id="inheritanceInspectorBody">
-            <p class="data-tool__empty" id="inheritanceInspectorEmpty">Select a resource to see contract fields and paths.</p>
-            <div id="inheritanceInspectorDetail" hidden></div>
-            <hr />
-            <h3 class="data-tool__inspectorSectionTitle">Refresh / disconnect</h3>
-            <label for="inheritanceSourceMsn"><strong>Source msn_id</strong></label>
-            <input id="inheritanceSourceMsn" type="text" placeholder="3-2-3-..." />
-            <label for="inheritanceContractId"><strong>Contract ID (optional)</strong></label>
-            <input id="inheritanceContractId" type="text" placeholder="contract-..." />
-            <label for="inheritanceResourceId"><strong>Resource ID (optional)</strong></label>
-            <input id="inheritanceResourceId" type="text" placeholder="samras.txa" />
-            <div class="data-tool__controlRow data-tool__controlRow--wrap">
-              <button type="button" id="inheritanceRefreshSingleBtn">Refresh one</button>
-              <button type="button" id="inheritanceRefreshSourceBtn">Refresh source</button>
-              <button type="button" id="inheritanceDisconnectBtn">Disconnect source</button>
-            </div>
-            <details class="data-tool__advanced">
-              <summary>Advanced: last API JSON</summary>
-              <pre class="jsonblock" id="inheritanceStatusJson">{}</pre>
-            </details>
-          </div>
-        </aside>
       </div>
       <details class="card lr-workbench__advanced">
         <summary>Advanced: raw inherited index JSON</summary>
@@ -189,13 +210,12 @@
     {% include "tools/partials/data_tool_shell.html" %}
   {% else %}
     <article class="card">
-      <div class="card__kicker">Data Workbench</div>
-      <div class="card__title">Unavailable</div>
       <div class="card__body">
         <p>Data workbench template is not available in this portal package.</p>
       </div>
     </article>
   {% endif %}
+  </div>
 
   <template id="system-profile-inspector">
     <article class="card">

@@ -297,7 +297,11 @@
     setContextWidth(storedContext || 280, false);
     setInspectorWidth(storedInspector || 360, false);
     setContextOpen(storedContextOpen !== "0", false);
-    setInspectorOpen(storedInspectorOpen === "1", false);
+    let inspectorShouldOpen = false;
+    if (storedInspectorOpen === "1") inspectorShouldOpen = true;
+    else if (storedInspectorOpen === "0") inspectorShouldOpen = false;
+    else inspectorShouldOpen = !!window.__PORTAL_SHELL_INSPECTOR_DEFAULT_OPEN;
+    setInspectorOpen(inspectorShouldOpen, false);
     rebalanceWorkbench();
 
     qsa("[data-splitter]", shell).forEach(splitter => {
@@ -348,7 +352,8 @@
     return {
       setContextOpen,
       setInspectorOpen,
-      setInspectorWidth
+      setInspectorWidth,
+      rebalanceWorkbench,
     };
   }
 
@@ -359,6 +364,21 @@
     const contentEl = qs("#portalInspectorContent");
     if (!shell || !inspector || !titleEl || !contentEl) return;
 
+    function systemShellRoot() {
+      return qs("#systemShellInspectorRoot", contentEl);
+    }
+
+    function transientMount() {
+      return qs("#portalInspectorTransientMount", contentEl);
+    }
+
+    function removeNonTransientInspectorChildren() {
+      Array.from(contentEl.children).forEach((child) => {
+        if (child.id === "portalInspectorTransientMount") return;
+        child.remove();
+      });
+    }
+
     function setContent(payload) {
       const title = String((payload && payload.title) || "Details").trim() || "Details";
       const subtitle = String((payload && payload.subtitle) || "").trim();
@@ -366,18 +386,52 @@
 
       const html = payload && typeof payload.html === "string" ? payload.html : "";
       const node = payload && payload.node ? payload.node : null;
+      const sysRoot = systemShellRoot();
+      const tMount = transientMount();
+
+      if (sysRoot && tMount) {
+        sysRoot.hidden = true;
+        tMount.hidden = false;
+        tMount.setAttribute("aria-hidden", "false");
+        tMount.innerHTML = "";
+        if (node instanceof Node) {
+          tMount.appendChild(node);
+          return;
+        }
+        if (html) {
+          tMount.innerHTML = html;
+          return;
+        }
+        tMount.innerHTML = '<p class="ide-inspector__empty">Select an item to inspect.</p>';
+        return;
+      }
+
+      const tMountLegacy = transientMount();
+      if (tMountLegacy) {
+        tMountLegacy.hidden = true;
+        tMountLegacy.setAttribute("aria-hidden", "true");
+        tMountLegacy.innerHTML = "";
+      }
 
       if (node instanceof Node) {
-        contentEl.innerHTML = "";
-        contentEl.appendChild(node);
+        removeNonTransientInspectorChildren();
+        contentEl.insertBefore(node, tMountLegacy || null);
         return;
       }
 
       if (html) {
-        contentEl.innerHTML = html;
-      } else {
-        contentEl.innerHTML = '<p class="ide-inspector__empty">Select an item to inspect.</p>';
+        removeNonTransientInspectorChildren();
+        const holder = document.createElement("div");
+        holder.innerHTML = html;
+        contentEl.insertBefore(holder, tMountLegacy || null);
+        return;
       }
+
+      removeNonTransientInspectorChildren();
+      const empty = document.createElement("p");
+      empty.className = "ide-inspector__empty";
+      empty.textContent = "Select an item to inspect.";
+      contentEl.insertBefore(empty, tMountLegacy || null);
     }
 
     function open(payload) {
@@ -387,6 +441,14 @@
     }
 
     function close() {
+      const sysRoot = systemShellRoot();
+      const tMount = transientMount();
+      if (tMount) {
+        tMount.innerHTML = "";
+        tMount.hidden = true;
+        tMount.setAttribute("aria-hidden", "true");
+      }
+      if (sysRoot) sysRoot.hidden = false;
       if (layoutApi) layoutApi.setInspectorOpen(false, true);
     }
 
@@ -441,6 +503,13 @@
   }
 
   const layoutApi = initWorkbenchLayout();
+  window.PortalShell = layoutApi
+    ? {
+        setInspectorOpen: (open, persist) => layoutApi.setInspectorOpen(!!open, persist !== false),
+        setContextOpen: (open, persist) => layoutApi.setContextOpen(!!open, persist !== false),
+        rebalanceWorkbench: () => layoutApi.rebalanceWorkbench && layoutApi.rebalanceWorkbench(),
+      }
+    : null;
   initThemeSelector();
   initLocalTabs();
   initAliasSearch();
