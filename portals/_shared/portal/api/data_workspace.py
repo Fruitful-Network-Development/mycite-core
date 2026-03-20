@@ -45,6 +45,7 @@ from _shared.portal.data_engine.rules.base import parse_datum_id
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
 from _shared.portal.sandbox import LocalResourceLifecycleService, SandboxEngine, migrate_fnd_samras_rows_to_sandbox
 from _shared.portal.sandbox.txa_sandbox_workspace import build_txa_sandbox_view_model
+from _shared.portal.sandbox.session_registry import get_tool_sandbox_session_manager
 from _shared.portal.sandbox.tool_sandbox_session import (
     ToolSandboxPromotionHooks,
     ToolSandboxRuntimeDeps,
@@ -324,12 +325,7 @@ def register_data_routes(
         return jsonify({"ok": True, "resources": engine.list_resources(), "schema": "mycite.portal.sandbox.resources.v1"})
 
     def _tool_sandbox_manager() -> ToolSandboxSessionManager:
-        key = "MYCITE_TOOL_SANDBOX_SESSION_MANAGER"
-        existing = app.config.get(key)
-        if existing is None:
-            existing = ToolSandboxSessionManager()
-            app.config[key] = existing
-        return existing
+        return get_tool_sandbox_session_manager(app)
 
     def _tool_sandbox_runtime_deps() -> ToolSandboxRuntimeDeps:
         return ToolSandboxRuntimeDeps(
@@ -379,14 +375,25 @@ def register_data_routes(
         decl = _declaration_for_tool_session(tool_key, body.get("declaration"))
         ctx = body.get("initial_context") if isinstance(body.get("initial_context"), dict) else None
         sid = str(body.get("session_id") or "").strip() or None
+        reopen = bool(body.get("reopen"))
         try:
-            sess = _tool_sandbox_manager().open_session(
-                _tool_sandbox_runtime_deps(),
-                tool_key=tool_key,
-                declaration=decl,  # type: ignore[arg-type]
-                session_id=sid,
-                initial_context=ctx,
-            )
+            mgr = _tool_sandbox_manager()
+            if reopen and sid:
+                sess = mgr.reopen_session(
+                    _tool_sandbox_runtime_deps(),
+                    session_id=sid,
+                    tool_key=tool_key,
+                    declaration=decl,  # type: ignore[arg-type]
+                    initial_context=ctx,
+                )
+            else:
+                sess = mgr.open_session(
+                    _tool_sandbox_runtime_deps(),
+                    tool_key=tool_key,
+                    declaration=decl,  # type: ignore[arg-type]
+                    session_id=sid,
+                    initial_context=ctx,
+                )
         except ValueError as exc:
             return (
                 jsonify({"ok": False, "error": str(exc), "schema": "mycite.portal.sandbox.tool_session.open.v1"}),
@@ -416,6 +423,8 @@ def register_data_routes(
             return jsonify({"ok": False, "error": "session not found"}), 404
         resources = body.get("resources") if isinstance(body.get("resources"), dict) else {}
         anthology_rows = body.get("anthology_rows") if isinstance(body.get("anthology_rows"), dict) else {}
+        if not anthology_rows and isinstance(body.get("staged_rows"), dict):
+            anthology_rows = body.get("staged_rows") or {}
         for rid, payload in resources.items():
             if isinstance(payload, dict):
                 sess.stage_resource(str(rid), payload)
@@ -449,6 +458,43 @@ def register_data_routes(
     def portal_data_sandbox_tool_session_close(session_id: str):
         closed = _tool_sandbox_manager().close(session_id)
         return jsonify({"ok": bool(closed), "schema": "mycite.portal.sandbox.tool_session.close.v1"})
+
+    @app.post("/portal/api/data/sandbox/tool_session/<session_id>/refresh")
+    def portal_data_sandbox_tool_session_refresh(session_id: str):
+        sess = _tool_sandbox_manager().get(session_id)
+        if sess is None:
+            return (
+                jsonify({"ok": False, "error": "session not found", "schema": "mycite.portal.sandbox.tool_session.refresh.v1"}),
+                404,
+            )
+        sess.refresh_canonical_snapshot(_tool_sandbox_runtime_deps())
+        out = sess.to_public_dict()
+        out["ok"] = True
+        return jsonify(out)
+
+    @app.get("/portal/api/data/sandbox/tool_session/<session_id>/understanding")
+    def portal_data_sandbox_tool_session_understanding(session_id: str):
+        sess = _tool_sandbox_manager().get(session_id)
+        if sess is None:
+            return (
+                jsonify(
+                    {"ok": False, "error": "session not found", "schema": "mycite.portal.sandbox.tool_session.understanding.v1"}
+                ),
+                404,
+            )
+        sess.recompute_understanding()
+        sess.build_promotion_targets()
+        return jsonify(
+            {
+                "ok": True,
+                "schema": "mycite.portal.sandbox.tool_session.understanding.v1",
+                "session_id": sess.session_id,
+                "datum_understanding": sess.datum_understanding,
+                "rule_policy": sess.rule_policy,
+                "warnings": list(sess.warnings),
+                "promotion_targets": sess.promotion_targets,
+            }
+        )
 
     @app.get("/portal/api/data/resources/local")
     def portal_data_resources_local():

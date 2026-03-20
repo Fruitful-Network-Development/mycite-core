@@ -186,7 +186,9 @@ class ToolSandboxSession:
             "loaded_anthology_refs": {k: _deepcopy_jsonish(v) for k, v in self.loaded_anthology_refs.items()},
             "loaded_config_inputs": _deepcopy_jsonish(self.loaded_config_inputs),
             "staged_resources": list(self.staged_resources.keys()),
+            # Anthology-shaped staged rows (alias: staged_rows) — same keys as staged_anthology_rows.
             "staged_anthology_rows": list(self.staged_anthology_rows.keys()),
+            "staged_rows": list(self.staged_anthology_rows.keys()),
             "working_resources": {k: _deepcopy_jsonish(v) for k, v in self.working_resources.items()},
             "working_anthology_rows": {k: _deepcopy_jsonish(v) for k, v in self.working_anthology_rows.items()},
             "datum_understanding": _deepcopy_jsonish(self.datum_understanding),
@@ -200,6 +202,30 @@ class ToolSandboxSession:
 
     def _touch(self) -> None:
         self.updated_at = _utc_ts()
+
+    def refresh_canonical_snapshot(self, deps: ToolSandboxRuntimeDeps) -> None:
+        """Reload anthology row snapshot from ``deps`` (e.g. after external anthology edits)."""
+        canonical = deps.get_canonical_rows_payload()
+        self._canonical_rows_snapshot = copy.deepcopy(
+            _normalize_canonical_rows_list(canonical if isinstance(canonical, Mapping) else {})
+        )
+        # Re-bind declared anthology refs; keep working/staged overlays for ids still declared.
+        for did in list(self.declaration.get("consumes_anthology_datum_ids") or []):
+            ds = str(did or "").strip()
+            if not ds:
+                continue
+            row = _row_by_id(self._canonical_rows_snapshot, ds)
+            if row is None:
+                self.warnings.append(f"refresh: anthology datum id not found: {ds}")
+                self.loaded_anthology_refs.pop(ds, None)
+            else:
+                snap = _deepcopy_jsonish(row)
+                self.loaded_anthology_refs[ds] = snap
+                if ds not in self.staged_anthology_rows:
+                    self.working_anthology_rows[ds] = snap
+        self._touch()
+        self.recompute_understanding()
+        self.build_promotion_targets()
 
     def stage_resource(self, resource_id: str, body: Mapping[str, Any]) -> None:
         rid = str(resource_id or "").strip()
@@ -505,6 +531,33 @@ class ToolSandboxSessionManager:
 
     def get(self, session_id: str) -> ToolSandboxSession | None:
         return self._sessions.get(str(session_id or "").strip())
+
+    def reopen_session(
+        self,
+        deps: ToolSandboxRuntimeDeps,
+        *,
+        session_id: str,
+        tool_key: str,
+        declaration: ToolSandboxDeclaration,
+        initial_context: Mapping[str, Any] | None = None,
+    ) -> ToolSandboxSession:
+        """
+        Replace an existing session id with a fresh load (same id), or open if missing.
+
+        Use when the tool needs to **reload** declared resources/refs from disk/canonical
+        state without minting a new session id.
+        """
+        sid = str(session_id or "").strip()
+        if not sid:
+            raise ValueError("session_id is required for reopen_session")
+        self.close(sid)
+        return self.open_session(
+            deps,
+            tool_key=tool_key,
+            declaration=declaration,
+            session_id=sid,
+            initial_context=initial_context,
+        )
 
     def close(self, session_id: str) -> bool:
         sid = str(session_id or "").strip()
