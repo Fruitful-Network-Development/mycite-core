@@ -29,6 +29,22 @@
         <span>Help</span>
       </nav>
       <div class="ide-menubar__spacer" aria-hidden="true"></div>
+      <div class="ide-menubar__center" aria-label="Page label">
+        <span class="ide-menubar__pageTitle">{% if page_title is defined and page_title %}{{ page_title }}{% else %}MyCite{% endif %}</span>
+        {% if page_subtitle is defined and page_subtitle %}
+          <span class="ide-menubar__pageSub">{{ page_subtitle }}</span>
+        {% endif %}
+      </div>
+      <div class="ide-menubar__right">
+        <div class="ide-menubar__shellActions" aria-label="Shell layout controls">
+          <button type="button" class="ide-sessionAction ide-sessionAction--button" data-shell-toggle="context">Context</button>
+          <button type="button" class="ide-sessionAction ide-sessionAction--button" data-shell-toggle="inspector">Inspector</button>
+        </div>
+        <label class="themebar ide-menubar__theme" aria-label="Portal theme selector">
+          <span class="themebar__label">Theme</span>
+          <select class="themebar__select" data-theme-selector data-theme-scope="portal"></select>
+        </label>
+      </div>
     </header>
 
     <div class="ide-body">

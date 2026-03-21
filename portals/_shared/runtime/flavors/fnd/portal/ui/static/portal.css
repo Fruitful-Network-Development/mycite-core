@@ -1102,6 +1102,8 @@ code{
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
+  display: flex;
+  justify-content: center;
   overflow: auto;
   max-height: 72vh;
   overscroll-behavior: contain;
@@ -1109,7 +1111,7 @@ code{
 
 .data-tool__graphSvg {
   display: block;
-  width: auto;
+  width: max(100%, 920px);
   max-width: none;
   min-width: 920px;
   min-height: 620px;
@@ -2767,14 +2769,57 @@ body.is-modal-open {
 
 .ide-menubar {
   min-height: var(--ide-menu-h);
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
   padding: 0 10px;
-  background: #2a2a2a;
-  color: #bdbdbd;
-  border-bottom: 1px solid #1f1f1f;
+  background: color-mix(in srgb, var(--coal, #2f2f2f) 88%, #000 12%);
+  color: rgba(255, 255, 255, 0.78);
+  border-bottom: 1px solid color-mix(in srgb, var(--coal, #2f2f2f) 68%, #000 32%);
   font-size: 12px;
+}
+
+.ide-menubar__center {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ide-menubar__pageTitle {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #f1f4f7;
+}
+
+.ide-menubar__pageSub {
+  color: rgba(235, 240, 246, 0.64);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ide-menubar__right {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ide-menubar__theme .themebar__label {
+  color: rgba(235, 240, 246, 0.74);
+}
+
+.ide-menubar__theme .themebar__select {
+  background: rgba(16, 22, 30, 0.8);
+  color: #f0f4f8;
+  border-color: rgba(235, 240, 246, 0.2);
+  min-height: 24px;
+  font-size: 11px;
 }
 
 .ide-body {
@@ -3785,6 +3830,47 @@ body.is-modal-open {
   overflow: auto;
 }
 
+.system-sidebar__resourceList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.system-sidebar__resourceButton {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #f0f4f8;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+
+.system-sidebar__resourceButton span,
+.system-sidebar__resourceButton small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.system-sidebar__resourceButton span {
+  font-weight: 700;
+}
+
+.system-sidebar__resourceButton small {
+  color: rgba(236, 242, 247, 0.68);
+}
+
+.system-sidebar__resourceButton.is-active {
+  border-color: rgba(65, 173, 255, 0.8);
+  background: rgba(37, 86, 120, 0.42);
+  box-shadow: 0 0 0 1px rgba(65, 173, 255, 0.5);
+}
+
 .data-tool,
 .data-tool__layout,
 .data-tool__main,
@@ -3874,6 +3960,85 @@ body.is-modal-open {
 
 .data-tool__txaSandboxCard {
   min-height: 0;
+}
+
+.data-tool__resourcesToolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.data-tool__resourcesFileTabs {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.data-tool__resourcesFileTab {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface, #fff);
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.data-tool__resourcesFileTab.is-active {
+  border-color: var(--accent, #2f6fed);
+  box-shadow: 0 0 0 1px var(--accent, #2f6fed);
+}
+
+.data-tool__resourcesTaskButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.data-tool__resourcesTaskButtons .data-tool__actionBtn.is-active {
+  outline: 2px solid var(--accent, #2f6fed);
+}
+
+.data-tool__resourcesToolbarTitle {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.data-tool__resourcesWorkbench {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.data-tool__resourcesGrid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.data-tool__resourcesPane {
+  min-height: 0;
+}
+
+.data-tool__resourcesInspectorStack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.data-tool__resourcesInspectorHeading {
+  font-size: 0.85rem;
+  margin: 0 0 6px 0;
+}
+
+.data-tool__resourcesDatumProfile {
+  margin-top: 6px;
+}
+
+.data-tool__resourcesMediateList {
+  margin: 8px 0 0;
+  padding-left: 1.1rem;
 }
 
 .data-tool__txaSandboxGrid {

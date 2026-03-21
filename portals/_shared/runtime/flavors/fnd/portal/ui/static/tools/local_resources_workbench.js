@@ -50,6 +50,87 @@
     localResources: [],
   };
 
+  function compatibilityRuntime() {
+    var runtime = window.MyCiteSystemCompatibilityRuntime;
+    return runtime && typeof runtime === "object" ? runtime : null;
+  }
+
+  function activeTabName() {
+    var tabs = [el.tabWorkspace, el.tabStructured, el.tabRaw, el.tabStaged];
+    for (var i = 0; i < tabs.length; i++) {
+      var tab = tabs[i];
+      if (tab && tab.classList.contains("is-active")) {
+        return String(tab.getAttribute("data-lr-tab") || "").trim();
+      }
+    }
+    return "workspace";
+  }
+
+  function localCompatibilityVerb() {
+    var activeTab = activeTabName();
+    if (activeTab === "structured") return "investigate";
+    return "manipulate";
+  }
+
+  function selectedRowForDetail(detail) {
+    var token = String(state.samrasSelectedAddress || "").trim();
+    if (!token) return null;
+    var vm = detail && detail.samras_workspace && typeof detail.samras_workspace === "object" ? detail.samras_workspace : {};
+    var candidates = []
+      .concat(Array.isArray(vm.title_table_rows) ? vm.title_table_rows : [])
+      .concat(Array.isArray(vm.children) ? vm.children : [])
+      .concat(Array.isArray(vm.siblings) ? vm.siblings : [])
+      .concat(Array.isArray(vm.samras_row_summaries) ? vm.samras_row_summaries : []);
+    var picked = null;
+    for (var i = 0; i < candidates.length; i++) {
+      var row = candidates[i];
+      if (row && String(row.address_id || "").trim() === token) {
+        picked = row;
+        break;
+      }
+    }
+    return {
+      identifier: token,
+      label: String((picked && (picked.title || picked.label)) || token).trim(),
+      file_key: "txa",
+      source: "samras_workspace",
+      address_id: token,
+      reference: String((picked && picked.reference) || "").trim(),
+    };
+  }
+
+  function emitCompatibilityWorkbenchMode() {
+    var runtime = compatibilityRuntime();
+    if (!runtime || typeof runtime.emitWorkbenchMode !== "function") return;
+    runtime.setCurrentVerb(localCompatibilityVerb(), { silent: true });
+    runtime.emitWorkbenchMode({
+      current_verb: localCompatibilityVerb(),
+    });
+  }
+
+  function emitCompatibilityWorkbenchPayload(payload) {
+    var runtime = compatibilityRuntime();
+    if (!runtime || typeof runtime.emitWorkbenchPayload !== "function") return;
+    runtime.setCurrentVerb(localCompatibilityVerb(), { silent: true });
+    runtime.emitWorkbenchPayload(payload || {}, {
+      current_verb: localCompatibilityVerb(),
+    });
+  }
+
+  function emitSelectionContext(detail) {
+    var body = detail && typeof detail === "object" ? detail : state.lastDetail;
+    var documentPayload = body && body.document && typeof body.document === "object" ? body.document : null;
+    if (!documentPayload) return;
+    var runtime = compatibilityRuntime();
+    if (!runtime || typeof runtime.emitSelectionInput !== "function") return;
+    runtime.setCurrentVerb(localCompatibilityVerb(), { silent: true });
+    runtime.emitSelectionInput({
+      document: documentPayload,
+      selected_row: selectedRowForDetail(body),
+      current_verb: localCompatibilityVerb(),
+    });
+  }
+
   function esc(s) {
     return String(s || "")
       .replace(/&/g, "&amp;")
@@ -92,6 +173,11 @@
       if (!p) return;
       p.hidden = p.getAttribute("data-lr-panel") !== name;
     });
+    emitCompatibilityWorkbenchMode();
+    var runtime = compatibilityRuntime();
+    if (runtime && typeof runtime.setCurrentVerb === "function") {
+      runtime.setCurrentVerb(localCompatibilityVerb());
+    }
   }
 
   if (el.tabWorkspace)
@@ -649,9 +735,11 @@
         return requestJson("/portal/api/data/sandbox/samras_workspace/view_model", "POST", body).then(function (res2) {
           if (res2.ok && res2.body && res2.body.ok !== false) applySamrasVmPayload(res2.body);
           paintSamrasSurfaces();
+          emitSelectionContext(state.lastDetail);
         });
       }
       paintSamrasSurfaces();
+      emitSelectionContext(state.lastDetail);
     });
   }
 
@@ -843,6 +931,8 @@
     renderWorkspaceSurface(detail);
     renderStructured(detail.workbench, detail);
     setStatus(missing ? "No sandbox file yet — use Raw JSON + Save to create it." : "Loaded.", missing);
+    emitCompatibilityWorkbenchMode();
+    emitSelectionContext(detail);
   }
 
   function selectResource(id) {
@@ -862,6 +952,7 @@
 
   function refreshLists() {
     setStatus("Refreshing lists…");
+    emitCompatibilityWorkbenchMode();
     Promise.all([
       requestJson("/portal/api/data/sandbox/resources", "GET"),
       requestJson("/portal/api/data/resources/local", "GET"),
@@ -881,6 +972,7 @@
       if (el.resultJson) {
         el.resultJson.textContent = JSON.stringify({ sandbox: s, local_index: l }, null, 2);
       }
+      emitCompatibilityWorkbenchPayload({ sandbox: s, local_index: l });
       var localPre = document.getElementById("localResourcesJson");
       if (localPre) {
         localPre.textContent = JSON.stringify(l || {}, null, 2);
@@ -1056,5 +1148,6 @@
   }
 
   activateTab("workspace");
+  emitCompatibilityWorkbenchMode();
   refreshLists();
 })();

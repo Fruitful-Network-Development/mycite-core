@@ -141,11 +141,15 @@ class LocalResourceLifecycleService:
     def publish(self, *, resource_id: str, resource_name: str = "", resource_kind: str = "") -> dict[str, Any]:
         staged = self._sandbox_engine.get_resource(resource_id)
         if bool(staged.get("missing")):
-            return {
-                "ok": False,
-                "schema": "mycite.portal.resources.local_publish.v1",
-                "error": f"sandbox resource not found: {resource_id}",
-            }
+            has_staged, staged_snapshot = self._sandbox_engine.peek_stage_payload(resource_id)
+            if has_staged and isinstance(staged_snapshot, dict) and staged_snapshot:
+                staged = staged_snapshot
+            else:
+                return {
+                    "ok": False,
+                    "schema": "mycite.portal.resources.local_publish.v1",
+                    "error": f"sandbox resource not found: {resource_id}",
+                }
         payload = _resource_payload_from_sandbox(staged)
         name = _resource_name_from_id(resource_name or resource_id)
         local_resource_id = _resource_id_from_name(name)

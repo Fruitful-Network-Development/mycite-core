@@ -9,6 +9,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, Iterable, List, Optional
 
+from _shared.portal.application.shell.tools import normalize_tool_capability
+
 _TOOL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _LOG = logging.getLogger("mycite.tool_runtime")
 _LEGACY_CORE_TOOL_IDS = {"data_tool"}
@@ -225,7 +227,7 @@ def resolve_tool_meta(module: ModuleType, fallback_tool_id: str) -> Dict[str, An
 
     blueprint = raw.get("blueprint") or raw.get("TOOL_BLUEPRINT") or getattr(module, "TOOL_BLUEPRINT", None)
 
-    return {
+    meta = {
         "tool_id": tool_id,
         "display_name": display_name,
         "route_prefix": route_prefix,
@@ -236,6 +238,21 @@ def resolve_tool_meta(module: ModuleType, fallback_tool_id: str) -> Dict[str, An
         "mount_target": mount_target,
         "blueprint": blueprint,
     }
+    capability = normalize_tool_capability({**raw, **meta})
+    meta.update(
+        {
+            "supported_verbs": capability.get("supported_verbs") or [],
+            "supported_source_contracts": capability.get("supported_source_contracts") or [],
+            "config_context_support": bool(capability.get("config_context_support")),
+            "source_resolution_rules": capability.get("source_resolution_rules") or [],
+            "workbench_contribution": capability.get("workbench_contribution") or {},
+            "inspector_card_contribution": capability.get("inspector_card_contribution") or {},
+            "mutation_policy": capability.get("mutation_policy") or {},
+            "preview_hooks": capability.get("preview_hooks") or {},
+            "apply_hooks": capability.get("apply_hooks") or {},
+        }
+    )
+    return meta
 
 
 def register_tool_blueprints(

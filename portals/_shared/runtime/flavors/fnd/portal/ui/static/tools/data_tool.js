@@ -93,7 +93,6 @@
   var samrasSelectedNodeTitleEl = qs("#dtsamrasSelectedNodeTitle", app);
   var samrasSelectedNodeMetaEl = qs("#dtsamrasSelectedNodeMeta", app);
 
-  var dtWorkspaceTabButtons = qsa("[data-dt-workspace-tab]", app);
   var systemWorkbenchMode = String(app.getAttribute("data-system-workbench-mode") || "anthology").trim().toLowerCase();
   var dtWorkspaceAnthology = qs("#dtWorkspaceAnthology", app);
   var dtWorkspaceResources = qs("#dtWorkspaceResources", app);
@@ -102,7 +101,20 @@
   var dtResourcesTableBody = qs("#dtResourcesTableBody", app);
   var dtResourcesTableEmpty = qs("#dtResourcesTableEmpty", app);
   var dtResourcesFilesJson = qs("#dtResourcesFilesJson", app);
-  var dtResourcesInspectorMount = document.getElementById("dtResourcesInspectorMount");
+  var dtResourcesWorkbenchTitleEl = qs("#dtResourcesWorkbenchTitle", app);
+  var dtResourcesWorkbenchMetaEl = qs("#dtResourcesWorkbenchMeta", app);
+  var systemResourceFileListEl = document.getElementById("systemResourceFileList");
+  var systemResourceFileSummaryEl = document.getElementById("systemResourceFileSummary");
+  var resourcesDatumProfileEl = document.getElementById("resourcesDatumProfile");
+  var dtResourcesInspectorEmptyEl = document.getElementById("dtResourcesInspectorEmpty");
+  var dtResourcesInspectorStackEl = document.getElementById("dtResourcesInspectorStack");
+  var dtResourcesInspectorKickerEl = document.getElementById("dtResourcesInspectorKicker");
+  var dtResourcesInspectorTitleEl = document.getElementById("dtResourcesInspectorTitle");
+  var dtResourcesNavigateBodyEl = document.getElementById("dtResourcesNavigateBody");
+  var dtResourcesInvestigateBodyEl = document.getElementById("dtResourcesInvestigateBody");
+  var dtResourcesMediateBodyEl = document.getElementById("dtResourcesMediateBody");
+  var dtResourcesMediateLensEl = document.getElementById("dtResourcesMediateLens");
+  var dtResourcesManipulateMountEl = document.getElementById("dtResourcesManipulateMount");
   var dtTxaResourceId = qs("#dtTxaResourceId", app);
   var dtTxaLoadBtn = qs("#dtTxaLoadBtn", app);
   var dtTxaRefreshBtn = qs("#dtTxaRefreshBtn", app);
@@ -214,7 +226,6 @@
     graphMode: "full_span",
   };
 
-  var WORKSPACE_TAB_STORAGE_KEY = "mycite.data_tool.workspace_tab_v1";
   var TXA_STAGED_STORAGE_PREFIX = "mycite.data_tool.txa_staged.v1:";
   var txaSandboxUiState = {
     resourceId: "",
@@ -229,6 +240,14 @@
     valueGroup: 1,
   };
   var activeDatumEditorRoot = null;
+
+  var resourcesWorkbenchState = {
+    payload: null,
+    activeFileKey: "txa",
+    selectedRow: null,
+    activeTask: "navigate",
+    manipulateEditorRoot: null,
+  };
 
   function escapeText(value) {
     return String(value == null ? "" : value)
@@ -2372,6 +2391,11 @@
       await getAnthologyTable();
     }
     await loadDatumEditor(datumWorkbenchState.rowId, { syncGraphFocus: false, openInspector: true });
+    if (String(app.getAttribute("data-system-workbench-mode") || "").trim().toLowerCase() === "resources") {
+      loadSystemResourceWorkbench().catch(function () {
+        /* best-effort refresh of resource explorer */
+      });
+    }
     setMessages(payload.errors || [], payload.warnings || []);
     return payload;
   }
@@ -3197,53 +3221,475 @@
     return payload;
   }
 
-  function renderSystemResourceInspectorRow(row) {
-    if (!dtResourcesInspectorMount) return;
-    if (!row) {
-      dtResourcesInspectorMount.innerHTML = '<p class="data-tool__empty">Select a resource datum row from the center table.</p>';
-      return;
-    }
-    dtResourcesInspectorMount.innerHTML =
-      "<p><strong>File</strong><br/><code>" +
-      escapeText(row.filename || "") +
-      "</code></p>" +
-      "<p><strong>Identifier</strong><br/><code>" +
-      escapeText(row.identifier || "") +
-      "</code></p>" +
-      "<p><strong>Label</strong><br/>" +
-      escapeText(row.label || "") +
-      "</p>" +
-      "<p><strong>Reference</strong><br/><code>" +
-      escapeText(row.reference || "") +
-      "</code></p>" +
-      "<p><strong>Magnitude</strong><br/><code>" +
-      escapeText(row.magnitude || "") +
-      "</code></p>" +
-      "<p><strong>Layer / VG</strong><br/><code>" +
-      escapeText(String(row.layer == null ? "" : row.layer)) +
-      " / " +
-      escapeText(String(row.value_group == null ? "" : row.value_group)) +
-      "</code></p>";
+  function resourceSurfaceFileKeys(payload) {
+    var p = payload && typeof payload === "object" ? payload : {};
+    var keys = Array.isArray(p.resource_surface_file_keys) ? p.resource_surface_file_keys : ["txa", "msn"];
+    return keys.map(function (k) {
+      return String(k || "").trim();
+    }).filter(Boolean);
   }
 
-  function renderSystemResourceWorkbench(payload) {
+  function resourceFileButtons() {
+    return qsa("[data-resources-file-key], [data-system-resource-file-key]", document);
+  }
+
+  function resourceFileRecordForKey(payload, fileKey) {
+    var p = payload && typeof payload === "object" ? payload : {};
+    var files = Array.isArray(p.files) ? p.files : [];
+    var fk = String(fileKey || "").trim();
+    for (var i = 0; i < files.length; i += 1) {
+      var item = files[i];
+      if (!item || typeof item !== "object") continue;
+      if (String(item.file_key || "").trim() === fk) return item;
+    }
+    return null;
+  }
+
+  function resourceSurfaceDocumentForKey(payload, fileKey) {
+    var p = payload && typeof payload === "object" ? payload : {};
+    var docs = Array.isArray(p.documents) ? p.documents : [];
+    var fk = String(fileKey || "").trim();
+    for (var i = 0; i < docs.length; i += 1) {
+      var doc = docs[i];
+      if (!doc || typeof doc !== "object") continue;
+      var identity = doc.identity && typeof doc.identity === "object" ? doc.identity : {};
+      var docPayload = doc.payload && typeof doc.payload === "object" ? doc.payload : {};
+      if (String(identity.logical_key || "").trim() === fk || String(docPayload.file_key || "").trim() === fk) {
+        return doc;
+      }
+    }
+    return null;
+  }
+
+  function emitShellRuntimeEvent(name, detail) {
+    try {
+      document.dispatchEvent(new CustomEvent(name, { detail: detail || {} }));
+    } catch (_) {
+      /* noop */
+    }
+  }
+
+  function activeResourceWorkbenchDocument() {
+    var payload = resourcesWorkbenchState.payload && typeof resourcesWorkbenchState.payload === "object" ? resourcesWorkbenchState.payload : {};
+    var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
+    return resourceSurfaceDocumentForKey(payload, fk);
+  }
+
+  function emitResourcesShellSelection() {
+    emitShellRuntimeEvent("mycite:shell:selection-input", {
+      document: activeResourceWorkbenchDocument(),
+      selected_row: resourcesWorkbenchState.selectedRow || null,
+      current_verb: resourcesWorkbenchState.activeTask || "navigate",
+      workbench_mode: "resources"
+    });
+  }
+
+  function resourcesRowsForActiveFile() {
+    var payload = resourcesWorkbenchState.payload;
+    var all = Array.isArray(payload && payload.rows) ? payload.rows : [];
+    var fk = String(resourcesWorkbenchState.activeFileKey || "txa").trim();
+    var allowed = resourceSurfaceFileKeys(payload);
+    if (allowed.indexOf(fk) === -1) fk = allowed[0] || "txa";
+    return all.filter(function (row) {
+      return String(row && row.file_key || "").trim() === fk;
+    });
+  }
+
+  function syncResourcesFileButtons() {
+    var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
+    resourceFileButtons().forEach(function (btn) {
+      var id = String(btn.getAttribute("data-resources-file-key") || btn.getAttribute("data-system-resource-file-key") || "").trim();
+      var active = id === fk;
+      btn.classList.toggle("is-active", active);
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+  }
+
+  function renderSystemResourceFileList() {
+    if (!systemResourceFileListEl) return;
+    var payload = resourcesWorkbenchState.payload && typeof resourcesWorkbenchState.payload === "object" ? resourcesWorkbenchState.payload : {};
+    var keys = resourceSurfaceFileKeys(payload);
+    systemResourceFileListEl.innerHTML = "";
+    if (systemResourceFileSummaryEl) {
+      systemResourceFileSummaryEl.textContent = keys.length
+        ? "Choose the active resource JSON file for the workbench."
+        : "No canonical resource files are available yet.";
+    }
+    if (!keys.length) {
+      return;
+    }
+    keys.forEach(function (fileKey) {
+      var meta = resourceFileRecordForKey(payload, fileKey) || {};
+      var label = String(meta.filename || fileKey + ".json");
+      var rows = Number(meta.row_count || 0);
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "system-sidebar__resourceButton";
+      button.setAttribute("data-system-resource-file-key", fileKey);
+      button.setAttribute("aria-pressed", String(String(resourcesWorkbenchState.activeFileKey || "").trim() === fileKey));
+      button.innerHTML =
+        "<span>" + escapeText(label) + "</span>" +
+        "<small>" + escapeText("Rows: " + String(rows)) + "</small>";
+      systemResourceFileListEl.appendChild(button);
+    });
+    syncResourcesFileButtons();
+  }
+
+  function renderResourcesWorkbenchHeader() {
+    var payload = resourcesWorkbenchState.payload && typeof resourcesWorkbenchState.payload === "object" ? resourcesWorkbenchState.payload : {};
+    var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
+    var meta = resourceFileRecordForKey(payload, fk) || {};
+    var doc = resourceSurfaceDocumentForKey(payload, fk) || {};
+    var identity = doc.identity && typeof doc.identity === "object" ? doc.identity : {};
+    var label = String(meta.filename || identity.display_name || fk + ".json").trim() || "Resource JSON";
+    var rows = Number(meta.row_count || 0);
+    if (dtResourcesWorkbenchTitleEl) dtResourcesWorkbenchTitleEl.textContent = label;
+    if (dtResourcesWorkbenchMetaEl) {
+      dtResourcesWorkbenchMetaEl.textContent = "Resource JSON workbench · " + fk + " · rows " + String(rows);
+    }
+    if (systemResourceFileSummaryEl) {
+      systemResourceFileSummaryEl.textContent = "Active file: " + label;
+    }
+  }
+
+  function setResourcesActiveFile(fileKey) {
+    var fk = String(fileKey || "").trim();
+    var allowed = resourceSurfaceFileKeys(resourcesWorkbenchState.payload);
+    if (allowed.length && allowed.indexOf(fk) === -1) fk = allowed[0];
+    resourcesWorkbenchState.activeFileKey = fk;
+    resourcesWorkbenchState.selectedRow = null;
+    syncResourcesFileButtons();
+    renderSystemResourceFileList();
+    renderResourcesWorkbenchHeader();
+    renderResourcesExplorerTable();
+    renderResourcesShellUi();
+    emitResourcesShellSelection();
+  }
+
+  function setResourcesActiveTask(task) {
+    var t = String(task || "navigate").trim().toLowerCase();
+    if (["navigate", "investigate", "mediate", "manipulate"].indexOf(t) === -1) t = "navigate";
+    resourcesWorkbenchState.activeTask = t;
+    qsa("[data-resources-task]", document).forEach(function (btn) {
+      var id = String(btn.getAttribute("data-resources-task") || "").trim();
+      btn.classList.toggle("is-active", id === t);
+    });
+    emitShellRuntimeEvent("mycite:shell:verb-changed", { verb: t });
+    renderResourcesInspectorPanels().catch(function (err) {
+      setMessages([err && err.message ? err.message : "Resources inspector failed"], []);
+    });
+    emitResourcesShellSelection();
+  }
+
+  function renderResourcesDatumProfile() {
+    if (!resourcesDatumProfileEl) return;
+    var row = resourcesWorkbenchState.selectedRow;
+    resourcesDatumProfileEl.innerHTML = "";
+    if (!row) {
+      var ph = document.createElement("p");
+      ph.className = "data-tool__empty data-tool__resourcesDatumProfilePlaceholder";
+      ph.textContent = "No datum selected.";
+      resourcesDatumProfileEl.appendChild(ph);
+      return;
+    }
+    var card = document.createElement("div");
+    card.className = "data-tool__resourcesDatumCard";
+    card.innerHTML =
+      "<div><strong>File</strong><br/><code class=\"data-tool__clip\">" +
+      escapeText(row.filename || "") +
+      "</code></div>" +
+      "<div><strong>Identifier</strong><br/><code class=\"data-tool__clip\">" +
+      escapeText(row.identifier || "") +
+      "</code></div>" +
+      "<div><strong>Label</strong><br/><span>" +
+      escapeText(row.label || "") +
+      "</span></div>";
+    resourcesDatumProfileEl.appendChild(card);
+  }
+
+  function renderAbstractionChainInto(targetEl, chain) {
+    if (!targetEl) return;
+    targetEl.innerHTML = "";
+    var items = Array.isArray(chain) ? chain : [];
+    if (!items.length) {
+      var empty = document.createElement("p");
+      empty.className = "data-tool__empty";
+      empty.textContent = "No abstraction path found for this datum.";
+      targetEl.appendChild(empty);
+      return;
+    }
+    var list = document.createElement("ol");
+    list.className = "data-tool__pathList";
+    items.forEach(function (item) {
+      var li = document.createElement("li");
+      li.className = "data-tool__pathItem";
+      var head = document.createElement("div");
+      head.className = "data-tool__datumCell";
+      var icon = document.createElement("span");
+      icon.className = "data-tool__datumIcon";
+      if (item.icon_url) {
+        var img = document.createElement("img");
+        img.src = String(item.icon_url);
+        img.alt = "";
+        img.className = "datum-icon";
+        icon.appendChild(img);
+      } else {
+        var placeholder = document.createElement("span");
+        placeholder.className = "datum-icon datum-icon--placeholder";
+        placeholder.textContent = "+";
+        icon.appendChild(placeholder);
+      }
+      var main = document.createElement("div");
+      main.className = "data-tool__datumMain";
+      var title = document.createElement("div");
+      title.className = "data-tool__datumName data-tool__clip";
+      title.textContent = String(item.label || item.identifier || "");
+      title.title = String(item.label || item.identifier || "");
+      var meta = document.createElement("div");
+      meta.className = "data-tool__datumId";
+      meta.textContent = String(item.identifier || "") + " (L" + String(item.layer == null ? "?" : item.layer) + ")";
+      main.appendChild(title);
+      main.appendChild(meta);
+      head.appendChild(icon);
+      head.appendChild(main);
+      li.appendChild(head);
+      var ref = document.createElement("div");
+      ref.className = "data-tool__pathRef";
+      ref.textContent = "reference: " + String(item.reference || "(none)");
+      ref.title = String(item.reference || "(none)");
+      li.appendChild(ref);
+      list.appendChild(li);
+    });
+    targetEl.appendChild(list);
+  }
+
+  function renderResourcesNavigatePanel(row, allRows) {
+    if (!dtResourcesNavigateBodyEl) return;
+    dtResourcesNavigateBodyEl.innerHTML = "";
+    if (!row) return;
+    var src = String(row.source || "").trim();
+    var aid = String(row.address_id || (src === "samras_rows_by_address" ? row.identifier : "") || "").trim();
+
+    if (aid) {
+      var parts = aid.split("-").filter(function (p) {
+        return !!p;
+      });
+      var h = document.createElement("p");
+      h.innerHTML = "<strong>SAMRAS address family</strong> for <code>" + escapeText(aid) + "</code>";
+      dtResourcesNavigateBodyEl.appendChild(h);
+      if (parts.length > 1) {
+        var ancTitle = document.createElement("p");
+        ancTitle.innerHTML = "<strong>Ancestors</strong>";
+        dtResourcesNavigateBodyEl.appendChild(ancTitle);
+        var ulA = document.createElement("ul");
+        for (var i = 0; i < parts.length - 1; i++) {
+          var prefix = parts.slice(0, i + 1).join("-");
+          var li = document.createElement("li");
+          li.innerHTML = "<code>" + escapeText(prefix) + "</code>";
+          ulA.appendChild(li);
+        }
+        dtResourcesNavigateBodyEl.appendChild(ulA);
+      }
+      var childTitle = document.createElement("p");
+      childTitle.innerHTML = "<strong>Children</strong> (same file)";
+      dtResourcesNavigateBodyEl.appendChild(childTitle);
+      var ulC = document.createElement("ul");
+      var prefixChild = aid + "-";
+      (allRows || []).forEach(function (r) {
+        var rid = String(r.identifier || "").trim();
+        if (rid.indexOf(prefixChild) !== 0) return;
+        var cli = document.createElement("li");
+        cli.innerHTML = "<code>" + escapeText(rid) + "</code> — " + escapeText(r.label || "");
+        ulC.appendChild(cli);
+      });
+      if (!ulC.children.length) {
+        var none = document.createElement("p");
+        none.className = "data-tool__empty";
+        none.textContent = "No child addresses in this file.";
+        dtResourcesNavigateBodyEl.appendChild(none);
+      } else {
+        dtResourcesNavigateBodyEl.appendChild(ulC);
+      }
+      return;
+    }
+
+    var layer = row.layer;
+    var vg = row.value_group;
+    var fk = String(row.file_key || "").trim();
+    var peers = (allRows || []).filter(function (r) {
+      return (
+        String(r.file_key || "").trim() === fk &&
+        r.layer === layer &&
+        r.value_group === vg &&
+        String(r.identifier || "").trim() !== String(row.identifier || "").trim()
+      );
+    });
+    var fam = document.createElement("div");
+    fam.innerHTML =
+      "<p><strong>Layer / VG</strong> " +
+      escapeText(String(layer == null ? "—" : layer)) +
+      " / " +
+      escapeText(String(vg == null ? "—" : vg)) +
+      "</p>";
+    dtResourcesNavigateBodyEl.appendChild(fam);
+    var pt = document.createElement("p");
+    pt.innerHTML = "<strong>Sibling datums</strong> (same file · same layer · same VG)";
+    dtResourcesNavigateBodyEl.appendChild(pt);
+    var ul = document.createElement("ul");
+    peers.forEach(function (r) {
+      var li = document.createElement("li");
+      li.innerHTML = "<code>" + escapeText(r.identifier || "") + "</code> — " + escapeText(r.label || "");
+      ul.appendChild(li);
+    });
+    if (!ul.children.length) {
+      var empty = document.createElement("p");
+      empty.className = "data-tool__empty";
+      empty.textContent = "No siblings in this bucket.";
+      dtResourcesNavigateBodyEl.appendChild(empty);
+    } else {
+      dtResourcesNavigateBodyEl.appendChild(ul);
+    }
+  }
+
+  function renderResourcesMediatePanel() {
+    if (!dtResourcesMediateBodyEl) return;
+    dtResourcesMediateBodyEl.innerHTML = "";
+    var payload = resourcesWorkbenchState.payload || {};
+    var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
+    var maps = payload.samras_rows_by_address_by_file_key && typeof payload.samras_rows_by_address_by_file_key === "object"
+      ? payload.samras_rows_by_address_by_file_key
+      : {};
+    var map = maps[fk] && typeof maps[fk] === "object" ? maps[fk] : {};
+    var lens = dtResourcesMediateLensEl ? String(dtResourcesMediateLensEl.value || "default").trim() : "default";
+    var keys = Object.keys(map).sort();
+    if (!keys.length) {
+      var empty = document.createElement("p");
+      empty.className = "data-tool__empty";
+      empty.textContent = "No SAMRAS rows_by_address collection for this file. Mediation lists anthology-style datums only when the canonical JSON includes a rows_by_address map.";
+      dtResourcesMediateBodyEl.appendChild(empty);
+      return;
+    }
+    var meta = document.createElement("p");
+    meta.className = "data-tool__legendText";
+    meta.textContent = "Lens “" + lens + "” · " + String(keys.length) + " addresses in " + fk + ".json";
+    dtResourcesMediateBodyEl.appendChild(meta);
+    var list = document.createElement("ul");
+    list.className = "data-tool__resourcesMediateList";
+    keys.forEach(function (addr) {
+      var titles = Array.isArray(map[addr]) ? map[addr] : [map[addr]];
+      var line = titles.map(function (t) {
+        return String(t || "");
+      }).join(" · ");
+      if (lens === "ascii") {
+        var nonAscii = /[^\x00-\x7f]/;
+        if (nonAscii.test(line)) return;
+      }
+      var li = document.createElement("li");
+      li.innerHTML = "<code>" + escapeText(addr) + "</code> — " + escapeText(line);
+      list.appendChild(li);
+    });
+    if (!list.children.length) {
+      var none = document.createElement("p");
+      none.className = "data-tool__empty";
+      none.textContent = "No addresses pass the current lens filter.";
+      dtResourcesMediateBodyEl.appendChild(none);
+    } else {
+      dtResourcesMediateBodyEl.appendChild(list);
+    }
+  }
+
+  async function renderResourcesInspectorPanels() {
+    var row = resourcesWorkbenchState.selectedRow;
+    var task = String(resourcesWorkbenchState.activeTask || "navigate").trim();
+    if (dtResourcesInspectorKickerEl) dtResourcesInspectorKickerEl.textContent = "Resources";
+    if (dtResourcesInspectorTitleEl) {
+      dtResourcesInspectorTitleEl.textContent = row ? task.charAt(0).toUpperCase() + task.slice(1) : "Inspector";
+    }
+    if (dtResourcesInspectorEmptyEl) dtResourcesInspectorEmptyEl.hidden = !!row;
+    if (dtResourcesInspectorStackEl) dtResourcesInspectorStackEl.hidden = !row;
+    qsa("[data-resources-inspector-panel]", document).forEach(function (panel) {
+      var id = String(panel.getAttribute("data-resources-inspector-panel") || "").trim();
+      panel.hidden = !row || id !== task;
+    });
+    if (!row) return;
+
+    var allForFile = resourcesRowsForActiveFile();
+
+    if (task === "navigate") {
+      renderResourcesNavigatePanel(row, allForFile);
+    } else if (task === "investigate") {
+      if (!dtResourcesInvestigateBodyEl) return;
+      dtResourcesInvestigateBodyEl.innerHTML = '<p class="data-tool__empty">Loading abstraction path…</p>';
+      var token = String(row.identifier || "").trim();
+      try {
+        var profile = await api("/portal/api/data/anthology/profile/" + encodeURIComponent(token));
+        renderAbstractionChainInto(dtResourcesInvestigateBodyEl, profile.abstraction_path || []);
+      } catch (err) {
+        dtResourcesInvestigateBodyEl.innerHTML = "";
+        var p = document.createElement("p");
+        p.className = "data-tool__empty";
+        p.textContent = err && err.message ? err.message : "Could not load abstraction path.";
+        dtResourcesInvestigateBodyEl.appendChild(p);
+      }
+    } else if (task === "mediate") {
+      renderResourcesMediatePanel();
+    } else if (task === "manipulate") {
+      if (!dtResourcesManipulateMountEl) return;
+      dtResourcesManipulateMountEl.innerHTML = "";
+      resourcesWorkbenchState.manipulateEditorRoot = null;
+      var src = String(row.source || "").trim();
+      if (src === "samras_rows_by_address" || row.address_id) {
+        var note = document.createElement("div");
+        note.className = "data-tool__empty";
+        note.innerHTML =
+          "<p><strong>SAMRAS address row</strong></p><p>Edit address collections via <em>Local Resources</em> SAMRAS tools or raw JSON.</p>" +
+          "<p>Identifier <code>" +
+          escapeText(String(row.identifier || "")) +
+          "</code></p>";
+        dtResourcesManipulateMountEl.appendChild(note);
+        return;
+      }
+      var token = String(row.identifier || "").trim();
+      try {
+        var payload = await api("/portal/api/data/anthology/profile/" + encodeURIComponent(token));
+        var editorRoot = buildDatumEditorNode(payload);
+        resourcesWorkbenchState.manipulateEditorRoot = editorRoot;
+        dtResourcesManipulateMountEl.appendChild(editorRoot);
+      } catch (err2) {
+        var p2 = document.createElement("p");
+        p2.className = "data-tool__empty";
+        p2.textContent = err2 && err2.message ? err2.message : "Could not load datum for editing.";
+        dtResourcesManipulateMountEl.appendChild(p2);
+      }
+    }
+  }
+
+  function renderResourcesShellUi() {
+    renderResourcesDatumProfile();
+    renderResourcesInspectorPanels().catch(function () {
+      /* errors surfaced via setMessages in setResourcesActiveTask */
+    });
+  }
+
+  function selectResourcesRow(row) {
+    resourcesWorkbenchState.selectedRow = row || null;
+    renderResourcesShellUi();
+    emitResourcesShellSelection();
+  }
+
+  function renderResourcesExplorerTable() {
     if (!dtResourcesTableBody) return;
-    var rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+    var rows = resourcesRowsForActiveFile();
     dtResourcesTableBody.innerHTML = "";
     if (dtResourcesTableEmpty) dtResourcesTableEmpty.hidden = rows.length > 0;
     if (dtResourcesStatus) {
-      dtResourcesStatus.textContent = "Rows: " + String(rows.length);
-    }
-    if (dtResourcesFilesJson) {
-      var files = Array.isArray(payload && payload.files) ? payload.files : [];
-      dtResourcesFilesJson.textContent = JSON.stringify(files, null, 2);
+      var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
+      dtResourcesStatus.textContent = "File: " + fk + " · Rows: " + String(rows.length);
     }
     rows.forEach(function (row) {
       var tr = document.createElement("tr");
       tr.innerHTML =
         "<td><code>" +
-        escapeText(row.file_key || "") +
-        "</code></td><td><code>" +
         escapeText(row.identifier || "") +
         "</code></td><td>" +
         escapeText(row.label || "") +
@@ -3261,11 +3707,31 @@
           it.classList.remove("is-selected");
         });
         tr.classList.add("is-selected");
-        renderSystemResourceInspectorRow(row);
+        selectResourcesRow(row);
       });
       dtResourcesTableBody.appendChild(tr);
     });
-    renderSystemResourceInspectorRow(null);
+    selectResourcesRow(null);
+  }
+
+  function renderSystemResourceWorkbench(payload) {
+    resourcesWorkbenchState.payload = payload && typeof payload === "object" ? payload : {};
+    var keys = resourceSurfaceFileKeys(resourcesWorkbenchState.payload);
+    if (keys.length && keys.indexOf(resourcesWorkbenchState.activeFileKey) === -1) {
+      resourcesWorkbenchState.activeFileKey = keys[0];
+    }
+    renderSystemResourceFileList();
+    renderResourcesWorkbenchHeader();
+    syncResourcesFileButtons();
+    if (dtResourcesFilesJson) {
+      var files = Array.isArray(payload && payload.files) ? payload.files : [];
+      dtResourcesFilesJson.textContent = JSON.stringify(files, null, 2);
+    }
+    renderResourcesExplorerTable();
+    emitShellRuntimeEvent("mycite:shell:workbench-payload", {
+      workbench_mode: "resources",
+      payload: resourcesWorkbenchState.payload
+    });
   }
 
   async function loadSystemResourceWorkbench() {
@@ -3279,12 +3745,12 @@
     if (m !== "anthology" && m !== "resources") m = "anthology";
     if (dtWorkspaceAnthology) dtWorkspaceAnthology.hidden = m !== "anthology";
     if (dtWorkspaceResources) dtWorkspaceResources.hidden = m !== "resources";
-    dtWorkspaceTabButtons.forEach(function (b) {
-      var id = String(b.getAttribute("data-dt-workspace-tab") || "").trim();
-      if (id === m) b.classList.add("is-active");
-      else b.classList.remove("is-active");
-    });
     if (m === "resources") {
+      resourcesWorkbenchState.activeTask = "navigate";
+      qsa("[data-resources-task]", document).forEach(function (btn) {
+        var id = String(btn.getAttribute("data-resources-task") || "").trim();
+        btn.classList.toggle("is-active", id === "navigate");
+      });
       if (typeof loadSystemResourceWorkbench === "function") {
         loadSystemResourceWorkbench().catch(function (err) {
           setMessages([err && err.message ? err.message : "Failed to load resource workbench"], []);
@@ -3294,11 +3760,7 @@
       ensureTxaAsideInShellHost();
     }
     syncSystemShellDataToolPanels(m);
-    try {
-      window.sessionStorage.setItem(WORKSPACE_TAB_STORAGE_KEY, m);
-    } catch (_) {
-      /* ignore */
-    }
+    emitShellRuntimeEvent("mycite:shell:workbench-mode", { workbench_mode: m });
   }
 
   function txaLoadStaged(rid) {
@@ -4152,70 +4614,7 @@
   }
 
   function renderProfileAbstraction(chain) {
-    if (!profileAbstractionEl) return;
-    profileAbstractionEl.innerHTML = "";
-
-    var items = Array.isArray(chain) ? chain : [];
-    if (!items.length) {
-      var empty = document.createElement("p");
-      empty.className = "data-tool__empty";
-      empty.textContent = "No abstraction path found for this datum.";
-      profileAbstractionEl.appendChild(empty);
-      return;
-    }
-
-    var list = document.createElement("ol");
-    list.className = "data-tool__pathList";
-
-    items.forEach(function (item) {
-      var li = document.createElement("li");
-      li.className = "data-tool__pathItem";
-
-      var head = document.createElement("div");
-      head.className = "data-tool__datumCell";
-
-      var icon = document.createElement("span");
-      icon.className = "data-tool__datumIcon";
-      if (item.icon_url) {
-        var img = document.createElement("img");
-        img.src = String(item.icon_url);
-        img.alt = "";
-        img.className = "datum-icon";
-        icon.appendChild(img);
-      } else {
-        var placeholder = document.createElement("span");
-        placeholder.className = "datum-icon datum-icon--placeholder";
-        placeholder.textContent = "+";
-        icon.appendChild(placeholder);
-      }
-
-      var main = document.createElement("div");
-      main.className = "data-tool__datumMain";
-      var title = document.createElement("div");
-      title.className = "data-tool__datumName data-tool__clip";
-      title.textContent = String(item.label || item.identifier || "");
-      title.title = String(item.label || item.identifier || "");
-
-      var meta = document.createElement("div");
-      meta.className = "data-tool__datumId";
-      meta.textContent = String(item.identifier || "") + " (L" + String(item.layer == null ? "?" : item.layer) + ")";
-
-      main.appendChild(title);
-      main.appendChild(meta);
-      head.appendChild(icon);
-      head.appendChild(main);
-      li.appendChild(head);
-
-      var ref = document.createElement("div");
-      ref.className = "data-tool__pathRef";
-      ref.textContent = "reference: " + String(item.reference || "(none)");
-      ref.title = String(item.reference || "(none)");
-      li.appendChild(ref);
-
-      list.appendChild(li);
-    });
-
-    profileAbstractionEl.appendChild(list);
+    renderAbstractionChainInto(profileAbstractionEl, chain);
   }
 
   function renderProfileIconOptions() {
@@ -5131,12 +5530,29 @@
     });
   }
 
-  dtWorkspaceTabButtons.forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      var mode = String(btn.getAttribute("data-dt-workspace-tab") || "").trim();
-      if (mode) setDtWorkspaceTab(mode);
-    });
+  document.addEventListener("click", function (ev) {
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    var fileBtn = t.closest("[data-resources-file-key], [data-system-resource-file-key]");
+    if (fileBtn && document.body.contains(fileBtn)) {
+      if (systemWorkbenchMode !== "resources") return;
+      var fileKey = String(fileBtn.getAttribute("data-resources-file-key") || fileBtn.getAttribute("data-system-resource-file-key") || "").trim();
+      if (fileKey) setResourcesActiveFile(fileKey);
+      return;
+    }
+    var taskBtn = t.closest("[data-resources-task]");
+    if (!taskBtn || !document.body.contains(taskBtn)) return;
+    if (systemWorkbenchMode !== "resources") return;
+    var task = String(taskBtn.getAttribute("data-resources-task") || "").trim();
+    if (task) setResourcesActiveTask(task);
   });
+  if (dtResourcesMediateLensEl) {
+    dtResourcesMediateLensEl.addEventListener("change", function () {
+      if (systemWorkbenchMode === "resources" && resourcesWorkbenchState.activeTask === "mediate") {
+        renderResourcesMediatePanel();
+      }
+    });
+  }
   if (dtResourcesRefreshBtn) {
     dtResourcesRefreshBtn.addEventListener("click", function () {
       loadSystemResourceWorkbench().catch(function (err) {
@@ -5231,10 +5647,11 @@
   if (appendValueGroupInput && !appendValueGroupInput.value) appendValueGroupInput.value = "1";
   syncAppendPairRequirements();
   ensurePairRows(profilePairsEl, "js-remove-profile-pair");
-  renderDatumEditorEmpty("");
-
-  ensureTxaAsideInShellHost();
-  syncSystemShellDataToolPanels("anthology");
+  if (systemWorkbenchMode !== "resources") {
+    renderDatumEditorEmpty("");
+    ensureTxaAsideInShellHost();
+  }
+  syncSystemShellDataToolPanels(systemWorkbenchMode === "resources" ? "resources" : "anthology");
 
   var openNimmOnLoad = String(app.getAttribute("data-open-nimm") || "0").trim() === "1";
 

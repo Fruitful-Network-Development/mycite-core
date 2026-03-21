@@ -20,6 +20,8 @@ def build_shell_context(
     current_path: str,
     context_sidebar_sections: list[dict[str, Any]],
     system_tabs: list[dict[str, Any]] | None = None,
+    shell_verbs: list[dict[str, Any]] | None = None,
+    portal_instance_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     active_tool_id = str(active_tool.get("tool_id") or "") if active_tool else ""
     return {
@@ -39,4 +41,6 @@ def build_shell_context(
         "switch_portal_url": switch_portal_url,
         "current_path": current_path,
         "context_sidebar_sections": context_sidebar_sections,
+        "shell_verbs": list(shell_verbs or []),
+        "portal_instance_context": dict(portal_instance_context or {}),
     }

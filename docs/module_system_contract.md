@@ -31,11 +31,12 @@ Modules **must not**: render shell page titles, duplicate left-nav sections, emb
 - **Center:** source list + resource list; default view is management, not raw index JSON.
 - **Inspector:** selected resource summary + refresh/disconnect actions; raw API JSON only under advanced.
 
-### Resource workbench baseline (System workbench mode = resources)
-- **Truth:** table-first interface over three canonical JSON files: `anthology.json`, `samras-txa.json`, `samras-msn.json`.
-- **Center:** anthology-esque datum table only for this pass (no in-body Anthology/SAMRAS tabs).
-- **Inspector:** selected row detail in shell-owned right inspector (`systemInspectorPanelResources`).
-- **Switching:** query-state based (`/portal/system?tab=workbench&workbench=resources|anthology`) from left sidebar controls; body tabs are removed.
+### Resource workbench (System workbench mode = resources)
+- **Truth:** table-first explorer over canonical JSON files; backend still materializes `anthology.json`, `samras-txa.json`, `samras-msn.json`.
+- **Center:** internal **file tabs** for **TXA + MSN only** inside the workbench card; rows come from `GET /portal/api/data/system/resource_workbench` (`resource_surface_file_keys`, flattened `rows`).
+- **Left (task):** datum profile + **Navigate / Investigate / Mediate / Manipulate** (not file switches).
+- **Inspector:** `systemInspectorPanelResources` — task + row driven panels; **Mediate** uses `samras_rows_by_address_by_file_key`.
+- **Shell switching:** query-state only (`/portal/system?tab=workbench&workbench=resources|anthology`); Anthology remains a separate `workbench=anthology` surface.
 
 ## Implementation map (FND)
 

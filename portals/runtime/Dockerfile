@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.4
+# COPY --link lets BuildKit treat tree copies as independent layers (often faster on large contexts).
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -5,9 +7,9 @@ WORKDIR /app
 COPY runtime/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-COPY runtime/ /app/runtime/
-COPY _shared/ /app/_shared/
-COPY assets/ /app/assets/
+COPY --link runtime/ /app/runtime/
+COPY --link _shared/ /app/_shared/
+COPY --link assets/ /app/assets/
 
 WORKDIR /app/runtime
 

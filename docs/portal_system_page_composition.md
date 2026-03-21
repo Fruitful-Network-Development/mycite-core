@@ -10,7 +10,7 @@ The **System** area should read as a **workbench** (selection → workspace → 
 
 | Region | Responsibility |
 |--------|----------------|
-| **Left context sidebar** (`dtSystemContext` on System) | Navigation is in the IDE shell; this pane holds **search / select-mode** and other compact scope controls. |
+| **Left context sidebar** | **System Views** links (shell). **Anthology** workbench: `dtSystemContext` holds **search / select-mode** only. **Resources** workbench: `resourcesTaskSection` holds **datum profile + task buttons** (Navigate / Investigate / Mediate / Manipulate) — not file tabs. |
 | **Center** | Primary **workspace**: anthology surface or resources-table surface (query-state), local resource workspace tab, inheritance resource list. |
 | **Right** | **Inspector**: datum editor + investigation embed (anthology), SAMRAS branch/structural inspector (sandbox), resource SAMRAS sidebar (local resources), inherited resource detail + sync actions (inheritance). |
 
@@ -22,13 +22,12 @@ The **System** area should read as a **workbench** (selection → workspace → 
 - **Inspector (shell)**: `#dtAnthologyInspectorBody` + `#dtAnthologyInvMount` — datum editor / investigation; NIMM opened from a compact **Advanced** control.
 - **Left `dtSystemContext`**: search / select-mode only.
 
-## Resource workbench baseline (`workbench=resources`)
+## Resource workbench (`workbench=resources`)
 
-- **Switching** is query-state based from the left sidebar context links: `?tab=workbench&workbench=resources|anthology`.
-- **No in-body mode tabs**: Anthology/SAMRAS navigation rows are removed from the center surface.
-- **Center (resources)**: table-first datum surface from `GET /portal/api/data/system/resource_workbench`.
-- **Canonical files (fixed for this pass)**: `anthology.json`, `samras-txa.json`, `samras-msn.json`.
-- **Inspector (resources)**: selected row detail mounted in `#systemInspectorPanelResources`.
+- **Shell mode** is query-state only: `?tab=workbench&workbench=resources|anthology` (no `sessionStorage` workspace drivers; no in-center shell mode toggles).
+- **Center (resources)**: **internal file tabs** (`samras-txa.json` / `samras-msn.json` only) inside `dtWorkspaceResources`, plus a **table-first** explorer from `GET /portal/api/data/system/resource_workbench` (`resource_surface_file_keys` limits the UI to TXA/MSN; `anthology.json` remains materialized and present in `files` / advanced JSON).
+- **Canonical files (fixed)**: `anthology.json`, `samras-txa.json`, `samras-msn.json`.
+- **Inspector (resources)**: `#systemInspectorPanelResources` — task-driven panels (Navigate / Investigate / Mediate / Manipulate) bound to **selected row** + **active task**; SAMRAS **Mediate** reads `samras_rows_by_address_by_file_key`.
 
 ## Local Resources (`system.html` + `local_resources_workbench.js`)
 
@@ -60,6 +59,7 @@ Primary rules live in **`fnd/portal/ui/static/portal.css`** (`.data-tool__workbe
 ## Tests
 
 - `tests/test_system_page_composition.py` — template markers + `grouped_by_source` API guard.  
+- `tests/test_resources_workbench_js_contract.py` — Resources JS singularity (no workspace `sessionStorage` tab driver).  
 - `tests/test_fnd_portal_shell_routes.py` — HTTP smoke for workbench / local_resources / inheritance markers when Flask is available.
 
 ## Follow-ups
