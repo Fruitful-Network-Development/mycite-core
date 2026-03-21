@@ -10,16 +10,14 @@
 {% endblock %}
 
 {% set page_title = "SYSTEM" %}
+{% set requested_tab = system_requested_tab if system_requested_tab is defined and system_requested_tab else "workbench" %}
 {% set current_tab = system_tab if system_tab is defined and system_tab else "workbench" %}
+{% set compatibility_view = system_compatibility_view if system_compatibility_view is defined and system_compatibility_view else "" %}
 {% set current_workbench_mode = system_workbench_mode if system_workbench_mode is defined and system_workbench_mode else "anthology" %}
 {% set page_subtitle = "System workbenches" %}
-{% if current_tab == "local_resources" %}
-  {% set page_subtitle = "Sandbox JSON files · structured · raw · staged" %}
-{% elif current_tab == "inheritance" %}
-  {% set page_subtitle = "Inherited resources by source" %}
-{% elif current_tab == "workbench" %}
+{% if current_tab == "workbench" %}
   {% if current_workbench_mode == "resources" %}
-    {% set page_subtitle = "Resource workbench (anthology / TXA / MSN JSON files)" %}
+    {% set page_subtitle = "Resources · canonical JSON workbench" %}
   {% else %}
     {% set page_subtitle = "Anthology (anthology.json) · shared SAMRAS workspace" %}
   {% endif %}
@@ -29,10 +27,21 @@
 
 {% block viewport_class %}viewport--system{% endblock %}
 
+{% block header %}{% endblock %}
+
 {% block inspector_content %}
-  <div id="systemShellInspectorRoot" class="system-shell-inspector" data-system-tab="{{ current_tab }}">
+  <div
+    id="systemShellInspectorRoot"
+    class="system-shell-inspector"
+    data-system-tab="{{ current_tab }}"
+    data-system-compat-view="{{ compatibility_view }}"
+    data-system-requested-tab="{{ requested_tab }}"
+  >
     {% if current_tab == "workbench" %}
-      <div id="systemInspectorPanelAnthology" class="system-inspector-panel" data-system-inspector-panel="anthology">
+      <section id="systemShellInspectorCards" class="system-shell-inspectorCards" hidden>
+        <div id="systemInspectorCardsMount" class="system-shell-inspectorCards__mount"></div>
+      </section>
+      <div id="systemInspectorPanelAnthology" class="system-inspector-panel" data-system-inspector-panel="anthology" {% if current_workbench_mode != "anthology" %}hidden{% endif %}>
         <div id="dtAnthologyInspectorBody" class="data-tool__anthologyInspectorBody"></div>
         <section class="data-tool__anthologyInvSection" aria-label="Investigation">
           <div id="dtAnthologyInvMount" class="data-tool__anthologyInvMount"></div>
@@ -40,39 +49,38 @@
       </div>
       <div id="systemInspectorPanelTxa" class="system-inspector-panel" data-system-inspector-panel="txa" hidden></div>
       <div id="systemInspectorPanelResources" class="system-inspector-panel" data-system-inspector-panel="resources" {% if current_workbench_mode != "resources" %}hidden{% endif %}>
-        <div class="ide-inspector__moduleKicker">Resource row</div>
-        <div class="ide-inspector__moduleTitle">Select a row from the table</div>
-        <div id="dtResourcesInspectorMount" class="data-tool__anthologyInvMount"></div>
-      </div>
-    {% elif current_tab == "local_resources" %}
-      <div class="lr-workbench__inspectorShell">
-        <div class="ide-inspector__moduleKicker" id="lrInspectorKicker">Structure</div>
-        <div class="ide-inspector__moduleTitle" id="lrSidebarTitle">Detail</div>
-        <div id="lrSidebarMount" class="lr-workbench__sidebarBody"></div>
-      </div>
-    {% elif current_tab == "inheritance" %}
-      <div id="inheritanceInspectorBody" class="inh-workbench__inspectorShell">
-        <p class="data-tool__empty" id="inheritanceInspectorEmpty">Select an inherited resource.</p>
-        <div id="inheritanceInspectorDetail" hidden></div>
-        <hr class="inh-workbench__inspectorHr" />
-        <details class="data-tool__advanced" open>
-          <summary>Source &amp; contract actions</summary>
-          <label for="inheritanceSourceMsn"><strong>Source msn_id</strong></label>
-          <input id="inheritanceSourceMsn" type="text" placeholder="3-2-3-..." />
-          <label for="inheritanceContractId"><strong>Contract ID (optional)</strong></label>
-          <input id="inheritanceContractId" type="text" placeholder="contract-..." />
-          <label for="inheritanceResourceId"><strong>Resource ID (optional)</strong></label>
-          <input id="inheritanceResourceId" type="text" placeholder="samras.txa" />
-          <div class="data-tool__controlRow data-tool__controlRow--wrap">
-            <button type="button" id="inheritanceRefreshSingleBtn">Refresh one</button>
-            <button type="button" id="inheritanceRefreshSourceBtn">Refresh source</button>
-            <button type="button" id="inheritanceDisconnectBtn">Disconnect source</button>
-          </div>
-        </details>
-        <details class="data-tool__advanced">
-          <summary>Advanced: last API JSON</summary>
-          <pre class="jsonblock" id="inheritanceStatusJson">{}</pre>
-        </details>
+        <div class="ide-inspector__moduleKicker" id="dtResourcesInspectorKicker">Resources</div>
+        <div class="ide-inspector__moduleTitle" id="dtResourcesInspectorTitle">Inspector</div>
+        <p id="dtResourcesInspectorEmpty" class="data-tool__empty">
+          Select a resource datum in the center workbench to inspect provenance, scope, and compatible mediations.
+        </p>
+        <div id="dtResourcesInspectorStack" class="data-tool__resourcesInspectorStack" hidden>
+          <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="navigate" hidden>
+            <h3 class="data-tool__resourcesInspectorHeading">Navigate · datum family</h3>
+            <div id="dtResourcesNavigateBody" class="data-tool__resourcesInspectorBody"></div>
+          </section>
+          <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="investigate" hidden>
+            <h3 class="data-tool__resourcesInspectorHeading">Investigate · abstraction path</h3>
+            <div id="dtResourcesInvestigateBody" class="data-tool__resourcesInspectorBody"></div>
+          </section>
+          <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="mediate" hidden>
+            <h3 class="data-tool__resourcesInspectorHeading">Mediate · SAMRAS addresses</h3>
+            <div class="data-tool__controlRow data-tool__controlRow--wrap">
+              <label class="data-tool__growLabel">
+                <span>Lens</span>
+                <select id="dtResourcesMediateLens" aria-label="Mediation lens">
+                  <option value="default" selected>default</option>
+                  <option value="ascii">ascii</option>
+                </select>
+              </label>
+            </div>
+            <div id="dtResourcesMediateBody" class="data-tool__resourcesInspectorBody"></div>
+          </section>
+          <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="manipulate" hidden>
+            <h3 class="data-tool__resourcesInspectorHeading">Manipulate · datum edit</h3>
+            <div id="dtResourcesManipulateMount" class="data-tool__resourcesInspectorBody"></div>
+          </section>
+        </div>
       </div>
     {% else %}
       <p class="ide-inspector__empty">Select an item to inspect.</p>
@@ -84,145 +92,74 @@
   <section class="ide-contextSection">
     <header class="ide-contextTitle">System Views</header>
     <ul class="ide-contextList">
-      <li><a class="ide-contextLink {% if current_tab == 'workbench' %}is-active{% endif %}" href="/portal/system?tab=workbench"><span>Anthology Workbench</span><small>Graph navigation</small></a></li>
-      <li><a class="ide-contextLink {% if current_tab == 'local_resources' %}is-active{% endif %}" href="/portal/system?tab=local_resources"><span>Local Resources</span><small>Draft, compile, publish</small></a></li>
-      <li><a class="ide-contextLink {% if current_tab == 'inheritance' %}is-active{% endif %}" href="/portal/system?tab=inheritance"><span>Inheritance</span><small>Foreign resource cache</small></a></li>
+      <li>
+        <a
+          class="ide-contextLink {% if requested_tab == 'workbench' and current_workbench_mode == 'anthology' %}is-active{% endif %}"
+          href="/portal/system?tab=workbench&amp;workbench=anthology"
+          ><span>Anthology</span><small>Graph · anthology.json</small></a
+        >
+      </li>
+      <li>
+        <a
+          class="ide-contextLink {% if requested_tab == 'workbench' and current_workbench_mode == 'resources' %}is-active{% endif %}"
+          href="/portal/system?tab=workbench&amp;workbench=resources"
+          ><span>Resources</span><small>Canonical JSON workbench</small></a
+        >
+      </li>
     </ul>
-    <div id="dtSystemContext" class="data-tool__systemContext" aria-label="Datum search and compact scope controls">
-      {% if current_tab == 'workbench' %}
-      <div class="data-tool__controlRow data-tool__controlRow--wrap">
-        <a class="ide-contextLink {% if current_workbench_mode == 'anthology' %}is-active{% endif %}" href="/portal/system?tab=workbench&workbench=anthology"><span>Anthology surface</span><small>Canonical anthology.json</small></a>
-        <a class="ide-contextLink {% if current_workbench_mode == 'resources' %}is-active{% endif %}" href="/portal/system?tab=workbench&workbench=resources"><span>Resource workbench</span><small>anthology / TXA / MSN files</small></a>
+    {% if current_tab == 'workbench' and current_workbench_mode == 'resources' %}
+    <section class="ide-contextSection" id="systemResourceFileSection" aria-label="Resource files">
+      <header class="ide-contextTitle">Resource Files</header>
+      <p id="systemResourceFileSummary" class="ide-contextEmpty">Choose the active resource JSON file for the workbench.</p>
+      <div id="systemResourceFileList" class="system-sidebar__resourceList" aria-live="polite"></div>
+    </section>
+    <section class="ide-contextSection" id="systemShellSelectionSection" aria-label="Workbench selection">
+      <header class="ide-contextTitle">Selection</header>
+      <div id="systemSelectionSummary" class="ide-contextEmpty">Select a resource datum to activate the canonical shell.</div>
+      <div id="resourcesDatumProfile" class="data-tool__resourcesDatumProfile">
+        <p class="data-tool__empty data-tool__resourcesDatumProfilePlaceholder">No datum selected.</p>
       </div>
-      {% endif %}
-      <!-- data_tool.js (workbench tab): search / select-mode -->
+      <div class="data-tool__resourcesTaskButtons" role="toolbar" aria-label="Canonical shell verbs">
+        {% for verb in shell_verbs %}
+          <button type="button" class="data-tool__actionBtn {% if verb.active %}is-active{% endif %}" data-resources-task="{{ verb.verb }}" data-shell-verb="{{ verb.verb }}">{{ verb.label }}</button>
+        {% endfor %}
+      </div>
+      <div id="systemSourceScopeSummary" class="data-tool__legendText">Source and scope details appear here.</div>
+      <div id="systemCompatibleTools" class="ide-contextList" aria-live="polite"></div>
+      <div class="data-tool__controlRow data-tool__controlRow--wrap">
+        <button type="button" id="systemAgroOpenBtn">Open AGRO ERP</button>
+        <button type="button" id="systemMediationCloseBtn" hidden>Close mediation</button>
+      </div>
+    </section>
+    {% elif current_tab == 'workbench' %}
+    <div id="dtSystemContext" class="data-tool__systemContext" aria-label="Datum search and compact scope controls">
+      <!-- data_tool.js: search / select-mode -->
     </div>
+    {% endif %}
   </section>
 {% endblock %}
 
 {% block body %}
   {# Section navigation lives only in the context sidebar — no duplicate body tabs. #}
-  <div class="system-center-workspace" data-system-tab="{{ current_tab }}">
-  {% if current_tab == "local_resources" %}
-    <div id="lrWorkbenchRoot" class="lr-workbench lr-workbench--shell">
-      <div class="lr-workbench__layout lr-workbench__layout--centerOnly">
-        <aside class="card lr-workbench__col lr-workbench__col--inventory">
-          <div class="card__body">
-            <div class="data-tool__controlRow">
-              <button type="button" id="lrBtnReload">Refresh lists</button>
-            </div>
-            <label class="lr-workbench__searchLabel" for="lrInventorySearch">Filter</label>
-            <input type="search" id="lrInventorySearch" class="lr-workbench__search" placeholder="resource_id…" autocomplete="off" />
-            <div id="lrInventoryList" class="lr-workbench__inventoryList" role="list"></div>
-          </div>
-        </aside>
-        <section class="card lr-workbench__col lr-workbench__col--center">
-          <div class="card__body">
-            <div class="lr-workbench__titleRow lr-workbench__titleRow--compact">
-              <span id="lrResourceTitle" class="lr-workbench__resourceTitle">Select a resource file</span>
-              <span id="lrBadgeStaged" class="lr-workbench__stagedBadge" hidden>staged</span>
-            </div>
-            <p id="lrCanonicalPath" class="lr-workbench__canonicalPath" hidden></p>
-            <p class="lr-workbench__kindRow"><span id="lrKindChip" class="lr-workbench__kindChip" hidden></span></p>
-            <p id="lrStatusBar" class="lr-workbench__status" aria-live="polite"></p>
-            <div class="lr-workbench__tabs" role="tablist">
-              <button type="button" class="lr-workbench__tab is-active" data-lr-tab="workspace" id="lrTabWorkspace" role="tab">Workspace</button>
-              <button type="button" class="lr-workbench__tab" data-lr-tab="structured" id="lrTabStructured" role="tab">Structured</button>
-              <button type="button" class="lr-workbench__tab" data-lr-tab="raw" id="lrTabRaw" role="tab">Raw JSON</button>
-              <button type="button" class="lr-workbench__tab" data-lr-tab="staged" id="lrTabStaged" role="tab" disabled>Staged</button>
-            </div>
-            <div id="lrPanelWorkspace" data-lr-panel="workspace" class="lr-workbench__panel" role="tabpanel">
-              <div id="lrWorkspaceMount"></div>
-            </div>
-            <div id="lrPanelStructured" data-lr-panel="structured" class="lr-workbench__panel" role="tabpanel" hidden>
-              <div id="lrStructuredMount"></div>
-            </div>
-            <div id="lrPanelRaw" data-lr-panel="raw" class="lr-workbench__panel" role="tabpanel" hidden>
-              <details class="data-tool__advanced">
-                <summary>Advanced: storage path</summary>
-                <p class="data-tool__legendText">Body written to <code>sandbox/resources/&lt;id&gt;.json</code> on <strong>Save</strong>.</p>
-              </details>
-              <label for="lrRawEditor" class="lr-workbench__editorLabel">Resource JSON body</label>
-              <textarea id="lrRawEditor" class="lr-workbench__editor jsonblock" rows="22" spellcheck="false"></textarea>
-            </div>
-            <div id="lrPanelStaged" data-lr-panel="staged" class="lr-workbench__panel" role="tabpanel" hidden>
-              <p class="data-tool__legendText">Staging snapshot (<code>sandbox/staging/*.stage.json</code>).</p>
-              <textarea id="lrStagedEditor" class="lr-workbench__editor jsonblock" rows="14" readonly spellcheck="false"></textarea>
-            </div>
-            <div class="data-tool__controlRow lr-workbench__actions">
-              <button type="button" id="lrBtnSave">Save</button>
-              <button type="button" id="lrBtnStage">Stage current JSON</button>
-              <button type="button" id="lrBtnCompile">Compile</button>
-            </div>
-            <div class="data-tool__controlRow lr-workbench__actions lr-workbench__samrasActionRow" id="lrSamrasActionRow" hidden>
-              <button type="button" id="lrBtnPromoteSamras">Promote SAMRAS staged titles</button>
-              <button type="button" id="lrBtnClearSamrasStaged">Clear session SAMRAS staging</button>
-            </div>
-          </div>
-        </section>
+  <div
+    class="system-center-workspace"
+    data-system-tab="{{ current_tab }}"
+    data-system-workbench-mode="{{ current_workbench_mode }}"
+    data-system-requested-tab="{{ requested_tab }}"
+    data-system-compat-view="{{ compatibility_view }}"
+    data-system-empty-selection="{% if current_workbench_mode == 'resources' %}Select a resource datum to activate the canonical shell.{% else %}Select a datum to activate the canonical shell.{% endif %}"
+    data-system-empty-source-scope="{% if current_workbench_mode == 'resources' %}Source, scope, and resource provenance appear here.{% else %}Source and scope details appear here.{% endif %}"
+  >
+  {% if current_tab == "workbench" and data_home_available is defined and data_home_available %}
+    <section id="systemMediationWorkbench" class="card system-mediation-workbench" hidden>
+      <div class="card__body">
+        <div class="card__kicker" id="systemMediationKicker">Mediation Workspace</div>
+        <div class="card__title" id="systemMediationTitle">Compatible mediation</div>
+        <p id="systemMediationMeta" class="data-tool__legendText">Select a context or open a config-bound tool workspace.</p>
+        <div id="systemMediationModes" class="data-tool__controlRow data-tool__controlRow--wrap"></div>
+        <div id="systemMediationBody"></div>
       </div>
-      <details class="card lr-workbench__advanced">
-        <summary>Advanced: index JSON, MSS, migration</summary>
-        <div class="lr-workbench__advancedGrid">
-          <article class="card lr-workbench__advancedCard">
-            <div class="card__body">
-              <div class="data-tool__controlRow">
-                <button type="button" id="localResourcesMigrateBtn">Migrate Legacy SAMRAS</button>
-              </div>
-              <pre class="jsonblock lr-workbench__miniPre" id="localResourcesJson">{}</pre>
-            </div>
-          </article>
-          <article class="card lr-workbench__advancedCard">
-            <div class="card__body">
-              <div class="data-tool__controlRow">
-                <button type="button" id="sandboxRefreshBtn">Refresh lists</button>
-                <button type="button" id="sandboxMigrateDryRunBtn">FND SAMRAS migration (dry run)</button>
-              </div>
-              <label for="sandboxMssRefs"><strong>MSS selected_refs</strong></label>
-              <textarea id="sandboxMssRefs" class="jsonblock" rows="3">1-1-1</textarea>
-              <label for="sandboxMssBitstring"><strong>MSS bitstring (decode)</strong></label>
-              <textarea id="sandboxMssBitstring" class="jsonblock" rows="3"></textarea>
-              <div class="data-tool__controlRow">
-                <button type="button" id="sandboxMssCompileBtn">Compile MSS</button>
-                <button type="button" id="sandboxMssDecodeBtn">Decode MSS</button>
-              </div>
-            </div>
-          </article>
-        </div>
-        <div class="card__body">
-          <pre class="jsonblock" id="sandboxResultJson">{}</pre>
-        </div>
-      </details>
-    </div>
-  {% elif current_tab == "inheritance" %}
-    <div id="inhWorkbenchRoot" class="inh-workbench inh-workbench--shell">
-      <div class="inh-workbench__layout inh-workbench__layout--twoCol">
-        <aside class="card inh-workbench__col inh-workbench__col--sources">
-          <div class="card__body">
-            <div class="data-tool__controlRow">
-              <button type="button" id="inheritanceRefreshBtn">Refresh</button>
-            </div>
-            <label class="lr-workbench__searchLabel" for="inheritanceSourceFilter">Filter sources</label>
-            <input type="search" id="inheritanceSourceFilter" class="lr-workbench__search" placeholder="msn_id…" autocomplete="off" />
-            <div id="inheritanceSourceList" class="inh-workbench__sourceList" role="list"></div>
-          </div>
-        </aside>
-        <section class="card inh-workbench__col inh-workbench__col--center">
-          <div class="card__body">
-            <div class="inh-workbench__centerHead" id="inheritanceCenterTitle">Select a source</div>
-            <div id="inheritanceSelectedSummary" class="inh-workbench__selectedSummary" hidden></div>
-            <div id="inheritanceResourceList" class="inh-workbench__resourceList" role="list"></div>
-          </div>
-        </section>
-      </div>
-      <details class="card lr-workbench__advanced">
-        <summary>Advanced: raw inherited index JSON</summary>
-        <div class="card__body">
-          <pre class="jsonblock" id="inheritanceResourcesJson">{}</pre>
-        </div>
-      </details>
-    </div>
-  {% elif data_home_available is defined and data_home_available %}
+    </section>
     {% include "tools/partials/data_tool_shell.html" %}
   {% else %}
     <article class="card">
@@ -247,12 +184,7 @@
 
 {% block scripts %}
   {% if data_home_available is defined and data_home_available %}
+    <script src="/portal/static/shared/system_shell_runtime.js"></script>
     <script src="/portal/static/tools/data_tool.js"></script>
-  {% endif %}
-  {% if current_tab == "local_resources" %}
-    <script src="/portal/static/tools/local_resources_workbench.js"></script>
-  {% endif %}
-  {% if current_tab == "inheritance" %}
-    <script src="/portal/static/tools/inheritance_workbench.js"></script>
   {% endif %}
 {% endblock %}

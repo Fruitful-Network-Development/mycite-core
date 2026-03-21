@@ -25,6 +25,8 @@ from portal.api.progeny_workbench import register_progeny_workbench_routes
 from portal.api.request_log import register_request_log_routes
 from portal.api.tenant_progeny import register_tenant_progeny_routes
 from portal.api.website_analytics import register_website_analytics_routes
+from _shared.portal.application.runtime.instance_context import build_instance_context_from_env
+from _shared.portal.application.shell.contracts import build_shell_verbs_payload
 from portal.core_services.runtime import (
     active_service_from_path,
     build_network_cards,
@@ -123,6 +125,7 @@ PRIVATE_DIR = Path(os.environ.get("PRIVATE_DIR", str(BASE_DIR / "private")))
 DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR / "data")))
 FALLBACK_DIR = BASE_DIR
 ICONS_DIR = REPO_ROOT / "assets" / "icons"
+SHARED_UI_STATIC_DIR = REPO_ROOT / "_shared" / "portal" / "ui" / "static"
 PORTAL_INSTANCE_ID = str(os.environ.get("PORTAL_INSTANCE_ID") or "fnd").strip().lower()
 FND_MSN_ID = "3-2-3-17-77-1-6-4-1-4"
 TFF_MSN_ID = "3-2-3-17-77-2-6-3-1-6"
@@ -488,6 +491,22 @@ def _field_names_for_alias(alias_payload: Dict[str, Any]) -> list[str]:
 
 
 MSN_ID = _infer_local_msn_id()
+PORTAL_INSTANCE_CONTEXT = build_instance_context_from_env(
+    default_portals_root=REPO_ROOT,
+    default_public_dir=PUBLIC_DIR,
+    default_private_dir=PRIVATE_DIR,
+    default_data_dir=DATA_DIR,
+    default_portal_instance_id=PORTAL_INSTANCE_ID,
+    default_portal_runtime_flavor="fnd",
+    default_portal_entry_path="",
+    default_embed_port=KNOWN_EMBED_PORT_BY_MSN.get(MSN_ID, "5101"),
+)
+REPO_ROOT = PORTAL_INSTANCE_CONTEXT.portals_root
+PUBLIC_DIR = PORTAL_INSTANCE_CONTEXT.public_dir
+PRIVATE_DIR = PORTAL_INSTANCE_CONTEXT.private_dir
+DATA_DIR = PORTAL_INSTANCE_CONTEXT.data_dir
+PORTAL_INSTANCE_ID = PORTAL_INSTANCE_CONTEXT.portal_instance_id or PORTAL_INSTANCE_ID
+MSN_ID = PORTAL_INSTANCE_CONTEXT.msn_id or MSN_ID
 
 
 ACTIVE_PRIVATE_CONFIG = load_active_private_config(PRIVATE_DIR, MSN_ID or None)
@@ -528,6 +547,7 @@ app.config["MYCITE_PORTAL_INSTANCE_ID"] = PORTAL_INSTANCE_ID
 app.config["MYCITE_MSN_ID"] = MSN_ID
 app.config["MYCITE_DATA_WORKSPACE"] = DATA_WORKSPACE
 app.config["MYCITE_RUNTIME_CONFIG"] = RUNTIME_CONFIG
+app.config["MYCITE_PORTAL_INSTANCE_CONTEXT"] = PORTAL_INSTANCE_CONTEXT
 DATA_HOME_TEMPLATE = BASE_DIR / "portal" / "ui" / "templates" / "tools" / "data_tool_home.html"
 DATA_HOME_AVAILABLE = DATA_HOME_TEMPLATE.exists()
 HOME_TAB_IDS = ("portal", "data", "tools", "vault")
@@ -645,6 +665,18 @@ def _normalize_system_workbench_mode(raw: Any) -> str:
     return token if token in {"anthology", "resources"} else "anthology"
 
 
+def _system_render_state(system_tab: str, workbench_mode: str) -> tuple[str, str, str, str]:
+    requested_tab = _normalize_system_query_tab(system_tab)
+    normalized_workbench_mode = _normalize_system_workbench_mode(workbench_mode)
+    shell_tab = requested_tab
+    compatibility_view = ""
+    if requested_tab in {"local_resources", "inheritance"}:
+        shell_tab = "workbench"
+        normalized_workbench_mode = "resources"
+        compatibility_view = requested_tab
+    return requested_tab, shell_tab, normalized_workbench_mode, compatibility_view
+
+
 def _utility_tool_items() -> list[Dict[str, Any]]:
     seen: set[str] = set()
     out: list[Dict[str, Any]] = []
@@ -660,6 +692,7 @@ def _utility_tool_items() -> list[Dict[str, Any]]:
 
 _ACTIVITY_TOOL_PRESENTATION: Dict[str, Dict[str, str]] = {
     "data_tool": {"label": "Data Tool", "icon": "/portal/static/icons/ui/data.svg"},
+    "agro_erp": {"label": "AGRO ERP", "icon": "/portal/static/icons/ui/launch.svg"},
     "tenant_progeny_profiles": {"label": "Profiles", "icon": "/portal/static/icons/progeny.svg"},
     "fnd_provisioning": {"label": "Provision", "icon": "/portal/static/icons/ui/launch.svg"},
     "paypal_tenant_actions": {"label": "PayPal Mbr", "icon": "/portal/static/icons/logos/paypal.svg"},
@@ -1068,6 +1101,18 @@ def _tool_shell_context() -> Dict[str, Any]:
         switch_portal_url=switch_portal_url,
         current_path=current_path,
         context_sidebar_sections=_context_sidebar_sections(active_service),
+        shell_verbs=build_shell_verbs_payload("navigate"),
+        portal_instance_context={
+            "portals_root": str(PORTAL_INSTANCE_CONTEXT.portals_root),
+            "public_dir": str(PORTAL_INSTANCE_CONTEXT.public_dir),
+            "private_dir": str(PORTAL_INSTANCE_CONTEXT.private_dir),
+            "data_dir": str(PORTAL_INSTANCE_CONTEXT.data_dir),
+            "portal_instance_id": PORTAL_INSTANCE_CONTEXT.portal_instance_id,
+            "portal_runtime_flavor": PORTAL_INSTANCE_CONTEXT.portal_runtime_flavor,
+            "msn_id": PORTAL_INSTANCE_CONTEXT.msn_id,
+            "portal_entry_path": PORTAL_INSTANCE_CONTEXT.portal_entry_path,
+            "default_embed_port": PORTAL_INSTANCE_CONTEXT.default_embed_port,
+        },
     )
 
 
@@ -1106,6 +1151,23 @@ def portal_static_icons(relpath: str):
     except Exception:
         abort(404)
     return send_from_directory(ICONS_DIR, resolved.relative_to(ICONS_DIR.resolve()).as_posix(), mimetype="image/svg+xml")
+
+
+@app.get("/portal/static/shared/<path:relpath>")
+def portal_static_shared(relpath: str):
+    token = str(relpath or "").strip().replace("\\", "/")
+    rel = Path(token)
+    if not token or rel.is_absolute() or ".." in rel.parts:
+        abort(404)
+    try:
+        root = SHARED_UI_STATIC_DIR.resolve()
+        candidate = (SHARED_UI_STATIC_DIR / rel).resolve()
+        candidate.relative_to(root)
+    except Exception:
+        abort(404)
+    if not candidate.exists() or not candidate.is_file():
+        abort(404)
+    return send_from_directory(SHARED_UI_STATIC_DIR, relpath)
 
 
 @app.get("/healthz")
@@ -1154,18 +1216,24 @@ def _tools_by_mount_target(mount_target: str) -> list[Dict[str, Any]]:
 
 
 def _render_portal_system(*, system_tab: str, workbench_mode: str = "anthology"):
+    requested_tab, shell_tab, normalized_workbench_mode, compatibility_view = _system_render_state(
+        system_tab, workbench_mode
+    )
     aliases = list_aliases_for_sidebar(PRIVATE_DIR)
     profile_model = _portal_profile_model()
     return render_template(
         "services/system.html",
         aliases=aliases,
         msn_id=MSN_ID,
-        system_tab=system_tab,
-        system_workbench_mode=_normalize_system_workbench_mode(workbench_mode),
-        system_tabs=build_system_tabs(system_tab),
+        system_tab=shell_tab,
+        system_requested_tab=requested_tab,
+        system_compatibility_view=compatibility_view,
+        system_workbench_mode=normalized_workbench_mode,
+        system_tabs=build_system_tabs(requested_tab),
         data_home_available=DATA_HOME_AVAILABLE,
         portal_profile=profile_model,
         system_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
+        portal_instance_context=PORTAL_INSTANCE_CONTEXT,
     )
 
 
@@ -1961,6 +2029,8 @@ register_data_workspace_routes(
     active_config_provider=_load_active_config_for_write,
     active_config_saver=_save_active_config_for_write,
     private_dir=PRIVATE_DIR,
+    tool_tabs=TOOL_TABS,
+    portal_instance_context=PORTAL_INSTANCE_CONTEXT,
     include_home_redirect=False,
     include_legacy_shims=False,
 )

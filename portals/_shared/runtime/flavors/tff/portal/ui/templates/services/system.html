@@ -19,7 +19,7 @@
   {% set page_subtitle = "Inherited resources by source" %}
 {% elif current_tab == "workbench" %}
   {% if current_workbench_mode == "resources" %}
-    {% set page_subtitle = "Resource workbench (anthology / TXA / MSN JSON files)" %}
+    {% set page_subtitle = "Resources · SAMRAS TXA / MSN canonical files" %}
   {% else %}
     {% set page_subtitle = "Anthology (anthology.json) · shared SAMRAS workspace" %}
   {% endif %}
@@ -28,6 +28,8 @@
 {% block ide_shell_extra_class %} ide-shell--portal-system{% endblock %}
 
 {% block viewport_class %}viewport--system{% endblock %}
+
+{% block header %}{% endblock %}
 
 {% block inspector_content %}
   <div id="systemShellInspectorRoot" class="system-shell-inspector" data-system-tab="{{ current_tab }}">
@@ -40,9 +42,36 @@
       </div>
       <div id="systemInspectorPanelTxa" class="system-inspector-panel" data-system-inspector-panel="txa" hidden></div>
       <div id="systemInspectorPanelResources" class="system-inspector-panel" data-system-inspector-panel="resources" {% if current_workbench_mode != "resources" %}hidden{% endif %}>
-        <div class="ide-inspector__moduleKicker">Resource row</div>
-        <div class="ide-inspector__moduleTitle">Select a row from the table</div>
-        <div id="dtResourcesInspectorMount" class="data-tool__anthologyInvMount"></div>
+        <div class="ide-inspector__moduleKicker" id="dtResourcesInspectorKicker">Resources</div>
+        <div class="ide-inspector__moduleTitle" id="dtResourcesInspectorTitle">Inspector</div>
+        <p id="dtResourcesInspectorEmpty" class="data-tool__empty">Select a resource datum in the center table.</p>
+        <div id="dtResourcesInspectorStack" class="data-tool__resourcesInspectorStack" hidden>
+          <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="navigate" hidden>
+            <h3 class="data-tool__resourcesInspectorHeading">Navigate · datum family</h3>
+            <div id="dtResourcesNavigateBody" class="data-tool__resourcesInspectorBody"></div>
+          </section>
+          <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="investigate" hidden>
+            <h3 class="data-tool__resourcesInspectorHeading">Investigate · abstraction path</h3>
+            <div id="dtResourcesInvestigateBody" class="data-tool__resourcesInspectorBody"></div>
+          </section>
+          <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="mediate" hidden>
+            <h3 class="data-tool__resourcesInspectorHeading">Mediate · SAMRAS addresses</h3>
+            <div class="data-tool__controlRow data-tool__controlRow--wrap">
+              <label class="data-tool__growLabel">
+                <span>Lens</span>
+                <select id="dtResourcesMediateLens" aria-label="Mediation lens">
+                  <option value="default" selected>default</option>
+                  <option value="ascii">ascii</option>
+                </select>
+              </label>
+            </div>
+            <div id="dtResourcesMediateBody" class="data-tool__resourcesInspectorBody"></div>
+          </section>
+          <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="manipulate" hidden>
+            <h3 class="data-tool__resourcesInspectorHeading">Manipulate · datum edit</h3>
+            <div id="dtResourcesManipulateMount" class="data-tool__resourcesInspectorBody"></div>
+          </section>
+        </div>
       </div>
     {% elif current_tab == "local_resources" %}
       <div class="lr-workbench__inspectorShell">
@@ -84,19 +113,41 @@
   <section class="ide-contextSection">
     <header class="ide-contextTitle">System Views</header>
     <ul class="ide-contextList">
-      <li><a class="ide-contextLink {% if current_tab == 'workbench' %}is-active{% endif %}" href="/portal/system?tab=workbench"><span>Anthology Workbench</span><small>Graph navigation</small></a></li>
+      <li>
+        <a
+          class="ide-contextLink {% if current_tab == 'workbench' and current_workbench_mode == 'anthology' %}is-active{% endif %}"
+          href="/portal/system?tab=workbench&amp;workbench=anthology"
+          ><span>Anthology</span><small>Graph · anthology.json</small></a
+        >
+      </li>
+      <li>
+        <a
+          class="ide-contextLink {% if current_tab == 'workbench' and current_workbench_mode == 'resources' %}is-active{% endif %}"
+          href="/portal/system?tab=workbench&amp;workbench=resources"
+          ><span>Resources</span><small>TXA / MSN explorer</small></a
+        >
+      </li>
       <li><a class="ide-contextLink {% if current_tab == 'local_resources' %}is-active{% endif %}" href="/portal/system?tab=local_resources"><span>Local Resources</span><small>Draft, compile, publish</small></a></li>
       <li><a class="ide-contextLink {% if current_tab == 'inheritance' %}is-active{% endif %}" href="/portal/system?tab=inheritance"><span>Inheritance</span><small>Foreign resource cache</small></a></li>
     </ul>
-    <div id="dtSystemContext" class="data-tool__systemContext" aria-label="Datum search and compact scope controls">
-      {% if current_tab == 'workbench' %}
-      <div class="data-tool__controlRow data-tool__controlRow--wrap">
-        <a class="ide-contextLink {% if current_workbench_mode == 'anthology' %}is-active{% endif %}" href="/portal/system?tab=workbench&workbench=anthology"><span>Anthology surface</span><small>Canonical anthology.json</small></a>
-        <a class="ide-contextLink {% if current_workbench_mode == 'resources' %}is-active{% endif %}" href="/portal/system?tab=workbench&workbench=resources"><span>Resource workbench</span><small>anthology / TXA / MSN files</small></a>
+    {% if current_tab == 'workbench' and current_workbench_mode == 'resources' %}
+    <section class="ide-contextSection" id="resourcesTaskSection" aria-label="Resources task controls">
+      <header class="ide-contextTitle">Resources task</header>
+      <div id="resourcesDatumProfile" class="data-tool__resourcesDatumProfile">
+        <p class="data-tool__empty data-tool__resourcesDatumProfilePlaceholder">No datum selected.</p>
       </div>
-      {% endif %}
-      <!-- data_tool.js (workbench tab): search / select-mode -->
+      <div class="data-tool__resourcesTaskButtons" role="toolbar" aria-label="Resources tasks">
+        <button type="button" class="data-tool__actionBtn" data-resources-task="navigate">Navigate</button>
+        <button type="button" class="data-tool__actionBtn" data-resources-task="investigate">Investigate</button>
+        <button type="button" class="data-tool__actionBtn" data-resources-task="mediate">Mediate</button>
+        <button type="button" class="data-tool__actionBtn" data-resources-task="manipulate">Manipulate</button>
+      </div>
+    </section>
+    {% elif current_tab == 'workbench' %}
+    <div id="dtSystemContext" class="data-tool__systemContext" aria-label="Datum search and compact scope controls">
+      <!-- data_tool.js: search / select-mode -->
     </div>
+    {% endif %}
   </section>
 {% endblock %}
 

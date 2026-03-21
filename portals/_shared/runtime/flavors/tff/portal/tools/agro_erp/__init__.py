@@ -3,12 +3,17 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from flask import Blueprint, abort, current_app, jsonify, render_template, request
+
+_FLAVOR_ROOT = Path(__file__).resolve().parents[3]
+if str(_FLAVOR_ROOT) not in sys.path:
+    sys.path.insert(0, str(_FLAVOR_ROOT))
 
 from _shared.portal.data_engine.anthology_context import build_canonical_anthology_context
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
@@ -1803,4 +1808,60 @@ def get_tool() -> dict[str, object]:
         "route_prefix": f"/portal/tools/{TOOL_ID}",
         "home_path": TOOL_HOME_PATH,
         "blueprint": TOOL_BLUEPRINT,
+        "supported_verbs": ["mediate", "investigate", "manipulate"],
+        "supported_source_contracts": [
+            {
+                "document_schema": "mycite.workbench.document.v1",
+                "family_kind": "resource",
+                "family_types": ["samras_txa", "samras_msn", "txa", "msn"],
+                "scope_kinds": ["local", "inherited", "sandbox"],
+                "row_file_keys": ["txa", "msn"],
+            },
+            {
+                "document_schema": "mycite.workbench.document.v1",
+                "family_kind": "anthology",
+                "scope_kinds": ["anthology"],
+            },
+            {
+                "config_context": True,
+            },
+        ],
+        "config_context_support": True,
+        "source_resolution_rules": [
+            "explicit_config_binding",
+            "auto_discovery_when_allowed",
+            "kind_schema_validation",
+        ],
+        "workbench_contribution": {
+            "workspace_id": "agro_erp",
+            "label": "AGRO ERP mediation",
+            "default_mode": "taxonomy",
+            "modes": [
+                "taxonomy_browse",
+                "supplier_browse",
+                "product_profile_compose",
+                "supply_log_compose",
+                "preview_apply",
+            ],
+            "activation_route": "/portal/api/data/system/config_context/agro_erp",
+        },
+        "inspector_card_contribution": {
+            "card_id": "agro_erp",
+            "label": "AGRO ERP binding state",
+            "config_context_route": "/portal/api/data/system/config_context/agro_erp",
+        },
+        "mutation_policy": {
+            "binding_truth": "config",
+            "browse_truth": "inherited_resources",
+            "sandbox_truth": "reduced_local_staging",
+            "anthology_truth": "semantic_minimum_commit",
+        },
+        "preview_hooks": {
+            "product_profile": "/portal/tools/agro_erp/mvp/product/preview",
+            "supply_log": "/portal/tools/agro_erp/mvp/invoice/preview",
+        },
+        "apply_hooks": {
+            "product_profile": "/portal/tools/agro_erp/mvp/product/apply",
+            "supply_log": "/portal/tools/agro_erp/mvp/invoice/apply",
+        },
     }

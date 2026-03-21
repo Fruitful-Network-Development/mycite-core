@@ -35,25 +35,91 @@
     sourceFilter: document.getElementById("inheritanceSourceFilter"),
     resourceList: document.getElementById("inheritanceResourceList"),
     centerTitle: document.getElementById("inheritanceCenterTitle"),
-    selectedSummary: document.getElementById("inheritanceSelectedSummary"),
-    inspectorEmpty: document.getElementById("inheritanceInspectorEmpty"),
-    inspectorDetail: document.getElementById("inheritanceInspectorDetail"),
+    detailMount: document.getElementById("inheritanceCompatibilityDetailMount"),
     rawPre: document.getElementById("inheritanceResourcesJson"),
-    statusPre: document.getElementById("inheritanceStatusJson"),
     refreshBtn: document.getElementById("inheritanceRefreshBtn"),
-    sourceMsn: document.getElementById("inheritanceSourceMsn"),
-    contractId: document.getElementById("inheritanceContractId"),
-    resourceId: document.getElementById("inheritanceResourceId"),
-    refreshSingle: document.getElementById("inheritanceRefreshSingleBtn"),
-    refreshSource: document.getElementById("inheritanceRefreshSourceBtn"),
-    disconnect: document.getElementById("inheritanceDisconnectBtn"),
   };
 
   var state = {
     payload: null,
     selectedSource: "",
     selectedResourceId: "",
+    lastActionStatus: {},
   };
+
+  function compatibilityRuntime() {
+    var runtime = window.MyCiteSystemCompatibilityRuntime;
+    return runtime && typeof runtime === "object" ? runtime : null;
+  }
+
+  function compatibilityViews() {
+    var views = window.MyCiteSystemCompatibilityViews;
+    return views && typeof views === "object" ? views : null;
+  }
+
+  function inheritanceCompatibilityVerb() {
+    return "investigate";
+  }
+
+  function documentsList() {
+    var docs = state.payload && state.payload.documents;
+    return Array.isArray(docs) ? docs : [];
+  }
+
+  function documentForSelection(picked) {
+    if (!picked || typeof picked !== "object") return null;
+    var rid = String(picked.resource_id || "").trim();
+    var source = String(picked.source_msn_id || state.selectedSource || "").trim();
+    var docs = documentsList();
+    for (var i = 0; i < docs.length; i++) {
+      var doc = docs[i];
+      if (!doc || typeof doc !== "object") continue;
+      var identity = doc.identity && typeof doc.identity === "object" ? doc.identity : {};
+      var provenance = doc.provenance && typeof doc.provenance === "object" ? doc.provenance : {};
+      var logicalKey = String(identity.logical_key || "").trim();
+      var sourceRid = String(provenance.source_resource_id || "").trim();
+      var sourceMsn = String(provenance.source_msn_id || "").trim();
+      if ((logicalKey === rid || sourceRid === rid) && (!source || !sourceMsn || sourceMsn === source)) {
+        return doc;
+      }
+    }
+    return null;
+  }
+
+  function emitCompatibilityWorkbenchMode() {
+    var runtime = compatibilityRuntime();
+    if (!runtime || typeof runtime.emitWorkbenchMode !== "function") return;
+    runtime.setCurrentVerb(inheritanceCompatibilityVerb(), { silent: true });
+    runtime.emitWorkbenchMode({
+      current_verb: inheritanceCompatibilityVerb(),
+    });
+  }
+
+  function emitCompatibilityWorkbenchPayload(payload) {
+    var runtime = compatibilityRuntime();
+    if (!runtime || typeof runtime.emitWorkbenchPayload !== "function") return;
+    runtime.setCurrentVerb(inheritanceCompatibilityVerb(), { silent: true });
+    runtime.emitWorkbenchPayload(payload || {}, {
+      current_verb: inheritanceCompatibilityVerb(),
+    });
+  }
+
+  function emitSelectionContext(picked) {
+    var documentPayload = documentForSelection(picked);
+    if (!documentPayload) return;
+    var runtime = compatibilityRuntime();
+    if (!runtime || typeof runtime.emitSelectionInput !== "function") return;
+    runtime.setCurrentVerb(inheritanceCompatibilityVerb(), { silent: true });
+    runtime.emitSelectionInput({
+      document: documentPayload,
+      selected_row: {
+        identifier: String((picked && picked.resource_id) || "").trim(),
+        label: String((picked && (picked.resource_name || picked.resource_id)) || "").trim(),
+        source: "inherited_resource",
+      },
+      current_verb: inheritanceCompatibilityVerb(),
+    });
+  }
 
   function groupedMap() {
     var g = state.payload && state.payload.grouped_by_source;
@@ -88,10 +154,10 @@
         btn.addEventListener("click", function () {
           state.selectedSource = src;
           state.selectedResourceId = "";
-          syncFormFromSelection();
+          emitCompatibilityWorkbenchMode();
           renderSources();
           renderResources();
-          renderInspector();
+          renderCompatibilityDetail();
         });
         el.sourceList.appendChild(btn);
       });
@@ -101,28 +167,6 @@
       p.textContent = "No inherited resources in index.";
       el.sourceList.appendChild(p);
     }
-  }
-
-  function renderSelectedSummary(picked) {
-    if (!el.selectedSummary) return;
-    if (!picked) {
-      el.selectedSummary.hidden = true;
-      el.selectedSummary.innerHTML = "";
-      return;
-    }
-    el.selectedSummary.hidden = false;
-    var name = String(picked.resource_name || picked.resource_id || "").trim();
-    var rid = String(picked.resource_id || "").trim();
-    el.selectedSummary.innerHTML =
-      '<div class="inh-workbench__summaryCard">' +
-      "<strong>" +
-      esc(name || rid || "Resource") +
-      "</strong>" +
-      '<div class="inh-workbench__summaryMeta"><code>' +
-      esc(rid) +
-      "</code></div>" +
-      '<p class="data-tool__legendText">Use the inspector for refresh/disconnect and contract fields.</p>' +
-      "</div>";
   }
 
   function renderResources() {
@@ -152,9 +196,9 @@
         "</code></span>";
       btn.addEventListener("click", function () {
         state.selectedResourceId = rid;
-        syncFormFromSelection();
+        emitCompatibilityWorkbenchMode();
         renderResources();
-        renderInspector();
+        renderCompatibilityDetail();
       });
       el.resourceList.appendChild(btn);
     });
@@ -164,118 +208,62 @@
       empty.textContent = "No resources for this source.";
       el.resourceList.appendChild(empty);
     }
-    var picked0 =
-      list.find(function (r) {
-        return r && String(r.resource_id || "").trim() === state.selectedResourceId;
-      }) || null;
-    renderSelectedSummary(picked0);
   }
 
-  function renderInspector() {
+  function selectedResource() {
     var map = groupedMap();
     var list = Array.isArray(map[state.selectedSource]) ? map[state.selectedSource] : [];
-    var picked =
+    return (
       list.find(function (r) {
         return r && String(r.resource_id || "").trim() === state.selectedResourceId;
-      }) || null;
-    if (!el.inspectorEmpty || !el.inspectorDetail) return;
-    if (!picked) {
-      el.inspectorEmpty.hidden = false;
-      el.inspectorDetail.hidden = true;
-      el.inspectorDetail.innerHTML = "";
-      renderSelectedSummary(null);
-      return;
-    }
-    el.inspectorEmpty.hidden = true;
-    el.inspectorDetail.hidden = false;
-    var actions =
-      '<div class="data-tool__controlRow data-tool__controlRow--wrap inh-workbench__inspectorActions">' +
-      '<button type="button" class="js-inh-refresh-one">Refresh this resource</button>' +
-      "</div>";
-    var lines = [
-      actions,
-      "<p><strong>Display name</strong><br/>" + esc(String(picked.resource_name || picked.resource_id || "")) + "</p>",
-      "<p><strong>resource_id</strong><br/><code>" + esc(String(picked.resource_id || "")) + "</code></p>",
-      "<p><strong>source_msn_id</strong><br/><code>" + esc(String(picked.source_msn_id || state.selectedSource || "")) + "</code></p>",
-    ];
-    if (picked.contract_id) {
-      lines.push("<p><strong>contract_id</strong><br/><code>" + esc(String(picked.contract_id)) + "</code></p>");
-    }
-    if (picked.cache_path) {
-      lines.push(
-        '<details class="data-tool__advanced"><summary>Advanced: cache path</summary><p><code>' +
-          esc(String(picked.cache_path)) +
-          "</code></p></details>"
-      );
-    }
-    el.inspectorDetail.innerHTML = '<div class="inh-workbench__detail">' + lines.join("") + "</div>";
-    var btn = el.inspectorDetail.querySelector(".js-inh-refresh-one");
-    if (btn) {
-      btn.addEventListener("click", function () {
-        requestJson("/portal/api/data/resources/inherited/refresh", "POST", inheritanceInputs()).then(function (result) {
-          setInheritanceStatus(result.body || {});
-        });
+      }) || null
+    );
+  }
+
+  function renderCompatibilityDetail() {
+    var helper = compatibilityViews();
+    var picked = selectedResource();
+    if (helper && typeof helper.renderInheritanceDetail === "function") {
+      helper.renderInheritanceDetail({
+        mount: el.detailMount,
+        resource: picked,
+        selectedSource: state.selectedSource,
+        status: state.lastActionStatus,
+        requestJson: requestJson,
+        afterAction: function (body) {
+          state.lastActionStatus = body || {};
+          return refreshPayload();
+        },
       });
+    } else if (el.detailMount) {
+      el.detailMount.innerHTML = '<p class="data-tool__empty">Select an inherited resource.</p>';
     }
-    renderSelectedSummary(picked);
-  }
-
-  function syncFormFromSelection() {
-    if (el.sourceMsn && state.selectedSource) el.sourceMsn.value = state.selectedSource;
-    if (el.resourceId && state.selectedResourceId) el.resourceId.value = state.selectedResourceId;
-  }
-
-  function inheritanceInputs() {
-    return {
-      source_msn_id: String((el.sourceMsn && el.sourceMsn.value) || "").trim(),
-      contract_id: String((el.contractId && el.contractId.value) || "").trim(),
-      resource_id: String((el.resourceId && el.resourceId.value) || "").trim(),
-    };
-  }
-
-  function setInheritanceStatus(body) {
-    if (el.statusPre) el.statusPre.textContent = JSON.stringify(body || {}, null, 2);
-    refreshPayload();
+    if (picked) {
+      emitCompatibilityWorkbenchMode();
+      emitSelectionContext(picked);
+    }
   }
 
   function refreshPayload() {
-    requestJson("/portal/api/data/resources/inherited", "GET").then(function (result) {
+    emitCompatibilityWorkbenchMode();
+    return requestJson("/portal/api/data/resources/inherited", "GET").then(function (result) {
       state.payload = result.body || {};
       if (el.rawPre) el.rawPre.textContent = JSON.stringify(state.payload || {}, null, 2);
+      emitCompatibilityWorkbenchPayload(state.payload);
       if (!state.selectedSource) {
         var keys = Object.keys(groupedMap());
         if (keys.length === 1) state.selectedSource = keys[0];
       }
       renderSources();
       renderResources();
-      renderInspector();
+      renderCompatibilityDetail();
+      return state.payload;
     });
   }
 
   if (el.refreshBtn) el.refreshBtn.addEventListener("click", refreshPayload);
   if (el.sourceFilter) el.sourceFilter.addEventListener("input", renderSources);
 
-  if (el.refreshSingle) {
-    el.refreshSingle.addEventListener("click", function () {
-      requestJson("/portal/api/data/resources/inherited/refresh", "POST", inheritanceInputs()).then(function (result) {
-        setInheritanceStatus(result.body || {});
-      });
-    });
-  }
-  if (el.refreshSource) {
-    el.refreshSource.addEventListener("click", function () {
-      requestJson("/portal/api/data/resources/inherited/refresh_source", "POST", inheritanceInputs()).then(function (result) {
-        setInheritanceStatus(result.body || {});
-      });
-    });
-  }
-  if (el.disconnect) {
-    el.disconnect.addEventListener("click", function () {
-      requestJson("/portal/api/data/resources/inherited/disconnect_source", "POST", inheritanceInputs()).then(function (result) {
-        setInheritanceStatus(result.body || {});
-      });
-    });
-  }
-
+  emitCompatibilityWorkbenchMode();
   refreshPayload();
 })();

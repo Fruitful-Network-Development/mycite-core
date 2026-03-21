@@ -12,3 +12,10 @@
 
 # Local portal venvs
 **/.venv
+
+# OS / editor noise (many tiny files slow down COPY on some filesystems)
+**/.DS_Store
+**/Thumbs.db
+
+# Optional markdown under static icons (not needed at runtime)
+assets/icons/**/*.md

@@ -88,6 +88,26 @@ class ResourceWorkbenchVmTests(unittest.TestCase):
         self.assertGreaterEqual(len(lines), 3)
         tmp.cleanup()
 
+    def test_system_resource_workbench_samras_only_file_and_surface_keys(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        root = Path(tmp.name)
+        (root / "anthology.json").write_text("{}\n", encoding="utf-8")
+        (root / "samras-msn.json").write_text(
+            '{"rows_by_address":{"1":["Root"],"1-1":["Leaf A","Leaf B"]}}\n',
+            encoding="utf-8",
+        )
+        vm = build_system_resource_workbench_view_model(data_root=root)
+        self.assertEqual(vm.get("resource_surface_file_keys"), ["txa", "msn"])
+        maps = vm.get("samras_rows_by_address_by_file_key") or {}
+        self.assertIn("msn", maps)
+        self.assertEqual(maps["msn"].get("1"), ["Root"])
+        rows = list(vm.get("rows") or [])
+        msn_rows = [r for r in rows if r.get("file_key") == "msn"]
+        self.assertEqual(len(msn_rows), 2)
+        ids = {str(r.get("identifier")) for r in msn_rows}
+        self.assertEqual(ids, {"1", "1-1"})
+        tmp.cleanup()
+
 
 if __name__ == "__main__":
     unittest.main()

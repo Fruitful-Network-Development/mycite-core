@@ -67,30 +67,40 @@
     <div id="dtWorkspaceResources" class="data-tool__workspacePanel" data-workspace-panel="resources" hidden>
       <div class="data-tool__layout data-tool__layout--workbench">
         <div class="data-tool__main data-tool__main--workspaceOnly">
-          <section class="card data-tool__txaSandboxCard data-tool__moduleSurface">
+          <section class="data-tool__resourcesWorkbench data-tool__moduleSurface">
             <header class="data-tool__graphToolbar data-tool__graphToolbar--compact">
-              <div class="data-tool__controlRow data-tool__controlRow--wrap">
-                <button type="button" id="dtResourcesRefreshBtn">Refresh resources</button>
-                <span id="dtResourcesStatus" class="data-tool__statusText"></span>
+              <div class="data-tool__resourcesToolbar">
+                <div class="data-tool__resourcesToolbarTitle">
+                  <div class="card__kicker">Resources</div>
+                  <div class="card__title" id="dtResourcesWorkbenchTitle">samras-txa.json</div>
+                  <p id="dtResourcesWorkbenchMeta" class="data-tool__legendText">Canonical JSON workbench for shared resource files.</p>
+                </div>
+                <div class="data-tool__controlRow data-tool__controlRow--wrap">
+                  <button type="button" id="dtResourcesRefreshBtn">Refresh</button>
+                  <span id="dtResourcesStatus" class="data-tool__statusText"></span>
+                </div>
               </div>
             </header>
-            <div class="data-tool__tableWrap data-tool__txaTableWrap">
-              <table class="data-tool__table data-tool__table--compact">
-                <thead>
-                  <tr>
-                    <th scope="col">File</th>
-                    <th scope="col">Identifier</th>
-                    <th scope="col">Label / title</th>
-                    <th scope="col">Reference</th>
-                    <th scope="col">Magnitude</th>
-                    <th scope="col">Layer</th>
-                    <th scope="col">VG</th>
-                  </tr>
-                </thead>
-                <tbody id="dtResourcesTableBody"></tbody>
-              </table>
+            <div class="data-tool__workbenchGrid data-tool__resourcesGrid" data-layout-mode="table">
+              <article class="data-tool__tablePane data-tool__resourcesPane">
+                <p id="dtResourcesTableEmpty" class="data-tool__empty" hidden>No rows for this resource file.</p>
+                <div class="data-tool__tableWrap data-tool__txaTableWrap">
+                  <table class="data-tool__table data-tool__table--compact" id="dtResourcesExplorerTable">
+                    <thead>
+                      <tr>
+                        <th scope="col">Identifier</th>
+                        <th scope="col">Label / title</th>
+                        <th scope="col">Reference</th>
+                        <th scope="col">Magnitude</th>
+                        <th scope="col">Layer</th>
+                        <th scope="col">VG</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dtResourcesTableBody"></tbody>
+                  </table>
+                </div>
+              </article>
             </div>
-            <p id="dtResourcesTableEmpty" class="data-tool__empty" hidden>No resource rows loaded.</p>
             <details class="data-tool__advanced">
               <summary>Advanced: resource file status</summary>
               <pre id="dtResourcesFilesJson" class="jsonblock">{}</pre>

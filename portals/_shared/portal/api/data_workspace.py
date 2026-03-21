@@ -1,10 +1,19 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 from flask import abort, jsonify, redirect, request
+from _shared.portal.application.agro import build_agro_config_context, update_agro_config_bindings
+from _shared.portal.application.shell.runtime import build_selected_context_payload
+from _shared.portal.application.workbench.actions import WorkbenchActionService
+from _shared.portal.application.workbench.catalog import DocumentCatalogService
+from _shared.portal.application.workbench.loader import DocumentLoaderService
+from _shared.portal.application.workbench.publish import WorkbenchPublishService
+from _shared.portal.application.workbench.rules import WorkbenchRulesService
+from _shared.portal.application.workbench.sandbox_sessions import WorkbenchSandboxSessionService
 from _shared.portal.data_engine.aitas_context import (
     inspect_archetype_context,
     inspect_archetype_trace,
@@ -19,10 +28,7 @@ from _shared.portal.data_engine.inherited_contract_resources import (
 )
 from _shared.portal.data_engine.resource_registry import (
     INHERITED_SCOPE,
-    ensure_layout,
-    inherited_resources_dir,
     load_index,
-    remove_inherited_source,
 )
 from _shared.portal.data_engine.anthology_registry import load_base_registry
 from _shared.portal.data_engine.field_contracts import default_profile_field_contracts
@@ -34,8 +40,6 @@ from _shared.portal.data_engine.rules import (
     compute_next_append_datum_id,
     derive_rule_policy,
     evaluate_probe_write,
-    evaluate_resource_payload_write,
-    extract_rows_payload_from_resource_body,
     infer_reference_filter_rule_key,
     reference_filter_options,
     resolve_lens_for_datum,
@@ -47,11 +51,6 @@ from _shared.portal.sandbox import LocalResourceLifecycleService, SandboxEngine,
 from _shared.portal.sandbox.promotion_hooks import build_tool_sandbox_promotion_hooks
 from _shared.portal.sandbox.session_registry import get_tool_sandbox_session_manager
 from _shared.portal.sandbox.tool_sandbox_session import ToolSandboxRuntimeDeps, ToolSandboxSessionManager
-from _shared.portal.sandbox.resource_workbench import (
-    build_resource_workbench_view_model,
-    build_system_resource_workbench_view_model,
-    is_samras_backed_resource,
-)
 from _shared.portal.sandbox.samras_workspace_promotion import promote_staged_samras_title_entries
 from _shared.portal.sandbox.txa_sandbox_workspace import build_samras_workspace_view_model, build_txa_sandbox_view_model
 from _shared.portal.sandbox.workspace_contract import AGRO_ERP_SANDBOX_DECLARATION
@@ -69,6 +68,8 @@ def register_data_routes(
     active_config_provider: Callable[[], dict[str, Any]] | None = None,
     active_config_saver: Callable[[dict[str, Any]], bool] | None = None,
     private_dir: Path | None = None,
+    tool_tabs: list[dict[str, Any]] | None = None,
+    portal_instance_context: Any | None = None,
     include_home_redirect: bool = True,
     include_legacy_shims: bool = True,
 ) -> None:
@@ -133,6 +134,19 @@ def register_data_routes(
             return bool(active_config_saver(payload if isinstance(payload, dict) else {}))
         except Exception:
             return False
+
+    def _tool_tabs() -> list[dict[str, Any]]:
+        return [dict(item) for item in list(tool_tabs or []) if isinstance(item, dict)]
+
+    def _portal_instance_context_payload() -> dict[str, Any]:
+        if portal_instance_context is None:
+            return {}
+        if is_dataclass(portal_instance_context):
+            payload = asdict(portal_instance_context)
+            return {str(key): str(value) for key, value in payload.items()}
+        if isinstance(portal_instance_context, dict):
+            return {str(key): str(value) for key, value in portal_instance_context.items()}
+        return {}
 
     def _local_anthology_payload() -> dict[str, Any]:
         if anthology_payload_provider is None:
@@ -252,6 +266,57 @@ def register_data_routes(
             )
         return grouped
 
+    def _system_documents() -> list[dict[str, Any]]:
+        documents: list[dict[str, Any]] = []
+        for payload in (
+            _document_catalog().local_inventory_payload(),
+            _document_catalog().inherited_inventory_payload(grouped_by_source_fn=_group_inherited_index),
+            _document_catalog().sandbox_inventory_payload(),
+            _document_catalog().system_resource_workbench_payload(),
+        ):
+            for item in list(payload.get("documents") or []):
+                if isinstance(item, dict):
+                    documents.append(dict(item))
+        return documents
+
+    def _document_for_request(body: dict[str, Any]) -> dict[str, Any] | None:
+        candidate = body.get("document")
+        if isinstance(candidate, dict) and candidate:
+            return dict(candidate)
+        document_id = str(body.get("document_id") or "").strip()
+        if document_id:
+            for item in _system_documents():
+                identity = item.get("identity") if isinstance(item.get("identity"), dict) else {}
+                if str(identity.get("document_id") or "").strip() == document_id:
+                    return item
+        scope = str(body.get("scope") or "").strip().lower()
+        resource_id = str(body.get("resource_id") or body.get("logical_key") or "").strip()
+        if scope == LOCAL_SCOPE and resource_id:
+            return _document_loader().local_resource_document(resource_id)
+        if scope == INHERITED_SCOPE and resource_id:
+            return _document_loader().inherited_resource_document(resource_id)
+        if scope == "sandbox" and resource_id:
+            detail = _document_loader().sandbox_resource_detail(resource_id)
+            document = detail.get("document")
+            if isinstance(document, dict):
+                return document
+        return None
+
+    def _agro_config_context(active_config: dict[str, Any] | None = None) -> dict[str, Any]:
+        local_payload = _document_catalog().local_inventory_payload()
+        inherited_payload = _document_catalog().inherited_inventory_payload(grouped_by_source_fn=_group_inherited_index)
+        sandbox_payload = _document_catalog().sandbox_inventory_payload()
+        return build_agro_config_context(
+            active_config=active_config if isinstance(active_config, dict) else _load_active_config(),
+            tool_tabs=_tool_tabs(),
+            local_documents=[dict(item) for item in list(local_payload.get("documents") or []) if isinstance(item, dict)],
+            inherited_documents=[dict(item) for item in list(inherited_payload.get("documents") or []) if isinstance(item, dict)],
+            sandbox_documents=[dict(item) for item in list(sandbox_payload.get("documents") or []) if isinstance(item, dict)],
+            portal_instance_context=portal_instance_context,
+            portal_instance_id=str(_portal_instance_context_payload().get("portal_instance_id") or ""),
+            msn_id=_msn_id(),
+        )
+
     if include_home_redirect:
         @app.get("/portal/data")
         def portal_data_home_redirect():
@@ -286,6 +351,46 @@ def register_data_routes(
     def portal_data_model():
         meta = workspace.model_meta() if hasattr(workspace, "model_meta") else {}
         return jsonify({"ok": True, "model_meta": meta})
+
+    @app.post("/portal/api/data/system/selection_context")
+    def portal_data_system_selection_context():
+        body = _json_body()
+        document = _document_for_request(body)
+        if not isinstance(document, dict) or not document:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "schema": "mycite.shell.selected_context.v1",
+                        "error": "document or document_id is required",
+                    }
+                ),
+                400,
+            )
+        payload = build_selected_context_payload(
+            document=document,
+            selected_row=body.get("selected_row") if isinstance(body.get("selected_row"), dict) else None,
+            shell_verb=body.get("current_verb") or body.get("shell_verb"),
+            tool_tabs=_tool_tabs(),
+            portal_instance_context=portal_instance_context,
+        )
+        return jsonify(payload)
+
+    @app.route("/portal/api/data/system/config_context/agro_erp", methods=["GET", "POST"])
+    def portal_data_system_agro_config_context():
+        active_config = _load_active_config()
+        saved = False
+        if request.method == "POST":
+            body = _json_body()
+            updated = update_agro_config_bindings(
+                active_config,
+                resource_roles=body.get("resource_roles") if isinstance(body.get("resource_roles"), dict) else None,
+            )
+            saved = _save_active_config(updated)
+            active_config = updated if saved else active_config
+        payload = _agro_config_context(active_config)
+        payload["saved"] = saved
+        return jsonify(payload), (200 if request.method == "GET" or saved else 500)
 
     @app.post("/portal/api/data/anthology/overlay/migration")
     def portal_data_anthology_overlay_migration():
@@ -324,8 +429,7 @@ def register_data_routes(
 
     @app.get("/portal/api/data/sandbox/resources")
     def portal_data_sandbox_resources():
-        engine = _sandbox_engine()
-        return jsonify({"ok": True, "resources": engine.list_resources(), "schema": "mycite.portal.sandbox.resources.v1"})
+        return jsonify(_document_catalog().sandbox_inventory_payload())
 
     def _tool_sandbox_manager() -> ToolSandboxSessionManager:
         return get_tool_sandbox_session_manager(app)
@@ -355,135 +459,80 @@ def register_data_routes(
             save_config_fn=_save_active_config,
         )
 
+    def _rules_service() -> WorkbenchRulesService:
+        return WorkbenchRulesService()
+
+    def _document_catalog() -> DocumentCatalogService:
+        return DocumentCatalogService(
+            data_root=_data_root(),
+            local_inventory_provider=_local_resource_service().list_local_inventory,
+            sandbox_engine=_sandbox_engine(),
+            instance_id_provider=_msn_id,
+        )
+
+    def _document_loader() -> DocumentLoaderService:
+        return DocumentLoaderService(
+            data_root=_data_root(),
+            sandbox_engine=_sandbox_engine(),
+            rules_service=_rules_service(),
+            instance_id_provider=_msn_id,
+        )
+
+    def _action_service() -> WorkbenchActionService:
+        return WorkbenchActionService(
+            data_root=_data_root(),
+            local_resource_service=_local_resource_service(),
+            inherited_subscription_service_factory=_inherited_subscription_service if external_resource_resolver is not None else None,
+        )
+
+    def _publish_service() -> WorkbenchPublishService:
+        return WorkbenchPublishService(local_resource_service=_local_resource_service())
+
+    def _sandbox_session_service() -> WorkbenchSandboxSessionService:
+        return WorkbenchSandboxSessionService(
+            manager_factory=_tool_sandbox_manager,
+            runtime_deps_factory=_tool_sandbox_runtime_deps,
+            declaration_resolver=_declaration_for_tool_session,
+            promotion_hooks_factory=_tool_sandbox_promotion_hooks,
+        )
+
     @app.post("/portal/api/data/sandbox/tool_session/open")
     def portal_data_sandbox_tool_session_open():
         body = _json_body()
-        tool_key = str(body.get("tool_key") or body.get("tool_id") or "").strip()
-        if not tool_key:
-            abort(400, description="tool_key is required")
-        decl = _declaration_for_tool_session(tool_key, body.get("declaration"))
-        ctx = body.get("initial_context") if isinstance(body.get("initial_context"), dict) else None
-        sid = str(body.get("session_id") or "").strip() or None
-        reopen = bool(body.get("reopen"))
-        try:
-            mgr = _tool_sandbox_manager()
-            if reopen and sid:
-                sess = mgr.reopen_session(
-                    _tool_sandbox_runtime_deps(),
-                    session_id=sid,
-                    tool_key=tool_key,
-                    declaration=decl,  # type: ignore[arg-type]
-                    initial_context=ctx,
-                )
-            else:
-                sess = mgr.open_session(
-                    _tool_sandbox_runtime_deps(),
-                    tool_key=tool_key,
-                    declaration=decl,  # type: ignore[arg-type]
-                    session_id=sid,
-                    initial_context=ctx,
-                )
-        except ValueError as exc:
-            return (
-                jsonify({"ok": False, "error": str(exc), "schema": "mycite.portal.sandbox.tool_session.open.v1"}),
-                400,
-            )
-        out = sess.to_public_dict()
-        out["ok"] = not bool(sess.errors)
-        return jsonify(out), (200 if out["ok"] else 400)
+        out, status = _sandbox_session_service().open(body)
+        return jsonify(out), status
 
     @app.get("/portal/api/data/sandbox/tool_session/<session_id>")
     def portal_data_sandbox_tool_session_get(session_id: str):
-        sess = _tool_sandbox_manager().get(session_id)
-        if sess is None:
-            return (
-                jsonify({"ok": False, "error": "session not found", "schema": "mycite.portal.sandbox.tool_session.get.v1"}),
-                404,
-            )
-        out = sess.to_public_dict()
-        out["ok"] = True
-        return jsonify(out)
+        out, status = _sandbox_session_service().get(session_id)
+        return jsonify(out), status
 
     @app.post("/portal/api/data/sandbox/tool_session/<session_id>/stage")
     def portal_data_sandbox_tool_session_stage(session_id: str):
         body = _json_body()
-        sess = _tool_sandbox_manager().get(session_id)
-        if sess is None:
-            return jsonify({"ok": False, "error": "session not found"}), 404
-        resources = body.get("resources") if isinstance(body.get("resources"), dict) else {}
-        anthology_rows = body.get("anthology_rows") if isinstance(body.get("anthology_rows"), dict) else {}
-        if not anthology_rows and isinstance(body.get("staged_rows"), dict):
-            anthology_rows = body.get("staged_rows") or {}
-        for rid, payload in resources.items():
-            if isinstance(payload, dict):
-                sess.stage_resource(str(rid), payload)
-        for did, row in anthology_rows.items():
-            if isinstance(row, dict):
-                sess.stage_anthology_row(str(did), row)
-        out = sess.to_public_dict()
-        out["ok"] = True
-        return jsonify(out)
+        out, status = _sandbox_session_service().stage(session_id, body)
+        return jsonify(out), status
 
     @app.post("/portal/api/data/sandbox/tool_session/<session_id>/promote")
     def portal_data_sandbox_tool_session_promote(session_id: str):
         body = _json_body()
-        sess = _tool_sandbox_manager().get(session_id)
-        if sess is None:
-            return jsonify({"ok": False, "error": "session not found"}), 404
-        override = bool(body.get("rule_write_override"))
-        reason = str(body.get("rule_write_override_reason") or "").strip()
-        hooks = _tool_sandbox_promotion_hooks()
-        prom = sess.promote(
-            hooks=hooks,
-            rule_write_override=override,
-            rule_write_override_reason=reason,
-        )
-        if override and not reason:
-            prom.setdefault("warnings", []).append("rule_write_override used without rule_write_override_reason")
-        prom["session"] = sess.to_public_dict()
-        return jsonify(prom), (200 if bool(prom.get("ok")) else 400)
+        out, status = _sandbox_session_service().promote(session_id, body)
+        return jsonify(out), status
 
     @app.delete("/portal/api/data/sandbox/tool_session/<session_id>")
     def portal_data_sandbox_tool_session_close(session_id: str):
-        closed = _tool_sandbox_manager().close(session_id)
-        return jsonify({"ok": bool(closed), "schema": "mycite.portal.sandbox.tool_session.close.v1"})
+        out, status = _sandbox_session_service().close(session_id)
+        return jsonify(out), status
 
     @app.post("/portal/api/data/sandbox/tool_session/<session_id>/refresh")
     def portal_data_sandbox_tool_session_refresh(session_id: str):
-        sess = _tool_sandbox_manager().get(session_id)
-        if sess is None:
-            return (
-                jsonify({"ok": False, "error": "session not found", "schema": "mycite.portal.sandbox.tool_session.refresh.v1"}),
-                404,
-            )
-        sess.refresh_canonical_snapshot(_tool_sandbox_runtime_deps())
-        out = sess.to_public_dict()
-        out["ok"] = True
-        return jsonify(out)
+        out, status = _sandbox_session_service().refresh(session_id)
+        return jsonify(out), status
 
     @app.get("/portal/api/data/sandbox/tool_session/<session_id>/understanding")
     def portal_data_sandbox_tool_session_understanding(session_id: str):
-        sess = _tool_sandbox_manager().get(session_id)
-        if sess is None:
-            return (
-                jsonify(
-                    {"ok": False, "error": "session not found", "schema": "mycite.portal.sandbox.tool_session.understanding.v1"}
-                ),
-                404,
-            )
-        sess.recompute_understanding()
-        sess.build_promotion_targets()
-        return jsonify(
-            {
-                "ok": True,
-                "schema": "mycite.portal.sandbox.tool_session.understanding.v1",
-                "session_id": sess.session_id,
-                "datum_understanding": sess.datum_understanding,
-                "rule_policy": sess.rule_policy,
-                "warnings": list(sess.warnings),
-                "promotion_targets": sess.promotion_targets,
-            }
-        )
+        out, status = _sandbox_session_service().understanding(session_id)
+        return jsonify(out), status
 
     @app.get("/portal/api/data/sandbox/samras_workspace")
     def portal_data_sandbox_samras_workspace():
@@ -571,28 +620,15 @@ def register_data_routes(
 
     @app.get("/portal/api/data/resources/local")
     def portal_data_resources_local():
-        return jsonify(_local_resource_service().list_local_inventory())
+        return jsonify(_document_catalog().local_inventory_payload())
 
     @app.get("/portal/api/data/system/resource_workbench")
     def portal_data_system_resource_workbench():
-        vm = build_system_resource_workbench_view_model(data_root=_data_root())
-        return jsonify(vm)
+        return jsonify(_document_catalog().system_resource_workbench_payload())
 
     @app.get("/portal/api/data/resources/inherited")
     def portal_data_resources_inherited():
-        root = _data_root()
-        ensure_layout(root)
-        index_payload = load_index(root, scope=INHERITED_SCOPE)
-        return jsonify(
-            {
-                "ok": True,
-                "schema": "mycite.portal.resources.inherited_inventory.v1",
-                "resources_root": str(inherited_resources_dir(root)),
-                "index_path": str(root / "resources" / "index.inherited.json"),
-                "resources": list(index_payload.get("resources") or []),
-                "grouped_by_source": _group_inherited_index(index_payload),
-            }
-        )
+        return jsonify(_document_catalog().inherited_inventory_payload(grouped_by_source_fn=_group_inherited_index))
 
     @app.get("/portal/api/data/resources/inherited/subscriptions")
     def portal_data_resources_inherited_subscriptions():
@@ -635,7 +671,7 @@ def register_data_routes(
     @app.post("/portal/api/data/resources/local/create")
     def portal_data_resources_local_create():
         body = _json_body()
-        payload = _local_resource_service().create(
+        payload = _action_service().create_local_resource(
             resource_kind=str(body.get("resource_kind") or "resource"),
             resource_name=str(body.get("resource_name") or body.get("resource_id") or "resource").strip(),
             seed_payload=body.get("seed_payload") if isinstance(body.get("seed_payload"), dict) else {},
@@ -648,7 +684,7 @@ def register_data_routes(
         resource_id = str(body.get("resource_id") or "").strip()
         if not resource_id:
             abort(400, description="resource_id is required")
-        payload = _local_resource_service().publish(
+        payload = _publish_service().publish_local_resource(
             resource_id=resource_id,
             resource_name=str(body.get("resource_name") or "").strip(),
             resource_kind=str(body.get("resource_kind") or "").strip(),
@@ -664,12 +700,11 @@ def register_data_routes(
         resource_id = str(body.get("resource_id") or "").strip()
         if not contract_id or not resource_id:
             abort(400, description="contract_id and resource_id are required")
-        payload = _inherited_subscription_service().refresh_resource(
+        payload = _action_service().refresh_inherited_resource(
             contract_id=contract_id,
             resource_id=resource_id,
             force_refresh=bool(body.get("force_refresh", True)),
         )
-        payload["schema"] = "mycite.portal.resources.inherited_refresh.v1"
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
     @app.post("/portal/api/data/resources/inherited/refresh_source")
@@ -680,11 +715,10 @@ def register_data_routes(
         source_msn_id = str(body.get("source_msn_id") or "").strip()
         if not source_msn_id:
             abort(400, description="source_msn_id is required")
-        payload = _inherited_subscription_service().refresh_source(
+        payload = _action_service().refresh_inherited_source(
             source_msn_id=source_msn_id,
             force_refresh=bool(body.get("force_refresh", True)),
         )
-        payload["schema"] = "mycite.portal.resources.inherited_refresh_source.v1"
         return jsonify(payload), 200
 
     @app.post("/portal/api/data/resources/inherited/disconnect_source")
@@ -693,58 +727,18 @@ def register_data_routes(
         source_msn_id = str(body.get("source_msn_id") or "").strip()
         if not source_msn_id:
             abort(400, description="source_msn_id is required")
-        payload = remove_inherited_source(_data_root(), source_msn_id=source_msn_id)
-        payload["contract_sync"] = _inherited_subscription_service().disconnect_source(source_msn_id=source_msn_id)
-        payload["ok"] = True
-        payload["schema"] = "mycite.portal.resources.inherited_disconnect_source.v1"
+        payload = _action_service().disconnect_inherited_source(source_msn_id=source_msn_id)
         return jsonify(payload), 200
 
     @app.get("/portal/api/data/sandbox/resources/<path:resource_id>")
     def portal_data_sandbox_resource(resource_id: str):
-        engine = _sandbox_engine()
-        payload = engine.get_resource(resource_id)
-        rid = str(resource_id or "").strip()
-        has_staged, staged_snapshot = engine.peek_stage_payload(rid)
-        out: dict[str, Any] = {
-            "ok": not bool(payload.get("missing")),
-            "resource": payload,
-            "staged_present": has_staged,
-            "staged_payload": dict(staged_snapshot) if has_staged else {},
-            "schema": "mycite.portal.sandbox.resource.detail.v1",
-        }
-        rows_payload = _rule_rows_payload_from_sandbox_resource(rid)
-        datum_u: dict[str, Any] | None = None
-        rule_pol: dict[str, Any] | None = None
-        if rows_payload.get("rows"):
-            report = understand_datums(rows_payload)
-            datum_u = report.to_dict()
-            rule_pol = {k: derive_rule_policy(v).to_dict() for k, v in report.by_id.items()}
-            out["datum_understanding"] = datum_u
-            out["rule_policy_by_id"] = rule_pol
-        if not bool(payload.get("missing")):
-            out["workbench"] = build_resource_workbench_view_model(
-                resource_body=dict(payload),
-                staged_present=has_staged,
-                staged_payload=dict(staged_snapshot) if has_staged else {},
-                datum_understanding=datum_u,
-                rule_policy_by_id=rule_pol,
-            )
-            if is_samras_backed_resource(dict(payload)):
-                try:
-                    out["samras_workspace"] = build_samras_workspace_view_model(
-                        dict(payload),
-                        selected_address_id="",
-                        staged_entries=[],
-                    )
-                except Exception as exc:  # pragma: no cover - defensive
-                    out["samras_workspace_error"] = str(exc)
-        return jsonify(out)
+        return jsonify(_document_loader().sandbox_resource_detail(resource_id))
 
     @app.post("/portal/api/data/sandbox/resources/<path:resource_id>/stage")
     def portal_data_sandbox_resource_stage(resource_id: str):
         body = _json_body()
         payload = body.get("payload") if isinstance(body.get("payload"), dict) else body
-        out = _local_resource_service().stage(resource_id=resource_id, payload=payload if isinstance(payload, dict) else {})
+        out = _action_service().stage_sandbox_resource(resource_id=resource_id, payload=payload if isinstance(payload, dict) else {})
         return jsonify(out), (200 if bool(out.get("ok")) else 400)
 
     @app.post("/portal/api/data/sandbox/resources/<path:resource_id>/save")
@@ -755,9 +749,12 @@ def register_data_routes(
         reason = str(body.get("rule_write_override_reason") or "").strip()
         datum_rules: dict[str, Any] | None = None
         if isinstance(payload, dict):
-            rp = extract_rows_payload_from_resource_body(payload)
-            if rp is not None:
-                ev = evaluate_resource_payload_write(rp, rule_write_override=override)
+            ev = _rules_service().evaluate_resource_payload(
+                payload,
+                rule_write_override=override,
+                rule_write_override_reason=reason,
+            )
+            if ev is not None:
                 datum_rules = ev
                 if not bool(ev.get("ok")):
                     return jsonify(
@@ -768,16 +765,14 @@ def register_data_routes(
                             "rule_write_override_reason": reason,
                         }
                     ), 400
-                if override and not reason:
-                    ev.setdefault("warnings", []).append("rule_write_override used without rule_write_override_reason")
-        out = _local_resource_service().update(resource_id=resource_id, payload=payload if isinstance(payload, dict) else {})
+        out = _action_service().save_sandbox_resource(resource_id=resource_id, payload=payload if isinstance(payload, dict) else {})
         if datum_rules is not None and isinstance(out, dict):
             out["datum_rules"] = datum_rules
         return jsonify(out), (200 if bool(out.get("ok")) else 400)
 
     @app.post("/portal/api/data/sandbox/resources/<path:resource_id>/compile")
     def portal_data_sandbox_resource_compile(resource_id: str):
-        out = _local_resource_service().compile(resource_id=resource_id)
+        out = _action_service().compile_sandbox_resource(resource_id=resource_id)
         return jsonify(out), (200 if bool(out.get("ok")) else 400)
 
     @app.post("/portal/api/data/sandbox/mss/compile")

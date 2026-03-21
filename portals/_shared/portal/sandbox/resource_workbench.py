@@ -266,6 +266,76 @@ def _resolve_canonical_data_file(*, data_root: Path, canonical_filename: str, al
     return canonical, payload, False
 
 
+def _normalize_samras_rows_by_address(payload: dict[str, Any]) -> dict[str, list[str]]:
+    raw = payload.get("rows_by_address") if isinstance(payload.get("rows_by_address"), dict) else {}
+    out: dict[str, list[str]] = {}
+    for key, value in raw.items():
+        aid = _as_text(key)
+        if not aid:
+            continue
+        if isinstance(value, list):
+            out[aid] = [_as_text(v) for v in value]
+        else:
+            out[aid] = [_as_text(value)]
+    return out
+
+
+def _table_rows_for_canonical_file(
+    *,
+    file_key: str,
+    filename: str,
+    payload: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, list[str]] | None]:
+    """Return flattened explorer rows and optional SAMRAS address map for mediation UIs."""
+    rows_payload = _extract_rows_payload_from_json(payload) if payload else {"rows": {}}
+    summaries = build_anthology_row_summaries(rows_payload)
+    samras_map = _normalize_samras_rows_by_address(payload)
+    samras_for_file: dict[str, list[str]] | None = samras_map if samras_map else None
+
+    table_rows: list[dict[str, Any]] = []
+    for row in summaries:
+        rid = _as_text(row.get("identifier") or row.get("row_id"))
+        table_rows.append(
+            {
+                "file_key": file_key,
+                "filename": filename,
+                "identifier": rid,
+                "row_id": _as_text(row.get("row_id")),
+                "label": _as_text(row.get("label")),
+                "reference": _as_text(row.get("reference")),
+                "magnitude": _as_text(row.get("magnitude")),
+                "layer": row.get("layer"),
+                "value_group": row.get("value_group"),
+                "source": _as_text(row.get("source") or "rows"),
+                "lens_id": row.get("lens_id"),
+            }
+        )
+
+    if not summaries and samras_map:
+        for item in build_samras_row_summaries({"rows_by_address": samras_map}):
+            aid = _as_text(item.get("address_id"))
+            if not aid:
+                continue
+            table_rows.append(
+                {
+                    "file_key": file_key,
+                    "filename": filename,
+                    "identifier": aid,
+                    "row_id": aid,
+                    "label": _as_text(item.get("title")),
+                    "reference": "",
+                    "magnitude": "",
+                    "layer": None,
+                    "value_group": None,
+                    "source": "samras_rows_by_address",
+                    "address_id": aid,
+                    "lens_id": None,
+                }
+            )
+
+    return table_rows, samras_for_file
+
+
 def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, Any]:
     """
     Build a table-first workbench model for canonical local JSON files.
@@ -282,6 +352,9 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
     ]
     out_files: list[dict[str, Any]] = []
     table_rows: list[dict[str, Any]] = []
+    samras_by_file_key: dict[str, dict[str, list[str]]] = {}
+    resource_surface_file_keys = ("txa", "msn")
+
     for entry in files:
         filename = str(entry["filename"])
         file_key = str(entry["file_key"])
@@ -291,38 +364,32 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
             canonical_filename=filename,
             aliases=aliases,
         )
-        file_obj = {
+        per_file_rows, samras_map = _table_rows_for_canonical_file(
+            file_key=file_key,
+            filename=filename,
+            payload=payload,
+        )
+        file_obj: dict[str, Any] = {
             "file_key": file_key,
             "filename": filename,
             "path": str(path),
             "exists": True,
             "materialized_from_existing_file": bool(found_existing),
-            "row_count": 0,
+            "row_count": len(per_file_rows),
             "errors": [],
+            "samras_rows_by_address": samras_map,
         }
-        rows_payload = _extract_rows_payload_from_json(payload) if payload else {"rows": {}}
-        summaries = build_anthology_row_summaries(rows_payload)
-        file_obj["row_count"] = len(summaries)
-        for row in summaries:
-            table_rows.append(
-                {
-                    "file_key": file_key,
-                    "filename": filename,
-                    "identifier": _as_text(row.get("identifier") or row.get("row_id")),
-                    "row_id": _as_text(row.get("row_id")),
-                    "label": _as_text(row.get("label")),
-                    "reference": _as_text(row.get("reference")),
-                    "magnitude": _as_text(row.get("magnitude")),
-                    "layer": row.get("layer"),
-                    "value_group": row.get("value_group"),
-                    "source": _as_text(row.get("source") or "rows"),
-                }
-            )
+        if samras_map:
+            samras_by_file_key[file_key] = samras_map
+        table_rows.extend(per_file_rows)
         out_files.append(file_obj)
+
     return {
         "ok": True,
         "schema": "mycite.portal.system.resource_workbench.v1",
         "files": out_files,
         "rows": table_rows,
         "total_rows": len(table_rows),
+        "resource_surface_file_keys": list(resource_surface_file_keys),
+        "samras_rows_by_address_by_file_key": samras_by_file_key,
     }
