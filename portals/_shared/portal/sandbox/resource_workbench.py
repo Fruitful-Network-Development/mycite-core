@@ -1,5 +1,5 @@
 """
-View-model helpers for the Local Resources / sandbox resource workbench UI.
+View-model helpers for canonical resource JSON workbenches.
 
 Builds anthology-esque structured row summaries and SAMRAS hints from the same
 resource bodies returned by ``GET /portal/api/data/sandbox/resources/<id>``.
@@ -11,9 +11,27 @@ import json
 from pathlib import Path
 from typing import Any
 
+from _shared.portal.data_contract import compact_payload_to_rows
+
+
+def _looks_like_compact_row_key(value: object) -> bool:
+    token = _as_text(value)
+    parts = token.split("-")
+    if len(parts) != 3:
+        return False
+    return all(part.isdigit() for part in parts)
+
 
 def _as_text(value: object) -> str:
     return "" if value is None else str(value).strip()
+
+
+def _identifier_coordinates(identifier: object) -> tuple[int | None, int | None, int | None]:
+    token = _as_text(identifier)
+    parts = token.split("-")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+        return (None, None, None)
+    return (int(parts[0], 10), int(parts[1], 10), int(parts[2], 10))
 
 
 def extract_anthology_rows_payload(resource_body: dict[str, Any]) -> dict[str, Any]:
@@ -100,6 +118,13 @@ def build_anthology_row_summaries(
                 "source": "anthology_compatible_payload",
             }
         )
+        layer, value_group, iteration = _identifier_coordinates(rid)
+        if out[-1].get("layer") is None:
+            out[-1]["layer"] = layer
+        if out[-1].get("value_group") is None:
+            out[-1]["value_group"] = value_group
+        if out[-1].get("iteration") is None:
+            out[-1]["iteration"] = iteration
     def _layer_key(row: dict[str, Any]) -> tuple[int, int, str]:
         try:
             layer = int(row.get("layer"))  # type: ignore[arg-type]
@@ -239,6 +264,24 @@ def _extract_rows_payload_from_json(payload: dict[str, Any]) -> dict[str, Any]:
     rows = payload.get("rows")
     if isinstance(rows, dict):
         return {"rows": rows}
+    compact_rows = {
+        str(key): value
+        for key, value in payload.items()
+        if _looks_like_compact_row_key(key) and isinstance(value, list)
+    }
+    if compact_rows:
+        try:
+            parsed_rows = compact_payload_to_rows(compact_rows, strict=False)
+        except Exception:
+            parsed_rows = []
+        if parsed_rows:
+            return {
+                "rows": {
+                    _as_text(row.get("identifier") or row.get("row_id") or index): row
+                    for index, row in enumerate(parsed_rows, start=1)
+                    if isinstance(row, dict)
+                }
+            }
     return extract_anthology_rows_payload(payload)
 
 
@@ -306,6 +349,7 @@ def _table_rows_for_canonical_file(
                 "magnitude": _as_text(row.get("magnitude")),
                 "layer": row.get("layer"),
                 "value_group": row.get("value_group"),
+                "iteration": row.get("iteration"),
                 "source": _as_text(row.get("source") or "rows"),
                 "lens_id": row.get("lens_id"),
             }
@@ -327,6 +371,7 @@ def _table_rows_for_canonical_file(
                     "magnitude": "",
                     "layer": None,
                     "value_group": None,
+                    "iteration": None,
                     "source": "samras_rows_by_address",
                     "address_id": aid,
                     "lens_id": None,
@@ -353,6 +398,7 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
     out_files: list[dict[str, Any]] = []
     table_rows: list[dict[str, Any]] = []
     samras_by_file_key: dict[str, dict[str, list[str]]] = {}
+    layers_by_file_key: dict[str, list[dict[str, Any]]] = {}
     resource_surface_file_keys = ("txa", "msn")
 
     for entry in files:
@@ -376,9 +422,12 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
             "exists": True,
             "materialized_from_existing_file": bool(found_existing),
             "row_count": len(per_file_rows),
+            "layers": _group_rows_by_layer_vg(per_file_rows) if per_file_rows else [],
             "errors": [],
             "samras_rows_by_address": samras_map,
         }
+        if file_obj["layers"]:
+            layers_by_file_key[file_key] = list(file_obj["layers"])
         if samras_map:
             samras_by_file_key[file_key] = samras_map
         table_rows.extend(per_file_rows)
@@ -391,5 +440,6 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
         "rows": table_rows,
         "total_rows": len(table_rows),
         "resource_surface_file_keys": list(resource_surface_file_keys),
+        "layers_by_file_key": layers_by_file_key,
         "samras_rows_by_address_by_file_key": samras_by_file_key,
     }

@@ -20,10 +20,14 @@ class ResourcesWorkbenchJsContractTests(unittest.TestCase):
         self.assertIn("setDtWorkspaceTab", js)
         self.assertNotIn("WORKSPACE_TAB_STORAGE_KEY", js)
         self.assertNotIn("dtWorkspaceTabButtons", js)
-        self.assertIn("systemResourceFileList", js)
-        self.assertIn("data-system-resource-file-key", js)
+        self.assertIn("dtResourcesSourceMenu", js)
+        self.assertIn("data-resources-file-key", js)
         self.assertIn("data-resources-task", js)
         self.assertIn("renderAbstractionChainInto", js)
+        self.assertIn("groupedResourceRows", js)
+        self.assertIn("dtResourcesLayers", js)
+        self.assertIn("overlay collision on reserved base id:", js)
+        self.assertNotIn("Local Resources", js)
 
 
 if __name__ == "__main__":

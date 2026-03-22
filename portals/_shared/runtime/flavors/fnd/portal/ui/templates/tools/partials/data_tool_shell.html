@@ -1,61 +1,24 @@
-  <section class="card data-tool" id="dataToolApp" data-active-tab="anthology" data-open-nimm="0" data-system-workbench-mode="{{ current_workbench_mode if current_workbench_mode is defined else 'anthology' }}">
+  <section class="data-tool data-tool--systemWorkbench" id="dataToolApp" data-active-tab="anthology" data-open-nimm="0" data-system-workbench-mode="{{ current_workbench_mode if current_workbench_mode is defined else 'anthology' }}">
     <div id="dtMessages" class="data-tool__messages" aria-live="polite"></div>
 
     <div id="dtWorkspaceAnthology" class="data-tool__workspacePanel" data-workspace-panel="anthology">
     <div class="data-tool__layout data-tool__layout--workbench">
       <div class="data-tool__main data-tool__main--workspaceOnly">
         <div class="data-tool__anthologyWorkbench data-tool__moduleSurface">
-          <header class="data-tool__graphToolbar data-tool__graphToolbar--compact">
-            <div class="data-tool__controlRow data-tool__controlRow--wrap">
-              <button type="button" id="dtAnthologyRefreshBtn">Refresh Anthology</button>
-              <button type="button" id="dtAnthologyGraphRefreshBtn">Refresh Graph</button>
-              <details class="data-tool__advanced data-tool__advanced--inline">
-                <summary>NIMM</summary>
-                <button type="button" id="dtOpenNimmBtn">Open NIMM</button>
-              </details>
-              <label>
-                <span>View</span>
-                <select id="dtWorkbenchLayoutMode">
-                  <option value="table" selected>table</option>
-                  <option value="grouped">graph</option>
-                </select>
-              </label>
-              <span id="dtAnthologyStatus" class="data-tool__statusText"></span>
-            </div>
-          </header>
+          <div class="data-tool__workbenchFloatingControls" aria-label="Anthology workbench controls">
+            <button type="button" id="dtAnthologyRefreshBtn">Refresh Anthology</button>
+            <select id="dtWorkbenchLayoutMode" aria-label="Workbench layout">
+              <option value="table" selected>table</option>
+              <option value="grouped">graph</option>
+            </select>
+          </div>
 
           <div id="dtWorkbenchGrid" class="data-tool__workbenchGrid" data-layout-mode="table">
             <article class="data-tool__graphPane" aria-label="Anthology graph">
-              <details class="data-tool__advanced data-tool__graphToolSheet">
-                <summary>Graph controls</summary>
-                <div class="data-tool__controlRow data-tool__controlRow--wrap">
-                  <label>
-                    <span>context</span>
-                    <select id="dtGraphContext">
-                      <option value="local">local</option>
-                      <option value="global">global</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>depth</span>
-                    <input id="dtGraphDepth" type="number" min="0" step="1" value="3" style="max-width:88px;" />
-                  </label>
-                  <label class="data-tool__growLabel">
-                    <span>focus</span>
-                    <input id="dtGraphFocus" type="text" placeholder="4-0-1" />
-                  </label>
-                  <button type="button" id="dtGraphApplyBtn">Apply</button>
-                  <button type="button" id="dtGraphZoomOutBtn">−</button>
-                  <button type="button" id="dtGraphZoomInBtn">+</button>
-                  <button type="button" id="dtGraphZoomResetBtn">Reset view</button>
-                </div>
-              </details>
-              <span id="dtAnthologyGraphStatus" class="data-tool__statusText"></span>
               <div id="dtAnthologyGraph" class="data-tool__graphCanvas" role="region" aria-label="Anthology node graph"></div>
             </article>
 
             <article class="data-tool__tablePane data-tool__anthologyTableHost">
-              <p id="dtDatumEditorStatus" class="data-tool__statusInline" aria-live="polite"></p>
               <div id="dtAnthologyLayers" class="data-tool__anthologyLayers"></div>
             </article>
           </div>
@@ -68,43 +31,19 @@
       <div class="data-tool__layout data-tool__layout--workbench">
         <div class="data-tool__main data-tool__main--workspaceOnly">
           <section class="data-tool__resourcesWorkbench data-tool__moduleSurface">
-            <header class="data-tool__graphToolbar data-tool__graphToolbar--compact">
-              <div class="data-tool__resourcesToolbar">
-                <div class="data-tool__resourcesToolbarTitle">
-                  <div class="card__kicker">Resources</div>
-                  <div class="card__title" id="dtResourcesWorkbenchTitle">samras-txa.json</div>
-                  <p id="dtResourcesWorkbenchMeta" class="data-tool__legendText">Canonical JSON workbench for shared resource files.</p>
-                </div>
-                <div class="data-tool__controlRow data-tool__controlRow--wrap">
-                  <button type="button" id="dtResourcesRefreshBtn">Refresh</button>
-                  <span id="dtResourcesStatus" class="data-tool__statusText"></span>
-                </div>
-              </div>
-            </header>
+            <div class="data-tool__workbenchFloatingControls" aria-label="Resource workbench controls">
+              <details id="dtResourcesSourceControl" class="data-tool__advanced data-tool__advanced--inline data-tool__floatingMenu">
+                <summary id="dtResourcesSourceSummary" aria-label="Source">Source</summary>
+                <div id="dtResourcesSourceMenu" class="data-tool__floatingMenuPanel" aria-live="polite"></div>
+              </details>
+              <button type="button" id="dtResourcesRefreshBtn">Refresh</button>
+            </div>
             <div class="data-tool__workbenchGrid data-tool__resourcesGrid" data-layout-mode="table">
-              <article class="data-tool__tablePane data-tool__resourcesPane">
-                <p id="dtResourcesTableEmpty" class="data-tool__empty" hidden>No rows for this resource file.</p>
-                <div class="data-tool__tableWrap data-tool__txaTableWrap">
-                  <table class="data-tool__table data-tool__table--compact" id="dtResourcesExplorerTable">
-                    <thead>
-                      <tr>
-                        <th scope="col">Identifier</th>
-                        <th scope="col">Label / title</th>
-                        <th scope="col">Reference</th>
-                        <th scope="col">Magnitude</th>
-                        <th scope="col">Layer</th>
-                        <th scope="col">VG</th>
-                      </tr>
-                    </thead>
-                    <tbody id="dtResourcesTableBody"></tbody>
-                  </table>
-                </div>
+              <article class="data-tool__tablePane data-tool__resourcesPane data-tool__anthologyTableHost">
+                <p id="dtResourcesTableEmpty" class="data-tool__empty" hidden>No datums for this resource file.</p>
+                <div id="dtResourcesLayers" class="data-tool__anthologyLayers data-tool__resourcesLayers"></div>
               </article>
             </div>
-            <details class="data-tool__advanced">
-              <summary>Advanced: resource file status</summary>
-              <pre id="dtResourcesFilesJson" class="jsonblock">{}</pre>
-            </details>
           </section>
         </div>
       </div>

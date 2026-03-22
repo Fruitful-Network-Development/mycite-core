@@ -96,13 +96,15 @@
   }
 
   function renderSelectionSummary() {
-    if (!els.selectionSummary || !els.sourceScopeSummary) return;
+    if (!els.selectionSummary) return;
     var ctx = state.selectedContext;
     if (!ctx || !ctx.selection) {
       els.selectionSummary.className = "ide-contextEmpty";
       els.selectionSummary.textContent = selectionHint();
       if (els.resourcesInspectorEmpty) els.resourcesInspectorEmpty.hidden = false;
-      els.sourceScopeSummary.textContent = sourceScopeHint();
+      if (els.sourceScopeSummary) {
+        els.sourceScopeSummary.textContent = sourceScopeHint();
+      }
       return;
     }
     var selection = ctx.selection || {};
@@ -115,10 +117,12 @@
       "<div><strong>Selected</strong><br/><code>" + esc(selection.selected_ref_or_document_id || "") + "</code></div>" +
       "<div><strong>Label</strong><br/><span>" + esc(selection.display_name || "") + "</span></div>" +
       "<div><strong>Archetype</strong><br/><span>" + esc(resolved.family || family.kind || "datum") + "</span></div>";
-    els.sourceScopeSummary.innerHTML =
-      "<strong>Source</strong> " + esc(((ctx.provenance || {}).source_adapter) || "unknown") +
-      " · <strong>Scope</strong> " + esc(scope.kind || "unknown") +
-      " · <strong>Family</strong> " + esc(family.type || family.kind || "resource");
+    if (els.sourceScopeSummary) {
+      els.sourceScopeSummary.innerHTML =
+        "<strong>Source</strong> " + esc(((ctx.provenance || {}).source_adapter) || "unknown") +
+        " · <strong>Scope</strong> " + esc(scope.kind || "unknown") +
+        " · <strong>Family</strong> " + esc(family.type || family.kind || "resource");
+    }
   }
 
   function renderCompatibleTools() {

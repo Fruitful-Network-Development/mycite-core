@@ -161,11 +161,6 @@
     const inspector = qs("#portalInspector");
     const ideBody = qs(".ide-body");
     if (!shell || !contextSidebar || !inspector) return null;
-    const MIN_CONTEXT_WIDTH = 220;
-    const MAX_CONTEXT_WIDTH = 420;
-    const MIN_INSPECTOR_WIDTH = 280;
-    const MAX_INSPECTOR_WIDTH = 520;
-    const MIN_WORKBENCH_WIDTH = 720;
 
     function clamp(value, min, max) {
       const n = Number(value);
@@ -179,20 +174,56 @@
       return Number.isFinite(value) ? value : fallback;
     }
 
+    function activeSystemWorkbenchMode() {
+      const workspace = qs(".system-center-workspace");
+      if (!workspace) return "";
+      const tab = String(workspace.getAttribute("data-system-tab") || "").trim().toLowerCase();
+      if (tab !== "workbench") return "";
+      return String(workspace.getAttribute("data-system-workbench-mode") || "").trim().toLowerCase();
+    }
+
+    function currentLayoutPolicy() {
+      const systemWorkbenchMode = activeSystemWorkbenchMode();
+      if (systemWorkbenchMode === "anthology" || systemWorkbenchMode === "resources") {
+        return {
+          defaultContextWidth: 248,
+          defaultInspectorWidth: 300,
+          minContextWidth: 188,
+          maxContextWidth: 360,
+          minInspectorWidth: 240,
+          maxInspectorWidth: 440,
+          minWorkbenchWidth: 920,
+        };
+      }
+      return {
+        defaultContextWidth: 280,
+        defaultInspectorWidth: 360,
+        minContextWidth: 220,
+        maxContextWidth: 420,
+        minInspectorWidth: 280,
+        maxInspectorWidth: 520,
+        minWorkbenchWidth: 720,
+      };
+    }
+
     function applyContextWidth(value) {
-      const width = clamp(value, MIN_CONTEXT_WIDTH, MAX_CONTEXT_WIDTH);
+      const policy = currentLayoutPolicy();
+      const width = clamp(value, policy.minContextWidth, policy.maxContextWidth);
       shell.style.setProperty("--ide-context-w", `${width}px`);
       return width;
     }
 
     function applyInspectorWidth(value) {
-      const width = clamp(value, MIN_INSPECTOR_WIDTH, MAX_INSPECTOR_WIDTH);
+      const policy = currentLayoutPolicy();
+      const width = clamp(value, policy.minInspectorWidth, policy.maxInspectorWidth);
       shell.style.setProperty("--ide-inspector-w", `${width}px`);
       return width;
     }
 
     function rebalanceWorkbench() {
       if (!ideBody || window.matchMedia("(max-width: 960px)").matches) return;
+      const policy = currentLayoutPolicy();
+      shell.classList.toggle("ide-shell--system-workbench", !!activeSystemWorkbenchMode());
       const bodyWidth = ideBody.clientWidth || window.innerWidth || 0;
       if (!bodyWidth) return;
 
@@ -210,17 +241,17 @@
         - contextSplitterW
         - (inspectorOpen ? splitterWidth : 0);
 
-      if (workbenchWidth >= MIN_WORKBENCH_WIDTH) return;
+      if (workbenchWidth >= policy.minWorkbenchWidth) return;
 
-      let deficit = MIN_WORKBENCH_WIDTH - workbenchWidth;
-      if (inspectorOpen && inspectorWidth > MIN_INSPECTOR_WIDTH) {
-        const nextInspectorWidth = Math.max(MIN_INSPECTOR_WIDTH, inspectorWidth - deficit);
+      let deficit = policy.minWorkbenchWidth - workbenchWidth;
+      if (inspectorOpen && inspectorWidth > policy.minInspectorWidth) {
+        const nextInspectorWidth = Math.max(policy.minInspectorWidth, inspectorWidth - deficit);
         deficit -= inspectorWidth - nextInspectorWidth;
         inspectorWidth = applyInspectorWidth(nextInspectorWidth);
       }
 
-      if (deficit > 0 && contextOpen && contextWidth > MIN_CONTEXT_WIDTH) {
-        const nextContextWidth = Math.max(MIN_CONTEXT_WIDTH, contextWidth - deficit);
+      if (deficit > 0 && contextOpen && contextWidth > policy.minContextWidth) {
+        const nextContextWidth = Math.max(policy.minContextWidth, contextWidth - deficit);
         deficit -= contextWidth - nextContextWidth;
         contextWidth = applyContextWidth(nextContextWidth);
       }
@@ -231,7 +262,7 @@
         - inspectorWidth
         - contextSplitterW
         - (inspectorOpen ? splitterWidth : 0);
-      if (workbenchWidth < MIN_WORKBENCH_WIDTH) {
+      if (workbenchWidth < policy.minWorkbenchWidth) {
         shell.classList.add("ide-shell--workbench-tight");
       } else {
         shell.classList.remove("ide-shell--workbench-tight");
@@ -293,9 +324,10 @@
     const storedContextOpen = getStoredValue(CONTEXT_OPEN_KEY);
     const storedInspector = parseInt(getStoredValue(INSPECTOR_WIDTH_KEY), 10);
     const storedInspectorOpen = getStoredValue(INSPECTOR_OPEN_KEY);
+    const initialPolicy = currentLayoutPolicy();
 
-    setContextWidth(storedContext || 280, false);
-    setInspectorWidth(storedInspector || 360, false);
+    setContextWidth(storedContext || initialPolicy.defaultContextWidth, false);
+    setInspectorWidth(storedInspector || initialPolicy.defaultInspectorWidth, false);
     setContextOpen(storedContextOpen !== "0", false);
     let inspectorShouldOpen = false;
     if (storedInspectorOpen === "1") inspectorShouldOpen = true;

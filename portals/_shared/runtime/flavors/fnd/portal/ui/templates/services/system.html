@@ -16,11 +16,7 @@
 {% set current_workbench_mode = system_workbench_mode if system_workbench_mode is defined and system_workbench_mode else "anthology" %}
 {% set page_subtitle = "System workbenches" %}
 {% if current_tab == "workbench" %}
-  {% if current_workbench_mode == "resources" %}
-    {% set page_subtitle = "Resources · canonical JSON workbench" %}
-  {% else %}
-    {% set page_subtitle = "Anthology (anthology.json) · shared SAMRAS workspace" %}
-  {% endif %}
+  {% set page_subtitle = "" %}
 {% endif %}
 
 {% block ide_shell_extra_class %} ide-shell--portal-system{% endblock %}
@@ -108,11 +104,6 @@
       </li>
     </ul>
     {% if current_tab == 'workbench' and current_workbench_mode == 'resources' %}
-    <section class="ide-contextSection" id="systemResourceFileSection" aria-label="Resource files">
-      <header class="ide-contextTitle">Resource Files</header>
-      <p id="systemResourceFileSummary" class="ide-contextEmpty">Choose the active resource JSON file for the workbench.</p>
-      <div id="systemResourceFileList" class="system-sidebar__resourceList" aria-live="polite"></div>
-    </section>
     <section class="ide-contextSection" id="systemShellSelectionSection" aria-label="Workbench selection">
       <header class="ide-contextTitle">Selection</header>
       <div id="systemSelectionSummary" class="ide-contextEmpty">Select a resource datum to activate the canonical shell.</div>
@@ -124,7 +115,6 @@
           <button type="button" class="data-tool__actionBtn {% if verb.active %}is-active{% endif %}" data-resources-task="{{ verb.verb }}" data-shell-verb="{{ verb.verb }}">{{ verb.label }}</button>
         {% endfor %}
       </div>
-      <div id="systemSourceScopeSummary" class="data-tool__legendText">Source and scope details appear here.</div>
       <div id="systemCompatibleTools" class="ide-contextList" aria-live="polite"></div>
       <div class="data-tool__controlRow data-tool__controlRow--wrap">
         <button type="button" id="systemAgroOpenBtn">Open AGRO ERP</button>
@@ -148,7 +138,6 @@
     data-system-requested-tab="{{ requested_tab }}"
     data-system-compat-view="{{ compatibility_view }}"
     data-system-empty-selection="{% if current_workbench_mode == 'resources' %}Select a resource datum to activate the canonical shell.{% else %}Select a datum to activate the canonical shell.{% endif %}"
-    data-system-empty-source-scope="{% if current_workbench_mode == 'resources' %}Source, scope, and resource provenance appear here.{% else %}Source and scope details appear here.{% endif %}"
   >
   {% if current_tab == "workbench" and data_home_available is defined and data_home_available %}
     <section id="systemMediationWorkbench" class="card system-mediation-workbench" hidden>
