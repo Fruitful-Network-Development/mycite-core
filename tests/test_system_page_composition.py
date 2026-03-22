@@ -15,9 +15,10 @@ class SystemPageCompositionTests(unittest.TestCase):
         self.assertNotIn("data-tool__workbenchWithInspector", text)
         self.assertNotIn('class="page-tabs"', text)
         self.assertNotIn("data-dt-workspace-tab", text)
+        self.assertNotIn('class="card data-tool"', text)
         self.assertIn('id="dtWorkbenchGrid"', text)
         self.assertIn('id="dtWorkspaceResources"', text)
-        self.assertIn('id="dtResourcesTableBody"', text)
+        self.assertIn('id="dtResourcesLayers"', text)
         self.assertIn('data-layout-mode="table"', text)
         self.assertIn('option value="table"', text)
         self.assertIn('option value="grouped"', text)
@@ -36,6 +37,8 @@ class SystemPageCompositionTests(unittest.TestCase):
             self.assertIn("{% block inspector_content %}", text)
             self.assertNotIn('class="page-tabs"', text)
             self.assertNotIn("page-tab", text)
+            if flavor == "fnd":
+                self.assertNotIn('id="systemSourceScopeSummary"', text)
 
     def test_system_resources_task_sidebar_and_workbench_query_links(self) -> None:
         for flavor in ("fnd", "tff"):
@@ -43,8 +46,8 @@ class SystemPageCompositionTests(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             if flavor == "fnd":
                 self.assertNotIn('id="resourcesTaskSection"', text)
-                self.assertIn('id="systemResourceFileSection"', text)
-                self.assertIn('id="systemResourceFileList"', text)
+                self.assertNotIn('id="systemResourceFileSection"', text)
+                self.assertNotIn('id="systemResourceFileList"', text)
                 self.assertIn('id="resourcesDatumProfile"', text)
                 self.assertNotIn("Local Resources", text)
                 self.assertNotIn("Inheritance", text)
@@ -81,15 +84,22 @@ class SystemPageCompositionTests(unittest.TestCase):
         partial = REPO_ROOT / "portals/_shared/runtime/flavors/fnd/portal/ui/templates/tools/partials/data_tool_shell.html"
         text = partial.read_text(encoding="utf-8")
         self.assertIn('id="dtResourcesRefreshBtn"', text)
-        self.assertIn('id="dtResourcesStatus"', text)
-        self.assertIn('id="dtResourcesFilesJson"', text)
+        self.assertIn('id="dtResourcesSourceControl"', text)
+        self.assertIn('id="dtResourcesSourceSummary"', text)
+        self.assertIn('id="dtResourcesSourceMenu"', text)
         self.assertIn('id="dtWorkspaceResources"', text)
-        self.assertIn('id="dtResourcesWorkbenchTitle"', text)
-        self.assertIn('id="dtResourcesWorkbenchMeta"', text)
+        self.assertNotIn('id="dtResourcesStatus"', text)
+        self.assertNotIn('id="dtResourcesFilesJson"', text)
+        self.assertNotIn('id="dtResourcesWorkbenchTitle"', text)
+        self.assertNotIn('id="dtResourcesWorkbenchMeta"', text)
         self.assertNotIn('id="dtResourcesTabTxa"', text)
         self.assertNotIn('id="dtResourcesTabMsn"', text)
-        self.assertIn('id="dtResourcesExplorerTable"', text)
-        self.assertNotIn("<th scope=\"col\">File</th>", text)
+        self.assertIn('id="dtResourcesLayers"', text)
+        self.assertNotIn('id="dtResourcesWorkbenchStatus"', text)
+        self.assertNotIn('id="dtResourcesExplorerTable"', text)
+        self.assertNotIn('id="dtResourcesTableBody"', text)
+        self.assertNotIn('id="dtOpenNimmBtn"', text)
+        self.assertNotIn('id="dtAnthologyGraphRefreshBtn"', text)
 
     def test_system_inheritance_workbench_markup(self) -> None:
         for flavor in ("fnd", "tff"):
@@ -115,6 +125,7 @@ class SystemPageCompositionTests(unittest.TestCase):
         text = base.read_text(encoding="utf-8")
         self.assertIn("{% block inspector_content %}", text)
         self.assertIn('id="portalInspectorTransientMount"', text)
+        self.assertNotIn('class="ide-menubar__spacer"', text)
 
     def test_inherited_inventory_api_exposes_grouped_by_source(self) -> None:
         """Backend support for inheritance UI grouping (no regression)."""

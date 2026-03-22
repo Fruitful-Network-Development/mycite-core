@@ -108,6 +108,34 @@ class ResourceWorkbenchVmTests(unittest.TestCase):
         self.assertEqual(ids, {"1", "1-1"})
         tmp.cleanup()
 
+    def test_system_resource_workbench_surfaces_flat_compact_samras_rows(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        root = Path(tmp.name)
+        (root / "anthology.json").write_text("{}\n", encoding="utf-8")
+        (root / "samras-txa.json").write_text(
+            '{"4-1-1":[["4-1-1","2-1-48","1"],["cytota"]],"5-0-1":[["5-0-1","4-1-1","[\\"4-1-1\\"]"],["samras_set_local_txa"]]}\n',
+            encoding="utf-8",
+        )
+        vm = build_system_resource_workbench_view_model(data_root=root)
+        rows = list(vm.get("rows") or [])
+        txa_rows = [r for r in rows if r.get("file_key") == "txa"]
+        self.assertEqual(len(txa_rows), 2)
+        ids = {str(r.get("identifier")) for r in txa_rows}
+        self.assertEqual(ids, {"4-1-1", "5-0-1"})
+        labels = {str(r.get("label")) for r in txa_rows}
+        self.assertIn("cytota", labels)
+        self.assertIn("samras_set_local_txa", labels)
+        row_by_id = {str(r.get("identifier")): r for r in txa_rows}
+        self.assertEqual(row_by_id["4-1-1"].get("layer"), 4)
+        self.assertEqual(row_by_id["4-1-1"].get("value_group"), 1)
+        self.assertEqual(row_by_id["4-1-1"].get("iteration"), 1)
+        self.assertEqual(row_by_id["5-0-1"].get("layer"), 5)
+        self.assertEqual(row_by_id["5-0-1"].get("value_group"), 0)
+        layers_by_file_key = vm.get("layers_by_file_key") or {}
+        txa_layers = layers_by_file_key.get("txa") or []
+        self.assertEqual([layer.get("layer") for layer in txa_layers], [4, 5])
+        tmp.cleanup()
+
 
 if __name__ == "__main__":
     unittest.main()
