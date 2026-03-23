@@ -39,5 +39,5 @@ Before public/demo exposure, replace the placeholder MSN/key/domain with the rea
 ## Canonical docs
 
 - [mycite-core root](../../README.md)
-- [Portal Build Spec](../../docs/PORTAL_BUILD_SPEC.md)
-- [Canonical Data Engine](../../docs/CANONICAL_DATA_ENGINE.md)
+- [Build And Materialization](../../wiki/runtime-build/build-and-materialization.md)
+- [Canonical Data Artifacts](../../wiki/data-model/canonical-data-artifacts.md)

@@ -71,7 +71,6 @@ PORTAL_RUNTIME_FLAVOR=fnd python app.py
 ## Canonical docs
 
 - [mycite-core root](../../README.md)
-- [Portal Build Spec](../../docs/PORTAL_BUILD_SPEC.md)
-- [Service Shell Standard](../../docs/TOOLS_SHELL.md)
-- [AWS Emailer Abstraction](../../docs/AWS_EMAILER_ABSTRACTION.md)
-- [PayPal Payment Abstraction](../../docs/PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md)
+- [Build And Materialization](../../wiki/runtime-build/build-and-materialization.md)
+- [Shell And Page Composition](../../wiki/architecture/shell-and-page-composition.md)
+- [Member Service Integrations](../../wiki/tools/member-service-integrations.md)
