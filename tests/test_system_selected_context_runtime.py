@@ -65,6 +65,29 @@ class SystemSelectedContextRuntimeTests(unittest.TestCase):
         self.assertEqual(((aitas.get("archetype") or {}).get("value")), "taxonomy")
         self.assertEqual(((aitas.get("spacial") or {}).get("value")), 2)
 
+    def test_inspector_cards_use_neutral_source_relationship_copy(self) -> None:
+        document = build_workbench_document(
+            document_id="workbench:system:msn",
+            instance_id="fnd",
+            logical_key="msn",
+            display_name="samras-msn.json",
+            family_kind="resource",
+            family_type="samras_msn",
+            family_subtype="msn",
+            scope_kind="inherited",
+            payload={"file_key": "msn", "filename": "samras-msn.json"},
+        )
+        document["inheritance"] = {"relation": "inherited_from_remote"}
+
+        payload = build_selected_context_payload(document=document, shell_verb="mediate")
+        cards = payload.get("inspector_cards") or []
+        titles = [str(card.get("title") or "") for card in cards]
+        kinds = [str(card.get("kind") or "") for card in cards]
+
+        self.assertIn("Source Relationship", titles)
+        self.assertIn("source_relationship", kinds)
+        self.assertNotIn("Inheritance", titles)
+
 
 if __name__ == "__main__":
     unittest.main()

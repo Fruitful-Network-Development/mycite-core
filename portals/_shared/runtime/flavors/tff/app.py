@@ -1111,7 +1111,6 @@ def _shell_context() -> Dict[str, Any]:
         active_service_tab=active_service_tab,
         active_tool=active_tool,
         tool_tabs=TOOL_TABS,
-        build_activity_tool_nav_fn=_activity_tool_nav,
         service_nav=build_service_nav(ACTIVE_PRIVATE_CONFIG, active_service=active_service),
         network_tabs=build_network_tabs(active_service_tab),
         sidebar_progeny=sidebar_progeny,
@@ -1306,34 +1305,6 @@ def public_fnd_profile_options(msn_id: str):
 def _tools_by_mount_target(mount_target: str) -> list[Dict[str, Any]]:
     token = str(mount_target or "").strip().lower()
     return [tool for tool in TOOL_TABS if str(tool.get("mount_target") or "peripherals.tools").strip().lower() == token]
-
-
-# Activity bar tool icon paths (relative to /portal/static/icons/). Used for tool buttons below SYSTEM/NETWORK/UTILITIES.
-_ACTIVITY_TOOL_ICONS: Dict[str, str] = {
-    "agro_erp": "farm.svg",
-}
-
-
-def _activity_tool_nav(active_tool_id: str) -> list[Dict[str, Any]]:
-    """Build activity bar entries for tools mounted to peripherals.tools (shown below service nav)."""
-    out: list[Dict[str, Any]] = []
-    for tool in _tools_by_mount_target("peripherals.tools"):
-        tool_id = str(tool.get("tool_id") or "").strip().lower()
-        home_path = str(tool.get("home_path") or "").strip()
-        if not tool_id or not home_path:
-            continue
-        display_name = str(tool.get("display_name") or tool_id).strip() or tool_id
-        icon_rel = _ACTIVITY_TOOL_ICONS.get(tool_id, "")
-        icon_url = ("/portal/static/icons/" + icon_rel) if icon_rel else ""
-        out.append({
-            "tool_id": tool_id,
-            "label": display_name,
-            "title": display_name,
-            "href": home_path,
-            "icon": icon_url,
-            "active": tool_id == str(active_tool_id or "").strip().lower(),
-        })
-    return out
 
 
 def _render_portal_system(*, system_tab: str, workbench_mode: str = "anthology"):

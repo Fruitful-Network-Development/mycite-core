@@ -176,6 +176,28 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
         for path in removed_assets:
             self.assertFalse(path.exists(), str(path))
 
+    def test_shared_system_shell_runtime_is_generic_mediation_host(self) -> None:
+        runtime_js = (
+            Path(__file__).resolve().parents[1]
+            / "portals"
+            / "_shared"
+            / "portal"
+            / "ui"
+            / "static"
+            / "system_shell_runtime.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn("ensureToolContext", runtime_js)
+        self.assertIn("genericMediationProvider", runtime_js)
+        self.assertIn("workbench_contribution", runtime_js)
+        self.assertIn("inspector_card_contribution", runtime_js)
+        self.assertIn("mutation_policy", runtime_js)
+        self.assertIn("preview_hooks", runtime_js)
+        self.assertIn("apply_hooks", runtime_js)
+        self.assertIn("route_prefix", runtime_js)
+        self.assertNotIn("agroOpenBtn", runtime_js)
+        self.assertNotIn("/portal/api/data/system/config_context/agro_erp", runtime_js)
+        self.assertNotIn("state.agroConfigContext", runtime_js)
+
 
 if __name__ == "__main__":
     unittest.main()

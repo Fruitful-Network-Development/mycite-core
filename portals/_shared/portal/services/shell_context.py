@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
 
 def build_shell_context(
@@ -9,7 +9,6 @@ def build_shell_context(
     active_service_tab: str,
     active_tool: dict[str, Any] | None,
     tool_tabs: list[dict[str, Any]],
-    build_activity_tool_nav_fn: Callable[[str], list[dict[str, Any]]],
     service_nav: list[dict[str, Any]],
     network_tabs: list[dict[str, Any]],
     sidebar_progeny: list[dict[str, Any]],
@@ -27,7 +26,6 @@ def build_shell_context(
         "tool_tabs": tool_tabs,
         "active_tool": active_tool,
         "active_tool_id": active_tool_id,
-        "activity_tool_nav": build_activity_tool_nav_fn(active_tool_id),
         "service_nav": service_nav,
         "active_service": active_service,
         "active_service_tab": active_service_tab,

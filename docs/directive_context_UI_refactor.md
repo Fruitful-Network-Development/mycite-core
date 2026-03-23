@@ -38,7 +38,7 @@ Some compatibility internals remain intentionally in the runtime:
 
 - `local_resources` and `inheritance` query values
 - `workbench=anthology` and `workbench=resources`
-- legacy compatibility scripts and styles for older resource workbench flows
+- direct tool-home routes such as `/portal/tools/agro_erp/home`
 
 These remain for compatibility and lineage only. They are not the current visible `SYSTEM` product model.
 
@@ -129,6 +129,6 @@ Historical docs are retained when they explain lineage, but they must not define
 
 - internal variable names in older JS still include `resources` / `anthology` naming
 - compatibility-only route/tab plumbing still exists in shared registry/runtime helpers
-- historical compatibility scripts remain in the repo for lineage and fallback behavior
+- older CSS class families still include historical naming in places where it does not leak into the visible contract
 
 Those are reasonable future cleanup targets, but they do not change the current visible `SYSTEM` contract.
