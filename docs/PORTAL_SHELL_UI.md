@@ -18,7 +18,7 @@ This document records the intended shell behavior after the SYSTEM workbench uni
 
 - The left page-local region is referred to as the **control panel**.
 - The SYSTEM page no longer uses separate anthology/resources tabs.
-- Legacy `local_resources`, `inheritance`, `workbench=anthology`, and `workbench=resources` entries are compatibility-only and should not be surfaced as current tabs.
+- Legacy split-view SYSTEM aliases are removed from active navigation and should not be reintroduced as current tabs or page modes.
 - The top-left of the SYSTEM workbench always shows the four NIMM directives plus the AITAS strip.
 - File switching belongs to `Navigate`, not to separate SYSTEM view links.
 - Mediation entry points come from compatible-tool discovery, not hardcoded AGRO buttons.

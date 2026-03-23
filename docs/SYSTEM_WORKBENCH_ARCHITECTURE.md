@@ -12,7 +12,7 @@ This document defines the unified `/portal/system` page after the anthology/reso
 - left: the page-local **control panel** for context summary and compatible mediations
 - right: the **Details** inspector for active NIMM directive content
 
-Legacy `local_resources`, `inheritance`, `workbench=anthology`, and `workbench=resources` URLs remain compatibility entry points only. They all resolve back into the same unified SYSTEM workbench shell.
+Legacy split-view SYSTEM URLs are no longer part of active routing. The unified SYSTEM workbench is the only current shell surface.
 
 ## Canonical files
 

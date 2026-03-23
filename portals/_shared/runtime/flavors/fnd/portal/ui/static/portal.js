@@ -24,8 +24,8 @@
   };
 
   const PORTAL_THEME_STORAGE_KEY = "mycite.theme.portal.default";
-  const CONTEXT_WIDTH_KEY = "mycite.layout.context.width";
-  const CONTEXT_OPEN_KEY = "mycite.layout.context.open";
+  const CONTROL_PANEL_WIDTH_KEY = "mycite.layout.control_panel.width";
+  const CONTROL_PANEL_OPEN_KEY = "mycite.layout.control_panel.open";
   const INSPECTOR_WIDTH_KEY = "mycite.layout.inspector.width";
   const INSPECTOR_OPEN_KEY = "mycite.layout.inspector.open";
 
@@ -157,10 +157,10 @@
 
   function initWorkbenchLayout() {
     const shell = qs(".ide-shell");
-    const contextSidebar = qs("#portalControlPanel") || qs("#portalContextSidebar");
+    const controlPanel = qs("#portalControlPanel");
     const inspector = qs("#portalInspector");
     const ideBody = qs(".ide-body");
-    if (!shell || !contextSidebar || !inspector) return null;
+    if (!shell || !controlPanel || !inspector) return null;
 
     function clamp(value, min, max) {
       const n = Number(value);
@@ -174,42 +174,37 @@
       return Number.isFinite(value) ? value : fallback;
     }
 
-    function activeSystemWorkbenchMode() {
-      const workspace = qs(".system-center-workspace");
-      if (!workspace) return "";
-      const tab = String(workspace.getAttribute("data-system-tab") || "").trim().toLowerCase();
-      if (tab !== "workbench") return "";
-      return String(workspace.getAttribute("data-system-workbench-mode") || "").trim().toLowerCase();
+    function hasSystemWorkbench() {
+      return !!qs(".system-center-workspace");
     }
 
     function currentLayoutPolicy() {
-      const systemWorkbenchMode = activeSystemWorkbenchMode();
-      if (systemWorkbenchMode === "anthology" || systemWorkbenchMode === "resources" || systemWorkbenchMode === "system") {
+      if (hasSystemWorkbench()) {
         return {
-          defaultContextWidth: 248,
+          defaultControlPanelWidth: 248,
           defaultInspectorWidth: 300,
-          minContextWidth: 188,
-          maxContextWidth: 360,
+          minControlPanelWidth: 188,
+          maxControlPanelWidth: 360,
           minInspectorWidth: 240,
           maxInspectorWidth: 440,
           minWorkbenchWidth: 920,
         };
       }
       return {
-        defaultContextWidth: 280,
+        defaultControlPanelWidth: 280,
         defaultInspectorWidth: 360,
-        minContextWidth: 220,
-        maxContextWidth: 420,
+        minControlPanelWidth: 220,
+        maxControlPanelWidth: 420,
         minInspectorWidth: 280,
         maxInspectorWidth: 520,
         minWorkbenchWidth: 720,
       };
     }
 
-    function applyContextWidth(value) {
+    function applyControlPanelWidth(value) {
       const policy = currentLayoutPolicy();
-      const width = clamp(value, policy.minContextWidth, policy.maxContextWidth);
-      shell.style.setProperty("--ide-context-w", `${width}px`);
+      const width = clamp(value, policy.minControlPanelWidth, policy.maxControlPanelWidth);
+      shell.style.setProperty("--ide-controlpanel-w", `${width}px`);
       return width;
     }
 
@@ -223,22 +218,22 @@
     function rebalanceWorkbench() {
       if (!ideBody || window.matchMedia("(max-width: 960px)").matches) return;
       const policy = currentLayoutPolicy();
-      shell.classList.toggle("ide-shell--system-workbench", !!activeSystemWorkbenchMode());
+      shell.classList.toggle("ide-shell--system-workbench", hasSystemWorkbench());
       const bodyWidth = ideBody.clientWidth || window.innerWidth || 0;
       if (!bodyWidth) return;
 
       const activityWidth = readShellPxVar("--ide-activity-w", 72);
       const splitterWidth = readShellPxVar("--ide-splitter-w", 8);
-      const contextOpen = shell.getAttribute("data-context-collapsed") !== "true";
+      const controlPanelOpen = shell.getAttribute("data-control-panel-collapsed") !== "true";
       const inspectorOpen = shell.getAttribute("data-inspector-collapsed") !== "true";
-      let contextWidth = contextOpen ? readShellPxVar("--ide-context-w", 280) : 0;
+      let controlPanelWidth = controlPanelOpen ? readShellPxVar("--ide-controlpanel-w", 280) : 0;
       let inspectorWidth = inspectorOpen ? readShellPxVar("--ide-inspector-w", 360) : 0;
-      const contextSplitterW = contextOpen ? splitterWidth : 0;
+      const controlPanelSplitterWidth = controlPanelOpen ? splitterWidth : 0;
       let workbenchWidth = bodyWidth
         - activityWidth
-        - contextWidth
+        - controlPanelWidth
         - inspectorWidth
-        - contextSplitterW
+        - controlPanelSplitterWidth
         - (inspectorOpen ? splitterWidth : 0);
 
       if (workbenchWidth >= policy.minWorkbenchWidth) return;
@@ -250,17 +245,17 @@
         inspectorWidth = applyInspectorWidth(nextInspectorWidth);
       }
 
-      if (deficit > 0 && contextOpen && contextWidth > policy.minContextWidth) {
-        const nextContextWidth = Math.max(policy.minContextWidth, contextWidth - deficit);
-        deficit -= contextWidth - nextContextWidth;
-        contextWidth = applyContextWidth(nextContextWidth);
+      if (deficit > 0 && controlPanelOpen && controlPanelWidth > policy.minControlPanelWidth) {
+        const nextControlPanelWidth = Math.max(policy.minControlPanelWidth, controlPanelWidth - deficit);
+        deficit -= controlPanelWidth - nextControlPanelWidth;
+        controlPanelWidth = applyControlPanelWidth(nextControlPanelWidth);
       }
 
       workbenchWidth = bodyWidth
         - activityWidth
-        - contextWidth
+        - controlPanelWidth
         - inspectorWidth
-        - contextSplitterW
+        - controlPanelSplitterWidth
         - (inspectorOpen ? splitterWidth : 0);
       if (workbenchWidth < policy.minWorkbenchWidth) {
         shell.classList.add("ide-shell--workbench-tight");
@@ -272,18 +267,18 @@
     function syncShellToggleButtons() {
       qsa("[data-shell-toggle]", shell).forEach(button => {
         const target = button.getAttribute("data-shell-toggle") || "";
-        const isOpen = target === "context"
-          ? shell.getAttribute("data-context-collapsed") !== "true"
+        const isOpen = target === "control-panel"
+          ? shell.getAttribute("data-control-panel-collapsed") !== "true"
           : shell.getAttribute("data-inspector-collapsed") !== "true";
         button.classList.toggle("is-active", isOpen);
         button.setAttribute("aria-pressed", isOpen ? "true" : "false");
       });
     }
 
-    function setContextWidth(value, persist) {
-      const width = applyContextWidth(value);
+    function setControlPanelWidth(value, persist) {
+      const width = applyControlPanelWidth(value);
       if (persist) {
-        try { window.localStorage.setItem(CONTEXT_WIDTH_KEY, String(width)); } catch (_) {}
+        try { window.localStorage.setItem(CONTROL_PANEL_WIDTH_KEY, String(width)); } catch (_) {}
       }
       rebalanceWorkbench();
     }
@@ -296,14 +291,14 @@
       rebalanceWorkbench();
     }
 
-    function setContextOpen(open, persist) {
+    function setControlPanelOpen(open, persist) {
       const isOpen = !!open;
-      shell.setAttribute("data-context-collapsed", isOpen ? "false" : "true");
-      contextSidebar.classList.toggle("is-collapsed", !isOpen);
-      contextSidebar.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      shell.setAttribute("data-control-panel-collapsed", isOpen ? "false" : "true");
+      controlPanel.classList.toggle("is-collapsed", !isOpen);
+      controlPanel.setAttribute("aria-hidden", isOpen ? "false" : "true");
       syncShellToggleButtons();
       if (persist) {
-        try { window.localStorage.setItem(CONTEXT_OPEN_KEY, isOpen ? "1" : "0"); } catch (_) {}
+        try { window.localStorage.setItem(CONTROL_PANEL_OPEN_KEY, isOpen ? "1" : "0"); } catch (_) {}
       }
       rebalanceWorkbench();
     }
@@ -320,15 +315,15 @@
       rebalanceWorkbench();
     }
 
-    const storedContext = parseInt(getStoredValue(CONTEXT_WIDTH_KEY), 10);
-    const storedContextOpen = getStoredValue(CONTEXT_OPEN_KEY);
+    const storedControlPanel = parseInt(getStoredValue(CONTROL_PANEL_WIDTH_KEY), 10);
+    const storedControlPanelOpen = getStoredValue(CONTROL_PANEL_OPEN_KEY);
     const storedInspector = parseInt(getStoredValue(INSPECTOR_WIDTH_KEY), 10);
     const storedInspectorOpen = getStoredValue(INSPECTOR_OPEN_KEY);
     const initialPolicy = currentLayoutPolicy();
 
-    setContextWidth(storedContext || initialPolicy.defaultContextWidth, false);
+    setControlPanelWidth(storedControlPanel || initialPolicy.defaultControlPanelWidth, false);
     setInspectorWidth(storedInspector || initialPolicy.defaultInspectorWidth, false);
-    setContextOpen(storedContextOpen !== "0", false);
+    setControlPanelOpen(storedControlPanelOpen !== "0", false);
     let inspectorShouldOpen = false;
     if (storedInspectorOpen === "1") inspectorShouldOpen = true;
     else if (storedInspectorOpen === "0") inspectorShouldOpen = false;
@@ -340,21 +335,21 @@
       splitter.addEventListener("pointerdown", event => {
         const type = splitter.getAttribute("data-splitter") || "";
         const startX = event.clientX;
-        const startContext = parseInt(getComputedStyle(shell).getPropertyValue("--ide-context-w"), 10) || 280;
+        const startControlPanel = parseInt(getComputedStyle(shell).getPropertyValue("--ide-controlpanel-w"), 10) || 280;
         const startInspector = parseInt(getComputedStyle(shell).getPropertyValue("--ide-inspector-w"), 10) || 360;
 
         function onMove(moveEvent) {
-          if (type === "context") {
-            setContextWidth(startContext + (moveEvent.clientX - startX), false);
+          if (type === "control-panel") {
+            setControlPanelWidth(startControlPanel + (moveEvent.clientX - startX), false);
           } else {
             setInspectorWidth(startInspector - (moveEvent.clientX - startX), false);
           }
         }
 
         function onUp() {
-          if (type === "context") {
-            const width = parseInt(getComputedStyle(shell).getPropertyValue("--ide-context-w"), 10) || startContext;
-            setContextWidth(width, true);
+          if (type === "control-panel") {
+            const width = parseInt(getComputedStyle(shell).getPropertyValue("--ide-controlpanel-w"), 10) || startControlPanel;
+            setControlPanelWidth(width, true);
           } else {
             const width = parseInt(getComputedStyle(shell).getPropertyValue("--ide-inspector-w"), 10) || startInspector;
             setInspectorWidth(width, true);
@@ -371,8 +366,8 @@
     qsa("[data-shell-toggle]", shell).forEach(button => {
       button.addEventListener("click", () => {
         const target = button.getAttribute("data-shell-toggle") || "";
-        if (target === "context") {
-          setContextOpen(shell.getAttribute("data-context-collapsed") === "true", true);
+        if (target === "control-panel") {
+          setControlPanelOpen(shell.getAttribute("data-control-panel-collapsed") === "true", true);
           return;
         }
         setInspectorOpen(shell.getAttribute("data-inspector-collapsed") === "true", true);
@@ -382,7 +377,7 @@
     window.addEventListener("resize", rebalanceWorkbench);
 
     return {
-      setContextOpen,
+      setControlPanelOpen,
       setInspectorOpen,
       setInspectorWidth,
       rebalanceWorkbench,
@@ -538,7 +533,7 @@
   window.PortalShell = layoutApi
     ? {
         setInspectorOpen: (open, persist) => layoutApi.setInspectorOpen(!!open, persist !== false),
-        setContextOpen: (open, persist) => layoutApi.setContextOpen(!!open, persist !== false),
+        setControlPanelOpen: (open, persist) => layoutApi.setControlPanelOpen(!!open, persist !== false),
         rebalanceWorkbench: () => layoutApi.rebalanceWorkbench && layoutApi.rebalanceWorkbench(),
       }
     : null;

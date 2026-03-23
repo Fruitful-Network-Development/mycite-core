@@ -2765,7 +2765,7 @@ body.is-modal-open {
 :root {
   --ide-menu-h: 38px;
   --ide-activity-w: 96px;
-  --ide-context-w: 260px;
+  --ide-controlpanel-w: 260px;
   --ide-inspector-w: 360px;
 }
 
@@ -2870,7 +2870,7 @@ body.is-modal-open {
 .ide-body {
   min-height: calc(100vh - var(--ide-menu-h));
   display: grid;
-  grid-template-columns: var(--ide-activity-w) var(--ide-context-w) minmax(0, 1fr) 0;
+  grid-template-columns: var(--ide-activity-w) var(--ide-controlpanel-w) minmax(0, 1fr) 0;
 }
 
 .ide-activitybar {
@@ -2939,12 +2939,6 @@ body.is-modal-open {
   color: #fff;
 }
 
-.ide-activitylink--tool {
-  padding: 6px 4px;
-  font-size: 9px;
-  letter-spacing: 0.04em;
-}
-
 .ide-activityfooter {
   margin-top: auto;
   padding: 10px 8px;
@@ -2982,15 +2976,14 @@ body.is-modal-open {
   background: rgba(255, 255, 255, 0.14);
 }
 
-.ide-controlpanel,
-.ide-contextsidebar {
+.ide-controlpanel {
   background: #252525;
   color: #ebebeb;
   border-right: 1px solid #171717;
   overflow: auto;
 }
 
-.ide-contextSection {
+.ide-controlpanel__section {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding: 10px 10px 12px;
 }
@@ -3144,7 +3137,7 @@ body.is-modal-open {
   color: #eee;
 }
 
-.ide-contextTitle {
+.ide-controlpanel__title {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -3153,7 +3146,7 @@ body.is-modal-open {
   margin-bottom: 8px;
 }
 
-.ide-contextList {
+.ide-controlpanel__list {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -3162,7 +3155,7 @@ body.is-modal-open {
   gap: 4px;
 }
 
-.ide-contextLink {
+.ide-controlpanel__link {
   display: block;
   text-decoration: none;
   color: #d7d7d7;
@@ -3171,36 +3164,36 @@ body.is-modal-open {
   padding: 6px 8px;
 }
 
-.ide-contextLink span {
+.ide-controlpanel__link span {
   display: block;
   font-size: 12px;
   line-height: 1.3;
 }
 
-.ide-contextLink small {
+.ide-controlpanel__link small {
   display: block;
   font-size: 10px;
   color: #9e9e9e;
   margin-top: 2px;
 }
 
-.ide-contextLink:hover {
+.ide-controlpanel__link:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
 
-.ide-contextLink.is-active {
+.ide-controlpanel__link.is-active {
   border-color: rgba(30, 108, 147, 0.85);
   background: rgba(30, 108, 147, 0.26);
   color: #fff;
 }
 
-.ide-contextEmpty {
+.ide-controlpanel__empty {
   font-size: 12px;
   color: #9f9f9f;
 }
 
-.ide-contextHint {
+.ide-controlpanel__hint {
   font-size: 11px;
   color: #888;
   margin: 8px 0 0;
@@ -3208,7 +3201,7 @@ body.is-modal-open {
   line-height: 1.35;
 }
 
-.ide-contextSearch input {
+.ide-controlpanel__search input {
   width: 100%;
   min-height: 32px;
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -3218,7 +3211,7 @@ body.is-modal-open {
   padding: 0 8px;
 }
 
-.ide-contextAction {
+.ide-controlpanel__action {
   width: 100%;
   justify-content: center;
 }
@@ -3244,7 +3237,7 @@ body.is-modal-open {
 }
 
 .ide-body:has(.ide-inspector:not(.is-collapsed)) {
-  grid-template-columns: var(--ide-activity-w) var(--ide-context-w) var(--ide-splitter-w) minmax(0, 1fr) var(--ide-splitter-w) var(--ide-inspector-w);
+  grid-template-columns: var(--ide-activity-w) var(--ide-controlpanel-w) var(--ide-splitter-w) minmax(0, 1fr) var(--ide-splitter-w) var(--ide-inspector-w);
 }
 
 .ide-inspector__header {
@@ -3592,10 +3585,10 @@ body.is-modal-open {
 }
 
 .ide-shell {
-  --ide-context-w: 280px;
+  --ide-controlpanel-w: 280px;
   --ide-inspector-w: 360px;
-  --ide-context-visible-w: var(--ide-context-w);
-  --ide-context-splitter-visible-w: var(--ide-splitter-w);
+  --ide-controlpanel-visible-w: var(--ide-controlpanel-w);
+  --ide-controlpanel-splitter-visible-w: var(--ide-splitter-w);
   --ide-inspector-visible-w: 0px;
   --ide-inspector-splitter-visible-w: 0px;
   height: 100vh;
@@ -3605,9 +3598,9 @@ body.is-modal-open {
   flex-direction: column;
 }
 
-.ide-shell[data-context-collapsed="true"] {
-  --ide-context-visible-w: 0px;
-  --ide-context-splitter-visible-w: 0px;
+.ide-shell[data-control-panel-collapsed="true"] {
+  --ide-controlpanel-visible-w: 0px;
+  --ide-controlpanel-splitter-visible-w: 0px;
 }
 
 .ide-shell[data-inspector-collapsed="false"] {
@@ -3674,12 +3667,12 @@ body.is-modal-open {
   display: grid;
   grid-template-columns:
     var(--ide-activity-w)
-    var(--ide-context-visible-w)
-    var(--ide-context-splitter-visible-w)
+    var(--ide-controlpanel-visible-w)
+    var(--ide-controlpanel-splitter-visible-w)
     minmax(0, 1fr)
     var(--ide-inspector-splitter-visible-w)
     var(--ide-inspector-visible-w);
-  grid-template-areas: "activity context contextsplit workbench inspectorsplit inspector";
+  grid-template-areas: "activity controlpanel controlpanelsplit workbench inspectorsplit inspector";
   overflow: hidden;
   align-items: stretch;
 }
@@ -3705,23 +3698,21 @@ body.is-modal-open {
   overflow: hidden;
 }
 
-.ide-controlpanel,
-.ide-contextsidebar {
-  grid-area: context;
+.ide-controlpanel {
+  grid-area: controlpanel;
   overflow: auto;
   overscroll-behavior: contain;
 }
 
-.ide-controlpanel.is-collapsed,
-.ide-contextsidebar.is-collapsed {
+.ide-controlpanel.is-collapsed {
   visibility: hidden;
   pointer-events: none;
   border-right: 0;
   overflow: hidden;
 }
 
-.ide-splitter--context {
-  grid-area: contextsplit;
+.ide-splitter--controlpanel {
+  grid-area: controlpanelsplit;
 }
 
 .ide-workbench {
@@ -3763,9 +3754,8 @@ body.is-modal-open {
   overflow: hidden;
 }
 
-.ide-shell[data-context-collapsed="true"] .ide-controlpanel,
-.ide-shell[data-context-collapsed="true"] .ide-contextsidebar,
-.ide-shell[data-context-collapsed="true"] .ide-splitter--context,
+.ide-shell[data-control-panel-collapsed="true"] .ide-controlpanel,
+.ide-shell[data-control-panel-collapsed="true"] .ide-splitter--controlpanel,
 .ide-body > .ide-inspector.is-collapsed,
 .ide-shell[data-inspector-collapsed="true"] .ide-splitter--inspector {
   display: none;
@@ -3777,7 +3767,6 @@ body.is-modal-open {
 
 .ide-activitybar,
 .ide-controlpanel,
-.ide-contextsidebar,
 .ide-workbench,
 .ide-inspector {
   height: 100%;
@@ -5031,12 +5020,12 @@ body.is-modal-open {
     display: none;
   }
 
-  .ide-contextsidebar {
+  .ide-controlpanel {
     position: fixed;
     top: var(--ide-menu-h);
     left: var(--ide-activity-w);
     bottom: 0;
-    width: min(var(--ide-context-w), calc(100vw - var(--ide-activity-w)));
+    width: min(var(--ide-controlpanel-w), calc(100vw - var(--ide-activity-w)));
     z-index: 91;
     box-shadow: 2px 0 16px rgba(0, 0, 0, 0.28);
   }
@@ -5059,36 +5048,36 @@ body.is-modal-open {
 }
 
 /* NETWORK: portal-native workbench styling */
-.network-contextSection {
+.network-controlpanel__section {
   gap: 8px;
 }
 
-.network-contextSection--search {
+.network-controlpanel__section--search {
   padding-bottom: 8px;
 }
 
-.network-contextTitle {
+.network-controlpanel__title {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
-.network-contextTitle small {
+.network-controlpanel__title small {
   font-size: 11px;
   font-weight: 700;
 }
 
-.network-contextList {
+.network-controlpanel__list {
   display: grid;
   gap: 6px;
 }
 
-.network-contextItem {
+.network-controlpanel__item {
   list-style: none;
 }
 
-.network-contextLink {
+.network-controlpanel__link {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
@@ -5096,7 +5085,7 @@ body.is-modal-open {
   border-radius: 8px;
 }
 
-.network-contextLink__avatar {
+.network-controlpanel__linkAvatar {
   width: 30px;
   height: 30px;
   border-radius: 8px;
@@ -5110,20 +5099,20 @@ body.is-modal-open {
   background: var(--accent);
 }
 
-.network-contextLink__body {
+.network-controlpanel__linkBody {
   min-width: 0;
   display: grid;
   gap: 2px;
 }
 
-.network-contextLink__body span,
-.network-contextLink__body small {
+.network-controlpanel__linkBody span,
+.network-controlpanel__linkBody small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.network-contextLink__body span {
+.network-controlpanel__linkBody span {
   font-weight: 700;
 }
 

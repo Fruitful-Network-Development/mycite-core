@@ -655,8 +655,8 @@ def _normalize_utilities_tab(raw: Any) -> str:
 
 
 def _normalize_system_query_tab(raw: Any) -> str:
-    token = str(raw or "").strip().lower()
-    return "workbench" if token == "workbench" else "workbench"
+    _ = raw
+    return "system"
 
 def _canonical_system_url() -> str:
     query_items = [(key, value) for key, value in request.args.items(multi=True) if key not in {"tab", "workbench"}]

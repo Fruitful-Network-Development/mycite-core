@@ -14,28 +14,28 @@
 {% set selected_contract_record = selected_contract if selected_contract is defined else None %}
 
 {% block control_panel %}
-  <section class="ide-contextSection network-contextSection network-contextSection--search">
-    <header class="ide-contextTitle network-contextTitle">Find Interface</header>
-    <div class="ide-contextSearch">
-      <input id="networkContextFilter" type="text" placeholder="Filter aliases, logs, P2P..." />
+  <section class="ide-controlpanel__section network-controlpanel__section network-controlpanel__section--search">
+    <header class="ide-controlpanel__title network-controlpanel__title">Find Interface</header>
+    <div class="ide-controlpanel__search">
+      <input id="networkControlPanelFilter" type="text" placeholder="Filter aliases, logs, P2P..." />
     </div>
   </section>
   {% if control_panel_sections is defined and control_panel_sections %}
     {% for section in control_panel_sections %}
-      <section class="ide-contextSection network-contextSection">
-        <header class="ide-contextTitle network-contextTitle">
+      <section class="ide-controlpanel__section network-controlpanel__section">
+        <header class="ide-controlpanel__title network-controlpanel__title">
           <span>{{ section.title }}</span>
           {% if section.entries %}
             <small>{{ section.entries|length }}</small>
           {% endif %}
         </header>
         {% if section.entries %}
-          <ul class="ide-contextList network-contextList" data-network-list="1">
+          <ul class="ide-controlpanel__list network-controlpanel__list" data-network-list="1">
             {% for item in section.entries %}
-              <li class="network-contextItem" data-network-token="{{ (item.label ~ ' ' ~ (item.meta or ''))|lower }}">
-                <a class="ide-contextLink network-contextLink {% if item.active %}is-active{% endif %}" href="{{ item.href }}">
-                  <span class="network-contextLink__avatar">{{ (item.label or 'NW')[:2]|upper }}</span>
-                  <span class="network-contextLink__body">
+              <li class="network-controlpanel__item" data-network-token="{{ (item.label ~ ' ' ~ (item.meta or ''))|lower }}">
+                <a class="ide-controlpanel__link network-controlpanel__link {% if item.active %}is-active{% endif %}" href="{{ item.href }}">
+                  <span class="network-controlpanel__linkAvatar">{{ (item.label or 'NW')[:2]|upper }}</span>
+                  <span class="network-controlpanel__linkBody">
                     <span>{{ item.label }}</span>
                     {% if item.meta %}<small>{{ item.meta }}</small>{% endif %}
                   </span>
@@ -44,7 +44,7 @@
             {% endfor %}
           </ul>
         {% else %}
-          <div class="ide-contextEmpty">{% if section.empty_text %}{{ section.empty_text }}{% else %}No entries{% endif %}</div>
+          <div class="ide-controlpanel__empty">{% if section.empty_text %}{{ section.empty_text }}{% else %}No entries{% endif %}</div>
         {% endif %}
       </section>
     {% endfor %}
@@ -559,9 +559,9 @@
 {% block scripts %}
   <script>
     (function () {
-      var input = document.getElementById("networkContextFilter");
+      var input = document.getElementById("networkControlPanelFilter");
       if (!input) return;
-      var items = Array.prototype.slice.call(document.querySelectorAll(".network-contextItem[data-network-token]"));
+      var items = Array.prototype.slice.call(document.querySelectorAll(".network-controlpanel__item[data-network-token]"));
       input.addEventListener("input", function () {
         var q = String(input.value || "").trim().toLowerCase();
         items.forEach(function (item) {

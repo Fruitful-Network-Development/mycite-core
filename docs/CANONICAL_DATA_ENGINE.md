@@ -101,7 +101,7 @@ Shared-core also owns the canonical route surface for the unified `SYSTEM` workb
 - `POST /portal/api/data/system/mutate`
 - `POST /portal/api/data/system/publish`
 
-These routes expose one NIMM/AITAS-aware workbench model over the three canonical files. Legacy `local_resources`, `inheritance`, `workbench=anthology`, and `workbench=resources` entrypoints are compatibility aliases only.
+These routes expose one NIMM/AITAS-aware workbench model over the three canonical files. Older split-view SYSTEM query framing is no longer part of the active route contract.
 
 ## Shared write pipeline
 

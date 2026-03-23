@@ -93,7 +93,7 @@
   var samrasSelectedNodeTitleEl = qs("#dtsamrasSelectedNodeTitle", app);
   var samrasSelectedNodeMetaEl = qs("#dtsamrasSelectedNodeMeta", app);
 
-  var systemWorkbenchMode = String(app.getAttribute("data-system-workbench-mode") || "system").trim().toLowerCase();
+  var systemWorkbenchActive = String(app.getAttribute("data-active-tab") || "").trim().toLowerCase() === "system";
   var dtWorkspaceResources = qs("#dtWorkspaceResources", app);
   var dtResourcesRefreshBtn = qs("#dtResourcesRefreshBtn", app);
   var dtResourcesWorkbenchStatusEl = qs("#dtResourcesWorkbenchStatus", app);
@@ -2389,7 +2389,7 @@
       await getAnthologyTable();
     }
     await loadDatumEditor(datumWorkbenchState.rowId, { syncGraphFocus: false, openInspector: true });
-    if (String(app.getAttribute("data-system-workbench-mode") || "").trim().toLowerCase() === "system") {
+    if (systemWorkbenchActive) {
       loadSystemResourceWorkbench().catch(function () {
         /* best-effort refresh of resource explorer */
       });
@@ -3278,7 +3278,6 @@
       document: activeResourceWorkbenchDocument(),
       selected_row: resourcesWorkbenchState.selectedRow || null,
       current_verb: resourcesWorkbenchState.activeTask || "navigate",
-      workbench_mode: "system"
     });
   }
 
@@ -4103,7 +4102,6 @@
     syncResourcesFileButtons();
     renderResourcesLayeredWorkbench();
     emitShellRuntimeEvent("mycite:shell:workbench-payload", {
-      workbench_mode: "system",
       payload: resourcesWorkbenchState.payload
     });
   }
@@ -4127,7 +4125,6 @@
       });
     }
     syncSystemShellDataToolPanels("system");
-    emitShellRuntimeEvent("mycite:shell:workbench-mode", { workbench_mode: "system" });
   }
 
   function txaLoadStaged(rid) {
@@ -5964,20 +5961,20 @@
     if (!t || !t.closest) return;
     var fileBtn = t.closest("[data-resources-file-key], [data-system-resource-file-key]");
     if (fileBtn && document.body.contains(fileBtn)) {
-      if (systemWorkbenchMode !== "system") return;
+      if (!systemWorkbenchActive) return;
       var fileKey = String(fileBtn.getAttribute("data-resources-file-key") || fileBtn.getAttribute("data-system-resource-file-key") || "").trim();
       if (fileKey) setResourcesActiveFile(fileKey);
       return;
     }
     var taskBtn = t.closest("[data-resources-task]");
     if (!taskBtn || !document.body.contains(taskBtn)) return;
-    if (systemWorkbenchMode !== "system") return;
+    if (!systemWorkbenchActive) return;
     var task = String(taskBtn.getAttribute("data-resources-task") || "").trim();
     if (task) setResourcesActiveTask(task);
   });
   if (dtResourcesMediateLensEl) {
     dtResourcesMediateLensEl.addEventListener("change", function () {
-      if (systemWorkbenchMode === "system" && resourcesWorkbenchState.activeTask === "mediate") {
+      if (systemWorkbenchActive && resourcesWorkbenchState.activeTask === "mediate") {
         renderResourcesMediatePanel(resourcesWorkbenchState.selectedRow);
       }
     });
@@ -6076,7 +6073,7 @@
   if (appendValueGroupInput && !appendValueGroupInput.value) appendValueGroupInput.value = "1";
   syncAppendPairRequirements();
   ensurePairRows(profilePairsEl, "js-remove-profile-pair");
-  if (systemWorkbenchMode !== "system") {
+  if (!systemWorkbenchActive) {
     renderDatumEditorEmpty("");
     ensureTxaAsideInShellHost();
   }

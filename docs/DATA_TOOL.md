@@ -109,4 +109,4 @@ Daemon endpoints remain owned by the Data Engine:
 
 These endpoints stay available for Data Tool and tool-package use. NETWORK foreign datum resolution is not daemon-backed; it is contract-MSS-backed.
 
-Legacy query values such as `local_resources`, `inheritance`, `workbench=anthology`, and `workbench=resources` may still resolve for compatibility, but they are not part of the current visible `SYSTEM` workbench contract.
+Legacy split-view query aliases are no longer part of the active `SYSTEM` contract. Current Data Tool behavior assumes one canonical SYSTEM workbench surface.
