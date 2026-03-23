@@ -39,7 +39,7 @@ PORTAL_RUNTIME_FLAVOR=tff python app.py
 ## Canonical docs
 
 - [mycite-core root](../../README.md)
-- [Portal Build Spec](../../docs/PORTAL_BUILD_SPEC.md)
-- [Canonical Data Engine](../../docs/CANONICAL_DATA_ENGINE.md)
-- [Network Page Model](../../docs/NETWORK_PAGE_MODEL.md)
-- [AGRO ERP Tool](../../docs/AGRO_ERP_TOOL.md)
+- [Build And Materialization](../../wiki/runtime-build/build-and-materialization.md)
+- [Canonical Data Artifacts](../../wiki/data-model/canonical-data-artifacts.md)
+- [Network Page Model](../../wiki/network-hosted/network-page-model.md)
+- [AGRO-ERP Mediation](../../wiki/tools/agro-erp-mediation.md)

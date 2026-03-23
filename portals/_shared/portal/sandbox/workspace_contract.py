@@ -1,6 +1,6 @@
 """Typed declarations for sandbox-first tools (intent only; semantics stay in data_engine).
 
-See ``docs/portal_core_sandbox_consolidation.md`` and ``docs/tool_sandbox_session_ownership.md``.
+See the sandbox lifecycle and tool integration wiki pages for the current contract.
 Runtime behavior lives in ``tool_sandbox_session.py`` (`ToolSandboxSession`).
 """
 

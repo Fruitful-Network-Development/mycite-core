@@ -76,23 +76,20 @@ Hosted/progeny direction in the current phase:
 - `portals/mycite-le_example/` example/demo portal build spec
 - `portals/mycite-le_fnd/` FND portal build spec
 - `portals/mycite-le_tff/` TFF portal build spec
-- `docs/` canonical product and runtime documentation
+- `wiki/` canonical product and runtime documentation
 
 ## Canonical docs
 
-- [`docs/README.md`](docs/README.md)
-- [`docs/PORTAL_BUILD_SPEC.md`](docs/PORTAL_BUILD_SPEC.md)
-- [`docs/TOOLS_SHELL.md`](docs/TOOLS_SHELL.md)
-- [`docs/CANONICAL_DATA_ENGINE.md`](docs/CANONICAL_DATA_ENGINE.md)
-- [`docs/NETWORK_PAGE_MODEL.md`](docs/NETWORK_PAGE_MODEL.md)
-- [`docs/AWS_EMAILER_ABSTRACTION.md`](docs/AWS_EMAILER_ABSTRACTION.md)
-- [`docs/PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md`](docs/PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md)
-- [`docs/REQUEST_LOG_V1.md`](docs/REQUEST_LOG_V1.md)
-- [`docs/PROGENY_PROFILE_CARDS.md`](docs/PROGENY_PROFILE_CARDS.md)
-- [`docs/PROGENY_CONFIG_MODEL.md`](docs/PROGENY_CONFIG_MODEL.md)
-- [`docs/DATA_TOOL.md`](docs/DATA_TOOL.md)
-- [`docs/DOCUMENTATION_POLICY.md`](docs/DOCUMENTATION_POLICY.md)
-- [`docs/repo_policy.md`](docs/repo_policy.md)
+- [`wiki/Home.md`](wiki/Home.md)
+- [`wiki/architecture/system-state-machine.md`](wiki/architecture/system-state-machine.md)
+- [`wiki/data-model/datum-identity-and-resolution.md`](wiki/data-model/datum-identity-and-resolution.md)
+- [`wiki/contracts-mss/mss-compact-array.md`](wiki/contracts-mss/mss-compact-array.md)
+- [`wiki/samras/structural-model.md`](wiki/samras/structural-model.md)
+- [`wiki/runtime-build/build-and-materialization.md`](wiki/runtime-build/build-and-materialization.md)
+- [`wiki/network-hosted/network-page-model.md`](wiki/network-hosted/network-page-model.md)
+- [`wiki/network-hosted/request-log-and-audit.md`](wiki/network-hosted/request-log-and-audit.md)
+- [`wiki/tools/member-service-integrations.md`](wiki/tools/member-service-integrations.md)
+- [`wiki/governance/documentation-governance.md`](wiki/governance/documentation-governance.md)
 
 ## Runtime note
 

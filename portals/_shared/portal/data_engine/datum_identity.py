@@ -235,7 +235,7 @@ class CompiledDatumIndex:
     """
     Contract-level compiled view of a compact array (MSS bitstring).
 
-    This is the concrete shape described in docs/CONTRACT_COMPACT_INDEX.md:
+    This is the concrete shape described in the compiled-datum-index wiki contract:
       - top-level snapshot metadata (contract_id, relationship/access/sync modes)
       - entries keyed by canonical datum path
     """

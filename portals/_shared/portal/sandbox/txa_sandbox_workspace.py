@@ -6,7 +6,7 @@ title tables, and next-child address previews from a sandbox resource payload pl
 optional **staged** entries. They do **not** persist; promotion remains
 ``SandboxEngine`` / ``LocalResourceLifecycleService`` / tool session paths.
 
-Follow-up (reverse sync): see ``docs/txa_sandbox_workspace_pass.md``.
+Historical reverse-sync pass notes were folded into the wiki archive during doc migration.
 """
 
 from __future__ import annotations

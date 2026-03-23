@@ -44,7 +44,7 @@ Anthology is intentionally not generated in this phase.
 ## Canonical docs
 
 - [`../README.md`](../README.md)
-- [`../docs/PORTAL_BUILD_SPEC.md`](../docs/PORTAL_BUILD_SPEC.md)
-- [`../docs/TOOLS_SHELL.md`](../docs/TOOLS_SHELL.md)
-- [`../docs/CANONICAL_DATA_ENGINE.md`](../docs/CANONICAL_DATA_ENGINE.md)
-- [`../docs/NETWORK_PAGE_MODEL.md`](../docs/NETWORK_PAGE_MODEL.md)
+- [`../wiki/runtime-build/build-and-materialization.md`](../wiki/runtime-build/build-and-materialization.md)
+- [`../wiki/architecture/shell-and-page-composition.md`](../wiki/architecture/shell-and-page-composition.md)
+- [`../wiki/data-model/canonical-data-artifacts.md`](../wiki/data-model/canonical-data-artifacts.md)
+- [`../wiki/network-hosted/network-page-model.md`](../wiki/network-hosted/network-page-model.md)
