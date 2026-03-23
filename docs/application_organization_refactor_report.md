@@ -9,7 +9,7 @@ The target state is:
 * one **workspace document interface**
 * multiple **adapters** for host, storage, and transport
 
-Your current docs already support most of this direction: the shell is already fixed around activity bar, context sidebar, workbench, and inspector; tools are already supposed to consume the shared shell; resources already carry `anthology_compatible_payload`; and sandbox is already described as a lifecycle service rather than the inventory owner.    
+Your current docs already support most of this direction: the shell is already fixed around activity bar, control panel, workbench, and inspector; tools are already supposed to consume the shared shell; resources already carry `anthology_compatible_payload`; and sandbox is already described as a lifecycle service rather than the inventory owner.    
 
 ---
 
@@ -94,7 +94,7 @@ The shell should instead exist as:
 The shell’s invariant regions should remain:
 
 * activity bar
-* context sidebar
+* control panel
 * workbench
 * inspector
 
@@ -562,4 +562,3 @@ The application should be refactored so that:
 * **storage and transport differences** live behind adapters
 
 That is the modular organization your notes point to, once the earlier route/controller-centered pieces are removed and the anthology/resource split is flattened into one canonical workbench model.
-

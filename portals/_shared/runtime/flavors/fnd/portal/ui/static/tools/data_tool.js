@@ -94,20 +94,11 @@
   var samrasSelectedNodeMetaEl = qs("#dtsamrasSelectedNodeMeta", app);
 
   var systemWorkbenchMode = String(app.getAttribute("data-system-workbench-mode") || "system").trim().toLowerCase();
-  var dtWorkspaceAnthology = qs("#dtWorkspaceAnthology", app);
   var dtWorkspaceResources = qs("#dtWorkspaceResources", app);
   var dtResourcesRefreshBtn = qs("#dtResourcesRefreshBtn", app);
-  var dtResourcesStatus = qs("#dtResourcesStatus", app);
-  var dtResourcesTableEmpty = qs("#dtResourcesTableEmpty", app);
   var dtResourcesWorkbenchStatusEl = qs("#dtResourcesWorkbenchStatus", app);
   var dtSystemAitasStripEl = qs("#dtSystemAitasStrip", app);
   var dtResourcesLayersEl = qs("#dtResourcesLayers", app);
-  var dtResourcesFilesJson = qs("#dtResourcesFilesJson", app);
-  var dtResourcesWorkbenchTitleEl = qs("#dtResourcesWorkbenchTitle", app);
-  var dtResourcesWorkbenchMetaEl = qs("#dtResourcesWorkbenchMeta", app);
-  var dtResourcesSourceControlEl = qs("#dtResourcesSourceControl", app);
-  var dtResourcesSourceSummaryEl = qs("#dtResourcesSourceSummary", app);
-  var dtResourcesSourceMenuEl = qs("#dtResourcesSourceMenu", app);
   var resourcesDatumProfileEl = document.getElementById("resourcesDatumProfile");
   var dtResourcesInspectorEmptyEl = document.getElementById("dtResourcesInspectorEmpty");
   var dtResourcesInspectorStackEl = document.getElementById("dtResourcesInspectorStack");
@@ -3381,58 +3372,6 @@
     });
   }
 
-  function renderResourcesSourceMenu() {
-    if (!dtResourcesSourceMenuEl) return;
-    var payload = resourcesWorkbenchState.payload && typeof resourcesWorkbenchState.payload === "object" ? resourcesWorkbenchState.payload : {};
-    var keys = resourceSurfaceFileKeys(payload);
-    dtResourcesSourceMenuEl.innerHTML = "";
-    if (!keys.length) {
-      return;
-    }
-    keys.forEach(function (fileKey) {
-      var meta = resourceFileRecordForKey(payload, fileKey) || {};
-      var label = String(meta.filename || fileKey + ".json");
-      var rows = Number(meta.row_count || 0);
-      var button = document.createElement("button");
-      button.type = "button";
-      button.className = "data-tool__sourceMenuButton";
-      button.setAttribute("data-resources-file-key", fileKey);
-      button.setAttribute("aria-pressed", String(String(resourcesWorkbenchState.activeFileKey || "").trim() === fileKey));
-      button.innerHTML =
-        "<span>" + escapeText(label) + "</span>" +
-        "<small>" + escapeText("Rows: " + String(rows)) + "</small>";
-      dtResourcesSourceMenuEl.appendChild(button);
-    });
-    syncResourcesFileButtons();
-  }
-
-  function renderResourcesWorkbenchHeader() {
-    var payload = resourcesWorkbenchState.payload && typeof resourcesWorkbenchState.payload === "object" ? resourcesWorkbenchState.payload : {};
-    var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
-    var meta = resourceFileRecordForKey(payload, fk) || {};
-    var doc = resourceSurfaceDocumentForKey(payload, fk) || {};
-    var identity = doc.identity && typeof doc.identity === "object" ? doc.identity : {};
-    var label = String(meta.filename || identity.display_name || fk + ".json").trim() || "Resource JSON";
-    var rows = Number(meta.row_count || 0);
-    var layerCount = groupedResourceRows(resourcesRowsForActiveFile()).length;
-    if (dtResourcesWorkbenchTitleEl) dtResourcesWorkbenchTitleEl.textContent = label;
-    if (dtResourcesWorkbenchMetaEl) {
-      dtResourcesWorkbenchMetaEl.textContent =
-        "Canonical resource workbench · " +
-        fk +
-        " · " +
-        String(rows) +
-        " datums across " +
-        String(layerCount) +
-        " layer groups";
-    }
-    if (dtResourcesSourceSummaryEl) {
-      dtResourcesSourceSummaryEl.textContent = "Source";
-      dtResourcesSourceSummaryEl.title = label;
-      dtResourcesSourceSummaryEl.setAttribute("aria-label", "Source: " + label);
-    }
-  }
-
   function setResourcesActiveFile(fileKey) {
     var fk = String(fileKey || "").trim();
     var allowed = resourceSurfaceFileKeys(resourcesWorkbenchState.payload);
@@ -3440,10 +3379,7 @@
     resourcesWorkbenchState.activeFileKey = fk;
     resourcesWorkbenchState.selectedRow = null;
     syncResourcesFileButtons();
-    renderResourcesSourceMenu();
-    renderResourcesWorkbenchHeader();
     renderResourcesLayeredWorkbench();
-    if (dtResourcesSourceControlEl) dtResourcesSourceControlEl.open = false;
     emitShellRuntimeEvent("mycite:shell:file-focus-changed", { file_key: fk });
     setResourcesActiveTask("navigate");
   }
@@ -3960,14 +3896,10 @@
     var manipulateMode = String(resourcesWorkbenchState.activeTask || "") === "manipulate";
     var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
     dtResourcesLayersEl.innerHTML = "";
-    if (dtResourcesTableEmpty) dtResourcesTableEmpty.hidden = rows.length > 0;
     if (dtResourcesWorkbenchStatusEl) {
       dtResourcesWorkbenchStatusEl.textContent = rows.length
         ? "Attention is on " + fk + ".json. Select a datum to move Spacial from 1 to 2."
         : "No datums are present in " + fk + ".json yet.";
-    }
-    if (dtResourcesStatus) {
-      dtResourcesStatus.textContent = "File: " + fk + " · Datums: " + String(rows.length);
     }
     if (!groups.length && manipulateMode) {
       var emptyCreate = document.createElement("div");
@@ -4168,13 +4100,7 @@
     if (keys.length && keys.indexOf(resourcesWorkbenchState.activeFileKey) === -1) {
       resourcesWorkbenchState.activeFileKey = keys[0];
     }
-    renderResourcesSourceMenu();
-    renderResourcesWorkbenchHeader();
     syncResourcesFileButtons();
-    if (dtResourcesFilesJson) {
-      var files = Array.isArray(payload && payload.files) ? payload.files : [];
-      dtResourcesFilesJson.textContent = JSON.stringify(files, null, 2);
-    }
     renderResourcesLayeredWorkbench();
     emitShellRuntimeEvent("mycite:shell:workbench-payload", {
       workbench_mode: "system",
@@ -4188,10 +4114,7 @@
     return payload;
   }
 
-  function setDtWorkspaceTab(mode) {
-    var m = String(mode || "system").trim().toLowerCase();
-    if (m !== "system" && m !== "resources") m = "system";
-    if (dtWorkspaceAnthology) dtWorkspaceAnthology.hidden = true;
+  function activateSystemWorkbench() {
     if (dtWorkspaceResources) dtWorkspaceResources.hidden = false;
     resourcesWorkbenchState.activeTask = "navigate";
     qsa("[data-resources-task]", document).forEach(function (btn) {
@@ -6041,20 +5964,20 @@
     if (!t || !t.closest) return;
     var fileBtn = t.closest("[data-resources-file-key], [data-system-resource-file-key]");
     if (fileBtn && document.body.contains(fileBtn)) {
-      if (systemWorkbenchMode !== "system" && systemWorkbenchMode !== "resources") return;
+      if (systemWorkbenchMode !== "system") return;
       var fileKey = String(fileBtn.getAttribute("data-resources-file-key") || fileBtn.getAttribute("data-system-resource-file-key") || "").trim();
       if (fileKey) setResourcesActiveFile(fileKey);
       return;
     }
     var taskBtn = t.closest("[data-resources-task]");
     if (!taskBtn || !document.body.contains(taskBtn)) return;
-    if (systemWorkbenchMode !== "system" && systemWorkbenchMode !== "resources") return;
+    if (systemWorkbenchMode !== "system") return;
     var task = String(taskBtn.getAttribute("data-resources-task") || "").trim();
     if (task) setResourcesActiveTask(task);
   });
   if (dtResourcesMediateLensEl) {
     dtResourcesMediateLensEl.addEventListener("change", function () {
-      if ((systemWorkbenchMode === "system" || systemWorkbenchMode === "resources") && resourcesWorkbenchState.activeTask === "mediate") {
+      if (systemWorkbenchMode === "system" && resourcesWorkbenchState.activeTask === "mediate") {
         renderResourcesMediatePanel(resourcesWorkbenchState.selectedRow);
       }
     });
@@ -6066,7 +5989,7 @@
       });
     });
   }
-  setDtWorkspaceTab("system");
+  activateSystemWorkbench();
 
   function applySamrasWorkbenchPreset(resourceId) {
     if (!dtTxaResourceId) return;
@@ -6153,7 +6076,7 @@
   if (appendValueGroupInput && !appendValueGroupInput.value) appendValueGroupInput.value = "1";
   syncAppendPairRequirements();
   ensurePairRows(profilePairsEl, "js-remove-profile-pair");
-  if (systemWorkbenchMode !== "system" && systemWorkbenchMode !== "resources") {
+  if (systemWorkbenchMode !== "system") {
     renderDatumEditorEmpty("");
     ensureTxaAsideInShellHost();
   }
