@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from _shared.portal.samras import load_workspace_from_resource_body, mutate_resource_body
+
 from .engine import SandboxEngine
 from .models import SandboxStageResult
 from .samras import decode_resource_rows
@@ -54,7 +56,11 @@ def promote_staged_samras_title_entries(
             errors=[f"resource not found: {rid}"],
         )
 
-    persisted_rows = decode_resource_rows(base if isinstance(base, dict) else {})
+    try:
+        workspace = load_workspace_from_resource_body(base if isinstance(base, dict) else {})
+        persisted_rows = [{"address_id": item.address_id, "title": item.title} for item in workspace.nodes]
+    except Exception:
+        persisted_rows = decode_resource_rows(base if isinstance(base, dict) else {})
     normalized, stage_warnings = normalize_staged_entries(persisted_rows, staged_entries)
     if not normalized:
         return SandboxStageResult(
@@ -66,33 +72,27 @@ def promote_staged_samras_title_entries(
             errors=["no promotable staged entries (see warnings)"],
         )
 
-    rows: list[dict[str, Any]] = [{"address_id": _as_text(r.get("address_id")), "title": _as_text(r.get("title"))} for r in persisted_rows]
-    for st in normalized:
-        prov = _as_text(st.get("provisional_child_address"))
-        title = _as_text(st.get("title"))
-        if prov and title:
-            rows.append({"address_id": prov, "title": title})
-
-    structure_payload = _as_text(
-        base.get("structure_payload") or base.get("canonical_magnitude") or base.get("legacy_structure_payload_input")
-    )
-    if structure_payload:
-        result = engine.create_or_update_samras_resource(
-            resource_id=rid,
-            structure_payload=structure_payload,
-            rows=rows,
-            value_kind=_as_text(base.get("value_kind") or "address_id"),
-            source=_as_text(base.get("source") or "samras_workspace_promote"),
-        )
-        merged_warnings = list(stage_warnings) + list(result.warnings)
+    try:
+        updated = dict(base)
+        for st in normalized:
+            updated, _workspace, _mutation = mutate_resource_body(
+                updated,
+                action="samras_add_child",
+                parent_address=_as_text(st.get("parent_address")),
+                title=_as_text(st.get("title")),
+            )
+        saved = engine.save_resource(rid, updated)
+        merged_warnings = list(stage_warnings) + list(saved.warnings)
         return SandboxStageResult(
-            ok=result.ok,
-            resource_type=result.resource_type,
-            resource_id=result.resource_id,
-            staged_payload=dict(result.staged_payload),
+            ok=saved.ok,
+            resource_type=saved.resource_type,
+            resource_id=saved.resource_id,
+            staged_payload=dict(saved.staged_payload),
             warnings=merged_warnings,
-            errors=list(result.errors),
+            errors=list(saved.errors),
         )
+    except Exception:
+        pass
 
     merged = dict(base.get("rows_by_address") if isinstance(base.get("rows_by_address"), dict) else {})
     for st in normalized:

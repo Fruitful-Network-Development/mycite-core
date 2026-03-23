@@ -5,7 +5,7 @@ from .base import RuleContext, RuleDefinition, as_text, make_ui_state
 
 def build_samras_rule() -> RuleDefinition:
     def _match(context: RuleContext) -> bool:
-        return as_text(context.row.reference) == "0-0-5" or "samras" in as_text(context.row.label).lower()
+        return as_text(context.row.reference) == "0-0-5"
 
     def _derive(_context: RuleContext) -> dict[str, object]:
         return {"family_scope": "structural_value", "root_ref": "0-0-5"}

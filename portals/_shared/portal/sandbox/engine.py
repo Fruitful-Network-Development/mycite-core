@@ -15,6 +15,7 @@ from ..data_engine.resource_registry import INHERITED_SCOPE, read_resource_file,
 from ..data_engine.samras_descriptor_compiler import compile_samras_descriptors_from_rows
 from ..datum_refs import normalize_datum_ref, parse_datum_ref
 from ..mss import decode_mss_payload, preview_mss_context
+from ..samras import InvalidSamrasStructure, build_workspace_view_model, load_workspace_from_resource_body, mutate_resource_body
 from .models import (
     ExposedResourceValue,
     InheritedResourceContext,
@@ -25,20 +26,15 @@ from .models import (
     SandboxStageResult,
 )
 from .samras import (
+    SamrasRole,
     SamrasStructure,
-    build_samras_structure_from_address_map,
     compile_canonical_samras_bitstring,
-    create_child_address,
-    decode_canonical_samras_bitstring,
     decode_samras_structure,
-    delete_address,
     decode_resource_rows,
     decode_structure_payload,
     encode_resource_rows,
     ensure_resource_object,
     inspect_node_by_address,
-    move_branch,
-    set_node_value_by_address,
     validate_samras_structure,
 )
 
@@ -254,21 +250,6 @@ class SandboxEngine:
                 root_ref="0-0-5",
             )
             address_map = dict(decoded_structure.address_map or {})
-            for row in rows if isinstance(rows, list) else []:
-                address_id = _as_text(row.get("address_id"))
-                if not address_id:
-                    continue
-                title = _as_text(row.get("title"))
-                if title and address_id not in address_map:
-                    # New rows are editable by address in structure mode.
-                    address_map[address_id] = 0
-            structure = build_samras_structure_from_address_map(
-                address_map,
-                root_ref="0-0-5",
-                source_format=decoded_structure.source_format,
-                canonical_state="canonical",
-                warnings=list(decoded_structure.warnings or []),
-            )
             title_by_address = (
                 {
                     _as_text(item.get("address_id")): _as_text(item.get("title"))
@@ -278,12 +259,20 @@ class SandboxEngine:
                 if isinstance(rows, list)
                 else {}
             )
-            validation = validate_samras_structure(structure)
+            unknown_addresses = [address for address in title_by_address.keys() if address and address not in address_map]
+            if unknown_addresses:
+                raise InvalidSamrasStructure(
+                    "title rows reference addresses not present in the governing structure: "
+                    + ", ".join(sorted(unknown_addresses))
+                )
+            validation = validate_samras_structure(decoded_structure)
             if not bool(validation.get("ok")):
                 raise ValueError("; ".join(list(validation.get("errors") or [])) or "invalid SAMRAS structure")
-            canonical_magnitude = compile_canonical_samras_bitstring(structure)
+            canonical_magnitude = compile_canonical_samras_bitstring(decoded_structure)
             descriptor = decode_structure_payload(
-                canonical_magnitude,
+                "0",
+                shape_root="0-0-5",
+                role=SamrasRole.VALUE,
                 value_kind=_as_text(value_kind) or "address_id",
                 source_ref=_as_text(source),
             )
@@ -293,9 +282,9 @@ class SandboxEngine:
                     "source": _as_text(source) or "local",
                     "value_kind": _as_text(value_kind) or "address_id",
                     "root_ref": "0-0-5",
-                    "source_format": decoded_structure.source_format,
+                    "source_format": "canonical",
                     "canonical_state": "canonical",
-                    "samras_structure": structure.to_dict(),
+                    "samras_structure": decode_samras_structure(canonical_magnitude, root_ref="0-0-5").to_dict(),
                     "legacy_structure_payload_input": _as_text(structure_payload),
                     "canonical_magnitude": canonical_magnitude,
                 },
@@ -310,7 +299,7 @@ class SandboxEngine:
                         for key in sorted(address_map.keys(), key=lambda token: tuple(int(part) for part in token.split("-")))
                     ]
                     if isinstance(rows, list)
-                    else [{"address_id": key, "title": ""} for key in sorted(address_map.keys(), key=lambda token: tuple(int(part) for part in token.split("-")))]
+                        else [{"address_id": key, "title": ""} for key in sorted(address_map.keys(), key=lambda token: tuple(int(part) for part in token.split("-")))]
                 ),
             )
             payload["structure_payload"] = canonical_magnitude
@@ -357,6 +346,11 @@ class SandboxEngine:
                 validation = validate_samras_structure(structure)
                 warnings.extend([str(item) for item in list(validation.get("warnings") or [])])
                 payload["canonical_magnitude"] = compile_canonical_samras_bitstring(structure)
+                try:
+                    workspace = load_workspace_from_resource_body(payload)
+                    payload["samras_workspace"] = build_workspace_view_model(workspace, selected_address_id="", staged_entries=[])
+                except Exception as exc:
+                    warnings.append(f"unable to build SAMRAS workspace view: {exc}")
             except Exception as exc:
                 warnings.append(f"unable to decode structure payload: {exc}")
         rows = decode_resource_rows(payload)
@@ -418,58 +412,108 @@ class SandboxEngine:
         return result
 
     def set_samras_node(self, *, resource_id: str, address_id: str, value: int) -> dict[str, Any]:
-        structure = self._load_samras_structure(resource_id)
-        updated = set_node_value_by_address(structure, address_id=address_id, value=int(value))
-        payload = self._persist_samras_structure(resource_id, structure=updated)
+        payload = self.get_resource(resource_id)
+        if bool(payload.get("missing")):
+            raise ValueError(f"resource not found: {resource_id}")
+        updated, workspace, mutation = mutate_resource_body(
+            payload,
+            action="samras_set_child_count",
+            address_id=address_id,
+            child_count=int(value),
+        )
+        self._write_json(self._resource_path(resource_id), updated)
         return {
             "ok": True,
             "schema": "mycite.portal.sandbox.samras.set_node.v1",
             "resource_id": _as_text(resource_id),
             "address_id": _as_text(address_id),
             "value": int(value),
-            "canonical_magnitude": _as_text(payload.get("canonical_magnitude")),
-            "samras_structure": dict(payload.get("samras_structure") if isinstance(payload.get("samras_structure"), dict) else {}),
+            "canonical_magnitude": _as_text(updated.get("canonical_magnitude")),
+            "samras_structure": dict(updated.get("samras_structure") if isinstance(updated.get("samras_structure"), dict) else {}),
+            "samras_workspace": build_workspace_view_model(workspace, selected_address_id=_as_text(address_id), staged_entries=[]),
+            "mutation": mutation,
         }
 
     def create_samras_child(self, *, resource_id: str, parent_address: str, value: int = 0) -> dict[str, Any]:
-        structure = self._load_samras_structure(resource_id)
-        updated, created = create_child_address(structure, parent_address=parent_address, value=int(value))
-        payload = self._persist_samras_structure(resource_id, structure=updated)
+        payload = self.get_resource(resource_id)
+        if bool(payload.get("missing")):
+            raise ValueError(f"resource not found: {resource_id}")
+        updated, workspace, mutation = mutate_resource_body(
+            payload,
+            action="samras_add_child",
+            parent_address=parent_address,
+        )
+        created = str(((mutation.get("created_addresses") or [""])[0]) if isinstance(mutation, dict) else "")
+        if created and int(value) > 0:
+            updated, workspace, resize_mutation = mutate_resource_body(
+                updated,
+                action="samras_set_child_count",
+                address_id=created,
+                child_count=int(value),
+            )
+            mutation = {
+                "action": "samras_add_child",
+                "samras_structure": resize_mutation.get("samras_structure") if isinstance(resize_mutation, dict) else {},
+                "canonical_magnitude": resize_mutation.get("canonical_magnitude") if isinstance(resize_mutation, dict) else "",
+                "address_mapping": resize_mutation.get("address_mapping") if isinstance(resize_mutation, dict) else {},
+                "created_addresses": [created],
+                "removed_addresses": resize_mutation.get("removed_addresses") if isinstance(resize_mutation, dict) else [],
+            }
+        self._write_json(self._resource_path(resource_id), updated)
         return {
             "ok": True,
             "schema": "mycite.portal.sandbox.samras.create_child.v1",
             "resource_id": _as_text(resource_id),
             "parent_address": _as_text(parent_address),
             "created_address": created,
-            "canonical_magnitude": _as_text(payload.get("canonical_magnitude")),
-            "samras_structure": dict(payload.get("samras_structure") if isinstance(payload.get("samras_structure"), dict) else {}),
+            "canonical_magnitude": _as_text(updated.get("canonical_magnitude")),
+            "samras_structure": dict(updated.get("samras_structure") if isinstance(updated.get("samras_structure"), dict) else {}),
+            "samras_workspace": build_workspace_view_model(workspace, selected_address_id=created, staged_entries=[]),
+            "mutation": mutation,
         }
 
     def delete_samras_address(self, *, resource_id: str, address_id: str) -> dict[str, Any]:
-        structure = self._load_samras_structure(resource_id)
-        updated = delete_address(structure, address_id=address_id)
-        payload = self._persist_samras_structure(resource_id, structure=updated)
+        payload = self.get_resource(resource_id)
+        if bool(payload.get("missing")):
+            raise ValueError(f"resource not found: {resource_id}")
+        updated, workspace, mutation = mutate_resource_body(
+            payload,
+            action="samras_delete_branch",
+            address_id=address_id,
+        )
+        self._write_json(self._resource_path(resource_id), updated)
         return {
             "ok": True,
             "schema": "mycite.portal.sandbox.samras.delete_address.v1",
             "resource_id": _as_text(resource_id),
             "deleted_address": _as_text(address_id),
-            "canonical_magnitude": _as_text(payload.get("canonical_magnitude")),
-            "samras_structure": dict(payload.get("samras_structure") if isinstance(payload.get("samras_structure"), dict) else {}),
+            "canonical_magnitude": _as_text(updated.get("canonical_magnitude")),
+            "samras_structure": dict(updated.get("samras_structure") if isinstance(updated.get("samras_structure"), dict) else {}),
+            "samras_workspace": build_workspace_view_model(workspace, selected_address_id="", staged_entries=[]),
+            "mutation": mutation,
         }
 
     def move_samras_branch(self, *, resource_id: str, from_address: str, to_parent_address: str) -> dict[str, Any]:
-        structure = self._load_samras_structure(resource_id)
-        updated = move_branch(structure, from_address=from_address, to_parent_address=to_parent_address)
-        payload = self._persist_samras_structure(resource_id, structure=updated)
+        payload = self.get_resource(resource_id)
+        if bool(payload.get("missing")):
+            raise ValueError(f"resource not found: {resource_id}")
+        updated, workspace, mutation = mutate_resource_body(
+            payload,
+            action="samras_move_branch",
+            address_id=from_address,
+            parent_address=to_parent_address,
+        )
+        self._write_json(self._resource_path(resource_id), updated)
         return {
             "ok": True,
             "schema": "mycite.portal.sandbox.samras.move_branch.v1",
             "resource_id": _as_text(resource_id),
             "from_address": _as_text(from_address),
             "to_parent_address": _as_text(to_parent_address),
-            "canonical_magnitude": _as_text(payload.get("canonical_magnitude")),
-            "samras_structure": dict(payload.get("samras_structure") if isinstance(payload.get("samras_structure"), dict) else {}),
+            "canonical_magnitude": _as_text(updated.get("canonical_magnitude")),
+            "samras_structure": dict(updated.get("samras_structure") if isinstance(updated.get("samras_structure"), dict) else {}),
+            "samras_workspace": build_workspace_view_model(workspace, selected_address_id=_as_text(to_parent_address), staged_entries=[]),
+            "mutation": mutation,
         }
 
     def generate_exposed_resource_values(self, *, local_msn_id: str) -> list[dict[str, Any]]:

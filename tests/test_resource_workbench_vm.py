@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from _shared.portal.samras import encode_canonical_structure_from_addresses
 from _shared.portal.sandbox.engine import SandboxEngine
 from _shared.portal.sandbox.resource_workbench import (
     build_resource_workbench_view_model,
@@ -15,10 +16,12 @@ from _shared.portal.sandbox.resource_workbench import (
 
 class ResourceWorkbenchVmTests(unittest.TestCase):
     def test_workbench_surfaces_anthology_rows_and_samras_rows(self):
+        structure = encode_canonical_structure_from_addresses(["1", "1-1"])
         resource = {
             "resource_id": "msn.demo",
             "resource_kind": "msn",
             "kind": "samras_resource",
+            "structure_payload": structure.bitstream,
             "rows_by_address": {"1": ["Root"], "1-1": ["Leaf"]},
             "anthology_compatible_payload": {
                 "rows": {
@@ -46,6 +49,7 @@ class ResourceWorkbenchVmTests(unittest.TestCase):
         self.assertTrue(vm.get("staged_present"))
         self.assertTrue(vm.get("is_samras_backed"))
         self.assertEqual(len(vm.get("samras_row_summaries") or []), 2)
+        self.assertEqual((((vm.get("samras_workspace") or {}).get("structure") or {}).get("root_ref")), "0-0-5")
         self.assertEqual(len(vm.get("anthology_row_summaries") or []), 1)
         layers = vm.get("anthology_layers") or []
         self.assertEqual(len(layers), 1)
@@ -92,8 +96,14 @@ class ResourceWorkbenchVmTests(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         root = Path(tmp.name)
         (root / "anthology.json").write_text("{}\n", encoding="utf-8")
+        structure = encode_canonical_structure_from_addresses(["1", "1-1"])
         (root / "samras-msn.json").write_text(
-            '{"rows_by_address":{"1":["Root"],"1-1":["Leaf A","Leaf B"]}}\n',
+            (
+                '{"1-1-1":[["1-1-1","0-0-5","%s"],["msn-SAMRAS"]],'
+                '"4-1-1":[["4-1-1","2-1-48","1"],["Root"]],'
+                '"4-1-2":[["4-1-2","2-1-48","1-1"],["Leaf A"]]}\n'
+            )
+            % structure.bitstream,
             encoding="utf-8",
         )
         vm = build_system_resource_workbench_view_model(data_root=root)
@@ -105,11 +115,13 @@ class ResourceWorkbenchVmTests(unittest.TestCase):
         maps = vm.get("samras_rows_by_address_by_file_key") or {}
         self.assertIn("msn", maps)
         self.assertEqual(maps["msn"].get("1"), ["Root"])
+        workspaces = vm.get("samras_workspace_by_file_key") or {}
+        self.assertEqual((((workspaces.get("msn") or {}).get("structure") or {}).get("root_ref")), "0-0-5")
         rows = list(vm.get("rows") or [])
         msn_rows = [r for r in rows if r.get("file_key") == "msn"]
-        self.assertEqual(len(msn_rows), 2)
+        self.assertEqual(len(msn_rows), 3)
         ids = {str(r.get("identifier")) for r in msn_rows}
-        self.assertEqual(ids, {"1", "1-1"})
+        self.assertEqual(ids, {"1-1-1", "4-1-1", "4-1-2"})
         tmp.cleanup()
 
     def test_system_resource_workbench_surfaces_flat_compact_samras_rows(self) -> None:

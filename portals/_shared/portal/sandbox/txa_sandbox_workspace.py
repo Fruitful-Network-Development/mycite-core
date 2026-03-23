@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping, Sequence
 
+from _shared.portal.samras import build_workspace_view_model, load_workspace_from_resource_body
 from _shared.portal.sandbox.samras import decode_resource_rows
 from _shared.portal.workbench.samras_structural_detail import build_samras_structural_detail_vm
 
@@ -260,6 +261,40 @@ def build_txa_sandbox_view_model(
 
     ``resource_payload`` is a sandbox ``get_resource`` dict (not the ``missing`` sentinel).
     """
+    try:
+        workspace = load_workspace_from_resource_body(dict(resource_payload))
+        persisted_rows = [{"address_id": item.address_id, "title": item.title} for item in workspace.nodes]
+        normalized_staged, stage_warnings = normalize_staged_entries(persisted_rows, staged_entries or [])
+        combined_rows: list[dict[str, Any]] = [dict(item) for item in persisted_rows]
+        for item in normalized_staged:
+            provisional = str(item.get("provisional_child_address") or "").strip()
+            combined_rows.append(
+                {
+                    "address_id": provisional,
+                    "title": str(item.get("title") or "").strip(),
+                    "status": "staged",
+                }
+            )
+        vm = build_workspace_view_model(
+            workspace,
+            selected_address_id=selected_address_id,
+            staged_entries=normalized_staged,
+        )
+        vm["schema"] = "mycite.portal.sandbox.txa_workspace.view_model.v2"
+        vm["resource_id"] = str(resource_payload.get("resource_id") or "").strip()
+        vm["resource_kind"] = str(resource_payload.get("resource_kind") or resource_payload.get("kind") or "").strip()
+        vm["persisted_row_count"] = len(workspace.nodes)
+        vm["title_table_rows"] = build_title_table_rows(persisted_rows, normalized_staged)
+        vm["combined_rows"] = combined_rows
+        vm["branch_context"] = build_branch_context(selected_address_id or (workspace.nodes[0].address_id if workspace.nodes else ""), combined_rows)
+        vm["stage_warnings"] = stage_warnings
+        vm["notes"] = (
+            "SAMRAS workspace is structure-derived. Address mutations rewrite the governing canonical structure."
+        )
+        return vm
+    except Exception:
+        pass
+
     staged_entries = list(staged_entries or [])
     payload = dict(resource_payload)
     persisted = decode_resource_rows(payload)
@@ -314,7 +349,7 @@ def build_samras_workspace_view_model(
         selected_address_id=selected_address_id,
         staged_entries=staged_entries,
     )
-    vm["schema"] = "mycite.portal.sandbox.samras_workspace.view_model.v1"
+    vm["schema"] = "mycite.portal.sandbox.samras_workspace.view_model.v2"
     vm["workspace_family"] = "samras_title_tree"
     vm["structural_detail"] = build_samras_structural_detail_vm(
         vm.get("branch_context") if isinstance(vm.get("branch_context"), dict) else {},

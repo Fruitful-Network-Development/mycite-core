@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..data_contract import compact_payload_to_rows, rows_to_compact_payload
+from ..samras import InvalidSamrasStructure, decode_structure
 
 
 LOCAL_SCOPE = "local"
@@ -224,50 +225,18 @@ def _normalize_row_iterations(rows: list[dict[str, Any]]) -> list[dict[str, Any]
     return out
 
 
-def _bit_width(value: int) -> int:
-    token = int(value)
-    return 1 if token <= 0 else len(format(token, "b"))
-
-
-def _compile_samras_value_stream(node_values: list[int]) -> tuple[str, list[int]]:
-    stream_parts: list[str] = []
-    stops: list[int] = []
-    cursor = 0
-    for index, value in enumerate(list(node_values or [])):
-        bits = str(int(value))
-        if any(ch not in {"0", "1"} for ch in bits):
-            bits = format(int(value), "b")
-        stream_parts.append(bits if bits else "0")
-        cursor += len(stream_parts[-1])
-        if index < len(node_values) - 1:
-            stops.append(cursor)
-    return "".join(stream_parts), stops
-
-
-def _encode_canonical_samras_from_legacy(token: str) -> str:
-    node_values = [int(item) for item in token.split("-")]
-    value_stream, stops = _compile_samras_value_stream(node_values)
-    address_width_bits = max(1, _bit_width(max(stops) if stops else 0))
-    stop_count_width_bits = max(1, _bit_width(len(stops)))
-    header_a = format(address_width_bits, "08b")
-    header_b = format(stop_count_width_bits, "08b")
-    count_bits = format(len(stops), f"0{stop_count_width_bits}b")
-    stop_bits = "".join(format(item, f"0{address_width_bits}b") for item in stops)
-    return f"{header_a}{header_b}{count_bits}{stop_bits}{value_stream}"
-
-
 def _normalize_samras_magnitude_if_needed(reference: str, magnitude: str) -> tuple[str, str]:
     if _as_text(reference) != "0-0-5":
         return magnitude, ""
     token = _as_text(magnitude)
     if not token:
         return token, ""
-    if _BIN_RE.fullmatch(token):
-        return token, ""
-    if _NUMERIC_HYPHEN_RE.fullmatch(token):
+    if _BIN_RE.fullmatch(token) or _NUMERIC_HYPHEN_RE.fullmatch(token):
         try:
-            return _encode_canonical_samras_from_legacy(token), "legacy_hyphen"
-        except Exception:
+            structure = decode_structure(token, root_ref="0-0-5")
+            status = "already_canonical" if structure.source_format == "canonical" else structure.source_format
+            return structure.bitstream, status
+        except (InvalidSamrasStructure, ValueError):
             return token, "unsupported_legacy"
     return token, "unsupported_legacy"
 

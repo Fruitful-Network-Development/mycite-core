@@ -17,12 +17,16 @@ except ModuleNotFoundError:  # pragma: no cover
     Flask = None  # type: ignore[assignment]
 
 
-def _load_sandbox_module():
+CORRECTED_TXA_PATH = Path("/srv/compose/portals/state/fnd_portal/data/samras-txa.json")
+CORRECTED_MSN_PATH = Path("/srv/compose/portals/state/fnd_portal/data/samras-msn.json")
+
+
+def _load_samras_module():
     portals_root = Path(__file__).resolve().parents[1] / "portals"
     token = str(portals_root)
     if token not in sys.path:
         sys.path.insert(0, token)
-    return importlib.import_module("_shared.portal.sandbox")
+    return importlib.import_module("_shared.portal.samras")
 
 
 def _load_register_data_routes():
@@ -52,106 +56,96 @@ class _WorkspaceStub:
 
 
 class SamrasStructureRuleTests(unittest.TestCase):
-    def test_asparagus_legacy_fixture_compiles_correct_stop_table(self):
-        sandbox = _load_sandbox_module()
-        structure = sandbox.decode_legacy_samras_value("1-10-10-1-100-0-0-0-0-0-0", root_ref="0-0-5")
-        self.assertEqual(structure.root_ref, "0-0-5")
-        self.assertEqual(structure.stop_count, 10)
-        self.assertEqual(structure.stop_addresses, [1, 3, 5, 6, 9, 10, 11, 12, 13, 14])
-        self.assertEqual(structure.decoded_value_count, 11)
-
-    def test_canonical_decode_and_exact_roundtrip_stability(self):
-        sandbox = _load_sandbox_module()
-        legacy = sandbox.decode_legacy_samras_value("1-10-10-1-100-0-0-0-0-0-0", root_ref="0-0-5")
-        canonical = sandbox.compile_canonical_samras_bitstring(legacy)
-        decoded = sandbox.decode_canonical_samras_bitstring(canonical, root_ref="0-0-5")
-        self.assertEqual(decoded.root_ref, "0-0-5")
-        self.assertEqual(decoded.node_values, legacy.node_values)
-        self.assertEqual(decoded.stop_addresses, legacy.stop_addresses)
-        self.assertEqual(sandbox.compile_canonical_samras_bitstring(decoded), canonical)
-
-    def test_structure_edit_reencodes_canonical_value(self):
-        sandbox = _load_sandbox_module()
-        structure = sandbox.decode_legacy_samras_value("1-10-10-1-100-0-0-0-0-0-0", root_ref="0-0-5")
-        base_canonical = sandbox.compile_canonical_samras_bitstring(structure)
-        edited = sandbox.set_node_value_by_address(structure, address_id="1-1-1", value=11)
-        edited_canonical = sandbox.compile_canonical_samras_bitstring(edited)
-        self.assertNotEqual(base_canonical, edited_canonical)
-        self.assertTrue((sandbox.validate_samras_structure(edited) or {}).get("ok"))
-
-    def test_invalid_stop_address_rejected(self):
-        sandbox = _load_sandbox_module()
-        invalid = sandbox.SamrasStructure(
+    def test_canonical_encode_decode_roundtrip_uses_breadth_first_child_counts(self):
+        samras = _load_samras_module()
+        structure = samras.encode_canonical_structure_from_addresses(
+            ["1", "2", "1-1", "1-2", "2-1"],
             root_ref="0-0-5",
-            address_width_bits=4,
-            stop_count_width_bits=4,
-            stop_count=2,
-            stop_addresses=[2, 2],
-            node_values=[1, 10, 0],
-            address_map={"1": 1, "1-1": 10, "1-1-1": 0},
-            source_format="canonical_binary",
-            canonical_state="canonical",
-            warnings=[],
         )
-        result = sandbox.validate_samras_structure(invalid)
-        self.assertFalse(result.get("ok"))
-        self.assertTrue(any("strictly increasing" in str(item) for item in list(result.get("errors") or [])))
+        self.assertEqual(structure.values, (2, 2, 1, 0, 0, 0))
+        decoded = samras.decode_canonical_bitstream(structure.bitstream, root_ref="0-0-5")
+        self.assertEqual(decoded.addresses, ("1", "2", "1-1", "1-2", "2-1"))
+        self.assertEqual(decoded.values, structure.values)
+        self.assertEqual(decoded.bitstream, structure.bitstream)
 
-    def test_invalid_stop_count_rejected(self):
-        sandbox = _load_sandbox_module()
-        invalid = sandbox.SamrasStructure(
-            root_ref="0-0-5",
-            address_width_bits=4,
-            stop_count_width_bits=4,
-            stop_count=1,
-            stop_addresses=[1, 3],
-            node_values=[1, 10, 0],
-            address_map={"1": 1, "1-1": 10, "1-1-1": 0},
-            source_format="canonical_binary",
-            canonical_state="canonical",
-            warnings=[],
-        )
-        result = sandbox.validate_samras_structure(invalid)
-        self.assertFalse(result.get("ok"))
-        self.assertTrue(any("stop_count must equal" in str(item) for item in list(result.get("errors") or [])))
+    def test_invalid_address_set_is_rejected(self):
+        samras = _load_samras_module()
+        with self.assertRaises(samras.InvalidSamrasStructure):
+            samras.encode_canonical_structure_from_addresses(["1", "1-2"], root_ref="0-0-5")
 
-    def test_invalid_header_width_rejected(self):
-        sandbox = _load_sandbox_module()
-        invalid = sandbox.SamrasStructure(
+    def test_invalid_stop_table_is_rejected(self):
+        samras = _load_samras_module()
+        invalid = samras.SamrasStructure(
             root_ref="0-0-5",
+            bitstream="",
             address_width_bits=1,
             stop_count_width_bits=1,
-            stop_count=10,
-            stop_addresses=[1, 3, 5, 6, 9, 10, 11, 12, 13, 14],
-            node_values=[1, 10, 10, 1, 100, 0, 0, 0, 0, 0, 0],
-            address_map={},
-            source_format="canonical_binary",
+            stop_count=2,
+            stop_addresses=(2, 2),
+            value_tokens=("1", "0", "0"),
+            values=(1, 0, 0),
+            addresses=("1",),
+            source_format="canonical",
             canonical_state="canonical",
-            warnings=[],
+            warnings=(),
         )
-        with self.assertRaises(ValueError):
-            sandbox.compile_canonical_samras_bitstring(invalid)
+        report = samras.validate_structure(invalid)
+        self.assertFalse(report.ok)
+        self.assertTrue(any("strictly increasing" in item for item in report.errors))
+
+    def test_corrected_staging_files_load_through_structure_aware_workspace(self):
+        samras = _load_samras_module()
+        for path in [CORRECTED_TXA_PATH, CORRECTED_MSN_PATH]:
+            if not path.is_file():
+                self.skipTest(f"missing corrected staging file: {path}")
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            workspace = samras.load_workspace_from_compact_payload(payload)
+            self.assertEqual(workspace.structure.root_ref, "0-0-5")
+            self.assertEqual(workspace.structure.canonical_state, "canonical")
+            self.assertGreater(len(workspace.nodes), 0)
+            self.assertTrue(any("reconstructed from staged address rows" in item for item in workspace.warnings))
 
     def test_sandbox_save_path_writes_canonical_binary_only(self):
-        sandbox = _load_sandbox_module()
+        portals_root = Path(__file__).resolve().parents[1] / "portals"
+        token = str(portals_root)
+        if token not in sys.path:
+            sys.path.insert(0, token)
+        from _shared.portal.sandbox.engine import SandboxEngine
+
         with tempfile.TemporaryDirectory() as tmp:
-            engine = sandbox.SandboxEngine(data_root=Path(tmp))
+            engine = SandboxEngine(data_root=Path(tmp))
             staged = engine.create_or_update_samras_resource(
                 resource_id="msn.samras.fixture",
-                structure_payload="1-10-10-1-100-0-0-0-0-0-0",
-                rows=[{"address_id": "1", "title": "asparagaceae"}],
+                structure_payload="1-1-0",
+                rows=[{"address_id": "1", "title": "root"}],
                 value_kind="msn_id",
                 source="unit-test",
             )
-            self.assertTrue(staged.ok)
+            self.assertTrue(staged.ok, staged.errors)
             raw_payload = json.loads((Path(tmp) / "sandbox" / "resources" / "msn.samras.fixture.json").read_text(encoding="utf-8"))
             canonical = str(raw_payload.get("structure_payload") or "")
             self.assertTrue(canonical)
             self.assertTrue(set(canonical).issubset({"0", "1"}))
             self.assertNotIn("-", canonical)
-            decoded = engine.decode_samras_resource("msn.samras.fixture")
-            self.assertTrue(decoded.ok)
-            self.assertEqual((((decoded.compiled_payload or {}).get("samras_structure") or {}).get("root_ref")), "0-0-5")
+
+    def test_sandbox_rejects_title_rows_outside_governing_structure(self):
+        portals_root = Path(__file__).resolve().parents[1] / "portals"
+        token = str(portals_root)
+        if token not in sys.path:
+            sys.path.insert(0, token)
+        from _shared.portal.sandbox.engine import SandboxEngine
+
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = SandboxEngine(data_root=Path(tmp))
+            staged = engine.create_or_update_samras_resource(
+                resource_id="txa.samras.fixture",
+                structure_payload="1-1-0",
+                rows=[{"address_id": "9-9-9", "title": "bad"}],
+                value_kind="txa_id",
+                source="unit-test",
+            )
+            self.assertFalse(staged.ok)
+            self.assertTrue(any("governing structure" in item for item in staged.errors))
 
     def test_local_resource_payload_normalizes_samras_reference_rows(self):
         registry = _load_registry_module()
@@ -162,7 +156,7 @@ class SamrasStructureRuleTests(unittest.TestCase):
                 "resource_id": "local:samras.msn",
                 "resource_kind": "samras_msn",
                 "anthology_compatible_payload": {
-                    "3-1-1": [["3-1-1", "0-0-5", "1-10-10-1-100-0-0-0-0-0-0"], ["samras-local-row"]]
+                    "3-1-1": [["3-1-1", "0-0-5", "1-1-0"], ["samras-local-row"]]
                 },
             }
             written = registry.write_resource_file(target, body)
@@ -196,42 +190,38 @@ class SamrasSandboxRouteTests(unittest.TestCase):
     def tearDown(self):
         self._tmpdir.cleanup()
 
-    def test_structure_routes_edit_by_address(self):
+    def test_structure_routes_edit_by_address_and_reencode(self):
         upsert = self.client.post(
             "/portal/api/data/sandbox/samras/upsert",
             json={
                 "resource_id": "txa.samras.fixture",
-                "structure_payload": "1-10-10-1-100-0-0-0-0-0-0",
+                "structure_payload": "1-1-0",
                 "value_kind": "txa_id",
                 "rows": [{"address_id": "1", "title": "root"}],
             },
         )
         self.assertEqual(upsert.status_code, 200)
-        set_node = self.client.post(
-            "/portal/api/data/sandbox/samras/txa.samras.fixture/node/set",
-            json={"address_id": "1", "value": 0},
-        )
-        self.assertEqual(set_node.status_code, 200)
         create_child = self.client.post(
             "/portal/api/data/sandbox/samras/txa.samras.fixture/node/create_child",
-            json={"parent_address": "1", "value": 1},
+            json={"parent_address": "1", "value": 2},
         )
         self.assertEqual(create_child.status_code, 200)
         created = ((create_child.get_json() or {}).get("created_address") or "")
-        self.assertTrue(created.startswith("1-"))
+        self.assertEqual(created, "1-1")
         inspect = self.client.post(
             "/portal/api/data/sandbox/samras/txa.samras.fixture/node/inspect",
             json={"address_id": created},
         )
         self.assertEqual(inspect.status_code, 200)
-        delete = self.client.post(
-            "/portal/api/data/sandbox/samras/txa.samras.fixture/node/delete",
-            json={"address_id": created},
+        set_node = self.client.post(
+            "/portal/api/data/sandbox/samras/txa.samras.fixture/node/set",
+            json={"address_id": created, "value": 1},
         )
-        self.assertEqual(delete.status_code, 200)
+        self.assertEqual(set_node.status_code, 200)
         decoded = self.client.get("/portal/api/data/sandbox/samras/txa.samras.fixture/structure")
         self.assertEqual(decoded.status_code, 200)
-        canonical = str((((decoded.get_json() or {}).get("compiled_payload") or {}).get("canonical_magnitude") or ""))
+        compiled = ((decoded.get_json() or {}).get("compiled_payload") or {})
+        canonical = str(compiled.get("canonical_magnitude") or "")
         self.assertTrue(canonical)
         self.assertTrue(set(canonical).issubset({"0", "1"}))
 

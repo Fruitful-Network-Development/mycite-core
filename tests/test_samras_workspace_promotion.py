@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from _shared.portal.samras import encode_canonical_structure_from_addresses
 from _shared.portal.sandbox.engine import SandboxEngine
 from _shared.portal.sandbox.samras_workspace_promotion import promote_staged_samras_title_entries
 
@@ -21,11 +22,13 @@ class SamrasWorkspacePromotionTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_promote_rows_only_resource_merges_staged_titles(self):
+        structure = encode_canonical_structure_from_addresses(["1", "1-1"])
         self.engine.save_resource(
             "msn.samras.demo",
             {
                 "resource_id": "msn.samras.demo",
                 "resource_kind": "msn",
+                "structure_payload": structure.bitstream,
                 "rows_by_address": {"1": ["Root"], "1-1": ["Child"]},
             },
         )
@@ -39,6 +42,7 @@ class SamrasWorkspacePromotionTests(unittest.TestCase):
         rows = reread.get("rows_by_address") or {}
         self.assertIn("1-1-1", rows)
         self.assertEqual(rows.get("1-1-1"), ["staged_msn_leaf"])
+        self.assertTrue(set(str(reread.get("structure_payload") or "")).issubset({"0", "1"}))
 
 
 if __name__ == "__main__":

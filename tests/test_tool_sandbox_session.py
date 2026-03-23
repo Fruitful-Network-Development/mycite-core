@@ -411,13 +411,16 @@ class ToolSandboxSessionRouteTests(unittest.TestCase):
 
     def test_samras_workspace_route_returns_view_model(self):
         from _shared.portal.sandbox.engine import SandboxEngine
+        from _shared.portal.samras import encode_canonical_structure_from_addresses
 
         eng = SandboxEngine(data_root=Path(self.root))
+        structure = encode_canonical_structure_from_addresses(["1", "1-1"])
         eng.save_resource(
             "txa.samras.demo",
             {
                 "resource_id": "txa.samras.demo",
                 "resource_kind": "txa",
+                "structure_payload": structure.bitstream,
                 "rows_by_address": {"1": ["Root"], "1-1": ["Child"]},
             },
         )
@@ -432,7 +435,7 @@ class ToolSandboxSessionRouteTests(unittest.TestCase):
         payload = resp.get_json() or {}
         self.assertTrue(payload.get("ok"))
         vm = payload.get("view_model") if isinstance(payload.get("view_model"), dict) else {}
-        self.assertEqual(vm.get("schema"), "mycite.portal.sandbox.samras_workspace.view_model.v1")
+        self.assertEqual(vm.get("schema"), "mycite.portal.sandbox.samras_workspace.view_model.v2")
         self.assertEqual((vm.get("branch_context") or {}).get("selected_address_id"), "1-1")
 
 

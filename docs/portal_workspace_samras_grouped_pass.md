@@ -1,4 +1,6 @@
-# Portal workspace consolidation — grouped workbench + SAMRAS sandbox (pass notes)
+# Portal workspace consolidation — grouped workbench + SAMRAS sandbox (historical pass notes)
+
+This document is historical context. Current SAMRAS ownership lives in `portals/_shared/portal/samras/`, and current sandbox/workbench flows use structure-derived mutation rather than treating `rows_by_address` as the semantic authority.
 
 ## Summary
 
@@ -42,7 +44,7 @@ It adds **shared composition** under `portals/_shared/portal/workbench/` and pro
 
 ## Reverse-mutation workflow (implemented subset)
 
-**Flow:** browser-staged title entries → **Promote staged** → `promote_staged_samras_title_entries` → `create_or_update_samras_resource` when `structure_payload` exists, else **`rows_by_address` merge + `save_resource`**.
+**Historical flow:** browser-staged title entries → **Promote staged** → `promote_staged_samras_title_entries` → `create_or_update_samras_resource` when `structure_payload` exists, else **`rows_by_address` merge + `save_resource`**.
 
 **Deferred / boundary:** rows-only promotion does not yet mirror every guard in `POST .../save` (e.g. `evaluate_resource_payload_write` when a rows payload is extractable). When `extract_rows_payload_from_resource_body` applies to the merged body, promotion should run the same evaluation as the save route — follow-up if rule gates must block engine writes here too.
 

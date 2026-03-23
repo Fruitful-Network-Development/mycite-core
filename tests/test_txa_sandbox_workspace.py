@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 
+from _shared.portal.samras import encode_canonical_structure_from_addresses
 from _shared.portal.sandbox.txa_sandbox_workspace import (
     build_branch_context,
     build_samras_workspace_view_model,
@@ -35,15 +36,24 @@ class TxaSandboxWorkspaceTests(unittest.TestCase):
         self.assertEqual(norm[0]["provisional_child_address"], "1-1-1")
 
     def test_build_txa_sandbox_view_model_merges_staged(self):
+        structure = encode_canonical_structure_from_addresses(
+            [
+                "1",
+                "1-1",
+                "1-1-1",
+                "1-1-1-1",
+            ]
+        )
         resource = {
             "resource_id": "txa.demo",
             "resource_kind": "samras",
+            "structure_payload": structure.bitstream,
             "rows_by_address": {
-                "1-1-3-3-5-6-7-2-1-1-1": ["asparagus_officinalis"],
-                "1-1-3-3-5-6-7-2-1-1-1-1": ["mary_washington"],
+                "1-1-1": ["asparagus_officinalis"],
+                "1-1-1-1": ["mary_washington"],
             },
         }
-        parent = "1-1-3-3-5-6-7-2-1-1-1"
+        parent = "1-1-1"
         vm = build_txa_sandbox_view_model(
             resource,
             selected_address_id=parent,
@@ -51,13 +61,14 @@ class TxaSandboxWorkspaceTests(unittest.TestCase):
         )
         self.assertTrue(vm.get("title_table_rows"))
         ids = [r["address_id"] for r in vm["title_table_rows"]]
-        self.assertIn("1-1-3-3-5-6-7-2-1-1-1-2", ids)
+        self.assertIn("1-1-1-2", ids)
         staged_rows = [r for r in vm["title_table_rows"] if r.get("status") == "staged"]
         self.assertEqual(len(staged_rows), 1)
         self.assertEqual(staged_rows[0]["title"], "purple_passion")
         bc = vm.get("branch_context") or {}
-        # mary at …-1 + staged purple at …-2 → next free slot is …-3
-        self.assertEqual(bc.get("next_child_preview"), "1-1-3-3-5-6-7-2-1-1-1-3")
+        self.assertEqual(bc.get("selected_address_id"), parent)
+        self.assertEqual(bc.get("next_child_preview"), "1-1-1-3")
+        self.assertEqual(vm.get("schema"), "mycite.portal.sandbox.txa_workspace.view_model.v2")
 
     def test_next_child_single_existing_child(self):
         parent = "1-1-3-3-5-6-7-2-1-1-1"
@@ -76,13 +87,16 @@ class TxaSandboxWorkspaceTests(unittest.TestCase):
         self.assertEqual(len(bc["siblings"]), 2)
 
     def test_build_samras_workspace_view_model_includes_structural_detail(self):
+        structure = encode_canonical_structure_from_addresses(["1", "1-1"])
         resource = {
             "resource_id": "msn.demo",
             "resource_kind": "msn",
+            "structure_payload": structure.bitstream,
             "rows_by_address": {"1": ["R"], "1-1": ["C"]},
         }
         vm = build_samras_workspace_view_model(resource, selected_address_id="1-1", staged_entries=[])
         detail = vm.get("structural_detail") if isinstance(vm.get("structural_detail"), dict) else {}
+        self.assertEqual(vm.get("schema"), "mycite.portal.sandbox.samras_workspace.view_model.v2")
         self.assertEqual(detail.get("schema"), "mycite.portal.samras.structural_detail.v1")
         self.assertEqual(detail.get("selected_address_id"), "1-1")
 

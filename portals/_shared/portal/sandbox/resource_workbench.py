@@ -12,6 +12,11 @@ from pathlib import Path
 from typing import Any
 
 from _shared.portal.data_contract import compact_payload_to_rows
+from _shared.portal.samras import (
+    build_workspace_view_model,
+    load_workspace_from_compact_payload,
+    load_workspace_from_resource_body,
+)
 
 
 def _looks_like_compact_row_key(value: object) -> bool:
@@ -55,6 +60,18 @@ def is_samras_backed_resource(resource_body: dict[str, Any]) -> bool:
     kind = _as_text(resource_body.get("kind") or resource_body.get("resource_kind")).lower()
     if "samras" in kind:
         return True
+    acp = resource_body.get("anthology_compatible_payload")
+    if isinstance(acp, dict):
+        for row in compact_payload_to_rows(acp, strict=False):
+            if _as_text(row.get("reference")) == "0-0-5":
+                return True
+    cs = resource_body.get("canonical_state")
+    if isinstance(cs, dict):
+        cp = cs.get("compact_payload")
+        if isinstance(cp, dict):
+            for row in compact_payload_to_rows(cp, strict=False):
+                if _as_text(row.get("reference")) == "0-0-5":
+                    return True
     rba = resource_body.get("rows_by_address")
     if isinstance(rba, dict) and rba:
         return True
@@ -74,6 +91,18 @@ def _address_sort_key(address_id: str) -> tuple[int, ...]:
 
 
 def build_samras_row_summaries(resource_body: dict[str, Any]) -> list[dict[str, Any]]:
+    try:
+        workspace = load_workspace_from_resource_body(resource_body)
+        return [
+            {
+                "address_id": node.address_id,
+                "title": node.title,
+                "source": "derived_structure",
+            }
+            for node in workspace.nodes
+        ]
+    except Exception:
+        pass
     rows_by_address = resource_body.get("rows_by_address") if isinstance(resource_body.get("rows_by_address"), dict) else {}
     out: list[dict[str, Any]] = []
     for key, value in rows_by_address.items():
@@ -191,6 +220,13 @@ def build_resource_workbench_view_model(
     rows_payload = extract_anthology_rows_payload(resource_body)
     anthology_summaries = build_anthology_row_summaries(rows_payload, rule_policy_by_id=rule_policy_by_id)
     samras_summaries = build_samras_row_summaries(resource_body) if is_samras_backed_resource(resource_body) else []
+    samras_workspace = None
+    if is_samras_backed_resource(resource_body):
+        try:
+            workspace = load_workspace_from_resource_body(resource_body)
+            samras_workspace = build_workspace_view_model(workspace, selected_address_id="", staged_entries=[])
+        except Exception:
+            samras_workspace = None
     grouped_anthology = _group_rows_by_layer_vg(anthology_summaries) if anthology_summaries else []
 
     return {
@@ -205,6 +241,7 @@ def build_resource_workbench_view_model(
         "anthology_row_summaries": anthology_summaries,
         "anthology_layers": grouped_anthology,
         "samras_row_summaries": samras_summaries,
+        "samras_workspace": samras_workspace,
         "understanding": understanding_brief(datum_understanding),
         "rule_policy_keys": sorted(rule_policy_by_id.keys()) if isinstance(rule_policy_by_id, dict) else [],
     }
@@ -333,16 +370,43 @@ def _normalize_samras_rows_by_address(payload: dict[str, Any]) -> dict[str, list
     return out
 
 
+def _rows_by_address_from_workspace(workspace_vm: dict[str, Any]) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    rows = workspace_vm.get("title_table_rows") if isinstance(workspace_vm, dict) else []
+    for item in list(rows or []):
+        if not isinstance(item, dict):
+            continue
+        aid = _as_text(item.get("address_id"))
+        if not aid:
+            continue
+        titles = item.get("titles") if isinstance(item.get("titles"), list) else None
+        if titles:
+            out[aid] = [_as_text(token) for token in titles if _as_text(token)]
+        else:
+            out[aid] = [_as_text(item.get("title"))]
+    return out
+
+
 def _table_rows_for_canonical_file(
     *,
     file_key: str,
     filename: str,
     payload: dict[str, Any],
-) -> tuple[list[dict[str, Any]], dict[str, list[str]] | None]:
+) -> tuple[list[dict[str, Any]], dict[str, list[str]] | None, dict[str, Any] | None]:
     """Return flattened explorer rows and optional SAMRAS address map for mediation UIs."""
     rows_payload = _extract_rows_payload_from_json(payload) if payload else {"rows": {}}
     summaries = build_anthology_row_summaries(rows_payload)
-    samras_map = _normalize_samras_rows_by_address(payload)
+    samras_workspace_vm: dict[str, Any] | None = None
+    samras_map: dict[str, list[str]] = {}
+    if file_key in {"txa", "msn"}:
+        try:
+            workspace = load_workspace_from_compact_payload(payload)
+            samras_workspace_vm = build_workspace_view_model(workspace, selected_address_id="", staged_entries=[])
+            samras_map = _rows_by_address_from_workspace(samras_workspace_vm)
+        except Exception:
+            samras_workspace_vm = None
+    if not samras_map:
+        samras_map = _normalize_samras_rows_by_address(payload)
     samras_for_file: dict[str, list[str]] | None = samras_map if samras_map else None
 
     table_rows: list[dict[str, Any]] = []
@@ -388,7 +452,7 @@ def _table_rows_for_canonical_file(
                 }
             )
 
-    return table_rows, samras_for_file
+    return table_rows, samras_for_file, samras_workspace_vm
 
 
 def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, Any]:
@@ -408,6 +472,7 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
     out_files: list[dict[str, Any]] = []
     table_rows: list[dict[str, Any]] = []
     samras_by_file_key: dict[str, dict[str, list[str]]] = {}
+    samras_workspace_by_file_key: dict[str, dict[str, Any]] = {}
     layers_by_file_key: dict[str, list[dict[str, Any]]] = {}
     resource_surface_file_keys = ("anthology", "txa", "msn")
 
@@ -423,7 +488,7 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
         staged_path = system_workbench_stage_path(data_root=Path(data_root), filename=filename)
         staged_payload = _read_json_object(staged_path) if file_key != "anthology" and staged_path.is_file() else {}
         active_payload = staged_payload if staged_payload else payload
-        per_file_rows, samras_map = _table_rows_for_canonical_file(
+        per_file_rows, samras_map, samras_workspace = _table_rows_for_canonical_file(
             file_key=file_key,
             filename=filename,
             payload=active_payload,
@@ -439,6 +504,7 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
             "layers": _group_rows_by_layer_vg(per_file_rows) if per_file_rows else [],
             "errors": [],
             "samras_rows_by_address": samras_map,
+            "samras_workspace": samras_workspace,
             "write_mode": "direct" if file_key == "anthology" else "stage_then_promote",
             "staged_present": bool(staged_payload),
             "staged_path": str(staged_path),
@@ -447,6 +513,8 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
             layers_by_file_key[file_key] = list(file_obj["layers"])
         if samras_map:
             samras_by_file_key[file_key] = samras_map
+        if samras_workspace:
+            samras_workspace_by_file_key[file_key] = samras_workspace
         table_rows.extend(per_file_rows)
         out_files.append(file_obj)
 
@@ -459,4 +527,5 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
         "resource_surface_file_keys": list(resource_surface_file_keys),
         "layers_by_file_key": layers_by_file_key,
         "samras_rows_by_address_by_file_key": samras_by_file_key,
+        "samras_workspace_by_file_key": samras_workspace_by_file_key,
     }

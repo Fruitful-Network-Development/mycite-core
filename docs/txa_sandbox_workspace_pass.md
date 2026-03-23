@@ -1,4 +1,6 @@
-# TXA sandbox workspace UI pass
+# TXA sandbox workspace UI pass (historical)
+
+This document is historical context from the pre-hardening SAMRAS workspace. Current SAMRAS sandbox behavior is structure-aware and delegated through `portals/_shared/portal/samras/`; `rows_by_address` is now compatibility/support data, not the semantic owner.
 
 ## Phase 1 — Audit summary (current state)
 

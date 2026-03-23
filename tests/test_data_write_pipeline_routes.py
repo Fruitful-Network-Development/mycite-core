@@ -710,7 +710,7 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertEqual(payload.get("row_id"), "1-0-1")
         self.assertTrue(any(str(item.get("file_key") or "") == "anthology" for item in list((payload.get("workbench_payload") or {}).get("files") or [])))
 
-    def test_system_mutate_txa_create_stages_and_publish_promotes(self):
+    def test_system_mutate_txa_rejects_raw_row_creation(self):
         data_dir = Path(self._tmpdir.name)
         (data_dir / "anthology.json").write_text('{"rows":{}}\n', encoding="utf-8")
         (data_dir / "samras-txa.json").write_text('{"rows":{}}\n', encoding="utf-8")
@@ -727,15 +727,55 @@ class DataWritePipelineRouteTests(unittest.TestCase):
                 "magnitude": '["0-0-0"]',
             },
         )
+        self.assertEqual(response.status_code, 400)
+        payload = response.get_json() or {}
+        self.assertFalse(payload.get("ok"))
+        self.assertIn("structure-aware SAMRAS actions", str(payload.get("error") or ""))
+
+    def test_system_mutate_txa_samras_actions_stage_and_publish(self):
+        portals_root = Path(__file__).resolve().parents[1] / "portals"
+        token = str(portals_root)
+        if token not in sys.path:
+            sys.path.insert(0, token)
+        from _shared.portal.samras import encode_canonical_structure_from_addresses
+
+        data_dir = Path(self._tmpdir.name)
+        (data_dir / "anthology.json").write_text('{"rows":{}}\n', encoding="utf-8")
+        structure = encode_canonical_structure_from_addresses(["1"], root_ref="0-0-5")
+        (data_dir / "samras-txa.json").write_text(
+            json.dumps(
+                {
+                    "1-1-1": [["1-1-1", "0-0-5", structure.bitstream], ["txa-SAMRAS"]],
+                    "4-1-1": [["4-1-1", "2-1-48", "1"], ["root"]],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        response = self.client.post(
+            "/portal/api/data/system/mutate",
+            json={
+                "action": "samras_add_child",
+                "file_key": "txa",
+                "parent_address": "1",
+                "title": "Cultivar",
+                "child_count": 1,
+            },
+        )
         self.assertEqual(response.status_code, 200)
         payload = response.get_json() or {}
         self.assertTrue(payload.get("ok"))
         self.assertEqual(((payload.get("write") or {}).get("write_mode")), "stage_then_promote")
         stage_path = Path(str((payload.get("write") or {}).get("target_path") or ""))
         self.assertTrue(stage_path.is_file())
+        workspace = payload.get("samras_workspace") if isinstance(payload.get("samras_workspace"), dict) else {}
+        self.assertEqual((workspace.get("branch_context") or {}).get("selected_address_id"), "1-1")
 
         stage_payload = json.loads(stage_path.read_text(encoding="utf-8"))
-        self.assertEqual((((stage_payload.get("rows") or {}).get("4-0-1") or {}).get("label")), "Cultivar")
+        self.assertIn("1-1-1", stage_payload)
+        self.assertIn("4-1-2", stage_payload)
+        self.assertEqual(stage_payload["4-1-2"][1][0], "Cultivar")
 
         publish = self.client.post("/portal/api/data/system/publish", json={"file_key": "txa"})
         self.assertEqual(publish.status_code, 200)
@@ -745,7 +785,7 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertFalse(stage_path.exists())
 
         canonical_payload = json.loads((data_dir / "samras-txa.json").read_text(encoding="utf-8"))
-        self.assertEqual((canonical_payload.get("rows") or {}).get("4-0-1", {}).get("label"), "Cultivar")
+        self.assertEqual(canonical_payload["4-1-2"][1][0], "Cultivar")
 
 
 if __name__ == "__main__":
