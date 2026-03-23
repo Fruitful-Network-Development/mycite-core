@@ -1,51 +1,39 @@
-# Locked Shell Composition
+# Shell Composition
 
-## Top-Level Structure
+## Top-level structure
 
 Portal pages use a fixed IDE-like shell:
 
 1. top menu bar (`.ide-menubar`)
-2. far-left global activity bar (`.ide-activitybar`) with `NETWORK`, `UTILITIES`, `SYSTEM`
-3. left page-local context sidebar (`.ide-contextsidebar`)
+2. far-left global activity bar (`.ide-activitybar`)
+3. left page-local **control panel** (`#portalControlPanel`, `.ide-controlpanel`)
 4. central workbench (`.ide-workbench`)
-5. right contextual inspector drawer (`.ide-inspector`)
+5. right **Details** inspector (`.ide-inspector`)
 
-The left context sidebar and right inspector are resizable. The inspector is collapsible and its width is persisted locally.
+The control panel and Details inspector are resizable. The inspector is collapsible. Width is persisted locally.
 
-Primary template:
+## Responsibility split
 
-- `portals/_shared/runtime/flavors/fnd/portal/ui/templates/base.html`
-- mirrored in `portals/_shared/runtime/flavors/tff/`
+### Activity bar
 
-Primary styling:
-
-- `portals/_shared/runtime/flavors/fnd/portal/ui/static/portal.css`
-- mirrored in `portals/_shared/runtime/flavors/tff/`
-
-## Responsibility Split
-
-### Activity Bar (global)
-
-- global service/page switching
+- global service switching
 - always visible
-- not page-specific content editing
-- `PERIPHERALS` is no longer a primary activity; legacy routes redirect into `NETWORK` or `UTILITIES`
 
-### Context Sidebar (page-local)
+### Control panel
 
-- page-local list/filter/navigation groups
-- selection lists (aliases/request logs/P2P on NETWORK)
-- datum editor content for `SYSTEM`
-- utility tab navigation for `UTILITIES`
+- page-local navigation and context
+- current selection summaries
+- lightweight supporting controls
+- on `SYSTEM`, compatible mediations and file/datum context
 
-### Workbench (center)
+### Workbench
 
-- main interactive surface
-- editors, graph navigation, conversation/workflow content
+- primary interactive surface
+- editors, tables, graphs, hosted tools
 
-### Inspector (right)
+### Details
 
-- contextual detail/investigation panels
-- profile/contact-card details
-- abstraction path/investigation payloads
-- should be treated as contextual drawer, not a center-content replacement
+- contextual file/datum inspection
+- mediation and manipulation panels
+- richer editing surfaces than the control panel
+- on `SYSTEM`, reflects the active NIMM directive and current AITAS state

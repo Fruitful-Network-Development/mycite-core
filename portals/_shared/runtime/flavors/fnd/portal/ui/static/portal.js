@@ -157,7 +157,7 @@
 
   function initWorkbenchLayout() {
     const shell = qs(".ide-shell");
-    const contextSidebar = qs("#portalContextSidebar");
+    const contextSidebar = qs("#portalControlPanel") || qs("#portalContextSidebar");
     const inspector = qs("#portalInspector");
     const ideBody = qs(".ide-body");
     if (!shell || !contextSidebar || !inspector) return null;
@@ -184,7 +184,7 @@
 
     function currentLayoutPolicy() {
       const systemWorkbenchMode = activeSystemWorkbenchMode();
-      if (systemWorkbenchMode === "anthology" || systemWorkbenchMode === "resources") {
+      if (systemWorkbenchMode === "anthology" || systemWorkbenchMode === "resources" || systemWorkbenchMode === "system") {
         return {
           defaultContextWidth: 248,
           defaultInspectorWidth: 300,

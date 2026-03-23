@@ -123,7 +123,7 @@ Moving these into `_shared/portal/` (or a small `_shared/runtime/` helper) would
 - **Already shared**: `api/`, `services/`, `mss/`, `data_engine/`, `tools/specs.py`, `hosted_model.py`, `progeny_model/`, `datum_refs.py`, etc.
 - **Add (from flavor app.py)**:
   - **network_contract.py** (or **shared_network.py**): contract list, network sidebar items, message feed, p2p/request_log channels, placeholder item.
-  - **sidebar_context.py**: build context sidebar sections from a small flavor config (e.g. show_alias_section, show_progeny_in_utilities).
+  - **sidebar_context.py**: build control panel sections from a small flavor config (e.g. show_alias_section, show_progeny_in_utilities).
   - **embed_urls.py** (or inside **progeny_embed**): build embed/widget URL from alias payload and request (with fallback to 127.0.0.1 when no request).
   - **request_log_ui.py**: event timestamp, initials, actor label, summary, and any event-iteration helpers.
   - **alias_utils.py**: alias label, canonical progeny type, extract tenant/contract/member IDs, contact collection ref.

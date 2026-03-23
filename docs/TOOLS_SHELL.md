@@ -6,9 +6,9 @@ Active portals use one shared shell composed of:
 
 - top menu bar
 - activity bar
-- left context sidebar
+- left control panel
 - central workbench
-- right inspector column
+- right Details inspector column
 
 The workbench viewport is the primary scroll region. Sidebars and the activity bar stay pinned to the shell frame.
 
@@ -28,6 +28,8 @@ Compatibility redirects remain:
 - `/portal/peripheral` -> `/portal/utilities?tab=peripherals`
 
 `/portal/data/<path:tab_id>` also redirects to `/portal/tools/data_tool/home`.
+
+For `SYSTEM`, older query entrypoints such as `local_resources`, `inheritance`, `workbench=anthology`, and `workbench=resources` may still normalize successfully, but they are compatibility-only and not active navigation surfaces.
 
 ## Activity bar
 
@@ -64,6 +66,7 @@ Materialized runtime inputs:
 Rules:
 
 - `data_tool` is a core SYSTEM surface, not an optional packaged tool
+- the current `SYSTEM` contract is one unified workbench over `anthology.json`, `samras-txa.json`, and `samras-msn.json`
 - missing `enabled_tools` in a real config means no optional tools are enabled
 - package auto-discovery is only a fallback when no portal config exists
 

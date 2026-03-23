@@ -662,7 +662,7 @@ def _normalize_system_query_tab(raw: Any) -> str:
 
 def _normalize_system_workbench_mode(raw: Any) -> str:
     token = str(raw or "").strip().lower()
-    return token if token in {"anthology", "resources"} else "anthology"
+    return "system" if token in {"", "anthology", "resources", "system"} else "system"
 
 
 def _system_render_state(system_tab: str, workbench_mode: str) -> tuple[str, str, str, str]:
@@ -670,9 +670,11 @@ def _system_render_state(system_tab: str, workbench_mode: str) -> tuple[str, str
     normalized_workbench_mode = _normalize_system_workbench_mode(workbench_mode)
     shell_tab = requested_tab
     compatibility_view = ""
+    # Older SYSTEM query tabs still resolve, but only as compatibility entrypoints
+    # into the unified workbench shell.
     if requested_tab in {"local_resources", "inheritance"}:
         shell_tab = "workbench"
-        normalized_workbench_mode = "resources"
+        normalized_workbench_mode = "system"
         compatibility_view = requested_tab
     return requested_tab, shell_tab, normalized_workbench_mode, compatibility_view
 

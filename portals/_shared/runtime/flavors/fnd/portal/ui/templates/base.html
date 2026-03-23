@@ -37,7 +37,7 @@
       <div class="ide-menubar__right">
         <div class="ide-menubar__shellActions" aria-label="Shell layout controls">
           <button type="button" class="ide-sessionAction ide-sessionAction--button" data-shell-toggle="context">Context</button>
-          <button type="button" class="ide-sessionAction ide-sessionAction--button" data-shell-toggle="inspector">Inspector</button>
+          <button type="button" class="ide-sessionAction ide-sessionAction--button" data-shell-toggle="inspector">Details</button>
         </div>
         <label class="themebar ide-menubar__theme" aria-label="Portal theme selector">
           <span class="themebar__label">Theme</span>
@@ -93,7 +93,7 @@
         </div>
       </aside>
 
-      <aside id="portalContextSidebar" class="ide-contextsidebar" aria-label="Context sidebar" aria-hidden="false">
+      <aside id="portalControlPanel" class="ide-controlpanel ide-contextsidebar" aria-label="Control panel" aria-hidden="false">
         {% block context_sidebar %}
           {% if context_sidebar_sections is defined and context_sidebar_sections %}
             {% for section in context_sidebar_sections %}
@@ -117,7 +117,7 @@
             {% endfor %}
           {% else %}
             <section class="ide-contextSection">
-              <header class="ide-contextTitle">Context</header>
+              <header class="ide-contextTitle">Control Panel</header>
               <div class="ide-contextEmpty">No context loaded for this page.</div>
             </section>
           {% endif %}
@@ -128,7 +128,7 @@
         type="button"
         class="ide-splitter ide-splitter--context"
         data-splitter="context"
-        aria-label="Resize context sidebar"
+        aria-label="Resize control panel"
       ></button>
 
       <main class="ide-workbench" data-active-service="{% if active_service is defined and active_service %}{{ active_service }}{% else %}system{% endif %}">

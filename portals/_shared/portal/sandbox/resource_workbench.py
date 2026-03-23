@@ -216,6 +216,8 @@ __all__ = [
     "build_samras_row_summaries",
     "extract_anthology_rows_payload",
     "is_samras_backed_resource",
+    "system_workbench_stage_dir",
+    "system_workbench_stage_path",
     "understanding_brief",
 ]
 
@@ -309,6 +311,14 @@ def _resolve_canonical_data_file(*, data_root: Path, canonical_filename: str, al
     return canonical, payload, False
 
 
+def system_workbench_stage_dir(data_root: Path) -> Path:
+    return Path(data_root) / ".system_workbench_staging"
+
+
+def system_workbench_stage_path(*, data_root: Path, filename: str) -> Path:
+    return system_workbench_stage_dir(data_root) / f"{filename}.stage.json"
+
+
 def _normalize_samras_rows_by_address(payload: dict[str, Any]) -> dict[str, list[str]]:
     raw = payload.get("rows_by_address") if isinstance(payload.get("rows_by_address"), dict) else {}
     out: dict[str, list[str]] = {}
@@ -399,7 +409,7 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
     table_rows: list[dict[str, Any]] = []
     samras_by_file_key: dict[str, dict[str, list[str]]] = {}
     layers_by_file_key: dict[str, list[dict[str, Any]]] = {}
-    resource_surface_file_keys = ("txa", "msn")
+    resource_surface_file_keys = ("anthology", "txa", "msn")
 
     for entry in files:
         filename = str(entry["filename"])
@@ -410,21 +420,28 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
             canonical_filename=filename,
             aliases=aliases,
         )
+        staged_path = system_workbench_stage_path(data_root=Path(data_root), filename=filename)
+        staged_payload = _read_json_object(staged_path) if file_key != "anthology" and staged_path.is_file() else {}
+        active_payload = staged_payload if staged_payload else payload
         per_file_rows, samras_map = _table_rows_for_canonical_file(
             file_key=file_key,
             filename=filename,
-            payload=payload,
+            payload=active_payload,
         )
         file_obj: dict[str, Any] = {
             "file_key": file_key,
             "filename": filename,
             "path": str(path),
+            "canonical_path": str(path),
             "exists": True,
             "materialized_from_existing_file": bool(found_existing),
             "row_count": len(per_file_rows),
             "layers": _group_rows_by_layer_vg(per_file_rows) if per_file_rows else [],
             "errors": [],
             "samras_rows_by_address": samras_map,
+            "write_mode": "direct" if file_key == "anthology" else "stage_then_promote",
+            "staged_present": bool(staged_payload),
+            "staged_path": str(staged_path),
         }
         if file_obj["layers"]:
             layers_by_file_key[file_key] = list(file_obj["layers"])

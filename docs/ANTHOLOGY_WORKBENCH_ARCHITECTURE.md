@@ -1,36 +1,28 @@
-# Anthology Workbench Architecture
+# Historical: Anthology workbench architecture
 
-## Purpose
+## Status
 
-SYSTEM Data surface is an anthology-authoritative workbench where graph navigation is primary and datum editing is synchronized in the same surface.
+This document is preserved as a historical reference.
 
-## Composition
+It describes the earlier anthology-dominant workbench framing that predated the unified `SYSTEM` page. The current active contract is the one-file-at-a-time unified `SYSTEM` workbench documented in:
 
-Template:
+- `SYSTEM_WORKBENCH_ARCHITECTURE.md`
+- `DATA_TOOL.md`
+- `directive_context_UI_refactor.md`
 
-- `portals/_shared/runtime/flavors/fnd/portal/ui/templates/tools/partials/data_tool_shell.html`
+## Historical framing
 
-Mirrored to TFF.
+The older model treated anthology as the canonical workbench surface and centered graph-first anthology navigation. That is no longer the current top-level `SYSTEM` framing.
 
-Workbench regions:
+Today:
 
-1. graph-first pane (primary navigation surface)
-2. focused datum editor pane (same workbench grid)
-3. layer/value-group row explorer (context list)
-4. right inspector drawer for investigation context
+- anthology remains part of the canonical three-file `SYSTEM` workbench
+- anthology graph, profile, and mutation routes still exist and are reused where appropriate
+- the visible `SYSTEM` contract is no longer a separate anthology page or anthology/resources split
 
-The pre-graph stacked explanatory cards were removed from central flow so the graph/editor workspace is immediately dominant.
+## Historical implementation notes
 
-## Interaction Model
-
-- single click graph node: focus datum and sync editor
-- double click graph node: investigate datum and open inspector
-- selecting anthology row: sync graph focus + load datum editor
-- save in datum editor: persist to anthology profile update route and refresh graph/table/editor state
-
-## Engine/API Binding
-
-Core routes used:
+The earlier anthology-first surface was built around:
 
 - `GET /portal/api/data/anthology/table`
 - `GET /portal/api/data/anthology/graph`
@@ -38,12 +30,4 @@ Core routes used:
 - `POST /portal/api/data/anthology/profile/update`
 - `POST /portal/api/data/directive`
 
-State remains engine-driven (NIMM/AITAS), UI remains a consumer.
-
-## Inspector Usage
-
-Investigation updates the right inspector (`PortalInspector`) with abstraction path and state context. Main editing remains in the center workbench.
-
-## Current Limitation
-
-Advanced NIMM controls still include overlay compatibility paths; they are not yet fully re-mounted as first-class inspector tabs.
+Those routes remain important implementation primitives, but the current UI now presents them through the unified NIMM/AITAS-driven `SYSTEM` workbench rather than through a dedicated anthology workbench.

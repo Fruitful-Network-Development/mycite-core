@@ -1834,7 +1834,7 @@ def get_tool() -> dict[str, object]:
         ],
         "workbench_contribution": {
             "workspace_id": "agro_erp",
-            "label": "AGRO ERP mediation",
+            "label": "AGRO ERP",
             "default_mode": "taxonomy",
             "modes": [
                 "taxonomy_browse",

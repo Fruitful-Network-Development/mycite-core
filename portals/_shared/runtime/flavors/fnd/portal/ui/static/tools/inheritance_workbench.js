@@ -1,5 +1,6 @@
 /**
- * System → Inheritance: grouped-by-source manager (uses grouped_by_source from API).
+ * Historical compatibility surface for the former System -> Inheritance workbench.
+ * Active SYSTEM now routes inheritance entrypoints back into the unified workbench shell.
  */
 (function () {
   var root = document.getElementById("inhWorkbenchRoot");

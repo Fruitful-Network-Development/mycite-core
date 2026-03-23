@@ -2,51 +2,53 @@
 
 ## Scope
 
-This document defines the SYSTEM page workbench composition only.
+This document defines the unified `/portal/system` page after the anthology/resources split was removed.
 
-- route: `/portal/system`
-- shell host: `portals/_shared/runtime/flavors/*/portal/ui/templates/base.html`
-- SYSTEM consumer: `portals/_shared/runtime/flavors/*/portal/ui/templates/services/system.html`
+## Canonical model
 
-## Canonical SYSTEM tabs
+`SYSTEM` now exposes one canonical workbench:
 
-- `Workbench`
-- `Local Resources`
-- `Inheritance`
+- center: one layered anthology-style table surface for all canonical files
+- left: the page-local **control panel** for context summary and compatible mediations
+- right: the **Details** inspector for active NIMM directive content
 
-`Sandbox` remains an engine concept and local-resource lifecycle service, not the primary user-facing category label.
+Legacy `local_resources`, `inheritance`, `workbench=anthology`, and `workbench=resources` URLs remain compatibility entry points only. They all resolve back into the same unified SYSTEM workbench shell.
 
-## Canonical editor boundaries
+## Canonical files
 
-- `SYSTEM > Workbench` (and Data Tool) is the canonical editor for local anthology datum state.
-- `SYSTEM > Local Resources` is the inventory/controller for local isolated resources.
-- `SYSTEM > Inheritance` is the inventory/controller for inherited snapshots plus refresh/disconnect controls.
-- `NETWORK > Contracts` remains the canonical editor for contract metadata, tracked refs, compact-array/MSS relationship context.
+The workbench always operates on the fixed canonical file set:
 
-`SYSTEM > Inheritance` must not become a second full contract editor; it orchestrates refresh/disconnect and snapshot visibility only.
+- `anthology.json`
+- `samras-txa.json`
+- `samras-msn.json`
 
-## Locked Composition
+Default attention is `anthology.json`.
 
-Inside the existing IDE shell, SYSTEM uses:
+## NIMM + AITAS behavior
 
-1. left context sidebar (page-local navigation/scoping)
-2. center anthology workbench (graph-first + focused datum editor)
-3. right inspector drawer (investigation/context)
+- Top-left workbench controls are always the four NIMM directives:
+  - `Navigate`
+  - `Investigate`
+  - `Mediate`
+  - `Manipulate`
+- The grayscale AITAS strip sits directly beneath those controls.
+- `Navigate` owns file switching when the workbench is at file focus.
+- `Mediate` is driven by compatible-tool discovery instead of hardcoded launch buttons.
+- File focus keeps `Spacial = 1`.
+- Datum focus moves to `Spacial = 2`.
 
-The center workbench must open directly to graph/editor workflow. Stacked explanatory cards above graph are intentionally removed from primary flow.
+## Mutation policy
 
-## Component Sources
+- `anthology.json`: direct write through the anthology authority path
+- `samras-txa.json` and `samras-msn.json`: staged write with explicit publish
+- create/delete affordances appear only while `Manipulate` is active
 
-- workbench template:
-  - `portals/_shared/runtime/flavors/fnd/portal/ui/templates/tools/partials/data_tool_shell.html`
-  - mirrored to TFF
-- runtime behavior:
-  - `portals/_shared/runtime/flavors/fnd/portal/ui/static/tools/data_tool.js`
-  - mirrored to TFF
-- styling:
-  - `portals/_shared/runtime/flavors/fnd/portal/ui/static/portal.css`
-  - mirrored to TFF
+## Primary implementation files
 
-## Residual Limitation
-
-Advanced NIMM control panes still use compatibility overlay behavior for some flows.
+- `portals/_shared/runtime/flavors/*/portal/ui/templates/services/system.html`
+- `portals/_shared/runtime/flavors/fnd/portal/ui/templates/tools/partials/data_tool_shell.html`
+- `portals/_shared/runtime/flavors/fnd/portal/ui/static/tools/data_tool.js`
+- `portals/_shared/portal/ui/static/system_shell_runtime.js`
+- `portals/_shared/portal/api/data_workspace.py`
+- `portals/_shared/portal/application/shell/runtime.py`
+- `portals/_shared/portal/sandbox/resource_workbench.py`

@@ -7,13 +7,24 @@ Applies to:
 - `portals/_shared/runtime/flavors/fnd`
 - `portals/_shared/runtime/flavors/tff`
 
-SYSTEM hosts the anthology-first Data Tool workbench.
+`SYSTEM` hosts the unified Data Tool workbench.
+
+The current contract is one layered `SYSTEM` workbench with:
+
+- a left **control panel**
+- a center anthology-style table surface
+- a right **Details** inspector
+- persistent top-left NIMM controls and a live AITAS strip
+
+There are no separate current anthology/resources body tabs.
 
 ## Canonical runtime
 
 Primary runtime artifacts:
 
 - `data/anthology.json`
+- `data/samras-txa.json`
+- `data/samras-msn.json`
 - `data/presentation/datum_icons.json`
 - `private/daemon_state/data_workspace.json`
 
@@ -27,14 +38,21 @@ Shared normalization lives in:
 
 ## Workbench behavior
 
-Primary interactions:
+Primary interaction model:
 
-- single click: focus summary
-- double click: investigate and open `abstraction_path`
-- profile editing: update label/pairs/icon for a datum
+- default file attention is `anthology.json`
+- `Navigate`, `Investigate`, `Mediate`, and `Manipulate` remain visible in the top-left workbench dock
+- file focus uses AITAS `spacial = 1`
+- datum focus uses AITAS `spacial = 2`
+- file switching belongs to `Navigate`
+- manipulate mode exposes create/delete at file focus and datum editing at datum focus
 
 Canonical data endpoints:
 
+- `POST /portal/api/data/system/selection_context`
+- `GET /portal/api/data/system/resource_workbench`
+- `POST /portal/api/data/system/mutate`
+- `POST /portal/api/data/system/publish`
 - `GET /portal/api/data/state`
 - `POST /portal/api/data/directive`
 - `GET /portal/api/data/anthology/table`
@@ -44,18 +62,20 @@ Canonical data endpoints:
 - `POST /portal/api/data/anthology/append`
 - `POST /portal/api/data/anthology/delete`
 
+The `system/*` routes define the current file-aware workbench. The anthology-specific routes remain active because the unified workbench still reuses anthology graph, profile, and direct-write behavior when attention is on anthology datums.
+
 ## MSS contract context role
 
 The Data Tool is the selection and explanation surface for local contract context.
 
 Canonical contract-edit workflow:
 
-1. browse candidate datums from `GET /portal/api/data/anthology/table`
-2. inspect a datum and its `abstraction_path` via `GET /portal/api/data/anthology/profile/<row_id>`
+1. navigate to a canonical file or datum in `SYSTEM`
+2. inspect a datum and its `abstraction_path` via the Details panel and anthology profile route when applicable
 3. use those local datum refs as `owner_selected_refs` in `NETWORK > Contracts`
 4. compile canonical `owner_mss` from the selected isolated closure
 
-The Data Tool remains anthology-authoritative. Contract compilation lives in the shared MSS layer, not in the Data Tool itself.
+The Data Tool remains anthology-authoritative for anthology rows. Contract compilation lives in the shared MSS layer, not in the Data Tool itself.
 
 ## Mutation side effects
 
@@ -81,3 +101,5 @@ Daemon endpoints remain owned by the Data Engine:
 - `POST /portal/api/data/daemon/resolve_tokens`
 
 These endpoints stay available for Data Tool and tool-package use. NETWORK foreign datum resolution is not daemon-backed; it is contract-MSS-backed.
+
+Legacy query values such as `local_resources`, `inheritance`, `workbench=anthology`, and `workbench=resources` may still resolve for compatibility, but they are not part of the current visible `SYSTEM` workbench contract.

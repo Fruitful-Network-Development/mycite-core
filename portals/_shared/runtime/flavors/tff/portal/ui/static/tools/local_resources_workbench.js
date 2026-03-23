@@ -1,6 +1,7 @@
 /**
- * Local Resources: file-backed sandbox resource editor (sandbox/resources/*.json).
- * SAMRAS-backed bodies use the shared samras_workspace view-model (TXA, MSN, …).
+ * Historical compatibility surface for the former System -> Local Resources workbench.
+ * Active SYSTEM now uses the unified workbench shell; this script is retained for lineage
+ * and compatibility-only flows around sandbox/resources/*.json.
  */
 (function () {
   var root = document.getElementById("lrWorkbenchRoot");

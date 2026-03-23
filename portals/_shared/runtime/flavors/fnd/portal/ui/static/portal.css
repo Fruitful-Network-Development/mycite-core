@@ -2763,7 +2763,7 @@ body.is-modal-open {
 
 /* Locked IDE shell */
 :root {
-  --ide-menu-h: 30px;
+  --ide-menu-h: 38px;
   --ide-activity-w: 96px;
   --ide-context-w: 260px;
   --ide-inspector-w: 360px;
@@ -2805,12 +2805,15 @@ body.is-modal-open {
   font-weight: 700;
   letter-spacing: 0.04em;
   color: #f1f4f7;
+  flex: 0 0 auto;
 }
 
 .ide-menubar__pageSub {
   color: rgba(235, 240, 246, 0.64);
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .ide-shell--system-workbench .ide-menubar__pageSub {
@@ -2827,6 +2830,29 @@ body.is-modal-open {
   align-items: center;
   justify-self: end;
   gap: 10px;
+  min-width: max-content;
+  flex-wrap: nowrap;
+}
+
+.ide-menubar__shellActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.ide-menubar__shellActions .ide-sessionAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.ide-menubar__theme {
+  padding: 0;
+  flex-wrap: nowrap;
 }
 
 .ide-menubar__theme .themebar__label {
@@ -2837,7 +2863,7 @@ body.is-modal-open {
   background: rgba(16, 22, 30, 0.8);
   color: #f0f4f8;
   border-color: rgba(235, 240, 246, 0.2);
-  min-height: 24px;
+  min-height: 28px;
   font-size: 11px;
 }
 
@@ -2956,6 +2982,7 @@ body.is-modal-open {
   background: rgba(255, 255, 255, 0.14);
 }
 
+.ide-controlpanel,
 .ide-contextsidebar {
   background: #252525;
   color: #ebebeb;
@@ -3678,12 +3705,14 @@ body.is-modal-open {
   overflow: hidden;
 }
 
+.ide-controlpanel,
 .ide-contextsidebar {
   grid-area: context;
   overflow: auto;
   overscroll-behavior: contain;
 }
 
+.ide-controlpanel.is-collapsed,
 .ide-contextsidebar.is-collapsed {
   visibility: hidden;
   pointer-events: none;
@@ -3734,6 +3763,7 @@ body.is-modal-open {
   overflow: hidden;
 }
 
+.ide-shell[data-context-collapsed="true"] .ide-controlpanel,
 .ide-shell[data-context-collapsed="true"] .ide-contextsidebar,
 .ide-shell[data-context-collapsed="true"] .ide-splitter--context,
 .ide-body > .ide-inspector.is-collapsed,
@@ -3746,6 +3776,7 @@ body.is-modal-open {
 }
 
 .ide-activitybar,
+.ide-controlpanel,
 .ide-contextsidebar,
 .ide-workbench,
 .ide-inspector {
@@ -4007,10 +4038,9 @@ body.is-modal-open {
   box-shadow: none;
 }
 
-.data-tool--systemWorkbench .data-tool__anthologyWorkbench,
 .data-tool--systemWorkbench .data-tool__resourcesWorkbench {
   position: relative;
-  padding-top: 48px;
+  padding-top: 112px;
   gap: 0;
 }
 
@@ -4025,12 +4055,16 @@ body.is-modal-open {
 
 .data-tool__workbenchFloatingControls {
   position: absolute;
-  top: 0;
+  top: 8px;
   right: 0;
   z-index: 5;
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.data-tool__workbenchFloatingControls--right {
+  right: 8px;
 }
 
 .data-tool__workbenchFloatingControls button,
@@ -4101,6 +4135,64 @@ body.is-modal-open {
   flex-direction: column;
   gap: 6px;
   margin-top: 8px;
+}
+
+.data-tool__systemDock {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(720px, calc(100% - 92px));
+}
+
+.data-tool__systemNimmButtons {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.data-tool__systemNimmButtons .data-tool__actionBtn {
+  min-height: 34px;
+  min-width: 120px;
+  border-radius: 999px;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--coal) 12%, transparent);
+}
+
+.data-tool__systemAitas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.data-tool__aitasChip {
+  min-width: 116px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 68%, var(--coal) 32%);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(248, 248, 248, 0.96), rgba(228, 228, 228, 0.96));
+  color: #222;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--coal) 10%, transparent);
+}
+
+.data-tool__aitasLabel {
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #666;
+}
+
+.data-tool__aitasValue {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #262626;
 }
 
 .data-tool__resourcesTaskButtons .data-tool__actionBtn.is-active {
@@ -4399,7 +4491,7 @@ body.is-modal-open {
   border-top: 1px dashed var(--line, #cfcfcf);
 }
 
-/* Local Resources — sandbox resource workbench (System → Local Resources) */
+/* Historical compatibility styles for the former System -> Local Resources workbench. */
 .lr-workbench__layout {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(240px, 320px);

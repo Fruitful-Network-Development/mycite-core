@@ -23,14 +23,24 @@ Canonical shared external-resource endpoints under `/portal/api/data/*` are shar
 
 ## Canonical shell/service surfaces
 
+- canonical `SYSTEM` surface: `GET /portal/system`
+- canonical `SYSTEM` workbench: one unified NIMM/AITAS-driven workbench for `anthology.json`, `samras-txa.json`, and `samras-msn.json`
 - canonical Data Tool browser entry: `GET /portal/data` -> `/portal/tools/data_tool/home`
 - canonical data service API: `/portal/api/data/*`
-- canonical system resource tabs: `Workbench`, `Local Resources`, `Inheritance`
 - canonical contract editor: `NETWORK > Contracts`
 - canonical contract MSS fields:
   - `owner_selected_refs`
   - `owner_mss`
   - `counterparty_mss`
+
+Legacy SYSTEM query entrypoints remain readable for compatibility only:
+
+- `?tab=local_resources`
+- `?tab=inheritance`
+- `?workbench=anthology`
+- `?workbench=resources`
+
+Those entrypoints resolve back into the same unified `SYSTEM` shell and are not current navigation surfaces.
 
 ## Shell consolidation
 
@@ -43,6 +53,8 @@ Shared shell assets/templates are canonicalized to one source and reused across 
 ## Flavor runtime boundary
 
 Flavor entrypoints (`portals/_shared/runtime/flavors/fnd/app.py`, `portals/_shared/runtime/flavors/tff/app.py`) compose shared services and shell behavior but do not own divergent data/MSS contracts.
+
+Current active portal flavors (`fnd`, `tff`) render the same unified `SYSTEM` template contract: control panel on the left, one center workbench, and Details on the right.
 
 Current shared-boundary invariants:
 
@@ -57,6 +69,7 @@ Current compatibility posture is explicit:
 
 - `/portal/data` and `/portal/data/<path:tab_id>` redirect to `/portal/tools/data_tool/home`
 - `/portal/tools`, `/portal/inbox`, and `/portal/peripheral` remain redirect shims into canonical shell routes
+- `/portal/system` continues to normalize legacy `local_resources`, `inheritance`, `anthology`, and `resources` query values into the unified workbench
 - shared data API registration is called with `include_legacy_shims=False` in both active flavors, so deprecated `/portal/api/data/tables` and `/portal/api/data/table/*` shims are intentionally disabled
 
 ## Migration notes

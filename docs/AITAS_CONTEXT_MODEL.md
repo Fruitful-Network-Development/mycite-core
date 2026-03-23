@@ -1,106 +1,50 @@
-# AITAS Context Model (Shared Core)
+# AITAS Context Model
 
 ## Purpose
 
-AITAS is the shared-core context foundation for derived data-engine context:
+AITAS is the shared context frame used by the unified `SYSTEM` workbench:
 
-- Attention
-- Intention
-- Time
-- Archetype
-- Space
+- `Attention`
+- `Intention`
+- `Time`
+- `Archetype`
+- `Spacial`
 
-Current implementation scope is intentionally narrow: only **Archetype** is implemented as a real facet.
+The current implementation is intentionally lightweight. `Attention`, `Intention`, and `Spacial` now drive the visible shell/workbench state on `/portal/system`, while `Time` and much of `Archetype` remain placeholder facets.
 
-This layer is derived from anthology/context resolution and is **not** a second semantic source of truth.
+The payload continues to use the field name `spacial` for compatibility with existing runtime/state consumers.
 
-## Implemented now
+## SYSTEM workbench contract
 
-Shared modules:
+The unified SYSTEM workbench uses two focus levels:
 
-- `portals/_shared/portal/data_engine/archetypes.py`
-- `portals/_shared/portal/data_engine/aitas_context.py`
+1. **File focus**
+   - `attention`: active canonical file (`anthology.json`, `samras-txa.json`, or `samras-msn.json`)
+   - `intention`: `idle` or the active NIMM directive
+   - `time`: `null`
+   - `archetype`: `null` unless an existing resolver already provides a value
+   - `spacial`: `1`
+2. **Datum focus**
+   - `attention`: selected datum
+   - `intention`: active NIMM directive
+   - `time`: `null`
+   - `archetype`: placeholder unless existing resolution is available
+   - `spacial`: `2`
 
-Implemented anchor definition:
+This state is emitted in the SYSTEM selection payload as `system_state.aitas`.
 
-- `ascii_babel_64`
+## Current UI usage
 
-Definition model includes:
-
-- `archetype_key`
-- `family`
-- `display_name`
-- `chain_pattern`
-- `constraint_expectation`
-- `lens_key`
-
-## Recognition model
-
-Recognition is definition-driven and derived from:
-
-1. resolved local datum row from anthology (via canonical datum ref)
-2. inheritance/abstraction chain derived from row references
-3. compiled constraint summary derived from row/chain context
-4. merged anthology base+overlay context (shared canonical loader)
-
-For `ascii_babel_64`, matcher requires both:
-
-- chain evidence containing ascii+babel markers
-- compiled constraints indicating:
-  - `field_length = 64`
-  - `alphabet_cardinality = 256`
-
-MSS/closure-related fields are optional supporting evidence in derived binding metadata. They are not sole semantic matchers.
-
-SAMRAS-aware compiled constraints are now supported in compatibility mode for provisional payloads. When chain/graph evidence is SAMRAS-backed, compiled constraints can include:
-
-- `constraint_family = "samras"`
-- `descriptor_digest`
-- `value_kind`
-- `role`
-- `context_source`
-- `provisional_state`
-- nested `samras` descriptor payload
-
-This is a shared-core ingest/compiler step and does not enforce strict lexical canonicalization yet.
-
-## Derived binding shape
-
-Archetype bindings are derived and rebuildable. They include:
-
-- `archetype_key`
-- `local_ref`
-- `canonical_ref`
-- `source_identifier` (when available)
-- `chain_signature`
-- `compiled_constraint`
-- `lens_key`
-- `closure_hash`
-- `closure_form`
-- `confidence`
-- `derived_at_unix_ms`
-- `revision`
-
-No authoritative archetype truth is persisted in profile/config.
-
-## Trace output
-
-The archetype trace output is visualization-ready and includes:
-
-- local/canonical datum refs
-- recognized archetype key (if any)
-- compiled constraint summary
-- ordered chain entries
-- trace `nodes` and `edges` for later UI rendering
-- lens context hints for future lens selection integration
+- The top-left floating NIMM controls on the SYSTEM workbench always show the current AITAS strip.
+- The control panel and Details inspector both reflect the same file-focus or datum-focus state.
+- `Navigate` at file focus is the canonical file switcher.
+- `Manipulate` uses file focus for create/delete controls and datum focus for value editing.
 
 ## API surface
 
-Canonical shared routes:
+Relevant shared routes:
 
-- `GET /portal/api/data/aitas/archetypes`
-- `POST /portal/api/data/aitas/archetype/inspect`
-- `POST /portal/api/data/aitas/archetype/trace`
-- `GET /portal/api/data/aitas/archetype/bindings`
-
-These routes are shared-core owned under `/portal/api/data/*`.
+- `POST /portal/api/data/system/selection_context`
+- `GET /portal/api/data/system/resource_workbench`
+- `POST /portal/api/data/system/mutate`
+- `POST /portal/api/data/system/publish`
