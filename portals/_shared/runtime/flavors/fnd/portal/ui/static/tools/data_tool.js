@@ -93,13 +93,14 @@
   var samrasSelectedNodeTitleEl = qs("#dtsamrasSelectedNodeTitle", app);
   var samrasSelectedNodeMetaEl = qs("#dtsamrasSelectedNodeMeta", app);
 
-  var systemWorkbenchMode = String(app.getAttribute("data-system-workbench-mode") || "anthology").trim().toLowerCase();
+  var systemWorkbenchMode = String(app.getAttribute("data-system-workbench-mode") || "system").trim().toLowerCase();
   var dtWorkspaceAnthology = qs("#dtWorkspaceAnthology", app);
   var dtWorkspaceResources = qs("#dtWorkspaceResources", app);
   var dtResourcesRefreshBtn = qs("#dtResourcesRefreshBtn", app);
   var dtResourcesStatus = qs("#dtResourcesStatus", app);
   var dtResourcesTableEmpty = qs("#dtResourcesTableEmpty", app);
   var dtResourcesWorkbenchStatusEl = qs("#dtResourcesWorkbenchStatus", app);
+  var dtSystemAitasStripEl = qs("#dtSystemAitasStrip", app);
   var dtResourcesLayersEl = qs("#dtResourcesLayers", app);
   var dtResourcesFilesJson = qs("#dtResourcesFilesJson", app);
   var dtResourcesWorkbenchTitleEl = qs("#dtResourcesWorkbenchTitle", app);
@@ -245,7 +246,7 @@
 
   var resourcesWorkbenchState = {
     payload: null,
-    activeFileKey: "txa",
+    activeFileKey: "anthology",
     selectedRow: null,
     activeTask: "navigate",
     manipulateEditorRoot: null,
@@ -388,16 +389,12 @@
     return "table";
   }
 
-  function systemInspectorPanelAnthologyEl() {
-    return document.getElementById("systemInspectorPanelAnthology");
+  function systemInspectorPanelSystemEl() {
+    return document.getElementById("systemInspectorPanelSystem");
   }
 
   function systemInspectorPanelTxaEl() {
     return document.getElementById("systemInspectorPanelTxa");
-  }
-
-  function systemInspectorPanelResourcesEl() {
-    return document.getElementById("systemInspectorPanelResources");
   }
 
   function ensureTxaAsideInShellHost() {
@@ -409,14 +406,12 @@
   }
 
   function syncSystemShellDataToolPanels(workspaceMode) {
-    var anth = systemInspectorPanelAnthologyEl();
+    var systemPanel = systemInspectorPanelSystemEl();
     var txa = systemInspectorPanelTxaEl();
-    var resources = systemInspectorPanelResourcesEl();
-    if (!anth || !txa || !resources) return;
-    var m = String(workspaceMode || "anthology").trim();
-    anth.hidden = m !== "anthology";
-    txa.hidden = m !== "txa_sandbox";
-    resources.hidden = m !== "resources";
+    if (!systemPanel) return;
+    var m = String(workspaceMode || "system").trim();
+    systemPanel.hidden = m !== "system" && m !== "resources";
+    if (txa) txa.hidden = m !== "txa_sandbox";
   }
 
   function loadWorkbenchLayoutPreference() {
@@ -2403,7 +2398,7 @@
       await getAnthologyTable();
     }
     await loadDatumEditor(datumWorkbenchState.rowId, { syncGraphFocus: false, openInspector: true });
-    if (String(app.getAttribute("data-system-workbench-mode") || "").trim().toLowerCase() === "resources") {
+    if (String(app.getAttribute("data-system-workbench-mode") || "").trim().toLowerCase() === "system") {
       loadSystemResourceWorkbench().catch(function () {
         /* best-effort refresh of resource explorer */
       });
@@ -3235,7 +3230,7 @@
 
   function resourceSurfaceFileKeys(payload) {
     var p = payload && typeof payload === "object" ? payload : {};
-    var keys = Array.isArray(p.resource_surface_file_keys) ? p.resource_surface_file_keys : ["txa", "msn"];
+    var keys = Array.isArray(p.resource_surface_file_keys) ? p.resource_surface_file_keys : ["anthology", "txa", "msn"];
     return keys.map(function (k) {
       return String(k || "").trim();
     }).filter(Boolean);
@@ -3292,16 +3287,16 @@
       document: activeResourceWorkbenchDocument(),
       selected_row: resourcesWorkbenchState.selectedRow || null,
       current_verb: resourcesWorkbenchState.activeTask || "navigate",
-      workbench_mode: "resources"
+      workbench_mode: "system"
     });
   }
 
   function resourcesRowsForActiveFile() {
     var payload = resourcesWorkbenchState.payload;
     var all = Array.isArray(payload && payload.rows) ? payload.rows : [];
-    var fk = String(resourcesWorkbenchState.activeFileKey || "txa").trim();
+    var fk = String(resourcesWorkbenchState.activeFileKey || "anthology").trim();
     var allowed = resourceSurfaceFileKeys(payload);
-    if (allowed.indexOf(fk) === -1) fk = allowed[0] || "txa";
+    if (allowed.indexOf(fk) === -1) fk = allowed[0] || "anthology";
     return all.filter(function (row) {
       return String(row && row.file_key || "").trim() === fk;
     });
@@ -3449,6 +3444,8 @@
     renderResourcesWorkbenchHeader();
     renderResourcesLayeredWorkbench();
     if (dtResourcesSourceControlEl) dtResourcesSourceControlEl.open = false;
+    emitShellRuntimeEvent("mycite:shell:file-focus-changed", { file_key: fk });
+    setResourcesActiveTask("navigate");
   }
 
   function setResourcesActiveTask(task) {
@@ -3466,15 +3463,70 @@
     emitResourcesShellSelection();
   }
 
+  async function systemMutate(action, payload) {
+    return api("/portal/api/data/system/mutate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.assign({ action: action, file_key: resourcesWorkbenchState.activeFileKey }, payload || {})),
+    });
+  }
+
+  async function systemPublish(fileKey) {
+    return api("/portal/api/data/system/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_key: fileKey || resourcesWorkbenchState.activeFileKey }),
+    });
+  }
+
+  function findResourcesRowById(rowId) {
+    var token = String(rowId || "").trim();
+    return resourcesRowsForActiveFile().find(function (row) {
+      return String(row && (row.row_id || row.identifier) || "").trim() === token;
+    }) || null;
+  }
+
+  function applySystemWorkbenchPayload(payload, preferredRowId) {
+    if (payload && payload.workbench_payload) {
+      renderSystemResourceWorkbench(payload.workbench_payload);
+    } else {
+      loadSystemResourceWorkbench().catch(function () {
+        /* refresh error is surfaced by caller */
+      });
+    }
+    var nextRowId = String(preferredRowId || "").trim();
+    if (nextRowId) {
+      var nextRow = findResourcesRowById(nextRowId);
+      if (nextRow) {
+        resourcesWorkbenchState.selectedRow = nextRow;
+        syncResourcesSelectionUi();
+        renderResourcesShellUi();
+        emitResourcesShellSelection();
+      }
+    }
+    setMessages(payload && payload.errors || [], payload && payload.warnings || []);
+  }
+
   function renderResourcesDatumProfile() {
     if (!resourcesDatumProfileEl) return;
     var row = resourcesWorkbenchState.selectedRow;
+    var payload = resourcesWorkbenchState.payload && typeof resourcesWorkbenchState.payload === "object" ? resourcesWorkbenchState.payload : {};
+    var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
+    var meta = resourceFileRecordForKey(payload, fk) || {};
     resourcesDatumProfileEl.innerHTML = "";
     if (!row) {
-      var ph = document.createElement("p");
-      ph.className = "data-tool__empty data-tool__resourcesDatumProfilePlaceholder";
-      ph.textContent = "No datum selected.";
-      resourcesDatumProfileEl.appendChild(ph);
+      var fileCard = document.createElement("div");
+      fileCard.className = "data-tool__resourcesDatumCard";
+      fileCard.innerHTML =
+        "<div><strong>Attention</strong><br/><code class=\"data-tool__clip\">" +
+        escapeText(String(meta.filename || fk || "system")) +
+        "</code></div>" +
+        "<div><strong>Mode</strong><br/><span>file focus</span></div>" +
+        "<div><strong>Spacial</strong><br/><span>1</span></div>" +
+        "<div><strong>Directive</strong><br/><span>" +
+        escapeText(String(resourcesWorkbenchState.activeTask || "navigate")) +
+        "</span></div>";
+      resourcesDatumProfileEl.appendChild(fileCard);
       return;
     }
     var coords = resourceRowCoordinates(row);
@@ -3490,6 +3542,7 @@
       "<div><strong>Label</strong><br/><span>" +
       escapeText(row.label || "") +
       "</span></div>" +
+      "<div><strong>Spacial</strong><br/><span>2</span></div>" +
       "<div><strong>Layer / VG / Iter</strong><br/><span>" +
       escapeText(
         String(coords.layer == null ? "?" : coords.layer) +
@@ -3500,6 +3553,30 @@
       ) +
       "</span></div>";
     resourcesDatumProfileEl.appendChild(card);
+  }
+
+  function renderSystemAitasStrip() {
+    if (!dtSystemAitasStripEl) return;
+    var row = resourcesWorkbenchState.selectedRow;
+    var payload = resourcesWorkbenchState.payload && typeof resourcesWorkbenchState.payload === "object" ? resourcesWorkbenchState.payload : {};
+    var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
+    var fileMeta = resourceFileRecordForKey(payload, fk) || {};
+    var fileLabel = String(fileMeta.filename || fk || "system").trim() || "system";
+    var chips = [
+      { label: "Attention", value: row ? String(row.identifier || row.label || "") : fileLabel },
+      { label: "Intention", value: String(resourcesWorkbenchState.activeTask || "idle") || "idle" },
+      { label: "Time", value: "null" },
+      { label: "Archetype", value: row ? String(row.source || "null") : "null" },
+      { label: "Spacial", value: row ? "2" : "1" }
+    ];
+    dtSystemAitasStripEl.innerHTML = chips.map(function (chip) {
+      return (
+        '<div class="data-tool__aitasChip">' +
+        '<span class="data-tool__aitasLabel">' + escapeText(chip.label) + "</span>" +
+        '<span class="data-tool__aitasValue">' + escapeText(chip.value) + "</span>" +
+        "</div>"
+      );
+    }).join("");
   }
 
   function renderAbstractionChainInto(targetEl, chain) {
@@ -3561,14 +3638,42 @@
   function renderResourcesNavigatePanel(row, allRows) {
     if (!dtResourcesNavigateBodyEl) return;
     dtResourcesNavigateBodyEl.innerHTML = "";
-    if (!row) return;
+    var payload = resourcesWorkbenchState.payload || {};
+    var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
+    var fileMeta = resourceFileRecordForKey(payload, fk) || {};
+    if (!row) {
+      var intro = document.createElement("p");
+      intro.className = "data-tool__legendText";
+      intro.textContent = "Navigate is focused on files while Spacial is 1. Choose which canonical JSON file the SYSTEM workbench should attend to.";
+      dtResourcesNavigateBodyEl.appendChild(intro);
+      var fileTabs = document.createElement("div");
+      fileTabs.className = "data-tool__resourcesFileTabs";
+      resourceSurfaceFileKeys(payload).forEach(function (fileKey) {
+        var meta = resourceFileRecordForKey(payload, fileKey) || {};
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "data-tool__resourcesFileTab" + (fileKey === fk ? " is-active" : "");
+        btn.setAttribute("data-system-resource-file-key", fileKey);
+        btn.setAttribute("aria-pressed", fileKey === fk ? "true" : "false");
+        btn.innerHTML =
+          "<span>" + escapeText(String(meta.filename || fileKey + ".json")) + "</span>" +
+          "<small>" + escapeText(String(meta.row_count || 0) + " datums") + "</small>";
+        fileTabs.appendChild(btn);
+      });
+      dtResourcesNavigateBodyEl.appendChild(fileTabs);
+      var summary = document.createElement("p");
+      summary.innerHTML =
+        "<strong>Active file</strong> <code>" + escapeText(String(fileMeta.filename || fk || "system")) + "</code>" +
+        " · <strong>Rows</strong> " + escapeText(String(fileMeta.row_count || 0)) +
+        " · <strong>Write mode</strong> " + escapeText(String(fileMeta.write_mode || "direct"));
+      dtResourcesNavigateBodyEl.appendChild(summary);
+      return;
+    }
     var src = String(row.source || "").trim();
     var aid = String(row.address_id || (src === "samras_rows_by_address" ? row.identifier : "") || "").trim();
 
     if (aid) {
-      var parts = aid.split("-").filter(function (p) {
-        return !!p;
-      });
+      var parts = aid.split("-").filter(function (p) { return !!p; });
       var h = document.createElement("p");
       h.innerHTML = "<strong>SAMRAS address family</strong> for <code>" + escapeText(aid) + "</code>";
       dtResourcesNavigateBodyEl.appendChild(h);
@@ -3610,7 +3715,6 @@
 
     var layer = row.layer;
     var vg = row.value_group;
-    var fk = String(row.file_key || "").trim();
     var peers = (allRows || []).filter(function (r) {
       return (
         String(r.file_key || "").trim() === fk &&
@@ -3646,39 +3750,43 @@
     }
   }
 
-  function renderResourcesMediatePanel() {
+  function renderResourcesMediatePanel(row) {
     if (!dtResourcesMediateBodyEl) return;
     dtResourcesMediateBodyEl.innerHTML = "";
     var payload = resourcesWorkbenchState.payload || {};
     var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
+    var fileMeta = resourceFileRecordForKey(payload, fk) || {};
     var maps = payload.samras_rows_by_address_by_file_key && typeof payload.samras_rows_by_address_by_file_key === "object"
       ? payload.samras_rows_by_address_by_file_key
       : {};
     var map = maps[fk] && typeof maps[fk] === "object" ? maps[fk] : {};
     var lens = dtResourcesMediateLensEl ? String(dtResourcesMediateLensEl.value || "default").trim() : "default";
     var keys = Object.keys(map).sort();
+    var meta = document.createElement("p");
+    meta.className = "data-tool__legendText";
+    meta.textContent = row
+      ? "Datum mediation stays in the Details workspace and can be handed off to compatible tools."
+      : "File mediation is driven by compatible tools for the active file. Open a tool from the control panel to switch the center workspace into a mediation view.";
+    dtResourcesMediateBodyEl.appendChild(meta);
+    var summary = document.createElement("p");
+    summary.innerHTML =
+      "<strong>Active file</strong> <code>" + escapeText(String(fileMeta.filename || fk || "system")) + "</code>" +
+      " · <strong>Lens</strong> " + escapeText(lens) +
+      " · <strong>Addresses</strong> " + escapeText(String(keys.length));
+    dtResourcesMediateBodyEl.appendChild(summary);
     if (!keys.length) {
       var empty = document.createElement("p");
       empty.className = "data-tool__empty";
-      empty.textContent = "No SAMRAS rows_by_address collection is available for this file. Mediation appears when the active canonical resource JSON carries an address map.";
+      empty.textContent = "No SAMRAS rows_by_address collection is available for this file yet.";
       dtResourcesMediateBodyEl.appendChild(empty);
       return;
     }
-    var meta = document.createElement("p");
-    meta.className = "data-tool__legendText";
-    meta.textContent = "Lens “" + lens + "” · " + String(keys.length) + " addresses in " + fk + ".json";
-    dtResourcesMediateBodyEl.appendChild(meta);
     var list = document.createElement("ul");
     list.className = "data-tool__resourcesMediateList";
     keys.forEach(function (addr) {
       var titles = Array.isArray(map[addr]) ? map[addr] : [map[addr]];
-      var line = titles.map(function (t) {
-        return String(t || "");
-      }).join(" · ");
-      if (lens === "ascii") {
-        var nonAscii = /[^\x00-\x7f]/;
-        if (nonAscii.test(line)) return;
-      }
+      var line = titles.map(function (t) { return String(t || ""); }).join(" · ");
+      if (lens === "ascii" && /[^\x00-\x7f]/.test(line)) return;
       var li = document.createElement("li");
       li.innerHTML = "<code>" + escapeText(addr) + "</code> — " + escapeText(line);
       list.appendChild(li);
@@ -3693,27 +3801,58 @@
     }
   }
 
+  function buildSystemGenericDatumEditor(row) {
+    var root = document.createElement("article");
+    root.className = "data-tool__datumEditor js-system-generic-editor";
+    root.setAttribute("data-row-id", String(row.row_id || row.identifier || ""));
+    root.innerHTML =
+      "<div class=\"data-tool__editorHeader\">" +
+        "<div class=\"data-tool__editorHeadline\">" +
+          "<strong class=\"data-tool__clip\">" + escapeText(String(row.label || row.identifier || "")) + "</strong>" +
+          "<code class=\"data-tool__clip\">" + escapeText(String(row.identifier || "")) + "</code>" +
+        "</div>" +
+      "</div>" +
+      "<div class=\"data-tool__controlRow\">" +
+        "<label style=\"min-width:300px;\"><span>label/title</span><input class=\"js-system-edit-label\" type=\"text\" value=\"" + escapeText(String(row.label || "")) + "\" /></label>" +
+      "</div>" +
+      "<div class=\"data-tool__controlRow data-tool__editRow\">" +
+        "<label><span>reference</span><input class=\"js-system-edit-reference\" type=\"text\" value=\"" + escapeText(String(row.reference || "")) + "\" /></label>" +
+        "<label><span>magnitude</span><input class=\"js-system-edit-magnitude\" type=\"text\" value=\"" + escapeText(String(row.magnitude || "")) + "\" /></label>" +
+      "</div>" +
+      "<div class=\"data-tool__controlRow data-tool__controlRow--wrap\">" +
+        "<button type=\"button\" class=\"data-tool__actionBtn js-system-generic-save\">Save Datum</button>" +
+        (String(row.file_key || "") !== "anthology" ? "<button type=\"button\" class=\"data-tool__actionBtn js-system-publish-file\">Publish File</button>" : "") +
+      "</div>";
+    return root;
+  }
+
   async function renderResourcesInspectorPanels() {
     var row = resourcesWorkbenchState.selectedRow;
     var task = String(resourcesWorkbenchState.activeTask || "navigate").trim();
-    if (dtResourcesInspectorKickerEl) dtResourcesInspectorKickerEl.textContent = "Resources";
+    var allForFile = resourcesRowsForActiveFile();
+    if (dtResourcesInspectorKickerEl) dtResourcesInspectorKickerEl.textContent = "SYSTEM";
     if (dtResourcesInspectorTitleEl) {
-      dtResourcesInspectorTitleEl.textContent = row ? task.charAt(0).toUpperCase() + task.slice(1) : "Inspector";
+      dtResourcesInspectorTitleEl.textContent = task ? task.charAt(0).toUpperCase() + task.slice(1) : "Details";
     }
-    if (dtResourcesInspectorEmptyEl) dtResourcesInspectorEmptyEl.hidden = !!row;
-    if (dtResourcesInspectorStackEl) dtResourcesInspectorStackEl.hidden = !row;
+    if (dtResourcesInspectorEmptyEl) dtResourcesInspectorEmptyEl.hidden = true;
+    if (dtResourcesInspectorStackEl) dtResourcesInspectorStackEl.hidden = false;
     qsa("[data-resources-inspector-panel]", document).forEach(function (panel) {
       var id = String(panel.getAttribute("data-resources-inspector-panel") || "").trim();
-      panel.hidden = !row || id !== task;
+      panel.hidden = id !== task;
     });
-    if (!row) return;
-
-    var allForFile = resourcesRowsForActiveFile();
 
     if (task === "navigate") {
       renderResourcesNavigatePanel(row, allForFile);
-    } else if (task === "investigate") {
+      return;
+    }
+
+    if (task === "investigate") {
       if (!dtResourcesInvestigateBodyEl) return;
+      dtResourcesInvestigateBodyEl.innerHTML = "";
+      if (!row) {
+        dtResourcesInvestigateBodyEl.innerHTML = '<p class="data-tool__empty">File-level investigate scaffolding is intentionally blank while the AITAS state machine is still taking shape.</p>';
+        return;
+      }
       dtResourcesInvestigateBodyEl.innerHTML = '<p class="data-tool__empty">Loading abstraction path…</p>';
       var token = String(row.identifier || "").trim();
       try {
@@ -3726,63 +3865,65 @@
         p.textContent = err && err.message ? err.message : "Could not load abstraction path.";
         dtResourcesInvestigateBodyEl.appendChild(p);
       }
-    } else if (task === "mediate") {
-      renderResourcesMediatePanel();
-    } else if (task === "manipulate") {
-      if (!dtResourcesManipulateMountEl) return;
-      dtResourcesManipulateMountEl.innerHTML = "";
-      resourcesWorkbenchState.manipulateEditorRoot = null;
-      var src = String(row.source || "").trim();
-      var coords = resourceRowCoordinates(row);
-      if (src === "samras_rows_by_address" || row.address_id) {
-        var note = document.createElement("div");
-        note.className = "data-tool__empty";
-        note.innerHTML =
-          "<p><strong>SAMRAS address row</strong></p><p>Address-collection writes remain file-backed in the canonical resource JSON. Use the unified Resources workbench here for selection, provenance, and mediation.</p>" +
-          "<p>Identifier <code>" +
-          escapeText(String(row.identifier || "")) +
-          "</code></p>";
-        dtResourcesManipulateMountEl.appendChild(note);
-        return;
-      }
-      var card = document.createElement("div");
-      card.className = "data-tool__resourcesDatumCard";
-      card.innerHTML =
-        "<div><strong>File</strong><br/><code class=\"data-tool__clip\">" +
-        escapeText(row.filename || "") +
-        "</code></div>" +
-        "<div><strong>Identifier</strong><br/><code class=\"data-tool__clip\">" +
-        escapeText(row.identifier || "") +
-        "</code></div>" +
-        "<div><strong>Layer / VG / Iter</strong><br/><span>" +
-        escapeText(
-          String(coords.layer == null ? "?" : coords.layer) +
-          " / " +
-          String(coords.value_group == null ? "?" : coords.value_group) +
-          " / " +
-          String(coords.iteration == null ? "?" : coords.iteration)
-        ) +
-        "</span></div>" +
-        "<div><strong>Reference</strong><br/><code class=\"data-tool__clip\">" +
-        escapeText(row.reference || "") +
-        "</code></div>" +
-        "<div><strong>Magnitude</strong><br/><code class=\"data-tool__clip\">" +
-        escapeText(row.magnitude || "") +
-        "</code></div>" +
-        "<div><strong>Source</strong><br/><span>" +
-        escapeText(src || "rows") +
-        "</span></div>";
-      dtResourcesManipulateMountEl.appendChild(card);
-      var note2 = document.createElement("p");
-      note2.className = "data-tool__legendText";
-      note2.textContent =
-        "Resource datums in the unified Resources workbench stay on the canonical file-backed path. Inline mutation is intentionally withheld here until it is wired to resource-targeted writes instead of anthology-only edits.";
-      dtResourcesManipulateMountEl.appendChild(note2);
+      return;
     }
+
+    if (task === "mediate") {
+      renderResourcesMediatePanel(row);
+      return;
+    }
+
+    if (!dtResourcesManipulateMountEl) return;
+    dtResourcesManipulateMountEl.innerHTML = "";
+    resourcesWorkbenchState.manipulateEditorRoot = null;
+    if (!row) {
+      var payload = resourcesWorkbenchState.payload || {};
+      var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
+      var fileMeta = resourceFileRecordForKey(payload, fk) || {};
+      var fileCard = document.createElement("div");
+      fileCard.className = "data-tool__resourcesDatumCard";
+      fileCard.innerHTML =
+        "<div><strong>File</strong><br/><code class=\"data-tool__clip\">" + escapeText(String(fileMeta.filename || fk || "system")) + "</code></div>" +
+        "<div><strong>Write Mode</strong><br/><span>" + escapeText(String(fileMeta.write_mode || "direct")) + "</span></div>" +
+        "<div><strong>Staged</strong><br/><span>" + escapeText(fileMeta.staged_present ? "yes" : "no") + "</span></div>";
+      dtResourcesManipulateMountEl.appendChild(fileCard);
+      var help = document.createElement("p");
+      help.className = "data-tool__legendText";
+      help.textContent = "Use the plus controls in the center workbench to create datums and the minus controls beside datums to remove them. Select a datum to edit its values here.";
+      dtResourcesManipulateMountEl.appendChild(help);
+      if (fk !== "anthology") {
+        var publishBtn = document.createElement("button");
+        publishBtn.type = "button";
+        publishBtn.className = "data-tool__actionBtn js-system-publish-file";
+        publishBtn.textContent = "Publish staged file";
+        dtResourcesManipulateMountEl.appendChild(publishBtn);
+      }
+      return;
+    }
+
+    if (String(row.file_key || "") === "anthology") {
+      try {
+        var profilePayload = await api("/portal/api/data/anthology/profile/" + encodeURIComponent(String(row.identifier || "")));
+        var editorRoot = buildDatumEditorNode(profilePayload);
+        dtResourcesManipulateMountEl.appendChild(editorRoot);
+        resourcesWorkbenchState.manipulateEditorRoot = editorRoot;
+      } catch (err2) {
+        var loadErr = document.createElement("p");
+        loadErr.className = "data-tool__empty";
+        loadErr.textContent = err2 && err2.message ? err2.message : "Could not load datum editor.";
+        dtResourcesManipulateMountEl.appendChild(loadErr);
+      }
+      return;
+    }
+
+    var genericEditor = buildSystemGenericDatumEditor(row);
+    dtResourcesManipulateMountEl.appendChild(genericEditor);
+    resourcesWorkbenchState.manipulateEditorRoot = genericEditor;
   }
 
   function renderResourcesShellUi() {
     renderResourcesDatumProfile();
+    renderSystemAitasStrip();
     renderResourcesInspectorPanels().catch(function () {
       /* errors surfaced via setMessages in setResourcesActiveTask */
     });
@@ -3816,16 +3957,23 @@
     var rows = resourcesRowsForActiveFile();
     var lookup = buildDatumLookup(rows);
     var groups = groupedResourceRows(rows);
+    var manipulateMode = String(resourcesWorkbenchState.activeTask || "") === "manipulate";
+    var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
     dtResourcesLayersEl.innerHTML = "";
     if (dtResourcesTableEmpty) dtResourcesTableEmpty.hidden = rows.length > 0;
     if (dtResourcesWorkbenchStatusEl) {
       dtResourcesWorkbenchStatusEl.textContent = rows.length
-        ? "Select a datum row to drive the shared shell, inspector, and compatible tool discovery."
-        : "";
+        ? "Attention is on " + fk + ".json. Select a datum to move Spacial from 1 to 2."
+        : "No datums are present in " + fk + ".json yet.";
     }
     if (dtResourcesStatus) {
-      var fk = String(resourcesWorkbenchState.activeFileKey || "").trim();
       dtResourcesStatus.textContent = "File: " + fk + " · Datums: " + String(rows.length);
+    }
+    if (!groups.length && manipulateMode) {
+      var emptyCreate = document.createElement("div");
+      emptyCreate.className = "data-tool__controlRow";
+      emptyCreate.innerHTML = '<button type="button" class="data-tool__actionBtn js-system-create-row" data-layer="0" data-value-group="0">Create first datum</button>';
+      dtResourcesLayersEl.appendChild(emptyCreate);
     }
     groups.forEach(function (layerBlock, layerIndex) {
       var layerToken = layerBlock.layer == null ? "unknown" : String(layerBlock.layer);
@@ -3845,6 +3993,18 @@
       var layerSummary = document.createElement("summary");
       layerSummary.textContent = "Layer " + layerToken + " (" + String(layerBlock.row_count || 0) + " datums)";
       layerDetails.appendChild(layerSummary);
+      if (manipulateMode && layerBlock.layer != null) {
+        var layerTools = document.createElement("div");
+        layerTools.className = "data-tool__controlRow data-tool__controlRow--wrap";
+        var nextValueGroup = 0;
+        (layerBlock.value_groups || []).forEach(function (groupItem) {
+          var currentGroup = parseNonNegativeInt(groupItem.value_group, -1);
+          if (currentGroup >= nextValueGroup) nextValueGroup = currentGroup + 1;
+        });
+        layerTools.innerHTML =
+          '<button type="button" class="data-tool__actionBtn js-system-create-row" data-layer="' + escapeText(layerToken) + '" data-value-group="' + escapeText(String(nextValueGroup)) + '">+ Value Group</button>';
+        layerDetails.appendChild(layerTools);
+      }
 
       var valueWrap = document.createElement("div");
       valueWrap.className = "data-tool__valueGroups";
@@ -3868,6 +4028,13 @@
         var groupSummary = document.createElement("summary");
         groupSummary.textContent = "Value Group " + groupToken + " (" + String(groupBlock.row_count || 0) + " datums)";
         groupDetails.appendChild(groupSummary);
+        if (manipulateMode && layerBlock.layer != null && groupBlock.value_group != null) {
+          var groupTools = document.createElement("div");
+          groupTools.className = "data-tool__controlRow data-tool__controlRow--wrap";
+          groupTools.innerHTML =
+            '<button type="button" class="data-tool__actionBtn js-system-create-row" data-layer="' + escapeText(layerToken) + '" data-value-group="' + escapeText(groupToken) + '">+ Datum</button>';
+          groupDetails.appendChild(groupTools);
+        }
 
         var tableWrap = document.createElement("div");
         tableWrap.className = "data-tool__tableWrap";
@@ -3893,6 +4060,15 @@
           var datumTd = document.createElement("td");
           var datumCell = document.createElement("div");
           datumCell.className = "data-tool__datumCell";
+          if (manipulateMode) {
+            var deleteBtn = document.createElement("button");
+            deleteBtn.type = "button";
+            deleteBtn.className = "data-tool__actionBtn js-system-delete-row";
+            deleteBtn.setAttribute("data-row-id", rowToken);
+            deleteBtn.textContent = "-";
+            deleteBtn.title = "Delete datum";
+            datumCell.appendChild(deleteBtn);
+          }
 
           var icon = document.createElement("span");
           icon.className = "data-tool__datumIcon";
@@ -4001,7 +4177,7 @@
     }
     renderResourcesLayeredWorkbench();
     emitShellRuntimeEvent("mycite:shell:workbench-payload", {
-      workbench_mode: "resources",
+      workbench_mode: "system",
       payload: resourcesWorkbenchState.payload
     });
   }
@@ -4013,26 +4189,22 @@
   }
 
   function setDtWorkspaceTab(mode) {
-    var m = String(mode || "anthology").trim();
-    if (m !== "anthology" && m !== "resources") m = "anthology";
-    if (dtWorkspaceAnthology) dtWorkspaceAnthology.hidden = m !== "anthology";
-    if (dtWorkspaceResources) dtWorkspaceResources.hidden = m !== "resources";
-    if (m === "resources") {
-      resourcesWorkbenchState.activeTask = "navigate";
-      qsa("[data-resources-task]", document).forEach(function (btn) {
-        var id = String(btn.getAttribute("data-resources-task") || "").trim();
-        btn.classList.toggle("is-active", id === "navigate");
+    var m = String(mode || "system").trim().toLowerCase();
+    if (m !== "system" && m !== "resources") m = "system";
+    if (dtWorkspaceAnthology) dtWorkspaceAnthology.hidden = true;
+    if (dtWorkspaceResources) dtWorkspaceResources.hidden = false;
+    resourcesWorkbenchState.activeTask = "navigate";
+    qsa("[data-resources-task]", document).forEach(function (btn) {
+      var id = String(btn.getAttribute("data-resources-task") || "").trim();
+      btn.classList.toggle("is-active", id === "navigate");
+    });
+    if (typeof loadSystemResourceWorkbench === "function") {
+      loadSystemResourceWorkbench().catch(function (err) {
+        setMessages([err && err.message ? err.message : "Failed to load SYSTEM workbench"], []);
       });
-      if (typeof loadSystemResourceWorkbench === "function") {
-        loadSystemResourceWorkbench().catch(function (err) {
-          setMessages([err && err.message ? err.message : "Failed to load resource workbench"], []);
-        });
-      }
-    } else {
-      ensureTxaAsideInShellHost();
     }
-    syncSystemShellDataToolPanels(m);
-    emitShellRuntimeEvent("mycite:shell:workbench-mode", { workbench_mode: m });
+    syncSystemShellDataToolPanels("system");
+    emitShellRuntimeEvent("mycite:shell:workbench-mode", { workbench_mode: "system" });
   }
 
   function txaLoadStaged(rid) {
@@ -5333,6 +5505,68 @@
     }
   });
 
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (!target || !target.closest) return;
+
+    var createBtn = target.closest(".js-system-create-row");
+    if (createBtn) {
+      var layer = parseNonNegativeInt(createBtn.getAttribute("data-layer"), 0);
+      var valueGroup = parseNonNegativeInt(createBtn.getAttribute("data-value-group"), 0);
+      systemMutate("create_row", { layer: layer, value_group: valueGroup }).then(function (payload) {
+        setResourcesActiveTask("manipulate");
+        applySystemWorkbenchPayload(payload, payload && payload.row_id ? payload.row_id : "");
+      }).catch(function (err) {
+        setMessages([err && err.message ? err.message : "Could not create datum."], []);
+      });
+      return;
+    }
+
+    var deleteBtn = target.closest(".js-system-delete-row");
+    if (deleteBtn) {
+      var rowId = String(deleteBtn.getAttribute("data-row-id") || "").trim();
+      if (!rowId) return;
+      if (!window.confirm("Delete datum " + rowId + "?")) return;
+      systemMutate("delete_row", { row_id: rowId }).then(function (payload) {
+        if (resourcesWorkbenchState.selectedRow && String(resourcesWorkbenchState.selectedRow.row_id || resourcesWorkbenchState.selectedRow.identifier || "").trim() === rowId) {
+          resourcesWorkbenchState.selectedRow = null;
+        }
+        applySystemWorkbenchPayload(payload, "");
+      }).catch(function (err) {
+        setMessages([err && err.message ? err.message : "Could not delete datum."], []);
+      });
+      return;
+    }
+
+    var genericSaveBtn = target.closest(".js-system-generic-save");
+    if (genericSaveBtn) {
+      var genericRoot = genericSaveBtn.closest(".js-system-generic-editor");
+      if (!genericRoot) return;
+      var genericRowId = String(genericRoot.getAttribute("data-row-id") || "").trim();
+      if (!genericRowId) return;
+      systemMutate("update_row", {
+        row_id: genericRowId,
+        label: String((qs(".js-system-edit-label", genericRoot) || {}).value || ""),
+        reference: String((qs(".js-system-edit-reference", genericRoot) || {}).value || ""),
+        magnitude: String((qs(".js-system-edit-magnitude", genericRoot) || {}).value || "")
+      }).then(function (payload) {
+        applySystemWorkbenchPayload(payload, genericRowId);
+      }).catch(function (err) {
+        setMessages([err && err.message ? err.message : "Could not save datum."], []);
+      });
+      return;
+    }
+
+    var publishBtn = target.closest(".js-system-publish-file");
+    if (publishBtn) {
+      systemPublish(resourcesWorkbenchState.activeFileKey).then(function (payload) {
+        applySystemWorkbenchPayload(payload, resourcesWorkbenchState.selectedRow && (resourcesWorkbenchState.selectedRow.row_id || resourcesWorkbenchState.selectedRow.identifier));
+      }).catch(function (err) {
+        setMessages([err && err.message ? err.message : "Could not publish staged file."], []);
+      });
+    }
+  });
+
   if (profileCloseBtn) profileCloseBtn.addEventListener("click", closeProfileModal);
   qsa("[data-role='close-profile-modal']", profileModal).forEach(function (node) {
     node.addEventListener("click", closeProfileModal);
@@ -5807,21 +6041,21 @@
     if (!t || !t.closest) return;
     var fileBtn = t.closest("[data-resources-file-key], [data-system-resource-file-key]");
     if (fileBtn && document.body.contains(fileBtn)) {
-      if (systemWorkbenchMode !== "resources") return;
+      if (systemWorkbenchMode !== "system" && systemWorkbenchMode !== "resources") return;
       var fileKey = String(fileBtn.getAttribute("data-resources-file-key") || fileBtn.getAttribute("data-system-resource-file-key") || "").trim();
       if (fileKey) setResourcesActiveFile(fileKey);
       return;
     }
     var taskBtn = t.closest("[data-resources-task]");
     if (!taskBtn || !document.body.contains(taskBtn)) return;
-    if (systemWorkbenchMode !== "resources") return;
+    if (systemWorkbenchMode !== "system" && systemWorkbenchMode !== "resources") return;
     var task = String(taskBtn.getAttribute("data-resources-task") || "").trim();
     if (task) setResourcesActiveTask(task);
   });
   if (dtResourcesMediateLensEl) {
     dtResourcesMediateLensEl.addEventListener("change", function () {
-      if (systemWorkbenchMode === "resources" && resourcesWorkbenchState.activeTask === "mediate") {
-        renderResourcesMediatePanel();
+      if ((systemWorkbenchMode === "system" || systemWorkbenchMode === "resources") && resourcesWorkbenchState.activeTask === "mediate") {
+        renderResourcesMediatePanel(resourcesWorkbenchState.selectedRow);
       }
     });
   }
@@ -5832,7 +6066,7 @@
       });
     });
   }
-  setDtWorkspaceTab(systemWorkbenchMode === "resources" ? "resources" : "anthology");
+  setDtWorkspaceTab("system");
 
   function applySamrasWorkbenchPreset(resourceId) {
     if (!dtTxaResourceId) return;
@@ -5919,11 +6153,11 @@
   if (appendValueGroupInput && !appendValueGroupInput.value) appendValueGroupInput.value = "1";
   syncAppendPairRequirements();
   ensurePairRows(profilePairsEl, "js-remove-profile-pair");
-  if (systemWorkbenchMode !== "resources") {
+  if (systemWorkbenchMode !== "system" && systemWorkbenchMode !== "resources") {
     renderDatumEditorEmpty("");
     ensureTxaAsideInShellHost();
   }
-  syncSystemShellDataToolPanels(systemWorkbenchMode === "resources" ? "resources" : "anthology");
+  syncSystemShellDataToolPanels("system");
 
   var openNimmOnLoad = String(app.getAttribute("data-open-nimm") || "0").trim() === "1";
 

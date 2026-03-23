@@ -64,6 +64,30 @@ class _WorkspaceStub:
             "contract_mss_sync": {"triggered": True, "reason": "test"},
         }
 
+    def update_anthology_profile(self, *, row_id, label=None, magnitude=None, pairs=None, icon_relpath=None):
+        token = str(row_id)
+        row = self._anthology_rows.get(token) if isinstance(self._anthology_rows, dict) else None
+        if not isinstance(row, dict):
+            return {"ok": False, "error": f"unknown row: {row_id}"}
+        if label is not None:
+            row["label"] = label
+        if magnitude is not None:
+            row["magnitude"] = magnitude
+        if pairs is not None:
+            row["pairs"] = pairs
+        if icon_relpath is not None:
+            row["icon_relpath"] = icon_relpath
+        self.calls.append({"action": "update", "row_id": token, "label": label, "magnitude": magnitude, "pairs": pairs})
+        return {"ok": True, "row_id": token}
+
+    def delete_anthology_datum(self, *, row_id):
+        token = str(row_id)
+        if token not in self._anthology_rows:
+            return {"ok": False, "error": f"unknown row: {row_id}"}
+        self._anthology_rows.pop(token, None)
+        self.calls.append({"action": "delete", "row_id": token})
+        return {"ok": True, "row_id": token}
+
 
 class _ExternalResolverStub:
     def fetch_and_cache_bundle(self, *, source_msn_id: str, resource_id: str, force_refresh: bool = False):
@@ -662,6 +686,66 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertEqual(((apply_two_payload.get("mutation_summary") or {}).get("reused_count")), 1)
         plot_refs = (((self.config_payload.get("property") or {}).get("plot_refs")) or [])
         self.assertEqual(plot_refs, ["9-9-9.31-1-1", "9-9-9.31-1-9"])
+
+    def test_system_mutate_anthology_create_uses_direct_write(self):
+        response = self.client.post(
+            "/portal/api/data/system/mutate",
+            json={
+                "action": "create_row",
+                "file_key": "anthology",
+                "layer": 1,
+                "value_group": 0,
+                "label": "Anthology datum",
+                "reference": "0-0-0",
+                "magnitude": "1",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json() or {}
+        self.assertTrue(payload.get("ok"))
+        self.assertEqual(payload.get("action"), "create_row")
+        self.assertEqual(payload.get("file_key"), "anthology")
+        self.assertEqual(((payload.get("write") or {}).get("write_mode")), "direct")
+        self.assertFalse(bool(((payload.get("write") or {}).get("staged_present"))))
+        self.assertEqual(payload.get("row_id"), "1-0-1")
+        self.assertTrue(any(str(item.get("file_key") or "") == "anthology" for item in list((payload.get("workbench_payload") or {}).get("files") or [])))
+
+    def test_system_mutate_txa_create_stages_and_publish_promotes(self):
+        data_dir = Path(self._tmpdir.name)
+        (data_dir / "anthology.json").write_text('{"rows":{}}\n', encoding="utf-8")
+        (data_dir / "samras-txa.json").write_text('{"rows":{}}\n', encoding="utf-8")
+
+        response = self.client.post(
+            "/portal/api/data/system/mutate",
+            json={
+                "action": "create_row",
+                "file_key": "txa",
+                "layer": 4,
+                "value_group": 0,
+                "label": "Cultivar",
+                "reference": "0-0-0",
+                "magnitude": '["0-0-0"]',
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json() or {}
+        self.assertTrue(payload.get("ok"))
+        self.assertEqual(((payload.get("write") or {}).get("write_mode")), "stage_then_promote")
+        stage_path = Path(str((payload.get("write") or {}).get("target_path") or ""))
+        self.assertTrue(stage_path.is_file())
+
+        stage_payload = json.loads(stage_path.read_text(encoding="utf-8"))
+        self.assertEqual((((stage_payload.get("rows") or {}).get("4-0-1") or {}).get("label")), "Cultivar")
+
+        publish = self.client.post("/portal/api/data/system/publish", json={"file_key": "txa"})
+        self.assertEqual(publish.status_code, 200)
+        publish_payload = publish.get_json() or {}
+        self.assertTrue(publish_payload.get("ok"))
+        self.assertTrue(publish_payload.get("published"))
+        self.assertFalse(stage_path.exists())
+
+        canonical_payload = json.loads((data_dir / "samras-txa.json").read_text(encoding="utf-8"))
+        self.assertEqual((canonical_payload.get("rows") or {}).get("4-0-1", {}).get("label"), "Cultivar")
 
 
 if __name__ == "__main__":

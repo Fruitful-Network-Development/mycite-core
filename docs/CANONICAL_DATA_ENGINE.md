@@ -21,6 +21,8 @@ Anthology loading uses a base+overlay merge model:
 Canonical data artifacts:
 
 - `data/anthology.json`
+- `data/samras-txa.json`
+- `data/samras-msn.json`
 - `data/resources/local/*.json`
 - `data/resources/inherited/<source_msn_id>/*.json`
 - `data/resources/index.local.json`
@@ -29,6 +31,14 @@ Canonical data artifacts:
 - request logs and hosted/network metadata under `private/network/**`
 
 Repo `build.json` files may seed contract/network data, but anthology content remains state-owned and is not overwritten by materialization.
+
+For the current `SYSTEM` page, the canonical file-focused workbench surface is the root-level trio:
+
+- `anthology.json`
+- `samras-txa.json`
+- `samras-msn.json`
+
+The `resources/*` registries remain engine-owned inventory and compatibility artifacts. They are not advertised as separate current `SYSTEM` tabs.
 
 ## Datum and mediation model
 
@@ -82,6 +92,17 @@ Canonical Data Engine daemon routes:
 
 These routes are retained for Data Tool and tool-package usage. NETWORK foreign datum resolution does not use a separate daemon wrapper; it resolves through contract MSS context.
 
+## Unified SYSTEM workbench surface
+
+Shared-core also owns the canonical route surface for the unified `SYSTEM` workbench:
+
+- `POST /portal/api/data/system/selection_context`
+- `GET /portal/api/data/system/resource_workbench`
+- `POST /portal/api/data/system/mutate`
+- `POST /portal/api/data/system/publish`
+
+These routes expose one NIMM/AITAS-aware workbench model over the three canonical files. Legacy `local_resources`, `inheritance`, `workbench=anthology`, and `workbench=resources` entrypoints are compatibility aliases only.
+
 ## Shared write pipeline
 
 UI and tool flows that perform semantic writes should use shared preview/apply routes (instead of calling low-level append directly):
@@ -107,6 +128,8 @@ Low-level primitives still exist and remain engine-owned:
 - `POST /portal/api/data/anthology/delete`
 
 Config/profile JSON remains a reference surface into anthology datums; anthology remains the local semantic authority.
+
+Within the unified `SYSTEM` workbench, anthology rows continue to use the direct anthology authority path, while TXA/MSN rows use staged mutate/publish behavior.
 
 ## Anthology base + overlay
 
@@ -143,7 +166,7 @@ Shared core now exposes a sandbox service layer under `portals/_shared/portal/sa
 - contact-card exposed resource value generation (`SandboxEngine.generate_contact_card_public_resources`)
 - inherited resource context resolution for local and foreign refs (`SandboxEngine.resolve_inherited_resource_context`)
 
-Route surface is shared-core under `/portal/api/data/sandbox/*` (registered in `portals/_shared/portal/api/data_workspace.py`), while SYSTEM now separates user-facing resource surfaces into `Local Resources` and `Inheritance`.
+Route surface is shared-core under `/portal/api/data/sandbox/*` (registered in `portals/_shared/portal/api/data_workspace.py`). The current `SYSTEM` page consumes sandbox and inherited-resource capabilities through the unified workbench. Older `local_resources` and `inheritance` views remain compatibility-only entrypoints.
 
 Resource inventory ownership is separate from sandbox:
 

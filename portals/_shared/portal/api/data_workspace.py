@@ -52,6 +52,12 @@ from _shared.portal.sandbox.promotion_hooks import build_tool_sandbox_promotion_
 from _shared.portal.sandbox.session_registry import get_tool_sandbox_session_manager
 from _shared.portal.sandbox.tool_sandbox_session import ToolSandboxRuntimeDeps, ToolSandboxSessionManager
 from _shared.portal.sandbox.samras_workspace_promotion import promote_staged_samras_title_entries
+from _shared.portal.sandbox.resource_workbench import (
+    _extract_rows_payload_from_json,
+    _read_json_object,
+    _write_json_object_one_entry_per_line,
+    system_workbench_stage_path,
+)
 from _shared.portal.sandbox.txa_sandbox_workspace import build_samras_workspace_view_model, build_txa_sandbox_view_model
 from _shared.portal.sandbox.workspace_contract import AGRO_ERP_SANDBOX_DECLARATION
 
@@ -488,6 +494,71 @@ def register_data_routes(
     def _publish_service() -> WorkbenchPublishService:
         return WorkbenchPublishService(local_resource_service=_local_resource_service())
 
+    def _system_workbench_payload() -> dict[str, Any]:
+        return _document_catalog().system_resource_workbench_payload()
+
+    def _system_file_meta(file_key: str) -> dict[str, Any]:
+        token = str(file_key or "").strip().lower()
+        payload = _system_workbench_payload()
+        for item in list(payload.get("files") or []):
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("file_key") or "").strip().lower() == token:
+                return dict(item)
+        abort(404, description=f"unknown system file_key: {file_key}")
+
+    def _looks_like_system_row_key(value: object) -> bool:
+        layer, value_group, iteration = parse_datum_id(value)
+        return layer is not None and value_group is not None and iteration is not None
+
+    def _system_payload_without_rows(payload: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for key, value in dict(payload or {}).items():
+            token = str(key or "").strip()
+            if token == "rows" or _looks_like_system_row_key(token):
+                continue
+            out[token] = value
+        return out
+
+    def _system_file_storage(file_key: str) -> tuple[dict[str, Any], Path, Path]:
+        meta = _system_file_meta(file_key)
+        canonical_path = Path(
+            str(meta.get("canonical_path") or meta.get("path") or (_data_root() / (str(meta.get("filename") or "")).strip()))
+        )
+        stage_path = system_workbench_stage_path(data_root=_data_root(), filename=str(meta.get("filename") or canonical_path.name))
+        return meta, canonical_path, stage_path
+
+    def _load_system_file_payload(file_key: str, *, prefer_staged: bool = True) -> tuple[dict[str, Any], dict[str, Any], Path, Path]:
+        meta, canonical_path, stage_path = _system_file_storage(file_key)
+        canonical_payload = _read_json_object(canonical_path) if canonical_path.exists() else {}
+        if prefer_staged and str(file_key or "").strip().lower() != "anthology" and stage_path.is_file():
+            active_payload = _read_json_object(stage_path)
+        else:
+            active_payload = canonical_payload
+        if not isinstance(active_payload, dict):
+            active_payload = {}
+        if not isinstance(canonical_payload, dict):
+            canonical_payload = {}
+        return meta, active_payload, canonical_path, stage_path
+
+    def _rows_payload_mapping(payload: dict[str, Any]) -> dict[str, Any]:
+        rows_payload = _extract_rows_payload_from_json(payload if isinstance(payload, dict) else {})
+        rows_obj = rows_payload.get("rows")
+        return dict(rows_obj) if isinstance(rows_obj, dict) else {}
+
+    def _persist_system_rows(file_key: str, base_payload: dict[str, Any], rows_map: dict[str, Any]) -> dict[str, Any]:
+        meta, canonical_path, stage_path = _system_file_storage(file_key)
+        next_payload = _system_payload_without_rows(base_payload)
+        next_payload["rows"] = dict(rows_map)
+        target_path = canonical_path if str(file_key or "").strip().lower() == "anthology" else stage_path
+        _write_json_object_one_entry_per_line(target_path, next_payload)
+        return {
+            "file": meta,
+            "target_path": str(target_path),
+            "write_mode": "direct" if str(file_key or "").strip().lower() == "anthology" else "stage_then_promote",
+            "staged_present": bool(str(file_key or "").strip().lower() != "anthology"),
+        }
+
     def _sandbox_session_service() -> WorkbenchSandboxSessionService:
         return WorkbenchSandboxSessionService(
             manager_factory=_tool_sandbox_manager,
@@ -625,6 +696,215 @@ def register_data_routes(
     @app.get("/portal/api/data/system/resource_workbench")
     def portal_data_system_resource_workbench():
         return jsonify(_document_catalog().system_resource_workbench_payload())
+
+    @app.post("/portal/api/data/system/mutate")
+    def portal_data_system_mutate():
+        body = _json_body()
+        action = str(body.get("action") or "").strip().lower()
+        file_key = str(body.get("file_key") or "").strip().lower()
+        if action not in {"create_row", "update_row", "delete_row"}:
+            abort(400, description="action must be create_row, update_row, or delete_row")
+        if not file_key:
+            abort(400, description="file_key is required")
+
+        _, active_payload, _, _ = _load_system_file_payload(file_key, prefer_staged=True)
+        rows_map = _rows_payload_mapping(active_payload)
+
+        if action == "create_row":
+            layer_value = body.get("layer")
+            value_group_value = body.get("value_group")
+            try:
+                layer = int("" if layer_value is None else str(layer_value).strip())
+                value_group = int("" if value_group_value is None else str(value_group_value).strip())
+            except Exception:
+                abort(400, description="layer and value_group must be integers")
+            pairs_body = body.get("pairs")
+            pairs: list[dict[str, str]] = []
+            if isinstance(pairs_body, list):
+                for item in pairs_body:
+                    if not isinstance(item, dict):
+                        continue
+                    pairs.append(
+                        {
+                            "reference": str(item.get("reference") or "").strip(),
+                            "magnitude": str(item.get("magnitude") or "").strip(),
+                        }
+                    )
+            if not pairs:
+                pairs = [
+                    {
+                        "reference": str(body.get("reference") or "").strip(),
+                        "magnitude": str(body.get("magnitude") or "").strip(),
+                    }
+                ]
+            probe_payload = {"rows": rows_map}
+            row_id = compute_next_append_datum_id(probe_payload, layer, value_group)
+            if file_key == "anthology":
+                result = workspace.append_anthology_datum(
+                    layer=layer,
+                    value_group=value_group,
+                    reference=str(body.get("reference") or "").strip(),
+                    magnitude=str(body.get("magnitude") or "").strip(),
+                    label=str(body.get("label") or "").strip(),
+                    pairs=pairs,
+                )
+                if not bool(result.get("ok")):
+                    return jsonify(result), 400
+                write_meta = {"write_mode": "direct", "target_path": str(_system_file_storage(file_key)[1]), "staged_present": False}
+            else:
+                rows_map[row_id] = build_append_row_dict(
+                    datum_id=row_id,
+                    label=str(body.get("label") or "").strip(),
+                    pairs=pairs,
+                    reference=str(body.get("reference") or "").strip(),
+                    magnitude=str(body.get("magnitude") or "").strip(),
+                )
+                write_meta = _persist_system_rows(file_key, active_payload, rows_map)
+            return jsonify(
+                {
+                    "ok": True,
+                    "action": action,
+                    "file_key": file_key,
+                    "row_id": row_id,
+                    "write": write_meta,
+                    "workbench_payload": _document_catalog().system_resource_workbench_payload(),
+                }
+            )
+
+        row_id = str(body.get("row_id") or body.get("identifier") or "").strip()
+        if not row_id:
+            abort(400, description="row_id is required")
+        current_row = rows_map.get(row_id)
+        if not isinstance(current_row, dict):
+            return jsonify({"ok": False, "error": f"unknown system datum: {row_id}"}), 404
+
+        if action == "delete_row":
+            if file_key == "anthology":
+                result = workspace.delete_anthology_datum(row_id=row_id)
+                if not bool(result.get("ok")):
+                    return jsonify(result), 400
+                write_meta = {"write_mode": "direct", "target_path": str(_system_file_storage(file_key)[1]), "staged_present": False}
+            else:
+                rows_map.pop(row_id, None)
+                write_meta = _persist_system_rows(file_key, active_payload, rows_map)
+            return jsonify(
+                {
+                    "ok": True,
+                    "action": action,
+                    "file_key": file_key,
+                    "row_id": row_id,
+                    "write": write_meta,
+                    "workbench_payload": _document_catalog().system_resource_workbench_payload(),
+                }
+            )
+
+        next_label = str(body.get("label") or current_row.get("label") or "").strip()
+        pairs_body = body.get("pairs")
+        pairs: list[dict[str, str]] | None = None
+        if isinstance(pairs_body, list):
+            pairs = []
+            for item in pairs_body:
+                if not isinstance(item, dict):
+                    continue
+                pairs.append(
+                    {
+                        "reference": str(item.get("reference") or "").strip(),
+                        "magnitude": str(item.get("magnitude") or "").strip(),
+                    }
+                )
+        elif any(key in body for key in ("reference", "magnitude")):
+            base_pairs = current_row.get("pairs") if isinstance(current_row.get("pairs"), list) else []
+            first_pair = base_pairs[0] if base_pairs and isinstance(base_pairs[0], dict) else {}
+            pairs = [
+                {
+                    "reference": str(body.get("reference") if "reference" in body else first_pair.get("reference") or current_row.get("reference") or "").strip(),
+                    "magnitude": str(body.get("magnitude") if "magnitude" in body else first_pair.get("magnitude") or current_row.get("magnitude") or "").strip(),
+                }
+            ]
+
+        if file_key == "anthology":
+            if pairs is None and any(key in body for key in ("reference", "magnitude")):
+                pairs = [
+                    {
+                        "reference": str(body.get("reference") or current_row.get("reference") or "").strip(),
+                        "magnitude": str(body.get("magnitude") or current_row.get("magnitude") or "").strip(),
+                    }
+                ]
+            result = workspace.update_anthology_profile(
+                row_id=row_id,
+                label=next_label,
+                magnitude=body.get("magnitude"),
+                pairs=pairs,
+                icon_relpath=body.get("icon_relpath"),
+            )
+            if not bool(result.get("ok")):
+                return jsonify(result), 400
+            write_meta = {"write_mode": "direct", "target_path": str(_system_file_storage(file_key)[1]), "staged_present": False}
+        else:
+            if pairs is not None:
+                rows_map[row_id] = build_updated_row_dict(current_row, label=next_label, pairs=pairs)
+            else:
+                rows_map[row_id] = build_updated_row_dict(
+                    current_row,
+                    label=next_label,
+                    pairs=None,
+                    magnitude_override=str(body.get("magnitude") or current_row.get("magnitude") or "") if "magnitude" in body else None,
+                )
+                if "reference" in body:
+                    rows_map[row_id]["reference"] = str(body.get("reference") or "").strip()
+                    pair_list = rows_map[row_id].get("pairs")
+                    if isinstance(pair_list, list) and pair_list:
+                        first = pair_list[0] if isinstance(pair_list[0], dict) else {}
+                        first["reference"] = str(body.get("reference") or "").strip()
+                        pair_list[0] = first
+                        rows_map[row_id]["pairs"] = pair_list
+
+            write_meta = _persist_system_rows(file_key, active_payload, rows_map)
+        return jsonify(
+            {
+                "ok": True,
+                "action": action,
+                "file_key": file_key,
+                "row_id": row_id,
+                "write": write_meta,
+                "workbench_payload": _document_catalog().system_resource_workbench_payload(),
+            }
+        )
+
+    @app.post("/portal/api/data/system/publish")
+    def portal_data_system_publish():
+        body = _json_body()
+        file_key = str(body.get("file_key") or "").strip().lower()
+        if not file_key:
+            abort(400, description="file_key is required")
+        _, canonical_path, stage_path = _system_file_storage(file_key)
+        if file_key == "anthology":
+            return jsonify(
+                {
+                    "ok": True,
+                    "file_key": file_key,
+                    "published": False,
+                    "message": "anthology.json writes are already direct",
+                    "workbench_payload": _document_catalog().system_resource_workbench_payload(),
+                }
+            )
+        if not stage_path.is_file():
+            return jsonify({"ok": False, "error": "no staged system file exists to publish"}), 400
+        staged_payload = _read_json_object(stage_path)
+        _write_json_object_one_entry_per_line(canonical_path, staged_payload if isinstance(staged_payload, dict) else {})
+        try:
+            stage_path.unlink()
+        except FileNotFoundError:
+            pass
+        return jsonify(
+            {
+                "ok": True,
+                "file_key": file_key,
+                "published": True,
+                "canonical_path": str(canonical_path),
+                "workbench_payload": _document_catalog().system_resource_workbench_payload(),
+            }
+        )
 
     @app.get("/portal/api/data/resources/inherited")
     def portal_data_resources_inherited():

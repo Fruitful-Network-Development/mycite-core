@@ -806,7 +806,21 @@ def _normalize_system_query_tab(raw: Any) -> str:
 
 def _normalize_system_workbench_mode(raw: Any) -> str:
     token = str(raw or "").strip().lower()
-    return token if token in {"anthology", "resources"} else "anthology"
+    return "system" if token in {"", "anthology", "resources", "system"} else "system"
+
+
+def _system_render_state(system_tab: str, workbench_mode: str) -> tuple[str, str, str, str]:
+    requested_tab = _normalize_system_query_tab(system_tab)
+    normalized_workbench_mode = _normalize_system_workbench_mode(workbench_mode)
+    shell_tab = requested_tab
+    compatibility_view = ""
+    # Older SYSTEM query tabs still resolve, but only as compatibility entrypoints
+    # into the unified workbench shell.
+    if requested_tab in {"local_resources", "inheritance"}:
+        shell_tab = "workbench"
+        normalized_workbench_mode = "system"
+        compatibility_view = requested_tab
+    return requested_tab, shell_tab, normalized_workbench_mode, compatibility_view
 
 
 def _normalize_hosted_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -1323,15 +1337,20 @@ def _activity_tool_nav(active_tool_id: str) -> list[Dict[str, Any]]:
 
 
 def _render_portal_system(*, system_tab: str, workbench_mode: str = "anthology"):
+    requested_tab, shell_tab, normalized_workbench_mode, compatibility_view = _system_render_state(
+        system_tab, workbench_mode
+    )
     aliases = list_aliases_for_sidebar(PRIVATE_DIR)
     profile_model = _portal_profile_model()
     return render_template(
         "services/system.html",
         aliases=aliases,
         msn_id=MSN_ID,
-        system_tab=system_tab,
-        system_workbench_mode=_normalize_system_workbench_mode(workbench_mode),
-        system_tabs=build_system_tabs(system_tab),
+        system_tab=shell_tab,
+        system_requested_tab=requested_tab,
+        system_compatibility_view=compatibility_view,
+        system_workbench_mode=normalized_workbench_mode,
+        system_tabs=build_system_tabs(requested_tab),
         data_home_available=DATA_HOME_AVAILABLE,
         portal_profile=profile_model,
         system_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),

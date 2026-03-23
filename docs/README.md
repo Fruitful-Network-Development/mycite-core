@@ -29,6 +29,7 @@ This index is the canonical navigation point for repository docs under `docs/`.
 - `CONTRACT_COMPACT_INDEX.md`
 - `CONTRACT_UPDATE_PROTOCOL.md`
 - `AITAS_CONTEXT_MODEL.md`
+- `directive_context_UI_refactor.md`
 - `EXTERNAL_RESOURCE_ISOLATES.md`
 - `INHERITED_RESOURCE_CONTRACT_MODULE.md`
 - `DATA_TOOL_ICONS.md`
@@ -36,7 +37,9 @@ This index is the canonical navigation point for repository docs under `docs/`.
 - `REQUEST_LOG_V1.md`
 - `SHELL_COMPOSITION.md`
 - `SYSTEM_WORKBENCH_ARCHITECTURE.md`
-- `ANTHOLOGY_WORKBENCH_ARCHITECTURE.md`
+- `portal_system_page_composition.md`
+- `portal_shell_contract.md`
+- `module_system_contract.md`
 - `PORTAL_SHELL_UI.md`
 - `HOSTED_SESSIONS.md`
 - `HOSTED_SHELL_ALIAS.md`
@@ -57,12 +60,14 @@ This index is the canonical navigation point for repository docs under `docs/`.
 
 ## Historical reports (demoted from canonical use)
 
+- `ANTHOLOGY_WORKBENCH_ARCHITECTURE.md`
 - `MYCITE_CORE_DEVELOPMENT_REPORT.md`
 - `AGRO_ERP_PROGRESS.md`
 - `AGRO_ERP_MVP_CONTRACT.md`
 - `AGRO_ERP_MVP_VALIDATION_REPORT.md`
 - `AGRO_ERP_MSS_OPEN_RESOURCE_REPORT.md`
 - `DEVELOPMENT_PLAN.md`
+- `portal_local_resources_workbench.md`
 
 ## Policy and repository docs
 
@@ -72,8 +77,8 @@ This index is the canonical navigation point for repository docs under `docs/`.
 ## Cross-links by subsystem
 
 - **MSS + contracts**: `MSS_COMPACT_ARRAY_SPEC.md`, `MSS_CONTRACT_CONTEXT_STATUS.md`, `CONTRACT_COMPACT_INDEX.md`, `CONTRACT_UPDATE_PROTOCOL.md`, `NETWORK_PAGE_MODEL.md`
-- **Data engine + Data Tool**: `CANONICAL_DATA_ENGINE.md`, `DATA_TOOL.md`, `ANTHOLOGY_BASE_OVERLAY.md`, `DATA_TOOL_ICONS.md`, `ANTHOLOGY_WORKBENCH_ARCHITECTURE.md`
+- **Data engine + SYSTEM workbench**: `CANONICAL_DATA_ENGINE.md`, `DATA_TOOL.md`, `SYSTEM_WORKBENCH_ARCHITECTURE.md`, `portal_system_page_composition.md`, `directive_context_UI_refactor.md`
 - **Sandbox + inherited TXA path**: `SANDBOX_ENGINE.md`, `AGRO_ERP_TOOL.md`, `CANONICAL_DATA_ENGINE.md`
 - **AGRO ERP**: `AGRO_ERP_TOOL.md`, `AGRO_ERP_INTENTION.md`, `SANDBOX_ENGINE.md`
-- **Shell/runtime/build**: `PORTAL_CORE_ARCHITECTURE.md`, `TOOLS_SHELL.md`, `PORTAL_BUILD_SPEC.md`, `SHELL_COMPOSITION.md`
+- **Shell/runtime/build**: `PORTAL_CORE_ARCHITECTURE.md`, `TOOLS_SHELL.md`, `PORTAL_BUILD_SPEC.md`, `SHELL_COMPOSITION.md`, `PORTAL_SHELL_UI.md`, `portal_shell_contract.md`
 - **Compose/runtime deployment layout**: `COMPOSE_FILE_TREE.md`, `PORTAL_BUILD_SPEC.md`, `../README.md`

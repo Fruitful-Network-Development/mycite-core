@@ -70,7 +70,7 @@
     lastSelectionInput: null,
     agroConfigContext: null,
     activeVerb: "navigate",
-    workbenchMode: String(systemWorkspace.getAttribute("data-system-workbench-mode") || "anthology").trim().toLowerCase() || "anthology",
+    workbenchMode: String(systemWorkspace.getAttribute("data-system-workbench-mode") || "system").trim().toLowerCase() || "system",
     activeToolId: "",
     activeMediationMode: "overview",
     agroModel: null,
@@ -81,7 +81,7 @@
   };
 
   function selectionHint() {
-    return String(systemWorkspace.getAttribute("data-system-empty-selection") || "").trim() || "Select a resource datum to activate the canonical shell.";
+    return String(systemWorkspace.getAttribute("data-system-empty-selection") || "").trim() || "Select a file or datum to activate the SYSTEM workbench.";
   }
 
   function sourceScopeHint() {
@@ -500,6 +500,12 @@
     if (mode) {
       state.workbenchMode = mode;
     }
+    renderAll();
+  });
+
+  document.addEventListener("mycite:shell:file-focus-changed", function () {
+    state.activeToolId = "";
+    state.activeMediationMode = "overview";
     renderAll();
   });
 

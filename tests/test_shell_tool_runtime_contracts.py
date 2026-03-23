@@ -20,7 +20,12 @@ def _load_agro_tool_meta() -> dict[str, object]:
     spec = importlib.util.spec_from_file_location("agro_erp_shell_contracts_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except ModuleNotFoundError as exc:
+        if str(getattr(exc, "name", "")) == "flask":
+            raise unittest.SkipTest("flask is not installed in host python")
+        raise
     return module.get_tool()
 
 

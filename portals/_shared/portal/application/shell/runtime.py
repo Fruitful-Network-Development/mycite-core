@@ -42,6 +42,52 @@ def _resolved_archetype(document: dict[str, Any], selected_row: dict[str, Any]) 
     }
 
 
+def _system_state_payload(document: dict[str, Any], selected_row: dict[str, Any], shell_verb: object) -> dict[str, Any]:
+    row = _dict(selected_row)
+    doc = _dict(document)
+    identity = _dict(doc.get("identity"))
+    payload = _dict(doc.get("payload"))
+    resolved = _resolved_archetype(doc, row)
+    file_key = _text(row.get("file_key") or payload.get("file_key") or identity.get("logical_key"))
+    filename = _text(row.get("filename") or payload.get("filename") or identity.get("display_name") or file_key)
+    row_identifier, row_label = _row_identity(row)
+    focus_kind = "datum" if row else "file"
+    active_directive = normalize_shell_verb(shell_verb, default="navigate")
+    attention_value = row_identifier if row else filename
+    intention_value = active_directive if active_directive else "idle"
+    archetype_value = _text(resolved.get("family") or resolved.get("type")) if row else ""
+    return {
+        "focus_kind": focus_kind,
+        "active_file_key": file_key,
+        "active_filename": filename,
+        "active_directive": active_directive,
+        "selected_datum_id": row_identifier,
+        "selected_datum_label": row_label,
+        "aitas": {
+            "attention": {
+                "kind": focus_kind,
+                "value": attention_value or file_key,
+            },
+            "intention": {
+                "kind": "directive",
+                "value": intention_value or "idle",
+            },
+            "time": {
+                "kind": "placeholder",
+                "value": "null",
+            },
+            "archetype": {
+                "kind": "resolved" if archetype_value else "placeholder",
+                "value": archetype_value or "null",
+            },
+            "spacial": {
+                "kind": "focus_level",
+                "value": 2 if row else 1,
+            },
+        },
+    }
+
+
 def _instance_payload(portal_instance_context: Any | None) -> dict[str, Any]:
     if portal_instance_context is None:
         return {}
@@ -151,6 +197,7 @@ def build_selected_context_payload(
             "relationship": _text(_dict(normalized_document.get("inheritance")).get("relation") or "primary"),
         },
         "shell_verb": normalize_shell_verb(shell_verb),
+        "system_state": _system_state_payload(normalized_document, row, shell_verb),
         "inheritance": _dict(normalized_document.get("inheritance")),
         "portal_instance_context": _instance_payload(portal_instance_context),
     }

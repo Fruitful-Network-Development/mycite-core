@@ -1,45 +1,25 @@
-  <section class="data-tool data-tool--systemWorkbench" id="dataToolApp" data-active-tab="anthology" data-open-nimm="0" data-system-workbench-mode="{{ current_workbench_mode if current_workbench_mode is defined else 'anthology' }}">
+  <section class="data-tool data-tool--systemWorkbench" id="dataToolApp" data-active-tab="system" data-open-nimm="0" data-system-workbench-mode="{{ current_workbench_mode if current_workbench_mode is defined else 'system' }}">
     <div id="dtMessages" class="data-tool__messages" aria-live="polite"></div>
 
-    <div id="dtWorkspaceAnthology" class="data-tool__workspacePanel" data-workspace-panel="anthology">
-    <div class="data-tool__layout data-tool__layout--workbench">
-      <div class="data-tool__main data-tool__main--workspaceOnly">
-        <div class="data-tool__anthologyWorkbench data-tool__moduleSurface">
-          <div class="data-tool__workbenchFloatingControls" aria-label="Anthology workbench controls">
-            <button type="button" id="dtAnthologyRefreshBtn">Refresh Anthology</button>
-            <select id="dtWorkbenchLayoutMode" aria-label="Workbench layout">
-              <option value="table" selected>table</option>
-              <option value="grouped">graph</option>
-            </select>
-          </div>
-
-          <div id="dtWorkbenchGrid" class="data-tool__workbenchGrid" data-layout-mode="table">
-            <article class="data-tool__graphPane" aria-label="Anthology graph">
-              <div id="dtAnthologyGraph" class="data-tool__graphCanvas" role="region" aria-label="Anthology node graph"></div>
-            </article>
-
-            <article class="data-tool__tablePane data-tool__anthologyTableHost">
-              <div id="dtAnthologyLayers" class="data-tool__anthologyLayers"></div>
-            </article>
-          </div>
-        </div>
-      </div>
-    </div>
-    </div>
-
-    <div id="dtWorkspaceResources" class="data-tool__workspacePanel" data-workspace-panel="resources" hidden>
+    <div id="dtWorkspaceResources" class="data-tool__workspacePanel" data-workspace-panel="system">
       <div class="data-tool__layout data-tool__layout--workbench">
         <div class="data-tool__main data-tool__main--workspaceOnly">
           <section class="data-tool__resourcesWorkbench data-tool__moduleSurface">
-            <div class="data-tool__workbenchFloatingControls" aria-label="Resource workbench controls">
-              <details id="dtResourcesSourceControl" class="data-tool__advanced data-tool__advanced--inline data-tool__floatingMenu">
-                <summary id="dtResourcesSourceSummary" aria-label="Source">Source</summary>
-                <div id="dtResourcesSourceMenu" class="data-tool__floatingMenuPanel" aria-live="polite"></div>
-              </details>
+            <div class="data-tool__systemDock" aria-label="SYSTEM directive controls">
+              <div class="data-tool__systemNimmButtons" role="toolbar" aria-label="NIMM directives">
+                <button type="button" class="data-tool__actionBtn is-active" data-resources-task="navigate" data-shell-verb="navigate">Navigate</button>
+                <button type="button" class="data-tool__actionBtn" data-resources-task="investigate" data-shell-verb="investigate">Investigate</button>
+                <button type="button" class="data-tool__actionBtn" data-resources-task="mediate" data-shell-verb="mediate">Mediate</button>
+                <button type="button" class="data-tool__actionBtn" data-resources-task="manipulate" data-shell-verb="manipulate">Manipulate</button>
+              </div>
+              <div id="dtSystemAitasStrip" class="data-tool__systemAitas" aria-live="polite"></div>
+            </div>
+            <div class="data-tool__workbenchFloatingControls data-tool__workbenchFloatingControls--right" aria-label="SYSTEM workbench controls">
               <button type="button" id="dtResourcesRefreshBtn">Refresh</button>
             </div>
             <div class="data-tool__workbenchGrid data-tool__resourcesGrid" data-layout-mode="table">
               <article class="data-tool__tablePane data-tool__resourcesPane data-tool__anthologyTableHost">
+                <p id="dtResourcesWorkbenchStatus" class="data-tool__legendText"></p>
                 <p id="dtResourcesTableEmpty" class="data-tool__empty" hidden>No datums for this resource file.</p>
                 <div id="dtResourcesLayers" class="data-tool__anthologyLayers data-tool__resourcesLayers"></div>
               </article>
