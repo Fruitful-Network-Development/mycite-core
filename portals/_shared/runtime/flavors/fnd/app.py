@@ -97,6 +97,7 @@ from _shared.portal.services.request_log_ui import (
     network_placeholder_item as shared_network_placeholder_item,
 )
 from _shared.portal.services.control_panel import build_control_panel_sections
+from _shared.portal.services.runtime_mode import build_session_presentation, env_flag, install_read_only_guard
 from _shared.portal.services.shell_context import build_shell_context
 
 app = Flask(
@@ -125,12 +126,17 @@ FALLBACK_DIR = BASE_DIR
 ICONS_DIR = REPO_ROOT / "assets" / "icons"
 SHARED_UI_STATIC_DIR = REPO_ROOT / "_shared" / "portal" / "ui" / "static"
 PORTAL_INSTANCE_ID = str(os.environ.get("PORTAL_INSTANCE_ID") or "fnd").strip().lower()
+AUTH_MODE = str(os.environ.get("AUTH_MODE") or "keycloak").strip().lower() or "keycloak"
+PORTAL_READ_ONLY = env_flag("PORTAL_READ_ONLY", default=False)
 FND_MSN_ID = "3-2-3-17-77-1-6-4-1-4"
 TFF_MSN_ID = "3-2-3-17-77-2-6-3-1-6"
 KNOWN_EMBED_PORT_BY_MSN = {
     FND_MSN_ID: "5101",
     TFF_MSN_ID: "5203",
 }
+
+app.static_folder = str(SHARED_UI_STATIC_DIR)
+install_read_only_guard(app, enabled=PORTAL_READ_ONLY)
 
 
 for required in (
@@ -1021,6 +1027,11 @@ def _tool_shell_context() -> Dict[str, Any]:
         or request.headers.get("X-Portal-User")
         or ""
     ).strip()
+    session_presentation = build_session_presentation(
+        auth_mode=AUTH_MODE,
+        active_portal_username=active_portal_username,
+        read_only=PORTAL_READ_ONLY,
+    )
     current_path = request.full_path if request.query_string else request.path
     if current_path.endswith("?"):
         current_path = current_path[:-1]
@@ -1034,7 +1045,7 @@ def _tool_shell_context() -> Dict[str, Any]:
     switch_portal_url = str(os.environ.get("PORTAL_SWITCH_URL") or "/oauth2/sign_in?rd=%2Fportal%2Fsystem").strip()
     if not switch_portal_url:
         switch_portal_url = "/oauth2/sign_in?rd=%2Fportal%2Fsystem"
-    return build_shell_context(
+    context = build_shell_context(
         active_service=active_service,
         active_service_tab=active_service_tab,
         active_tool=active_tool,
@@ -1043,7 +1054,7 @@ def _tool_shell_context() -> Dict[str, Any]:
         network_tabs=build_network_tabs(active_service_tab),
         sidebar_progeny=sidebar_progeny,
         portal_name=portal_name,
-        active_portal_username=active_portal_username,
+        active_portal_username=str(session_presentation.get("active_portal_username") or ""),
         sign_out_url=sign_out_url,
         switch_portal_url=switch_portal_url,
         current_path=current_path,
@@ -1061,6 +1072,8 @@ def _tool_shell_context() -> Dict[str, Any]:
             "default_embed_port": PORTAL_INSTANCE_CONTEXT.default_embed_port,
         },
     )
+    context.update(session_presentation)
+    return context
 
 
 @app.get("/portal/static/icons/<path:relpath>")

@@ -73,8 +73,15 @@
           <div class="ide-sessionLine">Portal: {% if portal_name is defined and portal_name %}{{ portal_name }}{% else %}Portal{% endif %}</div>
           <div class="ide-sessionLine ide-sessionLine--dim">{% if msn_id is defined and msn_id %}msn_id: {{ msn_id }}{% else %}msn_id: (unset){% endif %}</div>
           <div class="ide-sessionLine ide-sessionLine--dim">signed in: {% if active_portal_username is defined and active_portal_username %}{{ active_portal_username }}{% else %}(unknown){% endif %}</div>
-          <a class="ide-sessionAction" href="{% if switch_portal_url is defined and switch_portal_url %}{{ switch_portal_url }}{% else %}/oauth2/sign_in?rd=%2Fportal%2Fsystem{% endif %}">Switch Active Portal</a>
-          <a class="ide-sessionAction" href="{% if sign_out_url is defined and sign_out_url %}{{ sign_out_url }}{% else %}/oauth2/sign_out?rd=%2Foauth2%2Fsign_in%3Frd%3D%252Fportal%252Fsystem{% endif %}">Sign Out</a>
+          {% if portal_read_only is defined and portal_read_only %}
+            <div class="ide-sessionLine ide-sessionLine--dim">mode: local-only read-only</div>
+          {% endif %}
+          {% if session_actions_enabled is defined and not session_actions_enabled %}
+            <div class="ide-sessionLine ide-sessionLine--dim">{% if session_status_label is defined and session_status_label %}{{ session_status_label }}{% else %}local-only access{% endif %}</div>
+          {% else %}
+            <a class="ide-sessionAction" href="{% if switch_portal_url is defined and switch_portal_url %}{{ switch_portal_url }}{% else %}/oauth2/sign_in?rd=%2Fportal%2Fsystem{% endif %}">Switch Active Portal</a>
+            <a class="ide-sessionAction" href="{% if sign_out_url is defined and sign_out_url %}{{ sign_out_url }}{% else %}/oauth2/sign_out?rd=%2Foauth2%2Fsign_in%3Frd%3D%252Fportal%252Fsystem{% endif %}">Sign Out</a>
+          {% endif %}
         </div>
       </aside>
 
