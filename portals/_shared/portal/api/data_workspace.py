@@ -52,6 +52,7 @@ from _shared.portal.sandbox.promotion_hooks import build_tool_sandbox_promotion_
 from _shared.portal.sandbox.session_registry import get_tool_sandbox_session_manager
 from _shared.portal.sandbox.tool_sandbox_session import ToolSandboxRuntimeDeps, ToolSandboxSessionManager
 from _shared.portal.sandbox.samras_workspace_promotion import promote_staged_samras_title_entries
+from _shared.portal.samras import InvalidSamrasStructure, build_workspace_view_model, mutate_compact_payload
 from _shared.portal.sandbox.resource_workbench import (
     _extract_rows_payload_from_json,
     _read_json_object,
@@ -559,6 +560,17 @@ def register_data_routes(
             "staged_present": bool(str(file_key or "").strip().lower() != "anthology"),
         }
 
+    def _persist_system_payload(file_key: str, payload: dict[str, Any]) -> dict[str, Any]:
+        meta, canonical_path, stage_path = _system_file_storage(file_key)
+        target_path = canonical_path if str(file_key or "").strip().lower() == "anthology" else stage_path
+        _write_json_object_one_entry_per_line(target_path, payload if isinstance(payload, dict) else {})
+        return {
+            "file": meta,
+            "target_path": str(target_path),
+            "write_mode": "direct" if str(file_key or "").strip().lower() == "anthology" else "stage_then_promote",
+            "staged_present": bool(str(file_key or "").strip().lower() != "anthology"),
+        }
+
     def _sandbox_session_service() -> WorkbenchSandboxSessionService:
         return WorkbenchSandboxSessionService(
             manager_factory=_tool_sandbox_manager,
@@ -702,12 +714,119 @@ def register_data_routes(
         body = _json_body()
         action = str(body.get("action") or "").strip().lower()
         file_key = str(body.get("file_key") or "").strip().lower()
-        if action not in {"create_row", "update_row", "delete_row"}:
-            abort(400, description="action must be create_row, update_row, or delete_row")
         if not file_key:
             abort(400, description="file_key is required")
+        samras_actions = {
+            "samras_create_root",
+            "samras_add_child",
+            "samras_delete_branch",
+            "samras_move_branch",
+            "samras_set_child_count",
+            "samras_update_title",
+        }
+        row_actions = {"create_row", "update_row", "delete_row"}
+        if action not in row_actions | samras_actions:
+            abort(
+                400,
+                description=(
+                    "action must be create_row, update_row, delete_row, "
+                    "samras_create_root, samras_add_child, samras_delete_branch, "
+                    "samras_move_branch, samras_set_child_count, or samras_update_title"
+                ),
+            )
+        if file_key in {"txa", "msn"} and action in row_actions:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "file_key": file_key,
+                        "action": action,
+                        "error": (
+                            "raw SAMRAS row mutation is blocked; use structure-aware SAMRAS actions so addresses remain "
+                            "derived from the governing structure"
+                        ),
+                        "allowed_actions": sorted(samras_actions),
+                    }
+                ),
+                400,
+            )
+        if file_key == "anthology" and action in samras_actions:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "file_key": file_key,
+                        "action": action,
+                        "error": "SAMRAS structure actions are only valid for txa/msn system files",
+                    }
+                ),
+                400,
+            )
 
         _, active_payload, _, _ = _load_system_file_payload(file_key, prefer_staged=True)
+        if file_key in {"txa", "msn"} and action in samras_actions:
+            try:
+                working_payload = dict(active_payload if isinstance(active_payload, dict) else {})
+                child_count_raw = body.get("child_count", body.get("value"))
+                child_count = None if child_count_raw is None else int(child_count_raw)
+                title = str(body.get("title") or "").strip()
+                address_id = str(body.get("address_id") or "").strip()
+                parent_address = str(body.get("parent_address") or "").strip()
+                updated_payload, updated_workspace, mutation = mutate_compact_payload(
+                    working_payload,
+                    action=action,
+                    address_id=address_id,
+                    parent_address=parent_address,
+                    child_count=child_count,
+                    title=title,
+                )
+                created_addresses = list(mutation.get("created_addresses") or []) if isinstance(mutation, dict) else []
+                selected_address = ""
+                if action == "samras_add_child" and created_addresses and child_count is not None and child_count > 0:
+                    created_address = str(created_addresses[0]).strip()
+                    updated_payload, updated_workspace, resize_mutation = mutate_compact_payload(
+                        updated_payload,
+                        action="samras_set_child_count",
+                        address_id=created_address,
+                        child_count=int(child_count),
+                    )
+                    mutation = {
+                        "action": action,
+                        "samras_structure": resize_mutation.get("samras_structure") if isinstance(resize_mutation, dict) else {},
+                        "canonical_magnitude": resize_mutation.get("canonical_magnitude") if isinstance(resize_mutation, dict) else "",
+                        "address_mapping": resize_mutation.get("address_mapping") if isinstance(resize_mutation, dict) else {},
+                        "created_addresses": [created_address],
+                        "removed_addresses": resize_mutation.get("removed_addresses") if isinstance(resize_mutation, dict) else [],
+                    }
+                    selected_address = created_address
+                elif created_addresses:
+                    selected_address = str(created_addresses[0]).strip()
+                elif action in {"samras_set_child_count", "samras_update_title"}:
+                    selected_address = address_id
+                elif action == "samras_move_branch":
+                    mapping = mutation.get("address_mapping") if isinstance(mutation, dict) and isinstance(mutation.get("address_mapping"), dict) else {}
+                    selected_address = str(mapping.get(address_id) or parent_address).strip()
+                elif action == "samras_create_root":
+                    selected_address = str(created_addresses[0] if created_addresses else "").strip()
+                write_meta = _persist_system_payload(file_key, updated_payload)
+            except (InvalidSamrasStructure, ValueError) as exc:
+                return jsonify({"ok": False, "file_key": file_key, "action": action, "error": str(exc)}), 400
+            return jsonify(
+                {
+                    "ok": True,
+                    "action": action,
+                    "file_key": file_key,
+                    "write": write_meta,
+                    "mutation": mutation,
+                    "samras_workspace": build_workspace_view_model(
+                        updated_workspace,
+                        selected_address_id=selected_address,
+                        staged_entries=[],
+                    ),
+                    "workbench_payload": _document_catalog().system_resource_workbench_payload(),
+                }
+            )
+
         rows_map = _rows_payload_mapping(active_payload)
 
         if action == "create_row":

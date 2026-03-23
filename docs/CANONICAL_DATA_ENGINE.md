@@ -158,15 +158,23 @@ Merged anthology canonical seam:
 
 ## Shared sandbox engine
 
-Shared core now exposes a sandbox service layer under `portals/_shared/portal/sandbox/` as the canonical ownership boundary for:
+Shared core now exposes a sandbox service layer under `portals/_shared/portal/sandbox/` as the canonical integration boundary for:
 
 - MSS form compile/decode/edit staging (`SandboxEngine.compile_mss_resource`, `decode_mss_resource`)
 - MSS compact-array decode/context payloads (same service boundary as MSS form compile/decode)
-- SAMRAS resource encode/decode/normalize/validation (`portals/_shared/portal/sandbox/samras.py`)
+- SAMRAS resource lifecycle delegation (`SandboxEngine` / route surfaces) backed by the canonical SAMRAS package under `portals/_shared/portal/samras/`
 - contact-card exposed resource value generation (`SandboxEngine.generate_contact_card_public_resources`)
 - inherited resource context resolution for local and foreign refs (`SandboxEngine.resolve_inherited_resource_context`)
 
 Route surface is shared-core under `/portal/api/data/sandbox/*` (registered in `portals/_shared/portal/api/data_workspace.py`). The current `SYSTEM` page consumes sandbox and inherited-resource capabilities through the unified workbench. Older `local_resources` and `inheritance` views remain compatibility-only entrypoints.
+
+SAMRAS hardening contract:
+
+- canonical structural values are layer-1 values in reference to `0-0-5`
+- the semantic owner is `portals/_shared/portal/samras/`
+- addresses are derived from decoded structure; they are not independently authoritative
+- mutation flows must decode -> derive -> mutate -> re-encode before persistence
+- generic `SYSTEM` raw row creation/update for `samras-txa.json` and `samras-msn.json` is blocked; structure-aware SAMRAS actions are required instead
 
 Resource inventory ownership is separate from sandbox:
 

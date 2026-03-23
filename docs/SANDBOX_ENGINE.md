@@ -4,11 +4,11 @@
 
 `portals/_shared/portal/sandbox/` is the canonical shared-core layer for sandbox-managed resource logic that should not be scattered across flavor routes, tool packages, or UI templates.
 
-This pass introduces first working ownership for:
+This layer owns sandbox integration and persistence workflow for:
 
 - MSS form compile/decode/edit staging
 - MSS compact-array decode/context payloads
-- SAMRAS structure encode/decode/normalize/validation
+- SAMRAS structure-aware resource mutation and persistence
 - contact-card exposed resource value generation
 - inherited resource context resolution (local + foreign)
 - FND SAMRAS anthology migration helpers
@@ -29,16 +29,15 @@ Core models:
 - `SandboxCompileResult`
 - `SandboxStageResult`
 
-SAMRAS model helpers:
+Canonical SAMRAS semantics are delegated to `portals/_shared/portal/samras/`:
 
-- `decode_structure_payload`
-- `encode_structure_payload`
-- `decode_node_value`
-- `encode_node_value`
-- `normalize_descriptor`
-- `validate_node_value`
-- `ensure_resource_row`
-- `ensure_resource_object`
+- `structure.py` — decoded structure model + derived address tree metadata
+- `codec.py` — canonical decode/encode and migration-only legacy decode
+- `validation.py` — explicit valid/invalid predicates and round-trip checks
+- `mutation.py` — address mutations that rewrite the governing canonical structure
+- `workspace_adapter.py` — structure-aware workspace/resource view models
+
+`portals/_shared/portal/sandbox/samras.py` remains a compatibility facade; it is no longer the semantic owner.
 
 ## API routes
 
@@ -69,6 +68,15 @@ Resource index routes (outside sandbox ownership but adjacent to sandbox lifecyc
 - `POST /portal/api/data/resources/inherited/disconnect_source`
 
 `/sandbox/inherited/compile_txa` is a narrow shared-core compiler path for txa-only inherited context. It produces field-usable inherited refs and a provisional SAMRAS descriptor without materializing full foreign txa/msn paths locally.
+
+## SAMRAS enforcement
+
+Current hardening rules:
+
+- sandbox routes do not treat raw SAMRAS magnitude authoring as the normal path
+- address mutation always implies structural mutation of the governing `0-0-5` value
+- invalid SAMRAS writes fail with explicit decode/derive/round-trip reasons
+- corrected txa/msn staging payloads may be read through compatibility reconstruction, but persistence rewrites to canonical structure output
 
 ## Anthology migration model (FND)
 

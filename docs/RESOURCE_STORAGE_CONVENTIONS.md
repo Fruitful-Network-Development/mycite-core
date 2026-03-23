@@ -68,3 +68,11 @@ When writing `anthology_compatible_payload`, shared-core normalization applies:
 - per `(layer, value_group)` iterations start at `1` and are contiguous
 
 These rules are implemented in `portals/_shared/portal/data_engine/resource_registry.py`.
+
+For SAMRAS structural rows (`reference == 0-0-5`):
+
+- writes normalize through the canonical shared-core SAMRAS package (`portals/_shared/portal/samras/`)
+- persisted structural magnitudes must be canonical bitstreams
+- numeric-hyphen and other legacy SAMRAS forms are migration/read compatibility only
+- address rows are derived from the governing structure and must not outrun it
+- raw SAMRAS magnitude authoring is not the normal long-term editing authority

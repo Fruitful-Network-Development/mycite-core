@@ -47,6 +47,13 @@ Primary interaction model:
 - file switching belongs to `Navigate`
 - manipulate mode exposes create/delete at file focus and datum editing at datum focus
 
+For SAMRAS-backed files (`samras-txa.json`, `samras-msn.json`):
+
+- the workbench reads a structure-derived address tree, not an authoritative address map
+- `POST /portal/api/data/system/mutate` accepts structure-aware SAMRAS actions for txa/msn
+- generic `create_row` / `update_row` / `delete_row` are blocked for txa/msn so raw row edits cannot bypass canonical re-encoding
+- sandbox SAMRAS workspaces derive address previews from structure and rewrite the governing magnitude on mutation
+
 Canonical data endpoints:
 
 - `POST /portal/api/data/system/selection_context`

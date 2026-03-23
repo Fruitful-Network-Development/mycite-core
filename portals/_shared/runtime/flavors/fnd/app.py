@@ -656,28 +656,13 @@ def _normalize_utilities_tab(raw: Any) -> str:
 
 def _normalize_system_query_tab(raw: Any) -> str:
     token = str(raw or "").strip().lower()
-    if token == "sandbox":
-        token = "local_resources"
-    return token if token in {"workbench", "local_resources", "inheritance"} else "workbench"
+    return "workbench" if token == "workbench" else "workbench"
 
-
-def _normalize_system_workbench_mode(raw: Any) -> str:
-    token = str(raw or "").strip().lower()
-    return "system" if token in {"", "anthology", "resources", "system"} else "system"
-
-
-def _system_render_state(system_tab: str, workbench_mode: str) -> tuple[str, str, str, str]:
-    requested_tab = _normalize_system_query_tab(system_tab)
-    normalized_workbench_mode = _normalize_system_workbench_mode(workbench_mode)
-    shell_tab = requested_tab
-    compatibility_view = ""
-    # Older SYSTEM query tabs still resolve, but only as compatibility entrypoints
-    # into the unified workbench shell.
-    if requested_tab in {"local_resources", "inheritance"}:
-        shell_tab = "workbench"
-        normalized_workbench_mode = "system"
-        compatibility_view = requested_tab
-    return requested_tab, shell_tab, normalized_workbench_mode, compatibility_view
+def _canonical_system_url() -> str:
+    query_items = [(key, value) for key, value in request.args.items(multi=True) if key not in {"tab", "workbench"}]
+    if not query_items:
+        return "/portal/system"
+    return f"/portal/system?{urlencode(query_items)}"
 
 
 def _utility_tool_items() -> list[Dict[str, Any]]:
@@ -1177,20 +1162,13 @@ def _tools_by_mount_target(mount_target: str) -> list[Dict[str, Any]]:
     return [tool for tool in TOOL_TABS if str(tool.get("mount_target") or "peripherals.tools").strip().lower() == token]
 
 
-def _render_portal_system(*, system_tab: str, workbench_mode: str = "anthology"):
-    requested_tab, shell_tab, normalized_workbench_mode, compatibility_view = _system_render_state(
-        system_tab, workbench_mode
-    )
+def _render_portal_system():
     aliases = list_aliases_for_sidebar(PRIVATE_DIR)
     profile_model = _portal_profile_model()
     return render_template(
         "services/system.html",
         aliases=aliases,
         msn_id=MSN_ID,
-        system_tab=shell_tab,
-        system_requested_tab=requested_tab,
-        system_compatibility_view=compatibility_view,
-        system_workbench_mode=normalized_workbench_mode,
         data_home_available=DATA_HOME_AVAILABLE,
         portal_profile=profile_model,
         system_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
@@ -1200,9 +1178,9 @@ def _render_portal_system(*, system_tab: str, workbench_mode: str = "anthology")
 
 @app.get("/portal/system")
 def portal_system_page():
-    system_tab = _normalize_system_query_tab(request.args.get("tab"))
-    workbench_mode = _normalize_system_workbench_mode(request.args.get("workbench"))
-    return _render_portal_system(system_tab=system_tab, workbench_mode=workbench_mode)
+    if "tab" in request.args or "workbench" in request.args:
+        return redirect(_canonical_system_url(), code=302)
+    return _render_portal_system()
 
 
 @app.get("/portal/home")
