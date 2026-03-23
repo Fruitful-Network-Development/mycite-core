@@ -94,9 +94,9 @@
       </aside>
 
       <aside id="portalControlPanel" class="ide-controlpanel ide-contextsidebar" aria-label="Control panel" aria-hidden="false">
-        {% block context_sidebar %}
-          {% if context_sidebar_sections is defined and context_sidebar_sections %}
-            {% for section in context_sidebar_sections %}
+        {% block control_panel %}
+          {% if control_panel_sections is defined and control_panel_sections %}
+            {% for section in control_panel_sections %}
               <section class="ide-contextSection">
                 <header class="ide-contextTitle">{{ section.title }}</header>
                 {% if section.entries %}

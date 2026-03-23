@@ -93,27 +93,9 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
         self.assertEqual((((txa_binding.get("resolved") or {}).get("activation_payload") or {}).get("local_resource_id")), "samras.txa")
         self.assertTrue(any("fell back to local" in str(item) for item in txa_binding.get("warnings") or []))
 
-    def test_shared_compatibility_runtime_owns_shell_event_bridge(self) -> None:
+    def test_unified_system_workbench_owns_shell_event_bridge(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
-        shared_runtime = (
-            repo_root
-            / "portals"
-            / "_shared"
-            / "portal"
-            / "ui"
-            / "static"
-            / "system_compatibility_runtime.js"
-        ).read_text(encoding="utf-8")
-        shared_views = (
-            repo_root
-            / "portals"
-            / "_shared"
-            / "portal"
-            / "ui"
-            / "static"
-            / "system_compatibility_views.js"
-        ).read_text(encoding="utf-8")
-        local_js = (
+        data_tool = (
             repo_root
             / "portals"
             / "_shared"
@@ -124,9 +106,28 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "ui"
             / "static"
             / "tools"
-            / "local_resources_workbench.js"
+            / "data_tool.js"
         ).read_text(encoding="utf-8")
-        inheritance_js = (
+        self.assertIn("mycite:shell:selection-input", data_tool)
+        self.assertIn("mycite:shell:workbench-mode", data_tool)
+        self.assertIn("mycite:shell:workbench-payload", data_tool)
+        self.assertIn("mycite:shell:verb-changed", data_tool)
+
+        removed_assets = [
+            repo_root
+            / "portals"
+            / "_shared"
+            / "portal"
+            / "ui"
+            / "static"
+            / "system_compatibility_runtime.js",
+            repo_root
+            / "portals"
+            / "_shared"
+            / "portal"
+            / "ui"
+            / "static"
+            / "system_compatibility_views.js",
             repo_root
             / "portals"
             / "_shared"
@@ -137,27 +138,43 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "ui"
             / "static"
             / "tools"
-            / "inheritance_workbench.js"
-        ).read_text(encoding="utf-8")
-        self.assertIn("window.MyCiteSystemCompatibilityRuntime", shared_runtime)
-        self.assertIn("mycite:shell:selection-input", shared_runtime)
-        self.assertIn("mycite:shell:workbench-mode", shared_runtime)
-        self.assertIn("mycite:shell:workbench-payload", shared_runtime)
-        self.assertIn("mycite:shell:verb-changed", shared_runtime)
-        self.assertIn("renderInheritanceDetail", shared_views)
-        self.assertIn("/portal/api/data/resources/inherited/refresh_source", shared_views)
-        self.assertIn("/portal/api/data/resources/inherited/disconnect_source", shared_views)
-        for content in (local_js, inheritance_js):
-            self.assertIn("MyCiteSystemCompatibilityRuntime", content)
-            self.assertNotIn("mycite:shell:selection-input", content)
-            self.assertNotIn("mycite:shell:workbench-mode", content)
-            self.assertNotIn("mycite:shell:workbench-payload", content)
-            self.assertNotIn("mycite:shell:verb-changed", content)
-        self.assertIn("MyCiteSystemCompatibilityViews", inheritance_js)
-        self.assertNotIn("inheritanceInspectorDetail", inheritance_js)
-        self.assertNotIn("inheritanceRefreshSingleBtn", inheritance_js)
-        self.assertNotIn("/portal/api/data/resources/inherited/refresh_source", inheritance_js)
-        self.assertNotIn("/portal/api/data/resources/inherited/disconnect_source", inheritance_js)
+            / "local_resources_workbench.js",
+            repo_root
+            / "portals"
+            / "_shared"
+            / "runtime"
+            / "flavors"
+            / "fnd"
+            / "portal"
+            / "ui"
+            / "static"
+            / "tools"
+            / "inheritance_workbench.js",
+            repo_root
+            / "portals"
+            / "_shared"
+            / "runtime"
+            / "flavors"
+            / "tff"
+            / "portal"
+            / "ui"
+            / "static"
+            / "tools"
+            / "local_resources_workbench.js",
+            repo_root
+            / "portals"
+            / "_shared"
+            / "runtime"
+            / "flavors"
+            / "tff"
+            / "portal"
+            / "ui"
+            / "static"
+            / "tools"
+            / "inheritance_workbench.js",
+        ]
+        for path in removed_assets:
+            self.assertFalse(path.exists(), str(path))
 
 
 if __name__ == "__main__":

@@ -13,15 +13,15 @@
 {% set selected_channel = selected_alias if current_kind == "alias" else (selected_log if current_kind == "log" else selected_p2p) %}
 {% set selected_contract_record = selected_contract if selected_contract is defined else None %}
 
-{% block context_sidebar %}
+{% block control_panel %}
   <section class="ide-contextSection network-contextSection network-contextSection--search">
     <header class="ide-contextTitle network-contextTitle">Find Interface</header>
     <div class="ide-contextSearch">
       <input id="networkContextFilter" type="text" placeholder="Filter aliases, logs, P2P..." />
     </div>
   </section>
-  {% if context_sidebar_sections is defined and context_sidebar_sections %}
-    {% for section in context_sidebar_sections %}
+  {% if control_panel_sections is defined and control_panel_sections %}
+    {% for section in control_panel_sections %}
       <section class="ide-contextSection network-contextSection">
         <header class="ide-contextTitle network-contextTitle">
           <span>{{ section.title }}</span>

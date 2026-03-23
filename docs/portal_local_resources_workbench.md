@@ -31,7 +31,7 @@ The compatibility surface was built around:
 
 It also used:
 
-- `portal/ui/static/tools/local_resources_workbench.js`
+- a dedicated `local_resources_workbench.js` browser runtime
 - `.lr-workbench__*` styles in `portal.css`
 
-Those assets may remain in the repo for compatibility lineage, but they are not the canonical current `SYSTEM` design.
+Those assets have since been removed. This document remains only as a historical description of that earlier compatibility surface.

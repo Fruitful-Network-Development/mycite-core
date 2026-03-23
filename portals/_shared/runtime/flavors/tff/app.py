@@ -25,13 +25,11 @@ from portal.core_services.runtime import (
     active_private_config_filename,
     build_network_cards,
     build_network_tabs,
-    build_system_tabs,
     build_property_geography_model,
     build_service_nav,
     load_active_private_config,
     resolve_active_private_config_path,
     normalize_network_tab,
-    normalize_system_tab,
 )
 from _shared.portal.core_services.runtime_config import build_runtime_config
 from portal.services.board_access import require_board_member
@@ -89,7 +87,7 @@ from _shared.portal.services.request_log_ui import (
     iter_string_values as shared_iter_string_values,
     network_placeholder_item as shared_network_placeholder_item,
 )
-from _shared.portal.services.sidebar_context import build_context_sidebar_sections
+from _shared.portal.services.control_panel import build_control_panel_sections
 from _shared.portal.services.shell_context import build_shell_context
 from _shared.portal.data_engine.external_resources import ExternalResourceResolver
 from _shared.portal.sandbox.resource_workbench import build_system_resource_workbench_view_model
@@ -801,7 +799,10 @@ def _normalize_utilities_tab(raw: Any) -> str:
 
 
 def _normalize_system_query_tab(raw: Any) -> str:
-    return normalize_system_tab(str(raw or "").strip())
+    token = str(raw or "").strip().lower()
+    if token == "sandbox":
+        token = "local_resources"
+    return token if token in {"workbench", "local_resources", "inheritance"} else "workbench"
 
 
 def _normalize_system_workbench_mode(raw: Any) -> str:
@@ -1029,12 +1030,12 @@ def _network_message_feed(
     )
 
 
-def _context_sidebar_sections(active_service: str) -> list[Dict[str, Any]]:
+def _control_panel_sections(active_service: str) -> list[Dict[str, Any]]:
     network_tab = _normalize_network_query_tab(request.args.get("tab"))
     kind = _normalize_network_kind(request.args.get("kind"))
     utilities_tab = _normalize_utilities_tab(request.args.get("tab"))
     selected = str(request.args.get("id") or "").strip()
-    return build_context_sidebar_sections(
+    return build_control_panel_sections(
         active_service=active_service,
         network_tab=network_tab,
         network_kind=kind,
@@ -1113,14 +1114,13 @@ def _shell_context() -> Dict[str, Any]:
         build_activity_tool_nav_fn=_activity_tool_nav,
         service_nav=build_service_nav(ACTIVE_PRIVATE_CONFIG, active_service=active_service),
         network_tabs=build_network_tabs(active_service_tab),
-        system_tabs=build_system_tabs(active_service_tab),
         sidebar_progeny=sidebar_progeny,
         portal_name=portal_name,
         active_portal_username=active_portal_username,
         sign_out_url=sign_out_url,
         switch_portal_url=switch_portal_url,
         current_path=current_path,
-        context_sidebar_sections=_context_sidebar_sections(active_service),
+        control_panel_sections=_control_panel_sections(active_service),
     )
 
 
@@ -1350,7 +1350,6 @@ def _render_portal_system(*, system_tab: str, workbench_mode: str = "anthology")
         system_requested_tab=requested_tab,
         system_compatibility_view=compatibility_view,
         system_workbench_mode=normalized_workbench_mode,
-        system_tabs=build_system_tabs(requested_tab),
         data_home_available=DATA_HOME_AVAILABLE,
         portal_profile=profile_model,
         system_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),

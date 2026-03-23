@@ -65,7 +65,7 @@ Both flavor `app.py` files contain large overlapping logic. Good candidates for 
 | Area | Examples | Suggested shared location |
 |------|----------|----------------------------|
 | **Network/contract** | `_network_contract_items`, `_network_sidebar_alias_items`, `_network_message_feed`, `_p2p_channels`, `_request_log_channels`, `_iter_request_log_records`, `_network_placeholder_item`, contract preview/resolved refs | `_shared/portal/network_contract.py` or `_shared/runtime/shared_network.py` |
-| **Sidebar/context** | `_context_sidebar_sections` (with flavor flags: e.g. show_alias_section, show_progeny), `list_aliases_for_sidebar`, alias label/format helpers | `_shared/portal/sidebar_context.py` |
+| **Sidebar/context** | `_control_panel_sections` (with flavor flags: e.g. show_alias_section, show_progeny), `list_aliases_for_sidebar`, alias label/format helpers | `_shared/portal/services/control_panel.py` |
 | **Widget URL** | `_build_widget_url` (base URL, progeny_type, tenant/member embed paths) | `_shared/portal/embed_urls.py` or extend `progeny_embed` |
 | **Profile/vault/IO** | `_read_json`, `_write_json`, anthology path, profile resolve/sanitize, `_options_public` / `_options_private`, vault inventory and contract files | `_shared/portal/app_io.py` + flavor-specific option builders |
 | **Event formatting** | `_format_event_timestamp`, `_initials`, `_event_actor_label`, `_event_summary`, `_iter_string_values`, `_event_contains_any`, `_event_channel_id` | `_shared/portal/request_log_ui.py` |
@@ -123,7 +123,7 @@ Moving these into `_shared/portal/` (or a small `_shared/runtime/` helper) would
 - **Already shared**: `api/`, `services/`, `mss/`, `data_engine/`, `tools/specs.py`, `hosted_model.py`, `progeny_model/`, `datum_refs.py`, etc.
 - **Add (from flavor app.py)**:
   - **network_contract.py** (or **shared_network.py**): contract list, network sidebar items, message feed, p2p/request_log channels, placeholder item.
-  - **sidebar_context.py**: build control panel sections from a small flavor config (e.g. show_alias_section, show_progeny_in_utilities).
+  - **control_panel.py**: build control panel sections from a small flavor config (e.g. show_alias_section, show_progeny_in_utilities).
   - **embed_urls.py** (or inside **progeny_embed**): build embed/widget URL from alias payload and request (with fallback to 127.0.0.1 when no request).
   - **request_log_ui.py**: event timestamp, initials, actor label, summary, and any event-iteration helpers.
   - **alias_utils.py**: alias label, canonical progeny type, extract tenant/contract/member IDs, contact collection ref.

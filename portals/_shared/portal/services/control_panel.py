@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 
-def build_context_sidebar_sections(
+def build_control_panel_sections(
     *,
     active_service: str,
     network_tab: str,
