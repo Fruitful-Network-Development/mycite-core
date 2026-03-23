@@ -51,8 +51,6 @@ class SystemPageCompositionTests(unittest.TestCase):
             self.assertNotIn("System Views", text)
             self.assertNotIn("Local Resources", text)
             self.assertNotIn("Inheritance", text)
-            self.assertNotIn("workbench=anthology", text)
-            self.assertNotIn("workbench=resources", text)
 
     def test_system_local_resources_defaults_to_workspace_tab(self) -> None:
         for flavor in ("fnd", "tff"):
@@ -105,10 +103,11 @@ class SystemPageCompositionTests(unittest.TestCase):
         self.assertIn('id="portalInspectorTransientMount"', text)
         self.assertIn('id="portalControlPanel"', text)
         self.assertIn('aria-label="Control panel"', text)
+        self.assertIn('data-control-panel-collapsed="false"', text)
         self.assertNotIn('class="ide-menubar__spacer"', text)
         self.assertNotIn("activity_tool_nav", text)
         self.assertNotIn("ide-activitylink--tool", text)
-        self.assertLess(text.index('data-shell-toggle="context"'), text.index('data-shell-toggle="inspector"'))
+        self.assertLess(text.index('data-shell-toggle="control-panel"'), text.index('data-shell-toggle="inspector"'))
         self.assertLess(text.index('data-shell-toggle="inspector"'), text.index('class="themebar ide-menubar__theme"'))
 
     def test_menubar_css_locks_non_wrapping_system_shell_controls(self) -> None:
@@ -152,6 +151,9 @@ class SystemPageCompositionTests(unittest.TestCase):
         self.assertIn("/portal/api/data/system/resource_workbench", body)
         self.assertIn("/portal/api/data/system/mutate", body)
         self.assertIn("/portal/api/data/system/publish", body)
+        runtime_body = (REPO_ROOT / "portals/_shared/portal/application/shell/runtime.py").read_text(encoding="utf-8")
+        self.assertIn('"attention_address"', runtime_body)
+        self.assertIn('"directive"', runtime_body)
         self.assertIn('"spacial"', (REPO_ROOT / "portals/_shared/portal/application/shell/runtime.py").read_text(encoding="utf-8"))
 
 

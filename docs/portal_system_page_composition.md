@@ -15,7 +15,7 @@
 - Default file attention is `anthology.json`.
 - The old resources file switcher is replaced by `Navigate` at file focus.
 - The old hardcoded AGRO launch buttons are removed; mediation is opened through compatible-tool discovery.
-- Legacy `local_resources`, `inheritance`, `workbench=anthology`, and `workbench=resources` queries resolve into this same shell as compatibility aliases.
+- Legacy split-view SYSTEM query aliases have been removed from active routing so the page composes from one shell story only.
 
 ## File focus vs datum focus
 

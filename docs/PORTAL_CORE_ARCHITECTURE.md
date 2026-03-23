@@ -33,14 +33,7 @@ Canonical shared external-resource endpoints under `/portal/api/data/*` are shar
   - `owner_mss`
   - `counterparty_mss`
 
-Legacy SYSTEM query entrypoints remain readable for compatibility only:
-
-- `?tab=local_resources`
-- `?tab=inheritance`
-- `?workbench=anthology`
-- `?workbench=resources`
-
-Those entrypoints resolve back into the same unified `SYSTEM` shell and are not current navigation surfaces.
+Legacy split-view SYSTEM query entrypoints have been removed from active route normalization. The canonical entry is the clean unified `/portal/system` shell.
 
 ## Shell consolidation
 

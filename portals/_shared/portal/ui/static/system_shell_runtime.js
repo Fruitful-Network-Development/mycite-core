@@ -101,7 +101,7 @@
   }
 
   var systemWorkspace = qs(".system-center-workspace");
-  if (!systemWorkspace || text(systemWorkspace.getAttribute("data-system-tab")) !== "workbench") {
+  if (!systemWorkspace) {
     return;
   }
 
@@ -124,7 +124,6 @@
     selectedContext: null,
     lastSelectionInput: null,
     activeVerb: "navigate",
-    workbenchMode: normalizeModeId(systemWorkspace.getAttribute("data-system-workbench-mode") || "system") || "system",
     activeToolId: "",
     activeMediationMode: "",
     toolContexts: {},
@@ -195,7 +194,7 @@
     if (!els.selectionSummary) return;
     var ctx = state.selectedContext;
     if (!ctx || !ctx.selection) {
-      els.selectionSummary.className = "ide-contextEmpty";
+      els.selectionSummary.className = "ide-controlpanel__empty";
       els.selectionSummary.textContent = selectionHint();
       if (els.resourcesInspectorEmpty) els.resourcesInspectorEmpty.hidden = false;
       return;
@@ -203,11 +202,15 @@
     var selection = ctx.selection || {};
     var family = ctx.family || {};
     var resolved = ctx.resolved_archetype || {};
+    var systemState = ctx.system_state || {};
+    var attentionAddress = text(systemState.attention_address || "");
+    var directive = text(systemState.directive || state.activeVerb || "navigate");
     els.selectionSummary.className = "data-tool__resourcesDatumCard";
     if (els.resourcesInspectorEmpty) els.resourcesInspectorEmpty.hidden = true;
     els.selectionSummary.innerHTML =
-      "<div><strong>Selected</strong><br/><code>" + esc(selection.selected_ref_or_document_id || "") + "</code></div>" +
+      "<div><strong>Attention</strong><br/><code>" + esc(attentionAddress || selection.selected_ref_or_document_id || "") + "</code></div>" +
       "<div><strong>Label</strong><br/><span>" + esc(selection.display_name || "") + "</span></div>" +
+      "<div><strong>Directive</strong><br/><span>" + esc(directive || "navigate") + "</span></div>" +
       "<div><strong>Archetype</strong><br/><span>" + esc(resolved.family || family.kind || "datum") + "</span></div>";
   }
 
@@ -219,15 +222,15 @@
       var emptyMessage = state.activeVerb === "mediate"
         ? "No compatible mediations for the current context."
         : "Open Mediate to browse compatible tools for the current context.";
-      els.compatibleTools.innerHTML = '<div class="ide-contextEmpty">' + esc(emptyMessage) + "</div>";
+      els.compatibleTools.innerHTML = '<div class="ide-controlpanel__empty">' + esc(emptyMessage) + "</div>";
       return;
     }
     var list = document.createElement("div");
-    list.className = "ide-contextList";
+    list.className = "ide-controlpanel__list";
     tools.forEach(function (tool) {
       var button = document.createElement("button");
       button.type = "button";
-      button.className = "ide-contextLink" + (text(tool.tool_id) === state.activeToolId ? " is-active" : "");
+      button.className = "ide-controlpanel__link" + (text(tool.tool_id) === state.activeToolId ? " is-active" : "");
       button.setAttribute("data-shell-tool-id", text(tool.tool_id));
       var contribution = toolContribution(tool);
       button.innerHTML =
@@ -670,7 +673,7 @@
       renderAll();
     }).catch(function (err) {
       if (els.selectionSummary) {
-        els.selectionSummary.className = "ide-contextEmpty";
+        els.selectionSummary.className = "ide-controlpanel__empty";
         els.selectionSummary.textContent = err && err.message ? err.message : "Selection context failed to load.";
       }
     });
@@ -690,25 +693,7 @@
     }
   });
 
-  document.addEventListener("mycite:shell:workbench-mode", function (event) {
-    var detail = event && event.detail && typeof event.detail === "object" ? event.detail : {};
-    var mode = normalizeModeId(detail.workbench_mode || "");
-    if (mode) {
-      state.workbenchMode = mode;
-    }
-    var verb = text(detail.current_verb || "").toLowerCase();
-    if (verb) {
-      state.activeVerb = verb;
-    }
-    renderAll();
-  });
-
-  document.addEventListener("mycite:shell:workbench-payload", function (event) {
-    var detail = event && event.detail && typeof event.detail === "object" ? event.detail : {};
-    var mode = normalizeModeId(detail.workbench_mode || "");
-    if (mode) {
-      state.workbenchMode = mode;
-    }
+  document.addEventListener("mycite:shell:workbench-payload", function () {
     renderAll();
   });
 

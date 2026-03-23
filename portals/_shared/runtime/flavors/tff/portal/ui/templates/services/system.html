@@ -9,10 +9,6 @@
 {% endblock %}
 
 {% set page_title = "SYSTEM" %}
-{% set requested_tab = system_requested_tab if system_requested_tab is defined and system_requested_tab else "workbench" %}
-{% set current_tab = system_tab if system_tab is defined and system_tab else "workbench" %}
-{% set compatibility_view = system_compatibility_view if system_compatibility_view is defined and system_compatibility_view else "" %}
-{% set current_workbench_mode = system_workbench_mode if system_workbench_mode is defined and system_workbench_mode else "system" %}
 {% set page_subtitle = "" %}
 
 {% block ide_shell_extra_class %} ide-shell--portal-system{% endblock %}
@@ -22,81 +18,64 @@
 {% block header %}{% endblock %}
 
 {% block inspector_content %}
-  <div
-    id="systemShellInspectorRoot"
-    class="system-shell-inspector"
-    data-system-tab="{{ current_tab }}"
-    data-system-compat-view="{{ compatibility_view }}"
-    data-system-requested-tab="{{ requested_tab }}"
-  >
-    {% if current_tab == "workbench" %}
-      <section id="systemShellInspectorCards" class="system-shell-inspectorCards" hidden>
-        <div id="systemInspectorCardsMount" class="system-shell-inspectorCards__mount"></div>
-      </section>
-      <div id="systemInspectorPanelSystem" class="system-inspector-panel" data-system-inspector-panel="system">
-        <div class="ide-inspector__moduleKicker" id="dtResourcesInspectorKicker">SYSTEM</div>
-        <div class="ide-inspector__moduleTitle" id="dtResourcesInspectorTitle">Details</div>
-        <p id="dtResourcesInspectorEmpty" class="data-tool__empty" hidden>Select a file or datum in the center workbench.</p>
-        <div id="dtResourcesInspectorStack" class="data-tool__resourcesInspectorStack">
-          <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="navigate" hidden>
-            <h3 class="data-tool__resourcesInspectorHeading">Navigate</h3>
-            <div id="dtResourcesNavigateBody" class="data-tool__resourcesInspectorBody"></div>
-          </section>
-          <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="investigate" hidden>
-            <h3 class="data-tool__resourcesInspectorHeading">Investigate</h3>
-            <div id="dtResourcesInvestigateBody" class="data-tool__resourcesInspectorBody"></div>
-          </section>
-          <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="mediate" hidden>
-            <h3 class="data-tool__resourcesInspectorHeading">Mediate</h3>
-            <div class="data-tool__controlRow data-tool__controlRow--wrap">
-              <label class="data-tool__growLabel">
-                <span>Lens</span>
-                <select id="dtResourcesMediateLens" aria-label="Mediation lens">
-                  <option value="default" selected>default</option>
-                  <option value="ascii">ascii</option>
-                </select>
-              </label>
-            </div>
-            <div id="dtResourcesMediateBody" class="data-tool__resourcesInspectorBody"></div>
-          </section>
-          <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="manipulate" hidden>
-            <h3 class="data-tool__resourcesInspectorHeading">Manipulate</h3>
-            <div id="dtResourcesManipulateMount" class="data-tool__resourcesInspectorBody"></div>
-          </section>
-        </div>
+  <div id="systemShellInspectorRoot" class="system-shell-inspector">
+    <section id="systemShellInspectorCards" class="system-shell-inspectorCards" hidden>
+      <div id="systemInspectorCardsMount" class="system-shell-inspectorCards__mount"></div>
+    </section>
+    <div id="systemInspectorPanelSystem" class="system-inspector-panel" data-system-inspector-panel="system">
+      <div class="ide-inspector__moduleKicker" id="dtResourcesInspectorKicker">SYSTEM</div>
+      <div class="ide-inspector__moduleTitle" id="dtResourcesInspectorTitle">Details</div>
+      <p id="dtResourcesInspectorEmpty" class="data-tool__empty" hidden>Select a file or datum in the center workbench.</p>
+      <div id="dtResourcesInspectorStack" class="data-tool__resourcesInspectorStack">
+        <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="navigate" hidden>
+          <h3 class="data-tool__resourcesInspectorHeading">Navigate</h3>
+          <div id="dtResourcesNavigateBody" class="data-tool__resourcesInspectorBody"></div>
+        </section>
+        <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="investigate" hidden>
+          <h3 class="data-tool__resourcesInspectorHeading">Investigate</h3>
+          <div id="dtResourcesInvestigateBody" class="data-tool__resourcesInspectorBody"></div>
+        </section>
+        <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="mediate" hidden>
+          <h3 class="data-tool__resourcesInspectorHeading">Mediate</h3>
+          <div class="data-tool__controlRow data-tool__controlRow--wrap">
+            <label class="data-tool__growLabel">
+              <span>Lens</span>
+              <select id="dtResourcesMediateLens" aria-label="Mediation lens">
+                <option value="default" selected>default</option>
+                <option value="ascii">ascii</option>
+              </select>
+            </label>
+          </div>
+          <div id="dtResourcesMediateBody" class="data-tool__resourcesInspectorBody"></div>
+        </section>
+        <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="manipulate" hidden>
+          <h3 class="data-tool__resourcesInspectorHeading">Manipulate</h3>
+          <div id="dtResourcesManipulateMount" class="data-tool__resourcesInspectorBody"></div>
+        </section>
       </div>
-    {% else %}
-      <p class="ide-inspector__empty">Select an item to inspect.</p>
-    {% endif %}
+    </div>
   </div>
 {% endblock %}
 
 {% block control_panel %}
-  <section class="ide-contextSection" id="systemShellSelectionSection" aria-label="SYSTEM control panel">
-    <header class="ide-contextTitle">Control Panel</header>
-    <div id="systemSelectionSummary" class="ide-contextEmpty">Select a file or datum to activate the canonical SYSTEM workbench.</div>
+  <section class="ide-controlpanel__section" id="systemShellSelectionSection" aria-label="SYSTEM control panel">
+    <header class="ide-controlpanel__title">Control Panel</header>
+    <div id="systemSelectionSummary" class="ide-controlpanel__empty">Select a file or datum to activate the canonical SYSTEM workbench.</div>
     <div id="resourcesDatumProfile" class="data-tool__resourcesDatumProfile">
       <p class="data-tool__empty data-tool__resourcesDatumProfilePlaceholder">No datum selected.</p>
     </div>
   </section>
-  <section class="ide-contextSection" aria-label="Compatible mediations">
-    <header class="ide-contextTitle">Compatible Mediations</header>
-    <div id="systemCompatibleTools" class="ide-contextList" aria-live="polite">
-      <div class="ide-contextEmpty">Choose a file or datum, then open Mediate to browse compatible tools.</div>
+  <section class="ide-controlpanel__section" aria-label="Compatible mediations">
+    <header class="ide-controlpanel__title">Compatible Mediations</header>
+    <div id="systemCompatibleTools" class="ide-controlpanel__list" aria-live="polite">
+      <div class="ide-controlpanel__empty">Choose a file or datum, then open Mediate to browse compatible tools.</div>
     </div>
   </section>
 {% endblock %}
 
 {% block body %}
-  <div
-    class="system-center-workspace"
-    data-system-tab="{{ current_tab }}"
-    data-system-workbench-mode="{{ current_workbench_mode }}"
-    data-system-requested-tab="{{ requested_tab }}"
-    data-system-compat-view="{{ compatibility_view }}"
-    data-system-empty-selection="Select a file or datum to activate the SYSTEM workbench."
-  >
-  {% if current_tab == "workbench" and data_home_available is defined and data_home_available %}
+  <div class="system-center-workspace" data-system-empty-selection="Select a file or datum to activate the SYSTEM workbench.">
+  {% if data_home_available is defined and data_home_available %}
     <section id="systemMediationWorkbench" class="card system-mediation-workbench" hidden>
       <div class="card__body">
         <div class="card__kicker" id="systemMediationKicker">Mediation Workspace</div>

@@ -13,7 +13,7 @@
   <div
     class="ide-shell{% block ide_shell_extra_class %}{% endblock %}"
     data-active-service="{% if active_service is defined and active_service %}{{ active_service }}{% else %}system{% endif %}"
-    data-context-collapsed="false"
+    data-control-panel-collapsed="false"
     data-inspector-collapsed="true"
     {% block ide_shell_data_attrs %}{% endblock %}
   >
@@ -36,7 +36,7 @@
       </div>
       <div class="ide-menubar__right">
         <div class="ide-menubar__shellActions" aria-label="Shell layout controls">
-          <button type="button" class="ide-sessionAction ide-sessionAction--button" data-shell-toggle="context">Context</button>
+          <button type="button" class="ide-sessionAction ide-sessionAction--button" data-shell-toggle="control-panel">Context</button>
           <button type="button" class="ide-sessionAction ide-sessionAction--button" data-shell-toggle="inspector">Details</button>
         </div>
         <label class="themebar ide-menubar__theme" aria-label="Portal theme selector">
@@ -78,17 +78,17 @@
         </div>
       </aside>
 
-      <aside id="portalControlPanel" class="ide-controlpanel ide-contextsidebar" aria-label="Control panel" aria-hidden="false">
+      <aside id="portalControlPanel" class="ide-controlpanel" aria-label="Control panel" aria-hidden="false">
         {% block control_panel %}
           {% if control_panel_sections is defined and control_panel_sections %}
             {% for section in control_panel_sections %}
-              <section class="ide-contextSection">
-                <header class="ide-contextTitle">{{ section.title }}</header>
+              <section class="ide-controlpanel__section">
+                <header class="ide-controlpanel__title">{{ section.title }}</header>
                 {% if section.entries %}
-                  <ul class="ide-contextList">
+                  <ul class="ide-controlpanel__list">
                     {% for item in section.entries %}
                       <li>
-                        <a class="ide-contextLink {% if item.active %}is-active{% endif %}" href="{{ item.href }}">
+                        <a class="ide-controlpanel__link {% if item.active %}is-active{% endif %}" href="{{ item.href }}">
                           <span>{{ item.label }}</span>
                           {% if item.meta %}<small>{{ item.meta }}</small>{% endif %}
                         </a>
@@ -96,14 +96,14 @@
                     {% endfor %}
                   </ul>
                 {% else %}
-                  <div class="ide-contextEmpty">{% if section.empty_text %}{{ section.empty_text }}{% else %}No entries{% endif %}</div>
+                  <div class="ide-controlpanel__empty">{% if section.empty_text %}{{ section.empty_text }}{% else %}No entries{% endif %}</div>
                 {% endif %}
               </section>
             {% endfor %}
           {% else %}
-            <section class="ide-contextSection">
-              <header class="ide-contextTitle">Control Panel</header>
-              <div class="ide-contextEmpty">No context loaded for this page.</div>
+            <section class="ide-controlpanel__section">
+              <header class="ide-controlpanel__title">Control Panel</header>
+              <div class="ide-controlpanel__empty">No context loaded for this page.</div>
             </section>
           {% endif %}
         {% endblock %}
@@ -111,8 +111,8 @@
 
       <button
         type="button"
-        class="ide-splitter ide-splitter--context"
-        data-splitter="context"
+        class="ide-splitter ide-splitter--controlpanel"
+        data-splitter="control-panel"
         aria-label="Resize control panel"
       ></button>
 

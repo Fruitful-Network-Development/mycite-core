@@ -51,16 +51,40 @@ def _system_state_payload(document: dict[str, Any], selected_row: dict[str, Any]
     file_key = _text(row.get("file_key") or payload.get("file_key") or identity.get("logical_key"))
     filename = _text(row.get("filename") or payload.get("filename") or identity.get("display_name") or file_key)
     row_identifier, row_label = _row_identity(row)
-    focus_kind = "datum" if row else "file"
+    facet_kind = _text(row.get("facet_kind") or row.get("facet") or "")
+    facet_ref = _text(row.get("facet_ref"))
+    if row and facet_kind:
+        focus_kind = "facet"
+    else:
+        focus_kind = "datum" if row else "file"
     active_directive = normalize_shell_verb(shell_verb, default="navigate")
     attention_value = row_identifier if row else filename
     intention_value = active_directive if active_directive else "idle"
     archetype_value = _text(resolved.get("family") or resolved.get("type")) if row else ""
+    if focus_kind == "facet":
+        attention_address = f"facet:{filename}/{row_identifier}/{facet_kind}"
+        if facet_ref:
+            attention_address = f"{attention_address}/{facet_ref}"
+    elif row:
+        attention_address = f"datum:{filename}/{row_identifier}"
+    else:
+        attention_address = f"file:{filename}"
     return {
         "focus_kind": focus_kind,
         "active_file_key": file_key,
         "active_filename": filename,
         "active_directive": active_directive,
+        "directive": active_directive,
+        "attention_address": attention_address,
+        "attention_plane": focus_kind,
+        "subject": {
+            "kind": focus_kind,
+            "file": filename,
+            "datum_id": row_identifier,
+            "datum_label": row_label,
+            "facet_kind": facet_kind,
+            "facet_ref": facet_ref,
+        },
         "selected_datum_id": row_identifier,
         "selected_datum_label": row_label,
         "aitas": {

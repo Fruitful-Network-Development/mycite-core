@@ -109,9 +109,9 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "data_tool.js"
         ).read_text(encoding="utf-8")
         self.assertIn("mycite:shell:selection-input", data_tool)
-        self.assertIn("mycite:shell:workbench-mode", data_tool)
         self.assertIn("mycite:shell:workbench-payload", data_tool)
         self.assertIn("mycite:shell:verb-changed", data_tool)
+        self.assertNotIn("mycite:shell:workbench" + "-mode", data_tool)
 
         removed_assets = [
             repo_root

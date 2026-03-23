@@ -36,8 +36,6 @@ The main drift before this audit fell into three groups:
 
 Some compatibility internals remain intentionally in the runtime:
 
-- `local_resources` and `inheritance` query values
-- `workbench=anthology` and `workbench=resources`
 - direct tool-home routes such as `/portal/tools/agro_erp/home`
 
 These remain for compatibility and lineage only. They are not the current visible `SYSTEM` product model.
@@ -85,12 +83,7 @@ In the current implementation:
 
 ## Compatibility boundary
 
-The following are compatibility entrypoints, not current `SYSTEM` navigation:
-
-- `?tab=local_resources`
-- `?tab=inheritance`
-- `?workbench=anthology`
-- `?workbench=resources`
+Legacy split-view query aliases are no longer part of active SYSTEM routing or visible navigation.
 
 The following APIs remain valid, but should not be mistaken for separate current `SYSTEM` tabs:
 

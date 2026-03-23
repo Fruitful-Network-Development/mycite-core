@@ -29,7 +29,7 @@ Compatibility redirects remain:
 
 `/portal/data/<path:tab_id>` also redirects to `/portal/tools/data_tool/home`.
 
-For `SYSTEM`, older query entrypoints such as `local_resources`, `inheritance`, `workbench=anthology`, and `workbench=resources` may still normalize successfully, but they are compatibility-only and not active navigation surfaces.
+For `SYSTEM`, the older split-view query framing has been removed from active routing. The shell now treats the unified workbench as the only current navigation surface.
 
 Direct tool-home routes such as `/portal/tools/agro_erp/home` also remain reachable as hidden compatibility aliases only. The canonical user-facing launch path for mediated tools is now `SYSTEM` -> `Mediate`.
 
