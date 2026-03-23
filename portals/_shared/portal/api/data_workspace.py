@@ -28,6 +28,7 @@ from _shared.portal.data_engine.inherited_contract_resources import (
 )
 from _shared.portal.data_engine.resource_registry import (
     INHERITED_SCOPE,
+    LOCAL_SCOPE,
     load_index,
 )
 from _shared.portal.data_engine.anthology_registry import load_base_registry

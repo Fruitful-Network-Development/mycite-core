@@ -88,6 +88,7 @@ from _shared.portal.services.request_log_ui import (
     network_placeholder_item as shared_network_placeholder_item,
 )
 from _shared.portal.services.control_panel import build_control_panel_sections
+from _shared.portal.services.runtime_mode import build_session_presentation, env_flag, install_read_only_guard
 from _shared.portal.services.shell_context import build_shell_context
 from _shared.portal.data_engine.external_resources import ExternalResourceResolver
 from _shared.portal.sandbox.resource_workbench import build_system_resource_workbench_view_model
@@ -120,6 +121,8 @@ SHARED_SHELL_TEMPLATE_DIR = canonical_shell_template_dir(REPO_ROOT)
 SHARED_SHELL_STATIC_DIR = canonical_shell_static_dir(REPO_ROOT)
 PORTAL_INSTANCE_ID = str(os.environ.get("PORTAL_INSTANCE_ID") or BASE_DIR.name).strip().lower()
 PORTAL_RUNTIME_FLAVOR = str(os.environ.get("PORTAL_RUNTIME_FLAVOR") or PORTAL_INSTANCE_ID or BASE_DIR.name).strip().lower()
+AUTH_MODE = str(os.environ.get("AUTH_MODE") or "keycloak").strip().lower() or "keycloak"
+PORTAL_READ_ONLY = env_flag("PORTAL_READ_ONLY", default=False)
 IS_TFF_PORTAL = PORTAL_RUNTIME_FLAVOR == "tff" or "tff" in PORTAL_RUNTIME_FLAVOR
 PORTAL_ENTRY_PATH = (
     str(os.environ.get("PORTAL_ENTRY_PATH") or ("/portal/tff" if IS_TFF_PORTAL else "/portal/fnd")).strip()
@@ -169,6 +172,7 @@ app.jinja_loader = ChoiceLoader(
     ]
 )
 app.static_folder = str(SHARED_SHELL_STATIC_DIR)
+install_read_only_guard(app, enabled=PORTAL_READ_ONLY)
 
 # Ensure canonical resource workbench files exist on startup (anthology/txa/msn).
 try:
@@ -1079,6 +1083,11 @@ def _shell_context() -> Dict[str, Any]:
         or request.headers.get("X-Portal-User")
         or ""
     ).strip()
+    session_presentation = build_session_presentation(
+        auth_mode=AUTH_MODE,
+        active_portal_username=active_portal_username,
+        read_only=PORTAL_READ_ONLY,
+    )
     current_path = request.full_path if request.query_string else request.path
     if current_path.endswith("?"):
         current_path = current_path[:-1]
@@ -1092,7 +1101,7 @@ def _shell_context() -> Dict[str, Any]:
     switch_portal_url = str(os.environ.get("PORTAL_SWITCH_URL") or "/oauth2/sign_in?rd=%2Fportal%2Fsystem").strip()
     if not switch_portal_url:
         switch_portal_url = "/oauth2/sign_in?rd=%2Fportal%2Fsystem"
-    return build_shell_context(
+    context = build_shell_context(
         active_service=active_service,
         active_service_tab=active_service_tab,
         active_tool=active_tool,
@@ -1101,12 +1110,14 @@ def _shell_context() -> Dict[str, Any]:
         network_tabs=build_network_tabs(active_service_tab),
         sidebar_progeny=sidebar_progeny,
         portal_name=portal_name,
-        active_portal_username=active_portal_username,
+        active_portal_username=str(session_presentation.get("active_portal_username") or ""),
         sign_out_url=sign_out_url,
         switch_portal_url=switch_portal_url,
         current_path=current_path,
         control_panel_sections=_control_panel_sections(active_service),
     )
+    context.update(session_presentation)
+    return context
 
 
 @app.get("/portal/static/icons/<path:relpath>")
