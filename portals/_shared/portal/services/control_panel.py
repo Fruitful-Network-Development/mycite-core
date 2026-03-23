@@ -28,11 +28,13 @@ def build_control_panel_sections(
     if active_tool_meta:
         display_name = str(active_tool_meta.get("display_name") or active_tool_meta.get("tool_id") or token).strip() or token
         home_path = str(active_tool_meta.get("home_path") or "").strip() or f"/portal/tools/{token}/home"
+        route_meta = "compatibility alias"
         return [
             {
-                "title": "Tool",
+                "title": "Tool Alias",
                 "entries": [
-                    {"label": f"Using {display_name}", "href": home_path, "active": True, "meta": "tool home"},
+                    {"label": f"{display_name} route alias", "href": home_path, "active": True, "meta": route_meta},
+                    {"label": "Open in SYSTEM", "href": "/portal/system", "active": False, "meta": "canonical mediation host"},
                     {"label": "Configure tools", "href": "/portal/utilities?tab=tools", "active": False, "meta": "Utilities"},
                 ],
                 "empty_text": "",

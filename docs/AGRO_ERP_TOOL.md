@@ -2,7 +2,9 @@
 
 ## Purpose
 
-AGRO-ERP is an optional portal tool that acts as an **agricultural data workbench** for the TFF portal. It provides a single entry point for property geometry, taxonomy, product types, and related data, using the portal’s anthology and (when applicable) inherited or public datum sources.
+AGRO-ERP is an optional mediated workspace for the TFF portal. In the current shell contract it is launched canonically through `SYSTEM` -> `Mediate`, where it consumes the active file or datum context from the unified `SYSTEM` workbench.
+
+It acts as an agricultural data workspace for property geometry, taxonomy, product types, and related data, using config bindings, inherited resources, sandbox staging, and minimal local anthology commit.
 
 The tool’s full API contract is **not** finalized; it will evolve as the shared foundation (datum identity, public resolver, contract compact-array model) stabilizes and as more capabilities are added.
 
@@ -29,7 +31,7 @@ Tool-spec inputs/outputs and capability buckets are described in the tool spec (
 
 ## Routes
 
-- `GET /portal/tools/agro_erp/home`
+- `GET /portal/tools/agro_erp/home` - hidden compatibility alias; `SYSTEM` -> `Mediate` is the canonical user-facing launch path
 - `GET /portal/tools/agro_erp/model.json`
 - `GET /portal/tools/agro_erp/capabilities.json`
 - `GET /portal/tools/agro_erp/resources` (thin delegate to canonical data API)
@@ -92,11 +94,12 @@ AGRO-ERP then applies only shared write-pipeline-approved writes through canonic
 
 The MVP operator loop is:
 
-1. select/load inherited txa resource
-2. inspect resource summary in `Resource` tab
-3. preview/apply inherited product-profile write
-4. preview/apply inherited invoice-log write
-5. read back both tabs from shared-core readback view model
+1. enter `SYSTEM` and select the active file or datum
+2. switch to `Mediate` and open AGRO-ERP from the compatible mediations list
+3. select/load inherited txa resource
+4. preview/apply inherited product-profile write
+5. preview/apply inherited invoice-log write
+6. read back both outputs from the shared-core readback view model
 
 MVP read/write boundaries:
 
@@ -107,19 +110,21 @@ MVP read/write boundaries:
 
 ## Workspace tabs (current)
 
-AGRO-ERP now exposes four tabs:
+Inside the mediation workspace, AGRO-ERP currently exposes four major views:
 
 1. `Plan`
 2. `Inventory`
 3. `Products`
 4. `Taxonomy`
 
-Tab boundaries:
+View boundaries:
 
 - `Plan`: reads `config.property` and resolves geometry through shared-core `property_workspace` logic against anthology rows; supports draft grid/plot planning only.
 - `Inventory`: continues inherited invoice/supply-log preview/apply/readback workflow.
 - `Products`: continues inherited product-profile preview/apply/readback workflow.
 - `Taxonomy`: exposes inherited TXA/SAMRAS resource context view.
+
+These views are mediation modes inside the shared `SYSTEM` workspace. They are not a separate top-level shell contract.
 
 ## Plan tab geometry + draft policy
 

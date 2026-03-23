@@ -31,6 +31,8 @@ Compatibility redirects remain:
 
 For `SYSTEM`, older query entrypoints such as `local_resources`, `inheritance`, `workbench=anthology`, and `workbench=resources` may still normalize successfully, but they are compatibility-only and not active navigation surfaces.
 
+Direct tool-home routes such as `/portal/tools/agro_erp/home` also remain reachable as hidden compatibility aliases only. The canonical user-facing launch path for mediated tools is now `SYSTEM` -> `Mediate`.
+
 ## Activity bar
 
 Primary service entries are:
@@ -39,13 +41,14 @@ Primary service entries are:
 - `NETWORK`
 - `UTILITIES`
 
-FND adds compact activity-bar shortcuts for its enabled organization tools. Those shortcuts are derived from the materialized tool state, not from hard-coded shell forks.
+Optional tools must not reintroduce separate activity-bar application entries. The visible activity bar is reserved for the three primary services above.
 
 ## Use vs configure
 
-- **Activity bar tool entries** (icons below SYSTEM / NETWORK / UTILITIES): each links to the tool’s **home** (`home_path`, e.g. `/portal/tools/agro_erp/home`). Purpose: **use** the tool (e.g. view AGRO ERP taxonomy, run tool features). The shell treats the current context as that tool (tool highlighted in activity bar, tool-use sidebar).
-- **Utilities → Tools tab**: purpose is **configure / manage** tools (which tools are enabled, mount targets, etc.). Not the place to “run” a tool; use the activity bar to open the tool home.
+- **`SYSTEM` -> `Mediate`**: canonical place to discover and open compatible mediated tools for the current file or datum context.
+- **Utilities -> Tools tab**: configure and manage tools (which tools are enabled, mount targets, etc.). It is not the canonical place to run a tool workflow.
 - **`/portal/tools`** (no tool id): redirects to `/portal/utilities?tab=tools` (configuration).
+- **`/portal/tools/<tool>/home`**: compatibility alias for direct access only. Do not frame this as the current shell model in docs or navigation.
 
 ## Tool runtime contract
 
@@ -67,6 +70,7 @@ Rules:
 
 - `data_tool` is a core SYSTEM surface, not an optional packaged tool
 - the current `SYSTEM` contract is one unified workbench over `anthology.json`, `samras-txa.json`, and `samras-msn.json`
+- mediated tools launch through the shared `SYSTEM` Mediate flow instead of defining alternate shell chrome
 - missing `enabled_tools` in a real config means no optional tools are enabled
 - package auto-discovery is only a fallback when no portal config exists
 

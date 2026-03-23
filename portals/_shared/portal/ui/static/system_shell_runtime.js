@@ -9,6 +9,10 @@
     return Array.prototype.slice.call((root || document).querySelectorAll(selector));
   }
 
+  function text(value) {
+    return String(value == null ? "" : value).trim();
+  }
+
   function esc(value) {
     return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -43,14 +47,66 @@
     });
   }
 
+  function emitShellEvent(name, detail) {
+    try {
+      document.dispatchEvent(new CustomEvent(name, { detail: detail || {} }));
+    } catch (_) {
+      /* noop */
+    }
+  }
+
+  function normalizeModeId(value) {
+    return text(value).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  }
+
+  function titleCase(value) {
+    return text(value)
+      .split(/[_\-\s]+/)
+      .filter(Boolean)
+      .map(function (token) {
+        return token.charAt(0).toUpperCase() + token.slice(1);
+      })
+      .join(" ");
+  }
+
+  function routePrefixForTool(tool) {
+    var prefix = text(tool && tool.route_prefix);
+    if (prefix) return prefix;
+    var homePath = text(tool && tool.home_path);
+    if (homePath && /\/home$/.test(homePath)) {
+      return homePath.replace(/\/home$/, "");
+    }
+    var toolId = text(tool && tool.tool_id);
+    return toolId ? ("/portal/tools/" + toolId) : "";
+  }
+
+  function toolContribution(tool) {
+    return tool && typeof tool.workbench_contribution === "object" ? tool.workbench_contribution : {};
+  }
+
+  function toolInspectorContribution(tool) {
+    return tool && typeof tool.inspector_card_contribution === "object" ? tool.inspector_card_contribution : {};
+  }
+
+  function toolMutationPolicy(tool) {
+    return tool && typeof tool.mutation_policy === "object" ? tool.mutation_policy : {};
+  }
+
+  function toolPreviewHooks(tool) {
+    return tool && typeof tool.preview_hooks === "object" ? tool.preview_hooks : {};
+  }
+
+  function toolApplyHooks(tool) {
+    return tool && typeof tool.apply_hooks === "object" ? tool.apply_hooks : {};
+  }
+
   var systemWorkspace = qs(".system-center-workspace");
-  if (!systemWorkspace || String(systemWorkspace.getAttribute("data-system-tab") || "").trim() !== "workbench") {
+  if (!systemWorkspace || text(systemWorkspace.getAttribute("data-system-tab")) !== "workbench") {
     return;
   }
 
   var els = {
     selectionSummary: qs("#systemSelectionSummary"),
-    sourceScopeSummary: qs("#systemSourceScopeSummary"),
     compatibleTools: qs("#systemCompatibleTools"),
     inspectorCardsRoot: qs("#systemShellInspectorCards"),
     inspectorCardsMount: qs("#systemInspectorCardsMount"),
@@ -61,36 +117,76 @@
     mediationMeta: qs("#systemMediationMeta"),
     mediationModes: qs("#systemMediationModes"),
     mediationBody: qs("#systemMediationBody"),
-    agroOpenBtn: qs("#systemAgroOpenBtn"),
     mediationCloseBtn: qs("#systemMediationCloseBtn")
   };
 
   var state = {
     selectedContext: null,
     lastSelectionInput: null,
-    agroConfigContext: null,
     activeVerb: "navigate",
-    workbenchMode: String(systemWorkspace.getAttribute("data-system-workbench-mode") || "system").trim().toLowerCase() || "system",
+    workbenchMode: normalizeModeId(systemWorkspace.getAttribute("data-system-workbench-mode") || "system") || "system",
     activeToolId: "",
-    activeMediationMode: "overview",
-    agroModel: null,
-    agroSessionId: "",
-    agroLastPreview: null,
-    agroLastApply: null,
-    agroReadback: null
+    activeMediationMode: "",
+    toolContexts: {},
+    providerState: {}
   };
 
   function selectionHint() {
-    return String(systemWorkspace.getAttribute("data-system-empty-selection") || "").trim() || "Select a file or datum to activate the SYSTEM workbench.";
+    return text(systemWorkspace.getAttribute("data-system-empty-selection")) || "Select a file or datum to activate the SYSTEM workbench.";
   }
 
-  function sourceScopeHint() {
-    return String(systemWorkspace.getAttribute("data-system-empty-source-scope") || "").trim() || "Source and scope details appear here.";
+  function activeCompatibleTools() {
+    return state.selectedContext && Array.isArray(state.selectedContext.compatible_tools)
+      ? state.selectedContext.compatible_tools.slice()
+      : [];
+  }
+
+  function findCompatibleTool(toolId) {
+    var token = text(toolId).toLowerCase();
+    if (!token) return null;
+    var tools = activeCompatibleTools();
+    for (var i = 0; i < tools.length; i += 1) {
+      var tool = tools[i];
+      if (text(tool && tool.tool_id).toLowerCase() === token) {
+        return tool;
+      }
+    }
+    return null;
+  }
+
+  function activeTool() {
+    return findCompatibleTool(state.activeToolId);
+  }
+
+  function toolContext(toolId) {
+    return state.toolContexts[text(toolId).toLowerCase()] || null;
+  }
+
+  function providerStateFor(toolId) {
+    var token = text(toolId).toLowerCase();
+    if (!token) return {};
+    if (!state.providerState[token] || typeof state.providerState[token] !== "object") {
+      state.providerState[token] = {};
+    }
+    return state.providerState[token];
+  }
+
+  function activeToolProvider() {
+    var tool = activeTool();
+    if (!tool) return genericMediationProvider;
+    return mediationProviders[text(tool.tool_id).toLowerCase()] || genericMediationProvider;
+  }
+
+  function reconcileActiveTool() {
+    if (state.activeToolId && !findCompatibleTool(state.activeToolId)) {
+      state.activeToolId = "";
+      state.activeMediationMode = "";
+    }
   }
 
   function setActiveVerbButtons() {
     qsa("[data-shell-verb]").forEach(function (btn) {
-      var token = String(btn.getAttribute("data-shell-verb") || "").trim();
+      var token = text(btn.getAttribute("data-shell-verb"));
       btn.classList.toggle("is-active", token === state.activeVerb);
     });
   }
@@ -102,14 +198,10 @@
       els.selectionSummary.className = "ide-contextEmpty";
       els.selectionSummary.textContent = selectionHint();
       if (els.resourcesInspectorEmpty) els.resourcesInspectorEmpty.hidden = false;
-      if (els.sourceScopeSummary) {
-        els.sourceScopeSummary.textContent = sourceScopeHint();
-      }
       return;
     }
     var selection = ctx.selection || {};
     var family = ctx.family || {};
-    var scope = ctx.scope || {};
     var resolved = ctx.resolved_archetype || {};
     els.selectionSummary.className = "data-tool__resourcesDatumCard";
     if (els.resourcesInspectorEmpty) els.resourcesInspectorEmpty.hidden = true;
@@ -117,26 +209,17 @@
       "<div><strong>Selected</strong><br/><code>" + esc(selection.selected_ref_or_document_id || "") + "</code></div>" +
       "<div><strong>Label</strong><br/><span>" + esc(selection.display_name || "") + "</span></div>" +
       "<div><strong>Archetype</strong><br/><span>" + esc(resolved.family || family.kind || "datum") + "</span></div>";
-    if (els.sourceScopeSummary) {
-      els.sourceScopeSummary.innerHTML =
-        "<strong>Source</strong> " + esc(((ctx.provenance || {}).source_adapter) || "unknown") +
-        " · <strong>Scope</strong> " + esc(scope.kind || "unknown") +
-        " · <strong>Family</strong> " + esc(family.type || family.kind || "resource");
-    }
   }
 
   function renderCompatibleTools() {
     if (!els.compatibleTools) return;
     els.compatibleTools.innerHTML = "";
-    var tools = [];
-    if (state.selectedContext && Array.isArray(state.selectedContext.compatible_tools)) {
-      tools = state.selectedContext.compatible_tools.slice();
-    }
-    if ((!tools.length) && state.agroConfigContext && Array.isArray(state.agroConfigContext.compatible_tools)) {
-      tools = state.agroConfigContext.compatible_tools.slice();
-    }
+    var tools = activeCompatibleTools();
     if (!tools.length) {
-      els.compatibleTools.innerHTML = '<div class="ide-contextEmpty">No compatible mediations for the current context.</div>';
+      var emptyMessage = state.activeVerb === "mediate"
+        ? "No compatible mediations for the current context."
+        : "Open Mediate to browse compatible tools for the current context.";
+      els.compatibleTools.innerHTML = '<div class="ide-contextEmpty">' + esc(emptyMessage) + "</div>";
       return;
     }
     var list = document.createElement("div");
@@ -144,14 +227,14 @@
     tools.forEach(function (tool) {
       var button = document.createElement("button");
       button.type = "button";
-      button.className = "ide-contextLink" + (String(tool.tool_id || "") === state.activeToolId ? " is-active" : "");
-      button.setAttribute("data-shell-tool-id", String(tool.tool_id || ""));
-      var contribution = tool.workbench_contribution && typeof tool.workbench_contribution === "object" ? tool.workbench_contribution : {};
+      button.className = "ide-contextLink" + (text(tool.tool_id) === state.activeToolId ? " is-active" : "");
+      button.setAttribute("data-shell-tool-id", text(tool.tool_id));
+      var contribution = toolContribution(tool);
       button.innerHTML =
         "<span>" + esc(tool.label || tool.tool_id || "tool") + "</span>" +
         "<small>" + esc(contribution.label || contribution.workspace_id || "mediation workspace") + "</small>";
       button.addEventListener("click", function () {
-        openTool(String(tool.tool_id || "").trim());
+        openTool(text(tool.tool_id));
       });
       list.appendChild(button);
     });
@@ -164,8 +247,10 @@
     if (state.selectedContext && Array.isArray(state.selectedContext.inspector_cards)) {
       cards = cards.concat(state.selectedContext.inspector_cards);
     }
-    if (state.agroConfigContext && Array.isArray(state.agroConfigContext.inspector_cards)) {
-      cards = cards.concat(state.agroConfigContext.inspector_cards);
+    var tool = activeTool();
+    var toolCtx = tool ? toolContext(tool.tool_id) : null;
+    if (toolCtx && Array.isArray(toolCtx.inspector_cards)) {
+      cards = cards.concat(toolCtx.inspector_cards);
     }
     els.inspectorCardsMount.innerHTML = "";
     els.inspectorCardsRoot.hidden = cards.length === 0;
@@ -184,30 +269,96 @@
     });
   }
 
-  function renderMediationModes() {
+  function ensureToolContext(tool, force) {
+    var token = text(tool && tool.tool_id).toLowerCase();
+    if (!token) return Promise.resolve({});
+    if (state.toolContexts[token] && !force) {
+      return Promise.resolve(state.toolContexts[token]);
+    }
+    var inspector = toolInspectorContribution(tool);
+    var contribution = toolContribution(tool);
+    var route = text(inspector.config_context_route || contribution.activation_route);
+    if (!route) {
+      state.toolContexts[token] = {};
+      return Promise.resolve(state.toolContexts[token]);
+    }
+    return api(route).then(function (payload) {
+      state.toolContexts[token] = payload || {};
+      renderAll();
+      return state.toolContexts[token];
+    });
+  }
+
+  function renderMediationModes(tool, provider) {
     if (!els.mediationModes) return;
     els.mediationModes.innerHTML = "";
-    var modes = [
-      ["overview", "Overview"],
-      ["taxonomy", "Taxonomy browse/select"],
-      ["supplier", "Supplier browse/select"],
-      ["product", "Product profile compose"],
-      ["invoice", "Supply log compose"],
-      ["preview", "Preview/apply"]
-    ];
+    var modes = provider.modes(tool);
+    var allowedIds = modes.map(function (entry) { return entry.id; });
+    if (!allowedIds.length) {
+      modes = [{ id: "overview", label: "Overview" }];
+      allowedIds = ["overview"];
+    }
+    if (allowedIds.indexOf(state.activeMediationMode) === -1) {
+      state.activeMediationMode = provider.defaultMode(tool);
+      if (allowedIds.indexOf(state.activeMediationMode) === -1) {
+        state.activeMediationMode = allowedIds[0];
+      }
+    }
     modes.forEach(function (entry) {
-      var id = entry[0];
-      var label = entry[1];
       var btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "data-tool__actionBtn" + (state.activeMediationMode === id ? " is-active" : "");
-      btn.textContent = label;
+      btn.className = "data-tool__actionBtn" + (state.activeMediationMode === entry.id ? " is-active" : "");
+      btn.textContent = entry.label;
       btn.addEventListener("click", function () {
-        state.activeMediationMode = id;
+        state.activeMediationMode = entry.id;
         renderMediationWorkspaceBody();
-        renderMediationModes();
       });
       els.mediationModes.appendChild(btn);
+    });
+  }
+
+  function renderMediationWorkspaceBody() {
+    if (!els.mediationBody || !els.mediationWorkbench) return;
+    var tool = activeTool();
+    if (state.activeVerb !== "mediate" || !tool) {
+      els.mediationWorkbench.hidden = true;
+      if (els.mediationCloseBtn) els.mediationCloseBtn.hidden = true;
+      return;
+    }
+    var provider = activeToolProvider();
+    els.mediationWorkbench.hidden = false;
+    if (els.mediationCloseBtn) els.mediationCloseBtn.hidden = false;
+    if (els.mediationTitle) els.mediationTitle.textContent = provider.title(tool);
+    if (els.mediationKicker) els.mediationKicker.textContent = provider.kicker(tool);
+    if (els.mediationMeta) els.mediationMeta.textContent = provider.meta(tool);
+    renderMediationModes(tool, provider);
+    els.mediationBody.innerHTML = provider.render(tool, state.activeMediationMode);
+    if (typeof provider.bind === "function") {
+      provider.bind(tool);
+    }
+  }
+
+  function renderAll() {
+    reconcileActiveTool();
+    setActiveVerbButtons();
+    renderSelectionSummary();
+    renderCompatibleTools();
+    renderInspectorCards();
+    renderMediationWorkspaceBody();
+  }
+
+  function openTool(toolId) {
+    var tool = findCompatibleTool(toolId);
+    if (!tool) return;
+    state.activeToolId = text(tool.tool_id);
+    state.activeMediationMode = activeToolProvider().defaultMode(tool);
+    renderAll();
+    activeToolProvider().ensureReady(tool, false).catch(function (err) {
+      if (els.mediationMeta) {
+        els.mediationMeta.textContent = err && err.message ? err.message : "Mediation workspace could not open.";
+      }
+    }).finally(function () {
+      renderAll();
     });
   }
 
@@ -215,8 +366,8 @@
     if (!node || typeof node !== "object" || depth > 4) {
       return "";
     }
-    var label = String(node.label || node.identifier || node.title || "").trim();
-    var identifier = String(node.identifier || "").trim();
+    var label = text(node.label || node.identifier || node.title);
+    var identifier = text(node.identifier);
     var children = Array.isArray(node.children) ? node.children : [];
     var html = "<li><strong>" + esc(label || identifier || "node") + "</strong>";
     if (identifier) {
@@ -233,19 +384,127 @@
     return html;
   }
 
-  function renderAgroOverview() {
-    var ctx = state.agroConfigContext || {};
+  var genericMediationProvider = {
+    defaultMode: function (tool) {
+      var contribution = toolContribution(tool);
+      return normalizeModeId(contribution.default_mode || "overview") || "overview";
+    },
+    modes: function (tool) {
+      var contribution = toolContribution(tool);
+      var seen = { overview: true };
+      var out = [{ id: "overview", label: "Overview" }];
+      var rawModes = Array.isArray(contribution.modes) ? contribution.modes : [];
+      rawModes.forEach(function (mode) {
+        var id = normalizeModeId(mode);
+        if (!id || seen[id]) return;
+        seen[id] = true;
+        out.push({ id: id, label: titleCase(mode) });
+      });
+      return out;
+    },
+    title: function (tool) {
+      return text(tool && (tool.label || tool.tool_id)) || "Compatible mediation";
+    },
+    kicker: function (tool) {
+      var contribution = toolContribution(tool);
+      return text(contribution.label || contribution.workspace_id) || "Compatible mediation workspace";
+    },
+    meta: function (tool) {
+      var contribution = toolContribution(tool);
+      var sourceCount = Array.isArray(tool && tool.supported_source_contracts) ? tool.supported_source_contracts.length : 0;
+      return [
+        "Workspace: " + (text(contribution.workspace_id) || "shared"),
+        "Sources: " + String(sourceCount),
+        "Verbs: " + (Array.isArray(tool && tool.supported_verbs) ? tool.supported_verbs.join(", ") : "mediate")
+      ].join(" · ");
+    },
+    ensureReady: function (tool, force) {
+      return ensureToolContext(tool, force);
+    },
+    render: function (tool, mode) {
+      var contribution = toolContribution(tool);
+      var config = toolContext(tool.tool_id) || {};
+      var mutationPolicy = toolMutationPolicy(tool);
+      return (
+        "<p><strong>Mode:</strong> " + esc(titleCase(mode || "overview")) + "</p>" +
+        "<p><strong>Launch path:</strong> SYSTEM Mediate is the canonical entry; direct tool-home routes remain compatibility aliases.</p>" +
+        '<details class="data-tool__advanced" open><summary>Contribution</summary><pre class="jsonblock">' +
+        esc(JSON.stringify(contribution, null, 2)) +
+        "</pre></details>" +
+        '<details class="data-tool__advanced"><summary>Mutation policy</summary><pre class="jsonblock">' +
+        esc(JSON.stringify(mutationPolicy, null, 2)) +
+        "</pre></details>" +
+        '<details class="data-tool__advanced"><summary>Config context</summary><pre class="jsonblock">' +
+        esc(JSON.stringify(config, null, 2)) +
+        "</pre></details>"
+      );
+    },
+    bind: function () {
+      return;
+    }
+  };
+
+  function agroModeId(value) {
+    var token = normalizeModeId(value);
+    if (token === "taxonomy_browse") return "taxonomy";
+    if (token === "supplier_browse") return "supplier";
+    if (token === "product_profile_compose") return "product";
+    if (token === "supply_log_compose") return "invoice";
+    if (token === "preview_apply") return "preview";
+    return token || "overview";
+  }
+
+  function agroState(tool) {
+    return providerStateFor(tool && tool.tool_id);
+  }
+
+  function ensureAgroModel(tool, force) {
+    var bucket = agroState(tool);
+    if (bucket.model && !force) {
+      return Promise.resolve(bucket.model);
+    }
+    return api(routePrefixForTool(tool) + "/model.json").then(function (payload) {
+      bucket.model = payload || {};
+      return bucket.model;
+    });
+  }
+
+  function ensureAgroSession(tool, force) {
+    var bucket = agroState(tool);
+    return ensureToolContext(tool, force).then(function (configContext) {
+      var activation = configContext && typeof configContext.activation === "object" ? configContext.activation : {};
+      var requestPayload = activation.request_payload && typeof activation.request_payload === "object" ? activation.request_payload : {};
+      if (!activation.can_open || !Object.keys(requestPayload).length) {
+        bucket.lastError = "AGRO ERP has no resolved browse source in config-context.";
+        return { ok: false, error: bucket.lastError };
+      }
+      if (bucket.sessionId && !force) {
+        bucket.lastError = "";
+        return { ok: true, sandbox_session_id: bucket.sessionId };
+      }
+      return api(routePrefixForTool(tool) + "/mvp/resource/select_or_load", "POST", requestPayload).then(function (payload) {
+        bucket.sessionId = text(payload && payload.sandbox_session_id);
+        bucket.readback = payload || {};
+        bucket.lastError = "";
+        return payload || {};
+      });
+    });
+  }
+
+  function renderAgroOverview(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var mutationPolicy = toolMutationPolicy(tool);
     return (
-      "<p><strong>Binding truth:</strong> " + esc(ctx.binding_truth || "config") + "</p>" +
-      "<p><strong>Browse truth:</strong> " + esc(ctx.browse_truth || "inherited_resources") + "</p>" +
-      "<p><strong>Staging truth:</strong> " + esc(ctx.staging_truth || "sandbox_reduced") + "</p>" +
-      "<p><strong>Commit truth:</strong> " + esc(ctx.commit_truth || "anthology_semantic_minimum") + "</p>" +
+      "<p><strong>Binding truth:</strong> " + esc(ctx.binding_truth || mutationPolicy.binding_truth || "config") + "</p>" +
+      "<p><strong>Browse truth:</strong> " + esc(ctx.browse_truth || mutationPolicy.browse_truth || "inherited_resources") + "</p>" +
+      "<p><strong>Staging truth:</strong> " + esc(ctx.staging_truth || mutationPolicy.sandbox_truth || "reduced_local_staging") + "</p>" +
+      "<p><strong>Commit truth:</strong> " + esc(ctx.commit_truth || mutationPolicy.anthology_truth || "semantic_minimum_commit") + "</p>" +
       '<pre class="jsonblock">' + esc(JSON.stringify(ctx.resource_role_bindings || {}, null, 2)) + "</pre>"
     );
   }
 
-  function renderAgroTaxonomy() {
-    var model = state.agroModel || {};
+  function renderAgroTaxonomy(tool) {
+    var model = agroState(tool).model || {};
     var taxonomy = model.taxonomy && typeof model.taxonomy === "object" ? model.taxonomy : {};
     var tree = taxonomy.tree && typeof taxonomy.tree === "object" ? taxonomy.tree : {};
     var treeHtml = renderTaxonomyTree(tree, 0);
@@ -256,165 +515,67 @@
     );
   }
 
-  function renderAgroSupplierBrowse() {
-    var ctx = state.agroConfigContext || {};
+  function renderAgroSupplierBrowse(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
     var roles = ctx.resource_role_bindings && typeof ctx.resource_role_bindings === "object" ? ctx.resource_role_bindings : {};
     return (
-      "<p>This mode uses inherited resources directly for browse/lookup where available and falls back to local bindings only when necessary.</p>" +
+      "<p>This mode uses inherited resources directly for browse and lookup where available, then stages only reduced local abstractions before minimal anthology commit.</p>" +
       '<pre class="jsonblock">' + esc(JSON.stringify(roles, null, 2)) + "</pre>"
     );
   }
 
-  function renderAgroCompose(kind) {
+  function renderAgroCompose(tool, kind) {
     var label = kind === "product" ? "Product profile" : "Supply log";
     var previewKey = kind === "product" ? "product_profile" : "supply_log";
+    var bucket = agroState(tool);
     var actionButtons =
       '<div class="data-tool__controlRow data-tool__controlRow--wrap">' +
       '<button type="button" data-agro-action="preview" data-agro-kind="' + esc(kind) + '">Preview</button>' +
       '<button type="button" data-agro-action="apply" data-agro-kind="' + esc(kind) + '">Apply</button>' +
       "</div>";
-    var previewState = state.agroLastPreview && state.agroLastPreview.kind === previewKey ? state.agroLastPreview.payload : {};
-    var applyState = state.agroLastApply && state.agroLastApply.kind === previewKey ? state.agroLastApply.payload : {};
+    var previewState = bucket.lastPreview && bucket.lastPreview.kind === previewKey ? bucket.lastPreview.payload : {};
+    var applyState = bucket.lastApply && bucket.lastApply.kind === previewKey ? bucket.lastApply.payload : {};
     return (
-      "<p><strong>" + esc(label) + "</strong> uses reduced staging semantics. Inherited resources remain browse truth, and only minimal refs are committed.</p>" +
+      "<p><strong>" + esc(label) + "</strong> stays config-bound and mediation-scoped. Inherited resources remain browse truth, sandbox carries reduced staging, and anthology receives only the semantic minimum commit.</p>" +
       actionButtons +
       '<details class="data-tool__advanced" open><summary>Latest preview</summary><pre class="jsonblock">' + esc(JSON.stringify(previewState || {}, null, 2)) + "</pre></details>" +
       '<details class="data-tool__advanced"><summary>Latest apply</summary><pre class="jsonblock">' + esc(JSON.stringify(applyState || {}, null, 2)) + "</pre></details>"
     );
   }
 
-  function renderAgroPreviewSummary() {
+  function renderAgroPreviewSummary(tool) {
     return (
       '<details class="data-tool__advanced" open><summary>Readback</summary><pre class="jsonblock">' +
-      esc(JSON.stringify(state.agroReadback || {}, null, 2)) +
+      esc(JSON.stringify(agroState(tool).readback || {}, null, 2)) +
       "</pre></details>"
     );
   }
 
-  function bindAgroActions() {
-    qsa("[data-agro-action]", els.mediationBody).forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var kind = String(btn.getAttribute("data-agro-kind") || "").trim();
-        var action = String(btn.getAttribute("data-agro-action") || "").trim();
-        if (!kind || !action) return;
-        runAgroAction(kind, action).catch(function (err) {
-          if (els.mediationMeta) {
-            els.mediationMeta.textContent = err && err.message ? err.message : "AGRO ERP action failed.";
-          }
-        });
-      });
-    });
-  }
-
-  function renderMediationWorkspaceBody() {
-    if (!els.mediationBody || !els.mediationWorkbench) return;
-    if (state.activeToolId !== "agro_erp") {
-      els.mediationWorkbench.hidden = true;
-      if (els.mediationCloseBtn) els.mediationCloseBtn.hidden = true;
-      return;
-    }
-    els.mediationWorkbench.hidden = false;
-    if (els.mediationCloseBtn) els.mediationCloseBtn.hidden = false;
-    if (els.mediationTitle) els.mediationTitle.textContent = "AGRO ERP";
-    if (els.mediationKicker) els.mediationKicker.textContent = "Canonical mediation workspace";
-    if (els.mediationMeta) {
-      var activation = state.agroConfigContext && state.agroConfigContext.activation && typeof state.agroConfigContext.activation === "object"
-        ? state.agroConfigContext.activation
-        : {};
-      els.mediationMeta.textContent =
-        "Session: " + (state.agroSessionId || "(not opened)") +
-        " · can_open=" + String(!!activation.can_open);
-    }
-    renderMediationModes();
-    if (state.activeMediationMode === "taxonomy") {
-      els.mediationBody.innerHTML = renderAgroTaxonomy();
-    } else if (state.activeMediationMode === "supplier") {
-      els.mediationBody.innerHTML = renderAgroSupplierBrowse();
-    } else if (state.activeMediationMode === "product") {
-      els.mediationBody.innerHTML = renderAgroCompose("product");
-    } else if (state.activeMediationMode === "invoice") {
-      els.mediationBody.innerHTML = renderAgroCompose("invoice");
-    } else if (state.activeMediationMode === "preview") {
-      els.mediationBody.innerHTML = renderAgroPreviewSummary();
-    } else {
-      els.mediationBody.innerHTML = renderAgroOverview();
-    }
-    bindAgroActions();
-  }
-
-  function renderAll() {
-    setActiveVerbButtons();
-    renderSelectionSummary();
-    renderCompatibleTools();
-    renderInspectorCards();
-    renderMediationWorkspaceBody();
-  }
-
-  function ensureAgroConfigContext(force) {
-    if (state.agroConfigContext && !force) {
-      return Promise.resolve(state.agroConfigContext);
-    }
-    return api("/portal/api/data/system/config_context/agro_erp").then(function (payload) {
-      state.agroConfigContext = payload || {};
-      renderAll();
-      return state.agroConfigContext;
-    });
-  }
-
-  function ensureAgroModel(force) {
-    if (state.agroModel && !force) {
-      return Promise.resolve(state.agroModel);
-    }
-    return api("/portal/tools/agro_erp/model.json").then(function (payload) {
-      state.agroModel = payload || {};
-      return state.agroModel;
-    });
-  }
-
-  function ensureAgroSession(force) {
-    return ensureAgroConfigContext(force).then(function (configContext) {
-      var activation = configContext && configContext.activation && typeof configContext.activation === "object" ? configContext.activation : {};
-      var requestPayload = activation.request_payload && typeof activation.request_payload === "object" ? activation.request_payload : {};
-      if (!activation.can_open || !Object.keys(requestPayload).length) {
-        return { ok: false, error: "AGRO ERP has no resolved browse source in config-context." };
-      }
-      if (state.agroSessionId && !force) {
-        return { ok: true, sandbox_session_id: state.agroSessionId };
-      }
-      return api("/portal/tools/agro_erp/mvp/resource/select_or_load", "POST", requestPayload).then(function (payload) {
-        state.agroSessionId = String((payload && payload.sandbox_session_id) || "").trim();
-        state.agroReadback = payload || {};
-        return payload || {};
-      });
-    });
-  }
-
-  function runAgroAction(kind, action) {
-    var endpoint;
+  function runAgroAction(tool, kind, action) {
     var previewKey = kind === "product" ? "product_profile" : "supply_log";
-    if (kind === "product") {
-      endpoint = action === "preview" ? "/portal/tools/agro_erp/mvp/product/preview" : "/portal/tools/agro_erp/mvp/product/apply";
-    } else {
-      endpoint = action === "preview" ? "/portal/tools/agro_erp/mvp/invoice/preview" : "/portal/tools/agro_erp/mvp/invoice/apply";
+    var hooks = action === "preview" ? toolPreviewHooks(tool) : toolApplyHooks(tool);
+    var endpoint = text(hooks[previewKey]);
+    var bucket = agroState(tool);
+    if (!endpoint) {
+      return Promise.reject(new Error("No endpoint is registered for the requested AGRO ERP action."));
     }
-    return ensureAgroSession(false).then(function (sessionPayload) {
+    return ensureAgroSession(tool, false).then(function (sessionPayload) {
       if (!sessionPayload || sessionPayload.ok === false) {
         throw new Error((sessionPayload && sessionPayload.error) || "AGRO ERP session is unavailable.");
       }
-      var body = { sandbox_session_id: state.agroSessionId };
-      return api(endpoint, "POST", body).then(function (payload) {
+      return api(endpoint, "POST", { sandbox_session_id: bucket.sessionId }).then(function (payload) {
         if (action === "preview") {
-          state.agroLastPreview = { kind: previewKey, payload: payload || {} };
-        } else {
-          state.agroLastApply = { kind: previewKey, payload: payload || {} };
-          return api("/portal/tools/agro_erp/mvp/workflow/readback?resource_ref=" + encodeURIComponent("session:" + state.agroSessionId)).catch(function () {
-            return {};
-          }).then(function (readback) {
-            state.agroReadback = readback || {};
-            return payload;
-          });
+          bucket.lastPreview = { kind: previewKey, payload: payload || {} };
+          return payload;
         }
-        return payload;
+        bucket.lastApply = { kind: previewKey, payload: payload || {} };
+        var readbackPath = routePrefixForTool(tool) + "/mvp/workflow/readback?resource_ref=" + encodeURIComponent("session:" + bucket.sessionId);
+        return api(readbackPath).catch(function () {
+          return {};
+        }).then(function (readback) {
+          bucket.readback = readback || {};
+          return payload;
+        });
       }).then(function (payload) {
         renderAll();
         return payload;
@@ -422,25 +583,74 @@
     });
   }
 
-  function openTool(toolId) {
-    var token = String(toolId || "").trim().toLowerCase();
-    if (!token) return;
-    state.activeToolId = token;
-    state.activeMediationMode = "overview";
-    if (token === "agro_erp") {
-      Promise.all([ensureAgroConfigContext(false), ensureAgroModel(false)]).then(function () {
-        return ensureAgroSession(false);
+  var agroMediationProvider = {
+    defaultMode: function (tool) {
+      return agroModeId(toolContribution(tool).default_mode || "overview") || "overview";
+    },
+    modes: function () {
+      return [
+        { id: "overview", label: "Overview" },
+        { id: "taxonomy", label: "Taxonomy browse/select" },
+        { id: "supplier", label: "Supplier browse/select" },
+        { id: "product", label: "Product profile compose" },
+        { id: "invoice", label: "Supply log compose" },
+        { id: "preview", label: "Preview/apply" }
+      ];
+    },
+    title: function (tool) {
+      return text(tool && (tool.label || tool.tool_id)) || "AGRO ERP";
+    },
+    kicker: function (tool) {
+      return text(toolContribution(tool).label) || "Canonical mediation workspace";
+    },
+    meta: function (tool) {
+      var ctx = toolContext(tool.tool_id) || {};
+      var bucket = agroState(tool);
+      var activation = ctx.activation && typeof ctx.activation === "object" ? ctx.activation : {};
+      if (bucket.lastError) {
+        return bucket.lastError;
+      }
+      return "Session: " + (bucket.sessionId || "(not opened)") + " · can_open=" + String(!!activation.can_open);
+    },
+    ensureReady: function (tool, force) {
+      var bucket = agroState(tool);
+      return Promise.all([
+        ensureToolContext(tool, force),
+        ensureAgroModel(tool, force)
+      ]).then(function () {
+        return ensureAgroSession(tool, force);
       }).catch(function (err) {
-        if (els.mediationMeta) {
-          els.mediationMeta.textContent = err && err.message ? err.message : "AGRO ERP could not open.";
-        }
-      }).finally(function () {
-        renderAll();
+        bucket.lastError = err && err.message ? err.message : "AGRO ERP could not open.";
+        throw err;
       });
-      return;
+    },
+    render: function (tool, mode) {
+      if (mode === "taxonomy") return renderAgroTaxonomy(tool);
+      if (mode === "supplier") return renderAgroSupplierBrowse(tool);
+      if (mode === "product") return renderAgroCompose(tool, "product");
+      if (mode === "invoice") return renderAgroCompose(tool, "invoice");
+      if (mode === "preview") return renderAgroPreviewSummary(tool);
+      return renderAgroOverview(tool);
+    },
+    bind: function (tool) {
+      qsa("[data-agro-action]", els.mediationBody).forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var kind = text(btn.getAttribute("data-agro-kind"));
+          var action = text(btn.getAttribute("data-agro-action"));
+          if (!kind || !action) return;
+          runAgroAction(tool, kind, action).catch(function (err) {
+            if (els.mediationMeta) {
+              els.mediationMeta.textContent = err && err.message ? err.message : "AGRO ERP action failed.";
+            }
+          });
+        });
+      });
     }
-    renderAll();
-  }
+  };
+
+  var mediationProviders = {
+    agro_erp: agroMediationProvider
+  };
 
   document.addEventListener("mycite:shell:selection-input", function (event) {
     var detail = event && event.detail && typeof event.detail === "object" ? event.detail : {};
@@ -450,7 +660,7 @@
       document: documentPayload,
       selected_row: detail.selected_row && typeof detail.selected_row === "object" ? detail.selected_row : null
     };
-    state.activeVerb = String(detail.current_verb || state.activeVerb || "navigate").trim() || "navigate";
+    state.activeVerb = text(detail.current_verb || state.activeVerb || "navigate") || "navigate";
     api("/portal/api/data/system/selection_context", "POST", {
       document: documentPayload,
       selected_row: detail.selected_row && typeof detail.selected_row === "object" ? detail.selected_row : null,
@@ -459,23 +669,22 @@
       state.selectedContext = payload || {};
       renderAll();
     }).catch(function (err) {
-      if (els.sourceScopeSummary) {
-        els.sourceScopeSummary.textContent = err && err.message ? err.message : "Selection context failed to load.";
+      if (els.selectionSummary) {
+        els.selectionSummary.className = "ide-contextEmpty";
+        els.selectionSummary.textContent = err && err.message ? err.message : "Selection context failed to load.";
       }
     });
   });
 
   document.addEventListener("mycite:shell:verb-changed", function (event) {
     var detail = event && event.detail && typeof event.detail === "object" ? event.detail : {};
-    state.activeVerb = String(detail.verb || state.activeVerb || "navigate").trim() || "navigate";
+    state.activeVerb = text(detail.verb || state.activeVerb || "navigate") || "navigate";
     if (state.lastSelectionInput && state.lastSelectionInput.document) {
-      document.dispatchEvent(new CustomEvent("mycite:shell:selection-input", {
-        detail: {
-          document: state.lastSelectionInput.document,
-          selected_row: state.lastSelectionInput.selected_row,
-          current_verb: state.activeVerb
-        }
-      }));
+      emitShellEvent("mycite:shell:selection-input", {
+        document: state.lastSelectionInput.document,
+        selected_row: state.lastSelectionInput.selected_row,
+        current_verb: state.activeVerb
+      });
     } else {
       renderAll();
     }
@@ -483,11 +692,11 @@
 
   document.addEventListener("mycite:shell:workbench-mode", function (event) {
     var detail = event && event.detail && typeof event.detail === "object" ? event.detail : {};
-    var mode = String(detail.workbench_mode || "").trim().toLowerCase();
+    var mode = normalizeModeId(detail.workbench_mode || "");
     if (mode) {
       state.workbenchMode = mode;
     }
-    var verb = String(detail.current_verb || "").trim().toLowerCase();
+    var verb = text(detail.current_verb || "").toLowerCase();
     if (verb) {
       state.activeVerb = verb;
     }
@@ -496,7 +705,7 @@
 
   document.addEventListener("mycite:shell:workbench-payload", function (event) {
     var detail = event && event.detail && typeof event.detail === "object" ? event.detail : {};
-    var mode = String(detail.workbench_mode || "").trim().toLowerCase();
+    var mode = normalizeModeId(detail.workbench_mode || "");
     if (mode) {
       state.workbenchMode = mode;
     }
@@ -505,26 +714,17 @@
 
   document.addEventListener("mycite:shell:file-focus-changed", function () {
     state.activeToolId = "";
-    state.activeMediationMode = "overview";
+    state.activeMediationMode = "";
     renderAll();
   });
-
-  if (els.agroOpenBtn) {
-    els.agroOpenBtn.addEventListener("click", function () {
-      openTool("agro_erp");
-    });
-  }
 
   if (els.mediationCloseBtn) {
     els.mediationCloseBtn.addEventListener("click", function () {
       state.activeToolId = "";
+      state.activeMediationMode = "";
       renderAll();
     });
   }
 
-  ensureAgroConfigContext(false).catch(function () {
-    return null;
-  }).finally(function () {
-    renderAll();
-  });
+  renderAll();
 })();

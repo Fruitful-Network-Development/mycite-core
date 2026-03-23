@@ -130,10 +130,10 @@ def _build_inspector_cards(context: dict[str, Any]) -> list[dict[str, Any]]:
         cards.append(
             build_inspector_card(
                 card_id="inheritance",
-                title="Inheritance",
+                title="Source Relationship",
                 summary=_text(inheritance.get("relation")),
                 body=inheritance,
-                kind="inheritance",
+                kind="source_relationship",
             )
         )
     cards.append(

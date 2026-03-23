@@ -106,6 +106,42 @@ class SystemPageCompositionTests(unittest.TestCase):
         self.assertIn('id="portalControlPanel"', text)
         self.assertIn('aria-label="Control panel"', text)
         self.assertNotIn('class="ide-menubar__spacer"', text)
+        self.assertNotIn("activity_tool_nav", text)
+        self.assertNotIn("ide-activitylink--tool", text)
+        self.assertLess(text.index('data-shell-toggle="context"'), text.index('data-shell-toggle="inspector"'))
+        self.assertLess(text.index('data-shell-toggle="inspector"'), text.index('class="themebar ide-menubar__theme"'))
+
+    def test_menubar_css_locks_non_wrapping_system_shell_controls(self) -> None:
+        css = (REPO_ROOT / "portals/_shared/runtime/flavors/fnd/portal/ui/static/portal.css").read_text(encoding="utf-8")
+        js = (REPO_ROOT / "portals/_shared/runtime/flavors/fnd/portal/ui/static/portal.js").read_text(encoding="utf-8")
+        self.assertIn(".ide-menubar__right {", css)
+        self.assertIn(".ide-menubar__shellActions {", css)
+        self.assertIn(".ide-menubar__theme {", css)
+        self.assertIn(".ide-menubar__menu {", css)
+        self.assertIn("flex-wrap: nowrap;", css)
+        self.assertIn(".ide-shell--system-workbench.ide-shell--workbench-tight .ide-menubar__pageSub", css)
+        self.assertIn('shell.classList.toggle("ide-shell--system-workbench"', js)
+        self.assertIn('shell.classList.add("ide-shell--workbench-tight")', js)
+
+    def test_docs_lock_unified_system_and_hidden_tool_home_framing(self) -> None:
+        readme = (REPO_ROOT / "docs/README.md").read_text(encoding="utf-8")
+        tools_shell = (REPO_ROOT / "docs/TOOLS_SHELL.md").read_text(encoding="utf-8")
+        agro_doc = (REPO_ROOT / "docs/AGRO_ERP_TOOL.md").read_text(encoding="utf-8")
+        directive_audit = (REPO_ROOT / "docs/directive_context_UI_refactor.md").read_text(encoding="utf-8")
+        historical_local_resources = (REPO_ROOT / "docs/portal_local_resources_workbench.md").read_text(encoding="utf-8")
+        historical_anthology = (REPO_ROOT / "docs/ANTHOLOGY_WORKBENCH_ARCHITECTURE.md").read_text(encoding="utf-8")
+        self.assertIn("## Supporting docs (current, non-authoritative)", readme)
+        self.assertIn("- `directive_context_UI_refactor.md`", readme)
+        self.assertIn("## Historical reports (demoted from canonical use)", readme)
+        self.assertIn("- `portal_local_resources_workbench.md`", readme)
+        self.assertIn("- `ANTHOLOGY_WORKBENCH_ARCHITECTURE.md`", readme)
+        self.assertIn("`SYSTEM` -> `Mediate`", tools_shell)
+        self.assertNotIn("Activity bar tool entries", tools_shell)
+        self.assertIn("hidden compatibility alias", agro_doc)
+        self.assertIn("SYSTEM` -> `Mediate`", agro_doc)
+        self.assertNotIn("legacy compatibility scripts and styles", directive_audit)
+        self.assertTrue(historical_local_resources.startswith("# Historical:"))
+        self.assertTrue(historical_anthology.startswith("# Historical:"))
 
     def test_inherited_inventory_api_exposes_grouped_by_source(self) -> None:
         """Backend support for inheritance UI grouping (no regression)."""
