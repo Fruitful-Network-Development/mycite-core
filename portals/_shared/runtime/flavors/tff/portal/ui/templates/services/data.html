@@ -8,12 +8,12 @@
 {% block body %}
   <div class="card" style="max-width: 980px;">
     <div class="card__kicker">Data Service</div>
-    <div class="card__title">Core data surface is enabled</div>
+    <div class="card__title">Core data workbench lives in SYSTEM</div>
     <div class="card__body">
       {% if data_home_available %}
-        <p>Data UI is available at <code>{{ data_home_path }}</code>.</p>
+        <p>The canonical data workbench is hosted inside <code>/portal/system</code>.</p>
         <p>
-          <a href="{{ data_home_path }}"><strong>Open Data UI</strong></a>
+          <a href="/portal/system"><strong>Open SYSTEM Workbench</strong></a>
         </p>
       {% else %}
         <p>Data API and model are available for this portal, but no specialized data UI package is present yet.</p>

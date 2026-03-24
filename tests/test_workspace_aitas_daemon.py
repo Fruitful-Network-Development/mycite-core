@@ -53,6 +53,7 @@ class WorkspaceAitasDaemonTests(unittest.TestCase):
             self.assertEqual(med["state"]["aitas_phase"], "mediate")
             self.assertEqual(med["state"]["aitas_context"].get("spatial"), "geographic")
             self.assertEqual(med["state"]["aitas_context"].get("spacial"), "geographic")
+            self.assertNotIn("spacial", ((med.get("model_meta") or {}).get("aitas_facets") or []))
         finally:
             tmp.cleanup()
 

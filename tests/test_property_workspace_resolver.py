@@ -50,6 +50,11 @@ class PropertyWorkspaceResolverTests(unittest.TestCase):
         self.assertEqual(self.module._safe_float({"lat": {"value": "41.111"}}), 41.111)
         self.assertEqual(self.module._safe_float(["bad", {"signed_value": "123.5"}]), 123.5)
 
+    def test_dict_backed_property_is_normalized_at_boundary(self):
+        config = {"property": {"title": "legacy-single", "bbox": ["4-1-4"]}}
+        self.assertEqual(self.module.property_entries(config), [{"title": "legacy-single", "bbox": ["4-1-4"]}])
+        self.assertEqual(self.module.primary_property_entry(config).get("title"), "legacy-single")
+
 
 if __name__ == "__main__":
     unittest.main()

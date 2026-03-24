@@ -10,6 +10,7 @@ if token not in sys.path:
     sys.path.insert(0, token)
 
 from _shared.portal.data_engine.write_pipeline import apply_write_preview, preview_write_intent
+from _shared.portal.data_engine.property_workspace import primary_property_entry
 
 
 class _WorkspaceStub:
@@ -124,7 +125,7 @@ class WritePipelineEngineTests(unittest.TestCase):
             save_config_fn=_save,
         )
         self.assertTrue(result.ok)
-        bbox = (((saved.get("property") or {}) if isinstance(saved, dict) else {}).get("bbox") or [])
+        bbox = primary_property_entry(saved if isinstance(saved, dict) else {}).get("bbox") or []
         self.assertEqual(bbox, ["1-2-3.30-1-1", "1-2-3.30-1-2"])
 
 

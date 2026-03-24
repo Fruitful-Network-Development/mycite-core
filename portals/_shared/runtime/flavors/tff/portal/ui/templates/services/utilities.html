@@ -15,24 +15,17 @@
   {% if utilities_tab == "tools" %}
     <article class="card">
       <div class="card__kicker">Configure tools</div>
-      <div class="card__title">Configure and manage tools</div>
+      <div class="card__title">Mounted tools activate through SYSTEM</div>
       <div class="card__body">
-        {% if utility_tools %}
+        {% if configured_tools %}
           <ul class="liststack">
-            {% for tool in utility_tools %}
-              <li><strong>{{ tool.display_name }}</strong> <a href="{{ tool.home_path }}">Open</a></li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <p>No tool shells are mounted to <code>utilities</code> for this portal instance.</p>
-        {% endif %}
-        {% if mediation_tools %}
-          <h4>Mediation Providers</h4>
-          <ul class="liststack">
-            {% for tool in mediation_tools %}
+            {% for tool in configured_tools %}
               <li><strong>{{ tool.display_name }}</strong> <a href="/portal/system">Open in SYSTEM</a></li>
             {% endfor %}
           </ul>
+          <p>Legacy tool-home aliases remain compatibility-only and are not part of the canonical shell model.</p>
+        {% else %}
+          <p>No mounted tools are configured for this portal instance.</p>
         {% endif %}
       </div>
     </article>

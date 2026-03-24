@@ -70,14 +70,7 @@
   }
 
   function routePrefixForTool(tool) {
-    var prefix = text(tool && tool.route_prefix);
-    if (prefix) return prefix;
-    var homePath = text(tool && tool.home_path);
-    if (homePath && /\/home$/.test(homePath)) {
-      return homePath.replace(/\/home$/, "");
-    }
-    var toolId = text(tool && tool.tool_id);
-    return toolId ? ("/portal/tools/" + toolId) : "";
+    return text(tool && tool.route_prefix);
   }
 
   function toolContribution(tool) {

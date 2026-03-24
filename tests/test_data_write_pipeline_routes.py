@@ -15,6 +15,13 @@ except ModuleNotFoundError:  # pragma: no cover
     HAS_FLASK = False
     Flask = None  # type: ignore[assignment]
 
+portals_root = Path(__file__).resolve().parents[1] / "portals"
+token = str(portals_root)
+if token not in sys.path:
+    sys.path.insert(0, token)
+
+from _shared.portal.data_engine.property_workspace import primary_property_entry
+
 def _load_register_data_routes():
     path = Path(__file__).resolve().parents[1] / "portals" / "_shared" / "portal" / "api" / "data_workspace.py"
     portals_root = path.parents[4]
@@ -684,7 +691,7 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertTrue(apply_two_payload.get("ok"))
         self.assertEqual(((apply_two_payload.get("mutation_summary") or {}).get("created_count")), 0)
         self.assertEqual(((apply_two_payload.get("mutation_summary") or {}).get("reused_count")), 1)
-        plot_refs = (((self.config_payload.get("property") or {}).get("plot_refs")) or [])
+        plot_refs = primary_property_entry(self.config_payload).get("plot_refs") or []
         self.assertEqual(plot_refs, ["9-9-9.31-1-1", "9-9-9.31-1-9"])
 
     def test_system_mutate_anthology_create_uses_direct_write(self):

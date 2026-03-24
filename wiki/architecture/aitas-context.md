@@ -18,26 +18,26 @@ AITAS is the shared context strip and payload vocabulary used by the unified `SY
 - `Intention`
 - `Time`
 - `Archetype`
-- `Spacial`
+- `Spatial`
 
-Current implementation uses AITAS as a lightweight compatibility payload. The strongest live fields are:
+Current implementation uses AITAS as a lightweight compatibility payload. The strongest live canonical fields are:
 
 - `attention`
 - `intention`
-- `spacial`
+- `spatial`
 
 At present:
 
-- file focus maps to `spacial = 1`
-- datum focus maps to `spacial = 2`
+- file focus maps to spatial file context
+- datum focus maps to spatial datum context
 - `time` is usually `null`
 - `archetype` is partial and often placeholder
 
-Canonical meaning comes from `attention` depth, not from `spacial` as a long-term field. The `spacial` name remains compatibility-readable because current runtime consumers still emit and consume it.
+Canonical meaning comes from `attention` depth, not from `spatial` as a long-term field. The typo'd `spacial` name remains compatibility-readable only as an input alias and, where still needed, a response projection for older clients.
 
 ## Directional Intent
 
-The long-term model should derive depth from the attention address and retire `spacial` as a canonical concept while preserving compatibility only as needed.
+The long-term model should derive depth from the attention address and retire `spacial` entirely once remaining compatibility consumers are gone.
 
 ## Boundaries
 

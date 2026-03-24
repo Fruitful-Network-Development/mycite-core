@@ -339,7 +339,7 @@ def register_data_routes(
     if include_home_redirect:
         @app.get("/portal/data")
         def portal_data_home_redirect():
-            return redirect("/portal/tools/data_tool/home", code=302)
+            return redirect("/portal/system", code=302)
 
     @app.get("/portal/api/data/state")
     def portal_data_state():

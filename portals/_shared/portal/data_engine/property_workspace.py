@@ -55,6 +55,8 @@ def _as_token_list(value: Any) -> list[str]:
 
 
 def _as_property_entries(config: dict[str, Any]) -> list[dict[str, Any]]:
+    # Shared runtime logic treats property as a list-backed collection internally.
+    # Dict-backed payloads remain accepted here as a boundary adapter for older configs.
     raw = (config or {}).get("property")
     if isinstance(raw, list):
         return [dict(item) for item in raw if isinstance(item, dict)]
