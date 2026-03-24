@@ -859,6 +859,21 @@ def _utility_tool_items() -> list[Dict[str, Any]]:
     return out
 
 
+def _mediation_provider_items() -> list[Dict[str, Any]]:
+    seen: set[str] = set()
+    out: list[Dict[str, Any]] = []
+    for mount_target in ("utilities", "peripherals.tools"):
+        for tool in _tools_by_mount_target(mount_target):
+            if bool(tool.get("owns_shell_state", True)):
+                continue
+            tool_id = str(tool.get("tool_id") or "").strip()
+            if not tool_id or tool_id in seen:
+                continue
+            seen.add(tool_id)
+            out.append(tool)
+    return out
+
+
 def _utility_peripheral_entries() -> list[Dict[str, Any]]:
     root = utility_peripherals_dir(PRIVATE_DIR)
     if not root.exists() or not root.is_dir():
@@ -1432,6 +1447,7 @@ def portal_utilities():
         utilities_tab=tab,
         request_log_summary=_request_log_summary(),
         utility_tools=_utility_tool_items(),
+        mediation_tools=_mediation_provider_items(),
         peripheral_entries=_utility_peripheral_entries(),
         vault_inventory=inventory,
         vault_inventory_json=json.dumps(inventory, indent=2, sort_keys=True),

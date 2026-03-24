@@ -49,13 +49,10 @@ class RuntimePathsTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir)
             canonical_dir = runtime_paths.contracts_dir(private_dir)
-            legacy_dir = runtime_paths.network_dir(private_dir) / "contracts"
             canonical_dir.mkdir(parents=True, exist_ok=True)
-            legacy_dir.mkdir(parents=True, exist_ok=True)
 
             read_dirs = runtime_paths.contract_read_dirs(private_dir)
-            self.assertEqual(read_dirs[0], canonical_dir)
-            self.assertIn(legacy_dir, read_dirs)
+            self.assertEqual(read_dirs, [canonical_dir])
 
 
 if __name__ == "__main__":

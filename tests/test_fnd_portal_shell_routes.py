@@ -126,6 +126,8 @@ class FndPortalShellRouteTests(unittest.TestCase):
             self.assertIn("/portal/network?tab=messages&kind=log&id=request_log", client.get("/portal/inbox").headers.get("Location", ""))
             self.assertIn("/portal/tools/data_tool/home", client.get("/portal/data").headers.get("Location", ""))
             self.assertIn("/portal/tools/data_tool/home", client.get("/portal/data/legacy").headers.get("Location", ""))
+            self.assertEqual(client.get("/portal/tools/website_analytics/home").status_code, 404)
+            self.assertEqual(client.get("/portal/tools/operations/home").status_code, 404)
 
             self.assertEqual(client.get("/portal/api/data/state").status_code, 200)
             self.assertEqual(client.get("/portal/api/data/anthology/table").status_code, 200)

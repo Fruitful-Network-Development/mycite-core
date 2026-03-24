@@ -27,13 +27,24 @@ def build_control_panel_sections(
     )
     if active_tool_meta:
         display_name = str(active_tool_meta.get("display_name") or active_tool_meta.get("tool_id") or token).strip() or token
-        home_path = str(active_tool_meta.get("home_path") or "").strip() or f"/portal/tools/{token}/home"
-        route_meta = "compatibility alias"
+        home_path = str(active_tool_meta.get("home_path") or "").strip()
+        owns_shell_state = bool(active_tool_meta.get("owns_shell_state", True))
+        if not owns_shell_state or not home_path:
+            return [
+                {
+                    "title": "Mediation Provider",
+                    "entries": [
+                        {"label": display_name, "href": "/portal/system", "active": True, "meta": "canonical SYSTEM mediation host"},
+                        {"label": "Configure tools", "href": "/portal/utilities?tab=tools", "active": False, "meta": "Utilities"},
+                    ],
+                    "empty_text": "",
+                }
+            ]
         return [
             {
                 "title": "Tool Alias",
                 "entries": [
-                    {"label": f"{display_name} route alias", "href": home_path, "active": True, "meta": route_meta},
+                    {"label": f"{display_name} route alias", "href": home_path, "active": True, "meta": "compatibility alias"},
                     {"label": "Open in SYSTEM", "href": "/portal/system", "active": False, "meta": "canonical mediation host"},
                     {"label": "Configure tools", "href": "/portal/utilities?tab=tools", "active": False, "meta": "Utilities"},
                 ],

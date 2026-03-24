@@ -157,6 +157,12 @@
     return findCompatibleTool(state.activeToolId);
   }
 
+  function toolOwnsShellState(tool) {
+    if (!tool || typeof tool !== "object") return true;
+    if (tool.owns_shell_state === false) return false;
+    return text(tool.surface_mode || "tool_shell") !== "mediation_only";
+  }
+
   function toolContext(toolId) {
     return state.toolContexts[text(toolId).toLowerCase()] || null;
   }
@@ -177,6 +183,19 @@
   }
 
   function reconcileActiveTool() {
+    var compatibleById = {};
+    activeCompatibleTools().forEach(function (tool) {
+      compatibleById[text(tool && tool.tool_id).toLowerCase()] = true;
+    });
+    Object.keys(state.toolContexts).forEach(function (token) {
+      if (compatibleById[token]) return;
+      delete state.toolContexts[token];
+      delete state.providerState[token];
+    });
+    Object.keys(state.providerState).forEach(function (token) {
+      if (compatibleById[token]) return;
+      delete state.providerState[token];
+    });
     if (state.activeToolId && !findCompatibleTool(state.activeToolId)) {
       state.activeToolId = "";
       state.activeMediationMode = "";
@@ -430,7 +449,7 @@
       var mutationPolicy = toolMutationPolicy(tool);
       return (
         "<p><strong>Mode:</strong> " + esc(titleCase(mode || "overview")) + "</p>" +
-        "<p><strong>Launch path:</strong> SYSTEM Mediate is the canonical entry; direct tool-home routes remain compatibility aliases.</p>" +
+        "<p><strong>Launch path:</strong> SYSTEM Mediate is the canonical entry for this provider.</p>" +
         '<details class="data-tool__advanced" open><summary>Contribution</summary><pre class="jsonblock">' +
         esc(JSON.stringify(contribution, null, 2)) +
         "</pre></details>" +

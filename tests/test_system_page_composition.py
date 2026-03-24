@@ -150,7 +150,7 @@ class SystemPageCompositionTests(unittest.TestCase):
         runtime_body = (REPO_ROOT / "portals/_shared/portal/application/shell/runtime.py").read_text(encoding="utf-8")
         self.assertIn('"attention_address"', runtime_body)
         self.assertIn('"directive"', runtime_body)
-        self.assertIn('"spacial"', (REPO_ROOT / "portals/_shared/portal/application/shell/runtime.py").read_text(encoding="utf-8"))
+        self.assertIn('"spatial"', (REPO_ROOT / "portals/_shared/portal/application/shell/runtime.py").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

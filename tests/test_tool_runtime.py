@@ -49,6 +49,16 @@ class ToolRuntimeTests(unittest.TestCase):
             )
             self.assertEqual(runtime.read_enabled_tools(private_dir, "3-2-3"), ["operations", "website_analytics"])
 
+    def test_read_enabled_tools_ignores_legacy_enabled_tools(self):
+        runtime = _load_tool_runtime_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            (private_dir / "config.json").write_text(
+                json.dumps({"msn_id": "3-2-3", "enabled_tools": ["operations"]}) + "\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(runtime.read_enabled_tools(private_dir, "3-2-3"), [])
+
 
 if __name__ == "__main__":
     unittest.main()
