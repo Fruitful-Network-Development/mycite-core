@@ -20,6 +20,7 @@ def build_shell_context(
     control_panel_sections: list[dict[str, Any]],
     shell_verbs: list[dict[str, Any]] | None = None,
     portal_instance_context: dict[str, Any] | None = None,
+    activity_tool_links: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     active_tool_id = str(active_tool.get("tool_id") or "") if active_tool else ""
     return {
@@ -39,4 +40,5 @@ def build_shell_context(
         "control_panel_sections": control_panel_sections,
         "shell_verbs": list(shell_verbs or []),
         "portal_instance_context": dict(portal_instance_context or {}),
+        "activity_tool_links": list(activity_tool_links or []),
     }

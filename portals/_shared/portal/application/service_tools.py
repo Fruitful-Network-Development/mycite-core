@@ -13,9 +13,9 @@ SERVICE_TOOL_CONTRACT_SCHEMA = "mycite.service_tool.contract.v1"
 SERVICE_TOOL_BINDINGS_SCHEMA = "mycite.service_tool.config_bindings.v1"
 
 _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
-    "website_analytics": {
+    "fnd_ebi": {
         "namespace": "fnd-ebi",
-        "workspace_id": "service.website_analytics",
+        "workspace_id": "service.fnd_ebi",
         "label": "Analytics profile cards",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from _shared.portal.application.service_tools import build_service_tool_registration
 
-TOOL_ID = "website_analytics"
-TOOL_TITLE = "Website Analytics"
+TOOL_ID = "fnd_ebi"
+TOOL_TITLE = "FND EBI"
+# Served from portals/assets/icons via /portal/static/icons/...
+TOOL_ICON = "/portal/static/icons/tools/fnd_ebi.svg"
 
 
 def get_tool() -> dict[str, object]:

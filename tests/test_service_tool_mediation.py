@@ -19,11 +19,11 @@ def _load_service_tools_module():
 class ServiceToolMediationTests(unittest.TestCase):
     def test_service_tool_meta_exposes_shared_config_context_contract(self):
         module = _load_service_tools_module()
-        meta = module.build_service_tool_meta("website_analytics")
+        meta = module.build_service_tool_meta("fnd_ebi")
         self.assertTrue(meta.get("config_context_support"))
         self.assertEqual(
             ((meta.get("inspector_card_contribution") or {}).get("config_context_route")),
-            "/portal/api/data/system/config_context/website_analytics",
+            "/portal/api/data/system/config_context/fnd_ebi",
         )
         self.assertEqual(
             ((meta.get("workbench_contribution") or {}).get("default_mode")),
@@ -62,9 +62,9 @@ class ServiceToolMediationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             payload = module.build_service_tool_config_context(
-                "website_analytics",
+                "fnd_ebi",
                 private_dir=private_dir,
-                tool_tabs=[{"tool_id": "website_analytics", **module.build_service_tool_meta("website_analytics")}],
+                tool_tabs=[{"tool_id": "fnd_ebi", **module.build_service_tool_meta("fnd_ebi")}],
                 portal_instance_id="fnd",
                 msn_id="3-2-3",
             )

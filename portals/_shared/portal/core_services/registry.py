@@ -84,6 +84,39 @@ def service_href(service_id: str) -> str:
     return "/portal/system"
 
 
+def build_activity_tool_links(
+    tool_tabs: list[dict[str, Any]] | None,
+    *,
+    active_mediate_tool: str = "",
+) -> list[dict[str, Any]]:
+    """Mediation-only tools with icons: links to SYSTEM sandbox with ?mediate_tool=."""
+    active = str(active_mediate_tool or "").strip().lower()
+    out: list[dict[str, Any]] = []
+    for raw in list(tool_tabs or []):
+        if not isinstance(raw, dict):
+            continue
+        if str(raw.get("surface_mode") or "").strip().lower() != "mediation_only":
+            continue
+        mount = str(raw.get("mount_target") or "").strip().lower()
+        if mount not in ("peripherals.tools", "utilities"):
+            continue
+        icon = str(raw.get("icon") or "").strip()
+        tid = str(raw.get("tool_id") or "").strip().lower()
+        if not icon or not tid:
+            continue
+        label = str(raw.get("display_name") or raw.get("label") or raw.get("title") or tid).strip() or tid
+        out.append(
+            {
+                "tool_id": tid,
+                "label": label,
+                "href": f"/portal/system?mediate_tool={tid}",
+                "icon": icon,
+                "active": tid == active,
+            }
+        )
+    return out
+
+
 def build_service_nav(config: dict[str, Any], *, active_service: str) -> list[ServiceNavItem]:
     active = str(active_service or "system").strip().lower()
     nav: list[ServiceNavItem] = []

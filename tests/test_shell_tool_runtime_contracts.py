@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from _shared.portal.application.agro.config_bindings import build_agro_config_context
-from _shared.portal.application.shell.runtime import build_selected_context_payload
+from _shared.portal.application.shell.runtime import build_selected_context_payload, build_system_sandbox_context_payload
 from _shared.portal.application.shell.tools import normalize_tool_capability
 from _shared.portal.application.workbench.document_contract import build_workbench_document
 
@@ -67,8 +67,8 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
         self.assertTrue(any(bool(item.get("config_context")) for item in capability.get("supported_source_contracts") or []))
 
     def test_service_tool_capability_contract_is_normalized(self) -> None:
-        capability = normalize_tool_capability(_load_fnd_tool_meta("website_analytics"))
-        self.assertEqual(capability.get("tool_id"), "website_analytics")
+        capability = normalize_tool_capability(_load_fnd_tool_meta("fnd_ebi"))
+        self.assertEqual(capability.get("tool_id"), "fnd_ebi")
         self.assertTrue(capability.get("config_context_support"))
         self.assertEqual(((capability.get("workbench_contribution") or {}).get("default_mode")), "profiles")
         self.assertTrue(any(bool(item.get("config_context")) for item in capability.get("supported_source_contracts") or []))
@@ -76,6 +76,17 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
         self.assertFalse(capability.get("owns_shell_state"))
         self.assertEqual(capability.get("home_path"), "")
         self.assertEqual(capability.get("route_prefix"), "")
+
+    def test_system_sandbox_context_includes_config_context_tools(self) -> None:
+        payload = build_system_sandbox_context_payload(
+            tool_tabs=[_load_fnd_tool_meta("fnd_ebi")],
+            shell_verb="mediate",
+        )
+        self.assertEqual(payload.get("schema"), "mycite.shell.selected_context.v1")
+        self.assertEqual(str(payload.get("mediation_scope") or "").lower(), "system_sandbox")
+        self.assertTrue(
+            any(str(item.get("tool_id") or "") == "fnd_ebi" for item in payload.get("compatible_tools") or [])
+        )
 
     def test_selected_context_includes_compatible_tool_registry(self) -> None:
         document = build_workbench_document(

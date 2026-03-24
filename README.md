@@ -65,7 +65,7 @@ Hosted/progeny direction in the current phase:
 - `private/network/hosted.json` is the canonical hosted metadata container
 - default progeny templates live inside hosted metadata
 - canonical progeny instance storage is `private/network/progeny/msn-<provider_msn_id>.<progeny_type>-<alias_associated_msn_id>.json`
-- FND keeps AWS/PayPal split by operational scope and now carries a separate `website_analytics` tool for hosted member websites
+- FND keeps AWS/PayPal split by operational scope and carries the `fnd_ebi` tool for hosted member website analytics mediation
 
 ## Repository layout
 

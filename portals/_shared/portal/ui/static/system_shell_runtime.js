@@ -663,9 +663,170 @@
     }
   };
 
-  var mediationProviders = {
-    agro_erp: agroMediationProvider
+  function fndEbiDomainFromCard(card) {
+    var body = card && card.body && typeof card.body === "object" ? card.body : {};
+    return text(body.domain || card.title || "");
+  }
+
+  function fndEbiAnalyticsRows(profileCards, analyticsItems) {
+    var byDomain = {};
+    (analyticsItems || []).forEach(function (item) {
+      var d = text(item && item.domain).toLowerCase();
+      if (d) byDomain[d] = item;
+    });
+    return (profileCards || []).map(function (card) {
+      var d = fndEbiDomainFromCard(card).toLowerCase();
+      return { card: card, analytics: d && byDomain[d] ? byDomain[d] : null };
+    });
+  }
+
+  function renderFndEbiProfiles(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var bucket = providerStateFor(tool.tool_id);
+    var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
+    var rows = fndEbiAnalyticsRows(cards, bucket.analyticsItems);
+    var parts = [];
+    parts.push('<div class="fnd-ebi-gallery">');
+    rows.forEach(function (row) {
+      var c = row.card || {};
+      var a = row.analytics || {};
+      var metrics = a.metrics && typeof a.metrics === "object" ? a.metrics : {};
+      var title = text(c.title || c.card_id || "Site");
+      var summary = text(c.summary || "");
+      parts.push('<article class="card fnd-ebi-card">');
+      parts.push('<div class="card__kicker">' + esc(summary || "Profile") + "</div>");
+      parts.push('<div class="card__title">' + esc(title) + "</div>");
+      parts.push('<div class="card__body">');
+      parts.push("<p><strong>Domain</strong> <code>" + esc(fndEbiDomainFromCard(c) || "") + "</code></p>");
+      if (metrics && Object.keys(metrics).length) {
+        parts.push("<ul class=\"fnd-ebi-metrics\">");
+        Object.keys(metrics).slice(0, 8).forEach(function (k) {
+          parts.push("<li><span>" + esc(k) + "</span> <strong>" + esc(String(metrics[k])) + "</strong></li>");
+        });
+        parts.push("</ul>");
+      } else {
+        parts.push("<p class=\"data-tool__empty\">No aggregated telemetry in admin_runtime yet.</p>");
+      }
+      parts.push("</div></article>");
+    });
+    parts.push("</div>");
+    if (!rows.length) {
+      return '<p class="data-tool__empty">No profile cards from tool sandbox. Check utilities/tools/fnd-ebi and web-analytics.json.</p>';
+    }
+    return parts.join("");
+  }
+
+  function renderFndEbiCollections(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var cd = ctx.collection_datum && typeof ctx.collection_datum === "object" ? ctx.collection_datum : {};
+    var cfg = ctx.config_datum && typeof ctx.config_datum === "object" ? ctx.config_datum : {};
+    return (
+      "<p><strong>Collection</strong> <code>" + esc(text(cd.file_name || "")) + "</code> (" +
+      esc(text(cd.content_kind || "")) +
+      ")</p>" +
+      "<p><strong>Config</strong> <code>" + esc(text(cfg.file_name || "")) + "</code></p>" +
+      '<pre class="jsonblock">' + esc(JSON.stringify({ workspace_profile: ctx.workspace_profile || {} }, null, 2)) + "</pre>"
+    );
+  }
+
+  function renderFndEbiFiles(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var files = Array.isArray(ctx.collection_files) ? ctx.collection_files : [];
+    var warnings = Array.isArray(ctx.warnings) ? ctx.warnings : [];
+    if (!files.length && !warnings.length) {
+      return '<p class="data-tool__empty">No tool files discovered.</p>';
+    }
+    var rows = [];
+    rows.push("<table class=\"fnd-ebi-table\"><thead><tr><th>File</th><th>Kind</th><th>Records</th></tr></thead><tbody>");
+    files.forEach(function (f) {
+      if (!f || typeof f !== "object") return;
+      rows.push(
+        "<tr><td><code>" +
+          esc(text(f.relative_path || f.file_name || "")) +
+          "</code></td><td>" +
+          esc(text(f.content_kind || "")) +
+          "</td><td>" +
+          esc(String(f.record_count != null ? f.record_count : "")) +
+          "</td></tr>"
+      );
+    });
+    rows.push("</tbody></table>");
+    if (warnings.length) {
+      rows.push("<p><strong>Warnings</strong></p><ul class=\"fnd-ebi-warnings\">");
+      warnings.forEach(function (w) {
+        rows.push("<li>" + esc(text(w)) + "</li>");
+      });
+      rows.push("</ul>");
+    }
+    return rows.join("");
+  }
+
+  var fndEbiMediationProvider = {
+    defaultMode: function () {
+      return "profiles";
+    },
+    modes: function () {
+      return [
+        { id: "profiles", label: "Profiles" },
+        { id: "collections", label: "Collections" },
+        { id: "files", label: "Files" }
+      ];
+    },
+    title: function (tool) {
+      return text(tool && (tool.label || tool.tool_id)) || "FND EBI";
+    },
+    kicker: function (tool) {
+      return text(toolContribution(tool).label) || "Hosted site analytics";
+    },
+    meta: function (tool) {
+      var ctx = toolContext(tool.tool_id) || {};
+      var n = Array.isArray(ctx.profile_cards) ? ctx.profile_cards.length : 0;
+      return "Profiles: " + String(n) + " · sandbox: utilities/tools/fnd-ebi";
+    },
+    ensureReady: function (tool, force) {
+      var bucket = providerStateFor(tool.tool_id);
+      return ensureToolContext(tool, force).then(function (ctx) {
+        return api("/portal/api/analytics/members")
+          .then(function (payload) {
+            bucket.analyticsItems = (payload && payload.items) || [];
+            return ctx;
+          })
+          .catch(function () {
+            bucket.analyticsItems = [];
+            return ctx;
+          });
+      });
+    },
+    render: function (tool, mode) {
+      if (mode === "collections") return renderFndEbiCollections(tool);
+      if (mode === "files") return renderFndEbiFiles(tool);
+      return renderFndEbiProfiles(tool);
+    },
+    bind: function () {
+      return;
+    }
   };
+
+  var mediationProviders = {
+    agro_erp: agroMediationProvider,
+    fnd_ebi: fndEbiMediationProvider
+  };
+
+  function bootstrapMediateToolFromQuery() {
+    try {
+      var params = new URLSearchParams(window.location.search || "");
+      var tid = text(params.get("mediate_tool"));
+      if (!tid) return Promise.resolve();
+      state.activeVerb = "mediate";
+      return api("/portal/api/data/system/sandbox_context", "GET").then(function (payload) {
+        state.selectedContext = payload || {};
+        renderAll();
+        openTool(tid);
+      });
+    } catch (e) {
+      return Promise.resolve();
+    }
+  }
 
   document.addEventListener("mycite:shell:selection-input", function (event) {
     var detail = event && event.detail && typeof event.detail === "object" ? event.detail : {};
@@ -723,5 +884,9 @@
     });
   }
 
-  renderAll();
+  bootstrapMediateToolFromQuery()
+    .catch(function () {})
+    .finally(function () {
+      renderAll();
+    });
 })();

@@ -5509,3 +5509,46 @@ body.is-modal-open {
     grid-template-columns: 1fr;
   }
 }
+
+/* FND EBI mediation gallery */
+.fnd-ebi-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.fnd-ebi-card .card__body {
+  font-size: 0.9rem;
+}
+
+.fnd-ebi-metrics {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+}
+
+.fnd-ebi-metrics li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.fnd-ebi-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.fnd-ebi-table th,
+.fnd-ebi-table td {
+  border-bottom: 1px solid var(--line, #ddd);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+}
+
+.fnd-ebi-warnings {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--warn, #a60);
+}
