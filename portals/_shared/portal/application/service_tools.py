@@ -246,12 +246,62 @@ def _member_files_from_collection_payload(root: Path, payload: Any) -> list[Path
         return []
     out: list[Path] = []
     seen: set[Path] = set()
+    token_seen: set[str] = set()
+
+    def _collect_token(raw: Any) -> str:
+        token = _text(raw)
+        lower = token.lower()
+        if not token or not (lower.endswith(".json") or lower.endswith(".ndjson")):
+            return ""
+        if token in token_seen:
+            return ""
+        token_seen.add(token)
+        return token
+
+    tokens: list[str] = []
     for item in list(payload.get("member_files") or []):
-        token = _text(item)
-        if not token:
+        token = _collect_token(item)
+        if token:
+            tokens.append(token)
+
+    # Backward-compatible parse for tuple/list encoded collection rows (e.g. web-analytics.json).
+    for value in payload.values():
+        if isinstance(value, str):
+            token = _collect_token(value)
+            if token:
+                tokens.append(token)
             continue
-        path = (root / token).resolve()
-        if not path.exists() or not path.is_file() or path in seen:
+        if not isinstance(value, list):
+            continue
+        for node in value:
+            if isinstance(node, str):
+                token = _collect_token(node)
+                if token:
+                    tokens.append(token)
+                continue
+            if not isinstance(node, list):
+                continue
+            for item in node:
+                token = _collect_token(item)
+                if token:
+                    tokens.append(token)
+
+    def _resolve_member_path(token: str) -> Path | None:
+        base = (root / token).resolve()
+        candidates = [base]
+        lower = token.lower()
+        if lower.endswith(".ndjson"):
+            candidates.append((root / (token[:-7] + ".json")).resolve())
+        elif lower.endswith(".json"):
+            candidates.append((root / (token[:-5] + ".ndjson")).resolve())
+        for candidate in candidates:
+            if candidate.exists() and candidate.is_file():
+                return candidate
+        return None
+
+    for token in tokens:
+        path = _resolve_member_path(token)
+        if path is None or path in seen:
             continue
         seen.add(path)
         out.append(path)

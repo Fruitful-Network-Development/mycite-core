@@ -16,12 +16,14 @@ Canonical
 
 The canonical subject hierarchy is:
 
+- sandbox (tool-layer, no file focus)
 - file
 - datum
 - facet
 
 Recommended attention grammar:
 
+- `sandbox:utilities/tools/<tool_namespace>`
 - `file:<file_id>`
 - `datum:<file_id>/<datum_id>`
 - `facet:<file_id>/<datum_id>/<facet_kind>/<facet_ref?>`
@@ -42,6 +44,12 @@ The recommended canonical state fields are:
 - `mutation_mode`
 
 Reset behavior is part of the contract. File changes clear datum and facet attention plus incompatible provider state. Datum exit clears facet and contextual state that no longer applies. Directive changes do not reset attention by default.
+
+Tool-layer mediation adds an explicit lock contract:
+
+- `?mediate_tool=<tool_id>` enters sandbox-depth mediation (`shell_surface=tool_mediation`, `mediation_scope=system_sandbox`, `directive=mediate`).
+- auto/default workbench emissions (for example anthology bootstrap selection) must not override the locked tool layer.
+- explicit user selection intent (`user_select`, `user_file_focus`, `user_task_change`) may transition out of the locked tool layer.
 
 Derived UI follows state, not the other way around:
 

@@ -276,9 +276,13 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             Path(__file__).resolve().parents[1]
             / "portals"
             / "_shared"
+            / "runtime"
+            / "flavors"
+            / "fnd"
             / "portal"
             / "ui"
             / "static"
+            / "shared"
             / "system_shell_runtime.js"
         ).read_text(encoding="utf-8")
         self.assertIn("ensureToolContext", runtime_js)
@@ -301,9 +305,13 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             Path(__file__).resolve().parents[1]
             / "portals"
             / "_shared"
+            / "runtime"
+            / "flavors"
+            / "fnd"
             / "portal"
             / "ui"
             / "static"
+            / "shared"
             / "system_shell_runtime.js"
         ).read_text(encoding="utf-8")
         self.assertIn("var compatibleById = {}", runtime_js)

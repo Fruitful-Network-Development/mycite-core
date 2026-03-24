@@ -23,6 +23,7 @@ The visible portal model is:
 - [Shell And Page Composition](shell-and-page-composition.md)
 - [Application Core And Adapters](application-core-and-adapters.md)
 - [AITAS Context](aitas-context.md)
+- [Canonical Direction Gaps](canonical-direction-gaps.md)
 
 ## Source Docs
 

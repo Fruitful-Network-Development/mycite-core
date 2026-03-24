@@ -183,6 +183,7 @@ def build_selected_context_payload(
     tool_tabs: list[dict[str, Any]] | None = None,
     portal_instance_context: Any | None = None,
     mediation_scope: str | None = None,
+    shell_surface: str | None = None,
 ) -> dict[str, Any]:
     normalized_document = _dict(document)
     row = _dict(selected_row)
@@ -229,6 +230,9 @@ def build_selected_context_payload(
     ms = _text(mediation_scope).lower()
     if ms:
         context["mediation_scope"] = ms
+    surface = _text(shell_surface).lower()
+    if surface:
+        context["shell_surface"] = surface
     context["compatible_tools"] = compatible_tools_for_context(tool_tabs, context)
     context["inspector_cards"] = _build_inspector_cards(context)
     return context
@@ -239,8 +243,11 @@ def build_system_sandbox_context_payload(
     tool_tabs: list[dict[str, Any]] | None = None,
     portal_instance_context: Any | None = None,
     shell_verb: object = "mediate",
+    tool_id: str = "",
 ) -> dict[str, Any]:
     """Synthetic selected-context for SYSTEM sandbox mediation (no datum/file anchor)."""
+    token = _text(tool_id).lower().replace("_", "-")
+    sandbox_attention = f"sandbox:utilities/tools/{token}" if token else "sandbox:utilities/tools"
     document = build_workbench_document(
         document_id="workbench:system:tool_sandbox",
         instance_id="system",
@@ -253,14 +260,37 @@ def build_system_sandbox_context_payload(
         workspace="system",
         payload={
             "mediation_host_path": "/portal/system",
+            "sandbox_root": "private/utilities/tools",
+            "tool_id": _text(tool_id).lower(),
             "note": "Synthetic sandbox context for config-context service tools.",
         },
     )
-    return build_selected_context_payload(
+    context = build_selected_context_payload(
         document=document,
         selected_row=None,
         shell_verb=shell_verb,
         tool_tabs=tool_tabs,
         portal_instance_context=portal_instance_context,
         mediation_scope="system_sandbox",
+        shell_surface="tool_mediation",
     )
+    system_state = context.get("system_state") if isinstance(context.get("system_state"), dict) else {}
+    if system_state:
+        system_state["focus_kind"] = "sandbox"
+        system_state["attention_plane"] = "sandbox"
+        system_state["attention_address"] = sandbox_attention
+        system_state["active_filename"] = _text(tool_id).lower() or "tool_sandbox"
+        system_state["focus_depth"] = 0
+        subject = system_state.get("subject") if isinstance(system_state.get("subject"), dict) else {}
+        subject.update({"kind": "sandbox", "file": _text(tool_id).lower(), "datum_id": "", "datum_label": ""})
+        system_state["subject"] = subject
+        aitas = system_state.get("aitas") if isinstance(system_state.get("aitas"), dict) else {}
+        spatial = aitas.get("spatial") if isinstance(aitas.get("spatial"), dict) else {}
+        spatial.update({"kind": "focus_level", "value": 0})
+        attention = aitas.get("attention") if isinstance(aitas.get("attention"), dict) else {}
+        attention.update({"kind": "sandbox", "value": sandbox_attention})
+        aitas["spatial"] = spatial
+        aitas["attention"] = attention
+        system_state["aitas"] = aitas
+        context["system_state"] = system_state
+    return context

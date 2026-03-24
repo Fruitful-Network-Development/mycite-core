@@ -43,13 +43,25 @@ Canonical shell and service routes are:
 - `GET /portal/utilities`
 - `GET /portal/data` -> `/portal/system`
 
-The visible activity bar is reserved for the three primary services:
+The visible activity bar always includes the three primary services:
 
 - `SYSTEM`
 - `NETWORK`
 - `UTILITIES`
 
-Optional tools do not add their own activity-bar application entries. Tool discovery belongs to `SYSTEM -> Mediate`, while tool configuration belongs to `UTILITIES`.
+Optional tools may also contribute first-class activity-bar entries when:
+
+- the tool is enabled for the portal instance (`tools_configuration`)
+- the tool is `mediation_only`
+- the tool declares an icon for activity rendering
+
+Activity-bar tool entries launch into `SYSTEM` using the canonical query contract:
+
+- `GET /portal/system?mediate_tool=<tool_id>`
+
+This launch enters a **tool-dominant mediation layer** at sandbox depth (no file selected). The data workbench remains present in core logic but is visually non-dominant while the tool layer is locked.
+
+Tool discovery is still available through `SYSTEM -> Mediate`, and tool configuration remains under `UTILITIES`.
 
 Legacy aliases and compatibility entrypoints may still normalize into the current shell, but they are hidden compatibility redirects rather than visible tool-home destinations.
 

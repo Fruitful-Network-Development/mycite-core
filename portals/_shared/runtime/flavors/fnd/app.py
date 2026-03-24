@@ -100,6 +100,7 @@ from _shared.portal.services.request_log_ui import (
 from _shared.portal.services.control_panel import build_control_panel_sections
 from _shared.portal.services.runtime_mode import build_session_presentation, env_flag, install_read_only_guard
 from _shared.portal.services.shell_context import build_shell_context
+from _shared.portal.shell import canonical_shell_static_dir
 
 app = Flask(
     __name__,
@@ -125,7 +126,6 @@ PRIVATE_DIR = Path(os.environ.get("PRIVATE_DIR", str(BASE_DIR / "private")))
 DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR / "data")))
 FALLBACK_DIR = BASE_DIR
 ICONS_DIR = REPO_ROOT / "assets" / "icons"
-SHARED_UI_STATIC_DIR = REPO_ROOT / "_shared" / "portal" / "ui" / "static"
 PORTAL_INSTANCE_ID = str(os.environ.get("PORTAL_INSTANCE_ID") or "fnd").strip().lower()
 AUTH_MODE = str(os.environ.get("AUTH_MODE") or "keycloak").strip().lower() or "keycloak"
 PORTAL_READ_ONLY = env_flag("PORTAL_READ_ONLY", default=False)
@@ -136,7 +136,8 @@ KNOWN_EMBED_PORT_BY_MSN = {
     TFF_MSN_ID: "5203",
 }
 
-app.static_folder = str(SHARED_UI_STATIC_DIR)
+# Same canonical static tree as TFF (portal.css, portal.js, tools/*, shared/*); do not use _shared/portal/ui/static only.
+app.static_folder = str(canonical_shell_static_dir(REPO_ROOT))
 install_read_only_guard(app, enabled=PORTAL_READ_ONLY)
 
 
@@ -1048,6 +1049,7 @@ def _tool_shell_context() -> Dict[str, Any]:
         switch_portal_url = "/oauth2/sign_in?rd=%2Fportal%2Fsystem"
     mediate_tool = str(request.args.get("mediate_tool") or "").strip().lower()
     activity_tool_links = build_activity_tool_links(TOOL_TABS, active_mediate_tool=mediate_tool)
+    initial_shell_verb = "mediate" if mediate_tool else "navigate"
     context = build_shell_context(
         active_service=active_service,
         active_service_tab=active_service_tab,
@@ -1063,7 +1065,7 @@ def _tool_shell_context() -> Dict[str, Any]:
         switch_portal_url=switch_portal_url,
         current_path=current_path,
         control_panel_sections=_control_panel_sections(active_service),
-        shell_verbs=build_shell_verbs_payload("navigate"),
+        shell_verbs=build_shell_verbs_payload(initial_shell_verb),
         portal_instance_context={
             "portals_root": str(PORTAL_INSTANCE_CONTEXT.portals_root),
             "public_dir": str(PORTAL_INSTANCE_CONTEXT.public_dir),
@@ -1115,23 +1117,6 @@ def portal_static_icons(relpath: str):
     except Exception:
         abort(404)
     return send_from_directory(ICONS_DIR, resolved.relative_to(ICONS_DIR.resolve()).as_posix(), mimetype="image/svg+xml")
-
-
-@app.get("/portal/static/shared/<path:relpath>")
-def portal_static_shared(relpath: str):
-    token = str(relpath or "").strip().replace("\\", "/")
-    rel = Path(token)
-    if not token or rel.is_absolute() or ".." in rel.parts:
-        abort(404)
-    try:
-        root = SHARED_UI_STATIC_DIR.resolve()
-        candidate = (SHARED_UI_STATIC_DIR / rel).resolve()
-        candidate.relative_to(root)
-    except Exception:
-        abort(404)
-    if not candidate.exists() or not candidate.is_file():
-        abort(404)
-    return send_from_directory(SHARED_UI_STATIC_DIR, relpath)
 
 
 @app.get("/healthz")

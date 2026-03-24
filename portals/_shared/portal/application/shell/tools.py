@@ -131,6 +131,7 @@ def tool_matches_context(meta: dict[str, Any], context: dict[str, Any]) -> bool:
         return True
     if (
         _text(context.get("mediation_scope")).lower() == "system_sandbox"
+        and _text(context.get("shell_surface")).lower() == "tool_mediation"
         and shell_verb == "mediate"
         and capability["config_context_support"]
     ):

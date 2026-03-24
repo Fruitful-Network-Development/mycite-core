@@ -9,6 +9,7 @@ from .contracts import (
     build_inspector_card,
     build_shell_verbs_payload,
     normalize_shell_verb,
+    resolve_shell_verb_from_payload,
 )
 from .runtime import build_selected_context_payload, build_system_sandbox_context_payload
 from .tools import compatible_tools_for_context, normalize_tool_capability
@@ -25,5 +26,6 @@ __all__ = [
     "build_shell_verbs_payload",
     "compatible_tools_for_context",
     "normalize_shell_verb",
+    "resolve_shell_verb_from_payload",
     "normalize_tool_capability",
 ]
