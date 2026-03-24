@@ -52,6 +52,12 @@ The current tool split is intentional:
 - member-scoped actions for profile-specific preview and sync
 - platform-scoped admin or agreement tooling for host-level provider state
 
+Current FND-side service-management tools are mediation-oriented:
+
+- AWS, PayPal, analytics, and keycloak-backed portal operations remain separate tools
+- each tool reads its own JSON collection under `private/utilities/tools/<tool-id-or-namespace>/`
+- shared shell mediation treats those files as profile-card oriented config-context collections rather than container-era proxy state
+
 ## Boundaries
 
 This page owns member-service integration abstractions. It does not own:

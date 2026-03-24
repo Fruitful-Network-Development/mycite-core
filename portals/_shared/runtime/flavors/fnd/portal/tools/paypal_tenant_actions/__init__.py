@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, render_template
+from _shared.portal.application.service_tools import build_service_tool_meta
 
 paypal_tenant_actions_bp = Blueprint("paypal_tenant_actions", __name__)
 
@@ -22,4 +23,5 @@ def get_tool() -> dict[str, object]:
         "route_prefix": f"/portal/tools/{TOOL_ID}",
         "home_path": TOOL_HOME_PATH,
         "blueprint": TOOL_BLUEPRINT,
+        **build_service_tool_meta(TOOL_ID),
     }

@@ -4,29 +4,92 @@ from copy import deepcopy
 from typing import Any
 
 
+def _index_token(token: str) -> int | None:
+    try:
+        value = int(str(token or "").strip())
+    except Exception:
+        return None
+    return value if value >= 0 else None
+
+
 def get_path(payload: dict[str, Any], path: str) -> Any:
-    node: Any = payload
-    for token in [part for part in str(path or "").split(".") if part]:
-        if not isinstance(node, dict):
-            return None
-        node = node.get(token)
-    return node
+    def _walk(node: Any, tokens: list[str]) -> Any:
+        if not tokens:
+            return node
+        token = tokens[0]
+        if isinstance(node, dict):
+            return _walk(node.get(token), tokens[1:])
+        if isinstance(node, list):
+            index = _index_token(token)
+            if index is not None:
+                if index >= len(node):
+                    return None
+                return _walk(node[index], tokens[1:])
+            if not node or not isinstance(node[0], (dict, list)):
+                return None
+            return _walk(node[0], tokens)
+        return None
+
+    return _walk(payload, [part for part in str(path or "").split(".") if part])
 
 
 def set_path(payload: dict[str, Any], path: str, value: Any) -> dict[str, Any]:
-    out = deepcopy(payload if isinstance(payload, dict) else {})
     tokens = [part for part in str(path or "").split(".") if part]
     if not tokens:
-        return out
-    node: dict[str, Any] = out
-    for token in tokens[:-1]:
-        child = node.get(token)
-        if not isinstance(child, dict):
-            child = {}
-            node[token] = child
-        node = child
-    node[tokens[-1]] = value
-    return out
+        return deepcopy(payload if isinstance(payload, dict) else {})
+
+    def _default_container(next_token: str | None, current_token: str = "") -> Any:
+        if current_token == "property" and (next_token is None or _index_token(next_token) is None):
+            return [{}]
+        if next_token is not None and _index_token(next_token) is not None:
+            return []
+        return {}
+
+    def _assign(node: Any, remaining: list[str], next_value: Any) -> Any:
+        if not remaining:
+            return next_value
+
+        token = remaining[0]
+        tail = remaining[1:]
+
+        if isinstance(node, dict):
+            out = deepcopy(node)
+            if not tail:
+                out[token] = next_value
+                return out
+            child = out.get(token)
+            if not isinstance(child, (dict, list)):
+                child = _default_container(tail[0], token)
+            out[token] = _assign(child, tail, next_value)
+            return out
+
+        if isinstance(node, list):
+            out = list(node)
+            index = _index_token(token)
+            if index is not None:
+                while len(out) <= index:
+                    out.append(_default_container(tail[0] if tail else None))
+                child = out[index]
+                if not tail:
+                    out[index] = next_value
+                    return out
+                if not isinstance(child, (dict, list)):
+                    child = _default_container(tail[0])
+                out[index] = _assign(child, tail, next_value)
+                return out
+
+            if not out:
+                out.append({})
+            first = out[0]
+            if not isinstance(first, (dict, list)):
+                first = {}
+            out[0] = _assign(first, remaining, next_value)
+            return out
+
+        return _assign(_default_container(token), remaining, next_value)
+
+    base = deepcopy(payload if isinstance(payload, dict) else {})
+    return _assign(base, tokens, value)
 
 
 def append_unique_path_value(payload: dict[str, Any], path: str, value: Any) -> dict[str, Any]:

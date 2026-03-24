@@ -20,13 +20,9 @@ def _load_flavor_module():
         raise RuntimeError(f"Unsupported portal runtime flavor: {flavor}")
     if str(flavor_root) not in sys.path:
         sys.path.insert(0, str(flavor_root))
-    existing_portal = sys.modules.get("portal")
-    if existing_portal is not None:
-        existing_file = str(getattr(existing_portal, "__file__", "") or "")
-        if existing_file and not existing_file.startswith(str(flavor_root)):
-            for key in list(sys.modules):
-                if key == "portal" or key.startswith("portal."):
-                    sys.modules.pop(key, None)
+    for key in list(sys.modules):
+        if key == "portal" or key.startswith("portal."):
+            sys.modules.pop(key, None)
     module_name = f"mycite_runtime_{flavor}_{uuid.uuid4().hex}"
     spec = importlib.util.spec_from_file_location(module_name, app_path)
     if spec is None or spec.loader is None:

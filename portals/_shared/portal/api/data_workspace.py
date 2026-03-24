@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from flask import abort, jsonify, redirect, request
 from _shared.portal.application.agro import build_agro_config_context, update_agro_config_bindings
+from _shared.portal.application.service_tools import build_service_tool_config_context, service_tool_definition
 from _shared.portal.application.shell.runtime import build_selected_context_payload
 from _shared.portal.application.workbench.actions import WorkbenchActionService
 from _shared.portal.application.workbench.catalog import DocumentCatalogService
@@ -325,6 +326,16 @@ def register_data_routes(
             msn_id=_msn_id(),
         )
 
+    def _service_tool_config_context(tool_id: str) -> dict[str, Any]:
+        return build_service_tool_config_context(
+            tool_id,
+            private_dir=_private_dir(),
+            tool_tabs=_tool_tabs(),
+            portal_instance_context=portal_instance_context,
+            portal_instance_id=str(_portal_instance_context_payload().get("portal_instance_id") or ""),
+            msn_id=_msn_id(),
+        )
+
     if include_home_redirect:
         @app.get("/portal/data")
         def portal_data_home_redirect():
@@ -399,6 +410,13 @@ def register_data_routes(
         payload = _agro_config_context(active_config)
         payload["saved"] = saved
         return jsonify(payload), (200 if request.method == "GET" or saved else 500)
+
+    @app.get("/portal/api/data/system/config_context/<tool_id>")
+    def portal_data_system_service_tool_config_context(tool_id: str):
+        if not service_tool_definition(tool_id):
+            return jsonify({"ok": False, "error": "unsupported service tool"}), 404
+        payload = _service_tool_config_context(tool_id)
+        return jsonify(payload), (200 if payload.get("ok") else 404)
 
     @app.post("/portal/api/data/anthology/overlay/migration")
     def portal_data_anthology_overlay_migration():
@@ -1179,6 +1197,11 @@ def register_data_routes(
     def portal_data_sandbox_mss_compile():
         body = _json_body()
         selected_refs = [str(item).strip() for item in list(body.get("selected_refs") or []) if str(item).strip()]
+        if not selected_refs:
+            return (
+                jsonify({"ok": False, "error": "selected_refs required (non-empty list of datum identifiers)"}),
+                400,
+            )
         resource_id = str(body.get("resource_id") or "mss_resource").strip()
         result = _sandbox_engine().compile_mss_resource(
             resource_id=resource_id,

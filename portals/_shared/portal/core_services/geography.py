@@ -5,6 +5,8 @@ import string
 from pathlib import Path
 from typing import Any
 
+from ..data_engine.property_workspace import primary_property_entry
+
 _COORD_SCALE = 10_000_000.0
 
 
@@ -194,7 +196,7 @@ def _geojson_polygon(entries: list[dict[str, Any]], geometry_type: str) -> dict[
 
 
 def build_property_geography_model(config: dict[str, Any], data_dir: Path) -> dict[str, Any]:
-    property_cfg = config.get("property") if isinstance(config.get("property"), dict) else {}
+    property_cfg = primary_property_entry(config)
     geometry_cfg = property_cfg.get("geometry") if isinstance(property_cfg.get("geometry"), dict) else {}
     bbox_refs = [str(item).strip() for item in (property_cfg.get("bbox") or []) if str(item or "").strip()]
     coordinate_refs = [str(item).strip() for item in (geometry_cfg.get("coordinates") or []) if str(item or "").strip()]

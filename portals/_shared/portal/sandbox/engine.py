@@ -15,7 +15,15 @@ from ..data_engine.resource_registry import INHERITED_SCOPE, read_resource_file,
 from ..data_engine.samras_descriptor_compiler import compile_samras_descriptors_from_rows
 from ..datum_refs import normalize_datum_ref, parse_datum_ref
 from ..mss import decode_mss_payload, preview_mss_context
-from ..samras import InvalidSamrasStructure, build_workspace_view_model, load_workspace_from_resource_body, mutate_resource_body
+from ..samras import (
+    InvalidSamrasStructure,
+    address_sort_key,
+    build_workspace_view_model,
+    load_workspace_from_resource_body,
+    mutate_resource_body,
+    parent_address as parent_of_address,
+    rebuild_structure_from_addresses,
+)
 from .models import (
     ExposedResourceValue,
     InheritedResourceContext,
@@ -44,6 +52,36 @@ def _as_text(value: object) -> str:
 
 
 _DATUM_TOKEN_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
+
+
+def _normalize_address_seed_map(title_by_address: dict[str, str]) -> tuple[dict[str, str], list[str]]:
+    raw_addresses = [token for token in title_by_address.keys() if token]
+    if not raw_addresses:
+        return {}, []
+
+    expanded: set[str] = set()
+    for token in raw_addresses:
+        cursor = token
+        while cursor:
+            expanded.add(cursor)
+            cursor = parent_of_address(cursor)
+
+    children_by_parent: dict[str, list[str]] = {}
+    for address in sorted(expanded, key=address_sort_key):
+        children_by_parent.setdefault(parent_of_address(address), []).append(address)
+
+    mapping: dict[str, str] = {}
+
+    def _assign(old_address: str, new_address: str) -> None:
+        mapping[old_address] = new_address
+        for index, child in enumerate(children_by_parent.get(old_address, []), start=1):
+            _assign(child, f"{new_address}-{index}")
+
+    for index, root in enumerate(children_by_parent.get("", []), start=1):
+        _assign(root, str(index))
+
+    ordered = sorted((mapping[address] for address in expanded if address in mapping), key=address_sort_key)
+    return mapping, ordered
 
 
 class SandboxEngine:
@@ -245,11 +283,6 @@ class SandboxEngine:
         source: str = "local",
     ) -> SandboxStageResult:
         try:
-            decoded_structure = decode_samras_structure(
-                _as_text(structure_payload),
-                root_ref="0-0-5",
-            )
-            address_map = dict(decoded_structure.address_map or {})
             title_by_address = (
                 {
                     _as_text(item.get("address_id")): _as_text(item.get("title"))
@@ -259,6 +292,27 @@ class SandboxEngine:
                 if isinstance(rows, list)
                 else {}
             )
+            warnings: list[str] = []
+            try:
+                decoded_structure = decode_samras_structure(
+                    _as_text(structure_payload),
+                    root_ref="0-0-5",
+                )
+            except Exception:
+                address_mapping, normalized_addresses = _normalize_address_seed_map(title_by_address)
+                if not normalized_addresses:
+                    raise
+                decoded_structure = rebuild_structure_from_addresses(
+                    normalized_addresses,
+                    root_ref="0-0-5",
+                )
+                title_by_address = {
+                    address_mapping[address]: title
+                    for address, title in title_by_address.items()
+                    if address in address_mapping and address_mapping[address]
+                }
+                warnings.append("structure_payload was descriptor-only; derived SAMRAS structure from title rows")
+            address_map = dict(decoded_structure.address_map or {})
             unknown_addresses = [address for address in title_by_address.keys() if address and address not in address_map]
             if unknown_addresses:
                 raise InvalidSamrasStructure(
@@ -309,7 +363,7 @@ class SandboxEngine:
                 resource_type="samras_resource",
                 resource_id=_as_text(resource_id),
                 staged_payload=payload,
-                warnings=list(validation.get("warnings") or []),
+                warnings=warnings + list(validation.get("warnings") or []),
                 errors=[],
             )
         except Exception as exc:

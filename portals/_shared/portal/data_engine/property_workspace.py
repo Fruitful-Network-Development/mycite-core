@@ -63,6 +63,15 @@ def _as_property_entries(config: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+def property_entries(config: dict[str, Any]) -> list[dict[str, Any]]:
+    return _as_property_entries(config)
+
+
+def primary_property_entry(config: dict[str, Any]) -> dict[str, Any]:
+    entries = _as_property_entries(config)
+    return dict(entries[0]) if entries else {}
+
+
 def _resolve_coordinate(
     token: str,
     *,

@@ -4,14 +4,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from .codec import encode_canonical_structure_from_addresses
-from .structure import SamrasStructure, address_sort_key, as_text, format_address, parent_address, parse_address_segments
+from .structure import SamrasStructure, address_sort_key, as_text, format_address, parent_address as parent_of_address, parse_address_segments
 from .validation import InvalidSamrasStructure, validate_address_set
 
 
 def _child_map(addresses: list[str] | tuple[str, ...]) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for address in sorted([str(item) for item in addresses], key=address_sort_key):
-        parent = parent_address(address)
+        parent = parent_of_address(address)
         out.setdefault(parent, []).append(address)
     return out
 
@@ -101,7 +101,7 @@ def add_child(structure: SamrasStructure, *, parent_address: str) -> SamrasMutat
     parent = as_text(parent_address)
     if parent not in structure.address_map:
         raise InvalidSamrasStructure(f"parent address not found: {parent}")
-    children = [address for address in structure.addresses if parent_address(address) == parent]
+    children = [address for address in structure.addresses if parent_of_address(address) == parent]
     next_child = f"{parent}-{len(children) + 1}"
     updated = rebuild_structure_from_addresses(list(structure.addresses) + [next_child], root_ref=structure.root_ref, warnings=structure.warnings)
     mapping = {str(item): str(item) for item in structure.addresses}
@@ -148,7 +148,7 @@ def move_branch(structure: SamrasStructure, *, from_address: str, to_parent_addr
     remaining_mapping = _normalize_address_mapping(remaining)
     normalized_remaining = [remaining_mapping[address] for address in sorted(remaining, key=address_sort_key)]
     normalized_target_parent = remaining_mapping.get(target_parent, target_parent)
-    existing_children = [address for address in normalized_remaining if parent_address(address) == normalized_target_parent]
+    existing_children = [address for address in normalized_remaining if parent_of_address(address) == normalized_target_parent]
     new_root = f"{normalized_target_parent}-{len(existing_children) + 1}"
     remapped_branch = _remap_relative(removed_branch, old_root=source, new_root=new_root)
     updated = rebuild_structure_from_addresses(
@@ -175,7 +175,7 @@ def set_child_count(structure: SamrasStructure, *, address_id: str, child_count:
     target_count = int(child_count)
     if target_count < 0:
         raise InvalidSamrasStructure("child_count may not be negative")
-    current_children = [address for address in structure.addresses if parent_address(address) == token]
+    current_children = [address for address in structure.addresses if parent_of_address(address) == token]
     current_count = len(current_children)
     if target_count == current_count:
         return SamrasMutationResult(
@@ -205,9 +205,9 @@ def set_child_count(structure: SamrasStructure, *, address_id: str, child_count:
         )
     updated_structure = structure
     removed: list[str] = []
-    while len([address for address in updated_structure.addresses if parent_address(address) == token]) > target_count:
+    while len([address for address in updated_structure.addresses if parent_of_address(address) == token]) > target_count:
         latest_child = sorted(
-            [address for address in updated_structure.addresses if parent_address(address) == token],
+            [address for address in updated_structure.addresses if parent_of_address(address) == token],
             key=address_sort_key,
         )[-1]
         removed_result = remove_branch(updated_structure, address_id=latest_child)
@@ -220,4 +220,3 @@ def set_child_count(structure: SamrasStructure, *, address_id: str, child_count:
         created_addresses=(),
         removed_addresses=tuple(removed),
     )
-

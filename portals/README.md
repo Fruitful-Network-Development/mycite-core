@@ -35,9 +35,10 @@ Those specs materialize the live state files the runtime reads:
 - `private/config.json`
 - legacy-compatible `private/mycite-config-*.json`
 - `private/network/hosted.json`
-- `private/tools.manifest.json`
+- `private/config.json -> tools_configuration`
+- `private/contracts/*.json`
 - public profile cards
-- optional seed files under `private/network/*` and related progeny/profile trees
+- optional seed files under `private/network/*`, `private/contracts/*`, and related progeny/profile trees
 
 Anthology is intentionally not generated in this phase.
 

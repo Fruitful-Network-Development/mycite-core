@@ -750,12 +750,7 @@ def _resolve_token(token: str, anthology: dict[str, Any]) -> dict[str, Any]:
 
 
 def _resolve_path_tokens(config: dict[str, Any], path: str) -> list[str]:
-    node: Any = config
-    for segment in path.split("."):
-        if not isinstance(node, dict):
-            return []
-        node = node.get(segment)
-
+    node: Any = get_path(config, path)
     if not isinstance(node, list):
         return []
     return [str(item).strip() for item in node if str(item or "").strip()]

@@ -48,6 +48,7 @@ ACTIVE_PORTALS: dict[str, dict[str, str]] = {
 SEED_PATTERNS = (
     "data/presentation/**/*.json",
     "private/network/aliases/**/*.json",
+    "private/contracts/**/*.json",
     "private/network/contracts/**/*.json",
     "private/network/progeny/*.json",
     "private/network/request_log/types/**/*.ndjson",
@@ -120,6 +121,37 @@ def _normalize_enabled_tools(values: Any) -> list[str]:
             continue
         seen.add(token)
         out.append(token)
+    return out
+
+
+def _normalize_tools_configuration(values: Any, fallback_enabled: Any = None) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    if isinstance(values, list):
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            token = str(item.get("tool_id") or item.get("id") or "").strip().lower()
+            if not token or token in seen:
+                continue
+            if not _TOOL_ID_RE.fullmatch(token):
+                continue
+            if token in RETIRED_TOOL_IDS or token in CORE_SYSTEM_SURFACES:
+                continue
+            seen.add(token)
+            mount_target = str(item.get("mount_target") or DEFAULT_MOUNT_TARGET).strip().lower() or DEFAULT_MOUNT_TARGET
+            if mount_target not in {"utilities", "peripherals.tools"}:
+                mount_target = DEFAULT_MOUNT_TARGET
+            out.append({"tool_id": token, "mount_target": mount_target})
+        if out:
+            return out
+
+    for token in _normalize_enabled_tools(fallback_enabled):
+        if token in seen:
+            continue
+        seen.add(token)
+        out.append({"tool_id": token, "mount_target": DEFAULT_MOUNT_TARGET})
     return out
 
 
@@ -294,6 +326,14 @@ def _serialize_seed_file(path: Path, target_rel: str) -> dict[str, Any]:
     return entry
 
 
+def _canonical_seed_target(rel: str) -> str:
+    token = str(rel or "").strip()
+    prefix = "private/network/contracts/"
+    if token.startswith(prefix):
+        return "private/contracts/" + token[len(prefix) :]
+    return token
+
+
 def _collect_seed_files(portal_dir: Path, state_root: Path) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -304,7 +344,7 @@ def _collect_seed_files(portal_dir: Path, state_root: Path) -> list[dict[str, An
             for path in sorted(root.glob(pattern)):
                 if not path.is_file():
                     continue
-                rel = path.relative_to(root).as_posix()
+                rel = _canonical_seed_target(path.relative_to(root).as_posix())
                 if rel in seen:
                     continue
                 seen.add(rel)
@@ -352,10 +392,14 @@ def build_portal_spec(
         canonical = _deep_fill_missing(canonical, fallback)
     canonical = _normalize_private_config(canonical)
 
-    raw_enabled_tools = canonical.pop("enabled_tools", None)
+    raw_tools_configuration = canonical.get("tools_configuration")
+    raw_enabled_tools = canonical.get("enabled_tools")
     if raw_enabled_tools is None:
         raw_enabled_tools = (repo_legacy or {}).get("enabled_tools")
-    enabled_tools = _normalize_enabled_tools(raw_enabled_tools)
+    tools_configuration = _normalize_tools_configuration(raw_tools_configuration, raw_enabled_tools)
+    enabled_tools = [str(item.get("tool_id") or "") for item in tools_configuration if str(item.get("tool_id") or "")]
+    canonical["tools_configuration"] = copy.deepcopy(tools_configuration)
+    canonical["enabled_tools"] = list(enabled_tools)
 
     title = str(canonical.get("title") or portal_id).strip() or portal_id
     state_public_msn = state_public / f"msn-{msn_id}.json"
@@ -383,10 +427,11 @@ def build_portal_spec(
     }
 
     tools = {
+        "configuration": copy.deepcopy(tools_configuration),
         "enabled": enabled_tools,
         "core_system_surfaces": list(CORE_SYSTEM_SURFACES),
         "retired": sorted(RETIRED_TOOL_IDS),
-        "mount_targets": {tool_id: DEFAULT_MOUNT_TARGET for tool_id in enabled_tools},
+        "mount_targets": {item["tool_id"]: item["mount_target"] for item in tools_configuration},
     }
 
     spec = {
@@ -447,9 +492,10 @@ def load_build_spec(build_path: Path) -> dict[str, Any]:
     return payload
 
 
-def _with_enabled_tools(payload: dict[str, Any], enabled_tools: list[str]) -> dict[str, Any]:
+def _with_tool_configuration(payload: dict[str, Any], tools_configuration: list[dict[str, str]]) -> dict[str, Any]:
     out = copy.deepcopy(payload)
-    out["enabled_tools"] = list(enabled_tools)
+    out["tools_configuration"] = [dict(item) for item in tools_configuration]
+    out["enabled_tools"] = [str(item.get("tool_id") or "") for item in tools_configuration if str(item.get("tool_id") or "")]
     return out
 
 
@@ -460,8 +506,21 @@ def materialize_build_spec(build_path: Path, target_state_root: Path | None = No
     if not str(target_root):
         raise ValueError("Target state root is required")
 
-    enabled_tools = _normalize_enabled_tools(((spec.get("tools") or {}).get("enabled") or []))
-    canonical_config = _with_enabled_tools(_normalize_private_config((spec.get("private_config") or {}).get("canonical") or {}), enabled_tools)
+    raw_tools_configuration = ((spec.get("tools") or {}).get("configuration") or [])
+    if not raw_tools_configuration:
+        mount_targets = ((spec.get("tools") or {}).get("mount_targets") or {})
+        raw_tools_configuration = [
+            {
+                "tool_id": tool_id,
+                "mount_target": str((mount_targets.get(tool_id) or DEFAULT_MOUNT_TARGET)),
+            }
+            for tool_id in _normalize_enabled_tools(((spec.get("tools") or {}).get("enabled") or []))
+        ]
+    tools_configuration = _normalize_tools_configuration(raw_tools_configuration)
+    canonical_config = _with_tool_configuration(
+        _normalize_private_config((spec.get("private_config") or {}).get("canonical") or {}),
+        tools_configuration,
+    )
     _write_json(target_root / "private" / "config.json", canonical_config)
 
     expected_legacy = {
@@ -481,7 +540,7 @@ def materialize_build_spec(build_path: Path, target_state_root: Path | None = No
         filename = str(entry.get("filename") or "").strip()
         if not filename:
             continue
-        payload = _with_enabled_tools(_normalize_private_config(entry.get("payload") or {}), enabled_tools)
+        payload = _with_tool_configuration(_normalize_private_config(entry.get("payload") or {}), tools_configuration)
         _write_json(target_root / "private" / filename, payload)
 
     hosted = (spec.get("hosted") or {}).get("payload")
@@ -501,17 +560,9 @@ def materialize_build_spec(build_path: Path, target_state_root: Path | None = No
         if filename and isinstance(payload, dict):
             _write_json(target_root / "public" / filename, payload)
 
-    manifest = {
-        "schema": TOOLS_MANIFEST_SCHEMA,
-        "tools": [
-            {
-                "tool_id": tool_id,
-                "mount_target": str((((spec.get("tools") or {}).get("mount_targets") or {}).get(tool_id) or DEFAULT_MOUNT_TARGET)),
-            }
-            for tool_id in enabled_tools
-        ],
-    }
-    _write_json(target_root / "private" / "tools.manifest.json", manifest)
+    manifest_path = target_root / "private" / "tools.manifest.json"
+    if manifest_path.exists():
+        manifest_path.unlink()
 
     for entry in spec.get("seed_files") or []:
         if not isinstance(entry, dict):
