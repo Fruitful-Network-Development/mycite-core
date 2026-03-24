@@ -41,7 +41,7 @@ Canonical shell and service routes are:
 - `GET /portal/system`
 - `GET /portal/network`
 - `GET /portal/utilities`
-- `GET /portal/data` -> `/portal/tools/data_tool/home`
+- `GET /portal/data` -> `/portal/system`
 
 The visible activity bar is reserved for the three primary services:
 
@@ -51,7 +51,7 @@ The visible activity bar is reserved for the three primary services:
 
 Optional tools do not add their own activity-bar application entries. Tool discovery belongs to `SYSTEM -> Mediate`, while tool configuration belongs to `UTILITIES`.
 
-Legacy aliases and compatibility entrypoints may still normalize into the current shell, but they are not part of the visible product framing.
+Legacy aliases and compatibility entrypoints may still normalize into the current shell, but they are hidden compatibility redirects rather than visible tool-home destinations.
 
 ## Boundaries
 

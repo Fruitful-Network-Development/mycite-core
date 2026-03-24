@@ -22,7 +22,7 @@ Canonical tabs are:
 - `Contracts`
 
 `NETWORK > Contracts` is the canonical contract editor.
-Contract storage is file-backed under `private/contracts`, with legacy reads from `private/network/contracts` remaining available during migration.
+Contract storage is file-backed under `private/contracts`.
 
 `NETWORK > Profile` uses shared datum-backed write intents:
 

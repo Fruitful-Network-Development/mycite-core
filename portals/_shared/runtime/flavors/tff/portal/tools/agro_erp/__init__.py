@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from flask import Blueprint, abort, current_app, jsonify, render_template, request
+from flask import Blueprint, abort, current_app, jsonify, redirect, request
 
 _FLAVOR_ROOT = Path(__file__).resolve().parents[3]
 if str(_FLAVOR_ROOT) not in sys.path:
@@ -891,7 +891,6 @@ def _daemon_specs() -> list[dict[str, Any]]:
                     "temporal": "present",
                     "archetype": "polygon",
                     "spatial": "geographic",
-                    "spacial": "geographic",
                 },
             },
         },
@@ -914,7 +913,6 @@ def _daemon_specs() -> list[dict[str, Any]]:
                     "temporal": "present",
                     "archetype": "bbox",
                     "spatial": "geographic",
-                    "spacial": "geographic",
                 },
             },
         },
@@ -1271,12 +1269,7 @@ def _mvp_apply_profile_field(*, field_id: str, body: dict[str, Any]) -> tuple[in
 
 @agro_erp_bp.get("/portal/tools/agro_erp/home")
 def agro_erp_home():
-    model = _build_model_payload()
-    return render_template(
-        "tools/agro_erp_home.html",
-        model=model,
-        model_json=json.dumps(model, indent=2, sort_keys=True),
-    )
+    return redirect("/portal/system", code=302)
 
 
 @agro_erp_bp.get("/portal/tools/agro_erp/model.json")

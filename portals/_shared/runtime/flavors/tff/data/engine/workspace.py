@@ -499,7 +499,7 @@ class Workspace:
             "data_contract_schema": "mycite.data_workspace.v0",
             "nimm_actions": ["nav", "inv", "med", "man"],
             "focus_sources": ["auto", "anthology", "samras"],
-            "aitas_facets": ["attention", "intention", "temporal", "archetype", "spatial", "spacial"],
+            "aitas_facets": ["attention", "intention", "temporal", "archetype", "spatial"],
             "nimm_context_model": "AITAS",
             "pattern_recognition_status": "active_hooks",
             "pattern_hooks": describe_pattern_hooks(),
@@ -3935,8 +3935,6 @@ class Workspace:
                 continue
             token = str(value or "").strip()
             current[normalized_key] = token
-            if normalized_key == "spatial":
-                current["spacial"] = token
         self._state.aitas_context = current
 
     def _state_response(self, errors: list[str] | None = None, warnings: list[str] | None = None) -> dict[str, Any]:

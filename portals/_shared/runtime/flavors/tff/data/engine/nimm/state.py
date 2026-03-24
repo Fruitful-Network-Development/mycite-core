@@ -19,8 +19,15 @@ def normalize_aitas_context(payload: dict[str, Any] | None) -> dict[str, str]:
             out[key] = str(data.get("spatial") or data.get("spacial") or "").strip()
             continue
         out[key] = str(data.get(key) or "").strip()
-    # Backward compatibility for existing clients expecting the typo'd key.
-    out["spacial"] = out.get("spatial", "")
+    return out
+
+
+def serialize_aitas_context(payload: dict[str, Any] | None) -> dict[str, str]:
+    out = normalize_aitas_context(payload)
+    # Compatibility projection for older clients that still read the typo'd key.
+    for key in _AITAS_LEGACY_FIELDS:
+        if key == "spacial":
+            out[key] = out.get("spatial", "")
     return out
 
 
@@ -77,7 +84,7 @@ class DataViewState:
             "staged_presentation_edits": staged_presentation,
             "validation_errors": list(self.validation_errors or []),
             "selection": dict(self.selection or {}),
-            "aitas_context": normalize_aitas_context(self.aitas_context),
+            "aitas_context": serialize_aitas_context(self.aitas_context),
             "aitas_phase": normalize_aitas_phase(self.aitas_phase),
         }
 

@@ -35,10 +35,12 @@ Those specs materialize the live state files the runtime reads:
 - `private/config.json`
 - legacy-compatible `private/mycite-config-*.json`
 - `private/network/hosted.json`
-- `private/config.json -> tools_configuration`
+- `private/config.json -> tools_configuration` as the sole tool configuration authority
 - `private/contracts/*.json`
 - public profile cards
 - optional seed files under `private/network/*`, `private/contracts/*`, and related progeny/profile trees
+
+Legacy `private/tools.manifest.json` is retired. Materialization removes it if it is still present in a live target.
 
 Anthology is intentionally not generated in this phase.
 

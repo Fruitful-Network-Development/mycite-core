@@ -114,8 +114,8 @@ class TffPortalShellRouteTests(unittest.TestCase):
             self.assertEqual(client.get("/portal/network?tab=contracts").status_code, 200)
             self.assertEqual(client.get("/portal/utilities?tab=vault").status_code, 200)
 
-            self.assertIn("/portal/tools/data_tool/home", client.get("/portal/data").headers.get("Location", ""))
-            self.assertIn("/portal/tools/data_tool/home", client.get("/portal/data/legacy").headers.get("Location", ""))
+            self.assertEqual("/portal/system", client.get("/portal/data").headers.get("Location", ""))
+            self.assertEqual("/portal/system", client.get("/portal/data/legacy").headers.get("Location", ""))
 
             self.assertEqual(client.get("/portal/api/data/state").status_code, 200)
             self.assertEqual(client.get("/portal/api/data/anthology/table").status_code, 200)

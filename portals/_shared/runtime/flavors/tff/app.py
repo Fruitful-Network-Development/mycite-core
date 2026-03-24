@@ -846,26 +846,11 @@ def _read_hosted_payload() -> Dict[str, Any]:
     return {"type": "unknown", "type_values": {}, "raw": {}, "path": str(hosted_read_paths(PRIVATE_DIR)[0])}
 
 
-def _utility_tool_items() -> list[Dict[str, Any]]:
+def _configured_tool_items() -> list[Dict[str, Any]]:
     seen: set[str] = set()
     out: list[Dict[str, Any]] = []
     for mount_target in ("utilities", "peripherals.tools"):
         for tool in _tools_by_mount_target(mount_target):
-            home_path = str(tool.get("home_path") or "").strip()
-            if not home_path or home_path in seen:
-                continue
-            seen.add(home_path)
-            out.append(tool)
-    return out
-
-
-def _mediation_provider_items() -> list[Dict[str, Any]]:
-    seen: set[str] = set()
-    out: list[Dict[str, Any]] = []
-    for mount_target in ("utilities", "peripherals.tools"):
-        for tool in _tools_by_mount_target(mount_target):
-            if bool(tool.get("owns_shell_state", True)):
-                continue
             tool_id = str(tool.get("tool_id") or "").strip()
             if not tool_id or tool_id in seen:
                 continue
@@ -1356,13 +1341,13 @@ def portal_vault():
 
 @app.get("/portal/data")
 def portal_data():
-    return redirect("/portal/tools/data_tool/home", code=302)
+    return redirect(_canonical_system_url(), code=302)
 
 
 @app.get("/portal/data/<path:tab_id>")
 def portal_data_legacy(tab_id: str):
     _ = tab_id
-    return redirect("/portal/tools/data_tool/home", code=302)
+    return redirect(_canonical_system_url(), code=302)
 
 
 @app.get("/portal/network")
@@ -1446,8 +1431,7 @@ def portal_utilities():
         msn_id=MSN_ID,
         utilities_tab=tab,
         request_log_summary=_request_log_summary(),
-        utility_tools=_utility_tool_items(),
-        mediation_tools=_mediation_provider_items(),
+        configured_tools=_configured_tool_items(),
         peripheral_entries=_utility_peripheral_entries(),
         vault_inventory=inventory,
         vault_inventory_json=json.dumps(inventory, indent=2, sort_keys=True),

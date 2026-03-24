@@ -299,14 +299,6 @@ def _serialize_seed_file(path: Path, target_rel: str) -> dict[str, Any]:
     return entry
 
 
-def _canonical_seed_target(rel: str) -> str:
-    token = str(rel or "").strip()
-    prefix = "private/network/contracts/"
-    if token.startswith(prefix):
-        return "private/contracts/" + token[len(prefix) :]
-    return token
-
-
 def _collect_seed_files(portal_dir: Path, state_root: Path) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -317,7 +309,7 @@ def _collect_seed_files(portal_dir: Path, state_root: Path) -> list[dict[str, An
             for path in sorted(root.glob(pattern)):
                 if not path.is_file():
                     continue
-                rel = _canonical_seed_target(path.relative_to(root).as_posix())
+                rel = path.relative_to(root).as_posix()
                 if rel in seen:
                     continue
                 seen.add(rel)
@@ -520,9 +512,9 @@ def materialize_build_spec(build_path: Path, target_state_root: Path | None = No
         if filename and isinstance(payload, dict):
             _write_json(target_root / "public" / filename, payload)
 
-    manifest_path = target_root / "private" / "tools.manifest.json"
-    if manifest_path.exists():
-        manifest_path.unlink()
+    legacy_manifest_path = target_root / "private" / "tools.manifest.json"
+    if legacy_manifest_path.exists():
+        legacy_manifest_path.unlink()
 
     for entry in spec.get("seed_files") or []:
         if not isinstance(entry, dict):

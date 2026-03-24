@@ -13,19 +13,19 @@ def _index_token(token: str) -> int | None:
 
 
 def get_path(payload: dict[str, Any], path: str) -> Any:
-    def _walk(node: Any, tokens: list[str]) -> Any:
+    def _walk(node: Any, tokens: list[str], *, property_list_alias: bool = False) -> Any:
         if not tokens:
             return node
         token = tokens[0]
         if isinstance(node, dict):
-            return _walk(node.get(token), tokens[1:])
+            return _walk(node.get(token), tokens[1:], property_list_alias=(token == "property"))
         if isinstance(node, list):
             index = _index_token(token)
             if index is not None:
                 if index >= len(node):
                     return None
                 return _walk(node[index], tokens[1:])
-            if not node or not isinstance(node[0], (dict, list)):
+            if not property_list_alias or not node or not isinstance(node[0], (dict, list)):
                 return None
             return _walk(node[0], tokens)
         return None
@@ -45,7 +45,7 @@ def set_path(payload: dict[str, Any], path: str, value: Any) -> dict[str, Any]:
             return []
         return {}
 
-    def _assign(node: Any, remaining: list[str], next_value: Any) -> Any:
+    def _assign(node: Any, remaining: list[str], next_value: Any, *, property_list_alias: bool = False) -> Any:
         if not remaining:
             return next_value
 
@@ -60,7 +60,7 @@ def set_path(payload: dict[str, Any], path: str, value: Any) -> dict[str, Any]:
             child = out.get(token)
             if not isinstance(child, (dict, list)):
                 child = _default_container(tail[0], token)
-            out[token] = _assign(child, tail, next_value)
+            out[token] = _assign(child, tail, next_value, property_list_alias=(token == "property"))
             return out
 
         if isinstance(node, list):
@@ -78,6 +78,8 @@ def set_path(payload: dict[str, Any], path: str, value: Any) -> dict[str, Any]:
                 out[index] = _assign(child, tail, next_value)
                 return out
 
+            if not property_list_alias:
+                return out
             if not out:
                 out.append({})
             first = out[0]

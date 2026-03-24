@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
-from flask import Blueprint, current_app, jsonify, render_template
+from flask import Blueprint, current_app, jsonify, redirect
 
 config_schema_bp = Blueprint("config_schema", __name__)
 
@@ -129,15 +129,7 @@ def _build_model_payload() -> Dict[str, Any]:
 
 @config_schema_bp.get("/portal/tools/config_schema/home")
 def config_schema_home():
-    model = _build_model_payload()
-    return render_template(
-        "tools/config_schema_home.html",
-        model=model,
-        expected_fields=model.get("expected_fields", []),
-        organization_config_json=json.dumps(model.get("organization_config", {}), indent=2, sort_keys=True),
-        default_behavior_json=json.dumps(model.get("default_behavior", {}), indent=2, sort_keys=True),
-        resolved_behavior_json=json.dumps(model.get("resolved_behavior", {}), indent=2, sort_keys=True),
-    )
+    return redirect("/portal/system", code=302)
 
 
 @config_schema_bp.get("/portal/tools/config_schema/model.json")
