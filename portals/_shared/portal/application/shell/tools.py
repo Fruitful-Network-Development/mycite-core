@@ -129,6 +129,12 @@ def tool_matches_context(meta: dict[str, Any], context: dict[str, Any]) -> bool:
         return False
     if _text(context.get("schema")) == "mycite.shell.config_context.v1" and capability["config_context_support"]:
         return True
+    if (
+        _text(context.get("mediation_scope")).lower() == "system_sandbox"
+        and shell_verb == "mediate"
+        and capability["config_context_support"]
+    ):
+        return True
     contracts = capability.get("supported_source_contracts") if isinstance(capability.get("supported_source_contracts"), list) else []
     if not contracts:
         return False

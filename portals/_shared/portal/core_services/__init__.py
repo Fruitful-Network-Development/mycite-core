@@ -6,6 +6,7 @@ from .config_loader import (
 from .geography import build_property_geography_model
 from .network_cards import build_network_cards
 from .registry import (
+    build_activity_tool_links,
     DEFAULT_SERVICE_ORDER,
     NETWORK_TAB_ORDER,
     active_service_from_path,
@@ -19,6 +20,7 @@ __all__ = [
     "DEFAULT_SERVICE_ORDER",
     "NETWORK_TAB_ORDER",
     "active_service_from_path",
+    "build_activity_tool_links",
     "build_network_tabs",
     "build_network_cards",
     "build_property_geography_model",

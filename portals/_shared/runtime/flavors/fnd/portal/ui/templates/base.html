@@ -67,6 +67,14 @@
             <a class="ide-activitylink" href="/portal/network"><span>NETWORK</span></a>
             <a class="ide-activitylink" href="/portal/utilities"><span>UTILITIES</span></a>
           {% endif %}
+          {% if activity_tool_links is defined and activity_tool_links %}
+            {% for tlink in activity_tool_links %}
+              <a class="ide-activitylink {% if tlink.active %}is-active{% endif %}" href="{{ tlink.href }}" title="{{ tlink.label }}">
+                {% if tlink.icon %}<img src="{{ tlink.icon }}" alt="" aria-hidden="true" />{% endif %}
+                <span>{{ tlink.label }}</span>
+              </a>
+            {% endfor %}
+          {% endif %}
         </nav>
 
         <div class="ide-activityfooter">

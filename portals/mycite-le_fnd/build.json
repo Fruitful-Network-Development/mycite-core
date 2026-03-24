@@ -11,52 +11,12 @@
   "tools": {
     "configuration": [
       {
-        "tool_id": "agro_erp",
-        "mount_target": "peripherals.tools"
-      },
-      {
-        "tool_id": "tenant_progeny_profiles",
-        "mount_target": "peripherals.tools"
-      },
-      {
-        "tool_id": "fnd_provisioning",
-        "mount_target": "peripherals.tools"
-      },
-      {
-        "tool_id": "paypal_tenant_actions",
-        "mount_target": "peripherals.tools"
-      },
-      {
-        "tool_id": "paypal_service_agreement",
-        "mount_target": "peripherals.tools"
-      },
-      {
-        "tool_id": "aws_tenant_actions",
-        "mount_target": "peripherals.tools"
-      },
-      {
-        "tool_id": "aws_platform_admin",
-        "mount_target": "peripherals.tools"
-      },
-      {
-        "tool_id": "website_analytics",
-        "mount_target": "peripherals.tools"
-      },
-      {
-        "tool_id": "operations",
+        "tool_id": "fnd_ebi",
         "mount_target": "peripherals.tools"
       }
     ],
     "enabled": [
-      "agro_erp",
-      "tenant_progeny_profiles",
-      "fnd_provisioning",
-      "paypal_tenant_actions",
-      "paypal_service_agreement",
-      "aws_tenant_actions",
-      "aws_platform_admin",
-      "website_analytics",
-      "operations"
+      "fnd_ebi"
     ],
     "core_system_surfaces": [
       "data_tool"
@@ -66,15 +26,7 @@
       "paypal_demo"
     ],
     "mount_targets": {
-      "agro_erp": "peripherals.tools",
-      "tenant_progeny_profiles": "peripherals.tools",
-      "fnd_provisioning": "peripherals.tools",
-      "paypal_tenant_actions": "peripherals.tools",
-      "paypal_service_agreement": "peripherals.tools",
-      "aws_tenant_actions": "peripherals.tools",
-      "aws_platform_admin": "peripherals.tools",
-      "website_analytics": "peripherals.tools",
-      "operations": "peripherals.tools"
+      "fnd_ebi": "peripherals.tools"
     }
   },
   "private_config": {
@@ -144,39 +96,7 @@
       },
       "tools_configuration": [
         {
-          "tool_id": "agro_erp",
-          "mount_target": "peripherals.tools"
-        },
-        {
-          "tool_id": "tenant_progeny_profiles",
-          "mount_target": "peripherals.tools"
-        },
-        {
-          "tool_id": "fnd_provisioning",
-          "mount_target": "peripherals.tools"
-        },
-        {
-          "tool_id": "paypal_tenant_actions",
-          "mount_target": "peripherals.tools"
-        },
-        {
-          "tool_id": "paypal_service_agreement",
-          "mount_target": "peripherals.tools"
-        },
-        {
-          "tool_id": "aws_tenant_actions",
-          "mount_target": "peripherals.tools"
-        },
-        {
-          "tool_id": "aws_platform_admin",
-          "mount_target": "peripherals.tools"
-        },
-        {
-          "tool_id": "website_analytics",
-          "mount_target": "peripherals.tools"
-        },
-        {
-          "tool_id": "operations",
+          "tool_id": "fnd_ebi",
           "mount_target": "peripherals.tools"
         }
       ]
@@ -251,39 +171,7 @@
           },
           "tools_configuration": [
             {
-              "tool_id": "agro_erp",
-              "mount_target": "peripherals.tools"
-            },
-            {
-              "tool_id": "tenant_progeny_profiles",
-              "mount_target": "peripherals.tools"
-            },
-            {
-              "tool_id": "fnd_provisioning",
-              "mount_target": "peripherals.tools"
-            },
-            {
-              "tool_id": "paypal_tenant_actions",
-              "mount_target": "peripherals.tools"
-            },
-            {
-              "tool_id": "paypal_service_agreement",
-              "mount_target": "peripherals.tools"
-            },
-            {
-              "tool_id": "aws_tenant_actions",
-              "mount_target": "peripherals.tools"
-            },
-            {
-              "tool_id": "aws_platform_admin",
-              "mount_target": "peripherals.tools"
-            },
-            {
-              "tool_id": "website_analytics",
-              "mount_target": "peripherals.tools"
-            },
-            {
-              "tool_id": "operations",
+              "tool_id": "fnd_ebi",
               "mount_target": "peripherals.tools"
             }
           ]

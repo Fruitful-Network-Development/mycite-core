@@ -40,14 +40,14 @@ class ToolRuntimeTests(unittest.TestCase):
                         "msn_id": "3-2-3",
                         "tools_configuration": [
                             {"tool_id": "operations", "mount_target": "utilities"},
-                            {"tool_id": "website_analytics", "mount_target": "peripherals.tools"},
+                            {"tool_id": "fnd_ebi", "mount_target": "peripherals.tools"},
                         ],
                     }
                 )
                 + "\n",
                 encoding="utf-8",
             )
-            self.assertEqual(runtime.read_enabled_tools(private_dir, "3-2-3"), ["operations", "website_analytics"])
+            self.assertEqual(runtime.read_enabled_tools(private_dir, "3-2-3"), ["operations", "fnd_ebi"])
 
     def test_read_enabled_tools_ignores_legacy_enabled_tools(self):
         runtime = _load_tool_runtime_module()

@@ -10,7 +10,7 @@ from .contracts import (
     build_shell_verbs_payload,
     normalize_shell_verb,
 )
-from .runtime import build_selected_context_payload
+from .runtime import build_selected_context_payload, build_system_sandbox_context_payload
 from .tools import compatible_tools_for_context, normalize_tool_capability
 
 __all__ = [
@@ -21,6 +21,7 @@ __all__ = [
     "TOOL_CAPABILITY_SCHEMA",
     "build_inspector_card",
     "build_selected_context_payload",
+    "build_system_sandbox_context_payload",
     "build_shell_verbs_payload",
     "compatible_tools_for_context",
     "normalize_shell_verb",

@@ -41,7 +41,7 @@ Enabled optional tools:
 - `paypal_service_agreement`
 - `aws_tenant_actions`
 - `aws_platform_admin`
-- `website_analytics`
+- `fnd_ebi` (FND EBI — hosted site analytics mediation)
 - `operations`
 
 Core SYSTEM surface, not an optional tool:

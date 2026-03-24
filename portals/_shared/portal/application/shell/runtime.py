@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
-from _shared.portal.application.workbench.document_contract import DOCUMENT_SCHEMA
+from _shared.portal.application.workbench.document_contract import DOCUMENT_SCHEMA, build_workbench_document
 
 from .contracts import SELECTION_CONTEXT_SCHEMA, build_inspector_card, normalize_shell_verb
 from .tools import compatible_tools_for_context
@@ -182,6 +182,7 @@ def build_selected_context_payload(
     shell_verb: object = "navigate",
     tool_tabs: list[dict[str, Any]] | None = None,
     portal_instance_context: Any | None = None,
+    mediation_scope: str | None = None,
 ) -> dict[str, Any]:
     normalized_document = _dict(document)
     row = _dict(selected_row)
@@ -225,6 +226,41 @@ def build_selected_context_payload(
         "inheritance": _dict(normalized_document.get("inheritance")),
         "portal_instance_context": _instance_payload(portal_instance_context),
     }
+    ms = _text(mediation_scope).lower()
+    if ms:
+        context["mediation_scope"] = ms
     context["compatible_tools"] = compatible_tools_for_context(tool_tabs, context)
     context["inspector_cards"] = _build_inspector_cards(context)
     return context
+
+
+def build_system_sandbox_context_payload(
+    *,
+    tool_tabs: list[dict[str, Any]] | None = None,
+    portal_instance_context: Any | None = None,
+    shell_verb: object = "mediate",
+) -> dict[str, Any]:
+    """Synthetic selected-context for SYSTEM sandbox mediation (no datum/file anchor)."""
+    document = build_workbench_document(
+        document_id="workbench:system:tool_sandbox",
+        instance_id="system",
+        logical_key="portal-tool-sandbox",
+        display_name="Portal tool sandbox",
+        family_kind="system",
+        family_type="tool_sandbox",
+        family_subtype="mediation",
+        scope_kind="local",
+        workspace="system",
+        payload={
+            "mediation_host_path": "/portal/system",
+            "note": "Synthetic sandbox context for config-context service tools.",
+        },
+    )
+    return build_selected_context_payload(
+        document=document,
+        selected_row=None,
+        shell_verb=shell_verb,
+        tool_tabs=tool_tabs,
+        portal_instance_context=portal_instance_context,
+        mediation_scope="system_sandbox",
+    )

@@ -32,6 +32,7 @@ from portal.core_services.runtime import (
     build_network_cards,
     build_network_tabs,
     build_property_geography_model,
+    build_activity_tool_links,
     build_service_nav,
     load_active_private_config,
     normalize_network_tab,
@@ -1045,12 +1046,15 @@ def _tool_shell_context() -> Dict[str, Any]:
     switch_portal_url = str(os.environ.get("PORTAL_SWITCH_URL") or "/oauth2/sign_in?rd=%2Fportal%2Fsystem").strip()
     if not switch_portal_url:
         switch_portal_url = "/oauth2/sign_in?rd=%2Fportal%2Fsystem"
+    mediate_tool = str(request.args.get("mediate_tool") or "").strip().lower()
+    activity_tool_links = build_activity_tool_links(TOOL_TABS, active_mediate_tool=mediate_tool)
     context = build_shell_context(
         active_service=active_service,
         active_service_tab=active_service_tab,
         active_tool=active_tool,
         tool_tabs=TOOL_TABS,
         service_nav=build_service_nav(ACTIVE_PRIVATE_CONFIG, active_service=active_service),
+        activity_tool_links=activity_tool_links,
         network_tabs=build_network_tabs(active_service_tab),
         sidebar_progeny=sidebar_progeny,
         portal_name=portal_name,
