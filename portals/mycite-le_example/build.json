@@ -9,6 +9,7 @@
     "title": "example_portal"
   },
   "tools": {
+    "configuration": [],
     "enabled": [],
     "core_system_surfaces": [
       "data_tool"

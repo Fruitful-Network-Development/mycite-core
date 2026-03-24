@@ -5,6 +5,7 @@ from typing import Any
 
 from _shared.portal.application.shell.contracts import CONFIG_CONTEXT_SCHEMA, build_inspector_card
 from _shared.portal.application.shell.tools import compatible_tools_for_context
+from _shared.portal.data_engine.property_workspace import primary_property_entry
 from _shared.portal.data_engine.profile_config_refs import get_path, set_path
 
 
@@ -196,7 +197,7 @@ def build_agro_config_context(
         )
         for role in _ROLE_ORDER
     }
-    property_payload = _dict(active_config.get("property"))
+    property_payload = primary_property_entry(active_config)
     config_context = {
         "ok": True,
         "schema": CONFIG_CONTEXT_SCHEMA,

@@ -29,12 +29,48 @@ def _load_agro_tool_meta() -> dict[str, object]:
     return module.get_tool()
 
 
+def _load_fnd_tool_meta(tool_id: str) -> dict[str, object]:
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "portals"
+        / "_shared"
+        / "runtime"
+        / "flavors"
+        / "fnd"
+        / "portal"
+        / "tools"
+        / tool_id
+        / "__init__.py"
+    )
+    portals_root = path.parents[7]
+    token = str(portals_root)
+    if token not in sys.path:
+        sys.path.insert(0, token)
+    spec = importlib.util.spec_from_file_location(f"{tool_id}_shell_contracts_test", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except ModuleNotFoundError as exc:
+        if str(getattr(exc, "name", "")) == "flask":
+            raise unittest.SkipTest("flask is not installed in host python")
+        raise
+    return module.get_tool()
+
+
 class ShellToolRuntimeContractTests(unittest.TestCase):
     def test_agro_tool_capability_contract_is_normalized(self) -> None:
         capability = normalize_tool_capability(_load_agro_tool_meta())
         self.assertEqual(capability.get("tool_id"), "agro_erp")
         self.assertTrue(capability.get("config_context_support"))
         self.assertIn("mediate", capability.get("supported_verbs") or [])
+        self.assertTrue(any(bool(item.get("config_context")) for item in capability.get("supported_source_contracts") or []))
+
+    def test_service_tool_capability_contract_is_normalized(self) -> None:
+        capability = normalize_tool_capability(_load_fnd_tool_meta("website_analytics"))
+        self.assertEqual(capability.get("tool_id"), "website_analytics")
+        self.assertTrue(capability.get("config_context_support"))
+        self.assertEqual(((capability.get("workbench_contribution") or {}).get("default_mode")), "profiles")
         self.assertTrue(any(bool(item.get("config_context")) for item in capability.get("supported_source_contracts") or []))
 
     def test_selected_context_includes_compatible_tool_registry(self) -> None:

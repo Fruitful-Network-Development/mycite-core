@@ -40,19 +40,76 @@ def _manifest_path(private_dir: Path | None) -> Path | None:
     return Path(private_dir) / "tools.manifest.json"
 
 
-def _read_tool_mount_targets(private_dir: Path | None) -> dict[str, str]:
-    path = _manifest_path(private_dir)
+def _read_json_payload(path: Path | None) -> dict[str, Any]:
     if path is None or not path.exists() or not path.is_file():
         return {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
-    if not isinstance(payload, dict):
-        return {}
+    return payload if isinstance(payload, dict) else {}
 
-    out: dict[str, str] = {}
-    entries = payload.get("tools")
+
+def _normalize_tool_configuration_entries(raw: Any) -> list[dict[str, str]]:
+    if not isinstance(raw, list):
+        return []
+
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        raw_id = item.get("tool_id") or item.get("id")
+        if not isinstance(raw_id, str):
+            continue
+        try:
+            tool_id = _safe_tool_id(raw_id)
+        except ValueError:
+            continue
+        if tool_id in seen:
+            continue
+        seen.add(tool_id)
+        out.append(
+            {
+                "tool_id": tool_id,
+                "mount_target": _normalize_mount_target(item.get("mount_target")),
+            }
+        )
+    return out
+
+
+def _read_tool_configuration(private_dir: Path | None) -> list[dict[str, str]]:
+    if private_dir is None:
+        return []
+
+    config_payload = _read_json_payload(_config_path(Path(private_dir), None))
+    config_entries = _normalize_tool_configuration_entries(config_payload.get("tools_configuration"))
+    if config_entries:
+        return config_entries
+
+    enabled_tools = config_payload.get("enabled_tools")
+    if isinstance(enabled_tools, list):
+        entries: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for item in enabled_tools:
+            if not isinstance(item, str):
+                continue
+            try:
+                tool_id = _safe_tool_id(item)
+            except ValueError:
+                continue
+            if tool_id in seen:
+                continue
+            seen.add(tool_id)
+            entries.append({"tool_id": tool_id, "mount_target": _DEFAULT_MOUNT_TARGET})
+        if entries:
+            return entries
+
+    manifest_payload = _read_json_payload(_manifest_path(private_dir))
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    entries = manifest_payload.get("tools")
     if isinstance(entries, list):
         for item in entries:
             if not isinstance(item, dict):
@@ -64,21 +121,36 @@ def _read_tool_mount_targets(private_dir: Path | None) -> dict[str, str]:
                 tool_id = _safe_tool_id(raw_id)
             except ValueError:
                 continue
-            out[tool_id] = _normalize_mount_target(item.get("mount_target"))
+            if tool_id in seen:
+                continue
+            seen.add(tool_id)
+            out.append({"tool_id": tool_id, "mount_target": _normalize_mount_target(item.get("mount_target"))})
         return out
 
     # Backward-compatible shorthand:
     # {
     #   "mount_targets": { "operations": "peripherals.tools" }
     # }
-    mounts = payload.get("mount_targets")
+    mounts = manifest_payload.get("mount_targets")
     if isinstance(mounts, dict):
         for raw_id, raw_target in mounts.items():
             try:
                 tool_id = _safe_tool_id(str(raw_id))
             except ValueError:
                 continue
-            out[tool_id] = _normalize_mount_target(str(raw_target))
+            if tool_id in seen:
+                continue
+            seen.add(tool_id)
+            out.append({"tool_id": tool_id, "mount_target": _normalize_mount_target(str(raw_target))})
+    return out
+
+
+def _read_tool_mount_targets(private_dir: Path | None) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for entry in _read_tool_configuration(private_dir):
+        tool_id = str(entry.get("tool_id") or "")
+        if tool_id:
+            out[tool_id] = _normalize_mount_target(entry.get("mount_target"))
     return out
 
 
@@ -109,16 +181,10 @@ def read_enabled_tools(private_dir: Path, msn_id: str | None) -> list[str] | Non
     if path is None:
         return None
 
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return []
-
-    if not isinstance(payload, dict):
-        return []
-
-    if "enabled_tools" not in payload:
-        return []
+    payload = _read_json_payload(path)
+    configured = _normalize_tool_configuration_entries(payload.get("tools_configuration"))
+    if configured:
+        return [str(item.get("tool_id") or "") for item in configured if str(item.get("tool_id") or "")]
 
     raw = payload.get("enabled_tools")
     if not isinstance(raw, list):

@@ -43,6 +43,10 @@ class PortalBuildSpecTests(unittest.TestCase):
                 "msn_id": msn_id,
                 "schema": "mycite.profile.v0",
                 "title": "demo",
+                "tools_configuration": [
+                    {"tool_id": "keep_two", "mount_target": "utilities"},
+                    {"tool_id": "keep_one", "mount_target": "peripherals.tools"},
+                ],
                 "progeny": {
                     "admin": {"poc": ["alias-poc.json"]},
                     "member": {"tenant": ["member-tenant.json"], "board_member": ["member-board_member.json"]},
@@ -75,10 +79,24 @@ class PortalBuildSpecTests(unittest.TestCase):
 
             self.assertEqual(spec_a, spec_b)
             self.assertEqual(spec_a["runtime_flavor"], "demo")
-            self.assertEqual(spec_a["tools"]["enabled"], ["keep_one", "keep_two"])
+            self.assertEqual(spec_a["tools"]["enabled"], ["keep_two", "keep_one"])
             self.assertEqual(spec_a["tools"]["core_system_surfaces"], ["data_tool"])
+            self.assertEqual(
+                spec_a["tools"]["configuration"],
+                [
+                    {"tool_id": "keep_two", "mount_target": "utilities"},
+                    {"tool_id": "keep_one", "mount_target": "peripherals.tools"},
+                ],
+            )
             self.assertEqual(spec_a["private_config"]["canonical"]["property"]["title"], "state-property")
             self.assertIn("data_tool", spec_a["private_config"]["canonical"])
+            self.assertEqual(
+                spec_a["private_config"]["canonical"]["tools_configuration"],
+                [
+                    {"tool_id": "keep_two", "mount_target": "utilities"},
+                    {"tool_id": "keep_one", "mount_target": "peripherals.tools"},
+                ],
+            )
             self.assertEqual(
                 spec_a["private_config"]["canonical"]["progeny"],
                 {
@@ -112,6 +130,7 @@ class PortalBuildSpecTests(unittest.TestCase):
                 "state_root_hint": str(target_root),
                 "meta": {"msn_id": "3-2-3-demo", "title": "demo"},
                 "tools": {
+                    "configuration": [{"tool_id": "keep_one", "mount_target": "peripherals.tools"}],
                     "enabled": ["keep_one"],
                     "core_system_surfaces": ["data_tool"],
                     "retired": ["legacy_admin", "paypal_demo"],
@@ -151,10 +170,13 @@ class PortalBuildSpecTests(unittest.TestCase):
 
             canonical = json.loads((target_root / "private" / "config.json").read_text(encoding="utf-8"))
             legacy = json.loads((target_root / "private" / "mycite-config-3-2-3-demo.json").read_text(encoding="utf-8"))
-            manifest = json.loads((target_root / "private" / "tools.manifest.json").read_text(encoding="utf-8"))
+            self.assertFalse((target_root / "private" / "tools.manifest.json").exists())
             self.assertEqual(canonical["enabled_tools"], ["keep_one"])
             self.assertEqual(legacy["enabled_tools"], ["keep_one"])
-            self.assertEqual(manifest["tools"][0]["tool_id"], "keep_one")
+            self.assertEqual(
+                canonical["tools_configuration"],
+                [{"tool_id": "keep_one", "mount_target": "peripherals.tools"}],
+            )
             self.assertTrue((target_root / "private" / "network" / "aliases" / "alias-demo.json").exists())
             self.assertEqual(
                 json.loads(anthology_path.read_text(encoding="utf-8")),

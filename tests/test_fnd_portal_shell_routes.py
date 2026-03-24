@@ -136,7 +136,7 @@ class FndPortalShellRouteTests(unittest.TestCase):
                 "/portal/api/data/sandbox/mss/compile",
                 json={"resource_id": "x", "selected_refs": []},
             )
-            self.assertIn(mss_compile_shared.status_code, {200, 400})
+            self.assertEqual(mss_compile_shared.status_code, 400)
             local_inventory = client.get("/portal/api/data/resources/local")
             self.assertEqual(local_inventory.status_code, 200)
             self.assertTrue((local_inventory.get_json() or {}).get("ok"))

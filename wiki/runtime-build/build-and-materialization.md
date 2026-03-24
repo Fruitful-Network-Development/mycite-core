@@ -17,7 +17,7 @@ Each active portal carries a repo-owned `build.json` used to materialize live fi
 `build.json` is authoritative for bootstrap inputs such as:
 
 - portal identity metadata
-- enabled tools and mounts
+- tool configuration and mounts
 - private config payloads
 - hosted payloads and progeny templates
 - public profiles and cards
@@ -29,9 +29,9 @@ Materialization writes expected runtime state such as:
 
 - `private/config.json`
 - `private/network/hosted.json`
-- `private/network/contracts/*.json`
+- `private/contracts/*.json`
 - public profile-card payloads
-- declared seed files under `private/network/*`, `private/utilities/vault/*`, and `data/presentation/*`
+- declared seed files under `private/network/*`, `private/contracts/*`, `private/utilities/vault/*`, and `data/presentation/*`
 
 Materialization does not overwrite `data/anthology.json`.
 
