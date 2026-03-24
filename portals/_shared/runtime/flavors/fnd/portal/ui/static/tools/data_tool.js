@@ -3273,11 +3273,13 @@
     return resourceSurfaceDocumentForKey(payload, fk);
   }
 
-  function emitResourcesShellSelection() {
+  function emitResourcesShellSelection(origin) {
     emitShellRuntimeEvent("mycite:shell:selection-input", {
       document: activeResourceWorkbenchDocument(),
       selected_row: resourcesWorkbenchState.selectedRow || null,
       current_verb: resourcesWorkbenchState.activeTask || "navigate",
+      shell_verb: resourcesWorkbenchState.activeTask || "navigate",
+      origin: String(origin || "auto_init").trim().toLowerCase() || "auto_init",
     });
   }
 
@@ -3371,7 +3373,7 @@
     });
   }
 
-  function setResourcesActiveFile(fileKey) {
+  function setResourcesActiveFile(fileKey, origin) {
     var fk = String(fileKey || "").trim();
     var allowed = resourceSurfaceFileKeys(resourcesWorkbenchState.payload);
     if (allowed.length && allowed.indexOf(fk) === -1) fk = allowed[0];
@@ -3379,11 +3381,14 @@
     resourcesWorkbenchState.selectedRow = null;
     syncResourcesFileButtons();
     renderResourcesLayeredWorkbench();
-    emitShellRuntimeEvent("mycite:shell:file-focus-changed", { file_key: fk });
-    setResourcesActiveTask("navigate");
+    emitShellRuntimeEvent("mycite:shell:file-focus-changed", {
+      file_key: fk,
+      origin: String(origin || "user_file_focus").trim().toLowerCase() || "user_file_focus",
+    });
+    setResourcesActiveTask("navigate", origin || "user_file_focus");
   }
 
-  function setResourcesActiveTask(task) {
+  function setResourcesActiveTask(task, origin) {
     var t = String(task || "navigate").trim().toLowerCase();
     if (["navigate", "investigate", "mediate", "manipulate"].indexOf(t) === -1) t = "navigate";
     resourcesWorkbenchState.activeTask = t;
@@ -3391,11 +3396,14 @@
       var id = String(btn.getAttribute("data-resources-task") || "").trim();
       btn.classList.toggle("is-active", id === t);
     });
-    emitShellRuntimeEvent("mycite:shell:verb-changed", { verb: t });
+    emitShellRuntimeEvent("mycite:shell:verb-changed", {
+      verb: t,
+      origin: String(origin || "user_task_change").trim().toLowerCase() || "user_task_change",
+    });
     renderResourcesInspectorPanels().catch(function (err) {
       setMessages([err && err.message ? err.message : "Resources inspector failed"], []);
     });
-    emitResourcesShellSelection();
+    emitResourcesShellSelection(origin || "user_task_change");
   }
 
   async function systemMutate(action, payload) {
@@ -3436,7 +3444,7 @@
         resourcesWorkbenchState.selectedRow = nextRow;
         syncResourcesSelectionUi();
         renderResourcesShellUi();
-        emitResourcesShellSelection();
+        emitResourcesShellSelection("user_select");
       }
     }
     setMessages(payload && payload.errors || [], payload && payload.warnings || []);
@@ -3884,7 +3892,7 @@
     resourcesWorkbenchState.selectedRow = row || null;
     syncResourcesSelectionUi();
     renderResourcesShellUi();
-    emitResourcesShellSelection();
+    emitResourcesShellSelection("user_select");
   }
 
   function renderResourcesLayeredWorkbench() {
@@ -4090,7 +4098,7 @@
     }
     syncResourcesSelectionUi();
     renderResourcesShellUi();
-    emitResourcesShellSelection();
+    emitResourcesShellSelection(resourcesWorkbenchState.initialized ? "auto_refresh" : "auto_init");
   }
 
   function renderSystemResourceWorkbench(payload) {

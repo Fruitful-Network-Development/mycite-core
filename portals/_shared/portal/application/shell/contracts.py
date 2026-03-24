@@ -19,6 +19,14 @@ def normalize_shell_verb(raw: object, default: str = "navigate") -> str:
     return token if token in SHELL_VERB_ORDER else default
 
 
+def resolve_shell_verb_from_payload(payload: Any, *, default: str = "navigate") -> str:
+    body = payload if isinstance(payload, dict) else {}
+    return normalize_shell_verb(
+        body.get("shell_verb") or body.get("current_verb") or body.get("verb"),
+        default=default,
+    )
+
+
 def build_shell_verbs_payload(active_verb: object = "navigate") -> list[dict[str, Any]]:
     active = normalize_shell_verb(active_verb)
     labels = {

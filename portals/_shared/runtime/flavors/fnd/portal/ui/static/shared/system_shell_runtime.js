@@ -120,8 +120,52 @@
     activeToolId: "",
     activeMediationMode: "",
     toolContexts: {},
-    providerState: {}
+    providerState: {},
+    toolLayer: {
+      active: false,
+      toolId: "",
+      locked: false,
+      source: ""
+    }
   };
+
+  function syncToolLayerUiState() {
+    var active = !!(state.toolLayer && state.toolLayer.active);
+    systemWorkspace.classList.toggle("is-tool-layer-active", active);
+    document.body.classList.toggle("portal-tool-layer-active", active);
+  }
+
+  function enterToolLayer(toolId, source) {
+    state.toolLayer.active = true;
+    state.toolLayer.locked = true;
+    state.toolLayer.toolId = text(toolId).toLowerCase();
+    state.toolLayer.source = text(source) || "runtime";
+    state.activeVerb = "mediate";
+    syncToolLayerUiState();
+  }
+
+  function exitToolLayer() {
+    state.toolLayer.active = false;
+    state.toolLayer.locked = false;
+    state.toolLayer.toolId = "";
+    state.toolLayer.source = "";
+    syncToolLayerUiState();
+  }
+
+  function selectionOrigin(detail) {
+    return text(detail && detail.origin).toLowerCase();
+  }
+
+  function isExplicitSelectionOrigin(origin) {
+    return ["user_select", "user_file_focus", "user_task_change", "user_explicit"].indexOf(origin) !== -1;
+  }
+
+  function shouldIgnoreSelectionInput(detail) {
+    if (!state.toolLayer.active || !state.toolLayer.locked) return false;
+    var origin = selectionOrigin(detail);
+    if (!origin) return true;
+    return !isExplicitSelectionOrigin(origin);
+  }
 
   function selectionHint() {
     return text(systemWorkspace.getAttribute("data-system-empty-selection")) || "Select a file or datum to activate the SYSTEM workbench.";
@@ -354,6 +398,7 @@
   }
 
   function renderAll() {
+    syncToolLayerUiState();
     reconcileActiveTool();
     setActiveVerbButtons();
     renderSelectionSummary();
@@ -366,6 +411,9 @@
     var tool = findCompatibleTool(toolId);
     if (!tool) return;
     state.activeToolId = text(tool.tool_id);
+    if (state.toolLayer.active && text(tool.tool_id).toLowerCase() === text(state.toolLayer.toolId)) {
+      state.activeVerb = "mediate";
+    }
     state.activeMediationMode = activeToolProvider().defaultMode(tool);
     renderAll();
     activeToolProvider().ensureReady(tool, false).catch(function (err) {
@@ -817,8 +865,14 @@
       var params = new URLSearchParams(window.location.search || "");
       var tid = text(params.get("mediate_tool"));
       if (!tid) return Promise.resolve();
-      state.activeVerb = "mediate";
-      return api("/portal/api/data/system/sandbox_context", "GET").then(function (payload) {
+      enterToolLayer(tid, "query");
+      return api("/portal/api/data/system/sandbox_context", "POST", {
+        shell_verb: "mediate",
+        current_verb: "mediate",
+        shell_surface: "tool_mediation",
+        mediation_scope: "system_sandbox",
+        tool_id: tid
+      }).then(function (payload) {
         state.selectedContext = payload || {};
         renderAll();
         openTool(tid);
@@ -832,15 +886,27 @@
     var detail = event && event.detail && typeof event.detail === "object" ? event.detail : {};
     var documentPayload = detail.document && typeof detail.document === "object" ? detail.document : null;
     if (!documentPayload) return;
+    var origin = selectionOrigin(detail);
+    if (shouldIgnoreSelectionInput(detail)) {
+      return;
+    }
+    if (state.toolLayer.active && state.toolLayer.locked && isExplicitSelectionOrigin(origin)) {
+      exitToolLayer();
+      state.activeToolId = "";
+      state.activeMediationMode = "";
+    }
     state.lastSelectionInput = {
       document: documentPayload,
-      selected_row: detail.selected_row && typeof detail.selected_row === "object" ? detail.selected_row : null
+      selected_row: detail.selected_row && typeof detail.selected_row === "object" ? detail.selected_row : null,
+      origin: origin
     };
-    state.activeVerb = text(detail.current_verb || state.activeVerb || "navigate") || "navigate";
+    state.activeVerb = text(detail.current_verb || detail.shell_verb || state.activeVerb || "navigate") || "navigate";
     api("/portal/api/data/system/selection_context", "POST", {
       document: documentPayload,
       selected_row: detail.selected_row && typeof detail.selected_row === "object" ? detail.selected_row : null,
-      current_verb: state.activeVerb
+      current_verb: state.activeVerb,
+      shell_verb: state.activeVerb,
+      origin: origin
     }).then(function (payload) {
       state.selectedContext = payload || {};
       renderAll();
@@ -854,12 +920,18 @@
 
   document.addEventListener("mycite:shell:verb-changed", function (event) {
     var detail = event && event.detail && typeof event.detail === "object" ? event.detail : {};
+    if (state.toolLayer.active && state.toolLayer.locked) {
+      state.activeVerb = "mediate";
+      renderAll();
+      return;
+    }
     state.activeVerb = text(detail.verb || state.activeVerb || "navigate") || "navigate";
     if (state.lastSelectionInput && state.lastSelectionInput.document) {
       emitShellEvent("mycite:shell:selection-input", {
         document: state.lastSelectionInput.document,
         selected_row: state.lastSelectionInput.selected_row,
-        current_verb: state.activeVerb
+        current_verb: state.activeVerb,
+        origin: text(state.lastSelectionInput.origin || "user_task_change")
       });
     } else {
       renderAll();
@@ -870,7 +942,15 @@
     renderAll();
   });
 
-  document.addEventListener("mycite:shell:file-focus-changed", function () {
+  document.addEventListener("mycite:shell:file-focus-changed", function (event) {
+    var detail = event && event.detail && typeof event.detail === "object" ? event.detail : {};
+    var origin = selectionOrigin(detail);
+    if (state.toolLayer.active && state.toolLayer.locked && !isExplicitSelectionOrigin(origin)) {
+      return;
+    }
+    if (state.toolLayer.active && state.toolLayer.locked && isExplicitSelectionOrigin(origin)) {
+      exitToolLayer();
+    }
     state.activeToolId = "";
     state.activeMediationMode = "";
     renderAll();
@@ -878,6 +958,7 @@
 
   if (els.mediationCloseBtn) {
     els.mediationCloseBtn.addEventListener("click", function () {
+      exitToolLayer();
       state.activeToolId = "";
       state.activeMediationMode = "";
       renderAll();

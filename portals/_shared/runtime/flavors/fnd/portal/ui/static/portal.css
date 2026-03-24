@@ -5552,3 +5552,21 @@ body.is-modal-open {
   padding-left: 1.1rem;
   color: var(--warn, #a60);
 }
+
+/* Tool-dominant mediation layer (no default workbench takeover) */
+body.portal-tool-layer-active #dtWorkspaceResources,
+body.portal-tool-layer-active .data-tool__workspacePanel[data-workspace-panel="system"] {
+  display: none !important;
+}
+
+body.portal-tool-layer-active #systemMediationWorkbench {
+  margin: 0;
+}
+
+body.portal-tool-layer-active #systemShellSelectionSection #resourcesDatumProfile {
+  display: none;
+}
+
+body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__title {
+  opacity: 0.85;
+}

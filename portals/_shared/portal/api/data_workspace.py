@@ -8,6 +8,7 @@ from typing import Any, Callable
 from flask import abort, jsonify, redirect, request
 from _shared.portal.application.agro import build_agro_config_context, update_agro_config_bindings
 from _shared.portal.application.service_tools import build_service_tool_config_context, service_tool_definition
+from _shared.portal.application.shell.contracts import resolve_shell_verb_from_payload
 from _shared.portal.application.shell.runtime import build_selected_context_payload, build_system_sandbox_context_payload
 from _shared.portal.application.workbench.actions import WorkbenchActionService
 from _shared.portal.application.workbench.catalog import DocumentCatalogService
@@ -389,9 +390,11 @@ def register_data_routes(
         payload = build_selected_context_payload(
             document=document,
             selected_row=body.get("selected_row") if isinstance(body.get("selected_row"), dict) else None,
-            shell_verb=body.get("current_verb") or body.get("shell_verb"),
+            shell_verb=resolve_shell_verb_from_payload(body, default="navigate"),
             tool_tabs=_tool_tabs(),
             portal_instance_context=portal_instance_context,
+            mediation_scope=body.get("mediation_scope") if isinstance(body.get("mediation_scope"), str) else None,
+            shell_surface=body.get("shell_surface") if isinstance(body.get("shell_surface"), str) else None,
         )
         return jsonify(payload)
 
@@ -400,11 +403,12 @@ def register_data_routes(
         body: dict[str, Any] = {}
         if request.method == "POST":
             body = _json_body() if request.is_json else {}
-        shell_verb = body.get("shell_verb") or body.get("current_verb") or "mediate"
+        shell_verb = resolve_shell_verb_from_payload(body, default="mediate")
         payload = build_system_sandbox_context_payload(
             tool_tabs=_tool_tabs(),
             portal_instance_context=portal_instance_context,
             shell_verb=shell_verb,
+            tool_id=body.get("tool_id") if isinstance(body.get("tool_id"), str) else "",
         )
         return jsonify(payload)
 

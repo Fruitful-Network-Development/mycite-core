@@ -10,11 +10,14 @@ Canonical topic
 
 Tools are capability providers inside the unified `SYSTEM` shell. They may contribute mediated views and workflows, but they do not define alternate shells or replace the workbench state machine.
 
+Tools may be exposed as first-class activity-bar entries when configured by the portal instance. These entries still normalize into the canonical `SYSTEM` runtime and open mediation through `?mediate_tool=<tool_id>`.
+
 ## Pages
 
 - [Provider Model](provider-model.md)
 - [AGRO-ERP Mediation](agro-erp-mediation.md)
 - [Member Service Integrations](member-service-integrations.md)
+- [Tool Layer Mediation](tool-layer-mediation.md)
 
 ## Source Docs
 

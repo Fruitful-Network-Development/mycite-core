@@ -20,6 +20,7 @@ A provider may:
 - expose compatible mediated views
 - contribute mediation-specific UI
 - request shell events through the shared state model
+- consume tool-layer sandbox context (`shell_surface=tool_mediation`) when launched from activity-bar tool entrypoints
 
 A provider may not:
 
@@ -27,8 +28,18 @@ A provider may not:
 - redefine directives
 - own canonical attention state
 - preserve incompatible state after attention changes
+- forge event provenance to bypass shell lock rules
 
 Compatibility routes may remain for lineage or deep linking, but they must normalize into the current `SYSTEM` model and must not define visible product framing.
+
+## Event Provenance Contract
+
+Selection and directive events in the shared shell must include provenance when emitted by workbench UI:
+
+- `origin=auto_init` or `origin=auto_refresh` for automatic/default bootstrap emissions
+- `origin=user_select`, `origin=user_file_focus`, or `origin=user_task_change` for explicit operator intent
+
+Tool-layer mediation lock uses this provenance to avoid accidental replacement by automatic anthology initialization.
 
 ## Boundaries
 
