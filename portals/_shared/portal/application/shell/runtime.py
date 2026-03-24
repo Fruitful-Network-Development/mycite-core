@@ -104,7 +104,7 @@ def _system_state_payload(document: dict[str, Any], selected_row: dict[str, Any]
                 "kind": "resolved" if archetype_value else "placeholder",
                 "value": archetype_value or "null",
             },
-            "spacial": {
+            "spatial": {
                 "kind": "focus_level",
                 "value": 2 if row else 1,
             },

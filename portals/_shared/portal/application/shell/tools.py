@@ -81,6 +81,9 @@ def normalize_tool_capability(meta: dict[str, Any]) -> dict[str, Any]:
         "home_path": _text(raw.get("home_path")),
         "route_prefix": _text(raw.get("route_prefix")),
         "icon": _text(raw.get("icon")),
+        "surface_mode": _text(raw.get("surface_mode")) or "tool_shell",
+        "owns_shell_state": bool(raw.get("owns_shell_state", True)),
+        "service_contract": _dict(raw.get("service_contract")),
     }
 
 

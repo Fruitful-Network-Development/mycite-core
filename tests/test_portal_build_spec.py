@@ -97,6 +97,7 @@ class PortalBuildSpecTests(unittest.TestCase):
                     {"tool_id": "keep_one", "mount_target": "peripherals.tools"},
                 ],
             )
+            self.assertNotIn("enabled_tools", spec_a["private_config"]["canonical"])
             self.assertEqual(
                 spec_a["private_config"]["canonical"]["progeny"],
                 {
@@ -171,8 +172,8 @@ class PortalBuildSpecTests(unittest.TestCase):
             canonical = json.loads((target_root / "private" / "config.json").read_text(encoding="utf-8"))
             legacy = json.loads((target_root / "private" / "mycite-config-3-2-3-demo.json").read_text(encoding="utf-8"))
             self.assertFalse((target_root / "private" / "tools.manifest.json").exists())
-            self.assertEqual(canonical["enabled_tools"], ["keep_one"])
-            self.assertEqual(legacy["enabled_tools"], ["keep_one"])
+            self.assertNotIn("enabled_tools", canonical)
+            self.assertNotIn("enabled_tools", legacy)
             self.assertEqual(
                 canonical["tools_configuration"],
                 [{"tool_id": "keep_one", "mount_target": "peripherals.tools"}],

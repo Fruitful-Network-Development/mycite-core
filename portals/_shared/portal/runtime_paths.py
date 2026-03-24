@@ -40,7 +40,7 @@ def contracts_dir(private_dir: Path) -> Path:
 
 
 def contract_read_dirs(private_dir: Path) -> list[Path]:
-    return _existing_or_declared([contracts_dir(private_dir), network_dir(private_dir) / "contracts"])
+    return _existing_or_declared([contracts_dir(private_dir)])
 
 
 def request_log_dir(private_dir: Path) -> Path:

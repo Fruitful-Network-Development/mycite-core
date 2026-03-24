@@ -72,6 +72,10 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
         self.assertTrue(capability.get("config_context_support"))
         self.assertEqual(((capability.get("workbench_contribution") or {}).get("default_mode")), "profiles")
         self.assertTrue(any(bool(item.get("config_context")) for item in capability.get("supported_source_contracts") or []))
+        self.assertEqual(capability.get("surface_mode"), "mediation_only")
+        self.assertFalse(capability.get("owns_shell_state"))
+        self.assertEqual(capability.get("home_path"), "")
+        self.assertEqual(capability.get("route_prefix"), "")
 
     def test_selected_context_includes_compatible_tool_registry(self) -> None:
         document = build_workbench_document(
@@ -174,6 +178,50 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "ui"
             / "static"
             / "tools"
+            / "operations.js",
+            repo_root
+            / "portals"
+            / "_shared"
+            / "runtime"
+            / "flavors"
+            / "fnd"
+            / "portal"
+            / "ui"
+            / "static"
+            / "tools"
+            / "website_analytics.js",
+            repo_root
+            / "portals"
+            / "_shared"
+            / "runtime"
+            / "flavors"
+            / "fnd"
+            / "portal"
+            / "ui"
+            / "templates"
+            / "tools"
+            / "operations_home.html",
+            repo_root
+            / "portals"
+            / "_shared"
+            / "runtime"
+            / "flavors"
+            / "fnd"
+            / "portal"
+            / "ui"
+            / "templates"
+            / "tools"
+            / "website_analytics_home.html",
+            repo_root
+            / "portals"
+            / "_shared"
+            / "runtime"
+            / "flavors"
+            / "fnd"
+            / "portal"
+            / "ui"
+            / "static"
+            / "tools"
             / "local_resources_workbench.js",
             repo_root
             / "portals"
@@ -230,9 +278,28 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
         self.assertIn("preview_hooks", runtime_js)
         self.assertIn("apply_hooks", runtime_js)
         self.assertIn("route_prefix", runtime_js)
+        self.assertIn("delete state.toolContexts[token]", runtime_js)
+        self.assertIn("delete state.providerState[token]", runtime_js)
+        self.assertNotIn("direct tool-home routes remain compatibility aliases", runtime_js)
         self.assertNotIn("agroOpenBtn", runtime_js)
         self.assertNotIn("/portal/api/data/system/config_context/agro_erp", runtime_js)
         self.assertNotIn("state.agroConfigContext", runtime_js)
+
+    def test_service_tool_runtime_prunes_incompatible_provider_state(self) -> None:
+        runtime_js = (
+            Path(__file__).resolve().parents[1]
+            / "portals"
+            / "_shared"
+            / "portal"
+            / "ui"
+            / "static"
+            / "system_shell_runtime.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn("var compatibleById = {}", runtime_js)
+        self.assertIn("delete state.toolContexts[token]", runtime_js)
+        self.assertIn("delete state.providerState[token]", runtime_js)
+        self.assertIn("state.activeToolId = \"\"", runtime_js)
+        self.assertIn("state.activeMediationMode = \"\"", runtime_js)
 
 
 if __name__ == "__main__":

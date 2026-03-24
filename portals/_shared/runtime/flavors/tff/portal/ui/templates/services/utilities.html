@@ -24,7 +24,15 @@
             {% endfor %}
           </ul>
         {% else %}
-          <p>No tools are mounted to <code>utilities</code> for this portal instance.</p>
+          <p>No tool shells are mounted to <code>utilities</code> for this portal instance.</p>
+        {% endif %}
+        {% if mediation_tools %}
+          <h4>Mediation Providers</h4>
+          <ul class="liststack">
+            {% for tool in mediation_tools %}
+              <li><strong>{{ tool.display_name }}</strong> <a href="/portal/system">Open in SYSTEM</a></li>
+            {% endfor %}
+          </ul>
         {% endif %}
       </div>
     </article>

@@ -29,6 +29,23 @@ class ServiceToolMediationTests(unittest.TestCase):
             ((meta.get("workbench_contribution") or {}).get("default_mode")),
             "profiles",
         )
+        self.assertEqual(meta.get("surface_mode"), "mediation_only")
+        self.assertFalse(meta.get("owns_shell_state"))
+        self.assertEqual(((meta.get("service_contract") or {}).get("mediation_host_path")), "/portal/system")
+        self.assertEqual(((meta.get("service_contract") or {}).get("config_datum") or {}).get("content_kind"), "json")
+        self.assertEqual(
+            ((meta.get("service_contract") or {}).get("collection_view_contract") or {}).get("default_mode"),
+            "profiles",
+        )
+
+    def test_service_tool_registration_has_no_shell_home(self):
+        module = _load_service_tools_module()
+        tool = module.build_service_tool_registration("operations", "Operations")
+        self.assertEqual(tool.get("tool_id"), "operations")
+        self.assertEqual(tool.get("route_prefix"), "")
+        self.assertEqual(tool.get("home_path"), "")
+        self.assertEqual(tool.get("surface_mode"), "mediation_only")
+        self.assertFalse(tool.get("owns_shell_state"))
 
     def test_service_tool_config_context_reads_tool_owned_collections(self):
         module = _load_service_tools_module()
@@ -54,6 +71,15 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertTrue(payload.get("ok"))
             self.assertEqual(payload.get("tool_namespace"), "fnd-ebi")
             self.assertEqual(len(payload.get("collection_files") or []), 2)
+            self.assertEqual(((payload.get("config_datum") or {}).get("file_name")), "fnd-ebi.fnd.json")
+            self.assertEqual(((payload.get("collection_datum") or {}).get("file_name")), "web-analytics.json")
+            self.assertEqual(((payload.get("service_contract") or {}).get("schema")), "mycite.service_tool.contract.v1")
+            self.assertEqual(((payload.get("activation") or {}).get("default_verb")), "mediate")
+            self.assertEqual(((payload.get("activation") or {}).get("host_path")), "/portal/system")
+            self.assertEqual(
+                ((payload.get("activation") or {}).get("request_payload") or {}).get("shell_verb"),
+                "mediate",
+            )
             self.assertTrue(any(str(item.get("title") or "") == "fruitfulnetworkdevelopment.com" for item in payload.get("profile_cards") or []))
 
 

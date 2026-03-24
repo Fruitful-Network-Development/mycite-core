@@ -9,6 +9,7 @@ from _shared.portal.application.shell.tools import compatible_tools_for_context
 from _shared.portal.runtime_paths import utility_tools_dir
 
 
+SERVICE_TOOL_CONTRACT_SCHEMA = "mycite.service_tool.contract.v1"
 SERVICE_TOOL_BINDINGS_SCHEMA = "mycite.service_tool.config_bindings.v1"
 
 _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
@@ -18,7 +19,9 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "Analytics profile cards",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],
-        "patterns": ["web-analytics.json", "fnd-ebi.*.json", "*.ndjson"],
+        "config_patterns": ["fnd-ebi.{portal_instance_id}.json", "fnd-ebi.*.json"],
+        "collection_patterns": ["web-analytics.json"],
+        "member_patterns": ["web-analytics.json", "fnd-ebi.*.json", "*.ndjson"],
     },
     "aws_platform_admin": {
         "namespace": "aws-csm",
@@ -26,7 +29,9 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "AWS service profiles",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],
-        "patterns": ["aws-csm.*.json", "*.ndjson"],
+        "config_patterns": ["aws-csm.{portal_instance_id}.json", "aws-csm.*.json"],
+        "collection_patterns": ["aws-csm.collection.json"],
+        "member_patterns": ["aws-csm.collection.json", "aws-csm.*.json", "*.ndjson"],
     },
     "aws_tenant_actions": {
         "namespace": "aws-csm",
@@ -34,7 +39,9 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "AWS service profiles",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],
-        "patterns": ["aws-csm.*.json", "*.ndjson"],
+        "config_patterns": ["aws-csm.{portal_instance_id}.json", "aws-csm.*.json"],
+        "collection_patterns": ["aws-csm.collection.json"],
+        "member_patterns": ["aws-csm.collection.json", "aws-csm.*.json", "*.ndjson"],
     },
     "paypal_service_agreement": {
         "namespace": "paypal-csm",
@@ -42,7 +49,9 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "PayPal service profiles",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],
-        "patterns": ["*.json", "*.ndjson"],
+        "config_patterns": ["{portal_instance_id}.json", "paypal-csm.{portal_instance_id}.json"],
+        "collection_patterns": ["paypal-csm.collection.json"],
+        "member_patterns": ["paypal-csm.collection.json", "{portal_instance_id}.json", "paypal-csm.{portal_instance_id}.json", "*.ndjson"],
     },
     "paypal_tenant_actions": {
         "namespace": "paypal-csm",
@@ -50,7 +59,9 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "PayPal service profiles",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],
-        "patterns": ["*.json", "*.ndjson"],
+        "config_patterns": ["{portal_instance_id}.json", "paypal-csm.{portal_instance_id}.json"],
+        "collection_patterns": ["paypal-csm.collection.json"],
+        "member_patterns": ["paypal-csm.collection.json", "{portal_instance_id}.json", "paypal-csm.{portal_instance_id}.json", "*.ndjson"],
     },
     "operations": {
         "namespace": "keycloak-sso",
@@ -58,7 +69,9 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "Portal operations cards",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],
-        "patterns": ["*.json", "*.ndjson"],
+        "config_patterns": ["keycloak-sso.{portal_instance_id}.json", "keycloak-sso.*.json"],
+        "collection_patterns": ["portal_instances.json"],
+        "member_patterns": ["portal_instances.json", "keycloak-sso.*.json", "*.ndjson"],
     },
     "fnd_provisioning": {
         "namespace": "keycloak-sso",
@@ -66,7 +79,9 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "Portal operations cards",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],
-        "patterns": ["*.json", "*.ndjson"],
+        "config_patterns": ["keycloak-sso.{portal_instance_id}.json", "keycloak-sso.*.json"],
+        "collection_patterns": ["portal_instances.json"],
+        "member_patterns": ["portal_instances.json", "keycloak-sso.*.json", "*.ndjson"],
     },
 }
 
@@ -87,6 +102,48 @@ def _instance_payload(portal_instance_context: Any | None) -> dict[str, Any]:
 
 def service_tool_definition(tool_id: str) -> dict[str, Any]:
     return dict(_SERVICE_TOOL_DEFINITIONS.get(_text(tool_id).lower()) or {})
+
+
+def _expand_patterns(values: Any, *, portal_instance_id: str = "") -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in list(values or []):
+        token = _text(item)
+        if not token:
+            continue
+        try:
+            token = token.format(portal_instance_id=_text(portal_instance_id))
+        except Exception:
+            pass
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return out
+
+
+def _service_tool_contract(definition: dict[str, Any], *, portal_instance_id: str = "") -> dict[str, Any]:
+    return {
+        "schema": SERVICE_TOOL_CONTRACT_SCHEMA,
+        "tool_namespace": _text(definition.get("namespace")),
+        "mediation_host_path": "/portal/system",
+        "config_datum": {
+            "patterns": _expand_patterns(definition.get("config_patterns"), portal_instance_id=portal_instance_id),
+            "content_kind": "json",
+        },
+        "collection_datum": {
+            "patterns": _expand_patterns(definition.get("collection_patterns"), portal_instance_id=portal_instance_id),
+            "content_kind": "json_collection",
+        },
+        "profile_card_contract": {
+            "card_kind": "service_profile",
+            "source": "tool_owned_datums",
+        },
+        "collection_view_contract": {
+            "default_mode": _text(definition.get("default_mode")) or "profiles",
+            "modes": list(definition.get("modes") or []),
+        },
+    }
 
 
 def build_service_tool_meta(tool_id: str) -> dict[str, Any]:
@@ -115,6 +172,9 @@ def build_service_tool_meta(tool_id: str) -> dict[str, Any]:
         },
         "preview_hooks": {},
         "apply_hooks": {},
+        "surface_mode": "mediation_only",
+        "owns_shell_state": False,
+        "service_contract": _service_tool_contract(definition),
     }
 
 
@@ -152,6 +212,62 @@ def _load_json_or_lines(path: Path) -> tuple[str, Any]:
         return "json", json.loads(text)
     except Exception:
         return "text", text
+
+
+def _describe_file(root: Path, path: Path | None) -> tuple[dict[str, Any], Any]:
+    if path is None or not path.exists() or not path.is_file():
+        return {}, {}
+    kind, payload = _load_json_or_lines(path)
+    record_count = len(payload) if isinstance(payload, list) else len(payload) if isinstance(payload, dict) else 1
+    return (
+        {
+            "file_name": path.name,
+            "relative_path": path.relative_to(root).as_posix(),
+            "path": str(path),
+            "content_kind": kind,
+            "record_count": int(record_count),
+            "schema": _text(payload.get("schema")) if isinstance(payload, dict) else "",
+            "summary": _json_summary(payload),
+        },
+        payload,
+    )
+
+
+def _pick_canonical_file(root: Path, patterns: list[str]) -> Path | None:
+    for pattern in patterns:
+        for path in sorted(root.glob(pattern)):
+            if path.is_file():
+                return path
+    return None
+
+
+def _member_files_from_collection_payload(root: Path, payload: Any) -> list[Path]:
+    if not isinstance(payload, dict):
+        return []
+    out: list[Path] = []
+    seen: set[Path] = set()
+    for item in list(payload.get("member_files") or []):
+        token = _text(item)
+        if not token:
+            continue
+        path = (root / token).resolve()
+        if not path.exists() or not path.is_file() or path in seen:
+            continue
+        seen.add(path)
+        out.append(path)
+    return out
+
+
+def build_service_tool_registration(tool_id: str, display_name: str) -> dict[str, object]:
+    return {
+        "tool_id": _text(tool_id).lower(),
+        "display_name": _text(display_name) or _text(tool_id).replace("_", " ").title(),
+        "route_prefix": "",
+        "home_path": "",
+        "surface_mode": "mediation_only",
+        "owns_shell_state": False,
+        **build_service_tool_meta(tool_id),
+    }
 
 
 def _json_summary(payload: Any) -> dict[str, Any]:
@@ -237,33 +353,64 @@ def build_service_tool_config_context(
 
     namespace = _text(definition.get("namespace"))
     root = _tool_root(private_dir, namespace)
-    patterns = [str(item) for item in list(definition.get("patterns") or []) if str(item)]
-    files = _iter_collection_files(root, patterns) if root.exists() and root.is_dir() else []
+    config_patterns = _expand_patterns(definition.get("config_patterns"), portal_instance_id=portal_instance_id)
+    collection_patterns = _expand_patterns(definition.get("collection_patterns"), portal_instance_id=portal_instance_id)
+    member_patterns = _expand_patterns(definition.get("member_patterns"), portal_instance_id=portal_instance_id)
     warnings: list[str] = []
     if not root.exists():
         warnings.append(f"tool state root is missing: {root}")
 
-    collection_files: list[dict[str, Any]] = []
+    config_datum: dict[str, Any] = {}
+    collection_datum: dict[str, Any] = {}
+    collection_members: list[dict[str, Any]] = []
     profile_cards: list[dict[str, Any]] = []
-    for path in files:
-        kind, payload = _load_json_or_lines(path)
-        record_count = len(payload) if isinstance(payload, list) else len(payload) if isinstance(payload, dict) else 1
-        collection_files.append(
-            {
-                "file_name": path.name,
-                "relative_path": path.relative_to(root).as_posix(),
-                "path": str(path),
-                "content_kind": kind,
-                "record_count": int(record_count),
-                "schema": _text(payload.get("schema")) if isinstance(payload, dict) else "",
-                "summary": _json_summary(payload),
-            }
-        )
-        profile_cards.extend(_profile_cards_for_payload(path, payload))
+    collection_files: list[dict[str, Any]] = []
+    if root.exists() and root.is_dir():
+        config_path = _pick_canonical_file(root, config_patterns)
+        collection_path = _pick_canonical_file(root, collection_patterns)
+        config_datum, config_payload = _describe_file(root, config_path)
+        collection_datum, collection_payload = _describe_file(root, collection_path)
+
+        member_paths = _member_files_from_collection_payload(root, collection_payload)
+        if not member_paths:
+            member_paths = _iter_collection_files(root, member_patterns)
+
+        seen_files: set[str] = set()
+        for record in (config_datum, collection_datum):
+            path_token = _text(record.get("path"))
+            if path_token:
+                seen_files.add(path_token)
+
+        for path in member_paths:
+            if str(path) in seen_files:
+                continue
+            seen_files.add(str(path))
+            record, payload = _describe_file(root, path)
+            if not record:
+                continue
+            collection_members.append(record)
+            profile_cards.extend(_profile_cards_for_payload(path, payload))
+
+        if config_datum and config_path is not None:
+            profile_cards.extend(_profile_cards_for_payload(config_path, config_payload))
+        if collection_datum and collection_path is not None and collection_path.name == "portal_instances.json":
+            profile_cards.extend(_profile_cards_for_payload(collection_path, collection_payload))
+
+        for record in (config_datum, collection_datum, *collection_members):
+            if record:
+                collection_files.append(record)
+
+    if not config_datum:
+        warnings.append(f"config datum is missing for tool namespace: {namespace}")
+    if not collection_datum:
+        warnings.append(f"collection datum is missing for tool namespace: {namespace}")
+
+    service_contract = _service_tool_contract(definition, portal_instance_id=portal_instance_id)
 
     config_context = {
         "ok": True,
         "schema": CONFIG_CONTEXT_SCHEMA,
+        "service_contract_schema": SERVICE_TOOL_CONTRACT_SCHEMA,
         "bindings_schema": SERVICE_TOOL_BINDINGS_SCHEMA,
         "tool_id": _text(tool_id).lower(),
         "shell_verb": "mediate",
@@ -275,7 +422,12 @@ def build_service_tool_config_context(
         "staging_truth": "tool_scoped_manual_edits",
         "commit_truth": "tool_state_files",
         "tool_namespace": namespace,
+        "mediation_host_path": "/portal/system",
         "collection_root": str(root),
+        "service_contract": service_contract,
+        "config_datum": config_datum,
+        "collection_datum": collection_datum,
+        "collection_members": collection_members,
         "workspace_profile": {
             "workspace_id": _text(definition.get("workspace_id")),
             "label": _text(definition.get("label")),
@@ -288,8 +440,9 @@ def build_service_tool_config_context(
         "activation": {
             "tool_id": _text(tool_id).lower(),
             "default_verb": "mediate",
-            "can_open": bool(collection_files),
-            "request_payload": {"tool_id": _text(tool_id).lower()},
+            "can_open": bool(config_datum or collection_datum or collection_members),
+            "host_path": "/portal/system",
+            "request_payload": {"tool_id": _text(tool_id).lower(), "shell_verb": "mediate"},
         },
     }
     config_context["compatible_tools"] = compatible_tools_for_context(tool_tabs, config_context)
@@ -300,6 +453,8 @@ def build_service_tool_config_context(
             summary=f"{len(collection_files)} file(s)",
             body={
                 "tool_namespace": namespace,
+                "config_datum": config_datum,
+                "collection_datum": collection_datum,
                 "collection_root": str(root),
                 "files": collection_files,
                 "warnings": warnings,
@@ -318,8 +473,10 @@ def build_service_tool_config_context(
 
 
 __all__ = [
+    "SERVICE_TOOL_CONTRACT_SCHEMA",
     "SERVICE_TOOL_BINDINGS_SCHEMA",
     "build_service_tool_config_context",
     "build_service_tool_meta",
+    "build_service_tool_registration",
     "service_tool_definition",
 ]

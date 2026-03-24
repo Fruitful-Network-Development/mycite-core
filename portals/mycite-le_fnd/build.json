@@ -179,17 +179,6 @@
           "tool_id": "operations",
           "mount_target": "peripherals.tools"
         }
-      ],
-      "enabled_tools": [
-        "agro_erp",
-        "tenant_progeny_profiles",
-        "fnd_provisioning",
-        "paypal_tenant_actions",
-        "paypal_service_agreement",
-        "aws_tenant_actions",
-        "aws_platform_admin",
-        "website_analytics",
-        "operations"
       ]
     },
     "canonical_source": "/srv/compose/portals/state/fnd_portal/private/config.json",
@@ -297,17 +286,6 @@
               "tool_id": "operations",
               "mount_target": "peripherals.tools"
             }
-          ],
-          "enabled_tools": [
-            "agro_erp",
-            "tenant_progeny_profiles",
-            "fnd_provisioning",
-            "paypal_tenant_actions",
-            "paypal_service_agreement",
-            "aws_tenant_actions",
-            "aws_platform_admin",
-            "website_analytics",
-            "operations"
           ]
         },
         "source": ""
@@ -2081,7 +2059,7 @@
     },
     {
       "target": "private/contracts/contract-contract-fnd-tff-member-001.json",
-      "source_hint": "/srv/compose/portals/state/fnd_portal/private/network/contracts/contract-contract-fnd-tff-member-001.json",
+      "source_hint": "/srv/compose/portals/state/fnd_portal/private/contracts/contract-contract-fnd-tff-member-001.json",
       "payload_json": {
         "contract_id": "contract-fnd-tff-member-001",
         "contract_type": "member_alias_profile",
@@ -2116,7 +2094,7 @@
     },
     {
       "target": "private/contracts/msn-3-2-3-17-77-1-6-4-1-4.contract-3-2-3-17-77-2-6-3-1-6.json",
-      "source_hint": "/srv/compose/portals/state/fnd_portal/private/network/contracts/msn-3-2-3-17-77-1-6-4-1-4.contract-3-2-3-17-77-2-6-3-1-6.json",
+      "source_hint": "/srv/compose/portals/state/fnd_portal/private/contracts/msn-3-2-3-17-77-1-6-4-1-4.contract-3-2-3-17-77-2-6-3-1-6.json",
       "payload_json": {
         "schema": "mycite.portal.contract.v1",
         "contract_id": "msn-3-2-3-17-77-1-6-4-1-4.contract-3-2-3-17-77-2-6-3-1-6",

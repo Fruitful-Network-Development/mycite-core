@@ -14,7 +14,6 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PORTALS_ROOT = REPO_ROOT / "portals"
 BUILD_SCHEMA = "mycite.portal.build.v1"
-TOOLS_MANIFEST_SCHEMA = "mycite.tools.manifest.v1"
 DEFAULT_MOUNT_TARGET = "peripherals.tools"
 CORE_SYSTEM_SURFACES = ["data_tool"]
 RETIRED_TOOL_IDS = {"legacy_admin", "paypal_demo"}
@@ -49,7 +48,6 @@ SEED_PATTERNS = (
     "data/presentation/**/*.json",
     "private/network/aliases/**/*.json",
     "private/contracts/**/*.json",
-    "private/network/contracts/**/*.json",
     "private/network/progeny/*.json",
     "private/network/request_log/types/**/*.ndjson",
     "private/utilities/vault/keypass_inventory.json",
@@ -106,25 +104,7 @@ def _dedupe_tokens(values: list[str]) -> list[str]:
     return out
 
 
-def _normalize_enabled_tools(values: Any) -> list[str]:
-    if not isinstance(values, list):
-        return []
-    out: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        token = str(value or "").strip().lower()
-        if not token or token in seen:
-            continue
-        if not _TOOL_ID_RE.fullmatch(token):
-            continue
-        if token in RETIRED_TOOL_IDS or token in CORE_SYSTEM_SURFACES:
-            continue
-        seen.add(token)
-        out.append(token)
-    return out
-
-
-def _normalize_tools_configuration(values: Any, fallback_enabled: Any = None) -> list[dict[str, str]]:
+def _normalize_tools_configuration(values: Any) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     seen: set[str] = set()
 
@@ -144,14 +124,6 @@ def _normalize_tools_configuration(values: Any, fallback_enabled: Any = None) ->
             if mount_target not in {"utilities", "peripherals.tools"}:
                 mount_target = DEFAULT_MOUNT_TARGET
             out.append({"tool_id": token, "mount_target": mount_target})
-        if out:
-            return out
-
-    for token in _normalize_enabled_tools(fallback_enabled):
-        if token in seen:
-            continue
-        seen.add(token)
-        out.append({"tool_id": token, "mount_target": DEFAULT_MOUNT_TARGET})
     return out
 
 
@@ -276,6 +248,7 @@ def _normalize_private_config(payload: dict[str, Any]) -> dict[str, Any]:
     normalized = _normalize_role_groups(copy.deepcopy(payload))
     if not isinstance(normalized, dict):
         return {}
+    normalized.pop("enabled_tools", None)
     normalized["aliases"] = _normalize_alias_entries(normalized.get("aliases"))
     normalized["progeny"] = _normalize_progeny_config(normalized.get("progeny"))
     return normalized
@@ -393,13 +366,9 @@ def build_portal_spec(
     canonical = _normalize_private_config(canonical)
 
     raw_tools_configuration = canonical.get("tools_configuration")
-    raw_enabled_tools = canonical.get("enabled_tools")
-    if raw_enabled_tools is None:
-        raw_enabled_tools = (repo_legacy or {}).get("enabled_tools")
-    tools_configuration = _normalize_tools_configuration(raw_tools_configuration, raw_enabled_tools)
+    tools_configuration = _normalize_tools_configuration(raw_tools_configuration)
     enabled_tools = [str(item.get("tool_id") or "") for item in tools_configuration if str(item.get("tool_id") or "")]
     canonical["tools_configuration"] = copy.deepcopy(tools_configuration)
-    canonical["enabled_tools"] = list(enabled_tools)
 
     title = str(canonical.get("title") or portal_id).strip() or portal_id
     state_public_msn = state_public / f"msn-{msn_id}.json"
@@ -495,7 +464,7 @@ def load_build_spec(build_path: Path) -> dict[str, Any]:
 def _with_tool_configuration(payload: dict[str, Any], tools_configuration: list[dict[str, str]]) -> dict[str, Any]:
     out = copy.deepcopy(payload)
     out["tools_configuration"] = [dict(item) for item in tools_configuration]
-    out["enabled_tools"] = [str(item.get("tool_id") or "") for item in tools_configuration if str(item.get("tool_id") or "")]
+    out.pop("enabled_tools", None)
     return out
 
 
@@ -507,15 +476,6 @@ def materialize_build_spec(build_path: Path, target_state_root: Path | None = No
         raise ValueError("Target state root is required")
 
     raw_tools_configuration = ((spec.get("tools") or {}).get("configuration") or [])
-    if not raw_tools_configuration:
-        mount_targets = ((spec.get("tools") or {}).get("mount_targets") or {})
-        raw_tools_configuration = [
-            {
-                "tool_id": tool_id,
-                "mount_target": str((mount_targets.get(tool_id) or DEFAULT_MOUNT_TARGET)),
-            }
-            for tool_id in _normalize_enabled_tools(((spec.get("tools") or {}).get("enabled") or []))
-        ]
     tools_configuration = _normalize_tools_configuration(raw_tools_configuration)
     canonical_config = _with_tool_configuration(
         _normalize_private_config((spec.get("private_config") or {}).get("canonical") or {}),

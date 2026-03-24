@@ -34,7 +34,7 @@ class SystemSelectedContextRuntimeTests(unittest.TestCase):
         self.assertEqual(((aitas.get("attention") or {}).get("value")), "anthology.json")
         self.assertEqual(((aitas.get("intention") or {}).get("value")), "navigate")
         self.assertEqual(((aitas.get("archetype") or {}).get("value")), "null")
-        self.assertEqual(((aitas.get("spacial") or {}).get("value")), 1)
+        self.assertEqual(((aitas.get("spatial") or {}).get("value")), 1)
 
     def test_datum_focus_exposes_system_state_and_aitas_level_two(self) -> None:
         document = build_workbench_document(
@@ -69,7 +69,7 @@ class SystemSelectedContextRuntimeTests(unittest.TestCase):
         self.assertEqual(((aitas.get("intention") or {}).get("value")), "mediate")
         self.assertEqual(((aitas.get("archetype") or {}).get("kind")), "resolved")
         self.assertEqual(((aitas.get("archetype") or {}).get("value")), "taxonomy")
-        self.assertEqual(((aitas.get("spacial") or {}).get("value")), 2)
+        self.assertEqual(((aitas.get("spatial") or {}).get("value")), 2)
 
     def test_inspector_cards_use_neutral_source_relationship_copy(self) -> None:
         document = build_workbench_document(
