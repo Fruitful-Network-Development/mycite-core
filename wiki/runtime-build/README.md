@@ -10,6 +10,10 @@ Canonical topic
 
 Runtime semantics are shared-core owned and file-backed. `build.json` remains a bootstrap materialization input rather than a live runtime authority.
 
+## Host infrastructure (srv-infra)
+
+Host-level concerns—NGINX vhosts, `compose/portals` stack, `compose/platform` (Keycloak, oauth2-proxy, DB)—live in the **`srv-infra`** repository, separate from `mycite-core`. The historical `compose/platform/flask-bff` “BFF” directory was removed as dead weight; it is not part of the current portal deployment model.
+
 ## Pages
 
 - [Shared Core And Flavor Boundaries](shared-core-and-flavor-boundaries.md)
