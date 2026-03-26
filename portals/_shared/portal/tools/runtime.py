@@ -25,6 +25,11 @@ def _safe_tool_id(value: str) -> str:
     return token
 
 
+def _normalize_manifest_tool_id(value: str) -> str:
+    token = _safe_tool_id(value)
+    return token.replace("-", "_")
+
+
 def _default_display_name(tool_id: str) -> str:
     return tool_id.replace("_", " ").replace("-", " ").strip().title() or tool_id
 
@@ -53,11 +58,11 @@ def _normalize_tool_configuration_entries(raw: Any) -> list[dict[str, str]]:
     for item in raw:
         if not isinstance(item, dict):
             continue
-        raw_id = item.get("tool_id") or item.get("id")
+        raw_id = item.get("tool_id") or item.get("id") or item.get("name")
         if not isinstance(raw_id, str):
             continue
         try:
-            tool_id = _safe_tool_id(raw_id)
+            tool_id = _normalize_manifest_tool_id(raw_id)
         except ValueError:
             continue
         if tool_id in seen:

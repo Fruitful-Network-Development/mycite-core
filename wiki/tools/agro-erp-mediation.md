@@ -12,7 +12,7 @@ Canonical
 
 ## Current Contract
 
-AGRO-ERP is an optional mediated workspace for the TFF portal. Its canonical launch path is through `SYSTEM` under `Mediate`, where it consumes the active file or datum context from the unified workbench.
+AGRO-ERP is an optional mediated workspace for the TFF portal. Its canonical launch path is through `SYSTEM` under `Mediate` (`/portal/system?mediate_tool=agro_erp`) at sandbox depth (no required file/datum focus).
 
 AGRO-ERP is a thin consumer of shared services for:
 
@@ -22,14 +22,21 @@ AGRO-ERP is a thin consumer of shared services for:
 - sandbox-managed draft resources
 - readback summaries
 
-Current mediation views are:
+Current default mediation is a dual-pane empty scaffold:
 
-- `Plan`
-- `Inventory`
-- `Products`
-- `Taxonomy`
+- `Spatial`
+- `Chronological`
 
-These are mediation modes inside the shared workspace, not a separate shell.
+Legacy AGRO modes remain available as secondary compatibility modes:
+
+- `Overview`
+- `Taxonomy browse/select`
+- `Supplier browse/select`
+- `Product profile compose`
+- `Supply log compose`
+- `Preview/apply`
+
+All AGRO views are mediation modes inside the shared workspace, not a separate shell.
 
 Current MVP direction is TXA-first:
 
@@ -40,6 +47,10 @@ Current MVP direction is TXA-first:
 5. read back outputs through shared-core view models
 
 No full txa tree should be materialized back into anthology during this workflow.
+
+Decision-freeze topics for next-phase AGRO schema work are tracked in:
+
+- [AGRO-ERP Datum Decision Ledger](agro-erp-datum-decision-ledger.md)
 
 ## Boundaries
 

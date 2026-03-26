@@ -27,6 +27,17 @@ Tool-layer mediation context uses:
 - `attention_address=sandbox:utilities/tools/<tool_namespace>`
 - `focus_depth=0`
 
+The on-disk sandbox contract for instance-led tools is:
+
+- `private/utilities/tools/<tool-slug>/spec.json`
+- `private/utilities/tools/<tool-slug>/tool.<msn_id>.<tool-slug>.json` (anchor)
+- optional tool-local members referenced by the anchor payload
+
+Resolver behavior is compatibility-safe:
+
+- prefer sandbox-local `spec.json`
+- fallback to legacy `private/tools/<tool_id>.spec.json` only when needed
+
 The canonical SYSTEM workbench remains available internally but is visually non-dominant while tool-layer lock is active.
 
 ## Event Provenance And Override Rules

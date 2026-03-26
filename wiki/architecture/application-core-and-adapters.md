@@ -29,6 +29,7 @@ The domain core owns pure logic such as:
 - sandbox compile and adapt behavior
 - mediation and geometry logic
 - inheritance adaptation
+- internal-source derivation and read-only normalization for tool-facing config-context projections
 
 Storage remains file-backed. The key architectural rule is isolation of responsibilities, not replacement of the storage model.
 

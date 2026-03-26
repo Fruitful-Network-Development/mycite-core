@@ -1823,8 +1823,10 @@ def get_tool() -> dict[str, object]:
         "workbench_contribution": {
             "workspace_id": "agro_erp",
             "label": "AGRO ERP",
-            "default_mode": "taxonomy",
+            "default_mode": "spatial",
             "modes": [
+                "spatial",
+                "chronological",
                 "taxonomy_browse",
                 "supplier_browse",
                 "product_profile_compose",
