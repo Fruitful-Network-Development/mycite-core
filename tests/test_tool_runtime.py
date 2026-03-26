@@ -86,6 +86,25 @@ class ToolRuntimeTests(unittest.TestCase):
             )
             self.assertEqual(runtime.read_enabled_tools(private_dir, "3-2-3"), ["agro_erp", "fnd_ebi"])
 
+    def test_read_enabled_tools_filters_disabled_status(self):
+        runtime = _load_tool_runtime_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            (private_dir / "config.json").write_text(
+                json.dumps(
+                    {
+                        "msn_id": "3-2-3",
+                        "tools_configuration": [
+                            {"name": "agro-erp", "status": "disabled"},
+                            {"name": "fnd-ebi", "status": "enabled"},
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(runtime.read_enabled_tools(private_dir, "3-2-3"), ["fnd_ebi"])
+
     def test_tool_spec_loader_prefers_sandbox_spec_json(self):
         specs = _load_tool_specs_module()
         with TemporaryDirectory() as temp_dir:

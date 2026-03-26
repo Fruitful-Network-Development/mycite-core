@@ -36,6 +36,7 @@ from _shared.portal.sandbox.tool_sandbox_session import (
     ToolSandboxSessionManager,
 )
 from _shared.portal.services.portal_model import canonicalize_portal_model_config
+from _shared.portal.services.profile_resolver import resolve_fnd_profile_path, resolve_public_profile_path
 from portal.core_services.runtime import resolve_active_private_config_path
 from portal.services.contract_store import get_contract, list_contracts
 from portal.services.datum_refs import normalize_datum_ref
@@ -53,6 +54,7 @@ TOOL_BLUEPRINT = agro_erp_bp
 _HEX_RE = re.compile(r"^[0-9A-Fa-f]+$")
 _DATUM_ID_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
 _COORD_SCALE = 10_000_000.0
+_HEX_TOKEN_RE = re.compile(r"^[0-9A-Fa-f]+$")
 
 # Default FND taxonomy collection reference for AGRO ERP.
 # This value can be overridden in future iterations via tool-specific
@@ -87,6 +89,13 @@ def _data_dir() -> Path:
     if env:
         return Path(env)
     return Path(current_app.root_path) / "data"
+
+
+def _public_dir() -> Path:
+    env = str(os.environ.get("PUBLIC_DIR") or "").strip()
+    if env:
+        return Path(env)
+    return _data_dir().parent / "public"
 
 
 def _workspace():
@@ -728,6 +737,98 @@ def _decode_coordinate_token(raw_value: Any) -> dict[str, Any] | None:
     }
 
 
+def _decode_token_sequence(tokens: list[str]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for token in tokens:
+        decoded = _decode_coordinate_token(token)
+        if isinstance(decoded, dict):
+            out.append(decoded)
+    return out
+
+
+def _extract_coordinate_tokens_from_datum(anthology: dict[str, Any], ref: str) -> list[str]:
+    token = str(ref or "").strip()
+    if not token:
+        return []
+    datum = anthology.get(token)
+    if isinstance(datum, dict):
+        geometry = datum.get("geometry") if isinstance(datum.get("geometry"), dict) else {}
+        coords = geometry.get("coordinates") if isinstance(geometry.get("coordinates"), list) else []
+        return [str(item).strip() for item in coords if _HEX_TOKEN_RE.fullmatch(str(item).strip())]
+    if not isinstance(datum, list):
+        return [token] if _HEX_TOKEN_RE.fullmatch(token) else []
+    header = datum[0] if datum and isinstance(datum[0], list) else []
+    if not isinstance(header, list):
+        return []
+    raw_tokens = [str(item).strip() for item in header[1:] if str(item).strip()]
+    return [item for item in raw_tokens if _HEX_TOKEN_RE.fullmatch(item)]
+
+
+def _geojson_polygon_from_decoded(decoded_rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    pairs: list[list[float]] = []
+    for row in decoded_rows:
+        longitude = row.get("longitude")
+        latitude = row.get("latitude")
+        if isinstance(longitude, (int, float)) and isinstance(latitude, (int, float)):
+            pairs.append([float(longitude), float(latitude)])
+    if len(pairs) < 3:
+        return None
+    if pairs[0] != pairs[-1]:
+        pairs.append(list(pairs[0]))
+    return {"type": "Polygon", "coordinates": [pairs]}
+
+
+def _build_profile_context(anthology: dict[str, Any]) -> dict[str, Any]:
+    msn_id = str(current_app.config.get("MYCITE_MSN_ID") or "").strip()
+    public_dir = _public_dir()
+    fnd_path = resolve_fnd_profile_path(public_dir=public_dir, fallback_dir=_data_dir().parent, msn_id=msn_id)
+    msn_path = resolve_public_profile_path(public_dir=public_dir, fallback_dir=_data_dir().parent, msn_id=msn_id)
+    fnd_payload = _read_json_object(fnd_path)
+    msn_payload = _read_json_object(msn_path)
+    property_cfg = fnd_payload.get("property") if isinstance(fnd_payload.get("property"), dict) else {}
+    refs: list[tuple[str, str]] = []
+    for item in list(property_cfg.get("property") or []):
+        token = str(item or "").strip()
+        if token:
+            refs.append(("property", token))
+    farmable = str(property_cfg.get("farmable_land") or "").strip()
+    if farmable:
+        refs.append(("farmable-land", farmable))
+    for item in list(property_cfg.get("alt_areas") or []):
+        token = str(item or "").strip()
+        if token:
+            refs.append(("alt-area", token))
+
+    entities: list[dict[str, Any]] = []
+    primary_svg = {"available": False, "viewbox": "0 0 420 240", "points": ""}
+    for idx, (role, ref) in enumerate(refs):
+        coord_tokens = _extract_coordinate_tokens_from_datum(anthology, ref)
+        decoded_rows = _decode_token_sequence(coord_tokens)
+        svg = _polygon_svg([{"decoded": row} for row in decoded_rows]) if decoded_rows else {"available": False, "viewbox": "0 0 420 240", "points": ""}
+        geojson = _geojson_polygon_from_decoded(decoded_rows)
+        if idx == 0 and svg.get("available"):
+            primary_svg = svg
+        entities.append(
+            {
+                "role": role,
+                "label": role,
+                "ref": ref,
+                "point_count": len(decoded_rows),
+                "svg": svg,
+                "geojson": geojson,
+            }
+        )
+    return {
+        "msn_id": msn_id,
+        "fnd_profile_path": str(fnd_path) if fnd_path is not None else "",
+        "msn_profile_path": str(msn_path) if msn_path is not None else "",
+        "fnd_profile": fnd_payload,
+        "msn_profile": msn_payload,
+        "entities": entities,
+        "primary_svg": primary_svg,
+    }
+
+
 def _resolve_token(token: str, anthology: dict[str, Any]) -> dict[str, Any]:
     raw_token = str(token or "").strip()
     datum_payload = anthology.get(raw_token) if _DATUM_ID_RE.fullmatch(raw_token or "") else None
@@ -986,6 +1087,7 @@ def _run_daemon(spec: dict[str, Any], config: dict[str, Any], anthology: dict[st
 def _build_model_payload() -> dict[str, Any]:
     config, config_path = _active_config()
     anthology, anthology_path = _anthology_payload()
+    profile_context = _build_profile_context(anthology if isinstance(anthology, dict) else {})
     parcel_workspace = _parcel_workspace_payload()
     parcels = [dict(item) for item in list(parcel_workspace.get("parcels") or []) if isinstance(item, dict)]
     active_parcel = next((item for item in parcels if bool(item.get("valid"))), parcels[0] if parcels else {})
@@ -1057,6 +1159,16 @@ def _build_model_payload() -> dict[str, Any]:
         "capabilities": capabilities,
         "capabilities_ok": capabilities_ok,
         "capability_errors": capability_errors,
+        "profile_context": {
+            "fnd_profile_path": str(profile_context.get("fnd_profile_path") or ""),
+            "msn_profile_path": str(profile_context.get("msn_profile_path") or ""),
+            "fnd_profile_title": str((profile_context.get("fnd_profile") or {}).get("title") or ""),
+            "msn_profile_title": str((profile_context.get("msn_profile") or {}).get("title") or ""),
+        },
+        "ordering_subject": {
+            "entities": list(profile_context.get("entities") or []),
+            "primary_svg": dict(profile_context.get("primary_svg") or {}),
+        },
         "agro_routes": {
             "capabilities": "/portal/tools/agro_erp/capabilities.json",
             "resources": "/portal/api/data/external/resources",

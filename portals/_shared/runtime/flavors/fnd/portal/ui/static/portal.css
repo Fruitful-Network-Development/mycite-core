@@ -5669,6 +5669,82 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   opacity: 0.8;
 }
 
+.system-tool-mode-controls {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.45rem 0 0.55rem;
+}
+
+.system-tool-mode-controls__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 26px;
+  border: 1px solid var(--line, #c8cec8);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel, #eef2ee) 92%, #d4ddd1 8%);
+  cursor: pointer;
+}
+
+.system-tool-mode-controls__btn.is-active {
+  background: color-mix(in srgb, var(--accent, #0b6b46) 20%, var(--panel, #eef2ee) 80%);
+  border-color: color-mix(in srgb, var(--accent, #0b6b46) 48%, var(--line, #c8cec8) 52%);
+}
+
+.system-tool-mode-controls__icon {
+  width: 15px;
+  height: 15px;
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  mask-position: center;
+  opacity: 0.9;
+}
+
+.system-tool-mode-controls__icon--spatial {
+  mask-image: url("/portal/static/icons/ui/spacial.svg");
+}
+
+.system-tool-mode-controls__icon--chronological {
+  mask-image: url("/portal/static/icons/ui/chronological.svg");
+}
+
+.agro-scaffold__ordering {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px;
+  gap: 0.45rem;
+}
+
+.agro-scaffold__orderingCard {
+  border: 1px solid var(--line, #d2d8d2);
+  border-radius: 8px;
+  padding: 0.4rem;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.agro-scaffold__orderingCard h5 {
+  margin: 0 0 0.3rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+}
+
+.agro-scaffold__svg {
+  width: 100%;
+  min-height: 120px;
+  border-radius: 6px;
+  border: 1px solid var(--line, #d2d8d2);
+  background: color-mix(in srgb, var(--paper, #f8faf8) 90%, #dce8db 10%);
+}
+
+.agro-scaffold__legend {
+  margin: 0;
+  padding-left: 1rem;
+  font-size: 0.77rem;
+}
+
 @media (max-width: 980px) {
   .agro-scaffold {
     grid-template-columns: 1fr;

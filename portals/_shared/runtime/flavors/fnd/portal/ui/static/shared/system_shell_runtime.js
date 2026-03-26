@@ -110,7 +110,8 @@
     mediationMeta: qs("#systemMediationMeta"),
     mediationModes: qs("#systemMediationModes"),
     mediationBody: qs("#systemMediationBody"),
-    mediationCloseBtn: qs("#systemMediationCloseBtn")
+    mediationCloseBtn: qs("#systemMediationCloseBtn"),
+    sideModeControls: qs("#systemToolViewModes")
   };
 
   var state = {
@@ -380,6 +381,7 @@
     if (!els.mediationBody || !els.mediationWorkbench) return;
     var tool = activeTool();
     if (state.activeVerb !== "mediate" || !tool) {
+      if (els.sideModeControls) els.sideModeControls.hidden = true;
       els.mediationWorkbench.hidden = true;
       if (els.mediationCloseBtn) els.mediationCloseBtn.hidden = true;
       return;
@@ -391,10 +393,29 @@
     if (els.mediationKicker) els.mediationKicker.textContent = provider.kicker(tool);
     if (els.mediationMeta) els.mediationMeta.textContent = provider.meta(tool);
     renderMediationModes(tool, provider);
+    renderToolSideModeControls(tool, provider);
     els.mediationBody.innerHTML = provider.render(tool, state.activeMediationMode);
     if (typeof provider.bind === "function") {
       provider.bind(tool);
     }
+  }
+
+  function renderToolSideModeControls(tool, provider) {
+    if (!els.sideModeControls) return;
+    var toolId = text(tool && tool.tool_id).toLowerCase();
+    if (toolId !== "agro_erp") {
+      els.sideModeControls.hidden = true;
+      return;
+    }
+    els.sideModeControls.hidden = false;
+    qsa("[data-agro-side-mode]", els.sideModeControls).forEach(function (btn) {
+      var mode = text(btn.getAttribute("data-agro-side-mode"));
+      btn.classList.toggle("is-active", state.activeMediationMode === mode);
+      btn.onclick = function () {
+        state.activeMediationMode = mode;
+        renderMediationWorkspaceBody();
+      };
+    });
   }
 
   function renderAll() {
@@ -568,8 +589,50 @@
     );
   }
 
-  function renderAgroDualPaneScaffold(mode) {
+  function renderAgroDualPaneScaffold(tool, mode) {
     var spatialMode = mode === "spatial";
+    var model = agroState(tool).model || {};
+    var ordering = model.ordering_subject && typeof model.ordering_subject === "object" ? model.ordering_subject : {};
+    var primarySvg = ordering.primary_svg && typeof ordering.primary_svg === "object"
+      ? ordering.primary_svg
+      : (model.active_parcel_polygon_svg && typeof model.active_parcel_polygon_svg === "object"
+        ? model.active_parcel_polygon_svg
+        : (model.polygon_svg && typeof model.polygon_svg === "object" ? model.polygon_svg : {}));
+    var profile = model.profile_context && typeof model.profile_context === "object" ? model.profile_context : {};
+    var entities = Array.isArray(ordering.entities) ? ordering.entities : [];
+    var orderingLeft = spatialMode
+      ? (
+        '<svg class="agro-scaffold__svg" viewBox="' + esc(primarySvg.viewbox || "0 0 420 240") + '" role="img" aria-label="Property polygon preview">' +
+        (primarySvg.points ? '<polygon points="' + esc(primarySvg.points) + '" fill="rgba(182, 199, 174, 0.72)" stroke="rgba(86, 103, 78, 0.86)" stroke-width="1.6"></polygon>' : "") +
+        "</svg>"
+      )
+      : (
+        '<div class="agro-scaffold__svg" aria-hidden="true" style="display:grid;grid-template-columns:repeat(16,1fr);gap:2px;padding:5px;">' +
+        Array(192).fill(0).map(function (_, idx) {
+          var val = (idx * 17) % 100;
+          var tone = val < 45 ? "rgba(109,164,122,0.55)" : "rgba(181,123,79,0.6)";
+          return '<span style="display:block;height:8px;border-radius:1px;background:' + tone + ';"></span>';
+        }).join("") +
+        "</div>"
+      );
+    var orderingLegend = entities.length
+      ? (
+        "<ul class=\"agro-scaffold__legend\">" +
+        entities.slice(0, 5).map(function (row) {
+          return "<li><strong>" + esc(row.label || row.role || "property") + ":</strong> " + esc(row.ref || "") + "</li>";
+        }).join("") +
+        "</ul>"
+      )
+      : "<p class=\"data-tool__empty\">No profile entities resolved yet.</p>";
+    var orderingArea =
+      '<div class="agro-scaffold__ordering">' +
+      '<article class="agro-scaffold__orderingCard"><h5>Ordering</h5>' + orderingLeft + "</article>" +
+      '<article class="agro-scaffold__orderingCard"><h5>Profile refs</h5>' +
+      "<p><strong>fnd:</strong> " + esc(profile.fnd_profile_path || "(missing)") + "</p>" +
+      "<p><strong>msn:</strong> " + esc(profile.msn_profile_path || "(missing)") + "</p>" +
+      orderingLegend +
+      "</article>" +
+      "</div>";
     var left =
       spatialMode
         ? (
@@ -595,6 +658,7 @@
       '<div class="agro-scaffold">' +
       '<section class="agro-scaffold__pane agro-scaffold__pane--left">' +
       '<h4>Operational subject (' + esc(spatialMode ? "spatial" : "chronological") + ")</h4>" +
+      orderingArea +
       left +
       "</section>" +
       '<section class="agro-scaffold__pane agro-scaffold__pane--right">' +
@@ -602,7 +666,7 @@
       right +
       "</section>" +
       "</div>" +
-      '<p class="agro-scaffold__note">Empty scaffold only. Datum-family wiring for parcels, overlays, product profiles, and chronology logs remains decision-gated.</p>'
+      '<p class="agro-scaffold__note">Empty scaffold staged from config + profile context. Deeper datum-family commits remain decision-gated.</p>'
     );
   }
 
@@ -730,7 +794,7 @@
       });
     },
     render: function (tool, mode) {
-      if (mode === "spatial" || mode === "chronological") return renderAgroDualPaneScaffold(mode);
+      if (mode === "spatial" || mode === "chronological") return renderAgroDualPaneScaffold(tool, mode);
       if (mode === "taxonomy") return renderAgroTaxonomy(tool);
       if (mode === "supplier") return renderAgroSupplierBrowse(tool);
       if (mode === "product") return renderAgroCompose(tool, "product");
