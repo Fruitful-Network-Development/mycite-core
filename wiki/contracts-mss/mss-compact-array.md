@@ -35,6 +35,12 @@ Key compact-array rules:
 - references are rewritten to the isolated anthology identifiers
 - COBM is used between layers so reference width is determinable
 
+Boundary reminder:
+
+- MSS row/index order is transport-local to the isolated closure.
+- It must not be used as a substitute for anthology/resource datum-address ordering policy.
+- Anthology/resource key ordering remains numeric by `<layer>-<value_group>-<iteration>`.
+
 Current decoder and writer behavior supports:
 
 - `canonical_v2` as the active write target

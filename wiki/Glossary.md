@@ -63,3 +63,15 @@ The semantic datum identity used for resolution and comparison, typically normal
 ## Storage Address
 
 The layer/value-group/iteration address inside a specific anthology or MSS snapshot. It is not the durable semantic identity of a datum.
+
+## Datum Address
+
+The local anthology/resource row address format `<layer>-<value_group>-<iteration>`. Ordering is numeric by those three segments, never lexicographic string order.
+
+## SAMRAS Structural Address
+
+An address derived from SAMRAS node topology (breadth-first child-count structure). It is not interchangeable with datum addresses.
+
+## MSS Snapshot Index
+
+A compact-array transport-local row/index position inside an isolated closure. It is not interchangeable with anthology/resource datum addresses.

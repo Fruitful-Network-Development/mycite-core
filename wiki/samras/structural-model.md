@@ -20,6 +20,12 @@ The structure defines a tree or forest of nodes. Nodes do not store their full a
 2. those counts are interpreted in breadth-first order
 3. addresses are derived from ordinal child position
 
+Boundary reminder:
+
+- SAMRAS structural addresses are not anthology/resource datum addresses.
+- SAMRAS addresses are also not MSS compact-array row indexes.
+- Similar decode mechanics do not imply shared identity semantics.
+
 The governing structural value is encoded as five parts:
 
 1. `address_width_field`
