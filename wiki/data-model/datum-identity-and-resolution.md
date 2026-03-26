@@ -28,6 +28,14 @@ Canonical network-facing refs use dot-qualified form:
 
 Storage-local layer/value-group/iteration addresses remain useful inside a specific anthology or MSS snapshot, but they are not the stable semantic address across recompiles.
 
+Critical distinction:
+
+- datum address (`layer-value_group-iteration`) is a local anthology/resource row address
+- SAMRAS node addressing is a structural address model derived from SAMRAS breadth-first topology
+- MSS compact-array indexing is transport-local to an isolated closure snapshot
+
+These contexts are related by decode/resolve workflows but are not interchangeable identifiers.
+
 The compiled datum index exists to preserve this separation:
 
 - `datum_path` is the stable semantic key

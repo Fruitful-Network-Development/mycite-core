@@ -4,6 +4,15 @@ mss_compact_array_reference.py
 
 Reference implementation of the MSS compact-array logic discussed in the chat.
 
+Context boundary reminder
+------------------------
+This module is about MSS compact-array transport semantics, not anthology key
+ordering rules and not SAMRAS structural addressing.
+
+Do not treat MSS row/index handling as equivalent to datum-address ordering.
+Datum ordering belongs to <layer>-<value_group>-<iteration> numeric handling
+(see datum_structure.py).
+
 Scope
 -----
 This file captures the clarified logic in executable Python:
