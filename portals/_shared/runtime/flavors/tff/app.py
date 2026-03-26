@@ -859,6 +859,33 @@ def _configured_tool_items() -> list[Dict[str, Any]]:
     return out
 
 
+def _configured_tool_status_items() -> list[Dict[str, Any]]:
+    config_payload = load_active_private_config(PRIVATE_DIR, MSN_ID or None)
+    configured = config_payload.get("tools_configuration") if isinstance(config_payload.get("tools_configuration"), list) else []
+    runtime_ids = {str(item.get("tool_id") or "").strip().lower() for item in TOOL_TABS if isinstance(item, dict)}
+    out: list[Dict[str, Any]] = []
+    for entry in configured:
+        if not isinstance(entry, dict):
+            continue
+        raw_name = str(entry.get("name") or entry.get("tool_id") or entry.get("id") or "").strip().lower()
+        if not raw_name:
+            continue
+        runtime_id = raw_name.replace("-", "_")
+        tab = next((item for item in TOOL_TABS if str(item.get("tool_id") or "").strip().lower() == runtime_id), {})
+        out.append(
+            {
+                "name": raw_name,
+                "runtime_id": runtime_id,
+                "display_name": str(tab.get("display_name") or raw_name.replace("-", " ").replace("_", " ").title()),
+                "status": str(entry.get("status") or "enabled").strip().lower() or "enabled",
+                "mount_target": str(entry.get("mount_target") or ""),
+                "runtime_loaded": runtime_id in runtime_ids,
+            }
+        )
+    out.sort(key=lambda item: str(item.get("display_name") or "").lower())
+    return out
+
+
 def _utility_peripheral_entries() -> list[Dict[str, Any]]:
     root = utility_peripherals_dir(PRIVATE_DIR)
     if not root.exists() or not root.is_dir():
@@ -1432,12 +1459,59 @@ def portal_utilities():
         utilities_tab=tab,
         request_log_summary=_request_log_summary(),
         configured_tools=_configured_tool_items(),
+        configured_tool_status=_configured_tool_status_items(),
         peripheral_entries=_utility_peripheral_entries(),
         vault_inventory=inventory,
         vault_inventory_json=json.dumps(inventory, indent=2, sort_keys=True),
         vault_contract_files=_vault_contract_files(),
         keypass_db_path=str(keypass_db_path(PRIVATE_DIR)),
         keypass_inventory_path=str(keypass_inventory_path(PRIVATE_DIR)),
+    )
+
+
+@app.put("/portal/api/utilities/tools/<tool_slug>/status")
+def portal_tools_status_put(tool_slug: str):
+    token = str(tool_slug or "").strip().lower()
+    if not token:
+        abort(400, description="tool slug is required")
+    if not request.is_json:
+        abort(415, description="Expected application/json body")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(400, description="Expected JSON object body")
+    desired = str(body.get("status") or "").strip().lower()
+    if desired not in {"enabled", "disabled"}:
+        abort(400, description="status must be enabled or disabled")
+
+    path = resolve_active_private_config_path(PRIVATE_DIR, MSN_ID or None)
+    if path is None:
+        abort(404, description="active config path could not be resolved")
+    payload = load_active_private_config(PRIVATE_DIR, MSN_ID or None)
+    tools_cfg = payload.get("tools_configuration") if isinstance(payload.get("tools_configuration"), list) else []
+    updated = False
+    for item in tools_cfg:
+        if not isinstance(item, dict):
+            continue
+        item_name = str(item.get("name") or item.get("tool_id") or item.get("id") or "").strip().lower()
+        if item_name in {token, token.replace("_", "-"), token.replace("-", "_")}:
+            item["status"] = desired
+            updated = True
+    if not updated:
+        abort(404, description=f"tool not found in tools_configuration: {token}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    global ACTIVE_PRIVATE_CONFIG
+    ACTIVE_PRIVATE_CONFIG = dict(payload)
+    app.config["MYCITE_ACTIVE_PRIVATE_CONFIG"] = dict(payload)
+    return jsonify(
+        {
+            "ok": True,
+            "tool": token,
+            "status": desired,
+            "written_to": str(path),
+            "note": "Tool status was updated in config. A portal reload may be required for newly-enabled tool packages.",
+        }
     )
 
 

@@ -61,6 +61,14 @@
   <section class="ide-controlpanel__section" id="systemShellSelectionSection" aria-label="SYSTEM control panel">
     <header class="ide-controlpanel__title">Control Panel</header>
     <div id="systemSelectionSummary" class="ide-controlpanel__empty">Select a file or datum to activate the canonical SYSTEM workbench.</div>
+    <div id="systemToolViewModes" class="system-tool-mode-controls" hidden>
+      <button type="button" class="system-tool-mode-controls__btn" data-agro-side-mode="spatial" aria-label="Switch to spatial view">
+        <span class="system-tool-mode-controls__icon system-tool-mode-controls__icon--spatial" aria-hidden="true"></span>
+      </button>
+      <button type="button" class="system-tool-mode-controls__btn" data-agro-side-mode="chronological" aria-label="Switch to chronological view">
+        <span class="system-tool-mode-controls__icon system-tool-mode-controls__icon--chronological" aria-hidden="true"></span>
+      </button>
+    </div>
     <div id="resourcesDatumProfile" class="data-tool__resourcesDatumProfile">
       <p class="data-tool__empty data-tool__resourcesDatumProfilePlaceholder">No datum selected.</p>
     </div>

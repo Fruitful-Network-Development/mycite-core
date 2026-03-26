@@ -39,6 +39,13 @@ def _normalize_mount_target(value: str | None) -> str:
     return token if token in _ALLOWED_MOUNT_TARGETS else _DEFAULT_MOUNT_TARGET
 
 
+def _is_enabled_status(value: object) -> bool:
+    token = str(value or "").strip().lower()
+    if not token:
+        return True
+    return token in {"enabled", "active", "on", "true", "1"}
+
+
 def _read_json_payload(path: Path | None) -> dict[str, Any]:
     if path is None or not path.exists() or not path.is_file():
         return {}
@@ -72,6 +79,7 @@ def _normalize_tool_configuration_entries(raw: Any) -> list[dict[str, str]]:
             {
                 "tool_id": tool_id,
                 "mount_target": _normalize_mount_target(item.get("mount_target")),
+                "status": str(item.get("status") or "enabled").strip() or "enabled",
             }
         )
     return out
@@ -88,6 +96,8 @@ def _read_tool_configuration(private_dir: Path | None) -> list[dict[str, str]]:
 def _read_tool_mount_targets(private_dir: Path | None) -> dict[str, str]:
     out: dict[str, str] = {}
     for entry in _read_tool_configuration(private_dir):
+        if not _is_enabled_status(entry.get("status")):
+            continue
         tool_id = str(entry.get("tool_id") or "")
         if tool_id:
             out[tool_id] = _normalize_mount_target(entry.get("mount_target"))
@@ -123,7 +133,11 @@ def read_enabled_tools(private_dir: Path, msn_id: str | None) -> list[str] | Non
 
     payload = _read_json_payload(path)
     configured = _normalize_tool_configuration_entries(payload.get("tools_configuration"))
-    return [str(item.get("tool_id") or "") for item in configured if str(item.get("tool_id") or "")]
+    return [
+        str(item.get("tool_id") or "")
+        for item in configured
+        if str(item.get("tool_id") or "") and _is_enabled_status(item.get("status"))
+    ]
 
 
 def discover_tool_packages(tools_dir: Path) -> list[str]:

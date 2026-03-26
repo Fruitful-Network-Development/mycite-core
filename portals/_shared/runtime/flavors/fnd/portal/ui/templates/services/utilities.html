@@ -18,15 +18,29 @@
       <div class="card__kicker">Configure tools</div>
       <div class="card__title">Mounted tools activate through SYSTEM</div>
       <div class="card__body">
-        {% if configured_tools %}
-          <ul class="liststack">
-            {% for tool in configured_tools %}
-              <li><strong>{{ tool.display_name }}</strong> <a href="/portal/system">Open in SYSTEM</a></li>
+        {% if configured_tool_status %}
+          <div class="vault-list" data-tool-status-list>
+            {% for tool in configured_tool_status %}
+              <article class="vault-entry" data-tool-slug="{{ tool.name }}">
+                <div class="vault-entry__meta">
+                  <strong>{{ tool.display_name }}</strong>
+                  <span><code>{{ tool.name }}</code> · {{ tool.mount_target }}</span>
+                </div>
+                <p class="vault-entry__notes">
+                  Status: <strong data-tool-status-label>{{ tool.status }}</strong>
+                  {% if not tool.runtime_loaded %} · <em>not currently loaded</em>{% endif %}
+                </p>
+                <div class="vault-entry__actions">
+                  <button type="button" class="ops-btn" data-tool-status-set="enabled">Enable</button>
+                  <button type="button" class="ops-btn ops-btn--outline" data-tool-status-set="disabled">Disable</button>
+                  <a class="ops-btn ops-btn--outline" href="/portal/system?mediate_tool={{ tool.runtime_id|urlencode }}">Open</a>
+                </div>
+              </article>
             {% endfor %}
-          </ul>
-          <p>Legacy tool-home aliases remain compatibility-only and are not part of the canonical shell model.</p>
+          </div>
+          <p>Tools are config-driven (`tools_configuration[].status`). Icons in the activity bar are sourced from tool metadata/icon assets.</p>
         {% else %}
-          <p>No mounted tools are configured for this portal instance.</p>
+          <p>No tool entries are configured for this portal instance.</p>
         {% endif %}
       </div>
     </article>
@@ -204,6 +218,34 @@
     <script src="/portal/static/tools/progeny_utilities.js"></script>
   {% endif %}
   <script>
+    (function () {
+      var list = document.querySelector("[data-tool-status-list]");
+      if (!list) return;
+      list.addEventListener("click", function (event) {
+        var target = event.target;
+        if (!target || !target.closest || !target.matches("[data-tool-status-set]")) return;
+        var entry = target.closest("[data-tool-slug]");
+        if (!entry) return;
+        var slug = entry.getAttribute("data-tool-slug") || "";
+        var desired = target.getAttribute("data-tool-status-set") || "";
+        if (!slug || !desired) return;
+        fetch("/portal/api/utilities/tools/" + encodeURIComponent(slug) + "/status", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: desired })
+        }).then(function (resp) {
+          if (!resp.ok) throw new Error("status update failed");
+          var label = entry.querySelector("[data-tool-status-label]");
+          if (label) label.textContent = desired;
+          target.textContent = "Saved";
+          window.setTimeout(function () { target.textContent = desired === "enabled" ? "Enable" : "Disable"; }, 1200);
+        }).catch(function () {
+          target.textContent = "Error";
+          window.setTimeout(function () { target.textContent = desired === "enabled" ? "Enable" : "Disable"; }, 1200);
+        });
+      });
+    })();
+
     (function () {
       var list = document.querySelector("[data-vault-list]");
       if (!list) return;
