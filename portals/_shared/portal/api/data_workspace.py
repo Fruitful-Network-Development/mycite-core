@@ -491,7 +491,7 @@ def register_data_routes(
         if isinstance(body_decl, dict) and body_decl:
             return dict(body_decl)
         tk = str(tool_key or "").strip().lower()
-        if tk == "agro_erp":
+        if tk in {"agro_erp", "agro-erp"}:
             return dict(AGRO_ERP_SANDBOX_DECLARATION)
         abort(400, description="declaration is required for this tool_key")
 

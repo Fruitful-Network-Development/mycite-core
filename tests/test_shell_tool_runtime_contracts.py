@@ -64,13 +64,15 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
         self.assertEqual(capability.get("tool_id"), "agro_erp")
         self.assertTrue(capability.get("config_context_support"))
         self.assertIn("mediate", capability.get("supported_verbs") or [])
+        self.assertEqual(((capability.get("workbench_contribution") or {}).get("default_mode")), "spatial")
+        self.assertIn("spatial", list((capability.get("workbench_contribution") or {}).get("modes") or []))
         self.assertTrue(any(bool(item.get("config_context")) for item in capability.get("supported_source_contracts") or []))
 
     def test_service_tool_capability_contract_is_normalized(self) -> None:
         capability = normalize_tool_capability(_load_fnd_tool_meta("fnd_ebi"))
         self.assertEqual(capability.get("tool_id"), "fnd_ebi")
         self.assertTrue(capability.get("config_context_support"))
-        self.assertEqual(((capability.get("workbench_contribution") or {}).get("default_mode")), "profiles")
+        self.assertEqual(((capability.get("workbench_contribution") or {}).get("default_mode")), "overview")
         self.assertTrue(any(bool(item.get("config_context")) for item in capability.get("supported_source_contracts") or []))
         self.assertEqual(capability.get("surface_mode"), "mediation_only")
         self.assertFalse(capability.get("owns_shell_state"))

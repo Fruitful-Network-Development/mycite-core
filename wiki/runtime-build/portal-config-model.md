@@ -12,23 +12,22 @@ Canonical
 
 ## Current Contract
 
-Portal runtime configuration is normalized around unified keys rather than older legal-entity split semantics.
+Portal runtime configuration remains instance-led. `private/config.json` is canonical for enabled tools, anchors, and mount targets.
 
 Canonical config sections are:
 
-- `portal_profile`
-- `portal_behavior`
-- `portal_features`
+- instance identity and network keys (`msn_id`, contracts, aliases, hosted)
+- `tools_configuration`
+- optional portal behavior/profile overlays (compatibility-readable)
 
-Writes should normalize legacy input into unified fields such as:
+Canonical `tools_configuration[]` fields are:
 
-- `portal_profile.profile_kind`
-- `portal_profile.organization_config_file`
-- `portal_behavior.defaults`
-- `portal_behavior.overrides`
-- `portal_features.workflow_enabled`
+- `name` (tool slug, e.g. `fnd-ebi`, `agro-erp`)
+- `anchor` (e.g. `tool.<msn_id>.<tool-slug>.json`)
+- `mount_target` (`utilities` or `peripherals.tools`)
+- optional title and managing contract metadata
 
-Legacy keys remain compatibility-readable for now, and write responses may report when legacy keys were used.
+Compatibility reads still accept legacy `tool_id`/`id` fields, but runtime normalizes manifest slugs to provider ids for import (`-` -> `_`).
 
 ## Boundaries
 
@@ -38,11 +37,13 @@ This page owns portal config canonicalization. It does not own:
 - hosted/progeny instance payloads
 - contract policy semantics
 - shell composition
+- provider-specific mediation rendering
 
 ## Authoritative Paths / Files
 
-- `docs/PORTAL_UNIFIED_MODEL.md`
-- `portals/_shared/portal/services/portal_model.py`
+- `compose/portals/state/<instance>/private/config.json`
+- `portals/_shared/portal/tools/runtime.py`
+- `portals/_shared/portal/runtime_paths.py`
 
 ## Source Docs
 

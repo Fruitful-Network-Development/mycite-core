@@ -58,6 +58,16 @@ Current FND-side service-management tools are mediation-oriented:
 - each tool reads its own JSON collection under `private/utilities/tools/<tool-id-or-namespace>/`
 - shared shell mediation treats those files as profile-card oriented config-context collections rather than container-era proxy state
 
+`fnd_ebi` extends this pattern with shared-core internal file reads:
+
+- profile members provide `domain` and `site_root`
+- shared core derives analytics paths from `site_root` and reads those files in read-only mode
+- derived analytics files are exposed as internal source members inside config-context
+- mediated dashboard cards are rebuilt from live analytics files on refresh (not static profile identity rendering)
+- default mediation modes are now `Overview`, `Traffic`, `Events`, `Errors / Noise`, and `Files`
+- card summaries separate human-like browsing, crawler/indexing traffic, and hostile/probe noise where detectable
+- warnings explicitly surface missing/unreadable/stale file conditions and no-event/no-robots conditions
+
 ## Boundaries
 
 This page owns member-service integration abstractions. It does not own:

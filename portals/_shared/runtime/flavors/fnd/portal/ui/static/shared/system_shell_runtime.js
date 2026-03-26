@@ -538,8 +538,10 @@
       var activation = configContext && typeof configContext.activation === "object" ? configContext.activation : {};
       var requestPayload = activation.request_payload && typeof activation.request_payload === "object" ? activation.request_payload : {};
       if (!activation.can_open || !Object.keys(requestPayload).length) {
-        bucket.lastError = "AGRO ERP has no resolved browse source in config-context.";
-        return { ok: false, error: bucket.lastError };
+        bucket.lastError = "";
+        bucket.sessionId = "";
+        bucket.readback = {};
+        return { ok: true, empty_view: true, sandbox_session_id: "" };
       }
       if (bucket.sessionId && !force) {
         bucket.lastError = "";
@@ -563,6 +565,44 @@
       "<p><strong>Staging truth:</strong> " + esc(ctx.staging_truth || mutationPolicy.sandbox_truth || "reduced_local_staging") + "</p>" +
       "<p><strong>Commit truth:</strong> " + esc(ctx.commit_truth || mutationPolicy.anthology_truth || "semantic_minimum_commit") + "</p>" +
       '<pre class="jsonblock">' + esc(JSON.stringify(ctx.resource_role_bindings || {}, null, 2)) + "</pre>"
+    );
+  }
+
+  function renderAgroDualPaneScaffold(mode) {
+    var spatialMode = mode === "spatial";
+    var left =
+      spatialMode
+        ? (
+          '<div class="agro-scaffold__grid agro-scaffold__grid--spatial">' +
+          '<div class="agro-scaffold__block agro-scaffold__block--a"></div>' +
+          '<div class="agro-scaffold__block agro-scaffold__block--b"></div>' +
+          '<div class="agro-scaffold__block agro-scaffold__block--c"></div>' +
+          "</div>"
+        )
+        : (
+          '<div class="agro-scaffold__grid agro-scaffold__grid--chronological">' +
+          '<div class="agro-scaffold__block agro-scaffold__block--linechart"></div>' +
+          '<div class="agro-scaffold__block agro-scaffold__block--timeline"></div>' +
+          '<div class="agro-scaffold__block agro-scaffold__block--ledger"></div>' +
+          "</div>"
+        );
+    var right =
+      '<div class="agro-scaffold__stack">' +
+      '<div class="agro-scaffold__block agro-scaffold__block--context"></div>' +
+      '<div class="agro-scaffold__block agro-scaffold__block--companion"></div>' +
+      "</div>";
+    return (
+      '<div class="agro-scaffold">' +
+      '<section class="agro-scaffold__pane agro-scaffold__pane--left">' +
+      '<h4>Operational subject (' + esc(spatialMode ? "spatial" : "chronological") + ")</h4>" +
+      left +
+      "</section>" +
+      '<section class="agro-scaffold__pane agro-scaffold__pane--right">' +
+      "<h4>Contextual companion</h4>" +
+      right +
+      "</section>" +
+      "</div>" +
+      '<p class="agro-scaffold__note">Empty scaffold only. Datum-family wiring for parcels, overlays, product profiles, and chronology logs remains decision-gated.</p>'
     );
   }
 
@@ -648,10 +688,12 @@
 
   var agroMediationProvider = {
     defaultMode: function (tool) {
-      return agroModeId(toolContribution(tool).default_mode || "overview") || "overview";
+      return agroModeId(toolContribution(tool).default_mode || "spatial") || "spatial";
     },
     modes: function () {
       return [
+        { id: "spatial", label: "Spatial" },
+        { id: "chronological", label: "Chronological" },
         { id: "overview", label: "Overview" },
         { id: "taxonomy", label: "Taxonomy browse/select" },
         { id: "supplier", label: "Supplier browse/select" },
@@ -688,6 +730,7 @@
       });
     },
     render: function (tool, mode) {
+      if (mode === "spatial" || mode === "chronological") return renderAgroDualPaneScaffold(mode);
       if (mode === "taxonomy") return renderAgroTaxonomy(tool);
       if (mode === "supplier") return renderAgroSupplierBrowse(tool);
       if (mode === "product") return renderAgroCompose(tool, "product");
@@ -728,53 +771,189 @@
     });
   }
 
-  function renderFndEbiProfiles(tool) {
+  function fndEbiSnapshotFromCard(card) {
+    var body = card && card.body && typeof card.body === "object" ? card.body : {};
+    return body.analytics_snapshot && typeof body.analytics_snapshot === "object" ? body.analytics_snapshot : {};
+  }
+
+  function fndEbiSparkline(values) {
+    var points = Array.isArray(values) ? values : [];
+    if (!points.length) return "......";
+    var chars = "▁▂▃▄▅▆▇█";
+    var max = 0;
+    points.forEach(function (v) {
+      var n = Number(v) || 0;
+      if (n > max) max = n;
+    });
+    if (max <= 0) return ".".repeat(Math.min(points.length, 12));
+    return points.slice(-12).map(function (v) {
+      var n = Number(v) || 0;
+      var idx = Math.max(0, Math.min(chars.length - 1, Math.floor((n / max) * (chars.length - 1))));
+      return chars.charAt(idx);
+    }).join("");
+  }
+
+  function fndEbiFormatPct(value) {
+    var n = Number(value) || 0;
+    return (n * 100).toFixed(1) + "%";
+  }
+
+  function fndEbiListRows(rows, emptyLabel) {
+    var items = Array.isArray(rows) ? rows : [];
+    if (!items.length) {
+      return '<p class="data-tool__empty">' + esc(emptyLabel || "No rows.") + "</p>";
+    }
+    var out = ["<ul class=\"fnd-ebi-list\">"];
+    items.slice(0, 8).forEach(function (entry) {
+      if (!entry || typeof entry !== "object") return;
+      out.push("<li><code>" + esc(text(entry.key || "")) + "</code><strong>" + esc(String(entry.count || 0)) + "</strong></li>");
+    });
+    out.push("</ul>");
+    return out.join("");
+  }
+
+  function fndEbiSelectDomain(domain) {
+    var token = text(domain).toLowerCase();
+    if (!token) return;
+    var bucket = providerStateFor("fnd_ebi");
+    bucket.selectedDomain = token;
+  }
+
+  function fndEbiSelectedSnapshot(tool) {
     var ctx = toolContext(tool.tool_id) || {};
+    var snapshots = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots : [];
+    if (!snapshots.length) return null;
     var bucket = providerStateFor(tool.tool_id);
+    var selected = text(bucket.selectedDomain).toLowerCase();
+    if (!selected) return snapshots[0];
+    for (var i = 0; i < snapshots.length; i += 1) {
+      var snap = snapshots[i];
+      if (text(snap && snap.domain).toLowerCase() === selected) {
+        return snap;
+      }
+    }
+    return snapshots[0];
+  }
+
+  function renderFndEbiOverview(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
     var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
-    var rows = fndEbiAnalyticsRows(cards, bucket.analyticsItems);
+    var snapshots = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots : [];
+    var rows = fndEbiAnalyticsRows(cards, snapshots);
     var parts = [];
     parts.push('<div class="fnd-ebi-gallery">');
     rows.forEach(function (row) {
       var c = row.card || {};
-      var a = row.analytics || {};
-      var metrics = a.metrics && typeof a.metrics === "object" ? a.metrics : {};
+      var s = row.analytics || {};
+      var snapshot = fndEbiSnapshotFromCard(c);
+      var accessState = snapshot.access_log && typeof snapshot.access_log === "object" ? snapshot.access_log : {};
+      var errorState = snapshot.error_log && typeof snapshot.error_log === "object" ? snapshot.error_log : {};
+      var eventState = snapshot.events_file && typeof snapshot.events_file === "object" ? snapshot.events_file : {};
+      var traffic = snapshot.traffic && typeof snapshot.traffic === "object" ? snapshot.traffic : {};
+      var eventsSummary = snapshot.events_summary && typeof snapshot.events_summary === "object" ? snapshot.events_summary : {};
+      var snapWarnings = Array.isArray(snapshot.warnings) ? snapshot.warnings : [];
       var title = text(c.title || c.card_id || "Site");
-      var summary = text(c.summary || "");
-      parts.push('<article class="card fnd-ebi-card">');
-      parts.push('<div class="card__kicker">' + esc(summary || "Profile") + "</div>");
+      var health = text(snapshot.health_label || "healthy");
+      var sparkline = fndEbiSparkline(traffic.trend_7d || []);
+      parts.push('<article class="card fnd-ebi-card" data-fnd-ebi-select-domain="' + esc(text(snapshot.domain || title)) + '">');
+      parts.push('<div class="card__kicker">' + esc(health) + "</div>");
       parts.push('<div class="card__title">' + esc(title) + "</div>");
       parts.push('<div class="card__body">');
       parts.push("<p><strong>Domain</strong> <code>" + esc(fndEbiDomainFromCard(c) || "") + "</code></p>");
-      if (metrics && Object.keys(metrics).length) {
-        parts.push("<ul class=\"fnd-ebi-metrics\">");
-        Object.keys(metrics).slice(0, 8).forEach(function (k) {
-          parts.push("<li><span>" + esc(k) + "</span> <strong>" + esc(String(metrics[k])) + "</strong></li>");
+      parts.push("<p><strong>Freshness</strong> access=" + esc(text((snapshot.freshness || {}).access_last_seen_utc || "n/a")) + "</p>");
+      parts.push("<ul class=\"fnd-ebi-metrics\">");
+      parts.push("<li><span>Requests (30d)</span> <strong>" + esc(String(traffic.requests_30d || 0)) + "</strong></li>");
+      parts.push("<li><span>Unique visitors</span> <strong>" + esc(String(traffic.unique_visitors_approx_30d || 0)) + "</strong></li>");
+      parts.push("<li><span>Events (30d)</span> <strong>" + esc(String(eventsSummary.events_30d || 0)) + "</strong></li>");
+      parts.push("<li><span>Errors</span> <strong>" + esc(String((traffic.response_breakdown || {})["4xx"] || 0)) + "</strong></li>");
+      parts.push("<li><span>Bot share</span> <strong>" + esc(fndEbiFormatPct(traffic.bot_share)) + "</strong></li>");
+      parts.push("<li><span>Probes</span> <strong>" + esc(String(traffic.suspicious_probe_count || 0)) + "</strong></li>");
+      parts.push("</ul>");
+      parts.push('<p><strong>Trend</strong> <span class="fnd-ebi-sparkline">' + esc(sparkline) + "</span></p>");
+      parts.push("<p><small>logs: access " + esc(accessState.present ? "ok" : "missing") + " · error " + esc(errorState.present ? "ok" : "missing") + " · events " + esc(eventState.present ? "ok" : "missing") + "</small></p>");
+      if (snapWarnings.length) {
+        parts.push('<ul class="fnd-ebi-warnings">');
+        snapWarnings.slice(0, 8).forEach(function (warning) {
+          parts.push("<li>" + esc(text(warning)) + "</li>");
         });
         parts.push("</ul>");
-      } else {
-        parts.push("<p class=\"data-tool__empty\">No aggregated telemetry in admin_runtime yet.</p>");
       }
       parts.push("</div></article>");
     });
     parts.push("</div>");
-    if (!rows.length) {
+    if (!rows.length && !snapshots.length) {
       return '<p class="data-tool__empty">No profile cards from tool sandbox. Check utilities/tools/fnd-ebi and web-analytics.json.</p>';
+    }
+    var selected = fndEbiSelectedSnapshot(tool);
+    if (selected) {
+      var trafficSelected = selected.traffic && typeof selected.traffic === "object" ? selected.traffic : {};
+      var eventsSelected = selected.events_summary && typeof selected.events_summary === "object" ? selected.events_summary : {};
+      var noiseSelected = selected.errors_noise && typeof selected.errors_noise === "object" ? selected.errors_noise : {};
+      parts.push('<article class="card fnd-ebi-detail">');
+      parts.push('<div class="card__kicker">Domain Detail</div>');
+      parts.push('<div class="card__title">' + esc(text(selected.domain || "")) + "</div>");
+      parts.push('<div class="card__body">');
+      parts.push("<p><strong>Traffic trend 30d</strong> <span class=\"fnd-ebi-sparkline\">" + esc(fndEbiSparkline(trafficSelected.trend_30d || [])) + "</span></p>");
+      parts.push("<p><strong>Page vs Asset</strong> page=" + esc(String(((trafficSelected.asset_vs_page || {}).page_requests) || 0)) + " · asset=" + esc(String(((trafficSelected.asset_vs_page || {}).asset_requests) || 0)) + "</p>");
+      parts.push("<p><strong>Bot vs Human-like</strong> bot=" + esc(fndEbiFormatPct(trafficSelected.bot_share || 0)) + " · human=" + esc(fndEbiFormatPct(1 - (Number(trafficSelected.bot_share) || 0))) + "</p>");
+      parts.push("<h4>Top Pages</h4>" + fndEbiListRows(trafficSelected.top_pages, "No page requests parsed."));
+      parts.push("<h4>Top Referrers</h4>" + fndEbiListRows(trafficSelected.top_referrers, "No referrers parsed."));
+      parts.push("<h4>Top Error Routes</h4>" + fndEbiListRows(noiseSelected.top_error_routes, "No error routes."));
+      parts.push("<h4>Suspicious Probes</h4>" + fndEbiListRows(noiseSelected.suspicious_probe_examples, "No suspicious probes parsed."));
+      parts.push("<h4>Event Coverage</h4>" + fndEbiListRows(Object.keys(eventsSelected.event_type_counts || {}).map(function (k) { return { key: k, count: (eventsSelected.event_type_counts || {})[k] }; }), "No event types parsed."));
+      parts.push("</div></article>");
     }
     return parts.join("");
   }
 
-  function renderFndEbiCollections(tool) {
+  function renderFndEbiTraffic(tool) {
     var ctx = toolContext(tool.tool_id) || {};
-    var cd = ctx.collection_datum && typeof ctx.collection_datum === "object" ? ctx.collection_datum : {};
-    var cfg = ctx.config_datum && typeof ctx.config_datum === "object" ? ctx.config_datum : {};
-    return (
-      "<p><strong>Collection</strong> <code>" + esc(text(cd.file_name || "")) + "</code> (" +
-      esc(text(cd.content_kind || "")) +
-      ")</p>" +
-      "<p><strong>Config</strong> <code>" + esc(text(cfg.file_name || "")) + "</code></p>" +
-      '<pre class="jsonblock">' + esc(JSON.stringify({ workspace_profile: ctx.workspace_profile || {} }, null, 2)) + "</pre>"
-    );
+    var snapshots = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots : [];
+    if (!snapshots.length) return '<p class="data-tool__empty">No traffic snapshots available.</p>';
+    var out = [];
+    snapshots.forEach(function (s) {
+      var t = s.traffic && typeof s.traffic === "object" ? s.traffic : {};
+      out.push('<article class="card fnd-ebi-card"><div class="card__title">' + esc(text(s.domain || "")) + '</div><div class="card__body">');
+      out.push("<p>24h: <strong>" + esc(String(t.requests_24h || 0)) + "</strong> · 7d: <strong>" + esc(String(t.requests_7d || 0)) + "</strong> · 30d: <strong>" + esc(String(t.requests_30d || 0)) + "</strong></p>");
+      out.push("<p>Responses 2xx/3xx/4xx/5xx: " + esc(String((t.response_breakdown || {})["2xx"] || 0)) + "/" + esc(String((t.response_breakdown || {})["3xx"] || 0)) + "/" + esc(String((t.response_breakdown || {})["4xx"] || 0)) + "/" + esc(String((t.response_breakdown || {})["5xx"] || 0)) + "</p>");
+      out.push("<p>Bot share: <strong>" + esc(fndEbiFormatPct(t.bot_share || 0)) + "</strong> · Probes: <strong>" + esc(String(t.suspicious_probe_count || 0)) + "</strong></p>");
+      out.push("<p>Trend 7d: <span class=\"fnd-ebi-sparkline\">" + esc(fndEbiSparkline(t.trend_7d || [])) + "</span></p>");
+      out.push("</div></article>");
+    });
+    return out.join("");
+  }
+
+  function renderFndEbiEvents(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var snapshots = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots : [];
+    if (!snapshots.length) return '<p class="data-tool__empty">No events snapshots available.</p>';
+    var out = [];
+    snapshots.forEach(function (s) {
+      var e = s.events_summary && typeof s.events_summary === "object" ? s.events_summary : {};
+      out.push('<article class="card fnd-ebi-card"><div class="card__title">' + esc(text(s.domain || "")) + '</div><div class="card__body">');
+      out.push("<p>Events 24h/7d/30d: <strong>" + esc(String(e.events_24h || 0)) + "</strong> / <strong>" + esc(String(e.events_7d || 0)) + "</strong> / <strong>" + esc(String(e.events_30d || 0)) + "</strong></p>");
+      out.push("<p>Sessions approx: <strong>" + esc(String(e.session_count_approx || 0)) + "</strong></p>");
+      out.push("<p>Trend 30d: <span class=\"fnd-ebi-sparkline\">" + esc(fndEbiSparkline(e.trend_30d || [])) + "</span></p>");
+      out.push(fndEbiListRows(Object.keys(e.event_type_counts || {}).map(function (k) { return { key: k, count: (e.event_type_counts || {})[k] }; }), "No event type data."));
+      out.push("</div></article>");
+    });
+    return out.join("");
+  }
+
+  function renderFndEbiErrorsNoise(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var snapshots = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots : [];
+    if (!snapshots.length) return '<p class="data-tool__empty">No errors/noise snapshots available.</p>';
+    var out = [];
+    snapshots.forEach(function (s) {
+      var n = s.errors_noise && typeof s.errors_noise === "object" ? s.errors_noise : {};
+      out.push('<article class="card fnd-ebi-card"><div class="card__title">' + esc(text(s.domain || "")) + '</div><div class="card__body">');
+      out.push("<h4>Error Severity</h4>" + fndEbiListRows(Object.keys(n.error_severity_counts || {}).map(function (k) { return { key: k, count: (n.error_severity_counts || {})[k] }; }), "No error severity rows."));
+      out.push("<h4>Top Error Routes</h4>" + fndEbiListRows(n.top_error_routes, "No top error routes."));
+      out.push("<h4>Probe Examples</h4>" + fndEbiListRows(n.suspicious_probe_examples, "No suspicious probes."));
+      out.push("</div></article>");
+    });
+    return out.join("");
   }
 
   function renderFndEbiFiles(tool) {
@@ -811,12 +990,14 @@
 
   var fndEbiMediationProvider = {
     defaultMode: function () {
-      return "profiles";
+      return "overview";
     },
     modes: function () {
       return [
-        { id: "profiles", label: "Profiles" },
-        { id: "collections", label: "Collections" },
+        { id: "overview", label: "Overview" },
+        { id: "traffic", label: "Traffic" },
+        { id: "events", label: "Events" },
+        { id: "errors_noise", label: "Errors / Noise" },
         { id: "files", label: "Files" }
       ];
     },
@@ -828,30 +1009,34 @@
     },
     meta: function (tool) {
       var ctx = toolContext(tool.tool_id) || {};
-      var n = Array.isArray(ctx.profile_cards) ? ctx.profile_cards.length : 0;
-      return "Profiles: " + String(n) + " · sandbox: utilities/tools/fnd-ebi";
+      var n = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots.length : 0;
+      return "Domains: " + String(n) + " · source: analytics/nginx + analytics/events";
     },
     ensureReady: function (tool, force) {
-      var bucket = providerStateFor(tool.tool_id);
       return ensureToolContext(tool, force).then(function (ctx) {
-        return api("/portal/api/analytics/members")
-          .then(function (payload) {
-            bucket.analyticsItems = (payload && payload.items) || [];
-            return ctx;
-          })
-          .catch(function () {
-            bucket.analyticsItems = [];
-            return ctx;
-          });
+        var snapshots = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots : [];
+        var bucket = providerStateFor(tool.tool_id);
+        if (!text(bucket.selectedDomain) && snapshots.length) {
+          bucket.selectedDomain = text(snapshots[0].domain || "").toLowerCase();
+        }
+        return ctx;
       });
     },
     render: function (tool, mode) {
-      if (mode === "collections") return renderFndEbiCollections(tool);
+      if (mode === "traffic") return renderFndEbiTraffic(tool);
+      if (mode === "events") return renderFndEbiEvents(tool);
+      if (mode === "errors_noise") return renderFndEbiErrorsNoise(tool);
       if (mode === "files") return renderFndEbiFiles(tool);
-      return renderFndEbiProfiles(tool);
+      return renderFndEbiOverview(tool);
     },
-    bind: function () {
-      return;
+    bind: function (tool) {
+      qsa("[data-fnd-ebi-select-domain]", els.mediationBody).forEach(function (node) {
+        node.addEventListener("click", function () {
+          fndEbiSelectDomain(text(node.getAttribute("data-fnd-ebi-select-domain")));
+          state.activeMediationMode = "overview";
+          renderMediationWorkspaceBody();
+        });
+      });
     }
   };
 

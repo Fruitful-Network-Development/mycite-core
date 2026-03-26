@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from _shared.portal.runtime_paths import utility_tools_dir
+
 
 TOOL_SPEC_SCHEMA = "mycite.portal.tool_spec.v1"
 
@@ -96,6 +98,28 @@ def load_tool_spec_for_id(private_dir: Path, tool_id: str) -> Optional[ToolDataS
     safe_tool_id = _as_text(tool_id)
     if not safe_tool_id:
         return None
-    path = Path(private_dir) / "tools" / f"{safe_tool_id}.spec.json"
-    return load_tool_spec(path)
+    tool_root = utility_tools_dir(Path(private_dir))
+    candidates: list[Path] = []
+    token_variants = [
+        safe_tool_id,
+        safe_tool_id.replace("_", "-"),
+        safe_tool_id.replace("-", "_"),
+    ]
+    seen: set[Path] = set()
+    for token in token_variants:
+        if not token:
+            continue
+        candidate = tool_root / token / "spec.json"
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        candidates.append(candidate)
+    legacy = Path(private_dir) / "tools" / f"{safe_tool_id}.spec.json"
+    if legacy not in seen:
+        candidates.append(legacy)
+    for candidate in candidates:
+        spec = load_tool_spec(candidate)
+        if spec is not None:
+            return spec
+    return None
 

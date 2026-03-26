@@ -61,6 +61,13 @@ Activity-bar tool entries launch into `SYSTEM` using the canonical query contrac
 
 This launch enters a **tool-dominant mediation layer** at sandbox depth (no file selected). The data workbench remains present in core logic but is visually non-dominant while the tool layer is locked.
 
+Current staged defaults:
+
+- FND `fnd_ebi` mediation renders analytics profile/domain surfaces.
+- TFF `agro_erp` mediation defaults to an empty dual-pane scaffold:
+  - `Spatial` (left operational pane + right contextual companion)
+  - `Chronological` (left operational pane + right contextual companion)
+
 Tool discovery is still available through `SYSTEM -> Mediate`, and tool configuration remains under `UTILITIES`.
 
 Legacy aliases and compatibility entrypoints may still normalize into the current shell, but they are hidden compatibility redirects rather than visible tool-home destinations.

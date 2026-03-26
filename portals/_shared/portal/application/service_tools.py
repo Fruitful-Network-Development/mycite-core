@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from _shared.portal.application.internal_sources import derive_client_analytics_paths, read_internal_file
 from _shared.portal.application.shell.contracts import CONFIG_CONTEXT_SCHEMA, build_inspector_card
 from _shared.portal.application.shell.tools import compatible_tools_for_context
 from _shared.portal.runtime_paths import utility_tools_dir
@@ -17,11 +19,15 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "namespace": "fnd-ebi",
         "workspace_id": "service.fnd_ebi",
         "label": "Analytics profile cards",
-        "default_mode": "profiles",
-        "modes": ["profiles", "collections", "files"],
-        "config_patterns": ["fnd-ebi.{portal_instance_id}.json", "fnd-ebi.*.json"],
-        "collection_patterns": ["web-analytics.json"],
-        "member_patterns": ["web-analytics.json", "fnd-ebi.*.json", "*.ndjson"],
+        "default_mode": "overview",
+        "modes": ["overview", "traffic", "events", "errors_noise", "files"],
+        "config_patterns": [
+            "tool.*.fnd-ebi.json",
+            "fnd-ebi.{portal_instance_id}.json",
+            "fnd-ebi.*.json",
+        ],
+        "collection_patterns": ["tool.*.fnd-ebi.json", "web-analytics.json"],
+        "member_patterns": ["spec.json", "fnd-ebi.*.json", "*.ndjson"],
     },
     "aws_platform_admin": {
         "namespace": "aws-csm",
@@ -29,9 +35,9 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "AWS service profiles",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],
-        "config_patterns": ["aws-csm.{portal_instance_id}.json", "aws-csm.*.json"],
-        "collection_patterns": ["aws-csm.collection.json"],
-        "member_patterns": ["aws-csm.collection.json", "aws-csm.*.json", "*.ndjson"],
+        "config_patterns": ["tool.*.aws-csm.json", "aws-csm.{portal_instance_id}.json", "aws-csm.*.json"],
+        "collection_patterns": ["tool.*.aws-csm.json", "aws-csm.collection.json"],
+        "member_patterns": ["spec.json", "aws-csm.*.json", "*.ndjson"],
     },
     "aws_tenant_actions": {
         "namespace": "aws-csm",
@@ -39,9 +45,9 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "AWS service profiles",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],
-        "config_patterns": ["aws-csm.{portal_instance_id}.json", "aws-csm.*.json"],
-        "collection_patterns": ["aws-csm.collection.json"],
-        "member_patterns": ["aws-csm.collection.json", "aws-csm.*.json", "*.ndjson"],
+        "config_patterns": ["tool.*.aws-csm.json", "aws-csm.{portal_instance_id}.json", "aws-csm.*.json"],
+        "collection_patterns": ["tool.*.aws-csm.json", "aws-csm.collection.json"],
+        "member_patterns": ["spec.json", "aws-csm.*.json", "*.ndjson"],
     },
     "paypal_service_agreement": {
         "namespace": "paypal-csm",
@@ -49,9 +55,9 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "PayPal service profiles",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],
-        "config_patterns": ["{portal_instance_id}.json", "paypal-csm.{portal_instance_id}.json"],
-        "collection_patterns": ["paypal-csm.collection.json"],
-        "member_patterns": ["paypal-csm.collection.json", "{portal_instance_id}.json", "paypal-csm.{portal_instance_id}.json", "*.ndjson"],
+        "config_patterns": ["tool.*.paypal-csm.json", "{portal_instance_id}.json", "paypal-csm.{portal_instance_id}.json"],
+        "collection_patterns": ["tool.*.paypal-csm.json", "paypal-csm.collection.json"],
+        "member_patterns": ["spec.json", "paypal-csm.collection.json", "{portal_instance_id}.json", "paypal-csm.{portal_instance_id}.json", "*.ndjson"],
     },
     "paypal_tenant_actions": {
         "namespace": "paypal-csm",
@@ -59,9 +65,9 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "PayPal service profiles",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],
-        "config_patterns": ["{portal_instance_id}.json", "paypal-csm.{portal_instance_id}.json"],
-        "collection_patterns": ["paypal-csm.collection.json"],
-        "member_patterns": ["paypal-csm.collection.json", "{portal_instance_id}.json", "paypal-csm.{portal_instance_id}.json", "*.ndjson"],
+        "config_patterns": ["tool.*.paypal-csm.json", "{portal_instance_id}.json", "paypal-csm.{portal_instance_id}.json"],
+        "collection_patterns": ["tool.*.paypal-csm.json", "paypal-csm.collection.json"],
+        "member_patterns": ["spec.json", "paypal-csm.collection.json", "{portal_instance_id}.json", "paypal-csm.{portal_instance_id}.json", "*.ndjson"],
     },
     "operations": {
         "namespace": "keycloak-sso",
@@ -69,9 +75,9 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "Portal operations cards",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],
-        "config_patterns": ["keycloak-sso.{portal_instance_id}.json", "keycloak-sso.*.json"],
-        "collection_patterns": ["portal_instances.json"],
-        "member_patterns": ["portal_instances.json", "keycloak-sso.*.json", "*.ndjson"],
+        "config_patterns": ["tool.*.keycloak-sso.json", "keycloak-sso.{portal_instance_id}.json", "keycloak-sso.*.json"],
+        "collection_patterns": ["tool.*.keycloak-sso.json", "portal_instances.json"],
+        "member_patterns": ["spec.json", "portal_instances.json", "keycloak-sso.*.json", "*.ndjson"],
     },
     "fnd_provisioning": {
         "namespace": "keycloak-sso",
@@ -79,9 +85,9 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "Portal operations cards",
         "default_mode": "profiles",
         "modes": ["profiles", "collections", "files"],
-        "config_patterns": ["keycloak-sso.{portal_instance_id}.json", "keycloak-sso.*.json"],
-        "collection_patterns": ["portal_instances.json"],
-        "member_patterns": ["portal_instances.json", "keycloak-sso.*.json", "*.ndjson"],
+        "config_patterns": ["tool.*.keycloak-sso.json", "keycloak-sso.{portal_instance_id}.json", "keycloak-sso.*.json"],
+        "collection_patterns": ["tool.*.keycloak-sso.json", "portal_instances.json"],
+        "member_patterns": ["spec.json", "portal_instances.json", "keycloak-sso.*.json", "*.ndjson"],
     },
 }
 
@@ -138,6 +144,10 @@ def _service_tool_contract(definition: dict[str, Any], *, portal_instance_id: st
         "profile_card_contract": {
             "card_kind": "service_profile",
             "source": "tool_owned_datums",
+        },
+        "internal_source_contract": {
+            "mode": "read_only",
+            "supported_content_kinds": ["json", "ndjson", "nginx_access_log", "nginx_error_log", "text"],
         },
         "collection_view_contract": {
             "default_mode": _text(definition.get("default_mode")) or "profiles",
@@ -384,6 +394,208 @@ def _profile_cards_for_payload(path: Path, payload: Any) -> list[dict[str, Any]]
     return [{"card_id": path.stem, "title": title, "summary": summary, "body": body}]
 
 
+def _fnd_ebi_profile_candidate(path: Path, payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if not _text(payload.get("site_root")):
+        return False
+    name = path.name.lower()
+    return name.startswith("fnd-ebi.") and name.endswith(".json")
+
+
+def _fnd_ebi_source_record(*, domain: str, source_key: str, result: Any) -> dict[str, Any]:
+    path = Path(_text(getattr(result, "path", "")))
+    file_name = path.name if path.name else source_key
+    warnings = list(getattr(result, "warnings", []) or [])
+    return {
+        "file_name": file_name,
+        "relative_path": str(path),
+        "path": str(path),
+        "content_kind": _text(getattr(result, "content_kind", "")),
+        "record_count": int(getattr(result, "record_count", 0) or 0),
+        "schema": "",
+        "summary": {
+            "source_key": source_key,
+            "domain": domain,
+            "exists": bool(getattr(result, "exists", False)),
+            "readable": bool(getattr(result, "readable", False)),
+            "ok": bool(getattr(result, "ok", False)),
+            "details": getattr(result, "summary", {}) if isinstance(getattr(result, "summary", {}), dict) else {},
+            "warnings": [str(item) for item in warnings if _text(item)],
+        },
+        "source_kind": "internal_file",
+    }
+
+
+def _parse_iso_utc(value: object) -> datetime | None:
+    token = _text(value)
+    if not token:
+        return None
+    try:
+        if token.endswith("Z"):
+            token = token[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(token)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _fnd_health_label(snapshot: dict[str, Any]) -> str:
+    warnings = list(snapshot.get("warnings") or [])
+    probe_count = int(((snapshot.get("traffic") or {}).get("suspicious_probe_count") or 0))
+    requests_30d = int(((snapshot.get("traffic") or {}).get("requests_30d") or 0))
+    events_30d = int(((snapshot.get("events_summary") or {}).get("events_30d") or 0))
+    if warnings and any("stale" in _text(item).lower() for item in warnings):
+        return "stale"
+    if requests_30d > 0 and events_30d == 0:
+        return "no events"
+    if probe_count > 20 and probe_count > requests_30d // 2:
+        return "scan-heavy"
+    return "healthy"
+
+
+def _fnd_ebi_analytics_snapshot(path: Path, payload: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    domain = _text(payload.get("domain")) or path.stem
+    site_root = _text(payload.get("site_root"))
+    derivation = derive_client_analytics_paths(site_root)
+    access_result = read_internal_file(derivation["access_log"], kind_hint="nginx_access_log")
+    error_result = read_internal_file(derivation["error_log"], kind_hint="nginx_error_log")
+    canonical_events_path = Path(derivation["events_file"])
+    event_candidates = list(derivation.get("events_file_candidates") or [canonical_events_path])
+    selected_events_path = canonical_events_path
+    for candidate in event_candidates:
+        try:
+            candidate_path = Path(candidate)
+        except Exception:
+            continue
+        if candidate_path.exists() and candidate_path.is_file():
+            selected_events_path = candidate_path
+            break
+    events_result = read_internal_file(selected_events_path, kind_hint="ndjson")
+    warnings: list[str] = []
+    for result in (access_result, error_result, events_result):
+        warnings.extend(str(item) for item in list(getattr(result, "warnings", []) or []) if _text(item))
+    if selected_events_path != canonical_events_path:
+        warnings.append(f"using legacy events path: {selected_events_path} (expected canonical {canonical_events_path})")
+    access_summary = access_result.summary if isinstance(access_result.summary, dict) else {}
+    error_summary = error_result.summary if isinstance(error_result.summary, dict) else {}
+    event_summary = events_result.summary if isinstance(events_result.summary, dict) else {}
+    now_utc = datetime.now(timezone.utc)
+    stale_cutoff = now_utc - timedelta(hours=72)
+    access_last = _parse_iso_utc(access_summary.get("last_seen_utc"))
+    error_last = _parse_iso_utc(error_summary.get("last_seen_utc"))
+    events_last = _parse_iso_utc(event_summary.get("last_seen_utc"))
+    if access_result.exists and (access_last is None or access_last < stale_cutoff):
+        warnings.append("access log is stale")
+    if error_result.exists and (error_last is None or error_last < stale_cutoff):
+        warnings.append("error log is stale")
+    if events_result.exists and (events_last is None or events_last < stale_cutoff):
+        warnings.append("events file is stale")
+    if not events_result.exists or int(event_summary.get("events_30d") or 0) == 0:
+        warnings.append("no client events in current month file")
+    if int(access_summary.get("robots_404_count") or 0) > 0:
+        warnings.append("robots.txt requested but returning 404")
+    if int(access_summary.get("sitemap_404_count") or 0) > 0:
+        warnings.append("sitemap.xml requested but returning 404")
+    if int((access_summary.get("response_breakdown") or {}).get("4xx") or 0) > 100:
+        warnings.append("high 404 scan noise observed")
+    snapshot = {
+        "domain": domain,
+        "site_root": site_root,
+        "analytics_root": str(derivation["analytics_root"]),
+        "events_month": str(derivation["events_month_token"]).replace(".ndjson", ""),
+        "access_log": {
+            "path": _text(access_result.path),
+            "present": bool(access_result.exists),
+            "readable": bool(access_result.readable),
+            "request_count": int(access_result.record_count or 0),
+        },
+        "error_log": {
+            "path": _text(error_result.path),
+            "present": bool(error_result.exists),
+            "readable": bool(error_result.readable),
+            "error_count": int(error_result.record_count or 0),
+        },
+        "events_file": {
+            "path": _text(events_result.path),
+            "present": bool(events_result.exists),
+            "readable": bool(events_result.readable),
+            "event_count": int(events_result.record_count or 0),
+        },
+        "request_count_summary": int(access_result.record_count or 0),
+        "error_count_summary": int(error_result.record_count or 0),
+        "event_count_summary": int(events_result.record_count or 0),
+        "freshness": {
+            "access_last_seen_utc": _text(access_summary.get("last_seen_utc")),
+            "error_last_seen_utc": _text(error_summary.get("last_seen_utc")),
+            "events_last_seen_utc": _text(event_summary.get("last_seen_utc")),
+        },
+        "traffic": {
+            "requests_24h": int(access_summary.get("requests_24h") or 0),
+            "requests_7d": int(access_summary.get("requests_7d") or 0),
+            "requests_30d": int(access_summary.get("requests_30d") or 0),
+            "unique_visitors_approx_30d": int(access_summary.get("unique_visitors_approx_30d") or 0),
+            "response_breakdown": {
+                "2xx": int((access_summary.get("response_breakdown") or {}).get("2xx") or 0),
+                "3xx": int((access_summary.get("response_breakdown") or {}).get("3xx") or 0),
+                "4xx": int((access_summary.get("response_breakdown") or {}).get("4xx") or 0),
+                "5xx": int((access_summary.get("response_breakdown") or {}).get("5xx") or 0),
+            },
+            "bot_share": float(access_summary.get("bot_share") or 0.0),
+            "bot_requests": int(access_summary.get("bot_requests") or 0),
+            "suspicious_probe_count": int(access_summary.get("suspicious_probe_count") or 0),
+            "asset_vs_page": {
+                "asset_requests": int((access_summary.get("asset_vs_page") or {}).get("asset_requests") or 0),
+                "page_requests": int((access_summary.get("asset_vs_page") or {}).get("page_requests") or 0),
+            },
+            "top_pages": list(access_summary.get("top_pages") or []),
+            "top_referrers": list(access_summary.get("top_referrers") or []),
+            "trend_7d": list(access_summary.get("trend_7d") or []),
+            "trend_30d": list(access_summary.get("trend_30d") or []),
+        },
+        "events_summary": {
+            "events_24h": int(event_summary.get("events_24h") or 0),
+            "events_7d": int(event_summary.get("events_7d") or 0),
+            "events_30d": int(event_summary.get("events_30d") or 0),
+            "session_count_approx": int(event_summary.get("session_count_approx") or 0),
+            "event_type_counts": dict(event_summary.get("event_type_counts") or {}),
+            "trend_7d": list(event_summary.get("trend_7d") or []),
+            "trend_30d": list(event_summary.get("trend_30d") or []),
+        },
+        "errors_noise": {
+            "error_severity_counts": dict(error_summary.get("severity_counts") or {}),
+            "top_error_routes": list(access_summary.get("top_error_routes") or []),
+            "suspicious_probe_examples": list(access_summary.get("suspicious_probe_examples") or []),
+        },
+        "warnings": warnings,
+    }
+    snapshot["health_label"] = _fnd_health_label(snapshot)
+    records = [
+        _fnd_ebi_source_record(domain=domain, source_key="access_log", result=access_result),
+        _fnd_ebi_source_record(domain=domain, source_key="error_log", result=error_result),
+        _fnd_ebi_source_record(domain=domain, source_key="events_file", result=events_result),
+    ]
+    return snapshot, records
+
+
+def _merge_fnd_ebi_snapshots_into_cards(profile_cards: list[dict[str, Any]], snapshots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_domain = {_text(item.get("domain")).lower(): dict(item) for item in snapshots if isinstance(item, dict)}
+    out: list[dict[str, Any]] = []
+    for card in profile_cards:
+        if not isinstance(card, dict):
+            continue
+        body = dict(card.get("body")) if isinstance(card.get("body"), dict) else {}
+        token = _text(body.get("domain") or card.get("title")).lower()
+        snapshot = by_domain.get(token)
+        if snapshot:
+            body["analytics_snapshot"] = snapshot
+            card = {**card, "body": body}
+        out.append(card)
+    return out
+
+
 def build_service_tool_config_context(
     tool_id: str,
     *,
@@ -415,6 +627,9 @@ def build_service_tool_config_context(
     collection_members: list[dict[str, Any]] = []
     profile_cards: list[dict[str, Any]] = []
     collection_files: list[dict[str, Any]] = []
+    analytics_snapshots: list[dict[str, Any]] = []
+    derived_internal_members: list[dict[str, Any]] = []
+    candidate_profiles: list[tuple[Path, Any]] = []
     if root.exists() and root.is_dir():
         config_path = _pick_canonical_file(root, config_patterns)
         collection_path = _pick_canonical_file(root, collection_patterns)
@@ -440,11 +655,27 @@ def build_service_tool_config_context(
                 continue
             collection_members.append(record)
             profile_cards.extend(_profile_cards_for_payload(path, payload))
+            if namespace == "fnd-ebi" and _fnd_ebi_profile_candidate(path, payload):
+                candidate_profiles.append((path, payload))
 
         if config_datum and config_path is not None:
             profile_cards.extend(_profile_cards_for_payload(config_path, config_payload))
+            if namespace == "fnd-ebi" and _fnd_ebi_profile_candidate(config_path, config_payload):
+                candidate_profiles.append((config_path, config_payload))
         if collection_datum and collection_path is not None and collection_path.name == "portal_instances.json":
             profile_cards.extend(_profile_cards_for_payload(collection_path, collection_payload))
+
+        if namespace == "fnd-ebi":
+            for profile_path, profile_payload in candidate_profiles:
+                snapshot, records = _fnd_ebi_analytics_snapshot(profile_path, profile_payload)
+                analytics_snapshots.append(snapshot)
+                derived_internal_members.extend(records)
+                for item in list(snapshot.get("warnings") or []):
+                    token = _text(item)
+                    if token:
+                        warnings.append(f"{snapshot.get('domain')}: {token}")
+            profile_cards = _merge_fnd_ebi_snapshots_into_cards(profile_cards, analytics_snapshots)
+            collection_members.extend(derived_internal_members)
 
         for record in (config_datum, collection_datum, *collection_members):
             if record:
@@ -486,6 +717,8 @@ def build_service_tool_config_context(
         },
         "collection_files": collection_files,
         "profile_cards": profile_cards,
+        "derived_internal_members": derived_internal_members,
+        "analytics_snapshots": analytics_snapshots,
         "warnings": warnings,
         "activation": {
             "tool_id": _text(tool_id).lower(),
@@ -507,6 +740,7 @@ def build_service_tool_config_context(
                 "collection_datum": collection_datum,
                 "collection_root": str(root),
                 "files": collection_files,
+                "derived_internal_members": derived_internal_members,
                 "warnings": warnings,
             },
             kind="mediation",
@@ -515,7 +749,7 @@ def build_service_tool_config_context(
             card_id=f"{_text(tool_id).lower()}-profiles",
             title="Profile Cards",
             summary=f"{len(profile_cards)} card(s)",
-            body={"cards": profile_cards[:20]},
+            body={"cards": profile_cards[:20], "analytics_snapshots": analytics_snapshots[:20]},
             kind="metadata",
         ),
     ]

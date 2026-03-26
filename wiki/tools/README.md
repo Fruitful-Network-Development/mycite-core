@@ -16,7 +16,9 @@ Tools may be exposed as first-class activity-bar entries when configured by the 
 
 - [Provider Model](provider-model.md)
 - [AGRO-ERP Mediation](agro-erp-mediation.md)
+- [AGRO-ERP Datum Decision Ledger](agro-erp-datum-decision-ledger.md)
 - [Member Service Integrations](member-service-integrations.md)
+- [Internal File Sources](internal-file-sources.md)
 - [Tool Layer Mediation](tool-layer-mediation.md)
 
 ## Source Docs

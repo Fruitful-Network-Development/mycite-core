@@ -21,6 +21,8 @@ A provider may:
 - contribute mediation-specific UI
 - request shell events through the shared state model
 - consume tool-layer sandbox context (`shell_surface=tool_mediation`) when launched from activity-bar tool entrypoints
+- consume shared-core internal-source projections for read-only internal files (no direct raw filesystem ownership)
+- rely on instance-led tool manifests from `private/config.json` (`tools_configuration[].name`) with runtime normalization to provider ids
 
 A provider may not:
 
@@ -29,8 +31,19 @@ A provider may not:
 - own canonical attention state
 - preserve incompatible state after attention changes
 - forge event provenance to bypass shell lock rules
+- bypass shared-core internal-source authority with tool-local unrestricted file reads
 
 Compatibility routes may remain for lineage or deep linking, but they must normalize into the current `SYSTEM` model and must not define visible product framing.
+
+## Instance-Led Tool Identity
+
+Canonical instance manifests may use hyphenated tool slugs (for example `agro-erp`, `fnd-ebi`) while runtime/provider ids remain underscore-normalized (`agro_erp`, `fnd_ebi`) for Python package compatibility.
+
+Runtime normalization rules:
+
+- `tools_configuration[].name` (or legacy `tool_id`) is accepted as source token.
+- hyphenated slugs normalize to underscore ids for provider import and capability matching.
+- per-tool state roots and specs remain slug-oriented on disk under `private/utilities/tools/<tool-slug>/`.
 
 ## Event Provenance Contract
 
