@@ -260,15 +260,19 @@
     var family = ctx.family || {};
     var resolved = ctx.resolved_archetype || {};
     var systemState = ctx.system_state || {};
+    var aitas = systemState.aitas && typeof systemState.aitas === "object" ? systemState.aitas : {};
+    var timeState = aitas.time && typeof aitas.time === "object" ? aitas.time : {};
     var attentionAddress = text(systemState.attention_address || "");
     var directive = text(systemState.directive || state.activeVerb || "navigate");
+    var timeAddress = text(timeState.value || "");
     els.selectionSummary.className = "data-tool__resourcesDatumCard";
     if (els.resourcesInspectorEmpty) els.resourcesInspectorEmpty.hidden = true;
     els.selectionSummary.innerHTML =
       "<div><strong>Attention</strong><br/><code>" + esc(attentionAddress || selection.selected_ref_or_document_id || "") + "</code></div>" +
       "<div><strong>Label</strong><br/><span>" + esc(selection.display_name || "") + "</span></div>" +
       "<div><strong>Directive</strong><br/><span>" + esc(directive || "navigate") + "</span></div>" +
-      "<div><strong>Archetype</strong><br/><span>" + esc(resolved.family || family.kind || "datum") + "</span></div>";
+      "<div><strong>Archetype</strong><br/><span>" + esc(resolved.family || family.kind || "datum") + "</span></div>" +
+      "<div><strong>Time</strong><br/><code>" + esc(timeAddress || "not selected") + "</code></div>";
   }
 
   function renderCompatibleTools() {
@@ -549,6 +553,15 @@
     }
     return api(routePrefixForTool(tool) + "/model.json").then(function (payload) {
       bucket.model = payload || {};
+      var timeCtx = bucket.model.time_context && typeof bucket.model.time_context === "object" ? bucket.model.time_context : {};
+      if (!bucket.timeContext || typeof bucket.timeContext !== "object") {
+        bucket.timeContext = {
+          selected_scope: text(timeCtx.selected_scope),
+          specificity: text(timeCtx.specificity),
+          calendar: timeCtx.calendar && typeof timeCtx.calendar === "object" ? timeCtx.calendar : {},
+          objects: Array.isArray(timeCtx.objects) ? timeCtx.objects : []
+        };
+      }
       return bucket.model;
     });
   }
@@ -587,6 +600,95 @@
       "<p><strong>Commit truth:</strong> " + esc(ctx.commit_truth || mutationPolicy.anthology_truth || "semantic_minimum_commit") + "</p>" +
       '<pre class="jsonblock">' + esc(JSON.stringify(ctx.resource_role_bindings || {}, null, 2)) + "</pre>"
     );
+  }
+
+  function setSelectedTimeContext(scopeToken) {
+    var scope = text(scopeToken);
+    if (!scope) return;
+    var ctx = state.selectedContext && typeof state.selectedContext === "object" ? state.selectedContext : null;
+    if (!ctx) return;
+    var systemState = ctx.system_state && typeof ctx.system_state === "object" ? ctx.system_state : {};
+    var aitas = systemState.aitas && typeof systemState.aitas === "object" ? systemState.aitas : {};
+    aitas.time = { kind: "time_address", value: scope };
+    systemState.aitas = aitas;
+    ctx.system_state = systemState;
+    state.selectedContext = ctx;
+  }
+
+  function renderChronologyWorkbench(tool) {
+    var bucket = agroState(tool);
+    var calendar = bucket.timeContext && bucket.timeContext.calendar && typeof bucket.timeContext.calendar === "object"
+      ? bucket.timeContext.calendar
+      : {};
+    var monthLabels = Array.isArray(calendar.month_labels) ? calendar.month_labels : ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+    var year = Number(calendar.year || new Date().getUTCFullYear());
+    var selectedMonth = Number(calendar.month || 1);
+    var selectedDay = Number(calendar.day || 1);
+    var dayCount = Number(calendar.days_in_month || 31);
+    var selectedScope = text(bucket.timeContext && bucket.timeContext.selected_scope);
+    if (selectedScope) setSelectedTimeContext(selectedScope);
+    var visibleObjects = Array.isArray(bucket.timeContext && bucket.timeContext.objects) ? bucket.timeContext.objects : [];
+    var monthArc = monthLabels.map(function (label, idx) {
+      var month = idx + 1;
+      var active = month === selectedMonth ? " is-active" : "";
+      return '<button type="button" class="agro-time__month' + active + '" data-agro-time-scope="13-787-' + year + '-' + month + '">' + esc(label) + "</button>";
+    }).join("");
+    var dayTicks = Array(Math.max(dayCount, 1)).fill(0).map(function (_, idx) {
+      var d = idx + 1;
+      var active = d === selectedDay ? " is-active" : "";
+      return '<button type="button" class="agro-time__tick' + active + '" data-agro-time-scope="13-787-' + year + '-' + selectedMonth + '-' + d + '" title="Day ' + d + '"></button>';
+    }).join("");
+    var dayRow = Array(Math.max(dayCount, 1)).fill(0).map(function (_, idx) {
+      var d = idx + 1;
+      var active = d === selectedDay ? " is-active" : "";
+      return '<button type="button" class="agro-time__dayCell' + active + '" data-agro-time-scope="13-787-' + year + '-' + selectedMonth + '-' + d + '">' + d + "</button>";
+    }).join("");
+    var objectRows = visibleObjects.length
+      ? (
+        '<ul class="agro-time__objects">' +
+        visibleObjects.slice(0, 16).map(function (item) {
+          var stamp = Array.isArray(item.time_stamp) ? item.time_stamp : [];
+          return '<li><strong>' + esc(item.label || item.object_id || "object") + '</strong><small>' + esc((stamp[0] || "") + " -> " + (stamp[1] || "")) + "</small></li>";
+        }).join("") +
+        "</ul>"
+      )
+      : '<p class="data-tool__empty">No objects intersect the selected time scope.</p>';
+    return (
+      '<section class="agro-time" aria-label="Chronological address workbench">' +
+      '<div class="agro-time__topTicks" aria-hidden="true">' + dayTicks + "</div>" +
+      '<div class="agro-time__arc">' +
+      '<div class="agro-time__months">' + monthArc + "</div>" +
+      '<div class="agro-time__yearCore"><strong>' + esc(String(year)) + "</strong><span>GMT-4</span></div>" +
+      "</div>" +
+      '<div class="agro-time__yearRail">' +
+      '<button type="button" class="agro-time__yearNav" data-agro-time-nav="prev" aria-label="Previous year">' +
+      '<span class="agro-time__yearTag">' + esc(String(year - 1)) + '</span><span class="agro-time__arrow">◀</span></button>' +
+      '<div class="agro-time__scope"><strong>' + esc(selectedScope || "13-787-" + year) + "</strong></div>" +
+      '<button type="button" class="agro-time__yearNav" data-agro-time-nav="next" aria-label="Next year">' +
+      '<span class="agro-time__yearTag">' + esc(String(year + 1)) + '</span><span class="agro-time__arrow">▶</span></button>' +
+      "</div>" +
+      '<div class="agro-time__dayRow">' + dayRow + "</div>" +
+      '<div class="agro-time__band" aria-hidden="true">' + dayTicks + "</div>" +
+      '<div class="agro-time__results"><h5>Filtered contextual objects</h5>' + objectRows + "</div>" +
+      "</section>"
+    );
+  }
+
+  function loadAgroTimeScope(tool, scope) {
+    var bucket = agroState(tool);
+    var endpoint = routePrefixForTool(tool) + "/time/filter";
+    return api(endpoint, "POST", { selected_scope: scope }).then(function (payload) {
+      var calendar = payload && payload.calendar && typeof payload.calendar === "object" ? payload.calendar : {};
+      bucket.timeContext = {
+        selected_scope: text(payload && payload.selected_scope),
+        specificity: text(payload && payload.specificity),
+        calendar: calendar,
+        objects: Array.isArray(payload && payload.objects) ? payload.objects : []
+      };
+      setSelectedTimeContext(bucket.timeContext.selected_scope);
+      renderAll();
+      return payload || {};
+    });
   }
 
   function renderAgroDualPaneScaffold(tool, mode) {
@@ -643,11 +745,7 @@
           "</div>"
         )
         : (
-          '<div class="agro-scaffold__grid agro-scaffold__grid--chronological">' +
-          '<div class="agro-scaffold__block agro-scaffold__block--linechart"></div>' +
-          '<div class="agro-scaffold__block agro-scaffold__block--timeline"></div>' +
-          '<div class="agro-scaffold__block agro-scaffold__block--ledger"></div>' +
-          "</div>"
+          renderChronologyWorkbench(tool)
         );
     var right =
       '<div class="agro-scaffold__stack">' +
@@ -811,6 +909,33 @@
           runAgroAction(tool, kind, action).catch(function (err) {
             if (els.mediationMeta) {
               els.mediationMeta.textContent = err && err.message ? err.message : "AGRO ERP action failed.";
+            }
+          });
+        });
+      });
+      qsa("[data-agro-time-scope]", els.mediationBody).forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var scope = text(btn.getAttribute("data-agro-time-scope"));
+          if (!scope) return;
+          loadAgroTimeScope(tool, scope).catch(function (err) {
+            if (els.mediationMeta) {
+              els.mediationMeta.textContent = err && err.message ? err.message : "Time scope selection failed.";
+            }
+          });
+        });
+      });
+      qsa("[data-agro-time-nav]", els.mediationBody).forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var dir = text(btn.getAttribute("data-agro-time-nav"));
+          var bucket = agroState(tool);
+          var calendar = bucket.timeContext && bucket.timeContext.calendar && typeof bucket.timeContext.calendar === "object"
+            ? bucket.timeContext.calendar
+            : {};
+          var year = Number(calendar.year || new Date().getUTCFullYear());
+          var target = dir === "prev" ? year - 1 : year + 1;
+          loadAgroTimeScope(tool, "13-787-" + target).catch(function (err) {
+            if (els.mediationMeta) {
+              els.mediationMeta.textContent = err && err.message ? err.message : "Year navigation failed.";
             }
           });
         });

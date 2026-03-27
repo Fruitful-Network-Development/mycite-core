@@ -27,6 +27,15 @@ Current default mediation is a dual-pane empty scaffold:
 - `Spatial`
 - `Chronological`
 
+Chronological mode now includes a first-pass **time-address calendar/workbench facet**:
+
+- the selector emits a canonical mixed-radix time address (for example `13-787-2026-3-26`)
+- the shell keeps one SYSTEM state model; AGRO remains a provider inside Mediate
+- the selected scope is written into `system_state.aitas.time` as `time_address`
+- filtering is service-backed (`/portal/tools/agro_erp/time/filter`), not UI-local range logic
+
+The first-pass selector supports year/month/day interaction in the UI while preserving hour/minute-capable address parsing and range normalization in shared core code.
+
 Legacy AGRO modes remain available as secondary compatibility modes:
 
 - `Overview`
@@ -66,6 +75,7 @@ This page owns the AGRO-ERP mediation role. It does not own:
 - `docs/AGRO_ERP_TOOL.md`
 - TFF AGRO tool code under `portals/_shared/runtime/flavors/tff/portal/tools/agro_erp/`
 - shared data-engine APIs under `portals/_shared/portal/`
+- shared time-address engine under `portals/_shared/portal/application/time_address.py`
 
 ## Source Docs
 
