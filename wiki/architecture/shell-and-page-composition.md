@@ -52,7 +52,7 @@ The visible activity bar always includes the three primary services:
 Optional tools may also contribute first-class activity-bar entries when:
 
 - the tool is enabled for the portal instance (`tools_configuration`)
-- the tool is `mediation_only`
+- the tool participates in mediated flow (`supports mediate`) and does not own shell state
 - the tool declares an icon for activity rendering
 
 Activity-bar tool entries launch into `SYSTEM` using the canonical query contract:

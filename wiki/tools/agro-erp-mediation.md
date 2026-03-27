@@ -33,8 +33,13 @@ Chronological mode now includes a first-pass **time-address calendar/workbench f
 - the shell keeps one SYSTEM state model; AGRO remains a provider inside Mediate
 - the selected scope is written into `system_state.aitas.time` as `time_address`
 - filtering is service-backed (`/portal/tools/agro_erp/time/filter`), not UI-local range logic
+- time schema authority is decoded from AGRO anchor datum `1-1-1` (`UTC_mixed_radix`)
 
 The first-pass selector supports year/month/day interaction in the UI while preserving hour/minute-capable address parsing and range normalization in shared core code.
+
+Time schema encoding/decoding details are documented in:
+
+- [Time Address Schema](time-address-schema.md)
 
 Legacy AGRO modes remain available as secondary compatibility modes:
 
@@ -76,6 +81,7 @@ This page owns the AGRO-ERP mediation role. It does not own:
 - TFF AGRO tool code under `portals/_shared/runtime/flavors/tff/portal/tools/agro_erp/`
 - shared data-engine APIs under `portals/_shared/portal/`
 - shared time-address engine under `portals/_shared/portal/application/time_address.py`
+- shared time-schema decode under `portals/_shared/portal/application/time_address_schema.py`
 
 ## Source Docs
 

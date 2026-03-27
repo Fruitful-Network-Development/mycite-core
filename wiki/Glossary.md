@@ -75,3 +75,11 @@ An address derived from SAMRAS node topology (breadth-first child-count structur
 ## MSS Snapshot Index
 
 A compact-array transport-local row/index position inside an isolated closure. It is not interchangeable with anthology/resource datum addresses.
+
+## Time Address Schema Magnitude
+
+The encoded mixed-radix schema payload (currently sourced from AGRO tool anchor datum `1-1-1`) that defines ordered denotation capacities for time-address validation.
+
+## UTC Mixed Radix (`1-1-1`)
+
+The AGRO anchor datum label used for staged chronological schema authority. It is decoded by shared-core logic and consumed by mediated time selection, not by raw UI parsing.

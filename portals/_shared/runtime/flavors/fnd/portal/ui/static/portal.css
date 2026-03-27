@@ -4155,9 +4155,11 @@ body.is-modal-open {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  max-width: 100%;
 }
 
 .data-tool__aitasChip {
+  width: min(168px, calc(100vw - 180px));
   min-width: 116px;
   padding: 6px 10px;
   border: 1px solid color-mix(in srgb, var(--line) 68%, var(--coal) 32%);
@@ -4182,6 +4184,10 @@ body.is-modal-open {
   font-size: 12px;
   font-weight: 700;
   color: #262626;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .data-tool__resourcesTaskButtons .data-tool__actionBtn.is-active {

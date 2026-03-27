@@ -22,6 +22,13 @@
       .replace(/'/g, "&#39;");
   }
 
+  function limitText(value, maxLen) {
+    var token = text(value);
+    var limit = Math.max(8, Number(maxLen) || 64);
+    if (token.length <= limit) return token;
+    return token.slice(0, limit - 3) + "...";
+  }
+
   function api(path, method, payload) {
     var opts = {
       method: method || "GET",
@@ -268,11 +275,11 @@
     els.selectionSummary.className = "data-tool__resourcesDatumCard";
     if (els.resourcesInspectorEmpty) els.resourcesInspectorEmpty.hidden = true;
     els.selectionSummary.innerHTML =
-      "<div><strong>Attention</strong><br/><code>" + esc(attentionAddress || selection.selected_ref_or_document_id || "") + "</code></div>" +
+      "<div><strong>Attention</strong><br/><code title=\"" + esc(attentionAddress || selection.selected_ref_or_document_id || "") + "\">" + esc(limitText(attentionAddress || selection.selected_ref_or_document_id || "", 96)) + "</code></div>" +
       "<div><strong>Label</strong><br/><span>" + esc(selection.display_name || "") + "</span></div>" +
       "<div><strong>Directive</strong><br/><span>" + esc(directive || "navigate") + "</span></div>" +
       "<div><strong>Archetype</strong><br/><span>" + esc(resolved.family || family.kind || "datum") + "</span></div>" +
-      "<div><strong>Time</strong><br/><code>" + esc(timeAddress || "not selected") + "</code></div>";
+      "<div><strong>Time</strong><br/><code title=\"" + esc(timeAddress || "not selected") + "\">" + esc(limitText(timeAddress || "not selected", 96)) + "</code></div>";
   }
 
   function renderCompatibleTools() {
@@ -398,9 +405,22 @@
     if (els.mediationMeta) els.mediationMeta.textContent = provider.meta(tool);
     renderMediationModes(tool, provider);
     renderToolSideModeControls(tool, provider);
-    els.mediationBody.innerHTML = provider.render(tool, state.activeMediationMode);
-    if (typeof provider.bind === "function") {
-      provider.bind(tool);
+    try {
+      els.mediationBody.innerHTML = provider.render(tool, state.activeMediationMode);
+      if (typeof provider.bind === "function") {
+        provider.bind(tool);
+      }
+    } catch (err) {
+      if (els.sideModeControls) els.sideModeControls.hidden = true;
+      if (els.mediationMeta) {
+        els.mediationMeta.textContent = err && err.message
+          ? err.message
+          : "Mediation provider failed to render.";
+      }
+      els.mediationBody.innerHTML =
+        '<article class="card"><div class="card__kicker">Mediation unavailable</div>' +
+        '<div class="card__title">Provider render failed safely</div>' +
+        '<div class="card__body"><p>The tool mediation hit a runtime error and was isolated from the base SYSTEM surface.</p></div></article>';
     }
   }
 
