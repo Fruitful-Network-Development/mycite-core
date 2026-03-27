@@ -10,6 +10,7 @@ from types import ModuleType
 from typing import Any, Dict, Iterable, List, Optional
 
 from _shared.portal.application.shell.tools import normalize_tool_capability
+from _shared.portal.runtime_paths import utility_tools_dir
 
 _TOOL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _LOG = logging.getLogger("mycite.tool_runtime")
@@ -37,6 +38,25 @@ def _default_display_name(tool_id: str) -> str:
 def _normalize_mount_target(value: str | None) -> str:
     token = str(value or "").strip().lower()
     return token if token in _ALLOWED_MOUNT_TARGETS else _DEFAULT_MOUNT_TARGET
+
+
+def _discover_sandbox_icon_url(private_dir: Path | None, tool_id: str) -> str:
+    if private_dir is None:
+        return ""
+    slug = str(tool_id or "").strip().lower().replace("_", "-")
+    if not slug:
+        return ""
+    ui_dir = utility_tools_dir(Path(private_dir)) / slug / "UI"
+    if not ui_dir.exists() or not ui_dir.is_dir():
+        return ""
+    try:
+        candidates = sorted([path for path in ui_dir.iterdir() if path.is_file() and path.suffix.lower() == ".svg"])
+    except Exception:
+        return ""
+    if not candidates:
+        return ""
+    name = candidates[0].name
+    return f"/portal/api/tools/icons/{slug}/{name}"
 
 
 def _is_enabled_status(value: object) -> bool:
@@ -325,6 +345,8 @@ def register_tool_blueprints(
             str(meta.get("tool_id") or ""),
             _normalize_mount_target(str(meta.get("mount_target") or "")),
         )
+        if not str(meta.get("icon") or "").strip():
+            meta["icon"] = _discover_sandbox_icon_url(private_dir, str(meta.get("tool_id") or ""))
         blueprint = meta.pop("blueprint", None)
         if blueprint is not None:
             bp_name = str(getattr(blueprint, "name", "") or "")

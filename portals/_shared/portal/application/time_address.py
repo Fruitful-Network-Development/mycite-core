@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from calendar import monthrange
 from typing import Any
 
+from .time_address_schema import validate_address_with_schema
 
 _TIME_SCOPE_PREFIX = (13, 787)
 _TIME_SCOPE_PREFIX_ALT = (13, 786)
@@ -51,6 +52,13 @@ def parse_time_address(address: str) -> ParsedTimeAddress:
 def normalize_time_address(address: str) -> str:
     parsed = parse_time_address(address)
     return "-".join(str(item) for item in parsed.segments)
+
+
+def normalize_time_address_for_schema(address: str, schema_payload: dict[str, Any]) -> str:
+    validation = validate_address_with_schema(address, schema_payload)
+    if not bool(validation.get("ok")):
+        raise ValueError(str(validation.get("error") or "time address does not satisfy schema authority"))
+    return normalize_time_address(address)
 
 
 def infer_specificity(address: str) -> str:
@@ -213,6 +221,7 @@ __all__ = [
     "infer_specificity",
     "normalize_range",
     "normalize_time_address",
+    "normalize_time_address_for_schema",
     "parse_time_address",
     "projection_year_month_day",
     "same_scope",

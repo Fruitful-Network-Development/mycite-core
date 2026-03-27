@@ -24,6 +24,7 @@ resolve_active_private_config_path = _CFG.resolve_active_private_config_path
 active_private_config_filename = _CFG.active_private_config_filename
 
 build_service_nav = _REG.build_service_nav
+build_activity_tool_links = _REG.build_activity_tool_links
 build_network_tabs = _REG.build_network_tabs
 normalize_network_tab = _REG.normalize_network_tab
 active_service_from_path = _REG.active_service_from_path

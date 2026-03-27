@@ -3513,10 +3513,12 @@
       { label: "Spacial", value: row ? "2" : "1" }
     ];
     dtSystemAitasStripEl.innerHTML = chips.map(function (chip) {
+      var raw = String(chip.value == null ? "" : chip.value);
+      var shown = compactLabel(raw, 42);
       return (
         '<div class="data-tool__aitasChip">' +
         '<span class="data-tool__aitasLabel">' + escapeText(chip.label) + "</span>" +
-        '<span class="data-tool__aitasValue">' + escapeText(chip.value) + "</span>" +
+        '<span class="data-tool__aitasValue" title="' + escapeText(raw) + '">' + escapeText(shown) + "</span>" +
         "</div>"
       );
     }).join("");

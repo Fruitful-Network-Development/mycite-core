@@ -89,13 +89,17 @@ def build_activity_tool_links(
     *,
     active_mediate_tool: str = "",
 ) -> list[dict[str, Any]]:
-    """Mediation-only tools with icons: links to SYSTEM sandbox with ?mediate_tool=."""
+    """Mediated tools with icons: links to tool-layer mediation via SYSTEM query contract."""
     active = str(active_mediate_tool or "").strip().lower()
     out: list[dict[str, Any]] = []
     for raw in list(tool_tabs or []):
         if not isinstance(raw, dict):
             continue
-        if str(raw.get("surface_mode") or "").strip().lower() != "mediation_only":
+        surface_mode = str(raw.get("surface_mode") or "").strip().lower()
+        owns_shell_state = raw.get("owns_shell_state")
+        supports_mediate = "mediate" in [str(item).strip().lower() for item in list(raw.get("supported_verbs") or [])]
+        mediation_linkable = surface_mode == "mediation_only" or owns_shell_state is False
+        if not mediation_linkable or not supports_mediate:
             continue
         mount = str(raw.get("mount_target") or "").strip().lower()
         if mount not in ("peripherals.tools", "utilities"):

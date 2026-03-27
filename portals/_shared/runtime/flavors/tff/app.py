@@ -23,6 +23,7 @@ from portal.api.request_log import register_request_log_routes
 from portal.core_services.runtime import (
     active_service_from_path,
     active_private_config_filename,
+    build_activity_tool_links,
     build_network_cards,
     build_network_tabs,
     build_property_geography_model,
@@ -44,6 +45,7 @@ from portal.services.runtime_paths import (
     request_log_read_paths,
     request_log_types_dir,
     utility_peripherals_dir,
+    utility_tools_dir,
     vault_contract_read_dirs,
 )
 from portal.services.workspace_store import append_event as append_workspace_event
@@ -1128,12 +1130,15 @@ def _shell_context() -> Dict[str, Any]:
     switch_portal_url = str(os.environ.get("PORTAL_SWITCH_URL") or "/oauth2/sign_in?rd=%2Fportal%2Fsystem").strip()
     if not switch_portal_url:
         switch_portal_url = "/oauth2/sign_in?rd=%2Fportal%2Fsystem"
+    mediate_tool = str(request.args.get("mediate_tool") or "").strip().lower()
+    activity_tool_links = build_activity_tool_links(TOOL_TABS, active_mediate_tool=mediate_tool)
     context = build_shell_context(
         active_service=active_service,
         active_service_tab=active_service_tab,
         active_tool=active_tool,
         tool_tabs=TOOL_TABS,
         service_nav=build_service_nav(ACTIVE_PRIVATE_CONFIG, active_service=active_service),
+        activity_tool_links=activity_tool_links,
         network_tabs=build_network_tabs(active_service_tab),
         sidebar_progeny=sidebar_progeny,
         portal_name=portal_name,
@@ -1182,6 +1187,28 @@ def portal_static_icons(relpath: str):
     except Exception:
         abort(404)
     return send_from_directory(ICONS_DIR, resolved.relative_to(ICONS_DIR.resolve()).as_posix(), mimetype="image/svg+xml")
+
+
+@app.get("/portal/api/tools/icons/<tool_slug>/<icon_name>")
+def portal_tool_icon(tool_slug: str, icon_name: str):
+    slug = str(tool_slug or "").strip().lower()
+    name = str(icon_name or "").strip()
+    if not re.fullmatch(r"[a-z0-9_-]{1,64}", slug):
+        abort(404)
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", name):
+        abort(404)
+    if Path(name).name != name or not name.lower().endswith(".svg"):
+        abort(404)
+    root = utility_tools_dir(PRIVATE_DIR) / slug / "UI"
+    try:
+        root_resolved = root.resolve()
+        candidate = (root / name).resolve()
+        candidate.relative_to(root_resolved)
+    except Exception:
+        abort(404)
+    if not candidate.exists() or not candidate.is_file():
+        abort(404)
+    return send_from_directory(root_resolved.as_posix(), candidate.name, mimetype="image/svg+xml")
 
 
 @app.get("/healthz")

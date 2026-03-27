@@ -24,6 +24,14 @@ def _load_tool_specs_module():
     return importlib.import_module("_shared.portal.tools.specs")
 
 
+def _load_registry_module():
+    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    token = str(portals_root)
+    if token not in sys.path:
+        sys.path.insert(0, token)
+    return importlib.import_module("_shared.portal.core_services.registry")
+
+
 class ToolRuntimeTests(unittest.TestCase):
     def test_read_enabled_tools_returns_none_without_config(self):
         runtime = _load_tool_runtime_module()
@@ -126,6 +134,36 @@ class ToolRuntimeTests(unittest.TestCase):
             loaded = specs.load_tool_spec_for_id(private_dir, "agro_erp")
             self.assertIsNotNone(loaded)
             self.assertEqual(loaded.tool_id, "agro-erp")
+
+    def test_runtime_discovers_tool_icon_from_sandbox_ui_dir(self):
+        runtime = _load_tool_runtime_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            icon_dir = private_dir / "utilities" / "tools" / "agro-erp" / "UI"
+            icon_dir.mkdir(parents=True, exist_ok=True)
+            (icon_dir / "farm.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'></svg>\n", encoding="utf-8")
+            url = runtime._discover_sandbox_icon_url(private_dir, "agro_erp")
+            self.assertEqual(url, "/portal/api/tools/icons/agro-erp/farm.svg")
+
+    def test_activity_links_accept_tool_shell_when_shell_state_is_provider_managed(self):
+        registry = _load_registry_module()
+        links = registry.build_activity_tool_links(
+            [
+                {
+                    "tool_id": "agro_erp",
+                    "display_name": "AGRO ERP",
+                    "surface_mode": "tool_shell",
+                    "owns_shell_state": False,
+                    "supported_verbs": ["mediate", "investigate"],
+                    "mount_target": "peripherals.tools",
+                    "icon": "/portal/api/tools/icons/agro-erp/farm.svg",
+                }
+            ],
+            active_mediate_tool="agro_erp",
+        )
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0].get("href"), "/portal/system?mediate_tool=agro_erp")
+        self.assertTrue(bool(links[0].get("active")))
 
 
 if __name__ == "__main__":

@@ -41,9 +41,12 @@ from _shared.portal.services.profile_resolver import resolve_fnd_profile_path, r
 from _shared.portal.application.time_address import (
     infer_specificity,
     normalize_time_address,
+    normalize_time_address_for_schema,
     projection_year_month_day,
     same_scope,
 )
+from _shared.portal.application.time_address_schema import schema_from_anchor_payload, validate_address_with_schema
+from _shared.portal.runtime_paths import utility_tools_dir
 from portal.core_services.runtime import resolve_active_private_config_path
 from portal.services.contract_store import get_contract, list_contracts
 from portal.services.datum_refs import normalize_datum_ref
@@ -655,6 +658,36 @@ def _anthology_payload() -> tuple[dict[str, Any], str]:
     return _read_json_object(path), str(path)
 
 
+def _active_tool_anchor_path(config: dict[str, Any]) -> Path | None:
+    tools_cfg = config.get("tools_configuration") if isinstance(config.get("tools_configuration"), list) else []
+    anchor_name = ""
+    for item in tools_cfg:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or item.get("tool_id") or item.get("id") or "").strip().lower()
+        if name in {"agro-erp", "agro_erp"}:
+            anchor_name = str(item.get("anchor") or "").strip()
+            break
+    tool_root = utility_tools_dir(_private_dir()) / "agro-erp"
+    if anchor_name:
+        candidate = tool_root / anchor_name
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    fallback = sorted([path for path in tool_root.glob("tool.*.agro-erp.json") if path.is_file()])
+    return fallback[0] if fallback else None
+
+
+def _load_time_schema_context(config: dict[str, Any]) -> dict[str, Any]:
+    anchor_path = _active_tool_anchor_path(config)
+    if anchor_path is None:
+        return {"ok": False, "error": "agro tool anchor file is missing", "schema": {}, "anchor_path": ""}
+    payload = _read_json_object(anchor_path)
+    decoded = schema_from_anchor_payload(payload if isinstance(payload, dict) else {})
+    out = dict(decoded)
+    out["anchor_path"] = str(anchor_path)
+    return out
+
+
 def _pairs_from_datum(datum: Any) -> tuple[list[dict[str, str]], str]:
     pairs: list[dict[str, str]] = []
     label = ""
@@ -1191,7 +1224,13 @@ def _build_model_payload() -> dict[str, Any]:
     capabilities = _capability_payload()
     capabilities_ok, capability_errors = _validate_capability_payload(capabilities)
 
+    time_schema = _load_time_schema_context(config)
     time_scope = f"13-787-{datetime.now(timezone.utc).year}"
+    schema_check = validate_address_with_schema(time_scope, time_schema)
+    try:
+        time_scope = normalize_time_address_for_schema(time_scope, time_schema)
+    except Exception:
+        time_scope = normalize_time_address(time_scope)
     time_objects = _build_time_addressed_objects(profile_context)
     time_filtered = [dict(item) for item in time_objects if same_scope(time_scope, item.get("time_stamp") or [])]
     return {
@@ -1242,6 +1281,12 @@ def _build_model_payload() -> dict[str, Any]:
             "objects_total": len(time_objects),
             "objects_visible": len(time_filtered),
             "objects": time_filtered,
+            "schema_authority": {
+                "ok": bool(time_schema.get("ok")),
+                "anchor_path": str(time_schema.get("anchor_path") or ""),
+                "schema": dict(time_schema.get("schema") or {}),
+                "warnings": list(schema_check.get("warnings") or []),
+            },
         },
         "agro_routes": {
             "capabilities": "/portal/tools/agro_erp/capabilities.json",
@@ -1472,8 +1517,22 @@ def agro_erp_time_filter():
     if not isinstance(body, dict):
         abort(400, description="Expected JSON object body")
     selected_scope = str(body.get("selected_scope") or "").strip() or f"13-787-{datetime.now(timezone.utc).year}"
+    config, _ = _active_config()
+    schema_ctx = _load_time_schema_context(config if isinstance(config, dict) else {})
+    schema_check = validate_address_with_schema(selected_scope, schema_ctx)
+    if not bool(schema_check.get("ok")):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": str(schema_check.get("error") or "selected scope is outside schema authority"),
+                    "schema": "mycite.portal.agro_erp.time_filter.v1",
+                }
+            ),
+            400,
+        )
     try:
-        selected_scope = normalize_time_address(selected_scope)
+        selected_scope = normalize_time_address_for_schema(selected_scope, schema_ctx)
         _ = infer_specificity(selected_scope)
     except Exception as exc:
         return (
@@ -1500,6 +1559,12 @@ def agro_erp_time_filter():
             "objects_total": len(objects),
             "objects_visible": len(visible),
             "objects": visible,
+            "schema_authority": {
+                "ok": bool(schema_ctx.get("ok")),
+                "anchor_path": str(schema_ctx.get("anchor_path") or ""),
+                "schema": dict(schema_ctx.get("schema") or {}),
+                "warnings": list(schema_check.get("warnings") or []),
+            },
         }
     )
 
@@ -2024,6 +2089,7 @@ def get_tool() -> dict[str, object]:
         "home_path": TOOL_HOME_PATH,
         "blueprint": TOOL_BLUEPRINT,
         "supported_verbs": ["mediate", "investigate", "manipulate"],
+        "owns_shell_state": False,
         "supported_source_contracts": [
             {
                 "document_schema": "mycite.workbench.document.v1",

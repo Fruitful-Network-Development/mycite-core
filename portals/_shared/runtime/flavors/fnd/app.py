@@ -1146,6 +1146,28 @@ def portal_static_icons(relpath: str):
     return send_from_directory(ICONS_DIR, resolved.relative_to(ICONS_DIR.resolve()).as_posix(), mimetype="image/svg+xml")
 
 
+@app.get("/portal/api/tools/icons/<tool_slug>/<icon_name>")
+def portal_tool_icon(tool_slug: str, icon_name: str):
+    slug = str(tool_slug or "").strip().lower()
+    name = str(icon_name or "").strip()
+    if not re.fullmatch(r"[a-z0-9_-]{1,64}", slug):
+        abort(404)
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", name):
+        abort(404)
+    if Path(name).name != name or not name.lower().endswith(".svg"):
+        abort(404)
+    root = utility_tools_dir(PRIVATE_DIR) / slug / "UI"
+    try:
+        root_resolved = root.resolve()
+        candidate = (root / name).resolve()
+        candidate.relative_to(root_resolved)
+    except Exception:
+        abort(404)
+    if not candidate.exists() or not candidate.is_file():
+        abort(404)
+    return send_from_directory(root_resolved.as_posix(), candidate.name, mimetype="image/svg+xml")
+
+
 @app.get("/healthz")
 def healthz():
     return jsonify({"ok": True, "service": "fnd_portal"})

@@ -33,6 +33,9 @@ def _load_tff_app_module(temp_root: Path):
 
     msn_id = "3-2-3-17-77-2-6-3-1-6"
     (private_dir / "config.json").write_text(json.dumps({"msn_id": msn_id}) + "\n", encoding="utf-8")
+    icon_dir = private_dir / "utilities" / "tools" / "agro-erp" / "UI"
+    icon_dir.mkdir(parents=True, exist_ok=True)
+    (icon_dir / "farm.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'></svg>\n", encoding="utf-8")
     (public_dir / f"msn-{msn_id}.json").write_text(json.dumps({"msn_id": msn_id, "title": "TFF"}) + "\n", encoding="utf-8")
     (public_dir / f"fnd-{msn_id}.json").write_text(
         json.dumps({"schema": "mycite.fnd.profile.v1", "msn_id": msn_id, "title": "TFF", "summary": "Brand"}) + "\n",
@@ -118,6 +121,8 @@ class TffPortalShellRouteTests(unittest.TestCase):
             self.assertEqual("/portal/system", client.get("/portal/data/legacy").headers.get("Location", ""))
 
             self.assertEqual(client.get("/portal/api/data/state").status_code, 200)
+            self.assertEqual(client.get("/portal/api/tools/icons/agro-erp/farm.svg").status_code, 200)
+            self.assertEqual(client.get("/portal/api/tools/icons/agro-erp/../../x.svg").status_code, 404)
             self.assertEqual(client.get("/portal/api/data/anthology/table").status_code, 200)
             self.assertEqual(client.get("/portal/api/config?msn_id=3-2-3-17-77-2-6-3-1-6").status_code, 200)
             self.assertEqual(

@@ -15,7 +15,7 @@
   {% if utilities_tab == "tools" %}
     <article class="card">
       <div class="card__kicker">Configure tools</div>
-      <div class="card__title">Mounted tools activate through SYSTEM</div>
+      <div class="card__title">Mounted tool sandboxes (mediated)</div>
       <div class="card__body">
         {% if configured_tool_status %}
           <div class="vault-list" data-tool-status-list>
@@ -32,12 +32,12 @@
                 <div class="vault-entry__actions">
                   <button type="button" class="ops-btn" data-tool-status-set="enabled">Enable</button>
                   <button type="button" class="ops-btn ops-btn--outline" data-tool-status-set="disabled">Disable</button>
-                  <a class="ops-btn ops-btn--outline" href="/portal/system?mediate_tool={{ tool.runtime_id|urlencode }}">Open</a>
+                  <a class="ops-btn ops-btn--outline" href="/portal/system?mediate_tool={{ tool.runtime_id|urlencode }}">Open mediation</a>
                 </div>
               </article>
             {% endfor %}
           </div>
-          <p>Tools are config-driven (`tools_configuration[].status`). Icons in the activity bar are sourced from tool metadata/icon assets.</p>
+          <p>Tools are config-driven (`tools_configuration[].status`) and rendered as mediation layers over their own sandbox context. Activity-bar icons are sourced from tool metadata/icon assets.</p>
         {% else %}
           <p>No tool entries are configured for this portal instance.</p>
         {% endif %}
