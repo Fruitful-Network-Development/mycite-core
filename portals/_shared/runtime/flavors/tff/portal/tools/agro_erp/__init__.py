@@ -5,6 +5,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -37,6 +38,12 @@ from _shared.portal.sandbox.tool_sandbox_session import (
 )
 from _shared.portal.services.portal_model import canonicalize_portal_model_config
 from _shared.portal.services.profile_resolver import resolve_fnd_profile_path, resolve_public_profile_path
+from _shared.portal.application.time_address import (
+    infer_specificity,
+    normalize_time_address,
+    projection_year_month_day,
+    same_scope,
+)
 from portal.core_services.runtime import resolve_active_private_config_path
 from portal.services.contract_store import get_contract, list_contracts
 from portal.services.datum_refs import normalize_datum_ref
@@ -1084,6 +1091,62 @@ def _run_daemon(spec: dict[str, Any], config: dict[str, Any], anthology: dict[st
     }
 
 
+def _build_time_addressed_objects(profile_context: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    First-pass, deterministic time-address samples tied to resolved profile entities.
+    Canonical authority remains mixed-radix time addresses; these objects are
+    intentionally thin and can later be replaced by anthology-backed records.
+    """
+    entities = [dict(item) for item in list(profile_context.get("entities") or []) if isinstance(item, dict)]
+    now = datetime.now(timezone.utc)
+    year = int(now.year)
+    month = int(now.month)
+    day = int(now.day)
+    objects: list[dict[str, Any]] = []
+    for idx, row in enumerate(entities[:8], start=1):
+        ref = str(row.get("ref") or f"entity-{idx}").strip() or f"entity-{idx}"
+        role = str(row.get("role") or "profile_entity").strip() or "profile_entity"
+        base = f"13-787-{year}-{month}-{day}"
+        if idx % 3 == 0:
+            start = f"13-787-{year}-{month}-1"
+            end = f"13-787-{year}-{month}-28-12-0"
+        elif idx % 2 == 0:
+            start = f"13-787-{year}-{month}-{max(1, day - 1)}-0-0"
+            end = f"13-787-{year}-{month}-{day}-8-7"
+        else:
+            start = base
+            end = base
+        objects.append(
+            {
+                "object_id": f"{role}:{idx}",
+                "location_id": ref,
+                "time_stamp": [start, end],
+                "role": role,
+                "label": str(row.get("label") or role).strip(),
+            }
+        )
+    if not objects:
+        objects.append(
+            {
+                "object_id": "profile:seed",
+                "location_id": "profile",
+                "time_stamp": [f"13-787-{year}-{month}-{day}", f"13-787-{year}-{month}-{day}"],
+                "role": "profile_seed",
+                "label": "Profile seed",
+            }
+        )
+    return objects
+
+
+def _filter_time_objects(selected_scope: str, objects: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    filtered: list[dict[str, Any]] = []
+    for item in objects:
+        stamp = item.get("time_stamp")
+        if same_scope(selected_scope, stamp if isinstance(stamp, (list, tuple)) else []):
+            filtered.append(dict(item))
+    return filtered
+
+
 def _build_model_payload() -> dict[str, Any]:
     config, config_path = _active_config()
     anthology, anthology_path = _anthology_payload()
@@ -1128,6 +1191,9 @@ def _build_model_payload() -> dict[str, Any]:
     capabilities = _capability_payload()
     capabilities_ok, capability_errors = _validate_capability_payload(capabilities)
 
+    time_scope = f"13-787-{datetime.now(timezone.utc).year}"
+    time_objects = _build_time_addressed_objects(profile_context)
+    time_filtered = [dict(item) for item in time_objects if same_scope(time_scope, item.get("time_stamp") or [])]
     return {
         "tool_id": TOOL_ID,
         "portal_instance_id": str(current_app.config.get("MYCITE_PORTAL_INSTANCE_ID") or ""),
@@ -1169,6 +1235,14 @@ def _build_model_payload() -> dict[str, Any]:
             "entities": list(profile_context.get("entities") or []),
             "primary_svg": dict(profile_context.get("primary_svg") or {}),
         },
+        "time_context": {
+            "selected_scope": normalize_time_address(time_scope),
+            "specificity": infer_specificity(time_scope),
+            "calendar": projection_year_month_day(time_scope),
+            "objects_total": len(time_objects),
+            "objects_visible": len(time_filtered),
+            "objects": time_filtered,
+        },
         "agro_routes": {
             "capabilities": "/portal/tools/agro_erp/capabilities.json",
             "resources": "/portal/api/data/external/resources",
@@ -1187,6 +1261,7 @@ def _build_model_payload() -> dict[str, Any]:
             "plan_grid_preview": "/portal/tools/agro_erp/plan/grid_preview",
             "plot_plan_draft_save": "/portal/tools/agro_erp/plan/draft/save",
             "plot_plan_draft_load": "/portal/tools/agro_erp/plan/draft/load",
+            "time_filter": "/portal/tools/agro_erp/time/filter",
         },
     }
 
@@ -1387,6 +1462,46 @@ def agro_erp_home():
 @agro_erp_bp.get("/portal/tools/agro_erp/model.json")
 def agro_erp_model_json():
     return jsonify(_build_model_payload())
+
+
+@agro_erp_bp.post("/portal/tools/agro_erp/time/filter")
+def agro_erp_time_filter():
+    if not request.is_json:
+        abort(415, description="Expected application/json body")
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(400, description="Expected JSON object body")
+    selected_scope = str(body.get("selected_scope") or "").strip() or f"13-787-{datetime.now(timezone.utc).year}"
+    try:
+        selected_scope = normalize_time_address(selected_scope)
+        _ = infer_specificity(selected_scope)
+    except Exception as exc:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": str(exc),
+                    "schema": "mycite.portal.agro_erp.time_filter.v1",
+                }
+            ),
+            400,
+        )
+    anthology, _ = _anthology_payload()
+    profile_context = _build_profile_context(anthology if isinstance(anthology, dict) else {})
+    objects = _build_time_addressed_objects(profile_context)
+    visible = _filter_time_objects(selected_scope, objects)
+    return jsonify(
+        {
+            "ok": True,
+            "schema": "mycite.portal.agro_erp.time_filter.v1",
+            "selected_scope": selected_scope,
+            "specificity": infer_specificity(selected_scope),
+            "calendar": projection_year_month_day(selected_scope),
+            "objects_total": len(objects),
+            "objects_visible": len(visible),
+            "objects": visible,
+        }
+    )
 
 
 @agro_erp_bp.get("/portal/tools/agro_erp/capabilities.json")

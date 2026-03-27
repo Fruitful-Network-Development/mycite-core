@@ -66,7 +66,13 @@ Current staged defaults:
 - FND `fnd_ebi` mediation renders analytics profile/domain surfaces.
 - TFF `agro_erp` mediation defaults to an empty dual-pane scaffold:
   - `Spatial` (left operational pane + right contextual companion)
-  - `Chronological` (left operational pane + right contextual companion)
+  - `Chronological` (left operational pane + right contextual companion), now including a first-pass time-address selector facet that emits canonical mixed-radix addresses for SYSTEM context (`system_state.aitas.time`)
+
+Time remains a facet/state dimension of the unified shell, not a second shell:
+
+- `time` context activates only when a mediated view explicitly sets it
+- provider UIs may select addresses, but canonical parsing/comparison/normalization belongs to shared core code
+- provider filtering calls service routes and receives resolved visibility state, instead of owning range semantics in the browser
 
 Tool discovery is still available through `SYSTEM -> Mediate`, and tool configuration remains under `UTILITIES`.
 

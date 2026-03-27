@@ -5745,6 +5745,176 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   font-size: 0.77rem;
 }
 
+.agro-time {
+  border: 1px solid color-mix(in srgb, var(--line, #d2d8d2) 88%, #5f6a5b 12%);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel, #eef2ee) 82%, #ddd5e8 18%);
+  overflow: hidden;
+}
+
+.agro-time__topTicks,
+.agro-time__band {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(4px, 1fr));
+  gap: 1px;
+  padding: 0.15rem;
+  background: rgba(229, 207, 210, 0.58);
+}
+
+.agro-time__tick {
+  height: 16px;
+  border: 0;
+  background: rgba(89, 91, 92, 0.78);
+  padding: 0;
+  opacity: 0.7;
+}
+
+.agro-time__tick.is-active {
+  background: color-mix(in srgb, var(--accent, #0b6b46) 40%, #6b6d73 60%);
+  opacity: 1;
+}
+
+.agro-time__arc {
+  position: relative;
+  padding: 0.8rem 0.75rem 0.2rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line, #d2d8d2) 82%, #667162 18%);
+  background: #bccab6;
+}
+
+.agro-time__months {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 0.2rem;
+}
+
+.agro-time__month {
+  border: 1px solid color-mix(in srgb, var(--line, #d2d8d2) 70%, #4f5a4b 30%);
+  border-radius: 999px;
+  background: rgba(231, 238, 227, 0.56);
+  color: #5e6063;
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 0.35rem 0.12rem;
+  letter-spacing: 0.03em;
+}
+
+.agro-time__month.is-active {
+  background: rgba(198, 214, 188, 0.92);
+  color: #2f4235;
+}
+
+.agro-time__yearCore {
+  width: fit-content;
+  margin: 0.55rem auto 0.15rem;
+  border: 1px solid color-mix(in srgb, var(--line, #d2d8d2) 68%, #6b6178 32%);
+  border-radius: 999px 999px 0 0;
+  padding: 0.6rem 1.05rem 0.35rem;
+  text-align: center;
+  background: rgba(195, 187, 210, 0.88);
+}
+
+.agro-time__yearCore strong {
+  display: block;
+  font-size: 1.9rem;
+  line-height: 1;
+}
+
+.agro-time__yearCore span {
+  font-size: 0.75rem;
+  opacity: 0.78;
+}
+
+.agro-time__yearRail {
+  display: grid;
+  grid-template-columns: 82px 1fr 82px;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem;
+  background: rgba(188, 202, 182, 0.84);
+}
+
+.agro-time__yearNav {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--line, #d2d8d2) 72%, #6f6779 28%);
+  background: rgba(194, 188, 208, 0.9);
+  border-radius: 8px;
+  font-weight: 700;
+  color: #616068;
+  min-height: 54px;
+}
+
+.agro-time__yearTag {
+  font-size: 1.05rem;
+}
+
+.agro-time__arrow {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.agro-time__scope {
+  border: 1px solid color-mix(in srgb, var(--line, #d2d8d2) 80%, #5d685b 20%);
+  border-radius: 6px;
+  background: rgba(231, 239, 226, 0.64);
+  padding: 0.4rem 0.55rem;
+}
+
+.agro-time__scope strong {
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+
+.agro-time__dayRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20px, 1fr));
+  gap: 1px;
+  border-top: 1px solid color-mix(in srgb, var(--line, #d2d8d2) 82%, #677165 18%);
+}
+
+.agro-time__dayCell {
+  border: 0;
+  background: rgba(191, 205, 184, 0.78);
+  color: #5f6164;
+  font-size: 0.74rem;
+  font-weight: 700;
+  min-height: 32px;
+}
+
+.agro-time__dayCell.is-active {
+  background: rgba(213, 184, 188, 0.72);
+  color: #3f3f45;
+}
+
+.agro-time__results {
+  padding: 0.45rem 0.55rem 0.6rem;
+}
+
+.agro-time__results h5 {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.agro-time__objects {
+  margin: 0;
+  padding-left: 1rem;
+  font-size: 0.8rem;
+}
+
+.agro-time__objects li {
+  margin-bottom: 0.25rem;
+}
+
+.agro-time__objects small {
+  display: block;
+  opacity: 0.76;
+}
+
 @media (max-width: 980px) {
   .agro-scaffold {
     grid-template-columns: 1fr;
