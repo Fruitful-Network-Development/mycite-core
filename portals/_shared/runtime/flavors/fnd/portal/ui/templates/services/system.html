@@ -19,7 +19,14 @@
 
 {% block inspector_content %}
   {# Keep inspector IDs/classes for compatibility; canonical shell region name is "interface panel". #}
-  <div id="systemShellInspectorRoot" class="system-shell-inspector" aria-label="SYSTEM interface panel content" {% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}hidden{% endif %}>
+  <div
+    id="systemShellInspectorRoot"
+    class="system-shell-inspector"
+    data-interface-panel-root="system"
+    aria-label="SYSTEM interface panel content"
+    aria-hidden="{% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}true{% else %}false{% endif %}"
+    {% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}hidden{% endif %}
+  >
     <section id="systemShellInspectorCards" class="system-shell-inspectorCards" hidden>
       <div id="systemInspectorCardsMount" class="system-shell-inspectorCards__mount"></div>
     </section>
@@ -56,7 +63,15 @@
       </div>
     </div>
   </div>
-  <div id="systemToolInterfaceRoot" class="system-tool-interface" data-tool-primary-host="true" aria-label="Tool interface mediation surface" {% if shell_composition_mode is not defined or shell_composition_mode != 'tool' %}hidden{% endif %}>
+  <div
+    id="systemToolInterfaceRoot"
+    class="system-tool-interface"
+    data-interface-panel-root="tool"
+    data-tool-primary-host="true"
+    aria-label="Tool interface mediation surface"
+    aria-hidden="{% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}false{% else %}true{% endif %}"
+    {% if shell_composition_mode is not defined or shell_composition_mode != 'tool' %}hidden{% endif %}
+  >
     <div class="ide-inspector__moduleKicker" id="systemToolInterfaceKicker">Tool Mediation</div>
     <div class="ide-inspector__moduleTitle" id="systemToolInterfaceTitle">
       {% if active_mediate_tool_id is defined and active_mediate_tool_id %}

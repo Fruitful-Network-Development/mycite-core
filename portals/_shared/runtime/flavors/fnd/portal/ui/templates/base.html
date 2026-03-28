@@ -186,12 +186,23 @@
           </div>
           <button type="button" class="ide-inspector__close" data-inspector-close>Close Panel</button>
         </header>
-        <section id="portalInspectorContent" class="ide-inspector__content" data-interface-panel-scroll-root="true">
+        <section
+          id="portalInspectorContent"
+          class="ide-inspector__content"
+          data-interface-panel-scroll-root="true"
+          data-interface-panel-active-root="{% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}tool{% else %}system{% endif %}"
+        >
           {% block inspector_content %}
             <p class="ide-inspector__empty" id="portalInspectorEmptyDefault">Select an item to load interface panel content.</p>
           {% endblock %}
           {# Transient overlays (e.g. PortalInspector.open) must not remove persistent module mounts in inspector_content #}
-          <div id="portalInspectorTransientMount" class="ide-inspector__transient" hidden aria-hidden="true"></div>
+          <div
+            id="portalInspectorTransientMount"
+            class="ide-inspector__transient"
+            data-interface-panel-root="transient"
+            hidden
+            aria-hidden="true"
+          ></div>
         </section>
       </aside>
     </div>

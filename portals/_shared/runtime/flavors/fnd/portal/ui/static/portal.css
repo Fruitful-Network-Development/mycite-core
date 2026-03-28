@@ -3291,6 +3291,10 @@ body.is-modal-open {
   padding-top: 10px;
 }
 
+[data-interface-panel-root][hidden] {
+  display: none !important;
+}
+
 .system-shell-inspector {
   display: flex;
   flex-direction: column;
@@ -3887,6 +3891,10 @@ body.is-modal-open {
   max-width: none;
   min-width: 0;
   align-self: stretch;
+}
+
+.ide-shell[data-shell-composition="tool"] [data-interface-panel-root="transient"] {
+  display: none !important;
 }
 
 .ide-workbench[data-active-service="system"] {

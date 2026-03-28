@@ -356,6 +356,7 @@
       workbench.setAttribute("aria-hidden", composition === "tool" ? "true" : "false");
       inspector.setAttribute("data-primary-surface", composition === "tool" ? "true" : "false");
       inspector.setAttribute("data-surface-layout", composition === "tool" ? "primary-fill" : "sidebar");
+      document.dispatchEvent(new CustomEvent("mycite:shell:composition-changed", { detail: { composition } }));
       if (composition === "tool") {
         setInspectorOpen(true, false);
       } else {
@@ -458,6 +459,44 @@
       return qs("#portalInspectorTransientMount", contentEl);
     }
 
+    function currentComposition() {
+      return shell.getAttribute("data-shell-composition") === "tool" ? "tool" : "system";
+    }
+
+    function setRootState(node, active) {
+      if (!node) return;
+      node.hidden = !active;
+      node.setAttribute("aria-hidden", active ? "false" : "true");
+      if ("inert" in node) {
+        node.inert = !active;
+      }
+      node.toggleAttribute("data-interface-panel-active", !!active);
+    }
+
+    function activatePanelRoot(kind) {
+      const sysRoot = systemShellRoot();
+      const toolRoot = toolShellRoot();
+      const tMount = transientMount();
+      const token = String(kind || "").trim().toLowerCase();
+      setRootState(sysRoot, token === "system");
+      setRootState(toolRoot, token === "tool");
+      setRootState(tMount, token === "transient");
+      contentEl.setAttribute("data-interface-panel-active-root", token || "");
+    }
+
+    function dismissTransient() {
+      const tMount = transientMount();
+      if (!tMount) return;
+      tMount.innerHTML = "";
+      setRootState(tMount, false);
+    }
+
+    function activatePersistentRoot(forceKind) {
+      dismissTransient();
+      const token = String(forceKind || "").trim().toLowerCase();
+      activatePanelRoot(token === "tool" || token === "system" ? token : currentComposition());
+    }
+
     function removeNonTransientInspectorChildren() {
       Array.from(contentEl.children).forEach((child) => {
         if (child.id === "portalInspectorTransientMount") return;
@@ -477,10 +516,11 @@
       const tMount = transientMount();
 
       if ((sysRoot || toolRoot) && tMount) {
-        if (sysRoot) sysRoot.hidden = true;
-        if (toolRoot) toolRoot.hidden = true;
-        tMount.hidden = false;
-        tMount.setAttribute("aria-hidden", "false");
+        if (currentComposition() === "tool") {
+          activatePersistentRoot("tool");
+          return;
+        }
+        activatePanelRoot("transient");
         tMount.innerHTML = "";
         if (node instanceof Node) {
           tMount.appendChild(node);
@@ -496,9 +536,7 @@
 
       const tMountLegacy = transientMount();
       if (tMountLegacy) {
-        tMountLegacy.hidden = true;
-        tMountLegacy.setAttribute("aria-hidden", "true");
-        tMountLegacy.innerHTML = "";
+        dismissTransient();
       }
 
       if (node instanceof Node) {
@@ -529,16 +567,7 @@
     }
 
     function close() {
-      const sysRoot = systemShellRoot();
-      const toolRoot = toolShellRoot();
-      const tMount = transientMount();
-      if (tMount) {
-        tMount.innerHTML = "";
-        tMount.hidden = true;
-        tMount.setAttribute("aria-hidden", "true");
-      }
-      if (sysRoot) sysRoot.hidden = shell.getAttribute("data-shell-composition") === "tool";
-      if (toolRoot) toolRoot.hidden = shell.getAttribute("data-shell-composition") !== "tool";
+      activatePersistentRoot();
       if (layoutApi) layoutApi.setInspectorOpen(false, true);
     }
 
@@ -584,11 +613,20 @@
       if (navLink) close();
     });
 
+    document.addEventListener("mycite:shell:composition-changed", event => {
+      const composition = event && event.detail && event.detail.composition;
+      activatePersistentRoot(composition);
+    });
+
+    activatePersistentRoot();
+
     window.PortalInspector = {
       open,
       close,
       toggle,
       openTemplate,
+      activatePersistentRoot,
+      dismissTransient,
     };
   }
 
