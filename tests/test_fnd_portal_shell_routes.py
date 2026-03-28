@@ -119,6 +119,8 @@ class FndPortalShellRouteTests(unittest.TestCase):
             self.assertNotIn("Open AGRO ERP", system_html)
             self.assertNotIn("ide-activitylink--tool", system_html)
             self.assertNotIn("/portal/tools/agro_erp/home", system_html)
+            self.assertIn("/portal/system?mediate_tool=aws_platform_admin", system_html)
+            self.assertIn("/portal/system?mediate_tool=fnd_ebi", system_html)
             self.assertIn("data_tool.js", system_html)
             self.assertIn("system_shell_runtime.js", system_html)
 

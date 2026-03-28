@@ -17,6 +17,12 @@ _LOG = logging.getLogger("mycite.tool_runtime")
 _LEGACY_CORE_TOOL_IDS = {"data_tool"}
 _ALLOWED_MOUNT_TARGETS = {"utilities", "peripherals.tools"}
 _DEFAULT_MOUNT_TARGET = "peripherals.tools"
+_SERVICE_TOOL_PRIMARY_BY_NAMESPACE = {
+    "fnd-ebi": "fnd_ebi",
+    "aws-csm": "aws_platform_admin",
+    "paypal-csm": "paypal_service_agreement",
+    "keycloak-sso": "operations",
+}
 
 
 def _safe_tool_id(value: str) -> str:
@@ -28,7 +34,12 @@ def _safe_tool_id(value: str) -> str:
 
 def _normalize_manifest_tool_id(value: str) -> str:
     token = _safe_tool_id(value)
-    return token.replace("-", "_")
+    normalized = token.replace("-", "_")
+    namespace = token.replace("_", "-")
+    mapped = _SERVICE_TOOL_PRIMARY_BY_NAMESPACE.get(namespace)
+    if mapped:
+        return mapped
+    return normalized
 
 
 def _default_display_name(tool_id: str) -> str:

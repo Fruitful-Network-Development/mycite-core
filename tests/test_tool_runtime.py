@@ -94,6 +94,24 @@ class ToolRuntimeTests(unittest.TestCase):
             )
             self.assertEqual(runtime.read_enabled_tools(private_dir, "3-2-3"), ["agro_erp", "fnd_ebi"])
 
+    def test_read_enabled_tools_maps_service_namespace_to_runtime_tool_id(self):
+        runtime = _load_tool_runtime_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            (private_dir / "config.json").write_text(
+                json.dumps(
+                    {
+                        "msn_id": "3-2-3",
+                        "tools_configuration": [
+                            {"name": "aws-csm", "mount_target": "peripherals.tools"},
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(runtime.read_enabled_tools(private_dir, "3-2-3"), ["aws_platform_admin"])
+
     def test_read_enabled_tools_filters_disabled_status(self):
         runtime = _load_tool_runtime_module()
         with TemporaryDirectory() as temp_dir:

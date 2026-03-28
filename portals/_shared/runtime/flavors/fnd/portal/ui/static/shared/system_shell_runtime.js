@@ -387,14 +387,25 @@
 
   function renderInspectorCards() {
     if (!els.inspectorCardsRoot || !els.inspectorCardsMount) return;
-    var cards = [];
-    if (state.selectedContext && Array.isArray(state.selectedContext.inspector_cards)) {
-      cards = cards.concat(state.selectedContext.inspector_cards);
-    }
     var tool = activeTool();
     var toolCtx = tool ? toolContext(tool.tool_id) : null;
+    var cards = [];
     if (toolCtx && Array.isArray(toolCtx.inspector_cards)) {
       cards = cards.concat(toolCtx.inspector_cards);
+    } else if (state.selectedContext && Array.isArray(state.selectedContext.inspector_cards)) {
+      cards = cards.concat(state.selectedContext.inspector_cards);
+    }
+    var hasProfileCards = cards.some(function (card) {
+      return text(card && card.kind).toLowerCase() === "profile";
+    });
+    if (hasProfileCards) {
+      cards = cards.filter(function (card) {
+        var kind = text(card && card.kind).toLowerCase();
+        if (kind === "profile") return true;
+        var cardId = text(card && card.card_id).toLowerCase();
+        if (cardId.endsWith("-collection") || cardId.endsWith("-profiles")) return false;
+        return kind !== "metadata";
+      });
     }
     els.inspectorCardsMount.innerHTML = "";
     els.inspectorCardsRoot.hidden = cards.length === 0;
@@ -411,6 +422,15 @@
         "</div>";
       els.inspectorCardsMount.appendChild(article);
     });
+  }
+
+  function ensureInterfacePanelForServiceTool(tool) {
+    if (!tool || typeof tool !== "object") return;
+    var surfaceMode = text(tool.surface_mode).toLowerCase();
+    if (surfaceMode !== "mediation_only") return;
+    if (window.PortalShell && typeof window.PortalShell.setInspectorOpen === "function") {
+      window.PortalShell.setInspectorOpen(true, false);
+    }
   }
 
   function ensureToolContext(tool, force) {
@@ -533,6 +553,7 @@
       state.activeVerb = "mediate";
     }
     state.activeMediationMode = activeToolProvider().defaultMode(tool);
+    ensureInterfacePanelForServiceTool(tool);
     renderAll();
     activeToolProvider().ensureReady(tool, false).catch(function (err) {
       if (els.mediationMeta) {
@@ -1185,70 +1206,74 @@
     var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
     var snapshots = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots : [];
     var rows = fndEbiAnalyticsRows(cards, snapshots);
-    var parts = [];
-    parts.push('<div class="fnd-ebi-gallery">');
-    rows.forEach(function (row) {
-      var c = row.card || {};
-      var s = row.analytics || {};
-      var snapshot = fndEbiSnapshotFromCard(c);
-      var accessState = snapshot.access_log && typeof snapshot.access_log === "object" ? snapshot.access_log : {};
-      var errorState = snapshot.error_log && typeof snapshot.error_log === "object" ? snapshot.error_log : {};
-      var eventState = snapshot.events_file && typeof snapshot.events_file === "object" ? snapshot.events_file : {};
-      var traffic = snapshot.traffic && typeof snapshot.traffic === "object" ? snapshot.traffic : {};
-      var eventsSummary = snapshot.events_summary && typeof snapshot.events_summary === "object" ? snapshot.events_summary : {};
-      var snapWarnings = Array.isArray(snapshot.warnings) ? snapshot.warnings : [];
-      var title = text(c.title || c.card_id || "Site");
-      var health = text(snapshot.health_label || "healthy");
-      var sparkline = fndEbiSparkline(traffic.trend_7d || []);
-      parts.push('<article class="card fnd-ebi-card" data-fnd-ebi-select-domain="' + esc(text(snapshot.domain || title)) + '">');
-      parts.push('<div class="card__kicker">' + esc(health) + "</div>");
-      parts.push('<div class="card__title">' + esc(title) + "</div>");
-      parts.push('<div class="card__body">');
-      parts.push("<p><strong>Domain</strong> <code>" + esc(fndEbiDomainFromCard(c) || "") + "</code></p>");
-      parts.push("<p><strong>Freshness</strong> access=" + esc(text((snapshot.freshness || {}).access_last_seen_utc || "n/a")) + "</p>");
-      parts.push("<ul class=\"fnd-ebi-metrics\">");
-      parts.push("<li><span>Requests (30d)</span> <strong>" + esc(String(traffic.requests_30d || 0)) + "</strong></li>");
-      parts.push("<li><span>Unique visitors</span> <strong>" + esc(String(traffic.unique_visitors_approx_30d || 0)) + "</strong></li>");
-      parts.push("<li><span>Events (30d)</span> <strong>" + esc(String(eventsSummary.events_30d || 0)) + "</strong></li>");
-      parts.push("<li><span>Errors</span> <strong>" + esc(String((traffic.response_breakdown || {})["4xx"] || 0)) + "</strong></li>");
-      parts.push("<li><span>Bot share</span> <strong>" + esc(fndEbiFormatPct(traffic.bot_share)) + "</strong></li>");
-      parts.push("<li><span>Probes</span> <strong>" + esc(String(traffic.suspicious_probe_count || 0)) + "</strong></li>");
-      parts.push("</ul>");
-      parts.push('<p><strong>Trend</strong> <span class="fnd-ebi-sparkline">' + esc(sparkline) + "</span></p>");
-      parts.push("<p><small>logs: access " + esc(accessState.present ? "ok" : "missing") + " · error " + esc(errorState.present ? "ok" : "missing") + " · events " + esc(eventState.present ? "ok" : "missing") + "</small></p>");
-      if (snapWarnings.length) {
-        parts.push('<ul class="fnd-ebi-warnings">');
-        snapWarnings.slice(0, 8).forEach(function (warning) {
-          parts.push("<li>" + esc(text(warning)) + "</li>");
-        });
-        parts.push("</ul>");
-      }
-      parts.push("</div></article>");
-    });
-    parts.push("</div>");
     if (!rows.length && !snapshots.length) {
       return '<p class="data-tool__empty">No profile cards from tool sandbox. Check utilities/tools/fnd-ebi and web-analytics.json.</p>';
     }
     var selected = fndEbiSelectedSnapshot(tool);
+    var out = [];
+    out.push('<article class="card">');
+    out.push('<div class="card__kicker">Mediation Summary</div>');
+    out.push('<div class="card__title">Hosted analytics profiles</div>');
+    out.push('<div class="card__body">');
+    out.push("<p>Center workbench shows orchestration and mode controls. Rich profile-level analytics detail is hosted in the interface panel.</p>");
+    out.push("<p><strong>Profiles:</strong> " + esc(String(rows.length)) + " · <strong>Snapshots:</strong> " + esc(String(snapshots.length)) + "</p>");
+    out.push('<div class="fnd-ebi-gallery">');
+    rows.forEach(function (row) {
+      var c = row.card || {};
+      var snapshot = fndEbiSnapshotFromCard(c);
+      var traffic = snapshot.traffic && typeof snapshot.traffic === "object" ? snapshot.traffic : {};
+      var eventsSummary = snapshot.events_summary && typeof snapshot.events_summary === "object" ? snapshot.events_summary : {};
+      var title = text(c.title || c.card_id || "Site");
+      out.push('<article class="card fnd-ebi-card" data-fnd-ebi-select-domain="' + esc(text(snapshot.domain || title)) + '">');
+      out.push('<div class="card__kicker">' + esc(text(snapshot.health_label || "status")) + "</div>");
+      out.push('<div class="card__title">' + esc(title) + "</div>");
+      out.push('<div class="card__body">');
+      out.push("<p><strong>Requests 30d:</strong> " + esc(String(traffic.requests_30d || 0)) + " · <strong>Events 30d:</strong> " + esc(String(eventsSummary.events_30d || 0)) + "</p>");
+      out.push("<p><strong>Unique visitors:</strong> " + esc(String(traffic.unique_visitors_approx_30d || 0)) + " · <strong>Bot share:</strong> " + esc(fndEbiFormatPct(traffic.bot_share)) + "</p>");
+      out.push("<p><small>Select to focus this domain in interface-panel detail cards.</small></p>");
+      out.push("</div></article>");
+    });
+    out.push("</div>");
     if (selected) {
-      var trafficSelected = selected.traffic && typeof selected.traffic === "object" ? selected.traffic : {};
-      var eventsSelected = selected.events_summary && typeof selected.events_summary === "object" ? selected.events_summary : {};
-      var noiseSelected = selected.errors_noise && typeof selected.errors_noise === "object" ? selected.errors_noise : {};
-      parts.push('<article class="card fnd-ebi-detail">');
-      parts.push('<div class="card__kicker">Domain Detail</div>');
-      parts.push('<div class="card__title">' + esc(text(selected.domain || "")) + "</div>");
-      parts.push('<div class="card__body">');
-      parts.push("<p><strong>Traffic trend 30d</strong> <span class=\"fnd-ebi-sparkline\">" + esc(fndEbiSparkline(trafficSelected.trend_30d || [])) + "</span></p>");
-      parts.push("<p><strong>Page vs Asset</strong> page=" + esc(String(((trafficSelected.asset_vs_page || {}).page_requests) || 0)) + " · asset=" + esc(String(((trafficSelected.asset_vs_page || {}).asset_requests) || 0)) + "</p>");
-      parts.push("<p><strong>Bot vs Human-like</strong> bot=" + esc(fndEbiFormatPct(trafficSelected.bot_share || 0)) + " · human=" + esc(fndEbiFormatPct(1 - (Number(trafficSelected.bot_share) || 0))) + "</p>");
-      parts.push("<h4>Top Pages</h4>" + fndEbiListRows(trafficSelected.top_pages, "No page requests parsed."));
-      parts.push("<h4>Top Referrers</h4>" + fndEbiListRows(trafficSelected.top_referrers, "No referrers parsed."));
-      parts.push("<h4>Top Error Routes</h4>" + fndEbiListRows(noiseSelected.top_error_routes, "No error routes."));
-      parts.push("<h4>Suspicious Probes</h4>" + fndEbiListRows(noiseSelected.suspicious_probe_examples, "No suspicious probes parsed."));
-      parts.push("<h4>Event Coverage</h4>" + fndEbiListRows(Object.keys(eventsSelected.event_type_counts || {}).map(function (k) { return { key: k, count: (eventsSelected.event_type_counts || {})[k] }; }), "No event types parsed."));
-      parts.push("</div></article>");
+      out.push("<p><strong>Selected domain:</strong> <code>" + esc(text(selected.domain || "")) + "</code></p>");
     }
-    return parts.join("");
+    out.push("</div></article>");
+    return out.join("");
+  }
+
+  function awsWorkflowFromCard(card) {
+    var body = card && card.body && typeof card.body === "object" ? card.body : {};
+    return body.workflow && typeof body.workflow === "object" ? body.workflow : {};
+  }
+
+  function renderAwsServiceProfiles(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
+    if (!cards.length) {
+      return '<p class="data-tool__empty">No AWS-CMS profile cards discovered in tool sandbox.</p>';
+    }
+    var out = [];
+    out.push('<article class="card"><div class="card__kicker">Mediation Summary</div><div class="card__title">AWS-CMS onboarding readiness</div><div class="card__body">');
+    out.push("<p>Center workbench stays orchestration-first. Identity/SMTP/verification/provider detail is projected in the interface panel.</p>");
+    out.push('<div class="fnd-ebi-gallery">');
+    cards.forEach(function (card) {
+      var body = card && card.body && typeof card.body === "object" ? card.body : {};
+      var identity = body.identity && typeof body.identity === "object" ? body.identity : {};
+      var verification = body.verification && typeof body.verification === "object" ? body.verification : {};
+      var workflow = awsWorkflowFromCard(card);
+      var missing = Array.isArray(workflow.missing_required_now) ? workflow.missing_required_now : [];
+      out.push('<article class="card fnd-ebi-card">');
+      out.push('<div class="card__kicker">' + esc(workflow.is_ready_for_user_handoff ? "ready" : "staging required") + "</div>");
+      out.push('<div class="card__title">' + esc(text(card.title || identity.domain || card.card_id || "profile")) + "</div>");
+      out.push('<div class="card__body">');
+      out.push("<p><strong>Tenant:</strong> " + esc(text(identity.tenant_id || "(missing)")) + "</p>");
+      out.push("<p><strong>Verification:</strong> " + esc(text(verification.status || "(missing)")) + "</p>");
+      out.push("<p><strong>Missing required now:</strong> " + esc(String(missing.length)) + "</p>");
+      out.push("<p><small>Open interface panel for profile-level onboarding details.</small></p>");
+      out.push("</div></article>");
+    });
+    out.push("</div></div></article>");
+    return out.join("");
   }
 
   function renderFndEbiTraffic(tool) {
@@ -1364,6 +1389,7 @@
         if (!text(bucket.selectedDomain) && snapshots.length) {
           bucket.selectedDomain = text(snapshots[0].domain || "").toLowerCase();
         }
+        ensureInterfacePanelForServiceTool(tool);
         return ctx;
       });
     },
@@ -1385,9 +1411,58 @@
     }
   };
 
+  var awsServiceMediationProvider = {
+    defaultMode: function () {
+      return "profiles";
+    },
+    modes: function (tool) {
+      var contribution = toolContribution(tool);
+      var rawModes = Array.isArray(contribution.modes) ? contribution.modes : ["profiles", "collections", "files"];
+      return rawModes.map(function (mode) {
+        var id = normalizeModeId(mode) || "profiles";
+        return { id: id, label: titleCase(mode) };
+      });
+    },
+    title: function (tool) {
+      return text(tool && (tool.label || tool.tool_id)) || "AWS-CMS";
+    },
+    kicker: function () {
+      return "Service profile onboarding";
+    },
+    meta: function (tool) {
+      var ctx = toolContext(tool.tool_id) || {};
+      var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
+      var ready = cards.filter(function (card) {
+        var workflow = awsWorkflowFromCard(card);
+        return !!workflow.is_ready_for_user_handoff;
+      }).length;
+      return "Profiles: " + String(cards.length) + " · ready for handoff: " + String(ready);
+    },
+    ensureReady: function (tool, force) {
+      return ensureToolContext(tool, force).then(function (ctx) {
+        ensureInterfacePanelForServiceTool(tool);
+        return ctx;
+      });
+    },
+    render: function (tool, mode) {
+      if (mode === "collections") {
+        return renderFndEbiFiles(tool);
+      }
+      if (mode === "files") {
+        return renderFndEbiFiles(tool);
+      }
+      return renderAwsServiceProfiles(tool);
+    },
+    bind: function () {
+      return;
+    }
+  };
+
   var mediationProviders = {
     agro_erp: agroMediationProvider,
-    fnd_ebi: fndEbiMediationProvider
+    fnd_ebi: fndEbiMediationProvider,
+    aws_platform_admin: awsServiceMediationProvider,
+    aws_tenant_actions: awsServiceMediationProvider
   };
 
   function bootstrapMediateToolFromQuery() {
@@ -1396,6 +1471,7 @@
       var tid = text(params.get("mediate_tool"));
       if (!tid) return Promise.resolve();
       enterToolLayer(tid, "query");
+      ensureInterfacePanelForServiceTool({ surface_mode: "mediation_only" });
       return api("/portal/api/data/system/sandbox_context", "POST", {
         shell_verb: "mediate",
         current_verb: "mediate",
