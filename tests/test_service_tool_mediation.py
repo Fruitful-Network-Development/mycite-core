@@ -27,13 +27,14 @@ class ServiceToolMediationTests(unittest.TestCase):
             ((meta.get("inspector_card_contribution") or {}).get("config_context_route")),
             "/portal/api/data/system/config_context/fnd_ebi",
         )
-        self.assertEqual(
-            ((meta.get("workbench_contribution") or {}).get("default_mode")),
-            "overview",
-        )
+        self.assertEqual(((meta.get("workbench_contribution") or {})), {})
+        self.assertEqual(((meta.get("interface_panel_contribution") or {}).get("default_mode")), "overview")
+        self.assertEqual(meta.get("shell_composition_mode"), "tool")
+        self.assertEqual(meta.get("foreground_surface"), "interface_panel")
         self.assertEqual(meta.get("surface_mode"), "mediation_only")
         self.assertFalse(meta.get("owns_shell_state"))
         self.assertEqual(((meta.get("service_contract") or {}).get("mediation_host_path")), "/portal/system")
+        self.assertEqual((((meta.get("service_contract") or {}).get("host_composition") or {}).get("mode")), "tool")
         self.assertEqual(((meta.get("service_contract") or {}).get("config_datum") or {}).get("content_kind"), "json")
         self.assertIn(
             "tool.*.fnd-ebi.json",
@@ -115,6 +116,11 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertEqual(((payload.get("service_contract") or {}).get("schema")), "mycite.service_tool.contract.v1")
             self.assertEqual(((payload.get("activation") or {}).get("default_verb")), "mediate")
             self.assertEqual(((payload.get("activation") or {}).get("host_path")), "/portal/system")
+            self.assertEqual(payload.get("shell_composition_mode"), "tool")
+            self.assertEqual(payload.get("foreground_surface"), "interface_panel")
+            self.assertEqual(((payload.get("interface_lens") or {}).get("default_mode")), "overview")
+            self.assertEqual(((payload.get("interface_lens") or {}).get("shell_composition_mode")), "tool")
+            self.assertNotIn("workspace_profile", payload)
             self.assertEqual(
                 ((payload.get("activation") or {}).get("request_payload") or {}).get("shell_verb"),
                 "mediate",

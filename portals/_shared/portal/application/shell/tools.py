@@ -75,6 +75,10 @@ def normalize_tool_capability(meta: dict[str, Any]) -> dict[str, Any]:
     supported_verbs = _text_list(raw.get("supported_verbs"))
     if not supported_verbs:
         supported_verbs = ["mediate"]
+    shell_composition_mode = "tool" if _text(raw.get("shell_composition_mode")).lower() == "tool" else "system"
+    foreground_surface = _text(raw.get("foreground_surface")).lower()
+    if foreground_surface not in {"interface_panel", "center_workbench"}:
+        foreground_surface = "interface_panel" if shell_composition_mode == "tool" else "center_workbench"
     return {
         "schema": TOOL_CAPABILITY_SCHEMA,
         "tool_id": _text(raw.get("tool_id")),
@@ -84,6 +88,7 @@ def normalize_tool_capability(meta: dict[str, Any]) -> dict[str, Any]:
         "config_context_support": bool(raw.get("config_context_support")),
         "source_resolution_rules": _text_list(raw.get("source_resolution_rules")),
         "workbench_contribution": _dict(raw.get("workbench_contribution")),
+        "interface_panel_contribution": _dict(raw.get("interface_panel_contribution")),
         "inspector_card_contribution": _dict(raw.get("inspector_card_contribution")),
         "mutation_policy": _dict(raw.get("mutation_policy")),
         "preview_hooks": _dict(raw.get("preview_hooks")),
@@ -94,6 +99,8 @@ def normalize_tool_capability(meta: dict[str, Any]) -> dict[str, Any]:
         "icon": _text(raw.get("icon")),
         "surface_mode": _text(raw.get("surface_mode")) or "tool_shell",
         "owns_shell_state": bool(raw.get("owns_shell_state", True)),
+        "shell_composition_mode": shell_composition_mode,
+        "foreground_surface": foreground_surface,
         "service_contract": _dict(raw.get("service_contract")),
     }
 

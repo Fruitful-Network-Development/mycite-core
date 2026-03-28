@@ -20,7 +20,18 @@ The canonical `SYSTEM` shell has stable visible regions:
 - workbench
 - interface panel
 
-Within `SYSTEM`, the page composition contract is:
+The canonical shell host supports two foreground compositions:
+
+- `SYSTEM` mode:
+  - control panel
+  - center workbench
+  - interface panel
+- `TOOL` mode:
+  - control panel
+  - interface panel
+  - no foreground center workbench region
+
+Within `SYSTEM` mode, the page composition contract is:
 
 - one center workbench surface
 - no visible anthology/resources split
@@ -61,7 +72,15 @@ Activity-bar tool entries launch through the unified shell host route using the 
 
 - `GET /portal/system?mediate_tool=<tool_id>`
 
-This launch enters a **tool-dominant mediation layer** at sandbox depth (no file selected). The data workbench remains present in core logic but is visually non-dominant while the tool layer is locked.
+This launch enters `TOOL` mode at sandbox depth (no file selected).
+
+- `SYSTEM` remains the canonical full workbench shell.
+- Tools remain providers, not alternate shells.
+- Tool mediation keeps the same shared portal logic, state machine, attention handling, directive handling, and background workbench/data-engine runtime.
+- `TOOL` mode removes the foreground center workbench region from the visible composition.
+- The interface panel becomes the primary visible mediation surface for the tool sandbox.
+- The control panel remains visible on the left for context, attention, directive, and compatible mediation controls.
+- The workbench may still operate in the background for task execution/state handling, but it is not a visible foreground region in `TOOL` mode.
 
 Current staged defaults:
 

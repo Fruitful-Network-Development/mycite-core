@@ -19,7 +19,7 @@
 
 {% block inspector_content %}
   {# Keep inspector IDs/classes for compatibility; canonical shell region name is "interface panel". #}
-  <div id="systemShellInspectorRoot" class="system-shell-inspector" aria-label="SYSTEM interface panel content">
+  <div id="systemShellInspectorRoot" class="system-shell-inspector" aria-label="SYSTEM interface panel content" {% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}hidden{% endif %}>
     <section id="systemShellInspectorCards" class="system-shell-inspectorCards" hidden>
       <div id="systemInspectorCardsMount" class="system-shell-inspectorCards__mount"></div>
     </section>
@@ -56,12 +56,46 @@
       </div>
     </div>
   </div>
+  <div id="systemToolInterfaceRoot" class="system-tool-interface" aria-label="Tool interface mediation surface" {% if shell_composition_mode is not defined or shell_composition_mode != 'tool' %}hidden{% endif %}>
+    <div class="ide-inspector__moduleKicker" id="systemToolInterfaceKicker">Tool Mediation</div>
+    <div class="ide-inspector__moduleTitle" id="systemToolInterfaceTitle">
+      {% if active_mediate_tool_id is defined and active_mediate_tool_id %}
+        {{ active_mediate_tool_id }}
+      {% else %}
+        Tool mediation
+      {% endif %}
+    </div>
+    <p id="systemToolInterfaceMeta" class="data-tool__legendText">
+      {% if active_mediate_tool_id is defined and active_mediate_tool_id %}
+        Loading the interface-panel mediation lens for {{ active_mediate_tool_id }}.
+      {% else %}
+        Select a mediated tool to load the interface-panel lens.
+      {% endif %}
+    </p>
+    <div id="systemToolInterfaceControls" class="system-tool-interface__controls"></div>
+    <div id="systemToolInterfaceBody" class="system-tool-interface__body">
+      <p id="systemToolInterfaceEmpty" class="ide-inspector__empty">
+        {% if active_mediate_tool_id is defined and active_mediate_tool_id %}
+          Loading the tool sandbox interface.
+        {% else %}
+          Select a mediated tool to load the interface-panel surface.
+        {% endif %}
+      </p>
+    </div>
+  </div>
 {% endblock %}
 
 {% block control_panel %}
   <section class="ide-controlpanel__section" id="systemShellSelectionSection" aria-label="SYSTEM control panel">
     <header class="ide-controlpanel__title">Control Panel</header>
-    <div id="systemSelectionSummary" class="ide-controlpanel__empty">Select a file or datum to activate the canonical SYSTEM workbench.</div>
+    <div id="systemSelectionSummary" class="ide-controlpanel__empty">
+      {% if shell_composition_mode is defined and shell_composition_mode == 'tool' and active_mediate_tool_id is defined and active_mediate_tool_id %}
+        Loading the tool sandbox context for {{ active_mediate_tool_id }}.
+      {% else %}
+        Select a file or datum to activate the canonical SYSTEM workbench.
+      {% endif %}
+    </div>
+    <div id="systemToolContextMount" class="system-tool-contextMount" hidden></div>
     <div id="systemToolViewModes" class="system-tool-mode-controls" hidden>
       <button type="button" class="system-tool-mode-controls__btn" data-agro-side-mode="spatial" aria-label="Switch to spatial view">
         <span class="system-tool-mode-controls__icon system-tool-mode-controls__icon--spatial" aria-hidden="true"></span>
@@ -77,7 +111,13 @@
   <section class="ide-controlpanel__section" aria-label="Compatible mediations">
     <header class="ide-controlpanel__title">Compatible Mediations</header>
     <div id="systemCompatibleTools" class="ide-controlpanel__list" aria-live="polite">
-      <div class="ide-controlpanel__empty">Choose a file or datum, then open Mediate to browse compatible tools.</div>
+      <div class="ide-controlpanel__empty">
+        {% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}
+          Loading compatible tool mediations for the sandbox.
+        {% else %}
+          Choose a file or datum, then open Mediate to browse compatible tools.
+        {% endif %}
+      </div>
     </div>
   </section>
 {% endblock %}

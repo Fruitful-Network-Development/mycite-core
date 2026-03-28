@@ -291,12 +291,15 @@ def resolve_tool_meta(module: ModuleType, fallback_tool_id: str) -> Dict[str, An
             "config_context_support": bool(capability.get("config_context_support")),
             "source_resolution_rules": capability.get("source_resolution_rules") or [],
             "workbench_contribution": capability.get("workbench_contribution") or {},
+            "interface_panel_contribution": capability.get("interface_panel_contribution") or {},
             "inspector_card_contribution": capability.get("inspector_card_contribution") or {},
             "mutation_policy": capability.get("mutation_policy") or {},
             "preview_hooks": capability.get("preview_hooks") or {},
             "apply_hooks": capability.get("apply_hooks") or {},
             "surface_mode": capability.get("surface_mode") or surface_mode,
             "owns_shell_state": bool(capability.get("owns_shell_state", owns_shell_state)),
+            "shell_composition_mode": capability.get("shell_composition_mode") or "system",
+            "foreground_surface": capability.get("foreground_surface") or "center_workbench",
             "service_contract": capability.get("service_contract") or {},
         }
     )

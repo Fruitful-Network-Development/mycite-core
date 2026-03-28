@@ -8,7 +8,7 @@ Canonical
 
 ## Purpose
 
-Define the canonical launch and runtime contract for tool-dominant mediation surfaces hosted by the unified shell while operating against a tool sandbox (not a tool-owned shell) without selecting a file/datum by default.
+Define the canonical launch and runtime contract for tool mediation hosted by the unified shell while operating against a tool sandbox (not a tool-owned shell) without selecting a file/datum by default.
 
 ## Launch Contract
 
@@ -48,11 +48,18 @@ Resolver behavior is compatibility-safe:
 
 The canonical SYSTEM workbench remains the only host runtime. Tool surfaces are provider projections mediated by SYSTEM state; tools do not become alternate shells.
 
-Shell-region projection remains stable during mediation:
+Foreground composition changes when mediation enters tool sandbox mode:
 
 - control panel (left) carries context and compatible mediation controls
-- center workbench (middle) remains the canonical operator surface
-- interface panel (right) hosts interface-card and directive detail projections
+- interface panel (right) becomes the primary visible mediation surface
+- no foreground center workbench region is presented in tool mode
+
+Background behavior remains shared:
+
+- same shell host
+- same attention/directive/state machinery
+- same workbench/data-engine runtime
+- background workbench execution is still allowed for task/state handling, but it must not reappear as a visible center orchestration surface for tool use
 
 Compatibility note: implementation artifacts may still use internal `inspector` naming for IDs/routes/classes. This is compatibility-only and must not be treated as canonical UI terminology.
 
@@ -87,4 +94,3 @@ Compatibility note:
 - `mediation_scope=system_sandbox` remains accepted temporarily for legacy clients and tests.
 
 This compatibility is route/input tolerance only. It must not be interpreted as a separate ontology where tools "live inside" SYSTEM.
-

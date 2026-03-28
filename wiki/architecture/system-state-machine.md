@@ -54,8 +54,10 @@ Tool-layer mediation adds an explicit lock contract:
 Derived UI follows state, not the other way around:
 
 - control panel summarizes context and compatible mediations
-- center workbench is the canonical operator surface
+- center workbench is the canonical operator surface for `SYSTEM` mode
 - interface panel reflects the active directive and subject
+- tool mediation switches the foreground composition to control panel + interface panel only
+- tool mediation may still use workbench/data-engine machinery in the background, but it does not foreground a workbench region
 - AITAS is a projection of state, not a separate state authority
 
 ## Directional Intent

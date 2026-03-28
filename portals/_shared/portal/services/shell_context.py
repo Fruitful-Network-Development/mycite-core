@@ -21,12 +21,18 @@ def build_shell_context(
     shell_verbs: list[dict[str, Any]] | None = None,
     portal_instance_context: dict[str, Any] | None = None,
     activity_tool_links: list[dict[str, Any]] | None = None,
+    active_mediate_tool: str = "",
+    shell_composition_mode: str = "system",
 ) -> dict[str, Any]:
     active_tool_id = str(active_tool.get("tool_id") or "") if active_tool else ""
+    active_mediate_tool_id = str(active_mediate_tool or "").strip().lower()
+    composition_mode = "tool" if str(shell_composition_mode or "").strip().lower() == "tool" else "system"
+    foreground_shell_region = "interface-panel" if composition_mode == "tool" else "center-workbench"
     return {
         "tool_tabs": tool_tabs,
         "active_tool": active_tool,
         "active_tool_id": active_tool_id,
+        "active_mediate_tool_id": active_mediate_tool_id,
         "service_nav": service_nav,
         "active_service": active_service,
         "active_service_tab": active_service_tab,
@@ -41,4 +47,6 @@ def build_shell_context(
         "shell_verbs": list(shell_verbs or []),
         "portal_instance_context": dict(portal_instance_context or {}),
         "activity_tool_links": list(activity_tool_links or []),
+        "shell_composition_mode": composition_mode,
+        "foreground_shell_region": foreground_shell_region,
     }
