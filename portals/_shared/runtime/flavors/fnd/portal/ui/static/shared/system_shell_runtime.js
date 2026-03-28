@@ -368,6 +368,7 @@
         var html = "";
         html += renderCardKeyValueRows({
           domain: text(identity.domain),
+          profile: text(identity.profile_id),
           tenant: text(identity.tenant_id),
           "single user": text(identity.single_user_email || identity.single_user_msn_id),
           region: text(identity.region),
@@ -375,10 +376,20 @@
           "smtp host": text(smtp.host),
           "smtp port": text(smtp.port),
           "smtp username": text(smtp.username),
+          "credentials source": text(smtp.credentials_source),
           "forward to": text(smtp.forward_to_email),
+          "forwarding status": text(smtp.forwarding_status),
           "verification status": text(verification.status),
+          "verification code": text(verification.code),
+          "verification link": text(verification.link),
+          "verification email": text(verification.email_received_at),
+          "verified at": text(verification.verified_at),
+          "portal state": text(verification.portal_state),
           "provider send-as": text(provider.gmail_send_as_status),
-          "handoff ready": workflow.is_ready_for_user_handoff ? "yes" : "no"
+          "ses identity": text(provider.aws_ses_identity_status),
+          "last checked": text(provider.last_checked_at),
+          "handoff ready": workflow.is_ready_for_user_handoff ? "yes" : "no",
+          "send-as confirmed": workflow.is_send_as_confirmed ? "yes" : "no"
         });
         if (missing.length) {
           html += "<p><strong>Missing required now</strong></p><ul class=\"fnd-ebi-warnings\">";
@@ -1469,11 +1480,11 @@
     return cards[0];
   }
 
-  function renderAwsServiceProfiles(tool) {
+  function renderAwsOverview(tool) {
     var ctx = toolContext(tool.tool_id) || {};
     var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
     if (!cards.length) {
-      return '<p class="data-tool__empty">No AWS-CMS profile cards discovered in tool sandbox.</p>';
+      return '<p class="data-tool__empty">No AWS-CMS onboarding profiles are staged in the canonical aws-csm root.</p>';
     }
     var selectedCard = awsSelectedCard(tool);
     var selectedBody = selectedCard && selectedCard.body && typeof selectedCard.body === "object" ? selectedCard.body : {};
@@ -1481,15 +1492,17 @@
     var selectedWorkflow = awsWorkflowFromCard(selectedCard || {});
     var out = [];
     if (selectedCard) {
-      out.push('<article class="card"><div class="card__kicker">Interface Lens</div><div class="card__title">' + esc(text(selectedCard.title || selectedIdentity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
+      out.push('<article class="card"><div class="card__kicker">Operator Focus</div><div class="card__title">' + esc(text(selectedCard.title || selectedIdentity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
       out.push(renderInterfacePanelCardBody(selectedCard, selectedBody));
       out.push('</div></article>');
-      out.push('<article class="card"><div class="card__kicker">Workflow</div><div class="card__title">Single-user send-as onboarding</div><div class="card__body">');
+      out.push('<article class="card"><div class="card__kicker">Workflow</div><div class="card__title">Simple operator-only send-as onboarding</div><div class="card__body">');
       out.push(renderCardKeyValueRows({
         "handoff ready": selectedWorkflow.is_ready_for_user_handoff ? "yes" : "no",
         "send-as confirmed": selectedWorkflow.is_send_as_confirmed ? "yes" : "no",
         "tenant": text(selectedIdentity.tenant_id),
-        "domain": text(selectedIdentity.domain)
+        "domain": text(selectedIdentity.domain),
+        "single user": text(selectedIdentity.single_user_email),
+        "send as": text(selectedBody.smtp && selectedBody.smtp.send_as_email)
       }));
       if (Array.isArray(selectedWorkflow.missing_required_now) && selectedWorkflow.missing_required_now.length) {
         out.push("<p><strong>Missing required now</strong></p><ul class=\"fnd-ebi-warnings\">");
@@ -1520,6 +1533,99 @@
     });
     out.push("</section>");
     return out.join("");
+  }
+
+  function renderAwsSmtp(tool) {
+    var selectedCard = awsSelectedCard(tool);
+    var selectedBody = selectedCard && selectedCard.body && typeof selectedCard.body === "object" ? selectedCard.body : {};
+    if (!selectedCard) {
+      return '<p class="data-tool__empty">Select an AWS-CMS profile to inspect SMTP handoff fields.</p>';
+    }
+    var identity = selectedBody.identity && typeof selectedBody.identity === "object" ? selectedBody.identity : {};
+    var smtp = selectedBody.smtp && typeof selectedBody.smtp === "object" ? selectedBody.smtp : {};
+    var workflow = selectedBody.workflow && typeof selectedBody.workflow === "object" ? selectedBody.workflow : {};
+    var out = [];
+    out.push('<article class="card"><div class="card__kicker">SMTP Handoff</div><div class="card__title">' + esc(text(selectedCard.title || identity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
+    out.push(renderCardKeyValueRows({
+      "single user": text(identity.single_user_email),
+      "send as": text(smtp.send_as_email),
+      host: text(smtp.host),
+      port: text(smtp.port),
+      username: text(smtp.username),
+      "credentials source": text(smtp.credentials_source),
+      "forward to": text(smtp.forward_to_email),
+      "forwarding status": text(smtp.forwarding_status),
+      "handoff ready flag": smtp.handoff_ready ? "yes" : "no"
+    }));
+    if (Array.isArray(workflow.missing_required_now) && workflow.missing_required_now.length) {
+      out.push("<p><strong>Still missing before Gmail send-as handoff</strong></p><ul class=\"fnd-ebi-warnings\">");
+      workflow.missing_required_now.forEach(function (item) {
+        out.push("<li>" + esc(text(item)) + "</li>");
+      });
+      out.push("</ul>");
+    }
+    out.push("</div></article>");
+    return out.join("");
+  }
+
+  function renderAwsVerification(tool) {
+    var selectedCard = awsSelectedCard(tool);
+    var selectedBody = selectedCard && selectedCard.body && typeof selectedCard.body === "object" ? selectedCard.body : {};
+    if (!selectedCard) {
+      return '<p class="data-tool__empty">Select an AWS-CMS profile to inspect verification state.</p>';
+    }
+    var identity = selectedBody.identity && typeof selectedBody.identity === "object" ? selectedBody.identity : {};
+    var verification = selectedBody.verification && typeof selectedBody.verification === "object" ? selectedBody.verification : {};
+    var provider = selectedBody.provider && typeof selectedBody.provider === "object" ? selectedBody.provider : {};
+    var workflow = selectedBody.workflow && typeof selectedBody.workflow === "object" ? selectedBody.workflow : {};
+    var out = [];
+    out.push('<article class="card"><div class="card__kicker">Verification</div><div class="card__title">' + esc(text(selectedCard.title || identity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
+    out.push(renderCardKeyValueRows({
+      status: text(verification.status),
+      code: text(verification.code),
+      link: text(verification.link),
+      "email received": text(verification.email_received_at),
+      "verified at": text(verification.verified_at),
+      "portal state": text(verification.portal_state),
+      "ses identity": text(provider.aws_ses_identity_status),
+      "gmail send-as": text(provider.gmail_send_as_status),
+      "last checked": text(provider.last_checked_at),
+      "send-as confirmed": workflow.is_send_as_confirmed ? "yes" : "no"
+    }));
+    out.push("</div></article>");
+    return out.join("");
+  }
+
+  function renderAwsFiles(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var files = Array.isArray(ctx.collection_files) ? ctx.collection_files : [];
+    var selectedCard = awsSelectedCard(tool);
+    var selectedBody = selectedCard && selectedCard.body && typeof selectedCard.body === "object" ? selectedCard.body : {};
+    var rows = [];
+    if (selectedCard) {
+      rows.push('<article class="card"><div class="card__kicker">Focused Profile</div><div class="card__title">' + esc(text(selectedCard.title || "")) + '</div><div class="card__body">');
+      rows.push(renderInterfacePanelCardBody(selectedCard, selectedBody));
+      rows.push("</div></article>");
+    }
+    if (!files.length) {
+      rows.push('<p class="data-tool__empty">No AWS-CMS files discovered in the canonical root.</p>');
+      return rows.join("");
+    }
+    rows.push("<table class=\"fnd-ebi-table\"><thead><tr><th>File</th><th>Kind</th><th>Records</th></tr></thead><tbody>");
+    files.forEach(function (f) {
+      if (!f || typeof f !== "object") return;
+      rows.push(
+        "<tr><td><code>" +
+          esc(text(f.relative_path || f.file_name || "")) +
+          "</code></td><td>" +
+          esc(text(f.content_kind || "")) +
+          "</td><td>" +
+          esc(String(f.record_count != null ? f.record_count : "")) +
+          "</td></tr>"
+      );
+    });
+    rows.push("</tbody></table>");
+    return rows.join("");
   }
 
   function renderFndEbiTraffic(tool) {
@@ -1729,13 +1835,13 @@
 
   var awsServiceMediationProvider = {
     defaultMode: function (tool) {
-      return normalizeModeId(toolInterfaceContribution(tool).default_mode || "profiles") || "profiles";
+      return normalizeModeId(toolInterfaceContribution(tool).default_mode || "overview") || "overview";
     },
     modes: function (tool) {
       var contribution = toolInterfaceContribution(tool);
-      var rawModes = Array.isArray(contribution.modes) ? contribution.modes : ["profiles", "collections", "files"];
+      var rawModes = Array.isArray(contribution.modes) ? contribution.modes : ["overview", "smtp", "verification", "files"];
       return rawModes.map(function (mode) {
-        var id = normalizeModeId(mode) || "profiles";
+        var id = normalizeModeId(mode) || "overview";
         return { id: id, label: titleCase(mode) };
       });
     },
@@ -1743,7 +1849,7 @@
       return text(tool && (tool.label || tool.tool_id)) || "AWS-CMS";
     },
     kicker: function () {
-      return "Service profile onboarding";
+      return "Operator send-as onboarding";
     },
     meta: function (tool) {
       var ctx = toolContext(tool.tool_id) || {};
@@ -1752,7 +1858,13 @@
         var workflow = awsWorkflowFromCard(card);
         return !!workflow.is_ready_for_user_handoff;
       }).length;
-      return "Profiles: " + String(cards.length) + " · ready for handoff: " + String(ready);
+      var focused = awsSelectedCard(tool);
+      var identity = focused && focused.body && typeof focused.body === "object" && focused.body.identity && typeof focused.body.identity === "object"
+        ? focused.body.identity
+        : {};
+      var focusLabel = text(identity.domain || focused && (focused.title || focused.card_id) || "");
+      var suffix = focusLabel ? " · focus: " + focusLabel : "";
+      return "Profiles: " + String(cards.length) + " · ready for handoff: " + String(ready) + suffix;
     },
     ensureReady: function (tool, force) {
       return ensureToolContext(tool, force).then(function (ctx) {
@@ -1766,13 +1878,16 @@
       });
     },
     render: function (tool, mode) {
-      if (mode === "collections") {
-        return renderFndEbiFiles(tool);
+      if (mode === "smtp") {
+        return renderAwsSmtp(tool);
+      }
+      if (mode === "verification") {
+        return renderAwsVerification(tool);
       }
       if (mode === "files") {
-        return renderFndEbiFiles(tool);
+        return renderAwsFiles(tool);
       }
-      return renderAwsServiceProfiles(tool);
+      return renderAwsOverview(tool);
     },
     renderInterface: function (tool, mode) {
       return this.render(tool, mode);
@@ -1784,7 +1899,7 @@
       qsa("[data-aws-profile]", root || els.mediationBody).forEach(function (node) {
         node.addEventListener("click", function () {
           awsSelectProfile(tool.tool_id, node.getAttribute("data-aws-profile"));
-          state.activeMediationMode = "profiles";
+          state.activeMediationMode = "overview";
           renderAll();
         });
       });
@@ -1800,8 +1915,7 @@
   var mediationProviders = {
     agro_erp: agroMediationProvider,
     fnd_ebi: fndEbiMediationProvider,
-    aws_platform_admin: awsServiceMediationProvider,
-    aws_tenant_actions: awsServiceMediationProvider
+    aws_platform_admin: awsServiceMediationProvider
   };
 
   function bootstrapMediateToolFromQuery() {

@@ -8,7 +8,6 @@ Current portal instances may still contain thin wrapper modules under
 shared package modules in this directory.
 
 Planned package moves:
-- `aws_tenant_actions`
 - `paypal_tenant_actions`
 - `fnd_provisioning`
 - `operations`

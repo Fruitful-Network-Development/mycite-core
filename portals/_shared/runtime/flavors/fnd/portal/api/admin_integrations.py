@@ -11,9 +11,10 @@ from typing import Any
 from urllib.parse import urlparse
 
 from flask import Flask, g, jsonify, make_response, request
+from _shared.portal.application.service_tools import normalize_aws_csm_profile_payload
 
 _TENANT_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
-_TENANT_PATH_RE = re.compile(r"^/portal/api/admin/(paypal|aws)/tenant/([^/]+)/")
+_TENANT_PATH_RE = re.compile(r"^/portal/api/admin/(paypal|aws)/(?:tenant|profile)/([^/]+)/")
 _FORBIDDEN_LOG_KEYS = {
     "secret",
     "token",
@@ -25,7 +26,6 @@ _FORBIDDEN_LOG_KEYS = {
     "session_token",
 }
 _MAX_CHECKOUT_PREVIEW_BYTES = 64 * 1024
-_MAX_EMAILER_PREVIEW_BYTES = 128 * 1024
 
 
 def _split_csv(value: str) -> set[str]:
@@ -137,9 +137,9 @@ def _paypal_root(private_dir: Path) -> Path:
     return root
 
 
-def _aws_root(private_dir: Path) -> Path:
-    root = _admin_runtime_root(private_dir) / "aws"
-    (root / "tenants").mkdir(parents=True, exist_ok=True)
+def _aws_csm_root(private_dir: Path) -> Path:
+    root = private_dir / "utilities" / "tools" / "aws-csm"
+    root.mkdir(parents=True, exist_ok=True)
     return root
 
 
@@ -147,16 +147,90 @@ def _paypal_fnd_path(private_dir: Path) -> Path:
     return _paypal_root(private_dir) / "fnd.json"
 
 
-def _aws_fnd_path(private_dir: Path) -> Path:
-    return _aws_root(private_dir) / "fnd.json"
-
-
 def _paypal_tenant_path(private_dir: Path, tenant_id: str) -> Path:
     return _paypal_root(private_dir) / "tenants" / f"{tenant_id}.json"
 
 
-def _aws_tenant_path(private_dir: Path, tenant_id: str) -> Path:
-    return _aws_root(private_dir) / "tenants" / f"{tenant_id}.json"
+def _aws_csm_profile_paths(private_dir: Path) -> list[Path]:
+    return sorted(
+        [
+            path
+            for path in _aws_csm_root(private_dir).glob("aws-csm.*.json")
+            if path.is_file() and path.name != "aws-csm.collection.json"
+        ],
+        key=lambda item: item.name.lower(),
+    )
+
+
+def _aws_csm_profile_path(private_dir: Path, tenant_id: str) -> Path:
+    token = _safe_tenant_id(tenant_id)
+    root = _aws_csm_root(private_dir)
+    exact = root / f"aws-csm.{token}.json"
+    if exact.exists() and exact.is_file():
+        return exact
+    for path in _aws_csm_profile_paths(private_dir):
+        payload = _read_json(path, {})
+        identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+        candidates = {
+            path.stem.removeprefix("aws-csm."),
+            str(identity.get("tenant_id") or "").strip(),
+            str(identity.get("profile_id") or "").strip(),
+            str(identity.get("domain") or "").strip(),
+        }
+        if token in {item for item in candidates if item}:
+            return path
+    return exact
+
+
+def _aws_actions_log(private_dir: Path) -> Path:
+    return _aws_csm_root(private_dir) / "actions.ndjson"
+
+
+def _aws_provision_log(private_dir: Path) -> Path:
+    return _aws_csm_root(private_dir) / "provision_requests.ndjson"
+
+
+def _deep_merge_dicts(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    out = dict(base)
+    for key, value in patch.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _deep_merge_dicts(dict(out.get(key) or {}), value)
+            continue
+        out[key] = value
+    return out
+
+
+def _aws_profile_status(private_dir: Path, tenant_id: str) -> tuple[dict[str, Any], Path, bool]:
+    path = _aws_csm_profile_path(private_dir, tenant_id)
+    exists = path.exists() and path.is_file()
+    raw = _read_json(path, {}) if exists else {"identity": {"tenant_id": tenant_id}}
+    profile, errors, warnings = normalize_aws_csm_profile_payload(raw, profile_hint=tenant_id)
+    workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
+    identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
+    smtp = profile.get("smtp") if isinstance(profile.get("smtp"), dict) else {}
+    provider = profile.get("provider") if isinstance(profile.get("provider"), dict) else {}
+    status = {
+        "ok": True,
+        "tenant_id": tenant_id,
+        "profile_id": str(identity.get("profile_id") or ""),
+        "configured": exists,
+        "canonical_root": str(_aws_csm_root(private_dir)),
+        "profile_path": str(path),
+        "region": str(identity.get("region") or ""),
+        "send_as_email": str(smtp.get("send_as_email") or ""),
+        "single_user_email": str(identity.get("single_user_email") or ""),
+        "gmail_send_as_status": str(provider.get("gmail_send_as_status") or ""),
+        "aws_ses_identity_status": str(provider.get("aws_ses_identity_status") or ""),
+        "handoff_ready": bool(workflow.get("is_ready_for_user_handoff")),
+        "send_as_confirmed": bool(workflow.get("is_send_as_confirmed")),
+        "missing_required_now": list(workflow.get("missing_required_now") or []),
+        "last_checked_at": str(provider.get("last_checked_at") or ""),
+        "warnings": list(warnings or []),
+        "validation_errors": list(errors or []),
+        "profile": profile,
+        "last_checked_unix_ms": int(time.time() * 1000),
+    }
+    return status, path, exists
 
 
 def _paypal_actions_log(private_dir: Path) -> Path:
@@ -169,14 +243,6 @@ def _paypal_orders_log(private_dir: Path) -> Path:
 
 def _paypal_profile_sync_log(private_dir: Path) -> Path:
     return _paypal_root(private_dir) / "profile_sync.ndjson"
-
-
-def _aws_actions_log(private_dir: Path) -> Path:
-    return _aws_root(private_dir) / "actions.ndjson"
-
-
-def _aws_provision_log(private_dir: Path) -> Path:
-    return _aws_root(private_dir) / "provision_requests.ndjson"
 
 
 def _resolve_legacy_root(private_dir: Path, scope: str) -> Path | None:
@@ -215,13 +281,6 @@ def _bootstrap_state_from_legacy(private_dir: Path) -> None:
         _copy_if_missing(_paypal_orders_log(private_dir), paypal_legacy / "orders.ndjson")
         _copy_if_missing(_paypal_profile_sync_log(private_dir), paypal_legacy / "profile_sync.ndjson")
         _copy_tree_json_if_missing(_paypal_root(private_dir) / "tenants", paypal_legacy / "tenants")
-
-    aws_legacy = _resolve_legacy_root(private_dir, "aws")
-    if aws_legacy is not None:
-        _copy_if_missing(_aws_fnd_path(private_dir), aws_legacy / "fnd.json")
-        _copy_if_missing(_aws_actions_log(private_dir), aws_legacy / "actions.ndjson")
-        _copy_if_missing(_aws_provision_log(private_dir), aws_legacy / "provision_requests.ndjson")
-        _copy_tree_json_if_missing(_aws_root(private_dir) / "tenants", aws_legacy / "tenants")
 
 
 def _append_action(private_dir: Path, scope: str, event_type: str, payload: dict[str, Any]) -> None:
@@ -309,59 +368,6 @@ def _validate_checkout_preview_payload(raw: Any) -> tuple[dict[str, Any] | None,
             "cancel_url": cancel_url,
             "webhook_listener_url": webhook_listener_url,
             "brand_name": brand_name,
-        },
-        [],
-    )
-
-
-def _validate_emailer_preview_payload(raw: Any) -> tuple[dict[str, Any] | None, list[str]]:
-    errors: list[str] = []
-    if not isinstance(raw, dict):
-        return None, ["payload.emailer_preview must be an object"]
-
-    try:
-        encoded = json.dumps(raw)
-    except Exception:
-        return None, ["payload.emailer_preview must be JSON-serializable"]
-    if len(encoded.encode("utf-8")) > _MAX_EMAILER_PREVIEW_BYTES:
-        errors.append(f"payload.emailer_preview exceeds {_MAX_EMAILER_PREVIEW_BYTES} bytes")
-    if _contains_forbidden_key(raw):
-        errors.append("payload.emailer_preview may not include secret-like keys")
-
-    source = raw.get("source") if isinstance(raw.get("source"), dict) else {}
-    summary = raw.get("summary") if isinstance(raw.get("summary"), dict) else {}
-    entries = raw.get("entries") if isinstance(raw.get("entries"), list) else []
-
-    if not str(source.get("aws_emailer_list_ref") or "").strip():
-        errors.append("payload.emailer_preview.source.aws_emailer_list_ref is required")
-    if not str(source.get("resolved_list_identifier") or "").strip():
-        errors.append("payload.emailer_preview.source.resolved_list_identifier is required")
-
-    for key in ("entries_total", "entries_subscribed", "contacts_total"):
-        value = summary.get(key)
-        if not isinstance(value, int) or value < 0:
-            errors.append(f"payload.emailer_preview.summary.{key} must be a non-negative integer")
-
-    if not entries:
-        errors.append("payload.emailer_preview.entries must include at least one entry")
-    if errors:
-        return None, errors
-
-    return (
-        {
-            "tenant_id": str(raw.get("tenant_id") or "").strip(),
-            "source": {
-                "aws_emailer_list_ref": str(source.get("aws_emailer_list_ref") or "").strip(),
-                "aws_emailer_entry_ref": str(source.get("aws_emailer_entry_ref") or "").strip(),
-                "resolved_list_identifier": str(source.get("resolved_list_identifier") or "").strip(),
-                "resolved_list_label": str(source.get("resolved_list_label") or "").strip(),
-            },
-            "summary": {
-                "entries_total": int(summary.get("entries_total") or 0),
-                "entries_subscribed": int(summary.get("entries_subscribed") or 0),
-                "contacts_total": int(summary.get("contacts_total") or 0),
-            },
-            "warnings": raw.get("warnings") if isinstance(raw.get("warnings"), list) else [],
         },
         [],
     )
@@ -614,111 +620,196 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
         _append_action(private_dir, "paypal", "paypal.fnd.webhook.registered", response)
         return jsonify(response), 201
 
-    @app.get("/portal/api/admin/aws/tenant/<tenant_id>/status")
-    def admin_aws_tenant_status(tenant_id: str):
+    def _aws_profile_status_response(profile_id: str):
         try:
-            token = _safe_tenant_id(tenant_id)
+            token = _safe_tenant_id(profile_id)
         except ValueError as exc:
             return jsonify({"ok": False, "errors": [str(exc)]}), 400
-        cfg = _read_json(_aws_tenant_path(private_dir, token), {})
-        response = {
-            "ok": True,
-            "tenant_id": token,
-            "profile_id": str(cfg.get("profile_id") or f"aws:tenant:{token}"),
-            "configured": bool(cfg.get("configured", False)),
-            "region": str(cfg.get("region") or os.getenv("AWS_REGION", "us-east-1")),
-            "role_arn": str(cfg.get("role_arn") or ""),
-            "last_checked_unix_ms": int(time.time() * 1000),
-        }
-        _append_action(private_dir, "aws", "aws.tenant.status.checked", response)
+        response, _, _ = _aws_profile_status(private_dir, token)
+        _append_action(private_dir, "aws", "aws.profile.status.checked", response)
         return jsonify(response)
 
-    @app.post("/portal/api/admin/aws/tenant/<tenant_id>/provision")
-    def admin_aws_tenant_provision(tenant_id: str):
+    @app.get("/portal/api/admin/aws/profile/<profile_id>")
+    def admin_aws_profile_status(profile_id: str):
+        return _aws_profile_status_response(profile_id)
+
+    @app.get("/portal/api/admin/aws/tenant/<tenant_id>/status")
+    def admin_aws_tenant_status(tenant_id: str):
+        response = _aws_profile_status_response(tenant_id)
+        if response.status_code == 200:
+            payload = response.get_json() or {}
+            payload["deprecation"] = {
+                "legacy_term": "tenant",
+                "canonical_term": "profile",
+                "canonical_endpoint": f"/portal/api/admin/aws/profile/{tenant_id}",
+            }
+            response.set_data(json.dumps(payload))
+            response.mimetype = "application/json"
+        return response
+
+    @app.put("/portal/api/admin/aws/profile/<profile_id>")
+    def admin_aws_profile_save(profile_id: str):
         try:
-            token = _safe_tenant_id(tenant_id)
+            token = _safe_tenant_id(profile_id)
         except ValueError as exc:
             return jsonify({"ok": False, "errors": [str(exc)]}), 400
 
         body = request.get_json(silent=True) or {}
-        cfg = _read_json(_aws_tenant_path(private_dir, token), {})
-        configured = bool(cfg.get("configured", False))
-        action = str(body.get("action") or "provision").strip().lower()
-        payload = body.get("payload") if isinstance(body.get("payload"), dict) else {}
+        raw_profile = body.get("profile") if isinstance(body.get("profile"), dict) else body
+        if not isinstance(raw_profile, dict):
+            return jsonify({"ok": False, "errors": ["profile payload must be an object"]}), 400
+        if _contains_forbidden_key(raw_profile):
+            return jsonify({"ok": False, "errors": ["profile payload may not include secret-like keys"]}), 400
 
-        if not configured:
-            rejected = {"error": "Tenant AWS profile is not configured.", "tenant_id": token, "configured": False}
-            _append_action(private_dir, "aws", "aws.tenant.provision.rejected", rejected)
-            return jsonify(rejected), 409
+        current_status, path, exists = _aws_profile_status(private_dir, token)
+        current_profile = current_status.get("profile") if isinstance(current_status.get("profile"), dict) else {}
+        merged = _deep_merge_dicts(current_profile, raw_profile)
+        incoming_identity = raw_profile.get("identity") if isinstance(raw_profile.get("identity"), dict) else {}
+        if str(incoming_identity.get("tenant_id") or "").strip() not in {"", token}:
+            return jsonify({"ok": False, "errors": ["identity.tenant_id must match the profile route token"]}), 400
+        merged = _deep_merge_dicts(merged, {"identity": {"tenant_id": token}})
+        normalized, validation_errors, warnings = normalize_aws_csm_profile_payload(merged, profile_hint=token)
+        if validation_errors:
+            return jsonify({"ok": False, "errors": validation_errors, "warnings": warnings}), 400
 
-        if action == "emailer_sync_preview":
-            preview, validation_errors = _validate_emailer_preview_payload(payload.get("emailer_preview"))
-            format_hint = str(payload.get("format_hint") or "").strip()
-            if validation_errors:
-                rejected = {"tenant_id": token, "action": action, "errors": validation_errors}
-                _append_action(private_dir, "aws", "aws.tenant.emailer.preview.rejected", rejected)
-                return jsonify({"ok": False, **rejected}), 400
-
-            request_id = f"AWSREQ-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8].upper()}"
-            response = {
-                "ok": True,
+        _write_json(path, normalized)
+        response = {
+            "ok": True,
+            "tenant_id": token,
+            "profile_id": str(((normalized.get("identity") or {}).get("profile_id")) or ""),
+            "created": not exists,
+            "canonical_root": str(_aws_csm_root(private_dir)),
+            "profile_path": str(path),
+            "warnings": warnings,
+            "profile": normalized,
+        }
+        _append_action(
+            private_dir,
+            "aws",
+            "aws.profile.saved",
+            {
                 "tenant_id": token,
-                "request_id": request_id,
-                "status": "queued",
-                "action": action,
-                "format_hint": format_hint,
-                "region": str(cfg.get("region") or os.getenv("AWS_REGION", "us-east-1")),
-                "preview_summary": dict((preview or {}).get("summary") or {}),
+                "profile_id": response["profile_id"],
+                "created": bool(response["created"]),
+                "profile_path": response["profile_path"],
+            },
+        )
+        return jsonify(response), 200
+
+    @app.put("/portal/api/admin/aws/tenant/<tenant_id>/profile")
+    def admin_aws_tenant_profile_save(tenant_id: str):
+        return admin_aws_profile_save(tenant_id)
+
+    @app.post("/portal/api/admin/aws/profile/<profile_id>/provision")
+    def admin_aws_profile_provision(profile_id: str):
+        try:
+            token = _safe_tenant_id(profile_id)
+        except ValueError as exc:
+            return jsonify({"ok": False, "errors": [str(exc)]}), 400
+
+        body = request.get_json(silent=True) or {}
+        action = str(body.get("action") or "prepare_send_as").strip().lower()
+        if "emailer" in action or "newsletter" in action:
+            rejected = {
+                "ok": False,
+                "profile_id": token,
+                "errors": ["newsletter/emailer actions are not part of the active AWS-CMS scope"],
             }
-            _append_ndjson(
-                _aws_provision_log(private_dir),
-                {
-                    "ts_unix_ms": int(time.time() * 1000),
-                    "tenant_id": token,
-                    "request_id": request_id,
-                    "status": "queued",
-                    "action": action,
-                    "format_hint": format_hint,
-                    "preview": preview,
-                },
-            )
-            _append_action(private_dir, "aws", "aws.tenant.emailer.preview.queued", response)
-            return jsonify(response), 202
+            _append_action(private_dir, "aws", "aws.profile.provision.rejected", rejected)
+            return jsonify(rejected), 400
+
+        allowed_actions = {
+            "prepare_send_as",
+            "setup_ses_identity",
+            "setup_dkim",
+            "stage_smtp_credentials",
+            "capture_verification",
+            "refresh_provider_status",
+            "enable_inbound_capture",
+        }
+        if action not in allowed_actions:
+            rejected = {
+                "ok": False,
+                "profile_id": token,
+                "errors": [f"unsupported aws provision action: {action}"],
+            }
+            _append_action(private_dir, "aws", "aws.profile.provision.rejected", rejected)
+            return jsonify(rejected), 400
+
+        status_payload, path, exists = _aws_profile_status(private_dir, token)
+        if not exists:
+            rejected = {
+                "ok": False,
+                "profile_id": token,
+                "configured": False,
+                "errors": ["AWS-CMS profile is not staged in the canonical aws-csm root"],
+            }
+            _append_action(private_dir, "aws", "aws.profile.provision.rejected", rejected)
+            return jsonify(rejected), 409
 
         request_id = f"AWSREQ-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8].upper()}"
         response = {
             "ok": True,
+            "profile_id": token,
             "tenant_id": token,
             "request_id": request_id,
             "status": "queued",
             "action": action,
-            "region": str(cfg.get("region") or os.getenv("AWS_REGION", "us-east-1")),
+            "canonical_root": str(_aws_csm_root(private_dir)),
+            "profile_path": str(path),
+            "region": str(status_payload.get("region") or ""),
+            "send_as_email": str(status_payload.get("send_as_email") or ""),
         }
         _append_ndjson(
             _aws_provision_log(private_dir),
             {
                 "ts_unix_ms": int(time.time() * 1000),
+                "profile_id": token,
                 "tenant_id": token,
                 "request_id": request_id,
                 "status": "queued",
                 "action": action,
+                "profile_path": str(path),
+                "region": response["region"],
+                "send_as_email": response["send_as_email"],
             },
         )
-        _append_action(private_dir, "aws", "aws.tenant.provision.queued", response)
+        _append_action(private_dir, "aws", "aws.profile.provision.queued", response)
         return jsonify(response), 202
+
+    @app.post("/portal/api/admin/aws/tenant/<tenant_id>/provision")
+    def admin_aws_tenant_provision(tenant_id: str):
+        return admin_aws_profile_provision(tenant_id)
 
     @app.get("/portal/api/admin/aws/fnd/status")
     def admin_aws_fnd_status():
-        cfg = _read_json(_aws_fnd_path(private_dir), {})
-        tenant_dir = _aws_root(private_dir) / "tenants"
-        tenant_count = len(list(tenant_dir.glob("*.json"))) if tenant_dir.exists() else 0
+        profiles = []
+        ready_count = 0
+        confirmed_count = 0
+        for path in _aws_csm_profile_paths(private_dir):
+            profile_token = path.stem.removeprefix("aws-csm.")
+            status_payload, _, _ = _aws_profile_status(private_dir, profile_token)
+            profiles.append(
+                {
+                    "profile_id": str(status_payload.get("profile_id") or profile_token),
+                    "tenant_id": profile_token,
+                    "send_as_email": str(status_payload.get("send_as_email") or ""),
+                    "handoff_ready": bool(status_payload.get("handoff_ready")),
+                    "send_as_confirmed": bool(status_payload.get("send_as_confirmed")),
+                }
+            )
+            if status_payload.get("handoff_ready"):
+                ready_count += 1
+            if status_payload.get("send_as_confirmed"):
+                confirmed_count += 1
         response = {
             "ok": True,
             "scope": "fnd",
-            "configured": bool(cfg.get("configured", False)),
-            "region": str(cfg.get("region") or os.getenv("AWS_REGION", "us-east-1")),
-            "role_arn": str(cfg.get("role_arn") or os.getenv("AWS_ROLE_ARN", "")),
-            "tenant_profiles_count": tenant_count,
+            "canonical_root": str(_aws_csm_root(private_dir)),
+            "tenant_profiles_count": len(profiles),
+            "ready_for_handoff_count": ready_count,
+            "send_as_confirmed_count": confirmed_count,
+            "profiles": profiles,
             "last_checked_unix_ms": int(time.time() * 1000),
         }
         _append_action(private_dir, "aws", "aws.fnd.status.checked", response)
@@ -736,11 +827,15 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
     def admin_paypal_fnd_options():
         return _options_response("GET, POST, OPTIONS")
 
+    @app.route("/portal/api/admin/aws/profile/<profile_id>", methods=["OPTIONS"])
+    @app.route("/portal/api/admin/aws/profile/<profile_id>/provision", methods=["OPTIONS"])
     @app.route("/portal/api/admin/aws/tenant/<tenant_id>/status", methods=["OPTIONS"])
+    @app.route("/portal/api/admin/aws/tenant/<tenant_id>/profile", methods=["OPTIONS"])
     @app.route("/portal/api/admin/aws/tenant/<tenant_id>/provision", methods=["OPTIONS"])
-    def admin_aws_tenant_options(tenant_id: str):
+    def admin_aws_tenant_options(tenant_id: str | None = None, profile_id: str | None = None):
         _ = tenant_id
-        return _options_response("GET, POST, OPTIONS")
+        _ = profile_id
+        return _options_response("GET, PUT, POST, OPTIONS")
 
     @app.route("/portal/api/admin/aws/fnd/status", methods=["OPTIONS"])
     def admin_aws_fnd_options():

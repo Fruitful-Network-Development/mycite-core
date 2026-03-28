@@ -16,7 +16,7 @@ SERVICE_TOOL_CONTRACT_SCHEMA = "mycite.service_tool.contract.v1"
 SERVICE_TOOL_BINDINGS_SCHEMA = "mycite.service_tool.config_bindings.v1"
 FND_EBI_PROFILE_SCHEMA = "mycite.service_tool.fnd_ebi.profile.v1"
 AWS_CSM_PROFILE_SCHEMA = "mycite.service_tool.aws_csm.profile.v1"
-AWS_CSM_COLLECTION_SCHEMA = "mycite.service_tool.aws_csm.collection.v1"
+AWS_CSM_DEFAULT_REGION = "us-east-1"
 
 _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
     "fnd_ebi": {
@@ -32,24 +32,13 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
     },
     "aws_platform_admin": {
         "namespace": "aws-csm",
-        "workspace_id": "service.aws_platform_admin",
-        "label": "AWS service profiles",
-        "default_mode": "profiles",
-        "modes": ["profiles", "collections", "files"],
+        "workspace_id": "service.aws_csm",
+        "label": "AWS send-as onboarding",
+        "default_mode": "overview",
+        "modes": ["overview", "smtp", "verification", "files"],
         "config_patterns": ["tool.*.aws-csm.json", "aws-csm.{portal_instance_id}.json", "aws-csm.*.json"],
-        "collection_patterns": ["tool.*.aws-csm.json", "aws-csm.collection.json"],
-        "member_patterns": ["spec.json", "aws-csm.*.json", "*.ndjson"],
-        "profile_schema": AWS_CSM_PROFILE_SCHEMA,
-    },
-    "aws_tenant_actions": {
-        "namespace": "aws-csm",
-        "workspace_id": "service.aws_tenant_actions",
-        "label": "AWS service profiles",
-        "default_mode": "profiles",
-        "modes": ["profiles", "collections", "files"],
-        "config_patterns": ["tool.*.aws-csm.json", "aws-csm.{portal_instance_id}.json", "aws-csm.*.json"],
-        "collection_patterns": ["tool.*.aws-csm.json", "aws-csm.collection.json"],
-        "member_patterns": ["spec.json", "aws-csm.*.json", "*.ndjson"],
+        "collection_patterns": ["tool.*.aws-csm.json"],
+        "member_patterns": ["spec.json", "aws-csm.*.json", "actions.ndjson", "provision_requests.ndjson"],
         "profile_schema": AWS_CSM_PROFILE_SCHEMA,
     },
     "paypal_service_agreement": {
@@ -101,6 +90,148 @@ def _text(value: object) -> str:
 
 def _dict(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
+
+
+def _boolish(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    token = _text(value).lower()
+    return token in {"1", "true", "yes", "on"}
+
+
+def _aws_csm_default_smtp_host(region: str) -> str:
+    token = _text(region) or AWS_CSM_DEFAULT_REGION
+    return f"email-smtp.{token}.amazonaws.com"
+
+
+def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -> tuple[dict[str, Any], list[str], list[str]]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    if not isinstance(payload, dict):
+        return ({}, ["profile payload must be a JSON object"], warnings)
+
+    body = dict(payload)
+    identity_raw = body.get("identity") if isinstance(body.get("identity"), dict) else {}
+    smtp_raw = body.get("smtp") if isinstance(body.get("smtp"), dict) else {}
+    verification_raw = body.get("verification") if isinstance(body.get("verification"), dict) else {}
+    provider_raw = body.get("provider") if isinstance(body.get("provider"), dict) else {}
+    workflow_raw = body.get("workflow") if isinstance(body.get("workflow"), dict) else {}
+
+    profile_token = _text(profile_hint)
+    tenant_id = _text(identity_raw.get("tenant_id") or body.get("tenant_id") or profile_token)
+    if not tenant_id and profile_token:
+        tenant_id = profile_token
+    region = _text(identity_raw.get("region") or body.get("region")) or AWS_CSM_DEFAULT_REGION
+    forward_to_email = _text(smtp_raw.get("forward_to_email") or body.get("forward_to_email"))
+    single_user_email = _text(identity_raw.get("single_user_email") or body.get("single_user_email") or forward_to_email)
+    send_as_email = _text(
+        identity_raw.get("send_as_email") or smtp_raw.get("send_as_email") or body.get("alias_email")
+    )
+    profile_id = _text(identity_raw.get("profile_id") or body.get("profile_id"))
+    if not profile_id and tenant_id:
+        profile_id = f"aws-csm.{tenant_id}"
+    credentials_source = _text(
+        smtp_raw.get("credentials_source") or body.get("smtp_credentials_source") or body.get("credentials_source")
+    ) or "operator_managed"
+    smtp_host = _text(smtp_raw.get("host") or body.get("smtp_host")) or _aws_csm_default_smtp_host(region)
+    smtp_port = _text(smtp_raw.get("port") or body.get("smtp_port")) or "587"
+    verification_status = _text(
+        verification_raw.get("status") or provider_raw.get("gmail_send_as_status") or body.get("gmail_send_as_status")
+    ) or "not_started"
+    provider_status = _text(
+        provider_raw.get("gmail_send_as_status") or body.get("gmail_send_as_status") or verification_status
+    ) or "not_started"
+    aws_identity_status = _text(
+        provider_raw.get("aws_ses_identity_status") or body.get("aws_ses_identity_status")
+    ) or "not_started"
+    verification_code = _text(verification_raw.get("code") or body.get("verification_code"))
+    verification_link = _text(verification_raw.get("link") or body.get("verification_link"))
+    verification_portal_state = _text(verification_raw.get("portal_state") or body.get("verification_portal_state"))
+    if not verification_portal_state:
+        if verification_status in {"verified", "configured", "active", "ready"}:
+            verification_portal_state = "verified"
+        elif verification_code or verification_link:
+            verification_portal_state = "verification_pending"
+        else:
+            verification_portal_state = "awaiting_operator_setup"
+
+    if not tenant_id:
+        warnings.append("recommended field missing: identity.tenant_id")
+    if not profile_id:
+        warnings.append("recommended field missing: identity.profile_id")
+
+    identity = {
+        "profile_id": profile_id,
+        "tenant_id": tenant_id,
+        "domain": _text(identity_raw.get("domain") or body.get("domain")),
+        "region": region,
+        "single_user_msn_id": _text(identity_raw.get("single_user_msn_id") or body.get("single_user_msn_id")),
+        "single_user_email": single_user_email,
+        "send_as_email": send_as_email,
+    }
+    smtp = {
+        "host": smtp_host,
+        "port": smtp_port,
+        "username": _text(smtp_raw.get("username") or body.get("smtp_username")),
+        "credentials_source": credentials_source,
+        "handoff_ready": _boolish(smtp_raw.get("handoff_ready") or body.get("smtp_handoff_ready")),
+        "send_as_email": _text(smtp_raw.get("send_as_email") or send_as_email),
+        "local_part": _text(smtp_raw.get("local_part") or body.get("local_part")),
+        "forward_to_email": forward_to_email,
+        "forwarding_status": _text(smtp_raw.get("forwarding_status") or body.get("forwarding_status")),
+    }
+    verification = {
+        "status": verification_status,
+        "code": verification_code,
+        "link": verification_link,
+        "email_received_at": _text(
+            verification_raw.get("email_received_at") or body.get("verification_email_received_at")
+        ),
+        "verified_at": _text(verification_raw.get("verified_at") or body.get("verified_at")),
+        "portal_state": verification_portal_state,
+    }
+    provider = {
+        "gmail_send_as_status": provider_status,
+        "aws_ses_identity_status": aws_identity_status,
+        "last_checked_at": _text(provider_raw.get("last_checked_at") or body.get("provider_last_checked_at")),
+    }
+
+    required_now = {
+        "identity.domain": _text(identity.get("domain")),
+        "identity.single_user_email": _text(identity.get("single_user_email")),
+        "smtp.send_as_email": _text(smtp.get("send_as_email")),
+        "smtp.host": _text(smtp.get("host")),
+        "smtp.port": _text(smtp.get("port")),
+        "smtp.username": _text(smtp.get("username")),
+        "smtp.credentials_source": _text(smtp.get("credentials_source")),
+    }
+    missing_required = [key for key, value in required_now.items() if not value]
+    send_as_confirmed = provider_status in {"active", "configured", "verified", "ready"} or verification_status == "verified"
+    workflow = {
+        "schema": _text(workflow_raw.get("schema")) or "mycite.service_tool.aws_csm.onboarding.v1",
+        "flow": _text(workflow_raw.get("flow")) or "single_user_send_as",
+        "missing_required_now": missing_required,
+        "is_ready_for_user_handoff": not missing_required and bool(smtp.get("handoff_ready")),
+        "is_send_as_confirmed": send_as_confirmed,
+    }
+
+    if not _text(identity.get("domain")):
+        errors.append("missing required field: identity.domain")
+    if not _text(smtp.get("send_as_email")):
+        errors.append("missing required field: smtp.send_as_email")
+
+    return (
+        {
+            "schema": AWS_CSM_PROFILE_SCHEMA,
+            "identity": identity,
+            "smtp": smtp,
+            "verification": verification,
+            "provider": provider,
+            "workflow": workflow,
+        },
+        errors,
+        warnings,
+    )
 
 
 def _instance_payload(portal_instance_context: Any | None) -> dict[str, Any]:
@@ -285,83 +416,10 @@ def _classify_service_profile(path: Path, payload: Any, *, namespace: str, profi
         if not _text(body.get("site_root")):
             errors.append("missing required field: site_root")
     if namespace == "aws-csm":
-        identity = body.get("identity") if isinstance(body.get("identity"), dict) else {}
-        smtp = body.get("smtp") if isinstance(body.get("smtp"), dict) else {}
-        verification = body.get("verification") if isinstance(body.get("verification"), dict) else {}
-        provider = body.get("provider") if isinstance(body.get("provider"), dict) else {}
-        identity = {
-            "profile_id": _text(identity.get("profile_id") or body.get("profile_id")),
-            "tenant_id": _text(identity.get("tenant_id") or body.get("tenant_id")),
-            "domain": _text(identity.get("domain") or body.get("domain")),
-            "region": _text(identity.get("region") or body.get("region")),
-            "single_user_msn_id": _text(identity.get("single_user_msn_id") or body.get("single_user_msn_id")),
-            "single_user_email": _text(identity.get("single_user_email") or body.get("single_user_email")),
-            "send_as_email": _text(identity.get("send_as_email") or body.get("alias_email")),
-        }
-        smtp = {
-            "send_as_email": _text(smtp.get("send_as_email") or body.get("alias_email")),
-            "local_part": _text(smtp.get("local_part") or body.get("local_part")),
-            "forward_to_email": _text(smtp.get("forward_to_email") or body.get("forward_to_email")),
-            "forwarding_status": _text(smtp.get("forwarding_status") or body.get("forwarding_status")),
-            "host": _text(smtp.get("host") or body.get("smtp_host")),
-            "port": _text(smtp.get("port") or body.get("smtp_port")),
-            "username": _text(smtp.get("username") or body.get("smtp_username")),
-            "credentials_source": _text(smtp.get("credentials_source") or body.get("smtp_credentials_source")),
-            "handoff_ready": bool(smtp.get("handoff_ready") or body.get("smtp_handoff_ready")),
-        }
-        verification = {
-            "status": _text(verification.get("status") or body.get("gmail_send_as_status")),
-            "code": _text(verification.get("code") or body.get("verification_code")),
-            "link": _text(verification.get("link") or body.get("verification_link")),
-            "email_received_at": _text(
-                verification.get("email_received_at") or body.get("verification_email_received_at")
-            ),
-            "verified_at": _text(verification.get("verified_at") or body.get("verified_at")),
-            "portal_state": _text(verification.get("portal_state") or body.get("verification_portal_state")),
-        }
-        provider = {
-            "gmail_send_as_status": _text(provider.get("gmail_send_as_status") or body.get("gmail_send_as_status")),
-            "aws_ses_identity_status": _text(provider.get("aws_ses_identity_status") or body.get("aws_ses_identity_status")),
-            "last_checked_at": _text(provider.get("last_checked_at") or body.get("provider_last_checked_at")),
-        }
-        body["identity"] = identity
-        body["smtp"] = smtp
-        body["verification"] = verification
-        body["provider"] = provider
-        if not _text(identity.get("domain") or body.get("domain")):
-            errors.append("missing required field: identity.domain")
-        if not _text(identity.get("tenant_id")):
-            warnings.append("recommended field missing: identity.tenant_id")
-        if not _text(identity.get("profile_id")):
-            warnings.append("recommended field missing: identity.profile_id")
-        if not _text(smtp.get("send_as_email") or body.get("alias_email")):
-            errors.append("missing required field: smtp.send_as_email")
-        if not _text(smtp.get("forward_to_email") or body.get("forward_to_email")):
-            warnings.append("recommended field missing: smtp.forward_to_email")
-        if not _text(verification.get("status") or body.get("gmail_send_as_status")):
-            warnings.append("recommended field missing: verification.status")
-        if not _text(provider.get("gmail_send_as_status") or body.get("gmail_send_as_status")):
-            warnings.append("recommended field missing: provider.gmail_send_as_status")
-        required_now = {
-            "identity.domain": _text(identity.get("domain")),
-            "identity.tenant_id": _text(identity.get("tenant_id")),
-            "identity.single_user_email": _text(identity.get("single_user_email")),
-            "smtp.send_as_email": _text(smtp.get("send_as_email")),
-            "smtp.host": _text(smtp.get("host")),
-            "smtp.port": _text(smtp.get("port")),
-            "smtp.username": _text(smtp.get("username")),
-            "verification.status": _text(verification.get("status")),
-        }
-        missing_required = [key for key, value in required_now.items() if not value]
-        provider_ready = bool(_text(provider.get("gmail_send_as_status")) in {"active", "configured", "verified", "ready"})
-        handoff_ready = not missing_required and bool(smtp.get("handoff_ready"))
-        body["workflow"] = {
-            "schema": "mycite.service_tool.aws_csm.onboarding.v1",
-            "flow": "single_user_send_as",
-            "missing_required_now": missing_required,
-            "is_ready_for_user_handoff": handoff_ready,
-            "is_send_as_confirmed": provider_ready,
-        }
+        profile_hint = path.stem.removeprefix("aws-csm.")
+        body, normalized_errors, normalized_warnings = normalize_aws_csm_profile_payload(body, profile_hint=profile_hint)
+        errors.extend(normalized_errors)
+        warnings.extend(normalized_warnings)
     return body, errors, warnings
 
 
@@ -536,17 +594,17 @@ def _profile_cards_for_payload(path: Path, payload: Any) -> list[dict[str, Any]]
             )
         return cards
 
-    title = (
-        _text(payload.get("title"))
-        or _text(payload.get("domain"))
-        or _text(payload.get("service_agreement_id"))
-        or path.stem
-    )
+    identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+    smtp = payload.get("smtp") if isinstance(payload.get("smtp"), dict) else {}
+    verification = payload.get("verification") if isinstance(payload.get("verification"), dict) else {}
+    title = _text(payload.get("title")) or _text(payload.get("domain")) or _text(identity.get("domain")) or _text(payload.get("service_agreement_id")) or path.stem
     summary = (
         _text(payload.get("schema"))
         or _text(payload.get("environment"))
         or _text(payload.get("region"))
-        or _text(payload.get("forwarding_status"))
+        or _text(identity.get("region"))
+        or _text(verification.get("status"))
+        or _text(smtp.get("forwarding_status"))
     )
     body: dict[str, Any] = {}
     for key in (

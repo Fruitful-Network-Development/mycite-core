@@ -879,7 +879,6 @@ def _configured_tool_status_items() -> list[Dict[str, Any]]:
             for candidate_id in (
                 "fnd_ebi",
                 "aws_platform_admin",
-                "aws_tenant_actions",
                 "paypal_service_agreement",
                 "paypal_tenant_actions",
                 "operations",

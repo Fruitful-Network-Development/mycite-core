@@ -39,7 +39,6 @@
               "<td>" + esc((item.display || {}).title || "") + "</td>" +
               "<td><code>" + esc(memberMsnId) + "</code></td>" +
               "<td>" + (caps.paypal ? "enabled" : "disabled") + "</td>" +
-              "<td>" + (caps.aws ? "enabled" : "disabled") + "</td>" +
               "<td>" + esc(status.state || "active") + "</td>" +
               "<td>" +
               "<code>" + esc(refs.paypal_profile_id || "") + "</code><br>" +
@@ -47,10 +46,7 @@
               "<code>" + esc(refs.paypal_checkout_return_url || "") + "</code><br>" +
               "<code>" + esc(refs.paypal_checkout_cancel_url || "") + "</code><br>" +
               "<code>" + esc(refs.paypal_webhook_listener_url || "") + "</code><br>" +
-              "<code>" + esc(refs.paypal_checkout_brand_name || "") + "</code><br>" +
-              "<code>" + esc(refs.aws_profile_id || "") + "</code><br>" +
-              "<code>" + esc(refs.aws_emailer_list_ref || "") + "</code><br>" +
-              "<code>" + esc(refs.aws_emailer_entry_ref || "") + "</code>" +
+              "<code>" + esc(refs.paypal_checkout_brand_name || "") + "</code>" +
               "</td>" +
               "</tr>"
             );

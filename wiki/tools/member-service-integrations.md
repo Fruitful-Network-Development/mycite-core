@@ -16,20 +16,9 @@ Member-scoped service integrations use non-secret metadata in progeny and profil
 
 Current documented abstractions are:
 
-- AWS emailer
 - PayPal checkout
 
-AWS emailer integration uses non-secret refs such as:
-
-- `aws_profile_id`
-- `aws_emailer_list_ref`
-- `aws_emailer_entry_ref`
-- website analytics metadata fields
-- forwarder-only email policy metadata
-
-Current AWS preview endpoint:
-
-- `GET /portal/api/aws/member/<member_id>/emailer_preview`
+AWS-CMS is no longer part of the member-service integration surface. The active AWS-CMS tool is operator-only and is staged through `private/utilities/tools/aws-csm/` in tool mode. It does not use member preview endpoints, newsletter flows, or `private/admin_runtime/aws/...`.
 
 PayPal checkout integration uses non-secret refs such as:
 
@@ -45,16 +34,11 @@ Current PayPal preview endpoint:
 
 - `GET /portal/api/paypal/member/<member_id>/checkout_preview`
 
-Current queue and sync behavior is preview-first. Portal metadata stores routing and context refs only. Credentials and provider runtime state remain outside progeny metadata.
-
-The current tool split is intentional:
-
-- member-scoped actions for profile-specific preview and sync
-- platform-scoped admin or agreement tooling for host-level provider state
+Current queue and sync behavior for member integrations is preview-first. Portal metadata stores routing and context refs only. Credentials and provider runtime state remain outside progeny metadata.
 
 Current FND-side service-management tools are mediation-oriented:
 
-- AWS, PayPal, analytics, and keycloak-backed portal operations remain separate tools
+- PayPal, analytics, and keycloak-backed portal operations remain separate tools
 - each tool reads its own JSON collection under `private/utilities/tools/<tool-id-or-namespace>/`
 - shared shell mediation treats those files as profile-card oriented config-context collections rather than container-era proxy state
 
@@ -76,6 +60,7 @@ This page owns member-service integration abstractions. It does not own:
 - secret or credential storage
 - general request-log policy
 - generic write-pipeline semantics outside provider-specific preview and sync
+- AWS-CMS operator staging
 
 ## Authoritative Paths / Files
 
@@ -84,7 +69,6 @@ This page owns member-service integration abstractions. It does not own:
 
 ## Source Docs
 
-- `docs/AWS_EMAILER_ABSTRACTION.md`
 - `docs/PAYPAL_PAYMENT_PROCESSING_ABSTRACTION.md`
 - `docs/PROGENY_PROFILE_CARDS.md`
 
@@ -92,5 +76,4 @@ This page owns member-service integration abstractions. It does not own:
 
 - Changes to non-secret member integration refs
 - Changes to preview or sync endpoints
-- Changes to the split between member-scoped and platform-scoped tooling
-- Changes to the secret-storage boundary
+- Changes to the member-integration secret-storage boundary
