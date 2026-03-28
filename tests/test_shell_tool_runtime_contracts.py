@@ -282,9 +282,43 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "static"
             / "tools"
             / "inheritance_workbench.js",
+            repo_root
+            / "portals"
+            / "_shared"
+            / "runtime"
+            / "flavors"
+            / "fnd"
+            / "portal"
+            / "ui"
+            / "static"
+            / "tools"
+            / "aws_tenant_actions.js",
+            repo_root
+            / "portals"
+            / "_shared"
+            / "runtime"
+            / "flavors"
+            / "fnd"
+            / "portal"
+            / "ui"
+            / "templates"
+            / "tools"
+            / "aws_tenant_actions_home.html",
         ]
         for path in removed_assets:
             self.assertFalse(path.exists(), str(path))
+        removed_module = (
+            repo_root
+            / "portals"
+            / "_shared"
+            / "runtime"
+            / "flavors"
+            / "fnd"
+            / "portal"
+            / "api"
+            / "aws_emailer.py"
+        )
+        self.assertFalse(removed_module.exists(), str(removed_module))
 
     def test_shared_system_shell_runtime_is_generic_mediation_host(self) -> None:
         runtime_js = (
@@ -315,6 +349,8 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
         self.assertNotIn("agroOpenBtn", runtime_js)
         self.assertNotIn("/portal/api/data/system/config_context/agro_erp", runtime_js)
         self.assertNotIn("state.agroConfigContext", runtime_js)
+        self.assertNotIn("aws_tenant_actions", runtime_js)
+        self.assertNotIn("renderAwsServiceProfiles", runtime_js)
 
     def test_service_tool_runtime_prunes_incompatible_provider_state(self) -> None:
         runtime_js = (

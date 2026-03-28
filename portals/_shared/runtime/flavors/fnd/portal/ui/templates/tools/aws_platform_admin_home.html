@@ -1,30 +1,24 @@
 {% extends "base.html" %}
 
-{% block title %}MyCite | AWS Platform/Admin{% endblock %}
+{% block title %}MyCite | AWS-CMS{% endblock %}
 
-{% set page_title = "AWS Platform/Admin" %}
-{% set page_subtitle = "FND-scoped AWS status via /portal/api/admin/aws/fnd/status" %}
+{% set page_title = "AWS-CMS" %}
+{% set page_subtitle = "Operator-only send-as staging via the canonical aws-csm tool sandbox" %}
 
 {% block body %}
   <div class="card" style="max-width:980px;">
-    <div class="card__kicker">FND Scoped</div>
-    <div class="card__title">AWS Platform Health</div>
+    <div class="card__kicker">Operator Scope</div>
+    <div class="card__title">AWS send-as onboarding status</div>
     <div class="card__body">
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(240px,1fr));gap:0.75rem;max-width:760px;margin-bottom:0.85rem;">
-        <label>
-          <div style="font-size:0.75rem;color:var(--ink2);margin-bottom:0.2rem;">Callback Mailboxes</div>
-          <textarea id="awsp-callbacks" style="width:100%;min-height:96px;padding:0.45rem;border:1px solid var(--line);border-radius:var(--radius);font-family:ui-monospace,monospace;" placeholder="callback@fruitfulnetworkdevelopment.com"></textarea>
-        </label>
-        <label>
-          <div style="font-size:0.75rem;color:var(--ink2);margin-bottom:0.2rem;">Member Callback Mailboxes</div>
-          <textarea id="awsp-member-callbacks" style="width:100%;min-height:96px;padding:0.45rem;border:1px solid var(--line);border-radius:var(--radius);font-family:ui-monospace,monospace;" placeholder="member-callback@fruitfulnetworkdevelopment.com"></textarea>
-        </label>
-      </div>
+      <p>
+        This compatibility page is read-only and mirrors the active tool-mode contract. Canonical AWS-CMS state lives under
+        <code>/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/</code>.
+      </p>
       <div style="margin-top:0.2rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
-        <button id="awsp-status" class="ops-btn ops-btn--outline">FND Status</button>
-        <button id="awsp-load-hosted" class="ops-btn ops-btn--outline">Load Hosted Config</button>
-        <button id="awsp-save-hosted" class="ops-btn">Save Callback Mailboxes</button>
+        <button id="awsp-status" class="ops-btn ops-btn--outline">Refresh AWS-CMS Status</button>
+        <button id="awsp-context" class="ops-btn ops-btn--outline">Refresh Tool Context</button>
       </div>
+      <pre id="awsp-summary" class="ops-status" style="margin-top:0.75rem;">Loading status…</pre>
       <pre id="awsp-output" class="ops-status" style="margin-top:0.75rem;">Ready.</pre>
     </div>
   </div>

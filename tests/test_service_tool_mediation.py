@@ -260,10 +260,21 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertIn("verification", card_body)
             self.assertIn("provider", card_body)
             self.assertIn("workflow", card_body)
+            identity = card_body.get("identity") if isinstance(card_body.get("identity"), dict) else {}
+            smtp = card_body.get("smtp") if isinstance(card_body.get("smtp"), dict) else {}
+            verification = card_body.get("verification") if isinstance(card_body.get("verification"), dict) else {}
+            provider = card_body.get("provider") if isinstance(card_body.get("provider"), dict) else {}
             workflow = card_body.get("workflow") if isinstance(card_body.get("workflow"), dict) else {}
+            self.assertEqual(identity.get("tenant_id"), "fnd")
+            self.assertEqual(identity.get("single_user_email"), "dylancarsonmontgomery@gmail.com")
+            self.assertEqual(smtp.get("host"), "email-smtp.us-east-1.amazonaws.com")
+            self.assertEqual(smtp.get("port"), "587")
+            self.assertEqual(smtp.get("credentials_source"), "operator_managed")
+            self.assertEqual(verification.get("portal_state"), "awaiting_operator_setup")
+            self.assertEqual(provider.get("aws_ses_identity_status"), "not_started")
             self.assertEqual(workflow.get("schema"), "mycite.service_tool.aws_csm.onboarding.v1")
-            self.assertIn("smtp.host", list(workflow.get("missing_required_now") or []))
-            self.assertIn("smtp.port", list(workflow.get("missing_required_now") or []))
+            self.assertEqual(workflow.get("flow"), "single_user_send_as")
+            self.assertIn("smtp.username", list(workflow.get("missing_required_now") or []))
             self.assertFalse(bool(workflow.get("is_ready_for_user_handoff")))
 
     def test_service_tool_context_emits_profile_interface_cards(self):
@@ -313,6 +324,22 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertIn("smtp", first)
             self.assertIn("verification", first)
             self.assertIn("provider", first)
+
+    def test_aws_platform_admin_service_meta_narrows_to_operator_send_as_scope(self):
+        module = _load_service_tools_module()
+        meta = module.build_service_tool_meta("aws_platform_admin")
+        interface_panel = meta.get("interface_panel_contribution") if isinstance(meta.get("interface_panel_contribution"), dict) else {}
+        self.assertEqual(interface_panel.get("label"), "AWS send-as onboarding")
+        self.assertEqual(interface_panel.get("default_mode"), "overview")
+        self.assertEqual(interface_panel.get("lens_id"), "service.aws_csm")
+        self.assertEqual(meta.get("shell_composition_mode"), "tool")
+        self.assertEqual(meta.get("foreground_surface"), "interface_panel")
+        collection_datum = ((meta.get("service_contract") or {}).get("collection_datum")) or {}
+        config_datum = ((meta.get("service_contract") or {}).get("config_datum")) or {}
+        self.assertEqual(collection_datum.get("patterns"), ["tool.*.aws-csm.json"])
+        self.assertIn("aws-csm.*.json", config_datum.get("patterns") or [])
+        self.assertNotIn("aws-csm.collection.json", collection_datum.get("patterns") or [])
+        self.assertEqual(module.build_service_tool_meta("aws_tenant_actions"), {})
 
 
 if __name__ == "__main__":

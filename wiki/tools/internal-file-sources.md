@@ -56,20 +56,42 @@ Current FND-EBI projection from those derived sources includes:
 - events coverage summary and event-type counts
 - explicit warning surfaces for missing/unreadable/stale/no-events/no-robots signals
 
-## AWS-CMS Pattern (Foundational Staging)
+## AWS-CMS Pattern (Operator Send-As Staging)
 
-`aws_platform_admin` / `aws_tenant_actions` are service-style tool projections over `aws-csm` sandbox profiles.
+`aws_platform_admin` is the active AWS-CMS service-style tool projection over `aws-csm` sandbox profiles.
 
 Canonical profile schema: `mycite.service_tool.aws_csm.profile.v1`
 
+Canonical state root:
+
+- `private/utilities/tools/aws-csm/`
+
+Retired state root:
+
+- `private/admin_runtime/aws/` is removed and is no longer read as compatibility state.
+
 Required baseline groups:
 
-- `identity` (domain, optional tenant/profile ids, region)
-- `smtp` (send-as address, forwarding destination/status)
-- `verification` (code/link/status/timestamps)
-- `provider` (provider-facing send-as status snapshots)
+- `identity` (profile/operator identity for a single send-as setup)
+- `smtp` (Gmail send-as handoff fields, forwarding destination/status, SMTP readiness)
+- `verification` (code/link/status/timestamps for the active send-as verification step)
+- `provider` (provider-facing SES and Gmail send-as status snapshots)
+- `workflow` (operator-only readiness and missing-field summary)
 
-Legacy flat fields (for example `alias_email`, `forward_to_email`, `gmail_send_as_status`) are normalized into these groups at service-tool context assembly. This is a compatibility transform only; future writes should target grouped canonical fields.
+Legacy flat fields (for example `alias_email`, `forward_to_email`, `gmail_send_as_status`) are normalized into these groups at service-tool context assembly. This is a compatibility transform only; canonical writes target grouped profile documents under `aws-csm.<profile>.json`.
+
+Current scope is intentionally narrow:
+
+- one operator
+- one profile at a time
+- simple SES SMTP and Gmail send-as onboarding
+- optional inbound-verification automation only as a future extension seam
+
+Active AWS-CMS scope does not include:
+
+- newsletter workflows
+- emailer preview or queue-sync flows
+- member-facing or tenant-facing self-service onboarding
 
 ## Ownership Boundary
 
@@ -87,4 +109,3 @@ This contract is read-only in current form. No mutate/apply path is introduced f
 - Changes to allowed-root policy for internal reads
 - Changes to profile-to-analytics derivation rules
 - Any proposal to move internal file reads out of shared core
-

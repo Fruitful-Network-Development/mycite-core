@@ -5,7 +5,7 @@ FND portal build spec.
 ## Current role
 
 - primary organization/admin portal
-- hosts FND-scoped and member-scoped AWS/PayPal admin tools
+- hosts FND-scoped operator AWS-CMS tooling plus member-scoped PayPal admin tooling
 - provides the canonical SYSTEM/NETWORK/UTILITIES shell for the organization-facing runtime
 
 ## Current role
@@ -39,7 +39,6 @@ Enabled optional tools:
 - `fnd_provisioning`
 - `paypal_tenant_actions`
 - `paypal_service_agreement`
-- `aws_tenant_actions`
 - `aws_platform_admin`
 - `fnd_ebi` (FND EBI — hosted site analytics mediation)
 - `operations`

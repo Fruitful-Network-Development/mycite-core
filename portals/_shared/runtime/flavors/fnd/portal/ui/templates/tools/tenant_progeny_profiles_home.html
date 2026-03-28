@@ -3,7 +3,7 @@
 {% block title %}MyCite | Member Progeny Profiles{% endblock %}
 
 {% set page_title = "Member Progeny Profiles" %}
-{% set page_subtitle = "Member capability metadata (no secrets) used for act-on-behalf routing" %}
+{% set page_subtitle = "Member capability metadata (no secrets) used for current member-facing routing only" %}
 
 {% block body %}
   <div class="card" style="max-width:1100px;">
@@ -12,7 +12,7 @@
     <div class="card__body">
       <p>
         Source: <code>/portal/api/progeny/members</code>. Legacy <code>/portal/api/progeny/tenants</code> remains supported for compatibility.
-        This profile layer stores capability + ref metadata only.
+        This profile layer stores capability + ref metadata only. Operator-only AWS-CMS staging lives outside this member surface.
       </p>
       <div style="margin:0.5rem 0 1rem;">
         <button id="tp-refresh" class="ops-btn">Refresh</button>
@@ -24,13 +24,12 @@
             <th>Title</th>
             <th>MSN</th>
             <th>PayPal</th>
-            <th>AWS</th>
             <th>Status</th>
             <th>Integration Refs</th>
           </tr>
         </thead>
         <tbody id="tp-body">
-          <tr><td colspan="7">Loading…</td></tr>
+          <tr><td colspan="6">Loading…</td></tr>
         </tbody>
       </table>
       <pre id="tp-output" class="ops-status" style="margin-top:0.75rem;">Ready.</pre>
