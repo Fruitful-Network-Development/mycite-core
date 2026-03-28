@@ -49,8 +49,9 @@ Example decoded denotations from current staged magnitude:
 ## Validation Policy (Current)
 
 - Schema decode is required for authority metadata.
-- Address validation currently enforces prefix-compatible bounds and schema-mode checks.
-- When schema shape is narrower than full interactive address depth, validation degrades to controlled prefix-only mode with explicit warnings.
+- Address validation enforces full radix bounds for every supplied segment (fail-closed when a segment exceeds schema limits).
+- Range normalization and scope comparisons are radix-driven and do not depend on Gregorian month/day assumptions.
+- When schema authority is unavailable (missing/invalid `1-1-1`), chronology defaults are not synthesized from wall-clock values; runtime returns authority-unavailable and requires schema repair.
 
 ## Authoritative Paths / Files
 

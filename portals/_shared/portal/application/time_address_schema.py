@@ -109,10 +109,9 @@ def schema_from_anchor_payload(anchor_payload: dict[str, Any]) -> dict[str, Any]
             "schema": {"datum_id": "1-1-1", "label": label, "magnitude_bits": magnitude_bits},
         }
     denotations = list(decoded.denotations)
+    # HOPS authority is engine-owned and fully schema-driven. The decoded
+    # denotations define the valid radix at each segment position.
     validation_mode = "full"
-    # Current canonical addresses use 2-prefix + year/month/day/hour/minute (up to 7 segments).
-    if len(denotations) < 7:
-        validation_mode = "prefix_only"
     return {
         "ok": True,
         "schema": {
@@ -139,21 +138,19 @@ def validate_address_with_schema(address: str, schema_payload: dict[str, Any]) -
     segments = [int(part) for part in parts]
     schema = schema_payload.get("schema") if isinstance(schema_payload.get("schema"), dict) else {}
     if not bool(schema_payload.get("ok")):
-        return {"ok": True, "warnings": [str(schema_payload.get("error") or "schema unavailable")], "mode": "fallback"}
+        return {"ok": False, "error": str(schema_payload.get("error") or "schema unavailable"), "mode": "unavailable"}
     denotations = [int(x) for x in list(schema.get("denotations") or []) if isinstance(x, int)]
     if not denotations:
-        return {"ok": True, "warnings": ["schema has no denotations"], "mode": "fallback"}
+        return {"ok": False, "error": "schema has no denotations", "mode": "unavailable"}
     mode = str(schema.get("validation_mode") or "full")
-    if mode == "full" and len(segments) <= len(denotations):
-        for idx, value in enumerate(segments):
-            if value < 0 or value >= denotations[idx]:
-                return {"ok": False, "error": f"segment[{idx}] out of schema range"}
-        return {"ok": True, "mode": "full", "warnings": []}
-    prefix_len = min(2, len(segments), len(denotations))
-    for idx in range(prefix_len):
-        if segments[idx] < 0 or segments[idx] >= denotations[idx]:
-            return {"ok": False, "error": f"prefix segment[{idx}] out of schema range"}
-    return {"ok": True, "mode": "prefix_only", "warnings": []}
+    if mode != "full":
+        return {"ok": False, "error": f"unsupported validation mode: {mode}", "mode": "unavailable"}
+    if len(segments) > len(denotations):
+        return {"ok": False, "error": "address has more segments than schema allows"}
+    for idx, value in enumerate(segments):
+        if value < 0 or value >= denotations[idx]:
+            return {"ok": False, "error": f"segment[{idx}] out of schema range"}
+    return {"ok": True, "mode": "full", "warnings": []}
 
 
 def anchor_path_for_tool(private_dir: Path, tool_slug: str, anchor_file: str) -> Path:

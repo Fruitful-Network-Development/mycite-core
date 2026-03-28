@@ -39,6 +39,22 @@ class ResourceRegistryBoundaryTests(unittest.TestCase):
         normalized = registry.normalize_anthology_compatible_payload(payload)
         self.assertEqual(list(normalized.keys()), ["4-1-1", "4-1-2", "4-1-3"])
 
+    def test_local_index_surfaces_legacy_top_level_resources_in_resources_root(self):
+        registry = _load_registry_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_root = Path(tmpdir)
+            resources_root = data_root / "resources"
+            resources_root.mkdir(parents=True, exist_ok=True)
+            (resources_root / "rec.3-2-3-17-77-1-6-4-1-4.txa.json").write_text(
+                json.dumps({"schema": "legacy.rec", "updated_at": 12345}) + "\n",
+                encoding="utf-8",
+            )
+            payload = registry.load_index(data_root, scope=registry.LOCAL_SCOPE)
+            resources = payload.get("resources") if isinstance(payload.get("resources"), list) else []
+            self.assertEqual(len(resources), 1)
+            self.assertEqual(resources[0].get("resource_name"), "rec.3-2-3-17-77-1-6-4-1-4.txa.json")
+            self.assertEqual(resources[0].get("status"), "legacy_root")
+
     def test_remove_inherited_source_only_removes_target_source(self):
         registry = _load_registry_module()
         with tempfile.TemporaryDirectory() as tmpdir:

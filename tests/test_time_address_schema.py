@@ -36,19 +36,25 @@ class TimeAddressSchemaTests(unittest.TestCase):
         self.assertEqual(schema.get("label"), "UTC_mixed_radix")
         self.assertEqual(schema.get("denotation_count"), 6)
 
-    def test_validate_address_prefix_only_mode(self):
+    def test_validate_address_full_mode(self):
         mod = _load_schema_module()
         schema_payload = {
             "ok": True,
             "schema": {
                 "denotations": [14, 1000, 1000, 365, 60, 60],
-                "validation_mode": "prefix_only",
+                "validation_mode": "full",
             },
         }
-        valid = mod.validate_address_with_schema("13-787-2026-3-26", schema_payload)
+        valid = mod.validate_address_with_schema("13-787-26-3-26", schema_payload)
         self.assertTrue(bool(valid.get("ok")))
-        invalid = mod.validate_address_with_schema("15-787-2026-3-26", schema_payload)
+        invalid = mod.validate_address_with_schema("15-787-26-3-26", schema_payload)
         self.assertFalse(bool(invalid.get("ok")))
+
+    def test_validate_address_fails_when_schema_unavailable(self):
+        mod = _load_schema_module()
+        out = mod.validate_address_with_schema("13-787-26", {"ok": False, "error": "missing 1-1-1"})
+        self.assertFalse(bool(out.get("ok")))
+        self.assertIn("missing 1-1-1", str(out.get("error") or ""))
 
 
 if __name__ == "__main__":

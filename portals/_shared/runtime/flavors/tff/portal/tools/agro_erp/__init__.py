@@ -39,11 +39,16 @@ from _shared.portal.sandbox.tool_sandbox_session import (
 from _shared.portal.services.portal_model import canonicalize_portal_model_config
 from _shared.portal.services.profile_resolver import resolve_fnd_profile_path, resolve_public_profile_path
 from _shared.portal.application.time_address import (
+    default_time_scope_for_schema,
     infer_specificity,
     normalize_time_address,
     normalize_time_address_for_schema,
     projection_year_month_day,
     same_scope,
+)
+from _shared.portal.application.coordinate_hops import (
+    classify_coordinate_token as classify_coordinate_hops_token,
+    decode_coordinate_token as decode_coordinate_hops_token,
 )
 from _shared.portal.application.time_address_schema import schema_from_anchor_payload, validate_address_with_schema
 from _shared.portal.runtime_paths import utility_tools_dir
@@ -61,9 +66,7 @@ TOOL_TITLE = "AGRO ERP"
 TOOL_HOME_PATH = "/portal/tools/agro_erp/home"
 TOOL_BLUEPRINT = agro_erp_bp
 
-_HEX_RE = re.compile(r"^[0-9A-Fa-f]+$")
 _DATUM_ID_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
-_COORD_SCALE = 10_000_000.0
 _HEX_TOKEN_RE = re.compile(r"^[0-9A-Fa-f]+$")
 
 # Default FND taxonomy collection reference for AGRO ERP.
@@ -736,45 +739,8 @@ def _pairs_from_datum(datum: Any) -> tuple[list[dict[str, str]], str]:
     return pairs, ""
 
 
-def _signed_axis_value(token: str, *, bits: int) -> int:
-    raw_value = int(token, 16)
-    sign = 1 << (bits - 1)
-    if raw_value & sign:
-        raw_value -= 1 << bits
-    return raw_value
-
-
 def _decode_coordinate_token(raw_value: Any) -> dict[str, Any] | None:
-    token = str(raw_value or "").strip()
-    if token.lower().startswith("0x"):
-        token = token[2:]
-    token = token.replace("_", "")
-    if not token or len(token) % 2 != 0 or not _HEX_RE.fullmatch(token):
-        return None
-
-    half = len(token) // 2
-    if half < 1:
-        return None
-
-    upper = token[:half].upper()
-    lower = token[half:].upper()
-    axis_bits = half * 4
-    longitude_axis = _signed_axis_value(upper, bits=axis_bits)
-    latitude_axis = _signed_axis_value(lower, bits=axis_bits)
-    longitude = longitude_axis / _COORD_SCALE
-    latitude = latitude_axis / _COORD_SCALE
-    longitude_text = f"{longitude:.13f}"
-    latitude_text = f"{latitude:.13f}"
-
-    return {
-        "normalized_hex": f"0x{token.upper()}",
-        "axis_bits": axis_bits,
-        "longitude_axis": {"hex": f"0x{upper}", "signed_value": longitude_axis},
-        "latitude_axis": {"hex": f"0x{lower}", "signed_value": latitude_axis},
-        "longitude": longitude,
-        "latitude": latitude,
-        "pair_text": [longitude_text, latitude_text],
-    }
+    return decode_coordinate_hops_token(raw_value, authority="auto", allow_legacy_fixed_hex=True)
 
 
 def _decode_token_sequence(tokens: list[str]) -> list[dict[str, Any]]:
@@ -794,23 +760,72 @@ def _extract_coordinate_tokens_from_datum(anthology: dict[str, Any], ref: str) -
     if isinstance(datum, dict):
         geometry = datum.get("geometry") if isinstance(datum.get("geometry"), dict) else {}
         coords = geometry.get("coordinates") if isinstance(geometry.get("coordinates"), list) else []
-        return [str(item).strip() for item in coords if _HEX_TOKEN_RE.fullmatch(str(item).strip())]
+        out: list[str] = []
+        for item in coords:
+            token_item = str(item).strip()
+            cls = classify_coordinate_hops_token(token_item)
+            if str(cls.get("classification") or "") in {"hops", "fixed_hex"}:
+                out.append(token_item)
+        return out
     if not isinstance(datum, list):
-        return [token] if _HEX_TOKEN_RE.fullmatch(token) else []
+        cls = classify_coordinate_hops_token(token)
+        return [token] if str(cls.get("classification") or "") in {"hops", "fixed_hex"} else []
     header = datum[0] if datum and isinstance(datum[0], list) else []
     if not isinstance(header, list):
         return []
     raw_tokens = [str(item).strip() for item in header[1:] if str(item).strip()]
-    return [item for item in raw_tokens if _HEX_TOKEN_RE.fullmatch(item)]
+    out: list[str] = []
+    for item in raw_tokens:
+        cls = classify_coordinate_hops_token(item)
+        if str(cls.get("classification") or "") in {"hops", "fixed_hex"}:
+            out.append(item)
+    return out
+
+
+def _coordinate_authority_from_anthology(config: dict[str, Any], anthology: dict[str, Any]) -> tuple[str, bool]:
+    explicit = str(get_path(config, "agro.coordinate.authority") or "").strip().lower()
+    if explicit in {"hops", "fixed_hex"}:
+        return explicit, (explicit == "fixed_hex")
+    seen_hops = False
+    seen_fixed = False
+    paths = ("property.geometry.coordinates", "property.bbox")
+    for cfg_path in paths:
+        for token in _resolve_path_tokens(config, cfg_path):
+            values = _extract_coordinate_tokens_from_datum(anthology, token)
+            if not values:
+                values = [token]
+            for value in values:
+                classification = classify_coordinate_hops_token(value)
+                class_id = str(classification.get("classification") or "")
+                if class_id == "hops":
+                    seen_hops = True
+                elif class_id == "fixed_hex":
+                    seen_fixed = True
+            if seen_hops and seen_fixed:
+                return "hops", False
+    if seen_hops:
+        return "hops", False
+    if seen_fixed:
+        return "fixed_hex", True
+    return "hops", False
 
 
 def _geojson_polygon_from_decoded(decoded_rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    def _as_float(value: Any) -> float | None:
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, dict):
+            nested = value.get("value")
+            if isinstance(nested, (int, float)):
+                return float(nested)
+        return None
+
     pairs: list[list[float]] = []
     for row in decoded_rows:
-        longitude = row.get("longitude")
-        latitude = row.get("latitude")
-        if isinstance(longitude, (int, float)) and isinstance(latitude, (int, float)):
-            pairs.append([float(longitude), float(latitude)])
+        longitude = _as_float(row.get("longitude"))
+        latitude = _as_float(row.get("latitude"))
+        if longitude is not None and latitude is not None:
+            pairs.append([longitude, latitude])
     if len(pairs) < 3:
         return None
     if pairs[0] != pairs[-1]:
@@ -1019,7 +1034,7 @@ def _daemon_specs() -> list[dict[str, Any]]:
             "config_path": "property.geometry.coordinates",
             "description": (
                 "Reads property geometry tokens, resolves through anthology when tokens are datum IDs, "
-                "then decodes fixed-width signed hex to longitude/latitude."
+                "then decodes HOPS mixed-radix coordinate addresses (legacy fixed-hex tolerated)."
             ),
             "directive": {
                 "script": "inv;(med;property.geometry.coordinates;resolve_coordinate_sequence);1",
@@ -1041,7 +1056,7 @@ def _daemon_specs() -> list[dict[str, Any]]:
             "config_path": "property.bbox",
             "description": (
                 "Reads property bbox tokens, resolves through anthology when tokens are datum IDs, "
-                "then decodes fixed-width signed hex to longitude/latitude."
+                "then decodes HOPS mixed-radix coordinate addresses (legacy fixed-hex tolerated)."
             ),
             "directive": {
                 "script": "inv;(med;property.bbox;resolve_coordinate_sequence);1",
@@ -1069,11 +1084,17 @@ def _run_daemon(spec: dict[str, Any], config: dict[str, Any], anthology: dict[st
     errors: list[str] = []
 
     workspace = _workspace()
+    authority, allow_legacy_fixed_hex = _coordinate_authority_from_anthology(config, anthology)
+    standard_id = "coordinate_hops" if authority == "hops" else "coordinate_fixed_hex"
     if workspace is not None and hasattr(workspace, "daemon_resolve_tokens"):
         engine_result = workspace.daemon_resolve_tokens(
             tokens=tokens,
-            standard_id="coordinate_fixed_hex",
-            context={"allow_trailing_null": True},
+            standard_id=standard_id,
+            context={
+                "allow_trailing_null": True,
+                "coordinate_authority": authority,
+                "allow_legacy_fixed_hex": bool(allow_legacy_fixed_hex),
+            },
         )
         warnings.extend([str(item) for item in list(engine_result.get("warnings") or [])])
         errors.extend([str(item) for item in list(engine_result.get("errors") or [])])
@@ -1086,7 +1107,7 @@ def _run_daemon(spec: dict[str, Any], config: dict[str, Any], anthology: dict[st
             lon = value.get("lon") if isinstance(value, dict) else None
             lat = value.get("lat") if isinstance(value, dict) else None
             pair = None
-            if isinstance(lon, (int, float)) and isinstance(lat, (int, float)):
+            if bool(mediation.get("ok")) and isinstance(lon, (int, float)) and isinstance(lat, (int, float)):
                 pair = [f"{float(lon):.13f}", f"{float(lat):.13f}"]
             resolved.append(
                 {
@@ -1120,6 +1141,9 @@ def _run_daemon(spec: dict[str, Any], config: dict[str, Any], anthology: dict[st
         "policy": {
             "engine_backed": bool(workspace is not None and hasattr(workspace, "daemon_resolve_tokens")),
             "resolution_mode": "constrained_daemon_execution",
+            "coordinate_authority": authority,
+            "allow_legacy_fixed_hex": bool(allow_legacy_fixed_hex),
+            "standard_id": standard_id,
         },
     }
 
@@ -1131,21 +1155,32 @@ def _build_time_addressed_objects(profile_context: dict[str, Any]) -> list[dict[
     intentionally thin and can later be replaced by anthology-backed records.
     """
     entities = [dict(item) for item in list(profile_context.get("entities") or []) if isinstance(item, dict)]
-    now = datetime.now(timezone.utc)
-    year = int(now.year)
-    month = int(now.month)
-    day = int(now.day)
+    schema_ctx = profile_context.get("time_schema") if isinstance(profile_context.get("time_schema"), dict) else {}
+    base_scope = str(profile_context.get("default_scope") or "").strip() or default_time_scope_for_schema(
+        schema_ctx, specificity="day"
+    )
+    base_scope = normalize_time_address(base_scope)
+    parts = [int(piece) for piece in base_scope.split("-") if piece.isdigit()]
+    if len(parts) < 5:
+        parts = [0, 0, 0, 0, 0]
+    prefix = (parts[0], parts[1])
+    year = parts[2]
+    month = parts[3]
+    day = parts[4]
+
+    def _scope(*temporal: int) -> str:
+        return "-".join(str(item) for item in (*prefix, *temporal))
     objects: list[dict[str, Any]] = []
     for idx, row in enumerate(entities[:8], start=1):
         ref = str(row.get("ref") or f"entity-{idx}").strip() or f"entity-{idx}"
         role = str(row.get("role") or "profile_entity").strip() or "profile_entity"
-        base = f"13-787-{year}-{month}-{day}"
+        base = _scope(year, month, day)
         if idx % 3 == 0:
-            start = f"13-787-{year}-{month}-1"
-            end = f"13-787-{year}-{month}-28-12-0"
+            start = _scope(year, month, 0)
+            end = _scope(year, month, max(day, 1), 59, 59)
         elif idx % 2 == 0:
-            start = f"13-787-{year}-{month}-{max(1, day - 1)}-0-0"
-            end = f"13-787-{year}-{month}-{day}-8-7"
+            start = _scope(year, month, max(0, day - 1), 0, 0)
+            end = _scope(year, month, day, 8, 7)
         else:
             start = base
             end = base
@@ -1163,7 +1198,7 @@ def _build_time_addressed_objects(profile_context: dict[str, Any]) -> list[dict[
             {
                 "object_id": "profile:seed",
                 "location_id": "profile",
-                "time_stamp": [f"13-787-{year}-{month}-{day}", f"13-787-{year}-{month}-{day}"],
+                "time_stamp": [_scope(year, month, day), _scope(year, month, day)],
                 "role": "profile_seed",
                 "label": "Profile seed",
             }
@@ -1171,11 +1206,16 @@ def _build_time_addressed_objects(profile_context: dict[str, Any]) -> list[dict[
     return objects
 
 
-def _filter_time_objects(selected_scope: str, objects: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _filter_time_objects(
+    selected_scope: str,
+    objects: list[dict[str, Any]],
+    *,
+    schema_payload: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     filtered: list[dict[str, Any]] = []
     for item in objects:
         stamp = item.get("time_stamp")
-        if same_scope(selected_scope, stamp if isinstance(stamp, (list, tuple)) else []):
+        if same_scope(selected_scope, stamp if isinstance(stamp, (list, tuple)) else [], schema_payload=schema_payload):
             filtered.append(dict(item))
     return filtered
 
@@ -1225,14 +1265,25 @@ def _build_model_payload() -> dict[str, Any]:
     capabilities_ok, capability_errors = _validate_capability_payload(capabilities)
 
     time_schema = _load_time_schema_context(config)
-    time_scope = f"13-787-{datetime.now(timezone.utc).year}"
-    schema_check = validate_address_with_schema(time_scope, time_schema)
-    try:
+    time_scope = ""
+    schema_check: dict[str, Any] = {}
+    time_objects: list[dict[str, Any]] = []
+    time_filtered: list[dict[str, Any]] = []
+    profile_context = dict(profile_context)
+    profile_context["time_schema"] = time_schema
+    if bool(time_schema.get("ok")):
+        time_scope = default_time_scope_for_schema(time_schema, specificity="year")
+        schema_check = validate_address_with_schema(time_scope, time_schema)
         time_scope = normalize_time_address_for_schema(time_scope, time_schema)
-    except Exception:
-        time_scope = normalize_time_address(time_scope)
-    time_objects = _build_time_addressed_objects(profile_context)
-    time_filtered = [dict(item) for item in time_objects if same_scope(time_scope, item.get("time_stamp") or [])]
+        profile_context["default_scope"] = default_time_scope_for_schema(time_schema, specificity="day")
+        time_objects = _build_time_addressed_objects(profile_context)
+        time_filtered = [
+            dict(item)
+            for item in time_objects
+            if same_scope(time_scope, item.get("time_stamp") or [], schema_payload=time_schema)
+        ]
+    else:
+        schema_check = {"warnings": [str(time_schema.get("error") or "time schema authority unavailable")]}
     return {
         "tool_id": TOOL_ID,
         "portal_instance_id": str(current_app.config.get("MYCITE_PORTAL_INSTANCE_ID") or ""),
@@ -1275,9 +1326,9 @@ def _build_model_payload() -> dict[str, Any]:
             "primary_svg": dict(profile_context.get("primary_svg") or {}),
         },
         "time_context": {
-            "selected_scope": normalize_time_address(time_scope),
-            "specificity": infer_specificity(time_scope),
-            "calendar": projection_year_month_day(time_scope),
+            "selected_scope": normalize_time_address(time_scope) if time_scope else "",
+            "specificity": infer_specificity(time_scope) if time_scope else "",
+            "calendar": projection_year_month_day(time_scope, schema_payload=time_schema) if time_scope else {},
             "objects_total": len(time_objects),
             "objects_visible": len(time_filtered),
             "objects": time_filtered,
@@ -1516,9 +1567,22 @@ def agro_erp_time_filter():
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         abort(400, description="Expected JSON object body")
-    selected_scope = str(body.get("selected_scope") or "").strip() or f"13-787-{datetime.now(timezone.utc).year}"
+    selected_scope = str(body.get("selected_scope") or "").strip()
     config, _ = _active_config()
     schema_ctx = _load_time_schema_context(config if isinstance(config, dict) else {})
+    if not bool(schema_ctx.get("ok")):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": str(schema_ctx.get("error") or "time schema authority unavailable"),
+                    "schema": "mycite.portal.agro_erp.time_filter.v1",
+                }
+            ),
+            409,
+        )
+    if not selected_scope:
+        selected_scope = default_time_scope_for_schema(schema_ctx, specificity="year")
     schema_check = validate_address_with_schema(selected_scope, schema_ctx)
     if not bool(schema_check.get("ok")):
         return (
@@ -1547,15 +1611,18 @@ def agro_erp_time_filter():
         )
     anthology, _ = _anthology_payload()
     profile_context = _build_profile_context(anthology if isinstance(anthology, dict) else {})
+    profile_context = dict(profile_context)
+    profile_context["time_schema"] = schema_ctx
+    profile_context["default_scope"] = default_time_scope_for_schema(schema_ctx, specificity="day")
     objects = _build_time_addressed_objects(profile_context)
-    visible = _filter_time_objects(selected_scope, objects)
+    visible = [dict(item) for item in objects if same_scope(selected_scope, item.get("time_stamp") or [], schema_payload=schema_ctx)]
     return jsonify(
         {
             "ok": True,
             "schema": "mycite.portal.agro_erp.time_filter.v1",
             "selected_scope": selected_scope,
             "specificity": infer_specificity(selected_scope),
-            "calendar": projection_year_month_day(selected_scope),
+            "calendar": projection_year_month_day(selected_scope, schema_payload=schema_ctx),
             "objects_total": len(objects),
             "objects_visible": len(visible),
             "objects": visible,
@@ -1785,11 +1852,17 @@ def agro_erp_daemon_resolve():
     resolved: list[dict[str, Any]]
     warnings: list[str] = []
     errors: list[str] = []
+    authority, allow_legacy_fixed_hex = _coordinate_authority_from_anthology(config, anthology)
+    standard_id = "coordinate_hops" if authority == "hops" else "coordinate_fixed_hex"
     if workspace is not None and hasattr(workspace, "daemon_resolve_tokens"):
         engine_result = workspace.daemon_resolve_tokens(
             tokens=tokens,
-            standard_id="coordinate_fixed_hex",
-            context={"allow_trailing_null": True},
+            standard_id=standard_id,
+            context={
+                "allow_trailing_null": True,
+                "coordinate_authority": authority,
+                "allow_legacy_fixed_hex": bool(allow_legacy_fixed_hex),
+            },
         )
         warnings.extend([str(item) for item in list(engine_result.get("warnings") or [])])
         errors.extend([str(item) for item in list(engine_result.get("errors") or [])])
@@ -1803,7 +1876,7 @@ def agro_erp_daemon_resolve():
             lon = value.get("lon") if isinstance(value, dict) else None
             lat = value.get("lat") if isinstance(value, dict) else None
             pair = None
-            if isinstance(lon, (int, float)) and isinstance(lat, (int, float)):
+            if bool(mediation.get("ok")) and isinstance(lon, (int, float)) and isinstance(lat, (int, float)):
                 pair = [f"{float(lon):.13f}", f"{float(lat):.13f}"]
             resolved.append(
                 {
@@ -1835,6 +1908,9 @@ def agro_erp_daemon_resolve():
                 "policy": {
                     "engine_backed": bool(workspace is not None and hasattr(workspace, "daemon_resolve_tokens")),
                     "resolution_mode": "constrained_daemon_execution",
+                    "coordinate_authority": authority,
+                    "allow_legacy_fixed_hex": bool(allow_legacy_fixed_hex),
+                    "standard_id": standard_id,
                 },
             },
         }

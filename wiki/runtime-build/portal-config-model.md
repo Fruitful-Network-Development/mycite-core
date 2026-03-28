@@ -18,6 +18,7 @@ Canonical config sections are:
 
 - instance identity and network keys (`msn_id`, contracts, aliases, hosted)
 - `tools_configuration`
+- reference declarations (`references`; legacy `refferences` accepted for compatibility reads)
 - optional portal behavior/profile overlays (compatibility-readable)
 
 Canonical `tools_configuration[]` fields are:
@@ -28,6 +29,27 @@ Canonical `tools_configuration[]` fields are:
 - optional title and managing contract metadata
 
 Compatibility reads still accept legacy `tool_id`/`id` fields, but runtime normalizes manifest slugs to provider ids for import (`-` -> `_`).
+
+## Authority Chain (Runtime)
+
+The runtime authority chain is intentionally layered and non-interchangeable:
+
+| artifact | authority role | consumed by | local vs inherited | current drift risk | contract posture |
+|---|---|---|---|---|---|
+| `private/config.json` | portal-instance runtime authority (tool exposure, enabled status, mount target, anchor filename) | config loader + tool runtime + shell mediation bootstrap | local-only | legacy typo (`refferences`) and legacy id keys | normalized on read; canonical keys remain `tools_configuration` + `references` |
+| `private/utilities/tools/<tool>/spec.json` | tool capability declaration (inputs/outputs, inherited dependencies) | tool spec loader + tool-specific services | local-only for instance tool package | confusion with anchor ownership | spec does not define active anchor identity |
+| `private/utilities/tools/<tool>/tool.<msn_id>.<tool>.json` | tool sandbox anchor payload (schema/data authority for that sandbox) | tool runtime service layer (AGRO time schema, etc.) | local-only | treating anchor rows as hints instead of authority | engine consumes as authoritative when schema is valid; otherwise fail closed |
+| `public/fnd.<msn_id>.json` | profile overlays used by mediated views (property refs, titles, display hints) | AGRO profile staging/read models | may be inherited in future, currently local instance publication | conflation with schema authority | profile data is staging input, not chronology schema authority |
+| `public/msn.<msn_id>.json` | public identity/profile metadata and API affordances | profile resolver + UI identity surfaces | local publication | confusion with tool exposure authority | identity/profile only; does not enable tools |
+| `data/references/ref.<peer_msn_id>.*.json` | inherited resource reference pointers | data engine + inherited resource loaders | inherited linkage | provider-vs-consumer naming mismatches | treated as reference edge, not sandbox identity |
+
+Boundary statement:
+
+- Tool exposure/enablement: `private/config.json`
+- Sandbox anchor identity: `private/config.json` (`tools_configuration[].anchor`) + matching `tool.*` file
+- AGRO property/polygon staging: `public/fnd.<msn_id>.json` + referenced anthology/resources
+- Chronological schema authority: AGRO tool anchor datum `1-1-1`
+- Inherited/local boundary: resource/reference registries and contracts (never inferred from UI mode)
 
 ## Boundaries
 

@@ -635,33 +635,83 @@
     state.selectedContext = ctx;
   }
 
+  function parseTimeScopeSegments(scopeToken) {
+    var token = text(scopeToken);
+    if (!token) return [];
+    var parts = token.split("-");
+    var out = [];
+    for (var i = 0; i < parts.length; i += 1) {
+      var n = Number(parts[i]);
+      if (!Number.isFinite(n)) return [];
+      out.push(n);
+    }
+    return out;
+  }
+
+  function hopsScopeFromCalendar(calendar, overrides) {
+    var cal = calendar && typeof calendar === "object" ? calendar : {};
+    var patch = overrides && typeof overrides === "object" ? overrides : {};
+    var prefix = Array.isArray(cal.prefix) ? cal.prefix.slice(0, 2) : [0, 0];
+    var segmentRadices = Array.isArray(cal.segment_radices) ? cal.segment_radices : [];
+    var year = Number(patch.year != null ? patch.year : cal.year || 0);
+    var month = Number(patch.month != null ? patch.month : cal.month || 0);
+    var day = Number(patch.day != null ? patch.day : cal.day || 0);
+    var depth = Number(patch.depth != null ? patch.depth : 3);
+    if (!Number.isFinite(depth) || depth < 1) depth = 1;
+    function clampByRadix(value, idx) {
+      var radix = Number(segmentRadices[idx] || 1000);
+      var raw = Number(value || 0);
+      if (!Number.isFinite(raw)) raw = 0;
+      if (!Number.isFinite(radix) || radix <= 0) return Math.max(0, raw);
+      return Math.max(0, Math.min(raw, radix - 1));
+    }
+    var temporal = [clampByRadix(year, 0)];
+    if (depth >= 2) temporal.push(clampByRadix(month, 1));
+    if (depth >= 3) temporal.push(clampByRadix(day, 2));
+    var all = prefix.concat(temporal).map(function (n) { return String(Math.trunc(Number(n) || 0)); });
+    return all.join("-");
+  }
+
+  function selectedScopeFromCalendar(calendar) {
+    var cal = calendar && typeof calendar === "object" ? calendar : {};
+    var token = text(cal.selected_scope);
+    if (token) return token;
+    return hopsScopeFromCalendar(cal, { depth: 1 });
+  }
+
   function renderChronologyWorkbench(tool) {
     var bucket = agroState(tool);
     var calendar = bucket.timeContext && bucket.timeContext.calendar && typeof bucket.timeContext.calendar === "object"
       ? bucket.timeContext.calendar
       : {};
-    var monthLabels = Array.isArray(calendar.month_labels) ? calendar.month_labels : ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-    var year = Number(calendar.year || new Date().getUTCFullYear());
-    var selectedMonth = Number(calendar.month || 1);
-    var selectedDay = Number(calendar.day || 1);
+    var monthLabels = Array.isArray(calendar.month_labels) ? calendar.month_labels : [];
+    var year = Number(calendar.year || 0);
+    var selectedMonth = Number(calendar.month || 0);
+    var selectedDay = Number(calendar.day || 0);
     var dayCount = Number(calendar.days_in_month || 31);
     var selectedScope = text(bucket.timeContext && bucket.timeContext.selected_scope);
     if (selectedScope) setSelectedTimeContext(selectedScope);
+    var scopeSegments = parseTimeScopeSegments(selectedScopeFromCalendar(calendar));
+    var prefixText = scopeSegments.length >= 2 ? (String(scopeSegments[0]) + "-" + String(scopeSegments[1])) : "";
+    var monthCount = Math.max(1, Number(calendar.months_in_year || monthLabels.length || 12));
+    if (!monthLabels.length) {
+      monthLabels = Array(monthCount).fill(0).map(function (_, idx) { return "M" + String(idx + 1); });
+    }
     var visibleObjects = Array.isArray(bucket.timeContext && bucket.timeContext.objects) ? bucket.timeContext.objects : [];
     var monthArc = monthLabels.map(function (label, idx) {
-      var month = idx + 1;
+      var month = idx;
       var active = month === selectedMonth ? " is-active" : "";
-      return '<button type="button" class="agro-time__month' + active + '" data-agro-time-scope="13-787-' + year + '-' + month + '">' + esc(label) + "</button>";
+      return '<button type="button" class="agro-time__month' + active + '" data-agro-time-scope="' + esc(hopsScopeFromCalendar(calendar, { year: year, month: month, depth: 2 })) + '">' + esc(label) + "</button>";
     }).join("");
     var dayTicks = Array(Math.max(dayCount, 1)).fill(0).map(function (_, idx) {
-      var d = idx + 1;
+      var d = idx;
       var active = d === selectedDay ? " is-active" : "";
-      return '<button type="button" class="agro-time__tick' + active + '" data-agro-time-scope="13-787-' + year + '-' + selectedMonth + '-' + d + '" title="Day ' + d + '"></button>';
+      return '<button type="button" class="agro-time__tick' + active + '" data-agro-time-scope="' + esc(hopsScopeFromCalendar(calendar, { year: year, month: selectedMonth, day: d, depth: 3 })) + '" title="Day ' + String(d) + '"></button>';
     }).join("");
     var dayRow = Array(Math.max(dayCount, 1)).fill(0).map(function (_, idx) {
-      var d = idx + 1;
+      var d = idx;
       var active = d === selectedDay ? " is-active" : "";
-      return '<button type="button" class="agro-time__dayCell' + active + '" data-agro-time-scope="13-787-' + year + '-' + selectedMonth + '-' + d + '">' + d + "</button>";
+      return '<button type="button" class="agro-time__dayCell' + active + '" data-agro-time-scope="' + esc(hopsScopeFromCalendar(calendar, { year: year, month: selectedMonth, day: d, depth: 3 })) + '">' + String(d) + "</button>";
     }).join("");
     var objectRows = visibleObjects.length
       ? (
@@ -683,7 +733,7 @@
       '<div class="agro-time__yearRail">' +
       '<button type="button" class="agro-time__yearNav" data-agro-time-nav="prev" aria-label="Previous year">' +
       '<span class="agro-time__yearTag">' + esc(String(year - 1)) + '</span><span class="agro-time__arrow">◀</span></button>' +
-      '<div class="agro-time__scope"><strong>' + esc(selectedScope || "13-787-" + year) + "</strong></div>" +
+      '<div class="agro-time__scope"><strong>' + esc(selectedScope || hopsScopeFromCalendar(calendar, { depth: 1 })) + "</strong><small>" + esc(prefixText) + "</small></div>" +
       '<button type="button" class="agro-time__yearNav" data-agro-time-nav="next" aria-label="Next year">' +
       '<span class="agro-time__yearTag">' + esc(String(year + 1)) + '</span><span class="agro-time__arrow">▶</span></button>' +
       "</div>" +
@@ -697,7 +747,15 @@
   function loadAgroTimeScope(tool, scope) {
     var bucket = agroState(tool);
     var endpoint = routePrefixForTool(tool) + "/time/filter";
-    return api(endpoint, "POST", { selected_scope: scope }).then(function (payload) {
+    var scopeParts = parseTimeScopeSegments(scope);
+    return api(endpoint, "POST", {
+      selected_scope: scope,
+      selected_time: {
+        kind: "time_address",
+        segments: scopeParts,
+        specificity_hint: scopeParts.length <= 3 ? "year" : (scopeParts.length === 4 ? "month" : "day")
+      }
+    }).then(function (payload) {
       var calendar = payload && payload.calendar && typeof payload.calendar === "object" ? payload.calendar : {};
       bucket.timeContext = {
         selected_scope: text(payload && payload.selected_scope),
@@ -952,8 +1010,13 @@
             ? bucket.timeContext.calendar
             : {};
           var year = Number(calendar.year || new Date().getUTCFullYear());
-          var target = dir === "prev" ? year - 1 : year + 1;
-          loadAgroTimeScope(tool, "13-787-" + target).catch(function (err) {
+          var target = dir === "prev"
+            ? text(calendar.prev_year_scope || "")
+            : text(calendar.next_year_scope || "");
+          if (!target) {
+            target = hopsScopeFromCalendar(calendar, { year: dir === "prev" ? (year - 1) : (year + 1), depth: 1 });
+          }
+          loadAgroTimeScope(tool, target).catch(function (err) {
             if (els.mediationMeta) {
               els.mediationMeta.textContent = err && err.message ? err.message : "Year navigation failed.";
             }
@@ -1264,7 +1327,7 @@
         shell_verb: "mediate",
         current_verb: "mediate",
         shell_surface: "tool_mediation",
-        mediation_scope: "system_sandbox",
+        mediation_scope: "tool_sandbox",
         tool_id: tid
       }).then(function (payload) {
         state.selectedContext = payload || {};

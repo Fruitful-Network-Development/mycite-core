@@ -12,7 +12,7 @@ Capture AGRO datum-family decisions that must be frozen before deeper implementa
 
 ## Implemented Now (Locked)
 
-- AGRO opens through `SYSTEM` mediation only (`/portal/system?mediate_tool=agro_erp`).
+- AGRO opens via the unified shell host route (`/portal/system?mediate_tool=agro_erp`) while remaining a tool-sandbox mediation provider (not a tool-owned shell).
 - Default AGRO mediation mode is the dual-pane empty scaffold:
   - `spatial` (left operational pane, right contextual companion)
   - `chronological` (left operational pane, right contextual companion)

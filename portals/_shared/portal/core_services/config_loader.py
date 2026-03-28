@@ -9,6 +9,38 @@ from typing import Any
 _LOG = logging.getLogger("mycite.core_services.config")
 
 
+def _normalize_tools_configuration(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        token = str(item.get("name") or item.get("tool_id") or item.get("id") or "").strip().lower()
+        if not token:
+            continue
+        if token in seen:
+            continue
+        seen.add(token)
+        normalized = dict(item)
+        normalized["name"] = token
+        normalized["status"] = str(item.get("status") or "enabled").strip().lower() or "enabled"
+        normalized["mount_target"] = str(item.get("mount_target") or "peripherals.tools").strip().lower() or "peripherals.tools"
+        normalized["anchor"] = str(item.get("anchor") or "").strip()
+        out.append(normalized)
+    return out
+
+
+def normalize_private_config_contract(payload: dict[str, Any]) -> dict[str, Any]:
+    out = dict(payload or {})
+    # Preserve instance-authored typo while exposing canonical spelling.
+    if isinstance(out.get("refferences"), list) and not isinstance(out.get("references"), list):
+        out["references"] = list(out.get("refferences") or [])
+    out["tools_configuration"] = _normalize_tools_configuration(out.get("tools_configuration"))
+    return out
+
+
 def _read_json(path: Path) -> dict[str, Any] | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -78,4 +110,4 @@ def load_active_private_config(private_dir: Path, msn_id: str | None = None) -> 
     payload = _read_json(path)
     if payload is None:
         return {}
-    return payload
+    return normalize_private_config_contract(payload)

@@ -26,7 +26,7 @@ Track implementation-risk areas where legacy behavior, recent changes, and canon
 
 4. **Permissive sandbox compatibility matching**
    - Risk: config-context tools can appear in contexts that are not true tool-layer surfaces.
-   - Canonical direction: sandbox compatibility requires explicit `shell_surface=tool_mediation` + `mediation_scope=system_sandbox`.
+   - Canonical direction: sandbox compatibility requires explicit `shell_surface=tool_mediation` + `mediation_scope=tool_sandbox` (legacy `system_sandbox` accepted only as temporary compatibility input).
 
 ## Items Not Fully Canonicalized Yet
 

@@ -51,7 +51,50 @@ class MediationRegistryContractTests(unittest.TestCase):
         self.assertIsInstance(value, dict)
         self.assertIn("lat", value)
         self.assertIn("lon", value)
-        self.assertEqual(value.get("encoding"), "fixed_hex")
+        self.assertEqual(value.get("encoding"), "legacy_fixed_hex")
+
+    def test_coordinate_hops_decode(self):
+        registry = _load_registry()
+        decoded = registry.decode_value(
+            standard_id="coordinate_hops",
+            reference="",
+            magnitude="3-76-10-64-12-20",
+            context={},
+        )
+        self.assertTrue(decoded["ok"])
+        value = decoded["value"]
+        self.assertIsInstance(value, dict)
+        self.assertEqual(value.get("encoding"), "hops_mixed_radix")
+
+    def test_coordinate_hops_rejects_fixed_hex_without_compat_flag(self):
+        registry = _load_registry()
+        decoded = registry.decode_value(
+            standard_id="coordinate_hops",
+            reference="",
+            magnitude="CF69268F1894171F",
+            context={},
+        )
+        self.assertFalse(decoded["ok"])
+
+    def test_coordinate_hops_malformed_value_fails(self):
+        registry = _load_registry()
+        decoded = registry.decode_value(
+            standard_id="coordinate_hops",
+            reference="",
+            magnitude="bad-value",
+            context={},
+        )
+        self.assertFalse(decoded["ok"])
+
+    def test_coordinate_ambiguous_token_fails(self):
+        registry = _load_registry()
+        decoded = registry.decode_value(
+            standard_id="coordinate",
+            reference="",
+            magnitude="CF69-268F-1894-171F",
+            context={"coordinate_authority": "hops", "allow_legacy_fixed_hex": True},
+        )
+        self.assertFalse(decoded["ok"])
 
     def test_validation_errors_propagate(self):
         registry = _load_registry()

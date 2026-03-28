@@ -47,7 +47,7 @@ Reset behavior is part of the contract. File changes clear datum and facet atten
 
 Tool-layer mediation adds an explicit lock contract:
 
-- `?mediate_tool=<tool_id>` enters sandbox-depth mediation (`shell_surface=tool_mediation`, `mediation_scope=system_sandbox`, `directive=mediate`).
+- `?mediate_tool=<tool_id>` enters sandbox-depth mediation (`shell_surface=tool_mediation`, `mediation_scope=tool_sandbox`, `directive=mediate`).
 - auto/default workbench emissions (for example anthology bootstrap selection) must not override the locked tool layer.
 - explicit user selection intent (`user_select`, `user_file_focus`, `user_task_change`) may transition out of the locked tool layer.
 

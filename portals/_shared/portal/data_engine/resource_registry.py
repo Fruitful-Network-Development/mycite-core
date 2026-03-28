@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..data_contract import compact_payload_to_rows, rows_to_compact_payload
+from .anthology_normalization import datum_sort_key
 from ..samras import InvalidSamrasStructure, decode_structure
 
 
@@ -129,6 +130,37 @@ def _normalize_index_entry(entry: dict[str, Any], *, scope: str) -> dict[str, An
     }
 
 
+def _discover_legacy_root_resources(data_root: Path, *, scope: str) -> list[dict[str, Any]]:
+    token_scope = _normalize_scope(scope)
+    if token_scope != LOCAL_SCOPE:
+        return []
+    root = resources_root(data_root)
+    if not root.exists() or not root.is_dir():
+        return []
+    out: list[dict[str, Any]] = []
+    for path in sorted(root.glob("*.json")):
+        name = path.name
+        if name in {"index.local.json", "index.inherited.json"}:
+            continue
+        payload = _read_json(path)
+        out.append(
+            _normalize_index_entry(
+                {
+                    "resource_name": name,
+                    "resource_kind": _as_text(payload.get("resource_kind") or "legacy_resource"),
+                    "scope": LOCAL_SCOPE,
+                    "source_msn_id": "",
+                    "path": str(path),
+                    "version_hash": _as_text(payload.get("version_hash")),
+                    "updated_at": int(payload.get("updated_at") or 0),
+                    "status": "legacy_root",
+                },
+                scope=LOCAL_SCOPE,
+            )
+        )
+    return out
+
+
 def load_index(data_root: Path, *, scope: str) -> dict[str, Any]:
     ensure_layout(data_root)
     path = _index_path_for_scope(data_root, scope)
@@ -141,6 +173,29 @@ def load_index(data_root: Path, *, scope: str) -> dict[str, Any]:
         )
     resources = payload.get("resources") if isinstance(payload.get("resources"), list) else []
     normalized = [_normalize_index_entry(item, scope=scope) for item in resources if isinstance(item, dict)]
+    # Compatibility: live instances may still hold authored resources as
+    # top-level data/resources/rec.*.json files. Surface them for read flows
+    # without rewriting index ownership policy.
+    legacy_entries = _discover_legacy_root_resources(data_root, scope=scope)
+    if legacy_entries:
+        seen = {
+            (
+                _as_text(item.get("resource_id")),
+                _as_text(item.get("resource_name")),
+                _as_text(item.get("source_msn_id")),
+            )
+            for item in normalized
+        }
+        for entry in legacy_entries:
+            marker = (
+                _as_text(entry.get("resource_id")),
+                _as_text(entry.get("resource_name")),
+                _as_text(entry.get("source_msn_id")),
+            )
+            if marker in seen:
+                continue
+            seen.add(marker)
+            normalized.append(entry)
     normalized.sort(
         key=lambda item: (
             _as_text(item.get("source_msn_id")),
@@ -221,7 +276,7 @@ def _normalize_row_iterations(rows: list[dict[str, Any]]) -> list[dict[str, Any]
             row["row_id"] = identifier
             out.append(row)
     out.extend(passthrough)
-    out.sort(key=lambda item: _as_text(item.get("identifier") or item.get("row_id")))
+    out.sort(key=lambda item: datum_sort_key(item.get("identifier"), item.get("row_id")))
     return out
 
 

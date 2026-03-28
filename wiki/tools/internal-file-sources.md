@@ -29,7 +29,7 @@ Current implementation seam:
 
 ## FND-EBI Pattern
 
-`fnd_ebi` remains a service-collection tool anchored by `web-analytics.json`. Profile members such as `fnd-ebi.fnd.json` provide:
+`fnd_ebi` remains a service-collection tool anchored by `tool.<msn_id>.fnd-ebi.json` in the tool sandbox. `web-analytics.json` is compatibility-read only. Profile members such as `fnd-ebi.fnd.json` provide:
 
 - `domain`
 - `site_root`

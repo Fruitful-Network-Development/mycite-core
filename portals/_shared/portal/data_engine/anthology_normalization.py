@@ -3,6 +3,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
+# Keep datum ordering semantics explicit here: identifiers are local
+# layer-value_group-iteration addresses and must sort numerically by the
+# three numeric segments. These are not SAMRAS node addresses and not MSS
+# compact-array row indexes.
 
 _DATUM_ID_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
 

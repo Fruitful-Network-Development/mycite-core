@@ -36,7 +36,7 @@ Current default standard IDs include:
 
 Unknown standards are non-fatal. They return raw values with warnings rather than breaking the entire decode path.
 
-Coordinate mediation remains important because it supports the fixed-width hex split decoding used by geography and property-related workflows.
+Coordinate mediation remains important because it now prefers HOPS mixed-radix coordinate addresses while preserving fixed-width hex decoding as a compatibility path for legacy data.
 
 ## Boundaries
 

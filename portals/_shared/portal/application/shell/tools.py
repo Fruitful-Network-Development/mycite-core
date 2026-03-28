@@ -27,6 +27,17 @@ def _dict(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
 
 
+_TOOL_MEDIATION_SCOPE_TOKENS = {"tool_sandbox", "system_sandbox"}
+
+
+def _is_tool_mediation_context(context: dict[str, Any], shell_verb: str) -> bool:
+    return (
+        _text(context.get("shell_surface")).lower() == "tool_mediation"
+        and _text(context.get("mediation_scope")).lower() in _TOOL_MEDIATION_SCOPE_TOKENS
+        and shell_verb == "mediate"
+    )
+
+
 def _normalize_supported_source_contracts(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -129,12 +140,7 @@ def tool_matches_context(meta: dict[str, Any], context: dict[str, Any]) -> bool:
         return False
     if _text(context.get("schema")) == "mycite.shell.config_context.v1" and capability["config_context_support"]:
         return True
-    if (
-        _text(context.get("mediation_scope")).lower() == "system_sandbox"
-        and _text(context.get("shell_surface")).lower() == "tool_mediation"
-        and shell_verb == "mediate"
-        and capability["config_context_support"]
-    ):
+    if _is_tool_mediation_context(context, shell_verb) and capability["config_context_support"]:
         return True
     contracts = capability.get("supported_source_contracts") if isinstance(capability.get("supported_source_contracts"), list) else []
     if not contracts:
