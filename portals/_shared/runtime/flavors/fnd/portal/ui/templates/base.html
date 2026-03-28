@@ -175,6 +175,7 @@
         class="ide-inspector{% if shell_composition_mode is not defined or shell_composition_mode != 'tool' %} is-collapsed{% endif %}"
         data-shell-region="interface-panel"
         data-primary-surface="{% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}true{% else %}false{% endif %}"
+        data-surface-layout="{% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}primary-fill{% else %}sidebar{% endif %}"
         aria-label="Interface panel"
         aria-hidden="{% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}false{% else %}true{% endif %}"
       >
@@ -185,7 +186,7 @@
           </div>
           <button type="button" class="ide-inspector__close" data-inspector-close>Close Panel</button>
         </header>
-        <section id="portalInspectorContent" class="ide-inspector__content">
+        <section id="portalInspectorContent" class="ide-inspector__content" data-interface-panel-scroll-root="true">
           {% block inspector_content %}
             <p class="ide-inspector__empty" id="portalInspectorEmptyDefault">Select an item to load interface panel content.</p>
           {% endblock %}

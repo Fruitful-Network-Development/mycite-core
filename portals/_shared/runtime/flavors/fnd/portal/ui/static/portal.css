@@ -3817,6 +3817,9 @@ body.is-modal-open {
 .ide-shell[data-shell-composition="tool"] .ide-inspector {
   border-left: 1px solid rgba(0, 0, 0, 0.08);
   background: color-mix(in srgb, var(--paper, #f6f6f0) 92%, #fff 8%);
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
 }
 
 .ide-shell[data-shell-composition="tool"] .ide-inspector__close {
@@ -3869,6 +3872,21 @@ body.is-modal-open {
   width: 100%;
   overflow: auto;
   overscroll-behavior: contain;
+}
+
+.ide-shell[data-shell-composition="tool"] .ide-inspector__content {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 0;
+}
+
+.ide-shell[data-shell-composition="tool"] .ide-inspector__content > * {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  align-self: stretch;
 }
 
 .ide-workbench[data-active-service="system"] {
@@ -5655,16 +5673,41 @@ body.is-modal-open {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
 }
 
-.fnd-ebi-metrics {
+.tool-valueGrid {
+  display: grid;
+  grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr);
+  gap: 0.45rem 1rem;
   margin: 0.5rem 0 0;
-  padding-left: 1.1rem;
-  list-style: disc;
+  width: 100%;
 }
 
-.fnd-ebi-metrics li {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
+.tool-valueGrid__row {
+  display: contents;
+}
+
+.tool-valueGrid__term {
+  margin: 0;
+  color: var(--ink2, #667068);
+  font-size: 0.84rem;
+  text-transform: lowercase;
+}
+
+.tool-valueGrid__value {
+  margin: 0;
+  min-width: 0;
+  font-weight: 700;
+  color: var(--ink, #203126);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .tool-valueGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tool-valueGrid__term {
+    margin-top: 0.3rem;
+  }
 }
 
 .fnd-ebi-sparkline {
@@ -5805,19 +5848,56 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   gap: 12px;
   min-height: 0;
   flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
 }
 
 .system-tool-interface__controls {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  width: 100%;
 }
 
 .system-tool-interface__body {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  flex: 1 1 auto;
+  align-content: start;
+}
+
+.ide-shell[data-shell-composition="tool"] .system-tool-interface {
+  min-height: 100%;
+  padding: 1rem clamp(1rem, 1.8vw, 1.5rem) 1.25rem;
+  box-sizing: border-box;
+}
+
+.ide-shell[data-shell-composition="tool"] .system-tool-interface__body {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > .card,
+.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > article,
+.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > div {
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
+}
+
+.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > p,
+.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > section {
+  grid-column: 1 / -1;
+}
+
+.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > .card .card__body,
+.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > article .card__body {
+  min-width: 0;
 }
 
 .agro-scaffold {

@@ -226,6 +226,9 @@
     }
 
     function applyInspectorWidth(value) {
+      if (currentShellComposition() === "tool") {
+        return readShellPxVar("--ide-inspector-w", currentLayoutPolicy().defaultInspectorWidth);
+      }
       const policy = currentLayoutPolicy();
       const width = clamp(value, policy.minInspectorWidth, policy.maxInspectorWidth);
       shell.style.setProperty("--ide-inspector-w", `${width}px`);
@@ -315,7 +318,7 @@
 
     function setInspectorWidth(value, persist) {
       const width = applyInspectorWidth(value);
-      if (persist) {
+      if (persist && currentShellComposition() !== "tool") {
         try { window.localStorage.setItem(INSPECTOR_WIDTH_KEY, String(width)); } catch (_) {}
       }
       rebalanceWorkbench();
@@ -352,6 +355,7 @@
       workbench.setAttribute("data-foreground-visible", composition === "tool" ? "false" : "true");
       workbench.setAttribute("aria-hidden", composition === "tool" ? "true" : "false");
       inspector.setAttribute("data-primary-surface", composition === "tool" ? "true" : "false");
+      inspector.setAttribute("data-surface-layout", composition === "tool" ? "primary-fill" : "sidebar");
       if (composition === "tool") {
         setInspectorOpen(true, false);
       } else {
