@@ -18,6 +18,7 @@ from portal.api.config import register_config_routes
 from portal.api.contract_handshake import register_contract_handshake_routes
 from portal.api.contracts import register_contract_routes
 from _shared.portal.api.data_workspace import register_data_routes
+from _shared.portal.application.service_tools import service_tool_definition
 from portal.api.inbox import register_inbox_routes
 from portal.api.request_log import register_request_log_routes
 from portal.core_services.runtime import (
@@ -874,6 +875,23 @@ def _configured_tool_status_items() -> list[Dict[str, Any]]:
             continue
         runtime_id = raw_name.replace("-", "_")
         tab = next((item for item in TOOL_TABS if str(item.get("tool_id") or "").strip().lower() == runtime_id), {})
+        if not tab:
+            for candidate_id in (
+                "fnd_ebi",
+                "aws_platform_admin",
+                "aws_tenant_actions",
+                "paypal_service_agreement",
+                "paypal_tenant_actions",
+                "operations",
+                "fnd_provisioning",
+            ):
+                definition = service_tool_definition(candidate_id)
+                namespace = str(definition.get("namespace") or "").strip().lower()
+                if namespace != raw_name:
+                    continue
+                runtime_id = candidate_id
+                tab = next((item for item in TOOL_TABS if str(item.get("tool_id") or "").strip().lower() == runtime_id), {})
+                break
         out.append(
             {
                 "name": raw_name,

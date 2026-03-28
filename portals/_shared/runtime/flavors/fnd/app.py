@@ -26,6 +26,7 @@ from portal.api.request_log import register_request_log_routes
 from portal.api.tenant_progeny import register_tenant_progeny_routes
 from portal.api.website_analytics import register_website_analytics_routes
 from _shared.portal.application.runtime.instance_context import build_instance_context_from_env
+from _shared.portal.application.service_tools import service_tool_definition
 from _shared.portal.application.shell.contracts import build_shell_verbs_payload
 from portal.core_services.runtime import (
     active_service_from_path,
@@ -699,6 +700,23 @@ def _configured_tool_status_items() -> list[Dict[str, Any]]:
             continue
         runtime_id = raw_name.replace("-", "_")
         tab = next((item for item in TOOL_TABS if str(item.get("tool_id") or "").strip().lower() == runtime_id), {})
+        if not tab:
+            for candidate_id in (
+                "fnd_ebi",
+                "aws_platform_admin",
+                "aws_tenant_actions",
+                "paypal_service_agreement",
+                "paypal_tenant_actions",
+                "operations",
+                "fnd_provisioning",
+            ):
+                definition = service_tool_definition(candidate_id)
+                namespace = str(definition.get("namespace") or "").strip().lower()
+                if namespace != raw_name:
+                    continue
+                runtime_id = candidate_id
+                tab = next((item for item in TOOL_TABS if str(item.get("tool_id") or "").strip().lower() == runtime_id), {})
+                break
         out.append(
             {
                 "name": raw_name,

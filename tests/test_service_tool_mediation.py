@@ -253,6 +253,60 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertIn("smtp", card_body)
             self.assertIn("verification", card_body)
             self.assertIn("provider", card_body)
+            self.assertIn("workflow", card_body)
+            workflow = card_body.get("workflow") if isinstance(card_body.get("workflow"), dict) else {}
+            self.assertEqual(workflow.get("schema"), "mycite.service_tool.aws_csm.onboarding.v1")
+            self.assertIn("smtp.host", list(workflow.get("missing_required_now") or []))
+            self.assertIn("smtp.port", list(workflow.get("missing_required_now") or []))
+            self.assertFalse(bool(workflow.get("is_ready_for_user_handoff")))
+
+    def test_service_tool_context_emits_profile_interface_cards(self):
+        module = _load_service_tools_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.fnd.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "mycite.service_tool.aws_csm.profile.v1",
+                        "identity": {
+                            "profile_id": "aws-csm.fnd",
+                            "tenant_id": "fnd",
+                            "domain": "fruitfulnetworkdevelopment.com",
+                            "region": "us-east-1",
+                            "single_user_email": "dylan@fruitfulnetworkdevelopment.com",
+                        },
+                        "smtp": {
+                            "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                            "host": "smtp.gmail.com",
+                            "port": "587",
+                            "username": "dylan@fruitfulnetworkdevelopment.com",
+                            "forward_to_email": "dylancarsonmontgomery@gmail.com",
+                            "handoff_ready": True,
+                        },
+                        "verification": {"status": "pending"},
+                        "provider": {"gmail_send_as_status": "pending"},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            payload = module.build_service_tool_config_context(
+                "aws_platform_admin",
+                private_dir=private_dir,
+                tool_tabs=[{"tool_id": "aws_platform_admin", **module.build_service_tool_meta("aws_platform_admin")}],
+                portal_instance_id="fnd",
+                msn_id="3-2-3",
+            )
+            inspector_cards = payload.get("inspector_cards") if isinstance(payload.get("inspector_cards"), list) else []
+            profile_cards = [card for card in inspector_cards if str(card.get("kind") or "") == "profile"]
+            self.assertTrue(profile_cards)
+            first = profile_cards[0].get("body") if isinstance(profile_cards[0], dict) else {}
+            self.assertIn("identity", first)
+            self.assertIn("smtp", first)
+            self.assertIn("verification", first)
+            self.assertIn("provider", first)
 
 
 if __name__ == "__main__":

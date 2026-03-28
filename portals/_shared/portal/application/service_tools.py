@@ -282,12 +282,20 @@ def _classify_service_profile(path: Path, payload: Any, *, namespace: str, profi
             "tenant_id": _text(identity.get("tenant_id") or body.get("tenant_id")),
             "domain": _text(identity.get("domain") or body.get("domain")),
             "region": _text(identity.get("region") or body.get("region")),
+            "single_user_msn_id": _text(identity.get("single_user_msn_id") or body.get("single_user_msn_id")),
+            "single_user_email": _text(identity.get("single_user_email") or body.get("single_user_email")),
+            "send_as_email": _text(identity.get("send_as_email") or body.get("alias_email")),
         }
         smtp = {
             "send_as_email": _text(smtp.get("send_as_email") or body.get("alias_email")),
             "local_part": _text(smtp.get("local_part") or body.get("local_part")),
             "forward_to_email": _text(smtp.get("forward_to_email") or body.get("forward_to_email")),
             "forwarding_status": _text(smtp.get("forwarding_status") or body.get("forwarding_status")),
+            "host": _text(smtp.get("host") or body.get("smtp_host")),
+            "port": _text(smtp.get("port") or body.get("smtp_port")),
+            "username": _text(smtp.get("username") or body.get("smtp_username")),
+            "credentials_source": _text(smtp.get("credentials_source") or body.get("smtp_credentials_source")),
+            "handoff_ready": bool(smtp.get("handoff_ready") or body.get("smtp_handoff_ready")),
         }
         verification = {
             "status": _text(verification.get("status") or body.get("gmail_send_as_status")),
@@ -297,9 +305,12 @@ def _classify_service_profile(path: Path, payload: Any, *, namespace: str, profi
                 verification.get("email_received_at") or body.get("verification_email_received_at")
             ),
             "verified_at": _text(verification.get("verified_at") or body.get("verified_at")),
+            "portal_state": _text(verification.get("portal_state") or body.get("verification_portal_state")),
         }
         provider = {
             "gmail_send_as_status": _text(provider.get("gmail_send_as_status") or body.get("gmail_send_as_status")),
+            "aws_ses_identity_status": _text(provider.get("aws_ses_identity_status") or body.get("aws_ses_identity_status")),
+            "last_checked_at": _text(provider.get("last_checked_at") or body.get("provider_last_checked_at")),
         }
         body["identity"] = identity
         body["smtp"] = smtp
@@ -319,6 +330,26 @@ def _classify_service_profile(path: Path, payload: Any, *, namespace: str, profi
             warnings.append("recommended field missing: verification.status")
         if not _text(provider.get("gmail_send_as_status") or body.get("gmail_send_as_status")):
             warnings.append("recommended field missing: provider.gmail_send_as_status")
+        required_now = {
+            "identity.domain": _text(identity.get("domain")),
+            "identity.tenant_id": _text(identity.get("tenant_id")),
+            "identity.single_user_email": _text(identity.get("single_user_email")),
+            "smtp.send_as_email": _text(smtp.get("send_as_email")),
+            "smtp.host": _text(smtp.get("host")),
+            "smtp.port": _text(smtp.get("port")),
+            "smtp.username": _text(smtp.get("username")),
+            "verification.status": _text(verification.get("status")),
+        }
+        missing_required = [key for key, value in required_now.items() if not value]
+        provider_ready = bool(_text(provider.get("gmail_send_as_status")) in {"active", "configured", "verified", "ready"})
+        handoff_ready = not missing_required and bool(smtp.get("handoff_ready"))
+        body["workflow"] = {
+            "schema": "mycite.service_tool.aws_csm.onboarding.v1",
+            "flow": "single_user_send_as",
+            "missing_required_now": missing_required,
+            "is_ready_for_user_handoff": handoff_ready,
+            "is_send_as_confirmed": provider_ready,
+        }
     return body, errors, warnings
 
 
@@ -520,6 +551,7 @@ def _profile_cards_for_payload(path: Path, payload: Any) -> list[dict[str, Any]]
         "smtp",
         "verification",
         "provider",
+        "workflow",
     ):
         if key in payload:
             body[key] = payload.get(key)
@@ -730,6 +762,92 @@ def _merge_fnd_ebi_snapshots_into_cards(profile_cards: list[dict[str, Any]], sna
     return out
 
 
+def _service_profile_interface_cards(namespace: str, profile_cards: list[dict[str, Any]], analytics_snapshots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    if namespace == "fnd-ebi":
+        for snapshot in analytics_snapshots:
+            if not isinstance(snapshot, dict):
+                continue
+            domain = _text(snapshot.get("domain")) or "site"
+            traffic = snapshot.get("traffic") if isinstance(snapshot.get("traffic"), dict) else {}
+            events_summary = snapshot.get("events_summary") if isinstance(snapshot.get("events_summary"), dict) else {}
+            errors_noise = snapshot.get("errors_noise") if isinstance(snapshot.get("errors_noise"), dict) else {}
+            access_state = snapshot.get("access_log") if isinstance(snapshot.get("access_log"), dict) else {}
+            error_state = snapshot.get("error_log") if isinstance(snapshot.get("error_log"), dict) else {}
+            events_state = snapshot.get("events_file") if isinstance(snapshot.get("events_file"), dict) else {}
+            out.append(
+                build_inspector_card(
+                    card_id=f"fnd-ebi-profile-{domain}",
+                    title=domain,
+                    summary=_text(snapshot.get("health_label")) or "analytics",
+                    kind="profile",
+                    body={
+                        "domain": domain,
+                        "site_root": _text(snapshot.get("site_root")),
+                        "analytics_root": _text(snapshot.get("analytics_root")),
+                        "access_log": {
+                            "path": _text(access_state.get("path")),
+                            "present": bool(access_state.get("present")),
+                            "readable": bool(access_state.get("readable")),
+                        },
+                        "error_log": {
+                            "path": _text(error_state.get("path")),
+                            "present": bool(error_state.get("present")),
+                            "readable": bool(error_state.get("readable")),
+                        },
+                        "events_file": {
+                            "path": _text(events_state.get("path")),
+                            "present": bool(events_state.get("present")),
+                            "readable": bool(events_state.get("readable")),
+                        },
+                        "traffic_summary": {
+                            "requests_30d": int(traffic.get("requests_30d") or 0),
+                            "unique_visitors_approx_30d": int(traffic.get("unique_visitors_approx_30d") or 0),
+                            "bot_share": float(traffic.get("bot_share") or 0.0),
+                            "response_breakdown": dict(traffic.get("response_breakdown") or {}),
+                        },
+                        "event_summary": {
+                            "events_30d": int(events_summary.get("events_30d") or 0),
+                            "event_type_counts": dict(events_summary.get("event_type_counts") or {}),
+                        },
+                        "errors_noise": {
+                            "error_severity_counts": dict(errors_noise.get("error_severity_counts") or {}),
+                            "suspicious_probe_examples": list(errors_noise.get("suspicious_probe_examples") or []),
+                        },
+                        "warnings": list(snapshot.get("warnings") or []),
+                    },
+                )
+            )
+    if namespace == "aws-csm":
+        for card in profile_cards:
+            if not isinstance(card, dict):
+                continue
+            body = dict(card.get("body")) if isinstance(card.get("body"), dict) else {}
+            identity = dict(body.get("identity")) if isinstance(body.get("identity"), dict) else {}
+            smtp = dict(body.get("smtp")) if isinstance(body.get("smtp"), dict) else {}
+            verification = dict(body.get("verification")) if isinstance(body.get("verification"), dict) else {}
+            provider = dict(body.get("provider")) if isinstance(body.get("provider"), dict) else {}
+            workflow = dict(body.get("workflow")) if isinstance(body.get("workflow"), dict) else {}
+            title = _text(card.get("title")) or _text(identity.get("domain")) or _text(card.get("card_id")) or "profile"
+            summary = "ready" if bool(workflow.get("is_ready_for_user_handoff")) else "staging required"
+            out.append(
+                build_inspector_card(
+                    card_id=f"aws-csm-profile-{_text(card.get('card_id')) or title}",
+                    title=title,
+                    summary=summary,
+                    kind="profile",
+                    body={
+                        "identity": identity,
+                        "smtp": smtp,
+                        "verification": verification,
+                        "provider": provider,
+                        "workflow": workflow,
+                    },
+                )
+            )
+    return out
+
+
 def build_service_tool_config_context(
     tool_id: str,
     *,
@@ -934,6 +1052,13 @@ def build_service_tool_config_context(
             kind="metadata",
         ),
     ]
+    config_context["inspector_cards"].extend(
+        _service_profile_interface_cards(
+            namespace=namespace,
+            profile_cards=profile_cards,
+            analytics_snapshots=analytics_snapshots,
+        )
+    )
     return config_context
 
 
