@@ -8,11 +8,15 @@ from typing import Any
 from _shared.portal.application.internal_sources import derive_client_analytics_paths, read_internal_file
 from _shared.portal.application.shell.contracts import CONFIG_CONTEXT_SCHEMA, build_inspector_card
 from _shared.portal.application.shell.tools import compatible_tools_for_context
+from _shared.portal.core_services.config_loader import load_active_private_config
 from _shared.portal.runtime_paths import utility_tools_dir
 
 
 SERVICE_TOOL_CONTRACT_SCHEMA = "mycite.service_tool.contract.v1"
 SERVICE_TOOL_BINDINGS_SCHEMA = "mycite.service_tool.config_bindings.v1"
+FND_EBI_PROFILE_SCHEMA = "mycite.service_tool.fnd_ebi.profile.v1"
+AWS_CSM_PROFILE_SCHEMA = "mycite.service_tool.aws_csm.profile.v1"
+AWS_CSM_COLLECTION_SCHEMA = "mycite.service_tool.aws_csm.collection.v1"
 
 _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
     "fnd_ebi": {
@@ -21,13 +25,10 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "Analytics profile cards",
         "default_mode": "overview",
         "modes": ["overview", "traffic", "events", "errors_noise", "files"],
-        "config_patterns": [
-            "tool.*.fnd-ebi.json",
-            "fnd-ebi.{portal_instance_id}.json",
-            "fnd-ebi.*.json",
-        ],
+        "config_patterns": ["tool.*.fnd-ebi.json", "fnd-ebi.{portal_instance_id}.json", "fnd-ebi.*.json"],
         "collection_patterns": ["tool.*.fnd-ebi.json", "web-analytics.json"],
         "member_patterns": ["spec.json", "fnd-ebi.*.json", "*.ndjson"],
+        "profile_schema": FND_EBI_PROFILE_SCHEMA,
     },
     "aws_platform_admin": {
         "namespace": "aws-csm",
@@ -38,6 +39,7 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "config_patterns": ["tool.*.aws-csm.json", "aws-csm.{portal_instance_id}.json", "aws-csm.*.json"],
         "collection_patterns": ["tool.*.aws-csm.json", "aws-csm.collection.json"],
         "member_patterns": ["spec.json", "aws-csm.*.json", "*.ndjson"],
+        "profile_schema": AWS_CSM_PROFILE_SCHEMA,
     },
     "aws_tenant_actions": {
         "namespace": "aws-csm",
@@ -48,6 +50,7 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "config_patterns": ["tool.*.aws-csm.json", "aws-csm.{portal_instance_id}.json", "aws-csm.*.json"],
         "collection_patterns": ["tool.*.aws-csm.json", "aws-csm.collection.json"],
         "member_patterns": ["spec.json", "aws-csm.*.json", "*.ndjson"],
+        "profile_schema": AWS_CSM_PROFILE_SCHEMA,
     },
     "paypal_service_agreement": {
         "namespace": "paypal-csm",
@@ -129,10 +132,18 @@ def _expand_patterns(values: Any, *, portal_instance_id: str = "") -> list[str]:
 
 
 def _service_tool_contract(definition: dict[str, Any], *, portal_instance_id: str = "") -> dict[str, Any]:
+    namespace = _text(definition.get("namespace"))
+    profile_schema = _text(definition.get("profile_schema"))
     return {
         "schema": SERVICE_TOOL_CONTRACT_SCHEMA,
-        "tool_namespace": _text(definition.get("namespace")),
+        "tool_namespace": namespace,
+        "profile_schema": _text(definition.get("profile_schema")),
         "mediation_host_path": "/portal/system",
+        "anchor_contract": {
+            "pattern": f"tool.<msn_id>.{namespace}.json" if namespace else "",
+            "authoritative": "config.tools_configuration[].anchor",
+            "compatibility_patterns": _expand_patterns(definition.get("config_patterns"), portal_instance_id=portal_instance_id),
+        },
         "config_datum": {
             "patterns": _expand_patterns(definition.get("config_patterns"), portal_instance_id=portal_instance_id),
             "content_kind": "json",
@@ -144,6 +155,7 @@ def _service_tool_contract(definition: dict[str, Any], *, portal_instance_id: st
         "profile_card_contract": {
             "card_kind": "service_profile",
             "source": "tool_owned_datums",
+            "profile_schema": profile_schema,
         },
         "internal_source_contract": {
             "mode": "read_only",
@@ -190,6 +202,124 @@ def build_service_tool_meta(tool_id: str) -> dict[str, Any]:
 
 def _tool_root(private_dir: Path, namespace: str) -> Path:
     return utility_tools_dir(private_dir) / namespace
+
+
+def _anchor_candidates_from_config(private_dir: Path, namespace: str) -> list[str]:
+    config = load_active_private_config(private_dir, None)
+    if not isinstance(config, dict):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in list(config.get("tools_configuration") or []):
+        if not isinstance(item, dict):
+            continue
+        name = _text(item.get("name") or item.get("tool_id") or item.get("id")).lower().replace("_", "-")
+        if name != _text(namespace).lower():
+            continue
+        anchor = _text(item.get("anchor"))
+        if not anchor or anchor in seen:
+            continue
+        seen.add(anchor)
+        out.append(anchor)
+    return out
+
+
+def _pick_config_anchor_file(private_dir: Path, root: Path, namespace: str, patterns: list[str]) -> tuple[Path | None, list[str]]:
+    warnings: list[str] = []
+    candidates = _anchor_candidates_from_config(private_dir, namespace)
+    for file_name in candidates:
+        path = root / file_name
+        if path.exists() and path.is_file():
+            return path, warnings
+        warnings.append(f"configured anchor is missing for {namespace}: {file_name}")
+    fallback = _pick_canonical_file(root, patterns)
+    return fallback, warnings
+
+
+def _normalize_service_spec_payload(path: Path, payload: Any) -> tuple[dict[str, Any], list[str]]:
+    warnings: list[str] = []
+    if not isinstance(payload, dict):
+        return ({}, [f"invalid spec payload (expected JSON object): {path.name}"])
+    normalized = dict(payload)
+    if not _text(normalized.get("schema")):
+        normalized["schema"] = "mycite.portal.tool_spec.v1"
+        warnings.append(f"legacy minimal spec normalized with schema default: {path.name}")
+    if not isinstance(normalized.get("inherited_inputs"), list):
+        normalized["inherited_inputs"] = []
+        warnings.append(f"spec missing inherited_inputs list; defaulted empty: {path.name}")
+    if "outputs" not in normalized and isinstance(normalized.get("outputs_forms"), list):
+        normalized["outputs"] = list(normalized.get("outputs_forms") or [])
+        warnings.append(f"legacy outputs_forms mapped to outputs: {path.name}")
+    if not isinstance(normalized.get("outputs"), list):
+        normalized["outputs"] = []
+    return normalized, warnings
+
+
+def _classify_service_profile(path: Path, payload: Any, *, namespace: str, profile_schema: str) -> tuple[dict[str, Any], list[str], list[str]]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    if not isinstance(payload, dict):
+        return ({}, ["profile payload must be a JSON object"], warnings)
+    body = dict(payload)
+    schema = _text(body.get("schema"))
+    if not schema:
+        body["schema"] = profile_schema
+        warnings.append("profile schema was missing and has been defaulted")
+    elif schema != profile_schema:
+        warnings.append(f"non-canonical profile schema ({schema}); expected {profile_schema}")
+    if namespace == "fnd-ebi":
+        if not _text(body.get("domain")):
+            errors.append("missing required field: domain")
+        if not _text(body.get("site_root")):
+            errors.append("missing required field: site_root")
+    if namespace == "aws-csm":
+        identity = body.get("identity") if isinstance(body.get("identity"), dict) else {}
+        smtp = body.get("smtp") if isinstance(body.get("smtp"), dict) else {}
+        verification = body.get("verification") if isinstance(body.get("verification"), dict) else {}
+        provider = body.get("provider") if isinstance(body.get("provider"), dict) else {}
+        identity = {
+            "profile_id": _text(identity.get("profile_id") or body.get("profile_id")),
+            "tenant_id": _text(identity.get("tenant_id") or body.get("tenant_id")),
+            "domain": _text(identity.get("domain") or body.get("domain")),
+            "region": _text(identity.get("region") or body.get("region")),
+        }
+        smtp = {
+            "send_as_email": _text(smtp.get("send_as_email") or body.get("alias_email")),
+            "local_part": _text(smtp.get("local_part") or body.get("local_part")),
+            "forward_to_email": _text(smtp.get("forward_to_email") or body.get("forward_to_email")),
+            "forwarding_status": _text(smtp.get("forwarding_status") or body.get("forwarding_status")),
+        }
+        verification = {
+            "status": _text(verification.get("status") or body.get("gmail_send_as_status")),
+            "code": _text(verification.get("code") or body.get("verification_code")),
+            "link": _text(verification.get("link") or body.get("verification_link")),
+            "email_received_at": _text(
+                verification.get("email_received_at") or body.get("verification_email_received_at")
+            ),
+            "verified_at": _text(verification.get("verified_at") or body.get("verified_at")),
+        }
+        provider = {
+            "gmail_send_as_status": _text(provider.get("gmail_send_as_status") or body.get("gmail_send_as_status")),
+        }
+        body["identity"] = identity
+        body["smtp"] = smtp
+        body["verification"] = verification
+        body["provider"] = provider
+        if not _text(identity.get("domain") or body.get("domain")):
+            errors.append("missing required field: identity.domain")
+        if not _text(identity.get("tenant_id")):
+            warnings.append("recommended field missing: identity.tenant_id")
+        if not _text(identity.get("profile_id")):
+            warnings.append("recommended field missing: identity.profile_id")
+        if not _text(smtp.get("send_as_email") or body.get("alias_email")):
+            errors.append("missing required field: smtp.send_as_email")
+        if not _text(smtp.get("forward_to_email") or body.get("forward_to_email")):
+            warnings.append("recommended field missing: smtp.forward_to_email")
+        if not _text(verification.get("status") or body.get("gmail_send_as_status")):
+            warnings.append("recommended field missing: verification.status")
+        if not _text(provider.get("gmail_send_as_status") or body.get("gmail_send_as_status")):
+            warnings.append("recommended field missing: provider.gmail_send_as_status")
+    return body, errors, warnings
 
 
 def _iter_collection_files(root: Path, patterns: list[str]) -> list[Path]:
@@ -386,6 +516,10 @@ def _profile_cards_for_payload(path: Path, payload: Any) -> list[dict[str, Any]]
         "configured",
         "forwarding_status",
         "gmail_send_as_status",
+        "identity",
+        "smtp",
+        "verification",
+        "provider",
     ):
         if key in payload:
             body[key] = payload.get(key)
@@ -631,16 +765,36 @@ def build_service_tool_config_context(
     derived_internal_members: list[dict[str, Any]] = []
     candidate_profiles: list[tuple[Path, Any]] = []
     if root.exists() and root.is_dir():
-        config_path = _pick_canonical_file(root, config_patterns)
+        config_path, anchor_warnings = _pick_config_anchor_file(private_dir, root, namespace, config_patterns)
+        warnings.extend(anchor_warnings)
         collection_path = _pick_canonical_file(root, collection_patterns)
         config_datum, config_payload = _describe_file(root, config_path)
         collection_datum, collection_payload = _describe_file(root, collection_path)
+        profile_schema = _text(definition.get("profile_schema"))
+
+        spec_path = root / "spec.json"
+        if spec_path.exists() and spec_path.is_file():
+            spec_record, spec_payload = _describe_file(root, spec_path)
+            normalized_spec, spec_warnings = _normalize_service_spec_payload(spec_path, spec_payload)
+            warnings.extend(spec_warnings)
+            if spec_record:
+                spec_record["summary"] = _json_summary(normalized_spec)
+                collection_members.append(spec_record)
+                seen_files: set[str] = {_text(spec_record.get("path"))} if _text(spec_record.get("path")) else set()
+            else:
+                seen_files = set()
+        else:
+            warnings.append(f"spec.json is missing for tool namespace: {namespace}")
+            seen_files = set()
 
         member_paths = _member_files_from_collection_payload(root, collection_payload)
         if not member_paths:
             member_paths = _iter_collection_files(root, member_patterns)
+        if collection_path is not None and collection_path.name == "web-analytics.json":
+            warnings.append("compatibility collection in use: web-analytics.json (anchor is canonical)")
+        if collection_path is not None and collection_path.name == "aws-csm.collection.json":
+            warnings.append("compatibility collection in use: aws-csm.collection.json (anchor is canonical)")
 
-        seen_files: set[str] = set()
         for record in (config_datum, collection_datum):
             path_token = _text(record.get("path"))
             if path_token:
@@ -653,15 +807,42 @@ def build_service_tool_config_context(
             record, payload = _describe_file(root, path)
             if not record:
                 continue
+            if path.name == "spec.json":
+                continue
             collection_members.append(record)
-            profile_cards.extend(_profile_cards_for_payload(path, payload))
+            if path.name.startswith("tool.") and path.name.endswith(f".{namespace}.json"):
+                continue
+            normalized_payload, profile_errors, profile_warnings = _classify_service_profile(
+                path,
+                payload,
+                namespace=namespace,
+                profile_schema=profile_schema,
+            )
+            if profile_errors:
+                warnings.extend([f"{path.name}: {item}" for item in profile_errors])
+            if profile_warnings:
+                warnings.extend([f"{path.name}: {item}" for item in profile_warnings])
+            record["summary"] = _json_summary(normalized_payload if isinstance(normalized_payload, dict) else payload)
+            profile_cards.extend(_profile_cards_for_payload(path, normalized_payload))
             if namespace == "fnd-ebi" and _fnd_ebi_profile_candidate(path, payload):
-                candidate_profiles.append((path, payload))
+                candidate_profiles.append((path, normalized_payload))
 
         if config_datum and config_path is not None:
-            profile_cards.extend(_profile_cards_for_payload(config_path, config_payload))
-            if namespace == "fnd-ebi" and _fnd_ebi_profile_candidate(config_path, config_payload):
-                candidate_profiles.append((config_path, config_payload))
+            config_name = config_path.name
+            if not (config_name.startswith("tool.") and config_name.endswith(f".{namespace}.json")):
+                normalized_payload, profile_errors, profile_warnings = _classify_service_profile(
+                    config_path,
+                    config_payload,
+                    namespace=namespace,
+                    profile_schema=profile_schema,
+                )
+                if profile_errors:
+                    warnings.extend([f"{config_name}: {item}" for item in profile_errors])
+                if profile_warnings:
+                    warnings.extend([f"{config_name}: {item}" for item in profile_warnings])
+                profile_cards.extend(_profile_cards_for_payload(config_path, normalized_payload))
+                if namespace == "fnd-ebi" and _fnd_ebi_profile_candidate(config_path, normalized_payload):
+                    candidate_profiles.append((config_path, normalized_payload))
         if collection_datum and collection_path is not None and collection_path.name == "portal_instances.json":
             profile_cards.extend(_profile_cards_for_payload(collection_path, collection_payload))
 

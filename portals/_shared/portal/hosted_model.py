@@ -192,6 +192,7 @@ def default_hosted_payload(hero_title: str = "Member Orientation") -> dict[str, 
             "storage": {
                 "mode": "single_directory",
                 "directory": "private/network/progeny",
+                "logical_id_pattern": "progeny.<provider_msn_id>.<progeny_type>.<alias_associated_msn_id>",
                 "filename_pattern": "msn-<provider_msn_id>.<progeny_type>-<alias_associated_msn_id>.json",
                 "legacy_read_dirs": [],
             },

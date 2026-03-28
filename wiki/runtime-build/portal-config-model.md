@@ -18,7 +18,7 @@ Canonical config sections are:
 
 - instance identity and network keys (`msn_id`, contracts, aliases, hosted)
 - `tools_configuration`
-- reference declarations (`references`; legacy `refferences` accepted for compatibility reads)
+- reference declarations (`references`; legacy `refferences` is read-only compatibility and normalized at loader boundary)
 - optional portal behavior/profile overlays (compatibility-readable)
 
 Canonical `tools_configuration[]` fields are:
@@ -41,7 +41,10 @@ The runtime authority chain is intentionally layered and non-interchangeable:
 | `private/utilities/tools/<tool>/tool.<msn_id>.<tool>.json` | tool sandbox anchor payload (schema/data authority for that sandbox) | tool runtime service layer (AGRO time schema, etc.) | local-only | treating anchor rows as hints instead of authority | engine consumes as authoritative when schema is valid; otherwise fail closed |
 | `public/fnd.<msn_id>.json` | profile overlays used by mediated views (property refs, titles, display hints) | AGRO profile staging/read models | may be inherited in future, currently local instance publication | conflation with schema authority | profile data is staging input, not chronology schema authority |
 | `public/msn.<msn_id>.json` | public identity/profile metadata and API affordances | profile resolver + UI identity surfaces | local publication | confusion with tool exposure authority | identity/profile only; does not enable tools |
-| `data/references/ref.<peer_msn_id>.*.json` | inherited resource reference pointers | data engine + inherited resource loaders | inherited linkage | provider-vs-consumer naming mismatches | treated as reference edge, not sandbox identity |
+| `data/references/ref.<source_msn_id>.*.json` | inherited resource reference pointers | data engine + inherited resource loaders | inherited linkage | legacy consumer-named filenames | canonicalized to source/provider msn id at config loader boundary |
+| `private/utilities/tools/fnd-ebi/fnd-ebi.*.json` | FND-EBI profile contract (`domain`, `site_root`, analytics settings) | service-tool mediation context builder | local-only | legacy schema omission | normalized to `mycite.service_tool.fnd_ebi.profile.v1` |
+| `private/utilities/tools/aws-csm/aws-csm.*.json` | AWS-CMS profile contract (identity/smtp/verification/provider staging) | service-tool mediation context builder | local-only | mixed legacy flat fields | normalized to `mycite.service_tool.aws_csm.profile.v1` |
+| `private/utilities/tools/aws-csm/aws-csm.collection.json` | optional legacy collection descriptor | service-tool mediation context builder | local-only | treated as canonical by mistake | compatibility-read only; anchor remains canonical |
 
 Boundary statement:
 
@@ -50,6 +53,17 @@ Boundary statement:
 - AGRO property/polygon staging: `public/fnd.<msn_id>.json` + referenced anthology/resources
 - Chronological schema authority: AGRO tool anchor datum `1-1-1`
 - Inherited/local boundary: resource/reference registries and contracts (never inferred from UI mode)
+- Reference naming policy: `ref.<source_msn_id>.<name>.json` (source/provider msn id), with legacy consumer-named entries normalized once in `config_loader`
+
+## Normalization Policy Notes
+
+- `references` is canonical; `refferences` is legacy input only and is removed from normalized runtime payloads.
+- Tool anchors are canonical for service tool collection identity:
+  - `tool.<msn_id>.fnd-ebi.json`
+  - `tool.<msn_id>.aws-csm.json`
+- Progeny logical ids are canonical dotted tokens:
+  - `progeny.<provider_msn_id>.<progeny_type>.<alias_associated_msn_id>`
+  - On-disk mapping remains `msn-<provider_msn_id>.<progeny_type>-<alias_associated_msn_id>.json` at a single adapter boundary (`progeny_workspace`).
 
 ## Boundaries
 

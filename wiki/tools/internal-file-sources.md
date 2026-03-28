@@ -56,6 +56,21 @@ Current FND-EBI projection from those derived sources includes:
 - events coverage summary and event-type counts
 - explicit warning surfaces for missing/unreadable/stale/no-events/no-robots signals
 
+## AWS-CMS Pattern (Foundational Staging)
+
+`aws_platform_admin` / `aws_tenant_actions` are service-style tool projections over `aws-csm` sandbox profiles.
+
+Canonical profile schema: `mycite.service_tool.aws_csm.profile.v1`
+
+Required baseline groups:
+
+- `identity` (domain, optional tenant/profile ids, region)
+- `smtp` (send-as address, forwarding destination/status)
+- `verification` (code/link/status/timestamps)
+- `provider` (provider-facing send-as status snapshots)
+
+Legacy flat fields (for example `alias_email`, `forward_to_email`, `gmail_send_as_status`) are normalized into these groups at service-tool context assembly. This is a compatibility transform only; future writes should target grouped canonical fields.
+
 ## Ownership Boundary
 
 - **Core owns:** path derivation helpers, internal-root safety, file-kind detection, read-only parsing/normalization.

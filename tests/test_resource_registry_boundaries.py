@@ -54,6 +54,23 @@ class ResourceRegistryBoundaryTests(unittest.TestCase):
             self.assertEqual(len(resources), 1)
             self.assertEqual(resources[0].get("resource_name"), "rec.3-2-3-17-77-1-6-4-1-4.txa.json")
             self.assertEqual(resources[0].get("status"), "legacy_root")
+            compatibility = payload.get("compatibility") if isinstance(payload.get("compatibility"), dict) else {}
+            self.assertEqual(compatibility.get("legacy_root_mode"), "read_only_compat")
+            self.assertTrue(bool(compatibility.get("migration_recommended")))
+
+    def test_migrate_legacy_root_rec_files_moves_to_local_layout(self):
+        registry = _load_registry_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_root = Path(tmpdir)
+            root_file = data_root / "resources" / "rec.3-2-3-17-77-1-6-4-1-4.msn.json"
+            root_file.parent.mkdir(parents=True, exist_ok=True)
+            root_file.write_text(json.dumps({"resource_id": "local:test"}) + "\n", encoding="utf-8")
+            report = registry.migrate_legacy_root_rec_files(data_root, apply_changes=True)
+            self.assertTrue(report.get("ok"))
+            self.assertEqual(report.get("count"), 1)
+            self.assertFalse(root_file.exists())
+            migrated = data_root / "resources" / "local" / "rec.3-2-3-17-77-1-6-4-1-4.msn.json"
+            self.assertTrue(migrated.exists())
 
     def test_remove_inherited_source_only_removes_target_source(self):
         registry = _load_registry_module()

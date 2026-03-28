@@ -177,6 +177,83 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertEqual((snapshots[0].get("events_file") or {}).get("present"), True)
             self.assertIn("using legacy events path", " ".join(list(snapshots[0].get("warnings") or [])))
 
+    def test_service_tool_context_prefers_configured_anchor(self):
+        module = _load_service_tools_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "fnd-ebi"
+            root.mkdir(parents=True, exist_ok=True)
+            (private_dir / "config.json").write_text(
+                json.dumps(
+                    {
+                        "msn_id": "3-2-3",
+                        "tools_configuration": [
+                            {
+                                "name": "fnd-ebi",
+                                "anchor": "tool.3-2-3.fnd-ebi.json",
+                                "status": "enabled",
+                                "mount_target": "peripherals.tools",
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (root / "tool.3-2-3.fnd-ebi.json").write_text(
+                json.dumps({"1-0-1": [["1-0-1", "~", "[\"0-0-11\"]"], ["fnd-ebi.fnd.json"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (root / "fnd-ebi.fnd.json").write_text(
+                json.dumps({"schema": "mycite.service_tool.fnd_ebi.profile.v1", "domain": "example.org", "site_root": "/tmp/site"})
+                + "\n",
+                encoding="utf-8",
+            )
+            payload = module.build_service_tool_config_context(
+                "fnd_ebi",
+                private_dir=private_dir,
+                tool_tabs=[{"tool_id": "fnd_ebi", **module.build_service_tool_meta("fnd_ebi")}],
+                portal_instance_id="fnd",
+                msn_id="3-2-3",
+            )
+            self.assertEqual(((payload.get("config_datum") or {}).get("file_name")), "tool.3-2-3.fnd-ebi.json")
+
+    def test_aws_profile_contract_is_normalized_for_smtp_staging(self):
+        module = _load_service_tools_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.fnd.json").write_text(
+                json.dumps(
+                    {
+                        "domain": "fruitfulnetworkdevelopment.com",
+                        "region": "us-east-1",
+                        "alias_email": "dylan@fruitfulnetworkdevelopment.com",
+                        "forward_to_email": "dylancarsonmontgomery@gmail.com",
+                        "forwarding_status": "active",
+                        "gmail_send_as_status": "not_started",
+                        "verification_code": "",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            payload = module.build_service_tool_config_context(
+                "aws_platform_admin",
+                private_dir=private_dir,
+                tool_tabs=[{"tool_id": "aws_platform_admin", **module.build_service_tool_meta("aws_platform_admin")}],
+                portal_instance_id="fnd",
+                msn_id="3-2-3",
+            )
+            cards = payload.get("profile_cards") if isinstance(payload.get("profile_cards"), list) else []
+            self.assertTrue(cards)
+            card_body = cards[0].get("body") if isinstance(cards[0], dict) else {}
+            self.assertIn("identity", card_body)
+            self.assertIn("smtp", card_body)
+            self.assertIn("verification", card_body)
+            self.assertIn("provider", card_body)
+
 
 if __name__ == "__main__":
     unittest.main()

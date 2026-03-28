@@ -138,10 +138,8 @@ def _discover_legacy_root_resources(data_root: Path, *, scope: str) -> list[dict
     if not root.exists() or not root.is_dir():
         return []
     out: list[dict[str, Any]] = []
-    for path in sorted(root.glob("*.json")):
+    for path in sorted(root.glob("rec.*.json")):
         name = path.name
-        if name in {"index.local.json", "index.inherited.json"}:
-            continue
         payload = _read_json(path)
         out.append(
             _normalize_index_entry(
@@ -196,6 +194,10 @@ def load_index(data_root: Path, *, scope: str) -> dict[str, Any]:
                 continue
             seen.add(marker)
             normalized.append(entry)
+        payload.setdefault("compatibility", {})
+        payload["compatibility"]["legacy_root_rec_files_detected"] = len(legacy_entries)
+        payload["compatibility"]["legacy_root_mode"] = "read_only_compat"
+        payload["compatibility"]["migration_recommended"] = True
     normalized.sort(
         key=lambda item: (
             _as_text(item.get("source_msn_id")),
@@ -498,3 +500,33 @@ def migrate_legacy_samras_root_files(data_root: Path, *, apply_changes: bool = T
 
     ok = not errors
     return LegacySamrasMigrationReport(ok=ok, migrated=migrated, warnings=warnings, errors=errors)
+
+
+def migrate_legacy_root_rec_files(data_root: Path, *, apply_changes: bool = True) -> dict[str, Any]:
+    ensure_layout(data_root)
+    migrated: list[dict[str, Any]] = []
+    for path in sorted(resources_root(data_root).glob("rec.*.json")):
+        payload = _read_json(path)
+        target = resource_file_path(data_root, scope=LOCAL_SCOPE, resource_name=path.name)
+        entry = {
+            "resource_id": _as_text(payload.get("resource_id")) or f"local:{path.stem}",
+            "resource_name": path.name,
+            "resource_kind": _as_text(payload.get("resource_kind") or "legacy_resource"),
+            "scope": LOCAL_SCOPE,
+            "source_msn_id": "",
+            "path": str(target),
+            "version_hash": _as_text(payload.get("version_hash")),
+            "updated_at": int(payload.get("updated_at") or int(time.time() * 1000)),
+            "status": "ready",
+        }
+        if apply_changes:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target != path:
+                target.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+                try:
+                    path.unlink()
+                except Exception:
+                    pass
+            upsert_index_entry(data_root, scope=LOCAL_SCOPE, entry=entry)
+        migrated.append({"legacy_path": str(path), "resource_path": str(target), "resource_id": entry["resource_id"]})
+    return {"ok": True, "migrated": migrated, "count": len(migrated)}

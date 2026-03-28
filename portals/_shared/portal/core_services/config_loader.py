@@ -3,10 +3,16 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
 _LOG = logging.getLogger("mycite.core_services.config")
+_CONTRACT_FILE_RE = re.compile(r"^contract\.(?P<left>[0-9-]+)\.(?P<right>[0-9-]+)\.json$", re.IGNORECASE)
+_REFERENCE_FILE_RE = re.compile(
+    r"^ref\.(?P<source>[A-Za-z0-9._:-]+)\.(?P<name>[A-Za-z0-9_.-]+)\.json$",
+    re.IGNORECASE,
+)
 
 
 def _normalize_tools_configuration(raw: Any) -> list[dict[str, Any]]:
@@ -32,11 +38,83 @@ def _normalize_tools_configuration(raw: Any) -> list[dict[str, Any]]:
     return out
 
 
+def _reference_file_parts(token: str) -> tuple[str, str]:
+    match = _REFERENCE_FILE_RE.fullmatch(str(token or "").strip())
+    if not match:
+        return ("", "")
+    return (str(match.group("source") or "").strip(), str(match.group("name") or "").strip())
+
+
+def _infer_reference_source_msn(item: dict[str, Any], *, local_msn_id: str) -> str:
+    explicit = str(item.get("source_msn_id") or "").strip()
+    if explicit:
+        return explicit
+    contract = str(item.get("managing_contract") or "").strip()
+    contract_name = Path(contract).name
+    match = _CONTRACT_FILE_RE.fullmatch(contract_name)
+    if match:
+        left = str(match.group("left") or "").strip()
+        right = str(match.group("right") or "").strip()
+        if left and right:
+            if local_msn_id and left == local_msn_id:
+                return right
+            if local_msn_id and right == local_msn_id:
+                return left
+    title_source, _ = _reference_file_parts(str(item.get("title") or ""))
+    form_source, _ = _reference_file_parts(str(item.get("mss_form") or ""))
+    if title_source and (not local_msn_id or title_source != local_msn_id):
+        return title_source
+    if form_source and (not local_msn_id or form_source != local_msn_id):
+        return form_source
+    return title_source or form_source
+
+
+def _normalize_reference_entries(raw: Any, *, local_msn_id: str) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        title_source, title_name = _reference_file_parts(str(item.get("title") or ""))
+        form_source, form_name = _reference_file_parts(str(item.get("mss_form") or ""))
+        name = str(item.get("name") or form_name or title_name).strip().lower()
+        if not name:
+            continue
+        source_msn_id = _infer_reference_source_msn(item, local_msn_id=local_msn_id)
+        source_msn_id = str(source_msn_id or form_source or title_source).strip()
+        if not source_msn_id:
+            continue
+        if local_msn_id and source_msn_id == local_msn_id:
+            fallback = form_source or title_source
+            if fallback and fallback != local_msn_id:
+                source_msn_id = fallback
+        marker = (source_msn_id, name)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        canonical_mss_form = f"ref.{source_msn_id}.{name}.json"
+        normalized = dict(item)
+        normalized["name"] = name
+        normalized["source_msn_id"] = source_msn_id
+        normalized["title"] = f"ref.{source_msn_id}.{name}"
+        normalized["mss_form"] = canonical_mss_form
+        legacy_mss_form = str(item.get("mss_form") or "").strip()
+        if legacy_mss_form and legacy_mss_form != canonical_mss_form:
+            normalized["legacy_mss_form"] = legacy_mss_form
+        out.append(normalized)
+    return out
+
+
 def normalize_private_config_contract(payload: dict[str, Any]) -> dict[str, Any]:
     out = dict(payload or {})
-    # Preserve instance-authored typo while exposing canonical spelling.
-    if isinstance(out.get("refferences"), list) and not isinstance(out.get("references"), list):
-        out["references"] = list(out.get("refferences") or [])
+    local_msn_id = str(out.get("msn_id") or "").strip()
+    references_raw = out.get("references")
+    if not isinstance(references_raw, list):
+        references_raw = out.get("refferences")
+    out["references"] = _normalize_reference_entries(references_raw, local_msn_id=local_msn_id)
+    out.pop("refferences", None)
     out["tools_configuration"] = _normalize_tools_configuration(out.get("tools_configuration"))
     return out
 

@@ -54,8 +54,41 @@ class ConfigLoaderContractTests(unittest.TestCase):
                 encoding="utf-8",
             )
             payload = mod.load_active_private_config(private_dir, "3-2-3")
-            self.assertEqual(payload.get("refferences"), expected)
-            self.assertEqual(payload.get("references"), expected)
+            references = payload.get("references") if isinstance(payload.get("references"), list) else []
+            self.assertEqual(len(references), 1)
+            self.assertEqual(references[0].get("name"), "msn")
+            self.assertEqual(references[0].get("mss_form"), "ref.a.msn.json")
+            self.assertEqual(references[0].get("title"), "ref.a.msn")
+            self.assertEqual(references[0].get("source_msn_id"), "a")
+            self.assertNotIn("refferences", payload)
+
+    def test_reference_normalization_prefers_provider_from_contract(self):
+        mod = _load_config_loader_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            (private_dir / "config.json").write_text(
+                json.dumps(
+                    {
+                        "msn_id": "3-2-3-17-77-2-6-3-1-6",
+                        "references": [
+                            {
+                                "managing_contract": "contract.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json",
+                                "title": "ref.3-2-3-17-77-2-6-3-1-6.msn",
+                                "mss_form": "ref.3-2-3-17-77-2-6-3-1-6.msn.json",
+                                "name": "msn",
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            payload = mod.load_active_private_config(private_dir, "3-2-3-17-77-2-6-3-1-6")
+            references = payload.get("references") if isinstance(payload.get("references"), list) else []
+            self.assertEqual(len(references), 1)
+            self.assertEqual(references[0].get("source_msn_id"), "3-2-3-17-77-1-6-4-1-4")
+            self.assertEqual(references[0].get("mss_form"), "ref.3-2-3-17-77-1-6-4-1-4.msn.json")
+            self.assertEqual(references[0].get("legacy_mss_form"), "ref.3-2-3-17-77-2-6-3-1-6.msn.json")
 
 
 if __name__ == "__main__":
