@@ -22,6 +22,10 @@ Resource storage is intentionally split by owner:
 
 Sandbox is the lifecycle service for local resources. It is not the canonical cross-scope inventory owner.
 
+Compatibility read note:
+
+- authored legacy files at `data/resources/rec.*.json` are surfaced for read paths as `legacy_root` entries while migration to `data/resources/local/*.json` is staged.
+
 Resource payloads should carry:
 
 - `schema`

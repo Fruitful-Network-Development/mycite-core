@@ -8,6 +8,8 @@ from _shared.portal.application.workbench.document_contract import DOCUMENT_SCHE
 from .contracts import SELECTION_CONTEXT_SCHEMA, build_inspector_card, normalize_shell_verb
 from .tools import compatible_tools_for_context
 
+TOOL_SANDBOX_MEDIATION_SCOPE = "tool_sandbox"
+
 
 def _text(value: object) -> str:
     return "" if value is None else str(value).strip()
@@ -271,7 +273,7 @@ def build_system_sandbox_context_payload(
         shell_verb=shell_verb,
         tool_tabs=tool_tabs,
         portal_instance_context=portal_instance_context,
-        mediation_scope="system_sandbox",
+        mediation_scope=TOOL_SANDBOX_MEDIATION_SCOPE,
         shell_surface="tool_mediation",
     )
     system_state = context.get("system_state") if isinstance(context.get("system_state"), dict) else {}

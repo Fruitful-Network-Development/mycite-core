@@ -7,7 +7,7 @@ from pathlib import Path
 
 from _shared.portal.application.agro.config_bindings import build_agro_config_context
 from _shared.portal.application.shell.runtime import build_selected_context_payload, build_system_sandbox_context_payload
-from _shared.portal.application.shell.tools import normalize_tool_capability
+from _shared.portal.application.shell.tools import normalize_tool_capability, tool_matches_context
 from _shared.portal.application.workbench.document_contract import build_workbench_document
 
 
@@ -85,7 +85,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             shell_verb="mediate",
         )
         self.assertEqual(payload.get("schema"), "mycite.shell.selected_context.v1")
-        self.assertEqual(str(payload.get("mediation_scope") or "").lower(), "system_sandbox")
+        self.assertEqual(str(payload.get("mediation_scope") or "").lower(), "tool_sandbox")
         self.assertTrue(
             any(str(item.get("tool_id") or "") == "fnd_ebi" for item in payload.get("compatible_tools") or [])
         )
@@ -111,6 +111,16 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
         self.assertEqual(payload.get("schema"), "mycite.shell.selected_context.v1")
         self.assertEqual(((payload.get("selection") or {}).get("row_identifier")), "8-5-11")
         self.assertTrue(any(str(item.get("tool_id") or "") == "agro_erp" for item in payload.get("compatible_tools") or []))
+
+    def test_tool_context_match_accepts_legacy_system_sandbox_scope(self) -> None:
+        capability = normalize_tool_capability(_load_fnd_tool_meta("fnd_ebi"))
+        context = {
+            "schema": "mycite.shell.selected_context.v1",
+            "shell_verb": "mediate",
+            "shell_surface": "tool_mediation",
+            "mediation_scope": "system_sandbox",
+        }
+        self.assertTrue(tool_matches_context(capability, context))
 
     def test_agro_config_context_prefers_inherited_but_can_fall_back_to_local(self) -> None:
         txa_local = build_workbench_document(

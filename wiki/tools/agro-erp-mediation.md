@@ -27,13 +27,14 @@ Current default mediation is a dual-pane empty scaffold:
 - `Spatial`
 - `Chronological`
 
-Chronological mode now includes a first-pass **time-address calendar/workbench facet**:
+Chronological mode now includes a schema-driven **time-address calendar/workbench facet**:
 
-- the selector emits a canonical mixed-radix time address (for example `13-787-2026-3-26`)
-- the shell keeps one SYSTEM state model; AGRO remains a provider inside Mediate
+- the selector emits a canonical mixed-radix time address built from decoded schema radices (no hard-coded `13-787` prefix)
+- the shell keeps one SYSTEM state model; AGRO remains a mediated provider projected by the host workbench
 - the selected scope is written into `system_state.aitas.time` as `time_address`
 - filtering is service-backed (`/portal/tools/agro_erp/time/filter`), not UI-local range logic
 - time schema authority is decoded from AGRO anchor datum `1-1-1` (`UTC_mixed_radix`)
+- if `1-1-1` is unavailable/invalid, chronology fails closed instead of inventing defaults from wall-clock time
 
 The first-pass selector supports year/month/day interaction in the UI while preserving hour/minute-capable address parsing and range normalization in shared core code.
 

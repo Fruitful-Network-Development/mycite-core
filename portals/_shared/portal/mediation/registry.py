@@ -4,6 +4,11 @@ from datetime import UTC, datetime
 from typing import Any, Callable, TypedDict
 import string
 
+try:
+    from _shared.portal.application.coordinate_hops import decode_coordinate_token as decode_coordinate_hops_token
+except Exception:  # pragma: no cover - import path varies in dynamic loaders
+    from portals._shared.portal.application.coordinate_hops import decode_coordinate_token as decode_coordinate_hops_token
+
 
 _COORD_SCALE = 10_000_000.0
 
@@ -586,11 +591,11 @@ def _encode_length(standard_id: str, value: Any, context: dict[str, Any]) -> Med
 # coordinates
 
 def _coordinate_matcher(token: str) -> bool:
-    return token in {"coordinate", "coordinate_fixed_hex"}
+    return token in {"coordinate", "coordinate_fixed_hex", "coordinate_hops"}
 
 
 def _validate_coordinate_magnitude(magnitude: str, context: dict[str, Any]) -> ValidationResult:
-    _ = context
+    ctx = dict(context or {})
     raw = str(magnitude or "").strip()
     if not raw:
         return _validate_ok()
@@ -605,10 +610,27 @@ def _validate_coordinate_magnitude(magnitude: str, context: dict[str, Any]) -> V
         except Exception:
             return {"warnings": [], "errors": ["invalid coordinate tuple"]}
 
-    decoded = _decode_fixed_hex_coordinate(raw)
+    requested_standard = normalize_standard_id(str(ctx.get("requested_standard_id") or ""))
+    authority = "auto"
+    allow_legacy = bool(ctx.get("allow_legacy_fixed_hex"))
+    if requested_standard == "coordinate_hops":
+        authority = "hops"
+    elif requested_standard == "coordinate_fixed_hex":
+        authority = "fixed_hex"
+        allow_legacy = True
+    elif requested_standard == "coordinate":
+        authority = normalize_standard_id(str(ctx.get("coordinate_authority") or "hops")) or "hops"
+    decoded = decode_coordinate_hops_token(
+        raw,
+        authority=authority,
+        allow_legacy_fixed_hex=allow_legacy,
+    )
     if decoded is None:
-        return {"warnings": [], "errors": ["invalid fixed-hex coordinate token"]}
-    return {"warnings": ["coordinate interpreted as fixed-hex pair"], "errors": []}
+        return {"warnings": [], "errors": ["invalid coordinate token for requested coordinate authority"]}
+    encoding = str(decoded.get("encoding") or "")
+    if encoding == "hops_mixed_radix":
+        return {"warnings": ["coordinate interpreted as HOPS mixed-radix address"], "errors": []}
+    return {"warnings": ["coordinate interpreted as compatibility fixed-hex pair"], "errors": []}
 
 
 def _validate_coordinate_value(value: Any, context: dict[str, Any]) -> ValidationResult:
@@ -622,7 +644,7 @@ def _validate_coordinate_value(value: Any, context: dict[str, Any]) -> Validatio
 
 
 def _decode_coordinate(standard_id: str, reference: str, magnitude: str, context: dict[str, Any]) -> MediationResult:
-    _ = context
+    ctx = dict(context or {})
     errors: list[str] = []
     warnings: list[str] = []
     raw = str(magnitude or "").strip()
@@ -658,9 +680,23 @@ def _decode_coordinate(standard_id: str, reference: str, magnitude: str, context
             errors=errors,
         )
 
-    decoded_fixed = _decode_fixed_hex_coordinate(raw)
+    authority = "auto"
+    allow_legacy = bool(ctx.get("allow_legacy_fixed_hex"))
+    requested_standard = normalize_standard_id(str(ctx.get("requested_standard_id") or standard_id))
+    if requested_standard == "coordinate_hops":
+        authority = "hops"
+    elif requested_standard == "coordinate_fixed_hex":
+        authority = "fixed_hex"
+        allow_legacy = True
+    elif requested_standard == "coordinate":
+        authority = normalize_standard_id(str(ctx.get("coordinate_authority") or "hops")) or "hops"
+    decoded_fixed = decode_coordinate_hops_token(
+        raw,
+        authority=authority,
+        allow_legacy_fixed_hex=allow_legacy,
+    )
     if decoded_fixed is None:
-        errors.append("invalid fixed-hex coordinate token")
+        errors.append("invalid coordinate token for requested coordinate authority")
         return _result(
             standard_id=standard_id,
             reference=reference,
@@ -673,15 +709,19 @@ def _decode_coordinate(standard_id: str, reference: str, magnitude: str, context
 
     longitude_value = float(decoded_fixed.get("longitude", {}).get("value") or 0.0)
     latitude_value = float(decoded_fixed.get("latitude", {}).get("value") or 0.0)
-    warnings.append("coordinate decoded via fixed-width hex split")
+    encoding = str(decoded_fixed.get("encoding") or "")
+    if encoding == "hops_mixed_radix":
+        warnings.append("coordinate decoded via HOPS mixed-radix partitions")
+    else:
+        warnings.append("coordinate decoded via compatibility fixed-width hex split")
     return _result(
         standard_id=standard_id,
         reference=reference,
-        magnitude=str(decoded_fixed.get("normalized_hex") or raw),
+        magnitude=str(decoded_fixed.get("address") or decoded_fixed.get("normalized_hex") or raw),
         value={
             "lat": latitude_value,
             "lon": longitude_value,
-            "encoding": "fixed_hex",
+            "encoding": encoding or "unknown",
             "decoded": decoded_fixed,
         },
         display=f"({longitude_value:g}, {latitude_value:g})",
@@ -804,8 +844,8 @@ _MEDIATION_SPECS: list[MediationTypeSpec] = [
     _register(
         {
             "standard_id": "coordinate",
-            "aliases": ["coordinate_fixed_hex"],
-            "matcher_rule": "explicit standard id coordinate/coordinate_fixed_hex",
+            "aliases": ["coordinate_fixed_hex", "coordinate_hops"],
+            "matcher_rule": "explicit standard id coordinate/coordinate_fixed_hex/coordinate_hops",
             "matcher": _coordinate_matcher,
             "decode": _decode_coordinate,
             "encode": _encode_coordinate,
@@ -864,6 +904,7 @@ def decode_value(
 ) -> MediationResult:
     ctx = dict(context or {})
     token = normalize_standard_id(standard_id)
+    ctx.setdefault("requested_standard_id", token)
     entry = resolve_entry(token)
     if entry is None:
         return _result(

@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import json
-import string
 from pathlib import Path
 from typing import Any
 
+from ..application.coordinate_hops import decode_coordinate_token
 from ..data_engine.property_workspace import primary_property_entry
-
-_COORD_SCALE = 10_000_000.0
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -18,46 +16,6 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     if not isinstance(payload, dict):
         return None
     return payload
-
-
-def _signed_axis_value(raw: int, axis_bits: int) -> int:
-    sign = 1 << (axis_bits - 1)
-    if raw & sign:
-        return raw - (1 << axis_bits)
-    return raw
-
-
-def _decode_fixed_hex_coordinate(raw_value: Any) -> dict[str, Any] | None:
-    token = str(raw_value or "").strip()
-    if token.lower().startswith("0x"):
-        token = token[2:]
-    token = token.replace("_", "").strip()
-    if not token or (len(token) % 2) != 0:
-        return None
-    if any(ch not in string.hexdigits for ch in token):
-        return None
-
-    half = len(token) // 2
-    row_hex = token[:half].upper()
-    col_hex = token[half:].upper()
-    axis_bits = half * 4
-    row_value = int(row_hex, 16)
-    col_value = int(col_hex, 16)
-    longitude_signed = _signed_axis_value(row_value, axis_bits)
-    latitude_signed = _signed_axis_value(col_value, axis_bits)
-    longitude = longitude_signed / _COORD_SCALE
-    latitude = latitude_signed / _COORD_SCALE
-    longitude_text = f"{longitude:.13f}"
-    latitude_text = f"{latitude:.13f}"
-    return {
-        "normalized_hex": f"0x{token.upper()}",
-        "axis_bits": axis_bits,
-        "row": {"hex": f"0x{row_hex}", "value": row_value},
-        "column": {"hex": f"0x{col_hex}", "value": col_value},
-        "longitude": {"signed_value": longitude_signed, "value": longitude, "text": longitude_text},
-        "latitude": {"signed_value": latitude_signed, "value": latitude, "text": latitude_text},
-        "pair_text": [longitude_text, latitude_text],
-    }
 
 
 def _resolve_datum(payload: dict[str, Any], datum_id: str) -> dict[str, Any]:
@@ -75,7 +33,7 @@ def _resolve_datum(payload: dict[str, Any], datum_id: str) -> dict[str, Any]:
 
     datum = payload.get(token)
     if datum is None:
-        direct_decode = _decode_fixed_hex_coordinate(token)
+        direct_decode = decode_coordinate_token(token, authority="auto", allow_legacy_fixed_hex=True)
         if direct_decode is not None:
             out["magnitude"] = token
             out["decoded_coordinate"] = direct_decode
@@ -99,7 +57,21 @@ def _resolve_datum(payload: dict[str, Any], datum_id: str) -> dict[str, Any]:
     else:
         out["magnitude"] = str(datum).strip()
 
-    out["decoded_coordinate"] = _decode_fixed_hex_coordinate(out.get("magnitude"))
+    reference = str(out.get("reference") or "").strip()
+    if reference == "3-1-4":
+        authority = "fixed_hex"
+        allow_legacy = True
+    elif reference == "3-1-2":
+        authority = "hops"
+        allow_legacy = False
+    else:
+        authority = "auto"
+        allow_legacy = True
+    out["decoded_coordinate"] = decode_coordinate_token(
+        out.get("magnitude"),
+        authority=authority,
+        allow_legacy_fixed_hex=allow_legacy,
+    )
     return out
 
 
@@ -222,14 +194,15 @@ def build_property_geography_model(config: dict[str, Any], data_dir: Path) -> di
         "geojson_polygon": geojson_polygon,
         "geojson_text": json.dumps(geojson_polygon, indent=2) if geojson_polygon is not None else "",
         "notation": {
-            "split_mode": "fixed-width",
+            "split_mode": "authority_classified_hops_or_fixed_hex",
             "description": (
-                "Coordinates are stored as one hex scalar split into equal row/column halves. "
-                "Daemon mediation resolves config tokens through anthology, then decodes by positional split."
+                "Coordinates are decoded by explicit authority classification. "
+                "Known fixed-hex references decode as fixed-hex, known HOPS references decode as HOPS, "
+                "and ambiguous values are rejected."
             ),
         },
         "mediation": {
             "mode": "daemon-like_config_resolution",
-            "path": "property -> anthology -> fixed_hex -> [longitude, latitude]",
+            "path": "property -> anthology -> coordinate_authority_classifier -> [longitude, latitude]",
         },
     }

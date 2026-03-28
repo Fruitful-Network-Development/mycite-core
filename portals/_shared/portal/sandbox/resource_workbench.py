@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from _shared.portal.data_contract import compact_payload_to_rows
+from _shared.portal.data_engine.anthology_normalization import datum_sort_key
 from _shared.portal.samras import (
     build_workspace_view_model,
     load_workspace_from_compact_payload,
@@ -280,7 +281,7 @@ def _write_json_object_one_entry_per_line(path: Path, payload: dict[str, Any]) -
         key_token = json.dumps(str(key))
         if str(key) == "rows" and isinstance(value, dict):
             lines.append(f"  {key_token}: {{")
-            row_items = sorted(value.items(), key=lambda kv: str(kv[0]))
+            row_items = sorted(value.items(), key=lambda kv: datum_sort_key(kv[0]))
             for row_idx, (row_key, row_value) in enumerate(row_items):
                 row_comma = "," if row_idx < len(row_items) - 1 else ""
                 lines.append(
