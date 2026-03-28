@@ -350,10 +350,15 @@
     Object.keys(fields || {}).forEach(function (key) {
       var value = fields[key];
       if (value == null || value === "") return;
-      rows.push("<li><span>" + esc(String(key)) + "</span><strong>" + esc(String(value)) + "</strong></li>");
+      rows.push(
+        '<div class="tool-valueGrid__row">' +
+          '<dt class="tool-valueGrid__term">' + esc(String(key)) + "</dt>" +
+          '<dd class="tool-valueGrid__value">' + esc(String(value)) + "</dd>" +
+        "</div>"
+      );
     });
     if (!rows.length) return "";
-    return '<ul class="fnd-ebi-metrics">' + rows.join("") + "</ul>";
+    return '<dl class="tool-valueGrid">' + rows.join("") + "</dl>";
   }
 
   function renderInterfacePanelCardBody(card, body) {
@@ -1489,20 +1494,58 @@
     var selectedCard = awsSelectedCard(tool);
     var selectedBody = selectedCard && selectedCard.body && typeof selectedCard.body === "object" ? selectedCard.body : {};
     var selectedIdentity = selectedBody.identity && typeof selectedBody.identity === "object" ? selectedBody.identity : {};
+    var selectedSmtp = selectedBody.smtp && typeof selectedBody.smtp === "object" ? selectedBody.smtp : {};
+    var selectedVerification = selectedBody.verification && typeof selectedBody.verification === "object" ? selectedBody.verification : {};
+    var selectedProvider = selectedBody.provider && typeof selectedBody.provider === "object" ? selectedBody.provider : {};
     var selectedWorkflow = awsWorkflowFromCard(selectedCard || {});
     var out = [];
     if (selectedCard) {
       out.push('<article class="card"><div class="card__kicker">Operator Focus</div><div class="card__title">' + esc(text(selectedCard.title || selectedIdentity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
-      out.push(renderInterfacePanelCardBody(selectedCard, selectedBody));
+      out.push(renderCardKeyValueRows({
+        domain: text(selectedIdentity.domain),
+        profile: text(selectedIdentity.profile_id),
+        tenant: text(selectedIdentity.tenant_id),
+        region: text(selectedIdentity.region),
+        "single user": text(selectedIdentity.single_user_email || selectedIdentity.single_user_msn_id),
+        "send as": text(selectedIdentity.send_as_email || selectedSmtp.send_as_email)
+      }));
+      out.push('</div></article>');
+      out.push('<article class="card"><div class="card__kicker">SMTP Readiness</div><div class="card__title">Gmail send-as handoff</div><div class="card__body">');
+      out.push(renderCardKeyValueRows({
+        host: text(selectedSmtp.host),
+        port: text(selectedSmtp.port),
+        username: text(selectedSmtp.username),
+        "credentials source": text(selectedSmtp.credentials_source),
+        "forward to": text(selectedSmtp.forward_to_email),
+        "forwarding status": text(selectedSmtp.forwarding_status),
+        "handoff ready": selectedSmtp.handoff_ready ? "yes" : "no"
+      }));
+      out.push('</div></article>');
+      out.push('<article class="card"><div class="card__kicker">Verification</div><div class="card__title">Portal and provider state</div><div class="card__body">');
+      out.push(renderCardKeyValueRows({
+        status: text(selectedVerification.status),
+        code: text(selectedVerification.code),
+        link: text(selectedVerification.link),
+        "email received": text(selectedVerification.email_received_at),
+        "verified at": text(selectedVerification.verified_at),
+        "portal state": text(selectedVerification.portal_state)
+      }));
+      out.push('</div></article>');
+      out.push('<article class="card"><div class="card__kicker">Provider</div><div class="card__title">AWS + Gmail readiness</div><div class="card__body">');
+      out.push(renderCardKeyValueRows({
+        "ses identity": text(selectedProvider.aws_ses_identity_status),
+        "gmail send-as": text(selectedProvider.gmail_send_as_status),
+        "last checked": text(selectedProvider.last_checked_at),
+        "send-as confirmed": selectedWorkflow.is_send_as_confirmed ? "yes" : "no"
+      }));
       out.push('</div></article>');
       out.push('<article class="card"><div class="card__kicker">Workflow</div><div class="card__title">Simple operator-only send-as onboarding</div><div class="card__body">');
       out.push(renderCardKeyValueRows({
         "handoff ready": selectedWorkflow.is_ready_for_user_handoff ? "yes" : "no",
-        "send-as confirmed": selectedWorkflow.is_send_as_confirmed ? "yes" : "no",
-        "tenant": text(selectedIdentity.tenant_id),
-        "domain": text(selectedIdentity.domain),
+        "missing required": Array.isArray(selectedWorkflow.missing_required_now) ? String(selectedWorkflow.missing_required_now.length) : "0",
+        flow: text(selectedWorkflow.flow || selectedWorkflow.flow_name),
         "single user": text(selectedIdentity.single_user_email),
-        "send as": text(selectedBody.smtp && selectedBody.smtp.send_as_email)
+        "send as": text(selectedSmtp.send_as_email)
       }));
       if (Array.isArray(selectedWorkflow.missing_required_now) && selectedWorkflow.missing_required_now.length) {
         out.push("<p><strong>Missing required now</strong></p><ul class=\"fnd-ebi-warnings\">");
