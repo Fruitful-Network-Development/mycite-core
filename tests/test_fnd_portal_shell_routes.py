@@ -32,7 +32,19 @@ def _load_fnd_app_module(temp_root: Path):
     data_dir.mkdir(parents=True, exist_ok=True)
 
     msn_id = "3-2-3-17-77-1-6-4-1-4"
-    (private_dir / "config.json").write_text(json.dumps({"msn_id": msn_id}) + "\n", encoding="utf-8")
+    (private_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "msn_id": msn_id,
+                "tools_configuration": [
+                    {"name": "fnd-ebi", "status": "enabled", "mount_target": "peripherals.tools"},
+                    {"name": "aws-csm", "status": "enabled", "mount_target": "peripherals.tools"},
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     icon_dir = private_dir / "utilities" / "tools" / "agro-erp" / "UI"
     icon_dir.mkdir(parents=True, exist_ok=True)
     (icon_dir / "farm.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'></svg>\n", encoding="utf-8")
@@ -122,6 +134,9 @@ class FndPortalShellRouteTests(unittest.TestCase):
             contracts_html = client.get("/portal/network?tab=contracts&id=missing").get_data(as_text=True)
             self.assertIn("Contracts", contracts_html)
             self.assertEqual(client.get("/portal/utilities?tab=vault").status_code, 200)
+            utilities_tools_html = client.get("/portal/utilities?tab=tools").get_data(as_text=True)
+            self.assertIn("/portal/system?mediate_tool=aws_platform_admin", utilities_tools_html)
+            self.assertIn("/portal/system?mediate_tool=fnd_ebi", utilities_tools_html)
 
             self.assertEqual(client.get("/portal/tools").status_code, 302)
             self.assertIn("/portal/utilities?tab=tools", client.get("/portal/tools").headers.get("Location", ""))

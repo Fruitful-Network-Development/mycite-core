@@ -312,6 +312,79 @@
     els.compatibleTools.appendChild(list);
   }
 
+  function renderCardKeyValueRows(fields) {
+    var rows = [];
+    Object.keys(fields || {}).forEach(function (key) {
+      var value = fields[key];
+      if (value == null || value === "") return;
+      rows.push("<li><span>" + esc(String(key)) + "</span><strong>" + esc(String(value)) + "</strong></li>");
+    });
+    if (!rows.length) return "";
+    return '<ul class="fnd-ebi-metrics">' + rows.join("") + "</ul>";
+  }
+
+  function renderInterfacePanelCardBody(card, body) {
+    if (body && typeof body === "object") {
+      if (body.identity && body.smtp && body.verification) {
+        var identity = body.identity && typeof body.identity === "object" ? body.identity : {};
+        var smtp = body.smtp && typeof body.smtp === "object" ? body.smtp : {};
+        var verification = body.verification && typeof body.verification === "object" ? body.verification : {};
+        var provider = body.provider && typeof body.provider === "object" ? body.provider : {};
+        var workflow = body.workflow && typeof body.workflow === "object" ? body.workflow : {};
+        var missing = Array.isArray(workflow.missing_required_now) ? workflow.missing_required_now : [];
+        var html = "";
+        html += renderCardKeyValueRows({
+          domain: text(identity.domain),
+          tenant: text(identity.tenant_id),
+          "single user": text(identity.single_user_email || identity.single_user_msn_id),
+          region: text(identity.region),
+          "send as": text(smtp.send_as_email),
+          "smtp host": text(smtp.host),
+          "smtp port": text(smtp.port),
+          "smtp username": text(smtp.username),
+          "forward to": text(smtp.forward_to_email),
+          "verification status": text(verification.status),
+          "provider send-as": text(provider.gmail_send_as_status),
+          "handoff ready": workflow.is_ready_for_user_handoff ? "yes" : "no"
+        });
+        if (missing.length) {
+          html += "<p><strong>Missing required now</strong></p><ul class=\"fnd-ebi-warnings\">";
+          missing.forEach(function (item) { html += "<li>" + esc(text(item)) + "</li>"; });
+          html += "</ul>";
+        }
+        return html || '<pre class="jsonblock">' + esc(JSON.stringify(body, null, 2)) + "</pre>";
+      }
+      if (Object.prototype.hasOwnProperty.call(body, "traffic_summary") || Object.prototype.hasOwnProperty.call(body, "events_file")) {
+        var traffic = body.traffic_summary && typeof body.traffic_summary === "object" ? body.traffic_summary : {};
+        var events = body.event_summary && typeof body.event_summary === "object" ? body.event_summary : {};
+        var accessLog = body.access_log && typeof body.access_log === "object" ? body.access_log : {};
+        var errorLog = body.error_log && typeof body.error_log === "object" ? body.error_log : {};
+        var eventsFile = body.events_file && typeof body.events_file === "object" ? body.events_file : {};
+        var warnings = Array.isArray(body.warnings) ? body.warnings : [];
+        var html2 = "";
+        html2 += renderCardKeyValueRows({
+          domain: text(body.domain),
+          "site root": text(body.site_root),
+          "analytics root": text(body.analytics_root),
+          "access log": accessLog.present ? "present" : "missing",
+          "error log": errorLog.present ? "present" : "missing",
+          "events file": eventsFile.present ? "present" : "missing",
+          "requests 30d": String(traffic.requests_30d || 0),
+          "events 30d": String(events.events_30d || 0),
+          "unique visitors": String(traffic.unique_visitors_approx_30d || 0),
+          "bot share": ((Number(traffic.bot_share) || 0) * 100).toFixed(1) + "%"
+        });
+        if (warnings.length) {
+          html2 += "<ul class=\"fnd-ebi-warnings\">";
+          warnings.slice(0, 8).forEach(function (warning) { html2 += "<li>" + esc(text(warning)) + "</li>"; });
+          html2 += "</ul>";
+        }
+        return html2 || '<pre class="jsonblock">' + esc(JSON.stringify(body, null, 2)) + "</pre>";
+      }
+    }
+    return '<pre class="jsonblock">' + esc(JSON.stringify(body || {}, null, 2)) + "</pre>";
+  }
+
   function renderInspectorCards() {
     if (!els.inspectorCardsRoot || !els.inspectorCardsMount) return;
     var cards = [];
@@ -334,7 +407,7 @@
         '<div class="card__title">' + esc(card.title || "Card") + "</div>" +
         '<div class="card__body">' +
         (card.summary ? "<p>" + esc(card.summary) + "</p>" : "") +
-        '<pre class="jsonblock">' + esc(JSON.stringify(body, null, 2)) + "</pre>" +
+        renderInterfacePanelCardBody(card, body) +
         "</div>";
       els.inspectorCardsMount.appendChild(article);
     });
