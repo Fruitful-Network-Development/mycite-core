@@ -2,7 +2,8 @@
  * - Theme selector
  * - Local tab switching for page-internal panels
  * - Alias sidebar filter
- * - Workbench inspector + shell splitters
+ * - Workbench interface panel + shell splitters
+ * Internal compatibility note: legacy IDs/class names still use "inspector".
  */
 
 (function () {
@@ -407,7 +408,7 @@
     }
 
     function setContent(payload) {
-      const title = String((payload && payload.title) || "Details").trim() || "Details";
+      const title = String((payload && payload.title) || "Overview").trim() || "Overview";
       const subtitle = String((payload && payload.subtitle) || "").trim();
       titleEl.textContent = subtitle ? `${title}: ${subtitle}` : title;
 
@@ -429,7 +430,7 @@
           tMount.innerHTML = html;
           return;
         }
-        tMount.innerHTML = '<p class="ide-inspector__empty">Select an item to inspect.</p>';
+        tMount.innerHTML = '<p class="ide-inspector__empty">Select an item to load interface panel content.</p>';
         return;
       }
 
@@ -457,7 +458,7 @@
       removeNonTransientInspectorChildren();
       const empty = document.createElement("p");
       empty.className = "ide-inspector__empty";
-      empty.textContent = "Select an item to inspect.";
+      empty.textContent = "Select an item to load interface panel content.";
       contentEl.insertBefore(empty, tMountLegacy || null);
     }
 
@@ -493,7 +494,7 @@
       const wrap = document.createElement("div");
       wrap.appendChild(tpl.content.cloneNode(true));
       open({
-        title: title || "Details",
+        title: title || "Interface Panel",
         subtitle: subtitle || "",
         node: wrap,
       });
@@ -510,7 +511,7 @@
       if (!trigger) return;
       event.preventDefault();
       const templateId = trigger.getAttribute("data-inspector-template") || "";
-      const title = trigger.getAttribute("data-inspector-title") || "Details";
+      const title = trigger.getAttribute("data-inspector-title") || "Interface Panel";
       const subtitle = trigger.getAttribute("data-inspector-subtitle") || "";
       if (!templateId) return;
       openTemplate(templateId, title, subtitle);

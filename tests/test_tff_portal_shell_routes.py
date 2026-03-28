@@ -104,6 +104,7 @@ class TffPortalShellRouteTests(unittest.TestCase):
             self.assertNotIn('data-system-' + 'workbench-mode', system_html)
             self.assertIn('id="portalControlPanel"', system_html)
             self.assertIn('aria-label="Control panel"', system_html)
+            self.assertIn("Interface Panel", system_html)
             self.assertIn('id="dtSystemAitasStrip"', system_html)
             self.assertNotIn("Open AGRO ERP", system_html)
             self.assertNotIn("ide-activitylink--tool", system_html)

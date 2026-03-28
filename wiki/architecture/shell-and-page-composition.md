@@ -18,14 +18,16 @@ The canonical `SYSTEM` shell has stable visible regions:
 - activity bar
 - control panel
 - workbench
-- Details
+- interface panel
 
 Within `SYSTEM`, the page composition contract is:
 
 - one center workbench surface
 - no visible anthology/resources split
 - no visible Local Resources or Inheritance tabs
-- no second inspector column inside the center workbench
+- no second interface-panel column inside the center workbench
+
+Compatibility note: implementation artifacts may still use `inspector` in IDs/class names (for example `ide-inspector` and `data-shell-toggle="inspector"`). Those names are internal compatibility terms, not canonical shell-region language.
 
 The canonical file set for the unified workbench is:
 

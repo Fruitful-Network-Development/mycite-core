@@ -48,6 +48,14 @@ Resolver behavior is compatibility-safe:
 
 The canonical SYSTEM workbench remains the only host runtime. Tool surfaces are provider projections mediated by SYSTEM state; tools do not become alternate shells.
 
+Shell-region projection remains stable during mediation:
+
+- control panel (left) carries context and compatible mediation controls
+- center workbench (middle) remains the canonical operator surface
+- interface panel (right) hosts interface-card and directive detail projections
+
+Compatibility note: implementation artifacts may still use internal `inspector` naming for IDs/routes/classes. This is compatibility-only and must not be treated as canonical UI terminology.
+
 ## Event Provenance And Override Rules
 
 Workbench-origin events must declare provenance:
