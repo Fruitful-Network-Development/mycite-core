@@ -4,6 +4,8 @@ from _shared.portal.application.service_tools import build_service_tool_registra
 
 TOOL_ID = "aws_platform_admin"
 TOOL_TITLE = "AWS Platform/Admin"
+# Tool icon is served from the aws-csm sandbox UI asset.
+TOOL_ICON = "/portal/api/tools/icons/aws-csm/aws.svg"
 
 
 def get_tool() -> dict[str, object]:
