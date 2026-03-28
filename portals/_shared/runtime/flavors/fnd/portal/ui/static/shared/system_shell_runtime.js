@@ -84,6 +84,10 @@
     return tool && typeof tool.workbench_contribution === "object" ? tool.workbench_contribution : {};
   }
 
+  function toolInterfaceContribution(tool) {
+    return tool && typeof tool.interface_panel_contribution === "object" ? tool.interface_panel_contribution : {};
+  }
+
   function toolInspectorContribution(tool) {
     return tool && typeof tool.inspector_card_contribution === "object" ? tool.inspector_card_contribution : {};
   }
@@ -100,16 +104,36 @@
     return tool && typeof tool.apply_hooks === "object" ? tool.apply_hooks : {};
   }
 
+  function toolShellComposition(tool) {
+    return text(tool && tool.shell_composition_mode).toLowerCase() === "tool" ? "tool" : "system";
+  }
+
+  function toolForegroundSurface(tool) {
+    return text(tool && tool.foreground_surface).toLowerCase() === "interface_panel"
+      ? "interface_panel"
+      : "center_workbench";
+  }
+
   var systemWorkspace = qs(".system-center-workspace");
   if (!systemWorkspace) {
     return;
   }
 
   var els = {
+    shell: qs(".ide-shell"),
+    inspectorTitle: qs("#portalInspectorTitle"),
     selectionSummary: qs("#systemSelectionSummary"),
+    toolContextMount: qs("#systemToolContextMount"),
     compatibleTools: qs("#systemCompatibleTools"),
+    systemInspectorRoot: qs("#systemShellInspectorRoot"),
     inspectorCardsRoot: qs("#systemShellInspectorCards"),
     inspectorCardsMount: qs("#systemInspectorCardsMount"),
+    toolInterfaceRoot: qs("#systemToolInterfaceRoot"),
+    toolInterfaceKicker: qs("#systemToolInterfaceKicker"),
+    toolInterfaceTitle: qs("#systemToolInterfaceTitle"),
+    toolInterfaceMeta: qs("#systemToolInterfaceMeta"),
+    toolInterfaceControls: qs("#systemToolInterfaceControls"),
+    toolInterfaceBody: qs("#systemToolInterfaceBody"),
     resourcesInspectorEmpty: qs("#dtResourcesInspectorEmpty"),
     mediationWorkbench: qs("#systemMediationWorkbench"),
     mediationTitle: qs("#systemMediationTitle"),
@@ -133,21 +157,27 @@
       active: false,
       toolId: "",
       locked: false,
-      source: ""
+      source: "",
+      composition: text(qs(".ide-shell") && qs(".ide-shell").getAttribute("data-shell-composition")) || "system"
     }
   };
 
   function syncToolLayerUiState() {
     var active = !!(state.toolLayer && state.toolLayer.active);
-    systemWorkspace.classList.toggle("is-tool-layer-active", active);
-    document.body.classList.toggle("portal-tool-layer-active", active);
+    var composition = active && text(state.toolLayer.composition).toLowerCase() === "tool" ? "tool" : "system";
+    systemWorkspace.classList.toggle("is-tool-layer-active", active && composition === "tool");
+    document.body.classList.toggle("portal-tool-layer-active", active && composition === "tool");
+    if (window.PortalShell && typeof window.PortalShell.setShellComposition === "function") {
+      window.PortalShell.setShellComposition(composition);
+    }
   }
 
-  function enterToolLayer(toolId, source) {
+  function enterToolLayer(toolId, source, composition) {
     state.toolLayer.active = true;
     state.toolLayer.locked = true;
     state.toolLayer.toolId = text(toolId).toLowerCase();
     state.toolLayer.source = text(source) || "runtime";
+    state.toolLayer.composition = text(composition).toLowerCase() === "tool" ? "tool" : "system";
     state.activeVerb = "mediate";
     syncToolLayerUiState();
   }
@@ -157,6 +187,7 @@
     state.toolLayer.locked = false;
     state.toolLayer.toolId = "";
     state.toolLayer.source = "";
+    state.toolLayer.composition = "system";
     syncToolLayerUiState();
   }
 
@@ -301,9 +332,11 @@
       button.className = "ide-controlpanel__link" + (text(tool.tool_id) === state.activeToolId ? " is-active" : "");
       button.setAttribute("data-shell-tool-id", text(tool.tool_id));
       var contribution = toolContribution(tool);
+      var interfaceContribution = toolInterfaceContribution(tool);
+      var detailLabel = text(interfaceContribution.label || interfaceContribution.lens_id || contribution.label || contribution.workspace_id);
       button.innerHTML =
         "<span>" + esc(tool.label || tool.tool_id || "tool") + "</span>" +
-        "<small>" + esc(contribution.label || contribution.workspace_id || "mediation workspace") + "</small>";
+        "<small>" + esc(detailLabel || "interface-panel mediation") + "</small>";
       button.addEventListener("click", function () {
         openTool(text(tool.tool_id));
       });
@@ -426,8 +459,7 @@
 
   function ensureInterfacePanelForServiceTool(tool) {
     if (!tool || typeof tool !== "object") return;
-    var surfaceMode = text(tool.surface_mode).toLowerCase();
-    if (surfaceMode !== "mediation_only") return;
+    if (toolShellComposition(tool) !== "tool" || toolForegroundSurface(tool) !== "interface_panel") return;
     if (window.PortalShell && typeof window.PortalShell.setInspectorOpen === "function") {
       window.PortalShell.setInspectorOpen(true, false);
     }
@@ -439,9 +471,10 @@
     if (state.toolContexts[token] && !force) {
       return Promise.resolve(state.toolContexts[token]);
     }
+    var interfaceContribution = toolInterfaceContribution(tool);
     var inspector = toolInspectorContribution(tool);
     var contribution = toolContribution(tool);
-    var route = text(inspector.config_context_route || contribution.activation_route);
+    var route = text(interfaceContribution.config_context_route || inspector.config_context_route || contribution.activation_route);
     if (!route) {
       state.toolContexts[token] = {};
       return Promise.resolve(state.toolContexts[token]);
@@ -481,10 +514,124 @@
     });
   }
 
+  function renderToolInterfaceModes(tool, provider) {
+    if (!els.toolInterfaceControls) return;
+    els.toolInterfaceControls.innerHTML = "";
+    var modes = provider.modes(tool);
+    var allowedIds = modes.map(function (entry) { return entry.id; });
+    if (!allowedIds.length) {
+      modes = [{ id: "overview", label: "Overview" }];
+      allowedIds = ["overview"];
+    }
+    if (allowedIds.indexOf(state.activeMediationMode) === -1) {
+      state.activeMediationMode = provider.defaultMode(tool);
+      if (allowedIds.indexOf(state.activeMediationMode) === -1) {
+        state.activeMediationMode = allowedIds[0];
+      }
+    }
+    modes.forEach(function (entry) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "data-tool__actionBtn" + (state.activeMediationMode === entry.id ? " is-active" : "");
+      btn.textContent = entry.label;
+      btn.setAttribute("data-tool-interface-mode", entry.id);
+      btn.addEventListener("click", function () {
+        state.activeMediationMode = entry.id;
+        renderAll();
+      });
+      els.toolInterfaceControls.appendChild(btn);
+    });
+  }
+
+  function activeToolUsesInterfacePanel(tool) {
+    return !!(tool && state.toolLayer.active && toolShellComposition(tool) === "tool" && toolForegroundSurface(tool) === "interface_panel");
+  }
+
+  function renderToolContextMount() {
+    if (!els.toolContextMount) return;
+    var tool = activeTool();
+    if (!activeToolUsesInterfacePanel(tool)) {
+      els.toolContextMount.hidden = true;
+      els.toolContextMount.innerHTML = "";
+      return;
+    }
+    var provider = activeToolProvider();
+    var html = typeof provider.renderControlPanel === "function" ? provider.renderControlPanel(tool) : "";
+    if (!text(html)) {
+      els.toolContextMount.hidden = true;
+      els.toolContextMount.innerHTML = "";
+      return;
+    }
+    els.toolContextMount.hidden = false;
+    els.toolContextMount.innerHTML = html;
+    if (typeof provider.bindControlPanel === "function") {
+      provider.bindControlPanel(tool);
+    }
+  }
+
+  function renderToolInterfaceLens() {
+    if (!els.toolInterfaceRoot || !els.toolInterfaceBody) return;
+    var tool = activeTool();
+    if (!tool && state.toolLayer.active && text(state.toolLayer.composition).toLowerCase() === "tool") {
+      if (els.systemInspectorRoot) {
+        els.systemInspectorRoot.hidden = true;
+      }
+      els.toolInterfaceRoot.hidden = false;
+      if (els.inspectorTitle && !text(els.inspectorTitle.textContent)) {
+        els.inspectorTitle.textContent = "Tool mediation";
+      }
+      return;
+    }
+    if (!activeToolUsesInterfacePanel(tool)) {
+      els.toolInterfaceRoot.hidden = true;
+      if (els.systemInspectorRoot) {
+        els.systemInspectorRoot.hidden = false;
+      }
+      if (els.inspectorTitle && text(els.inspectorTitle.textContent).toLowerCase() !== "overview") {
+        els.inspectorTitle.textContent = "Overview";
+      }
+      return;
+    }
+    var provider = activeToolProvider();
+    if (els.systemInspectorRoot) {
+      els.systemInspectorRoot.hidden = true;
+    }
+    els.toolInterfaceRoot.hidden = false;
+    if (els.inspectorTitle) {
+      els.inspectorTitle.textContent = provider.title(tool);
+    }
+    if (els.toolInterfaceKicker) {
+      els.toolInterfaceKicker.textContent = provider.kicker(tool);
+    }
+    if (els.toolInterfaceTitle) {
+      els.toolInterfaceTitle.textContent = provider.title(tool) + " · " + titleCase(state.activeMediationMode || provider.defaultMode(tool));
+    }
+    if (els.toolInterfaceMeta) {
+      els.toolInterfaceMeta.textContent = provider.meta(tool);
+    }
+    renderToolInterfaceModes(tool, provider);
+    try {
+      els.toolInterfaceBody.innerHTML = typeof provider.renderInterface === "function"
+        ? provider.renderInterface(tool, state.activeMediationMode)
+        : provider.render(tool, state.activeMediationMode);
+      if (typeof provider.bindInterface === "function") {
+        provider.bindInterface(tool);
+      }
+    } catch (err) {
+      if (els.toolInterfaceMeta) {
+        els.toolInterfaceMeta.textContent = err && err.message ? err.message : "Interface lens failed to render.";
+      }
+      els.toolInterfaceBody.innerHTML =
+        '<article class="card"><div class="card__kicker">Interface unavailable</div>' +
+        '<div class="card__title">Tool mediation lens failed safely</div>' +
+        '<div class="card__body"><p>The interface-panel lens hit a runtime error and was isolated from the shared shell host.</p></div></article>';
+    }
+  }
+
   function renderMediationWorkspaceBody() {
     if (!els.mediationBody || !els.mediationWorkbench) return;
     var tool = activeTool();
-    if (state.activeVerb !== "mediate" || !tool) {
+    if (state.activeVerb !== "mediate" || !tool || activeToolUsesInterfacePanel(tool)) {
       if (els.sideModeControls) els.sideModeControls.hidden = true;
       els.mediationWorkbench.hidden = true;
       if (els.mediationCloseBtn) els.mediationCloseBtn.hidden = true;
@@ -541,7 +688,9 @@
     setActiveVerbButtons();
     renderSelectionSummary();
     renderCompatibleTools();
+    renderToolContextMount();
     renderInspectorCards();
+    renderToolInterfaceLens();
     renderMediationWorkspaceBody();
   }
 
@@ -549,6 +698,7 @@
     var tool = findCompatibleTool(toolId);
     if (!tool) return;
     state.activeToolId = text(tool.tool_id);
+    state.toolLayer.composition = toolShellComposition(tool);
     if (state.toolLayer.active && text(tool.tool_id).toLowerCase() === text(state.toolLayer.toolId)) {
       state.activeVerb = "mediate";
     }
@@ -1206,38 +1356,85 @@
     var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
     var snapshots = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots : [];
     var rows = fndEbiAnalyticsRows(cards, snapshots);
-    if (!rows.length && !snapshots.length) {
+    var selected = fndEbiSelectedSnapshot(tool);
+    if (!rows.length && !selected) {
       return '<p class="data-tool__empty">No profile cards from tool sandbox. Check utilities/tools/fnd-ebi and web-analytics.json.</p>';
     }
-    var selected = fndEbiSelectedSnapshot(tool);
     var out = [];
-    out.push('<article class="card">');
-    out.push('<div class="card__kicker">Mediation Summary</div>');
-    out.push('<div class="card__title">Hosted analytics profiles</div>');
-    out.push('<div class="card__body">');
-    out.push("<p>Center workbench shows orchestration and mode controls. Rich profile-level analytics detail is hosted in the interface panel.</p>");
-    out.push("<p><strong>Profiles:</strong> " + esc(String(rows.length)) + " · <strong>Snapshots:</strong> " + esc(String(snapshots.length)) + "</p>");
-    out.push('<div class="fnd-ebi-gallery">');
-    rows.forEach(function (row) {
-      var c = row.card || {};
-      var snapshot = fndEbiSnapshotFromCard(c);
-      var traffic = snapshot.traffic && typeof snapshot.traffic === "object" ? snapshot.traffic : {};
-      var eventsSummary = snapshot.events_summary && typeof snapshot.events_summary === "object" ? snapshot.events_summary : {};
-      var title = text(c.title || c.card_id || "Site");
-      out.push('<article class="card fnd-ebi-card" data-fnd-ebi-select-domain="' + esc(text(snapshot.domain || title)) + '">');
-      out.push('<div class="card__kicker">' + esc(text(snapshot.health_label || "status")) + "</div>");
-      out.push('<div class="card__title">' + esc(title) + "</div>");
-      out.push('<div class="card__body">');
-      out.push("<p><strong>Requests 30d:</strong> " + esc(String(traffic.requests_30d || 0)) + " · <strong>Events 30d:</strong> " + esc(String(eventsSummary.events_30d || 0)) + "</p>");
-      out.push("<p><strong>Unique visitors:</strong> " + esc(String(traffic.unique_visitors_approx_30d || 0)) + " · <strong>Bot share:</strong> " + esc(fndEbiFormatPct(traffic.bot_share)) + "</p>");
-      out.push("<p><small>Select to focus this domain in interface-panel detail cards.</small></p>");
-      out.push("</div></article>");
-    });
-    out.push("</div>");
     if (selected) {
-      out.push("<p><strong>Selected domain:</strong> <code>" + esc(text(selected.domain || "")) + "</code></p>");
+      var traffic = selected.traffic && typeof selected.traffic === "object" ? selected.traffic : {};
+      var eventsSummary = selected.events_summary && typeof selected.events_summary === "object" ? selected.events_summary : {};
+      var freshness = selected.freshness && typeof selected.freshness === "object" ? selected.freshness : {};
+      out.push('<article class="card">');
+      out.push('<div class="card__kicker">Interface Lens</div>');
+      out.push('<div class="card__title">' + esc(text(selected.domain || "Hosted analytics")) + '</div>');
+      out.push('<div class="card__body">');
+      out.push(renderCardKeyValueRows({
+        "health label": text(selected.health_label),
+        "site root": text(selected.site_root),
+        "analytics root": text(selected.analytics_root),
+        "requests 30d": String(traffic.requests_30d || 0),
+        "events 30d": String(eventsSummary.events_30d || 0),
+        "unique visitors": String(traffic.unique_visitors_approx_30d || 0),
+        "bot share": fndEbiFormatPct(traffic.bot_share || 0),
+        "last access": text(freshness.access_last_seen_utc || ""),
+        "last events": text(freshness.events_last_seen_utc || "")
+      }));
+      if (Array.isArray(selected.warnings) && selected.warnings.length) {
+        out.push("<p><strong>Warnings</strong></p><ul class=\"fnd-ebi-warnings\">");
+        selected.warnings.slice(0, 8).forEach(function (warning) {
+          out.push("<li>" + esc(text(warning)) + "</li>");
+        });
+        out.push("</ul>");
+      }
+      out.push("</div></article>");
+      out.push('<article class="card">');
+      out.push('<div class="card__kicker">Source Diagnostics</div>');
+      out.push('<div class="card__title">File and log readiness</div>');
+      out.push('<div class="card__body">');
+      out.push(renderInterfacePanelCardBody(null, {
+        domain: text(selected.domain),
+        site_root: text(selected.site_root),
+        analytics_root: text(selected.analytics_root),
+        access_log: selected.access_log,
+        error_log: selected.error_log,
+        events_file: selected.events_file,
+        traffic_summary: {
+          requests_30d: Number(traffic.requests_30d || 0),
+          unique_visitors_approx_30d: Number(traffic.unique_visitors_approx_30d || 0),
+          bot_share: Number(traffic.bot_share || 0),
+          response_breakdown: traffic.response_breakdown || {}
+        },
+        event_summary: {
+          events_30d: Number(eventsSummary.events_30d || 0),
+          event_type_counts: eventsSummary.event_type_counts || {}
+        },
+        errors_noise: selected.errors_noise,
+        warnings: selected.warnings || []
+      }));
+      out.push("</div></article>");
     }
-    out.push("</div></article>");
+    if (rows.length) {
+      var selectedDomain = text(selected && selected.domain).toLowerCase();
+      out.push('<section class="fnd-ebi-gallery">');
+      rows.forEach(function (row) {
+        var c = row.card || {};
+        var snapshot = row.analytics || fndEbiSnapshotFromCard(c);
+        var traffic2 = snapshot.traffic && typeof snapshot.traffic === "object" ? snapshot.traffic : {};
+        var eventsSummary2 = snapshot.events_summary && typeof snapshot.events_summary === "object" ? snapshot.events_summary : {};
+        var title = text(c.title || c.card_id || "Site");
+        var domainToken = text(snapshot.domain || title);
+        out.push('<article class="card fnd-ebi-card' + (selectedDomain === domainToken.toLowerCase() ? ' is-active' : '') + '" data-fnd-ebi-select-domain="' + esc(domainToken) + '">');
+        out.push('<div class="card__kicker">' + esc(text(snapshot.health_label || "status")) + "</div>");
+        out.push('<div class="card__title">' + esc(title) + "</div>");
+        out.push('<div class="card__body">');
+        out.push("<p><strong>Requests 30d:</strong> " + esc(String(traffic2.requests_30d || 0)) + " · <strong>Events 30d:</strong> " + esc(String(eventsSummary2.events_30d || 0)) + "</p>");
+        out.push("<p><strong>Unique visitors:</strong> " + esc(String(traffic2.unique_visitors_approx_30d || 0)) + " · <strong>Bot share:</strong> " + esc(fndEbiFormatPct(traffic2.bot_share || 0)) + "</p>");
+        out.push("<p><small>Select to focus this hosted profile in the interface lens.</small></p>");
+        out.push("</div></article>");
+      });
+      out.push("</section>");
+    }
     return out.join("");
   }
 
@@ -1246,83 +1443,125 @@
     return body.workflow && typeof body.workflow === "object" ? body.workflow : {};
   }
 
+  function awsProfileToken(card) {
+    var body = card && card.body && typeof card.body === "object" ? card.body : {};
+    var identity = body.identity && typeof body.identity === "object" ? body.identity : {};
+    return text(card && (card.card_id || card.title) || identity.profile_id || identity.domain).toLowerCase();
+  }
+
+  function awsSelectProfile(toolId, token) {
+    var bucket = providerStateFor(toolId);
+    bucket.selectedProfile = text(token).toLowerCase();
+  }
+
+  function awsSelectedCard(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
+    if (!cards.length) return null;
+    var bucket = providerStateFor(tool.tool_id);
+    var selected = text(bucket.selectedProfile).toLowerCase();
+    if (!selected) return cards[0];
+    for (var i = 0; i < cards.length; i += 1) {
+      if (awsProfileToken(cards[i]) === selected) {
+        return cards[i];
+      }
+    }
+    return cards[0];
+  }
+
   function renderAwsServiceProfiles(tool) {
     var ctx = toolContext(tool.tool_id) || {};
     var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
     if (!cards.length) {
       return '<p class="data-tool__empty">No AWS-CMS profile cards discovered in tool sandbox.</p>';
     }
+    var selectedCard = awsSelectedCard(tool);
+    var selectedBody = selectedCard && selectedCard.body && typeof selectedCard.body === "object" ? selectedCard.body : {};
+    var selectedIdentity = selectedBody.identity && typeof selectedBody.identity === "object" ? selectedBody.identity : {};
+    var selectedWorkflow = awsWorkflowFromCard(selectedCard || {});
     var out = [];
-    out.push('<article class="card"><div class="card__kicker">Mediation Summary</div><div class="card__title">AWS-CMS onboarding readiness</div><div class="card__body">');
-    out.push("<p>Center workbench stays orchestration-first. Identity/SMTP/verification/provider detail is projected in the interface panel.</p>");
-    out.push('<div class="fnd-ebi-gallery">');
+    if (selectedCard) {
+      out.push('<article class="card"><div class="card__kicker">Interface Lens</div><div class="card__title">' + esc(text(selectedCard.title || selectedIdentity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
+      out.push(renderInterfacePanelCardBody(selectedCard, selectedBody));
+      out.push('</div></article>');
+      out.push('<article class="card"><div class="card__kicker">Workflow</div><div class="card__title">Single-user send-as onboarding</div><div class="card__body">');
+      out.push(renderCardKeyValueRows({
+        "handoff ready": selectedWorkflow.is_ready_for_user_handoff ? "yes" : "no",
+        "send-as confirmed": selectedWorkflow.is_send_as_confirmed ? "yes" : "no",
+        "tenant": text(selectedIdentity.tenant_id),
+        "domain": text(selectedIdentity.domain)
+      }));
+      if (Array.isArray(selectedWorkflow.missing_required_now) && selectedWorkflow.missing_required_now.length) {
+        out.push("<p><strong>Missing required now</strong></p><ul class=\"fnd-ebi-warnings\">");
+        selectedWorkflow.missing_required_now.forEach(function (item) {
+          out.push("<li>" + esc(text(item)) + "</li>");
+        });
+        out.push("</ul>");
+      }
+      out.push('</div></article>');
+    }
+    out.push('<section class="fnd-ebi-gallery">');
     cards.forEach(function (card) {
       var body = card && card.body && typeof card.body === "object" ? card.body : {};
       var identity = body.identity && typeof body.identity === "object" ? body.identity : {};
       var verification = body.verification && typeof body.verification === "object" ? body.verification : {};
       var workflow = awsWorkflowFromCard(card);
       var missing = Array.isArray(workflow.missing_required_now) ? workflow.missing_required_now : [];
-      out.push('<article class="card fnd-ebi-card">');
+      var token = awsProfileToken(card);
+      out.push('<article class="card fnd-ebi-card' + (selectedCard && awsProfileToken(selectedCard) === token ? ' is-active' : '') + '" data-aws-profile="' + esc(token) + '">');
       out.push('<div class="card__kicker">' + esc(workflow.is_ready_for_user_handoff ? "ready" : "staging required") + "</div>");
       out.push('<div class="card__title">' + esc(text(card.title || identity.domain || card.card_id || "profile")) + "</div>");
       out.push('<div class="card__body">');
       out.push("<p><strong>Tenant:</strong> " + esc(text(identity.tenant_id || "(missing)")) + "</p>");
       out.push("<p><strong>Verification:</strong> " + esc(text(verification.status || "(missing)")) + "</p>");
       out.push("<p><strong>Missing required now:</strong> " + esc(String(missing.length)) + "</p>");
-      out.push("<p><small>Open interface panel for profile-level onboarding details.</small></p>");
+      out.push("<p><small>Select to focus this onboarding profile in the interface lens.</small></p>");
       out.push("</div></article>");
     });
-    out.push("</div></div></article>");
+    out.push("</section>");
     return out.join("");
   }
 
   function renderFndEbiTraffic(tool) {
-    var ctx = toolContext(tool.tool_id) || {};
-    var snapshots = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots : [];
-    if (!snapshots.length) return '<p class="data-tool__empty">No traffic snapshots available.</p>';
+    var s = fndEbiSelectedSnapshot(tool);
+    if (!s) return '<p class="data-tool__empty">No traffic snapshots available.</p>';
+    var t = s.traffic && typeof s.traffic === "object" ? s.traffic : {};
     var out = [];
-    snapshots.forEach(function (s) {
-      var t = s.traffic && typeof s.traffic === "object" ? s.traffic : {};
-      out.push('<article class="card fnd-ebi-card"><div class="card__title">' + esc(text(s.domain || "")) + '</div><div class="card__body">');
-      out.push("<p>24h: <strong>" + esc(String(t.requests_24h || 0)) + "</strong> · 7d: <strong>" + esc(String(t.requests_7d || 0)) + "</strong> · 30d: <strong>" + esc(String(t.requests_30d || 0)) + "</strong></p>");
-      out.push("<p>Responses 2xx/3xx/4xx/5xx: " + esc(String((t.response_breakdown || {})["2xx"] || 0)) + "/" + esc(String((t.response_breakdown || {})["3xx"] || 0)) + "/" + esc(String((t.response_breakdown || {})["4xx"] || 0)) + "/" + esc(String((t.response_breakdown || {})["5xx"] || 0)) + "</p>");
-      out.push("<p>Bot share: <strong>" + esc(fndEbiFormatPct(t.bot_share || 0)) + "</strong> · Probes: <strong>" + esc(String(t.suspicious_probe_count || 0)) + "</strong></p>");
-      out.push("<p>Trend 7d: <span class=\"fnd-ebi-sparkline\">" + esc(fndEbiSparkline(t.trend_7d || [])) + "</span></p>");
-      out.push("</div></article>");
-    });
+    out.push('<article class="card fnd-ebi-card"><div class="card__title">' + esc(text(s.domain || "")) + '</div><div class="card__body">');
+    out.push("<p>24h: <strong>" + esc(String(t.requests_24h || 0)) + "</strong> · 7d: <strong>" + esc(String(t.requests_7d || 0)) + "</strong> · 30d: <strong>" + esc(String(t.requests_30d || 0)) + "</strong></p>");
+    out.push("<p>Responses 2xx/3xx/4xx/5xx: " + esc(String((t.response_breakdown || {})["2xx"] || 0)) + "/" + esc(String((t.response_breakdown || {})["3xx"] || 0)) + "/" + esc(String((t.response_breakdown || {})["4xx"] || 0)) + "/" + esc(String((t.response_breakdown || {})["5xx"] || 0)) + "</p>");
+    out.push("<p>Bot share: <strong>" + esc(fndEbiFormatPct(t.bot_share || 0)) + "</strong> · Probes: <strong>" + esc(String(t.suspicious_probe_count || 0)) + "</strong></p>");
+    out.push("<h4>Top Pages</h4>" + fndEbiListRows(t.top_pages, "No top pages."));
+    out.push("<h4>Top Referrers</h4>" + fndEbiListRows(t.top_referrers, "No top referrers."));
+    out.push("<p>Trend 7d: <span class=\"fnd-ebi-sparkline\">" + esc(fndEbiSparkline(t.trend_7d || [])) + "</span></p>");
+    out.push("</div></article>");
     return out.join("");
   }
 
   function renderFndEbiEvents(tool) {
-    var ctx = toolContext(tool.tool_id) || {};
-    var snapshots = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots : [];
-    if (!snapshots.length) return '<p class="data-tool__empty">No events snapshots available.</p>';
+    var s = fndEbiSelectedSnapshot(tool);
+    if (!s) return '<p class="data-tool__empty">No events snapshots available.</p>';
+    var e = s.events_summary && typeof s.events_summary === "object" ? s.events_summary : {};
     var out = [];
-    snapshots.forEach(function (s) {
-      var e = s.events_summary && typeof s.events_summary === "object" ? s.events_summary : {};
-      out.push('<article class="card fnd-ebi-card"><div class="card__title">' + esc(text(s.domain || "")) + '</div><div class="card__body">');
-      out.push("<p>Events 24h/7d/30d: <strong>" + esc(String(e.events_24h || 0)) + "</strong> / <strong>" + esc(String(e.events_7d || 0)) + "</strong> / <strong>" + esc(String(e.events_30d || 0)) + "</strong></p>");
-      out.push("<p>Sessions approx: <strong>" + esc(String(e.session_count_approx || 0)) + "</strong></p>");
-      out.push("<p>Trend 30d: <span class=\"fnd-ebi-sparkline\">" + esc(fndEbiSparkline(e.trend_30d || [])) + "</span></p>");
-      out.push(fndEbiListRows(Object.keys(e.event_type_counts || {}).map(function (k) { return { key: k, count: (e.event_type_counts || {})[k] }; }), "No event type data."));
-      out.push("</div></article>");
-    });
+    out.push('<article class="card fnd-ebi-card"><div class="card__title">' + esc(text(s.domain || "")) + '</div><div class="card__body">');
+    out.push("<p>Events 24h/7d/30d: <strong>" + esc(String(e.events_24h || 0)) + "</strong> / <strong>" + esc(String(e.events_7d || 0)) + "</strong> / <strong>" + esc(String(e.events_30d || 0)) + "</strong></p>");
+    out.push("<p>Sessions approx: <strong>" + esc(String(e.session_count_approx || 0)) + "</strong></p>");
+    out.push("<p>Trend 30d: <span class=\"fnd-ebi-sparkline\">" + esc(fndEbiSparkline(e.trend_30d || [])) + "</span></p>");
+    out.push(fndEbiListRows(Object.keys(e.event_type_counts || {}).map(function (k) { return { key: k, count: (e.event_type_counts || {})[k] }; }), "No event type data."));
+    out.push("</div></article>");
     return out.join("");
   }
 
   function renderFndEbiErrorsNoise(tool) {
-    var ctx = toolContext(tool.tool_id) || {};
-    var snapshots = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots : [];
-    if (!snapshots.length) return '<p class="data-tool__empty">No errors/noise snapshots available.</p>';
+    var s = fndEbiSelectedSnapshot(tool);
+    if (!s) return '<p class="data-tool__empty">No errors/noise snapshots available.</p>';
+    var n = s.errors_noise && typeof s.errors_noise === "object" ? s.errors_noise : {};
     var out = [];
-    snapshots.forEach(function (s) {
-      var n = s.errors_noise && typeof s.errors_noise === "object" ? s.errors_noise : {};
-      out.push('<article class="card fnd-ebi-card"><div class="card__title">' + esc(text(s.domain || "")) + '</div><div class="card__body">');
-      out.push("<h4>Error Severity</h4>" + fndEbiListRows(Object.keys(n.error_severity_counts || {}).map(function (k) { return { key: k, count: (n.error_severity_counts || {})[k] }; }), "No error severity rows."));
-      out.push("<h4>Top Error Routes</h4>" + fndEbiListRows(n.top_error_routes, "No top error routes."));
-      out.push("<h4>Probe Examples</h4>" + fndEbiListRows(n.suspicious_probe_examples, "No suspicious probes."));
-      out.push("</div></article>");
-    });
+    out.push('<article class="card fnd-ebi-card"><div class="card__title">' + esc(text(s.domain || "")) + '</div><div class="card__body">');
+    out.push("<h4>Error Severity</h4>" + fndEbiListRows(Object.keys(n.error_severity_counts || {}).map(function (k) { return { key: k, count: (n.error_severity_counts || {})[k] }; }), "No error severity rows."));
+    out.push("<h4>Top Error Routes</h4>" + fndEbiListRows(n.top_error_routes, "No top error routes."));
+    out.push("<h4>Probe Examples</h4>" + fndEbiListRows(n.suspicious_probe_examples, "No suspicious probes."));
+    out.push("</div></article>");
     return out.join("");
   }
 
@@ -1330,10 +1569,27 @@
     var ctx = toolContext(tool.tool_id) || {};
     var files = Array.isArray(ctx.collection_files) ? ctx.collection_files : [];
     var warnings = Array.isArray(ctx.warnings) ? ctx.warnings : [];
+    var selected = fndEbiSelectedSnapshot(tool);
     if (!files.length && !warnings.length) {
       return '<p class="data-tool__empty">No tool files discovered.</p>';
     }
     var rows = [];
+    if (selected) {
+      rows.push('<article class="card"><div class="card__kicker">Focused Profile</div><div class="card__title">' + esc(text(selected.domain || "")) + '</div><div class="card__body">');
+      rows.push(renderInterfacePanelCardBody(null, {
+        domain: text(selected.domain),
+        site_root: text(selected.site_root),
+        analytics_root: text(selected.analytics_root),
+        access_log: selected.access_log,
+        error_log: selected.error_log,
+        events_file: selected.events_file,
+        traffic_summary: selected.traffic || {},
+        event_summary: selected.events_summary || {},
+        errors_noise: selected.errors_noise || {},
+        warnings: selected.warnings || []
+      }));
+      rows.push("</div></article>");
+    }
     rows.push("<table class=\"fnd-ebi-table\"><thead><tr><th>File</th><th>Kind</th><th>Records</th></tr></thead><tbody>");
     files.forEach(function (f) {
       if (!f || typeof f !== "object") return;
@@ -1358,29 +1614,77 @@
     return rows.join("");
   }
 
+  function renderFndEbiControlPanel(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
+    var snapshots = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots : [];
+    var rows = fndEbiAnalyticsRows(cards, snapshots);
+    if (!rows.length) {
+      return '<div class="ide-controlpanel__empty">No hosted analytics profiles are staged in the tool sandbox.</div>';
+    }
+    var selectedDomain = text(fndEbiSelectedSnapshot(tool) && fndEbiSelectedSnapshot(tool).domain).toLowerCase();
+    var out = [];
+    rows.forEach(function (row) {
+      var snapshot = row.analytics || fndEbiSnapshotFromCard(row.card || {});
+      var traffic = snapshot.traffic && typeof snapshot.traffic === "object" ? snapshot.traffic : {};
+      var eventsSummary = snapshot.events_summary && typeof snapshot.events_summary === "object" ? snapshot.events_summary : {};
+      var domain = text(snapshot.domain || fndEbiDomainFromCard(row.card));
+      out.push('<button type="button" class="system-tool-contextCard' + (selectedDomain === domain.toLowerCase() ? ' is-active' : '') + '" data-fnd-ebi-select-domain="' + esc(domain) + '">');
+      out.push('<strong>' + esc(domain || "profile") + '</strong>');
+      out.push('<small>' + esc(text(snapshot.health_label || "analytics")) + " · " + esc(String(traffic.requests_30d || 0)) + " req 30d</small>");
+      out.push('<span>' + esc(String(eventsSummary.events_30d || 0)) + ' events 30d</span>');
+      out.push('</button>');
+    });
+    return out.join("");
+  }
+
+  function renderAwsControlPanel(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
+    if (!cards.length) {
+      return '<div class="ide-controlpanel__empty">No AWS-CMS onboarding profiles are staged in the tool sandbox.</div>';
+    }
+    var selected = awsSelectedCard(tool);
+    var selectedToken = awsProfileToken(selected);
+    var out = [];
+    cards.forEach(function (card) {
+      var body = card && card.body && typeof card.body === "object" ? card.body : {};
+      var identity = body.identity && typeof body.identity === "object" ? body.identity : {};
+      var workflow = awsWorkflowFromCard(card);
+      var missing = Array.isArray(workflow.missing_required_now) ? workflow.missing_required_now : [];
+      var token = awsProfileToken(card);
+      out.push('<button type="button" class="system-tool-contextCard' + (token === selectedToken ? ' is-active' : '') + '" data-aws-profile="' + esc(token) + '">');
+      out.push('<strong>' + esc(text(card.title || identity.domain || token || "profile")) + '</strong>');
+      out.push('<small>' + esc(workflow.is_ready_for_user_handoff ? "ready for handoff" : "staging required") + '</small>');
+      out.push('<span>' + esc(String(missing.length)) + ' missing now</span>');
+      out.push('</button>');
+    });
+    return out.join("");
+  }
+
   var fndEbiMediationProvider = {
-    defaultMode: function () {
-      return "overview";
+    defaultMode: function (tool) {
+      return normalizeModeId(toolInterfaceContribution(tool).default_mode || "overview") || "overview";
     },
-    modes: function () {
-      return [
-        { id: "overview", label: "Overview" },
-        { id: "traffic", label: "Traffic" },
-        { id: "events", label: "Events" },
-        { id: "errors_noise", label: "Errors / Noise" },
-        { id: "files", label: "Files" }
-      ];
+    modes: function (tool) {
+      var contribution = toolInterfaceContribution(tool);
+      var rawModes = Array.isArray(contribution.modes) ? contribution.modes : ["overview", "traffic", "events", "errors_noise", "files"];
+      return rawModes.map(function (mode) {
+        var id = normalizeModeId(mode) || "overview";
+        return { id: id, label: titleCase(mode) };
+      });
     },
     title: function (tool) {
       return text(tool && (tool.label || tool.tool_id)) || "FND EBI";
     },
     kicker: function (tool) {
-      return text(toolContribution(tool).label) || "Hosted site analytics";
+      return text(toolInterfaceContribution(tool).label) || "Hosted site analytics";
     },
     meta: function (tool) {
       var ctx = toolContext(tool.tool_id) || {};
-      var n = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots.length : 0;
-      return "Domains: " + String(n) + " · source: analytics/nginx + analytics/events";
+      var snapshots = Array.isArray(ctx.analytics_snapshots) ? ctx.analytics_snapshots : [];
+      var selected = fndEbiSelectedSnapshot(tool);
+      return "Domains: " + String(snapshots.length) + " · focus: " + (text(selected && selected.domain) || "unselected");
     },
     ensureReady: function (tool, force) {
       return ensureToolContext(tool, force).then(function (ctx) {
@@ -1400,23 +1704,35 @@
       if (mode === "files") return renderFndEbiFiles(tool);
       return renderFndEbiOverview(tool);
     },
-    bind: function (tool) {
-      qsa("[data-fnd-ebi-select-domain]", els.mediationBody).forEach(function (node) {
+    renderInterface: function (tool, mode) {
+      return this.render(tool, mode);
+    },
+    renderControlPanel: function (tool) {
+      return renderFndEbiControlPanel(tool);
+    },
+    bind: function (tool, root) {
+      qsa("[data-fnd-ebi-select-domain]", root || els.mediationBody).forEach(function (node) {
         node.addEventListener("click", function () {
           fndEbiSelectDomain(text(node.getAttribute("data-fnd-ebi-select-domain")));
           state.activeMediationMode = "overview";
-          renderMediationWorkspaceBody();
+          renderAll();
         });
       });
+    },
+    bindInterface: function (tool) {
+      this.bind(tool, els.toolInterfaceBody);
+    },
+    bindControlPanel: function (tool) {
+      this.bind(tool, els.toolContextMount);
     }
   };
 
   var awsServiceMediationProvider = {
-    defaultMode: function () {
-      return "profiles";
+    defaultMode: function (tool) {
+      return normalizeModeId(toolInterfaceContribution(tool).default_mode || "profiles") || "profiles";
     },
     modes: function (tool) {
-      var contribution = toolContribution(tool);
+      var contribution = toolInterfaceContribution(tool);
       var rawModes = Array.isArray(contribution.modes) ? contribution.modes : ["profiles", "collections", "files"];
       return rawModes.map(function (mode) {
         var id = normalizeModeId(mode) || "profiles";
@@ -1440,6 +1756,11 @@
     },
     ensureReady: function (tool, force) {
       return ensureToolContext(tool, force).then(function (ctx) {
+        var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
+        var bucket = providerStateFor(tool.tool_id);
+        if (!text(bucket.selectedProfile) && cards.length) {
+          bucket.selectedProfile = awsProfileToken(cards[0]);
+        }
         ensureInterfacePanelForServiceTool(tool);
         return ctx;
       });
@@ -1453,8 +1774,26 @@
       }
       return renderAwsServiceProfiles(tool);
     },
-    bind: function () {
-      return;
+    renderInterface: function (tool, mode) {
+      return this.render(tool, mode);
+    },
+    renderControlPanel: function (tool) {
+      return renderAwsControlPanel(tool);
+    },
+    bind: function (tool, root) {
+      qsa("[data-aws-profile]", root || els.mediationBody).forEach(function (node) {
+        node.addEventListener("click", function () {
+          awsSelectProfile(tool.tool_id, node.getAttribute("data-aws-profile"));
+          state.activeMediationMode = "profiles";
+          renderAll();
+        });
+      });
+    },
+    bindInterface: function (tool) {
+      this.bind(tool, els.toolInterfaceBody);
+    },
+    bindControlPanel: function (tool) {
+      this.bind(tool, els.toolContextMount);
     }
   };
 
@@ -1470,8 +1809,15 @@
       var params = new URLSearchParams(window.location.search || "");
       var tid = text(params.get("mediate_tool"));
       if (!tid) return Promise.resolve();
-      enterToolLayer(tid, "query");
-      ensureInterfacePanelForServiceTool({ surface_mode: "mediation_only" });
+      enterToolLayer(
+        tid,
+        "query",
+        text(els.shell && els.shell.getAttribute("data-shell-composition")) || "system"
+      );
+      ensureInterfacePanelForServiceTool({
+        shell_composition_mode: text(els.shell && els.shell.getAttribute("data-shell-composition")) || "system",
+        foreground_surface: "interface_panel"
+      });
       return api("/portal/api/data/system/sandbox_context", "POST", {
         shell_verb: "mediate",
         current_verb: "mediate",

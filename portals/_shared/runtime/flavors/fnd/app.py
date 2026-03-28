@@ -1093,6 +1093,17 @@ def _tool_shell_context() -> Dict[str, Any]:
     if not switch_portal_url:
         switch_portal_url = "/oauth2/sign_in?rd=%2Fportal%2Fsystem"
     mediate_tool = str(request.args.get("mediate_tool") or "").strip().lower()
+    mediate_tool_meta = next(
+        (tool for tool in TOOL_TABS if str(tool.get("tool_id") or "").strip().lower() == mediate_tool),
+        None,
+    )
+    shell_composition_mode = (
+        "tool"
+        if active_service == "system"
+        and mediate_tool_meta is not None
+        and str(mediate_tool_meta.get("shell_composition_mode") or "").strip().lower() == "tool"
+        else "system"
+    )
     activity_tool_links = build_activity_tool_links(TOOL_TABS, active_mediate_tool=mediate_tool)
     initial_shell_verb = "mediate" if mediate_tool else "navigate"
     context = build_shell_context(
@@ -1122,6 +1133,8 @@ def _tool_shell_context() -> Dict[str, Any]:
             "portal_entry_path": PORTAL_INSTANCE_CONTEXT.portal_entry_path,
             "default_embed_port": PORTAL_INSTANCE_CONTEXT.default_embed_port,
         },
+        active_mediate_tool=mediate_tool,
+        shell_composition_mode=shell_composition_mode,
     )
     context.update(session_presentation)
     return context

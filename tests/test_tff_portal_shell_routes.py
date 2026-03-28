@@ -32,7 +32,19 @@ def _load_tff_app_module(temp_root: Path):
     data_dir.mkdir(parents=True, exist_ok=True)
 
     msn_id = "3-2-3-17-77-2-6-3-1-6"
-    (private_dir / "config.json").write_text(json.dumps({"msn_id": msn_id}) + "\n", encoding="utf-8")
+    (private_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "msn_id": msn_id,
+                "tools_configuration": [
+                    {"name": "fnd-ebi", "status": "enabled", "mount_target": "peripherals.tools"},
+                    {"name": "aws-csm", "status": "enabled", "mount_target": "peripherals.tools"},
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     icon_dir = private_dir / "utilities" / "tools" / "agro-erp" / "UI"
     icon_dir.mkdir(parents=True, exist_ok=True)
     (icon_dir / "farm.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'></svg>\n", encoding="utf-8")
@@ -109,8 +121,28 @@ class TffPortalShellRouteTests(unittest.TestCase):
             self.assertNotIn("Open AGRO ERP", system_html)
             self.assertNotIn("ide-activitylink--tool", system_html)
             self.assertNotIn("/portal/tools/agro_erp/home", system_html)
+            self.assertIn("/portal/system?mediate_tool=aws_platform_admin", system_html)
+            self.assertIn("/portal/system?mediate_tool=fnd_ebi", system_html)
             self.assertIn("data_tool.js", system_html)
             self.assertIn("system_shell_runtime.js", system_html)
+            self.assertIn('data-shell-composition="system"', system_html)
+            self.assertIn('data-foreground-shell-region="center-workbench"', system_html)
+            tool_html = client.get("/portal/system?mediate_tool=fnd_ebi").get_data(as_text=True)
+            self.assertIn('data-shell-composition="tool"', tool_html)
+            self.assertIn('data-active-mediate-tool="fnd_ebi"', tool_html)
+            self.assertIn('data-foreground-shell-region="interface-panel"', tool_html)
+            self.assertIn('data-foreground-visible="false"', tool_html)
+            self.assertIn('data-primary-surface="true"', tool_html)
+            self.assertIn('data-inspector-collapsed="false"', tool_html)
+            self.assertIn('id="systemToolInterfaceRoot"', tool_html)
+            self.assertIn('id="systemToolContextMount"', tool_html)
+            aws_tool_html = client.get("/portal/system?mediate_tool=aws_platform_admin").get_data(as_text=True)
+            self.assertIn('data-shell-composition="tool"', aws_tool_html)
+            self.assertIn('data-active-mediate-tool="aws_platform_admin"', aws_tool_html)
+            self.assertIn('data-foreground-shell-region="interface-panel"', aws_tool_html)
+            self.assertIn('data-foreground-visible="false"', aws_tool_html)
+            self.assertIn('data-primary-surface="true"', aws_tool_html)
+            self.assertIn('id="systemToolInterfaceRoot"', aws_tool_html)
             legacy_query = client.get("/portal/system?tab=legacy_split&workbench=legacy_mode&theme=forest", follow_redirects=False)
             self.assertEqual(legacy_query.status_code, 302)
             self.assertEqual(legacy_query.headers.get("Location", ""), "/portal/system?theme=forest")

@@ -165,6 +165,13 @@ def _service_tool_contract(definition: dict[str, Any], *, portal_instance_id: st
             "default_mode": _text(definition.get("default_mode")) or "profiles",
             "modes": list(definition.get("modes") or []),
         },
+        "host_composition": {
+            "mode": "tool",
+            "visible_regions": ["control_panel", "interface_panel"],
+            "foreground_workbench": False,
+            "background_workbench_runtime": True,
+            "interface_panel_primary": True,
+        },
     }
 
 
@@ -172,16 +179,19 @@ def build_service_tool_meta(tool_id: str) -> dict[str, Any]:
     definition = service_tool_definition(tool_id)
     if not definition:
         return {}
+    lens_id = _text(definition.get("workspace_id") or definition.get("lens_id"))
     return {
         "supported_verbs": ["mediate"],
         "supported_source_contracts": [{"config_context": True}],
         "config_context_support": True,
         "source_resolution_rules": ["tool_json_collection", "profile_card_mediation"],
-        "workbench_contribution": {
-            "workspace_id": _text(definition.get("workspace_id")),
+        "workbench_contribution": {},
+        "interface_panel_contribution": {
+            "lens_id": lens_id,
             "label": _text(definition.get("label")),
             "default_mode": _text(definition.get("default_mode")) or "overview",
             "modes": list(definition.get("modes") or []),
+            "config_context_route": f"/portal/api/data/system/config_context/{_text(tool_id).lower()}",
         },
         "inspector_card_contribution": {
             "config_context_route": f"/portal/api/data/system/config_context/{_text(tool_id).lower()}",
@@ -196,6 +206,8 @@ def build_service_tool_meta(tool_id: str) -> dict[str, Any]:
         "apply_hooks": {},
         "surface_mode": "mediation_only",
         "owns_shell_state": False,
+        "shell_composition_mode": "tool",
+        "foreground_surface": "interface_panel",
         "service_contract": _service_tool_contract(definition),
     }
 
@@ -994,6 +1006,8 @@ def build_service_tool_config_context(
         "bindings_schema": SERVICE_TOOL_BINDINGS_SCHEMA,
         "tool_id": _text(tool_id).lower(),
         "shell_verb": "mediate",
+        "shell_composition_mode": "tool",
+        "foreground_surface": "interface_panel",
         "portal_instance_id": _text(portal_instance_id),
         "msn_id": _text(msn_id),
         "portal_instance_context": _instance_payload(portal_instance_context),
@@ -1008,11 +1022,13 @@ def build_service_tool_config_context(
         "config_datum": config_datum,
         "collection_datum": collection_datum,
         "collection_members": collection_members,
-        "workspace_profile": {
-            "workspace_id": _text(definition.get("workspace_id")),
+        "interface_lens": {
+            "lens_id": _text(definition.get("workspace_id") or definition.get("lens_id")),
             "label": _text(definition.get("label")),
             "default_mode": _text(definition.get("default_mode")) or "overview",
             "modes": list(definition.get("modes") or []),
+            "shell_composition_mode": "tool",
+            "foreground_surface": "interface_panel",
         },
         "collection_files": collection_files,
         "profile_cards": profile_cards,

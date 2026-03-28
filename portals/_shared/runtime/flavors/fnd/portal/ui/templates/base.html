@@ -13,8 +13,11 @@
   <div
     class="ide-shell{% block ide_shell_extra_class %}{% endblock %}"
     data-active-service="{% if active_service is defined and active_service %}{{ active_service }}{% else %}system{% endif %}"
+    data-active-mediate-tool="{% if active_mediate_tool_id is defined and active_mediate_tool_id %}{{ active_mediate_tool_id }}{% endif %}"
+    data-shell-composition="{% if shell_composition_mode is defined and shell_composition_mode %}{{ shell_composition_mode }}{% else %}system{% endif %}"
+    data-foreground-shell-region="{% if foreground_shell_region is defined and foreground_shell_region %}{{ foreground_shell_region }}{% else %}center-workbench{% endif %}"
     data-control-panel-collapsed="false"
-    data-inspector-collapsed="true"
+    data-inspector-collapsed="{% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}false{% else %}true{% endif %}"
     {% block ide_shell_data_attrs %}{% endblock %}
   >
     <header class="ide-menubar" aria-label="Menu bar">
@@ -131,7 +134,13 @@
         aria-label="Resize control panel"
       ></button>
 
-      <main class="ide-workbench" data-shell-region="center-workbench" data-active-service="{% if active_service is defined and active_service %}{{ active_service }}{% else %}system{% endif %}">
+      <main
+        class="ide-workbench"
+        data-shell-region="center-workbench"
+        data-active-service="{% if active_service is defined and active_service %}{{ active_service }}{% else %}system{% endif %}"
+        data-foreground-visible="{% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}false{% else %}true{% endif %}"
+        aria-hidden="{% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}true{% else %}false{% endif %}"
+      >
         {% block topbar %}{% endblock %}
 
         {% block header %}
@@ -161,7 +170,14 @@
         aria-label="Resize interface panel"
       ></button>
 
-      <aside id="portalInspector" class="ide-inspector is-collapsed" data-shell-region="interface-panel" aria-label="Interface panel" aria-hidden="true">
+      <aside
+        id="portalInspector"
+        class="ide-inspector{% if shell_composition_mode is not defined or shell_composition_mode != 'tool' %} is-collapsed{% endif %}"
+        data-shell-region="interface-panel"
+        data-primary-surface="{% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}true{% else %}false{% endif %}"
+        aria-label="Interface panel"
+        aria-hidden="{% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}false{% else %}true{% endif %}"
+      >
         <header class="ide-inspector__header">
           <div>
             <div class="ide-inspector__kicker">Interface Panel</div>
