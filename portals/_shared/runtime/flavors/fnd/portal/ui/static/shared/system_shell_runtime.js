@@ -128,6 +128,7 @@
     systemInspectorRoot: qs("#systemShellInspectorRoot"),
     inspectorCardsRoot: qs("#systemShellInspectorCards"),
     inspectorCardsMount: qs("#systemInspectorCardsMount"),
+    inspectorTransientMount: qs("#portalInspectorTransientMount"),
     toolInterfaceRoot: qs("#systemToolInterfaceRoot"),
     toolInterfaceKicker: qs("#systemToolInterfaceKicker"),
     toolInterfaceTitle: qs("#systemToolInterfaceTitle"),
@@ -144,6 +145,39 @@
     mediationCloseBtn: qs("#systemMediationCloseBtn"),
     sideModeControls: qs("#systemToolViewModes")
   };
+
+  function setInterfacePanelRootState(node, active) {
+    if (!node) return;
+    node.hidden = !active;
+    node.setAttribute("aria-hidden", active ? "false" : "true");
+    if ("inert" in node) {
+      node.inert = !active;
+    }
+    node.toggleAttribute("data-interface-panel-active", !!active);
+  }
+
+  function setInterfacePanelActiveRoot(kind) {
+    var token = text(kind).toLowerCase();
+    if (els.systemInspectorRoot) {
+      setInterfacePanelRootState(els.systemInspectorRoot, token === "system");
+    }
+    if (els.toolInterfaceRoot) {
+      setInterfacePanelRootState(els.toolInterfaceRoot, token === "tool");
+    }
+    if (els.inspectorTransientMount) {
+      if (token !== "transient") {
+        els.inspectorTransientMount.innerHTML = "";
+      }
+      setInterfacePanelRootState(els.inspectorTransientMount, token === "transient");
+    }
+    var contentRoot = qs("#portalInspectorContent");
+    if (contentRoot) {
+      contentRoot.setAttribute("data-interface-panel-active-root", token || "");
+    }
+    if (window.PortalInspector && typeof window.PortalInspector.activatePersistentRoot === "function" && token !== "transient") {
+      window.PortalInspector.activatePersistentRoot(token || "system");
+    }
+  }
 
   var state = {
     selectedContext: null,
@@ -589,30 +623,21 @@
     if (!els.toolInterfaceRoot || !els.toolInterfaceBody) return;
     var tool = activeTool();
     if (!tool && state.toolLayer.active && text(state.toolLayer.composition).toLowerCase() === "tool") {
-      if (els.systemInspectorRoot) {
-        els.systemInspectorRoot.hidden = true;
-      }
-      els.toolInterfaceRoot.hidden = false;
+      setInterfacePanelActiveRoot("tool");
       if (els.inspectorTitle && !text(els.inspectorTitle.textContent)) {
         els.inspectorTitle.textContent = "Tool mediation";
       }
       return;
     }
     if (!activeToolUsesInterfacePanel(tool)) {
-      els.toolInterfaceRoot.hidden = true;
-      if (els.systemInspectorRoot) {
-        els.systemInspectorRoot.hidden = false;
-      }
+      setInterfacePanelActiveRoot("system");
       if (els.inspectorTitle && text(els.inspectorTitle.textContent).toLowerCase() !== "overview") {
         els.inspectorTitle.textContent = "Overview";
       }
       return;
     }
     var provider = activeToolProvider();
-    if (els.systemInspectorRoot) {
-      els.systemInspectorRoot.hidden = true;
-    }
-    els.toolInterfaceRoot.hidden = false;
+    setInterfacePanelActiveRoot("tool");
     if (els.inspectorTitle) {
       els.inspectorTitle.textContent = provider.title(tool);
     }
