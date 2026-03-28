@@ -18,13 +18,14 @@
 {% block header %}{% endblock %}
 
 {% block inspector_content %}
-  <div id="systemShellInspectorRoot" class="system-shell-inspector">
+  {# Keep inspector IDs/classes for compatibility; canonical shell region name is "interface panel". #}
+  <div id="systemShellInspectorRoot" class="system-shell-inspector" aria-label="SYSTEM interface panel content">
     <section id="systemShellInspectorCards" class="system-shell-inspectorCards" hidden>
       <div id="systemInspectorCardsMount" class="system-shell-inspectorCards__mount"></div>
     </section>
     <div id="systemInspectorPanelSystem" class="system-inspector-panel" data-system-inspector-panel="system">
       <div class="ide-inspector__moduleKicker" id="dtResourcesInspectorKicker">SYSTEM</div>
-      <div class="ide-inspector__moduleTitle" id="dtResourcesInspectorTitle">Details</div>
+      <div class="ide-inspector__moduleTitle" id="dtResourcesInspectorTitle">Overview</div>
       <p id="dtResourcesInspectorEmpty" class="data-tool__empty" hidden>Select a file or datum in the center workbench.</p>
       <div id="dtResourcesInspectorStack" class="data-tool__resourcesInspectorStack">
         <section class="data-tool__resourcesInspectorPanel" data-resources-inspector-panel="navigate" hidden>

@@ -97,7 +97,7 @@ class FndPortalShellRouteTests(unittest.TestCase):
             self.assertIn('id="portalControlPanel"', system_html)
             self.assertIn('aria-label="Control panel"', system_html)
             self.assertIn("Context", system_html)
-            self.assertIn("Details", system_html)
+            self.assertIn("Interface Panel", system_html)
             self.assertNotIn("Local Resources", system_html)
             self.assertNotIn("Inheritance", system_html)
             self.assertNotIn('data-system-' + 'compat-view', system_html)

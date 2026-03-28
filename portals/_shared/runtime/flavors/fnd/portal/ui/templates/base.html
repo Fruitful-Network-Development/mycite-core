@@ -37,7 +37,7 @@
       <div class="ide-menubar__right">
         <div class="ide-menubar__shellActions" aria-label="Shell layout controls">
           <button type="button" class="ide-sessionAction ide-sessionAction--button" data-shell-toggle="control-panel">Context</button>
-          <button type="button" class="ide-sessionAction ide-sessionAction--button" data-shell-toggle="inspector">Details</button>
+          <button type="button" class="ide-sessionAction ide-sessionAction--button" data-shell-toggle="inspector">Interface Panel</button>
         </div>
         <label class="themebar ide-menubar__theme" aria-label="Portal theme selector">
           <span class="themebar__label">Theme</span>
@@ -93,7 +93,7 @@
         </div>
       </aside>
 
-      <aside id="portalControlPanel" class="ide-controlpanel" aria-label="Control panel" aria-hidden="false">
+      <aside id="portalControlPanel" class="ide-controlpanel" data-shell-region="control-panel" aria-label="Control panel" aria-hidden="false">
         {% block control_panel %}
           {% if control_panel_sections is defined and control_panel_sections %}
             {% for section in control_panel_sections %}
@@ -131,7 +131,7 @@
         aria-label="Resize control panel"
       ></button>
 
-      <main class="ide-workbench" data-active-service="{% if active_service is defined and active_service %}{{ active_service }}{% else %}system{% endif %}">
+      <main class="ide-workbench" data-shell-region="center-workbench" data-active-service="{% if active_service is defined and active_service %}{{ active_service }}{% else %}system{% endif %}">
         {% block topbar %}{% endblock %}
 
         {% block header %}
@@ -158,20 +158,20 @@
         type="button"
         class="ide-splitter ide-splitter--inspector"
         data-splitter="inspector"
-        aria-label="Resize inspector"
+        aria-label="Resize interface panel"
       ></button>
 
-      <aside id="portalInspector" class="ide-inspector is-collapsed" aria-label="Inspector" aria-hidden="true">
+      <aside id="portalInspector" class="ide-inspector is-collapsed" data-shell-region="interface-panel" aria-label="Interface panel" aria-hidden="true">
         <header class="ide-inspector__header">
           <div>
-            <div class="ide-inspector__kicker">Inspector</div>
-            <div id="portalInspectorTitle" class="ide-inspector__title">Details</div>
+            <div class="ide-inspector__kicker">Interface Panel</div>
+            <div id="portalInspectorTitle" class="ide-inspector__title">Overview</div>
           </div>
-          <button type="button" class="ide-inspector__close" data-inspector-close>Close</button>
+          <button type="button" class="ide-inspector__close" data-inspector-close>Close Panel</button>
         </header>
         <section id="portalInspectorContent" class="ide-inspector__content">
           {% block inspector_content %}
-            <p class="ide-inspector__empty" id="portalInspectorEmptyDefault">Select an item to inspect.</p>
+            <p class="ide-inspector__empty" id="portalInspectorEmptyDefault">Select an item to load interface panel content.</p>
           {% endblock %}
           {# Transient overlays (e.g. PortalInspector.open) must not remove persistent module mounts in inspector_content #}
           <div id="portalInspectorTransientMount" class="ide-inspector__transient" hidden aria-hidden="true"></div>

@@ -55,7 +55,7 @@ Derived UI follows state, not the other way around:
 
 - control panel summarizes context and compatible mediations
 - center workbench is the canonical operator surface
-- Details reflects the active directive and subject
+- interface panel reflects the active directive and subject
 - AITAS is a projection of state, not a separate state authority
 
 ## Directional Intent

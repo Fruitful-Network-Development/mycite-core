@@ -330,7 +330,7 @@
       article.className = "card";
       var body = card && card.body && typeof card.body === "object" ? card.body : {};
       article.innerHTML =
-        '<div class="card__kicker">' + esc(card.kind || "Inspector") + "</div>" +
+        '<div class="card__kicker">' + esc(card.kind || "Interface") + "</div>" +
         '<div class="card__title">' + esc(card.title || "Card") + "</div>" +
         '<div class="card__body">' +
         (card.summary ? "<p>" + esc(card.summary) + "</p>" : "") +

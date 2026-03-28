@@ -45,7 +45,7 @@ This page owns the shared mediation registry contract. It does not own:
 - datum rule-policy classification
 - AGRO-specific orchestration
 - MSS compile and decode logic
-- shell-level Details projections
+- shell-level interface panel projections
 
 ## Authoritative Paths / Files
 

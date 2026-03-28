@@ -3401,7 +3401,7 @@
       origin: String(origin || "user_task_change").trim().toLowerCase() || "user_task_change",
     });
     renderResourcesInspectorPanels().catch(function (err) {
-      setMessages([err && err.message ? err.message : "Resources inspector failed"], []);
+      setMessages([err && err.message ? err.message : "Resources interface panel render failed"], []);
     });
     emitResourcesShellSelection(origin || "user_task_change");
   }
@@ -3710,7 +3710,7 @@
     var meta = document.createElement("p");
     meta.className = "data-tool__legendText";
     meta.textContent = row
-      ? "Datum mediation stays in the Details workspace and can be handed off to compatible tools."
+      ? "Datum mediation stays in the interface panel and can be handed off to compatible tools."
       : "File mediation is driven by compatible tools for the active file. Open a tool from the control panel to switch the center workspace into a mediation view.";
     dtResourcesMediateBodyEl.appendChild(meta);
     var summary = document.createElement("p");
@@ -3777,7 +3777,7 @@
     var allForFile = resourcesRowsForActiveFile();
     if (dtResourcesInspectorKickerEl) dtResourcesInspectorKickerEl.textContent = "SYSTEM";
     if (dtResourcesInspectorTitleEl) {
-      dtResourcesInspectorTitleEl.textContent = task ? task.charAt(0).toUpperCase() + task.slice(1) : "Details";
+      dtResourcesInspectorTitleEl.textContent = task ? task.charAt(0).toUpperCase() + task.slice(1) : "Overview";
     }
     if (dtResourcesInspectorEmptyEl) dtResourcesInspectorEmptyEl.hidden = true;
     if (dtResourcesInspectorStackEl) dtResourcesInspectorStackEl.hidden = false;

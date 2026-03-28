@@ -3390,6 +3390,43 @@ body.is-modal-open {
   width: 100%;
 }
 
+.system-mediation-workbench {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.system-mediation-workbench .card__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#systemMediationBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-content: start;
+}
+
+#systemMediationBody > * {
+  min-width: 0;
+  max-width: none;
+  width: 100%;
+}
+
+#systemMediationBody .card,
+#systemMediationBody .data-tool__advanced {
+  width: 100%;
+  max-width: none;
+}
+
 @media (max-width: 960px) {
   .lr-workbench__layout--centerOnly,
   .inh-workbench__layout.inh-workbench__layout--twoCol {
@@ -3526,7 +3563,7 @@ body.is-modal-open {
   }
 }
 
-/* Data tool drawers use right-side inspector posture */
+/* Data tool drawers use right-side interface-panel posture */
 .data-tool__nimmOverlay {
   inset: var(--ide-menu-h) 0 0 auto;
   width: min(820px, 96vw);
@@ -3695,11 +3732,16 @@ body.is-modal-open {
 
 .ide-activitybar {
   grid-area: activity;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .ide-controlpanel {
   grid-area: controlpanel;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -3793,6 +3835,7 @@ body.is-modal-open {
 .ide-inspector__content {
   flex: 1 1 auto;
   min-height: 0;
+  width: 100%;
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -4258,6 +4301,32 @@ body.is-modal-open {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.data-tool__resourcesInspectorPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.data-tool__resourcesInspectorBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  width: 100%;
+}
+
+.data-tool__resourcesInspectorBody > * {
+  min-width: 0;
+  max-width: none;
 }
 
 .data-tool__resourcesInspectorHeading {
@@ -4272,6 +4341,9 @@ body.is-modal-open {
 .data-tool__resourcesMediateList {
   margin: 8px 0 0;
   padding-left: 1.1rem;
+  display: grid;
+  gap: 6px;
+  overflow-wrap: anywhere;
 }
 
 .data-tool__txaSandboxGrid {
@@ -5605,6 +5677,39 @@ body.portal-tool-layer-active #systemShellSelectionSection #resourcesDatumProfil
 
 body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__title {
   opacity: 0.85;
+}
+
+.system-shell-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.system-shell-inspectorCards {
+  min-height: 0;
+}
+
+.system-shell-inspectorCards__mount {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  width: 100%;
+  align-items: start;
+}
+
+.system-shell-inspectorCards__mount > .card {
+  min-width: 0;
+  width: 100%;
+}
+
+.system-inspector-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .agro-scaffold {
