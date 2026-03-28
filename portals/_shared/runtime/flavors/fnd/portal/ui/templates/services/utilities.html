@@ -132,6 +132,7 @@
         <div class="card__body">
           <p><code>directory</code>: {{ storage.get("directory", "private/network/progeny") }}</p>
           <p><code>filename_pattern</code>: {{ storage.get("filename_pattern", "msn-<provider_msn_id>.<progeny_type>-<alias_associated_msn_id>.json") }}</p>
+          <p><code>logical_id</code>: <code>progeny.&lt;provider_msn_id&gt;.&lt;progeny_type&gt;.&lt;alias_associated_msn_id&gt;</code> (mapped by progeny workspace adapter to on-disk filename pattern)</p>
           <p><code>template_version</code>: {{ selected_template.get("template_version", "") }}</p>
           <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.75rem;">
             <button

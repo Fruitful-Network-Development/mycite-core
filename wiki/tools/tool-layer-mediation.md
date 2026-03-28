@@ -33,10 +33,18 @@ The on-disk sandbox contract for instance-led tools is:
 - `private/utilities/tools/<tool-slug>/tool.<msn_id>.<tool-slug>.json` (anchor)
 - optional tool-local members referenced by the anchor payload
 
+For service-style tools (`fnd-ebi`, `aws-csm`) the canonical boundary is:
+
+- anchor (`tool.<msn_id>.<tool>.json`) defines collection identity
+- `spec.json` defines tool capability/IO schema (declarative)
+- profile JSON members (`<tool>.*.json`) hold mutable service staging state
+
 Resolver behavior is compatibility-safe:
 
 - prefer sandbox-local `spec.json`
 - fallback to legacy `private/tools/<tool_id>.spec.json` only when needed
+- prefer config-declared anchor filename in `tools_configuration[].anchor`
+- fallback to wildcard anchor/profile patterns only for compatibility
 
 The canonical SYSTEM workbench remains the only host runtime. Tool surfaces are provider projections mediated by SYSTEM state; tools do not become alternate shells.
 

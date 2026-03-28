@@ -10,6 +10,10 @@ from typing import Any
 from portal.services.runtime_paths import legacy_member_progeny_dir, legacy_tenant_progeny_dir, progeny_root
 
 _INSTANCE_RE = re.compile(r"^msn-(?P<provider>[^.]+)\.(?P<progeny_type>admin|member|user)-(?P<alias>.+)$")
+_LOGICAL_INSTANCE_RE = re.compile(
+    r"^progeny\.(?P<provider>[^.]+)\.(?P<progeny_type>admin|member|user)\.(?P<alias>.+)$",
+    re.IGNORECASE,
+)
 _SAFE_TOKEN_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
@@ -63,10 +67,27 @@ def canonical_instance_filename(provider_msn_id: str, progeny_type: str, alias_a
     return f"msn-{provider}.{token}-{alias_id}.json"
 
 
+def canonical_logical_instance_id(provider_msn_id: str, progeny_type: str, alias_associated_msn_id: str) -> str:
+    provider = _safe_token(provider_msn_id, field="provider_msn_id")
+    token = _canonical_type(progeny_type)
+    if token not in SUPPORTED_PROGENY_TYPES:
+        raise ValueError(f"Unsupported progeny_type: {progeny_type}")
+    alias_id = _safe_token(alias_associated_msn_id, field="alias_associated_msn_id")
+    return f"progeny.{provider}.{token}.{alias_id}"
+
+
 def parse_instance_stem(instance_stem: str) -> dict[str, str] | None:
-    match = _INSTANCE_RE.fullmatch(_as_text(instance_stem))
+    token = _as_text(instance_stem)
+    match = _INSTANCE_RE.fullmatch(token)
     if not match:
-        return None
+        logical = _LOGICAL_INSTANCE_RE.fullmatch(token)
+        if not logical:
+            return None
+        return {
+            "provider_msn_id": _as_text(logical.group("provider")),
+            "progeny_type": _canonical_type(logical.group("progeny_type")),
+            "alias_associated_msn_id": _as_text(logical.group("alias")),
+        }
     return {
         "provider_msn_id": _as_text(match.group("provider")),
         "progeny_type": _canonical_type(match.group("progeny_type")),
@@ -141,6 +162,9 @@ def list_instances(private_dir: Path, progeny_type: str = "") -> list[dict[str, 
             continue
         record = {
             "instance_id": path.stem,
+            "logical_instance_id": canonical_logical_instance_id(
+                meta["provider_msn_id"], meta["progeny_type"], meta["alias_associated_msn_id"]
+            ),
             "path": path,
             "payload": copy.deepcopy(payload),
             "provider_msn_id": meta["provider_msn_id"],
@@ -175,6 +199,7 @@ def list_instances(private_dir: Path, progeny_type: str = "") -> list[dict[str, 
         )
         record = {
             "instance_id": path.stem,
+            "logical_instance_id": "",
             "path": path,
             "payload": copy.deepcopy(payload),
             "provider_msn_id": "",
@@ -207,8 +232,11 @@ def list_instances(private_dir: Path, progeny_type: str = "") -> list[dict[str, 
 
 def load_instance(private_dir: Path, instance_id: str) -> dict[str, Any] | None:
     token = _as_text(instance_id)
+    parsed = parse_instance_stem(token)
+    if parsed is not None:
+        token = f"msn-{parsed['provider_msn_id']}.{parsed['progeny_type']}-{parsed['alias_associated_msn_id']}"
     for record in list_instances(private_dir):
-        if token == _as_text(record.get("instance_id")):
+        if token in {_as_text(record.get("instance_id")), _as_text(record.get("logical_instance_id"))}:
             return record
     return None
 
