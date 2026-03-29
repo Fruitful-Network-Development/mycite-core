@@ -158,7 +158,11 @@ def _tool_sandbox_runtime_deps() -> ToolSandboxRuntimeDeps:
     return ToolSandboxRuntimeDeps(
         data_root=_data_dir(),
         sandbox_engine=_sandbox_engine(),
-        local_resource_service=LocalResourceLifecycleService(data_root=_data_dir(), sandbox_engine=_sandbox_engine()),
+        local_resource_service=LocalResourceLifecycleService(
+            data_root=_data_dir(),
+            sandbox_engine=_sandbox_engine(),
+            local_msn_id=str(current_app.config.get("MYCITE_MSN_ID") or "").strip(),
+        ),
         get_active_config=_load_active_config_for_write,
         get_canonical_rows_payload=lambda: _canonical_anthology_context().rows_payload,
         get_path=get_path,

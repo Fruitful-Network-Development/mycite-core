@@ -23,12 +23,6 @@ def workspace_root() -> Path:
     return root
 
 
-def _cache_dir() -> Path:
-    cache = Path(__file__).resolve().parents[2] / "data" / "cache" / "workspaces" / "board"
-    cache.mkdir(parents=True, exist_ok=True)
-    return cache
-
-
 def _resource_path(resource: str) -> Path:
     normalized = (resource or "").strip().lower()
     if normalized not in RESOURCE_NAMES:
@@ -55,7 +49,6 @@ def _read_json_relaxed(path: Path) -> Dict[str, Any]:
 
 
 def append_event(resource: str, event: Dict[str, Any]) -> None:
-    _cache_dir()
     path = _resource_path(resource)
     payload = dict(event or {})
     payload.setdefault("id", str(uuid.uuid4()))

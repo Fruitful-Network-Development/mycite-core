@@ -177,7 +177,7 @@ app.jinja_loader = ChoiceLoader(
 app.static_folder = str(SHARED_SHELL_STATIC_DIR)
 install_read_only_guard(app, enabled=PORTAL_READ_ONLY)
 
-# Ensure canonical resource workbench files exist on startup (anthology/txa/msn).
+# Warm the system workbench view without materializing legacy root files.
 try:
     build_system_resource_workbench_view_model(data_root=DATA_DIR)
 except Exception:
@@ -302,8 +302,10 @@ def _resolve_fnd_profile_path(msn_id: str) -> Optional[Path]:
 
 
 def _sanitize_public_profile(payload: Dict[str, Any]) -> Dict[str, Any]:
-    allowed = {"msn_id", "schema", "title", "public_key", "entity_type", "accessible"}
+    allowed = {"msn_id", "schema", "title", "public_key", "entity_type", "public_resources", "accessible"}
     out = {k: payload.get(k) for k in allowed if k in payload}
+    resources = payload.get("public_resources") if isinstance(payload.get("public_resources"), list) else []
+    out["public_resources"] = [item for item in resources if isinstance(item, dict)]
     out.setdefault("accessible", {})
     return out
 
@@ -1252,7 +1254,6 @@ def _ensure_runtime_dirs() -> None:
     request_log_types_dir(PRIVATE_DIR).mkdir(parents=True, exist_ok=True)
     utility_peripherals_dir(PRIVATE_DIR).mkdir(parents=True, exist_ok=True)
     keypass_inventory_path(PRIVATE_DIR).parent.mkdir(parents=True, exist_ok=True)
-    (BASE_DIR / "data" / "cache" / "workspaces" / "board").mkdir(parents=True, exist_ok=True)
     _seed_missing_local_progeny_profiles()
 
 

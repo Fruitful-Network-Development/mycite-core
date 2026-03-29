@@ -5,8 +5,10 @@ from typing import Any, Callable
 
 
 def sanitize_public_profile(payload: dict[str, Any]) -> dict[str, Any]:
-    allowed = {"msn_id", "schema", "title", "public_key", "entity_type", "accessible"}
+    allowed = {"msn_id", "schema", "title", "public_key", "entity_type", "public_resources", "accessible"}
     out = {k: payload.get(k) for k in allowed if k in payload}
+    public_resources = payload.get("public_resources") if isinstance(payload.get("public_resources"), list) else []
+    out["public_resources"] = [item for item in public_resources if isinstance(item, dict)]
     out.setdefault("accessible", {})
     return out
 

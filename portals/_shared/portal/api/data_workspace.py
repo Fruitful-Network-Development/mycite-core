@@ -192,7 +192,11 @@ def register_data_routes(
         return SandboxEngine(data_root=Path(str(data_root)))
 
     def _local_resource_service() -> LocalResourceLifecycleService:
-        return LocalResourceLifecycleService(data_root=_data_root(), sandbox_engine=_sandbox_engine())
+        return LocalResourceLifecycleService(
+            data_root=_data_root(),
+            sandbox_engine=_sandbox_engine(),
+            local_msn_id=_msn_id(),
+        )
 
     def _data_root() -> Path:
         storage = getattr(workspace, "storage", None)
@@ -737,8 +741,8 @@ def register_data_routes(
         out["schema"] = "mycite.portal.sandbox.samras_promote_staged_titles.v1"
         return jsonify(out), (200 if bool(result.ok) else 400)
 
-    @app.get("/portal/api/data/resources/local")
-    def portal_data_resources_local():
+    @app.get("/portal/api/data/resources")
+    def portal_data_resources():
         return jsonify(_document_catalog().local_inventory_payload())
 
     @app.get("/portal/api/data/system/resource_workbench")
@@ -1061,16 +1065,16 @@ def register_data_routes(
             }
         )
 
-    @app.get("/portal/api/data/resources/inherited")
-    def portal_data_resources_inherited():
+    @app.get("/portal/api/data/references")
+    def portal_data_references():
         return jsonify(_document_catalog().inherited_inventory_payload(grouped_by_source_fn=_group_inherited_index))
 
-    @app.get("/portal/api/data/resources/inherited/subscriptions")
-    def portal_data_resources_inherited_subscriptions():
+    @app.get("/portal/api/data/references/subscriptions")
+    def portal_data_references_subscriptions():
         return jsonify(discover_contract_subscription_status(_private_dir()))
 
-    @app.post("/portal/api/data/resources/inherited/subscriptions/register")
-    def portal_data_resources_inherited_subscriptions_register():
+    @app.post("/portal/api/data/references/subscriptions/register")
+    def portal_data_references_subscriptions_register():
         if external_resource_resolver is None:
             abort(501, description="external resource resolver is unavailable")
         body = _json_body()
@@ -1083,8 +1087,8 @@ def register_data_routes(
         payload = _inherited_subscription_service().register_subscription(contract_id=contract_id, resource_ids=resource_ids)
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
-    @app.post("/portal/api/data/resources/inherited/subscriptions/unregister")
-    def portal_data_resources_inherited_subscriptions_unregister():
+    @app.post("/portal/api/data/references/subscriptions/unregister")
+    def portal_data_references_subscriptions_unregister():
         if external_resource_resolver is None:
             abort(501, description="external resource resolver is unavailable")
         body = _json_body()
@@ -1097,14 +1101,8 @@ def register_data_routes(
         payload = _inherited_subscription_service().unregister_subscription(contract_id=contract_id, resource_ids=resource_ids)
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
-    @app.post("/portal/api/data/resources/local/migrate_legacy_samras")
-    def portal_data_resources_local_migrate_legacy_samras():
-        body = _json_body()
-        payload = _local_resource_service().migrate_legacy_samras(apply_changes=bool(body.get("apply", True)))
-        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
-
-    @app.post("/portal/api/data/resources/local/create")
-    def portal_data_resources_local_create():
+    @app.post("/portal/api/data/resources/create")
+    def portal_data_resources_create():
         body = _json_body()
         payload = _action_service().create_local_resource(
             resource_kind=str(body.get("resource_kind") or "resource"),
@@ -1113,8 +1111,8 @@ def register_data_routes(
         )
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
-    @app.post("/portal/api/data/resources/local/publish")
-    def portal_data_resources_local_publish():
+    @app.post("/portal/api/data/resources/publish")
+    def portal_data_resources_publish():
         body = _json_body()
         resource_id = str(body.get("resource_id") or "").strip()
         if not resource_id:
@@ -1126,8 +1124,8 @@ def register_data_routes(
         )
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
-    @app.post("/portal/api/data/resources/inherited/refresh")
-    def portal_data_resources_inherited_refresh():
+    @app.post("/portal/api/data/references/refresh")
+    def portal_data_references_refresh():
         if external_resource_resolver is None:
             abort(501, description="external resource resolver is unavailable")
         body = _json_body()
@@ -1142,8 +1140,8 @@ def register_data_routes(
         )
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
-    @app.post("/portal/api/data/resources/inherited/refresh_source")
-    def portal_data_resources_inherited_refresh_source():
+    @app.post("/portal/api/data/references/refresh_source")
+    def portal_data_references_refresh_source():
         if external_resource_resolver is None:
             abort(501, description="external resource resolver is unavailable")
         body = _json_body()
@@ -1156,8 +1154,8 @@ def register_data_routes(
         )
         return jsonify(payload), 200
 
-    @app.post("/portal/api/data/resources/inherited/disconnect_source")
-    def portal_data_resources_inherited_disconnect_source():
+    @app.post("/portal/api/data/references/disconnect_source")
+    def portal_data_references_disconnect_source():
         body = _json_body()
         source_msn_id = str(body.get("source_msn_id") or "").strip()
         if not source_msn_id:

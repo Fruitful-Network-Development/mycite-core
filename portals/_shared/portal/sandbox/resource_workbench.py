@@ -325,28 +325,19 @@ def _extract_rows_payload_from_json(payload: dict[str, Any]) -> dict[str, Any]:
     return extract_anthology_rows_payload(payload)
 
 
-def _resolve_canonical_data_file(*, data_root: Path, canonical_filename: str, aliases: list[str]) -> tuple[Path, dict[str, Any], bool]:
-    canonical = Path(data_root) / canonical_filename
-    if canonical.is_file():
-        payload = _read_json_object(canonical)
-        if not payload:
-            payload = {}
-        _write_json_object_one_entry_per_line(canonical, payload)
-        return canonical, payload, True
-
-    for alias in aliases:
-        alias_path = Path(data_root) / str(alias)
-        if not alias_path.is_file():
-            continue
-        payload = _read_json_object(alias_path)
-        if not payload:
-            payload = {}
-        _write_json_object_one_entry_per_line(canonical, payload)
-        return canonical, payload, True
-
-    payload: dict[str, Any] = {}
-    _write_json_object_one_entry_per_line(canonical, payload)
-    return canonical, payload, False
+def _resolve_system_resource_file(*, data_root: Path, file_key: str) -> tuple[Path | None, dict[str, Any]]:
+    root = Path(data_root)
+    token = _as_text(file_key).lower()
+    if token == "anthology":
+        path = root / "anthology.json"
+        return path, (_read_json_object(path) if path.is_file() else {})
+    if token in {"txa", "msn"}:
+        resources_root = root / "resources"
+        candidates = sorted(resources_root.glob(f"rc.*.{token}.json"), key=lambda item: item.name)
+        if candidates:
+            path = candidates[0]
+            return path, _read_json_object(path)
+    return None, {}
 
 
 def system_workbench_stage_dir(data_root: Path) -> Path:
@@ -459,17 +450,8 @@ def _table_rows_for_canonical_file(
 def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, Any]:
     """
     Build a table-first workbench model for canonical local JSON files.
-
-    Baseline files are fixed by product contract:
-    - anthology.json
-    - samras-txa.json
-    - samras-msn.json
     """
-    files = [
-        {"file_key": "anthology", "filename": "anthology.json", "aliases": []},
-        {"file_key": "txa", "filename": "samras-txa.json", "aliases": ["samras-txa.legacy.json", "samras.txa.json"]},
-        {"file_key": "msn", "filename": "samras-msn.json", "aliases": ["samras-msn.legacy.json", "samras.msn.json", "demo-SAMRAS_MSN.json"]},
-    ]
+    files = [{"file_key": "anthology"}, {"file_key": "txa"}, {"file_key": "msn"}]
     out_files: list[dict[str, Any]] = []
     table_rows: list[dict[str, Any]] = []
     samras_by_file_key: dict[str, dict[str, list[str]]] = {}
@@ -478,14 +460,11 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
     resource_surface_file_keys = ("anthology", "txa", "msn")
 
     for entry in files:
-        filename = str(entry["filename"])
         file_key = str(entry["file_key"])
-        aliases = [str(item) for item in list(entry.get("aliases") or [])]
-        path, payload, found_existing = _resolve_canonical_data_file(
-            data_root=Path(data_root),
-            canonical_filename=filename,
-            aliases=aliases,
-        )
+        path, payload = _resolve_system_resource_file(data_root=Path(data_root), file_key=file_key)
+        if path is None and file_key != "anthology":
+            continue
+        filename = path.name if isinstance(path, Path) else "anthology.json"
         staged_path = system_workbench_stage_path(data_root=Path(data_root), filename=filename)
         staged_payload = _read_json_object(staged_path) if file_key != "anthology" and staged_path.is_file() else {}
         active_payload = staged_payload if staged_payload else payload
@@ -497,10 +476,10 @@ def build_system_resource_workbench_view_model(*, data_root: Path) -> dict[str, 
         file_obj: dict[str, Any] = {
             "file_key": file_key,
             "filename": filename,
-            "path": str(path),
-            "canonical_path": str(path),
-            "exists": True,
-            "materialized_from_existing_file": bool(found_existing),
+            "path": str(path) if isinstance(path, Path) else "",
+            "canonical_path": str(path) if isinstance(path, Path) else "",
+            "exists": bool(isinstance(path, Path) and path.exists()),
+            "materialized_from_existing_file": bool(isinstance(path, Path) and path.exists()),
             "row_count": len(per_file_rows),
             "layers": _group_rows_by_layer_vg(per_file_rows) if per_file_rows else [],
             "errors": [],

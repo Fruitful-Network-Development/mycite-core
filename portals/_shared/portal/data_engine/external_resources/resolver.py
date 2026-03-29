@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import quote
 from urllib.request import urlopen
 
+from ...mss import decode_mss_payload
 from ...services.profile_resolver import find_local_contact_card
 from .cache import ExternalResourceCache
 from .contact_card_catalog import PublicResourceDescriptor, parse_public_resource_catalog
@@ -67,10 +68,14 @@ class ExternalResourceResolver:
     def _fetch_resource_payload(self, *, descriptor: PublicResourceDescriptor) -> dict[str, Any]:
         href = str(descriptor.href or "").strip()
         if not href:
-            return {"accessible": descriptor.metadata.get("accessible") if isinstance(descriptor.metadata, dict) else {}}
+            return {}
         if href.startswith("http://") or href.startswith("https://"):
             with urlopen(href, timeout=5) as response:  # nosec - configured endpoint
-                payload = json.loads(response.read().decode("utf-8", errors="replace"))
+                raw = response.read()
+                if href.endswith(".bin"):
+                    decoded = decode_mss_payload(raw.decode("utf-8", errors="replace"))
+                    return decoded if isinstance(decoded, dict) else {}
+                payload = json.loads(raw.decode("utf-8", errors="replace"))
                 return payload if isinstance(payload, dict) else {}
         rel = Path(href)
         if rel.is_absolute():
@@ -78,6 +83,9 @@ class ExternalResourceResolver:
         else:
             path = self._public_dir / rel
         if path.exists() and path.is_file():
+            if str(path.name).lower().endswith(".bin"):
+                decoded = decode_mss_payload(path.read_bytes().decode("utf-8", errors="replace"))
+                return decoded if isinstance(decoded, dict) else {}
             return self._read_json(path)
         return {}
 
@@ -90,7 +98,12 @@ class ExternalResourceResolver:
     ) -> dict[str, Any]:
         cached = None if force_refresh else self._cache.get(source_msn_id=source_msn_id, resource_id=resource_id)
         if cached:
-            return {"ok": True, "from_cache": True, "bundle": cached}
+            return {
+                "ok": True,
+                "from_cache": True,
+                "bundle": cached.get("bundle") if isinstance(cached.get("bundle"), dict) else {},
+                "payload": cached.get("payload") if isinstance(cached.get("payload"), dict) else {},
+            }
 
         descriptor = self._resolve_descriptor(source_msn_id=source_msn_id, resource_id=resource_id)
         if descriptor is None:
@@ -118,9 +131,9 @@ class ExternalResourceResolver:
             provenance=provenance,
             source_card_revision=str(descriptor.metadata.get("source_card_revision") or ""),
         )
-        cached_payload = bundle.to_dict()
+        cached_payload = {"bundle": bundle.to_dict(), "payload": payload}
         self._cache.put(source_msn_id=source_msn_id, resource_id=resource_id, payload=cached_payload)
-        return {"ok": True, "from_cache": False, "bundle": cached_payload}
+        return {"ok": True, "from_cache": False, "bundle": bundle.to_dict(), "payload": payload}
 
     def preview_required_closure(self, *, source_msn_id: str, resource_id: str, target_refs: list[str]) -> dict[str, Any]:
         fetched = self.fetch_and_cache_bundle(source_msn_id=source_msn_id, resource_id=resource_id, force_refresh=False)

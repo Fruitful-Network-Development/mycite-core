@@ -23,12 +23,6 @@ def workspace_root() -> Path:
     return root
 
 
-def _cache_dir() -> Path:
-    cache = Path(__file__).resolve().parents[2] / "data" / "cache" / "workspaces" / "board"
-    cache.mkdir(parents=True, exist_ok=True)
-    return cache
-
-
 def _resource_path(resource: str) -> Path:
     normalized = (resource or "").strip().lower()
     if normalized not in RESOURCE_NAMES:
@@ -47,7 +41,6 @@ def _read_json_relaxed(path: Path) -> Dict[str, Any]:
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
-        # Allows configs with trailing commas while preserving strict dict expectation.
         cleaned = re.sub(r",(\s*[\]}])", r"\1", text)
         payload = json.loads(cleaned)
     if not isinstance(payload, dict):
@@ -56,7 +49,6 @@ def _read_json_relaxed(path: Path) -> Dict[str, Any]:
 
 
 def append_event(resource: str, event: Dict[str, Any]) -> None:
-    _cache_dir()
     path = _resource_path(resource)
     payload = dict(event or {})
     payload.setdefault("id", str(uuid.uuid4()))
@@ -67,8 +59,8 @@ def append_event(resource: str, event: Dict[str, Any]) -> None:
     if not isinstance(payload.get("payload"), dict):
         payload["payload"] = {}
 
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
 
 
 def read_events(resource: str, limit: int = 200) -> List[Dict[str, Any]]:
@@ -94,9 +86,7 @@ def read_events(resource: str, limit: int = 200) -> List[Dict[str, Any]]:
 
 def _upsert_person(people: Dict[str, Dict[str, str]], msn_id: str, display_name: str, role: str) -> None:
     token = str(msn_id or "").strip()
-    if not token:
-        return
-    if token in people:
+    if not token or token in people:
         return
     people[token] = {
         "msn_id": token,
@@ -106,9 +96,9 @@ def _upsert_person(people: Dict[str, Dict[str, str]], msn_id: str, display_name:
 
 
 def _extract_member_id_from_filename(name: str) -> str:
-    m = BOARD_MEMBER_FILENAME_RE.search(str(name or ""))
-    if m:
-        return str(m.group("member") or "").strip()
+    match = BOARD_MEMBER_FILENAME_RE.search(str(name or ""))
+    if match:
+        return str(match.group("member") or "").strip()
     return ""
 
 

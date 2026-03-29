@@ -12,10 +12,9 @@ from typing import Any
 
 TABLE_SPECS: dict[str, dict[str, str]] = {
     "anthology": {"filename": "anthology.json", "title": "Anthology"},
-    "samras": {"filename": "demo-SAMRAS_MSN.json", "title": "SAMRAS"},
+    "samras": {"filename": "", "title": "SAMRAS"},
 }
 
-PRESENTATION_SCHEMA = "mycite.presentation.datum_icons.v0"
 SAMRAS_INSTANCE_RE = re.compile(r"^(?P<msn>[0-9]+(?:-[0-9]+)*)\.(?P<instance>[0-9]+(?:-[0-9]+)*)\.json$")
 
 
@@ -112,7 +111,7 @@ strip_base_duplicates_from_overlay = _SHARED_OVERLAY.strip_base_duplicates_from_
 
 
 class JsonStorageBackend:
-    """JSON-backed adapter for anthology/SAMRAS payloads and presentation sidecars."""
+    """JSON-backed adapter for anthology/SAMRAS payloads under canonical sandbox storage."""
 
     def __init__(self, data_dir: Path | str):
         self.data_dir = Path(data_dir)
@@ -132,7 +131,25 @@ class JsonStorageBackend:
         spec = TABLE_SPECS.get(token)
         if not spec:
             raise ValueError(f"Unknown table_id: {table_id}")
+        if token == "samras":
+            candidates = sorted((self.data_dir / "resources").glob("rc.*.msn.json"), key=lambda item: item.name)
+            if candidates:
+                return candidates[0]
+            local_msn_id = self._resolve_local_msn_id()
+            if local_msn_id:
+                return self.data_dir / "resources" / f"rc.{local_msn_id}.msn.json"
         return self.data_dir / str(spec["filename"])
+
+    def _resolve_local_msn_id(self) -> str:
+        for path in sorted((self.data_dir / "resources").glob("rc.*.json"), key=lambda item: item.name):
+            match = re.match(r"^rc\.(?P<msn>[0-9]+(?:-[0-9]+)*)\.", path.name)
+            if match is not None:
+                return str(match.group("msn") or "").strip()
+        private_config = self.data_dir.parent / "private" / "config.json"
+        if private_config.exists() and private_config.is_file():
+            payload = self._read_json_path(private_config)
+            return str(payload.get("msn_id") or "").strip()
+        return ""
 
     def _read_json_path(self, path: Path) -> dict[str, Any]:
         if not path.exists() or not path.is_file():
@@ -258,9 +275,6 @@ class JsonStorageBackend:
         except Exception as exc:
             return {"ok": False, "errors": [str(exc)], "warnings": []}
 
-    def presentation_path(self) -> Path:
-        return self.data_dir / "presentation" / "datum_icons.json"
-
     def read_payload(self, table_id: str) -> dict[str, Any]:
         path = self._table_path(table_id)
         token = str(table_id or "").strip().lower()
@@ -329,52 +343,42 @@ class JsonStorageBackend:
         return list(self._anthology_parse_warnings)
 
     def load_datum_icons_map(self) -> dict[str, str]:
-        path = self.presentation_path()
-        if not path.exists() or not path.is_file():
-            return {}
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
-        if not isinstance(payload, dict):
-            return {}
-        mapping = payload.get("map") if isinstance(payload.get("map"), dict) else {}
-
         out: dict[str, str] = {}
-        for key, value in mapping.items():
-            datum_id = str(key or "").strip()
-            rel = self._normalize_icon_relpath(value)
+        for row in self._anthology_rows(self.read_payload("anthology")):
+            datum_id = str(row.get("identifier") or row.get("row_id") or "").strip()
+            rel = self._normalize_icon_relpath(row.get("icon_relpath"))
             if datum_id and rel:
                 out[datum_id] = rel
         return out
 
     def persist_datum_icons_map(self, mapping: dict[str, str]) -> dict[str, Any]:
-        path = self.presentation_path()
         try:
-            existing_meta: dict[str, Any] = {}
-            if path.exists() and path.is_file():
-                current = json.loads(path.read_text(encoding="utf-8"))
-                if isinstance(current, dict) and isinstance(current.get("_meta"), dict):
-                    existing_meta = dict(current.get("_meta") or {})
-
-            payload = {
-                "_meta": {
-                    "schema": str(existing_meta.get("schema") or PRESENTATION_SCHEMA),
-                    "icon_root": str(existing_meta.get("icon_root") or "assets/icons"),
-                },
-                "map": {},
-            }
-
             cleaned: dict[str, str] = {}
             for key, value in dict(mapping or {}).items():
                 datum_id = str(key or "").strip()
                 rel = self._normalize_icon_relpath(value)
                 if datum_id and rel:
                     cleaned[datum_id] = rel
-            payload["map"] = cleaned
 
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            payload = self.read_payload("anthology")
+            rows = self._anthology_rows(payload)
+            for row in rows:
+                datum_id = str(row.get("identifier") or row.get("row_id") or "").strip()
+                if not datum_id:
+                    continue
+                icon_relpath = cleaned.get(datum_id, "")
+                if icon_relpath:
+                    row["icon_relpath"] = icon_relpath
+                else:
+                    row.pop("icon_relpath", None)
+
+            merged_payload = self._rows_to_anthology(rows)
+            registry = load_base_registry(base_path=self._base_registry_path(), strict=False)
+            overlay_report = strip_base_duplicates_from_overlay(
+                overlay_payload=merged_payload,
+                base_registry=registry,
+            )
+            self.write_payload("anthology", dict(overlay_report.output_payload))
             return {"ok": True, "errors": [], "warnings": []}
         except Exception as exc:
             return {"ok": False, "errors": [str(exc)], "warnings": []}

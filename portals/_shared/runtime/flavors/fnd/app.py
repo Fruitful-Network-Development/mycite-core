@@ -151,12 +151,10 @@ for required in (
     utility_peripherals_dir(PRIVATE_DIR),
     vault_contracts_dir(PRIVATE_DIR),
     vault_keys_dir(PRIVATE_DIR),
-    DATA_DIR / "cache" / "contacts",
-    DATA_DIR / "cache" / "tenant",
 ):
     required.mkdir(parents=True, exist_ok=True)
 
-# Ensure canonical resource workbench files exist on startup (anthology/txa/msn).
+# Warm the system workbench view without materializing legacy root files.
 try:
     build_system_resource_workbench_view_model(data_root=DATA_DIR)
 except Exception:
@@ -260,8 +258,10 @@ def _resolve_fnd_profile_path(msn_id: str) -> Optional[Path]:
 
 
 def _sanitize_public_profile(payload: Dict[str, Any]) -> Dict[str, Any]:
-    allowed = {"msn_id", "schema", "title", "public_key", "entity_type", "accessible"}
+    allowed = {"msn_id", "schema", "title", "public_key", "entity_type", "public_resources", "accessible"}
     out = {k: payload.get(k) for k in allowed if k in payload}
+    resources = payload.get("public_resources") if isinstance(payload.get("public_resources"), list) else []
+    out["public_resources"] = [item for item in resources if isinstance(item, dict)]
     out.setdefault("accessible", {})
     return out
 

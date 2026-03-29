@@ -9,6 +9,7 @@ from ..services.contract_store import get_contract, list_contracts, update_contr
 from .external_resources import ExternalResourceResolver
 from .resource_registry import (
     INHERITED_SCOPE,
+    REFERENCE_PREFIX,
     compute_version_hash,
     ensure_layout,
     resource_file_path,
@@ -23,6 +24,14 @@ def _as_text(value: object) -> str:
 
 def _safe_resource_name(resource_id: str) -> str:
     token = _as_text(resource_id).lower()
+    if token.startswith("rc."):
+        parts = token.split(".", 2)
+        if len(parts) == 3:
+            return parts[2]
+    if token.startswith("rf."):
+        parts = token.split(".", 2)
+        if len(parts) == 3:
+            return parts[2]
     out = []
     for ch in token:
         if ch.isalnum() or ch in {"-", "_", "."}:
@@ -119,27 +128,32 @@ def refresh_contract_resource(
         }
 
     bundle = fetched.get("bundle") if isinstance(fetched.get("bundle"), dict) else {}
+    decoded_payload = fetched.get("payload") if isinstance(fetched.get("payload"), dict) else {}
     resource_name = _safe_resource_name(resource_id)
     resource_path = resource_file_path(
         data_root,
         scope=INHERITED_SCOPE,
         source_msn_id=source_msn_id,
-        resource_name=f"{resource_name}.json",
+        resource_name=resource_name,
     )
-    version_hash = compute_version_hash(bundle)
+    version_hash = compute_version_hash(decoded_payload or bundle)
     now_ms = int(time.time() * 1000)
+    local_reference_id = f"{REFERENCE_PREFIX}.{source_msn_id}.{resource_name}"
     resource_body = {
-        "schema": "mycite.portal.resource.inherited.v1",
-        "resource_id": f"foreign:{source_msn_id}:{resource_name}",
-        "resource_kind": "inherited_snapshot",
-        "scope": "inherited",
+        "schema": "mycite.portal.resource.reference.v2",
+        "resource_id": local_reference_id,
+        "resource_kind": "outside_origin_reference",
+        "scope": INHERITED_SCOPE,
         "source_msn_id": source_msn_id,
+        "source_resource_id": _as_text(resource_id),
         "version_hash": version_hash,
         "updated_at": now_ms,
-        "anthology_compatible_payload": bundle,
+        "anthology_compatible_payload": decoded_payload,
+        "bundle_metadata": bundle,
         "sync_metadata": {
             "contract_id": contract_id,
-            "resource_id": _as_text(resource_id),
+            "resource_id": local_reference_id,
+            "source_resource_id": _as_text(resource_id),
             "source_msn_id": source_msn_id,
             "last_sync_unix_ms": now_ms,
             "next_poll_unix_ms": now_ms + (15 * 60 * 1000),
@@ -151,10 +165,10 @@ def refresh_contract_resource(
         data_root,
         scope=INHERITED_SCOPE,
         entry={
-            "resource_id": resource_body["resource_id"],
-            "resource_name": f"{resource_name}.json",
-            "resource_kind": "inherited_snapshot",
-            "scope": "inherited",
+            "resource_id": local_reference_id,
+            "resource_name": resource_path.name,
+            "resource_kind": "outside_origin_reference",
+            "scope": INHERITED_SCOPE,
             "source_msn_id": source_msn_id,
             "path": str(resource_path),
             "version_hash": version_hash,
@@ -176,7 +190,8 @@ def refresh_contract_resource(
         {
             "source_msn_id": source_msn_id,
             "contract_id": contract_id,
-            "resource_id": _as_text(resource_id),
+            "resource_id": local_reference_id,
+            "source_resource_id": _as_text(resource_id),
             "resource_name": resource_name,
             "version_hash": version_hash,
             "last_sync_unix_ms": now_ms,
@@ -196,7 +211,8 @@ def refresh_contract_resource(
         "ok": True,
         "contract_id": contract_id,
         "source_msn_id": source_msn_id,
-        "resource_id": _as_text(resource_id),
+        "resource_id": local_reference_id,
+        "source_resource_id": _as_text(resource_id),
         "resource_name": resource_name,
         "resource_path": str(resource_path),
         "version_hash": version_hash,
