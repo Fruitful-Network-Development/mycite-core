@@ -66,9 +66,8 @@ class DocumentCatalogService:
         resources = [dict(item) for item in list(index_payload.get("resources") or []) if isinstance(item, dict)]
         return {
             "ok": True,
-            "schema": "mycite.portal.resources.inherited_inventory.v1",
+            "schema": "mycite.portal.references.inventory.v2",
             "resources_root": str(inherited_resources_dir(root)),
-            "index_path": str(root / "resources" / "index.inherited.json"),
             "resources": resources,
             "grouped_by_source": grouped_by_source_fn(index_payload),
             "documents_schema": DOCUMENT_SCHEMA,
@@ -97,7 +96,7 @@ class DocumentCatalogService:
             scope_kind=LOCAL_SCOPE,
             metadata={
                 "title": resource_name or resource_id,
-                "summary": "Local resource inventory item",
+                "summary": "Canonical resource inventory item",
                 "icon": "resource.svg",
                 "warnings": [],
                 "badges": [],
@@ -142,19 +141,19 @@ class DocumentCatalogService:
         source_msn_id = _text(entry.get("source_msn_id"))
         resource_kind = _text(entry.get("resource_kind") or "resource")
         return build_workbench_document(
-            document_id=f"workbench:inherited:{resource_id or resource_name}",
+            document_id=f"workbench:reference:{resource_id or resource_name}",
             instance_id=self._instance_id(),
             logical_key=resource_id or resource_name,
             display_name=resource_name or resource_id,
-            family_kind="resource",
+            family_kind="reference",
             family_type=resource_kind or "resource",
             scope_kind=INHERITED_SCOPE,
             metadata={
                 "title": resource_name or resource_id,
-                "summary": f"Inherited from {source_msn_id or 'unknown'}",
+                "summary": f"Outside-origin reference from {source_msn_id or 'unknown'}",
                 "icon": "resource.svg",
                 "warnings": [],
-                "badges": ["inherited"],
+                "badges": ["reference"],
                 "content_type": "application/json",
                 "payload_loaded": False,
             },
@@ -181,7 +180,7 @@ class DocumentCatalogService:
                 "write_mode": "read_only_cache",
                 "publish_target": str(inherited_resources_dir(self.data_root)),
             },
-            mutability={"mode": "readonly", "editable": False, "reason": "inherited cache"},
+            mutability={"mode": "readonly", "editable": False, "reason": "outside-origin reference"},
             revision={
                 "version": 1,
                 "etag": _text(entry.get("version_hash")),
@@ -236,7 +235,7 @@ class DocumentCatalogService:
                 "adapter": "file",
                 "relative_path": _relative_to_root(self.data_root, _text(entry.get("path"))),
                 "write_mode": "sandbox_direct",
-                "publish_target": str(self.data_root / "resources" / "local"),
+                "publish_target": str(self.data_root / "resources"),
             },
             mutability={"mode": "staged", "editable": True, "reason": ""},
             inheritance={"relation": "none", "source_document_id": None, "refreshable": False, "disconnectable": False},

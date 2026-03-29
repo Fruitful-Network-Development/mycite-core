@@ -100,7 +100,7 @@ class DocumentLoaderService:
                     "adapter": "file",
                     "relative_path": f"sandbox/resources/{rid}.json",
                     "write_mode": "sandbox_direct",
-                    "publish_target": "resources/local",
+                    "publish_target": "resources",
                 },
                 mutability={"mode": "staged", "editable": True, "reason": ""},
                 revision={
@@ -141,13 +141,13 @@ class DocumentLoaderService:
                 instance_id=self._instance_id(),
                 logical_key=_text(resource_id),
                 display_name=_text(entry.get("resource_name") or resource_id),
-                family_kind="resource",
+                family_kind="resource" if scope == LOCAL_SCOPE else "reference",
                 family_type=_text(entry.get("resource_kind") or "resource"),
                 scope_kind=scope,
                 payload=payload,
                 metadata={
                     "title": _text(entry.get("resource_name") or resource_id),
-                    "summary": f"{scope} resource document",
+                    "summary": "resource document" if scope == LOCAL_SCOPE else "outside-origin reference document",
                     "icon": "resource.svg",
                     "warnings": [],
                     "badges": [scope],
@@ -180,7 +180,7 @@ class DocumentLoaderService:
                 mutability={
                     "mode": "mutable" if scope == LOCAL_SCOPE else "readonly",
                     "editable": scope == LOCAL_SCOPE,
-                    "reason": "" if scope == LOCAL_SCOPE else "inherited cache",
+                    "reason": "" if scope == LOCAL_SCOPE else "outside-origin reference",
                 },
                 revision={
                     "version": 1,

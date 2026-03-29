@@ -42,10 +42,12 @@ def compact_row_to_record(row_key: str, raw_value: object) -> tuple[dict[str, An
     row_values = raw_value if isinstance(raw_value, list) else []
     base = row_values[0] if len(row_values) > 0 and isinstance(row_values[0], list) else []
     labels = row_values[1] if len(row_values) > 1 and isinstance(row_values[1], list) else []
+    metadata = row_values[2] if len(row_values) > 2 and isinstance(row_values[2], dict) else {}
 
     row_id = _as_text(row_key).strip() or _as_text(row_key)
     identifier = _as_text(base[0] if len(base) > 0 else row_key).strip() or row_id
     label = _as_text(labels[0] if len(labels) > 0 else "").strip()
+    icon_relpath = _as_text(metadata.get("icon_relpath")).strip()
 
     pair_tokens = [_as_text(item).strip() for item in base[1:]]
     if len(pair_tokens) % 2 != 0:
@@ -70,6 +72,7 @@ def compact_row_to_record(row_key: str, raw_value: object) -> tuple[dict[str, An
             "row_id": row_id,
             "identifier": identifier,
             "label": label,
+            "icon_relpath": icon_relpath,
             "pairs": pairs,
             "pair_count": len(pairs),
             "reference": _as_text(first_pair.get("reference")).strip(),
@@ -87,6 +90,7 @@ def record_to_compact_row(row: dict[str, Any], fallback_index: int) -> tuple[str
 
     identifier = _as_text(row.get("identifier") or key).strip() or key
     label = _as_text(row.get("label")).strip()
+    icon_relpath = _as_text(row.get("icon_relpath")).strip()
     pairs = pairs_from_row(row)
 
     base: list[str] = [identifier]
@@ -94,5 +98,7 @@ def record_to_compact_row(row: dict[str, Any], fallback_index: int) -> tuple[str
         base.append(_as_text(pair.get("reference")).strip())
         base.append(_as_text(pair.get("magnitude")).strip())
 
-    return key, [base, [label]]
-
+    compact: list[Any] = [base, [label]]
+    if icon_relpath:
+        compact.append({"icon_relpath": icon_relpath})
+    return key, compact

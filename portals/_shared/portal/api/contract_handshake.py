@@ -126,6 +126,7 @@ def _sanitize_contact_card(payload: Dict[str, Any]) -> Dict[str, Any]:
         "title",
         "public_key",
         "entity_type",
+        "public_resources",
         "accessible",
         "options_public",
         "options",

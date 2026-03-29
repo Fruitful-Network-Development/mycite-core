@@ -37,19 +37,19 @@ class WorkbenchActionService:
             resource_id=resource_id,
             force_refresh=force_refresh,
         )
-        payload["schema"] = "mycite.portal.resources.inherited_refresh.v1"
+        payload["schema"] = "mycite.portal.references.refresh.v2"
         return payload
 
     def refresh_inherited_source(self, *, source_msn_id: str, force_refresh: bool = True) -> dict[str, Any]:
         service = self._require_inherited_service()
         payload = service.refresh_source(source_msn_id=source_msn_id, force_refresh=force_refresh)
-        payload["schema"] = "mycite.portal.resources.inherited_refresh_source.v1"
+        payload["schema"] = "mycite.portal.references.refresh_source.v2"
         return payload
 
     def disconnect_inherited_source(self, *, source_msn_id: str) -> dict[str, Any]:
         payload = remove_inherited_source(self.data_root, source_msn_id=source_msn_id)
         payload["ok"] = True
-        payload["schema"] = "mycite.portal.resources.inherited_disconnect_source.v1"
+        payload["schema"] = "mycite.portal.references.disconnect_source.v2"
         if self.inherited_subscription_service_factory is not None:
             payload["contract_sync"] = self._require_inherited_service().disconnect_source(source_msn_id=source_msn_id)
         return payload

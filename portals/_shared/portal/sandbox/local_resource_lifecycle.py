@@ -6,6 +6,7 @@ from typing import Any
 
 from ..data_engine.resource_registry import (
     LOCAL_SCOPE,
+    build_canonical_resource_filename,
     ensure_layout,
     load_index,
     migrate_legacy_samras_root_files,
@@ -55,23 +56,27 @@ class LocalResourceLifecycleService:
     Resource registry remains owner of durable local inventory/index.
     """
 
-    def __init__(self, *, data_root: Path, sandbox_engine: SandboxEngine):
+    def __init__(self, *, data_root: Path, sandbox_engine: SandboxEngine, local_msn_id: str):
         self._data_root = Path(data_root)
         self._sandbox_engine = sandbox_engine
+        self._local_msn_id = _as_text(local_msn_id)
         ensure_layout(self._data_root)
 
     def list_local_inventory(self) -> dict[str, Any]:
         index_payload = load_index(self._data_root, scope=LOCAL_SCOPE)
         return {
             "ok": True,
-            "schema": "mycite.portal.resources.local_inventory.v1",
-            "resources_root": str(self._data_root / "resources" / "local"),
-            "index_path": str(self._data_root / "resources" / "index.local.json"),
+            "schema": "mycite.portal.resources.inventory.v2",
+            "resources_root": str(self._data_root / "resources"),
             "resources": list(index_payload.get("resources") or []),
         }
 
     def migrate_legacy_samras(self, *, apply_changes: bool = True) -> dict[str, Any]:
-        report = migrate_legacy_samras_root_files(self._data_root, apply_changes=apply_changes)
+        report = migrate_legacy_samras_root_files(
+            self._data_root,
+            local_msn_id=self._local_msn_id,
+            apply_changes=apply_changes,
+        )
         payload = report.to_dict()
         payload["ok"] = bool(payload.get("ok"))
         payload["apply"] = bool(apply_changes)
@@ -79,22 +84,27 @@ class LocalResourceLifecycleService:
         return payload
 
     def create(self, *, resource_kind: str, resource_name: str, seed_payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        name = _resource_name_from_id(resource_name)
-        resource_id = _resource_id_from_name(name)
+        name = build_canonical_resource_filename(self._local_msn_id, _resource_name_from_id(resource_name))
+        resource_id = name[: -len(".json")]
         now_ms = int(time.time() * 1000)
         body = {
             "schema": "mycite.portal.resource.local.v1",
             "resource_id": resource_id,
             "resource_kind": _as_text(resource_kind) or "resource",
-            "scope": "local",
-            "source_msn_id": "",
+            "scope": LOCAL_SCOPE,
+            "source_msn_id": self._local_msn_id,
             "updated_at": now_ms,
             "anthology_compatible_payload": dict(seed_payload or {}),
             "draft_metadata": {},
             "compile_metadata": {},
             "publish_metadata": {"created_unix_ms": now_ms},
         }
-        path = resource_file_path(self._data_root, scope=LOCAL_SCOPE, resource_name=name)
+        path = resource_file_path(
+            self._data_root,
+            scope=LOCAL_SCOPE,
+            resource_name=name,
+            source_msn_id=self._local_msn_id,
+        )
         written = write_resource_file(path, body)
         upsert_index_entry(
             self._data_root,
@@ -103,8 +113,8 @@ class LocalResourceLifecycleService:
                 "resource_id": resource_id,
                 "resource_name": name,
                 "resource_kind": body["resource_kind"],
-                "scope": "local",
-                "source_msn_id": "",
+                "scope": LOCAL_SCOPE,
+                "source_msn_id": self._local_msn_id,
                 "path": str(path),
                 "version_hash": _as_text(written.get("version_hash")),
                 "updated_at": int(written.get("updated_at") or now_ms),
@@ -113,7 +123,7 @@ class LocalResourceLifecycleService:
         )
         return {
             "ok": True,
-            "schema": "mycite.portal.resources.local_create.v1",
+            "schema": "mycite.portal.resources.create.v2",
             "resource_id": resource_id,
             "resource_name": name,
             "resource_path": str(path),
@@ -151,16 +161,21 @@ class LocalResourceLifecycleService:
                     "error": f"sandbox resource not found: {resource_id}",
                 }
         payload = _resource_payload_from_sandbox(staged)
-        name = _resource_name_from_id(resource_name or resource_id)
-        local_resource_id = _resource_id_from_name(name)
+        name = build_canonical_resource_filename(self._local_msn_id, _resource_name_from_id(resource_name or resource_id))
+        local_resource_id = name[: -len(".json")]
         now_ms = int(time.time() * 1000)
-        path = resource_file_path(self._data_root, scope=LOCAL_SCOPE, resource_name=name)
+        path = resource_file_path(
+            self._data_root,
+            scope=LOCAL_SCOPE,
+            resource_name=name,
+            source_msn_id=self._local_msn_id,
+        )
         body = {
             "schema": "mycite.portal.resource.local.v1",
             "resource_id": local_resource_id,
             "resource_kind": _as_text(resource_kind or staged.get("resource_kind")) or "resource",
-            "scope": "local",
-            "source_msn_id": "",
+            "scope": LOCAL_SCOPE,
+            "source_msn_id": self._local_msn_id,
             "updated_at": now_ms,
             "anthology_compatible_payload": payload,
             "draft_metadata": dict(staged.get("draft_state") or {}),
@@ -178,8 +193,8 @@ class LocalResourceLifecycleService:
                 "resource_id": local_resource_id,
                 "resource_name": name,
                 "resource_kind": body["resource_kind"],
-                "scope": "local",
-                "source_msn_id": "",
+                "scope": LOCAL_SCOPE,
+                "source_msn_id": self._local_msn_id,
                 "path": str(path),
                 "version_hash": _as_text(written.get("version_hash")),
                 "updated_at": int(written.get("updated_at") or now_ms),
@@ -188,7 +203,7 @@ class LocalResourceLifecycleService:
         )
         return {
             "ok": True,
-            "schema": "mycite.portal.resources.local_publish.v1",
+            "schema": "mycite.portal.resources.publish.v2",
             "resource_id": local_resource_id,
             "resource_name": name,
             "resource_path": str(path),

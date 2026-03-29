@@ -8,9 +8,12 @@ from pathlib import Path
 from typing import Any
 
 _LOG = logging.getLogger("mycite.core_services.config")
-_CONTRACT_FILE_RE = re.compile(r"^contract\.(?P<left>[0-9-]+)\.(?P<right>[0-9-]+)\.json$", re.IGNORECASE)
+_CONTRACT_FILE_RE = re.compile(
+    r"^(?:contract\.(?P<left>[0-9-]+)\.(?P<right>[0-9-]+)|contract-(?P<contract_id>[A-Za-z0-9._:-]+))\.json$",
+    re.IGNORECASE,
+)
 _REFERENCE_FILE_RE = re.compile(
-    r"^ref\.(?P<source>[A-Za-z0-9._:-]+)\.(?P<name>[A-Za-z0-9_.-]+)\.json$",
+    r"^rf\.(?P<source>[A-Za-z0-9._:-]+)\.(?P<name>[A-Za-z0-9_.-]+)\.(?:json|bin)$",
     re.IGNORECASE,
 )
 
@@ -94,11 +97,11 @@ def _normalize_reference_entries(raw: Any, *, local_msn_id: str) -> list[dict[st
         if marker in seen:
             continue
         seen.add(marker)
-        canonical_mss_form = f"ref.{source_msn_id}.{name}.json"
+        canonical_mss_form = f"rf.{source_msn_id}.{name}.bin"
         normalized = dict(item)
         normalized["name"] = name
         normalized["source_msn_id"] = source_msn_id
-        normalized["title"] = f"ref.{source_msn_id}.{name}"
+        normalized["title"] = f"rf.{source_msn_id}.{name}"
         normalized["mss_form"] = canonical_mss_form
         legacy_mss_form = str(item.get("mss_form") or "").strip()
         if legacy_mss_form and legacy_mss_form != canonical_mss_form:

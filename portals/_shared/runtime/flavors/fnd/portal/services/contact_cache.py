@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Optional
 
 
 def _cache_dir(data_dir: Path) -> Path:
-    return data_dir / "cache" / "contacts"
+    return data_dir.parent / "private" / "daemon_state" / "contact_cards"
 
 
 def _cache_path(data_dir: Path, sender_msn_id: str) -> Path:

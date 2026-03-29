@@ -178,12 +178,19 @@ def public_export_metadata_from_contact_card(card_payload: Dict[str, Any]) -> Di
     """
     Extract public/exported datum metadata from a contact card payload.
 
-    Uses the card's `accessible` field if present (expected shape: map of
-    datum ref or path -> metadata). Returns {} if missing or not a dict.
+    Uses the card's `public_resources` field when present. Legacy `accessible`
+    maps are no longer canonical runtime input.
     """
     if not isinstance(card_payload, dict):
         return {}
-    acc = card_payload.get("accessible")
-    if isinstance(acc, dict):
-        return dict(acc)
+    catalog = card_payload.get("public_resources")
+    if isinstance(catalog, list):
+        out: Dict[str, Any] = {}
+        for item in catalog:
+            if not isinstance(item, dict):
+                continue
+            resource_id = _as_text(item.get("resource_id"))
+            if resource_id:
+                out[resource_id] = dict(item)
+        return out
     return {}
