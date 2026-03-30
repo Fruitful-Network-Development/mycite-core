@@ -443,16 +443,21 @@
         var accessLog = body.access_log && typeof body.access_log === "object" ? body.access_log : {};
         var errorLog = body.error_log && typeof body.error_log === "object" ? body.error_log : {};
         var eventsFile = body.events_file && typeof body.events_file === "object" ? body.events_file : {};
+        var frontend = body.frontend && typeof body.frontend === "object" ? body.frontend : {};
         var warnings = Array.isArray(body.warnings) ? body.warnings : [];
         var html2 = "";
         html2 += renderCardKeyValueRows({
           domain: text(body.domain),
           "site root": text(body.site_root),
           "analytics root": text(body.analytics_root),
-          "access log": accessLog.present ? "present" : "missing",
-          "error log": errorLog.present ? "present" : "missing",
-          "events file": eventsFile.present ? "present" : "missing",
+          "access log": text(accessLog.state || (accessLog.present ? "present" : "missing")),
+          "error log": text(errorLog.state || (errorLog.present ? "present" : "missing")),
+          "events file": text(eventsFile.state || (eventsFile.present ? "present" : "missing")),
+          "frontend instrumentation": frontend.client_instrumentation_detected ? "detected" : "not detected",
+          "robots.txt": frontend.robots_present ? "present" : "missing",
+          "sitemap.xml": frontend.sitemap_present ? "present" : "missing",
           "requests 30d": String(traffic.requests_30d || 0),
+          "real page req 30d": String(traffic.real_page_requests_30d || 0),
           "events 30d": String(events.events_30d || 0),
           "unique visitors": String(traffic.unique_visitors_approx_30d || 0),
           "bot share": ((Number(traffic.bot_share) || 0) * 100).toFixed(1) + "%"
@@ -1369,6 +1374,20 @@
     return out.join("");
   }
 
+  function fndEbiSourceRows(source) {
+    if (!source || typeof source !== "object") return "";
+    return renderCardKeyValueRows({
+      state: text(source.state),
+      modified: text(source.modified_utc),
+      "last seen": text(source.last_seen_utc),
+      "size bytes": String(source.file_size_bytes || 0),
+      "raw lines": String(source.raw_line_count || 0),
+      "parsed lines": String(source.parsed_line_count || 0),
+      "truncated": source.truncated ? "yes" : "no",
+      path: text(source.path)
+    });
+  }
+
   function fndEbiSelectDomain(domain) {
     var token = text(domain).toLowerCase();
     if (!token) return;
@@ -1415,6 +1434,7 @@
         "site root": text(selected.site_root),
         "analytics root": text(selected.analytics_root),
         "requests 30d": String(traffic.requests_30d || 0),
+        "real page req 30d": String(traffic.real_page_requests_30d || 0),
         "events 30d": String(eventsSummary.events_30d || 0),
         "unique visitors": String(traffic.unique_visitors_approx_30d || 0),
         "bot share": fndEbiFormatPct(traffic.bot_share || 0),
@@ -1450,6 +1470,7 @@
           events_30d: Number(eventsSummary.events_30d || 0),
           event_type_counts: eventsSummary.event_type_counts || {}
         },
+        frontend: selected.frontend,
         errors_noise: selected.errors_noise,
         warnings: selected.warnings || []
       }));
@@ -1469,8 +1490,9 @@
         out.push('<div class="card__kicker">' + esc(text(snapshot.health_label || "status")) + "</div>");
         out.push('<div class="card__title">' + esc(title) + "</div>");
         out.push('<div class="card__body">');
-        out.push("<p><strong>Requests 30d:</strong> " + esc(String(traffic2.requests_30d || 0)) + " · <strong>Events 30d:</strong> " + esc(String(eventsSummary2.events_30d || 0)) + "</p>");
-        out.push("<p><strong>Unique visitors:</strong> " + esc(String(traffic2.unique_visitors_approx_30d || 0)) + " · <strong>Bot share:</strong> " + esc(fndEbiFormatPct(traffic2.bot_share || 0)) + "</p>");
+        out.push("<p><strong>Requests 30d:</strong> " + esc(String(traffic2.requests_30d || 0)) + " · <strong>Real pages:</strong> " + esc(String(traffic2.real_page_requests_30d || 0)) + "</p>");
+        out.push("<p><strong>Events 30d:</strong> " + esc(String(eventsSummary2.events_30d || 0)) + " · <strong>Bot share:</strong> " + esc(fndEbiFormatPct(traffic2.bot_share || 0)) + "</p>");
+        out.push("<p><strong>Unique visitors:</strong> " + esc(String(traffic2.unique_visitors_approx_30d || 0)) + "</p>");
         out.push("<p><small>Select to focus this hosted profile in the interface lens.</small></p>");
         out.push("</div></article>");
       });
@@ -1703,9 +1725,11 @@
     var out = [];
     out.push('<article class="card fnd-ebi-card"><div class="card__title">' + esc(text(s.domain || "")) + '</div><div class="card__body">');
     out.push("<p>24h: <strong>" + esc(String(t.requests_24h || 0)) + "</strong> · 7d: <strong>" + esc(String(t.requests_7d || 0)) + "</strong> · 30d: <strong>" + esc(String(t.requests_30d || 0)) + "</strong></p>");
+    out.push("<p>Real pages 30d: <strong>" + esc(String(t.real_page_requests_30d || 0)) + "</strong> · Assets 30d: <strong>" + esc(String((t.asset_vs_page || {}).asset_requests || 0)) + "</strong></p>");
     out.push("<p>Responses 2xx/3xx/4xx/5xx: " + esc(String((t.response_breakdown || {})["2xx"] || 0)) + "/" + esc(String((t.response_breakdown || {})["3xx"] || 0)) + "/" + esc(String((t.response_breakdown || {})["4xx"] || 0)) + "/" + esc(String((t.response_breakdown || {})["5xx"] || 0)) + "</p>");
     out.push("<p>Bot share: <strong>" + esc(fndEbiFormatPct(t.bot_share || 0)) + "</strong> · Probes: <strong>" + esc(String(t.suspicious_probe_count || 0)) + "</strong></p>");
-    out.push("<h4>Top Pages</h4>" + fndEbiListRows(t.top_pages, "No top pages."));
+    out.push("<h4>Top Real Pages</h4>" + fndEbiListRows(t.top_pages, "No likely-human page traffic."));
+    out.push("<h4>Top Requested Paths</h4>" + fndEbiListRows(t.top_requested_paths, "No path data."));
     out.push("<h4>Top Referrers</h4>" + fndEbiListRows(t.top_referrers, "No top referrers."));
     out.push("<p>Trend 7d: <span class=\"fnd-ebi-sparkline\">" + esc(fndEbiSparkline(t.trend_7d || [])) + "</span></p>");
     out.push("</div></article>");
@@ -1716,10 +1740,19 @@
     var s = fndEbiSelectedSnapshot(tool);
     if (!s) return '<p class="data-tool__empty">No events snapshots available.</p>';
     var e = s.events_summary && typeof s.events_summary === "object" ? s.events_summary : {};
+    var frontend = s.frontend && typeof s.frontend === "object" ? s.frontend : {};
+    var source = s.events_file && typeof s.events_file === "object" ? s.events_file : {};
     var out = [];
     out.push('<article class="card fnd-ebi-card"><div class="card__title">' + esc(text(s.domain || "")) + '</div><div class="card__body">');
     out.push("<p>Events 24h/7d/30d: <strong>" + esc(String(e.events_24h || 0)) + "</strong> / <strong>" + esc(String(e.events_7d || 0)) + "</strong> / <strong>" + esc(String(e.events_30d || 0)) + "</strong></p>");
     out.push("<p>Sessions approx: <strong>" + esc(String(e.session_count_approx || 0)) + "</strong></p>");
+    out.push(renderCardKeyValueRows({
+      "events file state": text(source.state),
+      "events file modified": text(source.modified_utc),
+      "events raw lines": String(source.raw_line_count || 0),
+      "frontend instrumentation": frontend.client_instrumentation_detected ? "detected" : "not detected",
+      "instrumentation files": Array.isArray(frontend.instrumentation_files) ? frontend.instrumentation_files.join(", ") : ""
+    }));
     out.push("<p>Trend 30d: <span class=\"fnd-ebi-sparkline\">" + esc(fndEbiSparkline(e.trend_30d || [])) + "</span></p>");
     out.push(fndEbiListRows(Object.keys(e.event_type_counts || {}).map(function (k) { return { key: k, count: (e.event_type_counts || {})[k] }; }), "No event type data."));
     out.push("</div></article>");
@@ -1733,7 +1766,10 @@
     var out = [];
     out.push('<article class="card fnd-ebi-card"><div class="card__title">' + esc(text(s.domain || "")) + '</div><div class="card__body">');
     out.push("<h4>Error Severity</h4>" + fndEbiListRows(Object.keys(n.error_severity_counts || {}).map(function (k) { return { key: k, count: (n.error_severity_counts || {})[k] }; }), "No error severity rows."));
-    out.push("<h4>Top Error Routes</h4>" + fndEbiListRows(n.top_error_routes, "No top error routes."));
+    out.push("<h4>Top Site 4xx/5xx Routes</h4>" + fndEbiListRows(n.top_site_error_routes, "No site-route errors."));
+    out.push("<h4>Top Asset 4xx/5xx Routes</h4>" + fndEbiListRows(n.top_asset_error_routes, "No asset-route errors."));
+    out.push("<h4>Top Probe Routes</h4>" + fndEbiListRows(n.top_probe_routes, "No suspicious probes."));
+    out.push("<h4>All Error Routes</h4>" + fndEbiListRows(n.top_error_routes, "No top error routes."));
     out.push("<h4>Probe Examples</h4>" + fndEbiListRows(n.suspicious_probe_examples, "No suspicious probes."));
     out.push("</div></article>");
     return out.join("");
@@ -1759,14 +1795,19 @@
         events_file: selected.events_file,
         traffic_summary: selected.traffic || {},
         event_summary: selected.events_summary || {},
+        frontend: selected.frontend || {},
         errors_noise: selected.errors_noise || {},
         warnings: selected.warnings || []
       }));
+      rows.push("<h4>Access Log</h4>" + fndEbiSourceRows(selected.access_log));
+      rows.push("<h4>Error Log</h4>" + fndEbiSourceRows(selected.error_log));
+      rows.push("<h4>Events File</h4>" + fndEbiSourceRows(selected.events_file));
       rows.push("</div></article>");
     }
-    rows.push("<table class=\"fnd-ebi-table\"><thead><tr><th>File</th><th>Kind</th><th>Records</th></tr></thead><tbody>");
+    rows.push("<table class=\"fnd-ebi-table\"><thead><tr><th>File</th><th>Kind</th><th>Records</th><th>Modified</th><th>Raw</th><th>Parsed</th><th>Truncated</th></tr></thead><tbody>");
     files.forEach(function (f) {
       if (!f || typeof f !== "object") return;
+      var details = f.summary && typeof f.summary === "object" ? (f.summary.details && typeof f.summary.details === "object" ? f.summary.details : f.summary) : {};
       rows.push(
         "<tr><td><code>" +
           esc(text(f.relative_path || f.file_name || "")) +
@@ -1774,6 +1815,14 @@
           esc(text(f.content_kind || "")) +
           "</td><td>" +
           esc(String(f.record_count != null ? f.record_count : "")) +
+          "</td><td>" +
+          esc(text(f.modified_utc || details.modified_utc || "")) +
+          "</td><td>" +
+          esc(String(f.raw_line_count != null ? f.raw_line_count : (details.raw_line_count || ""))) +
+          "</td><td>" +
+          esc(String(f.parsed_line_count != null ? f.parsed_line_count : (details.parsed_line_count || ""))) +
+          "</td><td>" +
+          esc((f.truncated || details.truncated) ? "yes" : "no") +
           "</td></tr>"
       );
     });
@@ -1805,7 +1854,7 @@
       var domain = text(snapshot.domain || fndEbiDomainFromCard(row.card));
       out.push('<button type="button" class="system-tool-contextCard' + (selectedDomain === domain.toLowerCase() ? ' is-active' : '') + '" data-fnd-ebi-select-domain="' + esc(domain) + '">');
       out.push('<strong>' + esc(domain || "profile") + '</strong>');
-      out.push('<small>' + esc(text(snapshot.health_label || "analytics")) + " · " + esc(String(traffic.requests_30d || 0)) + " req 30d</small>");
+      out.push('<small>' + esc(text(snapshot.health_label || "analytics")) + " · " + esc(String(traffic.real_page_requests_30d || 0)) + " real pages 30d</small>");
       out.push('<span>' + esc(String(eventsSummary.events_30d || 0)) + ' events 30d</span>');
       out.push('</button>');
     });

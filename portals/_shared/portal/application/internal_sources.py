@@ -224,15 +224,20 @@ def _summarize_nginx_access(lines: list[str], *, now_utc: datetime) -> dict[str,
     requests_24h = 0
     requests_7d = 0
     requests_30d = 0
+    requests_30d_window = 0
     unique_ips_30d: set[str] = set()
     bot_count = 0
     probe_count = 0
     page_traffic_count = 0
     asset_traffic_count = 0
     page_counts: dict[str, int] = {}
+    human_page_counts: dict[str, int] = {}
     referrer_counts: dict[str, int] = {}
     error_route_counts: dict[str, int] = {}
+    site_error_route_counts: dict[str, int] = {}
+    asset_error_route_counts: dict[str, int] = {}
     suspicious_examples: dict[str, int] = {}
+    probe_route_counts: dict[str, int] = {}
     day_counts: dict[str, int] = {}
     last_seen: datetime | None = None
     robots_seen = False
@@ -267,6 +272,7 @@ def _summarize_nginx_access(lines: list[str], *, now_utc: datetime) -> dict[str,
             status_code = 0
         bucket = _status_bucket(status_code)
         status_counts[bucket] = int(status_counts.get(bucket) or 0) + 1
+        age: timedelta | None = None
 
         if ts is not None:
             age = now_utc - ts
@@ -276,41 +282,53 @@ def _summarize_nginx_access(lines: list[str], *, now_utc: datetime) -> dict[str,
                 requests_7d += 1
             if age <= timedelta(days=30):
                 requests_30d += 1
+                requests_30d_window += 1
                 if ip:
                     unique_ips_30d.add(ip)
             day_counts[ts.date().isoformat()] = int(day_counts.get(ts.date().isoformat()) or 0) + 1
+        in_window_30d = age is not None and age <= timedelta(days=30)
 
         is_bot = _is_bot_user_agent(ua)
-        if is_bot:
+        if is_bot and in_window_30d:
             bot_count += 1
         is_probe = _is_suspicious_probe(path_token)
-        if is_probe:
+        if is_probe and in_window_30d:
             probe_count += 1
             suspicious_examples[path_token] = int(suspicious_examples.get(path_token) or 0) + 1
+            probe_route_counts[path_token or "/"] = int(probe_route_counts.get(path_token or "/") or 0) + 1
 
         is_asset = _is_asset_path(path_token)
-        if is_asset:
-            asset_traffic_count += 1
-        else:
-            page_traffic_count += 1
-            if path_token:
-                page_counts[path_token] = int(page_counts.get(path_token) or 0) + 1
-        if referrer and referrer != "-":
-            referrer_counts[referrer] = int(referrer_counts.get(referrer) or 0) + 1
-        if 400 <= status_code:
-            error_route_counts[path_token or "/"] = int(error_route_counts.get(path_token or "/") or 0) + 1
+        if in_window_30d:
+            if is_asset:
+                asset_traffic_count += 1
+            else:
+                page_traffic_count += 1
+                if path_token:
+                    page_counts[path_token] = int(page_counts.get(path_token) or 0) + 1
+                    if not is_bot and not is_probe and status_code < 400:
+                        human_page_counts[path_token] = int(human_page_counts.get(path_token) or 0) + 1
+            if referrer and referrer != "-":
+                referrer_counts[referrer] = int(referrer_counts.get(referrer) or 0) + 1
+            if 400 <= status_code:
+                error_route_counts[path_token or "/"] = int(error_route_counts.get(path_token or "/") or 0) + 1
+                if is_probe:
+                    probe_route_counts[path_token or "/"] = int(probe_route_counts.get(path_token or "/") or 0) + 1
+                elif is_asset:
+                    asset_error_route_counts[path_token or "/"] = int(asset_error_route_counts.get(path_token or "/") or 0) + 1
+                else:
+                    site_error_route_counts[path_token or "/"] = int(site_error_route_counts.get(path_token or "/") or 0) + 1
 
-        if path_token == "/robots.txt":
+        if in_window_30d and path_token == "/robots.txt":
             robots_seen = True
             if status_code == 404:
                 robots_404 += 1
-        if path_token == "/sitemap.xml":
+        if in_window_30d and path_token == "/sitemap.xml":
             sitemap_seen = True
             if status_code == 404:
                 sitemap_404 += 1
 
     total = len(lines)
-    bot_share = float(bot_count / total) if total else 0.0
+    bot_share = float(bot_count / requests_30d_window) if requests_30d_window else 0.0
     return {
         "line_count": total,
         "last_seen_utc": last_seen.isoformat() if last_seen else "",
@@ -327,14 +345,19 @@ def _summarize_nginx_access(lines: list[str], *, now_utc: datetime) -> dict[str,
         "bot_share": bot_share,
         "bot_requests": int(bot_count),
         "suspicious_probe_count": int(probe_count),
-        "top_pages": _top_counts(page_counts, limit=8),
+        "top_pages": _top_counts(human_page_counts, limit=8),
+        "top_requested_paths": _top_counts(page_counts, limit=8),
         "top_referrers": _top_counts(referrer_counts, limit=8),
         "top_error_routes": _top_counts(error_route_counts, limit=8),
+        "top_site_error_routes": _top_counts(site_error_route_counts, limit=8),
+        "top_asset_error_routes": _top_counts(asset_error_route_counts, limit=8),
+        "top_probe_routes": _top_counts(probe_route_counts, limit=8),
         "suspicious_probe_examples": _top_counts(suspicious_examples, limit=8),
         "asset_vs_page": {
             "asset_requests": int(asset_traffic_count),
             "page_requests": int(page_traffic_count),
         },
+        "real_page_requests_30d": int(sum(human_page_counts.values())),
         "trend_7d": _build_daily_series(day_counts, days=7, now_utc=now_utc),
         "trend_30d": _build_daily_series(day_counts, days=30, now_utc=now_utc),
         "robots_requests_seen": bool(robots_seen),
@@ -479,7 +502,7 @@ class InternalFileReadResult:
         }
 
 
-def read_internal_file(path: Path, *, kind_hint: str = "", max_lines: int = 5000) -> InternalFileReadResult:
+def read_internal_file(path: Path, *, kind_hint: str = "", max_lines: int = 20000) -> InternalFileReadResult:
     token = path.resolve()
     kind = detect_content_kind(token, kind_hint=kind_hint)
     now_utc = datetime.now(timezone.utc)
@@ -520,6 +543,10 @@ def read_internal_file(path: Path, *, kind_hint: str = "", max_lines: int = 5000
             warnings=[f"read failed: {exc}"],
         )
 
+    stat_result = token.stat()
+    modified_utc = datetime.fromtimestamp(stat_result.st_mtime, tz=timezone.utc).isoformat()
+    file_size_bytes = int(stat_result.st_size or 0)
+
     if kind == "json":
         try:
             payload = json.loads(text_payload)
@@ -538,29 +565,42 @@ def read_internal_file(path: Path, *, kind_hint: str = "", max_lines: int = 5000
         summary = {
             "kind": "json",
             "type": "object" if isinstance(payload, dict) else "list" if isinstance(payload, list) else "scalar",
-            "last_seen_utc": datetime.fromtimestamp(token.stat().st_mtime, tz=timezone.utc).isoformat(),
+            "last_seen_utc": modified_utc,
+            "modified_utc": modified_utc,
+            "file_size_bytes": file_size_bytes,
         }
         return InternalFileReadResult(True, str(token), kind, True, True, int(count), summary, warnings)
 
     lines = [line for line in text_payload.splitlines() if _text(line)]
-    if len(lines) > max_lines:
+    raw_line_count = len(lines)
+    if raw_line_count > max_lines:
         warnings.append(f"line limit applied: {max_lines}")
-        lines = lines[:max_lines]
+        lines = lines[-max_lines:]
+
+    def _attach_file_stats(summary: dict[str, Any]) -> dict[str, Any]:
+        enriched = dict(summary or {})
+        enriched["raw_line_count"] = int(raw_line_count)
+        enriched["parsed_line_count"] = int(len(lines))
+        enriched["truncated"] = bool(raw_line_count > len(lines))
+        enriched["truncated_line_count"] = int(max(raw_line_count - len(lines), 0))
+        enriched["modified_utc"] = modified_utc
+        enriched["file_size_bytes"] = file_size_bytes
+        return enriched
 
     if kind == "ndjson":
-        summary = _summarize_ndjson_events(lines, now_utc=now_utc)
+        summary = _attach_file_stats(_summarize_ndjson_events(lines, now_utc=now_utc))
         count = int(summary.get("line_count") or 0)
         return InternalFileReadResult(True, str(token), kind, True, True, int(count), summary, warnings)
 
     if kind == "nginx_access_log":
-        summary = _summarize_nginx_access(lines, now_utc=now_utc)
+        summary = _attach_file_stats(_summarize_nginx_access(lines, now_utc=now_utc))
         return InternalFileReadResult(True, str(token), kind, True, True, int(summary.get("line_count") or 0), summary, warnings)
 
     if kind == "nginx_error_log":
-        summary = _summarize_nginx_error(lines, now_utc=now_utc)
+        summary = _attach_file_stats(_summarize_nginx_error(lines, now_utc=now_utc))
         return InternalFileReadResult(True, str(token), kind, True, True, int(summary.get("line_count") or 0), summary, warnings)
 
-    summary = {"kind": "text", "line_count": len(lines)}
+    summary = _attach_file_stats({"kind": "text", "line_count": len(lines)})
     return InternalFileReadResult(True, str(token), kind, True, True, int(len(lines)), summary, warnings)
 
 
@@ -570,4 +610,3 @@ __all__ = [
     "derive_client_analytics_paths",
     "read_internal_file",
 ]
-

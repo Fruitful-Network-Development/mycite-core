@@ -130,6 +130,9 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertEqual(len(snapshots), 1)
             self.assertEqual((snapshots[0].get("access_log") or {}).get("present"), True)
             self.assertEqual((snapshots[0].get("error_log") or {}).get("present"), True)
+            self.assertIn("frontend", snapshots[0])
+            self.assertEqual((snapshots[0].get("frontend") or {}).get("robots_present"), False)
+            self.assertEqual((snapshots[0].get("events_file") or {}).get("raw_line_count"), 0)
             self.assertIn("traffic", snapshots[0])
             self.assertIn("events_summary", snapshots[0])
 
