@@ -643,6 +643,7 @@ def _fnd_ebi_source_record(*, domain: str, source_key: str, result: Any) -> dict
     path = Path(_text(getattr(result, "path", "")))
     file_name = path.name if path.name else source_key
     warnings = list(getattr(result, "warnings", []) or [])
+    summary = getattr(result, "summary", {}) if isinstance(getattr(result, "summary", {}), dict) else {}
     return {
         "file_name": file_name,
         "relative_path": str(path),
@@ -656,10 +657,15 @@ def _fnd_ebi_source_record(*, domain: str, source_key: str, result: Any) -> dict
             "exists": bool(getattr(result, "exists", False)),
             "readable": bool(getattr(result, "readable", False)),
             "ok": bool(getattr(result, "ok", False)),
-            "details": getattr(result, "summary", {}) if isinstance(getattr(result, "summary", {}), dict) else {},
+            "details": summary,
             "warnings": [str(item) for item in warnings if _text(item)],
         },
         "source_kind": "internal_file",
+        "modified_utc": _text(summary.get("modified_utc")),
+        "file_size_bytes": int(summary.get("file_size_bytes") or 0),
+        "raw_line_count": int(summary.get("raw_line_count") or 0),
+        "parsed_line_count": int(summary.get("parsed_line_count") or 0),
+        "truncated": bool(summary.get("truncated")),
     }
 
 
@@ -692,6 +698,66 @@ def _fnd_health_label(snapshot: dict[str, Any]) -> str:
     return "healthy"
 
 
+def _fnd_source_state(source_key: str, result: Any) -> dict[str, Any]:
+    summary = getattr(result, "summary", {}) if isinstance(getattr(result, "summary", {}), dict) else {}
+    raw_line_count = int(summary.get("raw_line_count") or 0)
+    parsed_line_count = int(summary.get("parsed_line_count") or 0)
+    file_size_bytes = int(summary.get("file_size_bytes") or 0)
+    exists = bool(getattr(result, "exists", False))
+    readable = bool(getattr(result, "readable", False))
+    modified_utc = _text(summary.get("modified_utc"))
+    state = "missing"
+    if exists and readable:
+        state = "active" if raw_line_count > 0 or file_size_bytes > 0 else "empty"
+    elif exists:
+        state = "unreadable"
+    if source_key == "events_file" and exists and readable and raw_line_count == 0 and file_size_bytes <= 1:
+        state = "no_events_written"
+    return {
+        "path": _text(getattr(result, "path", "")),
+        "present": exists,
+        "readable": readable,
+        "record_count": int(getattr(result, "record_count", 0) or 0),
+        "raw_line_count": raw_line_count,
+        "parsed_line_count": parsed_line_count,
+        "truncated": bool(summary.get("truncated")),
+        "truncated_line_count": int(summary.get("truncated_line_count") or 0),
+        "file_size_bytes": file_size_bytes,
+        "modified_utc": modified_utc,
+        "last_seen_utc": _text(summary.get("last_seen_utc")),
+        "state": state,
+        "warnings": [str(item) for item in list(getattr(result, "warnings", []) or []) if _text(item)],
+    }
+
+
+def _fnd_frontend_diagnostics(site_root: str) -> dict[str, Any]:
+    root = Path(_text(site_root))
+    robots_path = root / "robots.txt"
+    sitemap_paths = sorted(root.glob("sitemap*.xml")) if root.exists() and root.is_dir() else []
+    instrumentation_hits: list[str] = []
+    if root.exists() and root.is_dir():
+        for pattern in ("*.html", "*.js"):
+            for path in sorted(root.rglob(pattern)):
+                try:
+                    text = path.read_text(encoding="utf-8", errors="ignore")
+                except Exception:
+                    continue
+                if any(token in text for token in ("/__fnd/collect", "/__fnd/analytics.js", "sendBeacon")):
+                    instrumentation_hits.append(path.relative_to(root).as_posix())
+                if len(instrumentation_hits) >= 8:
+                    break
+            if len(instrumentation_hits) >= 8:
+                break
+    return {
+        "robots_present": robots_path.exists() and robots_path.is_file(),
+        "robots_path": str(robots_path),
+        "sitemap_present": bool(sitemap_paths),
+        "sitemap_paths": [str(path) for path in sitemap_paths[:4]],
+        "client_instrumentation_detected": bool(instrumentation_hits),
+        "instrumentation_files": instrumentation_hits[:8],
+    }
+
+
 def _fnd_ebi_analytics_snapshot(path: Path, payload: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     domain = _text(payload.get("domain")) or path.stem
     site_root = _text(payload.get("site_root"))
@@ -718,6 +784,10 @@ def _fnd_ebi_analytics_snapshot(path: Path, payload: Any) -> tuple[dict[str, Any
     access_summary = access_result.summary if isinstance(access_result.summary, dict) else {}
     error_summary = error_result.summary if isinstance(error_result.summary, dict) else {}
     event_summary = events_result.summary if isinstance(events_result.summary, dict) else {}
+    frontend_summary = _fnd_frontend_diagnostics(site_root)
+    access_state = _fnd_source_state("access_log", access_result)
+    error_state = _fnd_source_state("error_log", error_result)
+    events_state = _fnd_source_state("events_file", events_result)
     now_utc = datetime.now(timezone.utc)
     stale_cutoff = now_utc - timedelta(hours=72)
     access_last = _parse_iso_utc(access_summary.get("last_seen_utc"))
@@ -729,12 +799,24 @@ def _fnd_ebi_analytics_snapshot(path: Path, payload: Any) -> tuple[dict[str, Any
         warnings.append("error log is stale")
     if events_result.exists and (events_last is None or events_last < stale_cutoff):
         warnings.append("events file is stale")
-    if not events_result.exists or int(event_summary.get("events_30d") or 0) == 0:
+    if not frontend_summary.get("client_instrumentation_detected"):
+        warnings.append("frontend instrumentation not detected")
+    if events_state.get("state") == "no_events_written":
+        warnings.append("events file exists but has no records")
+    elif not events_result.exists or int(event_summary.get("events_30d") or 0) == 0:
         warnings.append("no client events in current month file")
     if int(access_summary.get("robots_404_count") or 0) > 0:
-        warnings.append("robots.txt requested but returning 404")
+        if frontend_summary.get("robots_present"):
+            warnings.append("historical robots.txt 404s seen in access log, but file now exists")
+        else:
+            warnings.append("robots.txt requested but returning 404")
     if int(access_summary.get("sitemap_404_count") or 0) > 0:
-        warnings.append("sitemap.xml requested but returning 404")
+        if frontend_summary.get("sitemap_present"):
+            warnings.append("historical sitemap.xml 404s seen in access log, but file now exists")
+        else:
+            warnings.append("sitemap.xml requested but returning 404")
+    if not frontend_summary.get("sitemap_present"):
+        warnings.append("sitemap.xml is absent from frontend root")
     if int((access_summary.get("response_breakdown") or {}).get("4xx") or 0) > 100:
         warnings.append("high 404 scan noise observed")
     snapshot = {
@@ -742,31 +824,23 @@ def _fnd_ebi_analytics_snapshot(path: Path, payload: Any) -> tuple[dict[str, Any
         "site_root": site_root,
         "analytics_root": str(derivation["analytics_root"]),
         "events_month": str(derivation["events_month_token"]).replace(".ndjson", ""),
-        "access_log": {
-            "path": _text(access_result.path),
-            "present": bool(access_result.exists),
-            "readable": bool(access_result.readable),
-            "request_count": int(access_result.record_count or 0),
-        },
-        "error_log": {
-            "path": _text(error_result.path),
-            "present": bool(error_result.exists),
-            "readable": bool(error_result.readable),
-            "error_count": int(error_result.record_count or 0),
-        },
-        "events_file": {
-            "path": _text(events_result.path),
-            "present": bool(events_result.exists),
-            "readable": bool(events_result.readable),
-            "event_count": int(events_result.record_count or 0),
-        },
+        "access_log": access_state,
+        "error_log": error_state,
+        "events_file": events_state,
         "request_count_summary": int(access_result.record_count or 0),
         "error_count_summary": int(error_result.record_count or 0),
         "event_count_summary": int(events_result.record_count or 0),
+        "frontend": frontend_summary,
         "freshness": {
             "access_last_seen_utc": _text(access_summary.get("last_seen_utc")),
             "error_last_seen_utc": _text(error_summary.get("last_seen_utc")),
             "events_last_seen_utc": _text(event_summary.get("last_seen_utc")),
+        },
+        "acquisition": {
+            "access_log": access_state,
+            "error_log": error_state,
+            "events_file": events_state,
+            "frontend": frontend_summary,
         },
         "traffic": {
             "requests_24h": int(access_summary.get("requests_24h") or 0),
@@ -782,11 +856,13 @@ def _fnd_ebi_analytics_snapshot(path: Path, payload: Any) -> tuple[dict[str, Any
             "bot_share": float(access_summary.get("bot_share") or 0.0),
             "bot_requests": int(access_summary.get("bot_requests") or 0),
             "suspicious_probe_count": int(access_summary.get("suspicious_probe_count") or 0),
+            "real_page_requests_30d": int(access_summary.get("real_page_requests_30d") or 0),
             "asset_vs_page": {
                 "asset_requests": int((access_summary.get("asset_vs_page") or {}).get("asset_requests") or 0),
                 "page_requests": int((access_summary.get("asset_vs_page") or {}).get("page_requests") or 0),
             },
             "top_pages": list(access_summary.get("top_pages") or []),
+            "top_requested_paths": list(access_summary.get("top_requested_paths") or []),
             "top_referrers": list(access_summary.get("top_referrers") or []),
             "trend_7d": list(access_summary.get("trend_7d") or []),
             "trend_30d": list(access_summary.get("trend_30d") or []),
@@ -803,6 +879,9 @@ def _fnd_ebi_analytics_snapshot(path: Path, payload: Any) -> tuple[dict[str, Any
         "errors_noise": {
             "error_severity_counts": dict(error_summary.get("severity_counts") or {}),
             "top_error_routes": list(access_summary.get("top_error_routes") or []),
+            "top_site_error_routes": list(access_summary.get("top_site_error_routes") or []),
+            "top_asset_error_routes": list(access_summary.get("top_asset_error_routes") or []),
+            "top_probe_routes": list(access_summary.get("top_probe_routes") or []),
             "suspicious_probe_examples": list(access_summary.get("suspicious_probe_examples") or []),
         },
         "warnings": warnings,

@@ -78,7 +78,35 @@ class InternalSourcesTests(unittest.TestCase):
             self.assertEqual(summary.get("robots_404_count"), 1)
             self.assertGreater(summary.get("bot_share") or 0, 0)
 
+    def test_access_log_summary_prefers_real_pages_and_tracks_truncation(self):
+        module = _load_internal_sources_module()
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "clients"
+            path = root / "demo" / "analytics" / "nginx" / "access.log"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                '127.0.0.1 - - [24/Mar/2026:00:00:01 +0000] "GET /xmlrpc.php HTTP/1.1" 404 12 "-" "Mozilla/5.0"\n'
+                '127.0.0.1 - - [24/Mar/2026:00:00:02 +0000] "GET /real-page HTTP/1.1" 200 120 "-" "Mozilla/5.0"\n'
+                '127.0.0.1 - - [24/Mar/2026:00:00:03 +0000] "GET /real-page HTTP/1.1" 200 120 "-" "Mozilla/5.0"\n',
+                encoding="utf-8",
+            )
+            previous_roots = os.environ.get("MYCITE_INTERNAL_FILE_ROOTS")
+            os.environ["MYCITE_INTERNAL_FILE_ROOTS"] = str(root)
+            try:
+                result = module.read_internal_file(path, kind_hint="nginx_access_log", max_lines=2)
+            finally:
+                if previous_roots is None:
+                    os.environ.pop("MYCITE_INTERNAL_FILE_ROOTS", None)
+                else:
+                    os.environ["MYCITE_INTERNAL_FILE_ROOTS"] = previous_roots
+            summary = result.summary or {}
+            self.assertTrue(summary.get("truncated"))
+            self.assertEqual(summary.get("raw_line_count"), 3)
+            self.assertEqual(summary.get("parsed_line_count"), 2)
+            top_pages = summary.get("top_pages") or []
+            self.assertEqual((top_pages[0] if top_pages else {}).get("key"), "/real-page")
+            self.assertEqual(summary.get("real_page_requests_30d"), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
-
