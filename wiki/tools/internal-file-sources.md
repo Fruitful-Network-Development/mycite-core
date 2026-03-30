@@ -87,6 +87,12 @@ Current scope is intentionally narrow:
 - simple SES SMTP and Gmail send-as onboarding
 - optional inbound-verification automation only as a future extension seam
 
+Read-only operational inspection is available from the server through:
+
+- `python3 /srv/repo/mycite-core/scripts/aws_csm_inspect.py --tenant <tenant>`
+
+The inspector reads the canonical staged profile, inspects matching SES, Route 53, Secrets Manager, and inbound-mail resources through the AWS CLI, and emits a non-destructive classification report. It is intended for safe inventory and cleanup planning, not live mutation.
+
 Active AWS-CMS scope does not include:
 
 - newsletter workflows
