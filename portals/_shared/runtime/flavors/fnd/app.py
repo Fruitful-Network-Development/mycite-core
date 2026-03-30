@@ -25,6 +25,7 @@ from portal.api.request_log import register_request_log_routes
 from portal.api.tenant_progeny import register_tenant_progeny_routes
 from portal.api.website_analytics import register_website_analytics_routes
 from _shared.portal.application.runtime.instance_context import build_instance_context_from_env
+from _shared.portal.application.internal_sources import derive_client_analytics_paths
 from _shared.portal.application.service_tools import service_tool_definition
 from _shared.portal.application.shell.contracts import build_shell_verbs_payload
 from portal.core_services.runtime import (
@@ -1195,6 +1196,73 @@ def portal_tool_icon(tool_slug: str, icon_name: str):
     if not candidate.exists() or not candidate.is_file():
         abort(404)
     return send_from_directory(root_resolved.as_posix(), candidate.name, mimetype="image/svg+xml")
+
+
+def _fnd_analytics_profile_map() -> Dict[str, Dict[str, str]]:
+    root = utility_tools_dir(PRIVATE_DIR) / "fnd-ebi"
+    out: Dict[str, Dict[str, str]] = {}
+    if not root.exists() or not root.is_dir():
+        return out
+    for path in sorted(root.glob("fnd-ebi.*.json")):
+        try:
+            payload = _read_json(path)
+        except Exception:
+            continue
+        domain = str(payload.get("domain") or "").strip().lower()
+        site_root = str(payload.get("site_root") or "").strip()
+        if not domain or not site_root:
+            continue
+        out[domain] = {"domain": domain, "site_root": site_root}
+    return out
+
+
+def _fnd_analytics_domain(payload: Dict[str, Any]) -> str:
+    requested = str(payload.get("domain") or "").strip().lower()
+    host = str(request.headers.get("Host") or "").split(":", 1)[0].strip().lower()
+    token = requested or host
+    if token.startswith("www."):
+        token = token[4:]
+    return token
+
+
+@app.get("/__fnd/analytics.js")
+def fnd_analytics_script():
+    script = """(function(){if(window.__fndAnalyticsLoaded){return;}window.__fndAnalyticsLoaded=true;var endpoint='/__fnd/collect';function sid(){try{var key='__fnd_sid';var existing=sessionStorage.getItem(key);if(existing){return existing;}var created='sid-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);sessionStorage.setItem(key,created);return created;}catch(err){return 'sid-anon';}}function send(eventType,extra){var payload={domain:window.location.hostname,event_type:eventType,path:window.location.pathname||'/',timestamp:new Date().toISOString(),session_id:sid(),title:document.title||'',referrer:document.referrer||''};if(extra&&typeof extra==='object'){for(var key in extra){if(Object.prototype.hasOwnProperty.call(extra,key)){payload[key]=extra[key];}}}var body=JSON.stringify(payload);if(navigator.sendBeacon){try{return navigator.sendBeacon(endpoint,new Blob([body],{type:'application/json'}));}catch(err){}}if(window.fetch){fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true,credentials:'same-origin'}).catch(function(){});}}send('page_view');document.addEventListener('click',function(event){var link=event.target&&event.target.closest?event.target.closest('a[href]'):null;if(!link){return;}var href=link.getAttribute('href')||'';if(!href||href.charAt(0)==='#'){return;}var absolute;try{absolute=new URL(link.href,window.location.href);}catch(err){return;}if(absolute.origin!==window.location.origin){send('outbound_click',{link_url:absolute.href});}});})();"""
+    response = make_response(script, 200)
+    response.headers["Content-Type"] = "application/javascript; charset=utf-8"
+    response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
+
+
+@app.post("/__fnd/collect")
+def fnd_collect_event():
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"ok": False, "error": "expected JSON object body"}), 400
+    profile = _fnd_analytics_profile_map().get(_fnd_analytics_domain(body))
+    if not profile:
+        return jsonify({"ok": False, "error": "unknown analytics domain"}), 404
+    analytics_paths = derive_client_analytics_paths(profile["site_root"])
+    target = analytics_paths["events_file"]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    event = {
+        "schema": "mycite.analytics.event.v1",
+        "domain": profile["domain"],
+        "event_type": str(body.get("event_type") or body.get("event") or "page_view").strip() or "page_view",
+        "path": str(body.get("path") or request.headers.get("X-Original-URI") or "/").strip() or "/",
+        "timestamp": str(body.get("timestamp") or datetime.now(timezone.utc).isoformat()).strip(),
+        "session_id": str(body.get("session_id") or body.get("sid") or "").strip(),
+        "title": str(body.get("title") or "").strip(),
+        "referrer": str(body.get("referrer") or request.headers.get("Referer") or "").strip(),
+        "link_url": str(body.get("link_url") or "").strip(),
+        "host": str(request.host or "").strip(),
+        "remote_addr": str(request.headers.get("X-Forwarded-For") or request.remote_addr or "").strip(),
+        "user_agent": str(request.headers.get("User-Agent") or "").strip(),
+        "received_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with target.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, separators=(",", ":")) + "\n")
+    return jsonify({"ok": True, "written_to": str(target), "domain": profile["domain"]})
 
 
 @app.get("/healthz")
