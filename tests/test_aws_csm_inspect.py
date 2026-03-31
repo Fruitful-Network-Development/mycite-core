@@ -17,7 +17,7 @@ class AwsCsmInspectTests(unittest.TestCase):
         health = MODULE._smtp_secret_health_from_payload(
             "aws-cms/smtp/fnd",
             {
-                "username": "REPLACE_WITH_REAL_SMTP_USERNAME",
+                "username": "REPLACE_WITH_SES_SMTP_USERNAME",
                 "password": "REPLACE_WITH_REAL_SMTP_PASSWORD",
             },
         )
