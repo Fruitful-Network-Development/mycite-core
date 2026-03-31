@@ -100,6 +100,8 @@ The inspector now also emits `aws.smtp_secret_health`, which safely reports whet
 Current readiness boundary is explicit:
 
 - `smtp.credentials_secret_name` and `smtp.credentials_secret_state` may describe a placeholder reference or a known auth failure without implying that real SMTP credentials are resolved.
+- `smtp.credentials_secret_state = configured` together with a resolved `smtp.username` means the SMTP side is ready for Gmail handoff, not that Gmail send-as is already verified.
+- `smtp.handoff_ready` is derived from the same configuration boundary as `workflow.is_ready_for_user_handoff` so the SMTP group and workflow group stay in sync.
 - `workflow.configuration_blockers_now` is the list that must clear before Gmail/inbox handoff is trustworthy.
 - `workflow.gmail_handoff_blockers_now` is the intentional remaining boundary after AWS-side staging is complete.
 - `workflow.is_ready_for_user_handoff = true` means ready for Gmail/inbox handoff, not that send-as is fully verified.

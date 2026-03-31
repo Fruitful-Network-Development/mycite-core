@@ -342,6 +342,7 @@ class ServiceToolMediationTests(unittest.TestCase):
             workflow = card_body.get("workflow") if isinstance(card_body.get("workflow"), dict) else {}
             self.assertEqual(smtp.get("credentials_secret_name"), "aws-cms/smtp/fnd")
             self.assertEqual(smtp.get("credentials_secret_state"), "configured")
+            self.assertTrue(bool(smtp.get("handoff_ready")))
             self.assertEqual(verification.get("portal_state"), "awaiting_gmail_handoff")
             self.assertEqual(list(workflow.get("configuration_blockers_now") or []), [])
             self.assertEqual(

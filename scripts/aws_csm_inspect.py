@@ -81,6 +81,8 @@ def _looks_placeholder_secret_value(value: str) -> bool:
         "replace_me",
         "replace-with-real",
         "replace_with_real",
+        "replace_with_",
+        "replace_",
         "placeholder",
         "example",
     )

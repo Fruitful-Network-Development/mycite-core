@@ -230,6 +230,7 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
             missing_required.append(key)
     send_as_confirmed = provider_status in confirmed_send_as_statuses or verification_status == "verified"
     ready_for_user_handoff = not configuration_blockers
+    smtp["handoff_ready"] = ready_for_user_handoff
     handoff_status = "staging_required"
     if send_as_confirmed:
         handoff_status = "send_as_confirmed"
