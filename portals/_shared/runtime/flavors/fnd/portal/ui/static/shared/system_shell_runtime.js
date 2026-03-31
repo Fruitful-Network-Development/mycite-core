@@ -1590,6 +1590,8 @@
       }));
       if (text(selectedSmtp.credentials_secret_state) === "placeholder_present" && !text(selectedSmtp.username)) {
         out.push("<p><strong>Placeholder only:</strong> a secret reference is staged, but real SMTP credentials are not resolved yet.</p>");
+      } else if (text(selectedSmtp.credentials_secret_state) === "auth_failed" && !text(selectedSmtp.username)) {
+        out.push("<p><strong>SMTP auth failed:</strong> the referenced secret exists, but the current credential values did not authenticate to SES SMTP.</p>");
       }
       out.push('</div></article>');
       out.push('<article class="card"><div class="card__kicker">Verification</div><div class="card__title">Portal and provider state</div><div class="card__body">');
@@ -1700,6 +1702,8 @@
     }));
     if (text(smtp.credentials_secret_state) === "placeholder_present" && !text(smtp.username)) {
       out.push("<p><strong>Placeholder only:</strong> the secret reference is known, but the real SMTP username is still unresolved.</p>");
+    } else if (text(smtp.credentials_secret_state) === "auth_failed" && !text(smtp.username)) {
+      out.push("<p><strong>SMTP auth failed:</strong> the secret reference is known, but the current credential values are not usable for SES SMTP yet.</p>");
     }
     if (Array.isArray(workflow.configuration_blockers_now) && workflow.configuration_blockers_now.length) {
       out.push("<p><strong>Still required before Gmail handoff</strong></p><ul class=\"fnd-ebi-warnings\">");

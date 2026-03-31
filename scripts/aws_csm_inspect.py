@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import smtplib
+import ssl
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -64,6 +66,116 @@ def _aws_command(*args: str, region: str | None = None) -> dict[str, Any]:
         command.extend(["--region", region])
     command.extend(args)
     return _run_command(command)
+
+
+def _looks_placeholder_secret_value(value: str) -> bool:
+    token = str(value or "").strip()
+    if not token:
+        return False
+    lowered = token.lower()
+    if lowered in {"replace_me", "placeholder", "example"}:
+        return True
+    if token.startswith("<") and token.endswith(">"):
+        return True
+    markers = (
+        "replace_me",
+        "replace-with-real",
+        "replace_with_real",
+        "placeholder",
+        "example",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _classify_secret_value(value: str) -> str:
+    token = str(value or "").strip()
+    if not token:
+        return "missing"
+    if _looks_placeholder_secret_value(token):
+        return "placeholder"
+    return "present"
+
+
+def _smtp_secret_health_from_payload(secret_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    username = str(payload.get("username") or "")
+    password = str(payload.get("password") or "")
+    return {
+        "secret_name": secret_name,
+        "keys": sorted(str(key) for key in payload.keys()),
+        "username_state": _classify_secret_value(username),
+        "password_state": _classify_secret_value(password),
+        "smtp_auth_state": "not_attempted",
+        "usable_for_handoff": False,
+    }
+
+
+def _smtp_auth_result(*, host: str, port: str, username: str, password: str) -> dict[str, str]:
+    try:
+        smtp_port = int(str(port or "587"))
+    except ValueError:
+        smtp_port = 587
+    try:
+        with smtplib.SMTP(host, smtp_port, timeout=20) as server:
+            server.ehlo()
+            server.starttls(context=ssl.create_default_context())
+            server.ehlo()
+            server.login(username, password)
+        return {"state": "success", "error": ""}
+    except Exception as exc:  # pragma: no cover - network failures vary in test hosts
+        return {"state": "failed", "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+
+
+def _inspect_smtp_secret(secret_name: str, *, region: str, host: str, port: str) -> dict[str, Any]:
+    response = _aws_command(
+        "secretsmanager",
+        "get-secret-value",
+        "--secret-id",
+        secret_name,
+        "--query",
+        "SecretString",
+        "--output",
+        "text",
+        region=region,
+    )
+    summary: dict[str, Any] = {
+        "secret_name": secret_name,
+        "exists": bool(response.get("ok")),
+        "keys": [],
+        "username_state": "missing",
+        "password_state": "missing",
+        "smtp_auth_state": "not_attempted",
+        "usable_for_handoff": False,
+    }
+    if not response.get("ok"):
+        summary["fetch_error"] = str(response.get("stderr") or response.get("stdout") or "").strip()[:200]
+        return summary
+
+    secret_text = ""
+    if isinstance(response.get("payload"), str):
+        secret_text = str(response.get("payload") or "")
+    elif isinstance(response.get("stdout"), str):
+        secret_text = str(response.get("stdout") or "")
+    try:
+        payload = json.loads(secret_text) if secret_text else {}
+    except json.JSONDecodeError:
+        summary["parse_error"] = "secret-string is not valid JSON"
+        return summary
+    if not isinstance(payload, dict):
+        summary["parse_error"] = "secret-string is not a JSON object"
+        return summary
+
+    summary.update(_smtp_secret_health_from_payload(secret_name, payload))
+    username = str(payload.get("username") or "")
+    password = str(payload.get("password") or "")
+    if summary["username_state"] == "present" and summary["password_state"] == "present":
+        auth = _smtp_auth_result(host=host, port=port, username=username, password=password)
+        summary["smtp_auth_state"] = auth["state"]
+        if auth["error"]:
+            summary["smtp_auth_error"] = auth["error"]
+        summary["usable_for_handoff"] = auth["state"] == "success"
+    elif "placeholder" in {summary["username_state"], summary["password_state"]}:
+        summary["smtp_auth_state"] = "placeholder_detected"
+    return summary
 
 
 def _exact_zone(hosted_zone_payload: dict[str, Any], domain: str) -> dict[str, Any] | None:
@@ -181,6 +293,7 @@ def _build_classification(
     hosted_zone: dict[str, Any] | None,
     mail_records: list[dict[str, Any]],
     secrets: list[dict[str, Any]],
+    smtp_secret_health: dict[str, Any],
     address_identities: dict[str, dict[str, Any]],
     active_receipt_rule_set: dict[str, Any] | None,
     referenced_buckets: dict[str, dict[str, Any]],
@@ -209,20 +322,43 @@ def _build_classification(
         }
     )
 
-    secret_name = f"aws-cms/smtp/{tenant}"
+    secret_name = str(smtp.get("credentials_secret_name") or f"aws-cms/smtp/{tenant}")
     secret_entry = next((item for item in secrets if str(item.get("Name") or "") == secret_name), None)
     entries.append(
         {
-            "item": secret_name,
+            "item": f"SMTP secret reference {secret_name}",
             "source": "AWS Secrets Manager",
             "classification": CLASS_CURRENT if secret_entry else CLASS_REQUIRED,
             "recommended_action": (
-                "Replace placeholder contents with real SES SMTP credentials; keep the secret reference external to profile JSON."
+                "Keep the secret reference external to profile JSON."
                 if secret_entry
                 else "Create the standardized SMTP secret before handoff."
             ),
         }
     )
+    if smtp_secret_health:
+        username_state = str(smtp_secret_health.get("username_state") or "missing")
+        password_state = str(smtp_secret_health.get("password_state") or "missing")
+        auth_state = str(smtp_secret_health.get("smtp_auth_state") or "not_attempted")
+        payload_classification = CLASS_REQUIRED
+        recommended_action = "Replace the secret contents with valid SES SMTP credentials before Gmail handoff."
+        if bool(smtp_secret_health.get("usable_for_handoff")):
+            payload_classification = CLASS_CURRENT
+            recommended_action = "Keep the secret contents external; current SMTP credentials are usable for send-as handoff."
+        elif "placeholder" in {username_state, password_state}:
+            payload_classification = CLASS_REQUIRED
+            recommended_action = "Replace placeholder-like secret values with real SES SMTP credentials before Gmail handoff."
+        elif auth_state == "failed":
+            payload_classification = CLASS_CONFLICTING
+            recommended_action = "Rotate or repair the secret contents; the current values fail SMTP authentication."
+        entries.append(
+            {
+                "item": f"SMTP secret payload {secret_name}",
+                "source": "AWS Secrets Manager + SES SMTP auth",
+                "classification": payload_classification,
+                "recommended_action": recommended_action,
+            }
+        )
 
     dkim_records = [record for record in mail_records if str(record.get("Type") or "") == "CNAME"]
     entries.append(
@@ -371,6 +507,11 @@ def inspect_profile(root: Path, tenant: str) -> dict[str, Any]:
     domain = str(identity.get("domain") or "").strip().lower()
     region = str(identity.get("region") or "us-east-1").strip() or "us-east-1"
     canonical_sender = str(identity.get("send_as_email") or smtp.get("send_as_email") or "").strip().lower()
+    smtp_host = str(smtp.get("host") or f"email-smtp.{region}.amazonaws.com").strip() or f"email-smtp.{region}.amazonaws.com"
+    smtp_port = str(smtp.get("port") or "587").strip() or "587"
+    secret_name = str(smtp.get("credentials_secret_name") or "").strip()
+    if not secret_name:
+        secret_name = f"aws-cms/smtp/{tenant}"
 
     domain_identity_result = _aws_command("sesv2", "get-email-identity", "--email-identity", domain, region=region)
     domain_identity = domain_identity_result.get("payload") if isinstance(domain_identity_result.get("payload"), dict) else {}
@@ -399,6 +540,7 @@ def inspect_profile(root: Path, tenant: str) -> dict[str, Any]:
         region=region,
     )
     secrets_payload = secrets_result.get("payload") if isinstance(secrets_result.get("payload"), list) else []
+    smtp_secret_health = _inspect_smtp_secret(secret_name, region=region, host=smtp_host, port=smtp_port)
 
     addresses = _candidate_addresses(profile, domain_identity)
     address_identities: dict[str, dict[str, Any]] = {}
@@ -476,6 +618,7 @@ def inspect_profile(root: Path, tenant: str) -> dict[str, Any]:
         hosted_zone=hosted_zone,
         mail_records=relevant_mail_records,
         secrets=list(secrets_payload or []),
+        smtp_secret_health=smtp_secret_health,
         address_identities=address_identities,
         active_receipt_rule_set={"Metadata": (active_rule_set or {}).get("Metadata", {}), "Rules": relevant_rules} if active_rule_set else None,
         referenced_buckets=referenced_buckets,
@@ -497,6 +640,7 @@ def inspect_profile(root: Path, tenant: str) -> dict[str, Any]:
             "hosted_zone": hosted_zone or {},
             "mail_records": relevant_mail_records,
             "smtp_secrets": list(secrets_payload or []),
+            "smtp_secret_health": smtp_secret_health,
             "address_identities": address_identities,
             "active_receipt_rule_set": {"Metadata": (active_rule_set or {}).get("Metadata", {}), "Rules": relevant_rules}
             if active_rule_set
@@ -507,8 +651,12 @@ def inspect_profile(root: Path, tenant: str) -> dict[str, Any]:
         "local_references": local_references,
         "classification": classification,
         "safe_next_steps": [
-            "Replace placeholder SMTP secret contents with real SES SMTP credentials when ready.",
-            "Keep Gmail send-as verification as the next human handoff boundary.",
+            (
+                "Replace placeholder or non-working SMTP secret contents with valid SES SMTP credentials before Gmail handoff."
+                if not bool(smtp_secret_health.get("usable_for_handoff"))
+                else "SMTP credentials are usable; continue to Gmail send-as handoff."
+            ),
+            "Keep Gmail send-as verification as the next human handoff boundary unless an operator can complete it live.",
             "Do not remove legacy inbound FND resources until a previewed cleanup plan is approved.",
         ],
     }

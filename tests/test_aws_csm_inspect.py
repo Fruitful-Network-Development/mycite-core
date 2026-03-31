@@ -13,6 +13,34 @@ SPEC.loader.exec_module(MODULE)
 
 
 class AwsCsmInspectTests(unittest.TestCase):
+    def test_secret_health_marks_placeholder_values_without_exposing_them(self) -> None:
+        health = MODULE._smtp_secret_health_from_payload(
+            "aws-cms/smtp/fnd",
+            {
+                "username": "REPLACE_WITH_REAL_SMTP_USERNAME",
+                "password": "REPLACE_WITH_REAL_SMTP_PASSWORD",
+            },
+        )
+
+        self.assertEqual(health["secret_name"], "aws-cms/smtp/fnd")
+        self.assertEqual(health["username_state"], "placeholder")
+        self.assertEqual(health["password_state"], "placeholder")
+        self.assertEqual(health["smtp_auth_state"], "not_attempted")
+        self.assertFalse(bool(health["usable_for_handoff"]))
+
+    def test_secret_health_marks_present_values_as_candidates_for_auth(self) -> None:
+        health = MODULE._smtp_secret_health_from_payload(
+            "aws-cms/smtp/fnd",
+            {
+                "username": "AKIAIOSFODNN7ABCD123",
+                "password": "wJalrXUtnFEMI/K7MDENG/bPxRfiCY123456KEY",
+            },
+        )
+
+        self.assertEqual(health["username_state"], "present")
+        self.assertEqual(health["password_state"], "present")
+        self.assertEqual(health["smtp_auth_state"], "not_attempted")
+
     def test_candidate_addresses_stay_on_domain_and_include_legacy_mail_from_alias(self) -> None:
         profile = {
             "identity": {
@@ -88,6 +116,13 @@ class AwsCsmInspectTests(unittest.TestCase):
                 },
             ],
             secrets=[{"Name": "aws-cms/smtp/fnd"}],
+            smtp_secret_health={
+                "secret_name": "aws-cms/smtp/fnd",
+                "username_state": "placeholder",
+                "password_state": "placeholder",
+                "smtp_auth_state": "placeholder_detected",
+                "usable_for_handoff": False,
+            },
             address_identities={},
             active_receipt_rule_set={"Metadata": {"Name": "fnd-inbound-rules"}, "Rules": [{}]},
             referenced_buckets={"ses-inbound-fnd-mail": {"prefixes": ["inbound/"], "latest_object": "2026-03-29T10:23:50+00:00"}},
@@ -99,6 +134,10 @@ class AwsCsmInspectTests(unittest.TestCase):
         self.assertEqual(
             by_item["SES domain identity fruitfulnetworkdevelopment.com"]["classification"],
             MODULE.CLASS_CURRENT,
+        )
+        self.assertEqual(
+            by_item["SMTP secret payload aws-cms/smtp/fnd"]["classification"],
+            MODULE.CLASS_REQUIRED,
         )
         self.assertEqual(
             by_item["Custom MAIL FROM dcmontgomery.fruitfulnetworkdevelopment.com"]["classification"],

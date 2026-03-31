@@ -80,6 +80,8 @@ Required baseline groups:
 
 Legacy flat fields (for example `alias_email`, `forward_to_email`, `gmail_send_as_status`) are normalized into these groups at service-tool context assembly. This is a compatibility transform only; canonical writes target grouped profile documents under `aws-csm.<profile>.json`.
 
+Canonical grouped profile writes flow through `PUT /portal/api/admin/aws/profile/<profile_id>` in the admin integrations runtime. That path writes only to `private/utilities/tools/aws-csm/aws-csm.<profile>.json` and rejects raw secret-like keys; secret values remain external in Secrets Manager.
+
 Current scope is intentionally narrow:
 
 - one operator
@@ -93,13 +95,17 @@ Read-only operational inspection is available from the server through:
 
 The inspector reads the canonical staged profile, inspects matching SES, Route 53, Secrets Manager, and inbound-mail resources through the AWS CLI, and emits a non-destructive classification report. It is intended for safe inventory and cleanup planning, not live mutation.
 
+The inspector now also emits `aws.smtp_secret_health`, which safely reports whether the referenced secret looks placeholder-like and whether SMTP AUTH succeeded, without exposing raw secret values.
+
 Current readiness boundary is explicit:
 
-- `smtp.credentials_secret_name` and `smtp.credentials_secret_state` may describe a placeholder secret reference without implying that real SMTP credentials are resolved.
+- `smtp.credentials_secret_name` and `smtp.credentials_secret_state` may describe a placeholder reference or a known auth failure without implying that real SMTP credentials are resolved.
 - `workflow.configuration_blockers_now` is the list that must clear before Gmail/inbox handoff is trustworthy.
 - `workflow.gmail_handoff_blockers_now` is the intentional remaining boundary after AWS-side staging is complete.
 - `workflow.is_ready_for_user_handoff = true` means ready for Gmail/inbox handoff, not that send-as is fully verified.
 - `workflow.handoff_status` and `workflow.completion_boundary` distinguish staging, Gmail-handoff readiness, and confirmed completion.
+- On March 31, 2026, the EC2 role `EC2-AWSCMS-Admin` was confirmed denied for `iam:GetUser`, `iam:ListUsers`, and `iam:CreateServiceSpecificCredential`, so this server cannot mint SES SMTP credentials without additional IAM scope or externally supplied credentials.
+- On March 31, 2026, repo inspection found no local Gmail API/OAuth automation path or Google client dependency for completing Gmail send-as confirmation from the server; that step remains a human handoff unless automation is added later.
 
 Current reference onboarding case:
 
