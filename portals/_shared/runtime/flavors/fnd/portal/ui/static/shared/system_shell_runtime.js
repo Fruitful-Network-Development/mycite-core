@@ -1532,6 +1532,24 @@
     return cards[0];
   }
 
+  function awsHandoffStatusLabel(workflow) {
+    var status = text(workflow && workflow.handoff_status);
+    if (status === "ready_for_gmail_handoff") return "ready for Gmail handoff";
+    if (status === "send_as_confirmed") return "send-as confirmed";
+    return "staging required";
+  }
+
+  function awsCompletionBoundaryLabel(workflow) {
+    var boundary = text(workflow && workflow.completion_boundary);
+    if (boundary === "gmail_inbox_dependent") return "gmail/inbox dependent";
+    if (boundary === "completed") return "completed";
+    return boundary.replace(/_/g, " ");
+  }
+
+  function awsBlockerCount(items) {
+    return Array.isArray(items) ? String(items.length) : "0";
+  }
+
   function renderAwsOverview(tool) {
     var ctx = toolContext(tool.tool_id) || {};
     var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
@@ -1563,10 +1581,16 @@
         port: text(selectedSmtp.port),
         username: text(selectedSmtp.username),
         "credentials source": text(selectedSmtp.credentials_source),
+        "secret ref": text(selectedSmtp.credentials_secret_name),
+        "secret state": text(selectedSmtp.credentials_secret_state),
+        "username known": text(selectedSmtp.username) ? "yes" : "no",
         "forward to": text(selectedSmtp.forward_to_email),
         "forwarding status": text(selectedSmtp.forwarding_status),
-        "handoff ready": selectedSmtp.handoff_ready ? "yes" : "no"
+        "workflow handoff ready": selectedWorkflow.is_ready_for_user_handoff ? "yes" : "no"
       }));
+      if (text(selectedSmtp.credentials_secret_state) === "placeholder_present" && !text(selectedSmtp.username)) {
+        out.push("<p><strong>Placeholder only:</strong> a secret reference is staged, but real SMTP credentials are not resolved yet.</p>");
+      }
       out.push('</div></article>');
       out.push('<article class="card"><div class="card__kicker">Verification</div><div class="card__title">Portal and provider state</div><div class="card__body">');
       out.push(renderCardKeyValueRows({
@@ -1588,18 +1612,40 @@
       out.push('</div></article>');
       out.push('<article class="card"><div class="card__kicker">Workflow</div><div class="card__title">Simple operator-only send-as onboarding</div><div class="card__body">');
       out.push(renderCardKeyValueRows({
-        "handoff ready": selectedWorkflow.is_ready_for_user_handoff ? "yes" : "no",
-        "missing required": Array.isArray(selectedWorkflow.missing_required_now) ? String(selectedWorkflow.missing_required_now.length) : "0",
+        "handoff status": awsHandoffStatusLabel(selectedWorkflow),
+        "completion boundary": awsCompletionBoundaryLabel(selectedWorkflow),
+        "ready for Gmail handoff": selectedWorkflow.is_ready_for_user_handoff ? "yes" : "no",
+        "configuration blockers": awsBlockerCount(selectedWorkflow.configuration_blockers_now),
+        "gmail-side blockers": awsBlockerCount(selectedWorkflow.gmail_handoff_blockers_now),
+        "missing required": awsBlockerCount(selectedWorkflow.missing_required_now),
         flow: text(selectedWorkflow.flow || selectedWorkflow.flow_name),
         "single user": text(selectedIdentity.single_user_email),
-        "send as": text(selectedSmtp.send_as_email)
+        "send as": text(selectedSmtp.send_as_email),
+        "send-as confirmed": selectedWorkflow.is_send_as_confirmed ? "yes" : "no"
       }));
+      if (Array.isArray(selectedWorkflow.configuration_blockers_now) && selectedWorkflow.configuration_blockers_now.length) {
+        out.push("<p><strong>Still required before Gmail handoff</strong></p><ul class=\"fnd-ebi-warnings\">");
+        selectedWorkflow.configuration_blockers_now.forEach(function (item) {
+          out.push("<li>" + esc(text(item)) + "</li>");
+        });
+        out.push("</ul>");
+      }
+      if (Array.isArray(selectedWorkflow.gmail_handoff_blockers_now) && selectedWorkflow.gmail_handoff_blockers_now.length) {
+        out.push("<p><strong>Remaining after AWS staging</strong></p><ul class=\"fnd-ebi-warnings\">");
+        selectedWorkflow.gmail_handoff_blockers_now.forEach(function (item) {
+          out.push("<li>" + esc(text(item)) + "</li>");
+        });
+        out.push("</ul>");
+      }
       if (Array.isArray(selectedWorkflow.missing_required_now) && selectedWorkflow.missing_required_now.length) {
         out.push("<p><strong>Missing required now</strong></p><ul class=\"fnd-ebi-warnings\">");
         selectedWorkflow.missing_required_now.forEach(function (item) {
           out.push("<li>" + esc(text(item)) + "</li>");
         });
         out.push("</ul>");
+      }
+      if (selectedWorkflow.is_ready_for_user_handoff && !selectedWorkflow.is_send_as_confirmed) {
+        out.push("<p><strong>Intentional boundary:</strong> AWS-CMS staging is ready for Gmail/inbox handoff, but Gmail-side verification is still pending.</p>");
       }
       out.push('</div></article>');
     }
@@ -1612,11 +1658,12 @@
       var missing = Array.isArray(workflow.missing_required_now) ? workflow.missing_required_now : [];
       var token = awsProfileToken(card);
       out.push('<article class="card fnd-ebi-card' + (selectedCard && awsProfileToken(selectedCard) === token ? ' is-active' : '') + '" data-aws-profile="' + esc(token) + '">');
-      out.push('<div class="card__kicker">' + esc(workflow.is_ready_for_user_handoff ? "ready" : "staging required") + "</div>");
+      out.push('<div class="card__kicker">' + esc(awsHandoffStatusLabel(workflow)) + "</div>");
       out.push('<div class="card__title">' + esc(text(card.title || identity.domain || card.card_id || "profile")) + "</div>");
       out.push('<div class="card__body">');
       out.push("<p><strong>Tenant:</strong> " + esc(text(identity.tenant_id || "(missing)")) + "</p>");
       out.push("<p><strong>Verification:</strong> " + esc(text(verification.status || "(missing)")) + "</p>");
+      out.push("<p><strong>Boundary:</strong> " + esc(awsCompletionBoundaryLabel(workflow)) + "</p>");
       out.push("<p><strong>Missing required now:</strong> " + esc(String(missing.length)) + "</p>");
       out.push("<p><small>Select to focus this onboarding profile in the interface lens.</small></p>");
       out.push("</div></article>");
@@ -1643,10 +1690,24 @@
       port: text(smtp.port),
       username: text(smtp.username),
       "credentials source": text(smtp.credentials_source),
+      "secret ref": text(smtp.credentials_secret_name),
+      "secret state": text(smtp.credentials_secret_state),
+      "username known": text(smtp.username) ? "yes" : "no",
       "forward to": text(smtp.forward_to_email),
       "forwarding status": text(smtp.forwarding_status),
-      "handoff ready flag": smtp.handoff_ready ? "yes" : "no"
+      "workflow handoff ready": workflow.is_ready_for_user_handoff ? "yes" : "no",
+      "handoff status": awsHandoffStatusLabel(workflow)
     }));
+    if (text(smtp.credentials_secret_state) === "placeholder_present" && !text(smtp.username)) {
+      out.push("<p><strong>Placeholder only:</strong> the secret reference is known, but the real SMTP username is still unresolved.</p>");
+    }
+    if (Array.isArray(workflow.configuration_blockers_now) && workflow.configuration_blockers_now.length) {
+      out.push("<p><strong>Still required before Gmail handoff</strong></p><ul class=\"fnd-ebi-warnings\">");
+      workflow.configuration_blockers_now.forEach(function (item) {
+        out.push("<li>" + esc(text(item)) + "</li>");
+      });
+      out.push("</ul>");
+    }
     if (Array.isArray(workflow.missing_required_now) && workflow.missing_required_now.length) {
       out.push("<p><strong>Still missing before Gmail send-as handoff</strong></p><ul class=\"fnd-ebi-warnings\">");
       workflow.missing_required_now.forEach(function (item) {
@@ -1680,8 +1741,13 @@
       "ses identity": text(provider.aws_ses_identity_status),
       "gmail send-as": text(provider.gmail_send_as_status),
       "last checked": text(provider.last_checked_at),
+      "handoff status": awsHandoffStatusLabel(workflow),
+      "completion boundary": awsCompletionBoundaryLabel(workflow),
       "send-as confirmed": workflow.is_send_as_confirmed ? "yes" : "no"
     }));
+    if (workflow.is_ready_for_user_handoff && !workflow.is_send_as_confirmed) {
+      out.push("<p><strong>Intentional boundary:</strong> this profile is ready for Gmail/inbox handoff, but Gmail-side verification is still pending.</p>");
+    }
     out.push("</div></article>");
     return out.join("");
   }

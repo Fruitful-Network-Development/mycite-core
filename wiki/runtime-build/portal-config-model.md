@@ -43,8 +43,9 @@ The runtime authority chain is intentionally layered and non-interchangeable:
 | `public/msn.<msn_id>.json` | public identity/profile metadata and API affordances | profile resolver + UI identity surfaces | local publication | confusion with tool exposure authority | identity/profile only; does not enable tools |
 | `data/references/ref.<source_msn_id>.*.json` | inherited resource reference pointers | data engine + inherited resource loaders | inherited linkage | legacy consumer-named filenames | canonicalized to source/provider msn id at config loader boundary |
 | `private/utilities/tools/fnd-ebi/fnd-ebi.*.json` | FND-EBI profile contract (`domain`, `site_root`, analytics settings) | service-tool mediation context builder | local-only | legacy schema omission | normalized to `mycite.service_tool.fnd_ebi.profile.v1` |
-| `private/utilities/tools/aws-csm/aws-csm.*.json` | AWS-CMS profile contract (identity/smtp/verification/provider staging) | service-tool mediation context builder | local-only | mixed legacy flat fields | normalized to `mycite.service_tool.aws_csm.profile.v1` |
+| `private/utilities/tools/aws-csm/aws-csm.*.json` | AWS-CMS profile contract (identity/smtp/verification/provider staging, placeholder-secret metadata, handoff-boundary state) | service-tool mediation context builder | local-only | mixed legacy flat fields | normalized to `mycite.service_tool.aws_csm.profile.v1` |
 | `private/utilities/tools/aws-csm/aws-csm.collection.json` | optional legacy collection descriptor | service-tool mediation context builder | local-only | treated as canonical by mistake | compatibility-read only; anchor remains canonical |
+| `private/utilities/tools/aws-csm/*audit*.json` | non-destructive AWS-CMS audit artifacts (for example FND sender classification reports) | service-tool file collection + operator inspection scripts | local-only | confusion with live profile authority | audit-only; never treated as canonical profile state |
 
 Boundary statement:
 
