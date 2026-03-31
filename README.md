@@ -80,6 +80,7 @@ Hosted/progeny direction in the current phase:
 
 ## Canonical docs
 
+- [`docs/ownership-boundary.md`](docs/ownership-boundary.md)
 - [`wiki/Home.md`](wiki/Home.md)
 - [`wiki/architecture/system-state-machine.md`](wiki/architecture/system-state-machine.md)
 - [`wiki/data-model/datum-identity-and-resolution.md`](wiki/data-model/datum-identity-and-resolution.md)
@@ -96,3 +97,5 @@ Hosted/progeny direction in the current phase:
 Live FND/TFF containers are built from this repo through `/srv/compose/portals/docker-compose.yml`.
 
 Do not edit running-container files directly. Update repo code/build specs, materialize state, then rebuild the target portal container.
+
+Runtime state under `/srv/compose/portals/state/*` is not a source-controlled authoring surface. Treat it as mutable runtime state that is written by the application, initialization scripts, or controlled migrations.
