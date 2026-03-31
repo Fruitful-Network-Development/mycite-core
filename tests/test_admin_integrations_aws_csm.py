@@ -100,6 +100,8 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
                     },
                     "smtp": {
                         "username": "AKIAEXAMPLE",
+                        "credentials_secret_name": "aws-cms/smtp/fnd",
+                        "credentials_secret_state": "configured",
                         "forward_to_email": "dylancarsonmontgomery@gmail.com",
                         "forwarding_status": "active",
                     },
@@ -109,7 +111,7 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
                         "portal_state": "verification_email_received",
                     },
                     "provider": {
-                        "aws_ses_identity_status": "pending",
+                        "aws_ses_identity_status": "verified",
                         "gmail_send_as_status": "not_started",
                     },
                 },
@@ -121,7 +123,10 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             self.assertTrue(profile_path.exists())
             stored = json.loads(profile_path.read_text(encoding="utf-8"))
             self.assertEqual(((stored.get("identity") or {}).get("tenant_id")), "fnd")
+            self.assertEqual((((stored.get("smtp") or {}).get("credentials_secret_name"))), "aws-cms/smtp/fnd")
+            self.assertEqual((((stored.get("smtp") or {}).get("credentials_secret_state"))), "configured")
             self.assertEqual(((stored.get("workflow") or {}).get("flow")), "single_user_send_as")
+            self.assertEqual(((stored.get("workflow") or {}).get("handoff_status")), "ready_for_gmail_handoff")
             self.assertNotIn("alias_email", stored)
             self.assertNotIn("gmail_send_as_status", stored)
 

@@ -38,7 +38,7 @@ _SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "modes": ["overview", "smtp", "verification", "files"],
         "config_patterns": ["tool.*.aws-csm.json", "aws-csm.{portal_instance_id}.json", "aws-csm.*.json"],
         "collection_patterns": ["tool.*.aws-csm.json"],
-        "member_patterns": ["spec.json", "aws-csm.*.json", "actions.ndjson", "provision_requests.ndjson"],
+        "member_patterns": ["spec.json", "aws-csm.*.json", "*audit*.json", "actions.ndjson", "provision_requests.ndjson"],
         "profile_schema": AWS_CSM_PROFILE_SCHEMA,
     },
     "paypal_service_agreement": {
@@ -133,6 +133,20 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
     credentials_source = _text(
         smtp_raw.get("credentials_source") or body.get("smtp_credentials_source") or body.get("credentials_source")
     ) or "operator_managed"
+    credentials_secret_name = _text(
+        smtp_raw.get("credentials_secret_name") or body.get("smtp_credentials_secret_name")
+    )
+    smtp_username = _text(smtp_raw.get("username") or body.get("smtp_username"))
+    credentials_secret_state = _text(
+        smtp_raw.get("credentials_secret_state") or body.get("smtp_credentials_secret_state")
+    )
+    if not credentials_secret_state:
+        if credentials_secret_name and smtp_username:
+            credentials_secret_state = "configured"
+        elif credentials_secret_name:
+            credentials_secret_state = "placeholder_present"
+        else:
+            credentials_secret_state = "missing"
     smtp_host = _text(smtp_raw.get("host") or body.get("smtp_host")) or _aws_csm_default_smtp_host(region)
     smtp_port = _text(smtp_raw.get("port") or body.get("smtp_port")) or "587"
     verification_status = _text(
@@ -147,13 +161,8 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
     verification_code = _text(verification_raw.get("code") or body.get("verification_code"))
     verification_link = _text(verification_raw.get("link") or body.get("verification_link"))
     verification_portal_state = _text(verification_raw.get("portal_state") or body.get("verification_portal_state"))
-    if not verification_portal_state:
-        if verification_status in {"verified", "configured", "active", "ready"}:
-            verification_portal_state = "verified"
-        elif verification_code or verification_link:
-            verification_portal_state = "verification_pending"
-        else:
-            verification_portal_state = "awaiting_operator_setup"
+    verified_provider_statuses = {"verified", "success", "active", "ready", "configured"}
+    confirmed_send_as_statuses = {"active", "configured", "verified", "ready"}
 
     if not tenant_id:
         warnings.append("recommended field missing: identity.tenant_id")
@@ -172,9 +181,11 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
     smtp = {
         "host": smtp_host,
         "port": smtp_port,
-        "username": _text(smtp_raw.get("username") or body.get("smtp_username")),
+        "username": smtp_username,
         "credentials_source": credentials_source,
         "handoff_ready": _boolish(smtp_raw.get("handoff_ready") or body.get("smtp_handoff_ready")),
+        "credentials_secret_name": credentials_secret_name,
+        "credentials_secret_state": credentials_secret_state,
         "send_as_email": _text(smtp_raw.get("send_as_email") or send_as_email),
         "local_part": _text(smtp_raw.get("local_part") or body.get("local_part")),
         "forward_to_email": forward_to_email,
@@ -196,7 +207,7 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
         "last_checked_at": _text(provider_raw.get("last_checked_at") or body.get("provider_last_checked_at")),
     }
 
-    required_now = {
+    configuration_required = {
         "identity.domain": _text(identity.get("domain")),
         "identity.single_user_email": _text(identity.get("single_user_email")),
         "smtp.send_as_email": _text(smtp.get("send_as_email")),
@@ -205,13 +216,44 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
         "smtp.username": _text(smtp.get("username")),
         "smtp.credentials_source": _text(smtp.get("credentials_source")),
     }
-    missing_required = [key for key, value in required_now.items() if not value]
-    send_as_confirmed = provider_status in {"active", "configured", "verified", "ready"} or verification_status == "verified"
+    configuration_blockers = [key for key, value in configuration_required.items() if not value]
+    if aws_identity_status not in verified_provider_statuses:
+        configuration_blockers.append("provider.aws_ses_identity_status")
+    gmail_handoff_blockers: list[str] = []
+    if verification_status not in confirmed_send_as_statuses:
+        gmail_handoff_blockers.append("verification.status")
+    if provider_status not in confirmed_send_as_statuses:
+        gmail_handoff_blockers.append("provider.gmail_send_as_status")
+    missing_required = list(configuration_blockers)
+    for key in gmail_handoff_blockers:
+        if key not in missing_required:
+            missing_required.append(key)
+    send_as_confirmed = provider_status in confirmed_send_as_statuses or verification_status == "verified"
+    ready_for_user_handoff = not configuration_blockers
+    handoff_status = "staging_required"
+    if send_as_confirmed:
+        handoff_status = "send_as_confirmed"
+    elif ready_for_user_handoff:
+        handoff_status = "ready_for_gmail_handoff"
+    if not verification_portal_state:
+        if send_as_confirmed:
+            verification_portal_state = "verified"
+        elif verification_code or verification_link or verification_status in {"pending", "verification_pending"}:
+            verification_portal_state = "verification_pending"
+        elif ready_for_user_handoff:
+            verification_portal_state = "awaiting_gmail_handoff"
+        else:
+            verification_portal_state = "awaiting_operator_setup"
+    verification["portal_state"] = verification_portal_state
     workflow = {
         "schema": _text(workflow_raw.get("schema")) or "mycite.service_tool.aws_csm.onboarding.v1",
         "flow": _text(workflow_raw.get("flow")) or "single_user_send_as",
+        "configuration_blockers_now": configuration_blockers,
+        "gmail_handoff_blockers_now": gmail_handoff_blockers,
         "missing_required_now": missing_required,
-        "is_ready_for_user_handoff": not missing_required and bool(smtp.get("handoff_ready")),
+        "handoff_status": handoff_status,
+        "completion_boundary": "completed" if send_as_confirmed else "gmail_inbox_dependent",
+        "is_ready_for_user_handoff": ready_for_user_handoff,
         "is_send_as_confirmed": send_as_confirmed,
     }
 
@@ -282,6 +324,10 @@ def _service_tool_contract(definition: dict[str, Any], *, portal_instance_id: st
         "collection_datum": {
             "patterns": _expand_patterns(definition.get("collection_patterns"), portal_instance_id=portal_instance_id),
             "content_kind": "json_collection",
+        },
+        "member_datum": {
+            "patterns": _expand_patterns(definition.get("member_patterns"), portal_instance_id=portal_instance_id),
+            "content_kind": "mixed_collection",
         },
         "profile_card_contract": {
             "card_kind": "service_profile",
@@ -978,7 +1024,12 @@ def _service_profile_interface_cards(namespace: str, profile_cards: list[dict[st
             provider = dict(body.get("provider")) if isinstance(body.get("provider"), dict) else {}
             workflow = dict(body.get("workflow")) if isinstance(body.get("workflow"), dict) else {}
             title = _text(card.get("title")) or _text(identity.get("domain")) or _text(card.get("card_id")) or "profile"
-            summary = "ready" if bool(workflow.get("is_ready_for_user_handoff")) else "staging required"
+            handoff_status = _text(workflow.get("handoff_status"))
+            summary = "staging required"
+            if handoff_status == "ready_for_gmail_handoff":
+                summary = "gmail handoff"
+            elif handoff_status == "send_as_confirmed":
+                summary = "confirmed"
             out.append(
                 build_inspector_card(
                     card_id=f"aws-csm-profile-{_text(card.get('card_id')) or title}",

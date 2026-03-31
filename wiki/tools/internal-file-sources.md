@@ -73,10 +73,10 @@ Retired state root:
 Required baseline groups:
 
 - `identity` (profile/operator identity for a single send-as setup)
-- `smtp` (Gmail send-as handoff fields, forwarding destination/status, SMTP readiness)
+- `smtp` (Gmail send-as handoff fields, forwarding destination/status, SMTP readiness, secret-reference metadata without raw credentials)
 - `verification` (code/link/status/timestamps for the active send-as verification step)
 - `provider` (provider-facing SES and Gmail send-as status snapshots)
-- `workflow` (operator-only readiness and missing-field summary)
+- `workflow` (operator-only readiness, pre-handoff blockers, Gmail-side blockers, and completion-boundary summary)
 
 Legacy flat fields (for example `alias_email`, `forward_to_email`, `gmail_send_as_status`) are normalized into these groups at service-tool context assembly. This is a compatibility transform only; canonical writes target grouped profile documents under `aws-csm.<profile>.json`.
 
@@ -92,6 +92,19 @@ Read-only operational inspection is available from the server through:
 - `python3 /srv/repo/mycite-core/scripts/aws_csm_inspect.py --tenant <tenant>`
 
 The inspector reads the canonical staged profile, inspects matching SES, Route 53, Secrets Manager, and inbound-mail resources through the AWS CLI, and emits a non-destructive classification report. It is intended for safe inventory and cleanup planning, not live mutation.
+
+Current readiness boundary is explicit:
+
+- `smtp.credentials_secret_name` and `smtp.credentials_secret_state` may describe a placeholder secret reference without implying that real SMTP credentials are resolved.
+- `workflow.configuration_blockers_now` is the list that must clear before Gmail/inbox handoff is trustworthy.
+- `workflow.gmail_handoff_blockers_now` is the intentional remaining boundary after AWS-side staging is complete.
+- `workflow.is_ready_for_user_handoff = true` means ready for Gmail/inbox handoff, not that send-as is fully verified.
+- `workflow.handoff_status` and `workflow.completion_boundary` distinguish staging, Gmail-handoff readiness, and confirmed completion.
+
+Current reference onboarding case:
+
+- `aws-csm.fnd.json` with canonical sender `dylan@fruitfulnetworkdevelopment.com`
+- legacy FND inbound automation and `dcmontgomery.*` mail artifacts remain classified as out-of-scope legacy infrastructure, not baseline onboarding truth
 
 Active AWS-CMS scope does not include:
 
