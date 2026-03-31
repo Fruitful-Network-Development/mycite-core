@@ -49,21 +49,6 @@ The recent SSH / VS Code issue should be treated primarily as a **Docker / conta
 
 ---
 
-## Why this conclusion was reached
-
-### 1) The issue was not limited to VS Code
-
-At one point, VS Code Remote-SSH looked like the problem. But later, plain terminal SSH from the local machine also began hanging.
-
-That matters because:
-
-- if VS Code alone were the issue, normal terminal SSH should have remained consistently fine
-- once plain SSH also hung, the problem was clearly broader than the VS Code remote agent
-
-The practical implication is that VS Code should be treated as a **symptom surface**, not the root cause.
-
----
-
 ## Current Docker-defined service inventory
 
 ### Platform compose stack
