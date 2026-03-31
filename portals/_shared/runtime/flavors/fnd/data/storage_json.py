@@ -181,12 +181,30 @@ class JsonStorageBackend:
     def _samras_instance_filename(msn_id: str, instance_id: str) -> str:
         return f"{msn_id}.{instance_id}.json"
 
+    def _samras_compat_dir(self) -> Path:
+        # SAMRAS instance tables remain compatibility-only until the workbench is
+        # re-homed onto canonical resource/reference storage. Keep new writes out
+        # of data/ root so they cannot act like equal canonical truth.
+        return self.data_dir / "compat" / "samras_instances"
+
+    def _legacy_samras_instance_path(self, msn_id: str, instance_id: str) -> Path:
+        return self.data_dir / self._samras_instance_filename(msn_id, instance_id)
+
+    def _existing_samras_instance_path(self, msn_id: str, instance_id: str) -> Path:
+        compat_path = self.samras_instance_path(msn_id, instance_id)
+        if compat_path.exists():
+            return compat_path
+        legacy_path = self._legacy_samras_instance_path(msn_id, instance_id)
+        if legacy_path.exists():
+            return legacy_path
+        return compat_path
+
     def samras_instance_path(self, msn_id: str, instance_id: str) -> Path:
         msn_token = str(msn_id or "").strip()
         instance_token = str(instance_id or "").strip()
         if not msn_token or not instance_token:
             raise ValueError("msn_id and instance_id are required")
-        return self.data_dir / self._samras_instance_filename(msn_token, instance_token)
+        return self._samras_compat_dir() / self._samras_instance_filename(msn_token, instance_token)
 
     def list_samras_instances(self, msn_id: str) -> list[dict[str, Any]]:
         msn_token = str(msn_id or "").strip()
@@ -195,30 +213,39 @@ class JsonStorageBackend:
 
         out: list[dict[str, Any]] = []
         pattern = f"{msn_token}.*.json"
-        for path in sorted(self.data_dir.glob(pattern), key=lambda item: item.name):
-            match = SAMRAS_INSTANCE_RE.fullmatch(path.name)
-            if match is None:
+        seen: set[str] = set()
+        for root, storage_scope in (
+            (self._samras_compat_dir(), "compat"),
+            (self.data_dir, "legacy_root"),
+        ):
+            if not root.exists() or not root.is_dir():
                 continue
-            if str(match.group("msn") or "") != msn_token:
-                continue
-            instance_id = str(match.group("instance") or "").strip()
-            if not instance_id:
-                continue
-            payload = self._read_json_path(path)
-            row_count = len(payload) if isinstance(payload, dict) else 0
-            out.append(
-                {
-                    "instance_id": instance_id,
-                    "msn_id": msn_token,
-                    "filename": path.name,
-                    "path": str(path),
-                    "row_count": row_count,
-                }
-            )
+            for path in sorted(root.glob(pattern), key=lambda item: item.name):
+                match = SAMRAS_INSTANCE_RE.fullmatch(path.name)
+                if match is None:
+                    continue
+                if str(match.group("msn") or "") != msn_token:
+                    continue
+                instance_id = str(match.group("instance") or "").strip()
+                if not instance_id or instance_id in seen:
+                    continue
+                payload = self._read_json_path(path)
+                row_count = len(payload) if isinstance(payload, dict) else 0
+                out.append(
+                    {
+                        "instance_id": instance_id,
+                        "msn_id": msn_token,
+                        "filename": path.name,
+                        "path": str(path),
+                        "row_count": row_count,
+                        "storage_scope": storage_scope,
+                    }
+                )
+                seen.add(instance_id)
         return out
 
     def load_samras_instance_rows(self, msn_id: str, instance_id: str) -> list[dict[str, Any]]:
-        payload = self._read_json_path(self.samras_instance_path(msn_id, instance_id))
+        payload = self._read_json_path(self._existing_samras_instance_path(msn_id, instance_id))
         rows: list[dict[str, Any]] = []
         for key, value in payload.items():
             address_id = self._as_text(key).strip()
@@ -266,7 +293,8 @@ class JsonStorageBackend:
 
     def create_samras_instance(self, msn_id: str, instance_id: str) -> dict[str, Any]:
         path = self.samras_instance_path(msn_id, instance_id)
-        if path.exists():
+        legacy_path = self._legacy_samras_instance_path(msn_id, instance_id)
+        if path.exists() or legacy_path.exists():
             return {"ok": False, "errors": [f"SAMRAS instance already exists: {instance_id}"], "warnings": []}
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
