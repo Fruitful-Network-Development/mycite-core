@@ -13,6 +13,8 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PORTALS_ROOT = REPO_ROOT / "portals"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 BUILD_SCHEMA = "mycite.portal.build.v1"
 DEFAULT_MOUNT_TARGET = "peripherals.tools"
 CORE_SYSTEM_SURFACES = ["data_tool"]
@@ -26,22 +28,20 @@ LEGACY_PROGENY_TYPE_MAP = {
     "tenant": "member",
 }
 
+from instances.declarations.registry import (
+    ACTIVE_PORTAL_DECLARATIONS,
+    default_portal_instance_id_for,
+    default_runtime_flavor_for,
+    default_state_root_for,
+)
+
 ACTIVE_PORTALS: dict[str, dict[str, str]] = {
-    "mycite-le_example": {
-        "portal_instance_id": "example",
-        "runtime_flavor": "tff",
-        "state_dir": "/srv/mycite-state/instances/example",
-    },
-    "mycite-le_fnd": {
-        "portal_instance_id": "fnd",
-        "runtime_flavor": "fnd",
-        "state_dir": "/srv/mycite-state/instances/fnd",
-    },
-    "mycite-le_tff": {
-        "portal_instance_id": "tff",
-        "runtime_flavor": "tff",
-        "state_dir": "/srv/mycite-state/instances/tff",
-    },
+    portal_id: {
+        "portal_instance_id": declaration.portal_instance_id,
+        "runtime_flavor": declaration.runtime_flavor,
+        "state_dir": str(declaration.state_dir),
+    }
+    for portal_id, declaration in ACTIVE_PORTAL_DECLARATIONS.items()
 }
 
 SEED_PATTERNS = (
@@ -551,21 +551,15 @@ def _portal_dir(portal_id: str) -> Path:
 def _state_root_for(portal_id: str, explicit: str | None = None) -> Path:
     if explicit:
         return Path(explicit)
-    if portal_id not in ACTIVE_PORTALS:
-        raise ValueError(f"No default state root configured for {portal_id}")
-    return Path(ACTIVE_PORTALS[portal_id]["state_dir"])
+    return default_state_root_for(portal_id)
 
 
 def _portal_instance_id_for(portal_id: str) -> str:
-    if portal_id not in ACTIVE_PORTALS:
-        raise ValueError(f"No default portal_instance_id configured for {portal_id}")
-    return str(ACTIVE_PORTALS[portal_id]["portal_instance_id"])
+    return default_portal_instance_id_for(portal_id)
 
 
 def _runtime_flavor_for(portal_id: str) -> str:
-    if portal_id not in ACTIVE_PORTALS:
-        raise ValueError(f"No default runtime_flavor configured for {portal_id}")
-    return str(ACTIVE_PORTALS[portal_id].get("runtime_flavor") or ACTIVE_PORTALS[portal_id]["portal_instance_id"])
+    return default_runtime_flavor_for(portal_id)
 
 
 def capture_portal(portal_id: str, state_root: Path | None = None) -> Path:

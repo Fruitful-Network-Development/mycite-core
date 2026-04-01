@@ -12,8 +12,12 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PORTALS_ROOT = REPO_ROOT / "portals"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 if str(PORTALS_ROOT) not in sys.path:
     sys.path.insert(0, str(PORTALS_ROOT))
+
+from portal_core.shared.state_roots import canonical_instances_root
 
 from _shared.portal.core_services.config_loader import normalize_private_config_contract
 from _shared.portal.data_engine.resource_registry import (
@@ -576,7 +580,7 @@ def migrate_instance(instance_dir: Path, *, source_instances: dict[str, Path]) -
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--state-root", default="/srv/mycite-state/instances")
+    parser.add_argument("--state-root", default=str(canonical_instances_root()))
     parser.add_argument("--instance", action="append", default=[])
     parser.add_argument("--output", default="/tmp/portal_instance_corrective_pass_state.json")
     args = parser.parse_args()
