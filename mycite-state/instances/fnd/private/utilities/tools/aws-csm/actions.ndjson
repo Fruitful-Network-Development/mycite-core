@@ -1,0 +1,4 @@
+{"tenant_id":"fnd","profile_id":"aws-csm.fnd","created":false,"profile_path":"/state/private/utilities/tools/aws-csm/aws-csm.fnd.json","type":"aws.profile.saved","ts_unix_ms":1774730593272}
+{"request_id":"973555c7cb4049448a2615a6540f3955","portal_user":"operator","portal_username":"","portal_roles":["admin"],"tenant_id":"","scope":"fnd","action":"PUT /portal/api/admin/aws/profile/fnd","status_code":200,"type":"aws.audit.request","ts_unix_ms":1774730593273}
+{"tenant_id":"fnd","profile_id":"aws-csm.fnd","created":false,"profile_path":"/state/private/utilities/tools/aws-csm/aws-csm.fnd.json","type":"aws.profile.saved","ts_unix_ms":1774730703434}
+{"request_id":"a43be79a93d446f5a91dccd1cc74037a","portal_user":"operator","portal_username":"","portal_roles":["admin"],"tenant_id":"","scope":"fnd","action":"PUT /portal/api/admin/aws/profile/fnd","status_code":200,"type":"aws.audit.request","ts_unix_ms":1774730703438}

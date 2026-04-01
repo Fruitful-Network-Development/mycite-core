@@ -1,0 +1,55 @@
+{
+  "schema": "mycite.service_tool.aws_csm.profile.v1",
+  "identity": {
+    "profile_id": "aws-csm.fnd",
+    "tenant_id": "fnd",
+    "domain": "fruitfulnetworkdevelopment.com",
+    "region": "us-east-1",
+    "single_user_msn_id": "",
+    "single_user_email": "dylancarsonmontgomery@gmail.com",
+    "send_as_email": "dylan@fruitfulnetworkdevelopment.com"
+  },
+  "smtp": {
+    "host": "email-smtp.us-east-1.amazonaws.com",
+    "port": "587",
+    "username": "AKIAQ6WWUMKCYREGBOUY",
+    "credentials_source": "operator_managed",
+    "credentials_secret_name": "aws-cms/smtp/fnd",
+    "credentials_secret_state": "configured",
+    "handoff_ready": true,
+    "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+    "local_part": "FND",
+    "forward_to_email": "dylancarsonmontgomery@gmail.com",
+    "forwarding_status": "active"
+  },
+  "verification": {
+    "status": "not_started",
+    "code": "",
+    "link": "",
+    "email_received_at": "",
+    "verified_at": "",
+    "portal_state": "awaiting_gmail_handoff"
+  },
+  "provider": {
+    "gmail_send_as_status": "not_started",
+    "aws_ses_identity_status": "verified",
+    "last_checked_at": "2026-03-31T12:32:05.213000+00:00"
+  },
+  "workflow": {
+    "schema": "mycite.service_tool.aws_csm.onboarding.v1",
+    "flow": "single_user_send_as",
+    "configuration_blockers_now": [],
+    "gmail_handoff_blockers_now": [
+      "verification.status",
+      "provider.gmail_send_as_status"
+    ],
+    "missing_required_now": [
+      "verification.status",
+      "provider.gmail_send_as_status"
+    ],
+    "handoff_status": "ready_for_gmail_handoff",
+    "completion_boundary": "gmail_inbox_dependent",
+    "is_ready_for_user_handoff": true,
+    "is_send_as_confirmed": false
+  }
+}
