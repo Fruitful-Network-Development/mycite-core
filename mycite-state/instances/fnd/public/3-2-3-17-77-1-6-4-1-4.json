@@ -1,0 +1,102 @@
+{
+  "msn_id": "3-2-3-17-77-1-6-4-1-4",
+  "schema": "mycite.profile.v0",
+  "title": "fruitful_network_development_llc",
+  "public_key": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAOYmkI048GFiU7gzdxhN8gKm6wTn1E4z+fZi6d8oox5M=\n-----END PUBLIC KEY-----\n",
+  "accessible": {},
+  "options": {
+    "self": {
+      "href": "/3-2-3-17-77-1-6-4-1-4.json",
+      "methods": [
+        "GET",
+        "OPTIONS"
+      ],
+      "auth": "none"
+    },
+    "portal": {
+      "href": "/portal",
+      "methods": [
+        "GET",
+        "OPTIONS"
+      ],
+      "auth": "required"
+    },
+    "config": {
+      "href": "/portal/api/config",
+      "methods": [
+        "GET",
+        "PUT",
+        "OPTIONS"
+      ],
+      "auth": "required"
+    }
+  },
+  "public_resources": [
+    {
+      "resource_id": "rc.3-2-3-17-77-1-6-4-1-4.addresses",
+      "kind": "addresses",
+      "export_family": "mss.bin.v2",
+      "href": "rc.3-2-3-17-77-1-6-4-1-4.addresses.bin",
+      "lens_hint": "datum",
+      "availability": {
+        "public": true
+      },
+      "source_msn_id": "3-2-3-17-77-1-6-4-1-4"
+    },
+    {
+      "resource_id": "rc.3-2-3-17-77-1-6-4-1-4.msn",
+      "kind": "msn",
+      "export_family": "mss.bin.v2",
+      "href": "rc.3-2-3-17-77-1-6-4-1-4.msn.bin",
+      "lens_hint": "datum",
+      "availability": {
+        "public": true
+      },
+      "source_msn_id": "3-2-3-17-77-1-6-4-1-4"
+    },
+    {
+      "resource_id": "rc.3-2-3-17-77-1-6-4-1-4.phone_book",
+      "kind": "phone_book",
+      "export_family": "mss.bin.v2",
+      "href": "rc.3-2-3-17-77-1-6-4-1-4.phone_book.bin",
+      "lens_hint": "datum",
+      "availability": {
+        "public": true
+      },
+      "source_msn_id": "3-2-3-17-77-1-6-4-1-4"
+    },
+    {
+      "resource_id": "rc.3-2-3-17-77-1-6-4-1-4.registrar",
+      "kind": "registrar",
+      "export_family": "mss.bin.v2",
+      "href": "rc.3-2-3-17-77-1-6-4-1-4.registrar.bin",
+      "lens_hint": "datum",
+      "availability": {
+        "public": true
+      },
+      "source_msn_id": "3-2-3-17-77-1-6-4-1-4"
+    },
+    {
+      "resource_id": "rc.3-2-3-17-77-1-6-4-1-4.txa",
+      "kind": "txa",
+      "export_family": "mss.bin.v2",
+      "href": "rc.3-2-3-17-77-1-6-4-1-4.txa.bin",
+      "lens_hint": "datum",
+      "availability": {
+        "public": true
+      },
+      "source_msn_id": "3-2-3-17-77-1-6-4-1-4"
+    },
+    {
+      "resource_id": "rc.3-2-3-17-77-1-6-4-1-4.yellow_pages",
+      "kind": "yellow_pages",
+      "export_family": "mss.bin.v2",
+      "href": "rc.3-2-3-17-77-1-6-4-1-4.yellow_pages.bin",
+      "lens_hint": "datum",
+      "availability": {
+        "public": true
+      },
+      "source_msn_id": "3-2-3-17-77-1-6-4-1-4"
+    }
+  ]
+}

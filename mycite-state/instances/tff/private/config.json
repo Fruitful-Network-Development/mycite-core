@@ -1,0 +1,42 @@
+{
+  "msn_id": "3-2-3-17-77-2-6-3-1-6",
+  "resources": [],
+  "request_log": [
+    "1-0-3"
+  ],
+  "contracts": [
+    "contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json"
+  ],
+  "private_key_ref": "vault://keys/3-2-3-17-77-2-6-3-1-6_private.pem",
+  "aliases": [
+    "alias.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.member.json",
+    "alias.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.user.json"
+  ],
+  "tools_configuration": [
+    {
+      "managing_contract": "contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json",
+      "title": "tool.3-2-3-17-77-2-6-3-1-6.agro-erp",
+      "anchor": "tool.3-2-3-17-77-2-6-3-1-6.agro-erp.json",
+      "name": "agro-erp",
+      "mount_target": "peripherals.tools",
+      "status": "enabled"
+    }
+  ],
+  "hosted": {},
+  "references": [
+    {
+      "managing_contract": "contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json",
+      "title": "rf.3-2-3-17-77-1-6-4-1-4.msn",
+      "mss_form": "rf.3-2-3-17-77-1-6-4-1-4.msn.bin",
+      "name": "msn",
+      "source_msn_id": "3-2-3-17-77-1-6-4-1-4"
+    },
+    {
+      "managing_contract": "contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json",
+      "title": "rf.3-2-3-17-77-1-6-4-1-4.txa",
+      "mss_form": "rf.3-2-3-17-77-1-6-4-1-4.txa.bin",
+      "name": "txa",
+      "source_msn_id": "3-2-3-17-77-1-6-4-1-4"
+    }
+  ]
+}
