@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -11,8 +12,23 @@ from typing import Any
 from urllib.parse import urlparse
 
 from flask import Flask, g, jsonify, make_response, request
-from _shared.portal.application.service_tools import normalize_aws_csm_profile_payload
-from _shared.portal.runtime_paths import utility_tools_dir
+
+
+def _repo_root() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "portals").exists() and (parent / "tools").exists():
+            return parent
+    raise RuntimeError("Unable to resolve mycite-core repo root")
+
+
+REPO_ROOT = _repo_root()
+token = str(REPO_ROOT)
+if token not in sys.path:
+    sys.path.insert(0, token)
+
+from tools.aws_csm.state_adapter.paths import aws_csm_state_root
+from tools.aws_csm.state_adapter.profile import normalize_aws_csm_profile_payload
+from tools.paypal_csm.state_adapter.paths import paypal_csm_state_root, paypal_csm_tenants_dir
 
 _TENANT_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _TENANT_PATH_RE = re.compile(r"^/portal/api/admin/(paypal|aws)/(?:tenant|profile)/([^/]+)/")
@@ -137,15 +153,13 @@ def _legacy_paypal_root(private_dir: Path) -> Path:
 
 
 def _paypal_root(private_dir: Path) -> Path:
-    root = utility_tools_dir(private_dir) / "paypal-csm"
-    (root / "tenants").mkdir(parents=True, exist_ok=True)
+    root = paypal_csm_state_root(private_dir)
+    paypal_csm_tenants_dir(private_dir)
     return root
 
 
 def _aws_csm_root(private_dir: Path) -> Path:
-    root = private_dir / "utilities" / "tools" / "aws-csm"
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+    return aws_csm_state_root(private_dir)
 
 
 def _paypal_fnd_path(private_dir: Path) -> Path:
@@ -153,7 +167,7 @@ def _paypal_fnd_path(private_dir: Path) -> Path:
 
 
 def _paypal_tenant_path(private_dir: Path, tenant_id: str) -> Path:
-    return _paypal_root(private_dir) / "tenants" / f"{tenant_id}.json"
+    return paypal_csm_tenants_dir(private_dir) / f"{tenant_id}.json"
 
 
 def _aws_csm_profile_paths(private_dir: Path) -> list[Path]:

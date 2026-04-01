@@ -1,0 +1,358 @@
+{
+  "runtime": {
+    "current_paths": [
+      "runtime/app.py",
+      "runtime/bin/run_portal.sh",
+      "portals/runtime/app.py",
+      "portals/runtime/bin/run_portal.sh"
+    ],
+    "target_paths": [
+      "runtime/app.py",
+      "runtime/bin/run_portal.sh"
+    ],
+    "owns": [
+      "process entrypoints",
+      "gunicorn launch contract",
+      "runtime boundary validation"
+    ],
+    "depends_on": [
+      "portal_core/composition"
+    ],
+    "forbidden_dependencies": [
+      "tool-specific state adapters",
+      "flavor business logic",
+      "data engine semantics"
+    ],
+    "compatibility_only": false,
+    "action_taken": "Added canonical runtime entrypoints and converted legacy portals/runtime paths into wrappers.",
+    "status": "canonicalized"
+  },
+  "portal_core.composition": {
+    "current_paths": [
+      "portal_core/composition/runtime_loader.py",
+      "portal_core/composition/instance_context.py",
+      "portals/_shared/portal/application/runtime/instance_context.py"
+    ],
+    "target_paths": [
+      "portal_core/composition/"
+    ],
+    "owns": [
+      "runtime flavor loading",
+      "instance context creation",
+      "instance-state derivation"
+    ],
+    "depends_on": [
+      "portal_core/shared",
+      "instances/declarations"
+    ],
+    "forbidden_dependencies": [
+      "tool-specific workflows",
+      "flavor route registration",
+      "vault secret mutation"
+    ],
+    "compatibility_only": false,
+    "action_taken": "Created canonical composition modules and kept old instance-context import path as a wrapper.",
+    "status": "canonicalized"
+  },
+  "portal_core.shared": {
+    "current_paths": [
+      "portal_core/shared/runtime_paths.py",
+      "portal_core/shared/state_roots.py",
+      "portals/_shared/portal/runtime_paths.py"
+    ],
+    "target_paths": [
+      "portal_core/shared/"
+    ],
+    "owns": [
+      "runtime path helpers",
+      "canonical instance-state root derivation",
+      "keypass and utility path helpers"
+    ],
+    "depends_on": [],
+    "forbidden_dependencies": [
+      "tool business logic",
+      "shell verb logic",
+      "flavor app modules"
+    ],
+    "compatibility_only": false,
+    "action_taken": "Moved shared path and state-root helpers into portal_core/shared and re-exported them from the legacy path module.",
+    "status": "canonicalized"
+  },
+  "portal_core.shell": {
+    "current_paths": [
+      "portal_core/shell/contracts.py",
+      "portal_core/shell/tool_capabilities.py",
+      "portals/_shared/portal/application/shell/contracts.py",
+      "portals/_shared/portal/application/shell/tools.py"
+    ],
+    "target_paths": [
+      "portal_core/shell/"
+    ],
+    "owns": [
+      "shell verbs",
+      "inspector cards",
+      "tool capability normalization"
+    ],
+    "depends_on": [
+      "portal_core/shared"
+    ],
+    "forbidden_dependencies": [
+      "tool state persistence",
+      "data-engine storage logic",
+      "flavor route registration"
+    ],
+    "compatibility_only": false,
+    "action_taken": "Created canonical shell modules and converted old shell helper modules into wrappers.",
+    "status": "canonicalized"
+  },
+  "tools._shared": {
+    "current_paths": [
+      "tools/_shared/tool_contracts/service_catalog.py",
+      "tools/_shared/tool_contracts/specs.py",
+      "tools/_shared/tool_state_api/paths.py",
+      "tools/_shared/tool_state_api/runtime.py",
+      "portals/_shared/portal/tools/runtime.py",
+      "portals/_shared/portal/tools/specs.py"
+    ],
+    "target_paths": [
+      "tools/_shared/"
+    ],
+    "owns": [
+      "service-tool catalog",
+      "tool runtime discovery",
+      "tool spec loading",
+      "generic tool state-root helpers"
+    ],
+    "depends_on": [
+      "portal_core/shared",
+      "portal_core/shell"
+    ],
+    "forbidden_dependencies": [
+      "flavor app modules",
+      "tool-specific business workflows"
+    ],
+    "compatibility_only": false,
+    "action_taken": "Promoted tool catalog/spec/runtime helpers into tools/_shared and turned legacy portal-tool modules into wrappers.",
+    "status": "canonicalized"
+  },
+  "tools.analytics": {
+    "current_paths": [
+      "tools/analytics/state_adapter/paths.py"
+    ],
+    "target_paths": [
+      "tools/analytics/"
+    ],
+    "owns": [
+      "analytics tool state adapter"
+    ],
+    "depends_on": [
+      "tools/_shared",
+      "portal_core/shared"
+    ],
+    "forbidden_dependencies": [
+      "other tool modules",
+      "flavor app bootstrap"
+    ],
+    "compatibility_only": false,
+    "action_taken": "Added canonical analytics state-adapter module for instance-scoped analytics storage.",
+    "status": "canonicalized"
+  },
+  "tools.aws_csm": {
+    "current_paths": [
+      "tools/aws_csm/state_adapter/paths.py",
+      "tools/aws_csm/state_adapter/profile.py",
+      "portals/_shared/runtime/flavors/fnd/portal/api/admin_integrations.py",
+      "portals/_shared/portal/application/service_tools.py"
+    ],
+    "target_paths": [
+      "tools/aws_csm/"
+    ],
+    "owns": [
+      "aws state root",
+      "aws profile normalization"
+    ],
+    "depends_on": [
+      "tools/_shared",
+      "portal_core/shared"
+    ],
+    "forbidden_dependencies": [
+      "portal runtime bootstrap",
+      "unrelated tool state"
+    ],
+    "compatibility_only": false,
+    "action_taken": "Moved AWS profile normalization and state-root logic into dedicated modules and pointed live admin integrations at them.",
+    "status": "canonicalized"
+  },
+  "tools.paypal_csm": {
+    "current_paths": [
+      "tools/paypal_csm/state_adapter/paths.py",
+      "tools/paypal_csm/backend/webhook_compat_app.py",
+      "portals/_shared/runtime/flavors/fnd/portal/api/admin_integrations.py"
+    ],
+    "target_paths": [
+      "tools/paypal_csm/"
+    ],
+    "owns": [
+      "paypal state root",
+      "paypal tenant collection",
+      "minimal webhook compatibility ingress"
+    ],
+    "depends_on": [
+      "tools/_shared",
+      "portal_core/shared"
+    ],
+    "forbidden_dependencies": [
+      "portal-global shell rules",
+      "aws-specific workflows"
+    ],
+    "compatibility_only": true,
+    "action_taken": "Added canonical PayPal state adapters; retained webhook_compat_app as the explicit compatibility ingress.",
+    "status": "canonicalized_with_compat"
+  },
+  "tools.keycloak_sso": {
+    "current_paths": [
+      "tools/keycloak_sso/state_adapter/paths.py"
+    ],
+    "target_paths": [
+      "tools/keycloak_sso/"
+    ],
+    "owns": [
+      "keycloak-sso tool state adapter"
+    ],
+    "depends_on": [
+      "tools/_shared",
+      "portal_core/shared"
+    ],
+    "forbidden_dependencies": [
+      "container topology",
+      "portal flavor bootstrap"
+    ],
+    "compatibility_only": false,
+    "action_taken": "Added canonical auth/tool state adapter path module.",
+    "status": "canonicalized"
+  },
+  "tools.operations": {
+    "current_paths": [
+      "tools/operations/state_adapter/paths.py"
+    ],
+    "target_paths": [
+      "tools/operations/"
+    ],
+    "owns": [
+      "operations tool state adapter"
+    ],
+    "depends_on": [
+      "tools/_shared",
+      "portal_core/shared"
+    ],
+    "forbidden_dependencies": [
+      "runtime supervisor config",
+      "portal flavor bootstrap"
+    ],
+    "compatibility_only": false,
+    "action_taken": "Added canonical operations state-adapter module.",
+    "status": "canonicalized"
+  },
+  "instances.declarations": {
+    "current_paths": [
+      "instances/declarations/registry.py",
+      "portals/scripts/portal_build.py"
+    ],
+    "target_paths": [
+      "instances/declarations/"
+    ],
+    "owns": [
+      "active portal declarations",
+      "default instance ids",
+      "default runtime flavors",
+      "default state roots"
+    ],
+    "depends_on": [
+      "portal_core/shared"
+    ],
+    "forbidden_dependencies": [
+      "live request routes",
+      "tool business logic"
+    ],
+    "compatibility_only": false,
+    "action_taken": "Centralized active instance declarations and made portal_build consume them instead of a second hardcoded map.",
+    "status": "canonicalized"
+  },
+  "instances.materializers": {
+    "current_paths": [
+      "instances/materializers/README.md",
+      "portals/scripts/portal_build.py",
+      "portals/scripts/correct_portal_sandbox_contract.py"
+    ],
+    "target_paths": [
+      "instances/materializers/"
+    ],
+    "owns": [
+      "offline instance capture/materialization",
+      "offline state correction"
+    ],
+    "depends_on": [
+      "instances/declarations",
+      "portal_core/shared"
+    ],
+    "forbidden_dependencies": [
+      "live flask routes",
+      "portal shell runtime behavior"
+    ],
+    "compatibility_only": true,
+    "action_taken": "Established canonical materializer home and aligned existing scripts to canonical declarations/state roots, but left CLI implementations in place as transitional seams.",
+    "status": "planned_transition"
+  },
+  "service_tools_aggregator": {
+    "current_paths": [
+      "portals/_shared/portal/application/service_tools.py"
+    ],
+    "target_paths": [
+      "tools/<tool>/backend/",
+      "tools/_shared/tool_contracts/"
+    ],
+    "owns": [
+      "legacy service-tool config-context assembly",
+      "legacy service-tool interface-card building"
+    ],
+    "depends_on": [
+      "portal_core/shell",
+      "portal_core/shared",
+      "tools/_shared",
+      "tools/aws_csm"
+    ],
+    "forbidden_dependencies": [
+      "new tool-specific business logic",
+      "new filesystem contract logic"
+    ],
+    "compatibility_only": true,
+    "action_taken": "Reduced duplicate ownership by moving catalog and AWS normalization out; file remains as a transitional aggregator for legacy callers.",
+    "status": "transitional"
+  },
+  "flavor_apps": {
+    "current_paths": [
+      "portals/_shared/runtime/flavors/fnd/app.py",
+      "portals/_shared/runtime/flavors/tff/app.py"
+    ],
+    "target_paths": [
+      "portal_core/composition/",
+      "portal_core/shell/",
+      "portal_core/vault/",
+      "tools/<tool>/backend/"
+    ],
+    "owns": [
+      "live Flask app assembly"
+    ],
+    "depends_on": [
+      "runtime/",
+      "portal_core/*",
+      "tools/*"
+    ],
+    "forbidden_dependencies": [
+      "new shared cross-cutting logic"
+    ],
+    "compatibility_only": true,
+    "action_taken": "Kept stable for runtime safety while extracting shared path, shell, composition, and tool-state concerns around them.",
+    "status": "intentional_temporary_seam"
+  }
+}
