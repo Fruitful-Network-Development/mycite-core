@@ -22,7 +22,7 @@ Repo-owned spec:
 
 Materialized live state:
 
-- `/srv/compose/portals/state/fnd_portal/`
+- `/srv/mycite-state/instances/fnd/`
 
 Current shared runtime:
 

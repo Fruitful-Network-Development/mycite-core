@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 from flask import Flask, g, jsonify, make_response, request
 from _shared.portal.application.service_tools import normalize_aws_csm_profile_payload
+from _shared.portal.runtime_paths import utility_tools_dir
 
 _TENANT_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _TENANT_PATH_RE = re.compile(r"^/portal/api/admin/(paypal|aws)/(?:tenant|profile)/([^/]+)/")
@@ -131,8 +132,12 @@ def _admin_runtime_root(private_dir: Path) -> Path:
     return root
 
 
+def _legacy_paypal_root(private_dir: Path) -> Path:
+    return _admin_runtime_root(private_dir) / "paypal"
+
+
 def _paypal_root(private_dir: Path) -> Path:
-    root = _admin_runtime_root(private_dir) / "paypal"
+    root = utility_tools_dir(private_dir) / "paypal-csm"
     (root / "tenants").mkdir(parents=True, exist_ok=True)
     return root
 
@@ -251,6 +256,8 @@ def _resolve_legacy_root(private_dir: Path, scope: str) -> Path | None:
     candidates: list[Path] = []
     if env_value:
         candidates.append(Path(env_value))
+    if scope == "paypal":
+        candidates.append(_legacy_paypal_root(private_dir))
     candidates.append(private_dir.parent / f"{scope}_proxy")
     candidates.append(Path(f"/srv/compose/portals/state/{scope}_proxy"))
     for candidate in candidates:
