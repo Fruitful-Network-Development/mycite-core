@@ -12,7 +12,11 @@ Canonical
 
 ## Current Contract
 
-Repo code lives in `/srv/repo/mycite-core`. Live file-backed portal state lives under `/srv/compose/portals/state/<portal_instance>/`.
+Repo code lives in `/srv/repo/mycite-core`. Live file-backed portal state lives under `/srv/mycite-state/instances/<instance_id>/`.
+
+Transitional note:
+
+- legacy compatibility symlinks may still exist under `/srv/compose/portals/state/<portal_instance>` while the host/runtime repo finishes dropping old path assumptions.
 
 The portal runtime is file-backed. There is no application database in the portal runtime. Build specs materialize state, but live runtime behavior reads canonical state artifacts and shared services.
 
@@ -21,7 +25,7 @@ Working rule:
 - update repo code and repo docs
 - materialize state when needed
 - rebuild the target runtime
-- do not edit running-container files directly
+- do not edit running runtime-state files directly
 
 Repository policy also distinguishes between material that belongs in this repo and operational reporting owned elsewhere.
 

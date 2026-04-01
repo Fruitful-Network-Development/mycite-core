@@ -19,7 +19,7 @@ Repo-owned build source:
 
 Materialized live state:
 
-- `/srv/compose/portals/state/tff_portal/`
+- `/srv/mycite-state/instances/tff/`
 
 Current shared runtime:
 

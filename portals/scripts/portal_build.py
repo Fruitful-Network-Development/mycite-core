@@ -30,17 +30,17 @@ ACTIVE_PORTALS: dict[str, dict[str, str]] = {
     "mycite-le_example": {
         "portal_instance_id": "example",
         "runtime_flavor": "tff",
-        "state_dir": "/srv/compose/portals/state/example_portal",
+        "state_dir": "/srv/mycite-state/instances/example",
     },
     "mycite-le_fnd": {
         "portal_instance_id": "fnd",
         "runtime_flavor": "fnd",
-        "state_dir": "/srv/compose/portals/state/fnd_portal",
+        "state_dir": "/srv/mycite-state/instances/fnd",
     },
     "mycite-le_tff": {
         "portal_instance_id": "tff",
         "runtime_flavor": "tff",
-        "state_dir": "/srv/compose/portals/state/tff_portal",
+        "state_dir": "/srv/mycite-state/instances/tff",
     },
 }
 

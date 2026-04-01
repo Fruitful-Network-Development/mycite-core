@@ -576,7 +576,7 @@ def migrate_instance(instance_dir: Path, *, source_instances: dict[str, Path]) -
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--state-root", default="/srv/compose/portals/state")
+    parser.add_argument("--state-root", default="/srv/mycite-state/instances")
     parser.add_argument("--instance", action="append", default=[])
     parser.add_argument("--output", default="/tmp/portal_instance_corrective_pass_state.json")
     args = parser.parse_args()

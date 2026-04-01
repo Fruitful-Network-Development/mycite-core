@@ -33,6 +33,8 @@ Materialization writes expected runtime state such as:
 - public profile-card payloads
 - declared seed files under `private/network/*`, `private/contracts/*`, `private/utilities/vault/*`, and `data/presentation/*`
 
+The canonical live instance root is `/srv/mycite-state/instances/<instance_id>/`.
+
 Materialization does not overwrite `data/anthology.json`.
 
 Canonical commands are:
