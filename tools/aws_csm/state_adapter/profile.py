@@ -16,6 +16,10 @@ def _boolish(value: Any) -> bool:
     return token in {"1", "true", "yes", "on"}
 
 
+def _has_capture_metadata(*, s3_uri: str, s3_key: str, captured_at: str, sender: str, subject: str) -> bool:
+    return any([_text(s3_uri), _text(s3_key), _text(captured_at), _text(sender), _text(subject)])
+
+
 def _aws_csm_default_smtp_host(region: str) -> str:
     token = _text(region) or AWS_CSM_DEFAULT_REGION
     return f"email-smtp.{token}.amazonaws.com"
@@ -107,6 +111,59 @@ def _default_initiated(
             _text(provider_status).lower() not in {"", "not_started"},
         ]
     )
+
+
+def _receive_state(
+    *,
+    explicit_state: str,
+    receive_routing_target: str,
+    initiated: bool,
+    receive_verified: bool,
+    send_as_confirmed: bool,
+    portal_native_display_ready: bool,
+) -> str:
+    token = _text(explicit_state).lower()
+    if token == "staged":
+        token = "receive_configured" if _text(receive_routing_target) else "receive_unconfigured"
+    elif token == "inbound_pending":
+        token = "receive_pending"
+    elif token == "inbound_verified":
+        token = "receive_verified"
+    if token == "receive_legacy_dependent":
+        token = "receive_verified" if (receive_verified or portal_native_display_ready) else "receive_pending"
+
+    # Always derive the current receive state from live mailbox facts so stale
+    # persisted states don't mask a newer capture or verification result.
+    if not _text(receive_routing_target):
+        derived = "receive_unconfigured"
+    elif send_as_confirmed and receive_verified and portal_native_display_ready:
+        derived = "receive_operational"
+    elif receive_verified or portal_native_display_ready:
+        derived = "receive_verified"
+    elif initiated:
+        derived = "receive_pending"
+    else:
+        derived = "receive_configured"
+
+    if token in {
+        "receive_unconfigured",
+        "receive_configured",
+        "receive_pending",
+        "receive_verified",
+        "receive_operational",
+    }:
+        # Respect the explicit state only when it is already at least as strong
+        # as the currently derived state.
+        rank = {
+            "receive_unconfigured": 0,
+            "receive_configured": 1,
+            "receive_pending": 2,
+            "receive_verified": 3,
+            "receive_operational": 4,
+        }
+        if rank[token] >= rank[derived]:
+            return token
+    return derived
 
 
 def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -> tuple[dict[str, Any], list[str], list[str]]:
@@ -201,19 +258,62 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
         or body.get("receive_routing_target")
         or operator_inbox_target
     )
+    latest_message_sender = _text(inbound_raw.get("latest_message_sender") or body.get("latest_message_sender"))
+    latest_message_recipient = _text(inbound_raw.get("latest_message_recipient") or body.get("latest_message_recipient"))
+    latest_message_subject = _text(inbound_raw.get("latest_message_subject") or body.get("latest_message_subject"))
+    latest_message_captured_at = _text(
+        inbound_raw.get("latest_message_captured_at") or body.get("latest_message_captured_at")
+    )
+    latest_message_s3_key = _text(inbound_raw.get("latest_message_s3_key") or body.get("latest_message_s3_key"))
+    latest_message_s3_uri = _text(inbound_raw.get("latest_message_s3_uri") or body.get("latest_message_s3_uri"))
+    latest_message_id = _text(inbound_raw.get("latest_message_id") or body.get("latest_message_id"))
+    latest_message_has_verification_link = _boolish(
+        inbound_raw.get("latest_message_has_verification_link") or body.get("latest_message_has_verification_link")
+    )
+    capture_source_kind = _text(inbound_raw.get("capture_source_kind") or body.get("capture_source_kind"))
+    capture_source_reference = _text(
+        inbound_raw.get("capture_source_reference") or body.get("capture_source_reference")
+    )
+    portal_native_display_ready = _boolish(
+        inbound_raw.get("portal_native_display_ready") or body.get("portal_native_display_ready")
+    )
+    receive_last_checked_at = _text(inbound_raw.get("receive_last_checked_at") or body.get("receive_last_checked_at"))
+    receive_verified_at = _text(inbound_raw.get("receive_verified_at") or body.get("receive_verified_at"))
     legacy_forwarder_dependency = _boolish(
         inbound_raw.get("legacy_forwarder_dependency")
         or body.get("legacy_forwarder_dependency")
     )
     receive_verified = _boolish(inbound_raw.get("receive_verified") or body.get("receive_verified"))
-    receive_state = _text(inbound_raw.get("receive_state") or body.get("receive_state"))
-    if not receive_state:
-        if receive_verified:
-            receive_state = "inbound_verified"
-        elif initiated:
-            receive_state = "inbound_pending"
-        else:
-            receive_state = "staged"
+    has_capture_metadata = _has_capture_metadata(
+        s3_uri=latest_message_s3_uri,
+        s3_key=latest_message_s3_key,
+        captured_at=latest_message_captured_at,
+        sender=latest_message_sender,
+        subject=latest_message_subject,
+    )
+    if not capture_source_reference:
+        capture_source_reference = latest_message_s3_uri or latest_message_s3_key
+    if not capture_source_kind and capture_source_reference:
+        capture_source_kind = "s3_object"
+    if not portal_native_display_ready:
+        portal_native_display_ready = bool(capture_source_reference or has_capture_metadata)
+    if not latest_message_has_verification_link:
+        latest_message_has_verification_link = bool(_text(verification_link))
+    send_as_confirmed = provider_status in confirmed_send_as_statuses or verification_status == "verified"
+    receive_state = _receive_state(
+        explicit_state=_text(inbound_raw.get("receive_state") or body.get("receive_state")),
+        receive_routing_target=receive_routing_target,
+        initiated=initiated,
+        receive_verified=receive_verified,
+        send_as_confirmed=send_as_confirmed,
+        portal_native_display_ready=portal_native_display_ready,
+    )
+    legacy_dependency_state = (
+        "receive_legacy_dependent"
+        if legacy_forwarder_dependency
+        else ("portal_native_display" if portal_native_display_ready else "portal_native_pending")
+    )
+    legacy_replay_available = legacy_forwarder_dependency and bool(latest_message_id or latest_message_s3_uri or latest_message_s3_key)
 
     if not tenant_id:
         warnings.append("recommended field missing: identity.tenant_id")
@@ -268,14 +368,22 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
         "receive_routing_target": receive_routing_target,
         "receive_state": receive_state,
         "receive_verified": receive_verified,
+        "receive_last_checked_at": receive_last_checked_at,
+        "receive_verified_at": receive_verified_at,
         "legacy_forwarder_dependency": legacy_forwarder_dependency,
-        "latest_message_sender": _text(inbound_raw.get("latest_message_sender") or body.get("latest_message_sender")),
-        "latest_message_subject": _text(inbound_raw.get("latest_message_subject") or body.get("latest_message_subject")),
-        "latest_message_captured_at": _text(
-            inbound_raw.get("latest_message_captured_at") or body.get("latest_message_captured_at")
-        ),
-        "latest_message_s3_key": _text(inbound_raw.get("latest_message_s3_key") or body.get("latest_message_s3_key")),
-        "latest_message_s3_uri": _text(inbound_raw.get("latest_message_s3_uri") or body.get("latest_message_s3_uri")),
+        "legacy_dependency_state": legacy_dependency_state,
+        "legacy_replay_available": legacy_replay_available,
+        "portal_native_display_ready": portal_native_display_ready,
+        "capture_source_kind": capture_source_kind,
+        "capture_source_reference": capture_source_reference,
+        "latest_message_sender": latest_message_sender,
+        "latest_message_recipient": latest_message_recipient,
+        "latest_message_subject": latest_message_subject,
+        "latest_message_captured_at": latest_message_captured_at,
+        "latest_message_s3_key": latest_message_s3_key,
+        "latest_message_s3_uri": latest_message_s3_uri,
+        "latest_message_id": latest_message_id,
+        "latest_message_has_verification_link": latest_message_has_verification_link,
     }
 
     configuration_required = {
@@ -304,13 +412,24 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
     for key in gmail_handoff_blockers:
         if key not in missing_required:
             missing_required.append(key)
-    send_as_confirmed = provider_status in confirmed_send_as_statuses or verification_status == "verified"
     ready_for_user_handoff = bool(initiated) and not configuration_blockers
     smtp["handoff_ready"] = ready_for_user_handoff
+    inbound_blockers: list[str] = []
+    if not _text(inbound.get("receive_routing_target")):
+        inbound_blockers.append("inbound.receive_routing_target")
+    if initiated and not bool(inbound.get("portal_native_display_ready")):
+        inbound_blockers.append("inbound.portal_native_display_ready")
+    if initiated and not bool(inbound.get("receive_verified")):
+        inbound_blockers.append("inbound.receive_verified")
+    operational_blockers = list(missing_required)
+    for key in inbound_blockers:
+        if key not in operational_blockers:
+            operational_blockers.append(key)
+    is_mailbox_operational = bool(send_as_confirmed) and not operational_blockers
 
     lifecycle_state = "uninitiated"
     if initiated:
-        if send_as_confirmed and receive_verified:
+        if is_mailbox_operational:
             lifecycle_state = "operational"
         elif send_as_confirmed:
             lifecycle_state = "send_as_verified"
@@ -353,11 +472,21 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
         "lifecycle_state": lifecycle_state,
         "configuration_blockers_now": configuration_blockers,
         "gmail_handoff_blockers_now": gmail_handoff_blockers,
+        "inbound_blockers_now": inbound_blockers,
+        "operational_blockers_now": operational_blockers,
         "missing_required_now": missing_required,
         "handoff_status": handoff_status,
-        "completion_boundary": "completed" if send_as_confirmed else ("uninitiated" if not initiated else "gmail_inbox_dependent"),
+        "completion_boundary": (
+            "completed"
+            if is_mailbox_operational
+            else ("receive_path_pending" if send_as_confirmed else ("uninitiated" if not initiated else "gmail_inbox_dependent"))
+        ),
         "is_ready_for_user_handoff": ready_for_user_handoff,
         "is_send_as_confirmed": send_as_confirmed,
+        "is_receive_path_modeled": bool(_text(inbound.get("receive_routing_target"))),
+        "is_receive_path_confirmed": bool(inbound.get("receive_verified")),
+        "is_portal_native_inbound_ready": bool(inbound.get("portal_native_display_ready")),
+        "is_mailbox_operational": is_mailbox_operational,
     }
 
     if not _text(identity.get("domain")):

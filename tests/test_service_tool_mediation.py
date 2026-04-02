@@ -268,6 +268,7 @@ class ServiceToolMediationTests(unittest.TestCase):
             verification = card_body.get("verification") if isinstance(card_body.get("verification"), dict) else {}
             provider = card_body.get("provider") if isinstance(card_body.get("provider"), dict) else {}
             workflow = card_body.get("workflow") if isinstance(card_body.get("workflow"), dict) else {}
+            inbound = card_body.get("inbound") if isinstance(card_body.get("inbound"), dict) else {}
             self.assertEqual(identity.get("tenant_id"), "fnd")
             self.assertEqual(identity.get("profile_id"), "aws-csm.fnd.dylan")
             self.assertEqual(identity.get("mailbox_local_part"), "dylan")
@@ -284,9 +285,13 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertEqual(workflow.get("schema"), "mycite.service_tool.aws_csm.onboarding.v1")
             self.assertEqual(workflow.get("flow"), "mailbox_send_as")
             self.assertEqual(workflow.get("lifecycle_state"), "uninitiated")
+            self.assertEqual(inbound.get("receive_state"), "receive_configured")
+            self.assertEqual(inbound.get("legacy_dependency_state"), "portal_native_pending")
+            self.assertFalse(bool(inbound.get("portal_native_display_ready")))
             self.assertEqual(list(workflow.get("missing_required_now") or []), [])
             self.assertEqual(list(workflow.get("configuration_blockers_now") or []), [])
             self.assertEqual(list(workflow.get("gmail_handoff_blockers_now") or []), [])
+            self.assertEqual(list(workflow.get("inbound_blockers_now") or []), [])
             self.assertEqual(workflow.get("handoff_status"), "uninitiated")
             self.assertEqual(workflow.get("completion_boundary"), "uninitiated")
             self.assertFalse(bool(workflow.get("is_ready_for_user_handoff")))
@@ -346,16 +351,22 @@ class ServiceToolMediationTests(unittest.TestCase):
             smtp = card_body.get("smtp") if isinstance(card_body.get("smtp"), dict) else {}
             verification = card_body.get("verification") if isinstance(card_body.get("verification"), dict) else {}
             workflow = card_body.get("workflow") if isinstance(card_body.get("workflow"), dict) else {}
+            inbound = card_body.get("inbound") if isinstance(card_body.get("inbound"), dict) else {}
             self.assertEqual(smtp.get("credentials_secret_name"), "aws-cms/smtp/fnd")
             self.assertEqual(smtp.get("credentials_secret_state"), "configured")
             self.assertTrue(bool(smtp.get("handoff_ready")))
             self.assertEqual(workflow.get("flow"), "mailbox_send_as")
             self.assertEqual(workflow.get("lifecycle_state"), "send_as_pending")
             self.assertEqual(verification.get("portal_state"), "awaiting_gmail_handoff")
+            self.assertEqual(inbound.get("receive_state"), "receive_pending")
             self.assertEqual(list(workflow.get("configuration_blockers_now") or []), [])
             self.assertEqual(
                 list(workflow.get("gmail_handoff_blockers_now") or []),
                 ["verification.status", "provider.gmail_send_as_status"],
+            )
+            self.assertEqual(
+                list(workflow.get("inbound_blockers_now") or []),
+                ["inbound.portal_native_display_ready", "inbound.receive_verified"],
             )
             self.assertEqual(workflow.get("handoff_status"), "ready_for_gmail_handoff")
             self.assertEqual(workflow.get("completion_boundary"), "gmail_inbox_dependent")
@@ -454,6 +465,8 @@ class ServiceToolMediationTests(unittest.TestCase):
                             "receive_routing_target": "dylancarsonmontgomery@gmail.com",
                             "receive_state": "inbound_verified",
                             "receive_verified": True,
+                            "portal_native_display_ready": True,
+                            "capture_source_reference": "s3://ses-inbound-fnd-mail/inbound/example",
                             "legacy_forwarder_dependency": True,
                         },
                     }
@@ -473,12 +486,15 @@ class ServiceToolMediationTests(unittest.TestCase):
             card_body = cards[0].get("body") if isinstance(cards[0], dict) else {}
             verification = card_body.get("verification") if isinstance(card_body.get("verification"), dict) else {}
             workflow = card_body.get("workflow") if isinstance(card_body.get("workflow"), dict) else {}
+            inbound = card_body.get("inbound") if isinstance(card_body.get("inbound"), dict) else {}
             self.assertEqual(verification.get("portal_state"), "verified")
             self.assertEqual(list(workflow.get("gmail_handoff_blockers_now") or []), [])
             self.assertEqual(workflow.get("lifecycle_state"), "operational")
             self.assertEqual(workflow.get("handoff_status"), "send_as_confirmed")
             self.assertEqual(workflow.get("completion_boundary"), "completed")
             self.assertTrue(bool(workflow.get("is_send_as_confirmed")))
+            self.assertTrue(bool(workflow.get("is_mailbox_operational")))
+            self.assertEqual(inbound.get("receive_state"), "receive_operational")
 
     def test_aws_mailbox_profiles_are_listed_as_separate_units(self):
         module = _load_service_tools_module()
@@ -564,6 +580,8 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertEqual((((technical.get("workflow") or {}).get("lifecycle_state"))), "staged")
             self.assertEqual((((mark.get("workflow") or {}).get("lifecycle_state"))), "uninitiated")
             self.assertEqual((((mark.get("workflow") or {}).get("handoff_status"))), "uninitiated")
+            self.assertEqual(((((technical.get("inbound") or {}).get("receive_state")))), "receive_pending")
+            self.assertEqual(((((mark.get("inbound") or {}).get("receive_state")))), "receive_configured")
 
     def test_aws_platform_admin_service_meta_narrows_to_operator_send_as_scope(self):
         module = _load_service_tools_module()

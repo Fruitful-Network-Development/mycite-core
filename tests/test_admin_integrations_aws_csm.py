@@ -258,8 +258,91 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             inbound = stored.get("inbound") if isinstance(stored.get("inbound"), dict) else {}
             self.assertEqual(verification.get("email_received_at"), "2026-04-02T15:21:24+00:00")
             self.assertEqual(verification.get("portal_state"), "verification_email_received")
-            self.assertEqual(inbound.get("receive_state"), "inbound_verified")
+            self.assertEqual(inbound.get("receive_state"), "receive_verified")
             self.assertTrue(bool(inbound.get("receive_verified")))
+            self.assertTrue(bool(inbound.get("portal_native_display_ready")))
+            self.assertEqual(inbound.get("capture_source_reference"), "s3://ses-inbound-fnd-mail/inbound/example")
+            self.assertEqual(verification.get("latest_message_reference"), "s3://ses-inbound-fnd-mail/inbound/example")
+
+    def test_admin_aws_confirm_receive_verified_marks_inbound_operationally_visible(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            module, client = self._make_client_with_module(private_dir)
+
+            client.put(
+                "/portal/api/admin/aws/profile/aws-csm.fnd.dylan",
+                headers=self._headers(),
+                json={
+                    "identity": {
+                        "tenant_id": "fnd",
+                        "domain": "fruitfulnetworkdevelopment.com",
+                        "region": "us-east-1",
+                        "mailbox_local_part": "dylan",
+                        "operator_inbox_target": "dylancarsonmontgomery@gmail.com",
+                        "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                    },
+                    "smtp": {
+                        "username": "AKIAEXAMPLE",
+                        "credentials_secret_name": "aws-cms/smtp/fnd",
+                        "credentials_secret_state": "configured",
+                        "forward_to_email": "dylancarsonmontgomery@gmail.com",
+                    },
+                    "verification": {"status": "not_started"},
+                    "provider": {
+                        "aws_ses_identity_status": "verified",
+                        "gmail_send_as_status": "not_started",
+                    },
+                },
+            )
+
+            with mock.patch.object(
+                module,
+                "_find_latest_verification_message",
+                return_value=(
+                    {
+                        "sender": "Gmail Team <gmail-noreply@google.com>",
+                        "recipient": "dylan@fruitfulnetworkdevelopment.com",
+                        "subject": "Gmail Confirmation - Send Mail as dylan@fruitfulnetworkdevelopment.com",
+                        "captured_at": "2026-04-02T15:21:24+00:00",
+                        "message_date": "2026-04-02T15:21:20+00:00",
+                        "s3_bucket": "ses-inbound-fnd-mail",
+                        "s3_key": "inbound/example",
+                        "s3_uri": "s3://ses-inbound-fnd-mail/inbound/example",
+                        "message_id": "example",
+                        "confirmation_link": "https://mail-settings.google.com/mail/vf-example",
+                    },
+                    {
+                        "receipt_rule_set": "fnd-inbound-rules",
+                        "receipt_rule_name": "mode-a-forward-dcmontgomery",
+                        "forward_to_email": "dylancarsonmontgomery@gmail.com",
+                        "forward_from_email": "forwarder@fruitfulnetworkdevelopment.com",
+                        "s3_bucket": "ses-inbound-fnd-mail",
+                        "s3_prefix": "inbound/",
+                        "lambda_function": "ses-forwarder",
+                    },
+                ),
+            ):
+                response = client.post(
+                    "/portal/api/admin/aws/profile/aws-csm.fnd.dylan/provision",
+                    headers=self._headers(),
+                    json={"action": "confirm_receive_verified"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json() or {}
+            self.assertEqual(payload.get("status"), "completed")
+            profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+            inbound = profile.get("inbound") if isinstance(profile.get("inbound"), dict) else {}
+            workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
+            legacy = payload.get("legacy_inbound") if isinstance(payload.get("legacy_inbound"), dict) else {}
+            self.assertEqual(inbound.get("receive_state"), "receive_verified")
+            self.assertTrue(bool(inbound.get("receive_verified")))
+            self.assertTrue(bool(inbound.get("portal_native_display_ready")))
+            self.assertTrue(str(inbound.get("receive_verified_at") or ""))
+            self.assertEqual(legacy.get("legacy_dependency_state"), "receive_legacy_dependent")
+            self.assertEqual(legacy.get("capture_source_reference"), "s3://ses-inbound-fnd-mail/inbound/example")
+            self.assertTrue(bool(legacy.get("legacy_replay_available")))
+            self.assertEqual(list(workflow.get("inbound_blockers_now") or []), [])
 
     def test_admin_aws_confirm_verified_marks_send_as_complete(self):
         with TemporaryDirectory() as temp_dir:

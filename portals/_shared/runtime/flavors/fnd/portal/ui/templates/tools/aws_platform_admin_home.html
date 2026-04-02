@@ -16,8 +16,9 @@
       </p>
       <p>
         Each mailbox profile is its own onboarding unit. Use the actions below to refresh provider truth, begin or continue
-        onboarding, inspect the latest captured Gmail verification message, replay the active legacy forwarder when needed,
-        and confirm Gmail send-as after the operator clicks the verification link.
+        onboarding, inspect the latest captured inbound verification message directly from portal-visible capture state,
+        replay the active legacy forwarder only when needed for compatibility, and confirm Gmail plus receive-path verification
+        after the operator completes the relevant step.
       </p>
       <div style="margin-top:0.2rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
         <label for="awsp-profile-select" style="display:flex;align-items:center;gap:0.35rem;">
@@ -31,14 +32,16 @@
         <button id="awsp-context" class="ops-btn ops-btn--outline">Refresh Tool Context</button>
         <button id="awsp-smtp" class="ops-btn ops-btn--outline">Show SMTP Setup</button>
         <button id="awsp-inbound" class="ops-btn ops-btn--outline">Refresh Inbound Status</button>
-        <button id="awsp-capture" class="ops-btn ops-btn--outline">Show Latest Verification Message</button>
-        <button id="awsp-replay" class="ops-btn ops-btn--outline">Replay Verification Forward</button>
+        <button id="awsp-capture" class="ops-btn ops-btn--outline">Show Latest Inbound Message</button>
+        <button id="awsp-receive-confirm" class="ops-btn ops-btn--outline">Confirm Receive Path</button>
+        <button id="awsp-replay" class="ops-btn ops-btn--outline">Replay Verification Forward (Legacy)</button>
         <button id="awsp-confirm" class="ops-btn ops-btn--outline">Confirm Verified</button>
       </div>
       <div id="awsp-link-wrap" class="ops-status" style="margin-top:0.75rem;display:none;">
         <strong>Latest verification link:</strong>
         <a id="awsp-link" href="#" target="_blank" rel="noopener noreferrer">Open verification link</a>
       </div>
+      <div id="awsp-legacy-wrap" class="ops-status" style="margin-top:0.75rem;display:none;"></div>
       <pre id="awsp-summary" class="ops-status" style="margin-top:0.75rem;">Loading status…</pre>
       <pre id="awsp-profile" class="ops-status" style="margin-top:0.75rem;">Loading profile…</pre>
       <pre id="awsp-verification" class="ops-status" style="margin-top:0.75rem;">No verification message loaded yet.</pre>

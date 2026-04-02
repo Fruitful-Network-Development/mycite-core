@@ -337,6 +337,7 @@ def _candidate_message_payload(raw_bytes: bytes, *, bucket: str, key: str, captu
         "message_id": _message_id_from_s3_key(key),
         "sender": _text(message.get("From")),
         "subject": _text(message.get("Subject")),
+        "recipient": _text(message.get("To")),
         "to": _text(message.get("To")),
         "message_date": _parse_email_datetime(_text(message.get("Date"))),
         "captured_at": _text(captured_at),
@@ -345,6 +346,67 @@ def _candidate_message_payload(raw_bytes: bytes, *, bucket: str, key: str, captu
         "s3_uri": f"s3://{bucket}/{key}",
         "confirmation_link": _extract_confirmation_link(message_text),
         "plain_text": message_text,
+    }
+
+
+def _legacy_inbound_summary(chain: dict[str, Any], *, message_payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = dict(chain or {})
+    has_legacy_lambda = bool(payload.get("lambda_function"))
+    has_capture = bool(payload.get("s3_bucket"))
+    has_message = bool(message_payload)
+    payload["capture_source_kind"] = "s3_object" if has_capture else ""
+    payload["capture_source_reference"] = (
+        str((message_payload or {}).get("s3_uri") or "")
+        or (f"s3://{payload.get('s3_bucket')}/{payload.get('s3_prefix')}" if has_capture else "")
+    )
+    payload["legacy_dependency_state"] = "receive_legacy_dependent" if has_legacy_lambda else "portal_native_display"
+    payload["portal_native_display_ready"] = has_message
+    payload["legacy_replay_available"] = bool(has_legacy_lambda and str((message_payload or {}).get("message_id") or ""))
+    payload["compatibility_warning"] = (
+        "Replay still uses the active legacy ses-forwarder Lambda path."
+        if has_legacy_lambda
+        else ""
+    )
+    return payload
+
+
+def _inbound_patch_from_message(
+    *,
+    profile: dict[str, Any],
+    chain: dict[str, Any],
+    message_payload: dict[str, Any] | None,
+    checked_at: str,
+    preserve_verified: bool = False,
+) -> dict[str, Any]:
+    identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
+    inbound = profile.get("inbound") if isinstance(profile.get("inbound"), dict) else {}
+    verification = profile.get("verification") if isinstance(profile.get("verification"), dict) else {}
+    has_message = isinstance(message_payload, dict) and bool(message_payload)
+    receive_verified = bool(inbound.get("receive_verified")) if preserve_verified else False
+    receive_verified_at = str(inbound.get("receive_verified_at") or "")
+    if has_message:
+        receive_verified = True
+        if not receive_verified_at:
+            receive_verified_at = str(message_payload.get("captured_at") or checked_at)
+    return {
+        "receive_routing_target": str(inbound.get("receive_routing_target") or identity.get("operator_inbox_target") or ""),
+        "receive_verified": receive_verified,
+        "receive_last_checked_at": checked_at,
+        "receive_verified_at": receive_verified_at,
+        "legacy_forwarder_dependency": bool(inbound.get("legacy_forwarder_dependency")) or bool(chain.get("lambda_function")),
+        "legacy_dependency_state": "receive_legacy_dependent" if chain.get("lambda_function") else "portal_native_display",
+        "legacy_replay_available": bool(chain.get("lambda_function") and str((message_payload or {}).get("message_id") or "")),
+        "portal_native_display_ready": has_message,
+        "capture_source_kind": "s3_object" if has_message else ("s3_object" if chain.get("s3_bucket") else ""),
+        "capture_source_reference": str((message_payload or {}).get("s3_uri") or ""),
+        "latest_message_sender": str((message_payload or {}).get("sender") or ""),
+        "latest_message_recipient": str((message_payload or {}).get("recipient") or ""),
+        "latest_message_subject": str((message_payload or {}).get("subject") or ""),
+        "latest_message_captured_at": str((message_payload or {}).get("captured_at") or ""),
+        "latest_message_s3_key": str((message_payload or {}).get("s3_key") or ""),
+        "latest_message_s3_uri": str((message_payload or {}).get("s3_uri") or ""),
+        "latest_message_id": str((message_payload or {}).get("message_id") or ""),
+        "latest_message_has_verification_link": bool(str((message_payload or {}).get("confirmation_link") or "") or verification.get("link")),
     }
 
 
@@ -470,44 +532,23 @@ def _refresh_inbound_status_for_profile(private_dir: Path, tenant_id: str) -> di
     region = str(identity.get("region") or "") or "us-east-1"
     send_as_email = str(identity.get("send_as_email") or ((profile.get("smtp") or {}) if isinstance(profile.get("smtp"), dict) else {}).get("send_as_email") or "").strip()
     message_payload, chain = _find_latest_verification_message(region=region, send_as_email=send_as_email, domain=domain)
-    patch = {
-        "inbound": {
-            "receive_routing_target": str(inbound.get("receive_routing_target") or identity.get("operator_inbox_target") or ""),
-            "legacy_forwarder_dependency": bool(inbound.get("legacy_forwarder_dependency")) or bool(chain.get("lambda_function")),
-            "receive_verified": bool(inbound.get("receive_verified")),
-            "receive_state": str(inbound.get("receive_state") or ("inbound_pending" if workflow.get("initiated") else "staged")),
-            "latest_message_sender": "",
-            "latest_message_subject": "",
-            "latest_message_captured_at": "",
-            "latest_message_s3_key": "",
-            "latest_message_s3_uri": "",
-        }
-    }
+    checked_at = _utc_now_iso()
+    patch = {"inbound": _inbound_patch_from_message(profile=profile, chain=chain, message_payload=message_payload, checked_at=checked_at, preserve_verified=True)}
     response_status = "completed"
-    if message_payload:
-        patch["inbound"].update(
-            {
-                "receive_verified": True,
-                "receive_state": "inbound_verified",
-                "latest_message_sender": str(message_payload.get("sender") or ""),
-                "latest_message_subject": str(message_payload.get("subject") or ""),
-                "latest_message_captured_at": str(message_payload.get("captured_at") or ""),
-                "latest_message_s3_key": str(message_payload.get("s3_key") or ""),
-                "latest_message_s3_uri": str(message_payload.get("s3_uri") or ""),
-            }
-        )
-    elif not chain.get("s3_bucket"):
+    if not chain.get("s3_bucket"):
         response_status = "not_configured"
     updated, _ = _update_aws_profile(private_dir, tenant_id, patch)
+    legacy_summary = _legacy_inbound_summary(chain, message_payload=message_payload)
     return {
         "ok": True,
         "action": "refresh_inbound_status",
         "status": response_status,
         "tenant_id": canonical_tenant_id,
         "profile_id": canonical_profile_id,
-        "legacy_inbound": chain,
+        "legacy_inbound": legacy_summary,
         "verification_message": {
             "sender": str(message_payload.get("sender") or ""),
+            "recipient": str(message_payload.get("recipient") or ""),
             "subject": str(message_payload.get("subject") or ""),
             "captured_at": str(message_payload.get("captured_at") or ""),
             "s3_uri": str(message_payload.get("s3_uri") or ""),
@@ -582,9 +623,12 @@ def _capture_verification_for_profile(private_dir: Path, tenant_id: str) -> dict
             response["status"] = "not_configured"
         return response
     verification = profile.get("verification") if isinstance(profile.get("verification"), dict) else {}
+    checked_at = _utc_now_iso()
     patch = {
         "verification": {
             "email_received_at": str(message_payload.get("captured_at") or verification.get("email_received_at") or ""),
+            "link": str(message_payload.get("confirmation_link") or verification.get("link") or ""),
+            "latest_message_reference": str(message_payload.get("s3_uri") or verification.get("latest_message_reference") or ""),
             "portal_state": "verified"
             if str(verification.get("status") or "").strip().lower() == "verified"
             else "verification_email_received",
@@ -593,17 +637,7 @@ def _capture_verification_for_profile(private_dir: Path, tenant_id: str) -> dict
             "initiated": True,
             "initiated_at": str(workflow.get("initiated_at") or message_payload.get("captured_at") or ""),
         },
-        "inbound": {
-            "receive_routing_target": str(inbound.get("receive_routing_target") or identity.get("operator_inbox_target") or ""),
-            "receive_state": "inbound_verified",
-            "receive_verified": True,
-            "legacy_forwarder_dependency": bool(inbound.get("legacy_forwarder_dependency")) or bool(chain.get("lambda_function")),
-            "latest_message_sender": str(message_payload.get("sender") or ""),
-            "latest_message_subject": str(message_payload.get("subject") or ""),
-            "latest_message_captured_at": str(message_payload.get("captured_at") or ""),
-            "latest_message_s3_key": str(message_payload.get("s3_key") or ""),
-            "latest_message_s3_uri": str(message_payload.get("s3_uri") or ""),
-        },
+        "inbound": _inbound_patch_from_message(profile=profile, chain=chain, message_payload=message_payload, checked_at=checked_at, preserve_verified=True),
     }
     updated, _ = _update_aws_profile(private_dir, tenant_id, patch)
     response["status"] = "completed"
@@ -612,6 +646,7 @@ def _capture_verification_for_profile(private_dir: Path, tenant_id: str) -> dict
     response["warnings"] = updated["warnings"]
     response["verification_message"] = {
         "sender": str(message_payload.get("sender") or ""),
+        "recipient": str(message_payload.get("recipient") or ""),
         "subject": str(message_payload.get("subject") or ""),
         "captured_at": str(message_payload.get("captured_at") or ""),
         "message_date": str(message_payload.get("message_date") or ""),
@@ -623,6 +658,7 @@ def _capture_verification_for_profile(private_dir: Path, tenant_id: str) -> dict
         "forward_to_email": str(chain.get("forward_to_email") or ""),
         "forward_from_email": str(chain.get("forward_from_email") or ""),
     }
+    response["legacy_inbound"] = _legacy_inbound_summary(chain, message_payload=message_payload)
     return response
 
 
@@ -642,7 +678,7 @@ def _replay_verification_forward(private_dir: Path, tenant_id: str) -> dict[str,
             "status": "not_found",
             "tenant_id": canonical_tenant_id,
             "profile_id": canonical_profile_id,
-            "legacy_inbound": legacy_inbound,
+            "legacy_inbound": _legacy_inbound_summary(legacy_inbound, message_payload=verification_message),
             "verification_message": verification_message,
         }
     with tempfile.NamedTemporaryFile("wb", delete=False) as payload_file:
@@ -689,11 +725,56 @@ def _replay_verification_forward(private_dir: Path, tenant_id: str) -> dict[str,
         "tenant_id": canonical_tenant_id,
         "profile_id": canonical_profile_id,
         "verification_message": verification_message,
-        "legacy_inbound": legacy_inbound,
+        "legacy_inbound": _legacy_inbound_summary(legacy_inbound, message_payload=verification_message),
         "lambda_result": lambda_result,
+        "compatibility_warning": "Replay still uses the active legacy ses-forwarder Lambda path.",
         "profile": capture.get("profile"),
         "profile_path": capture.get("profile_path"),
         "warnings": capture.get("warnings") or [],
+    }
+
+
+def _confirm_receive_verified_for_profile(private_dir: Path, tenant_id: str) -> dict[str, Any]:
+    status_payload, _, _ = _aws_profile_status(private_dir, tenant_id)
+    profile = status_payload.get("profile") if isinstance(status_payload.get("profile"), dict) else {}
+    canonical_profile_id, canonical_tenant_id = _aws_profile_refs(profile, tenant_id)
+    capture = _capture_verification_for_profile(private_dir, tenant_id)
+    profile = capture.get("profile") if isinstance(capture.get("profile"), dict) else profile
+    inbound = profile.get("inbound") if isinstance(profile.get("inbound"), dict) else {}
+    verification_message = capture.get("verification_message") if isinstance(capture.get("verification_message"), dict) else {}
+    legacy_inbound = capture.get("legacy_inbound") if isinstance(capture.get("legacy_inbound"), dict) else {}
+    verified_at = _utc_now_iso()
+    updated, _ = _update_aws_profile(
+        private_dir,
+        tenant_id,
+        {
+            "inbound": {
+                "receive_verified": True,
+                "receive_verified_at": str(inbound.get("receive_verified_at") or verification_message.get("captured_at") or verified_at),
+                "receive_last_checked_at": verified_at,
+                "portal_native_display_ready": True,
+                "capture_source_kind": str(inbound.get("capture_source_kind") or ("s3_object" if verification_message.get("s3_uri") else "")),
+                "capture_source_reference": str(inbound.get("capture_source_reference") or verification_message.get("s3_uri") or ""),
+                "latest_message_has_verification_link": bool(
+                    inbound.get("latest_message_has_verification_link") or verification_message.get("confirmation_link")
+                ),
+                "legacy_replay_available": bool(legacy_inbound.get("lambda_function") and verification_message.get("message_id")),
+                "legacy_dependency_state": "receive_legacy_dependent" if legacy_inbound.get("lambda_function") else "portal_native_display",
+            }
+        },
+    )
+    return {
+        "ok": True,
+        "action": "confirm_receive_verified",
+        "status": "completed",
+        "tenant_id": canonical_tenant_id,
+        "profile_id": canonical_profile_id,
+        "verification_message": verification_message,
+        "legacy_inbound": _legacy_inbound_summary(legacy_inbound, message_payload=verification_message),
+        "profile": updated["profile"],
+        "profile_path": updated["profile_path"],
+        "warnings": updated["warnings"],
+        "receive_verified_at": str((((updated.get("profile") or {}).get("inbound") or {}).get("receive_verified_at")) or verified_at),
     }
 
 
@@ -730,22 +811,13 @@ def _confirm_verified_for_profile(private_dir: Path, tenant_id: str) -> dict[str
                 "initiated_at": str(workflow.get("initiated_at") or verification.get("email_received_at") or verified_at),
             },
             "inbound": {
+                **_inbound_patch_from_message(profile=profile, chain=(capture.get("legacy_inbound") if isinstance(capture.get("legacy_inbound"), dict) else {}), message_payload=verification_message, checked_at=verified_at, preserve_verified=True),
                 "receive_verified": True,
-                "receive_state": "inbound_verified",
-                "receive_routing_target": str(
-                    (((profile.get("inbound") or {}) if isinstance(profile.get("inbound"), dict) else {}).get("receive_routing_target"))
-                    or (((profile.get("identity") or {}) if isinstance(profile.get("identity"), dict) else {}).get("operator_inbox_target"))
-                    or ""
+                "receive_verified_at": str(
+                    ((((profile.get("inbound") or {}) if isinstance(profile.get("inbound"), dict) else {}).get("receive_verified_at"))
+                    or verification_message.get("captured_at")
+                    or verified_at)
                 ),
-                "legacy_forwarder_dependency": bool(
-                    (((profile.get("inbound") or {}) if isinstance(profile.get("inbound"), dict) else {}).get("legacy_forwarder_dependency"))
-                    or bool(verification_message)
-                ),
-                "latest_message_sender": str(verification_message.get("sender") or ""),
-                "latest_message_subject": str(verification_message.get("subject") or ""),
-                "latest_message_captured_at": str(verification_message.get("captured_at") or ""),
-                "latest_message_s3_key": str(verification_message.get("s3_key") or ""),
-                "latest_message_s3_uri": str(verification_message.get("s3_uri") or ""),
             },
         },
     )
@@ -757,6 +829,10 @@ def _confirm_verified_for_profile(private_dir: Path, tenant_id: str) -> dict[str
         "profile_id": canonical_profile_id,
         "send_as_email": send_as_email,
         "verification_message": verification_message,
+        "legacy_inbound": _legacy_inbound_summary(
+            capture.get("legacy_inbound") if isinstance(capture.get("legacy_inbound"), dict) else {},
+            message_payload=verification_message,
+        ),
         "profile": updated["profile"],
         "profile_path": updated["profile_path"],
         "warnings": updated["warnings"],
@@ -902,10 +978,15 @@ def _aws_profile_status(private_dir: Path, profile_id: str) -> tuple[dict[str, A
         "aws_ses_identity_status": str(provider.get("aws_ses_identity_status") or ""),
         "handoff_ready": bool(workflow.get("is_ready_for_user_handoff")),
         "send_as_confirmed": bool(workflow.get("is_send_as_confirmed")),
+        "mailbox_operational": bool(workflow.get("is_mailbox_operational")),
         "initiated": bool(workflow.get("initiated")),
         "lifecycle_state": str(workflow.get("lifecycle_state") or ""),
         "receive_state": str(inbound.get("receive_state") or ""),
+        "receive_verified": bool(inbound.get("receive_verified")),
+        "legacy_forwarder_dependency": bool(inbound.get("legacy_forwarder_dependency")),
+        "legacy_dependency_state": str(inbound.get("legacy_dependency_state") or ""),
         "missing_required_now": list(workflow.get("missing_required_now") or []),
+        "operational_blockers_now": list(workflow.get("operational_blockers_now") or []),
         "last_checked_at": str(provider.get("last_checked_at") or ""),
         "warnings": list(warnings or []),
         "validation_errors": list(errors or []),
@@ -1445,6 +1526,7 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             "refresh_inbound_status",
             "enable_inbound_capture",
             "replay_verification_forward",
+            "confirm_receive_verified",
             "confirm_verified",
         }
         if action not in allowed_actions:
@@ -1480,6 +1562,7 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             "refresh_inbound_status",
             "capture_verification",
             "replay_verification_forward",
+            "confirm_receive_verified",
             "confirm_verified",
         }:
             try:
@@ -1493,6 +1576,8 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
                     response = _capture_verification_for_profile(private_dir, token)
                 elif action == "replay_verification_forward":
                     response = _replay_verification_forward(private_dir, token)
+                elif action == "confirm_receive_verified":
+                    response = _confirm_receive_verified_for_profile(private_dir, token)
                 else:
                     response = _confirm_verified_for_profile(private_dir, token)
             except _AwsProvisionError as exc:
@@ -1615,6 +1700,10 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
                     "initiated": bool(status_payload.get("initiated")),
                     "lifecycle_state": str(status_payload.get("lifecycle_state") or ""),
                     "receive_state": str(status_payload.get("receive_state") or ""),
+                    "receive_verified": bool(status_payload.get("receive_verified")),
+                    "legacy_forwarder_dependency": bool(status_payload.get("legacy_forwarder_dependency")),
+                    "legacy_dependency_state": str(status_payload.get("legacy_dependency_state") or ""),
+                    "mailbox_operational": bool(status_payload.get("mailbox_operational")),
                     "handoff_ready": bool(status_payload.get("handoff_ready")),
                     "send_as_confirmed": bool(status_payload.get("send_as_confirmed")),
                 }

@@ -90,6 +90,7 @@ Canonical operator workflow actions flow through `POST /portal/api/admin/aws/pro
 - `refresh_inbound_status`
 - `capture_verification`
 - `replay_verification_forward`
+- `confirm_receive_verified`
 - `confirm_verified`
 
 These actions keep the current operator send-as workflow on a single control plane instead of ad hoc file edits.
@@ -118,11 +119,17 @@ Current readiness boundary is explicit:
 - `smtp.handoff_ready` is derived from the same configuration boundary as `workflow.is_ready_for_user_handoff` so the SMTP group and workflow group stay in sync.
 - `workflow.configuration_blockers_now` is the list that must clear before Gmail/inbox handoff is trustworthy.
 - `workflow.gmail_handoff_blockers_now` is the intentional remaining boundary after AWS-side staging is complete.
+- `workflow.inbound_blockers_now` is the receive-path gap list for portal-native capture/display and inbound confirmation.
+- `workflow.operational_blockers_now` is the union of Gmail-side and inbound-side blockers for full mailbox operationality.
 - `workflow.is_ready_for_user_handoff = true` means ready for Gmail/inbox handoff, not that send-as is fully verified.
-- `workflow.handoff_status`, `workflow.lifecycle_state`, and `workflow.completion_boundary` distinguish staging, uninitiated mailboxes, SMTP-configured mailboxes, Gmail-handoff readiness, and confirmed completion.
+- `workflow.handoff_status`, `workflow.lifecycle_state`, and `workflow.completion_boundary` distinguish staging, uninitiated mailboxes, SMTP-configured mailboxes, Gmail-handoff readiness, receive-path follow-through, and confirmed completion.
 - `verification.portal_state = verification_email_received` means the latest Gmail confirmation message has been captured and surfaced, but the operator still needs to complete or confirm the Gmail step.
 - `verification.portal_state = verified`, `verification.status = verified`, and `provider.gmail_send_as_status = verified` together mark the confirmed send-as completion state.
+- `inbound.receive_state` is mailbox-scoped and distinct from send-as state: `receive_unconfigured`, `receive_configured`, `receive_pending`, `receive_verified`, and `receive_operational` are derived from routing, capture visibility, and operator confirmation.
+- `inbound.portal_native_display_ready = true` means the portal has enough captured-message metadata to show the latest inbound event directly, without relying on the forwarded Gmail copy as the primary operator view.
+- `inbound.legacy_dependency_state` and `inbound.legacy_replay_available` explicitly show when the active legacy `ses-forwarder` Lambda path is still required for compatibility actions such as replay.
 - On April 2, 2026, the active Gmail verification path for FND was confirmed to use the legacy SES receipt rule + S3 + Lambda forwarder chain. The portal now surfaces the latest captured verification message metadata and replay action so operators no longer have to rely on mailbox hunting alone.
+- Replay remains a compatibility action in the current model. Portal-native metadata and link display should replace mailbox hunting first; only after replay no longer depends on the legacy Lambda chain should `ses-forwarder-role-l0ypgdpr` be considered removable.
 - On March 31, 2026, repo inspection found no local Gmail API/OAuth automation path or Google client dependency for completing Gmail send-as confirmation from the server; that step remains a human handoff unless automation is added later.
 - The inline IAM policy `AWSCMSManageSmtpCredentials` is now conceptually obsolete for the active SES SMTP model. Current SMTP credentials are derived from IAM access keys on `aws-cms-smtp`, not IAM service-specific credentials, so new workflow logic must not depend on `CreateServiceSpecificCredential` or related APIs.
 
