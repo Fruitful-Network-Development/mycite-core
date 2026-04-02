@@ -8,17 +8,36 @@
 {% block body %}
   <div class="card" style="max-width:980px;">
     <div class="card__kicker">Operator Scope</div>
-    <div class="card__title">AWS send-as onboarding status</div>
+    <div class="card__title">AWS send-as onboarding workflow</div>
     <div class="card__body">
       <p>
-        This compatibility page is read-only and mirrors the active tool-mode contract. Canonical AWS-CMS state lives under
+        This page is the operator workflow surface for the active AWS-CMS contract. Canonical AWS-CMS state lives under
         <code>/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/</code>.
       </p>
+      <p>
+        Use the actions below to refresh provider truth, inspect the latest captured Gmail verification message, replay the
+        active legacy forwarder when needed, and confirm Gmail send-as after the operator clicks the verification link.
+      </p>
       <div style="margin-top:0.2rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
-        <button id="awsp-status" class="ops-btn ops-btn--outline">Refresh AWS-CMS Status</button>
+        <label for="awsp-profile-select" style="display:flex;align-items:center;gap:0.35rem;">
+          <span>Profile</span>
+          <select id="awsp-profile-select" class="ops-select" style="min-width:12rem;">
+            <option value="fnd">fnd</option>
+          </select>
+        </label>
+        <button id="awsp-status" class="ops-btn ops-btn--outline">Refresh Status</button>
         <button id="awsp-context" class="ops-btn ops-btn--outline">Refresh Tool Context</button>
+        <button id="awsp-capture" class="ops-btn ops-btn--outline">Show Latest Verification Message</button>
+        <button id="awsp-replay" class="ops-btn ops-btn--outline">Replay Verification Forward</button>
+        <button id="awsp-confirm" class="ops-btn ops-btn--outline">Confirm Verified</button>
+      </div>
+      <div id="awsp-link-wrap" class="ops-status" style="margin-top:0.75rem;display:none;">
+        <strong>Latest verification link:</strong>
+        <a id="awsp-link" href="#" target="_blank" rel="noopener noreferrer">Open verification link</a>
       </div>
       <pre id="awsp-summary" class="ops-status" style="margin-top:0.75rem;">Loading status…</pre>
+      <pre id="awsp-profile" class="ops-status" style="margin-top:0.75rem;">Loading profile…</pre>
+      <pre id="awsp-verification" class="ops-status" style="margin-top:0.75rem;">No verification message loaded yet.</pre>
       <pre id="awsp-output" class="ops-status" style="margin-top:0.75rem;">Ready.</pre>
     </div>
   </div>

@@ -4,9 +4,15 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
+import tempfile
 import time
 import uuid
+from datetime import datetime, timezone
+from email import policy
+from email.parser import BytesParser
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -43,6 +49,19 @@ _FORBIDDEN_LOG_KEYS = {
     "session_token",
 }
 _MAX_CHECKOUT_PREVIEW_BYTES = 64 * 1024
+_GMAIL_CONFIRMATION_SUBJECT_PREFIX = "Gmail Confirmation - Send Mail as "
+_AWS_CLI_BIN = str(os.getenv("AWS_CLI_BIN", "aws")).strip() or "aws"
+_AWS_CAPTURE_SCAN_LIMIT = 40
+
+
+class _AwsProvisionError(RuntimeError):
+    def __init__(self, message: str, *, status_code: int = 502):
+        super().__init__(message)
+        self.status_code = int(status_code)
+
+
+def _text(value: object) -> str:
+    return "" if value is None else str(value).strip()
 
 
 def _split_csv(value: str) -> set[str]:
@@ -140,6 +159,466 @@ def _append_ndjson(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _decode_bytes(raw: bytes) -> str:
+    return raw.decode("utf-8", errors="replace")
+
+
+def _aws_cli(args: list[str], *, input_bytes: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
+    env = dict(os.environ)
+    env["AWS_PAGER"] = ""
+    command = [_AWS_CLI_BIN, *args]
+    completed = subprocess.run(
+        command,
+        input=input_bytes,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+    if completed.returncode != 0:
+        stderr = _decode_bytes(completed.stderr or b"").strip()
+        stdout = _decode_bytes(completed.stdout or b"").strip()
+        detail = stderr or stdout or f"{_AWS_CLI_BIN} exited {completed.returncode}"
+        raise _AwsProvisionError(detail)
+    return completed
+
+
+def _aws_cli_json(args: list[str]) -> Any:
+    completed = _aws_cli(args)
+    stdout = _decode_bytes(completed.stdout or b"").strip()
+    if not stdout:
+        return {}
+    try:
+        return json.loads(stdout)
+    except json.JSONDecodeError as exc:  # pragma: no cover - defensive
+        raise _AwsProvisionError(f"Unable to parse AWS CLI JSON output: {exc}") from exc
+
+
+def _aws_cli_bytes(args: list[str]) -> bytes:
+    completed = _aws_cli(args)
+    return completed.stdout or b""
+
+
+def _message_id_from_s3_key(key: str) -> str:
+    return Path(str(key or "").strip()).name
+
+
+def _extract_lambda_name(function_arn: str) -> str:
+    token = str(function_arn or "").strip()
+    if not token:
+        return ""
+    if ":" not in token:
+        return token
+    return token.rsplit(":", 1)[-1]
+
+
+def _message_text_from_email(message: Any) -> str:
+    if hasattr(message, "walk"):
+        for part in message.walk():
+            if str(part.get_content_type() or "").lower() != "text/plain":
+                continue
+            disposition = str(part.get_content_disposition() or "").lower()
+            if disposition == "attachment":
+                continue
+            try:
+                return str(part.get_content() or "")
+            except Exception:
+                payload = part.get_payload(decode=True)
+                if payload:
+                    charset = str(part.get_content_charset() or "utf-8")
+                    return payload.decode(charset, errors="replace")
+    payload = message.get_payload(decode=True)
+    if payload:
+        charset = str(message.get_content_charset() or "utf-8")
+        return payload.decode(charset, errors="replace")
+    try:
+        return str(message.get_content() or "")
+    except Exception:
+        return ""
+
+
+def _extract_confirmation_link(message_text: str) -> str:
+    candidates = re.findall(r"https?://[^\s<>()\"']+", str(message_text or ""))
+    for candidate in candidates:
+        token = str(candidate or "").rstrip(".,)")
+        lowered = token.lower()
+        if "mail-settings.google.com" in lowered or "google.com" in lowered:
+            return token
+    return ""
+
+
+def _safe_message_preview(message_payload: dict[str, Any] | None) -> dict[str, Any]:
+    preview = dict(message_payload or {})
+    if "confirmation_link" in preview:
+        preview["has_confirmation_link"] = bool(preview.get("confirmation_link"))
+        preview.pop("confirmation_link", None)
+    return preview
+
+
+def _parse_email_datetime(value: str) -> str:
+    token = str(value or "").strip()
+    if not token:
+        return ""
+    try:
+        parsed = parsedate_to_datetime(token)
+    except Exception:
+        return ""
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
+def _matching_receipt_rule(receipt_payload: dict[str, Any], *, domain: str) -> dict[str, Any]:
+    rules = receipt_payload.get("Rules") if isinstance(receipt_payload.get("Rules"), list) else []
+    domain_token = str(domain or "").strip().lower()
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        recipients = [str(item or "").strip().lower() for item in list(rule.get("Recipients") or [])]
+        if domain_token and domain_token in recipients:
+            return rule
+    if not domain_token:
+        for rule in rules:
+            if isinstance(rule, dict):
+                return rule
+    return {}
+
+
+def _active_inbound_chain(*, region: str, domain: str) -> dict[str, Any]:
+    receipt = _aws_cli_json(["--region", region, "ses", "describe-active-receipt-rule-set", "--output", "json"])
+    metadata = receipt.get("Metadata") if isinstance(receipt.get("Metadata"), dict) else {}
+    rule = _matching_receipt_rule(receipt if isinstance(receipt, dict) else {}, domain=domain)
+    actions = rule.get("Actions") if isinstance(rule.get("Actions"), list) else []
+    s3_action = {}
+    lambda_action = {}
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        if not s3_action and isinstance(action.get("S3Action"), dict):
+            s3_action = dict(action.get("S3Action") or {})
+        if not lambda_action and isinstance(action.get("LambdaAction"), dict):
+            lambda_action = dict(action.get("LambdaAction") or {})
+    function_name = _extract_lambda_name(str(lambda_action.get("FunctionArn") or ""))
+    lambda_config = {}
+    if function_name:
+        lambda_config = _aws_cli_json(
+            ["--region", region, "lambda", "get-function-configuration", "--function-name", function_name, "--output", "json"]
+        )
+    env_vars = (
+        ((lambda_config.get("Environment") or {}) if isinstance(lambda_config, dict) else {}).get("Variables")
+        if isinstance(lambda_config, dict)
+        else {}
+    )
+    env_vars = env_vars if isinstance(env_vars, dict) else {}
+    return {
+        "receipt_rule_set": str(metadata.get("Name") or ""),
+        "receipt_rule_name": str(rule.get("Name") or ""),
+        "receipt_rule_recipients": [str(item or "") for item in list(rule.get("Recipients") or [])],
+        "s3_bucket": str(s3_action.get("BucketName") or env_vars.get("S3_BUCKET") or ""),
+        "s3_prefix": str(s3_action.get("ObjectKeyPrefix") or env_vars.get("S3_PREFIX") or ""),
+        "lambda_function": function_name,
+        "lambda_role_arn": str(lambda_config.get("Role") or ""),
+        "lambda_last_modified": str(lambda_config.get("LastModified") or ""),
+        "forward_to_email": str(env_vars.get("FORWARD_TO") or ""),
+        "forward_from_email": str(env_vars.get("FROM_ADDRESS") or ""),
+        "ses_region": str(env_vars.get("SES_REGION") or region),
+    }
+
+
+def _candidate_message_payload(raw_bytes: bytes, *, bucket: str, key: str, captured_at: str) -> dict[str, Any]:
+    message = BytesParser(policy=policy.default).parsebytes(raw_bytes)
+    message_text = _message_text_from_email(message)
+    return {
+        "message_id": _message_id_from_s3_key(key),
+        "sender": _text(message.get("From")),
+        "subject": _text(message.get("Subject")),
+        "to": _text(message.get("To")),
+        "message_date": _parse_email_datetime(_text(message.get("Date"))),
+        "captured_at": _text(captured_at),
+        "s3_bucket": bucket,
+        "s3_key": key,
+        "s3_uri": f"s3://{bucket}/{key}",
+        "confirmation_link": _extract_confirmation_link(message_text),
+        "plain_text": message_text,
+    }
+
+
+def _find_latest_verification_message(*, region: str, send_as_email: str, domain: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    chain = _active_inbound_chain(region=region, domain=domain)
+    bucket = str(chain.get("s3_bucket") or "").strip()
+    prefix = str(chain.get("s3_prefix") or "").strip()
+    if not bucket:
+        raise _AwsProvisionError("Active inbound capture bucket is not configured for this profile", status_code=409)
+    objects = _aws_cli_json(
+        [
+            "s3api",
+            "list-objects-v2",
+            "--bucket",
+            bucket,
+            "--prefix",
+            prefix,
+            "--output",
+            "json",
+            "--query",
+            f"reverse(sort_by(Contents,&LastModified))[:{_AWS_CAPTURE_SCAN_LIMIT}].[Key,LastModified,Size]",
+        ]
+    )
+    target = str(send_as_email or "").strip().lower()
+    for item in list(objects or []):
+        if not isinstance(item, list) or len(item) < 2:
+            continue
+        key = str(item[0] or "")
+        captured_at = str(item[1] or "")
+        raw_bytes = _aws_cli_bytes(["s3", "cp", f"s3://{bucket}/{key}", "-"])
+        candidate = _candidate_message_payload(raw_bytes, bucket=bucket, key=key, captured_at=captured_at)
+        subject = str(candidate.get("subject") or "")
+        searchable = "\n".join(
+            [
+                str(candidate.get("sender") or ""),
+                str(candidate.get("to") or ""),
+                subject,
+                str(candidate.get("plain_text") or ""),
+            ]
+        ).lower()
+        if subject.startswith(_GMAIL_CONFIRMATION_SUBJECT_PREFIX) and target and target in searchable:
+            candidate["plain_text"] = ""
+            return candidate, chain
+    return {}, chain
+
+
+def _ses_identity_status(region: str, email_identity: str) -> dict[str, Any]:
+    payload = _aws_cli_json(
+        ["--region", region, "sesv2", "get-email-identity", "--email-identity", email_identity, "--output", "json"]
+    )
+    verification_status = str(payload.get("VerificationStatus") or "").strip().upper()
+    verified_for_sending = bool(payload.get("VerifiedForSendingStatus"))
+    aws_status = "not_started"
+    if verification_status == "SUCCESS" and verified_for_sending:
+        aws_status = "verified"
+    elif verification_status:
+        aws_status = verification_status.lower()
+    return {
+        "aws_ses_identity_status": aws_status,
+        "identity_payload": payload if isinstance(payload, dict) else {},
+    }
+
+
+def _update_aws_profile(private_dir: Path, tenant_id: str, patch: dict[str, Any]) -> tuple[dict[str, Any], Path]:
+    current_status, path, _ = _aws_profile_status(private_dir, tenant_id)
+    current_profile = current_status.get("profile") if isinstance(current_status.get("profile"), dict) else {}
+    merged = _deep_merge_dicts(current_profile, patch)
+    normalized, validation_errors, warnings = normalize_aws_csm_profile_payload(merged, profile_hint=tenant_id)
+    if validation_errors:
+        raise _AwsProvisionError("; ".join(validation_errors), status_code=400)
+    _write_json(path, normalized)
+    return {
+        "profile": normalized,
+        "warnings": warnings,
+        "profile_path": str(path),
+    }, path
+
+
+def _refresh_provider_status_for_profile(private_dir: Path, tenant_id: str) -> dict[str, Any]:
+    status_payload, _, _ = _aws_profile_status(private_dir, tenant_id)
+    profile = status_payload.get("profile") if isinstance(status_payload.get("profile"), dict) else {}
+    identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
+    domain = str(identity.get("domain") or "").strip()
+    region = str(identity.get("region") or "") or "us-east-1"
+    provider_state = _ses_identity_status(region, domain)
+    checked_at = _utc_now_iso()
+    updated, _ = _update_aws_profile(
+        private_dir,
+        tenant_id,
+        {
+            "provider": {
+                "aws_ses_identity_status": provider_state["aws_ses_identity_status"],
+                "last_checked_at": checked_at,
+            }
+        },
+    )
+    return {
+        "ok": True,
+        "action": "refresh_provider_status",
+        "status": "completed",
+        "tenant_id": tenant_id,
+        "profile_id": tenant_id,
+        "provider": {
+            "aws_ses_identity_status": provider_state["aws_ses_identity_status"],
+            "last_checked_at": checked_at,
+            "identity_payload": provider_state["identity_payload"],
+        },
+        "profile": updated["profile"],
+        "profile_path": updated["profile_path"],
+        "warnings": updated["warnings"],
+    }
+
+
+def _capture_verification_for_profile(private_dir: Path, tenant_id: str) -> dict[str, Any]:
+    status_payload, _, _ = _aws_profile_status(private_dir, tenant_id)
+    profile = status_payload.get("profile") if isinstance(status_payload.get("profile"), dict) else {}
+    identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
+    smtp = profile.get("smtp") if isinstance(profile.get("smtp"), dict) else {}
+    domain = str(identity.get("domain") or "").strip()
+    region = str(identity.get("region") or "") or "us-east-1"
+    send_as_email = str(smtp.get("send_as_email") or identity.get("send_as_email") or "").strip()
+    message_payload, chain = _find_latest_verification_message(region=region, send_as_email=send_as_email, domain=domain)
+    response = {
+        "ok": True,
+        "action": "capture_verification",
+        "status": "not_found",
+        "tenant_id": tenant_id,
+        "profile_id": tenant_id,
+        "profile": profile,
+        "legacy_inbound": chain,
+        "verification_message": {},
+    }
+    if not message_payload:
+        return response
+    verification = profile.get("verification") if isinstance(profile.get("verification"), dict) else {}
+    patch = {
+        "verification": {
+            "email_received_at": str(message_payload.get("captured_at") or verification.get("email_received_at") or ""),
+            "portal_state": "verified"
+            if str(verification.get("status") or "").strip().lower() == "verified"
+            else "verification_email_received",
+        }
+    }
+    updated, _ = _update_aws_profile(private_dir, tenant_id, patch)
+    response["status"] = "completed"
+    response["profile"] = updated["profile"]
+    response["profile_path"] = updated["profile_path"]
+    response["warnings"] = updated["warnings"]
+    response["verification_message"] = {
+        "sender": str(message_payload.get("sender") or ""),
+        "subject": str(message_payload.get("subject") or ""),
+        "captured_at": str(message_payload.get("captured_at") or ""),
+        "message_date": str(message_payload.get("message_date") or ""),
+        "s3_bucket": str(message_payload.get("s3_bucket") or ""),
+        "s3_key": str(message_payload.get("s3_key") or ""),
+        "s3_uri": str(message_payload.get("s3_uri") or ""),
+        "message_id": str(message_payload.get("message_id") or ""),
+        "confirmation_link": str(message_payload.get("confirmation_link") or ""),
+        "forward_to_email": str(chain.get("forward_to_email") or ""),
+        "forward_from_email": str(chain.get("forward_from_email") or ""),
+    }
+    return response
+
+
+def _replay_verification_forward(private_dir: Path, tenant_id: str) -> dict[str, Any]:
+    capture = _capture_verification_for_profile(private_dir, tenant_id)
+    verification_message = capture.get("verification_message") if isinstance(capture.get("verification_message"), dict) else {}
+    legacy_inbound = capture.get("legacy_inbound") if isinstance(capture.get("legacy_inbound"), dict) else {}
+    message_id = str(verification_message.get("message_id") or "")
+    function_name = str(legacy_inbound.get("lambda_function") or "")
+    region = str(legacy_inbound.get("ses_region") or "us-east-1")
+    if not message_id or not function_name:
+        return {
+            "ok": True,
+            "action": "replay_verification_forward",
+            "status": "not_found",
+            "tenant_id": tenant_id,
+            "profile_id": tenant_id,
+            "legacy_inbound": legacy_inbound,
+            "verification_message": verification_message,
+        }
+    with tempfile.NamedTemporaryFile("wb", delete=False) as payload_file:
+        payload_file.write(
+            json.dumps(
+                {"Records": [{"ses": {"mail": {"messageId": message_id}}}]},
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        payload_path = payload_file.name
+    with tempfile.NamedTemporaryFile("wb", delete=False) as output_file:
+        output_path = output_file.name
+    try:
+        _aws_cli(
+            [
+                "--region",
+                region,
+                "lambda",
+                "invoke",
+                "--function-name",
+                function_name,
+                "--payload",
+                f"fileb://{payload_path}",
+                output_path,
+            ]
+        )
+        try:
+            lambda_result = json.loads(Path(output_path).read_text(encoding="utf-8") or "{}")
+        except json.JSONDecodeError:
+            lambda_result = {"raw": Path(output_path).read_text(encoding="utf-8", errors="replace")}
+    finally:
+        try:
+            os.unlink(payload_path)
+        except OSError:
+            pass
+        try:
+            os.unlink(output_path)
+        except OSError:
+            pass
+    return {
+        "ok": True,
+        "action": "replay_verification_forward",
+        "status": "completed",
+        "tenant_id": tenant_id,
+        "profile_id": tenant_id,
+        "verification_message": verification_message,
+        "legacy_inbound": legacy_inbound,
+        "lambda_result": lambda_result,
+        "profile": capture.get("profile"),
+        "profile_path": capture.get("profile_path"),
+        "warnings": capture.get("warnings") or [],
+    }
+
+
+def _confirm_verified_for_profile(private_dir: Path, tenant_id: str) -> dict[str, Any]:
+    status_payload, _, _ = _aws_profile_status(private_dir, tenant_id)
+    profile = status_payload.get("profile") if isinstance(status_payload.get("profile"), dict) else {}
+    verification = profile.get("verification") if isinstance(profile.get("verification"), dict) else {}
+    send_as_email = str(
+        ((profile.get("identity") or {}) if isinstance(profile.get("identity"), dict) else {}).get("send_as_email") or ""
+    )
+    capture = _capture_verification_for_profile(private_dir, tenant_id)
+    verification_message = capture.get("verification_message") if isinstance(capture.get("verification_message"), dict) else {}
+    verified_at = _utc_now_iso()
+    updated, _ = _update_aws_profile(
+        private_dir,
+        tenant_id,
+        {
+            "verification": {
+                "status": "verified",
+                "portal_state": "verified",
+                "verified_at": verified_at,
+                "email_received_at": str(
+                    verification_message.get("captured_at") or verification.get("email_received_at") or ""
+                ),
+            },
+            "provider": {
+                "gmail_send_as_status": "verified",
+                "last_checked_at": verified_at,
+            },
+        },
+    )
+    return {
+        "ok": True,
+        "action": "confirm_verified",
+        "status": "completed",
+        "tenant_id": tenant_id,
+        "profile_id": tenant_id,
+        "send_as_email": send_as_email,
+        "verification_message": verification_message,
+        "profile": updated["profile"],
+        "profile_path": updated["profile_path"],
+        "warnings": updated["warnings"],
+        "verified_at": verified_at,
+    }
 
 
 def _admin_runtime_root(private_dir: Path) -> Path:
@@ -747,6 +1226,8 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             "capture_verification",
             "refresh_provider_status",
             "enable_inbound_capture",
+            "replay_verification_forward",
+            "confirm_verified",
         }
         if action not in allowed_actions:
             rejected = {
@@ -769,6 +1250,79 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             return jsonify(rejected), 409
 
         request_id = f"AWSREQ-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8].upper()}"
+        if action in {"refresh_provider_status", "capture_verification", "replay_verification_forward", "confirm_verified"}:
+            try:
+                if action == "refresh_provider_status":
+                    response = _refresh_provider_status_for_profile(private_dir, token)
+                elif action == "capture_verification":
+                    response = _capture_verification_for_profile(private_dir, token)
+                elif action == "replay_verification_forward":
+                    response = _replay_verification_forward(private_dir, token)
+                else:
+                    response = _confirm_verified_for_profile(private_dir, token)
+            except _AwsProvisionError as exc:
+                rejected = {
+                    "ok": False,
+                    "profile_id": token,
+                    "tenant_id": token,
+                    "request_id": request_id,
+                    "action": action,
+                    "errors": [str(exc)],
+                }
+                _append_ndjson(
+                    _aws_provision_log(private_dir),
+                    {
+                        "ts_unix_ms": int(time.time() * 1000),
+                        "profile_id": token,
+                        "tenant_id": token,
+                        "request_id": request_id,
+                        "status": "failed",
+                        "action": action,
+                        "profile_path": str(path),
+                        "region": str(status_payload.get("region") or ""),
+                        "send_as_email": str(status_payload.get("send_as_email") or ""),
+                        "error": str(exc),
+                    },
+                )
+                _append_action(private_dir, "aws", "aws.profile.provision.failed", rejected)
+                return jsonify(rejected), int(exc.status_code)
+
+            response["request_id"] = request_id
+            response["canonical_root"] = str(_aws_csm_root(private_dir))
+            response["region"] = str(status_payload.get("region") or "")
+            response["send_as_email"] = str(status_payload.get("send_as_email") or "")
+            _append_ndjson(
+                _aws_provision_log(private_dir),
+                {
+                    "ts_unix_ms": int(time.time() * 1000),
+                    "profile_id": token,
+                    "tenant_id": token,
+                    "request_id": request_id,
+                    "status": str(response.get("status") or "completed"),
+                    "action": action,
+                    "profile_path": str(response.get("profile_path") or path),
+                    "region": response["region"],
+                    "send_as_email": response["send_as_email"],
+                },
+            )
+            _append_action(
+                private_dir,
+                "aws",
+                "aws.profile.provision.completed",
+                {
+                    "tenant_id": token,
+                    "profile_id": token,
+                    "request_id": request_id,
+                    "action": action,
+                    "status": str(response.get("status") or "completed"),
+                    "profile_path": str(response.get("profile_path") or path),
+                    "verification_message": _safe_message_preview(
+                        response.get("verification_message") if isinstance(response.get("verification_message"), dict) else {}
+                    ),
+                },
+            )
+            return jsonify(response), 200
+
         response = {
             "ok": True,
             "profile_id": token,

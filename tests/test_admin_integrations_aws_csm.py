@@ -6,6 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 
 def _load_admin_integrations_module():
@@ -45,6 +46,10 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
         }
 
     def _make_client(self, private_dir: Path):
+        _, client = self._make_client_with_module(private_dir)
+        return client
+
+    def _make_client_with_module(self, private_dir: Path):
         module = _load_admin_integrations_module()
         try:
             from flask import Flask
@@ -55,7 +60,7 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
         app = Flask(__name__)
         app.config["TESTING"] = True
         module.register_admin_integration_routes(app, private_dir=private_dir)
-        return app.test_client()
+        return module, app.test_client()
 
     def test_admin_aws_status_ignores_removed_admin_runtime_root(self):
         with TemporaryDirectory() as temp_dir:
@@ -175,6 +180,212 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             self.assertEqual(rejected.status_code, 400)
             payload = rejected.get_json() or {}
             self.assertIn("newsletter/emailer actions are not part of the active AWS-CMS scope", list(payload.get("errors") or []))
+
+    def test_admin_aws_capture_verification_returns_metadata_and_updates_profile(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            module, client = self._make_client_with_module(private_dir)
+
+            client.put(
+                "/portal/api/admin/aws/profile/fnd",
+                headers=self._headers(),
+                json={
+                    "identity": {
+                        "tenant_id": "fnd",
+                        "domain": "fruitfulnetworkdevelopment.com",
+                        "region": "us-east-1",
+                        "single_user_email": "dylancarsonmontgomery@gmail.com",
+                        "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                    },
+                    "smtp": {
+                        "username": "AKIAEXAMPLE",
+                        "credentials_secret_name": "aws-cms/smtp/fnd",
+                        "credentials_secret_state": "configured",
+                        "forward_to_email": "dylancarsonmontgomery@gmail.com",
+                    },
+                    "verification": {"status": "not_started"},
+                    "provider": {
+                        "aws_ses_identity_status": "verified",
+                        "gmail_send_as_status": "not_started",
+                    },
+                },
+            )
+
+            with mock.patch.object(
+                module,
+                "_find_latest_verification_message",
+                return_value=(
+                    {
+                        "sender": "Gmail Team <gmail-noreply@google.com>",
+                        "subject": "Gmail Confirmation - Send Mail as dylan@fruitfulnetworkdevelopment.com",
+                        "captured_at": "2026-04-02T15:21:24+00:00",
+                        "message_date": "2026-04-02T15:21:20+00:00",
+                        "s3_bucket": "ses-inbound-fnd-mail",
+                        "s3_key": "inbound/example",
+                        "s3_uri": "s3://ses-inbound-fnd-mail/inbound/example",
+                        "message_id": "example",
+                        "confirmation_link": "https://mail-settings.google.com/mail/vf-example",
+                    },
+                    {
+                        "receipt_rule_set": "fnd-inbound-rules",
+                        "receipt_rule_name": "mode-a-forward-dcmontgomery",
+                        "forward_to_email": "dylancarsonmontgomery@gmail.com",
+                        "forward_from_email": "forwarder@fruitfulnetworkdevelopment.com",
+                    },
+                ),
+            ):
+                response = client.post(
+                    "/portal/api/admin/aws/profile/fnd/provision",
+                    headers=self._headers(),
+                    json={"action": "capture_verification"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json() or {}
+            verification_message = payload.get("verification_message") if isinstance(payload.get("verification_message"), dict) else {}
+            self.assertEqual(payload.get("status"), "completed")
+            self.assertEqual(verification_message.get("s3_uri"), "s3://ses-inbound-fnd-mail/inbound/example")
+            self.assertEqual(verification_message.get("confirmation_link"), "https://mail-settings.google.com/mail/vf-example")
+            stored = json.loads((private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.fnd.json").read_text(encoding="utf-8"))
+            verification = stored.get("verification") if isinstance(stored.get("verification"), dict) else {}
+            self.assertEqual(verification.get("email_received_at"), "2026-04-02T15:21:24+00:00")
+            self.assertEqual(verification.get("portal_state"), "verification_email_received")
+
+    def test_admin_aws_confirm_verified_marks_send_as_complete(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            module, client = self._make_client_with_module(private_dir)
+
+            client.put(
+                "/portal/api/admin/aws/profile/fnd",
+                headers=self._headers(),
+                json={
+                    "identity": {
+                        "tenant_id": "fnd",
+                        "domain": "fruitfulnetworkdevelopment.com",
+                        "region": "us-east-1",
+                        "single_user_email": "dylancarsonmontgomery@gmail.com",
+                        "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                    },
+                    "smtp": {
+                        "username": "AKIAEXAMPLE",
+                        "credentials_secret_name": "aws-cms/smtp/fnd",
+                        "credentials_secret_state": "configured",
+                        "forward_to_email": "dylancarsonmontgomery@gmail.com",
+                    },
+                    "verification": {"status": "not_started"},
+                    "provider": {
+                        "aws_ses_identity_status": "verified",
+                        "gmail_send_as_status": "not_started",
+                    },
+                },
+            )
+
+            with mock.patch.object(
+                module,
+                "_find_latest_verification_message",
+                return_value=(
+                    {
+                        "sender": "Gmail Team <gmail-noreply@google.com>",
+                        "subject": "Gmail Confirmation - Send Mail as dylan@fruitfulnetworkdevelopment.com",
+                        "captured_at": "2026-04-02T15:21:24+00:00",
+                        "message_date": "2026-04-02T15:21:20+00:00",
+                        "s3_bucket": "ses-inbound-fnd-mail",
+                        "s3_key": "inbound/example",
+                        "s3_uri": "s3://ses-inbound-fnd-mail/inbound/example",
+                        "message_id": "example",
+                        "confirmation_link": "https://mail-settings.google.com/mail/vf-example",
+                    },
+                    {
+                        "receipt_rule_set": "fnd-inbound-rules",
+                        "receipt_rule_name": "mode-a-forward-dcmontgomery",
+                        "forward_to_email": "dylancarsonmontgomery@gmail.com",
+                        "forward_from_email": "forwarder@fruitfulnetworkdevelopment.com",
+                    },
+                ),
+            ):
+                response = client.post(
+                    "/portal/api/admin/aws/profile/fnd/provision",
+                    headers=self._headers(),
+                    json={"action": "confirm_verified"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json() or {}
+            profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+            verification = profile.get("verification") if isinstance(profile.get("verification"), dict) else {}
+            provider = profile.get("provider") if isinstance(profile.get("provider"), dict) else {}
+            workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
+            self.assertEqual(verification.get("status"), "verified")
+            self.assertEqual(verification.get("portal_state"), "verified")
+            self.assertTrue(str(verification.get("verified_at") or ""))
+            self.assertEqual(provider.get("gmail_send_as_status"), "verified")
+            self.assertEqual(workflow.get("handoff_status"), "send_as_confirmed")
+            self.assertEqual(workflow.get("completion_boundary"), "completed")
+            self.assertTrue(bool(workflow.get("is_send_as_confirmed")))
+
+    def test_admin_aws_replay_verification_forward_uses_existing_forwarder_path(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            module, client = self._make_client_with_module(private_dir)
+
+            client.put(
+                "/portal/api/admin/aws/profile/fnd",
+                headers=self._headers(),
+                json={
+                    "identity": {
+                        "tenant_id": "fnd",
+                        "domain": "fruitfulnetworkdevelopment.com",
+                        "region": "us-east-1",
+                        "single_user_email": "dylancarsonmontgomery@gmail.com",
+                        "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                    },
+                    "smtp": {
+                        "username": "AKIAEXAMPLE",
+                        "credentials_secret_name": "aws-cms/smtp/fnd",
+                        "credentials_secret_state": "configured",
+                        "forward_to_email": "dylancarsonmontgomery@gmail.com",
+                    },
+                    "verification": {"status": "not_started"},
+                    "provider": {
+                        "aws_ses_identity_status": "verified",
+                        "gmail_send_as_status": "not_started",
+                    },
+                },
+            )
+
+            def fake_aws_cli(args, *, input_bytes=None):
+                _ = input_bytes
+                Path(str(args[-1])).write_text('{"ok": true, "message_id": "example"}', encoding="utf-8")
+                return None
+
+            with mock.patch.object(
+                module,
+                "_capture_verification_for_profile",
+                return_value={
+                    "profile": {"workflow": {}},
+                    "profile_path": str(private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.fnd.json"),
+                    "warnings": [],
+                    "verification_message": {
+                        "message_id": "example",
+                        "s3_uri": "s3://ses-inbound-fnd-mail/inbound/example",
+                    },
+                    "legacy_inbound": {
+                        "lambda_function": "ses-forwarder",
+                        "ses_region": "us-east-1",
+                    },
+                },
+            ), mock.patch.object(module, "_aws_cli", side_effect=fake_aws_cli):
+                response = client.post(
+                    "/portal/api/admin/aws/profile/fnd/provision",
+                    headers=self._headers(),
+                    json={"action": "replay_verification_forward"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json() or {}
+            self.assertEqual(payload.get("status"), "completed")
+            self.assertEqual(((payload.get("lambda_result") or {}).get("message_id")), "example")
 
 
 if __name__ == "__main__":
