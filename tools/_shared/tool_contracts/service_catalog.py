@@ -26,7 +26,12 @@ SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "label": "AWS send-as onboarding",
         "default_mode": "overview",
         "modes": ["overview", "smtp", "verification", "files"],
-        "config_patterns": ["tool.*.aws-csm.json", "aws-csm.{portal_instance_id}.json", "aws-csm.*.json"],
+        "config_patterns": [
+            "tool.*.aws-csm.json",
+            "aws-csm.{portal_instance_id}.*.json",
+            "aws-csm.{portal_instance_id}.json",
+            "aws-csm.*.json",
+        ],
         "collection_patterns": ["tool.*.aws-csm.json"],
         "member_patterns": ["spec.json", "aws-csm.*.json", "*audit*.json", "actions.ndjson", "provision_requests.ndjson"],
         "profile_schema": AWS_CSM_PROFILE_SCHEMA,
@@ -80,4 +85,3 @@ def _text(value: object) -> str:
 
 def service_tool_definition(tool_id: str) -> dict[str, Any]:
     return dict(SERVICE_TOOL_DEFINITIONS.get(_text(tool_id).lower()) or {})
-

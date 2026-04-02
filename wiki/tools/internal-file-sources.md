@@ -72,19 +72,22 @@ Retired state root:
 
 Required baseline groups:
 
-- `identity` (profile/operator identity for a single send-as setup)
-- `smtp` (Gmail send-as handoff fields, forwarding destination/status, SMTP readiness, secret-reference metadata without raw credentials)
+- `identity` (mailbox profile identity, tenant/domain ownership, mailbox role, send-as address, and operator inbox target)
+- `smtp` (Gmail send-as handoff fields, forwarding destination/status, SMTP readiness, and secret-reference metadata without raw credentials)
 - `verification` (code/link/status/timestamps for the active send-as verification step)
 - `provider` (provider-facing SES and Gmail send-as status snapshots)
-- `workflow` (operator-only readiness, pre-handoff blockers, Gmail-side blockers, and completion-boundary summary)
+- `workflow` (operator-only readiness, initiation state, lifecycle state, pre-handoff blockers, Gmail-side blockers, and completion-boundary summary)
+- `inbound` (receive-routing target, receive state, forwarder dependency, and latest captured-message metadata)
 
-Legacy flat fields (for example `alias_email`, `forward_to_email`, `gmail_send_as_status`) are normalized into these groups at service-tool context assembly. This is a compatibility transform only; canonical writes target grouped profile documents under `aws-csm.<profile>.json`.
+Legacy flat fields (for example `alias_email`, `forward_to_email`, `gmail_send_as_status`) are normalized into these groups at service-tool context assembly. This is a compatibility transform only; canonical writes target grouped mailbox-profile documents under deterministic names such as `aws-csm.fnd.dylan.json` or `aws-csm.tff.technicalContact.json`.
 
 Canonical grouped profile writes flow through `PUT /portal/api/admin/aws/profile/<profile_id>` in the admin integrations runtime. That path writes only to `private/utilities/tools/aws-csm/aws-csm.<profile>.json` and rejects raw secret-like keys; secret values remain external in Secrets Manager.
 
 Canonical operator workflow actions flow through `POST /portal/api/admin/aws/profile/<profile_id>/provision`. The current live operator-facing actions are:
 
+- `begin_onboarding`
 - `refresh_provider_status`
+- `refresh_inbound_status`
 - `capture_verification`
 - `replay_verification_forward`
 - `confirm_verified`
@@ -94,7 +97,7 @@ These actions keep the current operator send-as workflow on a single control pla
 Current scope is intentionally narrow:
 
 - one operator
-- one profile at a time
+- one mailbox profile at a time
 - simple SES SMTP and Gmail send-as onboarding
 - optional inbound-verification automation only as a future extension seam
 
@@ -108,13 +111,15 @@ The inspector now also emits `aws.smtp_secret_health`, which safely reports whet
 
 Current readiness boundary is explicit:
 
+- `identity.profile_id` is mailbox-scoped and deterministic; mailbox profiles are the canonical operational unit instead of one-profile-per-domain.
+- `workflow.initiated` and `workflow.lifecycle_state` distinguish staged/uninitiated mailboxes from initiated onboarding work.
 - `smtp.credentials_secret_name` and `smtp.credentials_secret_state` may describe a placeholder reference or a known auth failure without implying that real SMTP credentials are resolved.
 - `smtp.credentials_secret_state = configured` together with a resolved `smtp.username` means the SMTP side is ready for Gmail handoff, not that Gmail send-as is already verified.
 - `smtp.handoff_ready` is derived from the same configuration boundary as `workflow.is_ready_for_user_handoff` so the SMTP group and workflow group stay in sync.
 - `workflow.configuration_blockers_now` is the list that must clear before Gmail/inbox handoff is trustworthy.
 - `workflow.gmail_handoff_blockers_now` is the intentional remaining boundary after AWS-side staging is complete.
 - `workflow.is_ready_for_user_handoff = true` means ready for Gmail/inbox handoff, not that send-as is fully verified.
-- `workflow.handoff_status` and `workflow.completion_boundary` distinguish staging, Gmail-handoff readiness, and confirmed completion.
+- `workflow.handoff_status`, `workflow.lifecycle_state`, and `workflow.completion_boundary` distinguish staging, uninitiated mailboxes, SMTP-configured mailboxes, Gmail-handoff readiness, and confirmed completion.
 - `verification.portal_state = verification_email_received` means the latest Gmail confirmation message has been captured and surfaced, but the operator still needs to complete or confirm the Gmail step.
 - `verification.portal_state = verified`, `verification.status = verified`, and `provider.gmail_send_as_status = verified` together mark the confirmed send-as completion state.
 - On April 2, 2026, the active Gmail verification path for FND was confirmed to use the legacy SES receipt rule + S3 + Lambda forwarder chain. The portal now surfaces the latest captured verification message metadata and replay action so operators no longer have to rely on mailbox hunting alone.
@@ -123,7 +128,7 @@ Current readiness boundary is explicit:
 
 Current reference onboarding case:
 
-- `aws-csm.fnd.json` with canonical sender `dylan@fruitfulnetworkdevelopment.com`
+- `aws-csm.fnd.dylan.json` with canonical sender `dylan@fruitfulnetworkdevelopment.com`
 - legacy FND inbound automation and `dcmontgomery.*` mail artifacts remain classified as active legacy infrastructure, not baseline onboarding truth
 
 Active AWS-CMS scope does not include:

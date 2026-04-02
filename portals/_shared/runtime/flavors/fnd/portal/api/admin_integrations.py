@@ -353,7 +353,7 @@ def _find_latest_verification_message(*, region: str, send_as_email: str, domain
     bucket = str(chain.get("s3_bucket") or "").strip()
     prefix = str(chain.get("s3_prefix") or "").strip()
     if not bucket:
-        raise _AwsProvisionError("Active inbound capture bucket is not configured for this profile", status_code=409)
+        return {}, chain
     objects = _aws_cli_json(
         [
             "s3api",
@@ -409,8 +409,8 @@ def _ses_identity_status(region: str, email_identity: str) -> dict[str, Any]:
 
 
 def _update_aws_profile(private_dir: Path, tenant_id: str, patch: dict[str, Any]) -> tuple[dict[str, Any], Path]:
-    current_status, path, _ = _aws_profile_status(private_dir, tenant_id)
-    current_profile = current_status.get("profile") if isinstance(current_status.get("profile"), dict) else {}
+    _, path, exists = _aws_profile_status(private_dir, tenant_id)
+    current_profile = _read_json(path, {}) if exists else {}
     merged = _deep_merge_dicts(current_profile, patch)
     normalized, validation_errors, warnings = normalize_aws_csm_profile_payload(merged, profile_hint=tenant_id)
     if validation_errors:
@@ -426,6 +426,7 @@ def _update_aws_profile(private_dir: Path, tenant_id: str, patch: dict[str, Any]
 def _refresh_provider_status_for_profile(private_dir: Path, tenant_id: str) -> dict[str, Any]:
     status_payload, _, _ = _aws_profile_status(private_dir, tenant_id)
     profile = status_payload.get("profile") if isinstance(status_payload.get("profile"), dict) else {}
+    canonical_profile_id, canonical_tenant_id = _aws_profile_refs(profile, tenant_id)
     identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
     domain = str(identity.get("domain") or "").strip()
     region = str(identity.get("region") or "") or "us-east-1"
@@ -445,8 +446,8 @@ def _refresh_provider_status_for_profile(private_dir: Path, tenant_id: str) -> d
         "ok": True,
         "action": "refresh_provider_status",
         "status": "completed",
-        "tenant_id": tenant_id,
-        "profile_id": tenant_id,
+        "tenant_id": canonical_tenant_id,
+        "profile_id": canonical_profile_id,
         "provider": {
             "aws_ses_identity_status": provider_state["aws_ses_identity_status"],
             "last_checked_at": checked_at,
@@ -458,11 +459,110 @@ def _refresh_provider_status_for_profile(private_dir: Path, tenant_id: str) -> d
     }
 
 
+def _refresh_inbound_status_for_profile(private_dir: Path, tenant_id: str) -> dict[str, Any]:
+    status_payload, _, _ = _aws_profile_status(private_dir, tenant_id)
+    profile = status_payload.get("profile") if isinstance(status_payload.get("profile"), dict) else {}
+    canonical_profile_id, canonical_tenant_id = _aws_profile_refs(profile, tenant_id)
+    identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
+    workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
+    inbound = profile.get("inbound") if isinstance(profile.get("inbound"), dict) else {}
+    domain = str(identity.get("domain") or "").strip()
+    region = str(identity.get("region") or "") or "us-east-1"
+    send_as_email = str(identity.get("send_as_email") or ((profile.get("smtp") or {}) if isinstance(profile.get("smtp"), dict) else {}).get("send_as_email") or "").strip()
+    message_payload, chain = _find_latest_verification_message(region=region, send_as_email=send_as_email, domain=domain)
+    patch = {
+        "inbound": {
+            "receive_routing_target": str(inbound.get("receive_routing_target") or identity.get("operator_inbox_target") or ""),
+            "legacy_forwarder_dependency": bool(inbound.get("legacy_forwarder_dependency")) or bool(chain.get("lambda_function")),
+            "receive_verified": bool(inbound.get("receive_verified")),
+            "receive_state": str(inbound.get("receive_state") or ("inbound_pending" if workflow.get("initiated") else "staged")),
+            "latest_message_sender": "",
+            "latest_message_subject": "",
+            "latest_message_captured_at": "",
+            "latest_message_s3_key": "",
+            "latest_message_s3_uri": "",
+        }
+    }
+    response_status = "completed"
+    if message_payload:
+        patch["inbound"].update(
+            {
+                "receive_verified": True,
+                "receive_state": "inbound_verified",
+                "latest_message_sender": str(message_payload.get("sender") or ""),
+                "latest_message_subject": str(message_payload.get("subject") or ""),
+                "latest_message_captured_at": str(message_payload.get("captured_at") or ""),
+                "latest_message_s3_key": str(message_payload.get("s3_key") or ""),
+                "latest_message_s3_uri": str(message_payload.get("s3_uri") or ""),
+            }
+        )
+    elif not chain.get("s3_bucket"):
+        response_status = "not_configured"
+    updated, _ = _update_aws_profile(private_dir, tenant_id, patch)
+    return {
+        "ok": True,
+        "action": "refresh_inbound_status",
+        "status": response_status,
+        "tenant_id": canonical_tenant_id,
+        "profile_id": canonical_profile_id,
+        "legacy_inbound": chain,
+        "verification_message": {
+            "sender": str(message_payload.get("sender") or ""),
+            "subject": str(message_payload.get("subject") or ""),
+            "captured_at": str(message_payload.get("captured_at") or ""),
+            "s3_uri": str(message_payload.get("s3_uri") or ""),
+            "message_id": str(message_payload.get("message_id") or ""),
+            "confirmation_link": str(message_payload.get("confirmation_link") or ""),
+        }
+        if message_payload
+        else {},
+        "profile": updated["profile"],
+        "profile_path": updated["profile_path"],
+        "warnings": updated["warnings"],
+    }
+
+
+def _begin_onboarding_for_profile(private_dir: Path, tenant_id: str) -> dict[str, Any]:
+    status_payload, _, _ = _aws_profile_status(private_dir, tenant_id)
+    profile = status_payload.get("profile") if isinstance(status_payload.get("profile"), dict) else {}
+    canonical_profile_id, canonical_tenant_id = _aws_profile_refs(profile, tenant_id)
+    workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
+    initiated = bool(workflow.get("initiated"))
+    initiated_at = str(workflow.get("initiated_at") or "")
+    if not initiated:
+        initiated = True
+    if not initiated_at:
+        initiated_at = _utc_now_iso()
+    updated, _ = _update_aws_profile(
+        private_dir,
+        tenant_id,
+        {
+            "workflow": {
+                "initiated": initiated,
+                "initiated_at": initiated_at,
+            }
+        },
+    )
+    return {
+        "ok": True,
+        "action": "begin_onboarding",
+        "status": "completed",
+        "tenant_id": canonical_tenant_id,
+        "profile_id": canonical_profile_id,
+        "profile": updated["profile"],
+        "profile_path": updated["profile_path"],
+        "warnings": updated["warnings"],
+    }
+
+
 def _capture_verification_for_profile(private_dir: Path, tenant_id: str) -> dict[str, Any]:
     status_payload, _, _ = _aws_profile_status(private_dir, tenant_id)
     profile = status_payload.get("profile") if isinstance(status_payload.get("profile"), dict) else {}
+    canonical_profile_id, canonical_tenant_id = _aws_profile_refs(profile, tenant_id)
     identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
     smtp = profile.get("smtp") if isinstance(profile.get("smtp"), dict) else {}
+    inbound = profile.get("inbound") if isinstance(profile.get("inbound"), dict) else {}
+    workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
     domain = str(identity.get("domain") or "").strip()
     region = str(identity.get("region") or "") or "us-east-1"
     send_as_email = str(smtp.get("send_as_email") or identity.get("send_as_email") or "").strip()
@@ -471,13 +571,15 @@ def _capture_verification_for_profile(private_dir: Path, tenant_id: str) -> dict
         "ok": True,
         "action": "capture_verification",
         "status": "not_found",
-        "tenant_id": tenant_id,
-        "profile_id": tenant_id,
+        "tenant_id": canonical_tenant_id,
+        "profile_id": canonical_profile_id,
         "profile": profile,
         "legacy_inbound": chain,
         "verification_message": {},
     }
     if not message_payload:
+        if not chain.get("s3_bucket"):
+            response["status"] = "not_configured"
         return response
     verification = profile.get("verification") if isinstance(profile.get("verification"), dict) else {}
     patch = {
@@ -486,7 +588,22 @@ def _capture_verification_for_profile(private_dir: Path, tenant_id: str) -> dict
             "portal_state": "verified"
             if str(verification.get("status") or "").strip().lower() == "verified"
             else "verification_email_received",
-        }
+        },
+        "workflow": {
+            "initiated": True,
+            "initiated_at": str(workflow.get("initiated_at") or message_payload.get("captured_at") or ""),
+        },
+        "inbound": {
+            "receive_routing_target": str(inbound.get("receive_routing_target") or identity.get("operator_inbox_target") or ""),
+            "receive_state": "inbound_verified",
+            "receive_verified": True,
+            "legacy_forwarder_dependency": bool(inbound.get("legacy_forwarder_dependency")) or bool(chain.get("lambda_function")),
+            "latest_message_sender": str(message_payload.get("sender") or ""),
+            "latest_message_subject": str(message_payload.get("subject") or ""),
+            "latest_message_captured_at": str(message_payload.get("captured_at") or ""),
+            "latest_message_s3_key": str(message_payload.get("s3_key") or ""),
+            "latest_message_s3_uri": str(message_payload.get("s3_uri") or ""),
+        },
     }
     updated, _ = _update_aws_profile(private_dir, tenant_id, patch)
     response["status"] = "completed"
@@ -513,6 +630,8 @@ def _replay_verification_forward(private_dir: Path, tenant_id: str) -> dict[str,
     capture = _capture_verification_for_profile(private_dir, tenant_id)
     verification_message = capture.get("verification_message") if isinstance(capture.get("verification_message"), dict) else {}
     legacy_inbound = capture.get("legacy_inbound") if isinstance(capture.get("legacy_inbound"), dict) else {}
+    profile = capture.get("profile") if isinstance(capture.get("profile"), dict) else {}
+    canonical_profile_id, canonical_tenant_id = _aws_profile_refs(profile, tenant_id)
     message_id = str(verification_message.get("message_id") or "")
     function_name = str(legacy_inbound.get("lambda_function") or "")
     region = str(legacy_inbound.get("ses_region") or "us-east-1")
@@ -521,8 +640,8 @@ def _replay_verification_forward(private_dir: Path, tenant_id: str) -> dict[str,
             "ok": True,
             "action": "replay_verification_forward",
             "status": "not_found",
-            "tenant_id": tenant_id,
-            "profile_id": tenant_id,
+            "tenant_id": canonical_tenant_id,
+            "profile_id": canonical_profile_id,
             "legacy_inbound": legacy_inbound,
             "verification_message": verification_message,
         }
@@ -567,8 +686,8 @@ def _replay_verification_forward(private_dir: Path, tenant_id: str) -> dict[str,
         "ok": True,
         "action": "replay_verification_forward",
         "status": "completed",
-        "tenant_id": tenant_id,
-        "profile_id": tenant_id,
+        "tenant_id": canonical_tenant_id,
+        "profile_id": canonical_profile_id,
         "verification_message": verification_message,
         "legacy_inbound": legacy_inbound,
         "lambda_result": lambda_result,
@@ -581,7 +700,9 @@ def _replay_verification_forward(private_dir: Path, tenant_id: str) -> dict[str,
 def _confirm_verified_for_profile(private_dir: Path, tenant_id: str) -> dict[str, Any]:
     status_payload, _, _ = _aws_profile_status(private_dir, tenant_id)
     profile = status_payload.get("profile") if isinstance(status_payload.get("profile"), dict) else {}
+    canonical_profile_id, canonical_tenant_id = _aws_profile_refs(profile, tenant_id)
     verification = profile.get("verification") if isinstance(profile.get("verification"), dict) else {}
+    workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
     send_as_email = str(
         ((profile.get("identity") or {}) if isinstance(profile.get("identity"), dict) else {}).get("send_as_email") or ""
     )
@@ -604,14 +725,36 @@ def _confirm_verified_for_profile(private_dir: Path, tenant_id: str) -> dict[str
                 "gmail_send_as_status": "verified",
                 "last_checked_at": verified_at,
             },
+            "workflow": {
+                "initiated": True,
+                "initiated_at": str(workflow.get("initiated_at") or verification.get("email_received_at") or verified_at),
+            },
+            "inbound": {
+                "receive_verified": True,
+                "receive_state": "inbound_verified",
+                "receive_routing_target": str(
+                    (((profile.get("inbound") or {}) if isinstance(profile.get("inbound"), dict) else {}).get("receive_routing_target"))
+                    or (((profile.get("identity") or {}) if isinstance(profile.get("identity"), dict) else {}).get("operator_inbox_target"))
+                    or ""
+                ),
+                "legacy_forwarder_dependency": bool(
+                    (((profile.get("inbound") or {}) if isinstance(profile.get("inbound"), dict) else {}).get("legacy_forwarder_dependency"))
+                    or bool(verification_message)
+                ),
+                "latest_message_sender": str(verification_message.get("sender") or ""),
+                "latest_message_subject": str(verification_message.get("subject") or ""),
+                "latest_message_captured_at": str(verification_message.get("captured_at") or ""),
+                "latest_message_s3_key": str(verification_message.get("s3_key") or ""),
+                "latest_message_s3_uri": str(verification_message.get("s3_uri") or ""),
+            },
         },
     )
     return {
         "ok": True,
         "action": "confirm_verified",
         "status": "completed",
-        "tenant_id": tenant_id,
-        "profile_id": tenant_id,
+        "tenant_id": canonical_tenant_id,
+        "profile_id": canonical_profile_id,
         "send_as_email": send_as_email,
         "verification_message": verification_message,
         "profile": updated["profile"],
@@ -660,23 +803,42 @@ def _aws_csm_profile_paths(private_dir: Path) -> list[Path]:
     )
 
 
-def _aws_csm_profile_path(private_dir: Path, tenant_id: str) -> Path:
-    token = _safe_tenant_id(tenant_id)
+def _aws_csm_profile_file_token(profile_id: str) -> str:
+    token = _safe_tenant_id(profile_id)
+    if token.startswith("aws-csm."):
+        return token.removeprefix("aws-csm.")
+    return token
+
+
+def _aws_csm_profile_path(private_dir: Path, profile_id: str) -> Path:
+    token = _safe_tenant_id(profile_id)
+    file_token = _aws_csm_profile_file_token(token)
     root = _aws_csm_root(private_dir)
-    exact = root / f"aws-csm.{token}.json"
+    exact = root / f"aws-csm.{file_token}.json"
     if exact.exists() and exact.is_file():
         return exact
+    legacy_alias_matches: dict[str, list[Path]] = {}
     for path in _aws_csm_profile_paths(private_dir):
         payload = _read_json(path, {})
         identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+        explicit_profile_id = str(identity.get("profile_id") or "").strip()
         candidates = {
             path.stem.removeprefix("aws-csm."),
-            str(identity.get("tenant_id") or "").strip(),
-            str(identity.get("profile_id") or "").strip(),
-            str(identity.get("domain") or "").strip(),
+            explicit_profile_id,
+            explicit_profile_id.removeprefix("aws-csm.") if explicit_profile_id else "",
         }
-        if token in {item for item in candidates if item}:
+        if token in {item for item in candidates if item} or file_token in {item for item in candidates if item}:
             return path
+        tenant_key = str(identity.get("tenant_id") or "").strip()
+        domain_key = str(identity.get("domain") or "").strip()
+        if tenant_key:
+            legacy_alias_matches.setdefault(tenant_key, []).append(path)
+        if domain_key:
+            legacy_alias_matches.setdefault(domain_key, []).append(path)
+    for alias in (token, file_token):
+        matches = legacy_alias_matches.get(alias) or []
+        if len(matches) == 1:
+            return matches[0]
     return exact
 
 
@@ -698,22 +860,41 @@ def _deep_merge_dicts(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, 
     return out
 
 
-def _aws_profile_status(private_dir: Path, tenant_id: str) -> tuple[dict[str, Any], Path, bool]:
-    path = _aws_csm_profile_path(private_dir, tenant_id)
+def _aws_profile_status(private_dir: Path, profile_id: str) -> tuple[dict[str, Any], Path, bool]:
+    route_token = _safe_tenant_id(profile_id)
+    route_file_token = _aws_csm_profile_file_token(route_token)
+    hinted_tenant = route_file_token.split(".", 1)[0] if route_file_token else route_token
+    hinted_mailbox = route_file_token.split(".", 1)[1] if "." in route_file_token else ""
+    path = _aws_csm_profile_path(private_dir, route_token)
     exists = path.exists() and path.is_file()
-    raw = _read_json(path, {}) if exists else {"identity": {"tenant_id": tenant_id}}
-    profile, errors, warnings = normalize_aws_csm_profile_payload(raw, profile_hint=tenant_id)
+    raw = (
+        _read_json(path, {})
+        if exists
+        else {
+            "identity": {
+                "tenant_id": hinted_tenant,
+                "profile_id": f"aws-csm.{route_file_token}" if route_file_token else "",
+                "mailbox_local_part": hinted_mailbox,
+            }
+        }
+    )
+    profile, errors, warnings = normalize_aws_csm_profile_payload(raw, profile_hint=route_token)
     workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
     identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
     smtp = profile.get("smtp") if isinstance(profile.get("smtp"), dict) else {}
     provider = profile.get("provider") if isinstance(profile.get("provider"), dict) else {}
+    inbound = profile.get("inbound") if isinstance(profile.get("inbound"), dict) else {}
     status = {
         "ok": True,
-        "tenant_id": tenant_id,
+        "tenant_id": str(identity.get("tenant_id") or route_token),
         "profile_id": str(identity.get("profile_id") or ""),
         "configured": exists,
         "canonical_root": str(_aws_csm_root(private_dir)),
         "profile_path": str(path),
+        "domain": str(identity.get("domain") or ""),
+        "mailbox_local_part": str(identity.get("mailbox_local_part") or ""),
+        "role": str(identity.get("role") or ""),
+        "operator_inbox_target": str(identity.get("operator_inbox_target") or identity.get("single_user_email") or ""),
         "region": str(identity.get("region") or ""),
         "send_as_email": str(smtp.get("send_as_email") or ""),
         "single_user_email": str(identity.get("single_user_email") or ""),
@@ -721,6 +902,9 @@ def _aws_profile_status(private_dir: Path, tenant_id: str) -> tuple[dict[str, An
         "aws_ses_identity_status": str(provider.get("aws_ses_identity_status") or ""),
         "handoff_ready": bool(workflow.get("is_ready_for_user_handoff")),
         "send_as_confirmed": bool(workflow.get("is_send_as_confirmed")),
+        "initiated": bool(workflow.get("initiated")),
+        "lifecycle_state": str(workflow.get("lifecycle_state") or ""),
+        "receive_state": str(inbound.get("receive_state") or ""),
         "missing_required_now": list(workflow.get("missing_required_now") or []),
         "last_checked_at": str(provider.get("last_checked_at") or ""),
         "warnings": list(warnings or []),
@@ -729,6 +913,16 @@ def _aws_profile_status(private_dir: Path, tenant_id: str) -> tuple[dict[str, An
         "last_checked_unix_ms": int(time.time() * 1000),
     }
     return status, path, exists
+
+
+def _aws_profile_refs(profile: dict[str, Any], route_token: str) -> tuple[str, str]:
+    identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
+    canonical_profile_id = str(identity.get("profile_id") or "").strip()
+    canonical_tenant_id = str(identity.get("tenant_id") or "").strip()
+    route_file_token = _aws_csm_profile_file_token(route_token)
+    route_profile_id = f"aws-csm.{route_file_token}" if route_file_token else route_token
+    route_tenant_id = route_file_token.split(".", 1)[0] if route_file_token else route_token
+    return canonical_profile_id or route_profile_id, canonical_tenant_id or route_tenant_id
 
 
 def _paypal_actions_log(private_dir: Path) -> Path:
@@ -1162,12 +1356,33 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             return jsonify({"ok": False, "errors": ["profile payload may not include secret-like keys"]}), 400
 
         current_status, path, exists = _aws_profile_status(private_dir, token)
-        current_profile = current_status.get("profile") if isinstance(current_status.get("profile"), dict) else {}
+        current_profile = _read_json(path, {}) if exists else {}
         merged = _deep_merge_dicts(current_profile, raw_profile)
         incoming_identity = raw_profile.get("identity") if isinstance(raw_profile.get("identity"), dict) else {}
-        if str(incoming_identity.get("tenant_id") or "").strip() not in {"", token}:
-            return jsonify({"ok": False, "errors": ["identity.tenant_id must match the profile route token"]}), 400
-        merged = _deep_merge_dicts(merged, {"identity": {"tenant_id": token}})
+        route_file_token = _aws_csm_profile_file_token(token)
+        route_profile_id = f"aws-csm.{route_file_token}"
+        incoming_tenant_id = str(incoming_identity.get("tenant_id") or "").strip()
+        current_identity = current_profile.get("identity") if isinstance(current_profile.get("identity"), dict) else {}
+        current_tenant_id = str(current_identity.get("tenant_id") or "").strip()
+        current_profile_id = str(current_identity.get("profile_id") or "").strip()
+        resolved_tenant_id = incoming_tenant_id or current_tenant_id or route_file_token.split(".", 1)[0]
+        incoming_profile_id = str(incoming_identity.get("profile_id") or "").strip()
+        allowed_profile_ids = {route_profile_id, token}
+        if current_profile_id:
+            allowed_profile_ids.add(current_profile_id)
+            allowed_profile_ids.add(current_profile_id.removeprefix("aws-csm."))
+        if incoming_profile_id and incoming_profile_id not in {item for item in allowed_profile_ids if item}:
+            return jsonify({"ok": False, "errors": ["identity.profile_id must match the mailbox profile route token"]}), 400
+        resolved_profile_id = current_profile_id or route_profile_id
+        merged = _deep_merge_dicts(
+            merged,
+            {
+                "identity": {
+                    "tenant_id": resolved_tenant_id,
+                    "profile_id": resolved_profile_id,
+                }
+            },
+        )
         normalized, validation_errors, warnings = normalize_aws_csm_profile_payload(merged, profile_hint=token)
         if validation_errors:
             return jsonify({"ok": False, "errors": validation_errors, "warnings": warnings}), 400
@@ -1175,7 +1390,7 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
         _write_json(path, normalized)
         response = {
             "ok": True,
-            "tenant_id": token,
+            "tenant_id": str(((normalized.get("identity") or {}).get("tenant_id")) or resolved_tenant_id),
             "profile_id": str(((normalized.get("identity") or {}).get("profile_id")) or ""),
             "created": not exists,
             "canonical_root": str(_aws_csm_root(private_dir)),
@@ -1188,7 +1403,7 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             "aws",
             "aws.profile.saved",
             {
-                "tenant_id": token,
+                "tenant_id": response["tenant_id"],
                 "profile_id": response["profile_id"],
                 "created": bool(response["created"]),
                 "profile_path": response["profile_path"],
@@ -1213,18 +1428,21 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             rejected = {
                 "ok": False,
                 "profile_id": token,
+                "tenant_id": _aws_csm_profile_file_token(token).split(".", 1)[0],
                 "errors": ["newsletter/emailer actions are not part of the active AWS-CMS scope"],
             }
             _append_action(private_dir, "aws", "aws.profile.provision.rejected", rejected)
             return jsonify(rejected), 400
 
         allowed_actions = {
+            "begin_onboarding",
             "prepare_send_as",
             "setup_ses_identity",
             "setup_dkim",
             "stage_smtp_credentials",
             "capture_verification",
             "refresh_provider_status",
+            "refresh_inbound_status",
             "enable_inbound_capture",
             "replay_verification_forward",
             "confirm_verified",
@@ -1233,16 +1451,22 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             rejected = {
                 "ok": False,
                 "profile_id": token,
+                "tenant_id": _aws_csm_profile_file_token(token).split(".", 1)[0],
                 "errors": [f"unsupported aws provision action: {action}"],
             }
             _append_action(private_dir, "aws", "aws.profile.provision.rejected", rejected)
             return jsonify(rejected), 400
 
         status_payload, path, exists = _aws_profile_status(private_dir, token)
+        canonical_profile_id = str(status_payload.get("profile_id") or token)
+        canonical_tenant_id = str(
+            status_payload.get("tenant_id") or _aws_csm_profile_file_token(token).split(".", 1)[0] or token
+        )
         if not exists:
             rejected = {
                 "ok": False,
-                "profile_id": token,
+                "profile_id": canonical_profile_id,
+                "tenant_id": canonical_tenant_id,
                 "configured": False,
                 "errors": ["AWS-CMS profile is not staged in the canonical aws-csm root"],
             }
@@ -1250,10 +1474,21 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             return jsonify(rejected), 409
 
         request_id = f"AWSREQ-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8].upper()}"
-        if action in {"refresh_provider_status", "capture_verification", "replay_verification_forward", "confirm_verified"}:
+        if action in {
+            "begin_onboarding",
+            "refresh_provider_status",
+            "refresh_inbound_status",
+            "capture_verification",
+            "replay_verification_forward",
+            "confirm_verified",
+        }:
             try:
-                if action == "refresh_provider_status":
+                if action == "begin_onboarding":
+                    response = _begin_onboarding_for_profile(private_dir, token)
+                elif action == "refresh_provider_status":
                     response = _refresh_provider_status_for_profile(private_dir, token)
+                elif action == "refresh_inbound_status":
+                    response = _refresh_inbound_status_for_profile(private_dir, token)
                 elif action == "capture_verification":
                     response = _capture_verification_for_profile(private_dir, token)
                 elif action == "replay_verification_forward":
@@ -1263,8 +1498,8 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             except _AwsProvisionError as exc:
                 rejected = {
                     "ok": False,
-                    "profile_id": token,
-                    "tenant_id": token,
+                    "profile_id": canonical_profile_id,
+                    "tenant_id": canonical_tenant_id,
                     "request_id": request_id,
                     "action": action,
                     "errors": [str(exc)],
@@ -1273,8 +1508,8 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
                     _aws_provision_log(private_dir),
                     {
                         "ts_unix_ms": int(time.time() * 1000),
-                        "profile_id": token,
-                        "tenant_id": token,
+                        "profile_id": canonical_profile_id,
+                        "tenant_id": canonical_tenant_id,
                         "request_id": request_id,
                         "status": "failed",
                         "action": action,
@@ -1295,8 +1530,8 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
                 _aws_provision_log(private_dir),
                 {
                     "ts_unix_ms": int(time.time() * 1000),
-                    "profile_id": token,
-                    "tenant_id": token,
+                    "profile_id": str(response.get("profile_id") or canonical_profile_id),
+                    "tenant_id": str(response.get("tenant_id") or canonical_tenant_id),
                     "request_id": request_id,
                     "status": str(response.get("status") or "completed"),
                     "action": action,
@@ -1310,8 +1545,8 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
                 "aws",
                 "aws.profile.provision.completed",
                 {
-                    "tenant_id": token,
-                    "profile_id": token,
+                    "tenant_id": str(response.get("tenant_id") or canonical_tenant_id),
+                    "profile_id": str(response.get("profile_id") or canonical_profile_id),
                     "request_id": request_id,
                     "action": action,
                     "status": str(response.get("status") or "completed"),
@@ -1325,8 +1560,8 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
 
         response = {
             "ok": True,
-            "profile_id": token,
-            "tenant_id": token,
+            "profile_id": canonical_profile_id,
+            "tenant_id": canonical_tenant_id,
             "request_id": request_id,
             "status": "queued",
             "action": action,
@@ -1339,8 +1574,8 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             _aws_provision_log(private_dir),
             {
                 "ts_unix_ms": int(time.time() * 1000),
-                "profile_id": token,
-                "tenant_id": token,
+                "profile_id": canonical_profile_id,
+                "tenant_id": canonical_tenant_id,
                 "request_id": request_id,
                 "status": "queued",
                 "action": action,
@@ -1358,17 +1593,28 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
 
     @app.get("/portal/api/admin/aws/fnd/status")
     def admin_aws_fnd_status():
+        domain_filter = str(request.args.get("domain") or "").strip().lower()
         profiles = []
         ready_count = 0
         confirmed_count = 0
         for path in _aws_csm_profile_paths(private_dir):
             profile_token = path.stem.removeprefix("aws-csm.")
             status_payload, _, _ = _aws_profile_status(private_dir, profile_token)
+            domain = str(status_payload.get("domain") or "").strip().lower()
+            if domain_filter and domain != domain_filter:
+                continue
             profiles.append(
                 {
                     "profile_id": str(status_payload.get("profile_id") or profile_token),
-                    "tenant_id": profile_token,
+                    "tenant_id": str(status_payload.get("tenant_id") or ""),
+                    "domain": str(status_payload.get("domain") or ""),
+                    "mailbox_local_part": str(status_payload.get("mailbox_local_part") or ""),
+                    "role": str(status_payload.get("role") or ""),
                     "send_as_email": str(status_payload.get("send_as_email") or ""),
+                    "operator_inbox_target": str(status_payload.get("operator_inbox_target") or ""),
+                    "initiated": bool(status_payload.get("initiated")),
+                    "lifecycle_state": str(status_payload.get("lifecycle_state") or ""),
+                    "receive_state": str(status_payload.get("receive_state") or ""),
                     "handoff_ready": bool(status_payload.get("handoff_ready")),
                     "send_as_confirmed": bool(status_payload.get("send_as_confirmed")),
                 }
@@ -1377,10 +1623,24 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
                 ready_count += 1
             if status_payload.get("send_as_confirmed"):
                 confirmed_count += 1
+        profiles.sort(
+            key=lambda item: (
+                str(item.get("domain") or "").lower(),
+                str(item.get("send_as_email") or "").lower(),
+            )
+        )
+        domain_groups: dict[str, list[str]] = {}
+        for item in profiles:
+            domain_key = str(item.get("domain") or "").strip().lower()
+            if not domain_key:
+                continue
+            domain_groups.setdefault(domain_key, []).append(str(item.get("profile_id") or ""))
         response = {
             "ok": True,
             "scope": "fnd",
             "canonical_root": str(_aws_csm_root(private_dir)),
+            "domain_filter": domain_filter,
+            "domain_groups": domain_groups,
             "tenant_profiles_count": len(profiles),
             "ready_for_handoff_count": ready_count,
             "send_as_confirmed_count": confirmed_count,

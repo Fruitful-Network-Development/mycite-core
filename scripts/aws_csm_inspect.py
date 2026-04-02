@@ -40,6 +40,42 @@ def _safe_read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _profile_hint_candidates(path: Path, payload: dict[str, Any]) -> set[str]:
+    identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+    profile_id = str(identity.get("profile_id") or "").strip()
+    candidates = {
+        path.stem.removeprefix("aws-csm."),
+        profile_id,
+        profile_id.removeprefix("aws-csm.") if profile_id else "",
+        str(identity.get("tenant_id") or "").strip(),
+        str(identity.get("domain") or "").strip(),
+    }
+    return {item for item in candidates if item}
+
+
+def _resolve_profile_path(root: Path, tenant: str) -> Path:
+    exact = root / f"aws-csm.{tenant}.json"
+    if exact.exists():
+        return exact
+    matches: list[Path] = []
+    for path in sorted(root.glob("aws-csm.*.json")):
+        if not path.is_file():
+            continue
+        payload = _safe_read_json(path)
+        if tenant in _profile_hint_candidates(path, payload):
+            matches.append(path)
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        for path in matches:
+            payload = _safe_read_json(path)
+            identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+            if str(identity.get("tenant_id") or "").strip() != tenant:
+                return path
+        return matches[0]
+    raise FileNotFoundError(f"profile not found under {root}: {tenant}")
+
+
 def _run_command(command: list[str]) -> dict[str, Any]:
     completed = subprocess.run(command, capture_output=True, text=True, check=False)
     stdout = completed.stdout.strip()
@@ -499,9 +535,7 @@ def _build_classification(
 
 
 def inspect_profile(root: Path, tenant: str) -> dict[str, Any]:
-    profile_path = root / f"aws-csm.{tenant}.json"
-    if not profile_path.exists():
-        raise FileNotFoundError(f"profile not found: {profile_path}")
+    profile_path = _resolve_profile_path(root, tenant)
     profile = _safe_read_json(profile_path)
     identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
     smtp = profile.get("smtp") if isinstance(profile.get("smtp"), dict) else {}
@@ -513,7 +547,8 @@ def inspect_profile(root: Path, tenant: str) -> dict[str, Any]:
     smtp_port = str(smtp.get("port") or "587").strip() or "587"
     secret_name = str(smtp.get("credentials_secret_name") or "").strip()
     if not secret_name:
-        secret_name = f"aws-cms/smtp/{tenant}"
+        mailbox_local_part = str(identity.get("mailbox_local_part") or smtp.get("local_part") or "").strip()
+        secret_name = f"aws-cms/smtp/{tenant}.{mailbox_local_part}" if mailbox_local_part else f"aws-cms/smtp/{tenant}"
 
     domain_identity_result = _aws_command("sesv2", "get-email-identity", "--email-identity", domain, region=region)
     domain_identity = domain_identity_result.get("payload") if isinstance(domain_identity_result.get("payload"), dict) else {}

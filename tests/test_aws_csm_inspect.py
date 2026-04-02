@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
 
@@ -13,6 +15,29 @@ SPEC.loader.exec_module(MODULE)
 
 
 class AwsCsmInspectTests(unittest.TestCase):
+    def test_resolve_profile_path_supports_mailbox_scoped_profiles(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            mailbox_path = root / "aws-csm.fnd.dylan.json"
+            mailbox_path.write_text(
+                json.dumps(
+                    {
+                        "identity": {
+                            "profile_id": "aws-csm.fnd.dylan",
+                            "tenant_id": "fnd",
+                            "domain": "fruitfulnetworkdevelopment.com",
+                            "mailbox_local_part": "dylan",
+                            "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                        }
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(MODULE._resolve_profile_path(root, "fnd"), mailbox_path)
+            self.assertEqual(MODULE._resolve_profile_path(root, "aws-csm.fnd.dylan"), mailbox_path)
+
     def test_secret_health_marks_placeholder_values_without_exposing_them(self) -> None:
         health = MODULE._smtp_secret_health_from_payload(
             "aws-cms/smtp/fnd",
@@ -127,7 +152,7 @@ class AwsCsmInspectTests(unittest.TestCase):
             active_receipt_rule_set={"Metadata": {"Name": "fnd-inbound-rules"}, "Rules": [{}]},
             referenced_buckets={"ses-inbound-fnd-mail": {"prefixes": ["inbound/"], "latest_object": "2026-03-29T10:23:50+00:00"}},
             referenced_lambdas={"ses-forwarder": {"arn": "arn:aws:lambda:us-east-1:123456789012:function:ses-forwarder"}},
-            local_references={"dylan@fruitfulnetworkdevelopment.com": ["/tmp/aws-csm.fnd.json:10"]},
+            local_references={"dylan@fruitfulnetworkdevelopment.com": ["/tmp/aws-csm.fnd.dylan.json:10"]},
         )
         by_item = {entry["item"]: entry for entry in entries}
 
