@@ -82,6 +82,15 @@ Legacy flat fields (for example `alias_email`, `forward_to_email`, `gmail_send_a
 
 Canonical grouped profile writes flow through `PUT /portal/api/admin/aws/profile/<profile_id>` in the admin integrations runtime. That path writes only to `private/utilities/tools/aws-csm/aws-csm.<profile>.json` and rejects raw secret-like keys; secret values remain external in Secrets Manager.
 
+Canonical operator workflow actions flow through `POST /portal/api/admin/aws/profile/<profile_id>/provision`. The current live operator-facing actions are:
+
+- `refresh_provider_status`
+- `capture_verification`
+- `replay_verification_forward`
+- `confirm_verified`
+
+These actions keep the current operator send-as workflow on a single control plane instead of ad hoc file edits.
+
 Current scope is intentionally narrow:
 
 - one operator
@@ -106,13 +115,16 @@ Current readiness boundary is explicit:
 - `workflow.gmail_handoff_blockers_now` is the intentional remaining boundary after AWS-side staging is complete.
 - `workflow.is_ready_for_user_handoff = true` means ready for Gmail/inbox handoff, not that send-as is fully verified.
 - `workflow.handoff_status` and `workflow.completion_boundary` distinguish staging, Gmail-handoff readiness, and confirmed completion.
-- On March 31, 2026, the EC2 role `EC2-AWSCMS-Admin` was confirmed denied for `iam:GetUser`, `iam:ListUsers`, and `iam:CreateServiceSpecificCredential`, so this server cannot mint SES SMTP credentials without additional IAM scope or externally supplied credentials.
+- `verification.portal_state = verification_email_received` means the latest Gmail confirmation message has been captured and surfaced, but the operator still needs to complete or confirm the Gmail step.
+- `verification.portal_state = verified`, `verification.status = verified`, and `provider.gmail_send_as_status = verified` together mark the confirmed send-as completion state.
+- On April 2, 2026, the active Gmail verification path for FND was confirmed to use the legacy SES receipt rule + S3 + Lambda forwarder chain. The portal now surfaces the latest captured verification message metadata and replay action so operators no longer have to rely on mailbox hunting alone.
 - On March 31, 2026, repo inspection found no local Gmail API/OAuth automation path or Google client dependency for completing Gmail send-as confirmation from the server; that step remains a human handoff unless automation is added later.
+- The inline IAM policy `AWSCMSManageSmtpCredentials` is now conceptually obsolete for the active SES SMTP model. Current SMTP credentials are derived from IAM access keys on `aws-cms-smtp`, not IAM service-specific credentials, so new workflow logic must not depend on `CreateServiceSpecificCredential` or related APIs.
 
 Current reference onboarding case:
 
 - `aws-csm.fnd.json` with canonical sender `dylan@fruitfulnetworkdevelopment.com`
-- legacy FND inbound automation and `dcmontgomery.*` mail artifacts remain classified as out-of-scope legacy infrastructure, not baseline onboarding truth
+- legacy FND inbound automation and `dcmontgomery.*` mail artifacts remain classified as active legacy infrastructure, not baseline onboarding truth
 
 Active AWS-CMS scope does not include:
 

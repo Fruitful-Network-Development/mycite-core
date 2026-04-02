@@ -402,6 +402,66 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertIn("verification", first)
             self.assertIn("provider", first)
 
+    def test_aws_profile_boundary_can_be_fully_completed_after_confirmation(self):
+        module = _load_service_tools_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.fnd.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "mycite.service_tool.aws_csm.profile.v1",
+                        "identity": {
+                            "profile_id": "aws-csm.fnd",
+                            "tenant_id": "fnd",
+                            "domain": "fruitfulnetworkdevelopment.com",
+                            "region": "us-east-1",
+                            "single_user_email": "dylancarsonmontgomery@gmail.com",
+                            "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                        },
+                        "smtp": {
+                            "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                            "host": "email-smtp.us-east-1.amazonaws.com",
+                            "port": "587",
+                            "username": "AKIAEXAMPLE",
+                            "credentials_source": "operator_managed",
+                            "credentials_secret_name": "aws-cms/smtp/fnd",
+                            "credentials_secret_state": "configured",
+                            "forward_to_email": "dylancarsonmontgomery@gmail.com",
+                        },
+                        "verification": {
+                            "status": "verified",
+                            "portal_state": "verified",
+                            "verified_at": "2026-04-02T15:40:00+00:00",
+                        },
+                        "provider": {
+                            "aws_ses_identity_status": "verified",
+                            "gmail_send_as_status": "verified",
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            payload = module.build_service_tool_config_context(
+                "aws_platform_admin",
+                private_dir=private_dir,
+                tool_tabs=[{"tool_id": "aws_platform_admin", **module.build_service_tool_meta("aws_platform_admin")}],
+                portal_instance_id="fnd",
+                msn_id="3-2-3",
+            )
+            cards = payload.get("profile_cards") if isinstance(payload.get("profile_cards"), list) else []
+            self.assertTrue(cards)
+            card_body = cards[0].get("body") if isinstance(cards[0], dict) else {}
+            verification = card_body.get("verification") if isinstance(card_body.get("verification"), dict) else {}
+            workflow = card_body.get("workflow") if isinstance(card_body.get("workflow"), dict) else {}
+            self.assertEqual(verification.get("portal_state"), "verified")
+            self.assertEqual(list(workflow.get("gmail_handoff_blockers_now") or []), [])
+            self.assertEqual(workflow.get("handoff_status"), "send_as_confirmed")
+            self.assertEqual(workflow.get("completion_boundary"), "completed")
+            self.assertTrue(bool(workflow.get("is_send_as_confirmed")))
+
     def test_aws_platform_admin_service_meta_narrows_to_operator_send_as_scope(self):
         module = _load_service_tools_module()
         meta = module.build_service_tool_meta("aws_platform_admin")
