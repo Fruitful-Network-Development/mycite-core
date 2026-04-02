@@ -1545,9 +1545,21 @@
   function awsCompletionBoundaryLabel(workflow) {
     var boundary = text(workflow && workflow.completion_boundary);
     if (boundary === "uninitiated") return "uninitiated";
+    if (boundary === "receive_path_pending") return "receive path pending";
     if (boundary === "gmail_inbox_dependent") return "gmail/inbox dependent";
     if (boundary === "completed") return "completed";
     return boundary.replace(/_/g, " ");
+  }
+
+  function awsReceiveStateLabel(inbound) {
+    var state = text(inbound && inbound.receive_state);
+    if (state === "receive_unconfigured") return "receive unconfigured";
+    if (state === "receive_configured") return "receive configured";
+    if (state === "receive_pending") return "receive pending";
+    if (state === "receive_verified") return "receive verified";
+    if (state === "receive_operational") return "receive operational";
+    if (state === "receive_legacy_dependent") return "receive legacy dependent";
+    return state.replace(/_/g, " ");
   }
 
   function awsBlockerCount(items) {
@@ -1612,9 +1624,30 @@
         "email received": text(selectedVerification.email_received_at),
         "verified at": text(selectedVerification.verified_at),
         "portal state": text(selectedVerification.portal_state),
-        "inbound state": text(selectedInbound.receive_state),
+        "inbound state": awsReceiveStateLabel(selectedInbound),
         "inbound verified": selectedInbound.receive_verified ? "yes" : "no"
       }));
+      out.push('</div></article>');
+      out.push('<article class="card"><div class="card__kicker">Inbound</div><div class="card__title">Receive-path visibility</div><div class="card__body">');
+      out.push(renderCardKeyValueRows({
+        "receive state": awsReceiveStateLabel(selectedInbound),
+        "receive verified": selectedInbound.receive_verified ? "yes" : "no",
+        "receive target": text(selectedInbound.receive_routing_target),
+        "receive checked": text(selectedInbound.receive_last_checked_at),
+        "receive verified at": text(selectedInbound.receive_verified_at),
+        "portal display ready": selectedInbound.portal_native_display_ready ? "yes" : "no",
+        "legacy dependency": selectedInbound.legacy_forwarder_dependency ? "yes" : "no",
+        "dependency state": text(selectedInbound.legacy_dependency_state),
+        "latest sender": text(selectedInbound.latest_message_sender),
+        "latest recipient": text(selectedInbound.latest_message_recipient),
+        "latest subject": text(selectedInbound.latest_message_subject),
+        "captured at": text(selectedInbound.latest_message_captured_at),
+        "capture ref": text(selectedInbound.capture_source_reference || selectedInbound.latest_message_s3_uri),
+        "has verification link": selectedInbound.latest_message_has_verification_link ? "yes" : "no"
+      }));
+      if (selectedInbound.legacy_forwarder_dependency) {
+        out.push("<p><strong>Compatibility warning:</strong> replay still depends on the active legacy SES->Lambda forwarder chain.</p>");
+      }
       out.push('</div></article>');
       out.push('<article class="card"><div class="card__kicker">Provider</div><div class="card__title">AWS + Gmail readiness</div><div class="card__body">');
       out.push(renderCardKeyValueRows({
@@ -1633,11 +1666,17 @@
         "ready for Gmail handoff": selectedWorkflow.is_ready_for_user_handoff ? "yes" : "no",
         "configuration blockers": awsBlockerCount(selectedWorkflow.configuration_blockers_now),
         "gmail-side blockers": awsBlockerCount(selectedWorkflow.gmail_handoff_blockers_now),
+        "inbound blockers": awsBlockerCount(selectedWorkflow.inbound_blockers_now),
+        "operational blockers": awsBlockerCount(selectedWorkflow.operational_blockers_now),
         "missing required": awsBlockerCount(selectedWorkflow.missing_required_now),
         flow: text(selectedWorkflow.flow || selectedWorkflow.flow_name),
         "operator inbox": text(selectedIdentity.operator_inbox_target || selectedIdentity.single_user_email),
         "send as": text(selectedSmtp.send_as_email),
-        "send-as confirmed": selectedWorkflow.is_send_as_confirmed ? "yes" : "no"
+        "send-as confirmed": selectedWorkflow.is_send_as_confirmed ? "yes" : "no",
+        "receive modeled": selectedWorkflow.is_receive_path_modeled ? "yes" : "no",
+        "receive confirmed": selectedWorkflow.is_receive_path_confirmed ? "yes" : "no",
+        "portal inbound ready": selectedWorkflow.is_portal_native_inbound_ready ? "yes" : "no",
+        "mailbox operational": selectedWorkflow.is_mailbox_operational ? "yes" : "no"
       }));
       if (Array.isArray(selectedWorkflow.configuration_blockers_now) && selectedWorkflow.configuration_blockers_now.length) {
         out.push("<p><strong>Still required before Gmail handoff</strong></p><ul class=\"fnd-ebi-warnings\">");
@@ -1681,7 +1720,7 @@
       out.push("<p><strong>Tenant:</strong> " + esc(text(identity.tenant_id || "(missing)")) + "</p>");
       out.push("<p><strong>Role:</strong> " + esc(text(identity.role || "(missing)")) + "</p>");
       out.push("<p><strong>Verification:</strong> " + esc(text(verification.status || "(missing)")) + "</p>");
-      out.push("<p><strong>Inbound:</strong> " + esc(text(inbound.receive_state || "(missing)")) + "</p>");
+      out.push("<p><strong>Inbound:</strong> " + esc(awsReceiveStateLabel(inbound || {})) + "</p>");
       out.push("<p><strong>Boundary:</strong> " + esc(awsCompletionBoundaryLabel(workflow)) + "</p>");
       out.push("<p><strong>Missing required now:</strong> " + esc(String(missing.length)) + "</p>");
       out.push("<p><small>Select to focus this onboarding profile in the interface lens.</small></p>");
@@ -1717,7 +1756,9 @@
       "username known": text(smtp.username) ? "yes" : "no",
       "forward to": text(smtp.forward_to_email),
       "forwarding status": text(smtp.forwarding_status),
-      "receive state": text(inbound.receive_state),
+      "receive state": awsReceiveStateLabel(inbound),
+      "portal display ready": inbound.portal_native_display_ready ? "yes" : "no",
+      "legacy dependency": inbound.legacy_forwarder_dependency ? "yes" : "no",
       "workflow handoff ready": workflow.is_ready_for_user_handoff ? "yes" : "no",
       "handoff status": awsHandoffStatusLabel(workflow)
     }));
@@ -1765,6 +1806,7 @@
       "email received": text(verification.email_received_at),
       "verified at": text(verification.verified_at),
       "portal state": text(verification.portal_state),
+      "receive state": awsReceiveStateLabel(selectedBody.inbound && typeof selectedBody.inbound === "object" ? selectedBody.inbound : {}),
       "ses identity": text(provider.aws_ses_identity_status),
       "gmail send-as": text(provider.gmail_send_as_status),
       "last checked": text(provider.last_checked_at),

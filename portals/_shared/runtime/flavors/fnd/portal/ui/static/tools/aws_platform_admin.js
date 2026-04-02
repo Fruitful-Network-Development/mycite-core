@@ -50,6 +50,19 @@
     node.textContent = token;
   }
 
+  function legacyView(value) {
+    var node = qs("#awsp-legacy-wrap");
+    if (!node) return;
+    var token = String(value || "").trim();
+    if (!token) {
+      node.style.display = "none";
+      node.textContent = "";
+      return;
+    }
+    node.style.display = "block";
+    node.textContent = token;
+  }
+
   function selectedProfile() {
     var node = qs("#awsp-profile-select");
     var token = node ? String(node.value || "").trim() : "";
@@ -99,6 +112,9 @@
         provider_ready: String(provider.aws_ses_identity_status || "") === "verified",
         handoff_ready: !!workflow.is_ready_for_user_handoff,
         gmail_complete: !!workflow.is_send_as_confirmed,
+        inbound_ready: !!workflow.is_portal_native_inbound_ready,
+        mailbox_operational: !!workflow.is_mailbox_operational,
+        legacy_dependent: !!((profile.inbound || {}).legacy_forwarder_dependency),
       },
       identity: profile.identity || {},
       smtp: profile.smtp || {},
@@ -116,6 +132,7 @@
     profileView(compactProfile(payload));
     if (!(state.latestVerification && state.latestVerification.verification_message)) {
       linkView("");
+      legacyView("");
       verificationView("No verification message loaded yet.");
     }
     return payload;
@@ -221,7 +238,10 @@
     }
     if (payload && payload.verification_message && payload.verification_message.confirmation_link) {
       linkView(payload.verification_message.confirmation_link);
+    } else {
+      linkView("");
     }
+    legacyView((payload.legacy_inbound || {}).compatibility_warning || "");
     verificationView({
       inbound_status: payload.status || "",
       legacy_inbound: payload.legacy_inbound || {},
@@ -238,18 +258,23 @@
     if (details && Object.keys(details).length) {
       verificationView({
         sender: details.sender || "",
+        recipient: details.recipient || "",
         subject: details.subject || "",
         captured_at: details.captured_at || "",
         message_date: details.message_date || "",
         s3_uri: details.s3_uri || "",
+        capture_source_reference: details.s3_uri || "",
         forward_from_email: details.forward_from_email || "",
         forward_to_email: details.forward_to_email || "",
         message_id: details.message_id || "",
+        has_confirmation_link: !!details.confirmation_link,
       });
       linkView(details.confirmation_link || "");
+      legacyView((payload.legacy_inbound || {}).compatibility_warning || "");
     } else {
       verificationView("No captured Gmail verification message was found for the selected profile.");
       linkView("");
+      legacyView((payload.legacy_inbound || {}).compatibility_warning || "");
     }
     if (payload && payload.profile) {
       state.latestProfile = payload;
@@ -268,6 +293,7 @@
     if (details && Object.keys(details).length) {
       verificationView({
         sender: details.sender || "",
+        recipient: details.recipient || "",
         subject: details.subject || "",
         captured_at: details.captured_at || "",
         s3_uri: details.s3_uri || "",
@@ -276,10 +302,33 @@
         lambda_result: payload.lambda_result || {},
       });
       linkView(details.confirmation_link || "");
+      legacyView((payload.compatibility_warning || (payload.legacy_inbound || {}).compatibility_warning || ""));
     } else {
       verificationView("No captured Gmail verification message is available to replay yet.");
       linkView("");
+      legacyView((payload.compatibility_warning || (payload.legacy_inbound || {}).compatibility_warning || ""));
     }
+    if (payload && payload.profile) {
+      state.latestProfile = payload;
+      profileView(compactProfile(payload));
+    } else {
+      await loadProfile();
+    }
+    await status();
+    return payload;
+  }
+
+  async function confirmReceivePath() {
+    var profileId = selectedProfile();
+    var ok = window.confirm("Mark " + profileId + " receive-path capture as verified after reviewing the portal-visible inbound message state?");
+    if (!ok) return null;
+    var payload = await runProvision("confirm_receive_verified");
+    legacyView((payload.legacy_inbound || {}).compatibility_warning || "");
+    verificationView({
+      receive_verified_at: payload.receive_verified_at || "",
+      legacy_inbound: payload.legacy_inbound || {},
+      verification_message: payload.verification_message || {},
+    });
     if (payload && payload.profile) {
       state.latestProfile = payload;
       profileView(compactProfile(payload));
@@ -296,6 +345,7 @@
     if (!ok) return null;
     var payload = await runProvision("confirm_verified");
     linkView("");
+    legacyView((payload.legacy_inbound || {}).compatibility_warning || "");
     verificationView("Verification confirmed for " + profileId + " at " + String(payload.verified_at || "") + ".");
     if (payload && payload.profile) {
       state.latestProfile = payload;
@@ -332,6 +382,8 @@
   }
   var captureBtn = qs("#awsp-capture");
   if (captureBtn) captureBtn.addEventListener("click", function () { captureVerification().catch(function () {}); });
+  var receiveConfirmBtn = qs("#awsp-receive-confirm");
+  if (receiveConfirmBtn) receiveConfirmBtn.addEventListener("click", function () { confirmReceivePath().catch(function () {}); });
   var replayBtn = qs("#awsp-replay");
   if (replayBtn) replayBtn.addEventListener("click", function () { replayVerification().catch(function () {}); });
   var confirmBtn = qs("#awsp-confirm");
