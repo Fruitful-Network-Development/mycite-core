@@ -1,6 +1,6 @@
 {
   "schema": "mycite.portal.resource.local.v1",
-  "resource_id": "rc.3-2-3-17-77-1-6-4-1-4.msn",
+  "resource_id": "rf.3-2-3-17-77-1-6-4-1-4.msn-adm",
   "resource_kind": "msn",
   "scope": "resource",
   "source_msn_id": "3-2-3-17-77-1-6-4-1-4",
