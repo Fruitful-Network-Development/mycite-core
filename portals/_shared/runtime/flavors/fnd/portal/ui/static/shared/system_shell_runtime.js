@@ -1534,13 +1534,17 @@
 
   function awsHandoffStatusLabel(workflow) {
     var status = text(workflow && workflow.handoff_status);
+    if (status === "uninitiated") return "uninitiated";
+    if (status === "smtp_configured") return "SMTP configured";
     if (status === "ready_for_gmail_handoff") return "ready for Gmail handoff";
     if (status === "send_as_confirmed") return "send-as confirmed";
+    if (status === "staged") return "staged";
     return "staging required";
   }
 
   function awsCompletionBoundaryLabel(workflow) {
     var boundary = text(workflow && workflow.completion_boundary);
+    if (boundary === "uninitiated") return "uninitiated";
     if (boundary === "gmail_inbox_dependent") return "gmail/inbox dependent";
     if (boundary === "completed") return "completed";
     return boundary.replace(/_/g, " ");
@@ -1562,6 +1566,7 @@
     var selectedSmtp = selectedBody.smtp && typeof selectedBody.smtp === "object" ? selectedBody.smtp : {};
     var selectedVerification = selectedBody.verification && typeof selectedBody.verification === "object" ? selectedBody.verification : {};
     var selectedProvider = selectedBody.provider && typeof selectedBody.provider === "object" ? selectedBody.provider : {};
+    var selectedInbound = selectedBody.inbound && typeof selectedBody.inbound === "object" ? selectedBody.inbound : {};
     var selectedWorkflow = awsWorkflowFromCard(selectedCard || {});
     var out = [];
     if (selectedCard) {
@@ -1570,8 +1575,10 @@
         domain: text(selectedIdentity.domain),
         profile: text(selectedIdentity.profile_id),
         tenant: text(selectedIdentity.tenant_id),
+        mailbox: text(selectedIdentity.mailbox_local_part),
+        role: text(selectedIdentity.role),
         region: text(selectedIdentity.region),
-        "single user": text(selectedIdentity.single_user_email || selectedIdentity.single_user_msn_id),
+        "operator inbox": text(selectedIdentity.operator_inbox_target || selectedIdentity.single_user_email || selectedIdentity.single_user_msn_id),
         "send as": text(selectedIdentity.send_as_email || selectedSmtp.send_as_email)
       }));
       out.push('</div></article>');
@@ -1584,8 +1591,9 @@
         "secret ref": text(selectedSmtp.credentials_secret_name),
         "secret state": text(selectedSmtp.credentials_secret_state),
         "username known": text(selectedSmtp.username) ? "yes" : "no",
-        "forward to": text(selectedSmtp.forward_to_email),
+        "operator inbox": text(selectedIdentity.operator_inbox_target || selectedSmtp.forward_to_email),
         "forwarding status": text(selectedSmtp.forwarding_status),
+        initiated: selectedWorkflow.initiated ? "yes" : "no",
         "workflow handoff ready": selectedWorkflow.is_ready_for_user_handoff ? "yes" : "no"
       }));
       if (text(selectedSmtp.credentials_secret_state) === "placeholder_present" && !text(selectedSmtp.username)) {
@@ -1603,7 +1611,9 @@
         link: text(selectedVerification.link),
         "email received": text(selectedVerification.email_received_at),
         "verified at": text(selectedVerification.verified_at),
-        "portal state": text(selectedVerification.portal_state)
+        "portal state": text(selectedVerification.portal_state),
+        "inbound state": text(selectedInbound.receive_state),
+        "inbound verified": selectedInbound.receive_verified ? "yes" : "no"
       }));
       out.push('</div></article>');
       out.push('<article class="card"><div class="card__kicker">Provider</div><div class="card__title">AWS + Gmail readiness</div><div class="card__body">');
@@ -1618,12 +1628,14 @@
       out.push(renderCardKeyValueRows({
         "handoff status": awsHandoffStatusLabel(selectedWorkflow),
         "completion boundary": awsCompletionBoundaryLabel(selectedWorkflow),
+        lifecycle: text(selectedWorkflow.lifecycle_state),
+        initiated: selectedWorkflow.initiated ? "yes" : "no",
         "ready for Gmail handoff": selectedWorkflow.is_ready_for_user_handoff ? "yes" : "no",
         "configuration blockers": awsBlockerCount(selectedWorkflow.configuration_blockers_now),
         "gmail-side blockers": awsBlockerCount(selectedWorkflow.gmail_handoff_blockers_now),
         "missing required": awsBlockerCount(selectedWorkflow.missing_required_now),
         flow: text(selectedWorkflow.flow || selectedWorkflow.flow_name),
-        "single user": text(selectedIdentity.single_user_email),
+        "operator inbox": text(selectedIdentity.operator_inbox_target || selectedIdentity.single_user_email),
         "send as": text(selectedSmtp.send_as_email),
         "send-as confirmed": selectedWorkflow.is_send_as_confirmed ? "yes" : "no"
       }));
@@ -1658,15 +1670,18 @@
       var body = card && card.body && typeof card.body === "object" ? card.body : {};
       var identity = body.identity && typeof body.identity === "object" ? body.identity : {};
       var verification = body.verification && typeof body.verification === "object" ? body.verification : {};
+      var inbound = body.inbound && typeof body.inbound === "object" ? body.inbound : {};
       var workflow = awsWorkflowFromCard(card);
       var missing = Array.isArray(workflow.missing_required_now) ? workflow.missing_required_now : [];
       var token = awsProfileToken(card);
       out.push('<article class="card fnd-ebi-card' + (selectedCard && awsProfileToken(selectedCard) === token ? ' is-active' : '') + '" data-aws-profile="' + esc(token) + '">');
       out.push('<div class="card__kicker">' + esc(awsHandoffStatusLabel(workflow)) + "</div>");
-      out.push('<div class="card__title">' + esc(text(card.title || identity.domain || card.card_id || "profile")) + "</div>");
+      out.push('<div class="card__title">' + esc(text(card.title || identity.send_as_email || identity.domain || card.card_id || "profile")) + "</div>");
       out.push('<div class="card__body">');
       out.push("<p><strong>Tenant:</strong> " + esc(text(identity.tenant_id || "(missing)")) + "</p>");
+      out.push("<p><strong>Role:</strong> " + esc(text(identity.role || "(missing)")) + "</p>");
       out.push("<p><strong>Verification:</strong> " + esc(text(verification.status || "(missing)")) + "</p>");
+      out.push("<p><strong>Inbound:</strong> " + esc(text(inbound.receive_state || "(missing)")) + "</p>");
       out.push("<p><strong>Boundary:</strong> " + esc(awsCompletionBoundaryLabel(workflow)) + "</p>");
       out.push("<p><strong>Missing required now:</strong> " + esc(String(missing.length)) + "</p>");
       out.push("<p><small>Select to focus this onboarding profile in the interface lens.</small></p>");
@@ -1684,11 +1699,14 @@
     }
     var identity = selectedBody.identity && typeof selectedBody.identity === "object" ? selectedBody.identity : {};
     var smtp = selectedBody.smtp && typeof selectedBody.smtp === "object" ? selectedBody.smtp : {};
+    var inbound = selectedBody.inbound && typeof selectedBody.inbound === "object" ? selectedBody.inbound : {};
     var workflow = selectedBody.workflow && typeof selectedBody.workflow === "object" ? selectedBody.workflow : {};
     var out = [];
     out.push('<article class="card"><div class="card__kicker">SMTP Handoff</div><div class="card__title">' + esc(text(selectedCard.title || identity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
     out.push(renderCardKeyValueRows({
-      "single user": text(identity.single_user_email),
+      "operator inbox": text(identity.operator_inbox_target || identity.single_user_email),
+      role: text(identity.role),
+      mailbox: text(identity.mailbox_local_part),
       "send as": text(smtp.send_as_email),
       host: text(smtp.host),
       port: text(smtp.port),
@@ -1699,6 +1717,7 @@
       "username known": text(smtp.username) ? "yes" : "no",
       "forward to": text(smtp.forward_to_email),
       "forwarding status": text(smtp.forwarding_status),
+      "receive state": text(inbound.receive_state),
       "workflow handoff ready": workflow.is_ready_for_user_handoff ? "yes" : "no",
       "handoff status": awsHandoffStatusLabel(workflow)
     }));

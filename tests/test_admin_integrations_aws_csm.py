@@ -93,14 +93,16 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             client = self._make_client(private_dir)
 
             save_response = client.put(
-                "/portal/api/admin/aws/profile/fnd",
+                "/portal/api/admin/aws/profile/aws-csm.fnd.dylan",
                 headers=self._headers(),
                 json={
                     "identity": {
                         "tenant_id": "fnd",
                         "domain": "fruitfulnetworkdevelopment.com",
                         "region": "us-east-1",
-                        "single_user_email": "dylancarsonmontgomery@gmail.com",
+                        "mailbox_local_part": "dylan",
+                        "role": "operator",
+                        "operator_inbox_target": "dylancarsonmontgomery@gmail.com",
                         "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
                     },
                     "smtp": {
@@ -123,20 +125,22 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             )
             self.assertEqual(save_response.status_code, 200)
             save_payload = save_response.get_json() or {}
-            profile_path = private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.fnd.json"
+            profile_path = private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.fnd.dylan.json"
             self.assertEqual(Path(save_payload.get("profile_path") or ""), profile_path)
             self.assertTrue(profile_path.exists())
             stored = json.loads(profile_path.read_text(encoding="utf-8"))
             self.assertEqual(((stored.get("identity") or {}).get("tenant_id")), "fnd")
+            self.assertEqual(((stored.get("identity") or {}).get("profile_id")), "aws-csm.fnd.dylan")
+            self.assertEqual(((stored.get("identity") or {}).get("mailbox_local_part")), "dylan")
             self.assertEqual((((stored.get("smtp") or {}).get("credentials_secret_name"))), "aws-cms/smtp/fnd")
             self.assertEqual((((stored.get("smtp") or {}).get("credentials_secret_state"))), "configured")
-            self.assertEqual(((stored.get("workflow") or {}).get("flow")), "single_user_send_as")
+            self.assertEqual(((stored.get("workflow") or {}).get("flow")), "mailbox_send_as")
             self.assertEqual(((stored.get("workflow") or {}).get("handoff_status")), "ready_for_gmail_handoff")
             self.assertNotIn("alias_email", stored)
             self.assertNotIn("gmail_send_as_status", stored)
 
             provision_response = client.post(
-                "/portal/api/admin/aws/profile/fnd/provision",
+                "/portal/api/admin/aws/profile/aws-csm.fnd.dylan/provision",
                 headers=self._headers(),
                 json={"action": "prepare_send_as"},
             )
@@ -187,13 +191,15 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             module, client = self._make_client_with_module(private_dir)
 
             client.put(
-                "/portal/api/admin/aws/profile/fnd",
+                "/portal/api/admin/aws/profile/aws-csm.fnd.dylan",
                 headers=self._headers(),
                 json={
                     "identity": {
                         "tenant_id": "fnd",
                         "domain": "fruitfulnetworkdevelopment.com",
                         "region": "us-east-1",
+                        "mailbox_local_part": "dylan",
+                        "operator_inbox_target": "dylancarsonmontgomery@gmail.com",
                         "single_user_email": "dylancarsonmontgomery@gmail.com",
                         "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
                     },
@@ -235,7 +241,7 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
                 ),
             ):
                 response = client.post(
-                    "/portal/api/admin/aws/profile/fnd/provision",
+                    "/portal/api/admin/aws/profile/aws-csm.fnd.dylan/provision",
                     headers=self._headers(),
                     json={"action": "capture_verification"},
                 )
@@ -244,12 +250,16 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             payload = response.get_json() or {}
             verification_message = payload.get("verification_message") if isinstance(payload.get("verification_message"), dict) else {}
             self.assertEqual(payload.get("status"), "completed")
+            self.assertEqual(payload.get("profile_id"), "aws-csm.fnd.dylan")
             self.assertEqual(verification_message.get("s3_uri"), "s3://ses-inbound-fnd-mail/inbound/example")
             self.assertEqual(verification_message.get("confirmation_link"), "https://mail-settings.google.com/mail/vf-example")
-            stored = json.loads((private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.fnd.json").read_text(encoding="utf-8"))
+            stored = json.loads((private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.fnd.dylan.json").read_text(encoding="utf-8"))
             verification = stored.get("verification") if isinstance(stored.get("verification"), dict) else {}
+            inbound = stored.get("inbound") if isinstance(stored.get("inbound"), dict) else {}
             self.assertEqual(verification.get("email_received_at"), "2026-04-02T15:21:24+00:00")
             self.assertEqual(verification.get("portal_state"), "verification_email_received")
+            self.assertEqual(inbound.get("receive_state"), "inbound_verified")
+            self.assertTrue(bool(inbound.get("receive_verified")))
 
     def test_admin_aws_confirm_verified_marks_send_as_complete(self):
         with TemporaryDirectory() as temp_dir:
@@ -257,13 +267,15 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             module, client = self._make_client_with_module(private_dir)
 
             client.put(
-                "/portal/api/admin/aws/profile/fnd",
+                "/portal/api/admin/aws/profile/aws-csm.fnd.dylan",
                 headers=self._headers(),
                 json={
                     "identity": {
                         "tenant_id": "fnd",
                         "domain": "fruitfulnetworkdevelopment.com",
                         "region": "us-east-1",
+                        "mailbox_local_part": "dylan",
+                        "operator_inbox_target": "dylancarsonmontgomery@gmail.com",
                         "single_user_email": "dylancarsonmontgomery@gmail.com",
                         "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
                     },
@@ -305,7 +317,7 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
                 ),
             ):
                 response = client.post(
-                    "/portal/api/admin/aws/profile/fnd/provision",
+                    "/portal/api/admin/aws/profile/aws-csm.fnd.dylan/provision",
                     headers=self._headers(),
                     json={"action": "confirm_verified"},
                 )
@@ -320,6 +332,7 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             self.assertEqual(verification.get("portal_state"), "verified")
             self.assertTrue(str(verification.get("verified_at") or ""))
             self.assertEqual(provider.get("gmail_send_as_status"), "verified")
+            self.assertEqual(payload.get("profile_id"), "aws-csm.fnd.dylan")
             self.assertEqual(workflow.get("handoff_status"), "send_as_confirmed")
             self.assertEqual(workflow.get("completion_boundary"), "completed")
             self.assertTrue(bool(workflow.get("is_send_as_confirmed")))
@@ -330,13 +343,15 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             module, client = self._make_client_with_module(private_dir)
 
             client.put(
-                "/portal/api/admin/aws/profile/fnd",
+                "/portal/api/admin/aws/profile/aws-csm.fnd.dylan",
                 headers=self._headers(),
                 json={
                     "identity": {
                         "tenant_id": "fnd",
                         "domain": "fruitfulnetworkdevelopment.com",
                         "region": "us-east-1",
+                        "mailbox_local_part": "dylan",
+                        "operator_inbox_target": "dylancarsonmontgomery@gmail.com",
                         "single_user_email": "dylancarsonmontgomery@gmail.com",
                         "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
                     },
@@ -364,8 +379,10 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
                 "_capture_verification_for_profile",
                 return_value={
                     "profile": {"workflow": {}},
-                    "profile_path": str(private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.fnd.json"),
+                    "profile_path": str(private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.fnd.dylan.json"),
                     "warnings": [],
+                    "profile_id": "aws-csm.fnd.dylan",
+                    "tenant_id": "fnd",
                     "verification_message": {
                         "message_id": "example",
                         "s3_uri": "s3://ses-inbound-fnd-mail/inbound/example",
@@ -377,7 +394,7 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
                 },
             ), mock.patch.object(module, "_aws_cli", side_effect=fake_aws_cli):
                 response = client.post(
-                    "/portal/api/admin/aws/profile/fnd/provision",
+                    "/portal/api/admin/aws/profile/aws-csm.fnd.dylan/provision",
                     headers=self._headers(),
                     json={"action": "replay_verification_forward"},
                 )
@@ -385,7 +402,170 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             payload = response.get_json() or {}
             self.assertEqual(payload.get("status"), "completed")
+            self.assertEqual(payload.get("profile_id"), "aws-csm.fnd.dylan")
             self.assertEqual(((payload.get("lambda_result") or {}).get("message_id")), "example")
+
+    def test_admin_aws_legacy_alias_route_preserves_existing_mailbox_profile_id(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            profile_path = root / "aws-csm.fnd.dylan.json"
+            profile_path.write_text(
+                json.dumps(
+                    {
+                        "identity": {
+                            "profile_id": "aws-csm.fnd.dylan",
+                            "tenant_id": "fnd",
+                            "domain": "fruitfulnetworkdevelopment.com",
+                            "region": "us-east-1",
+                            "mailbox_local_part": "dylan",
+                            "operator_inbox_target": "dylancarsonmontgomery@gmail.com",
+                            "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                        },
+                        "smtp": {
+                            "credentials_secret_name": "aws-cms/smtp/fnd",
+                            "credentials_secret_state": "configured",
+                            "username": "AKIAEXAMPLE",
+                            "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                        },
+                        "provider": {
+                            "aws_ses_identity_status": "verified",
+                            "gmail_send_as_status": "not_started",
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            client = self._make_client(private_dir)
+
+            response = client.put(
+                "/portal/api/admin/aws/profile/fnd",
+                headers=self._headers(),
+                json={
+                    "verification": {
+                        "status": "not_started",
+                    }
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            stored = json.loads(profile_path.read_text(encoding="utf-8"))
+            identity = stored.get("identity") if isinstance(stored.get("identity"), dict) else {}
+            self.assertEqual(identity.get("profile_id"), "aws-csm.fnd.dylan")
+            self.assertEqual(identity.get("tenant_id"), "fnd")
+
+    def test_admin_aws_begin_onboarding_marks_staged_mailbox_as_initiated(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.tff.mark.json").write_text(
+                json.dumps(
+                    {
+                        "identity": {
+                            "profile_id": "aws-csm.tff.mark",
+                            "tenant_id": "tff",
+                            "domain": "trappfamilyfarm.com",
+                            "region": "us-east-1",
+                            "mailbox_local_part": "mark",
+                            "operator_inbox_target": "trapp.family.farm@gmail.com",
+                            "send_as_email": "mark@trappfamilyfarm.com",
+                        },
+                        "smtp": {
+                            "credentials_secret_name": "aws-cms/smtp/tff.mark",
+                            "credentials_secret_state": "missing",
+                            "send_as_email": "mark@trappfamilyfarm.com",
+                        },
+                        "provider": {
+                            "aws_ses_identity_status": "verified",
+                            "gmail_send_as_status": "not_started",
+                        },
+                        "workflow": {
+                            "initiated": False,
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            client = self._make_client(private_dir)
+
+            response = client.post(
+                "/portal/api/admin/aws/profile/aws-csm.tff.mark/provision",
+                headers=self._headers(),
+                json={"action": "begin_onboarding"},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json() or {}
+            profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+            workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
+            self.assertEqual(payload.get("profile_id"), "aws-csm.tff.mark")
+            self.assertEqual(payload.get("tenant_id"), "tff")
+            self.assertTrue(bool(workflow.get("initiated")))
+            self.assertTrue(str(workflow.get("initiated_at") or ""))
+            self.assertEqual(workflow.get("handoff_status"), "staging_required")
+
+    def test_admin_aws_status_groups_mailboxes_by_domain(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            fixtures = {
+                "aws-csm.tff.technicalContact.json": {
+                    "identity": {
+                        "profile_id": "aws-csm.tff.technicalContact",
+                        "tenant_id": "tff",
+                        "domain": "trappfamilyfarm.com",
+                        "mailbox_local_part": "technicalContact",
+                        "role": "technical_contact",
+                        "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        "operator_inbox_target": "trapp.family.farm@gmail.com",
+                    },
+                    "provider": {"aws_ses_identity_status": "verified", "gmail_send_as_status": "not_started"},
+                    "workflow": {"initiated": True},
+                },
+                "aws-csm.tff.mark.json": {
+                    "identity": {
+                        "profile_id": "aws-csm.tff.mark",
+                        "tenant_id": "tff",
+                        "domain": "trappfamilyfarm.com",
+                        "mailbox_local_part": "mark",
+                        "send_as_email": "mark@trappfamilyfarm.com",
+                        "operator_inbox_target": "trapp.family.farm@gmail.com",
+                    },
+                    "workflow": {"initiated": False},
+                },
+                "aws-csm.cvcc.technicalContact.json": {
+                    "identity": {
+                        "profile_id": "aws-csm.cvcc.technicalContact",
+                        "tenant_id": "cvcc",
+                        "domain": "cuyahogavalleycountrysideconservancy.org",
+                        "mailbox_local_part": "technicalContact",
+                        "role": "technical_contact",
+                        "send_as_email": "technicalContact@cuyahogavalleycountrysideconservancy.org",
+                        "operator_inbox_target": "mjmw677@gmail.com",
+                    },
+                    "provider": {"aws_ses_identity_status": "verified", "gmail_send_as_status": "not_started"},
+                    "workflow": {"initiated": True},
+                },
+            }
+            for name, payload in fixtures.items():
+                (root / name).write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+            client = self._make_client(private_dir)
+            response = client.get(
+                "/portal/api/admin/aws/fnd/status?domain=trappfamilyfarm.com",
+                headers=self._headers(),
+            )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json() or {}
+            profiles = payload.get("profiles") if isinstance(payload.get("profiles"), list) else []
+            self.assertEqual([item.get("profile_id") for item in profiles], ["aws-csm.tff.mark", "aws-csm.tff.technicalContact"])
+            self.assertEqual(payload.get("domain_groups"), {"trappfamilyfarm.com": ["aws-csm.tff.mark", "aws-csm.tff.technicalContact"]})
 
 
 if __name__ == "__main__":

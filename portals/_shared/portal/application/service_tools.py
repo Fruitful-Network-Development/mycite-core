@@ -384,9 +384,21 @@ def _profile_cards_for_payload(path: Path, payload: Any) -> list[dict[str, Any]]
     identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
     smtp = payload.get("smtp") if isinstance(payload.get("smtp"), dict) else {}
     verification = payload.get("verification") if isinstance(payload.get("verification"), dict) else {}
-    title = _text(payload.get("title")) or _text(payload.get("domain")) or _text(identity.get("domain")) or _text(payload.get("service_agreement_id")) or path.stem
+    workflow = payload.get("workflow") if isinstance(payload.get("workflow"), dict) else {}
+    inbound = payload.get("inbound") if isinstance(payload.get("inbound"), dict) else {}
+    title = (
+        _text(payload.get("title"))
+        or _text(identity.get("send_as_email"))
+        or _text(smtp.get("send_as_email"))
+        or _text(payload.get("domain"))
+        or _text(identity.get("domain"))
+        or _text(payload.get("service_agreement_id"))
+        or path.stem
+    )
     summary = (
-        _text(payload.get("schema"))
+        _text(workflow.get("lifecycle_state"))
+        or _text(workflow.get("handoff_status"))
+        or _text(payload.get("schema"))
         or _text(payload.get("environment"))
         or _text(payload.get("region"))
         or _text(identity.get("region"))
@@ -409,12 +421,20 @@ def _profile_cards_for_payload(path: Path, payload: Any) -> list[dict[str, Any]]
         "verification",
         "provider",
         "workflow",
+        "inbound",
     ):
         if key in payload:
             body[key] = payload.get(key)
     if not body:
         body = _json_summary(payload)
-    return [{"card_id": path.stem, "title": title, "summary": summary, "body": body}]
+    return [
+        {
+            "card_id": _text(identity.get("profile_id")) or path.stem,
+            "title": title,
+            "summary": summary,
+            "body": body,
+        }
+    ]
 
 
 def _fnd_ebi_profile_candidate(path: Path, payload: Any) -> bool:

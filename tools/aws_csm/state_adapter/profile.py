@@ -21,6 +21,94 @@ def _aws_csm_default_smtp_host(region: str) -> str:
     return f"email-smtp.{token}.amazonaws.com"
 
 
+def _mailbox_local_part(value: str) -> str:
+    token = _text(value)
+    if "@" not in token:
+        return token
+    return token.split("@", 1)[0].strip()
+
+
+def _profile_hint_parts(profile_hint: str) -> tuple[str, str]:
+    token = _text(profile_hint)
+    if token.startswith("aws-csm."):
+        token = token.removeprefix("aws-csm.")
+    if not token:
+        return "", ""
+    parts = [part for part in token.split(".") if part]
+    if not parts:
+        return "", ""
+    tenant_id = parts[0]
+    mailbox_local_part = ".".join(parts[1:]) if len(parts) > 1 else ""
+    return tenant_id, mailbox_local_part
+
+
+def _default_role(*, mailbox_local_part: str, tenant_id: str) -> str:
+    local_part = _text(mailbox_local_part).lower()
+    if local_part == "technicalcontact":
+        return "technical_contact"
+    if tenant_id == "fnd" and local_part == "dylan":
+        return "operator"
+    if local_part:
+        return "mailbox"
+    return ""
+
+
+def _default_secret_name(*, tenant_id: str, mailbox_local_part: str) -> str:
+    tenant = _text(tenant_id)
+    local_part = _text(mailbox_local_part)
+    if tenant and local_part:
+        return f"aws-cms/smtp/{tenant}.{local_part}"
+    if tenant:
+        return f"aws-cms/smtp/{tenant}"
+    return ""
+
+
+def _default_profile_id(*, tenant_id: str, mailbox_local_part: str) -> str:
+    tenant = _text(tenant_id)
+    local_part = _text(mailbox_local_part)
+    if tenant and local_part:
+        return f"aws-csm.{tenant}.{local_part}"
+    if tenant:
+        return f"aws-csm.{tenant}"
+    return ""
+
+
+def _credentials_secret_state(
+    *,
+    secret_name: str,
+    username: str,
+    explicit_state: str,
+) -> str:
+    token = _text(explicit_state)
+    if token:
+        return token
+    if secret_name and username:
+        return "configured"
+    return "missing"
+
+
+def _default_initiated(
+    *,
+    explicit: Any,
+    smtp_username: str,
+    credentials_secret_state: str,
+    aws_identity_status: str,
+    verification_status: str,
+    provider_status: str,
+) -> bool:
+    if explicit not in {None, ""}:
+        return _boolish(explicit)
+    return any(
+        [
+            bool(_text(smtp_username)),
+            _text(credentials_secret_state).lower() in {"configured", "auth_failed"},
+            _text(aws_identity_status).lower() not in {"", "not_started"},
+            _text(verification_status).lower() not in {"", "not_started"},
+            _text(provider_status).lower() not in {"", "not_started"},
+        ]
+    )
+
+
 def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -> tuple[dict[str, Any], list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -33,37 +121,49 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
     verification_raw = body.get("verification") if isinstance(body.get("verification"), dict) else {}
     provider_raw = body.get("provider") if isinstance(body.get("provider"), dict) else {}
     workflow_raw = body.get("workflow") if isinstance(body.get("workflow"), dict) else {}
+    inbound_raw = body.get("inbound") if isinstance(body.get("inbound"), dict) else {}
 
-    profile_token = _text(profile_hint)
-    tenant_id = _text(identity_raw.get("tenant_id") or body.get("tenant_id") or profile_token)
-    if not tenant_id and profile_token:
-        tenant_id = profile_token
+    hinted_tenant, hinted_mailbox = _profile_hint_parts(profile_hint)
+    tenant_id = _text(identity_raw.get("tenant_id") or body.get("tenant_id") or hinted_tenant)
     region = _text(identity_raw.get("region") or body.get("region")) or AWS_CSM_DEFAULT_REGION
-    forward_to_email = _text(smtp_raw.get("forward_to_email") or body.get("forward_to_email"))
-    single_user_email = _text(identity_raw.get("single_user_email") or body.get("single_user_email") or forward_to_email)
     send_as_email = _text(
         identity_raw.get("send_as_email") or smtp_raw.get("send_as_email") or body.get("alias_email")
     )
-    profile_id = _text(identity_raw.get("profile_id") or body.get("profile_id"))
-    if not profile_id and tenant_id:
-        profile_id = f"aws-csm.{tenant_id}"
+    mailbox_local_part = _text(
+        identity_raw.get("mailbox_local_part")
+        or smtp_raw.get("local_part")
+        or body.get("mailbox_local_part")
+        or _mailbox_local_part(send_as_email)
+        or hinted_mailbox
+    )
+    operator_inbox_target = _text(
+        identity_raw.get("operator_inbox_target")
+        or body.get("operator_inbox_target")
+        or identity_raw.get("single_user_email")
+        or body.get("single_user_email")
+        or smtp_raw.get("forward_to_email")
+        or body.get("forward_to_email")
+    )
+    profile_id = _text(identity_raw.get("profile_id") or body.get("profile_id")) or _default_profile_id(
+        tenant_id=tenant_id,
+        mailbox_local_part=mailbox_local_part,
+    )
+    role = _text(identity_raw.get("role") or body.get("role")) or _default_role(
+        mailbox_local_part=mailbox_local_part,
+        tenant_id=tenant_id,
+    )
     credentials_source = _text(
         smtp_raw.get("credentials_source") or body.get("smtp_credentials_source") or body.get("credentials_source")
     ) or "operator_managed"
     credentials_secret_name = _text(
         smtp_raw.get("credentials_secret_name") or body.get("smtp_credentials_secret_name")
-    )
+    ) or _default_secret_name(tenant_id=tenant_id, mailbox_local_part=mailbox_local_part)
     smtp_username = _text(smtp_raw.get("username") or body.get("smtp_username"))
-    credentials_secret_state = _text(
-        smtp_raw.get("credentials_secret_state") or body.get("smtp_credentials_secret_state")
+    credentials_secret_state = _credentials_secret_state(
+        secret_name=credentials_secret_name,
+        username=smtp_username,
+        explicit_state=_text(smtp_raw.get("credentials_secret_state") or body.get("smtp_credentials_secret_state")),
     )
-    if not credentials_secret_state:
-        if credentials_secret_name and smtp_username:
-            credentials_secret_state = "configured"
-        elif credentials_secret_name:
-            credentials_secret_state = "placeholder_present"
-        else:
-            credentials_secret_state = "missing"
     smtp_host = _text(smtp_raw.get("host") or body.get("smtp_host")) or _aws_csm_default_smtp_host(region)
     smtp_port = _text(smtp_raw.get("port") or body.get("smtp_port")) or "587"
     verification_status = _text(
@@ -78,11 +178,47 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
     verification_code = _text(verification_raw.get("code") or body.get("verification_code"))
     verification_link = _text(verification_raw.get("link") or body.get("verification_link"))
     verification_portal_state = _text(verification_raw.get("portal_state") or body.get("verification_portal_state"))
+    verification_email_received_at = _text(
+        verification_raw.get("email_received_at") or body.get("verification_email_received_at")
+    )
+    verification_verified_at = _text(verification_raw.get("verified_at") or body.get("verified_at"))
     verified_provider_statuses = {"verified", "success", "active", "ready", "configured"}
     confirmed_send_as_statuses = {"active", "configured", "verified", "ready"}
 
+    initiated = _default_initiated(
+        explicit=workflow_raw.get("initiated") if "initiated" in workflow_raw else body.get("initiated"),
+        smtp_username=smtp_username,
+        credentials_secret_state=credentials_secret_state,
+        aws_identity_status=aws_identity_status,
+        verification_status=verification_status,
+        provider_status=provider_status,
+    )
+    initiated_at = _text(workflow_raw.get("initiated_at") or body.get("initiated_at"))
+
+    receive_routing_target = _text(
+        inbound_raw.get("receive_routing_target")
+        or inbound_raw.get("operator_inbox_target")
+        or body.get("receive_routing_target")
+        or operator_inbox_target
+    )
+    legacy_forwarder_dependency = _boolish(
+        inbound_raw.get("legacy_forwarder_dependency")
+        or body.get("legacy_forwarder_dependency")
+    )
+    receive_verified = _boolish(inbound_raw.get("receive_verified") or body.get("receive_verified"))
+    receive_state = _text(inbound_raw.get("receive_state") or body.get("receive_state"))
+    if not receive_state:
+        if receive_verified:
+            receive_state = "inbound_verified"
+        elif initiated:
+            receive_state = "inbound_pending"
+        else:
+            receive_state = "staged"
+
     if not tenant_id:
         warnings.append("recommended field missing: identity.tenant_id")
+    if not mailbox_local_part:
+        warnings.append("recommended field missing: identity.mailbox_local_part")
     if not profile_id:
         warnings.append("recommended field missing: identity.profile_id")
 
@@ -91,8 +227,12 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
         "tenant_id": tenant_id,
         "domain": _text(identity_raw.get("domain") or body.get("domain")),
         "region": region,
+        "mailbox_local_part": mailbox_local_part,
+        "role": role,
+        "profile_kind": "mailbox",
         "single_user_msn_id": _text(identity_raw.get("single_user_msn_id") or body.get("single_user_msn_id")),
-        "single_user_email": single_user_email,
+        "single_user_email": operator_inbox_target,
+        "operator_inbox_target": operator_inbox_target,
         "send_as_email": send_as_email,
     }
     smtp = {
@@ -104,81 +244,126 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
         "credentials_secret_name": credentials_secret_name,
         "credentials_secret_state": credentials_secret_state,
         "send_as_email": _text(smtp_raw.get("send_as_email") or send_as_email),
-        "local_part": _text(smtp_raw.get("local_part") or body.get("local_part")),
-        "forward_to_email": forward_to_email,
+        "local_part": _text(smtp_raw.get("local_part") or body.get("local_part") or mailbox_local_part),
+        "forward_to_email": operator_inbox_target,
         "forwarding_status": _text(smtp_raw.get("forwarding_status") or body.get("forwarding_status")),
     }
     verification = {
         "status": verification_status,
         "code": verification_code,
         "link": verification_link,
-        "email_received_at": _text(
-            verification_raw.get("email_received_at") or body.get("verification_email_received_at")
-        ),
-        "verified_at": _text(verification_raw.get("verified_at") or body.get("verified_at")),
+        "email_received_at": verification_email_received_at,
+        "verified_at": verification_verified_at,
         "portal_state": verification_portal_state,
+        "latest_message_reference": verification_raw.get("latest_message_reference")
+        if "latest_message_reference" in verification_raw
+        else body.get("verification_latest_message_reference", ""),
     }
     provider = {
         "gmail_send_as_status": provider_status,
         "aws_ses_identity_status": aws_identity_status,
         "last_checked_at": _text(provider_raw.get("last_checked_at") or body.get("provider_last_checked_at")),
     }
+    inbound = {
+        "receive_routing_target": receive_routing_target,
+        "receive_state": receive_state,
+        "receive_verified": receive_verified,
+        "legacy_forwarder_dependency": legacy_forwarder_dependency,
+        "latest_message_sender": _text(inbound_raw.get("latest_message_sender") or body.get("latest_message_sender")),
+        "latest_message_subject": _text(inbound_raw.get("latest_message_subject") or body.get("latest_message_subject")),
+        "latest_message_captured_at": _text(
+            inbound_raw.get("latest_message_captured_at") or body.get("latest_message_captured_at")
+        ),
+        "latest_message_s3_key": _text(inbound_raw.get("latest_message_s3_key") or body.get("latest_message_s3_key")),
+        "latest_message_s3_uri": _text(inbound_raw.get("latest_message_s3_uri") or body.get("latest_message_s3_uri")),
+    }
 
     configuration_required = {
         "identity.domain": _text(identity.get("domain")),
-        "identity.single_user_email": _text(identity.get("single_user_email")),
+        "identity.operator_inbox_target": _text(identity.get("operator_inbox_target")),
+        "identity.mailbox_local_part": _text(identity.get("mailbox_local_part")),
         "smtp.send_as_email": _text(smtp.get("send_as_email")),
         "smtp.host": _text(smtp.get("host")),
         "smtp.port": _text(smtp.get("port")),
-        "smtp.username": _text(smtp.get("username")),
         "smtp.credentials_source": _text(smtp.get("credentials_source")),
     }
-    configuration_blockers = [key for key, value in configuration_required.items() if not value]
-    if aws_identity_status not in verified_provider_statuses:
-        configuration_blockers.append("provider.aws_ses_identity_status")
+    configuration_blockers: list[str] = []
+    if initiated:
+        configuration_blockers = [key for key, value in configuration_required.items() if not value]
+        if not _text(smtp.get("username")):
+            configuration_blockers.append("smtp.username")
+        if aws_identity_status not in verified_provider_statuses:
+            configuration_blockers.append("provider.aws_ses_identity_status")
     gmail_handoff_blockers: list[str] = []
-    if verification_status not in confirmed_send_as_statuses:
-        gmail_handoff_blockers.append("verification.status")
-    if provider_status not in confirmed_send_as_statuses:
-        gmail_handoff_blockers.append("provider.gmail_send_as_status")
+    if initiated:
+        if verification_status not in confirmed_send_as_statuses:
+            gmail_handoff_blockers.append("verification.status")
+        if provider_status not in confirmed_send_as_statuses:
+            gmail_handoff_blockers.append("provider.gmail_send_as_status")
     missing_required = list(configuration_blockers)
     for key in gmail_handoff_blockers:
         if key not in missing_required:
             missing_required.append(key)
     send_as_confirmed = provider_status in confirmed_send_as_statuses or verification_status == "verified"
-    ready_for_user_handoff = not configuration_blockers
+    ready_for_user_handoff = bool(initiated) and not configuration_blockers
     smtp["handoff_ready"] = ready_for_user_handoff
-    handoff_status = "staging_required"
-    if send_as_confirmed:
-        handoff_status = "send_as_confirmed"
-    elif ready_for_user_handoff:
-        handoff_status = "ready_for_gmail_handoff"
+
+    lifecycle_state = "uninitiated"
+    if initiated:
+        if send_as_confirmed and receive_verified:
+            lifecycle_state = "operational"
+        elif send_as_confirmed:
+            lifecycle_state = "send_as_verified"
+        elif ready_for_user_handoff:
+            lifecycle_state = "send_as_pending"
+        elif _text(smtp.get("username")) or _text(smtp.get("credentials_secret_state")) == "configured":
+            lifecycle_state = "smtp_configured"
+        else:
+            lifecycle_state = "staged"
+
+    handoff_status = "uninitiated"
+    if initiated:
+        if send_as_confirmed:
+            handoff_status = "send_as_confirmed"
+        elif ready_for_user_handoff:
+            handoff_status = "ready_for_gmail_handoff"
+        elif _text(smtp.get("username")) or _text(smtp.get("credentials_secret_state")) == "configured":
+            handoff_status = "smtp_configured"
+        else:
+            handoff_status = "staging_required"
+
     if not verification_portal_state:
         if send_as_confirmed:
             verification_portal_state = "verified"
-        elif verification_code or verification_link or verification_status in {"pending", "verification_pending"}:
-            verification_portal_state = "verification_pending"
+        elif verification_email_received_at or verification_link or verification_code or verification_status in {"pending", "verification_pending"}:
+            verification_portal_state = "verification_email_received"
         elif ready_for_user_handoff:
             verification_portal_state = "awaiting_gmail_handoff"
+        elif not initiated:
+            verification_portal_state = "staged"
         else:
             verification_portal_state = "awaiting_operator_setup"
     verification["portal_state"] = verification_portal_state
+
     workflow = {
         "schema": _text(workflow_raw.get("schema")) or "mycite.service_tool.aws_csm.onboarding.v1",
-        "flow": _text(workflow_raw.get("flow")) or "single_user_send_as",
+        "flow": _text(workflow_raw.get("flow")) or "mailbox_send_as",
+        "initiated": bool(initiated),
+        "initiated_at": initiated_at,
+        "lifecycle_state": lifecycle_state,
         "configuration_blockers_now": configuration_blockers,
         "gmail_handoff_blockers_now": gmail_handoff_blockers,
         "missing_required_now": missing_required,
         "handoff_status": handoff_status,
-        "completion_boundary": "completed" if send_as_confirmed else "gmail_inbox_dependent",
+        "completion_boundary": "completed" if send_as_confirmed else ("uninitiated" if not initiated else "gmail_inbox_dependent"),
         "is_ready_for_user_handoff": ready_for_user_handoff,
         "is_send_as_confirmed": send_as_confirmed,
     }
 
     if not _text(identity.get("domain")):
         errors.append("missing required field: identity.domain")
-    if not _text(smtp.get("send_as_email")):
-        errors.append("missing required field: smtp.send_as_email")
+    if not _text(identity.get("send_as_email")):
+        errors.append("missing required field: identity.send_as_email")
 
     return (
         {
@@ -188,8 +373,8 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
             "verification": verification,
             "provider": provider,
             "workflow": workflow,
+            "inbound": inbound,
         },
         errors,
         warnings,
     )
-

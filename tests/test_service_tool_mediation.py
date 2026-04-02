@@ -269,22 +269,26 @@ class ServiceToolMediationTests(unittest.TestCase):
             provider = card_body.get("provider") if isinstance(card_body.get("provider"), dict) else {}
             workflow = card_body.get("workflow") if isinstance(card_body.get("workflow"), dict) else {}
             self.assertEqual(identity.get("tenant_id"), "fnd")
+            self.assertEqual(identity.get("profile_id"), "aws-csm.fnd.dylan")
+            self.assertEqual(identity.get("mailbox_local_part"), "dylan")
+            self.assertEqual(identity.get("profile_kind"), "mailbox")
             self.assertEqual(identity.get("single_user_email"), "dylancarsonmontgomery@gmail.com")
+            self.assertEqual(identity.get("operator_inbox_target"), "dylancarsonmontgomery@gmail.com")
             self.assertEqual(smtp.get("host"), "email-smtp.us-east-1.amazonaws.com")
             self.assertEqual(smtp.get("port"), "587")
             self.assertEqual(smtp.get("credentials_source"), "operator_managed")
-            self.assertEqual(smtp.get("credentials_secret_name"), "")
+            self.assertEqual(smtp.get("credentials_secret_name"), "aws-cms/smtp/fnd.dylan")
             self.assertEqual(smtp.get("credentials_secret_state"), "missing")
-            self.assertEqual(verification.get("portal_state"), "awaiting_operator_setup")
+            self.assertEqual(verification.get("portal_state"), "staged")
             self.assertEqual(provider.get("aws_ses_identity_status"), "not_started")
             self.assertEqual(workflow.get("schema"), "mycite.service_tool.aws_csm.onboarding.v1")
-            self.assertEqual(workflow.get("flow"), "single_user_send_as")
-            self.assertIn("smtp.username", list(workflow.get("missing_required_now") or []))
-            self.assertIn("provider.aws_ses_identity_status", list(workflow.get("configuration_blockers_now") or []))
-            self.assertIn("verification.status", list(workflow.get("gmail_handoff_blockers_now") or []))
-            self.assertIn("provider.gmail_send_as_status", list(workflow.get("gmail_handoff_blockers_now") or []))
-            self.assertEqual(workflow.get("handoff_status"), "staging_required")
-            self.assertEqual(workflow.get("completion_boundary"), "gmail_inbox_dependent")
+            self.assertEqual(workflow.get("flow"), "mailbox_send_as")
+            self.assertEqual(workflow.get("lifecycle_state"), "uninitiated")
+            self.assertEqual(list(workflow.get("missing_required_now") or []), [])
+            self.assertEqual(list(workflow.get("configuration_blockers_now") or []), [])
+            self.assertEqual(list(workflow.get("gmail_handoff_blockers_now") or []), [])
+            self.assertEqual(workflow.get("handoff_status"), "uninitiated")
+            self.assertEqual(workflow.get("completion_boundary"), "uninitiated")
             self.assertFalse(bool(workflow.get("is_ready_for_user_handoff")))
 
     def test_aws_profile_boundary_can_be_ready_for_gmail_handoff_without_send_as_confirmation(self):
@@ -293,15 +297,17 @@ class ServiceToolMediationTests(unittest.TestCase):
             private_dir = Path(temp_dir) / "private"
             root = private_dir / "utilities" / "tools" / "aws-csm"
             root.mkdir(parents=True, exist_ok=True)
-            (root / "aws-csm.fnd.json").write_text(
+            (root / "aws-csm.fnd.dylan.json").write_text(
                 json.dumps(
                     {
                         "schema": "mycite.service_tool.aws_csm.profile.v1",
                         "identity": {
-                            "profile_id": "aws-csm.fnd",
+                            "profile_id": "aws-csm.fnd.dylan",
                             "tenant_id": "fnd",
                             "domain": "fruitfulnetworkdevelopment.com",
                             "region": "us-east-1",
+                            "mailbox_local_part": "dylan",
+                            "operator_inbox_target": "dylancarsonmontgomery@gmail.com",
                             "single_user_email": "dylancarsonmontgomery@gmail.com",
                             "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
                         },
@@ -343,6 +349,8 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertEqual(smtp.get("credentials_secret_name"), "aws-cms/smtp/fnd")
             self.assertEqual(smtp.get("credentials_secret_state"), "configured")
             self.assertTrue(bool(smtp.get("handoff_ready")))
+            self.assertEqual(workflow.get("flow"), "mailbox_send_as")
+            self.assertEqual(workflow.get("lifecycle_state"), "send_as_pending")
             self.assertEqual(verification.get("portal_state"), "awaiting_gmail_handoff")
             self.assertEqual(list(workflow.get("configuration_blockers_now") or []), [])
             self.assertEqual(
@@ -360,15 +368,16 @@ class ServiceToolMediationTests(unittest.TestCase):
             private_dir = Path(temp_dir) / "private"
             root = private_dir / "utilities" / "tools" / "aws-csm"
             root.mkdir(parents=True, exist_ok=True)
-            (root / "aws-csm.fnd.json").write_text(
+            (root / "aws-csm.fnd.dylan.json").write_text(
                 json.dumps(
                     {
                         "schema": "mycite.service_tool.aws_csm.profile.v1",
                         "identity": {
-                            "profile_id": "aws-csm.fnd",
+                            "profile_id": "aws-csm.fnd.dylan",
                             "tenant_id": "fnd",
                             "domain": "fruitfulnetworkdevelopment.com",
                             "region": "us-east-1",
+                            "mailbox_local_part": "dylan",
                             "single_user_email": "dylan@fruitfulnetworkdevelopment.com",
                         },
                         "smtp": {
@@ -408,15 +417,17 @@ class ServiceToolMediationTests(unittest.TestCase):
             private_dir = Path(temp_dir) / "private"
             root = private_dir / "utilities" / "tools" / "aws-csm"
             root.mkdir(parents=True, exist_ok=True)
-            (root / "aws-csm.fnd.json").write_text(
+            (root / "aws-csm.fnd.dylan.json").write_text(
                 json.dumps(
                     {
                         "schema": "mycite.service_tool.aws_csm.profile.v1",
                         "identity": {
-                            "profile_id": "aws-csm.fnd",
+                            "profile_id": "aws-csm.fnd.dylan",
                             "tenant_id": "fnd",
                             "domain": "fruitfulnetworkdevelopment.com",
                             "region": "us-east-1",
+                            "mailbox_local_part": "dylan",
+                            "operator_inbox_target": "dylancarsonmontgomery@gmail.com",
                             "single_user_email": "dylancarsonmontgomery@gmail.com",
                             "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
                         },
@@ -439,6 +450,12 @@ class ServiceToolMediationTests(unittest.TestCase):
                             "aws_ses_identity_status": "verified",
                             "gmail_send_as_status": "verified",
                         },
+                        "inbound": {
+                            "receive_routing_target": "dylancarsonmontgomery@gmail.com",
+                            "receive_state": "inbound_verified",
+                            "receive_verified": True,
+                            "legacy_forwarder_dependency": True,
+                        },
                     }
                 )
                 + "\n",
@@ -458,9 +475,95 @@ class ServiceToolMediationTests(unittest.TestCase):
             workflow = card_body.get("workflow") if isinstance(card_body.get("workflow"), dict) else {}
             self.assertEqual(verification.get("portal_state"), "verified")
             self.assertEqual(list(workflow.get("gmail_handoff_blockers_now") or []), [])
+            self.assertEqual(workflow.get("lifecycle_state"), "operational")
             self.assertEqual(workflow.get("handoff_status"), "send_as_confirmed")
             self.assertEqual(workflow.get("completion_boundary"), "completed")
             self.assertTrue(bool(workflow.get("is_send_as_confirmed")))
+
+    def test_aws_mailbox_profiles_are_listed_as_separate_units(self):
+        module = _load_service_tools_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.tff.technicalContact.json").write_text(
+                json.dumps(
+                    {
+                        "identity": {
+                            "profile_id": "aws-csm.tff.technicalContact",
+                            "tenant_id": "tff",
+                            "domain": "trappfamilyfarm.com",
+                            "region": "us-east-1",
+                            "mailbox_local_part": "technicalContact",
+                            "role": "technical_contact",
+                            "operator_inbox_target": "trapp.family.farm@gmail.com",
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "smtp": {
+                            "credentials_secret_name": "aws-cms/smtp/tff.technicalContact",
+                            "credentials_secret_state": "missing",
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "provider": {
+                            "aws_ses_identity_status": "verified",
+                            "gmail_send_as_status": "not_started",
+                        },
+                        "workflow": {
+                            "initiated": True,
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (root / "aws-csm.tff.mark.json").write_text(
+                json.dumps(
+                    {
+                        "identity": {
+                            "profile_id": "aws-csm.tff.mark",
+                            "tenant_id": "tff",
+                            "domain": "trappfamilyfarm.com",
+                            "region": "us-east-1",
+                            "mailbox_local_part": "mark",
+                            "role": "operator",
+                            "operator_inbox_target": "trapp.family.farm@gmail.com",
+                            "send_as_email": "mark@trappfamilyfarm.com",
+                        },
+                        "smtp": {
+                            "credentials_secret_name": "aws-cms/smtp/tff.mark",
+                            "credentials_secret_state": "missing",
+                            "send_as_email": "mark@trappfamilyfarm.com",
+                        },
+                        "provider": {
+                            "aws_ses_identity_status": "verified",
+                            "gmail_send_as_status": "not_started",
+                        },
+                        "workflow": {
+                            "initiated": False,
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            payload = module.build_service_tool_config_context(
+                "aws_platform_admin",
+                private_dir=private_dir,
+                tool_tabs=[{"tool_id": "aws_platform_admin", **module.build_service_tool_meta("aws_platform_admin")}],
+                portal_instance_id="fnd",
+                msn_id="3-2-3",
+            )
+            cards = payload.get("profile_cards") if isinstance(payload.get("profile_cards"), list) else []
+            self.assertEqual(len(cards), 2)
+            titles = [str(card.get("title") or "") for card in cards if isinstance(card, dict)]
+            self.assertIn("technicalContact@trappfamilyfarm.com", titles)
+            self.assertIn("mark@trappfamilyfarm.com", titles)
+            by_id = {str(card.get("card_id") or ""): card for card in cards if isinstance(card, dict)}
+            technical = ((by_id.get("aws-csm.tff.technicalContact") or {}).get("body") or {})
+            mark = ((by_id.get("aws-csm.tff.mark") or {}).get("body") or {})
+            self.assertEqual((((technical.get("workflow") or {}).get("lifecycle_state"))), "staged")
+            self.assertEqual((((mark.get("workflow") or {}).get("lifecycle_state"))), "uninitiated")
+            self.assertEqual((((mark.get("workflow") or {}).get("handoff_status"))), "uninitiated")
 
     def test_aws_platform_admin_service_meta_narrows_to_operator_send_as_scope(self):
         module = _load_service_tools_module()
@@ -474,6 +577,7 @@ class ServiceToolMediationTests(unittest.TestCase):
         collection_datum = ((meta.get("service_contract") or {}).get("collection_datum")) or {}
         config_datum = ((meta.get("service_contract") or {}).get("config_datum")) or {}
         self.assertEqual(collection_datum.get("patterns"), ["tool.*.aws-csm.json"])
+        self.assertTrue(any(str(item).startswith("aws-csm.") and str(item).endswith(".*.json") for item in (config_datum.get("patterns") or [])))
         self.assertIn("aws-csm.*.json", config_datum.get("patterns") or [])
         self.assertNotIn("aws-csm.collection.json", collection_datum.get("patterns") or [])
         self.assertIn("*audit*.json", ((meta.get("service_contract") or {}).get("member_datum") or {}).get("patterns") or [])

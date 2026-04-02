@@ -4,7 +4,7 @@
   var api = runtime.api;
   var appendLog = runtime.appendLog || (async function () {});
   var state = {
-    selectedProfile: "fnd",
+    selectedProfile: "aws-csm.fnd.dylan",
     latestVerification: null,
     latestStatus: null,
     latestProfile: null,
@@ -53,11 +53,11 @@
   function selectedProfile() {
     var node = qs("#awsp-profile-select");
     var token = node ? String(node.value || "").trim() : "";
-    return token || state.selectedProfile || "fnd";
+    return token || state.selectedProfile || "aws-csm.fnd.dylan";
   }
 
   function setSelectedProfile(value) {
-    var token = String(value || "").trim() || "fnd";
+    var token = String(value || "").trim() || "aws-csm.fnd.dylan";
     state.selectedProfile = token;
     var node = qs("#awsp-profile-select");
     if (node && node.value !== token) node.value = token;
@@ -67,17 +67,22 @@
     var node = qs("#awsp-profile-select");
     if (!node) return;
     var items = Array.isArray(profiles) ? profiles : [];
-    var selected = state.selectedProfile || "fnd";
+    var selected = state.selectedProfile || "aws-csm.fnd.dylan";
     node.innerHTML = items.map(function (item) {
-      var token = String(item.tenant_id || item.profile_id || "").trim();
-      var label = String(item.send_as_email || token || "").trim();
+      var token = String(item.profile_id || item.tenant_id || "").trim();
+      var label = [
+        String(item.domain || "").trim(),
+        String(item.send_as_email || token || "").trim(),
+        String(item.role || "").trim(),
+        String(item.lifecycle_state || "").trim()
+      ].filter(Boolean).join(" | ");
       var picked = token === selected ? ' selected="selected"' : "";
       return '<option value="' + token + '"' + picked + ">" + token + " · " + label + "</option>";
     }).join("");
     if (!node.options.length) {
-      node.innerHTML = '<option value="fnd">fnd</option>';
-      node.value = "fnd";
-      selected = "fnd";
+      node.innerHTML = '<option value="aws-csm.fnd.dylan">aws-csm.fnd.dylan</option>';
+      node.value = "aws-csm.fnd.dylan";
+      selected = "aws-csm.fnd.dylan";
     }
     setSelectedProfile(node.value || selected);
   }
@@ -95,10 +100,12 @@
         handoff_ready: !!workflow.is_ready_for_user_handoff,
         gmail_complete: !!workflow.is_send_as_confirmed,
       },
+      identity: profile.identity || {},
       smtp: profile.smtp || {},
       verification: profile.verification || {},
       provider: provider,
       workflow: workflow,
+      inbound: profile.inbound || {},
     };
   }
 
@@ -128,6 +135,25 @@
     return payload;
   }
 
+  function showSmtpSetup() {
+    var profile = state.latestProfile && typeof state.latestProfile.profile === "object" ? state.latestProfile.profile : {};
+    var smtp = profile.smtp || {};
+    var identity = profile.identity || {};
+    out({
+      action: "show_smtp_setup",
+      profile_id: state.latestProfile && state.latestProfile.profile_id || selectedProfile(),
+      domain: identity.domain || "",
+      role: identity.role || "",
+      send_as_email: smtp.send_as_email || identity.send_as_email || "",
+      operator_inbox_target: identity.operator_inbox_target || identity.single_user_email || "",
+      host: smtp.host || "",
+      port: smtp.port || "",
+      username: smtp.username || "",
+      credentials_secret_name: smtp.credentials_secret_name || "",
+      credentials_secret_state: smtp.credentials_secret_state || "",
+    });
+  }
+
   async function loadContext() {
     try {
       var payload = await api("GET", "/portal/api/data/system/config_context/aws_platform_admin");
@@ -149,6 +175,7 @@
       populateProfiles(profiles);
       summary({
         canonical_root: payload.canonical_root || "",
+        domain_groups: payload.domain_groups || {},
         tenant_profiles_count: payload.tenant_profiles_count || profiles.length,
         ready_for_handoff_count: payload.ready_for_handoff_count || 0,
         send_as_confirmed_count: payload.send_as_confirmed_count || 0,
@@ -168,6 +195,39 @@
     var payload = await runProvision("refresh_provider_status");
     await status();
     await loadProfile();
+    return payload;
+  }
+
+  async function beginOnboarding() {
+    var payload = await runProvision("begin_onboarding");
+    if (payload && payload.profile) {
+      state.latestProfile = payload;
+      profileView(compactProfile(payload));
+    } else {
+      await loadProfile();
+    }
+    await status();
+    return payload;
+  }
+
+  async function refreshInboundStatus() {
+    var payload = await runProvision("refresh_inbound_status");
+    state.latestVerification = payload;
+    if (payload && payload.profile) {
+      state.latestProfile = payload;
+      profileView(compactProfile(payload));
+    } else {
+      await loadProfile();
+    }
+    if (payload && payload.verification_message && payload.verification_message.confirmation_link) {
+      linkView(payload.verification_message.confirmation_link);
+    }
+    verificationView({
+      inbound_status: payload.status || "",
+      legacy_inbound: payload.legacy_inbound || {},
+      verification_message: payload.verification_message || {},
+    });
+    await status();
     return payload;
   }
 
@@ -257,6 +317,12 @@
   if (btn) btn.addEventListener("click", function () { refreshStatus().catch(function () {}); });
   var contextBtn = qs("#awsp-context");
   if (contextBtn) contextBtn.addEventListener("click", loadContext);
+  var beginBtn = qs("#awsp-begin");
+  if (beginBtn) beginBtn.addEventListener("click", function () { beginOnboarding().catch(function () {}); });
+  var smtpBtn = qs("#awsp-smtp");
+  if (smtpBtn) smtpBtn.addEventListener("click", function () { showSmtpSetup(); });
+  var inboundBtn = qs("#awsp-inbound");
+  if (inboundBtn) inboundBtn.addEventListener("click", function () { refreshInboundStatus().catch(function () {}); });
   var profileSelect = qs("#awsp-profile-select");
   if (profileSelect) {
     profileSelect.addEventListener("change", function () {
