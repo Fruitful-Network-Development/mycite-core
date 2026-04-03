@@ -1,12 +1,12 @@
 """
 Local audit log for tool and data-engine actions.
 
-This log is distinct from the request_log. Use it for:
+This log is distinct from the canonical external event stream. Use it for:
   - Local tool CRUD (e.g. AGRO-ERP product-type create/update/delete)
   - Data-engine audit events that are not cross-portal
 
-Do NOT use request_log for these; request_log is reserved for external
-resource access and negotiation (see AGRO_ERP_INTENTION.md).
+Do NOT use the external event stream for these; that stream is reserved for
+externally meaningful portal/network activity (see AGRO_ERP_INTENTION.md).
 """
 
 from __future__ import annotations

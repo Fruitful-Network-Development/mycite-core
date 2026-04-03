@@ -6,7 +6,7 @@ from pathlib import Path
 
 def _repo_root() -> Path:
     for parent in Path(__file__).resolve().parents:
-        if (parent / "portals").exists() and (parent / "portal_core").exists():
+        if (parent / "instances").exists() and (parent / "portal_core").exists():
             return parent
     raise RuntimeError("Unable to resolve mycite-core repo root")
 

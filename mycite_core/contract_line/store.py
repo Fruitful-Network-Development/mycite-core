@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from ..runtime_paths import contract_read_dirs, contracts_dir
+from mycite_core.runtime_paths import contract_read_dirs, contracts_dir
 
 
 CONTRACT_SCHEMA_V1 = "mycite.portal.contract.v1"
@@ -382,7 +382,7 @@ def normalize_contract_payload(
     if not for_write:
         legacy_tracked_resource_ids = _normalize_tracked_resource_ids(base)
         if legacy_tracked_resource_ids:
-            out["tracked_resource_ids"] = legacy_tracked_resource_ids
+            # Compatibility-only legacy read path for pre-registry contracts.
             out["details"]["tracked_resource_ids"] = list(legacy_tracked_resource_ids)
     # Optional compact-array index / update-protocol fields (CONTRACT_COMPACT_INDEX, CONTRACT_UPDATE_PROTOCOL)
     for key in ("relationship_mode", "access_mode", "sync_mode", "source_card_revision"):

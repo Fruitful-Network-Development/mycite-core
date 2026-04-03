@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, Optional
 
 from flask import abort, jsonify, make_response, request
 
-from portal.services.external_event_log import append_external_event, read_external_events
+from mycite_core.external_events.store import append_external_event, read_external_events
 
 
 def _as_int(value: Optional[str], default: int, *, min_value: int = 0, max_value: int = 10_000) -> int:

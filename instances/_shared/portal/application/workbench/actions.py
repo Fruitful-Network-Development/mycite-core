@@ -30,11 +30,11 @@ class WorkbenchActionService:
     def compile_sandbox_resource(self, *, resource_id: str) -> dict[str, Any]:
         return self.local_resource_service.compile(resource_id=resource_id)
 
-    def refresh_inherited_resource(self, *, contract_id: str, resource_id: str, force_refresh: bool = True) -> dict[str, Any]:
+    def refresh_inherited_reference(self, *, contract_id: str, reference_id: str, force_refresh: bool = True) -> dict[str, Any]:
         service = self._require_inherited_service()
-        payload = service.refresh_resource(
+        payload = service.refresh_reference(
             contract_id=contract_id,
-            resource_id=resource_id,
+            reference_id=reference_id,
             force_refresh=force_refresh,
         )
         payload["schema"] = "mycite.portal.references.refresh.v2"

@@ -21,8 +21,8 @@
       <div class="card__kicker">Request Log</div>
       <div class="card__title">Peripheral Activity</div>
       <div class="card__body">
-        <p><code>files</code>: {{ request_log_summary.file_count if request_log_summary is defined and request_log_summary.file_count is defined else 0 }}</p>
-        <p><code>events</code>: {{ request_log_summary.event_count if request_log_summary is defined and request_log_summary.event_count is defined else 0 }}</p>
+        <p><code>files</code>: {{ external_event_summary.file_count if external_event_summary is defined and external_event_summary.file_count is defined else 0 }}</p>
+        <p><code>events</code>: {{ external_event_summary.event_count if external_event_summary is defined and external_event_summary.event_count is defined else 0 }}</p>
       </div>
     </article>
 

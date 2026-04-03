@@ -232,7 +232,7 @@
                 <li><strong>aliases</strong><span>{{ message_aliases|length }}</span></li>
                 <li><strong>external events</strong><span>{{ message_logs|length }}</span></li>
                 <li><strong>direct messages</strong><span>{{ message_p2p|length }}</span></li>
-                <li><strong>events</strong><span>{{ external_event_summary.event_count if external_event_summary is defined else (request_log_summary.event_count if request_log_summary is defined else 0) }}</span></li>
+                <li><strong>events</strong><span>{{ external_event_summary.event_count if external_event_summary is defined else 0 }}</span></li>
               </ul>
               <p class="network-presenceHint">The left sidebar stays fixed so you can move between organization interfaces and direct-message style channels without leaving the NETWORK workbench.</p>
             </section>

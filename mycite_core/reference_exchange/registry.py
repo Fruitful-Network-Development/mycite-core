@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ..runtime_paths import reference_subscription_registry_path
+from mycite_core.runtime_paths import reference_subscription_registry_path
 
 REGISTRY_SCHEMA = "mycite.portal.reference_exchange.subscriptions.v1"
 

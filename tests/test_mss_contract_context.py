@@ -11,11 +11,11 @@ REMOTE_MSN_ID = "3-2-3-17-77-2-6-3-1-6"
 
 
 def _load_shared_mss():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
-    token = str(portals_root)
+    repo_root = Path(__file__).resolve().parents[1]
+    token = str(repo_root)
     if token not in sys.path:
         sys.path.insert(0, token)
-    return importlib.import_module("_shared.portal.mss")
+    return importlib.import_module("mycite_core.mss_resolution")
 
 
 def _example_payload() -> dict[str, object]:

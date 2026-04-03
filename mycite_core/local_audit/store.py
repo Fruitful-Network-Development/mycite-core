@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
-from portal.services.runtime_paths import local_audit_path
+from mycite_core.runtime_paths import local_audit_path
 
 FORBIDDEN_SECRET_KEYS = {
     "private_key",

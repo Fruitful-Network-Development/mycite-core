@@ -15,17 +15,16 @@ except ModuleNotFoundError:  # pragma: no cover
     HAS_FLASK = False
     Flask = None  # type: ignore[assignment]
 
-portals_root = Path(__file__).resolve().parents[1] / "portals"
-token = str(portals_root)
+repo_root = Path(__file__).resolve().parents[1]
+token = str(repo_root)
 if token not in sys.path:
     sys.path.insert(0, token)
 
-from _shared.portal.data_engine.property_workspace import primary_property_entry
+from instances._shared.portal.data_engine.property_workspace import primary_property_entry
 
 def _load_register_data_routes():
-    path = Path(__file__).resolve().parents[1] / "portals" / "_shared" / "portal" / "api" / "data_workspace.py"
-    portals_root = path.parents[4]
-    token = str(portals_root)
+    path = Path(__file__).resolve().parents[1] / "instances" / "_shared" / "portal" / "api" / "data_workspace.py"
+    token = str(path.parents[4])
     if token not in sys.path:
         sys.path.insert(0, token)
     spec = importlib.util.spec_from_file_location("data_workspace_test_module", path)
@@ -467,14 +466,14 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertIn("local:unit.publish", ids)
 
     def test_inherited_disconnect_cleans_index_files_and_contract_sync(self):
-        from _shared.portal.services.contract_store import create_contract, get_contract
-        from _shared.portal.data_engine.reference_exchange_registry import list_reference_subscriptions
-        from _shared.portal.data_engine.resource_registry import (
+        from instances._shared.portal.data_engine.resource_registry import (
             INHERITED_SCOPE,
             resource_file_path,
             upsert_index_entry,
             write_resource_file,
         )
+        from mycite_core.contract_line.store import create_contract, get_contract
+        from mycite_core.reference_exchange.registry import list_reference_subscriptions
 
         source_msn_id = "7-7-7"
         contract_id = create_contract(
@@ -485,7 +484,7 @@ class DataWritePipelineRouteTests(unittest.TestCase):
                 "owner_msn_id": "9-9-9",
                 "counterparty_msn_id": source_msn_id,
                 "status": "active",
-                "tracked_resource_ids": ["samras.txa"],
+                "tracked_reference_ids": ["samras.txa"],
                 "inherited_resource_sync": {
                     "resources": [
                         {
@@ -565,8 +564,8 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertTrue(all(str(item.get("status") or "") == "disconnected" for item in resources))
 
     def test_inherited_subscription_register_and_unregister(self):
-        from _shared.portal.services.contract_store import create_contract, get_contract
-        from _shared.portal.data_engine.reference_exchange_registry import get_reference_subscription
+        from mycite_core.contract_line.store import create_contract, get_contract
+        from mycite_core.reference_exchange.registry import get_reference_subscription
 
         contract_id = create_contract(
             self.private_dir,
@@ -582,11 +581,11 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         )
         register = self.client.post(
             "/portal/api/data/resources/inherited/subscriptions/register",
-            json={"contract_id": contract_id, "resource_ids": ["samras.txa", "samras.msn"]},
+            json={"contract_id": contract_id, "reference_ids": ["samras.txa", "samras.msn"]},
         )
         self.assertEqual(register.status_code, 200)
         reg_payload = register.get_json() or {}
-        self.assertEqual(set(reg_payload.get("tracked_resource_ids") or []), {"samras.txa", "samras.msn"})
+        self.assertEqual(set(reg_payload.get("tracked_reference_ids") or []), {"samras.txa", "samras.msn"})
 
         contract_after = get_contract(self.private_dir, contract_id)
         self.assertEqual(contract_after.get("tracked_resource_ids") or [], [])
@@ -595,11 +594,11 @@ class DataWritePipelineRouteTests(unittest.TestCase):
 
         unregister = self.client.post(
             "/portal/api/data/resources/inherited/subscriptions/unregister",
-            json={"contract_id": contract_id, "resource_ids": ["samras.msn"]},
+            json={"contract_id": contract_id, "reference_ids": ["samras.msn"]},
         )
         self.assertEqual(unregister.status_code, 200)
         unreg_payload = unregister.get_json() or {}
-        self.assertEqual(unreg_payload.get("tracked_resource_ids"), ["samras.txa"])
+        self.assertEqual(unreg_payload.get("tracked_reference_ids"), ["samras.txa"])
         subscription = get_reference_subscription(self.private_dir, contract_id=contract_id, source_msn_id="7-7-7")
         self.assertEqual(subscription.get("tracked_reference_ids"), ["samras.txa"])
 
@@ -751,11 +750,11 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertIn("structure-aware SAMRAS actions", str(payload.get("error") or ""))
 
     def test_system_mutate_txa_samras_actions_stage_and_publish(self):
-        portals_root = Path(__file__).resolve().parents[1] / "portals"
-        token = str(portals_root)
+        repo_root = Path(__file__).resolve().parents[1]
+        token = str(repo_root)
         if token not in sys.path:
             sys.path.insert(0, token)
-        from _shared.portal.samras import encode_canonical_structure_from_addresses
+        from instances._shared.portal.samras import encode_canonical_structure_from_addresses
 
         data_dir = Path(self._tmpdir.name)
         (data_dir / "anthology.json").write_text('{"rows":{}}\n', encoding="utf-8")

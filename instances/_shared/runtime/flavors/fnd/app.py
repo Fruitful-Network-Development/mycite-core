@@ -1,34 +1,70 @@
 import json
 import os
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import quote, urlencode
+
+REPO_ROOT_IMPORT = Path(__file__).resolve().parents[5]
+FLAVOR_ROOT_IMPORT = Path(__file__).resolve().parent
+if str(REPO_ROOT_IMPORT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT_IMPORT))
+if str(FLAVOR_ROOT_IMPORT) not in sys.path:
+    sys.path.insert(0, str(FLAVOR_ROOT_IMPORT))
 
 from flask import Flask, abort, jsonify, make_response, redirect, render_template, request, send_from_directory
 from jinja2 import TemplateNotFound
 
 from data.engine.workspace import Workspace
 from data.storage_json import JsonStorageBackend
-from portal.api.aliases import get_alias_record, list_alias_records, register_aliases_routes
-from portal.api.admin_integrations import register_admin_integration_routes
-from portal.api.config import register_config_routes
-from portal.api.contract_handshake import register_contract_handshake_routes
-from portal.api.contracts import register_contract_routes
-from _shared.portal.api.data_workspace import register_data_routes as register_data_workspace_routes
-from portal.api.inbox import register_inbox_routes
-from portal.api.paypal_checkout import register_paypal_checkout_routes
-from portal.api.progeny_config import register_progeny_config_routes
-from portal.api.progeny_workbench import register_progeny_workbench_routes
-from portal.api.request_log import register_external_event_routes
-from portal.api.tenant_progeny import register_tenant_progeny_routes
-from portal.api.website_analytics import register_website_analytics_routes
-from _shared.portal.application.runtime.instance_context import build_instance_context_from_env
-from _shared.portal.application.internal_sources import derive_client_analytics_paths
-from _shared.portal.application.service_tools import service_tool_definition
-from _shared.portal.application.shell.contracts import build_shell_verbs_payload
-from portal.core_services.runtime import (
+from instances._shared.portal.api.contract_handshake import register_contract_handshake_routes
+from instances._shared.portal.api.contracts import register_contract_routes
+from instances._shared.portal.api.data_workspace import register_data_routes as register_data_workspace_routes
+from instances._shared.portal.api.external_events import register_external_event_routes
+from instances._shared.portal.application.internal_sources import derive_client_analytics_paths
+from instances._shared.portal.application.runtime.instance_context import build_instance_context_from_env
+from instances._shared.portal.application.service_tools import service_tool_definition
+from instances._shared.portal.application.shell.contracts import build_shell_verbs_payload
+from instances._shared.portal.core_services.runtime_config import build_runtime_config
+from instances._shared.portal.data_engine.external_resources import ExternalResourceResolver
+from instances._shared.portal.sandbox.resource_workbench import build_system_resource_workbench_view_model
+from instances._shared.portal.services.alias_utils import (
+    alias_contact_collection_ref as shared_alias_contact_collection_ref,
+    alias_label as shared_alias_label,
+    canonical_progeny_type as shared_canonical_progeny_type,
+    extract_contract_id as shared_extract_contract_id,
+    extract_member_msn_id as shared_extract_member_msn_id,
+    extract_tenant_msn_id as shared_extract_tenant_msn_id,
+    format_sidebar_entity_title as shared_format_sidebar_entity_title,
+    list_aliases_for_sidebar as shared_list_aliases_for_sidebar,
+)
+from instances._shared.portal.services.app_io import load_object_json_if_exists, read_object_json, write_object_json
+from instances._shared.portal.services.control_panel import build_control_panel_sections
+from instances._shared.portal.services.embed_urls import build_widget_url as shared_build_widget_url
+from instances._shared.portal.services.network_contract import (
+    build_network_contract_items as shared_build_network_contract_items,
+    resolve_network_refs as shared_resolve_network_refs,
+)
+from instances._shared.portal.services.portal_model import canonicalize_portal_model_config
+from instances._shared.portal.services.runtime_mode import build_session_presentation, env_flag, install_read_only_guard
+from instances._shared.portal.services.shell_context import build_shell_context
+from instances._shared.portal.shell import canonical_shell_static_dir
+from instances._shared.runtime.flavors.fnd.portal.api.admin_integrations import register_admin_integration_routes
+from instances._shared.runtime.flavors.fnd.portal.api.aliases import (
+    get_alias_record,
+    list_alias_records,
+    register_aliases_routes,
+)
+from instances._shared.runtime.flavors.fnd.portal.api.config import register_config_routes
+from instances._shared.runtime.flavors.fnd.portal.api.inbox import register_inbox_routes
+from instances._shared.runtime.flavors.fnd.portal.api.paypal_checkout import register_paypal_checkout_routes
+from instances._shared.runtime.flavors.fnd.portal.api.progeny_config import register_progeny_config_routes
+from instances._shared.runtime.flavors.fnd.portal.api.progeny_workbench import register_progeny_workbench_routes
+from instances._shared.runtime.flavors.fnd.portal.api.tenant_progeny import register_tenant_progeny_routes
+from instances._shared.runtime.flavors.fnd.portal.api.website_analytics import register_website_analytics_routes
+from instances._shared.runtime.flavors.fnd.portal.core_services.runtime import (
     active_service_from_path,
     build_network_cards,
     build_network_tabs,
@@ -40,16 +76,50 @@ from portal.core_services.runtime import (
     active_private_config_filename,
     resolve_active_private_config_path,
 )
-from _shared.portal.core_services.runtime_config import build_runtime_config
-from portal.services.alias_factory import alias_path, client_key_for_msn, merge_field_names
-from portal.services.hosted_store import DEFAULT_TABS as HOSTED_DEFAULT_TABS, read_hosted_payload
-from portal.services.contract_store import get_contract, list_contracts
-from portal.services.mss import preview_mss_context, resolve_contract_datum_ref
-from portal.services.progeny_embed import build_embed_progeny_landing
-from portal.services.progeny_config_store import get_client_config, get_config
-from portal.services.progeny_workspace import find_profile_by_associated_msn, list_instances
-from portal.services.local_audit_store import append_local_audit_event
-from portal.services.runtime_paths import (
+from instances._shared.runtime.flavors.fnd.portal.services.alias_factory import (
+    alias_path,
+    client_key_for_msn,
+    merge_field_names,
+)
+from instances._shared.runtime.flavors.fnd.portal.services.hosted_store import (
+    DEFAULT_TABS as HOSTED_DEFAULT_TABS,
+    read_hosted_payload,
+)
+from instances._shared.runtime.flavors.fnd.portal.services.progeny_config_store import get_client_config, get_config
+from instances._shared.runtime.flavors.fnd.portal.services.progeny_workspace import (
+    find_profile_by_associated_msn,
+    list_instances,
+)
+from instances._shared.runtime.flavors.fnd.portal.services.tenant_progeny_store import (
+    load_profile,
+    save_profile,
+    set_paypal_config,
+)
+from instances._shared.runtime.flavors.fnd.portal.services.website_analytics_store import (
+    list_member_analytics,
+    load_member_analytics,
+)
+from instances._shared.runtime.flavors.fnd.portal.tools.runtime import (
+    active_tool_for_path,
+    read_enabled_tools,
+    register_tool_blueprints,
+)
+from mycite_core.contract_line.store import get_contract, list_contracts
+from mycite_core.external_events.feed import (
+    build_network_message_feed as shared_build_network_message_feed,
+    event_actor_label as shared_event_actor_label,
+    event_channel_id as shared_event_channel_id,
+    event_contains_any as shared_event_contains_any,
+    event_summary as shared_event_summary,
+    format_event_timestamp as shared_format_event_timestamp,
+    initials as shared_initials,
+    iter_string_values as shared_iter_string_values,
+    network_placeholder_item as shared_network_placeholder_item,
+)
+from mycite_core.local_audit import append_local_audit_event
+from mycite_core.mss_resolution import preview_mss_context, resolve_contract_datum_ref
+from mycite_core.publication.profile_paths import resolve_fnd_profile_path, resolve_public_profile_path
+from mycite_core.runtime_paths import (
     aliases_dir,
     contracts_dir,
     external_event_read_paths,
@@ -63,49 +133,11 @@ from portal.services.runtime_paths import (
     vault_contracts_dir,
     vault_keys_dir,
 )
-from portal.services.tenant_progeny_store import load_profile, save_profile, set_paypal_config
-from portal.services.website_analytics_store import load_member_analytics, list_member_analytics
-from portal.tools.runtime import active_tool_for_path, read_enabled_tools, register_tool_blueprints
-from _shared.portal.services.app_io import load_object_json_if_exists, read_object_json, write_object_json
-from _shared.portal.core_services.shell_models import (
+from instances._shared.portal.core_services.shell_models import (
     build_portal_profile_model,
     sanitize_fnd_profile,
     sanitize_public_profile,
 )
-from _shared.portal.services.portal_model import canonicalize_portal_model_config
-from _shared.portal.services.profile_resolver import resolve_fnd_profile_path, resolve_public_profile_path
-from _shared.portal.services.alias_utils import (
-    alias_contact_collection_ref as shared_alias_contact_collection_ref,
-    alias_label as shared_alias_label,
-    canonical_progeny_type as shared_canonical_progeny_type,
-    extract_contract_id as shared_extract_contract_id,
-    extract_member_msn_id as shared_extract_member_msn_id,
-    extract_tenant_msn_id as shared_extract_tenant_msn_id,
-    format_sidebar_entity_title as shared_format_sidebar_entity_title,
-    list_aliases_for_sidebar as shared_list_aliases_for_sidebar,
-)
-from _shared.portal.services.embed_urls import build_widget_url as shared_build_widget_url
-from _shared.portal.services.network_contract import (
-    build_network_contract_items as shared_build_network_contract_items,
-    resolve_network_refs as shared_resolve_network_refs,
-)
-from _shared.portal.data_engine.external_resources import ExternalResourceResolver
-from _shared.portal.sandbox.resource_workbench import build_system_resource_workbench_view_model
-from _shared.portal.services.request_log_ui import (
-    build_network_message_feed as shared_build_network_message_feed,
-    event_actor_label as shared_event_actor_label,
-    event_channel_id as shared_event_channel_id,
-    event_contains_any as shared_event_contains_any,
-    event_summary as shared_event_summary,
-    format_event_timestamp as shared_format_event_timestamp,
-    initials as shared_initials,
-    iter_string_values as shared_iter_string_values,
-    network_placeholder_item as shared_network_placeholder_item,
-)
-from _shared.portal.services.control_panel import build_control_panel_sections
-from _shared.portal.services.runtime_mode import build_session_presentation, env_flag, install_read_only_guard
-from _shared.portal.services.shell_context import build_shell_context
-from _shared.portal.shell import canonical_shell_static_dir
 
 app = Flask(
     __name__,
@@ -976,7 +1008,7 @@ def _network_message_feed(
         selected_log=selected_log,
         selected_p2p=selected_p2p,
         local_msn_id=str(MSN_ID or ""),
-        iter_request_log_records_fn=_iter_external_event_records,
+        iter_external_event_records_fn=_iter_external_event_records,
         resolve_refs_fn=lambda event, preferred: _network_resolved_refs(event, preferred_contract_id=preferred),
     )
 
@@ -1350,8 +1382,6 @@ def portal_network_default():
     kind = _normalize_network_kind(request.args.get("kind"))
     selected_id = str(request.args.get("id") or "").strip()
     aliases = _network_sidebar_alias_items()
-    if selected_id == "request_log":
-        selected_id = "external_events"
     log_channels = _external_event_channels()
     p2p_channels = _p2p_channels()
     contracts = _network_contract_items()
@@ -1391,7 +1421,6 @@ def portal_network_default():
         selected_contract=selected_contract,
         message_feed=message_feed,
         external_event_summary=_external_event_summary(),
-        request_log_summary=_external_event_summary(),
         network_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
         fnd_profile_json=json.dumps(profile_model.get("fnd_profile") or {}, indent=2, sort_keys=True),
         public_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
@@ -1431,7 +1460,6 @@ def portal_utilities():
         msn_id=MSN_ID,
         utilities_tab=tab,
         external_event_summary=_external_event_summary(),
-        request_log_summary=_external_event_summary(),
         configured_tools=_configured_tool_items(),
         configured_tool_status=_configured_tool_status_items(),
         peripheral_entries=_utility_peripheral_entries(),

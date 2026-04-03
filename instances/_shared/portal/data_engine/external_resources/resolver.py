@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import quote
 from urllib.request import urlopen
 
-from ...mss import decode_mss_payload
+from mycite_core.mss_resolution import decode_mss_payload
 from ...services.profile_resolver import find_local_contact_card
 from .cache import ExternalResourceCache
 from .contact_card_catalog import PublicResourceDescriptor, parse_public_resource_catalog

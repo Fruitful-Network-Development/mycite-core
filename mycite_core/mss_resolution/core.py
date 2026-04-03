@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 from functools import lru_cache
-import importlib.util
 import json
 import re
-import sys
 from pathlib import Path
 from typing import Any
 
-from ..data_contract import compact_payload_to_rows, rows_to_compact_payload, rows_to_save_state
-from ..data_engine.anthology_overlay import merge_base_and_overlay
-from ..data_engine.anthology_registry import load_base_registry
-from ..datum_refs import ParsedDatumRef, parse_datum_ref
+from instances._shared.portal.data_contract import compact_payload_to_rows, rows_to_compact_payload, rows_to_save_state
+from instances._shared.portal.data_engine.anthology_overlay import merge_base_and_overlay
+from instances._shared.portal.data_engine.anthology_registry import load_base_registry
+
+from mycite_core.datum_refs import ParsedDatumRef, parse_datum_ref
 
 
 MSS_SCHEMA = "mycite.portal.mss.v1"
@@ -26,6 +25,10 @@ _BITSTRING_RE = re.compile(r"^[01]+$")
 
 def _as_text(value: object) -> str:
     return "" if value is None else str(value).strip()
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
 
 
 def _parse_row_identifier(identifier: object) -> tuple[int, int, int]:
@@ -109,7 +112,7 @@ def _empty_decoded_payload(
 @lru_cache(maxsize=1)
 def _reference_fixture_bitstring() -> str:
     path = (
-        Path(__file__).resolve().parents[4]
+        _repo_root()
         / "mss"
         / "msn-3-2-3-17-77-1-6-4-1-4.contract-3-2-3-17-77-2-6-3-1-6.json"
     )
@@ -1070,16 +1073,9 @@ _MSS_V2_PREFIX = "11101110"
 
 @lru_cache(maxsize=1)
 def _reference_module():
-    path = Path(__file__).resolve().parents[4] / "mss_compact_array_reference.py"
-    if not path.exists() or not path.is_file():
-        raise RuntimeError("mss_compact_array_reference.py is required for canonical_v2 MSS")
-    spec = importlib.util.spec_from_file_location("mycite_mss_reference", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("unable to load mss_compact_array_reference.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    from . import compact_array_reference
+
+    return compact_array_reference
 
 
 def _encode_sd_uint(value: int) -> str:

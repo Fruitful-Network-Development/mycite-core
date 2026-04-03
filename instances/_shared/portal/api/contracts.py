@@ -6,21 +6,21 @@ from typing import Any, Callable
 
 from flask import abort, jsonify, make_response, request
 
-from portal.services.contract_line_context import (
+from mycite_core.contract_line.context import (
     apply_compact_array_line_update,
     build_compiled_index_payload,
     create_contract_line,
     patch_contract_line,
     preview_contract_context,
 )
-from portal.services.contract_store import (
+from mycite_core.contract_line.store import (
     ContractAlreadyExistsError,
     ContractNotFoundError,
     ContractValidationError,
     get_contract,
     list_contracts,
 )
-from portal.services.external_event_log import append_external_event
+from mycite_core.external_events.store import append_external_event
 
 
 def _as_int(value: str | None, default: int, *, min_value: int = 0, max_value: int = 10_000) -> int:

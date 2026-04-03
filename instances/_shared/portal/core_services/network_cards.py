@@ -7,7 +7,7 @@ from typing import Any
 from ..datum_refs import normalize_datum_ref, parse_datum_ref
 from ..progeny_model.compat import LEGAL_ENTITY_BASE_TYPES, canonical_progeny_type
 from ..progeny_model.inheritance import resolve_inherited_fields
-from ..services.contract_store import list_contracts
+from mycite_core.contract_line.store import list_contracts
 from ..runtime_paths import (
     alias_read_dirs,
     internal_progeny_read_dirs,

@@ -52,47 +52,36 @@ def contract_read_dirs(private_dir: Path) -> list[Path]:
     return _existing_or_declared([contracts_dir(private_dir)])
 
 
-def request_log_dir(private_dir: Path) -> Path:
-    return network_dir(private_dir) / "request_log"
-
-
 def external_event_log_dir(private_dir: Path) -> Path:
     return network_dir(private_dir) / "external_events"
 
 
-def request_log_types_dir(private_dir: Path) -> Path:
-    return request_log_dir(private_dir) / "types"
+def _compatibility_request_log_dir(private_dir: Path) -> Path:
+    return network_dir(private_dir) / "request_log"
 
 
 def external_event_types_dir(private_dir: Path) -> Path:
     return external_event_log_dir(private_dir) / "types"
 
 
-def request_log_path(private_dir: Path) -> Path:
-    return request_log_dir(private_dir) / "request_log.ndjson"
+def _compatibility_request_log_types_dir(private_dir: Path) -> Path:
+    return _compatibility_request_log_dir(private_dir) / "types"
 
 
 def external_event_log_path(private_dir: Path) -> Path:
     return external_event_log_dir(private_dir) / "external_events.ndjson"
 
 
+def _compatibility_request_log_path(private_dir: Path) -> Path:
+    return _compatibility_request_log_dir(private_dir) / "request_log.ndjson"
+
+
 def legacy_request_log_dir(private_dir: Path) -> Path:
     return private_dir / "request_log"
 
 
-def request_log_read_paths(private_dir: Path, msn_id: str | None = None) -> list[Path]:
-    paths = [external_event_log_path(private_dir), request_log_path(private_dir)]
-    if msn_id:
-        token = str(msn_id or "").strip()
-        if token:
-            paths.append(legacy_request_log_dir(private_dir) / f"{token}.ndjson")
-    legacy_shared = legacy_request_log_dir(private_dir) / "request_log.ndjson"
-    paths.append(legacy_shared)
-    return _unique_paths(paths)
-
-
 def external_event_read_paths(private_dir: Path, msn_id: str | None = None) -> list[Path]:
-    paths = [external_event_log_path(private_dir), request_log_path(private_dir)]
+    paths = [external_event_log_path(private_dir), _compatibility_request_log_path(private_dir)]
     if msn_id:
         token = str(msn_id or "").strip()
         if token:

@@ -153,7 +153,7 @@ def default_hosted_payload(hero_title: str = "Member Orientation") -> dict[str, 
         "type": "subject_congregation",
         "type_values": {
             "default_hosted": [{tab["id"]: f"subject_congregation/{tab['id']}.json"} for tab in tabs],
-            "channels": ["contracts.json", "request_log.json"],
+            "channels": ["contracts.json", "external_events.json"],
             "members": ["members.json"],
             "orientation": {
                 "style": "google_classroom_reference",

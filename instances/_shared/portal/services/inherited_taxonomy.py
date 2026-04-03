@@ -5,7 +5,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..datum_refs import ParsedDatumRef, normalize_datum_ref, parse_datum_ref
-from ..mss.core import preview_mss_context, resolve_contract_datum_ref
+from mycite_core.mss_resolution import preview_mss_context, resolve_contract_datum_ref
 
 
 def _as_text(value: object) -> str:
@@ -439,4 +439,3 @@ def load_inherited_taxonomy(
             "context": context,
         },
     }
-

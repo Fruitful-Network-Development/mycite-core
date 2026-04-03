@@ -30,7 +30,7 @@ from _shared.portal.data_engine.resource_registry import (
     resource_file_path,
     write_resource_file,
 )
-from _shared.portal.services.contract_store import normalize_contract_payload
+from mycite_core.contract_line.store import normalize_contract_payload
 
 
 def _read_json(path: Path) -> dict[str, Any]:

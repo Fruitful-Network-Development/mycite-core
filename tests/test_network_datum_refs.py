@@ -13,25 +13,22 @@ MSN_ID = "3-2-3-17-77-1-6-4-1-4"
 
 
 def _load_shared_datum_refs():
-    module_path = Path(__file__).resolve().parents[1] / "portals" / "_shared" / "portal" / "datum_refs.py"
-    spec = importlib.util.spec_from_file_location("shared_datum_refs_test", module_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def _load_fnd_request_log_store():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
-    flavor_root = portals_root / "_shared" / "runtime" / "flavors" / "fnd"
-    for token in (str(flavor_root), str(portals_root)):
-        if token in sys.path:
-            sys.path.remove(token)
+    repo_root = Path(__file__).resolve().parents[1]
+    token = str(repo_root)
+    if token not in sys.path:
         sys.path.insert(0, token)
-    for module_name in ("portal.services.request_log_store", "portal.services.datum_refs", "portal"):
+    return importlib.import_module("mycite_core.datum_refs")
+
+
+def _load_external_event_store():
+    repo_root = Path(__file__).resolve().parents[1]
+    token = str(repo_root)
+    if token in sys.path:
+        sys.path.remove(token)
+    sys.path.insert(0, token)
+    for module_name in ("mycite_core.external_events.store", "mycite_core.datum_refs", "mycite_core"):
         sys.modules.pop(module_name, None)
-    return importlib.import_module("portal.services.request_log_store")
+    return importlib.import_module("mycite_core.external_events.store")
 
 
 class DatumRefContractTests(unittest.TestCase):
@@ -98,12 +95,12 @@ class DatumRefContractTests(unittest.TestCase):
 
 
 class ExternalEventDotWriteTests(unittest.TestCase):
-    def test_request_log_compat_writes_external_event_path_and_reads_legacy_hyphen(self):
-        request_log_store = _load_fnd_request_log_store()
+    def test_external_event_store_writes_canonical_path_and_reads_legacy_hyphen(self):
+        external_event_store = _load_external_event_store()
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir)
 
-            request_log_store.append_event(
+            external_event_store.append_event(
                 private_dir,
                 MSN_ID,
                 {
@@ -115,7 +112,7 @@ class ExternalEventDotWriteTests(unittest.TestCase):
                     "details": {"source": "local"},
                 },
             )
-            request_log_store.append_event(
+            external_event_store.append_event(
                 private_dir,
                 MSN_ID,
                 {
@@ -147,16 +144,16 @@ class ExternalEventDotWriteTests(unittest.TestCase):
             with log_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(legacy_event, separators=(",", ":")) + "\\n")
 
-            read_back = request_log_store.read_events(private_dir, MSN_ID, limit=20, offset=0, reverse=False)
+            read_back = external_event_store.read_events(private_dir, MSN_ID, limit=20, offset=0, reverse=False)
             self.assertLessEqual(read_back.parse_errors, 1)
             self.assertGreaterEqual(read_back.total_lines, 3)
 
-    def test_request_log_rejects_local_only_operational_events(self):
-        request_log_store = _load_fnd_request_log_store()
+    def test_external_event_store_rejects_local_only_operational_events(self):
+        external_event_store = _load_external_event_store()
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir)
-            with self.assertRaises(request_log_store.RequestLogValidationError):
-                request_log_store.append_event(
+            with self.assertRaises(external_event_store.RequestLogValidationError):
+                external_event_store.append_event(
                     private_dir,
                     MSN_ID,
                     {
