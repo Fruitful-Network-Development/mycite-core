@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
-from portal.services.datum_refs import normalize_datum_ref, parse_datum_ref
-from portal.services.runtime_paths import (
+from mycite_core.datum_refs import normalize_datum_ref, parse_datum_ref
+from mycite_core.runtime_paths import (
     external_event_log_path,
     external_event_read_paths,
     external_event_types_dir,
@@ -54,7 +54,6 @@ class ExternalEventValidationError(ValueError):
         super().__init__("; ".join(self.errors))
 
 
-# Compatibility name used by existing request_log callers.
 RequestLogValidationError = ExternalEventValidationError
 
 

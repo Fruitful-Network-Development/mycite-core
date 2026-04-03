@@ -8,11 +8,11 @@ from tempfile import TemporaryDirectory
 
 
 def _load_runtime_paths_module():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
-    token = str(portals_root)
+    repo_root = Path(__file__).resolve().parents[1]
+    token = str(repo_root)
     if token not in sys.path:
         sys.path.insert(0, token)
-    return importlib.import_module("_shared.portal.runtime_paths")
+    return importlib.import_module("mycite_core.runtime_paths")
 
 
 class RuntimePathsTests(unittest.TestCase):
@@ -21,7 +21,7 @@ class RuntimePathsTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir)
             canonical = runtime_paths.external_event_log_path(private_dir)
-            compatibility = runtime_paths.request_log_path(private_dir)
+            compatibility = private_dir / "network" / "request_log" / "request_log.ndjson"
             legacy = private_dir / "request_log" / "alpha.ndjson"
             canonical.parent.mkdir(parents=True, exist_ok=True)
             compatibility.parent.mkdir(parents=True, exist_ok=True)
@@ -34,7 +34,6 @@ class RuntimePathsTests(unittest.TestCase):
             self.assertEqual(paths[0], canonical)
             self.assertIn(compatibility, paths)
             self.assertIn(legacy, paths)
-            self.assertEqual(runtime_paths.request_log_read_paths(private_dir, "alpha"), paths)
 
     def test_member_profiles_prefer_network_progeny(self):
         runtime_paths = _load_runtime_paths_module()

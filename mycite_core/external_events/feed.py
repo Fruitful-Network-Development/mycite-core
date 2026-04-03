@@ -92,13 +92,13 @@ def network_placeholder_item(kind: str, selected: dict[str, Any] | None) -> dict
     label = str((selected or {}).get("label") or "conversation").strip()
     if kind == "alias":
         headline = "Interface ready"
-        summary = f"No request-log events have been mapped to {label} yet."
+        summary = f"No external events have been mapped to {label} yet."
     elif kind == "p2p":
         headline = "Direct thread is quiet"
         summary = f"No transmitter/receiver events have been recorded for {label} yet."
     else:
         headline = "Request log ready"
-        summary = "No request-log entries have been recorded yet."
+        summary = "No external events have been recorded yet."
     payload = {"selection": selected or {}, "kind": kind}
     return {
         "side": "system",
@@ -119,10 +119,10 @@ def build_network_message_feed(
     selected_log: dict[str, Any] | None,
     selected_p2p: dict[str, Any] | None,
     local_msn_id: str,
-    iter_request_log_records_fn: Callable[[], list[dict[str, Any]]],
+    iter_external_event_records_fn: Callable[[], list[dict[str, Any]]],
     resolve_refs_fn: Callable[[dict[str, Any], str], dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    events = iter_request_log_records_fn()
+    events = iter_external_event_records_fn()
     filtered: list[dict[str, Any]]
     selected: dict[str, Any] | None
 

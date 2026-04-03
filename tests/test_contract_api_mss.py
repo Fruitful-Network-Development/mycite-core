@@ -40,9 +40,10 @@ def _example_payload() -> dict[str, object]:
 
 
 def _load_fnd_app_module(temp_root: Path):
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
-    runtime_root = portals_root / "runtime"
-    token = str(portals_root)
+    repo_root = Path(__file__).resolve().parents[1]
+    instances_root = repo_root / "instances"
+    runtime_root = instances_root / "_shared" / "runtime" / "flavors" / "fnd"
+    token = str(repo_root)
     if token not in sys.path:
         sys.path.insert(0, token)
 
@@ -63,7 +64,7 @@ def _load_fnd_app_module(temp_root: Path):
     os.environ["DATA_DIR"] = str(data_dir)
     os.environ["MSN_ID"] = MSN_ID
     os.environ["PORTAL_RUNTIME_FLAVOR"] = "fnd"
-    os.environ["MYCITE_PORTALS_ROOT"] = str(portals_root)
+    os.environ["MYCITE_PORTALS_ROOT"] = str(instances_root)
 
     path = runtime_root / "app.py"
     spec = importlib.util.spec_from_file_location("fnd_contract_api_mss_test", path)

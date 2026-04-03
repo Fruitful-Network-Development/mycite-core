@@ -21,12 +21,11 @@ SENDER_MSN_ID = "3-2-3-17-77-2-6-3-1-6"
 
 
 def _load_contract_handshake_module():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
-    flavor_root = portals_root / "_shared" / "runtime" / "flavors" / "fnd"
-    for token in (str(portals_root), str(flavor_root)):
+    repo_root = Path(__file__).resolve().parents[1]
+    for token in (str(repo_root),):
         if token not in sys.path:
             sys.path.insert(0, token)
-    module_path = flavor_root / "portal" / "api" / "contract_handshake.py"
+    module_path = repo_root / "instances" / "_shared" / "portal" / "api" / "contract_handshake.py"
     spec = importlib.util.spec_from_file_location("fnd_contract_handshake_phase1_test", module_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

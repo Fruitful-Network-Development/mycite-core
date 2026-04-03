@@ -14,7 +14,7 @@ from ..data_engine.inherited_txa_adapter import (
 from ..data_engine.resource_registry import INHERITED_SCOPE, read_resource_file, resource_file_path
 from ..data_engine.samras_descriptor_compiler import compile_samras_descriptors_from_rows
 from ..datum_refs import normalize_datum_ref, parse_datum_ref
-from ..mss import decode_mss_payload, preview_mss_context
+from mycite_core.mss_resolution import decode_mss_payload, preview_mss_context
 from ..samras import (
     InvalidSamrasStructure,
     address_sort_key,

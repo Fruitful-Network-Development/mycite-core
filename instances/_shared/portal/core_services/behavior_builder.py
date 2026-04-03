@@ -158,7 +158,7 @@ def default_portal_behavior(
         "calendar_config": {
             "schema": "mycite.portal.calendar_config.v1",
             "allowed_event_types": sorted(default_calendar_types),
-            "exclude_request_log_types": True,
+            "exclude_external_event_types": True,
         },
         "people_config": {
             "schema": "mycite.portal.people_config.v1",

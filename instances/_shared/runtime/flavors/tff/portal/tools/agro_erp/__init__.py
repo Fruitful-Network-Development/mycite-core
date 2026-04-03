@@ -53,7 +53,7 @@ from _shared.portal.application.coordinate_hops import (
 from _shared.portal.application.time_address_schema import schema_from_anchor_payload, validate_address_with_schema
 from _shared.portal.runtime_paths import utility_tools_dir
 from portal.core_services.runtime import resolve_active_private_config_path
-from portal.services.contract_store import get_contract, list_contracts
+from mycite_core.contract_line.store import get_contract, list_contracts
 from portal.services.datum_refs import normalize_datum_ref
 from portal.services.inherited_taxonomy import load_inherited_taxonomy
 from portal.services.local_audit_log import append_audit_event

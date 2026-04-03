@@ -59,11 +59,11 @@ def _expected_field_rows(default_behavior: Dict[str, Any]) -> List[Dict[str, str
             "note": "Calendar event types allowed in embedded board workspace.",
         },
         {
-            "path": "organization_config.default_values.calendar_config.exclude_request_log_types",
+            "path": "organization_config.default_values.calendar_config.exclude_external_event_types",
             "kind": "boolean",
             "required": "no",
-            "default_value": _json_default(bool(calendar_cfg.get("exclude_request_log_types", True))),
-            "note": "Whether calendar filters out request-log style event types.",
+            "default_value": _json_default(bool(calendar_cfg.get("exclude_external_event_types", True))),
+            "note": "Whether calendar filters out external-event stream types.",
         },
         {
             "path": "organization_config.default_values.people_config.profile_source_priority",

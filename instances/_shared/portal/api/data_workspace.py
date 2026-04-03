@@ -1079,12 +1079,15 @@ def register_data_routes(
             abort(501, description="external resource resolver is unavailable")
         body = _json_body()
         contract_id = str(body.get("contract_id") or "").strip()
-        resource_ids = [str(item).strip() for item in list(body.get("resource_ids") or []) if str(item).strip()]
+        reference_ids = [str(item).strip() for item in list(body.get("reference_ids") or []) if str(item).strip()]
         if not contract_id:
             abort(400, description="contract_id is required")
-        if not resource_ids:
-            abort(400, description="resource_ids is required")
-        payload = _inherited_subscription_service().register_subscription(contract_id=contract_id, resource_ids=resource_ids)
+        if not reference_ids:
+            abort(400, description="reference_ids is required")
+        payload = _inherited_subscription_service().register_reference_subscription(
+            contract_id=contract_id,
+            reference_ids=reference_ids,
+        )
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
     @app.post("/portal/api/data/references/subscriptions/unregister")
@@ -1093,12 +1096,15 @@ def register_data_routes(
             abort(501, description="external resource resolver is unavailable")
         body = _json_body()
         contract_id = str(body.get("contract_id") or "").strip()
-        resource_ids = [str(item).strip() for item in list(body.get("resource_ids") or []) if str(item).strip()]
+        reference_ids = [str(item).strip() for item in list(body.get("reference_ids") or []) if str(item).strip()]
         if not contract_id:
             abort(400, description="contract_id is required")
-        if not resource_ids:
-            abort(400, description="resource_ids is required")
-        payload = _inherited_subscription_service().unregister_subscription(contract_id=contract_id, resource_ids=resource_ids)
+        if not reference_ids:
+            abort(400, description="reference_ids is required")
+        payload = _inherited_subscription_service().unregister_reference_subscription(
+            contract_id=contract_id,
+            reference_ids=reference_ids,
+        )
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
     @app.post("/portal/api/data/resources/create")
@@ -1130,12 +1136,12 @@ def register_data_routes(
             abort(501, description="external resource resolver is unavailable")
         body = _json_body()
         contract_id = str(body.get("contract_id") or "").strip()
-        resource_id = str(body.get("resource_id") or "").strip()
-        if not contract_id or not resource_id:
-            abort(400, description="contract_id and resource_id are required")
-        payload = _action_service().refresh_inherited_resource(
+        reference_id = str(body.get("reference_id") or "").strip()
+        if not contract_id or not reference_id:
+            abort(400, description="contract_id and reference_id are required")
+        payload = _action_service().refresh_inherited_reference(
             contract_id=contract_id,
-            resource_id=resource_id,
+            reference_id=reference_id,
             force_refresh=bool(body.get("force_refresh", True)),
         )
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)

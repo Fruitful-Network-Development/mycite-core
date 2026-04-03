@@ -27,9 +27,10 @@ def _write_json(path: Path, payload: dict) -> None:
 
 
 def _load_fnd_app_module(temp_root: Path):
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
-    runtime_root = portals_root / "runtime"
-    token = str(portals_root)
+    repo_root = Path(__file__).resolve().parents[1]
+    instances_root = repo_root / "instances"
+    runtime_root = instances_root / "_shared" / "runtime" / "flavors" / "fnd"
+    token = str(repo_root)
     if token not in sys.path:
         sys.path.insert(0, token)
 
@@ -52,7 +53,7 @@ def _load_fnd_app_module(temp_root: Path):
     os.environ["MYCITE_ENABLE_DEV_KEYGEN"] = "1"
     os.environ["MYCITE_ALLOW_INSECURE_SIGNATURES"] = "0"
     os.environ["PORTAL_RUNTIME_FLAVOR"] = "fnd"
-    os.environ["MYCITE_PORTALS_ROOT"] = str(portals_root)
+    os.environ["MYCITE_PORTALS_ROOT"] = str(instances_root)
 
     path = runtime_root / "app.py"
     spec = importlib.util.spec_from_file_location("fnd_contract_flow_test", path)
@@ -69,7 +70,7 @@ class ContractHandshakeFlowTests(unittest.TestCase):
             module = _load_fnd_app_module(Path(temp_dir))
             client = module.app.test_client()
 
-            from portal.services.crypto_signatures import ensure_dev_keypair, sign_payload
+            from mycite_core.vault_session.crypto_signatures import ensure_dev_keypair, sign_payload
 
             sender_keys = ensure_dev_keypair(
                 SENDER_MSN_ID,

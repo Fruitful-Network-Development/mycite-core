@@ -50,7 +50,6 @@ SEED_PATTERNS = (
     "private/contracts/**/*.json",
     "private/network/progeny/*.json",
     "private/network/external_events/types/**/*.ndjson",
-    "private/network/request_log/types/**/*.ndjson",
     "private/utilities/vault/keypass_inventory.json",
 )
 

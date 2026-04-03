@@ -12,16 +12,16 @@ REMOTE_MSN_ID = "3-2-3-17-77-2-6-3-1-6"
 
 
 def _load_stack():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
-    flavor_root = portals_root / "_shared" / "runtime" / "flavors" / "fnd"
-    for token in (str(flavor_root), str(portals_root)):
+    repo_root = Path(__file__).resolve().parents[1]
+    flavor_root = repo_root / "instances" / "_shared" / "runtime" / "flavors" / "fnd"
+    for token in (str(flavor_root), str(repo_root)):
         if token not in sys.path:
             sys.path.insert(0, token)
 
     from data.engine.workspace import Workspace  # type: ignore
     from data.storage_json import JsonStorageBackend  # type: ignore
-    from _shared.portal.mss import compile_mss_payload, decode_mss_payload  # type: ignore
-    from _shared.portal.services.contract_store import create_contract, get_contract  # type: ignore
+    from mycite_core.mss_resolution import compile_mss_payload, decode_mss_payload  # type: ignore
+    from mycite_core.contract_line.store import create_contract, get_contract  # type: ignore
 
     return Workspace, JsonStorageBackend, compile_mss_payload, decode_mss_payload, create_contract, get_contract
 

@@ -18,7 +18,7 @@
     ],
     "channels": [
       "contracts.json",
-      "request_log.json"
+      "external_events.json"
     ],
     "members": [
       "members.json"

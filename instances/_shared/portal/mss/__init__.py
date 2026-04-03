@@ -1,4 +1,4 @@
-from .core import (
+from mycite_core.mss_resolution import (
     MSS_ENCODING,
     MSS_SCHEMA,
     MSS_WIRE_VARIANT_CANONICAL,

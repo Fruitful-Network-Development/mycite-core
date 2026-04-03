@@ -8,8 +8,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from portal.services.request_log_store import append_event
-from _shared.portal.services.profile_resolver import find_local_contact_card
+from mycite_core.external_events.store import append_event
+from mycite_core.publication.profile_paths import find_local_contact_card
 
 
 def _read_json(path: Path) -> Dict[str, Any]:

@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, Optional
 
 from flask import abort, jsonify, make_response, request
 
-from portal.services.external_event_log import ExternalEventValidationError, append_external_event
+from mycite_core.external_events.store import ExternalEventValidationError, append_external_event
 
 
 def register_external_event_routes(
@@ -16,7 +16,6 @@ def register_external_event_routes(
     options_private_fn: Optional[Callable[[str], Dict[str, Any]]] = None,
 ):
     @app.post("/portal/api/external_events")
-    @app.post("/portal/api/request_log")
     def external_event_append():
         msn_id = str(msn_id_provider() or "").strip()
         if not msn_id:
@@ -41,11 +40,7 @@ def register_external_event_routes(
         return jsonify(response)
 
     @app.route("/portal/api/external_events", methods=["OPTIONS"])
-    @app.route("/portal/api/request_log", methods=["OPTIONS"])
     def external_event_options():
         resp = make_response("", 204)
         resp.headers["Allow"] = "POST, OPTIONS"
         return resp
-
-
-register_request_log_routes = register_external_event_routes

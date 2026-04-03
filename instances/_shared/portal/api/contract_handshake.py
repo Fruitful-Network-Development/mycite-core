@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, Optional
 
 from flask import abort, jsonify, make_response, request
 
-from portal.services.contact_cards import (
+from mycite_core.publication.contact_cards import (
     fetch_remote_contact_card as _fetch_remote_contact_card_service,
     find_local_public_card as _find_local_public_card_service,
     public_key_fingerprint as _public_key_fingerprint_service,
@@ -17,9 +17,9 @@ from portal.services.contact_cards import (
     resolve_contact_card as _resolve_contact_card_service,
     sanitize_contact_card as _sanitize_contact_card_service,
 )
-from portal.services.mss import compile_mss_payload
-from portal.services.contract_store import get_contract, list_contracts, upsert_contract
-from portal.services.contract_line_exchange import (
+from mycite_core.mss_resolution import compile_mss_payload
+from mycite_core.contract_line.store import get_contract, list_contracts, upsert_contract
+from mycite_core.vault_session.line_exchange import (
     build_signed_payload as _build_signed_payload,
     contract_symmetric_meta as _contract_symmetric_meta,
     default_target_base_url as _default_target_base_url,
@@ -29,14 +29,14 @@ from portal.services.contract_line_exchange import (
     validate_signed_envelope as _validate_signed_envelope_service,
     verify_sender_signature as _verify_sender_signature_service,
 )
-from portal.services.crypto_signatures import ensure_dev_keypair, sign_payload
-from portal.services.datum_refs import normalize_datum_ref, parse_datum_ref
-from portal.services.external_event_log import append_external_event as append_event
-from portal.services.runtime_paths import (
+from mycite_core.vault_session.crypto_signatures import ensure_dev_keypair, sign_payload
+from mycite_core.datum_refs import normalize_datum_ref, parse_datum_ref
+from mycite_core.external_events.store import append_external_event as append_event
+from mycite_core.runtime_paths import (
     alias_read_dirs,
     member_profile_read_dirs,
 )
-from portal.services.vault_session import (
+from mycite_core.vault_session.session import (
     b64decode as _b64decode_service,
     b64encode as _b64encode_service,
     coerce_positive_int as _coerce_positive_int_service,
@@ -207,7 +207,7 @@ def _save_key_payload(private_dir: Path, key_id: str, payload: Dict[str, Any]) -
 
 
 def _decode_key_b64(token: str) -> bytes:
-    from portal.services.vault_session import decode_key_b64 as _decode_key_b64_service
+    from mycite_core.vault_session.session import decode_key_b64 as _decode_key_b64_service
 
     return _decode_key_b64_service(token)
 

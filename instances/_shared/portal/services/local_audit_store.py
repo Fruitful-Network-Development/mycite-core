@@ -1,1 +1,1 @@
-from mycite_core.events.local_audit_store import *  # noqa: F401,F403
+from mycite_core.local_audit.store import *  # noqa: F401,F403

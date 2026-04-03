@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..datum_refs import parse_datum_ref
-from ..mss import compile_mss_payload, load_anthology_payload
-from .contract_store import get_contract, list_contracts, update_contract
+from mycite_core.datum_refs import parse_datum_ref
+from mycite_core.contract_line.store import get_contract, list_contracts, update_contract
+from mycite_core.mss_resolution import compile_mss_payload, load_anthology_payload
 
 
 def _as_text(value: object) -> str:

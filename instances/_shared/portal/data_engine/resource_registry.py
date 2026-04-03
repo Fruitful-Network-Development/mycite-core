@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..data_contract import compact_payload_to_rows, rows_to_compact_payload
-from ..mss import compile_mss_payload
+from mycite_core.mss_resolution import compile_mss_payload
 from ..samras import InvalidSamrasStructure, decode_structure
 from .anthology_normalization import datum_sort_key
 
