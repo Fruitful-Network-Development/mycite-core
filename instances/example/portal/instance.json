@@ -1,0 +1,11 @@
+{
+  "schema": "mycite.instance.v1",
+  "instance_id": "example",
+  "host_runtime": "server_portal",
+  "paths": {
+    "data": "instances/example/data",
+    "private": "instances/example/private",
+    "public": "instances/example/public",
+    "portal": "instances/example/portal"
+  }
+}
