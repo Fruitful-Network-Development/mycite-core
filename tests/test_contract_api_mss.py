@@ -123,6 +123,8 @@ class ContractApiMssTests(unittest.TestCase):
             get_payload = get_resp.get_json()
             self.assertEqual(get_payload["mss"]["owner_preview"]["root_identifier"], "5-0-1")
             self.assertEqual(get_payload["mss"]["owner_preview"]["wire_variant"], "canonical_v2")
+            self.assertIn("mss.owner_context", get_payload["contract"].get("payload_registry") or {})
+            self.assertTrue(get_payload["contract"].get("payload_history"))
 
             patch_resp = client.patch(
                 f"/portal/api/contracts/{contract_id}?msn_id={MSN_ID}",
@@ -132,6 +134,7 @@ class ContractApiMssTests(unittest.TestCase):
             patch_payload = patch_resp.get_json()
             self.assertEqual(patch_payload["contract"]["counterparty_mss"], "10101")
             self.assertNotEqual(patch_payload["contract"]["owner_mss"], "111")
+            self.assertIn("mss.counterparty_context", patch_payload["contract"].get("payload_registry") or {})
 
 
 if __name__ == "__main__":

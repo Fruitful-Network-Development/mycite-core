@@ -73,7 +73,11 @@ from _shared.portal.core_services.behavior_builder import (
     default_portal_behavior as shared_default_portal_behavior,
     organization_config_filename as shared_organization_config_filename,
 )
-from _shared.portal.core_services.shell_models import build_portal_profile_model
+from _shared.portal.core_services.shell_models import (
+    build_portal_profile_model,
+    sanitize_fnd_profile,
+    sanitize_public_profile,
+)
 from _shared.portal.services.network_contract import (
     build_network_contract_items as shared_build_network_contract_items,
     resolve_network_refs as shared_resolve_network_refs,
@@ -299,23 +303,6 @@ def _resolve_public_profile_path(msn_id: str) -> Optional[Path]:
 
 def _resolve_fnd_profile_path(msn_id: str) -> Optional[Path]:
     return resolve_fnd_profile_path(public_dir=PUBLIC_DIR, fallback_dir=FALLBACK_DIR, msn_id=msn_id)
-
-
-def _sanitize_public_profile(payload: Dict[str, Any]) -> Dict[str, Any]:
-    allowed = {"msn_id", "schema", "title", "public_key", "entity_type", "public_resources", "accessible"}
-    out = {k: payload.get(k) for k in allowed if k in payload}
-    resources = payload.get("public_resources") if isinstance(payload.get("public_resources"), list) else []
-    out["public_resources"] = [item for item in resources if isinstance(item, dict)]
-    out.setdefault("accessible", {})
-    return out
-
-
-def _sanitize_fnd_profile(payload: Dict[str, Any]) -> Dict[str, Any]:
-    allowed = {"schema", "msn_id", "title", "summary", "logo", "banner", "links"}
-    out = {key: payload.get(key) for key in allowed if key in payload}
-    links = payload.get("links") if isinstance(payload.get("links"), list) else []
-    out["links"] = [item for item in links if isinstance(item, dict)]
-    return out
 
 
 def _options_public(msn_id: str) -> Dict[str, Any]:

@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import base64
-import hashlib
 import json
 import os
 import re
-import secrets
 import time
 import urllib.error
 import urllib.request
@@ -13,23 +10,44 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from flask import abort, jsonify, make_response, request
 
+from portal.services.contact_cards import (
+    fetch_remote_contact_card as _fetch_remote_contact_card_service,
+    find_local_public_card as _find_local_public_card_service,
+    public_key_fingerprint as _public_key_fingerprint_service,
+    read_json_object as _read_json_service,
+    resolve_contact_card as _resolve_contact_card_service,
+    sanitize_contact_card as _sanitize_contact_card_service,
+)
 from portal.services.mss import compile_mss_payload
 from portal.services.contract_store import upsert_contract
 from portal.services.crypto_signatures import ensure_dev_keypair, sign_payload, verify_payload_signature
 from portal.services.datum_refs import normalize_datum_ref, parse_datum_ref
-from portal.services.request_log_store import append_event
+from portal.services.external_event_log import append_external_event as append_event
 from portal.services.runtime_paths import (
     alias_read_dirs,
     contract_read_dirs,
     contracts_dir,
     member_profile_read_dirs,
-    vault_key_read_dirs,
-    vault_keys_dir,
 )
-from _shared.portal.services.profile_resolver import find_local_contact_card
+from portal.services.vault_session import (
+    b64decode as _b64decode_service,
+    b64encode as _b64encode_service,
+    coerce_positive_int as _coerce_positive_int_service,
+    decrypt_renewal_envelope as _decrypt_renewal_envelope_service,
+    derive_symmetric_key_bytes as _derive_symmetric_key_bytes_service,
+    encrypt_renewal_envelope as _encrypt_renewal_envelope_service,
+    key_filename as _key_filename_service,
+    key_path as _key_path_service,
+    load_key_payload as _load_key_payload_service,
+    load_or_create_symmetric_key as _load_or_create_symmetric_key_service,
+    nonce_seen as _nonce_seen_service,
+    remember_nonce as _remember_nonce_service,
+    renewal_aad as _renewal_aad_service,
+    renewal_plaintext as _renewal_plaintext_service,
+    save_key_payload as _save_key_payload_service,
+)
 
 FND_MSN_ID = "3-2-3-17-77-1-6-4-1-4"
 TFF_MSN_ID = "3-2-3-17-77-2-6-3-1-6"
@@ -43,10 +61,7 @@ _SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_.-]")
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"Expected object JSON in {path}")
-    return payload
+    return _read_json_service(path)
 
 
 def _write_json(path: Path, payload: Dict[str, Any]) -> None:
@@ -94,50 +109,23 @@ def _sanitize_env_suffix(value: str) -> str:
 
 
 def _find_local_public_card(public_dir: Path, msn_id: str) -> Optional[Path]:
-    return find_local_contact_card(public_dir=public_dir, fallback_dir=None, msn_id=msn_id, include_fnd=False)
+    return _find_local_public_card_service(public_dir, msn_id)
 
 
 def _fetch_remote_contact_card(sender_msn_id: str) -> Dict[str, Any]:
-    base = _as_str(os.environ.get("MYCITE_CONTACT_BASE_URL")).rstrip("/")
-    if not base:
-        raise FileNotFoundError(
-            "Contact card is not local and MYCITE_CONTACT_BASE_URL is unset for remote lookup."
-        )
-    url = f"{base}/{sender_msn_id}.json"
-    with urllib.request.urlopen(url, timeout=4.0) as resp:
-        body = resp.read()
-    payload = json.loads(body.decode("utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("Remote contact card response was not a JSON object")
-    return payload
+    return _fetch_remote_contact_card_service(sender_msn_id)
 
 
 def _resolve_contact_card(public_dir: Path, sender_msn_id: str) -> Dict[str, Any]:
-    local_path = _find_local_public_card(public_dir, sender_msn_id)
-    if local_path is not None:
-        return _read_json(local_path)
-    return _fetch_remote_contact_card(sender_msn_id)
+    return _resolve_contact_card_service(public_dir, sender_msn_id)
 
 
 def _sanitize_contact_card(payload: Dict[str, Any]) -> Dict[str, Any]:
-    allowed = {
-        "msn_id",
-        "schema",
-        "title",
-        "public_key",
-        "entity_type",
-        "public_resources",
-        "accessible",
-        "options_public",
-        "options",
-    }
-    out = {key: payload.get(key) for key in allowed if key in payload}
-    return out
+    return _sanitize_contact_card_service(payload)
 
 
 def _public_key_fingerprint(public_key_pem: str) -> str:
-    token = _as_str(public_key_pem)
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:24]
+    return _public_key_fingerprint_service(public_key_pem)
 
 
 def _json_request(
@@ -380,46 +368,33 @@ def _persist_symmetric_meta(private_dir: Path, contract_id: str, payload: Dict[s
 
 
 def _key_filename(key_id: str) -> str:
-    return f"{_safe_identifier(key_id, fallback='key')}.json"
+    return _key_filename_service(key_id)
 
 
 def _key_path(private_dir: Path, key_id: str) -> Path:
-    filename = _key_filename(key_id)
-    for directory in vault_key_read_dirs(private_dir):
-        candidate = directory / filename
-        if candidate.exists() and candidate.is_file():
-            return candidate
-    return vault_keys_dir(private_dir) / filename
+    return _key_path_service(private_dir, key_id)
 
 
 def _load_key_payload(private_dir: Path, key_id: str) -> Dict[str, Any] | None:
-    path = _key_path(private_dir, key_id)
-    if not path.exists() or not path.is_file():
-        return None
-    try:
-        return _read_json(path)
-    except Exception:
-        return None
+    return _load_key_payload_service(private_dir, key_id)
 
 
 def _save_key_payload(private_dir: Path, key_id: str, payload: Dict[str, Any]) -> Path:
-    path = vault_keys_dir(private_dir) / _key_filename(key_id)
-    _write_json(path, payload)
-    return path
+    return _save_key_payload_service(private_dir, key_id, payload)
 
 
 def _decode_key_b64(token: str) -> bytes:
-    key_bytes = base64.b64decode(token.encode("ascii"), validate=True)
-    if len(key_bytes) != 32:
-        raise ValueError("symmetric key must decode to 32 bytes")
-    return key_bytes
+    from portal.services.vault_session import decode_key_b64 as _decode_key_b64_service
+
+    return _decode_key_b64_service(token)
 
 
 def _derive_symmetric_key_bytes(*, contract_id: str, sender_msn_id: str, receiver_msn_id: str) -> bytes:
-    seed = _as_str(os.environ.get("MYCITE_SYMMETRIC_DERIVATION_SEED") or "mycite-dev-symmetric-seed")
-    peers = sorted([_as_str(sender_msn_id), _as_str(receiver_msn_id)])
-    material = f"{seed}|{_as_str(contract_id)}|{'|'.join(peers)}".encode("utf-8")
-    return hashlib.sha256(material).digest()
+    return _derive_symmetric_key_bytes_service(
+        contract_id=contract_id,
+        sender_msn_id=sender_msn_id,
+        receiver_msn_id=receiver_msn_id,
+    )
 
 
 def _load_or_create_symmetric_key(
@@ -432,51 +407,22 @@ def _load_or_create_symmetric_key(
 ) -> tuple[str, bytes]:
     contract_payload = _load_contract_payload(private_dir, contract_id)
     symmetric = _contract_symmetric_meta(contract_payload)
-    key_id = _as_str(preferred_key_id) or _as_str(symmetric.get("key_id")) or f"symmetric-{_safe_identifier(contract_id)}"
-
-    record = _load_key_payload(private_dir, key_id)
-    if record is not None:
-        key_b64 = _as_str(record.get("key_b64"))
-        if key_b64:
-            return key_id, _decode_key_b64(key_b64)
-
-    key_bytes = _derive_symmetric_key_bytes(
+    return _load_or_create_symmetric_key_service(
+        private_dir=private_dir,
         contract_id=contract_id,
         sender_msn_id=sender_msn_id,
         receiver_msn_id=receiver_msn_id,
+        preferred_key_id=preferred_key_id,
+        current_meta=symmetric,
     )
-    created_unix_ms = int(time.time() * 1000)
-    _save_key_payload(
-        private_dir,
-        key_id,
-        {
-            "schema": "mycite.vault.symmetric_key.v1",
-            "key_id": key_id,
-            "created_unix_ms": created_unix_ms,
-            "key_b64": base64.b64encode(key_bytes).decode("ascii"),
-            "derivation": {
-                "mode": "seeded_v1",
-                "contract_id": _as_str(contract_id),
-                "sender_msn_id": _as_str(sender_msn_id),
-                "receiver_msn_id": _as_str(receiver_msn_id),
-            },
-        },
-    )
-    return key_id, key_bytes
 
 
 def _b64encode(value: bytes) -> str:
-    return base64.b64encode(value).decode("ascii")
+    return _b64encode_service(value)
 
 
 def _b64decode(value: str, *, field_name: str) -> bytes:
-    token = _as_str(value)
-    if not token:
-        raise ValueError(f"{field_name} is required")
-    try:
-        return base64.b64decode(token.encode("ascii"), validate=True)
-    except Exception as exc:
-        raise ValueError(f"{field_name} must be valid base64") from exc
+    return _b64decode_service(value, field_name=field_name)
 
 
 def _renewal_aad(
@@ -486,16 +432,11 @@ def _renewal_aad(
     receiver_msn_id: str,
     key_id: str,
 ) -> str:
-    return json.dumps(
-        {
-            "schema": "mycite.contract.symmetric.renewal.aad.v1",
-            "contract_id": _as_str(contract_id),
-            "sender_msn_id": _as_str(sender_msn_id),
-            "receiver_msn_id": _as_str(receiver_msn_id),
-            "key_id": _as_str(key_id),
-        },
-        separators=(",", ":"),
-        sort_keys=True,
+    return _renewal_aad_service(
+        contract_id=contract_id,
+        sender_msn_id=sender_msn_id,
+        receiver_msn_id=receiver_msn_id,
+        key_id=key_id,
     )
 
 
@@ -509,22 +450,15 @@ def _renewal_plaintext(
     rotation_interval_seconds: int,
     details: Dict[str, Any],
 ) -> Dict[str, Any]:
-    now_ms = int(time.time() * 1000)
-    return {
-        "schema": "mycite.contract.symmetric.renewal.payload.v1",
-        "contract_id": _as_str(contract_id),
-        "sender_msn_id": _as_str(sender_msn_id),
-        "receiver_msn_id": _as_str(receiver_msn_id),
-        "renewal_intent": "renew_contract",
-        "rotation": {
-            "mode": "manual_with_scheduler_hook",
-            "requested_unix_ms": now_ms,
-            "rotation_interval_seconds": int(rotation_interval_seconds),
-        },
-        "event_datum": _as_str(event_datum),
-        "status": _as_str(status),
-        "details": details if isinstance(details, dict) else {},
-    }
+    return _renewal_plaintext_service(
+        contract_id=contract_id,
+        sender_msn_id=sender_msn_id,
+        receiver_msn_id=receiver_msn_id,
+        event_datum=event_datum,
+        status=status,
+        rotation_interval_seconds=rotation_interval_seconds,
+        details=details,
+    )
 
 
 def _encrypt_renewal_envelope(
@@ -536,78 +470,30 @@ def _encrypt_renewal_envelope(
     receiver_msn_id: str,
     plaintext: Dict[str, Any],
 ) -> Dict[str, Any]:
-    aad = _renewal_aad(
+    return _encrypt_renewal_envelope_service(
+        key_bytes=key_bytes,
+        key_id=key_id,
         contract_id=contract_id,
         sender_msn_id=sender_msn_id,
         receiver_msn_id=receiver_msn_id,
-        key_id=key_id,
+        plaintext=plaintext,
     )
-    plaintext_bytes = json.dumps(plaintext, separators=(",", ":")).encode("utf-8")
-    nonce = secrets.token_bytes(12)
-    ciphertext = AESGCM(key_bytes).encrypt(nonce, plaintext_bytes, aad.encode("utf-8"))
-    return {
-        "schema": "mycite.contract.symmetric.renewal.envelope.v1",
-        "contract_id": _as_str(contract_id),
-        "sender_msn_id": _as_str(sender_msn_id),
-        "receiver_msn_id": _as_str(receiver_msn_id),
-        "key_id": _as_str(key_id),
-        "nonce_b64": _b64encode(nonce),
-        "ciphertext_b64": _b64encode(ciphertext),
-        "aad": aad,
-    }
 
 
 def _decrypt_renewal_envelope(*, envelope: Dict[str, Any], key_bytes: bytes) -> Dict[str, Any]:
-    nonce = _b64decode(_as_str(envelope.get("nonce_b64")), field_name="nonce_b64")
-    ciphertext = _b64decode(_as_str(envelope.get("ciphertext_b64")), field_name="ciphertext_b64")
-    aad = _as_str(envelope.get("aad"))
-    if not aad:
-        raise ValueError("aad is required")
-
-    try:
-        plaintext_bytes = AESGCM(key_bytes).decrypt(nonce, ciphertext, aad.encode("utf-8"))
-    except Exception as exc:
-        raise ValueError("unable to decrypt symmetric envelope") from exc
-
-    try:
-        payload = json.loads(plaintext_bytes.decode("utf-8"))
-    except Exception as exc:
-        raise ValueError("renewal plaintext payload is not valid JSON") from exc
-    if not isinstance(payload, dict):
-        raise ValueError("renewal plaintext payload must be a JSON object")
-    return payload
+    return _decrypt_renewal_envelope_service(envelope=envelope, key_bytes=key_bytes)
 
 
 def _nonce_seen(meta: Dict[str, Any], *, direction: str, nonce_b64: str) -> bool:
-    history = meta.get("nonce_history") if isinstance(meta.get("nonce_history"), dict) else {}
-    values = history.get(direction) if isinstance(history.get(direction), list) else []
-    token = _as_str(nonce_b64)
-    return token in {str(item) for item in values}
+    return _nonce_seen_service(meta, direction=direction, nonce_b64=nonce_b64)
 
 
 def _remember_nonce(meta: Dict[str, Any], *, direction: str, nonce_b64: str) -> Dict[str, Any]:
-    out = dict(meta)
-    history = out.get("nonce_history") if isinstance(out.get("nonce_history"), dict) else {}
-    direction_values = history.get(direction) if isinstance(history.get(direction), list) else []
-    token = _as_str(nonce_b64)
-    if token:
-        direction_values = [str(item) for item in direction_values if _as_str(item)]
-        direction_values.append(token)
-        if len(direction_values) > _MAX_NONCE_HISTORY:
-            direction_values = direction_values[-_MAX_NONCE_HISTORY:]
-        history[direction] = direction_values
-    out["nonce_history"] = history
-    return out
+    return _remember_nonce_service(meta, direction=direction, nonce_b64=nonce_b64)
 
 
 def _coerce_positive_int(value: Any, default_value: int) -> int:
-    try:
-        token = int(value)
-    except Exception:
-        return int(default_value)
-    if token < 1:
-        return int(default_value)
-    return token
+    return _coerce_positive_int_service(value, default_value)
 
 
 def _contract_payload_rows(private_dir: Path) -> list[tuple[str, Dict[str, Any]]]:

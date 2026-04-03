@@ -127,6 +127,31 @@ class MssContractContextTests(unittest.TestCase):
         self.assertTrue(resolved["ok"])
         self.assertEqual((resolved.get("row") or {}).get("source_identifier"), "0-0-5")
 
+    def test_foreign_resolution_requires_preferred_contract_when_multiple_match(self):
+        mod = _load_shared_mss()
+        compiled = mod.compile_mss_payload(_example_payload(), ["4-2-1"])
+        resolved = mod.resolve_contract_datum_ref(
+            f"{REMOTE_MSN_ID}.5-0-1",
+            local_msn_id="3-2-3-17-77-1-6-4-1-4",
+            anthology_payload={},
+            contract_payloads=[
+                {
+                    "contract_id": "contract-a",
+                    "owner_msn_id": "3-2-3-17-77-1-6-4-1-4",
+                    "counterparty_msn_id": REMOTE_MSN_ID,
+                    "counterparty_mss": compiled["bitstring"],
+                },
+                {
+                    "contract_id": "contract-b",
+                    "owner_msn_id": "3-2-3-17-77-1-6-4-1-4",
+                    "counterparty_msn_id": REMOTE_MSN_ID,
+                    "counterparty_mss": compiled["bitstring"],
+                },
+            ],
+        )
+        self.assertFalse(resolved["ok"])
+        self.assertIn("preferred_contract_id", str(resolved.get("error") or ""))
+
 
 if __name__ == "__main__":
     unittest.main()

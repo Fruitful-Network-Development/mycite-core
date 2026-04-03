@@ -468,6 +468,7 @@ class DataWritePipelineRouteTests(unittest.TestCase):
 
     def test_inherited_disconnect_cleans_index_files_and_contract_sync(self):
         from _shared.portal.services.contract_store import create_contract, get_contract
+        from _shared.portal.data_engine.reference_exchange_registry import list_reference_subscriptions
         from _shared.portal.data_engine.resource_registry import (
             INHERITED_SCOPE,
             resource_file_path,
@@ -552,7 +553,12 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertNotIn(source_msn_id, grouped)
 
         contract_after = get_contract(self.private_dir, contract_id)
-        sync = contract_after.get("inherited_resource_sync") or {}
+        legacy_sync = contract_after.get("inherited_resource_sync") or {}
+        self.assertEqual((legacy_sync.get("resources") or [])[0].get("status"), "synced")
+
+        subscriptions = list_reference_subscriptions(self.private_dir)
+        subscription = next(item for item in subscriptions if str(item.get("contract_id") or "") == contract_id)
+        sync = subscription.get("sync") or {}
         self.assertEqual(sync.get("status"), "disconnected")
         resources = sync.get("resources") or []
         self.assertTrue(resources)
@@ -560,6 +566,7 @@ class DataWritePipelineRouteTests(unittest.TestCase):
 
     def test_inherited_subscription_register_and_unregister(self):
         from _shared.portal.services.contract_store import create_contract, get_contract
+        from _shared.portal.data_engine.reference_exchange_registry import get_reference_subscription
 
         contract_id = create_contract(
             self.private_dir,
@@ -582,7 +589,9 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertEqual(set(reg_payload.get("tracked_resource_ids") or []), {"samras.txa", "samras.msn"})
 
         contract_after = get_contract(self.private_dir, contract_id)
-        self.assertEqual(set(contract_after.get("tracked_resource_ids") or []), {"samras.txa", "samras.msn"})
+        self.assertEqual(contract_after.get("tracked_resource_ids") or [], [])
+        subscription = get_reference_subscription(self.private_dir, contract_id=contract_id, source_msn_id="7-7-7")
+        self.assertEqual(set(subscription.get("tracked_reference_ids") or []), {"samras.txa", "samras.msn"})
 
         unregister = self.client.post(
             "/portal/api/data/resources/inherited/subscriptions/unregister",
@@ -591,6 +600,8 @@ class DataWritePipelineRouteTests(unittest.TestCase):
         self.assertEqual(unregister.status_code, 200)
         unreg_payload = unregister.get_json() or {}
         self.assertEqual(unreg_payload.get("tracked_resource_ids"), ["samras.txa"])
+        subscription = get_reference_subscription(self.private_dir, contract_id=contract_id, source_msn_id="7-7-7")
+        self.assertEqual(subscription.get("tracked_reference_ids"), ["samras.txa"])
 
     def test_anthology_overlay_migration_route_dry_run_and_apply(self):
         anthology_path = Path(self._tmpdir.name) / "anthology.json"

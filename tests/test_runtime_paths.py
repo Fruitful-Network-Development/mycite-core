@@ -30,6 +30,8 @@ class RuntimePathsTests(unittest.TestCase):
             paths = runtime_paths.request_log_read_paths(private_dir, "alpha")
             self.assertEqual(paths[0], canonical)
             self.assertIn(legacy, paths)
+            self.assertEqual(runtime_paths.external_event_log_path(private_dir), canonical)
+            self.assertEqual(runtime_paths.external_event_read_paths(private_dir, "alpha"), paths)
 
     def test_member_profiles_prefer_network_progeny(self):
         runtime_paths = _load_runtime_paths_module()
@@ -53,6 +55,16 @@ class RuntimePathsTests(unittest.TestCase):
 
             read_dirs = runtime_paths.contract_read_dirs(private_dir)
             self.assertEqual(read_dirs, [canonical_dir])
+
+    def test_reference_exchange_and_local_audit_paths_are_declared(self):
+        runtime_paths = _load_runtime_paths_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            self.assertEqual(
+                runtime_paths.reference_subscription_registry_path(private_dir),
+                private_dir / "network" / "reference_exchange" / "subscriptions.json",
+            )
+            self.assertEqual(runtime_paths.local_audit_path(private_dir), private_dir / "audit" / "local.ndjson")
 
 
 if __name__ == "__main__":

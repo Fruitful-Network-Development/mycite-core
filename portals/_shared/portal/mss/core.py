@@ -925,19 +925,26 @@ def _contract_for_msn_id(
     *,
     msn_id: str,
     preferred_contract_id: str = "",
-) -> dict[str, Any] | None:
+) -> tuple[dict[str, Any] | None, str]:
     preferred = _as_text(preferred_contract_id)
     if preferred:
         for contract in contract_payloads:
             if _as_text(contract.get("contract_id")) == preferred:
-                return contract
-    for contract in contract_payloads:
-        if _as_text(contract.get("counterparty_msn_id")) == msn_id:
-            return contract
-    for contract in contract_payloads:
-        if _as_text(contract.get("owner_msn_id")) == msn_id:
-            return contract
-    return None
+                return contract, ""
+        return None, "preferred_contract_id did not match any contract payload"
+
+    matches = [contract for contract in contract_payloads if _as_text(contract.get("counterparty_msn_id")) == msn_id]
+    if len(matches) == 1:
+        return matches[0], ""
+    if len(matches) > 1:
+        return None, "Multiple contract contexts matched the foreign msn_id; preferred_contract_id is required"
+
+    owner_matches = [contract for contract in contract_payloads if _as_text(contract.get("owner_msn_id")) == msn_id]
+    if len(owner_matches) == 1:
+        return owner_matches[0], ""
+    if len(owner_matches) > 1:
+        return None, "Multiple owner-side contract contexts matched the foreign msn_id; preferred_contract_id is required"
+    return None, "No contract context matched the foreign msn_id"
 
 
 def resolve_contract_datum_ref(
@@ -958,14 +965,18 @@ def resolve_contract_datum_ref(
         )
 
     contracts = _normalize_contract_payloads(contract_payloads)
-    contract = _contract_for_msn_id(contracts, msn_id=parsed.msn_id, preferred_contract_id=preferred_contract_id)
+    contract, contract_error = _contract_for_msn_id(
+        contracts,
+        msn_id=parsed.msn_id,
+        preferred_contract_id=preferred_contract_id,
+    )
     if contract is None:
         return {
             "ok": False,
             "scope": "contract_mss",
             "datum_address": parsed.datum_address,
             "msn_id": parsed.msn_id,
-            "error": "No contract context matched the foreign msn_id",
+            "error": contract_error or "No contract context matched the foreign msn_id",
         }
 
     mss_field = "counterparty_mss" if _as_text(contract.get("counterparty_msn_id")) == parsed.msn_id else "owner_mss"

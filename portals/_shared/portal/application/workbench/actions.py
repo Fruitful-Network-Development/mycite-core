@@ -51,7 +51,9 @@ class WorkbenchActionService:
         payload["ok"] = True
         payload["schema"] = "mycite.portal.references.disconnect_source.v2"
         if self.inherited_subscription_service_factory is not None:
-            payload["contract_sync"] = self._require_inherited_service().disconnect_source(source_msn_id=source_msn_id)
+            sync_payload = self._require_inherited_service().disconnect_source(source_msn_id=source_msn_id)
+            payload["reference_exchange_sync"] = sync_payload
+            payload["contract_sync"] = sync_payload
         return payload
 
     def _require_inherited_service(self):
