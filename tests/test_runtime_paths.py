@@ -16,22 +16,25 @@ def _load_runtime_paths_module():
 
 
 class RuntimePathsTests(unittest.TestCase):
-    def test_request_log_prefers_canonical_network_path(self):
+    def test_external_events_prefer_canonical_network_path(self):
         runtime_paths = _load_runtime_paths_module()
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir)
-            canonical = runtime_paths.request_log_path(private_dir)
+            canonical = runtime_paths.external_event_log_path(private_dir)
+            compatibility = runtime_paths.request_log_path(private_dir)
             legacy = private_dir / "request_log" / "alpha.ndjson"
             canonical.parent.mkdir(parents=True, exist_ok=True)
+            compatibility.parent.mkdir(parents=True, exist_ok=True)
             legacy.parent.mkdir(parents=True, exist_ok=True)
             canonical.write_text("", encoding="utf-8")
+            compatibility.write_text("", encoding="utf-8")
             legacy.write_text("", encoding="utf-8")
 
-            paths = runtime_paths.request_log_read_paths(private_dir, "alpha")
+            paths = runtime_paths.external_event_read_paths(private_dir, "alpha")
             self.assertEqual(paths[0], canonical)
+            self.assertIn(compatibility, paths)
             self.assertIn(legacy, paths)
-            self.assertEqual(runtime_paths.external_event_log_path(private_dir), canonical)
-            self.assertEqual(runtime_paths.external_event_read_paths(private_dir, "alpha"), paths)
+            self.assertEqual(runtime_paths.request_log_read_paths(private_dir, "alpha"), paths)
 
     def test_member_profiles_prefer_network_progeny(self):
         runtime_paths = _load_runtime_paths_module()

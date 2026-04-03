@@ -20,7 +20,7 @@ from portal.api.contracts import register_contract_routes
 from _shared.portal.api.data_workspace import register_data_routes
 from _shared.portal.application.service_tools import service_tool_definition
 from portal.api.inbox import register_inbox_routes
-from portal.api.request_log import register_request_log_routes
+from portal.api.request_log import register_external_event_routes
 from portal.core_services.runtime import (
     active_service_from_path,
     active_private_config_filename,
@@ -38,13 +38,13 @@ from portal.services.board_access import require_board_member
 from portal.services.contract_store import get_contract, list_contracts
 from portal.services.mss import preview_mss_context, resolve_contract_datum_ref
 from portal.services.progeny_embed import build_embed_progeny_landing
-from portal.services.request_log_store import append_event as append_request_log_event
+from portal.services.local_audit_store import append_local_audit_event
 from portal.services.runtime_paths import (
+    external_event_read_paths,
+    external_event_types_dir,
     hosted_read_paths,
     keypass_db_path,
     keypass_inventory_path,
-    request_log_read_paths,
-    request_log_types_dir,
     utility_peripherals_dir,
     utility_tools_dir,
     vault_contract_read_dirs,
@@ -338,10 +338,16 @@ def _options_private(msn_id: str) -> Dict[str, Any]:
             "methods": ["POST", "OPTIONS"],
             "auth": "keycloak_or_local",
         },
+        "external_events": {
+            "href": "/portal/api/external_events",
+            "methods": ["POST", "OPTIONS"],
+            "auth": "keycloak_or_local",
+        },
         "request_log": {
             "href": "/portal/api/request_log",
             "methods": ["POST", "OPTIONS"],
             "auth": "keycloak_or_local",
+            "compatibility_only": True,
         },
         "contract_request": {
             "href": "/portal/api/network/contracts/request",
@@ -748,9 +754,9 @@ def _vault_contract_files() -> list[str]:
     return out
 
 
-def _iter_request_log_records() -> list[Dict[str, Any]]:
+def _iter_external_event_records() -> list[Dict[str, Any]]:
     msn_id = str(MSN_ID or _infer_local_msn_id() or "").strip()
-    paths = [path for path in request_log_read_paths(PRIVATE_DIR, msn_id or None) if path.exists() and path.is_file()]
+    paths = [path for path in external_event_read_paths(PRIVATE_DIR, msn_id or None) if path.exists() and path.is_file()]
     records: list[Dict[str, Any]] = []
     seen: set[str] = set()
     for path in paths:
@@ -951,19 +957,19 @@ def _portal_profile_model() -> Dict[str, Any]:
     }
 
 
-def _request_log_summary() -> Dict[str, Any]:
-    paths = [path for path in request_log_read_paths(PRIVATE_DIR, MSN_ID or None) if path.exists() and path.is_file()]
-    return {"file_count": len(paths), "event_count": len(_iter_request_log_records())}
+def _external_event_summary() -> Dict[str, Any]:
+    paths = [path for path in external_event_read_paths(PRIVATE_DIR, MSN_ID or None) if path.exists() and path.is_file()]
+    return {"file_count": len(paths), "event_count": len(_iter_external_event_records())}
 
 
-def _request_log_channels() -> list[Dict[str, Any]]:
-    event_count = len(_iter_request_log_records())
-    return [{"id": "request_log", "label": "request_log", "event_count": event_count, "href": "/portal/network?tab=messages&kind=log&id=request_log"}]
+def _external_event_channels() -> list[Dict[str, Any]]:
+    event_count = len(_iter_external_event_records())
+    return [{"id": "external_events", "label": "external_events", "event_count": event_count, "href": "/portal/network?tab=messages&kind=log&id=external_events"}]
 
 
 def _p2p_channels() -> list[Dict[str, Any]]:
     counts: Dict[str, int] = {}
-    for payload in _iter_request_log_records():
+    for payload in _iter_external_event_records():
         tx = str(payload.get("transmitter") or "").strip()
         rx = str(payload.get("receiver") or "").strip()
         if not tx or not rx:
@@ -1050,7 +1056,7 @@ def _network_message_feed(
         selected_log=selected_log,
         selected_p2p=selected_p2p,
         local_msn_id=str(MSN_ID or ""),
-        iter_request_log_records_fn=_iter_request_log_records,
+        iter_request_log_records_fn=_iter_external_event_records,
         resolve_refs_fn=lambda event, preferred: _network_resolved_refs(event, preferred_contract_id=preferred),
     )
 
@@ -1237,8 +1243,8 @@ def healthz():
 
 def _ensure_runtime_dirs() -> None:
     workspace_root()
-    request_log_types_dir(PRIVATE_DIR).parent.mkdir(parents=True, exist_ok=True)
-    request_log_types_dir(PRIVATE_DIR).mkdir(parents=True, exist_ok=True)
+    external_event_types_dir(PRIVATE_DIR).parent.mkdir(parents=True, exist_ok=True)
+    external_event_types_dir(PRIVATE_DIR).mkdir(parents=True, exist_ok=True)
     utility_peripherals_dir(PRIVATE_DIR).mkdir(parents=True, exist_ok=True)
     keypass_inventory_path(PRIVATE_DIR).parent.mkdir(parents=True, exist_ok=True)
     _seed_missing_local_progeny_profiles()
@@ -1314,7 +1320,9 @@ def _calendar_rows() -> list[Dict[str, Any]]:
 def _append_workspace_audit(event_type: str, payload: Dict[str, Any]) -> None:
     safe_payload = dict(payload)
     safe_payload["type"] = event_type
-    append_request_log_event(PRIVATE_DIR, MSN_ID or _infer_local_msn_id() or PORTAL_INSTANCE_ID, safe_payload)
+    safe_payload.setdefault("portal_instance_id", PORTAL_INSTANCE_ID)
+    safe_payload.setdefault("msn_id", MSN_ID or _infer_local_msn_id() or PORTAL_INSTANCE_ID)
+    append_local_audit_event(PRIVATE_DIR, safe_payload)
 
 
 def _board_redirect(member_msn_id: str, as_alias_id: str, tab: str, theme: str, *, status: str = "", error: str = ""):
@@ -1428,7 +1436,9 @@ def portal_network_default():
     kind = _normalize_network_kind(request.args.get("kind"))
     selected_id = str(request.args.get("id") or "").strip()
     aliases = _network_sidebar_alias_items()
-    log_channels = _request_log_channels()
+    if selected_id == "request_log":
+        selected_id = "external_events"
+    log_channels = _external_event_channels()
     p2p_channels = _p2p_channels()
     contracts = _network_contract_items()
 
@@ -1466,7 +1476,8 @@ def portal_network_default():
         network_contracts=contracts,
         selected_contract=selected_contract,
         message_feed=message_feed,
-        request_log_summary=_request_log_summary(),
+        external_event_summary=_external_event_summary(),
+        request_log_summary=_external_event_summary(),
         network_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
         public_profile_json=json.dumps(profile_model.get("public_profile") or {}, indent=2, sort_keys=True),
         fnd_profile_json=json.dumps(profile_model.get("fnd_profile") or {}, indent=2, sort_keys=True),
@@ -1502,7 +1513,8 @@ def portal_utilities():
         aliases=list_aliases_for_sidebar(PRIVATE_DIR),
         msn_id=MSN_ID,
         utilities_tab=tab,
-        request_log_summary=_request_log_summary(),
+        external_event_summary=_external_event_summary(),
+        request_log_summary=_external_event_summary(),
         configured_tools=_configured_tool_items(),
         configured_tool_status=_configured_tool_status_items(),
         peripheral_entries=_utility_peripheral_entries(),
@@ -1584,7 +1596,7 @@ def portal_tools():
 
 @app.get("/portal/inbox")
 def portal_inbox_page():
-    return redirect("/portal/network?tab=messages&kind=log&id=request_log", code=302)
+    return redirect("/portal/network?tab=messages&kind=log&id=external_events", code=302)
 
 
 @app.get("/portal/api/utilities/vault/inventory")
@@ -1921,7 +1933,7 @@ register_contract_routes(
     options_private_fn=_options_private,
     anthology_path_fn=_anthology_path,
 )
-register_request_log_routes(
+register_external_event_routes(
     app,
     private_dir=PRIVATE_DIR,
     msn_id_provider=lambda: MSN_ID,

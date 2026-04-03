@@ -24,7 +24,7 @@
 
   async function appendLog(event) {
     try {
-      await api("POST", "/portal/api/request_log", event);
+      await api("POST", "/portal/api/external_events", event);
     } catch (_) {
       // best-effort only
     }

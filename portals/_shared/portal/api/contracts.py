@@ -6,22 +6,19 @@ from typing import Any, Callable
 
 from flask import abort, jsonify, make_response, request
 
-from portal.services.contract_alias_service import maybe_create_alias_from_contract
 from portal.services.contract_line_context import (
-    apply_contract_context_patch,
+    apply_compact_array_line_update,
     build_compiled_index_payload,
-    compile_owner_contract_context,
+    create_contract_line,
+    patch_contract_line,
     preview_contract_context,
 )
 from portal.services.contract_store import (
     ContractAlreadyExistsError,
     ContractNotFoundError,
     ContractValidationError,
-    apply_compact_array_update,
-    create_contract,
     get_contract,
     list_contracts,
-    update_contract,
 )
 from portal.services.external_event_log import append_external_event
 
@@ -53,19 +50,6 @@ def _json_body() -> dict[str, Any]:
     return dict(body)
 
 
-def _maybe_compile_owner_mss(
-    *,
-    body: dict[str, Any],
-    anthology_path_fn: Callable[[], Path] | None,
-    local_msn_id: str,
-) -> dict[str, Any]:
-    return compile_owner_contract_context(
-        body=body,
-        anthology_path_fn=anthology_path_fn,
-        local_msn_id=local_msn_id,
-    )
-
-
 def _mss_preview_payload(
     *,
     body: dict[str, Any],
@@ -76,21 +60,6 @@ def _mss_preview_payload(
         body=body,
         anthology_path_fn=anthology_path_fn,
         local_msn_id=local_msn_id,
-    )
-
-
-def _maybe_create_alias(
-    *,
-    private_dir: Path,
-    local_msn_id: str,
-    contract_id: str,
-    contract_payload: dict[str, Any],
-) -> dict[str, Any] | None:
-    return maybe_create_alias_from_contract(
-        private_dir=private_dir,
-        local_msn_id=local_msn_id,
-        contract_id=contract_id,
-        contract_payload=contract_payload,
     )
 
 
@@ -156,29 +125,27 @@ def register_contract_routes(
         if not msn_id:
             abort(400, description="Missing required query param: msn_id")
 
-        body = _maybe_compile_owner_mss(body=_json_body(), anthology_path_fn=anthology_path_fn, local_msn_id=msn_id)
-        body.setdefault("owner_msn_id", msn_id)
         try:
-            contract_id = create_contract(private_dir, body, owner_msn_id=msn_id)
+            result = create_contract_line(
+                private_dir=private_dir,
+                body=_json_body(),
+                anthology_path_fn=anthology_path_fn,
+                local_msn_id=msn_id,
+            )
         except ContractValidationError as exc:
             abort(400, description=str(exc))
         except ContractAlreadyExistsError as exc:
             abort(409, description=str(exc))
 
-        alias_info = _maybe_create_alias(
-            private_dir=private_dir,
-            local_msn_id=msn_id,
-            contract_id=contract_id,
-            contract_payload=body,
-        )
         out: dict[str, Any] = {
             "ok": True,
             "msn_id": msn_id,
-            "contract_id": contract_id,
-            "mss": _mss_preview_payload(body=body, anthology_path_fn=anthology_path_fn, local_msn_id=msn_id),
+            "contract_id": result["contract_id"],
+            "contract": result["contract"],
+            "mss": result["mss"],
         }
-        if alias_info:
-            out["alias"] = alias_info
+        if result.get("alias"):
+            out["alias"] = result["alias"]
         return jsonify(out)
 
     @app.patch("/portal/api/contracts/<contract_id>")
@@ -187,19 +154,14 @@ def register_contract_routes(
         if not msn_id:
             abort(400, description="Missing required query param: msn_id")
 
-        body = _maybe_compile_owner_mss(body=_json_body(), anthology_path_fn=anthology_path_fn, local_msn_id=msn_id)
         try:
-            existing = get_contract(private_dir, contract_id)
-        except ContractNotFoundError as exc:
-            abort(404, description=str(exc))
-        body = apply_contract_context_patch(
-            existing=existing,
-            patch=body,
-            anthology_path_fn=anthology_path_fn,
-            local_msn_id=msn_id,
-        )
-        try:
-            contract = update_contract(private_dir, contract_id, body, owner_msn_id=msn_id)
+            result = patch_contract_line(
+                private_dir=private_dir,
+                contract_id=contract_id,
+                patch=_json_body(),
+                anthology_path_fn=anthology_path_fn,
+                local_msn_id=msn_id,
+            )
         except ContractNotFoundError as exc:
             abort(404, description=str(exc))
         except ContractValidationError as exc:
@@ -209,8 +171,8 @@ def register_contract_routes(
             "ok": True,
             "msn_id": msn_id,
             "contract_id": contract_id,
-            "contract": contract,
-            "mss": _mss_preview_payload(body=contract, anthology_path_fn=anthology_path_fn, local_msn_id=msn_id),
+            "contract": result["contract"],
+            "mss": result["mss"],
         }
         if options_private_fn is not None:
             out["options_private"] = options_private_fn(msn_id)
@@ -222,32 +184,23 @@ def register_contract_routes(
         if not msn_id:
             abort(400, description="Missing required query param: msn_id")
         body = _json_body()
-        from_revision = int(body.get("from_revision", 0))
-        to_revision = int(body.get("to_revision", 0))
-        change_type = _as_str(body.get("change_type")) or "replace_snapshot"
-        source_msn_id = _as_str(body.get("source_msn_id"))
-        target_msn_id = _as_str(body.get("target_msn_id"))
-        ts_unix_ms = int(body.get("ts_unix_ms") or (time.time() * 1000))
-        payload = body.get("payload")
-        if not isinstance(payload, dict):
-            payload = {}
         try:
-            contract = apply_compact_array_update(
-                private_dir,
-                contract_id,
-                from_revision=from_revision,
-                to_revision=to_revision,
-                change_type=change_type,
-                source_msn_id=source_msn_id,
-                target_msn_id=target_msn_id,
-                ts_unix_ms=ts_unix_ms,
-                payload=payload,
+            contract = apply_compact_array_line_update(
+                private_dir=private_dir,
+                contract_id=contract_id,
+                body=body,
                 local_msn_id=msn_id,
             )
         except ContractNotFoundError as exc:
             abort(404, description=str(exc))
         except ContractValidationError as exc:
             abort(400, description=str(exc))
+        from_revision = int(body.get("from_revision", 0))
+        to_revision = int(body.get("to_revision", 0))
+        change_type = _as_str(body.get("change_type")) or "replace_snapshot"
+        source_msn_id = _as_str(body.get("source_msn_id"))
+        target_msn_id = _as_str(body.get("target_msn_id"))
+        ts_unix_ms = int(body.get("ts_unix_ms") or (time.time() * 1000))
         append_external_event(
             private_dir,
             msn_id,

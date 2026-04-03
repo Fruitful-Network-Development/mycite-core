@@ -97,8 +97,8 @@ class DatumRefContractTests(unittest.TestCase):
             )
 
 
-class RequestLogDotWriteTests(unittest.TestCase):
-    def test_request_log_writes_dot_and_reads_legacy_hyphen(self):
+class ExternalEventDotWriteTests(unittest.TestCase):
+    def test_request_log_compat_writes_external_event_path_and_reads_legacy_hyphen(self):
         request_log_store = _load_fnd_request_log_store()
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir)
@@ -128,7 +128,7 @@ class RequestLogDotWriteTests(unittest.TestCase):
                 },
             )
 
-            log_path = private_dir / "network" / "request_log" / "request_log.ndjson"
+            log_path = private_dir / "network" / "external_events" / "external_events.ndjson"
             lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
             self.assertEqual(lines[0]["event_datum"], f"{MSN_ID}.4-1-77")
             self.assertEqual(lines[0]["status"], f"{MSN_ID}.3-1-5")
@@ -149,7 +149,7 @@ class RequestLogDotWriteTests(unittest.TestCase):
 
             read_back = request_log_store.read_events(private_dir, MSN_ID, limit=20, offset=0, reverse=False)
             self.assertLessEqual(read_back.parse_errors, 1)
-            self.assertGreaterEqual(read_back.total_lines, 2)
+            self.assertGreaterEqual(read_back.total_lines, 3)
 
     def test_request_log_rejects_local_only_operational_events(self):
         request_log_store = _load_fnd_request_log_store()

@@ -5,18 +5,19 @@ from typing import Any, Callable, Dict, Optional
 
 from flask import abort, jsonify, make_response, request
 
-from portal.services.request_log_store import RequestLogValidationError, append_event
+from portal.services.external_event_log import ExternalEventValidationError, append_external_event
 
 
-def register_request_log_routes(
+def register_external_event_routes(
     app,
     *,
     private_dir: Path,
     msn_id_provider: Callable[[], str],
     options_private_fn: Optional[Callable[[str], Dict[str, Any]]] = None,
 ):
+    @app.post("/portal/api/external_events")
     @app.post("/portal/api/request_log")
-    def request_log_append():
+    def external_event_append():
         msn_id = str(msn_id_provider() or "").strip()
         if not msn_id:
             abort(400, description="msn_id is not configured for portal runtime.")
@@ -28,8 +29,8 @@ def register_request_log_routes(
             abort(400, description="Expected JSON object body")
 
         try:
-            path = append_event(private_dir, msn_id, body)
-        except RequestLogValidationError as e:
+            path = append_external_event(private_dir, msn_id, body)
+        except ExternalEventValidationError as e:
             return jsonify({"ok": False, "errors": list(e.errors)}), 400
         except ValueError as e:
             return jsonify({"ok": False, "errors": [str(e)]}), 400
@@ -39,8 +40,12 @@ def register_request_log_routes(
             response["options_private"] = options_private_fn(msn_id)
         return jsonify(response)
 
+    @app.route("/portal/api/external_events", methods=["OPTIONS"])
     @app.route("/portal/api/request_log", methods=["OPTIONS"])
-    def request_log_options():
+    def external_event_options():
         resp = make_response("", 204)
         resp.headers["Allow"] = "POST, OPTIONS"
         return resp
+
+
+register_request_log_routes = register_external_event_routes

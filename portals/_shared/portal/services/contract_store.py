@@ -210,7 +210,8 @@ def _normalize_line_payload_registry(payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(value, dict):
             continue
         out[_as_text(slot)] = _normalize_line_payload_entry(_as_text(slot), value)
-    out.update(_managed_line_payload_entries(payload))
+    for slot, value in _managed_line_payload_entries(payload).items():
+        out.setdefault(slot, value)
     return out
 
 
@@ -255,6 +256,58 @@ def _normalize_line_payload_history(payload: dict[str, Any], registry: dict[str,
         )
     history.sort(key=lambda item: (int(item.get("updated_unix_ms") or 0), _as_text(item.get("slot"))))
     return history
+
+
+def line_payload_entry(contract_payload: dict[str, Any], slot: str) -> dict[str, Any]:
+    registry = contract_payload.get("payload_registry") if isinstance(contract_payload.get("payload_registry"), dict) else {}
+    entry = registry.get(_as_text(slot))
+    return dict(entry) if isinstance(entry, dict) else {}
+
+
+def line_payload_data(contract_payload: dict[str, Any], slot: str) -> dict[str, Any]:
+    entry = line_payload_entry(contract_payload, slot)
+    payload = entry.get("payload") if isinstance(entry.get("payload"), dict) else {}
+    return dict(payload)
+
+
+def _apply_payload_mirrors(out: dict[str, Any]) -> None:
+    owner_entry = line_payload_entry(out, "mss.owner_context")
+    owner_payload = line_payload_data(out, "mss.owner_context")
+    if owner_payload:
+        out["owner_mss"] = _normalize_mss_value(owner_payload.get("owner_mss"), field_name="owner_mss")
+        out["owner_selected_refs"] = _normalize_selected_refs(
+            owner_payload.get("owner_selected_refs"),
+            field_name="owner_selected_refs",
+        )
+        for key in ("relationship_mode", "access_mode", "sync_mode"):
+            token = _as_text(owner_payload.get(key))
+            if token:
+                out[key] = token
+            else:
+                out.pop(key, None)
+        if int(owner_entry.get("revision") or 0) > 0:
+            out["compact_index_revision"] = int(owner_entry.get("revision") or 0)
+        else:
+            out.pop("compact_index_revision", None)
+        if int(owner_entry.get("updated_unix_ms") or 0) > 0:
+            out["compact_index_compiled_at_unix_ms"] = int(owner_entry.get("updated_unix_ms") or 0)
+        else:
+            out.pop("compact_index_compiled_at_unix_ms", None)
+        if _as_text(owner_entry.get("source_card_revision")):
+            out["source_card_revision"] = _as_text(owner_entry.get("source_card_revision"))
+        else:
+            out.pop("source_card_revision", None)
+
+    counterparty_payload = line_payload_data(out, "mss.counterparty_context")
+    if counterparty_payload:
+        out["counterparty_mss"] = _normalize_mss_value(
+            counterparty_payload.get("counterparty_mss"),
+            field_name="counterparty_mss",
+        )
+        out["counterparty_selected_refs"] = _normalize_selected_refs(
+            counterparty_payload.get("counterparty_selected_refs"),
+            field_name="counterparty_selected_refs",
+        )
 
 
 def _infer_contract_id(payload: dict[str, Any], filename: str = "") -> str:
@@ -326,8 +379,11 @@ def normalize_contract_payload(
         base.get("counterparty_selected_refs"),
         field_name="counterparty_selected_refs",
     )
-    out["tracked_resource_ids"] = _normalize_tracked_resource_ids(base)
-    out["details"]["tracked_resource_ids"] = list(out["tracked_resource_ids"])
+    if not for_write:
+        legacy_tracked_resource_ids = _normalize_tracked_resource_ids(base)
+        if legacy_tracked_resource_ids:
+            out["tracked_resource_ids"] = legacy_tracked_resource_ids
+            out["details"]["tracked_resource_ids"] = list(legacy_tracked_resource_ids)
     # Optional compact-array index / update-protocol fields (CONTRACT_COMPACT_INDEX, CONTRACT_UPDATE_PROTOCOL)
     for key in ("relationship_mode", "access_mode", "sync_mode", "source_card_revision"):
         if key in base and _as_text(base.get(key)):
@@ -346,6 +402,7 @@ def normalize_contract_payload(
             pass
     out["payload_registry"] = _normalize_line_payload_registry(out)
     out["payload_history"] = _normalize_line_payload_history(base, out["payload_registry"])
+    _apply_payload_mirrors(out)
     _normalize_status(out)
     return out
 
@@ -514,7 +571,7 @@ def apply_compact_array_update(
     """
     Apply an external compact-array update: validate from_revision, apply payload, persist.
     Used when this portal receives an update from a counterparty (e.g. new counterparty_mss).
-    Caller is responsible for appending request_log evidence.
+    Caller is responsible for appending external event evidence.
     """
     existing = get_contract(private_dir, contract_id)
     current_rev = int(existing.get("compact_index_revision") or existing.get("revision") or 0)
@@ -523,15 +580,35 @@ def apply_compact_array_update(
             f"Revision mismatch: expected from_revision={current_rev}, got {from_revision}"
         )
     payload = dict(payload or {})
+    registry = dict(existing.get("payload_registry") if isinstance(existing.get("payload_registry"), dict) else {})
+    history = list(existing.get("payload_history") if isinstance(existing.get("payload_history"), list) else [])
+    counterparty_context = line_payload_data(existing, "mss.counterparty_context")
+    if _as_text(payload.get("counterparty_mss")):
+        counterparty_context["counterparty_mss"] = _normalize_mss_value(
+            payload.get("counterparty_mss"),
+            field_name="counterparty_mss",
+        )
+    if isinstance(payload.get("counterparty_selected_refs"), list):
+        counterparty_context["counterparty_selected_refs"] = _normalize_selected_refs(
+            payload.get("counterparty_selected_refs"),
+            field_name="counterparty_selected_refs",
+        )
+    registry["mss.counterparty_context"] = _normalize_line_payload_entry(
+        "mss.counterparty_context",
+        {
+            "payload_type": "mss_context",
+            "direction": "counterparty",
+            "revision": int(to_revision),
+            "updated_unix_ms": int(ts_unix_ms),
+            "source_card_revision": _as_text(existing.get("source_card_revision")),
+            "payload": counterparty_context,
+        },
+    )
     patch: dict[str, Any] = {
-        "compact_index_revision": to_revision,
-        "compact_index_compiled_at_unix_ms": ts_unix_ms,
+        "payload_registry": registry,
+        "payload_history": history,
         "updated_unix_ms": ts_unix_ms,
     }
-    if _as_text(payload.get("counterparty_mss")):
-        patch["counterparty_mss"] = _normalize_mss_value(
-            payload.get("counterparty_mss"), field_name="counterparty_mss"
-        )
     return update_contract(
         private_dir, contract_id, patch, owner_msn_id=local_msn_id or _as_text(existing.get("owner_msn_id"))
     )

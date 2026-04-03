@@ -7,6 +7,15 @@ from typing import Any, Callable
 from ..data_engine import build_compiled_index
 from ..mss import load_anthology_payload, preview_mss_context
 from ..sandbox import SandboxEngine
+from .contract_alias_service import maybe_create_alias_from_contract
+from .contract_store import (
+    ContractNotFoundError,
+    apply_compact_array_update,
+    create_contract,
+    get_contract,
+    line_payload_data,
+    update_contract,
+)
 
 
 def _as_str(value: Any) -> str:
@@ -144,14 +153,15 @@ def build_compiled_index_payload(contract: dict[str, Any], *, local_msn_id: str,
     owner_rows = (context_preview.get("owner_preview") or {}).get("rows") or []
     if not owner_rows:
         return None
+    owner_context = line_payload_data(contract, "mss.owner_context")
     compiled_index = build_compiled_index(
         contract_id=_as_str(contract.get("contract_id")),
         source_msn_id=local_msn_id,
         target_msn_id=_as_str(contract.get("counterparty_msn_id")),
         decoded_rows=list(owner_rows),
-        relationship_mode=_as_str(contract.get("relationship_mode") or ""),
-        access_mode=_as_str(contract.get("access_mode") or ""),
-        sync_mode=_as_str(contract.get("sync_mode") or ""),
+        relationship_mode=_as_str(owner_context.get("relationship_mode") or contract.get("relationship_mode") or ""),
+        access_mode=_as_str(owner_context.get("access_mode") or contract.get("access_mode") or ""),
+        sync_mode=_as_str(owner_context.get("sync_mode") or contract.get("sync_mode") or ""),
         revision=int(_as_str(contract.get("compact_index_revision") or "0") or 0),
         compiled_at_unix_ms=int(_as_str(contract.get("compact_index_compiled_at_unix_ms") or "0") or 0),
         source_card_revision=_as_str(contract.get("source_card_revision") or ""),
@@ -168,3 +178,87 @@ def build_compiled_index_payload(contract: dict[str, Any], *, local_msn_id: str,
         "source_card_revision": compiled_index.source_card_revision,
         "entries": compiled_index.entries,
     }
+
+
+def create_contract_line(
+    *,
+    private_dir: Path,
+    body: dict[str, Any],
+    anthology_path_fn: Callable[[], Path] | None,
+    local_msn_id: str,
+) -> dict[str, Any]:
+    compiled_body = compile_owner_contract_context(
+        body=body,
+        anthology_path_fn=anthology_path_fn,
+        local_msn_id=local_msn_id,
+    )
+    compiled_body.setdefault("owner_msn_id", local_msn_id)
+    contract_id = create_contract(private_dir, compiled_body, owner_msn_id=local_msn_id)
+    alias = maybe_create_alias_from_contract(
+        private_dir=private_dir,
+        local_msn_id=local_msn_id,
+        contract_id=contract_id,
+        contract_payload=compiled_body,
+    )
+    return {
+        "contract_id": contract_id,
+        "contract": get_contract(private_dir, contract_id),
+        "mss": preview_contract_context(
+            body=compiled_body,
+            anthology_path_fn=anthology_path_fn,
+            local_msn_id=local_msn_id,
+        ),
+        "alias": alias,
+    }
+
+
+def patch_contract_line(
+    *,
+    private_dir: Path,
+    contract_id: str,
+    patch: dict[str, Any],
+    anthology_path_fn: Callable[[], Path] | None,
+    local_msn_id: str,
+) -> dict[str, Any]:
+    existing = get_contract(private_dir, contract_id)
+    compiled_patch = compile_owner_contract_context(
+        body=patch,
+        anthology_path_fn=anthology_path_fn,
+        local_msn_id=local_msn_id,
+    )
+    applied_patch = apply_contract_context_patch(
+        existing=existing,
+        patch=compiled_patch,
+        anthology_path_fn=anthology_path_fn,
+        local_msn_id=local_msn_id,
+    )
+    contract = update_contract(private_dir, contract_id, applied_patch, owner_msn_id=local_msn_id)
+    return {
+        "contract": contract,
+        "mss": preview_contract_context(
+            body=contract,
+            anthology_path_fn=anthology_path_fn,
+            local_msn_id=local_msn_id,
+        ),
+    }
+
+
+def apply_compact_array_line_update(
+    *,
+    private_dir: Path,
+    contract_id: str,
+    body: dict[str, Any],
+    local_msn_id: str,
+) -> dict[str, Any]:
+    return apply_compact_array_update(
+        private_dir,
+        contract_id,
+        from_revision=int(body.get("from_revision", 0)),
+        to_revision=int(body.get("to_revision", 0)),
+        change_type=_as_str(body.get("change_type")) or "replace_snapshot",
+        source_msn_id=_as_str(body.get("source_msn_id")),
+        target_msn_id=_as_str(body.get("target_msn_id")),
+        ts_unix_ms=int(body.get("ts_unix_ms") or (time.time() * 1000)),
+        payload=body.get("payload") if isinstance(body.get("payload"), dict) else {},
+        local_msn_id=local_msn_id,
+    )

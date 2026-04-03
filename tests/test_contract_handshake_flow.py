@@ -109,7 +109,6 @@ class ContractHandshakeFlowTests(unittest.TestCase):
             stored_contract = json.loads(
                 (
                     module.PRIVATE_DIR
-                    / "network"
                     / "contracts"
                     / "contract-contract-fnd-tff-member-001.json"
                 ).read_text(encoding="utf-8")
@@ -149,7 +148,6 @@ class ContractHandshakeFlowTests(unittest.TestCase):
             stored_contract = json.loads(
                 (
                     module.PRIVATE_DIR
-                    / "network"
                     / "contracts"
                     / "contract-contract-fnd-tff-member-001.json"
                 ).read_text(encoding="utf-8")
@@ -157,7 +155,7 @@ class ContractHandshakeFlowTests(unittest.TestCase):
             self.assertEqual(stored_contract["counterparty_mss"], "1110001")
 
             log_text = (
-                module.PRIVATE_DIR / "network" / "request_log" / "request_log.ndjson"
+                module.PRIVATE_DIR / "network" / "external_events" / "external_events.ndjson"
             ).read_text(encoding="utf-8")
             self.assertIn("contract_proposal", log_text)
             self.assertIn("contract_proposal.confirmed", log_text)
