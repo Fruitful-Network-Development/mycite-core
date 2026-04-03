@@ -48,6 +48,7 @@ from portal.services.mss import preview_mss_context, resolve_contract_datum_ref
 from portal.services.progeny_embed import build_embed_progeny_landing
 from portal.services.progeny_config_store import get_client_config, get_config
 from portal.services.progeny_workspace import find_profile_by_associated_msn, list_instances
+from portal.services.local_audit_store import append_local_audit_event
 from portal.services.request_log_store import append_event
 from portal.services.runtime_paths import (
     aliases_dir,
@@ -67,9 +68,13 @@ from portal.services.tenant_progeny_store import load_profile, save_profile, set
 from portal.services.website_analytics_store import load_member_analytics, list_member_analytics
 from portal.tools.runtime import active_tool_for_path, read_enabled_tools, register_tool_blueprints
 from _shared.portal.services.app_io import load_object_json_if_exists, read_object_json, write_object_json
+from _shared.portal.core_services.shell_models import (
+    build_portal_profile_model,
+    sanitize_fnd_profile,
+    sanitize_public_profile,
+)
 from _shared.portal.services.portal_model import canonicalize_portal_model_config
 from _shared.portal.services.profile_resolver import resolve_fnd_profile_path, resolve_public_profile_path
-from _shared.portal.core_services.shell_models import build_portal_profile_model
 from _shared.portal.services.alias_utils import (
     alias_contact_collection_ref as shared_alias_contact_collection_ref,
     alias_label as shared_alias_label,
@@ -256,23 +261,6 @@ def _resolve_public_profile_path(msn_id: str) -> Optional[Path]:
 
 def _resolve_fnd_profile_path(msn_id: str) -> Optional[Path]:
     return resolve_fnd_profile_path(public_dir=PUBLIC_DIR, fallback_dir=FALLBACK_DIR, msn_id=msn_id)
-
-
-def _sanitize_public_profile(payload: Dict[str, Any]) -> Dict[str, Any]:
-    allowed = {"msn_id", "schema", "title", "public_key", "entity_type", "public_resources", "accessible"}
-    out = {k: payload.get(k) for k in allowed if k in payload}
-    resources = payload.get("public_resources") if isinstance(payload.get("public_resources"), list) else []
-    out["public_resources"] = [item for item in resources if isinstance(item, dict)]
-    out.setdefault("accessible", {})
-    return out
-
-
-def _sanitize_fnd_profile(payload: Dict[str, Any]) -> Dict[str, Any]:
-    allowed = {"schema", "msn_id", "title", "summary", "logo", "banner", "links"}
-    out = {key: payload.get(key) for key in allowed if key in payload}
-    links = payload.get("links") if isinstance(payload.get("links"), list) else []
-    out["links"] = [item for item in links if isinstance(item, dict)]
-    return out
 
 
 def _options_public(msn_id: str) -> Dict[str, Any]:
@@ -1966,9 +1954,8 @@ def _render_tenant_shell(*, force_tab: Optional[str] = None):
     has_encrypted_secret = bool(secret_enc.get("ciphertext_b64") and secret_enc.get("nonce_b64"))
 
     status = profile.get("status") if isinstance(profile.get("status"), dict) else {}
-    append_event(
+    append_local_audit_event(
         PRIVATE_DIR,
-        MSN_ID,
         {
             "type": "tenant.paypal.config.viewed",
             "status": "ok",
@@ -2027,9 +2014,8 @@ def embed_tenant_paypal_save():
     )
     save_profile(profile)
 
-    append_event(
+    append_local_audit_event(
         PRIVATE_DIR,
-        MSN_ID,
         {
             "type": "tenant.paypal.config.saved",
             "status": "ok",
@@ -2053,9 +2039,8 @@ def embed_tenant_paypal_webhook_register():
 
     webhook_target_url = (request.form.get("webhook_target_url") or "").strip()
     webhook_event_mask = _normalize_event_mask(request.form.getlist("webhook_event_mask"))
-    append_event(
+    append_local_audit_event(
         PRIVATE_DIR,
-        MSN_ID,
         {
             "type": "tenant.paypal.webhook.register.requested",
             "status": "requested",
@@ -2070,9 +2055,8 @@ def embed_tenant_paypal_webhook_register():
 
     try:
         # Stubbed for MVP; real provider registration will be added in a follow-up.
-        append_event(
+        append_local_audit_event(
             PRIVATE_DIR,
-            MSN_ID,
             {
                 "type": "tenant.paypal.webhook.register.completed",
                 "status": "completed",
@@ -2083,9 +2067,8 @@ def embed_tenant_paypal_webhook_register():
         )
         return _tenant_redirect(params, webhook="registered")
     except Exception as exc:
-        append_event(
+        append_local_audit_event(
             PRIVATE_DIR,
-            MSN_ID,
             {
                 "type": "tenant.paypal.webhook.register.failed",
                 "status": "failed",

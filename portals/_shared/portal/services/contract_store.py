@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 import uuid
@@ -11,6 +12,8 @@ from ..runtime_paths import contract_read_dirs, contracts_dir
 
 CONTRACT_SCHEMA_V1 = "mycite.portal.contract.v1"
 CONTRACT_SCHEMA_V2 = "mycite.portal.contract.v2"
+LINE_PAYLOAD_SCHEMA_V1 = "mycite.portal.contract.line_payload.v1"
+LINE_PAYLOAD_HISTORY_SCHEMA_V1 = "mycite.portal.contract.line_payload_history.v1"
 
 FORBIDDEN_SECRET_KEYS = {
     "private_key",
@@ -129,6 +132,131 @@ def _normalize_tracked_resource_ids(payload: dict[str, Any]) -> list[str]:
     return out
 
 
+def _json_hash(payload: dict[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _normalize_line_payload_entry(slot: str, entry: dict[str, Any]) -> dict[str, Any]:
+    payload = entry.get("payload") if isinstance(entry.get("payload"), dict) else {}
+    out = {
+        "schema": LINE_PAYLOAD_SCHEMA_V1,
+        "slot": _as_text(slot),
+        "payload_type": _as_text(entry.get("payload_type")) or "line_payload",
+        "direction": _as_text(entry.get("direction")),
+        "revision": int(entry.get("revision") or 0),
+        "version_hash": _as_text(entry.get("version_hash")),
+        "updated_unix_ms": int(entry.get("updated_unix_ms") or 0),
+        "source_card_revision": _as_text(entry.get("source_card_revision")),
+        "payload": dict(payload),
+    }
+    if not out["version_hash"] and payload:
+        out["version_hash"] = _json_hash(payload)
+    return out
+
+
+def _managed_line_payload_entries(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    revision = int(payload.get("compact_index_revision") or payload.get("revision") or 0)
+    updated_unix_ms = int(
+        payload.get("compact_index_compiled_at_unix_ms")
+        or payload.get("updated_unix_ms")
+        or int(time.time() * 1000)
+    )
+    source_card_revision = _as_text(payload.get("source_card_revision"))
+
+    entries: dict[str, dict[str, Any]] = {}
+    owner_payload = {
+        "owner_mss": _as_text(payload.get("owner_mss")),
+        "owner_selected_refs": list(payload.get("owner_selected_refs") or []),
+        "relationship_mode": _as_text(payload.get("relationship_mode")),
+        "access_mode": _as_text(payload.get("access_mode")),
+        "sync_mode": _as_text(payload.get("sync_mode")),
+    }
+    if owner_payload["owner_mss"] or owner_payload["owner_selected_refs"]:
+        entries["mss.owner_context"] = _normalize_line_payload_entry(
+            "mss.owner_context",
+            {
+                "payload_type": "mss_context",
+                "direction": "owner",
+                "revision": revision,
+                "updated_unix_ms": updated_unix_ms,
+                "source_card_revision": source_card_revision,
+                "payload": owner_payload,
+            },
+        )
+
+    counterparty_payload = {
+        "counterparty_mss": _as_text(payload.get("counterparty_mss")),
+        "counterparty_selected_refs": list(payload.get("counterparty_selected_refs") or []),
+    }
+    if counterparty_payload["counterparty_mss"] or counterparty_payload["counterparty_selected_refs"]:
+        entries["mss.counterparty_context"] = _normalize_line_payload_entry(
+            "mss.counterparty_context",
+            {
+                "payload_type": "mss_context",
+                "direction": "counterparty",
+                "revision": revision,
+                "updated_unix_ms": updated_unix_ms,
+                "source_card_revision": source_card_revision,
+                "payload": counterparty_payload,
+            },
+        )
+    return entries
+
+
+def _normalize_line_payload_registry(payload: dict[str, Any]) -> dict[str, Any]:
+    raw = payload.get("payload_registry") if isinstance(payload.get("payload_registry"), dict) else {}
+    out: dict[str, Any] = {}
+    for slot, value in raw.items():
+        if not isinstance(value, dict):
+            continue
+        out[_as_text(slot)] = _normalize_line_payload_entry(_as_text(slot), value)
+    out.update(_managed_line_payload_entries(payload))
+    return out
+
+
+def _normalize_line_payload_history(payload: dict[str, Any], registry: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = payload.get("payload_history") if isinstance(payload.get("payload_history"), list) else []
+    history: list[dict[str, Any]] = []
+    seen_keys: set[tuple[str, str]] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        slot = _as_text(item.get("slot"))
+        version_hash = _as_text(item.get("version_hash"))
+        if not slot:
+            continue
+        normalized = {
+            "schema": LINE_PAYLOAD_HISTORY_SCHEMA_V1,
+            "slot": slot,
+            "payload_type": _as_text(item.get("payload_type")) or "line_payload",
+            "direction": _as_text(item.get("direction")),
+            "revision": int(item.get("revision") or 0),
+            "version_hash": version_hash,
+            "updated_unix_ms": int(item.get("updated_unix_ms") or 0),
+            "source_card_revision": _as_text(item.get("source_card_revision")),
+        }
+        history.append(normalized)
+        seen_keys.add((slot, version_hash))
+    for slot, entry in registry.items():
+        key = (_as_text(slot), _as_text(entry.get("version_hash")))
+        if key in seen_keys:
+            continue
+        history.append(
+            {
+                "schema": LINE_PAYLOAD_HISTORY_SCHEMA_V1,
+                "slot": _as_text(slot),
+                "payload_type": _as_text(entry.get("payload_type")),
+                "direction": _as_text(entry.get("direction")),
+                "revision": int(entry.get("revision") or 0),
+                "version_hash": _as_text(entry.get("version_hash")),
+                "updated_unix_ms": int(entry.get("updated_unix_ms") or 0),
+                "source_card_revision": _as_text(entry.get("source_card_revision")),
+            }
+        )
+    history.sort(key=lambda item: (int(item.get("updated_unix_ms") or 0), _as_text(item.get("slot"))))
+    return history
+
+
 def _infer_contract_id(payload: dict[str, Any], filename: str = "") -> str:
     explicit = _as_text(payload.get("contract_id"))
     if explicit:
@@ -216,6 +344,8 @@ def normalize_contract_payload(
             out["compact_index_compiled_at_unix_ms"] = int(compiled_ms)
         except (TypeError, ValueError):
             pass
+    out["payload_registry"] = _normalize_line_payload_registry(out)
+    out["payload_history"] = _normalize_line_payload_history(base, out["payload_registry"])
     _normalize_status(out)
     return out
 

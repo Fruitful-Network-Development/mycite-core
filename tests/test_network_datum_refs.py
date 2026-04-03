@@ -151,6 +151,21 @@ class RequestLogDotWriteTests(unittest.TestCase):
             self.assertLessEqual(read_back.parse_errors, 1)
             self.assertGreaterEqual(read_back.total_lines, 2)
 
+    def test_request_log_rejects_local_only_operational_events(self):
+        request_log_store = _load_fnd_request_log_store()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            with self.assertRaises(request_log_store.RequestLogValidationError):
+                request_log_store.append_event(
+                    private_dir,
+                    MSN_ID,
+                    {
+                        "type": "tenant.paypal.config.saved",
+                        "status": "ok",
+                        "tenant_msn_id": "tenant-1",
+                    },
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

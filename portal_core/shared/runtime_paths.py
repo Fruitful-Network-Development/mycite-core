@@ -56,12 +56,26 @@ def request_log_dir(private_dir: Path) -> Path:
     return network_dir(private_dir) / "request_log"
 
 
+def external_event_log_dir(private_dir: Path) -> Path:
+    # Compatibility shim: externally meaningful events still live in the
+    # request_log directory until callers migrate to the new terminology.
+    return request_log_dir(private_dir)
+
+
 def request_log_types_dir(private_dir: Path) -> Path:
     return request_log_dir(private_dir) / "types"
 
 
+def external_event_types_dir(private_dir: Path) -> Path:
+    return request_log_types_dir(private_dir)
+
+
 def request_log_path(private_dir: Path) -> Path:
     return request_log_dir(private_dir) / "request_log.ndjson"
+
+
+def external_event_log_path(private_dir: Path) -> Path:
+    return request_log_path(private_dir)
 
 
 def legacy_request_log_dir(private_dir: Path) -> Path:
@@ -77,6 +91,26 @@ def request_log_read_paths(private_dir: Path, msn_id: str | None = None) -> list
     legacy_shared = legacy_request_log_dir(private_dir) / "request_log.ndjson"
     paths.append(legacy_shared)
     return _unique_paths(paths)
+
+
+def external_event_read_paths(private_dir: Path, msn_id: str | None = None) -> list[Path]:
+    return request_log_read_paths(private_dir, msn_id)
+
+
+def local_audit_dir(private_dir: Path) -> Path:
+    return private_dir / "audit"
+
+
+def local_audit_path(private_dir: Path) -> Path:
+    return local_audit_dir(private_dir) / "local.ndjson"
+
+
+def reference_exchange_dir(private_dir: Path) -> Path:
+    return network_dir(private_dir) / "reference_exchange"
+
+
+def reference_subscription_registry_path(private_dir: Path) -> Path:
+    return reference_exchange_dir(private_dir) / "subscriptions.json"
 
 
 def hosted_path(private_dir: Path) -> Path:
@@ -182,4 +216,3 @@ def utility_tools_dir(private_dir: Path) -> Path:
 
 def utility_peripherals_dir(private_dir: Path) -> Path:
     return utilities_dir(private_dir) / "peripherals"
-
