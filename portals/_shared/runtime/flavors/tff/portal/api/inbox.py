@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, Optional
 
 from flask import abort, jsonify, make_response, request
 
-from portal.services.request_log_store import append_event, read_events
+from portal.services.external_event_log import append_external_event, read_external_events
 
 
 def _as_int(value: Optional[str], default: int, *, min_value: int = 0, max_value: int = 10_000) -> int:
@@ -28,7 +28,7 @@ def register_inbox_routes(
     private_dir: Path,
     options_private_fn: Optional[Callable[[str], Dict[str, Any]]] = None,
 ):
-    """Register minimal request-log (inbox) endpoints.
+    """Register minimal external-event inbox endpoints.
 
     Endpoints (portal-only later; currently open in local dev):
     - GET     /portal/api/inbox?msn_id=...&limit=100&offset=0&reverse=1
@@ -36,7 +36,7 @@ def register_inbox_routes(
     - OPTIONS /portal/api/inbox
 
     Notes:
-    - This is an *operational log* store. Do not put secrets here.
+    - This is an externally meaningful event stream. Do not put secrets here.
     - Later, external signed submissions should go to a public endpoint
       (e.g., /api/inbox/<msn_id>) and then be validated before appending.
     """
@@ -51,7 +51,7 @@ def register_inbox_routes(
         offset = _as_int(request.args.get("offset"), 0, min_value=0, max_value=10_000_000)
         reverse = (request.args.get("reverse") or "1").strip() not in ("0", "false", "False")
 
-        rr = read_events(private_dir, msn_id, limit=limit, offset=offset, reverse=reverse)
+        rr = read_external_events(private_dir, msn_id, limit=limit, offset=offset, reverse=reverse)
 
         out: Dict[str, Any] = {
             "schema": "mycite.inbox.v0",
@@ -84,7 +84,7 @@ def register_inbox_routes(
             abort(400, description="Expected JSON object body")
 
         try:
-            path = append_event(private_dir, msn_id, body)
+            path = append_external_event(private_dir, msn_id, body)
         except ValueError as e:
             abort(400, description=str(e))
         return jsonify({"ok": True, "msn_id": msn_id, "written_to": str(path)})

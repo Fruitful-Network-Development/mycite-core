@@ -94,7 +94,7 @@
 
           <nav class="network-modeTabs" aria-label="Message mode">
             <a class="network-modeTab {% if current_kind == 'alias' %}is-active{% endif %}" href="{{ selected_alias.href if selected_alias else '/portal/network?tab=messages&kind=alias' }}">Aliases</a>
-            <a class="network-modeTab {% if current_kind == 'log' %}is-active{% endif %}" href="{{ selected_log.href if selected_log else '/portal/network?tab=messages&kind=log&id=request_log' }}">Request Logs</a>
+            <a class="network-modeTab {% if current_kind == 'log' %}is-active{% endif %}" href="{{ selected_log.href if selected_log else '/portal/network?tab=messages&kind=log&id=external_events' }}">External Events</a>
             <a class="network-modeTab {% if current_kind == 'p2p' %}is-active{% endif %}" href="{{ selected_p2p.href if selected_p2p else '/portal/network?tab=messages&kind=p2p' }}">Direct Messages</a>
           </nav>
 
@@ -148,16 +148,16 @@
               </div>
               <div class="network-chatHero__body">
                 <div class="network-chatHero__kicker">
-                  {% if current_kind == "alias" %}Organization Interface{% elif current_kind == "log" %}Request Log Channel{% else %}Direct Message Channel{% endif %}
+                  {% if current_kind == "alias" %}Organization Interface{% elif current_kind == "log" %}External Event Channel{% else %}Direct Message Channel{% endif %}
                 </div>
                 <h2>{{ selected_channel.label if selected_channel else "Choose a conversation from the left sidebar" }}</h2>
                 <p>
                   {% if current_kind == "alias" %}
                     Alias interfaces behave like organization workspaces. The center pane becomes the conversation history and runtime activity for the selected organization interface.
                   {% elif current_kind == "log" %}
-                    Request logs are treated like a direct message history for the portal itself, backed by the canonical shared NDJSON stream.
+                    Externally meaningful events are treated like the portal's canonical line-aware activity stream, backed by the shared NDJSON ledger.
                   {% else %}
-                    P2P channels behave like direct messages. Each thread is derived from request-log transmitter and receiver pairs.
+                    P2P channels behave like direct messages. Each thread is derived from canonical external-event transmitter and receiver pairs.
                   {% endif %}
                 </p>
               </div>
@@ -191,7 +191,7 @@
                 {% if current_kind == "alias" and selected_alias %}
                   Open the organization interface to continue working with {{ selected_alias.label }}.
                 {% elif current_kind == "log" %}
-                  Request-log messages are append-only and appear here as the portal records activity.
+                  External events are append-only and appear here as the portal records communication-line activity.
                 {% elif current_kind == "p2p" and selected_p2p %}
                   P2P activity will render here as transmitter and receiver events are recorded for {{ selected_p2p.label }}.
                 {% else %}
@@ -218,9 +218,9 @@
                 {% elif current_kind == "p2p" and selected_p2p %}
                   <li><strong>channel</strong><code>{{ selected_p2p.label }}</code></li>
                   <li><strong>events</strong><span>{{ selected_p2p.event_count }}</span></li>
-                  <li><strong>source</strong><span>request_log transmitter/receiver</span></li>
+                  <li><strong>source</strong><span>external_event transmitter/receiver</span></li>
                 {% else %}
-                  <li><span>Select an alias, request log, or P2P channel from the left sidebar.</span></li>
+                  <li><span>Select an alias, external-event channel, or P2P channel from the left sidebar.</span></li>
                 {% endif %}
               </ul>
             </section>
@@ -230,9 +230,9 @@
               <div class="network-presenceCard__title">Active Now</div>
               <ul class="network-presenceList">
                 <li><strong>aliases</strong><span>{{ message_aliases|length }}</span></li>
-                <li><strong>request logs</strong><span>{{ message_logs|length }}</span></li>
+                <li><strong>external events</strong><span>{{ message_logs|length }}</span></li>
                 <li><strong>direct messages</strong><span>{{ message_p2p|length }}</span></li>
-                <li><strong>events</strong><span>{{ request_log_summary.event_count if request_log_summary is defined else 0 }}</span></li>
+                <li><strong>events</strong><span>{{ external_event_summary.event_count if external_event_summary is defined else (request_log_summary.event_count if request_log_summary is defined else 0) }}</span></li>
               </ul>
               <p class="network-presenceHint">The left sidebar stays fixed so you can move between organization interfaces and direct-message style channels without leaving the NETWORK workbench.</p>
             </section>

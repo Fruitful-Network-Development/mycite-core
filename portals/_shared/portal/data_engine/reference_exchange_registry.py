@@ -41,8 +41,6 @@ def _normalize_subscription(record: dict[str, Any]) -> dict[str, Any]:
         "sync": _normalize_sync(record.get("sync")),
         "updated_unix_ms": int(record.get("updated_unix_ms") or 0),
     }
-    # Compatibility field kept for current APIs while the ontology shifts to references.
-    normalized["tracked_resource_ids"] = list(normalized["tracked_reference_ids"])
     return normalized
 
 
@@ -100,7 +98,6 @@ def get_reference_subscription(
         "contract_id": token,
         "source_msn_id": _as_text(source_msn_id),
         "tracked_reference_ids": [],
-        "tracked_resource_ids": [],
         "sync": {},
         "updated_unix_ms": 0,
     }

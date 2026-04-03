@@ -179,7 +179,7 @@ class FndPortalShellRouteTests(unittest.TestCase):
             self.assertEqual(client.get("/portal/tools").status_code, 302)
             self.assertIn("/portal/utilities?tab=tools", client.get("/portal/tools").headers.get("Location", ""))
             self.assertIn("/portal/utilities?tab=vault", client.get("/portal/vault").headers.get("Location", ""))
-            self.assertIn("/portal/network?tab=messages&kind=log&id=request_log", client.get("/portal/inbox").headers.get("Location", ""))
+            self.assertIn("/portal/network?tab=messages&kind=log&id=external_events", client.get("/portal/inbox").headers.get("Location", ""))
             self.assertEqual("/portal/system", client.get("/portal/data").headers.get("Location", ""))
             self.assertEqual("/portal/system", client.get("/portal/data/legacy").headers.get("Location", ""))
             self.assertEqual(client.get("/portal/tools/fnd_ebi/home").status_code, 404)

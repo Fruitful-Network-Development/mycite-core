@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
-import urllib.error
-import urllib.request
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
@@ -21,14 +18,22 @@ from portal.services.contact_cards import (
     sanitize_contact_card as _sanitize_contact_card_service,
 )
 from portal.services.mss import compile_mss_payload
-from portal.services.contract_store import upsert_contract
-from portal.services.crypto_signatures import ensure_dev_keypair, sign_payload, verify_payload_signature
+from portal.services.contract_store import get_contract, list_contracts, upsert_contract
+from portal.services.contract_line_exchange import (
+    build_signed_payload as _build_signed_payload,
+    contract_symmetric_meta as _contract_symmetric_meta,
+    default_target_base_url as _default_target_base_url,
+    load_contract_line as _load_contract_payload,
+    persist_symmetric_meta as _persist_symmetric_meta,
+    post_json as _json_request,
+    validate_signed_envelope as _validate_signed_envelope_service,
+    verify_sender_signature as _verify_sender_signature_service,
+)
+from portal.services.crypto_signatures import ensure_dev_keypair, sign_payload
 from portal.services.datum_refs import normalize_datum_ref, parse_datum_ref
 from portal.services.external_event_log import append_external_event as append_event
 from portal.services.runtime_paths import (
     alias_read_dirs,
-    contract_read_dirs,
-    contracts_dir,
     member_profile_read_dirs,
 )
 from portal.services.vault_session import (
@@ -104,10 +109,6 @@ def _safe_identifier(value: str, *, fallback: str = "item") -> str:
     return cleaned or fallback
 
 
-def _sanitize_env_suffix(value: str) -> str:
-    return "".join(ch if ch.isalnum() else "_" for ch in str(value or "")).upper()
-
-
 def _find_local_public_card(public_dir: Path, msn_id: str) -> Optional[Path]:
     return _find_local_public_card_service(public_dir, msn_id)
 
@@ -126,62 +127,6 @@ def _sanitize_contact_card(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def _public_key_fingerprint(public_key_pem: str) -> str:
     return _public_key_fingerprint_service(public_key_pem)
-
-
-def _json_request(
-    url: str,
-    payload: Dict[str, Any],
-    *,
-    timeout_seconds: float = 5.0,
-) -> tuple[int, Dict[str, Any]]:
-    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    req = urllib.request.Request(
-        url=url,
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-            raw = resp.read()
-            status = int(resp.getcode() or 0)
-    except urllib.error.HTTPError as err:
-        raw = err.read()
-        status = int(err.code or 0)
-    except urllib.error.URLError as err:
-        return 0, {"ok": False, "error": str(err)}
-    except TimeoutError as err:
-        return 0, {"ok": False, "error": f"timeout: {err}"}
-
-    try:
-        parsed = json.loads(raw.decode("utf-8")) if raw else {}
-        if not isinstance(parsed, dict):
-            parsed = {"raw": parsed}
-    except Exception:
-        parsed = {"raw": raw.decode("utf-8", errors="replace")}
-    return status, parsed
-
-
-def _default_internal_base_url(local_msn_id: str) -> str:
-    override = _as_str(os.environ.get("MYCITE_INTERNAL_BASE_URL"))
-    if override:
-        return override.rstrip("/")
-    if local_msn_id == FND_MSN_ID:
-        return _as_str(os.environ.get("MYCITE_FND_INTERNAL_BASE_URL") or "http://fnd_portal:5000").rstrip("/")
-    if local_msn_id == TFF_MSN_ID:
-        return _as_str(os.environ.get("MYCITE_TFF_INTERNAL_BASE_URL") or "http://tff_portal:5000").rstrip("/")
-    return _as_str(os.environ.get("MYCITE_DEFAULT_INTERNAL_BASE_URL")).rstrip("/")
-
-
-def _default_target_base_url(target_msn_id: str) -> str:
-    specific = _as_str(os.environ.get(f"MYCITE_TARGET_BASE_URL_{_sanitize_env_suffix(target_msn_id)}"))
-    if specific:
-        return specific.rstrip("/")
-    if target_msn_id == FND_MSN_ID:
-        return _as_str(os.environ.get("MYCITE_FND_INTERNAL_BASE_URL") or "http://fnd_portal:5000").rstrip("/")
-    if target_msn_id == TFF_MSN_ID:
-        return _as_str(os.environ.get("MYCITE_TFF_INTERNAL_BASE_URL") or "http://tff_portal:5000").rstrip("/")
-    return _as_str(os.environ.get("MYCITE_DEFAULT_CONTRACT_TARGET_BASE_URL")).rstrip("/")
 
 
 def _normalize_event_ref(value: Any, owner_msn_id: str, *, default_value: str = DEFAULT_EVENT_DATUM) -> str:
@@ -210,65 +155,6 @@ def _normalize_status_ref(value: Any, owner_msn_id: str, *, default_value: str) 
     return normalized
 
 
-def _build_signed_payload(
-    *,
-    local_msn_id: str,
-    payload_key: str,
-    payload_value: Dict[str, Any],
-    private_dir: Path,
-    public_dir: Path,
-) -> Dict[str, Any]:
-    key_meta = ensure_dev_keypair(
-        local_msn_id,
-        private_dir=private_dir,
-        public_dir=public_dir,
-        update_contact_card=True,
-    )
-    private_key_path = _as_str(key_meta.get("private_key_path"))
-    public_key_pem = _as_str(key_meta.get("public_key_pem"))
-    if not private_key_path:
-        raise ValueError("Signing key path was not available for this portal")
-
-    signature_b64 = sign_payload(payload_value, private_key_path)
-    signature_payload = {
-        "alg": "ed25519",
-        "signer_msn_id": local_msn_id,
-        "signature_b64": signature_b64,
-        "public_key_fingerprint": _public_key_fingerprint(public_key_pem),
-        "signed_unix_ms": int(time.time() * 1000),
-    }
-    sender_contact_card: Dict[str, Any] = {}
-    card_path = _find_local_public_card(public_dir, local_msn_id)
-    if card_path is not None:
-        try:
-            card_payload = _read_json(card_path)
-            sender_contact_card = {
-                "msn_id": _as_str(card_payload.get("msn_id")),
-                "title": _as_str(card_payload.get("title")),
-                "schema": _as_str(card_payload.get("schema")),
-                "entity_type": _as_str(card_payload.get("entity_type")),
-                "public_key": _as_str(card_payload.get("public_key")),
-            }
-        except Exception:
-            sender_contact_card = {}
-    return {
-        "schema": f"mycite.contract.{payload_key}.signed.v1",
-        payload_key: payload_value,
-        "signature": signature_payload,
-        "sender_contact_card": sender_contact_card,
-    }
-
-
-def _validate_signed_envelope(payload_key: str, body: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, Any]]:
-    payload_value = body.get(payload_key)
-    signature = body.get("signature")
-    if not isinstance(payload_value, dict):
-        abort(400, description=f"Missing or invalid '{payload_key}' object")
-    if not isinstance(signature, dict):
-        abort(400, description="Missing or invalid 'signature' object")
-    return payload_value, signature
-
-
 def _verify_sender_signature(
     *,
     public_dir: Path,
@@ -277,38 +163,23 @@ def _verify_sender_signature(
     signature: Dict[str, Any],
     sender_contact_card: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    fallback_card = sender_contact_card if isinstance(sender_contact_card, dict) else {}
-    contact_card: Dict[str, Any]
     try:
-        contact_card = _resolve_contact_card(public_dir, signer_msn_id)
+        return _verify_sender_signature_service(
+            public_dir=public_dir,
+            signer_msn_id=signer_msn_id,
+            payload_value=payload_value,
+            signature=signature,
+            sender_contact_card=sender_contact_card,
+        )
     except Exception as exc:
-        if fallback_card:
-            contact_card = dict(fallback_card)
-        else:
-            abort(404, description=f"Unable to resolve sender contact card: {exc}")
+        abort(401, description=str(exc))
 
-    if fallback_card:
-        resolved_key = _as_str(contact_card.get("public_key"))
-        fallback_key = _as_str(fallback_card.get("public_key"))
-        if resolved_key and fallback_key and resolved_key != fallback_key:
-            abort(401, description="sender_contact_card public_key does not match resolved contact card")
 
-    card_msn_id = _as_str(contact_card.get("msn_id"))
-    if card_msn_id and card_msn_id != signer_msn_id:
-        abort(401, description="Signer msn_id does not match resolved contact card msn_id")
-
-    sender_public_key = _as_str(contact_card.get("public_key"))
-    if not sender_public_key:
-        abort(401, description="Sender contact card does not include a public_key")
-
-    signature_b64 = _as_str(signature.get("signature_b64"))
-    if not verify_payload_signature(sender_public_key, payload_value, signature_b64):
-        abort(401, description="Invalid signed payload")
-
-    return {
-        "contact_card_msn_id": card_msn_id or signer_msn_id,
-        "public_key_fingerprint": _public_key_fingerprint(sender_public_key),
-    }
+def _validate_signed_envelope(payload_key: str, body: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    try:
+        return _validate_signed_envelope_service(payload_key, body)
+    except ValueError as exc:
+        abort(400, description=str(exc))
 
 
 def _error_message(exc: Exception) -> str:
@@ -317,54 +188,6 @@ def _error_message(exc: Exception) -> str:
         return description.strip()
     text = str(exc).strip()
     return text or exc.__class__.__name__
-
-
-def _contract_filename(contract_id: str) -> str:
-    return f"contract-{_safe_identifier(contract_id, fallback='contract')}.json"
-
-
-def _contract_path(private_dir: Path, contract_id: str) -> Path:
-    filename = _contract_filename(contract_id)
-    for directory in contract_read_dirs(private_dir):
-        candidate = directory / filename
-        if candidate.exists() and candidate.is_file():
-            return candidate
-    return contracts_dir(private_dir) / filename
-
-
-def _load_contract_payload(private_dir: Path, contract_id: str) -> Dict[str, Any]:
-    path = _contract_path(private_dir, contract_id)
-    if path.exists() and path.is_file():
-        try:
-            payload = _read_json(path)
-            payload.setdefault("contract_id", contract_id)
-            return payload
-        except Exception:
-            pass
-    return {"contract_id": contract_id}
-
-
-def _save_contract_payload(private_dir: Path, contract_id: str, payload: Dict[str, Any]) -> Path:
-    path = contracts_dir(private_dir) / _contract_filename(contract_id)
-    normalized = dict(payload)
-    normalized.setdefault("contract_id", contract_id)
-    _write_json(path, normalized)
-    return path
-
-
-def _contract_symmetric_meta(payload: Dict[str, Any]) -> Dict[str, Any]:
-    section = payload.get("symmetric") if isinstance(payload.get("symmetric"), dict) else {}
-    return dict(section)
-
-
-def _persist_symmetric_meta(private_dir: Path, contract_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    contract_payload = _load_contract_payload(private_dir, contract_id)
-    merged = dict(_contract_symmetric_meta(contract_payload))
-    merged.update(payload)
-    merged.setdefault("schema", "mycite.contract.symmetric.v1")
-    contract_payload["symmetric"] = merged
-    _save_contract_payload(private_dir, contract_id, contract_payload)
-    return merged
 
 
 def _key_filename(key_id: str) -> str:
@@ -498,23 +321,15 @@ def _coerce_positive_int(value: Any, default_value: int) -> int:
 
 def _contract_payload_rows(private_dir: Path) -> list[tuple[str, Dict[str, Any]]]:
     out: list[tuple[str, Dict[str, Any]]] = []
-    seen: set[str] = set()
-    for directory in contract_read_dirs(private_dir):
-        if not directory.exists() or not directory.is_dir():
+    for item in list_contracts(private_dir):
+        contract_id = _as_str(item.get("contract_id"))
+        if not contract_id:
             continue
-        for path in sorted(directory.glob("*.json")):
-            try:
-                payload = _read_json(path)
-            except Exception:
-                continue
-            contract_id = _as_str(payload.get("contract_id"))
-            if not contract_id:
-                contract_id = path.stem.replace("contract-", "", 1) if path.stem.startswith("contract-") else path.stem
-            if contract_id in seen:
-                continue
-            seen.add(contract_id)
-            payload.setdefault("contract_id", contract_id)
-            out.append((contract_id, payload))
+        try:
+            payload = get_contract(private_dir, contract_id)
+        except Exception:
+            payload = {"contract_id": contract_id}
+        out.append((contract_id, payload))
     return out
 
 

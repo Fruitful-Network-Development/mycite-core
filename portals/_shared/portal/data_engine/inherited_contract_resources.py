@@ -29,8 +29,8 @@ def _as_text(value: object) -> str:
     return "" if value is None else str(value).strip()
 
 
-def _safe_resource_name(resource_id: str) -> str:
-    token = _as_text(resource_id).lower()
+def _safe_reference_name(reference_id: str) -> str:
+    token = _as_text(reference_id).lower()
     if token.startswith("rc.") or token.startswith("rf."):
         parts = token.split(".", 2)
         if len(parts) == 3:
@@ -42,7 +42,7 @@ def _safe_resource_name(resource_id: str) -> str:
         else:
             out.append(".")
     normalized = "".join(out).strip(".")
-    return normalized or "resource"
+    return normalized or "reference"
 
 
 def _legacy_contract_refresh_metadata(payload: dict[str, Any]) -> dict[str, Any]:
@@ -50,12 +50,12 @@ def _legacy_contract_refresh_metadata(payload: dict[str, Any]) -> dict[str, Any]
     return dict(value) if isinstance(value, dict) else {}
 
 
-def _legacy_contract_resources(payload: dict[str, Any]) -> list[str]:
-    resources = payload.get("tracked_resource_ids")
-    if isinstance(resources, list):
+def _legacy_contract_reference_ids(payload: dict[str, Any]) -> list[str]:
+    resource_ids = payload.get("tracked_resource_ids")
+    if isinstance(resource_ids, list):
         out = []
         seen: set[str] = set()
-        for item in resources:
+        for item in resource_ids:
             token = _as_text(item)
             if not token or token in seen:
                 continue
@@ -77,7 +77,7 @@ def _legacy_contract_resources(payload: dict[str, Any]) -> list[str]:
     return []
 
 
-def _normalize_resource_ids(raw_ids: list[str]) -> list[str]:
+def _normalize_reference_ids(raw_ids: list[str]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for item in raw_ids:
@@ -103,25 +103,24 @@ def _subscription_record(
     )
     tracked = list(record.get("tracked_reference_ids") or [])
     if not tracked:
-        tracked = _legacy_contract_resources(contract_payload)
+        tracked = _legacy_contract_reference_ids(contract_payload)
     sync = record.get("sync") if isinstance(record.get("sync"), dict) else {}
     if not sync:
         sync = _legacy_contract_refresh_metadata(contract_payload)
     out = dict(record)
     out["source_msn_id"] = source_msn_id or _as_text(record.get("source_msn_id"))
-    out["tracked_reference_ids"] = _normalize_resource_ids(tracked)
-    out["tracked_resource_ids"] = list(out["tracked_reference_ids"])
+    out["tracked_reference_ids"] = _normalize_reference_ids(tracked)
     out["sync"] = dict(sync)
     return out
 
 
-def refresh_contract_resource(
+def refresh_contract_reference(
     *,
     data_root: Path,
     private_dir: Path,
     resolver: ExternalResourceResolver,
     contract_id: str,
-    resource_id: str,
+    reference_id: str,
     owner_msn_id: str = "",
     force_refresh: bool = True,
 ) -> dict[str, Any]:
@@ -134,7 +133,7 @@ def refresh_contract_resource(
 
     fetched = resolver.fetch_and_cache_bundle(
         source_msn_id=source_msn_id,
-        resource_id=_as_text(resource_id),
+        resource_id=_as_text(reference_id),
         force_refresh=bool(force_refresh),
     )
     if not bool(fetched.get("ok")):
@@ -142,37 +141,42 @@ def refresh_contract_resource(
             "ok": False,
             "contract_id": contract_id,
             "source_msn_id": source_msn_id,
-            "resource_id": _as_text(resource_id),
+            "reference_id": _as_text(reference_id),
+            "resource_id": _as_text(reference_id),
             "error": _as_text(fetched.get("error")) or "fetch failed",
         }
 
     bundle = fetched.get("bundle") if isinstance(fetched.get("bundle"), dict) else {}
     decoded_payload = fetched.get("payload") if isinstance(fetched.get("payload"), dict) else {}
-    resource_name = _safe_resource_name(resource_id)
+    reference_name = _safe_reference_name(reference_id)
     resource_path = resource_file_path(
         data_root,
         scope=INHERITED_SCOPE,
         source_msn_id=source_msn_id,
-        resource_name=resource_name,
+        resource_name=reference_name,
     )
     version_hash = compute_version_hash(decoded_payload or bundle)
     now_ms = int(time.time() * 1000)
-    local_reference_id = f"{REFERENCE_PREFIX}.{source_msn_id}.{resource_name}"
+    local_reference_id = f"{REFERENCE_PREFIX}.{source_msn_id}.{reference_name}"
     resource_body = {
         "schema": "mycite.portal.resource.reference.v2",
         "resource_id": local_reference_id,
+        "reference_id": local_reference_id,
         "resource_kind": "outside_origin_reference",
         "scope": INHERITED_SCOPE,
         "source_msn_id": source_msn_id,
-        "source_resource_id": _as_text(resource_id),
+        "source_reference_id": _as_text(reference_id),
+        "source_resource_id": _as_text(reference_id),
         "version_hash": version_hash,
         "updated_at": now_ms,
         "anthology_compatible_payload": decoded_payload,
         "bundle_metadata": bundle,
         "sync_metadata": {
             "contract_id": contract_id,
+            "reference_id": local_reference_id,
             "resource_id": local_reference_id,
-            "source_resource_id": _as_text(resource_id),
+            "source_reference_id": _as_text(reference_id),
+            "source_resource_id": _as_text(reference_id),
             "source_msn_id": source_msn_id,
             "last_sync_unix_ms": now_ms,
             "next_poll_unix_ms": now_ms + (15 * 60 * 1000),
@@ -185,7 +189,9 @@ def refresh_contract_resource(
         scope=INHERITED_SCOPE,
         entry={
             "resource_id": local_reference_id,
+            "reference_id": local_reference_id,
             "resource_name": resource_path.name,
+            "reference_name": resource_path.name,
             "resource_kind": "outside_origin_reference",
             "scope": INHERITED_SCOPE,
             "source_msn_id": source_msn_id,
@@ -203,18 +209,21 @@ def refresh_contract_resource(
     for item in sync_resources:
         if not isinstance(item, dict):
             continue
-        if _as_text(item.get("source_resource_id")) == _as_text(resource_id):
+        if _as_text(item.get("source_reference_id") or item.get("source_resource_id")) == _as_text(reference_id):
             continue
-        if _as_text(item.get("resource_id")) == local_reference_id:
+        if _as_text(item.get("reference_id") or item.get("resource_id")) == local_reference_id:
             continue
         next_resources.append(dict(item))
     next_resources.append(
         {
             "source_msn_id": source_msn_id,
             "contract_id": contract_id,
+            "reference_id": local_reference_id,
             "resource_id": local_reference_id,
-            "source_resource_id": _as_text(resource_id),
-            "resource_name": resource_name,
+            "source_reference_id": _as_text(reference_id),
+            "source_resource_id": _as_text(reference_id),
+            "reference_name": reference_name,
+            "resource_name": reference_name,
             "version_hash": version_hash,
             "last_sync_unix_ms": now_ms,
             "next_poll_unix_ms": now_ms + (15 * 60 * 1000),
@@ -233,13 +242,37 @@ def refresh_contract_resource(
         "ok": True,
         "contract_id": contract_id,
         "source_msn_id": source_msn_id,
+        "reference_id": local_reference_id,
         "resource_id": local_reference_id,
-        "source_resource_id": _as_text(resource_id),
-        "resource_name": resource_name,
+        "source_reference_id": _as_text(reference_id),
+        "source_resource_id": _as_text(reference_id),
+        "reference_name": reference_name,
+        "resource_name": reference_name,
         "resource_path": str(resource_path),
         "version_hash": version_hash,
         "from_cache": bool(fetched.get("from_cache")),
     }
+
+
+def refresh_contract_resource(
+    *,
+    data_root: Path,
+    private_dir: Path,
+    resolver: ExternalResourceResolver,
+    contract_id: str,
+    resource_id: str,
+    owner_msn_id: str = "",
+    force_refresh: bool = True,
+) -> dict[str, Any]:
+    return refresh_contract_reference(
+        data_root=data_root,
+        private_dir=private_dir,
+        resolver=resolver,
+        contract_id=contract_id,
+        reference_id=resource_id,
+        owner_msn_id=owner_msn_id,
+        force_refresh=force_refresh,
+    )
 
 
 def refresh_all_for_source(
@@ -266,13 +299,13 @@ def refresh_all_for_source(
         if not tracked:
             warnings.append(f"contract {contract_id} has no tracked_reference_ids")
             continue
-        for resource_id in tracked:
-            result = refresh_contract_resource(
+        for reference_id in tracked:
+            result = refresh_contract_reference(
                 data_root=data_root,
                 private_dir=private_dir,
                 resolver=resolver,
                 contract_id=contract_id,
-                resource_id=resource_id,
+                reference_id=reference_id,
                 owner_msn_id=owner_msn_id,
                 force_refresh=force_refresh,
             )
@@ -299,7 +332,7 @@ def discover_contract_subscription_status(private_dir: Path) -> dict[str, Any]:
                 "contract_id": contract_id,
                 "source_msn_id": _as_text(subscription.get("source_msn_id")),
                 "tracked_reference_ids": list(subscription.get("tracked_reference_ids") or []),
-                "tracked_resource_ids": list(subscription.get("tracked_resource_ids") or []),
+                "tracked_resource_ids": list(subscription.get("tracked_reference_ids") or []),
                 "sync": dict(subscription.get("sync") if isinstance(subscription.get("sync"), dict) else {}),
             }
         )
@@ -378,45 +411,45 @@ class InheritedSubscriptionService:
         self._resolver = resolver
         self._owner_msn_id = _as_text(owner_msn_id)
 
-    def register_subscription(self, *, contract_id: str, resource_ids: list[str]) -> dict[str, Any]:
+    def register_reference_subscription(self, *, contract_id: str, reference_ids: list[str]) -> dict[str, Any]:
         contract = get_contract(self._private_dir, contract_id)
         updated = register_reference_ids(
             self._private_dir,
             contract_id=contract_id,
             source_msn_id=_as_text(contract.get("counterparty_msn_id")),
-            reference_ids=_normalize_resource_ids(list(resource_ids or [])),
+            reference_ids=_normalize_reference_ids(list(reference_ids or [])),
         )
         return {
             "ok": True,
             "schema": "mycite.portal.references.subscription.register.v2",
             "contract_id": contract_id,
             "tracked_reference_ids": list(updated.get("tracked_reference_ids") or []),
-            "tracked_resource_ids": list(updated.get("tracked_resource_ids") or []),
+            "tracked_resource_ids": list(updated.get("tracked_reference_ids") or []),
         }
 
-    def unregister_subscription(self, *, contract_id: str, resource_ids: list[str]) -> dict[str, Any]:
+    def unregister_reference_subscription(self, *, contract_id: str, reference_ids: list[str]) -> dict[str, Any]:
         contract = get_contract(self._private_dir, contract_id)
         updated = unregister_reference_ids(
             self._private_dir,
             contract_id=contract_id,
             source_msn_id=_as_text(contract.get("counterparty_msn_id")),
-            reference_ids=_normalize_resource_ids(list(resource_ids or [])),
+            reference_ids=_normalize_reference_ids(list(reference_ids or [])),
         )
         return {
             "ok": True,
             "schema": "mycite.portal.references.subscription.unregister.v2",
             "contract_id": contract_id,
             "tracked_reference_ids": list(updated.get("tracked_reference_ids") or []),
-            "tracked_resource_ids": list(updated.get("tracked_resource_ids") or []),
+            "tracked_resource_ids": list(updated.get("tracked_reference_ids") or []),
         }
 
-    def refresh_resource(self, *, contract_id: str, resource_id: str, force_refresh: bool = True) -> dict[str, Any]:
-        return refresh_contract_resource(
+    def refresh_reference(self, *, contract_id: str, reference_id: str, force_refresh: bool = True) -> dict[str, Any]:
+        return refresh_contract_reference(
             data_root=self._data_root,
             private_dir=self._private_dir,
             resolver=self._resolver,
             contract_id=contract_id,
-            resource_id=resource_id,
+            reference_id=reference_id,
             owner_msn_id=self._owner_msn_id,
             force_refresh=force_refresh,
         )
@@ -440,3 +473,12 @@ class InheritedSubscriptionService:
 
     def list_subscriptions(self) -> dict[str, Any]:
         return discover_contract_subscription_status(self._private_dir)
+
+    def register_subscription(self, *, contract_id: str, resource_ids: list[str]) -> dict[str, Any]:
+        return self.register_reference_subscription(contract_id=contract_id, reference_ids=resource_ids)
+
+    def unregister_subscription(self, *, contract_id: str, resource_ids: list[str]) -> dict[str, Any]:
+        return self.unregister_reference_subscription(contract_id=contract_id, reference_ids=resource_ids)
+
+    def refresh_resource(self, *, contract_id: str, resource_id: str, force_refresh: bool = True) -> dict[str, Any]:
+        return self.refresh_reference(contract_id=contract_id, reference_id=resource_id, force_refresh=force_refresh)

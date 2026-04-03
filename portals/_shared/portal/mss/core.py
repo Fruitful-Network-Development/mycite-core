@@ -122,6 +122,23 @@ def _reference_fixture_bitstring() -> str:
     return _as_text(payload.get("owner_mss"))
 
 
+def _contract_line_mss(contract: dict[str, Any], *, for_msn_id: str) -> str:
+    payload_registry = contract.get("payload_registry") if isinstance(contract.get("payload_registry"), dict) else {}
+    if _as_text(contract.get("counterparty_msn_id")) == _as_text(for_msn_id):
+        entry = payload_registry.get("mss.counterparty_context")
+        payload = entry.get("payload") if isinstance(entry, dict) and isinstance(entry.get("payload"), dict) else {}
+        token = _as_text(payload.get("counterparty_mss"))
+        if token:
+            return token
+        return _as_text(contract.get("counterparty_mss"))
+    entry = payload_registry.get("mss.owner_context")
+    payload = entry.get("payload") if isinstance(entry, dict) and isinstance(entry.get("payload"), dict) else {}
+    token = _as_text(payload.get("owner_mss"))
+    if token:
+        return token
+    return _as_text(contract.get("owner_mss"))
+
+
 def _reference_fixture_rows() -> list[dict[str, Any]]:
     rows = [
         {
@@ -979,9 +996,8 @@ def resolve_contract_datum_ref(
             "error": contract_error or "No contract context matched the foreign msn_id",
         }
 
-    mss_field = "counterparty_mss" if _as_text(contract.get("counterparty_msn_id")) == parsed.msn_id else "owner_mss"
     try:
-        bitstring = _normalize_contract_mss_value(contract.get(mss_field))
+        bitstring = _normalize_contract_mss_value(_contract_line_mss(contract, for_msn_id=parsed.msn_id))
     except ValueError as exc:
         return {
             "ok": False,
@@ -998,7 +1014,7 @@ def resolve_contract_datum_ref(
             "datum_address": parsed.datum_address,
             "msn_id": parsed.msn_id,
             "contract_id": _as_text(contract.get("contract_id")),
-            "error": f"Contract field '{mss_field}' is empty",
+            "error": "Contract line payload is empty for the requested msn_id",
         }
 
     decoded = decode_mss_payload(bitstring)
@@ -1017,7 +1033,9 @@ def resolve_contract_datum_ref(
         "msn_id": parsed.msn_id,
         "datum_address": parsed.datum_address,
         "contract_id": _as_text(contract.get("contract_id")),
-        "contract_field": mss_field,
+        "contract_field": "mss.counterparty_context"
+        if _as_text(contract.get("counterparty_msn_id")) == parsed.msn_id
+        else "mss.owner_context",
         "row": row or {},
         "decoded": decoded,
     }

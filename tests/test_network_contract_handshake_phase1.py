@@ -158,7 +158,7 @@ class NetworkContractHandshakePhase1Tests(unittest.TestCase):
             self.assertTrue(contact_payload.get("ok"))
             self.assertEqual((contact_payload.get("contact") or {}).get("msn_id"), FND_MSN_ID)
 
-            log_path = private_dir / "network" / "request_log" / "request_log.ndjson"
+            log_path = private_dir / "network" / "external_events" / "external_events.ndjson"
             log_text = log_path.read_text(encoding="utf-8")
             self.assertIn(f"{SENDER_MSN_ID}.4-1-77", log_text)
             self.assertIn(f"{SENDER_MSN_ID}.3-1-5", log_text)

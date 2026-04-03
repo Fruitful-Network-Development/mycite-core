@@ -189,8 +189,10 @@ def public_export_metadata_from_contact_card(card_payload: Dict[str, Any]) -> Di
         for item in catalog:
             if not isinstance(item, dict):
                 continue
-            resource_id = _as_text(item.get("resource_id"))
-            if resource_id:
-                out[resource_id] = dict(item)
+            reference_id = _as_text(item.get("reference_id") or item.get("resource_id"))
+            if reference_id:
+                normalized = dict(item)
+                normalized.setdefault("reference_id", reference_id)
+                out[reference_id] = normalized
         return out
     return {}
