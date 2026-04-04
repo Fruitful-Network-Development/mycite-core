@@ -10,21 +10,12 @@ from unittest import mock
 
 
 def _load_admin_integrations_module():
-    path = (
-        Path(__file__).resolve().parents[1]
-        / "portals"
-        / "_shared"
-        / "runtime"
-        / "flavors"
-        / "fnd"
-        / "portal"
-        / "api"
-        / "admin_integrations.py"
-    )
-    portals_root = path.parents[7]
-    token = str(portals_root)
-    if token not in sys.path:
-        sys.path.insert(0, token)
+    repo_root = Path(__file__).resolve().parents[1]
+    path = repo_root / "instances" / "_shared" / "runtime" / "flavors" / "fnd" / "portal" / "api" / "admin_integrations.py"
+    for candidate in (repo_root, repo_root / "instances", repo_root / "packages"):
+        token = str(candidate)
+        if token not in sys.path:
+            sys.path.insert(0, token)
     spec = importlib.util.spec_from_file_location("admin_integrations_aws_csm_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
