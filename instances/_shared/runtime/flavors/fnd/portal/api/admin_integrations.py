@@ -21,16 +21,17 @@ from flask import Flask, g, jsonify, make_response, request
 
 
 def _repo_root() -> Path:
-    for parent in Path(__file__).resolve().parents:
-        if (parent / "portals").exists() and (parent / "tools").exists():
-            return parent
-    raise RuntimeError("Unable to resolve mycite-core repo root")
+    override = str(os.environ.get("MYCITE_REPO_ROOT") or "").strip()
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parents[7]
 
 
 REPO_ROOT = _repo_root()
-token = str(REPO_ROOT)
-if token not in sys.path:
-    sys.path.insert(0, token)
+for path in (REPO_ROOT, REPO_ROOT / "instances", REPO_ROOT / "packages"):
+    token = str(path)
+    if token not in sys.path:
+        sys.path.insert(0, token)
 
 from tools.aws_csm.state_adapter.paths import aws_csm_state_root
 from tools.aws_csm.state_adapter.profile import normalize_aws_csm_profile_payload

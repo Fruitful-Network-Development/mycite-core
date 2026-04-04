@@ -17,8 +17,8 @@ except ModuleNotFoundError:  # pragma: no cover
     Flask = None  # type: ignore[assignment]
 
 
-CORRECTED_TXA_PATH = Path("/srv/compose/portals/state/fnd_portal/data/samras-txa.json")
-CORRECTED_MSN_PATH = Path("/srv/compose/portals/state/fnd_portal/data/samras-msn.json")
+CORRECTED_TXA_PATH = Path("/srv/mycite-state/instances/fnd/data/samras-txa.json")
+CORRECTED_MSN_PATH = Path("/srv/mycite-state/instances/fnd/data/samras-msn.json")
 
 
 def _load_samras_module():
@@ -30,11 +30,12 @@ def _load_samras_module():
 
 
 def _load_register_data_routes():
-    path = Path(__file__).resolve().parents[1] / "portals" / "_shared" / "portal" / "api" / "data_workspace.py"
-    portals_root = path.parents[4]
-    token = str(portals_root)
-    if token not in sys.path:
-        sys.path.insert(0, token)
+    repo_root = Path(__file__).resolve().parents[1]
+    path = repo_root / "instances" / "_shared" / "portal" / "api" / "data_workspace.py"
+    for candidate in (repo_root, repo_root / "instances", repo_root / "packages"):
+        token = str(candidate)
+        if token not in sys.path:
+            sys.path.insert(0, token)
     spec = importlib.util.spec_from_file_location("data_workspace_samras_rule_module", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

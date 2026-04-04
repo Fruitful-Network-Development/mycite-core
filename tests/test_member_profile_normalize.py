@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
 
 
 def _load_normalize_module():
-    path = Path(__file__).resolve().parents[1] / "portals" / "_shared" / "portal" / "progeny_model" / "normalize.py"
+    repo_root = Path(__file__).resolve().parents[1]
+    path = repo_root / "instances" / "_shared" / "portal" / "progeny_model" / "normalize.py"
+    for candidate in (repo_root, repo_root / "instances", repo_root / "packages"):
+        token = str(candidate)
+        if token not in sys.path:
+            sys.path.insert(0, token)
     spec = importlib.util.spec_from_file_location("mycite_shared_progeny_normalize_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

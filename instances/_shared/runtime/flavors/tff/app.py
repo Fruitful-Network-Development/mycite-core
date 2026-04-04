@@ -10,11 +10,13 @@ from typing import Any, Dict, Optional
 from urllib.parse import quote, urlencode
 
 REPO_ROOT_IMPORT = Path(__file__).resolve().parents[5]
+INSTANCES_ROOT_IMPORT = REPO_ROOT_IMPORT / "instances"
+PACKAGES_ROOT_IMPORT = REPO_ROOT_IMPORT / "packages"
 FLAVOR_ROOT_IMPORT = Path(__file__).resolve().parent
-if str(REPO_ROOT_IMPORT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT_IMPORT))
-if str(FLAVOR_ROOT_IMPORT) not in sys.path:
-    sys.path.insert(0, str(FLAVOR_ROOT_IMPORT))
+for path in (REPO_ROOT_IMPORT, INSTANCES_ROOT_IMPORT, PACKAGES_ROOT_IMPORT, FLAVOR_ROOT_IMPORT):
+    token = str(path)
+    if token not in sys.path:
+        sys.path.insert(0, token)
 
 from flask import Flask, abort, jsonify, make_response, redirect, render_template, request, send_from_directory
 from jinja2 import ChoiceLoader, FileSystemLoader, TemplateNotFound

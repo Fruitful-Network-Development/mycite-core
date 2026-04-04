@@ -19,9 +19,9 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_ROOT = Path("/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm")
+DEFAULT_ROOT = Path("/srv/mycite-state/instances/fnd/private/utilities/tools/aws-csm")
 DEFAULT_SEARCH_ROOTS = (
-    Path("/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm"),
+    Path("/srv/mycite-state/instances/fnd/private/utilities/tools/aws-csm"),
     Path("/srv/repo/mycite-core"),
 )
 SKIP_DIR_NAMES = {".git", ".venv", "__pycache__", ".pytest_cache"}
@@ -342,7 +342,7 @@ def _build_classification(
     identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
     smtp = profile.get("smtp") if isinstance(profile.get("smtp"), dict) else {}
     domain = str(identity.get("domain") or "")
-    canonical_sender = str(identity.get("send_as_email") or smtp.get("send_as_email") or "")
+    canonical_sender = str(identity.get("send_as_email") or smtp.get("send_as_email") or "").strip().lower()
     domain_verified = (
         str(domain_identity.get("VerificationStatus") or "").upper() == "SUCCESS"
         and bool(domain_identity.get("VerifiedForSendingStatus"))
@@ -507,7 +507,7 @@ def _build_classification(
         )
 
     if canonical_sender:
-        refs = local_references.get(canonical_sender) or []
+        refs = local_references.get(canonical_sender) or local_references.get(canonical_sender.lower()) or []
         entries.append(
             {
                 "item": f"Canonical sender candidate {canonical_sender}",
