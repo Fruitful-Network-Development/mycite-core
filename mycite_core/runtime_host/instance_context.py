@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from portal_core.shared.state_roots import canonical_instances_root, infer_instance_state_root
+from .state_roots import canonical_instances_root, infer_instance_state_root
 
 
 def _text(value: object, default: str = "") -> str:
@@ -83,4 +83,3 @@ def build_instance_context_from_env(
         sign_out_url=sign_out_url,
         switch_portal_url=switch_portal_url,
     )
-

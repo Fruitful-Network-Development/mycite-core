@@ -27,7 +27,7 @@ internal shape:
 ## Dependency rules
 
 1. Tool backends may depend on:
-   `tools/_shared`, `portal_core/shell/contracts`, `portal_core/shared`, and
+   `tools/_shared`, `mycite_core/state_machine`, `mycite_core/runtime_host`, and
    other explicit stable contracts.
 2. Tool backends must not import flavor app modules directly.
 3. Tool UIs must not reach around their state adapters to compute filesystem
@@ -40,7 +40,7 @@ internal shape:
 1. Add or update the service-tool catalog entry in
    `tools/_shared/tool_contracts/service_catalog.py` only if the tool needs the
    service-tool mediation surface.
-2. Keep tool capability metadata aligned with `portal_core/shell`.
+2. Keep tool capability metadata aligned with `mycite_core/state_machine`.
 3. Prefer thin legacy registration shims over duplicated tool implementations.
 
 ## Compatibility rules
@@ -62,4 +62,3 @@ Before considering a tool integration complete:
 4. verify the tool does not import flavor-specific app modules for shared
    behaviors;
 5. update `docs/modularity/module_map.json` if the dependency surface changed.
-

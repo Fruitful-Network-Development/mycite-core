@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from portal_core.shell.contracts import TOOL_CAPABILITY_SCHEMA, normalize_shell_verb
+from .controls import TOOL_CAPABILITY_SCHEMA, normalize_shell_verb
 
 
 def _text(value: object) -> str:
@@ -164,4 +164,3 @@ def compatible_tools_for_context(tool_tabs: list[dict[str, Any]] | None, context
         if tool_matches_context(capability, context):
             out.append(capability)
     return out
-

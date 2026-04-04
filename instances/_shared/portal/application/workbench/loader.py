@@ -12,7 +12,7 @@ from _shared.portal.sandbox.resource_workbench import (
 )
 from _shared.portal.sandbox.txa_sandbox_workspace import build_samras_workspace_view_model
 
-from .document_contract import build_workbench_document
+from mycite_core.state_machine.document import build_workbench_document
 from .rules import WorkbenchRulesService
 
 

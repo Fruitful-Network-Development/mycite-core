@@ -6,6 +6,5 @@
 - Reads: `data/anthology.json`, `data/resources/rc.*`, `data/references/rf.*`,
   cache under `RC/` and `RF/`.
 - Writes: canonical data-engine artifacts only.
-- Depends on: `portal_core/shared` for path helpers when needed.
+- Depends on: `mycite_core/runtime_host` for path helpers when needed.
 - Depended on by: contracts, sandboxes, flavor routes, materializers.
-

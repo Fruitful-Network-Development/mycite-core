@@ -15,7 +15,7 @@ from _shared.portal.data_engine.resource_registry import (
 from _shared.portal.sandbox.engine import SandboxEngine
 from _shared.portal.sandbox.resource_workbench import build_system_resource_workbench_view_model
 
-from .document_contract import DOCUMENT_SCHEMA, build_workbench_document
+from mycite_core.state_machine.document import DOCUMENT_SCHEMA, build_workbench_document
 
 
 def _text(value: object) -> str:

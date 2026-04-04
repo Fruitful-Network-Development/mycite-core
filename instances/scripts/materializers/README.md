@@ -11,6 +11,5 @@ Current transitional seam:
   migration entrypoint.
 
 Both scripts now resolve declarations and canonical state roots through
-`instances.declarations` and `portal_core.shared.state_roots` so the next move
+`instances.scripts.declarations` and `mycite_core.runtime_host.state_roots` so the next move
 can relocate implementation here without changing the runtime contract again.
-

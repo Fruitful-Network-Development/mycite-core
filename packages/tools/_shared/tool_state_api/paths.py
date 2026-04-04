@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from portal_core.shared.runtime_paths import utility_tools_dir
+from mycite_core.runtime_paths import utility_tools_dir
 
 
 def tool_state_root(private_dir: Path, namespace: str, *, create: bool = True) -> Path:
@@ -21,4 +21,3 @@ def tool_state_members_dir(private_dir: Path, namespace: str, collection: str, *
     if create:
         target.mkdir(parents=True, exist_ok=True)
     return target
-

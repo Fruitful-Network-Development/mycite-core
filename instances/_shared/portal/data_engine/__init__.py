@@ -20,13 +20,6 @@ from .anthology_schema import (
     sort_key,
     validate_row,
 )
-from .aitas_context import (
-    get_archetype_definition_payload,
-    inspect_archetype_context,
-    inspect_archetype_trace,
-    list_archetype_registry_payload,
-    list_derived_archetype_bindings,
-)
 from .archetypes import ArchetypeDefinition, get_archetype_definition, list_archetype_definition_dicts, list_archetype_definitions
 from .datum_identity import (
     CompiledDatumIndex,
@@ -69,6 +62,36 @@ from .rules import (
     understand_datums,
     validate_rule_create,
 )
+
+
+def inspect_archetype_context(*args, **kwargs):
+    from mycite_core.state_machine.aitas import inspect_archetype_context as _inspect_archetype_context
+
+    return _inspect_archetype_context(*args, **kwargs)
+
+
+def inspect_archetype_trace(*args, **kwargs):
+    from mycite_core.state_machine.aitas import inspect_archetype_trace as _inspect_archetype_trace
+
+    return _inspect_archetype_trace(*args, **kwargs)
+
+
+def list_derived_archetype_bindings(*args, **kwargs):
+    from mycite_core.state_machine.aitas import list_derived_archetype_bindings as _list_derived_archetype_bindings
+
+    return _list_derived_archetype_bindings(*args, **kwargs)
+
+
+def list_archetype_registry_payload(*args, **kwargs):
+    from mycite_core.state_machine.aitas import list_archetype_registry_payload as _list_archetype_registry_payload
+
+    return _list_archetype_registry_payload(*args, **kwargs)
+
+
+def get_archetype_definition_payload(*args, **kwargs):
+    from mycite_core.state_machine.aitas import get_archetype_definition_payload as _get_archetype_definition_payload
+
+    return _get_archetype_definition_payload(*args, **kwargs)
 
 __all__ = [
     "CompiledDatumIndex",

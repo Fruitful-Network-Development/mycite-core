@@ -6,6 +6,5 @@
   engine mutation.
 - Reads: environment, instance declarations, canonical state-root helpers.
 - Writes: derived instance context objects only.
-- Depends on: `portal_core/shared`, `instances/declarations`.
+- Depends on: `mycite_core/runtime_host`, `instances/declarations`.
 - Depended on by: `runtime/`, flavor apps, materializers.
-

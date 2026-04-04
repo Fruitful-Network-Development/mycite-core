@@ -7,6 +7,5 @@
 - Reads: instance-scoped AWS tool state under
   `private/utilities/tools/aws-csm/`.
 - Writes: AWS profile JSON and action/provision logs inside that tool bubble.
-- Depends on: `tools/_shared`, `portal_core/shared`, `portal_core/shell`.
+- Depends on: `tools/_shared`, `mycite_core/runtime_host`, `mycite_core/state_machine`.
 - Depended on by: FND admin integrations and future dedicated AWS tool routes.
-
