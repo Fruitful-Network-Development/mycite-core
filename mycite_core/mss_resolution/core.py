@@ -1,23 +1,22 @@
 from __future__ import annotations
 
 from functools import lru_cache
-import json
 import re
-from pathlib import Path
 from typing import Any
 
-from instances._shared.portal.data_contract import compact_payload_to_rows, rows_to_compact_payload, rows_to_save_state
-from instances._shared.portal.data_engine.anthology_overlay import merge_base_and_overlay
-from instances._shared.portal.data_engine.anthology_registry import load_base_registry
-
 from mycite_core.datum_refs import ParsedDatumRef, parse_datum_ref
+from mycite_core.mss_resolution.anthology_payloads import (
+    compact_payload_to_rows,
+    load_anthology_payload,
+    rows_to_compact_payload,
+    rows_to_save_state,
+)
 
 
 MSS_SCHEMA = "mycite.portal.mss.v1"
 MSS_ENCODING = "cobm-layered-bitstring"
 MSS_WIRE_VARIANT_CANONICAL = "canonical"
 MSS_WIRE_VARIANT_CANONICAL_V2 = "canonical_v2"
-MSS_WIRE_VARIANT_REFERENCE_FIXTURE = "legacy_reference_fixture"
 
 _ROW_ID_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
 _BITSTRING_RE = re.compile(r"^[01]+$")
@@ -25,10 +24,6 @@ _BITSTRING_RE = re.compile(r"^[01]+$")
 
 def _as_text(value: object) -> str:
     return "" if value is None else str(value).strip()
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
 
 
 def _parse_row_identifier(identifier: object) -> tuple[int, int, int]:
@@ -64,24 +59,6 @@ def _pairs_from_row(row: dict[str, Any]) -> list[dict[str, str]]:
     return [{"reference": _as_text(row.get("reference")), "magnitude": _as_text(row.get("magnitude"))}]
 
 
-def _load_json_object(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"Expected JSON object at {path}")
-    return payload
-
-
-def load_anthology_payload(path: str | Path) -> dict[str, Any]:
-    overlay_payload = _load_json_object(Path(path))
-    report = merge_base_and_overlay(
-        base_registry=load_base_registry(strict=False),
-        overlay_payload=overlay_payload,
-        strict=False,
-        allow_overlay_override=True,
-    )
-    return dict(report.merged_payload if isinstance(report.merged_payload, dict) else {})
-
-
 def _empty_decoded_payload(
     bitstring: str = "",
     *,
@@ -109,22 +86,6 @@ def _empty_decoded_payload(
     }
 
 
-@lru_cache(maxsize=1)
-def _reference_fixture_bitstring() -> str:
-    path = (
-        _repo_root()
-        / "mss"
-        / "msn-3-2-3-17-77-1-6-4-1-4.contract-3-2-3-17-77-2-6-3-1-6.json"
-    )
-    if not path.exists() or not path.is_file():
-        return ""
-    try:
-        payload = _load_json_object(path)
-    except Exception:
-        return ""
-    return _as_text(payload.get("owner_mss"))
-
-
 def _contract_line_mss(contract: dict[str, Any], *, for_msn_id: str) -> str:
     payload_registry = contract.get("payload_registry") if isinstance(contract.get("payload_registry"), dict) else {}
     if _as_text(contract.get("counterparty_msn_id")) == _as_text(for_msn_id):
@@ -140,118 +101,6 @@ def _contract_line_mss(contract: dict[str, Any], *, for_msn_id: str) -> str:
     if token:
         return token
     return _as_text(contract.get("owner_mss"))
-
-
-def _reference_fixture_rows() -> list[dict[str, Any]]:
-    rows = [
-        {
-            "row_id": "0-0-1",
-            "identifier": "0-0-1",
-            "label": "top",
-            "pairs": [{"reference": "0", "magnitude": "0"}],
-        },
-        {
-            "row_id": "0-0-2",
-            "identifier": "0-0-2",
-            "label": "tiu",
-            "pairs": [{"reference": "0", "magnitude": "0"}],
-        },
-        {
-            "row_id": "1-1-1",
-            "identifier": "1-1-1",
-            "label": "sec-babel-315569254450000000000000000000000000000",
-            "pairs": [{"reference": "0-0-2", "magnitude": "315569254450000000000000000000000000000"}],
-        },
-        {
-            "row_id": "1-1-2",
-            "identifier": "1-1-2",
-            "label": "UTC_bacillete-946707763350000000",
-            "pairs": [{"reference": "0-0-1", "magnitude": "946707763350000000"}],
-        },
-        {
-            "row_id": "2-1-1",
-            "identifier": "2-1-1",
-            "label": "second-isolette",
-            "pairs": [{"reference": "1-1-2", "magnitude": "1"}],
-        },
-        {
-            "row_id": "3-1-1",
-            "identifier": "3-1-1",
-            "label": "utc_babelette",
-            "pairs": [{"reference": "2-1-1", "magnitude": "0"}],
-        },
-        {
-            "row_id": "4-2-1",
-            "identifier": "4-2-1",
-            "label": "y2k-event",
-            "pairs": [
-                {"reference": "1-1-1", "magnitude": "63072000000"},
-                {"reference": "3-1-1", "magnitude": "1"},
-            ],
-        },
-        {
-            "row_id": "4-2-2",
-            "identifier": "4-2-2",
-            "label": "21st_century-event",
-            "pairs": [
-                {"reference": "1-1-1", "magnitude": "63072000000"},
-                {"reference": "3-1-1", "magnitude": "3153600000"},
-            ],
-        },
-        {
-            "row_id": "5-0-1",
-            "identifier": "5-0-1",
-            "label": "contract_context_root",
-            "pairs": [
-                {"reference": "4-2-1", "magnitude": ""},
-                {"reference": "4-2-2", "magnitude": ""},
-            ],
-        },
-    ]
-    for row in rows:
-        pairs = _pairs_from_row(row)
-        row["pair_count"] = len(pairs)
-        row["reference"] = _as_text(pairs[0].get("reference")) if pairs else ""
-        row["magnitude"] = _as_text(pairs[0].get("magnitude")) if pairs else ""
-    return _sorted_rows(rows)
-
-
-@lru_cache(maxsize=1)
-def _reference_fixture_decode() -> dict[str, Any]:
-    token = _reference_fixture_bitstring()
-    if not token:
-        return _empty_decoded_payload("", wire_variant=MSS_WIRE_VARIANT_REFERENCE_FIXTURE)
-    rows = _reference_fixture_rows()
-    layer_max, value_groups_per_layer, iteration_counts, value_group_values = _metadata_arrays(rows)
-    width = 0
-    while width < len(token) and token[width] == "0":
-        width += 1
-    cursor = width + 1
-    payload_size = int(token[cursor : cursor + width] or "0", 2) if cursor + width <= len(token) else 0
-    return {
-        "schema": MSS_SCHEMA,
-        "encoding": MSS_ENCODING,
-        "wire_variant": MSS_WIRE_VARIANT_REFERENCE_FIXTURE,
-        "bitstring": token,
-        "index_width": width,
-        "payload_size": payload_size,
-        "metadata": {
-            "layer_max": layer_max,
-            "layer_count": layer_max + 1,
-            "value_groups_per_layer": value_groups_per_layer,
-            "iteration_counts": iteration_counts,
-            "value_group_values": value_group_values,
-            "object_count": 0,
-        },
-        "rows": rows,
-        "compact_payload": rows_to_compact_payload(rows),
-        "save_state": rows_to_save_state(rows),
-        "root_identifier": "5-0-1",
-        "cobm": _cobm_logs(rows),
-        "legacy_unsupported": False,
-        "reference_fixture": "mss/msn-3-2-3-17-77-1-6-4-1-4.contract-3-2-3-17-77-2-6-3-1-6.json",
-    }
-
 
 def _encode_varuint(value: int) -> str:
     token = int(value)
@@ -595,7 +444,7 @@ def _encode_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def compile_mss_payload(
+def _compile_mss_payload_canonical(
     anthology_payload: dict[str, Any],
     selected_refs: list[str],
     *,
@@ -875,22 +724,10 @@ def _canonical_decode_looks_valid(decoded: dict[str, Any]) -> bool:
     return int(metadata.get("object_count") or 0) == 0 and int(metadata.get("layer_count") or 0) == 0
 
 
-def _decode_reference_fixture_payload(bitstring: str) -> dict[str, Any] | None:
-    token = _as_text(bitstring)
-    if not token or token != _reference_fixture_bitstring():
-        return None
-    decoded = dict(_reference_fixture_decode())
-    decoded["bitstring"] = token
-    return decoded
-
-
-def decode_mss_payload(bitstring: str) -> dict[str, Any]:
+def _decode_mss_payload_canonical(bitstring: str) -> dict[str, Any]:
     canonical = _decode_canonical_mss_payload(bitstring)
     if _canonical_decode_looks_valid(canonical):
         return canonical
-    legacy = _decode_reference_fixture_payload(bitstring)
-    if legacy is not None:
-        return legacy
     return canonical
 
 
@@ -1338,10 +1175,6 @@ def _decode_mss_payload_v2(bitstring: str) -> dict[str, Any]:
     }
 
 
-_compile_mss_payload_v1 = compile_mss_payload
-_decode_mss_payload_v1 = decode_mss_payload
-
-
 def compile_mss_payload(
     anthology_payload: dict[str, Any],
     selected_refs: list[str],
@@ -1349,28 +1182,16 @@ def compile_mss_payload(
     local_msn_id: str = "",
     include_selection_root: bool = True,
 ) -> dict[str, Any]:
-    try:
-        return _compile_mss_payload_v2(
-            anthology_payload,
-            selected_refs,
-            local_msn_id=local_msn_id,
-            include_selection_root=include_selection_root,
-        )
-    except Exception:
-        # Keep write-path alive even when encountering legacy non-integer magnitudes.
-        return _compile_mss_payload_v1(
-            anthology_payload,
-            selected_refs,
-            local_msn_id=local_msn_id,
-            include_selection_root=include_selection_root,
-        )
+    return _compile_mss_payload_v2(
+        anthology_payload,
+        selected_refs,
+        local_msn_id=local_msn_id,
+        include_selection_root=include_selection_root,
+    )
 
 
 def decode_mss_payload(bitstring: str) -> dict[str, Any]:
     token = _as_text(bitstring)
     if token.startswith(_MSS_V2_PREFIX):
-        try:
-            return _decode_mss_payload_v2(token)
-        except Exception:
-            pass
-    return _decode_mss_payload_v1(token)
+        return _decode_mss_payload_v2(token)
+    return _decode_mss_payload_canonical(token)

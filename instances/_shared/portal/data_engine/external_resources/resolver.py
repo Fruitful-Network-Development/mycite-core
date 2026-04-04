@@ -10,6 +10,7 @@ from urllib.parse import quote
 from urllib.request import urlopen
 
 from mycite_core.mss_resolution import decode_mss_payload
+from mycite_core.mss_resolution.storage import persist_mss_payload
 from ...services.profile_resolver import find_local_contact_card
 from .cache import ExternalResourceCache
 from .contact_card_catalog import PublicResourceDescriptor, parse_public_resource_catalog
@@ -65,18 +66,19 @@ class ExternalResourceResolver:
                 return item
         return None
 
-    def _fetch_resource_payload(self, *, descriptor: PublicResourceDescriptor) -> dict[str, Any]:
+    def _fetch_resource_payload(self, *, descriptor: PublicResourceDescriptor) -> tuple[dict[str, Any], str]:
         href = str(descriptor.href or "").strip()
         if not href:
-            return {}
+            return {}, ""
         if href.startswith("http://") or href.startswith("https://"):
             with urlopen(href, timeout=5) as response:  # nosec - configured endpoint
                 raw = response.read()
                 if href.endswith(".bin"):
-                    decoded = decode_mss_payload(raw.decode("utf-8", errors="replace"))
-                    return decoded if isinstance(decoded, dict) else {}
+                    bitstring = raw.decode("utf-8", errors="replace")
+                    decoded = decode_mss_payload(bitstring)
+                    return (decoded if isinstance(decoded, dict) else {}), bitstring
                 payload = json.loads(raw.decode("utf-8", errors="replace"))
-                return payload if isinstance(payload, dict) else {}
+                return (payload if isinstance(payload, dict) else {}), ""
         rel = Path(href)
         if rel.is_absolute():
             path = rel
@@ -84,10 +86,11 @@ class ExternalResourceResolver:
             path = self._public_dir / rel
         if path.exists() and path.is_file():
             if str(path.name).lower().endswith(".bin"):
-                decoded = decode_mss_payload(path.read_bytes().decode("utf-8", errors="replace"))
-                return decoded if isinstance(decoded, dict) else {}
-            return self._read_json(path)
-        return {}
+                bitstring = path.read_text(encoding="utf-8", errors="replace")
+                decoded = decode_mss_payload(bitstring)
+                return (decoded if isinstance(decoded, dict) else {}), bitstring
+            return self._read_json(path), ""
+        return {}, ""
 
     def fetch_and_cache_bundle(
         self,
@@ -108,9 +111,18 @@ class ExternalResourceResolver:
         descriptor = self._resolve_descriptor(source_msn_id=source_msn_id, resource_id=resource_id)
         if descriptor is None:
             return {"ok": False, "error": f"unknown resource_id: {resource_id}"}
-        payload = self._fetch_resource_payload(descriptor=descriptor)
+        payload, bitstring = self._fetch_resource_payload(descriptor=descriptor)
         raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
         payload_sha256 = hashlib.sha256(raw).hexdigest()
+        if bitstring:
+            persist_mss_payload(
+                self._data_dir,
+                identifier=resource_id,
+                bitstring=bitstring,
+                decoded_payload=payload,
+                default_prefix="rf",
+                source_msn_id=source_msn_id,
+            )
         provenance = ResourceProvenance(
             source_msn_id=source_msn_id,
             resource_id=resource_id,

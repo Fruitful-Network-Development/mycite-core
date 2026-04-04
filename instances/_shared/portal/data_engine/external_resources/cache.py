@@ -6,9 +6,9 @@ from typing import Any
 class ExternalResourceCache:
     """Ephemeral compatibility cache.
 
-    The canonical filesystem contract does not allow JSON materialization under
-    ``data/cache`` for external resources, so this cache is intentionally
-    in-memory only.
+    Canonical binary payloads and decoded MSS cache now live under
+    ``data/payloads`` and ``data/payloads/cache``. This cache is only for
+    transient bundle objects that do not belong in the filesystem contract.
     """
 
     _CACHE: dict[tuple[str, str], dict[str, Any]] = {}

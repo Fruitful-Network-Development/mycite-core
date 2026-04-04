@@ -9,7 +9,14 @@ from pathlib import Path
 from typing import Any
 
 from ..data_contract import compact_payload_to_rows, rows_to_compact_payload
-from mycite_core.mss_resolution import compile_mss_payload
+from mycite_core.mss_resolution import compile_mss_payload, decode_mss_payload
+from mycite_core.mss_resolution.storage import (
+    decoded_payload_cache_path,
+    ensure_payload_layout,
+    payload_bin_path,
+    payload_cache_root as mss_payload_cache_root,
+    payloads_root as mss_payloads_root,
+)
 from ..samras import InvalidSamrasStructure, decode_structure
 from .anthology_normalization import datum_sort_key
 
@@ -75,19 +82,26 @@ def inherited_resources_dir(data_root: Path) -> Path:
 
 
 def cache_root(data_root: Path) -> Path:
-    return Path(data_root) / "cache"
+    return mss_payloads_root(data_root)
 
 
 def cache_scope_dir(data_root: Path, *, scope: str) -> Path:
-    token = _normalize_scope(scope)
-    return cache_root(data_root) / ("RC" if token == LOCAL_SCOPE else "RF")
+    _normalize_scope(scope)
+    return cache_root(data_root)
+
+
+def payloads_root(data_root: Path) -> Path:
+    return mss_payloads_root(data_root)
+
+
+def payload_cache_root(data_root: Path) -> Path:
+    return mss_payload_cache_root(data_root)
 
 
 def ensure_layout(data_root: Path) -> None:
     resources_root(data_root).mkdir(parents=True, exist_ok=True)
     references_root(data_root).mkdir(parents=True, exist_ok=True)
-    cache_scope_dir(data_root, scope=LOCAL_SCOPE).mkdir(parents=True, exist_ok=True)
-    cache_scope_dir(data_root, scope=INHERITED_SCOPE).mkdir(parents=True, exist_ok=True)
+    ensure_payload_layout(data_root)
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -154,7 +168,13 @@ def cache_file_path(
         resource_name=resource_name,
         source_msn_id=source_msn_id,
     )
-    return cache_scope_dir(data_root, scope=scope) / _canonical_cache_name_from_json(resource_path.name)
+    parsed = _parse_canonical_filename(resource_path.name)
+    return payload_bin_path(
+        data_root,
+        resource_path.stem,
+        default_prefix=parsed["prefix"] or (RESOURCE_PREFIX if _normalize_scope(scope) == LOCAL_SCOPE else REFERENCE_PREFIX),
+        source_msn_id=parsed["msn_id"] or source_msn_id,
+    )
 
 
 def _strip_resource_suffix(resource_name: str) -> str:
@@ -405,17 +425,43 @@ def _materialize_cache_for_path(path: Path, payload: dict[str, Any]) -> str:
     parsed = _parse_canonical_filename(path.name)
     if not parsed["prefix"] or parsed["ext"] != "json":
         return ""
-    scope = LOCAL_SCOPE if parsed["prefix"] == RESOURCE_PREFIX else INHERITED_SCOPE
     bitstring = _extract_bitstring(payload, source_msn_id=parsed["msn_id"])
-    cache_path = cache_scope_dir(path.parent.parent, scope=scope) / _canonical_cache_name_from_json(path.name)
+    cache_path = payload_bin_path(
+        path.parent.parent,
+        path.stem,
+        default_prefix=parsed["prefix"],
+        source_msn_id=parsed["msn_id"],
+    )
+    decoded_cache_path = decoded_payload_cache_path(
+        path.parent.parent,
+        path.stem,
+        default_prefix=parsed["prefix"],
+        source_msn_id=parsed["msn_id"],
+    )
     if not bitstring:
         try:
             cache_path.unlink()
         except FileNotFoundError:
             pass
+        try:
+            decoded_cache_path.unlink()
+        except FileNotFoundError:
+            pass
         return ""
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_bytes(bitstring.encode("utf-8"))
+    cache_path.write_text(bitstring, encoding="utf-8")
+    try:
+        decoded_payload = decode_mss_payload(bitstring)
+    except Exception:
+        decoded_payload = {}
+    if decoded_payload:
+        decoded_cache_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_json(decoded_cache_path, decoded_payload)
+    else:
+        try:
+            decoded_cache_path.unlink()
+        except FileNotFoundError:
+            pass
     return str(cache_path)
 
 
@@ -528,7 +574,7 @@ def remove_inherited_source(data_root: Path, *, source_msn_id: str) -> dict[str,
     ensure_layout(data_root)
     token = _safe_token(source_msn_id)
     removed_count = 0
-    for root in (references_root(data_root), cache_scope_dir(data_root, scope=INHERITED_SCOPE)):
+    for root in (references_root(data_root), payloads_root(data_root), payload_cache_root(data_root)):
         for path in sorted(root.glob(f"rf.{token}.*")):
             try:
                 path.unlink()

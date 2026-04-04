@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import json
 import sys
 import unittest
 from pathlib import Path
@@ -30,16 +29,6 @@ def _example_payload() -> dict[str, object]:
         "4-2-2": [["4-2-2", "1-1-1", "63072000000", "3-1-1", "3153600000"], ["21st_century-event"]],
     }
 
-
-def _reference_fixture_contract() -> dict[str, object]:
-    path = (
-        Path(__file__).resolve().parents[1]
-        / "mss"
-        / "msn-3-2-3-17-77-1-6-4-1-4.contract-3-2-3-17-77-2-6-3-1-6.json"
-    )
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 class MssContractContextTests(unittest.TestCase):
     def test_compile_decode_and_root_selection_round_trip(self):
         mod = _load_shared_mss()
@@ -59,21 +48,6 @@ class MssContractContextTests(unittest.TestCase):
         root_row = next(row for row in decoded["rows"] if row["identifier"] == "5-0-1")
         self.assertEqual([pair["reference"] for pair in root_row["pairs"]], ["4-2-1", "4-2-2"])
         self.assertEqual(decoded["metadata"]["layer_count"], 6)
-
-    def test_reference_fixture_decodes_with_legacy_variant(self):
-        mod = _load_shared_mss()
-        fixture = _reference_fixture_contract()
-        decoded = mod.decode_mss_payload(str(fixture.get("owner_mss") or ""))
-
-        self.assertEqual(decoded["wire_variant"], "legacy_reference_fixture")
-        self.assertFalse(decoded["legacy_unsupported"])
-        self.assertEqual(decoded["root_identifier"], "5-0-1")
-        self.assertEqual(decoded["metadata"]["layer_count"], 6)
-        self.assertEqual(decoded["metadata"]["value_groups_per_layer"], [1, 1, 1, 1, 1, 1])
-        self.assertEqual(decoded["metadata"]["iteration_counts"], [2, 2, 1, 1, 2, 1])
-        self.assertEqual(decoded["metadata"]["value_group_values"], [0, 1, 1, 1, 2, 0])
-        self.assertEqual([row["identifier"] for row in decoded["rows"]], ["0-0-1", "0-0-2", "1-1-1", "1-1-2", "2-1-1", "3-1-1", "4-2-1", "4-2-2", "5-0-1"])
-        self.assertEqual(decoded["cobm"][-1]["active_identifiers"], ["4-2-1", "4-2-2"])
 
     def test_foreign_resolution_uses_contract_mss_context(self):
         mod = _load_shared_mss()
@@ -126,6 +100,15 @@ class MssContractContextTests(unittest.TestCase):
         )
         self.assertTrue(resolved["ok"])
         self.assertEqual((resolved.get("row") or {}).get("source_identifier"), "0-0-5")
+
+    def test_compile_rejects_non_v2_payloads_instead_of_silent_fallback(self):
+        mod = _load_shared_mss()
+        payload = {
+            "0-0-1": [["0-0-1", "0", "0"], ["top"]],
+            "1-1-1": [["1-1-1", "0-0-1", "not-an-integer"], ["broken"]],
+        }
+        with self.assertRaises(ValueError):
+            mod.compile_mss_payload(payload, ["1-1-1"])
 
     def test_foreign_resolution_requires_preferred_contract_when_multiple_match(self):
         mod = _load_shared_mss()
