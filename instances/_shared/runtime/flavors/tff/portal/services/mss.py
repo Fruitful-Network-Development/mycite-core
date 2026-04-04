@@ -19,7 +19,6 @@ _SHARED = _load_shared_mss()
 MSS_ENCODING = _SHARED.MSS_ENCODING
 MSS_SCHEMA = _SHARED.MSS_SCHEMA
 MSS_WIRE_VARIANT_CANONICAL = _SHARED.MSS_WIRE_VARIANT_CANONICAL
-MSS_WIRE_VARIANT_REFERENCE_FIXTURE = _SHARED.MSS_WIRE_VARIANT_REFERENCE_FIXTURE
 compile_mss_payload = _SHARED.compile_mss_payload
 decode_mss_payload = _SHARED.decode_mss_payload
 load_anthology_payload = _SHARED.load_anthology_payload

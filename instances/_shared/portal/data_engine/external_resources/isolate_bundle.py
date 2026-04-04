@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ..datum_identity import stable_datum_id
+from mycite_core.mss_resolution import stable_datum_id
 from .isolate_identity import compute_closure_signature, compute_isolate_identity
 from .provenance import ResourceProvenance
 

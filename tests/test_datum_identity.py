@@ -12,14 +12,12 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PORTALS_ROOT = REPO_ROOT / "portals"
-SHARED_ROOT = PORTALS_ROOT / "_shared"
 
 
 def _load_datum_identity():
-    if str(SHARED_ROOT) not in sys.path:
-        sys.path.insert(0, str(SHARED_ROOT))
-    import portal.data_engine.datum_identity as mod
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    import mycite_core.mss_resolution as mod
     return mod
 
 

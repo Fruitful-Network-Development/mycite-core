@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from ..datum_refs import normalize_datum_ref, parse_datum_ref
+from mycite_core.mss_resolution import resolve_to_local_row
 from .archetypes import ArchetypeDefinition, get_archetype_definition, list_archetype_definitions
-from .datum_identity import resolve_to_local_row
 from .inherited_txa_adapter import adapt_published_txa_resource_value
 from .samras_descriptor_compiler import compile_samras_constraint_for_chain
 

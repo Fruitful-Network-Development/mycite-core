@@ -666,7 +666,7 @@ class SandboxEngine:
             compile_metadata["provisional_state"] = "compiled"
             payload["mss_form"] = {
                 "bitstring": compiled_bitstring,
-                "wire_variant": "canonical_v2",
+                "wire_variant": "canonical",
             }
             payload["compile_metadata"] = compile_metadata
             payload["published_value"] = {

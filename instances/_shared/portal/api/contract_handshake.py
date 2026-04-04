@@ -555,10 +555,10 @@ def register_contract_handshake_routes(
             return {}
         return payload if isinstance(payload, dict) else {}
 
-    def _compiled_owner_contract_context(body: Dict[str, Any], local_msn_id: str) -> tuple[str, list[str]]:
+    def _compiled_owner_contract_context(body: Dict[str, Any], local_msn_id: str) -> tuple[str, list[str], list[str]]:
         selected_refs = _as_string_list(body.get("owner_selected_refs"))
         if not selected_refs:
-            return _mss_value(body.get("owner_mss")), []
+            return _mss_value(body.get("owner_mss")), [], _as_string_list(body.get("owner_source_identifiers"))
         anthology_payload = _workspace_anthology_payload()
         if not anthology_payload:
             raise ValueError("owner_selected_refs require a readable local anthology to compile owner_mss")
@@ -568,7 +568,11 @@ def register_contract_handshake_routes(
             local_msn_id=local_msn_id,
             include_selection_root=True,
         )
-        return _as_str(compiled.get("bitstring")), selected_refs
+        return (
+            _as_str(compiled.get("bitstring")),
+            selected_refs,
+            _as_string_list(compiled.get("source_identifiers")),
+        )
 
     def _qualifier_endpoints(local_msn_id: str) -> Dict[str, Dict[str, Any]]:
         return {
@@ -655,7 +659,7 @@ def register_contract_handshake_routes(
         details = body.get("details") if isinstance(body.get("details"), dict) else {}
         callback_url = _as_str(body.get("confirmation_callback_url"))
         try:
-            owner_mss, owner_selected_refs = _compiled_owner_contract_context(body, local_msn_id)
+            owner_mss, owner_selected_refs, owner_source_identifiers = _compiled_owner_contract_context(body, local_msn_id)
         except ValueError as exc:
             abort(400, description=str(exc))
 
@@ -671,6 +675,7 @@ def register_contract_handshake_routes(
             "template_version": _as_str(body.get("template_version")) or "1.0.0",
             "owner_mss": owner_mss,
             "owner_selected_refs": owner_selected_refs,
+            "owner_source_identifiers": owner_source_identifiers,
             "event_datum": event_datum,
             "status": request_status,
             "request_unix_ms": int(time.time() * 1000),
@@ -691,6 +696,7 @@ def register_contract_handshake_routes(
                 "details": details,
                 "owner_mss": proposal["owner_mss"],
                 "owner_selected_refs": proposal["owner_selected_refs"],
+                "owner_source_identifiers": proposal["owner_source_identifiers"],
             },
             owner_msn_id=local_msn_id,
         )
@@ -857,6 +863,7 @@ def register_contract_handshake_routes(
                 "details": proposal.get("details") if isinstance(proposal.get("details"), dict) else {},
                 "counterparty_mss": _mss_value(proposal.get("owner_mss")),
                 "counterparty_selected_refs": _as_string_list(proposal.get("owner_selected_refs")),
+                "counterparty_source_identifiers": _as_string_list(proposal.get("owner_source_identifiers")),
             },
             owner_msn_id=local_msn_id,
         )
@@ -864,6 +871,7 @@ def register_contract_handshake_routes(
         stored_contract = _load_contract_payload(private_dir, _as_str(proposal.get("contract_id")) or f"contract-{proposal_id}")
         owner_mss = _mss_value(stored_contract.get("owner_mss"))
         owner_selected_refs = _as_string_list(stored_contract.get("owner_selected_refs"))
+        owner_source_identifiers = _as_string_list(stored_contract.get("owner_source_identifiers"))
 
         confirmation = {
             "proposal_id": proposal_id,
@@ -873,6 +881,7 @@ def register_contract_handshake_routes(
             "receiver_msn_id": sender_msn_id,
             "owner_mss": owner_mss,
             "owner_selected_refs": owner_selected_refs,
+            "owner_source_identifiers": owner_source_identifiers,
             "event_datum": _normalize_event_ref(event_datum, sender_msn_id, default_value=DEFAULT_EVENT_DATUM),
             "status": _normalize_status_ref(DEFAULT_CONFIRM_STATUS, local_msn_id, default_value=DEFAULT_CONFIRM_STATUS),
             "confirmed_unix_ms": int(time.time() * 1000),
@@ -984,6 +993,7 @@ def register_contract_handshake_routes(
                 "status": "active",
                 "counterparty_mss": _mss_value(confirmation.get("owner_mss")),
                 "counterparty_selected_refs": _as_string_list(confirmation.get("owner_selected_refs")),
+                "counterparty_source_identifiers": _as_string_list(confirmation.get("owner_source_identifiers")),
             },
             owner_msn_id=local_msn_id,
         )

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import importlib.util
 import importlib
+import importlib.util
 import json
 import re
-import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
+
+from mycite_core.mss_resolution import load_datum_space
 
 
 TABLE_SPECS: dict[str, dict[str, str]] = {
@@ -52,62 +53,6 @@ def _load_shared_anthology_normalization() -> ModuleType:
 
 _SHARED_NORMALIZATION = _load_shared_anthology_normalization()
 datum_sort_key = _SHARED_NORMALIZATION.datum_sort_key
-
-
-def _load_shared_anthology_overlay() -> ModuleType:
-    portals_root = Path(__file__).resolve().parents[5]
-    token = str(portals_root)
-    if token not in sys.path:
-        sys.path.insert(0, token)
-    try:
-        return importlib.import_module("_shared.portal.data_engine.anthology_overlay")
-    except Exception:
-        pass
-    shared_path = (
-        Path(__file__).resolve().parents[2]
-        / "_shared"
-        / "portal"
-        / "data_engine"
-        / "anthology_overlay.py"
-    )
-    spec = importlib.util.spec_from_file_location("mycite_shared_data_engine_anthology_overlay", shared_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load shared anthology overlay module from {shared_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _load_shared_anthology_registry() -> ModuleType:
-    portals_root = Path(__file__).resolve().parents[5]
-    token = str(portals_root)
-    if token not in sys.path:
-        sys.path.insert(0, token)
-    try:
-        return importlib.import_module("_shared.portal.data_engine.anthology_registry")
-    except Exception:
-        pass
-    shared_path = (
-        Path(__file__).resolve().parents[2]
-        / "_shared"
-        / "portal"
-        / "data_engine"
-        / "anthology_registry.py"
-    )
-    spec = importlib.util.spec_from_file_location("mycite_shared_data_engine_anthology_registry", shared_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load shared anthology registry module from {shared_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-_SHARED_OVERLAY = _load_shared_anthology_overlay()
-_SHARED_REGISTRY = _load_shared_anthology_registry()
-load_base_registry = _SHARED_REGISTRY.load_base_registry
-default_base_registry_path = _SHARED_REGISTRY.default_base_registry_path
-merge_base_and_overlay = _SHARED_OVERLAY.merge_base_and_overlay
-strip_base_duplicates_from_overlay = _SHARED_OVERLAY.strip_base_duplicates_from_overlay
 
 
 class JsonStorageBackend:
@@ -162,16 +107,11 @@ class JsonStorageBackend:
 
     @staticmethod
     def _base_registry_path() -> Path:
-        return default_base_registry_path()
+        return Path()
 
     def _merge_anthology_payload(self, overlay_payload: dict[str, Any]) -> dict[str, Any]:
-        registry = load_base_registry(base_path=self._base_registry_path(), strict=False)
-        report = merge_base_and_overlay(
-            base_registry=registry,
-            overlay_payload=overlay_payload if isinstance(overlay_payload, dict) else {},
-            strict=False,
-            allow_overlay_override=True,
-        )
+        _ = overlay_payload
+        report = load_datum_space(self.data_dir, sort_key=datum_sort_key)
         self._anthology_source_scope = dict(report.source_scope_by_id)
         self._anthology_parse_warnings = list(report.warnings or [])
         self._anthology_payload_valid = bool(report.ok)
@@ -351,13 +291,8 @@ class JsonStorageBackend:
                         "warnings": list(self._anthology_parse_warnings),
                     }
                 merged_payload = self._rows_to_anthology(rows)
-                registry = load_base_registry(base_path=self._base_registry_path(), strict=False)
-                overlay_report = strip_base_duplicates_from_overlay(
-                    overlay_payload=merged_payload,
-                    base_registry=registry,
-                )
-                payload = dict(overlay_report.output_payload)
-                self._anthology_parse_warnings = list(overlay_report.warnings or [])
+                payload = dict(merged_payload)
+                self._anthology_parse_warnings = []
             elif token == "samras":
                 payload = self._rows_to_samras(rows)
             else:
@@ -401,12 +336,7 @@ class JsonStorageBackend:
                     row.pop("icon_relpath", None)
 
             merged_payload = self._rows_to_anthology(rows)
-            registry = load_base_registry(base_path=self._base_registry_path(), strict=False)
-            overlay_report = strip_base_duplicates_from_overlay(
-                overlay_payload=merged_payload,
-                base_registry=registry,
-            )
-            self.write_payload("anthology", dict(overlay_report.output_payload))
+            self.write_payload("anthology", dict(merged_payload))
             return {"ok": True, "errors": [], "warnings": []}
         except Exception as exc:
             return {"ok": False, "errors": [str(exc)], "warnings": []}

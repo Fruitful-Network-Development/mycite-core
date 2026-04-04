@@ -113,6 +113,19 @@ def _normalize_selected_refs(value: Any, *, field_name: str) -> list[str]:
     return out
 
 
+def _normalize_source_identifiers(value: Any, *, field_name: str) -> list[str]:
+    if value is None or value == "":
+        return []
+    if not isinstance(value, list):
+        raise ContractValidationError(f"{field_name} must be a list of source identifiers")
+    out: list[str] = []
+    for item in value:
+        token = _as_text(item)
+        if token:
+            out.append(token)
+    return out
+
+
 def _normalize_tracked_resource_ids(payload: dict[str, Any]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
@@ -167,6 +180,7 @@ def _managed_line_payload_entries(payload: dict[str, Any]) -> dict[str, dict[str
     owner_payload = {
         "owner_mss": _as_text(payload.get("owner_mss")),
         "owner_selected_refs": list(payload.get("owner_selected_refs") or []),
+        "owner_source_identifiers": list(payload.get("owner_source_identifiers") or []),
         "relationship_mode": _as_text(payload.get("relationship_mode")),
         "access_mode": _as_text(payload.get("access_mode")),
         "sync_mode": _as_text(payload.get("sync_mode")),
@@ -187,6 +201,7 @@ def _managed_line_payload_entries(payload: dict[str, Any]) -> dict[str, dict[str
     counterparty_payload = {
         "counterparty_mss": _as_text(payload.get("counterparty_mss")),
         "counterparty_selected_refs": list(payload.get("counterparty_selected_refs") or []),
+        "counterparty_source_identifiers": list(payload.get("counterparty_source_identifiers") or []),
     }
     if counterparty_payload["counterparty_mss"] or counterparty_payload["counterparty_selected_refs"]:
         entries["mss.counterparty_context"] = _normalize_line_payload_entry(
@@ -212,6 +227,7 @@ def _managed_payload_override_slots(payload: dict[str, Any]) -> set[str]:
         "relationship_mode",
         "access_mode",
         "sync_mode",
+        "owner_source_identifiers",
         "source_card_revision",
         "compact_index_revision",
         "compact_index_compiled_at_unix_ms",
@@ -220,7 +236,7 @@ def _managed_payload_override_slots(payload: dict[str, Any]) -> set[str]:
     }
     if raw_keys & owner_keys:
         out.add("mss.owner_context")
-    if raw_keys & {"counterparty_mss", "counterparty_selected_refs"}:
+    if raw_keys & {"counterparty_mss", "counterparty_selected_refs", "counterparty_source_identifiers"}:
         out.add("mss.counterparty_context")
     return out
 
@@ -305,6 +321,10 @@ def _apply_payload_mirrors(out: dict[str, Any]) -> None:
             owner_payload.get("owner_selected_refs"),
             field_name="owner_selected_refs",
         )
+        out["owner_source_identifiers"] = _normalize_source_identifiers(
+            owner_payload.get("owner_source_identifiers"),
+            field_name="owner_source_identifiers",
+        )
         for key in ("relationship_mode", "access_mode", "sync_mode"):
             token = _as_text(owner_payload.get(key))
             if token:
@@ -333,6 +353,10 @@ def _apply_payload_mirrors(out: dict[str, Any]) -> None:
         out["counterparty_selected_refs"] = _normalize_selected_refs(
             counterparty_payload.get("counterparty_selected_refs"),
             field_name="counterparty_selected_refs",
+        )
+        out["counterparty_source_identifiers"] = _normalize_source_identifiers(
+            counterparty_payload.get("counterparty_source_identifiers"),
+            field_name="counterparty_source_identifiers",
         )
 
 
@@ -402,9 +426,17 @@ def normalize_contract_payload(
         base.get("owner_selected_refs"),
         field_name="owner_selected_refs",
     )
+    out["owner_source_identifiers"] = _normalize_source_identifiers(
+        base.get("owner_source_identifiers"),
+        field_name="owner_source_identifiers",
+    )
     out["counterparty_selected_refs"] = _normalize_selected_refs(
         base.get("counterparty_selected_refs"),
         field_name="counterparty_selected_refs",
+    )
+    out["counterparty_source_identifiers"] = _normalize_source_identifiers(
+        base.get("counterparty_source_identifiers"),
+        field_name="counterparty_source_identifiers",
     )
     if not for_write:
         legacy_tracked_resource_ids = _normalize_tracked_resource_ids(base)
@@ -635,6 +667,11 @@ def apply_compact_array_update(
             payload.get("counterparty_selected_refs"),
             field_name="counterparty_selected_refs",
         )
+    if isinstance(payload.get("counterparty_source_identifiers"), list):
+        counterparty_context["counterparty_source_identifiers"] = _normalize_source_identifiers(
+            payload.get("counterparty_source_identifiers"),
+            field_name="counterparty_source_identifiers",
+        )
     registry["mss.counterparty_context"] = _normalize_line_payload_entry(
         "mss.counterparty_context",
         {
@@ -652,6 +689,7 @@ def apply_compact_array_update(
         "updated_unix_ms": ts_unix_ms,
         "counterparty_mss": counterparty_context.get("counterparty_mss"),
         "counterparty_selected_refs": list(counterparty_context.get("counterparty_selected_refs") or []),
+        "counterparty_source_identifiers": list(counterparty_context.get("counterparty_source_identifiers") or []),
     }
     return update_contract(
         private_dir, contract_id, patch, owner_msn_id=local_msn_id or _as_text(existing.get("owner_msn_id"))

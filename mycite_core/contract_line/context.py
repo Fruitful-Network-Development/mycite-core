@@ -4,10 +4,9 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from instances._shared.portal.data_engine import build_compiled_index
 from instances._shared.portal.sandbox import SandboxEngine
 
-from mycite_core.mss_resolution import load_anthology_payload, preview_mss_context
+from mycite_core.mss_resolution import build_compiled_index, load_anthology_payload, preview_mss_context
 
 from .alias_service import maybe_create_alias_from_contract
 from .store import (
@@ -84,6 +83,9 @@ def compile_owner_contract_context(
         )
     compiled["owner_selected_refs"] = selected_refs
     compiled["owner_mss"] = _as_str(preview.get("bitstring"))
+    compiled["owner_source_identifiers"] = [
+        _as_str(item) for item in list(preview.get("source_identifiers") or []) if _as_str(item)
+    ]
     return compiled
 
 
@@ -108,6 +110,7 @@ def preview_contract_context(
             anthology_payload=_anthology_payload(anthology_path_fn),
             selected_refs=selected_refs,
             bitstring="" if selected_refs else _as_str(body.get("owner_mss")),
+            source_identifiers=list(body.get("owner_source_identifiers") or []),
             local_msn_id=local_msn_id,
         )
     if sandbox_engine is not None:
@@ -119,13 +122,22 @@ def preview_contract_context(
             counterparty_decoded.compiled_payload if isinstance(counterparty_decoded.compiled_payload, dict) else {}
         )
     else:
-        counterparty_preview = preview_mss_context(bitstring=_as_str(body.get("counterparty_mss")))
+        counterparty_preview = preview_mss_context(
+            bitstring=_as_str(body.get("counterparty_mss")),
+            source_identifiers=list(body.get("counterparty_source_identifiers") or []),
+        )
     return {
         "owner_selected_refs": selected_refs,
         "owner_preview": owner_preview,
         "counterparty_preview": counterparty_preview,
         "owner_mss": _as_str(owner_preview.get("bitstring") or body.get("owner_mss")),
+        "owner_source_identifiers": [
+            _as_str(item) for item in list(owner_preview.get("source_identifiers") or body.get("owner_source_identifiers") or []) if _as_str(item)
+        ],
         "counterparty_mss": _as_str(body.get("counterparty_mss")),
+        "counterparty_source_identifiers": [
+            _as_str(item) for item in list(counterparty_preview.get("source_identifiers") or body.get("counterparty_source_identifiers") or []) if _as_str(item)
+        ],
     }
 
 
@@ -145,6 +157,7 @@ def apply_contract_context_patch(
     if (
         _as_str(compiled.get("owner_mss")) != _as_str(existing.get("owner_mss"))
         or compiled.get("owner_selected_refs") != existing.get("owner_selected_refs")
+        or list(compiled.get("owner_source_identifiers") or []) != list(existing.get("owner_source_identifiers") or [])
     ):
         compiled["compact_index_revision"] = current_rev + 1
         compiled["compact_index_compiled_at_unix_ms"] = int(time.time() * 1000)

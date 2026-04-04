@@ -100,6 +100,9 @@ def sync_owner_contract_mss(
             continue
 
         next_owner_mss = _as_text(compiled.get("bitstring"))
+        next_owner_source_identifiers = [
+            _as_text(item) for item in list(compiled.get("source_identifiers") or []) if _as_text(item)
+        ]
         if selected_refs == existing_selected_refs and next_owner_mss == existing_owner_mss:
             summary["unchanged_contract_ids"].append(contract_id)
             continue
@@ -111,6 +114,7 @@ def sync_owner_contract_mss(
                 {
                     "owner_selected_refs": selected_refs,
                     "owner_mss": next_owner_mss,
+                    "owner_source_identifiers": next_owner_source_identifiers,
                 },
                 owner_msn_id=contract_owner or local_owner,
             )
