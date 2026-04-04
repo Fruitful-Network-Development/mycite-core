@@ -12,11 +12,12 @@ from _shared.portal.application.workbench.document_contract import build_workben
 
 
 def _load_agro_tool_meta() -> dict[str, object]:
-    path = Path(__file__).resolve().parents[1] / "portals" / "_shared" / "runtime" / "flavors" / "tff" / "portal" / "tools" / "agro_erp" / "__init__.py"
-    portals_root = path.parents[6]
-    token = str(portals_root)
-    if token not in sys.path:
-        sys.path.insert(0, token)
+    repo_root = Path(__file__).resolve().parents[1]
+    path = repo_root / "instances" / "_shared" / "runtime" / "flavors" / "tff" / "portal" / "tools" / "agro_erp" / "__init__.py"
+    for candidate in (repo_root, repo_root / "instances", repo_root / "packages"):
+        token = str(candidate)
+        if token not in sys.path:
+            sys.path.insert(0, token)
     spec = importlib.util.spec_from_file_location("agro_erp_shell_contracts_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -30,9 +31,10 @@ def _load_agro_tool_meta() -> dict[str, object]:
 
 
 def _load_fnd_tool_meta(tool_id: str) -> dict[str, object]:
+    repo_root = Path(__file__).resolve().parents[1]
     path = (
-        Path(__file__).resolve().parents[1]
-        / "portals"
+        repo_root
+        / "instances"
         / "_shared"
         / "runtime"
         / "flavors"
@@ -42,10 +44,10 @@ def _load_fnd_tool_meta(tool_id: str) -> dict[str, object]:
         / tool_id
         / "__init__.py"
     )
-    portals_root = path.parents[7]
-    token = str(portals_root)
-    if token not in sys.path:
-        sys.path.insert(0, token)
+    for candidate in (repo_root, repo_root / "instances", repo_root / "packages"):
+        token = str(candidate)
+        if token not in sys.path:
+            sys.path.insert(0, token)
     spec = importlib.util.spec_from_file_location(f"{tool_id}_shell_contracts_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -163,7 +165,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
         repo_root = Path(__file__).resolve().parents[1]
         data_tool = (
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"
@@ -181,21 +183,21 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
 
         removed_assets = [
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "portal"
             / "ui"
             / "static"
             / "system_compatibility_runtime.js",
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "portal"
             / "ui"
             / "static"
             / "system_compatibility_views.js",
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"
@@ -206,7 +208,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "tools"
             / "operations.js",
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"
@@ -217,7 +219,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "tools"
             / "website_analytics.js",
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"
@@ -228,7 +230,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "tools"
             / "operations_home.html",
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"
@@ -239,7 +241,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "tools"
             / "website_analytics_home.html",
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"
@@ -250,7 +252,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "tools"
             / "local_resources_workbench.js",
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"
@@ -261,7 +263,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "tools"
             / "inheritance_workbench.js",
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"
@@ -272,7 +274,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "tools"
             / "local_resources_workbench.js",
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"
@@ -283,7 +285,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "tools"
             / "inheritance_workbench.js",
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"
@@ -294,7 +296,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             / "tools"
             / "aws_tenant_actions.js",
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"
@@ -309,7 +311,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
             self.assertFalse(path.exists(), str(path))
         removed_module = (
             repo_root
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"
@@ -323,7 +325,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
     def test_shared_system_shell_runtime_is_generic_mediation_host(self) -> None:
         runtime_js = (
             Path(__file__).resolve().parents[1]
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"
@@ -355,7 +357,7 @@ class ShellToolRuntimeContractTests(unittest.TestCase):
     def test_service_tool_runtime_prunes_incompatible_provider_state(self) -> None:
         runtime_js = (
             Path(__file__).resolve().parents[1]
-            / "portals"
+            / "instances"
             / "_shared"
             / "runtime"
             / "flavors"

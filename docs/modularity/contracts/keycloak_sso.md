@@ -6,6 +6,5 @@
 - Reads: instance-scoped auth/operations tool state under
   `private/utilities/tools/keycloak-sso/`.
 - Writes: only auth-tool scoped state.
-- Depends on: `tools/_shared`, `portal_core/shared`.
+- Depends on: `tools/_shared`, `mycite_core/runtime_host`.
 - Depended on by: operations and provisioning surfaces.
-

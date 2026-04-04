@@ -19,7 +19,7 @@ def _add_repo_root() -> Path:
 class RuntimeLoaderTests(unittest.TestCase):
     def test_load_runtime_flavor_module_loads_fake_flavor(self):
         _add_repo_root()
-        from portal_core.composition.runtime_loader import load_runtime_flavor_module
+        from mycite_core.runtime_host.runtime_loader import load_runtime_flavor_module
 
         with TemporaryDirectory() as temp_dir:
             portals_root = Path(temp_dir)
@@ -32,7 +32,7 @@ class RuntimeLoaderTests(unittest.TestCase):
 
     def test_load_runtime_flavor_module_from_env_uses_portal_runtime_flavor(self):
         _add_repo_root()
-        from portal_core.composition.runtime_loader import load_runtime_flavor_module_from_env
+        from mycite_core.runtime_host.runtime_loader import load_runtime_flavor_module_from_env
 
         with TemporaryDirectory() as temp_dir:
             portals_root = Path(temp_dir)

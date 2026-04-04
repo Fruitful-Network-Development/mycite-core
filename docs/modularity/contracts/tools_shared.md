@@ -8,6 +8,5 @@
   `private/utilities/tools/...`.
 - Writes: no tool business data directly; may create canonical tool root
   directories.
-- Depends on: `portal_core/shell`, `portal_core/shared`.
+- Depends on: `mycite_core/state_machine`, `mycite_core/runtime_host`.
 - Depended on by: all standalone tool modules and legacy wrapper seams.
-

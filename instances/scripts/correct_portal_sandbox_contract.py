@@ -17,7 +17,7 @@ if str(REPO_ROOT) not in sys.path:
 if str(PORTALS_ROOT) not in sys.path:
     sys.path.insert(0, str(PORTALS_ROOT))
 
-from portal_core.shared.state_roots import canonical_instances_root
+from mycite_core.runtime_host.state_roots import canonical_instances_root
 
 from _shared.portal.core_services.config_loader import normalize_private_config_contract
 from _shared.portal.data_engine.resource_registry import (

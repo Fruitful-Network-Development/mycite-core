@@ -15,7 +15,7 @@ def _repo_root() -> Path:
 
 def _add_repo_paths() -> Path:
     repo_root = _repo_root()
-    for path in (repo_root, repo_root / "portals"):
+    for path in (repo_root, repo_root / "instances", repo_root / "packages"):
         token = str(path)
         if token not in sys.path:
             sys.path.insert(0, token)
@@ -23,7 +23,8 @@ def _add_repo_paths() -> Path:
 
 
 def _load_portal_build_module():
-    path = _repo_root() / "portals" / "scripts" / "portal_build.py"
+    _add_repo_paths()
+    path = _repo_root() / "instances" / "scripts" / "portal_build.py"
     spec = importlib.util.spec_from_file_location("portal_build_boundary_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -35,7 +36,7 @@ class ModuleBoundaryTests(unittest.TestCase):
     def test_runtime_paths_wrapper_points_to_canonical_module(self):
         _add_repo_paths()
         legacy = importlib.import_module("_shared.portal.runtime_paths")
-        canonical = importlib.import_module("portal_core.shared.runtime_paths")
+        canonical = importlib.import_module("mycite_core.runtime_paths")
         self.assertIs(legacy.utility_tools_dir, canonical.utility_tools_dir)
         self.assertEqual(canonical.instance_state_root("fnd"), Path("/srv/mycite-state/instances/fnd"))
 
@@ -54,7 +55,7 @@ class ModuleBoundaryTests(unittest.TestCase):
             clear=False,
         ):
             context = legacy.build_instance_context_from_env(
-                default_portals_root=_repo_root() / "portals",
+                default_portals_root=_repo_root() / "instances",
                 default_public_dir=state_root / "public",
                 default_private_dir=state_root / "private",
                 default_data_dir=state_root / "data",
@@ -67,7 +68,7 @@ class ModuleBoundaryTests(unittest.TestCase):
     def test_shell_and_tool_runtime_wrappers_point_to_canonical_modules(self):
         _add_repo_paths()
         legacy_shell = importlib.import_module("_shared.portal.application.shell.tools")
-        canonical_shell = importlib.import_module("portal_core.shell.tool_capabilities")
+        canonical_shell = importlib.import_module("mycite_core.state_machine.tool_capabilities")
         legacy_runtime = importlib.import_module("_shared.portal.tools.runtime")
         canonical_runtime = importlib.import_module("tools._shared.tool_state_api.runtime")
         self.assertIs(legacy_shell.normalize_tool_capability, canonical_shell.normalize_tool_capability)
@@ -93,4 +94,3 @@ class ModuleBoundaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

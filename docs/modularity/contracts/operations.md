@@ -6,6 +6,5 @@
 - Reads: instance-scoped operations data under
   `private/utilities/tools/keycloak-sso/`.
 - Writes: operations-specific collections and action state only.
-- Depends on: `tools/_shared`, `portal_core/shared`.
+- Depends on: `tools/_shared`, `mycite_core/runtime_host`.
 - Depended on by: provisioning/operations mediation surfaces.
-

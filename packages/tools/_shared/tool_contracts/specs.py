@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from portal_core.shared.runtime_paths import utility_tools_dir
+from mycite_core.runtime_paths import utility_tools_dir
 
 TOOL_SPEC_SCHEMA = "mycite.portal.tool_spec.v1"
 
@@ -101,4 +101,3 @@ def load_tool_spec_for_id(private_dir: Path, tool_id: str) -> Optional[ToolDataS
         if spec is not None:
             return spec
     return None
-

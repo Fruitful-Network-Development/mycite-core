@@ -79,8 +79,9 @@ This page defines the machine model for `SYSTEM`. It does not own:
 
 - `docs/development_declaration_state_machine.md`
 - `docs/directive_context_UI_refactor.md`
-- `portals/_shared/portal/api/data_workspace.py`
-- `portals/_shared/portal/data_engine/aitas_context.py`
+- `mycite_core/state_machine/view_model.py`
+- `mycite_core/state_machine/aitas.py`
+- `instances/_shared/portal/api/data_workspace.py`
 
 ## Source Docs
 

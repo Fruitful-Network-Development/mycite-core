@@ -7,6 +7,5 @@
   `private/utilities/tools/paypal-csm/`.
 - Writes: PayPal tenant state, FND PayPal state, action/order/profile-sync logs
   inside that tool bubble.
-- Depends on: `tools/_shared`, `portal_core/shared`.
+- Depends on: `tools/_shared`, `mycite_core/runtime_host`.
 - Depended on by: FND admin integrations and the compatibility webhook runtime.
-

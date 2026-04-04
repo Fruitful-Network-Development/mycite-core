@@ -28,7 +28,7 @@ LEGACY_PROGENY_TYPE_MAP = {
     "tenant": "member",
 }
 
-from instances.declarations.registry import (
+from instances.scripts.declarations.registry import (
     ACTIVE_PORTAL_DECLARATIONS,
     default_portal_instance_id_for,
     default_runtime_flavor_for,

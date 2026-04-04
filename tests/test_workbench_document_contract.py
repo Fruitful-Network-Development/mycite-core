@@ -39,7 +39,11 @@ class WorkbenchDocumentContractTests(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         root = Path(tmp.name)
         engine = SandboxEngine(data_root=root)
-        local = LocalResourceLifecycleService(data_root=root, sandbox_engine=engine)
+        local = LocalResourceLifecycleService(
+            data_root=root,
+            sandbox_engine=engine,
+            local_msn_id="3-2-3-17-77-1-6-4-1-4",
+        )
         local.create(resource_kind="samras_msn", resource_name="samras.msn", seed_payload={"rows": {}})
         catalog = DocumentCatalogService(
             data_root=root,
@@ -48,11 +52,11 @@ class WorkbenchDocumentContractTests(unittest.TestCase):
             instance_id_provider=lambda: "fnd",
         )
         payload = catalog.local_inventory_payload()
-        self.assertEqual(payload.get("schema"), "mycite.portal.resources.local_inventory.v1")
+        self.assertEqual(payload.get("schema"), "mycite.portal.resources.inventory.v2")
         self.assertEqual(payload.get("documents_schema"), DOCUMENT_SCHEMA)
         self.assertEqual(len(payload.get("documents") or []), 1)
         document = (payload.get("documents") or [])[0]
-        self.assertEqual(document.get("scope", {}).get("kind"), "local")
+        self.assertEqual(document.get("scope", {}).get("kind"), "resource")
         tmp.cleanup()
 
 

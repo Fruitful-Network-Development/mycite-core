@@ -9,8 +9,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, Iterable, List, Optional
 
-from portal_core.shell.tool_capabilities import normalize_tool_capability
-from portal_core.shared.runtime_paths import utility_tools_dir
+from mycite_core.runtime_paths import utility_tools_dir
+from mycite_core.state_machine.tool_capabilities import normalize_tool_capability
 
 _TOOL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _LOG = logging.getLogger("mycite.tool_runtime")

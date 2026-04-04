@@ -7,9 +7,9 @@ from typing import Any
 
 from _shared.portal.application.internal_sources import derive_client_analytics_paths, read_internal_file
 from _shared.portal.core_services.config_loader import load_active_private_config
-from portal_core.shell.contracts import CONFIG_CONTEXT_SCHEMA, build_inspector_card
-from portal_core.shell.tool_capabilities import compatible_tools_for_context
-from portal_core.shared.runtime_paths import utility_tools_dir
+from mycite_core.runtime_paths import utility_tools_dir
+from mycite_core.state_machine.controls import CONFIG_CONTEXT_SCHEMA, build_inspector_card
+from mycite_core.state_machine.tool_capabilities import compatible_tools_for_context
 from tools._shared.tool_contracts.service_catalog import (
     SERVICE_TOOL_BINDINGS_SCHEMA,
     SERVICE_TOOL_CONTRACT_SCHEMA,

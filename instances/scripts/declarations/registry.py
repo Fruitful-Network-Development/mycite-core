@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from portal_core.shared.state_roots import instance_state_root
+from mycite_core.runtime_host.state_roots import instance_state_root
 
 
 @dataclass(frozen=True)
