@@ -1,8 +1,6 @@
 {
-  "schema": "mycite.portal.resource.local.v1",
-  "resource_id": "rc.3-2-3-17-77-1-6-4-1-4.txa",
-  "resource_kind": "txa",
-  "scope": "resource",
+  "schema": "mycite.portal.datum_payload.local.v1",
+  "payload_id": "rf.3-2-3-17-77-1-6-4-1-4.txa",
   "source_msn_id": "3-2-3-17-77-1-6-4-1-4",
   "anthology_compatible_payload": {
     "0-0-1": [
