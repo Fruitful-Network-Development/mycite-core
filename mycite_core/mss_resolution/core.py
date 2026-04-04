@@ -16,7 +16,6 @@ from mycite_core.mss_resolution.anthology_payloads import (
 MSS_SCHEMA = "mycite.portal.mss.v1"
 MSS_ENCODING = "cobm-layered-bitstring"
 MSS_WIRE_VARIANT_CANONICAL = "canonical"
-MSS_WIRE_VARIANT_CANONICAL_V2 = "canonical_v2"
 
 _ROW_ID_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
 _BITSTRING_RE = re.compile(r"^[01]+$")
@@ -102,6 +101,25 @@ def _contract_line_mss(contract: dict[str, Any], *, for_msn_id: str) -> str:
         return token
     return _as_text(contract.get("owner_mss"))
 
+
+def _contract_line_source_identifiers(contract: dict[str, Any], *, for_msn_id: str) -> list[str]:
+    payload_registry = contract.get("payload_registry") if isinstance(contract.get("payload_registry"), dict) else {}
+    if _as_text(contract.get("counterparty_msn_id")) == _as_text(for_msn_id):
+        entry = payload_registry.get("mss.counterparty_context")
+        payload = entry.get("payload") if isinstance(entry, dict) and isinstance(entry.get("payload"), dict) else {}
+        if isinstance(payload.get("counterparty_source_identifiers"), list):
+            return [_as_text(item) for item in payload.get("counterparty_source_identifiers") if _as_text(item)]
+        if isinstance(contract.get("counterparty_source_identifiers"), list):
+            return [_as_text(item) for item in contract.get("counterparty_source_identifiers") if _as_text(item)]
+        return []
+    entry = payload_registry.get("mss.owner_context")
+    payload = entry.get("payload") if isinstance(entry, dict) and isinstance(entry.get("payload"), dict) else {}
+    if isinstance(payload.get("owner_source_identifiers"), list):
+        return [_as_text(item) for item in payload.get("owner_source_identifiers") if _as_text(item)]
+    if isinstance(contract.get("owner_source_identifiers"), list):
+        return [_as_text(item) for item in contract.get("owner_source_identifiers") if _as_text(item)]
+    return []
+
 def _encode_varuint(value: int) -> str:
     token = int(value)
     if token < 0:
@@ -179,6 +197,19 @@ def _normalize_selected_refs(selected_refs: list[str], *, local_msn_id: str = ""
             continue
         seen.add(identifier)
         out.append(identifier)
+    return out
+
+
+def _normalize_source_identifiers(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+    if not isinstance(value, list):
+        raise ValueError("source_identifiers must be a list")
+    out: list[str] = []
+    for item in value:
+        token = _as_text(item)
+        if token:
+            out.append(token)
     return out
 
 
@@ -857,7 +888,10 @@ def resolve_contract_datum_ref(
             "error": "Contract line payload is empty for the requested msn_id",
         }
 
-    decoded = decode_mss_payload(bitstring)
+    decoded = decode_mss_payload(
+        bitstring,
+        source_identifiers=_contract_line_source_identifiers(contract, for_msn_id=parsed.msn_id),
+    )
     row = next(
         (
             item
@@ -886,12 +920,13 @@ def preview_mss_context(
     anthology_payload: dict[str, Any] | None = None,
     selected_refs: list[str] | None = None,
     bitstring: str = "",
+    source_identifiers: list[str] | None = None,
     local_msn_id: str = "",
 ) -> dict[str, Any]:
     raw = _as_text(bitstring)
     refs = [_as_text(item) for item in (selected_refs or []) if _as_text(item)]
     if raw:
-        return {"mode": "decode", **decode_mss_payload(raw)}
+        return {"mode": "decode", **decode_mss_payload(raw, source_identifiers=source_identifiers)}
     if not refs:
         return {"mode": "empty", **_empty_decoded_payload("", wire_variant=MSS_WIRE_VARIANT_CANONICAL)}
     return {
@@ -905,104 +940,11 @@ def preview_mss_context(
     }
 
 
-_MSS_V2_PREFIX = "11101110"
-
-
 @lru_cache(maxsize=1)
 def _reference_module():
     from . import compact_array_reference
 
     return compact_array_reference
-
-
-def _encode_sd_uint(value: int) -> str:
-    number = int(value)
-    if number < 0:
-        raise ValueError("self-delimiting integer must be non-negative")
-    payload = format(number, "b")
-    return ("0" * (len(payload) - 1)) + "1" + payload
-
-
-def _decode_sd_uint(bits: str, cursor: int) -> tuple[int, int]:
-    zeros = 0
-    while True:
-        if cursor >= len(bits):
-            raise ValueError("unexpected EOF while decoding self-delimiting integer")
-        if bits[cursor] == "1":
-            cursor += 1
-            break
-        zeros += 1
-        cursor += 1
-    width = zeros + 1
-    end = cursor + width
-    if end > len(bits):
-        raise ValueError("unexpected EOF while reading self-delimiting integer payload")
-    return int(bits[cursor:end], 2), end
-
-
-def _encode_source_identifier_list(source_identifiers: list[str]) -> str:
-    bits: list[str] = [_encode_sd_uint(len(source_identifiers))]
-    for token in source_identifiers:
-        raw = _as_text(token).encode("utf-8")
-        bits.append(_encode_sd_uint(len(raw)))
-        bits.extend(format(byte, "08b") for byte in raw)
-    return "".join(bits)
-
-
-def _decode_source_identifier_list(bits: str) -> list[str]:
-    cursor = 0
-    count, cursor = _decode_sd_uint(bits, cursor)
-    out: list[str] = []
-    for _ in range(count):
-        length, cursor = _decode_sd_uint(bits, cursor)
-        end = cursor + (length * 8)
-        if end > len(bits):
-            raise ValueError("unexpected EOF while decoding source identifier bytes")
-        payload = bits[cursor:end]
-        cursor = end
-        try:
-            out.append(bytes(int(payload[index : index + 8], 2) for index in range(0, len(payload), 8)).decode("utf-8"))
-        except Exception as exc:
-            raise ValueError(f"invalid UTF-8 source identifier payload: {exc}") from exc
-    if cursor != len(bits):
-        raise ValueError("unexpected trailing bits in source identifier extension")
-    return out
-
-
-def _pack_v2_bitstring(base_bitstream: str, source_identifiers: list[str]) -> str:
-    base_bits = str(base_bitstream or "").strip()
-    if not base_bits or not _BITSTRING_RE.fullmatch(base_bits):
-        raise ValueError("base MSS bitstream must be non-empty binary payload")
-    ext_bits = _encode_source_identifier_list(source_identifiers)
-    return (
-        _MSS_V2_PREFIX
-        + _encode_sd_uint(len(base_bits))
-        + base_bits
-        + _encode_sd_uint(len(ext_bits))
-        + ext_bits
-    )
-
-
-def _unpack_v2_bitstring(token: str) -> tuple[str, list[str]]:
-    bits = _as_text(token)
-    if not bits.startswith(_MSS_V2_PREFIX):
-        raise ValueError("bitstring does not start with canonical_v2 prefix")
-    cursor = len(_MSS_V2_PREFIX)
-    base_len, cursor = _decode_sd_uint(bits, cursor)
-    end_base = cursor + base_len
-    if end_base > len(bits):
-        raise ValueError("canonical_v2 bitstring truncated before base payload")
-    base_bits = bits[cursor:end_base]
-    cursor = end_base
-    ext_len, cursor = _decode_sd_uint(bits, cursor)
-    end_ext = cursor + ext_len
-    if end_ext > len(bits):
-        raise ValueError("canonical_v2 bitstring truncated before source extension")
-    ext_bits = bits[cursor:end_ext]
-    if end_ext != len(bits):
-        raise ValueError("unexpected trailing bits after canonical_v2 payload")
-    source_ids = _decode_source_identifier_list(ext_bits)
-    return base_bits, source_ids
 
 
 def _row_to_reference_model(ref_mod: Any, row: dict[str, Any]) -> Any:
@@ -1027,7 +969,7 @@ def _row_to_reference_model(ref_mod: Any, row: dict[str, Any]) -> Any:
         if not ref:
             continue
         if not magnitude_raw or not re.fullmatch(r"-?[0-9]+", magnitude_raw):
-            raise ValueError(f"canonical_v2 requires integer magnitudes; got '{magnitude_raw}'")
+            raise ValueError(f"canonical hyphae requires integer magnitudes; got '{magnitude_raw}'")
         tuples.append(ref_mod.RefMagTuple(ref=ref, magnitude=int(magnitude_raw)))
     return ref_mod.DatumRow(
         layer=layer,
@@ -1062,7 +1004,7 @@ def _reference_row_to_runtime(row: Any) -> dict[str, Any]:
     }
 
 
-def _compile_mss_payload_v2(
+def _compile_mss_payload_hyphae(
     anthology_payload: dict[str, Any],
     selected_refs: list[str],
     *,
@@ -1097,14 +1039,15 @@ def _compile_mss_payload_v2(
     isolated_rows = ref_mod.sort_rows(isolated_rows)
     encoded = ref_mod.encode_mss_from_isolated_rows(isolated_rows)
     source_identifiers = [_as_text(getattr(row, "source_identifier", "")) or _as_text(row.identifier) for row in isolated_rows]
-    bitstring = _pack_v2_bitstring(encoded.bitstream, source_identifiers)
+    bitstring = _as_text(encoded.bitstream)
     compact_rows = [_reference_row_to_runtime(row) for row in isolated_rows]
     compact_payload = rows_to_compact_payload(compact_rows)
     return {
         "schema": MSS_SCHEMA,
         "encoding": MSS_ENCODING,
-        "wire_variant": MSS_WIRE_VARIANT_CANONICAL_V2,
+        "wire_variant": MSS_WIRE_VARIANT_CANONICAL,
         "bitstring": bitstring,
+        "source_identifiers": source_identifiers,
         "metadata": {
             "layer_max": int(encoded.metadata.layer_max),
             "layer_count": int(encoded.metadata.layer_count),
@@ -1130,28 +1073,29 @@ def _compile_mss_payload_v2(
     }
 
 
-def _decode_mss_payload_v2(bitstring: str) -> dict[str, Any]:
+def _decode_mss_payload_hyphae(bitstring: str, *, source_identifiers: list[str] | None = None) -> dict[str, Any]:
     ref_mod = _reference_module()
     token = _as_text(bitstring)
     if not token:
-        return _empty_decoded_payload("", wire_variant=MSS_WIRE_VARIANT_CANONICAL_V2)
+        return _empty_decoded_payload("", wire_variant=MSS_WIRE_VARIANT_CANONICAL)
     if not _BITSTRING_RE.fullmatch(token):
         raise ValueError("MSS bitstring must contain only 0 and 1 characters")
-    base_bits, source_identifiers = _unpack_v2_bitstring(token)
-    decoded = ref_mod.decode_mss(base_bits)
+    decoded = ref_mod.decode_mss(token)
+    normalized_source_ids = _normalize_source_identifiers(source_identifiers)
     rows: list[dict[str, Any]] = []
     for idx, row in enumerate(list(decoded.decoded_rows or [])):
         runtime_row = _reference_row_to_runtime(row)
-        if idx < len(source_identifiers):
-            runtime_row["source_identifier"] = _as_text(source_identifiers[idx]) or runtime_row["source_identifier"]
+        if idx < len(normalized_source_ids):
+            runtime_row["source_identifier"] = _as_text(normalized_source_ids[idx]) or runtime_row["source_identifier"]
         rows.append(runtime_row)
     compact_payload = rows_to_compact_payload(rows)
     metadata = decoded.metadata
     return {
         "schema": MSS_SCHEMA,
         "encoding": MSS_ENCODING,
-        "wire_variant": MSS_WIRE_VARIANT_CANONICAL_V2,
+        "wire_variant": MSS_WIRE_VARIANT_CANONICAL,
         "bitstring": token,
+        "source_identifiers": normalized_source_ids,
         "metadata": {
             "layer_max": int(metadata.layer_max),
             "layer_count": int(metadata.layer_count),
@@ -1182,7 +1126,7 @@ def compile_mss_payload(
     local_msn_id: str = "",
     include_selection_root: bool = True,
 ) -> dict[str, Any]:
-    return _compile_mss_payload_v2(
+    return _compile_mss_payload_hyphae(
         anthology_payload,
         selected_refs,
         local_msn_id=local_msn_id,
@@ -1190,8 +1134,5 @@ def compile_mss_payload(
     )
 
 
-def decode_mss_payload(bitstring: str) -> dict[str, Any]:
-    token = _as_text(bitstring)
-    if token.startswith(_MSS_V2_PREFIX):
-        return _decode_mss_payload_v2(token)
-    return _decode_mss_payload_canonical(token)
+def decode_mss_payload(bitstring: str, *, source_identifiers: list[str] | None = None) -> dict[str, Any]:
+    return _decode_mss_payload_hyphae(bitstring, source_identifiers=source_identifiers)

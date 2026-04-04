@@ -88,7 +88,11 @@ class WorkspaceContractMssSyncTests(unittest.TestCase):
             self.assertEqual(stored_contract["owner_selected_refs"], ["1-1-1"])
             expected = compile_mss_payload(anthology_payload, ["1-1-1"], local_msn_id=MSN_ID)
             self.assertEqual(stored_contract["owner_mss"], expected["bitstring"])
-            self.assertEqual((decode_mss_payload(stored_contract["owner_mss"]) or {}).get("wire_variant"), "canonical_v2")
+            self.assertEqual(stored_contract["owner_source_identifiers"], expected["source_identifiers"])
+            self.assertEqual(
+                (decode_mss_payload(stored_contract["owner_mss"], source_identifiers=stored_contract["owner_source_identifiers"]) or {}).get("wire_variant"),
+                "canonical",
+            )
         finally:
             temp.cleanup()
 

@@ -21,7 +21,10 @@ def repo_root() -> Path:
 
 
 def default_base_registry_path() -> Path:
-    return repo_root() / "anthology-base.json"
+    legacy = repo_root() / "anthology-base.json"
+    if legacy.exists():
+        return legacy
+    return repo_root() / "instances" / "convention" / "data" / "system" / "anthology.json"
 
 
 def parse_datum_identifier(identifier: object) -> tuple[int | None, int | None, int | None]:
@@ -266,9 +269,13 @@ def _read_json_object(path: Path) -> dict[str, Any]:
 
 
 def load_anthology_payload(path: str | Path) -> dict[str, Any]:
-    base_payload = _read_json_object(default_base_registry_path())
-    overlay_payload = _read_json_object(Path(path))
-    merged = dict(base_payload)
-    merged.update(overlay_payload)
-    ordered = {key: merged[key] for key in sorted(merged.keys(), key=lambda token: datum_sort_key(token, token))}
-    return ordered
+    from .datum_space import anchor_datum_path, load_datum_file, load_datum_space
+
+    path_obj = Path(path)
+    try:
+        if anchor_datum_path(path_obj.parent).resolve() == path_obj.resolve():
+            loaded = load_datum_space(path_obj.parent, sort_key=datum_sort_key)
+            return dict(loaded.merged_payload)
+    except Exception:
+        pass
+    return load_datum_file(path_obj)

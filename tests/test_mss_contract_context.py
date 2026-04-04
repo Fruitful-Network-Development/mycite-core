@@ -35,14 +35,15 @@ class MssContractContextTests(unittest.TestCase):
         compiled = mod.compile_mss_payload(_example_payload(), ["4-2-1", "4-2-2"])
 
         self.assertTrue(compiled["bitstring"])
-        self.assertEqual(compiled["wire_variant"], "canonical_v2")
+        self.assertEqual(compiled["wire_variant"], "canonical")
         self.assertEqual(compiled["root_identifier"], "5-0-1")
         self.assertEqual(compiled["selected_compact_refs"], ["4-2-1", "4-2-2"])
         self.assertTrue(len(compiled["cobm"]) >= 1)
         self.assertIn("source_identifier", compiled["rows"][-1])
+        self.assertTrue(compiled["source_identifiers"])
 
         decoded = mod.decode_mss_payload(compiled["bitstring"])
-        self.assertEqual(decoded["wire_variant"], "canonical_v2")
+        self.assertEqual(decoded["wire_variant"], "canonical")
         row_ids = [row["identifier"] for row in decoded["rows"]]
         self.assertIn("5-0-1", row_ids)
         root_row = next(row for row in decoded["rows"] if row["identifier"] == "5-0-1")
@@ -71,7 +72,7 @@ class MssContractContextTests(unittest.TestCase):
         self.assertEqual(resolved["contract_id"], "contract-demo")
         self.assertEqual(resolved["row"]["identifier"], "5-0-1")
 
-    def test_v2_compaction_keeps_source_identifier_for_resolution(self):
+    def test_hyphae_decode_uses_explicit_source_identifier_sidecar_for_resolution(self):
         mod = _load_shared_mss()
         payload = {
             "0-0-1": [["0-0-1", "0", "0"], ["a"]],
@@ -81,8 +82,7 @@ class MssContractContextTests(unittest.TestCase):
             "3-1-1": [["3-1-1", "2-1-1", "1"], ["l3"]],
         }
         compiled = mod.compile_mss_payload(payload, ["3-1-1"])
-        decoded = mod.decode_mss_payload(compiled["bitstring"])
-        # In v2 isolated closure, old 0-0-5 becomes compact storage 0-0-1.
+        decoded = mod.decode_mss_payload(compiled["bitstring"], source_identifiers=compiled["source_identifiers"])
         row = next((item for item in decoded.get("rows") or [] if item.get("identifier") == "0-0-1"), {})
         self.assertEqual(row.get("source_identifier"), "0-0-5")
         resolved = mod.resolve_contract_datum_ref(
@@ -95,6 +95,7 @@ class MssContractContextTests(unittest.TestCase):
                     "owner_msn_id": "3-2-3-17-77-1-6-4-1-4",
                     "counterparty_msn_id": REMOTE_MSN_ID,
                     "counterparty_mss": compiled["bitstring"],
+                    "counterparty_source_identifiers": compiled["source_identifiers"],
                 }
             ],
         )

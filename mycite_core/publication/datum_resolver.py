@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from instances._shared.portal.data_engine.datum_identity import (
+from mycite_core.mss_resolution import (
     DatumResolution,
     resolve_to_contract_entry,
     resolve_to_local_row,
