@@ -171,7 +171,8 @@ def _copy_cache_bins_to_public(data_dir: Path, public_dir: Path, *, scope: str) 
     cache_dir = cache_scope_dir(data_dir, scope=scope)
     if not cache_dir.exists():
         return copied
-    for path in sorted(cache_dir.glob("*.bin"), key=lambda item: item.name):
+    prefix = "rc." if scope == LOCAL_SCOPE else "rf."
+    for path in sorted(cache_dir.glob(f"{prefix}*.bin"), key=lambda item: item.name):
         target = public_dir / path.name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)

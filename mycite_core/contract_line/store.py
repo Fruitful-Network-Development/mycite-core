@@ -203,15 +203,41 @@ def _managed_line_payload_entries(payload: dict[str, Any]) -> dict[str, dict[str
     return entries
 
 
-def _normalize_line_payload_registry(payload: dict[str, Any]) -> dict[str, Any]:
+def _managed_payload_override_slots(payload: dict[str, Any]) -> set[str]:
+    raw_keys = set(dict(payload or {}).keys())
+    out: set[str] = set()
+    owner_keys = {
+        "owner_mss",
+        "owner_selected_refs",
+        "relationship_mode",
+        "access_mode",
+        "sync_mode",
+        "source_card_revision",
+        "compact_index_revision",
+        "compact_index_compiled_at_unix_ms",
+        "revision",
+        "updated_unix_ms",
+    }
+    if raw_keys & owner_keys:
+        out.add("mss.owner_context")
+    if raw_keys & {"counterparty_mss", "counterparty_selected_refs"}:
+        out.add("mss.counterparty_context")
+    return out
+
+
+def _normalize_line_payload_registry(payload: dict[str, Any], *, override_slots: set[str] | None = None) -> dict[str, Any]:
     raw = payload.get("payload_registry") if isinstance(payload.get("payload_registry"), dict) else {}
     out: dict[str, Any] = {}
+    override_tokens = set(override_slots or set())
     for slot, value in raw.items():
         if not isinstance(value, dict):
             continue
         out[_as_text(slot)] = _normalize_line_payload_entry(_as_text(slot), value)
     for slot, value in _managed_line_payload_entries(payload).items():
-        out.setdefault(slot, value)
+        if slot in override_tokens:
+            out[slot] = value
+        else:
+            out.setdefault(slot, value)
     return out
 
 
@@ -325,6 +351,7 @@ def normalize_contract_payload(
     *,
     contract_id: str = "",
     owner_msn_id: str = "",
+    mirror_slot_overrides: set[str] | None = None,
     for_write: bool = False,
     reject_secrets: bool = True,
     now_ms: int | None = None,
@@ -400,7 +427,7 @@ def normalize_contract_payload(
             out["compact_index_compiled_at_unix_ms"] = int(compiled_ms)
         except (TypeError, ValueError):
             pass
-    out["payload_registry"] = _normalize_line_payload_registry(out)
+    out["payload_registry"] = _normalize_line_payload_registry(out, override_slots=mirror_slot_overrides)
     out["payload_history"] = _normalize_line_payload_history(base, out["payload_registry"])
     _apply_payload_mirrors(out)
     _normalize_status(out)
@@ -506,6 +533,7 @@ def create_contract(private_dir: Path, metadata: dict[str, Any], *, owner_msn_id
         metadata,
         contract_id=contract_id,
         owner_msn_id=owner_msn_id,
+        mirror_slot_overrides=_managed_payload_override_slots(metadata),
         for_write=True,
         now_ms=now_ms,
     )
@@ -515,7 +543,14 @@ def create_contract(private_dir: Path, metadata: dict[str, Any], *, owner_msn_id
     return contract_id
 
 
-def upsert_contract(private_dir: Path, contract_id: str, payload: dict[str, Any], *, owner_msn_id: str = "") -> dict[str, Any]:
+def upsert_contract(
+    private_dir: Path,
+    contract_id: str,
+    payload: dict[str, Any],
+    *,
+    owner_msn_id: str = "",
+    mirror_slot_overrides: set[str] | None = None,
+) -> dict[str, Any]:
     now_ms = int(time.time() * 1000)
     existing: dict[str, Any] = {}
     try:
@@ -532,6 +567,7 @@ def upsert_contract(private_dir: Path, contract_id: str, payload: dict[str, Any]
         merged,
         contract_id=contract_id,
         owner_msn_id=owner_msn_id,
+        mirror_slot_overrides=mirror_slot_overrides or _managed_payload_override_slots(payload),
         for_write=True,
         reject_secrets=False,
         now_ms=now_ms,
@@ -552,7 +588,13 @@ def update_contract(private_dir: Path, contract_id: str, patch: dict[str, Any], 
         merged[key] = value
     merged["contract_id"] = contract_id
     merged["created_unix_ms"] = int(existing.get("created_unix_ms") or int(time.time() * 1000))
-    return upsert_contract(private_dir, contract_id, merged, owner_msn_id=owner_msn_id or _as_text(existing.get("owner_msn_id")))
+    return upsert_contract(
+        private_dir,
+        contract_id,
+        merged,
+        owner_msn_id=owner_msn_id or _as_text(existing.get("owner_msn_id")),
+        mirror_slot_overrides=_managed_payload_override_slots(patch),
+    )
 
 
 def apply_compact_array_update(
@@ -608,6 +650,8 @@ def apply_compact_array_update(
         "payload_registry": registry,
         "payload_history": history,
         "updated_unix_ms": ts_unix_ms,
+        "counterparty_mss": counterparty_context.get("counterparty_mss"),
+        "counterparty_selected_refs": list(counterparty_context.get("counterparty_selected_refs") or []),
     }
     return update_contract(
         private_dir, contract_id, patch, owner_msn_id=local_msn_id or _as_text(existing.get("owner_msn_id"))
