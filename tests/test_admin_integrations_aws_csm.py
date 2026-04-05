@@ -685,6 +685,82 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             self.assertEqual(handoff.get("password"), "smtp-password-123")
             self.assertEqual(handoff.get("security_label"), "Secured connection using TLS")
 
+    def test_admin_aws_stage_smtp_credentials_uses_canonical_mailbox_flow(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.cvcc.technicalContact.json").write_text(
+                json.dumps(
+                    {
+                        "identity": {
+                            "profile_id": "aws-csm.cvcc.technicalContact",
+                            "tenant_id": "cvcc",
+                            "domain": "cuyahogavalleycountrysideconservancy.org",
+                            "region": "us-east-1",
+                            "mailbox_local_part": "technicalContact",
+                            "operator_inbox_target": "mjmw677@gmail.com",
+                            "send_as_email": "technicalContact@cuyahogavalleycountrysideconservancy.org",
+                        },
+                        "smtp": {
+                            "host": "email-smtp.us-east-1.amazonaws.com",
+                            "port": "587",
+                            "credentials_secret_name": "aws-cms/smtp/cvcc.technicalContact",
+                            "credentials_secret_state": "placeholder",
+                            "send_as_email": "technicalContact@cuyahogavalleycountrysideconservancy.org",
+                        },
+                        "provider": {
+                            "aws_ses_identity_status": "verified",
+                            "gmail_send_as_status": "not_started",
+                        },
+                        "workflow": {
+                            "initiated": False,
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            module, client = self._make_client_with_module(private_dir)
+
+            with mock.patch.object(
+                module,
+                "_provision_smtp_secret_material",
+                return_value={
+                    "secret_name": "aws-cms/smtp/cvcc.technicalContact",
+                    "username": "AKIAStage",
+                    "persisted_username": "AKIAStage",
+                    "password": "smtp-password-xyz",
+                    "state": "configured",
+                },
+            ), mock.patch.object(
+                module,
+                "_ses_identity_status",
+                return_value={
+                    "aws_ses_identity_status": "verified",
+                    "identity_payload": {"VerificationStatus": "SUCCESS"},
+                },
+            ):
+                response = client.post(
+                    "/portal/api/admin/aws/profile/aws-csm.cvcc.technicalContact/provision",
+                    headers=self._headers(),
+                    json={"action": "stage_smtp_credentials"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json() or {}
+            self.assertEqual(payload.get("action"), "stage_smtp_credentials")
+            profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+            smtp = profile.get("smtp") if isinstance(profile.get("smtp"), dict) else {}
+            workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
+            handoff = payload.get("smtp_handoff") if isinstance(payload.get("smtp_handoff"), dict) else {}
+            self.assertEqual(smtp.get("username"), "AKIAStage")
+            self.assertEqual(smtp.get("credentials_secret_state"), "configured")
+            self.assertTrue(bool(workflow.get("initiated")))
+            self.assertTrue(bool(workflow.get("is_ready_for_user_handoff")))
+            self.assertEqual(handoff.get("username"), "AKIAStage")
+            self.assertEqual(handoff.get("password"), "smtp-password-xyz")
+
     def test_admin_aws_provision_smtp_secret_reuses_newest_real_secret_when_two_keys_are_active(self):
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir) / "private"
@@ -757,6 +833,70 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             self.assertEqual(material.get("username"), "AKIANEW")
             self.assertEqual(material.get("password"), "pw-new")
             upsert.assert_called_once()
+
+    def test_admin_aws_profile_status_reconciles_placeholder_backed_smtp_from_secret_state(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.tff.technicalContact.json").write_text(
+                json.dumps(
+                    {
+                        "identity": {
+                            "profile_id": "aws-csm.tff.technicalContact",
+                            "tenant_id": "tff",
+                            "domain": "trappfamilyfarm.com",
+                            "region": "us-east-1",
+                            "mailbox_local_part": "technicalContact",
+                            "operator_inbox_target": "trapp.family.farm@gmail.com",
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "smtp": {
+                            "host": "email-smtp.us-east-1.amazonaws.com",
+                            "port": "587",
+                            "username": "AKIASTALE",
+                            "credentials_secret_name": "aws-cms/smtp/tff.technicalContact",
+                            "credentials_secret_state": "configured",
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "provider": {
+                            "aws_ses_identity_status": "verified",
+                            "gmail_send_as_status": "not_started",
+                        },
+                        "workflow": {
+                            "initiated": True,
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            module, client = self._make_client_with_module(private_dir)
+            with mock.patch.object(
+                module,
+                "_smtp_secret_material",
+                return_value={
+                    "secret_name": "aws-cms/smtp/tff.technicalContact",
+                    "username": "REPLACE_USERNAME",
+                    "persisted_username": "",
+                    "password": "REPLACE_PASSWORD",
+                    "state": "placeholder",
+                },
+            ):
+                response = client.get(
+                    "/portal/api/admin/aws/profile/aws-csm.tff.technicalContact",
+                    headers=self._headers(),
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json() or {}
+            profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+            smtp = profile.get("smtp") if isinstance(profile.get("smtp"), dict) else {}
+            workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
+            self.assertEqual(smtp.get("credentials_secret_state"), "placeholder")
+            self.assertEqual(smtp.get("username"), "")
+            self.assertFalse(bool(workflow.get("is_ready_for_user_handoff")))
+            self.assertIn("smtp.username", list(workflow.get("configuration_blockers_now") or []))
 
     def test_admin_aws_status_groups_mailboxes_by_domain(self):
         with TemporaryDirectory() as temp_dir:

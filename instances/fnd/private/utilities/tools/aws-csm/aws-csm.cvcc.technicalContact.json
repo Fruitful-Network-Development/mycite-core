@@ -1,0 +1,98 @@
+{
+  "schema": "mycite.service_tool.aws_csm.profile.v1",
+  "identity": {
+    "profile_id": "aws-csm.cvcc.technicalContact",
+    "tenant_id": "cvcc",
+    "domain": "cuyahogavalleycountrysideconservancy.org",
+    "region": "us-east-1",
+    "mailbox_local_part": "technicalContact",
+    "role": "technical_contact",
+    "profile_kind": "mailbox",
+    "single_user_msn_id": "",
+    "single_user_email": "dylancarsonmontgomery@gmail.com",
+    "operator_inbox_target": "dylancarsonmontgomery@gmail.com",
+    "send_as_email": "technicalContact@cuyahogavalleycountrysideconservancy.org"
+  },
+  "smtp": {
+    "host": "email-smtp.us-east-1.amazonaws.com",
+    "port": "587",
+    "username": "AKIAQ6WWUMKC3QD5SRVX",
+    "credentials_source": "operator_managed",
+    "handoff_ready": true,
+    "credentials_secret_name": "aws-cms/smtp/cvcc.technicalContact",
+    "credentials_secret_state": "configured",
+    "send_as_email": "technicalContact@cuyahogavalleycountrysideconservancy.org",
+    "local_part": "technicalContact",
+    "forward_to_email": "dylancarsonmontgomery@gmail.com",
+    "forwarding_status": "not_configured"
+  },
+  "verification": {
+    "status": "not_started",
+    "code": "",
+    "link": "",
+    "email_received_at": "",
+    "verified_at": "",
+    "portal_state": "awaiting_operator_setup",
+    "latest_message_reference": ""
+  },
+  "provider": {
+    "gmail_send_as_status": "not_started",
+    "aws_ses_identity_status": "verified",
+    "last_checked_at": "2026-04-05T01:25:33.083418+00:00"
+  },
+  "workflow": {
+    "schema": "mycite.service_tool.aws_csm.onboarding.v1",
+    "flow": "mailbox_send_as",
+    "initiated": true,
+    "initiated_at": "2026-04-04T22:49:56.201129+00:00",
+    "lifecycle_state": "send_as_pending",
+    "configuration_blockers_now": [],
+    "gmail_handoff_blockers_now": [
+      "verification.status",
+      "provider.gmail_send_as_status"
+    ],
+    "inbound_blockers_now": [
+      "inbound.portal_native_display_ready",
+      "inbound.receive_verified"
+    ],
+    "operational_blockers_now": [
+      "verification.status",
+      "provider.gmail_send_as_status",
+      "inbound.portal_native_display_ready",
+      "inbound.receive_verified"
+    ],
+    "missing_required_now": [
+      "verification.status",
+      "provider.gmail_send_as_status"
+    ],
+    "handoff_status": "ready_for_gmail_handoff",
+    "completion_boundary": "gmail_inbox_dependent",
+    "is_ready_for_user_handoff": true,
+    "is_send_as_confirmed": false,
+    "is_receive_path_modeled": true,
+    "is_receive_path_confirmed": false,
+    "is_portal_native_inbound_ready": false,
+    "is_mailbox_operational": false
+  },
+  "inbound": {
+    "receive_routing_target": "dylancarsonmontgomery@gmail.com",
+    "receive_state": "receive_pending",
+    "receive_verified": false,
+    "receive_last_checked_at": "2026-04-05T01:25:33.083418+00:00",
+    "receive_verified_at": "",
+    "legacy_forwarder_dependency": false,
+    "legacy_dependency_state": "portal_native_pending",
+    "legacy_replay_available": false,
+    "portal_native_display_ready": false,
+    "capture_source_kind": "",
+    "capture_source_reference": "",
+    "latest_message_sender": "",
+    "latest_message_recipient": "",
+    "latest_message_subject": "",
+    "latest_message_captured_at": "",
+    "latest_message_s3_key": "",
+    "latest_message_s3_uri": "",
+    "latest_message_id": "",
+    "latest_message_has_verification_link": false
+  }
+}
