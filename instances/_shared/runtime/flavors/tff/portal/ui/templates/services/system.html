@@ -123,18 +123,6 @@
       <p class="data-tool__empty data-tool__resourcesDatumProfilePlaceholder">No datum selected.</p>
     </div>
   </section>
-  <section class="ide-controlpanel__section" aria-label="Compatible mediations">
-    <header class="ide-controlpanel__title">Compatible Mediations</header>
-    <div id="systemCompatibleTools" class="ide-controlpanel__list" aria-live="polite">
-      <div class="ide-controlpanel__empty">
-        {% if shell_composition_mode is defined and shell_composition_mode == 'tool' %}
-          Loading compatible tool mediations for the sandbox.
-        {% else %}
-          Choose a file or datum, then open Mediate to browse compatible tools.
-        {% endif %}
-      </div>
-    </div>
-  </section>
 {% endblock %}
 
 {% block body %}

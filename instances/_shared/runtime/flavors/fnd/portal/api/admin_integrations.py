@@ -471,6 +471,53 @@ def _ses_identity_status(region: str, email_identity: str) -> dict[str, Any]:
     }
 
 
+def _aws_secret_string(secret_name: str) -> str:
+    token = str(secret_name or "").strip()
+    if not token:
+        return ""
+    try:
+        completed = _aws_cli(["secretsmanager", "get-secret-value", "--secret-id", token, "--query", "SecretString", "--output", "text"])
+    except _AwsProvisionError as exc:
+        message = str(exc)
+        if "ResourceNotFoundException" in message:
+            return ""
+        raise
+    return _decode_bytes(completed.stdout or b"").strip()
+
+
+def _smtp_secret_material(secret_name: str) -> dict[str, str]:
+    secret_string = _aws_secret_string(secret_name)
+    if not secret_string:
+        return {
+            "secret_name": str(secret_name or "").strip(),
+            "username": "",
+            "persisted_username": "",
+            "password": "",
+            "state": "missing",
+        }
+    try:
+        payload = json.loads(secret_string)
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    username = str(payload.get("username") or "").strip()
+    password = str(payload.get("password") or "").strip()
+    is_placeholder = any(
+        token.startswith("REPLACE_")
+        for token in (username, password)
+        if token
+    )
+    state = "configured" if username and password and not is_placeholder else ("placeholder" if (username or password) else "missing")
+    return {
+        "secret_name": str(secret_name or "").strip(),
+        "username": username,
+        "persisted_username": "" if is_placeholder else username,
+        "password": password,
+        "state": state,
+    }
+
+
 def _update_aws_profile(private_dir: Path, tenant_id: str, patch: dict[str, Any]) -> tuple[dict[str, Any], Path]:
     _, path, exists = _aws_profile_status(private_dir, tenant_id)
     current_profile = _read_json(path, {}) if exists else {}
@@ -592,6 +639,79 @@ def _begin_onboarding_for_profile(private_dir: Path, tenant_id: str) -> dict[str
         "tenant_id": canonical_tenant_id,
         "profile_id": canonical_profile_id,
         "profile": updated["profile"],
+        "profile_path": updated["profile_path"],
+        "warnings": updated["warnings"],
+    }
+
+
+def _prepare_send_as_for_profile(private_dir: Path, tenant_id: str, *, operator_inbox_target: str = "") -> dict[str, Any]:
+    status_payload, _, _ = _aws_profile_status(private_dir, tenant_id)
+    profile = status_payload.get("profile") if isinstance(status_payload.get("profile"), dict) else {}
+    canonical_profile_id, canonical_tenant_id = _aws_profile_refs(profile, tenant_id)
+    identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
+    smtp = profile.get("smtp") if isinstance(profile.get("smtp"), dict) else {}
+    workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
+    normalized_inbox = str(operator_inbox_target or identity.get("operator_inbox_target") or identity.get("single_user_email") or "").strip()
+    initiated_at = str(workflow.get("initiated_at") or "") or _utc_now_iso()
+    region = str(identity.get("region") or status_payload.get("region") or "us-east-1")
+    domain = str(identity.get("domain") or status_payload.get("domain") or "").strip()
+    provider_state = _ses_identity_status(region, domain) if domain else {"aws_ses_identity_status": "not_started", "identity_payload": {}}
+    checked_at = _utc_now_iso()
+    secret_material = _smtp_secret_material(str(smtp.get("credentials_secret_name") or ""))
+    updated, _ = _update_aws_profile(
+        private_dir,
+        tenant_id,
+        {
+            "identity": {
+                "operator_inbox_target": normalized_inbox,
+                "single_user_email": normalized_inbox,
+            },
+            "smtp": {
+                "forward_to_email": normalized_inbox,
+                "username": str(secret_material.get("persisted_username") or ""),
+                "credentials_secret_state": str(secret_material.get("state") or "missing"),
+            },
+            "provider": {
+                "aws_ses_identity_status": str(provider_state.get("aws_ses_identity_status") or "not_started"),
+                "last_checked_at": checked_at,
+            },
+            "workflow": {
+                "initiated": True,
+                "initiated_at": initiated_at,
+            },
+            "inbound": {
+                "receive_routing_target": normalized_inbox,
+                "receive_last_checked_at": checked_at,
+            },
+        },
+    )
+    updated_profile = updated.get("profile") if isinstance(updated.get("profile"), dict) else {}
+    updated_identity = updated_profile.get("identity") if isinstance(updated_profile.get("identity"), dict) else {}
+    updated_smtp = updated_profile.get("smtp") if isinstance(updated_profile.get("smtp"), dict) else {}
+    return {
+        "ok": True,
+        "action": "prepare_send_as",
+        "status": "completed",
+        "tenant_id": canonical_tenant_id,
+        "profile_id": canonical_profile_id,
+        "provider": {
+            "aws_ses_identity_status": str(provider_state.get("aws_ses_identity_status") or "not_started"),
+            "last_checked_at": checked_at,
+            "identity_payload": provider_state.get("identity_payload") if isinstance(provider_state.get("identity_payload"), dict) else {},
+        },
+        "smtp_handoff": {
+            "send_as_email": str(updated_smtp.get("send_as_email") or updated_identity.get("send_as_email") or ""),
+            "operator_inbox_target": str(updated_identity.get("operator_inbox_target") or updated_identity.get("single_user_email") or ""),
+            "host": str(updated_smtp.get("host") or ""),
+            "port": str(updated_smtp.get("port") or ""),
+            "username": str(secret_material.get("username") or updated_smtp.get("username") or ""),
+            "password": str(secret_material.get("password") or ""),
+            "security_label": "Secured connection using TLS",
+            "security_hint": "Select Secured connection using TLS in the supporting email application.",
+            "secret_ref": str(updated_smtp.get("credentials_secret_name") or ""),
+            "credentials_secret_state": str(updated_smtp.get("credentials_secret_state") or ""),
+        },
+        "profile": updated_profile,
         "profile_path": updated["profile_path"],
         "warnings": updated["warnings"],
     }
@@ -1559,6 +1679,7 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
         request_id = f"AWSREQ-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8].upper()}"
         if action in {
             "begin_onboarding",
+            "prepare_send_as",
             "refresh_provider_status",
             "refresh_inbound_status",
             "capture_verification",
@@ -1569,6 +1690,12 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             try:
                 if action == "begin_onboarding":
                     response = _begin_onboarding_for_profile(private_dir, token)
+                elif action == "prepare_send_as":
+                    response = _prepare_send_as_for_profile(
+                        private_dir,
+                        token,
+                        operator_inbox_target=str(body.get("operator_inbox_target") or body.get("email") or "").strip(),
+                    )
                 elif action == "refresh_provider_status":
                     response = _refresh_provider_status_for_profile(private_dir, token)
                 elif action == "refresh_inbound_status":

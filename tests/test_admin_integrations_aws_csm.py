@@ -582,6 +582,90 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             self.assertTrue(str(workflow.get("initiated_at") or ""))
             self.assertEqual(workflow.get("handoff_status"), "staging_required")
 
+    def test_admin_aws_prepare_send_as_updates_operator_inbox_and_returns_handoff_bundle(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.tff.technicalContact.json").write_text(
+                json.dumps(
+                    {
+                        "identity": {
+                            "profile_id": "aws-csm.tff.technicalContact",
+                            "tenant_id": "tff",
+                            "domain": "trappfamilyfarm.com",
+                            "region": "us-east-1",
+                            "mailbox_local_part": "technicalContact",
+                            "operator_inbox_target": "old@example.com",
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "smtp": {
+                            "host": "email-smtp.us-east-1.amazonaws.com",
+                            "port": "587",
+                            "credentials_secret_name": "aws-cms/smtp/tff.technicalContact",
+                            "credentials_secret_state": "placeholder",
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "provider": {
+                            "aws_ses_identity_status": "not_started",
+                            "gmail_send_as_status": "not_started",
+                        },
+                        "workflow": {
+                            "initiated": False,
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            module, client = self._make_client_with_module(private_dir)
+
+            with mock.patch.object(
+                module,
+                "_smtp_secret_material",
+                return_value={
+                    "secret_name": "aws-cms/smtp/tff.technicalContact",
+                    "username": "AKIAHandoff",
+                    "persisted_username": "AKIAHandoff",
+                    "password": "smtp-password-123",
+                    "state": "configured",
+                },
+            ), mock.patch.object(
+                module,
+                "_ses_identity_status",
+                return_value={
+                    "aws_ses_identity_status": "verified",
+                    "identity_payload": {"VerificationStatus": "SUCCESS"},
+                },
+            ):
+                response = client.post(
+                    "/portal/api/admin/aws/profile/aws-csm.tff.technicalContact/provision",
+                    headers=self._headers(),
+                    json={
+                        "action": "prepare_send_as",
+                        "operator_inbox_target": "dylancarsonmontgomery@gmail.com",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json() or {}
+            profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+            identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
+            smtp = profile.get("smtp") if isinstance(profile.get("smtp"), dict) else {}
+            handoff = payload.get("smtp_handoff") if isinstance(payload.get("smtp_handoff"), dict) else {}
+            workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
+            self.assertEqual(identity.get("operator_inbox_target"), "dylancarsonmontgomery@gmail.com")
+            self.assertEqual(identity.get("single_user_email"), "dylancarsonmontgomery@gmail.com")
+            self.assertEqual(smtp.get("forward_to_email"), "dylancarsonmontgomery@gmail.com")
+            self.assertEqual(smtp.get("username"), "AKIAHandoff")
+            self.assertEqual(smtp.get("credentials_secret_state"), "configured")
+            self.assertTrue(bool(workflow.get("initiated")))
+            self.assertEqual(handoff.get("host"), "email-smtp.us-east-1.amazonaws.com")
+            self.assertEqual(handoff.get("port"), "587")
+            self.assertEqual(handoff.get("username"), "AKIAHandoff")
+            self.assertEqual(handoff.get("password"), "smtp-password-123")
+            self.assertEqual(handoff.get("security_label"), "Secured connection using TLS")
+
     def test_admin_aws_status_groups_mailboxes_by_domain(self):
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir) / "private"

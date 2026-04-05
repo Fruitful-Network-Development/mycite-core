@@ -571,6 +571,10 @@ class ServiceToolMediationTests(unittest.TestCase):
             )
             cards = payload.get("profile_cards") if isinstance(payload.get("profile_cards"), list) else []
             self.assertEqual(len(cards), 2)
+            sections = payload.get("profile_domain_sections") if isinstance(payload.get("profile_domain_sections"), list) else []
+            self.assertEqual(len(sections), 1)
+            self.assertEqual(sections[0].get("domain"), "trappfamilyfarm.com")
+            self.assertEqual(len(sections[0].get("cards") or []), 2)
             titles = [str(card.get("title") or "") for card in cards if isinstance(card, dict)]
             self.assertIn("technicalContact@trappfamilyfarm.com", titles)
             self.assertIn("mark@trappfamilyfarm.com", titles)

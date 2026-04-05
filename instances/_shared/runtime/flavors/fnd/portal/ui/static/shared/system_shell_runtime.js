@@ -350,33 +350,7 @@
   function renderCompatibleTools() {
     if (!els.compatibleTools) return;
     els.compatibleTools.innerHTML = "";
-    var tools = activeCompatibleTools();
-    if (!tools.length) {
-      var emptyMessage = state.activeVerb === "mediate"
-        ? "No compatible mediations for the current context."
-        : "Open Mediate to browse compatible tools for the current context.";
-      els.compatibleTools.innerHTML = '<div class="ide-controlpanel__empty">' + esc(emptyMessage) + "</div>";
-      return;
-    }
-    var list = document.createElement("div");
-    list.className = "ide-controlpanel__list";
-    tools.forEach(function (tool) {
-      var button = document.createElement("button");
-      button.type = "button";
-      button.className = "ide-controlpanel__link" + (text(tool.tool_id) === state.activeToolId ? " is-active" : "");
-      button.setAttribute("data-shell-tool-id", text(tool.tool_id));
-      var contribution = toolContribution(tool);
-      var interfaceContribution = toolInterfaceContribution(tool);
-      var detailLabel = text(interfaceContribution.label || interfaceContribution.lens_id || contribution.label || contribution.workspace_id);
-      button.innerHTML =
-        "<span>" + esc(tool.label || tool.tool_id || "tool") + "</span>" +
-        "<small>" + esc(detailLabel || "interface-panel mediation") + "</small>";
-      button.addEventListener("click", function () {
-        openTool(text(tool.tool_id));
-      });
-      list.appendChild(button);
-    });
-    els.compatibleTools.appendChild(list);
+    els.compatibleTools.hidden = true;
   }
 
   function renderCardKeyValueRows(fields) {
@@ -572,11 +546,16 @@
   function renderToolInterfaceModes(tool, provider) {
     if (!els.toolInterfaceControls) return;
     els.toolInterfaceControls.innerHTML = "";
+    if (typeof provider.showModes === "function" && !provider.showModes(tool)) {
+      els.toolInterfaceControls.hidden = true;
+      return;
+    }
+    els.toolInterfaceControls.hidden = false;
     var modes = provider.modes(tool);
     var allowedIds = modes.map(function (entry) { return entry.id; });
     if (!allowedIds.length) {
-      modes = [{ id: "overview", label: "Overview" }];
-      allowedIds = ["overview"];
+      els.toolInterfaceControls.hidden = true;
+      return;
     }
     if (allowedIds.indexOf(state.activeMediationMode) === -1) {
       state.activeMediationMode = provider.defaultMode(tool);
@@ -650,7 +629,10 @@
       els.toolInterfaceKicker.textContent = provider.kicker(tool);
     }
     if (els.toolInterfaceTitle) {
-      els.toolInterfaceTitle.textContent = provider.title(tool) + " · " + titleCase(state.activeMediationMode || provider.defaultMode(tool));
+      var showModes = !(typeof provider.showModes === "function") || provider.showModes(tool);
+      els.toolInterfaceTitle.textContent = showModes
+        ? provider.title(tool) + " · " + titleCase(state.activeMediationMode || provider.defaultMode(tool))
+        : provider.title(tool);
     }
     if (els.toolInterfaceMeta) {
       els.toolInterfaceMeta.textContent = provider.meta(tool);
@@ -1506,10 +1488,55 @@
     return body.workflow && typeof body.workflow === "object" ? body.workflow : {};
   }
 
-  function awsProfileToken(card) {
+  function awsIdentityFromCard(card) {
     var body = card && card.body && typeof card.body === "object" ? card.body : {};
-    var identity = body.identity && typeof body.identity === "object" ? body.identity : {};
+    return body.identity && typeof body.identity === "object" ? body.identity : {};
+  }
+
+  function awsSmtpFromCard(card) {
+    var body = card && card.body && typeof card.body === "object" ? card.body : {};
+    return body.smtp && typeof body.smtp === "object" ? body.smtp : {};
+  }
+
+  function awsVerificationFromCard(card) {
+    var body = card && card.body && typeof card.body === "object" ? card.body : {};
+    return body.verification && typeof body.verification === "object" ? body.verification : {};
+  }
+
+  function awsProviderFromCard(card) {
+    var body = card && card.body && typeof card.body === "object" ? card.body : {};
+    return body.provider && typeof body.provider === "object" ? body.provider : {};
+  }
+
+  function awsInboundFromCard(card) {
+    var body = card && card.body && typeof card.body === "object" ? card.body : {};
+    return body.inbound && typeof body.inbound === "object" ? body.inbound : {};
+  }
+
+  function awsProfileToken(card) {
+    var identity = awsIdentityFromCard(card);
     return text(card && (card.card_id || card.title) || identity.profile_id || identity.domain).toLowerCase();
+  }
+
+  function awsProfileSections(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var sections = Array.isArray(ctx.profile_domain_sections) ? ctx.profile_domain_sections : [];
+    if (sections.length) return sections;
+    var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
+    var grouped = {};
+    cards.forEach(function (card) {
+      var identity = awsIdentityFromCard(card);
+      var domain = text(identity.domain || "unscoped");
+      if (!grouped[domain]) grouped[domain] = [];
+      grouped[domain].push(card);
+    });
+    return Object.keys(grouped).sort().map(function (domain) {
+      return {
+        domain: domain,
+        card_count: grouped[domain].length,
+        cards: grouped[domain]
+      };
+    });
   }
 
   function awsSelectProfile(toolId, token) {
@@ -1523,13 +1550,448 @@
     if (!cards.length) return null;
     var bucket = providerStateFor(tool.tool_id);
     var selected = text(bucket.selectedProfile).toLowerCase();
-    if (!selected) return cards[0];
+    if (!selected) return null;
     for (var i = 0; i < cards.length; i += 1) {
       if (awsProfileToken(cards[i]) === selected) {
         return cards[i];
       }
     }
-    return cards[0];
+    return null;
+  }
+
+  function awsSecretStateIsPlaceholder(value) {
+    var token = text(value).toLowerCase();
+    return token === "placeholder" || token === "placeholder_present";
+  }
+
+  function awsCopyAction(label, value) {
+    var token = text(value);
+    if (!token) return "";
+    return '<button type="button" class="data-tool__actionBtn data-tool__actionBtn--quiet aws-csm-copyBtn" data-copy-text="' + esc(token) + '">' + esc(label) + "</button>";
+  }
+
+  function awsInfoLine(label, value, options) {
+    var opts = options && typeof options === "object" ? options : {};
+    var token = text(value);
+    if (!token) return "";
+    var compact = opts.compact ? " aws-csm-infoRow--compact" : "";
+    var title = opts.title ? ' title="' + esc(text(opts.title)) + '"' : "";
+    var display = limitText(token, Number(opts.limit) || (opts.compact ? 44 : 92));
+    var actions = Array.isArray(opts.actions) ? opts.actions.join("") : "";
+    return '<div class="aws-csm-infoRow' + compact + '"><dt>' + esc(label) + '</dt><dd' + title + '><span>' + esc(display) + '</span>' + actions + "</dd></div>";
+  }
+
+  function awsProfileCardBody(card, compact) {
+    var identity = awsIdentityFromCard(card);
+    var verification = awsVerificationFromCard(card);
+    var inbound = awsInboundFromCard(card);
+    var workflow = awsWorkflowFromCard(card);
+    var title = text(card && (card.title || identity.send_as_email || identity.profile_id) || "profile");
+    var missing = Array.isArray(workflow.missing_required_now) ? workflow.missing_required_now : [];
+    var out = [];
+    out.push('<div class="aws-csm-profileCard__title" title="' + esc(title) + '">' + esc(limitText(title, compact ? 34 : 56)) + "</div>");
+    out.push('<div class="aws-csm-profileCard__meta">' + esc(text(identity.role || "mailbox").replace(/_/g, " ")) + " · " + esc(awsHandoffStatusLabel(workflow)) + "</div>");
+    out.push('<div class="aws-csm-profileCard__stats">');
+    out.push('<span>' + esc(text(identity.mailbox_local_part || "(mailbox)")) + "</span>");
+    out.push('<span>' + esc(text(verification.status || "not_started").replace(/_/g, " ")) + "</span>");
+    out.push('<span>' + esc(awsReceiveStateLabel(inbound || {})) + "</span>");
+    out.push('<span>' + esc(String(missing.length)) + " missing</span>");
+    out.push("</div>");
+    return out.join("");
+  }
+
+  function renderAwsProfileSections(tool, options) {
+    var opts = options && typeof options === "object" ? options : {};
+    var compact = !!opts.compact;
+    var sections = awsProfileSections(tool);
+    if (!sections.length) {
+      return '<div class="ide-controlpanel__empty">No AWS-CMS onboarding profiles are staged in the tool sandbox.</div>';
+    }
+    var selected = awsSelectedCard(tool);
+    var selectedToken = awsProfileToken(selected);
+    var out = [];
+    sections.forEach(function (section) {
+      var domain = text(section && section.domain || "unscoped");
+      var cards = Array.isArray(section && section.cards) ? section.cards : [];
+      out.push('<section class="aws-csm-domainSection' + (compact ? " aws-csm-domainSection--compact" : "") + '">');
+      out.push('<header class="aws-csm-domainSection__header"><div class="aws-csm-domainSection__title">' + esc(domain) + '</div><div class="aws-csm-domainSection__count">' + esc(String(cards.length)) + " profile" + (cards.length === 1 ? "" : "s") + "</div></header>");
+      out.push('<div class="aws-csm-profileGrid' + (compact ? " aws-csm-profileGrid--compact" : "") + '">');
+      cards.forEach(function (card) {
+        var token = awsProfileToken(card);
+        var active = token === selectedToken;
+        out.push('<button type="button" class="aws-csm-profileCard' + (active ? " is-active" : "") + (compact ? " aws-csm-profileCard--compact" : "") + '" data-aws-profile="' + esc(token) + '" title="' + esc(text(card && (card.title || token) || token)) + '">');
+        out.push(awsProfileCardBody(card, compact));
+        out.push("</button>");
+      });
+      out.push("</div></section>");
+    });
+    return out.join("");
+  }
+
+  function renderAwsSelectedOverview(tool, selectedCard) {
+    var identity = awsIdentityFromCard(selectedCard);
+    var smtp = awsSmtpFromCard(selectedCard);
+    var verification = awsVerificationFromCard(selectedCard);
+    var workflow = awsWorkflowFromCard(selectedCard);
+    var inbound = awsInboundFromCard(selectedCard);
+    var provider = awsProviderFromCard(selectedCard);
+    var out = [];
+    out.push('<article class="card"><div class="card__kicker">Focused Profile</div><div class="card__title">' + esc(text(selectedCard.title || identity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
+    out.push(renderCardKeyValueRows({
+      domain: text(identity.domain),
+      profile: text(identity.profile_id),
+      mailbox: text(identity.mailbox_local_part),
+      role: text(identity.role),
+      "operator inbox": text(identity.operator_inbox_target || identity.single_user_email),
+      "send as": text(identity.send_as_email || smtp.send_as_email),
+      "handoff status": awsHandoffStatusLabel(workflow),
+      "verification": text(verification.status),
+      "provider send-as": text(provider.gmail_send_as_status),
+      "receive state": awsReceiveStateLabel(inbound)
+    }));
+    if (Array.isArray(workflow.missing_required_now) && workflow.missing_required_now.length) {
+      out.push("<p><strong>Still missing:</strong> " + esc(workflow.missing_required_now.join(", ")) + "</p>");
+    }
+    out.push("</div></article>");
+    return out.join("");
+  }
+
+  function renderAwsOverview(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
+    if (!cards.length) {
+      return '<p class="data-tool__empty">No AWS-CMS onboarding profiles are staged in the canonical aws-csm root.</p>';
+    }
+    var selectedCard = awsSelectedCard(tool);
+    var ready = cards.filter(function (card) {
+      return !!awsWorkflowFromCard(card).is_ready_for_user_handoff;
+    }).length;
+    var out = [];
+    out.push('<article class="card aws-csm-overviewIntro"><div class="card__kicker">Tool Sandbox</div><div class="card__title">AWS-CMS mailbox profiles</div><div class="card__body">');
+    out.push("<p>Select a mailbox profile to enter the onboarding workflow. Profiles are grouped by domain so the tool sandbox reflects the actual mailbox contract units instead of the raw JSON file list.</p>");
+    out.push("<p><strong>Total profiles:</strong> " + esc(String(cards.length)) + " · <strong>Ready for handoff:</strong> " + esc(String(ready)) + "</p>");
+    if (!selectedCard) {
+      out.push("<p><strong>Next step:</strong> choose a profile card below to open Overview, SMTP, Verification, and Files for that mailbox only.</p>");
+    }
+    out.push("</div></article>");
+    if (selectedCard) {
+      out.push(renderAwsSelectedOverview(tool, selectedCard));
+    }
+    out.push(renderAwsProfileSections(tool, { compact: false }));
+    return out.join("");
+  }
+
+  function renderAwsSmtp(tool) {
+    var selectedCard = awsSelectedCard(tool);
+    if (!selectedCard) {
+      return '<p class="data-tool__empty">Select an AWS-CMS profile to inspect SMTP handoff fields.</p>';
+    }
+    var identity = awsIdentityFromCard(selectedCard);
+    var smtp = awsSmtpFromCard(selectedCard);
+    var inbound = awsInboundFromCard(selectedCard);
+    var workflow = awsWorkflowFromCard(selectedCard);
+    var out = [];
+    out.push('<article class="card"><div class="card__kicker">SMTP Handoff</div><div class="card__title">' + esc(text(selectedCard.title || identity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
+    out.push(renderCardKeyValueRows({
+      "operator inbox": text(identity.operator_inbox_target || identity.single_user_email),
+      role: text(identity.role),
+      mailbox: text(identity.mailbox_local_part),
+      "send as": text(smtp.send_as_email),
+      host: text(smtp.host),
+      port: text(smtp.port),
+      username: text(smtp.username),
+      "credentials source": text(smtp.credentials_source),
+      "secret ref": text(smtp.credentials_secret_name),
+      "secret state": text(smtp.credentials_secret_state),
+      "username known": text(smtp.username) ? "yes" : "no",
+      "forward to": text(smtp.forward_to_email),
+      "forwarding status": text(smtp.forwarding_status),
+      "receive state": awsReceiveStateLabel(inbound),
+      "workflow handoff ready": workflow.is_ready_for_user_handoff ? "yes" : "no",
+      "handoff status": awsHandoffStatusLabel(workflow)
+    }));
+    if (awsSecretStateIsPlaceholder(smtp.credentials_secret_state) && !text(smtp.username)) {
+      out.push("<p><strong>Placeholder only:</strong> the mailbox secret exists, but it still contains placeholder SES SMTP values.</p>");
+    } else if (text(smtp.credentials_secret_state) === "auth_failed" && !text(smtp.username)) {
+      out.push("<p><strong>SMTP auth failed:</strong> the referenced credential set is present, but not yet usable for SES SMTP handoff.</p>");
+    } else if (workflow.is_ready_for_user_handoff && !workflow.is_send_as_confirmed) {
+      out.push("<p><strong>SMTP ready:</strong> the portal can hand the SES SMTP details to the operator for Gmail send-as setup.</p>");
+    }
+    out.push("</div></article>");
+    return out.join("");
+  }
+
+  function renderAwsHandoffInstructions(bundle, selectedCard) {
+    var smtp = bundle && typeof bundle === "object" ? bundle : {};
+    var identity = awsIdentityFromCard(selectedCard);
+    var out = [];
+    out.push('<article class="card aws-csm-handoffCard"><div class="card__kicker">SMTP Handoff</div><div class="card__title">Use these values in the supporting email app</div><div class="card__body">');
+    out.push('<dl class="aws-csm-infoGrid">');
+    out.push(awsInfoLine("Send mail as", text(smtp.send_as_email || identity.send_as_email), { actions: [awsCopyAction("Copy", text(smtp.send_as_email || identity.send_as_email))] }));
+    out.push(awsInfoLine("SMTP server", text(smtp.host), { actions: [awsCopyAction("Copy", text(smtp.host))] }));
+    out.push(awsInfoLine("Port", text(smtp.port), { actions: [awsCopyAction("Copy", text(smtp.port))] }));
+    out.push(awsInfoLine("Username", text(smtp.username), { actions: [awsCopyAction("Copy", text(smtp.username))] }));
+    out.push(awsInfoLine("Password", text(smtp.password), { actions: [awsCopyAction("Copy", text(smtp.password))] }));
+    out.push(awsInfoLine("Security", text(smtp.security_label || "Secured connection using TLS")));
+    out.push("</dl>");
+    if (awsSecretStateIsPlaceholder(smtp.credentials_secret_state)) {
+      out.push("<p><strong>Secret state:</strong> this mailbox is still backed by placeholder SMTP credentials. Replace the secret contents before attempting Gmail send-as.</p>");
+    } else {
+      out.push("<p><strong>Direction:</strong> choose <em>Secured connection using TLS</em> in the supporting email application.</p>");
+    }
+    if (text(smtp.secret_ref)) {
+      out.push("<p><strong>Secret ref:</strong> <code>" + esc(text(smtp.secret_ref)) + "</code></p>");
+    }
+    out.push("</div></article>");
+    return out.join("");
+  }
+
+  function renderAwsVerification(tool) {
+    var selectedCard = awsSelectedCard(tool);
+    if (!selectedCard) {
+      return '<p class="data-tool__empty">Select an AWS-CMS profile to inspect verification state.</p>';
+    }
+    var bucket = providerStateFor(tool.tool_id);
+    var identity = awsIdentityFromCard(selectedCard);
+    var verification = awsVerificationFromCard(selectedCard);
+    var provider = awsProviderFromCard(selectedCard);
+    var workflow = awsWorkflowFromCard(selectedCard);
+    var inbound = awsInboundFromCard(selectedCard);
+    var handoff = bucket.latestHandoff && typeof bucket.latestHandoff === "object" ? bucket.latestHandoff : {};
+    var verificationState = bucket.latestVerification && typeof bucket.latestVerification === "object" ? bucket.latestVerification : {};
+    var verificationMessage = verificationState.verification_message && typeof verificationState.verification_message === "object"
+      ? verificationState.verification_message
+      : {};
+    var confirmationLink = text(verificationMessage.confirmation_link || verification.link);
+    var out = [];
+    out.push('<article class="card"><div class="card__kicker">Verification</div><div class="card__title">' + esc(text(selectedCard.title || identity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
+    out.push("<p>This workflow begins in the portal, hands the SMTP settings to the operator, then watches the receive path for the Gmail verification message.</p>");
+    out.push('<div class="aws-csm-flowForm">');
+    out.push('<label class="aws-csm-flowForm__field"><span>Supporting email inbox</span><input type="email" class="data-tool__fieldInput" data-aws-operator-email value="' + esc(text(identity.operator_inbox_target || identity.single_user_email)) + '" placeholder="name@example.com" /></label>');
+    out.push('<div class="aws-csm-flowForm__actions">');
+    out.push('<button type="button" class="data-tool__actionBtn is-active" data-aws-action="begin-onboarding">Begin Onboarding</button>');
+    out.push('<button type="button" class="data-tool__actionBtn" data-aws-action="refresh-verification">Check Verification</button>');
+    out.push('<button type="button" class="data-tool__actionBtn" data-aws-action="confirm-verified">Confirm Verified</button>');
+    out.push("</div></div>");
+    out.push(renderCardKeyValueRows({
+      status: text(verification.status),
+      "portal state": text(verification.portal_state),
+      "ses identity": text(provider.aws_ses_identity_status),
+      "gmail send-as": text(provider.gmail_send_as_status),
+      "handoff status": awsHandoffStatusLabel(workflow),
+      "completion boundary": awsCompletionBoundaryLabel(workflow),
+      "receive state": awsReceiveStateLabel(inbound),
+      "receive verified": inbound.receive_verified ? "yes" : "no"
+    }));
+    if (bucket.pendingAwsAction) {
+      out.push("<p><strong>Working:</strong> " + esc(text(bucket.pendingAwsAction)) + "…</p>");
+    }
+    if (text(bucket.awsError)) {
+      out.push('<p class="fnd-ebi-warning"><strong>Action error:</strong> ' + esc(text(bucket.awsError)) + "</p>");
+    }
+    if (handoff && Object.keys(handoff).length) {
+      out.push("</div></article>");
+      out.push(renderAwsHandoffInstructions(handoff, selectedCard));
+    } else {
+      if (workflow.is_ready_for_user_handoff && !workflow.is_send_as_confirmed) {
+        out.push("<p><strong>Ready:</strong> the mailbox can proceed to Gmail send-as handoff as soon as you load the SMTP bundle.</p>");
+      } else if (Array.isArray(workflow.configuration_blockers_now) && workflow.configuration_blockers_now.length) {
+        out.push("<p><strong>Blocked before handoff:</strong> " + esc(workflow.configuration_blockers_now.join(", ")) + "</p>");
+      }
+      out.push("</div></article>");
+    }
+    out.push('<article class="card"><div class="card__kicker">Receive-path automation</div><div class="card__title">Portal verification watcher</div><div class="card__body">');
+    out.push("<p>The portal watches for the Gmail verification email after onboarding begins. When it captures a confirmation link, it will surface it here for the operator.</p>");
+    out.push(renderCardKeyValueRows({
+      "last checked": text(inbound.receive_last_checked_at || provider.last_checked_at),
+      "latest sender": text(inbound.latest_message_sender),
+      "latest subject": text(inbound.latest_message_subject),
+      "captured at": text(inbound.latest_message_captured_at),
+      "capture ref": text(inbound.capture_source_reference || inbound.latest_message_s3_uri)
+    }));
+    if (confirmationLink) {
+      out.push('<p><strong>Confirmation link:</strong> <a href="' + esc(confirmationLink) + '" target="_blank" rel="noopener noreferrer">Open Gmail verification link</a> ' + awsCopyAction("Copy link", confirmationLink) + "</p>");
+    } else if (bucket.awsPollingVerification) {
+      out.push("<p><strong>Watching:</strong> the portal is polling the receive path for the Gmail verification message.</p>");
+    } else {
+      out.push("<p><strong>No verification email captured yet.</strong> Start onboarding, configure Send mail as in the supporting inbox, then the portal will look for the verification email.</p>");
+    }
+    out.push("</div></article>");
+    return out.join("");
+  }
+
+  function renderAwsFiles(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var files = Array.isArray(ctx.collection_files) ? ctx.collection_files : [];
+    var selectedCard = awsSelectedCard(tool);
+    var rows = [];
+    if (selectedCard) {
+      rows.push(renderAwsSelectedOverview(tool, selectedCard));
+    }
+    if (!files.length) {
+      rows.push('<p class="data-tool__empty">No AWS-CMS files discovered in the canonical root.</p>');
+      return rows.join("");
+    }
+    rows.push('<section class="aws-csm-fileList">');
+    files.forEach(function (f) {
+      if (!f || typeof f !== "object") return;
+      var relativePath = text(f.relative_path || f.file_name || "");
+      rows.push('<article class="card aws-csm-fileCard">');
+      rows.push('<div class="card__kicker">' + esc(text(f.content_kind || "json")) + '</div>');
+      rows.push('<div class="card__title" title="' + esc(relativePath) + '">' + esc(limitText(relativePath, 44)) + "</div>");
+      rows.push('<div class="card__body">');
+      rows.push("<p><strong>Records:</strong> " + esc(String(f.record_count != null ? f.record_count : "")) + "</p>");
+      if (text(f.schema)) {
+        rows.push("<p><strong>Schema:</strong> " + esc(text(f.schema)) + "</p>");
+      }
+      rows.push("</div></article>");
+    });
+    rows.push("</section>");
+    return rows.join("");
+  }
+
+  function awsSelectedProfileId(tool) {
+    var selectedCard = awsSelectedCard(tool);
+    var identity = awsIdentityFromCard(selectedCard);
+    return text(identity.profile_id || awsProfileToken(selectedCard));
+  }
+
+  function awsStopPolling(toolId) {
+    var bucket = providerStateFor(toolId);
+    if (bucket.awsPollTimer) {
+      window.clearTimeout(bucket.awsPollTimer);
+      bucket.awsPollTimer = 0;
+    }
+    bucket.awsPollingVerification = false;
+  }
+
+  async function awsReloadToolContext(tool) {
+    await ensureToolContext(tool, true);
+    renderAll();
+  }
+
+  async function awsRunProvision(tool, action, extra) {
+    var profileId = awsSelectedProfileId(tool);
+    if (!profileId) {
+      throw new Error("Select an AWS-CMS profile first.");
+    }
+    var bucket = providerStateFor(tool.tool_id);
+    bucket.pendingAwsAction = action;
+    bucket.awsError = "";
+    renderAll();
+    try {
+      var payload = await api(
+        "/portal/api/admin/aws/profile/" + encodeURIComponent(profileId) + "/provision",
+        "POST",
+        Object.assign({ action: action }, extra || {})
+      );
+      bucket.latestAwsResponse = payload;
+      if (payload.smtp_handoff && typeof payload.smtp_handoff === "object") {
+        bucket.latestHandoff = payload.smtp_handoff;
+      }
+      if (payload.verification_message && typeof payload.verification_message === "object") {
+        bucket.latestVerification = payload;
+      }
+      await awsReloadToolContext(tool);
+      return payload;
+    } catch (err) {
+      bucket.awsError = err && err.message ? err.message : "AWS-CMS action failed.";
+      renderAll();
+      throw err;
+    } finally {
+      bucket.pendingAwsAction = "";
+      renderAll();
+    }
+  }
+
+  async function awsCheckVerification(tool) {
+    var payload = await awsRunProvision(tool, "refresh_inbound_status");
+    var verificationMessage = payload && payload.verification_message && typeof payload.verification_message === "object"
+      ? payload.verification_message
+      : {};
+    if (!text(verificationMessage.confirmation_link)) {
+      payload = await awsRunProvision(tool, "capture_verification");
+    }
+    return payload;
+  }
+
+  function awsStartVerificationWatcher(tool) {
+    var bucket = providerStateFor(tool.tool_id);
+    awsStopPolling(tool.tool_id);
+    bucket.awsPollingVerification = true;
+    bucket.awsPollAttempts = 0;
+    function tick() {
+      var liveBucket = providerStateFor(tool.tool_id);
+      liveBucket.awsPollAttempts = Number(liveBucket.awsPollAttempts || 0) + 1;
+      awsCheckVerification(tool).then(function (payload) {
+        var verificationMessage = payload && payload.verification_message && typeof payload.verification_message === "object"
+          ? payload.verification_message
+          : {};
+        if (text(verificationMessage.confirmation_link) || Number(liveBucket.awsPollAttempts || 0) >= 18) {
+          awsStopPolling(tool.tool_id);
+          renderAll();
+          return;
+        }
+        liveBucket.awsPollTimer = window.setTimeout(tick, 10000);
+        renderAll();
+      }).catch(function (err) {
+        liveBucket.awsError = err && err.message ? err.message : "Verification watch failed.";
+        awsStopPolling(tool.tool_id);
+        renderAll();
+      });
+    }
+    tick();
+  }
+
+  async function awsBeginOnboarding(tool, root) {
+    var emailInput = qs("[data-aws-operator-email]", root || els.toolInterfaceBody);
+    var operatorEmail = text(emailInput && emailInput.value);
+    if (!operatorEmail) {
+      throw new Error("Enter the supporting email inbox before beginning onboarding.");
+    }
+    var payload = await awsRunProvision(tool, "prepare_send_as", {
+      operator_inbox_target: operatorEmail
+    });
+    awsStartVerificationWatcher(tool);
+    return payload;
+  }
+
+  async function awsConfirmVerified(tool) {
+    awsStopPolling(tool.tool_id);
+    return awsRunProvision(tool, "confirm_verified");
+  }
+
+  function bindAwsInterfaceActions(tool, root) {
+    qsa("[data-aws-profile]", root || els.toolInterfaceBody).forEach(function (node) {
+      node.addEventListener("click", function () {
+        awsSelectProfile(tool.tool_id, node.getAttribute("data-aws-profile"));
+        state.activeMediationMode = "overview";
+        renderAll();
+      });
+    });
+    qsa("[data-copy-text]", root || els.toolInterfaceBody).forEach(function (node) {
+      node.addEventListener("click", function () {
+        var value = text(node.getAttribute("data-copy-text"));
+        if (!value || !navigator.clipboard || typeof navigator.clipboard.writeText !== "function") return;
+        navigator.clipboard.writeText(value).catch(function () {});
+      });
+    });
+    qsa("[data-aws-action]", root || els.toolInterfaceBody).forEach(function (node) {
+      node.addEventListener("click", function () {
+        var action = text(node.getAttribute("data-aws-action"));
+        if (action === "begin-onboarding") {
+          awsBeginOnboarding(tool, root).catch(function () {});
+          return;
+        }
+        if (action === "refresh-verification") {
+          awsCheckVerification(tool).catch(function () {});
+          return;
+        }
+        if (action === "confirm-verified") {
+          awsConfirmVerified(tool).catch(function () {});
+        }
+      });
+    });
   }
 
   function awsHandoffStatusLabel(workflow) {
@@ -1564,293 +2026,6 @@
 
   function awsBlockerCount(items) {
     return Array.isArray(items) ? String(items.length) : "0";
-  }
-
-  function renderAwsOverview(tool) {
-    var ctx = toolContext(tool.tool_id) || {};
-    var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
-    if (!cards.length) {
-      return '<p class="data-tool__empty">No AWS-CMS onboarding profiles are staged in the canonical aws-csm root.</p>';
-    }
-    var selectedCard = awsSelectedCard(tool);
-    var selectedBody = selectedCard && selectedCard.body && typeof selectedCard.body === "object" ? selectedCard.body : {};
-    var selectedIdentity = selectedBody.identity && typeof selectedBody.identity === "object" ? selectedBody.identity : {};
-    var selectedSmtp = selectedBody.smtp && typeof selectedBody.smtp === "object" ? selectedBody.smtp : {};
-    var selectedVerification = selectedBody.verification && typeof selectedBody.verification === "object" ? selectedBody.verification : {};
-    var selectedProvider = selectedBody.provider && typeof selectedBody.provider === "object" ? selectedBody.provider : {};
-    var selectedInbound = selectedBody.inbound && typeof selectedBody.inbound === "object" ? selectedBody.inbound : {};
-    var selectedWorkflow = awsWorkflowFromCard(selectedCard || {});
-    var out = [];
-    if (selectedCard) {
-      out.push('<article class="card"><div class="card__kicker">Operator Focus</div><div class="card__title">' + esc(text(selectedCard.title || selectedIdentity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
-      out.push(renderCardKeyValueRows({
-        domain: text(selectedIdentity.domain),
-        profile: text(selectedIdentity.profile_id),
-        tenant: text(selectedIdentity.tenant_id),
-        mailbox: text(selectedIdentity.mailbox_local_part),
-        role: text(selectedIdentity.role),
-        region: text(selectedIdentity.region),
-        "operator inbox": text(selectedIdentity.operator_inbox_target || selectedIdentity.single_user_email || selectedIdentity.single_user_msn_id),
-        "send as": text(selectedIdentity.send_as_email || selectedSmtp.send_as_email)
-      }));
-      out.push('</div></article>');
-      out.push('<article class="card"><div class="card__kicker">SMTP Readiness</div><div class="card__title">Gmail send-as handoff</div><div class="card__body">');
-      out.push(renderCardKeyValueRows({
-        host: text(selectedSmtp.host),
-        port: text(selectedSmtp.port),
-        username: text(selectedSmtp.username),
-        "credentials source": text(selectedSmtp.credentials_source),
-        "secret ref": text(selectedSmtp.credentials_secret_name),
-        "secret state": text(selectedSmtp.credentials_secret_state),
-        "username known": text(selectedSmtp.username) ? "yes" : "no",
-        "operator inbox": text(selectedIdentity.operator_inbox_target || selectedSmtp.forward_to_email),
-        "forwarding status": text(selectedSmtp.forwarding_status),
-        initiated: selectedWorkflow.initiated ? "yes" : "no",
-        "workflow handoff ready": selectedWorkflow.is_ready_for_user_handoff ? "yes" : "no"
-      }));
-      if (text(selectedSmtp.credentials_secret_state) === "placeholder_present" && !text(selectedSmtp.username)) {
-        out.push("<p><strong>Placeholder only:</strong> a secret reference is staged, but real SMTP credentials are not resolved yet.</p>");
-      } else if (text(selectedSmtp.credentials_secret_state) === "auth_failed" && !text(selectedSmtp.username)) {
-        out.push("<p><strong>SMTP auth failed:</strong> the referenced secret exists, but the current credential values did not authenticate to SES SMTP.</p>");
-      } else if (selectedWorkflow.is_ready_for_user_handoff && !selectedWorkflow.is_send_as_confirmed) {
-        out.push("<p><strong>SMTP ready:</strong> use the stored SES SMTP credential reference to finish the Gmail send-as verification step.</p>");
-      }
-      out.push('</div></article>');
-      out.push('<article class="card"><div class="card__kicker">Verification</div><div class="card__title">Portal and provider state</div><div class="card__body">');
-      out.push(renderCardKeyValueRows({
-        status: text(selectedVerification.status),
-        code: text(selectedVerification.code),
-        link: text(selectedVerification.link),
-        "email received": text(selectedVerification.email_received_at),
-        "verified at": text(selectedVerification.verified_at),
-        "portal state": text(selectedVerification.portal_state),
-        "inbound state": awsReceiveStateLabel(selectedInbound),
-        "inbound verified": selectedInbound.receive_verified ? "yes" : "no"
-      }));
-      out.push('</div></article>');
-      out.push('<article class="card"><div class="card__kicker">Inbound</div><div class="card__title">Receive-path visibility</div><div class="card__body">');
-      out.push(renderCardKeyValueRows({
-        "receive state": awsReceiveStateLabel(selectedInbound),
-        "receive verified": selectedInbound.receive_verified ? "yes" : "no",
-        "receive target": text(selectedInbound.receive_routing_target),
-        "receive checked": text(selectedInbound.receive_last_checked_at),
-        "receive verified at": text(selectedInbound.receive_verified_at),
-        "portal display ready": selectedInbound.portal_native_display_ready ? "yes" : "no",
-        "legacy dependency": selectedInbound.legacy_forwarder_dependency ? "yes" : "no",
-        "dependency state": text(selectedInbound.legacy_dependency_state),
-        "latest sender": text(selectedInbound.latest_message_sender),
-        "latest recipient": text(selectedInbound.latest_message_recipient),
-        "latest subject": text(selectedInbound.latest_message_subject),
-        "captured at": text(selectedInbound.latest_message_captured_at),
-        "capture ref": text(selectedInbound.capture_source_reference || selectedInbound.latest_message_s3_uri),
-        "has verification link": selectedInbound.latest_message_has_verification_link ? "yes" : "no"
-      }));
-      if (selectedInbound.legacy_forwarder_dependency) {
-        out.push("<p><strong>Compatibility warning:</strong> replay still depends on the active legacy SES->Lambda forwarder chain.</p>");
-      }
-      out.push('</div></article>');
-      out.push('<article class="card"><div class="card__kicker">Provider</div><div class="card__title">AWS + Gmail readiness</div><div class="card__body">');
-      out.push(renderCardKeyValueRows({
-        "ses identity": text(selectedProvider.aws_ses_identity_status),
-        "gmail send-as": text(selectedProvider.gmail_send_as_status),
-        "last checked": text(selectedProvider.last_checked_at),
-        "send-as confirmed": selectedWorkflow.is_send_as_confirmed ? "yes" : "no"
-      }));
-      out.push('</div></article>');
-      out.push('<article class="card"><div class="card__kicker">Workflow</div><div class="card__title">Simple operator-only send-as onboarding</div><div class="card__body">');
-      out.push(renderCardKeyValueRows({
-        "handoff status": awsHandoffStatusLabel(selectedWorkflow),
-        "completion boundary": awsCompletionBoundaryLabel(selectedWorkflow),
-        lifecycle: text(selectedWorkflow.lifecycle_state),
-        initiated: selectedWorkflow.initiated ? "yes" : "no",
-        "ready for Gmail handoff": selectedWorkflow.is_ready_for_user_handoff ? "yes" : "no",
-        "configuration blockers": awsBlockerCount(selectedWorkflow.configuration_blockers_now),
-        "gmail-side blockers": awsBlockerCount(selectedWorkflow.gmail_handoff_blockers_now),
-        "inbound blockers": awsBlockerCount(selectedWorkflow.inbound_blockers_now),
-        "operational blockers": awsBlockerCount(selectedWorkflow.operational_blockers_now),
-        "missing required": awsBlockerCount(selectedWorkflow.missing_required_now),
-        flow: text(selectedWorkflow.flow || selectedWorkflow.flow_name),
-        "operator inbox": text(selectedIdentity.operator_inbox_target || selectedIdentity.single_user_email),
-        "send as": text(selectedSmtp.send_as_email),
-        "send-as confirmed": selectedWorkflow.is_send_as_confirmed ? "yes" : "no",
-        "receive modeled": selectedWorkflow.is_receive_path_modeled ? "yes" : "no",
-        "receive confirmed": selectedWorkflow.is_receive_path_confirmed ? "yes" : "no",
-        "portal inbound ready": selectedWorkflow.is_portal_native_inbound_ready ? "yes" : "no",
-        "mailbox operational": selectedWorkflow.is_mailbox_operational ? "yes" : "no"
-      }));
-      if (Array.isArray(selectedWorkflow.configuration_blockers_now) && selectedWorkflow.configuration_blockers_now.length) {
-        out.push("<p><strong>Still required before Gmail handoff</strong></p><ul class=\"fnd-ebi-warnings\">");
-        selectedWorkflow.configuration_blockers_now.forEach(function (item) {
-          out.push("<li>" + esc(text(item)) + "</li>");
-        });
-        out.push("</ul>");
-      }
-      if (Array.isArray(selectedWorkflow.gmail_handoff_blockers_now) && selectedWorkflow.gmail_handoff_blockers_now.length) {
-        out.push("<p><strong>Remaining after AWS staging</strong></p><ul class=\"fnd-ebi-warnings\">");
-        selectedWorkflow.gmail_handoff_blockers_now.forEach(function (item) {
-          out.push("<li>" + esc(text(item)) + "</li>");
-        });
-        out.push("</ul>");
-      }
-      if (Array.isArray(selectedWorkflow.missing_required_now) && selectedWorkflow.missing_required_now.length) {
-        out.push("<p><strong>Missing required now</strong></p><ul class=\"fnd-ebi-warnings\">");
-        selectedWorkflow.missing_required_now.forEach(function (item) {
-          out.push("<li>" + esc(text(item)) + "</li>");
-        });
-        out.push("</ul>");
-      }
-      if (selectedWorkflow.is_ready_for_user_handoff && !selectedWorkflow.is_send_as_confirmed) {
-        out.push("<p><strong>Intentional boundary:</strong> AWS-CMS staging is ready for Gmail/inbox handoff, but Gmail-side verification is still pending.</p>");
-      }
-      out.push('</div></article>');
-    }
-    out.push('<section class="fnd-ebi-gallery">');
-    cards.forEach(function (card) {
-      var body = card && card.body && typeof card.body === "object" ? card.body : {};
-      var identity = body.identity && typeof body.identity === "object" ? body.identity : {};
-      var verification = body.verification && typeof body.verification === "object" ? body.verification : {};
-      var inbound = body.inbound && typeof body.inbound === "object" ? body.inbound : {};
-      var workflow = awsWorkflowFromCard(card);
-      var missing = Array.isArray(workflow.missing_required_now) ? workflow.missing_required_now : [];
-      var token = awsProfileToken(card);
-      out.push('<article class="card fnd-ebi-card' + (selectedCard && awsProfileToken(selectedCard) === token ? ' is-active' : '') + '" data-aws-profile="' + esc(token) + '">');
-      out.push('<div class="card__kicker">' + esc(awsHandoffStatusLabel(workflow)) + "</div>");
-      out.push('<div class="card__title">' + esc(text(card.title || identity.send_as_email || identity.domain || card.card_id || "profile")) + "</div>");
-      out.push('<div class="card__body">');
-      out.push("<p><strong>Tenant:</strong> " + esc(text(identity.tenant_id || "(missing)")) + "</p>");
-      out.push("<p><strong>Role:</strong> " + esc(text(identity.role || "(missing)")) + "</p>");
-      out.push("<p><strong>Verification:</strong> " + esc(text(verification.status || "(missing)")) + "</p>");
-      out.push("<p><strong>Inbound:</strong> " + esc(awsReceiveStateLabel(inbound || {})) + "</p>");
-      out.push("<p><strong>Boundary:</strong> " + esc(awsCompletionBoundaryLabel(workflow)) + "</p>");
-      out.push("<p><strong>Missing required now:</strong> " + esc(String(missing.length)) + "</p>");
-      out.push("<p><small>Select to focus this onboarding profile in the interface lens.</small></p>");
-      out.push("</div></article>");
-    });
-    out.push("</section>");
-    return out.join("");
-  }
-
-  function renderAwsSmtp(tool) {
-    var selectedCard = awsSelectedCard(tool);
-    var selectedBody = selectedCard && selectedCard.body && typeof selectedCard.body === "object" ? selectedCard.body : {};
-    if (!selectedCard) {
-      return '<p class="data-tool__empty">Select an AWS-CMS profile to inspect SMTP handoff fields.</p>';
-    }
-    var identity = selectedBody.identity && typeof selectedBody.identity === "object" ? selectedBody.identity : {};
-    var smtp = selectedBody.smtp && typeof selectedBody.smtp === "object" ? selectedBody.smtp : {};
-    var inbound = selectedBody.inbound && typeof selectedBody.inbound === "object" ? selectedBody.inbound : {};
-    var workflow = selectedBody.workflow && typeof selectedBody.workflow === "object" ? selectedBody.workflow : {};
-    var out = [];
-    out.push('<article class="card"><div class="card__kicker">SMTP Handoff</div><div class="card__title">' + esc(text(selectedCard.title || identity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
-    out.push(renderCardKeyValueRows({
-      "operator inbox": text(identity.operator_inbox_target || identity.single_user_email),
-      role: text(identity.role),
-      mailbox: text(identity.mailbox_local_part),
-      "send as": text(smtp.send_as_email),
-      host: text(smtp.host),
-      port: text(smtp.port),
-      username: text(smtp.username),
-      "credentials source": text(smtp.credentials_source),
-      "secret ref": text(smtp.credentials_secret_name),
-      "secret state": text(smtp.credentials_secret_state),
-      "username known": text(smtp.username) ? "yes" : "no",
-      "forward to": text(smtp.forward_to_email),
-      "forwarding status": text(smtp.forwarding_status),
-      "receive state": awsReceiveStateLabel(inbound),
-      "portal display ready": inbound.portal_native_display_ready ? "yes" : "no",
-      "legacy dependency": inbound.legacy_forwarder_dependency ? "yes" : "no",
-      "workflow handoff ready": workflow.is_ready_for_user_handoff ? "yes" : "no",
-      "handoff status": awsHandoffStatusLabel(workflow)
-    }));
-    if (text(smtp.credentials_secret_state) === "placeholder_present" && !text(smtp.username)) {
-      out.push("<p><strong>Placeholder only:</strong> the secret reference is known, but the real SMTP username is still unresolved.</p>");
-    } else if (text(smtp.credentials_secret_state) === "auth_failed" && !text(smtp.username)) {
-      out.push("<p><strong>SMTP auth failed:</strong> the secret reference is known, but the current credential values are not usable for SES SMTP yet.</p>");
-    } else if (workflow.is_ready_for_user_handoff && !workflow.is_send_as_confirmed) {
-      out.push("<p><strong>SMTP ready:</strong> SES credentials are staged and the remaining work is on the Gmail verification side.</p>");
-    }
-    if (Array.isArray(workflow.configuration_blockers_now) && workflow.configuration_blockers_now.length) {
-      out.push("<p><strong>Still required before Gmail handoff</strong></p><ul class=\"fnd-ebi-warnings\">");
-      workflow.configuration_blockers_now.forEach(function (item) {
-        out.push("<li>" + esc(text(item)) + "</li>");
-      });
-      out.push("</ul>");
-    }
-    if (Array.isArray(workflow.missing_required_now) && workflow.missing_required_now.length) {
-      out.push("<p><strong>Still missing before Gmail send-as handoff</strong></p><ul class=\"fnd-ebi-warnings\">");
-      workflow.missing_required_now.forEach(function (item) {
-        out.push("<li>" + esc(text(item)) + "</li>");
-      });
-      out.push("</ul>");
-    }
-    out.push("</div></article>");
-    return out.join("");
-  }
-
-  function renderAwsVerification(tool) {
-    var selectedCard = awsSelectedCard(tool);
-    var selectedBody = selectedCard && selectedCard.body && typeof selectedCard.body === "object" ? selectedCard.body : {};
-    if (!selectedCard) {
-      return '<p class="data-tool__empty">Select an AWS-CMS profile to inspect verification state.</p>';
-    }
-    var identity = selectedBody.identity && typeof selectedBody.identity === "object" ? selectedBody.identity : {};
-    var verification = selectedBody.verification && typeof selectedBody.verification === "object" ? selectedBody.verification : {};
-    var provider = selectedBody.provider && typeof selectedBody.provider === "object" ? selectedBody.provider : {};
-    var workflow = selectedBody.workflow && typeof selectedBody.workflow === "object" ? selectedBody.workflow : {};
-    var out = [];
-    out.push('<article class="card"><div class="card__kicker">Verification</div><div class="card__title">' + esc(text(selectedCard.title || identity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
-    out.push(renderCardKeyValueRows({
-      status: text(verification.status),
-      code: text(verification.code),
-      link: text(verification.link),
-      "email received": text(verification.email_received_at),
-      "verified at": text(verification.verified_at),
-      "portal state": text(verification.portal_state),
-      "receive state": awsReceiveStateLabel(selectedBody.inbound && typeof selectedBody.inbound === "object" ? selectedBody.inbound : {}),
-      "ses identity": text(provider.aws_ses_identity_status),
-      "gmail send-as": text(provider.gmail_send_as_status),
-      "last checked": text(provider.last_checked_at),
-      "handoff status": awsHandoffStatusLabel(workflow),
-      "completion boundary": awsCompletionBoundaryLabel(workflow),
-      "send-as confirmed": workflow.is_send_as_confirmed ? "yes" : "no"
-    }));
-    if (workflow.is_ready_for_user_handoff && !workflow.is_send_as_confirmed) {
-      out.push("<p><strong>Intentional boundary:</strong> this profile is ready for Gmail/inbox handoff, but Gmail-side verification is still pending.</p>");
-    }
-    out.push("</div></article>");
-    return out.join("");
-  }
-
-  function renderAwsFiles(tool) {
-    var ctx = toolContext(tool.tool_id) || {};
-    var files = Array.isArray(ctx.collection_files) ? ctx.collection_files : [];
-    var selectedCard = awsSelectedCard(tool);
-    var selectedBody = selectedCard && selectedCard.body && typeof selectedCard.body === "object" ? selectedCard.body : {};
-    var rows = [];
-    if (selectedCard) {
-      rows.push('<article class="card"><div class="card__kicker">Focused Profile</div><div class="card__title">' + esc(text(selectedCard.title || "")) + '</div><div class="card__body">');
-      rows.push(renderInterfacePanelCardBody(selectedCard, selectedBody));
-      rows.push("</div></article>");
-    }
-    if (!files.length) {
-      rows.push('<p class="data-tool__empty">No AWS-CMS files discovered in the canonical root.</p>');
-      return rows.join("");
-    }
-    rows.push("<table class=\"fnd-ebi-table\"><thead><tr><th>File</th><th>Kind</th><th>Records</th></tr></thead><tbody>");
-    files.forEach(function (f) {
-      if (!f || typeof f !== "object") return;
-      rows.push(
-        "<tr><td><code>" +
-          esc(text(f.relative_path || f.file_name || "")) +
-          "</code></td><td>" +
-          esc(text(f.content_kind || "")) +
-          "</td><td>" +
-          esc(String(f.record_count != null ? f.record_count : "")) +
-          "</td></tr>"
-      );
-    });
-    rows.push("</tbody></table>");
-    return rows.join("");
   }
 
   function renderFndEbiTraffic(tool) {
@@ -1997,27 +2172,7 @@
   }
 
   function renderAwsControlPanel(tool) {
-    var ctx = toolContext(tool.tool_id) || {};
-    var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
-    if (!cards.length) {
-      return '<div class="ide-controlpanel__empty">No AWS-CMS onboarding profiles are staged in the tool sandbox.</div>';
-    }
-    var selected = awsSelectedCard(tool);
-    var selectedToken = awsProfileToken(selected);
-    var out = [];
-    cards.forEach(function (card) {
-      var body = card && card.body && typeof card.body === "object" ? card.body : {};
-      var identity = body.identity && typeof body.identity === "object" ? body.identity : {};
-      var workflow = awsWorkflowFromCard(card);
-      var missing = Array.isArray(workflow.missing_required_now) ? workflow.missing_required_now : [];
-      var token = awsProfileToken(card);
-      out.push('<button type="button" class="system-tool-contextCard' + (token === selectedToken ? ' is-active' : '') + '" data-aws-profile="' + esc(token) + '">');
-      out.push('<strong>' + esc(text(card.title || identity.domain || token || "profile")) + '</strong>');
-      out.push('<small>' + esc(workflow.is_ready_for_user_handoff ? "ready for handoff" : "staging required") + '</small>');
-      out.push('<span>' + esc(String(missing.length)) + ' missing now</span>');
-      out.push('</button>');
-    });
-    return out.join("");
+    return renderAwsProfileSections(tool, { compact: true });
   }
 
   var fndEbiMediationProvider = {
@@ -2094,8 +2249,14 @@
       var rawModes = Array.isArray(contribution.modes) ? contribution.modes : ["overview", "smtp", "verification", "files"];
       return rawModes.map(function (mode) {
         var id = normalizeModeId(mode) || "overview";
-        return { id: id, label: titleCase(mode) };
+        var label = titleCase(mode);
+        if (id === "smtp") label = "SMTP";
+        if (id === "files") label = "File";
+        return { id: id, label: label };
       });
+    },
+    showModes: function (tool) {
+      return !!awsSelectedCard(tool);
     },
     title: function (tool) {
       return text(tool && (tool.label || tool.tool_id)) || "AWS-CMS";
@@ -2120,11 +2281,6 @@
     },
     ensureReady: function (tool, force) {
       return ensureToolContext(tool, force).then(function (ctx) {
-        var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
-        var bucket = providerStateFor(tool.tool_id);
-        if (!text(bucket.selectedProfile) && cards.length) {
-          bucket.selectedProfile = awsProfileToken(cards[0]);
-        }
         ensureInterfacePanelForServiceTool(tool);
         return ctx;
       });
@@ -2148,19 +2304,13 @@
       return renderAwsControlPanel(tool);
     },
     bind: function (tool, root) {
-      qsa("[data-aws-profile]", root || els.mediationBody).forEach(function (node) {
-        node.addEventListener("click", function () {
-          awsSelectProfile(tool.tool_id, node.getAttribute("data-aws-profile"));
-          state.activeMediationMode = "overview";
-          renderAll();
-        });
-      });
+      bindAwsInterfaceActions(tool, root || els.mediationBody);
     },
     bindInterface: function (tool) {
-      this.bind(tool, els.toolInterfaceBody);
+      bindAwsInterfaceActions(tool, els.toolInterfaceBody);
     },
     bindControlPanel: function (tool) {
-      this.bind(tool, els.toolContextMount);
+      bindAwsInterfaceActions(tool, els.toolContextMount);
     }
   };
 
