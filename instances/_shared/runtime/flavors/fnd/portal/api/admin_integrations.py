@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import base64
+import fcntl
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -53,6 +57,12 @@ _MAX_CHECKOUT_PREVIEW_BYTES = 64 * 1024
 _GMAIL_CONFIRMATION_SUBJECT_PREFIX = "Gmail Confirmation - Send Mail as "
 _AWS_CLI_BIN = str(os.getenv("AWS_CLI_BIN", "aws")).strip() or "aws"
 _AWS_CAPTURE_SCAN_LIMIT = 40
+_AWS_SMTP_IAM_USER = str(os.getenv("AWS_CMS_SMTP_IAM_USER", "aws-cms-smtp")).strip() or "aws-cms-smtp"
+_AWS_SMTP_TLS_LABEL = "Secured connection using TLS"
+_AWS_SMTP_MESSAGE = "SendRawEmail"
+_AWS_SMTP_TERMINAL = "aws4_request"
+_AWS_SMTP_VERSION = b"\x04"
+_AWS_SMTP_DATE_SEED = "11111111"
 
 
 class _AwsProvisionError(RuntimeError):
@@ -203,6 +213,69 @@ def _aws_cli_json(args: list[str]) -> Any:
 def _aws_cli_bytes(args: list[str]) -> bytes:
     completed = _aws_cli(args)
     return completed.stdout or b""
+
+
+def _aws_secret_payload(args: list[str], payload: dict[str, Any]) -> Any:
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
+        handle.write(json.dumps(payload, separators=(",", ":")))
+        payload_path = handle.name
+    try:
+        return _aws_cli_json([*args, "--cli-input-json", f"file://{payload_path}"])
+    finally:
+        try:
+            os.unlink(payload_path)
+        except OSError:
+            pass
+
+
+def _aws_smtp_access_key_metadata() -> list[dict[str, Any]]:
+    payload = _aws_cli_json(["iam", "list-access-keys", "--user-name", _AWS_SMTP_IAM_USER, "--output", "json"])
+    rows = payload.get("AccessKeyMetadata") if isinstance(payload, dict) else []
+    out: list[dict[str, Any]] = []
+    for row in list(rows or []):
+        if not isinstance(row, dict):
+            continue
+        out.append(
+            {
+                "access_key_id": str(row.get("AccessKeyId") or "").strip(),
+                "status": str(row.get("Status") or "").strip(),
+                "created_at": str(row.get("CreateDate") or "").strip(),
+            }
+        )
+    out.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    return out
+
+
+def _aws_smtp_password(secret_access_key: str, *, region: str) -> str:
+    secret = str(secret_access_key or "").strip()
+    region_token = str(region or "").strip() or "us-east-1"
+    if not secret:
+        raise _AwsProvisionError("Missing secret access key for SES SMTP password derivation.", status_code=500)
+
+    def _sign(key: bytes, message: str) -> bytes:
+        return hmac.new(key, message.encode("utf-8"), hashlib.sha256).digest()
+
+    signature = _sign(("AWS4" + secret).encode("utf-8"), _AWS_SMTP_DATE_SEED)
+    signature = _sign(signature, region_token)
+    signature = _sign(signature, "ses")
+    signature = _sign(signature, _AWS_SMTP_TERMINAL)
+    signature = _sign(signature, _AWS_SMTP_MESSAGE)
+    return base64.b64encode(_AWS_SMTP_VERSION + signature).decode("utf-8")
+
+
+def _upsert_secret_string(secret_name: str, payload: dict[str, Any]) -> None:
+    token = str(secret_name or "").strip()
+    if not token:
+        raise _AwsProvisionError("Missing SMTP credentials secret name.", status_code=400)
+    secret_string = json.dumps(payload, separators=(",", ":"))
+    try:
+        _aws_cli_json(["secretsmanager", "describe-secret", "--secret-id", token, "--output", "json"])
+    except _AwsProvisionError as exc:
+        if "ResourceNotFoundException" not in str(exc):
+            raise
+        _aws_secret_payload(["secretsmanager", "create-secret"], {"Name": token, "SecretString": secret_string})
+        return
+    _aws_secret_payload(["secretsmanager", "put-secret-value"], {"SecretId": token, "SecretString": secret_string})
 
 
 def _message_id_from_s3_key(key: str) -> str:
@@ -518,6 +591,123 @@ def _smtp_secret_material(secret_name: str) -> dict[str, str]:
     }
 
 
+def _smtp_secret_is_real(secret_material: dict[str, Any] | None) -> bool:
+    payload = secret_material if isinstance(secret_material, dict) else {}
+    return (
+        str(payload.get("state") or "").strip().lower() == "configured"
+        and bool(str(payload.get("username") or "").strip())
+        and bool(str(payload.get("password") or "").strip())
+    )
+
+
+def _aws_smtp_provision_lock_path(private_dir: Path) -> Path:
+    return _aws_csm_root(private_dir) / ".smtp_provision.lock"
+
+
+def _with_aws_smtp_provision_lock(private_dir: Path):
+    lock_path = _aws_smtp_provision_lock_path(private_dir)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+", encoding="utf-8")
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    return handle
+
+
+def _configured_smtp_material_by_username(private_dir: Path, *, skip_secret_name: str = "") -> dict[str, dict[str, str]]:
+    out: dict[str, dict[str, str]] = {}
+    skipped = str(skip_secret_name or "").strip()
+    for path in _aws_csm_profile_paths(private_dir):
+        payload = _read_json(path, {})
+        smtp = payload.get("smtp") if isinstance(payload.get("smtp"), dict) else {}
+        secret_name = str(smtp.get("credentials_secret_name") or "").strip()
+        if not secret_name or secret_name == skipped:
+            continue
+        material = _smtp_secret_material(secret_name)
+        username = str(material.get("username") or "").strip()
+        if not username or not _smtp_secret_is_real(material):
+            continue
+        out[username] = dict(material)
+    return out
+
+
+def _create_smtp_secret_material(secret_name: str, *, region: str) -> dict[str, str]:
+    payload = _aws_cli_json(["iam", "create-access-key", "--user-name", _AWS_SMTP_IAM_USER, "--output", "json"])
+    access_key = payload.get("AccessKey") if isinstance(payload, dict) else {}
+    if not isinstance(access_key, dict):
+        raise _AwsProvisionError("AWS IAM create-access-key returned an invalid payload.")
+    access_key_id = str(access_key.get("AccessKeyId") or "").strip()
+    secret_access_key = str(access_key.get("SecretAccessKey") or "").strip()
+    if not access_key_id or not secret_access_key:
+        raise _AwsProvisionError("AWS IAM create-access-key did not return usable key material.")
+    password = _aws_smtp_password(secret_access_key, region=region)
+    secret_payload = {
+        "username": access_key_id,
+        "password": password,
+        "iam_user": _AWS_SMTP_IAM_USER,
+        "access_key_id": access_key_id,
+        "smtp_region": str(region or "").strip() or "us-east-1",
+        "smtp_host": f"email-smtp.{str(region or '').strip() or 'us-east-1'}.amazonaws.com",
+        "smtp_port": "587",
+        "tls_mode": "TLS",
+        "provisioned_at": _utc_now_iso(),
+    }
+    _upsert_secret_string(secret_name, secret_payload)
+    return {
+        "secret_name": str(secret_name or "").strip(),
+        "username": access_key_id,
+        "persisted_username": access_key_id,
+        "password": password,
+        "state": "configured",
+    }
+
+
+def _provision_smtp_secret_material(private_dir: Path, *, secret_name: str, region: str) -> dict[str, str]:
+    token = str(secret_name or "").strip()
+    if not token:
+        raise _AwsProvisionError("SMTP credentials secret name is required for provisioning.", status_code=400)
+    lock_handle = _with_aws_smtp_provision_lock(private_dir)
+    try:
+        existing = _smtp_secret_material(token)
+        if _smtp_secret_is_real(existing):
+            return existing
+
+        access_keys = _aws_smtp_access_key_metadata()
+        if len(access_keys) < 2:
+            return _create_smtp_secret_material(token, region=region)
+
+        reusable = _configured_smtp_material_by_username(private_dir, skip_secret_name=token)
+        for item in access_keys:
+            username = str(item.get("access_key_id") or "").strip()
+            material = reusable.get(username)
+            if not material:
+                continue
+            _upsert_secret_string(
+                token,
+                {
+                    "username": str(material.get("username") or ""),
+                    "password": str(material.get("password") or ""),
+                    "iam_user": _AWS_SMTP_IAM_USER,
+                    "access_key_id": str(material.get("username") or ""),
+                    "smtp_region": str(region or "").strip() or "us-east-1",
+                    "smtp_host": f"email-smtp.{str(region or '').strip() or 'us-east-1'}.amazonaws.com",
+                    "smtp_port": "587",
+                    "tls_mode": "TLS",
+                    "provisioned_at": _utc_now_iso(),
+                    "reused_from_secret": str(material.get("secret_name") or ""),
+                },
+            )
+            return _smtp_secret_material(token)
+    finally:
+        try:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            lock_handle.close()
+
+    raise _AwsProvisionError(
+        "aws-cms-smtp already has two active access keys and no reusable real SMTP secret material was found.",
+        status_code=409,
+    )
+
+
 def _update_aws_profile(private_dir: Path, tenant_id: str, patch: dict[str, Any]) -> tuple[dict[str, Any], Path]:
     _, path, exists = _aws_profile_status(private_dir, tenant_id)
     current_profile = _read_json(path, {}) if exists else {}
@@ -657,7 +847,8 @@ def _prepare_send_as_for_profile(private_dir: Path, tenant_id: str, *, operator_
     domain = str(identity.get("domain") or status_payload.get("domain") or "").strip()
     provider_state = _ses_identity_status(region, domain) if domain else {"aws_ses_identity_status": "not_started", "identity_payload": {}}
     checked_at = _utc_now_iso()
-    secret_material = _smtp_secret_material(str(smtp.get("credentials_secret_name") or ""))
+    secret_name = str(smtp.get("credentials_secret_name") or "").strip()
+    secret_material = _provision_smtp_secret_material(private_dir, secret_name=secret_name, region=region)
     updated, _ = _update_aws_profile(
         private_dir,
         tenant_id,
@@ -706,8 +897,8 @@ def _prepare_send_as_for_profile(private_dir: Path, tenant_id: str, *, operator_
             "port": str(updated_smtp.get("port") or ""),
             "username": str(secret_material.get("username") or updated_smtp.get("username") or ""),
             "password": str(secret_material.get("password") or ""),
-            "security_label": "Secured connection using TLS",
-            "security_hint": "Select Secured connection using TLS in the supporting email application.",
+            "security_label": _AWS_SMTP_TLS_LABEL,
+            "security_hint": f"Select {_AWS_SMTP_TLS_LABEL} in the supporting email application.",
             "secret_ref": str(updated_smtp.get("credentials_secret_name") or ""),
             "credentials_secret_state": str(updated_smtp.get("credentials_secret_state") or ""),
         },

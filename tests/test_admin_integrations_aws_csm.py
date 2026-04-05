@@ -130,12 +130,31 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             self.assertNotIn("alias_email", stored)
             self.assertNotIn("gmail_send_as_status", stored)
 
-            provision_response = client.post(
-                "/portal/api/admin/aws/profile/aws-csm.fnd.dylan/provision",
-                headers=self._headers(),
-                json={"action": "prepare_send_as"},
-            )
-            self.assertEqual(provision_response.status_code, 202)
+            module, client = self._make_client_with_module(private_dir)
+            with mock.patch.object(
+                module,
+                "_provision_smtp_secret_material",
+                return_value={
+                    "secret_name": "aws-cms/smtp/fnd",
+                    "username": "AKIAEXAMPLE",
+                    "persisted_username": "AKIAEXAMPLE",
+                    "password": "smtp-password-123",
+                    "state": "configured",
+                },
+            ), mock.patch.object(
+                module,
+                "_ses_identity_status",
+                return_value={
+                    "aws_ses_identity_status": "verified",
+                    "identity_payload": {"VerificationStatus": "SUCCESS"},
+                },
+            ):
+                provision_response = client.post(
+                    "/portal/api/admin/aws/profile/aws-csm.fnd.dylan/provision",
+                    headers=self._headers(),
+                    json={"action": "prepare_send_as"},
+                )
+            self.assertEqual(provision_response.status_code, 200)
             provision_payload = provision_response.get_json() or {}
             self.assertEqual(Path(provision_payload.get("profile_path") or ""), profile_path)
             self.assertTrue(str(provision_payload.get("canonical_root") or "").endswith("/private/utilities/tools/aws-csm"))
@@ -622,7 +641,7 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
 
             with mock.patch.object(
                 module,
-                "_smtp_secret_material",
+                "_provision_smtp_secret_material",
                 return_value={
                     "secret_name": "aws-cms/smtp/tff.technicalContact",
                     "username": "AKIAHandoff",
@@ -665,6 +684,79 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             self.assertEqual(handoff.get("username"), "AKIAHandoff")
             self.assertEqual(handoff.get("password"), "smtp-password-123")
             self.assertEqual(handoff.get("security_label"), "Secured connection using TLS")
+
+    def test_admin_aws_provision_smtp_secret_reuses_newest_real_secret_when_two_keys_are_active(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.fnd.dylan.json").write_text(
+                json.dumps(
+                    {
+                        "identity": {
+                            "profile_id": "aws-csm.fnd.dylan",
+                            "tenant_id": "fnd",
+                            "domain": "fruitfulnetworkdevelopment.com",
+                            "mailbox_local_part": "dylan",
+                            "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                        },
+                        "smtp": {
+                            "credentials_secret_name": "aws-cms/smtp/fnd",
+                            "credentials_secret_state": "configured",
+                            "username": "AKIAOLD",
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (root / "aws-csm.tff.technicalContact.json").write_text(
+                json.dumps(
+                    {
+                        "identity": {
+                            "profile_id": "aws-csm.tff.technicalContact",
+                            "tenant_id": "tff",
+                            "domain": "trappfamilyfarm.com",
+                            "mailbox_local_part": "technicalContact",
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "smtp": {
+                            "credentials_secret_name": "aws-cms/smtp/tff.technicalContact",
+                            "credentials_secret_state": "configured",
+                            "username": "AKIANEW",
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            module = _load_admin_integrations_module()
+            with mock.patch.object(
+                module,
+                "_aws_smtp_access_key_metadata",
+                return_value=[
+                    {"access_key_id": "AKIANEW", "status": "Active", "created_at": "2026-04-05T00:00:00+00:00"},
+                    {"access_key_id": "AKIAOLD", "status": "Active", "created_at": "2026-04-01T00:00:00+00:00"},
+                ],
+            ), mock.patch.object(
+                module,
+                "_smtp_secret_material",
+                side_effect=[
+                    {"secret_name": "aws-cms/smtp/cvcc.technicalContact", "username": "", "persisted_username": "", "password": "", "state": "placeholder"},
+                    {"secret_name": "aws-cms/smtp/fnd", "username": "AKIAOLD", "persisted_username": "AKIAOLD", "password": "pw-old", "state": "configured"},
+                    {"secret_name": "aws-cms/smtp/tff.technicalContact", "username": "AKIANEW", "persisted_username": "AKIANEW", "password": "pw-new", "state": "configured"},
+                    {"secret_name": "aws-cms/smtp/cvcc.technicalContact", "username": "AKIANEW", "persisted_username": "AKIANEW", "password": "pw-new", "state": "configured"},
+                ],
+            ), mock.patch.object(module, "_upsert_secret_string") as upsert:
+                material = module._provision_smtp_secret_material(
+                    private_dir,
+                    secret_name="aws-cms/smtp/cvcc.technicalContact",
+                    region="us-east-1",
+                )
+
+            self.assertEqual(material.get("username"), "AKIANEW")
+            self.assertEqual(material.get("password"), "pw-new")
+            upsert.assert_called_once()
 
     def test_admin_aws_status_groups_mailboxes_by_domain(self):
         with TemporaryDirectory() as temp_dir:

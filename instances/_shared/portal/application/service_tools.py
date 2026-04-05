@@ -808,8 +808,57 @@ def _service_profile_interface_cards(namespace: str, profile_cards: list[dict[st
             )
     return out
 
+def _aws_newsletter_cards(private_dir: Path) -> list[dict[str, Any]]:
+    progeny_root = private_dir / "network" / "progeny"
+    if not progeny_root.exists() or not progeny_root.is_dir():
+        return []
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for path in sorted(progeny_root.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            payload = {}
+        refs = payload.get("profile_refs") if isinstance(payload.get("profile_refs"), dict) else {}
+        policy = payload.get("email_policy") if isinstance(payload.get("email_policy"), dict) else {}
+        newsletter = policy.get("newsletter") if isinstance(policy.get("newsletter"), dict) else {}
+        sender_address = _text(newsletter.get("sender_address") or refs.get("newsletter_sender_address"))
+        ingest_address = _text(newsletter.get("ingest_address") or refs.get("newsletter_ingest_address"))
+        allowed_from = list(newsletter.get("allowed_from") or []) if isinstance(newsletter.get("allowed_from"), list) else []
+        allowed_from_csv = _text(refs.get("newsletter_allowed_from_csv")) or ", ".join(
+            [_text(item) for item in allowed_from if _text(item)]
+        )
+        dispatch_mode = _text(newsletter.get("dispatch_mode") or refs.get("newsletter_dispatch_mode")) or "aws_internal"
+        domain = ""
+        if "@" in sender_address:
+            domain = sender_address.split("@", 1)[1].strip().lower()
+        elif "@" in ingest_address:
+            domain = ingest_address.split("@", 1)[1].strip().lower()
+        else:
+            domain = _text(refs.get("paypal_site_domain")).lower()
+        if not domain or not (sender_address or ingest_address):
+            continue
+        dedupe_key = (domain, sender_address.lower(), ingest_address.lower())
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        out.append(
+            {
+                "card_id": f"aws-csm.newsletter.{domain}",
+                "kind": "newsletter",
+                "domain": domain,
+                "title": sender_address or f"newsletter@{domain}",
+                "sender_address": sender_address,
+                "ingest_address": ingest_address,
+                "allowed_from_csv": allowed_from_csv,
+                "dispatch_mode": dispatch_mode,
+                "source_path": str(path),
+            }
+        )
+    return out
 
-def _aws_profile_domain_sections(profile_cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+
+def _aws_profile_domain_sections(profile_cards: list[dict[str, Any]], *, private_dir: Path | None = None) -> list[dict[str, Any]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for card in profile_cards:
         if not isinstance(card, dict):
@@ -818,8 +867,14 @@ def _aws_profile_domain_sections(profile_cards: list[dict[str, Any]]) -> list[di
         identity = dict(body.get("identity")) if isinstance(body.get("identity"), dict) else {}
         domain = _text(identity.get("domain")) or "unscoped"
         grouped.setdefault(domain, []).append(card)
+    newsletters_by_domain: dict[str, list[dict[str, Any]]] = {}
+    if isinstance(private_dir, Path):
+        for card in _aws_newsletter_cards(private_dir):
+            domain = _text(card.get("domain")) or "unscoped"
+            newsletters_by_domain.setdefault(domain, []).append(card)
     out: list[dict[str, Any]] = []
-    for domain in sorted(grouped.keys(), key=lambda item: item.lower()):
+    all_domains = sorted(set(grouped.keys()) | set(newsletters_by_domain.keys()), key=lambda item: item.lower())
+    for domain in all_domains:
         cards = sorted(
             grouped.get(domain) or [],
             key=lambda item: (
@@ -828,11 +883,16 @@ def _aws_profile_domain_sections(profile_cards: list[dict[str, Any]]) -> list[di
                 _text(item.get("card_id")).lower(),
             ),
         )
+        newsletter_cards = sorted(
+            newsletters_by_domain.get(domain) or [],
+            key=lambda item: (_text(item.get("title")).lower(), _text(item.get("sender_address")).lower()),
+        )
         out.append(
             {
                 "domain": domain,
                 "card_count": len(cards),
                 "cards": cards,
+                "newsletter_cards": newsletter_cards,
             }
         )
     return out
@@ -1010,7 +1070,7 @@ def build_service_tool_config_context(
         },
         "collection_files": collection_files,
         "profile_cards": profile_cards,
-        "profile_domain_sections": _aws_profile_domain_sections(profile_cards) if namespace == "aws-csm" else [],
+        "profile_domain_sections": _aws_profile_domain_sections(profile_cards, private_dir=private_dir) if namespace == "aws-csm" else [],
         "derived_internal_members": derived_internal_members,
         "analytics_snapshots": analytics_snapshots,
         "warnings": warnings,
