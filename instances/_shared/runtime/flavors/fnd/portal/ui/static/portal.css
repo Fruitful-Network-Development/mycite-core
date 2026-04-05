@@ -5966,6 +5966,55 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   gap: 0.5rem;
 }
 
+.aws-csm-newsletterList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.65rem;
+}
+
+.aws-csm-newsletterCard {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 86%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 88%, white 12%);
+  color: var(--ink, #243026);
+}
+
+.aws-csm-newsletterCard__title,
+.aws-csm-newsletterCard__meta,
+.aws-csm-newsletterCard__stats,
+.aws-csm-newsletterCard__stats span {
+  min-width: 0;
+}
+
+.aws-csm-newsletterCard__title {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aws-csm-newsletterCard__meta {
+  font-size: 0.76rem;
+  color: var(--ink2, #667068);
+}
+
+.aws-csm-newsletterCard__stats {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--ink2, #667068);
+}
+
+.aws-csm-newsletterCard__stats span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .aws-csm-profileCard {
   display: flex;
   flex-direction: column;
@@ -6107,6 +6156,55 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .aws-csm-copyBtn {
   padding: 0.22rem 0.45rem;
   font-size: 0.72rem;
+}
+
+.aws-csm-controlFiles {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.aws-csm-fileEntry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 92%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 14%, transparent);
+  color: var(--ink2, #667068);
+  text-align: left;
+}
+
+.aws-csm-fileEntry:hover {
+  border-color: color-mix(in srgb, var(--line, #c8cec8) 54%, var(--accent, #0b6b46) 46%);
+  color: var(--ink, #243026);
+}
+
+.aws-csm-fileEntry.is-active {
+  border-color: color-mix(in srgb, var(--accent, #0b6b46) 58%, var(--line, #c8cec8) 42%);
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 34%, transparent);
+  color: var(--ink, #243026);
+}
+
+.aws-csm-fileEntry__name,
+.aws-csm-fileEntry__meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aws-csm-fileEntry__name {
+  font-size: 0.76rem;
+}
+
+.aws-csm-fileEntry__meta {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .aws-csm-fileList {

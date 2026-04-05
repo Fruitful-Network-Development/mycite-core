@@ -1564,6 +1564,23 @@
     return token === "placeholder" || token === "placeholder_present";
   }
 
+  function awsSecretIsProvisioned(smtp) {
+    var source = smtp && typeof smtp === "object" ? smtp : {};
+    return !awsSecretStateIsPlaceholder(source.credentials_secret_state) && text(source.credentials_secret_state) === "configured" && !!text(source.username);
+  }
+
+  function awsProvisioningLabel(card) {
+    var smtp = awsSmtpFromCard(card);
+    var workflow = awsWorkflowFromCard(card);
+    var verification = awsVerificationFromCard(card);
+    var provider = awsProviderFromCard(card);
+    if (workflow && workflow.is_send_as_confirmed) return "Gmail verified";
+    if (text(verification.status) === "verified" || text(provider.gmail_send_as_status) === "verified") return "Gmail verified";
+    if (workflow && workflow.is_ready_for_user_handoff) return "Gmail handoff pending";
+    if (awsSecretIsProvisioned(smtp)) return "Secret provisioned / SMTP ready";
+    return "No secret provisioned";
+  }
+
   function awsCopyAction(label, value) {
     var token = text(value);
     if (!token) return "";
@@ -1590,13 +1607,33 @@
     var missing = Array.isArray(workflow.missing_required_now) ? workflow.missing_required_now : [];
     var out = [];
     out.push('<div class="aws-csm-profileCard__title" title="' + esc(title) + '">' + esc(limitText(title, compact ? 34 : 56)) + "</div>");
-    out.push('<div class="aws-csm-profileCard__meta">' + esc(text(identity.role || "mailbox").replace(/_/g, " ")) + " · " + esc(awsHandoffStatusLabel(workflow)) + "</div>");
+    out.push('<div class="aws-csm-profileCard__meta">' + esc(text(identity.role || "mailbox").replace(/_/g, " ")) + " · " + esc(awsProvisioningLabel(card)) + "</div>");
     out.push('<div class="aws-csm-profileCard__stats">');
     out.push('<span>' + esc(text(identity.mailbox_local_part || "(mailbox)")) + "</span>");
     out.push('<span>' + esc(text(verification.status || "not_started").replace(/_/g, " ")) + "</span>");
     out.push('<span>' + esc(awsReceiveStateLabel(inbound || {})) + "</span>");
-    out.push('<span>' + esc(String(missing.length)) + " missing</span>");
+    out.push('<span>' + esc(String(missing.length)) + " blockers</span>");
     out.push("</div>");
+    return out.join("");
+  }
+
+  function renderAwsNewsletterCards(section) {
+    var cards = Array.isArray(section && section.newsletter_cards) ? section.newsletter_cards : [];
+    if (!cards.length) return "";
+    var out = [];
+    out.push('<div class="aws-csm-newsletterList">');
+    cards.forEach(function (card) {
+      if (!card || typeof card !== "object") return;
+      out.push('<article class="aws-csm-newsletterCard">');
+      out.push('<div class="aws-csm-newsletterCard__title" title="' + esc(text(card.title || "newsletter")) + '">' + esc(limitText(text(card.title || "newsletter"), 44)) + '</div>');
+      out.push('<div class="aws-csm-newsletterCard__meta">' + esc(text(card.dispatch_mode || "aws_internal").replace(/_/g, " ")) + '</div>');
+      out.push('<div class="aws-csm-newsletterCard__stats">');
+      if (text(card.sender_address)) out.push('<span title="' + esc(text(card.sender_address)) + '">' + esc(limitText(text(card.sender_address), 34)) + '</span>');
+      if (text(card.ingest_address)) out.push('<span title="' + esc(text(card.ingest_address)) + '">' + esc(limitText(text(card.ingest_address), 34)) + '</span>');
+      if (text(card.allowed_from_csv)) out.push('<span title="' + esc(text(card.allowed_from_csv)) + '">' + esc(limitText(text(card.allowed_from_csv), 34)) + '</span>');
+      out.push('</div></article>');
+    });
+    out.push('</div>');
     return out.join("");
   }
 
@@ -1623,7 +1660,9 @@
         out.push(awsProfileCardBody(card, compact));
         out.push("</button>");
       });
-      out.push("</div></section>");
+      out.push("</div>");
+      out.push(renderAwsNewsletterCards(section));
+      out.push("</section>");
     });
     return out.join("");
   }
@@ -1644,6 +1683,7 @@
       role: text(identity.role),
       "operator inbox": text(identity.operator_inbox_target || identity.single_user_email),
       "send as": text(identity.send_as_email || smtp.send_as_email),
+      "smtp state": awsProvisioningLabel(selectedCard),
       "handoff status": awsHandoffStatusLabel(workflow),
       "verification": text(verification.status),
       "provider send-as": text(provider.gmail_send_as_status),
@@ -1668,7 +1708,7 @@
     }).length;
     var out = [];
     out.push('<article class="card aws-csm-overviewIntro"><div class="card__kicker">Tool Sandbox</div><div class="card__title">AWS-CMS mailbox profiles</div><div class="card__body">');
-    out.push("<p>Select a mailbox profile to enter the onboarding workflow. Profiles are grouped by domain so the tool sandbox reflects the actual mailbox contract units instead of the raw JSON file list.</p>");
+    out.push("<p>Select a mailbox profile to enter the onboarding workflow. Profiles are grouped by domain, and newsletter cards appear only when the sandbox already carries newsletter sender/ingest state for that domain.</p>");
     out.push("<p><strong>Total profiles:</strong> " + esc(String(cards.length)) + " · <strong>Ready for handoff:</strong> " + esc(String(ready)) + "</p>");
     if (!selectedCard) {
       out.push("<p><strong>Next step:</strong> choose a profile card below to open Overview, SMTP, Verification, and Files for that mailbox only.</p>");
@@ -1703,6 +1743,7 @@
       "credentials source": text(smtp.credentials_source),
       "secret ref": text(smtp.credentials_secret_name),
       "secret state": text(smtp.credentials_secret_state),
+      "smtp state": awsProvisioningLabel(selectedCard),
       "username known": text(smtp.username) ? "yes" : "no",
       "forward to": text(smtp.forward_to_email),
       "forwarding status": text(smtp.forwarding_status),
@@ -1710,8 +1751,8 @@
       "workflow handoff ready": workflow.is_ready_for_user_handoff ? "yes" : "no",
       "handoff status": awsHandoffStatusLabel(workflow)
     }));
-    if (awsSecretStateIsPlaceholder(smtp.credentials_secret_state) && !text(smtp.username)) {
-      out.push("<p><strong>Placeholder only:</strong> the mailbox secret exists, but it still contains placeholder SES SMTP values.</p>");
+    if (!awsSecretIsProvisioned(smtp)) {
+      out.push("<p><strong>No secret provisioned:</strong> begin onboarding to provision real SES SMTP credentials before Gmail handoff.</p>");
     } else if (text(smtp.credentials_secret_state) === "auth_failed" && !text(smtp.username)) {
       out.push("<p><strong>SMTP auth failed:</strong> the referenced credential set is present, but not yet usable for SES SMTP handoff.</p>");
     } else if (workflow.is_ready_for_user_handoff && !workflow.is_send_as_confirmed) {
@@ -1726,6 +1767,14 @@
     var identity = awsIdentityFromCard(selectedCard);
     var out = [];
     out.push('<article class="card aws-csm-handoffCard"><div class="card__kicker">SMTP Handoff</div><div class="card__title">Use these values in the supporting email app</div><div class="card__body">');
+    if (!awsSecretIsProvisioned(smtp)) {
+      out.push("<p><strong>No secret provisioned:</strong> the portal will only display SMTP copy fields after real SES SMTP secret material has been provisioned.</p>");
+      if (text(smtp.secret_ref)) {
+        out.push("<p><strong>Secret ref:</strong> <code>" + esc(text(smtp.secret_ref)) + "</code></p>");
+      }
+      out.push("</div></article>");
+      return out.join("");
+    }
     out.push('<dl class="aws-csm-infoGrid">');
     out.push(awsInfoLine("Send mail as", text(smtp.send_as_email || identity.send_as_email), { actions: [awsCopyAction("Copy", text(smtp.send_as_email || identity.send_as_email))] }));
     out.push(awsInfoLine("SMTP server", text(smtp.host), { actions: [awsCopyAction("Copy", text(smtp.host))] }));
@@ -1734,11 +1783,7 @@
     out.push(awsInfoLine("Password", text(smtp.password), { actions: [awsCopyAction("Copy", text(smtp.password))] }));
     out.push(awsInfoLine("Security", text(smtp.security_label || "Secured connection using TLS")));
     out.push("</dl>");
-    if (awsSecretStateIsPlaceholder(smtp.credentials_secret_state)) {
-      out.push("<p><strong>Secret state:</strong> this mailbox is still backed by placeholder SMTP credentials. Replace the secret contents before attempting Gmail send-as.</p>");
-    } else {
-      out.push("<p><strong>Direction:</strong> choose <em>Secured connection using TLS</em> in the supporting email application.</p>");
-    }
+    out.push("<p><strong>Direction:</strong> choose <em>Secured connection using TLS</em> in the supporting email application.</p>");
     if (text(smtp.secret_ref)) {
       out.push("<p><strong>Secret ref:</strong> <code>" + esc(text(smtp.secret_ref)) + "</code></p>");
     }
@@ -1778,6 +1823,7 @@
       "portal state": text(verification.portal_state),
       "ses identity": text(provider.aws_ses_identity_status),
       "gmail send-as": text(provider.gmail_send_as_status),
+      "smtp state": awsProvisioningLabel(selectedCard),
       "handoff status": awsHandoffStatusLabel(workflow),
       "completion boundary": awsCompletionBoundaryLabel(workflow),
       "receive state": awsReceiveStateLabel(inbound),
@@ -1795,6 +1841,8 @@
     } else {
       if (workflow.is_ready_for_user_handoff && !workflow.is_send_as_confirmed) {
         out.push("<p><strong>Ready:</strong> the mailbox can proceed to Gmail send-as handoff as soon as you load the SMTP bundle.</p>");
+      } else if (!awsSecretIsProvisioned(awsSmtpFromCard(selectedCard))) {
+        out.push("<p><strong>Blocked before handoff:</strong> no real SES SMTP secret has been provisioned for this mailbox yet.</p>");
       } else if (Array.isArray(workflow.configuration_blockers_now) && workflow.configuration_blockers_now.length) {
         out.push("<p><strong>Blocked before handoff:</strong> " + esc(workflow.configuration_blockers_now.join(", ")) + "</p>");
       }
@@ -1966,6 +2014,18 @@
       node.addEventListener("click", function () {
         awsSelectProfile(tool.tool_id, node.getAttribute("data-aws-profile"));
         state.activeMediationMode = "overview";
+        renderAll();
+      });
+    });
+    qsa("[data-aws-file]", root || els.toolInterfaceBody).forEach(function (node) {
+      node.addEventListener("click", function () {
+        var bucket = providerStateFor(tool.tool_id);
+        bucket.selectedFile = text(node.getAttribute("data-aws-file"));
+        var profileToken = text(node.getAttribute("data-aws-profile-file"));
+        if (profileToken) {
+          awsSelectProfile(tool.tool_id, profileToken);
+        }
+        state.activeMediationMode = "files";
         renderAll();
       });
     });
@@ -2171,8 +2231,36 @@
     return out.join("");
   }
 
+  function awsProfileTokenFromFile(file) {
+    var relativePath = text(file && (file.relative_path || file.file_name));
+    if (!/^aws-csm\\..+\\.json$/i.test(relativePath)) return "";
+    return relativePath.replace(/\\.json$/i, "").toLowerCase();
+  }
+
   function renderAwsControlPanel(tool) {
-    return renderAwsProfileSections(tool, { compact: true });
+    var ctx = toolContext(tool.tool_id) || {};
+    var files = Array.isArray(ctx.collection_files) ? ctx.collection_files : [];
+    if (!files.length) {
+      return '<div class="ide-controlpanel__empty">No AWS-CMS sandbox files found.</div>';
+    }
+    var selectedCard = awsSelectedCard(tool);
+    var selectedToken = awsProfileToken(selectedCard);
+    var bucket = providerStateFor(tool.tool_id);
+    var selectedFile = text(bucket.selectedFile);
+    var out = [];
+    out.push('<section class="aws-csm-controlFiles">');
+    files.forEach(function (file) {
+      if (!file || typeof file !== "object") return;
+      var relativePath = text(file.relative_path || file.file_name || "");
+      var profileToken = awsProfileTokenFromFile(file);
+      var active = (profileToken && profileToken === selectedToken) || (!profileToken && selectedFile === relativePath);
+      out.push('<button type="button" class="aws-csm-fileEntry' + (active ? ' is-active' : '') + '" data-aws-file="' + esc(relativePath) + '" data-aws-profile-file="' + esc(profileToken) + '">');
+      out.push('<span class="aws-csm-fileEntry__name" title="' + esc(relativePath) + '">' + esc(limitText(relativePath, 38)) + '</span>');
+      out.push('<span class="aws-csm-fileEntry__meta">' + esc(text(file.content_kind || "json")) + '</span>');
+      out.push('</button>');
+    });
+    out.push('</section>');
+    return out.join("");
   }
 
   var fndEbiMediationProvider = {

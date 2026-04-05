@@ -502,6 +502,8 @@ class ServiceToolMediationTests(unittest.TestCase):
             private_dir = Path(temp_dir) / "private"
             root = private_dir / "utilities" / "tools" / "aws-csm"
             root.mkdir(parents=True, exist_ok=True)
+            progeny_root = private_dir / "network" / "progeny"
+            progeny_root.mkdir(parents=True, exist_ok=True)
             (root / "aws-csm.tff.technicalContact.json").write_text(
                 json.dumps(
                     {
@@ -562,6 +564,21 @@ class ServiceToolMediationTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
+            (progeny_root / "member-trapp.json").write_text(
+                json.dumps(
+                    {
+                        "profile_refs": {
+                            "paypal_site_domain": "trappfamilyfarm.com",
+                            "newsletter_ingest_address": "hermes@trappfamilyfarm.com",
+                            "newsletter_sender_address": "news@trappfamilyfarm.com",
+                            "newsletter_allowed_from_csv": "mark@trappfamilyfarm.com",
+                            "newsletter_dispatch_mode": "aws_internal",
+                        }
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             payload = module.build_service_tool_config_context(
                 "aws_platform_admin",
                 private_dir=private_dir,
@@ -575,6 +592,10 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertEqual(len(sections), 1)
             self.assertEqual(sections[0].get("domain"), "trappfamilyfarm.com")
             self.assertEqual(len(sections[0].get("cards") or []), 2)
+            newsletter_cards = sections[0].get("newsletter_cards") if isinstance(sections[0].get("newsletter_cards"), list) else []
+            self.assertEqual(len(newsletter_cards), 1)
+            self.assertEqual(newsletter_cards[0].get("sender_address"), "news@trappfamilyfarm.com")
+            self.assertEqual(newsletter_cards[0].get("ingest_address"), "hermes@trappfamilyfarm.com")
             titles = [str(card.get("title") or "") for card in cards if isinstance(card, dict)]
             self.assertIn("technicalContact@trappfamilyfarm.com", titles)
             self.assertIn("mark@trappfamilyfarm.com", titles)
