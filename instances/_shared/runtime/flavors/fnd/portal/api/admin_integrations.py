@@ -813,6 +813,75 @@ def _reconcile_profile_smtp_secret(profile: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _has_gmail_confirmation_evidence(
+    profile: dict[str, Any] | None,
+    *,
+    verification_message: dict[str, Any] | None = None,
+) -> bool:
+    payload = profile if isinstance(profile, dict) else {}
+    verification = payload.get("verification") if isinstance(payload.get("verification"), dict) else {}
+    inbound = payload.get("inbound") if isinstance(payload.get("inbound"), dict) else {}
+    message = verification_message if isinstance(verification_message, dict) else {}
+    return any(
+        [
+            bool(str(message.get("confirmation_link") or "").strip()),
+            bool(str(message.get("s3_uri") or "").strip()),
+            bool(str(message.get("message_id") or "").strip()),
+            bool(str(verification.get("link") or "").strip()),
+            bool(str(verification.get("latest_message_reference") or "").strip()),
+            bool(inbound.get("latest_message_has_verification_link")),
+        ]
+    )
+
+
+def _reset_unverified_gmail_state_patch(profile: dict[str, Any] | None) -> dict[str, Any]:
+    payload = profile if isinstance(profile, dict) else {}
+    workflow = payload.get("workflow") if isinstance(payload.get("workflow"), dict) else {}
+    if _has_gmail_confirmation_evidence(payload):
+        return {}
+    verification = payload.get("verification") if isinstance(payload.get("verification"), dict) else {}
+    provider = payload.get("provider") if isinstance(payload.get("provider"), dict) else {}
+    inbound = payload.get("inbound") if isinstance(payload.get("inbound"), dict) else {}
+    if (
+        str(verification.get("status") or "").strip().lower() != "verified"
+        and str(provider.get("gmail_send_as_status") or "").strip().lower() != "verified"
+        and not bool(workflow.get("is_send_as_confirmed"))
+        and not bool(inbound.get("receive_verified"))
+        and str(verification.get("portal_state") or "").strip().lower() != "verified"
+    ):
+        return {}
+    return {
+        "verification": {
+            "status": "not_started",
+            "portal_state": "",
+            "verified_at": "",
+            "email_received_at": "",
+            "link": "",
+            "latest_message_reference": "",
+        },
+        "provider": {
+            "gmail_send_as_status": "not_started",
+            "last_checked_at": _utc_now_iso(),
+        },
+        "inbound": {
+            "receive_verified": False,
+            "receive_verified_at": "",
+            "receive_last_checked_at": _utc_now_iso(),
+            "portal_native_display_ready": False,
+            "capture_source_kind": "",
+            "capture_source_reference": "",
+            "latest_message_sender": "",
+            "latest_message_recipient": "",
+            "latest_message_subject": "",
+            "latest_message_captured_at": "",
+            "latest_message_s3_key": "",
+            "latest_message_s3_uri": "",
+            "latest_message_id": "",
+            "latest_message_has_verification_link": False,
+        },
+    }
+
+
 def _refresh_provider_status_for_profile(private_dir: Path, tenant_id: str) -> dict[str, Any]:
     status_payload, _, _ = _aws_profile_status(private_dir, tenant_id)
     profile = status_payload.get("profile") if isinstance(status_payload.get("profile"), dict) else {}
@@ -945,32 +1014,34 @@ def _stage_smtp_credentials_for_profile(
     checked_at = _utc_now_iso()
     secret_name = str(smtp.get("credentials_secret_name") or "").strip()
     secret_material = _provision_smtp_secret_material(private_dir, secret_name=secret_name, region=region)
+    reset_patch = _reset_unverified_gmail_state_patch(profile)
+    base_patch = {
+        "identity": {
+            "operator_inbox_target": normalized_inbox,
+            "single_user_email": normalized_inbox,
+        },
+        "smtp": {
+            "forward_to_email": normalized_inbox,
+            "username": str(secret_material.get("persisted_username") or ""),
+            "credentials_secret_state": str(secret_material.get("state") or "missing"),
+        },
+        "provider": {
+            "aws_ses_identity_status": str(provider_state.get("aws_ses_identity_status") or "not_started"),
+            "last_checked_at": checked_at,
+        },
+        "workflow": {
+            "initiated": True,
+            "initiated_at": initiated_at,
+        },
+        "inbound": {
+            "receive_routing_target": normalized_inbox,
+            "receive_last_checked_at": checked_at,
+        },
+    }
     updated, _ = _update_aws_profile(
         private_dir,
         tenant_id,
-        {
-            "identity": {
-                "operator_inbox_target": normalized_inbox,
-                "single_user_email": normalized_inbox,
-            },
-            "smtp": {
-                "forward_to_email": normalized_inbox,
-                "username": str(secret_material.get("persisted_username") or ""),
-                "credentials_secret_state": str(secret_material.get("state") or "missing"),
-            },
-            "provider": {
-                "aws_ses_identity_status": str(provider_state.get("aws_ses_identity_status") or "not_started"),
-                "last_checked_at": checked_at,
-            },
-            "workflow": {
-                "initiated": True,
-                "initiated_at": initiated_at,
-            },
-            "inbound": {
-                "receive_routing_target": normalized_inbox,
-                "receive_last_checked_at": checked_at,
-            },
-        },
+        _deep_merge_dicts(base_patch, reset_patch),
     )
     updated_profile = updated.get("profile") if isinstance(updated.get("profile"), dict) else {}
     updated_identity = updated_profile.get("identity") if isinstance(updated_profile.get("identity"), dict) else {}
@@ -1206,6 +1277,12 @@ def _confirm_verified_for_profile(private_dir: Path, tenant_id: str) -> dict[str
     )
     capture = _capture_verification_for_profile(private_dir, tenant_id)
     verification_message = capture.get("verification_message") if isinstance(capture.get("verification_message"), dict) else {}
+    profile = capture.get("profile") if isinstance(capture.get("profile"), dict) else profile
+    if not _has_gmail_confirmation_evidence(profile, verification_message=verification_message):
+        raise _AwsProvisionError(
+            "Gmail verification cannot be confirmed yet because no confirmation evidence has been captured for this mailbox.",
+            status_code=409,
+        )
     verified_at = _utc_now_iso()
     updated, _ = _update_aws_profile(
         private_dir,

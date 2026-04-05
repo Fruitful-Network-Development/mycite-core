@@ -422,6 +422,131 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertIn("verification", first)
             self.assertIn("provider", first)
 
+    def test_aws_profile_verified_state_requires_confirmation_evidence(self):
+        module = _load_service_tools_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.tff.technicalContact.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "mycite.service_tool.aws_csm.profile.v1",
+                        "identity": {
+                            "profile_id": "aws-csm.tff.technicalContact",
+                            "tenant_id": "tff",
+                            "domain": "trappfamilyfarm.com",
+                            "region": "us-east-1",
+                            "mailbox_local_part": "technicalContact",
+                            "operator_inbox_target": "trapp.family.farm@gmail.com",
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "smtp": {
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                            "host": "email-smtp.us-east-1.amazonaws.com",
+                            "port": "587",
+                            "username": "AKIAEXAMPLE",
+                            "credentials_source": "operator_managed",
+                            "credentials_secret_name": "aws-cms/smtp/tff.technicalContact",
+                            "credentials_secret_state": "configured",
+                            "forward_to_email": "trapp.family.farm@gmail.com",
+                        },
+                        "verification": {
+                            "status": "verified",
+                            "portal_state": "verified",
+                            "verified_at": "2026-04-05T17:37:16.583968+00:00",
+                        },
+                        "provider": {
+                            "aws_ses_identity_status": "verified",
+                            "gmail_send_as_status": "verified",
+                        },
+                        "inbound": {
+                            "receive_routing_target": "trapp.family.farm@gmail.com",
+                            "receive_verified": True,
+                        },
+                        "workflow": {
+                            "initiated": True,
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            payload = module.build_service_tool_config_context(
+                "aws_platform_admin",
+                private_dir=private_dir,
+                tool_tabs=[{"tool_id": "aws_platform_admin", **module.build_service_tool_meta("aws_platform_admin")}],
+                portal_instance_id="fnd",
+                msn_id="3-2-3",
+            )
+            cards = payload.get("profile_cards") if isinstance(payload.get("profile_cards"), list) else []
+            self.assertTrue(cards)
+            card_body = cards[0].get("body") if isinstance(cards[0], dict) else {}
+            verification = card_body.get("verification") if isinstance(card_body.get("verification"), dict) else {}
+            provider = card_body.get("provider") if isinstance(card_body.get("provider"), dict) else {}
+            workflow = card_body.get("workflow") if isinstance(card_body.get("workflow"), dict) else {}
+            self.assertEqual(verification.get("status"), "not_started")
+            self.assertEqual(provider.get("gmail_send_as_status"), "not_started")
+            self.assertFalse(bool(workflow.get("is_send_as_confirmed")))
+            self.assertEqual(workflow.get("handoff_status"), "ready_for_gmail_handoff")
+
+    def test_aws_profile_stale_receive_verified_state_downgrades_without_receive_evidence(self):
+        module = _load_service_tools_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.tff.technicalContact.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "mycite.service_tool.aws_csm.profile.v1",
+                        "identity": {
+                            "profile_id": "aws-csm.tff.technicalContact",
+                            "tenant_id": "tff",
+                            "domain": "trappfamilyfarm.com",
+                            "region": "us-east-1",
+                            "mailbox_local_part": "technicalContact",
+                            "operator_inbox_target": "trapp.family.farm@gmail.com",
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "smtp": {
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                            "host": "email-smtp.us-east-1.amazonaws.com",
+                            "port": "587",
+                            "username": "AKIAEXAMPLE",
+                            "credentials_source": "operator_managed",
+                            "credentials_secret_name": "aws-cms/smtp/tff.technicalContact",
+                            "credentials_secret_state": "configured",
+                            "forward_to_email": "trapp.family.farm@gmail.com",
+                        },
+                        "workflow": {
+                            "initiated": True,
+                        },
+                        "inbound": {
+                            "receive_routing_target": "trapp.family.farm@gmail.com",
+                            "receive_state": "receive_verified",
+                            "receive_verified": False,
+                            "portal_native_display_ready": False,
+                            "latest_message_has_verification_link": False,
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            payload = module.build_service_tool_config_context(
+                "aws_platform_admin",
+                private_dir=private_dir,
+                tool_tabs=[{"tool_id": "aws_platform_admin", **module.build_service_tool_meta("aws_platform_admin")}],
+                portal_instance_id="fnd",
+                msn_id="3-2-3",
+            )
+            cards = payload.get("profile_cards") if isinstance(payload.get("profile_cards"), list) else []
+            self.assertTrue(cards)
+            card_body = cards[0].get("body") if isinstance(cards[0], dict) else {}
+            inbound = card_body.get("inbound") if isinstance(card_body.get("inbound"), dict) else {}
+            self.assertEqual(inbound.get("receive_state"), "receive_pending")
+
     def test_aws_profile_boundary_can_be_fully_completed_after_confirmation(self):
         module = _load_service_tools_module()
         with TemporaryDirectory() as temp_dir:
@@ -456,6 +581,8 @@ class ServiceToolMediationTests(unittest.TestCase):
                             "status": "verified",
                             "portal_state": "verified",
                             "verified_at": "2026-04-02T15:40:00+00:00",
+                            "link": "https://mail-settings.google.com/mail/vf-example",
+                            "latest_message_reference": "s3://ses-inbound-fnd-mail/inbound/example",
                         },
                         "provider": {
                             "aws_ses_identity_status": "verified",
@@ -467,6 +594,7 @@ class ServiceToolMediationTests(unittest.TestCase):
                             "receive_verified": True,
                             "portal_native_display_ready": True,
                             "capture_source_reference": "s3://ses-inbound-fnd-mail/inbound/example",
+                            "latest_message_has_verification_link": True,
                             "legacy_forwarder_dependency": True,
                         },
                     }
