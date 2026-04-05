@@ -1,321 +1,162 @@
-# Newsletter System as a Separate Tool: Later Development Context
+# Newsletter Contact Lists as a Separate Service-Tool Pattern
 
 ## Purpose
 
-This document maps out the creation of a newsletter system as a separate service/tool lane rather than an extension of AWS-CMS mailbox onboarding.
+Define newsletter list management as a separate service-tool lane that does not
+reuse AWS-CMS mailbox onboarding state.
 
-The goal is to keep newsletter behavior cleanly separated from operator mailbox profiles while still allowing it to integrate with portal-owned state and AWS-based delivery.
+AWS-CMS remains the operator mailbox onboarding system.
+Newsletter contact lists are a different concern.
 
-## Why this should be separate
+## Boundary From AWS-CMS
 
-The project now has a stable mailbox-onboarding model in AWS-CMS:
-- mailbox profiles are canonical
-- send-as and receive-path state are modeled explicitly
-- FND is the completed reference mailbox
-- TFF/CVCC technical-contact onboarding can proceed from that baseline
+AWS-CMS owns:
 
-That system is for **operator mailboxes**.
+- operator mailbox profiles
+- SMTP secret readiness
+- Gmail send-as handoff and verification state
+- inbound receive-path state
 
-Newsletter is a different concern:
-- `news@<domain>` sender identity
-- subscriber lists
-- public signup
-- unsubscribe behavior
-- campaign creation
-- send-job orchestration
-- Lambda delivery
-- recipient state and audit
+Newsletter contact-list tooling should own:
 
-These should not be folded into AWS-CMS mailbox profiles.
+- website mailing-list records
+- signup and unsubscribe updates
+- newsletter sender/list metadata
+- Lambda delivery job inputs
 
-## Core architectural judgment
+Do not:
 
-Do not treat `news@<domain>` as just another mailbox onboarding profile.
+- store newsletter list data in AWS-CMS mailbox profiles
+- store newsletter list data under `private/utilities/tools/aws-csm`
+- route unsubscribe behavior through AWS-CMS onboarding actions
 
-There are now two separate lanes:
+## Canonical Contact-List Location
 
-### Operator mailbox lane
-This covers:
-- technical contact mailboxes
-- staged but uninitiated operator mailboxes
-- send-as onboarding
-- receive forwarding/receipt
-- operator inbox routing
-- mailbox operational state
+Canonical mailing-list data should live with the website that owns it.
 
-### Newsletter lane
-This should cover:
-- newsletter sender identity
-- subscriber system of record
-- signup/unsubscribe flows
-- campaign/send-job records
-- Lambda delivery worker behavior
+Required path pattern:
 
-Keeping them separate avoids reintroducing schema drift.
+- `/srv/webapps/clients/<domain>/contacts/<domain>-contact_log.json`
 
-## Current project position
+Example:
 
-The newsletter lane is still design-only. The current mailbox model in AWS-CMS is the right pattern for grouped state, but it should **not** be overloaded with newsletter sender, subscribers, or campaigns. A repo grep did not reveal an already established newsletter subsystem, so this is a clean new subsystem lane rather than a cleanup of an existing one. fileciteturn58file2
+- `/srv/webapps/clients/trappfamilyfarm.com/contacts/trappfamilyfarm.com-contact_log.json`
 
-## Recommended product/tool boundary
+This mirrors the FND-EBI pattern, where analytics are mediated from
+`client_root/analytics` instead of being stored as tenant-private tool state.
 
-The cleanest direction is to implement newsletter as a **separate tool** with its own:
-- state root
-- state adapter
-- admin routes
-- operator UI
-- public subscription endpoints
-- Lambda worker boundary
+## Service-Tool Role
 
-It can still live inside the broader portal ecosystem, but it should not be represented as AWS-CMS mailbox state.
+The newsletter contact-list tool is an admin email-list management surface.
 
-## Recommended system-of-record rule
+It should:
 
-The portal should own canonical subscriber truth.
+- append new contacts
+- update existing contacts by `email` plus `list_id` or domain context
+- mark unsubscribes by toggling `subscribed=false`
+- preserve history with timestamps instead of deleting records
 
-That means:
-- subscriber records are created, updated, and queried through portal-owned state
-- Lambda is a delivery worker, not the source of subscriber truth
-- files or exports can exist as job artifacts, but they should not become the canonical system of record
+It is not a tenant-private utility. Its canonical data belongs alongside the
+public site's `webapps/clients/<domain>` tree.
 
-This was the central design recommendation from the planning pass. fileciteturn58file2
+## Minimum Contact-Log Record
 
-## Recommended sender model
+Each entry should include at least:
 
-A newsletter sender should be modeled separately from mailbox profiles.
-
-Recommended sender config fields:
-- `sender_id`
-- `tenant_id`
-- `domain`
-- `sender_email`
-- `sender_kind = "newsletter"`
-- `delivery_mode = "lambda_ses_api"`
-- `aws_region`
-- `aws_ses_identity_status`
-- `sending_enabled`
-- `default_from_name`
-- `default_reply_to`
-- `configuration_set` nullable
-- `last_checked_at`
-
-This is intentionally different from mailbox profiles:
-- it does not need operator inbox target
-- it does not need Gmail send-as state
-- it does not need receive-path modeling
-
-It is an outbound newsletter sender lane, not an operator mailbox lane. fileciteturn58file2
-
-## Recommended subscriber model
-
-Minimum canonical subscriber record:
-- `subscriber_id`
-- `list_id`
-- `tenant_id`
-- `domain`
 - `email`
 - `name` nullable
 - `subscribed`
-- `suppressed`
-- `bounce_status`
 - `source`
 - `created_at`
 - `updated_at`
 - `unsubscribed_at` nullable
-- `double_opt_in_status` default `not_required`
-
-Minimum list record:
-- `list_id`
-- `tenant_id`
-- `domain`
-- `label`
-- `sender_id`
-- `signup_enabled`
-- `created_at`
-- `updated_at`
-
-Important design rule:
-- `subscribed` is the hard gate for sending
-- unsubscribe should not delete a record
-- unsubscribe should flip state and preserve history
-
-These were the recommended foundations in the newsletter planning output. fileciteturn58file2
-
-## Recommended public flows
-
-### Signup
-Public signup flow should:
-1. accept `email`, `list_id`, optional `name`, optional `source`
-2. upsert subscriber by `list_id + email`
-3. set `subscribed = true`
-4. clear `unsubscribed_at`
-5. update timestamps
-6. optionally support double opt-in later
-
-### Unsubscribe
-Each newsletter email should include a signed unsubscribe link that:
-1. identifies subscriber and list safely
-2. verifies token integrity and expiry
-3. sets `subscribed = false`
-4. sets `unsubscribed_at`
-5. updates `updated_at`
-
-This preserves a consistent audit trail and prevents accidental resends to opted-out recipients. fileciteturn58file2
-
-## Recommended portal/Lambda boundary
-
-The clean design is:
-
-- portal = source of truth
-- Lambda = delivery worker
-
-Recommended behavior:
-1. portal creates an immutable recipient snapshot from current subscriber truth for a send job
-2. Lambda consumes that snapshot
-3. Lambda sends one message at a time through SES
-4. Lambda writes result events back as job-audit records
-
-This allows repeatable sends and retries while keeping the portal as the canonical record source. The snapshot/export is allowed as a job artifact, not as the canonical system. fileciteturn58file2
-
-## Recommended campaign and send-job model
-
-### Campaign record
-Suggested fields:
-- `campaign_id`
-- `tenant_id`
 - `domain`
 - `list_id`
-- `sender_id`
-- `subject`
-- `content_ref` or inline body
-- `status` (`draft`, `ready`, `sending`, `completed`, `failed`)
-- `created_at`
-- `updated_at`
-- `sent_at` nullable
 
-### Send-job record
-Suggested fields:
-- `job_id`
-- `campaign_id`
-- `recipient_snapshot_ref`
-- `status`
-- `queued_at`
-- `started_at`
-- `finished_at`
-- `attempted_count`
-- `sent_count`
-- `skipped_count`
-- `failed_count`
+Optional later fields:
 
-These separate authoring from execution and let the portal show operational truth cleanly. fileciteturn58file2
+- `double_opt_in_status`
+- `bounce_status`
+- `suppressed`
+- `last_sent_at`
+- `tags`
 
-## Recommended portal surfaces
+## Signup Flow
 
-Admin/operator surfaces should be separate from AWS-CMS.
+Public signup should:
 
-Suggested admin capabilities:
-- subscriber list view
-- add/import/update subscriber
-- sender status for `news@<domain>`
-- campaign draft/create
-- send-job status
-- unsubscribe status view
+1. accept `email`, optional `name`, `domain`, and `list_id`
+2. open `/srv/webapps/clients/<domain>/contacts/<domain>-contact_log.json`
+3. upsert the matching record
+4. set `subscribed=true`
+5. clear `unsubscribed_at`
+6. update `updated_at`
 
-Suggested route split:
-- public: `/portal/api/newsletter/...`
-- admin: `/portal/api/admin/newsletter/...`
+## Unsubscribe Flow
 
-That mirrors the existing admin integration style without mixing newsletter into AWS-CMS mailbox semantics. fileciteturn58file2
+Every newsletter email should include a signed unsubscribe link.
 
-## Recommended tool/state layout
+That link should:
 
-The planning output proposed a separate state/tool root such as:
+1. identify the subscriber safely
+2. resolve the canonical website contact-log path
+3. update the matching JSON entry
+4. set `subscribed=false`
+5. set `unsubscribed_at`
+6. update `updated_at`
 
-- `/srv/mycite-state/instances/<tenant>/private/utilities/tools/newsletter/`
+Unsubscribe is a state change, not record deletion.
 
-Suggested state artifacts:
-- `newsletter.sender.<tenant>.news.json`
-- `newsletter.list.<tenant>.<list_id>.json`
-- `newsletter.subscribers.<tenant>.<list_id>.ndjson`
-- `newsletter.campaign.<tenant>.<campaign_id>.json`
-- `newsletter.send-job.<tenant>.<job_id>.json`
-- `newsletter.send-events.<tenant>.<job_id>.ndjson`
+## Lambda Boundary
 
-Suggested repo files:
-- `tools/newsletter/state_adapter/profile.py`
-- `portals/_shared/runtime/flavors/fnd/portal/api/newsletter_integrations.py`
-- `portals/_shared/runtime/flavors/fnd/portal/ui/static/tools/newsletter_admin.js`
-- `portals/_shared/runtime/flavors/fnd/portal/ui/templates/tools/newsletter_admin_home.html`
-- `wiki/tools/newsletter-system.md`
+Lambda remains a delivery worker.
 
-These are design targets, not yet implemented files. fileciteturn58file2
+Recommended flow:
 
-## Recommended phased development order
+1. the admin service tool reads the canonical website contact log
+2. it creates a recipient snapshot for a send job
+3. Lambda consumes that snapshot
+4. Lambda sends one email at a time
+5. Lambda respects `subscribed=true` as the hard delivery gate
 
-### Phase 1 — schema and contract design
-Define sender, list, subscriber, campaign, and send-job contracts.
+The canonical list remains the website contact-log file, not the Lambda worker.
 
-### Phase 2 — portal-owned subscriber store
-Add canonical subscriber records and public signup/unsubscribe endpoints.
+## Suggested Repo Surface
 
-### Phase 3 — minimal admin views
-Add sender status and subscriber list administration.
+Suggested future repo code:
 
-### Phase 4 — campaign and recipient snapshot generation
-Add campaign creation and snapshot creation.
+- `packages/tools/newsletter/...`
+- `instances/_shared/runtime/flavors/fnd/portal/api/newsletter_integrations.py`
+- `instances/_shared/runtime/flavors/fnd/portal/ui/static/tools/newsletter_admin.js`
+- `instances/_shared/runtime/flavors/fnd/portal/ui/templates/tools/newsletter_admin_home.html`
 
-### Phase 5 — Lambda delivery worker
-Have Lambda read the snapshot and send one message at a time through SES.
+Suggested runtime behavior:
 
-### Phase 6 — later refinements
-Add:
-- bounce handling
-- suppression
-- double opt-in
-- segmentation
-- analytics
+- code lives in the repo
+- canonical contact data lives under `/srv/webapps/clients/<domain>/contacts/`
 
-This staged order keeps the system simple and avoids premature overloading.
+## Testing Expectations
 
-## Risks if mixed into AWS-CMS
+When implemented, tests should prove:
 
-If newsletter is mixed into AWS-CMS mailbox profiles, likely problems include:
-- confusion between operator mailboxes and newsletter sender identities
-- mixed receive-path and campaign semantics
-- bloated mailbox-profile schema
-- drift between onboarding state and delivery state
-- harder future maintenance
+- signup appends or updates the correct JSON entry in
+  `<domain>-contact_log.json`
+- unsubscribe links toggle `subscribed=false` on the matching JSON entry
+- unsubscribed contacts are skipped by newsletter delivery logic
+- AWS-CMS provisioning routes reject newsletter/contact-list actions so contact
+  list changes are not mixed into mailbox onboarding
 
-## What should stay deferred
+## Guardrails
 
-The following remain intentionally deferred for this newsletter lane:
-- implementation itself
-- bounce/complaint handling
-- segmentation
-- analytics
-- reuse of AWS-CMS mailbox profiles for newsletter sending
-- legacy forwarder cleanup
+Do not:
 
-Those should stay separate from the initial newsletter subsystem implementation. fileciteturn58file2
+- treat `news@<domain>` as a technical-contact mailbox
+- reuse AWS-CMS `profile_id` JSON as the subscriber store
+- move website contact logs into `private/utilities/tools`
+- mix newsletter contact-list work with legacy inbound cleanup
 
-## Recommended deliverables for the later newsletter build pass
+## Operational Note
 
-The later implementation pass should return:
-1. newsletter sender model
-2. subscriber store schema
-3. signup/unsubscribe endpoint contracts
-4. campaign/send-job model
-5. portal/Lambda boundary implementation
-6. files changed
-7. tests run and results
-8. anything intentionally deferred
-
-## Summary
-
-The right later-development path is to build newsletter as a **separate tool/service lane** that:
-- uses the portal as the canonical subscriber store
-- uses Lambda as a delivery worker
-- keeps `news@<domain>` separate from operator mailbox onboarding
-- introduces campaigns and send jobs without disturbing AWS-CMS mailbox semantics
-
-That gives the project a clean expansion path instead of reintroducing structural confusion.
+Because this pattern depends on canonical website-root paths, deploy scripts and
+admin tooling must preserve those paths on deploy and restart. Path drift back
+to older private-tool locations would create split-brain list state.

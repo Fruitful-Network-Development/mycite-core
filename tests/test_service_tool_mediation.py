@@ -354,7 +354,11 @@ class ServiceToolMediationTests(unittest.TestCase):
             inbound = card_body.get("inbound") if isinstance(card_body.get("inbound"), dict) else {}
             self.assertEqual(smtp.get("credentials_secret_name"), "aws-cms/smtp/fnd")
             self.assertEqual(smtp.get("credentials_secret_state"), "configured")
+            self.assertEqual(smtp.get("username"), "AKIAEXAMPLE")
             self.assertTrue(bool(smtp.get("handoff_ready")))
+            self.assertEqual(verification.get("status"), "not_started")
+            provider = card_body.get("provider") if isinstance(card_body.get("provider"), dict) else {}
+            self.assertEqual(provider.get("gmail_send_as_status"), "not_started")
             self.assertEqual(workflow.get("flow"), "mailbox_send_as")
             self.assertEqual(workflow.get("lifecycle_state"), "send_as_pending")
             self.assertEqual(verification.get("portal_state"), "awaiting_gmail_handoff")
@@ -372,6 +376,77 @@ class ServiceToolMediationTests(unittest.TestCase):
             self.assertEqual(workflow.get("completion_boundary"), "gmail_inbox_dependent")
             self.assertTrue(bool(workflow.get("is_ready_for_user_handoff")))
             self.assertFalse(bool(workflow.get("is_send_as_confirmed")))
+
+    def test_aws_profile_requires_both_mailbox_and_provider_verified_states_for_send_as_confirmation(self):
+        module = _load_service_tools_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.fnd.dylan.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "mycite.service_tool.aws_csm.profile.v1",
+                        "identity": {
+                            "profile_id": "aws-csm.fnd.dylan",
+                            "tenant_id": "fnd",
+                            "domain": "fruitfulnetworkdevelopment.com",
+                            "region": "us-east-1",
+                            "mailbox_local_part": "dylan",
+                            "operator_inbox_target": "dylancarsonmontgomery@gmail.com",
+                            "single_user_email": "dylancarsonmontgomery@gmail.com",
+                            "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                        },
+                        "smtp": {
+                            "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                            "host": "email-smtp.us-east-1.amazonaws.com",
+                            "port": "587",
+                            "username": "AKIAEXAMPLE",
+                            "credentials_source": "operator_managed",
+                            "credentials_secret_name": "aws-cms/smtp/fnd",
+                            "credentials_secret_state": "configured",
+                            "forward_to_email": "dylancarsonmontgomery@gmail.com",
+                        },
+                        "verification": {
+                            "status": "pending",
+                            "portal_state": "verification_email_received",
+                            "link": "https://mail-settings.google.com/mail/vf-example",
+                            "latest_message_reference": "s3://ses-inbound-fnd-mail/inbound/example",
+                        },
+                        "provider": {
+                            "aws_ses_identity_status": "verified",
+                            "gmail_send_as_status": "verified",
+                        },
+                        "inbound": {
+                            "receive_routing_target": "dylancarsonmontgomery@gmail.com",
+                            "latest_message_has_verification_link": True,
+                        },
+                        "workflow": {
+                            "initiated": True,
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            payload = module.build_service_tool_config_context(
+                "aws_platform_admin",
+                private_dir=private_dir,
+                tool_tabs=[{"tool_id": "aws_platform_admin", **module.build_service_tool_meta("aws_platform_admin")}],
+                portal_instance_id="fnd",
+                msn_id="3-2-3",
+            )
+            cards = payload.get("profile_cards") if isinstance(payload.get("profile_cards"), list) else []
+            self.assertTrue(cards)
+            card_body = cards[0].get("body") if isinstance(cards[0], dict) else {}
+            verification = card_body.get("verification") if isinstance(card_body.get("verification"), dict) else {}
+            provider = card_body.get("provider") if isinstance(card_body.get("provider"), dict) else {}
+            workflow = card_body.get("workflow") if isinstance(card_body.get("workflow"), dict) else {}
+            self.assertEqual(verification.get("status"), "pending")
+            self.assertEqual(provider.get("gmail_send_as_status"), "verified")
+            self.assertFalse(bool(workflow.get("is_send_as_confirmed")))
+            self.assertEqual(workflow.get("handoff_status"), "ready_for_gmail_handoff")
+            self.assertIn("verification.status", list(workflow.get("gmail_handoff_blockers_now") or []))
 
     def test_service_tool_context_emits_profile_interface_cards(self):
         module = _load_service_tools_module()
@@ -647,8 +722,12 @@ class ServiceToolMediationTests(unittest.TestCase):
                         },
                         "smtp": {
                             "credentials_secret_name": "aws-cms/smtp/tff.technicalContact",
-                            "credentials_secret_state": "missing",
+                            "credentials_secret_state": "configured",
+                            "username": "AKIAREADY",
                             "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "verification": {
+                            "status": "not_started",
                         },
                         "provider": {
                             "aws_ses_identity_status": "verified",
@@ -678,6 +757,7 @@ class ServiceToolMediationTests(unittest.TestCase):
                         "smtp": {
                             "credentials_secret_name": "aws-cms/smtp/tff.mark",
                             "credentials_secret_state": "missing",
+                            "username": "",
                             "send_as_email": "mark@trappfamilyfarm.com",
                         },
                         "provider": {
@@ -730,9 +810,15 @@ class ServiceToolMediationTests(unittest.TestCase):
             by_id = {str(card.get("card_id") or ""): card for card in cards if isinstance(card, dict)}
             technical = ((by_id.get("aws-csm.tff.technicalContact") or {}).get("body") or {})
             mark = ((by_id.get("aws-csm.tff.mark") or {}).get("body") or {})
-            self.assertEqual((((technical.get("workflow") or {}).get("lifecycle_state"))), "staged")
+            self.assertEqual((((technical.get("smtp") or {}).get("username"))), "AKIAREADY")
+            self.assertEqual((((technical.get("smtp") or {}).get("credentials_secret_state"))), "configured")
+            self.assertEqual((((technical.get("verification") or {}).get("status"))), "not_started")
+            self.assertEqual((((technical.get("provider") or {}).get("gmail_send_as_status"))), "not_started")
+            self.assertEqual((((technical.get("workflow") or {}).get("lifecycle_state"))), "send_as_pending")
+            self.assertEqual((((technical.get("workflow") or {}).get("handoff_status"))), "ready_for_gmail_handoff")
             self.assertEqual((((mark.get("workflow") or {}).get("lifecycle_state"))), "uninitiated")
             self.assertEqual((((mark.get("workflow") or {}).get("handoff_status"))), "uninitiated")
+            self.assertEqual((((mark.get("smtp") or {}).get("username"))), "")
             self.assertEqual(((((technical.get("inbound") or {}).get("receive_state")))), "receive_pending")
             self.assertEqual(((((mark.get("inbound") or {}).get("receive_state")))), "receive_configured")
 

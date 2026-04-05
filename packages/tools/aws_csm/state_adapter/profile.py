@@ -316,7 +316,11 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
         provider_status = "not_started"
         verification_portal_state = ""
         verification_verified_at = ""
-    send_as_confirmed = provider_status in confirmed_send_as_statuses or verification_status == "verified"
+    send_as_confirmed = (
+        provider_status in confirmed_send_as_statuses
+        and verification_status in confirmed_send_as_statuses
+        and has_confirmation_evidence
+    )
     receive_state = _receive_state(
         explicit_state=_text(inbound_raw.get("receive_state") or body.get("receive_state")),
         receive_routing_target=receive_routing_target,

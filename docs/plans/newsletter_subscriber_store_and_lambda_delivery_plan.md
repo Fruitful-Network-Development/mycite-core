@@ -1,248 +1,136 @@
-# Newsletter Subscriber Store and Lambda Delivery Plan
+# Newsletter Contact Log and Lambda Delivery Plan
 
 ## Purpose
 
-Design a separate newsletter system that is portal-owned, subscriber-driven, and Lambda-delivered without mixing newsletter logic into operator mailbox onboarding profiles.
+Describe a future newsletter system that is separate from AWS-CMS mailbox
+onboarding and uses a website-owned contact log plus Lambda delivery.
 
-This is a distinct product lane from AWS-CMS mailbox onboarding.
+## Core Judgment
 
-## Primary outcomes
+Do not treat newsletter delivery as an extension of operator mailbox onboarding.
 
-1. Keep newsletter design separate from operator mailbox profiles.
-2. Define a portal-owned subscriber store.
-3. Define website signup + unsubscribe flow.
-4. Define Lambda delivery orchestration that reads recipients from the portal.
-5. Define `news@<domain>` as a distinct sender lane, not an operator mailbox shortcut.
+Two different systems exist:
 
-## Architectural judgment
+- AWS-CMS mailbox onboarding
+- newsletter contact-list and delivery management
 
-Do not treat `news@<domain>` as just another technical contact mailbox.
+They must remain separate in schema, UI, and runtime control flow.
 
-There are two distinct systems:
+## Canonical Data Location
 
-### Operator mailbox system
-- technical contact mailboxes
-- staged/uninitiated mailboxes
-- send-as onboarding
-- inbound forwarding/receipt
-- operator inbox targets
-- per-mailbox operational status
+The canonical mailing-list file should live under the website client tree:
 
-### Newsletter system
-- `news@<domain>`
-- subscriber list storage
-- signup forms
-- unsubscribe links
-- campaign sending
-- delivery audit trail
-- Lambda delivery execution
+- `/srv/webapps/clients/<domain>/contacts/<domain>-contact_log.json`
 
-These must remain separate in schema, UI, and control flow.
+This is the system of record for newsletter recipients.
 
-## Scope
+It is not:
 
-### In scope
-- subscriber record model
-- newsletter sender identity model
-- signup/unsubscribe update model
-- portal-owned recipient retrieval
-- Lambda delivery orchestration
-- campaign/send-job concept
-- minimal admin/operator controls
+- an AWS-CMS mailbox file
+- a tenant-private utility file
+- a Lambda-owned data file
 
-### Out of scope
-- operator mailbox onboarding
-- technical contact receive-path logic
-- legacy forwarder cleanup
-- broader CRM/user-resource accounting beyond what newsletter needs
+## Minimum Contact Record
 
-## Core design decisions
+Each JSON entry should include:
 
-### 1. Portal owns subscriber truth
-The subscriber list must be a portal-owned canonical store.
-
-Lambda should consume recipients from the portal or a portal-governed data source, not from an unrelated manually maintained file.
-
-### 2. Newsletter sender identity is separate
-`news@<domain>` should be represented as a dedicated sender identity lane, separate from technical/operator mailboxes.
-
-### 3. Subscription state is explicit
-Every subscriber record must include an explicit `subscribed` boolean.
-
-That boolean must be updated by:
-- website signup
-- manual admin changes if allowed
-- unsubscribe links from emails
-
-## Minimum subscriber data model
-
-Each subscriber record should include at least:
 - `email`
-- `subscribed` (boolean)
+- `name` nullable
+- `subscribed`
+- `source`
 - `created_at`
 - `updated_at`
-- `unsubscribed_at` (nullable)
-- `source` (form/manual/import/etc.)
-- `domain` or `list_id`
-- optional `name` if later needed
+- `unsubscribed_at` nullable
+- `domain`
+- `list_id`
 
-Recommended additions:
+Later additions may include:
+
 - `double_opt_in_status`
-- `last_sent_at`
-- `bounce_status`
 - `suppressed`
-- `tags` or `segments` (only if justified later)
+- `bounce_status`
+- `last_sent_at`
 
-Start simple. Do not overdesign the first version.
+## Admin Service Tool Responsibilities
 
-## Newsletter control-plane model
+The future service tool should:
 
-Define separate concepts such as:
+- read and validate `<domain>-contact_log.json`
+- append new contacts
+- update existing contacts
+- record imports
+- mark unsubscribes by toggling `subscribed=false`
+- provide admin-facing status and audit views
 
-### Newsletter sender config
-- sender email (`news@<domain>`)
-- domain
-- sending provider details
-- sender verification status
-- template defaults
+This tool is for admin email-list management. It belongs beside the website
+tree, not under `private/utilities/tools`.
 
-### Subscriber store
-- canonical records
-- lookup/update/query by list/domain
+## Signup Flow
 
-### Campaign / send job
-- subject
-- content/body/template reference
-- list selector or query
-- send status
-- created_at / sent_at
-- per-recipient delivery audit if added later
+Website signup should:
 
-### Lambda delivery job
-- fetch recipient stream from portal
-- send one email at a time
-- respect `subscribed = true`
-- respect suppressions/unsubscribes
-- write delivery status back if designed in scope
+1. receive `email`, optional `name`, `domain`, and `list_id`
+2. resolve `/srv/webapps/clients/<domain>/contacts/<domain>-contact_log.json`
+3. insert or update the matching record
+4. set `subscribed=true`
+5. clear `unsubscribed_at`
+6. update timestamps
 
-## Signup flow requirements
+## Unsubscribe Flow
 
-Website forms should be able to:
-1. submit subscriber email to the portal
-2. create/update the subscriber record
-3. set `subscribed = true`
-4. record source and timestamps
-5. optionally support double opt-in later
+Each newsletter email should include a signed unsubscribe link.
 
-Do not write website signups directly into a disconnected file if the portal is intended to be canonical.
+That flow should:
 
-## Unsubscribe flow requirements
+1. identify the contact safely
+2. resolve the canonical contact-log JSON file
+3. update the matching record
+4. set `subscribed=false`
+5. set `unsubscribed_at`
+6. prevent future sends to that contact
 
-Every newsletter email should include an unsubscribe link.
+Unsubscribe should never delete the record.
 
-That link should:
-1. target a portal endpoint or portal-governed action
-2. identify the subscriber safely
-3. set `subscribed = false`
-4. record `unsubscribed_at`
-5. prevent future sends for that subscriber
-
-Do not model unsubscribe as deletion. Keep the record and flip the state.
-
-## Lambda delivery requirements
+## Lambda Delivery Boundary
 
 Lambda should:
-- fetch recipients from the portal or a portal-governed export/query
-- send one message at a time
-- skip unsubscribed recipients
-- produce auditable send results
-- be separable from operator mailbox logic
 
-Do not make Lambda responsible for subscriber truth itself.
+- read a deliberate recipient snapshot derived from the website contact log
+- send one email at a time
+- respect `subscribed=true`
+- skip unsubscribed or suppressed recipients
+- emit auditable send results
 
-## Portal requirements
+Lambda should not become the source of contact truth.
 
-The portal should eventually support:
-- subscriber list view
-- create/update/import subscriber actions
-- unsubscribe status view
-- sender identity status for `news@<domain>`
-- campaign/send job creation
-- send progress/status monitoring
+## AWS-CMS Separation Rule
 
-This pass can be design-first if implementation is not yet desired, but the plan should preserve a clean boundary from AWS-CMS mailbox onboarding.
+AWS-CMS onboarding must not mutate newsletter contact lists.
 
-## File/data considerations
+Required separation:
 
-You mentioned a future file that has not yet been created or decided.
+- AWS-CMS provisioning endpoints reject newsletter/contact-list actions
+- newsletter unsubscribe or signup work does not run through AWS-CMS mailbox
+  routes
+- mailbox onboarding state and newsletter contact-list state stay in separate
+  files and separate tools
 
-The main design consideration is:
-- a file can exist as an implementation detail or export artifact
-- but it should not replace the portal as the canonical source of subscriber truth
+## Suggested Future Tests
 
-If an intermediate file/export is used for Lambda, define:
-- who generates it
-- how it stays in sync
-- why it exists
-- why it is not the system of record
+When implementation begins, tests should prove:
 
-## Sequence recommendation
+- signup appends a new JSON contact entry in the correct website path
+- signup updates an existing entry without duplicating it
+- unsubscribe links toggle `subscribed=false` on the matching record
+- Lambda recipient selection skips unsubscribed contacts
+- AWS-CMS endpoints reject newsletter/contact-list actions
 
-### Phase 1 — design and schema
-- define newsletter sender model
-- define subscriber store schema
-- define unsubscribe semantics
-- define portal/Lambda boundary
+## Operational Reminder
 
-### Phase 2 — portal-owned subscriber store
-- add canonical subscriber records
-- add signup and unsubscribe endpoints
-- add minimal admin view
+This model depends on correct live-path alignment.
 
-### Phase 3 — sender and campaign layer
-- define `news@<domain>` sender config
-- define campaign/send-job model
-- define content source path
-
-### Phase 4 — Lambda delivery
-- Lambda fetches recipient stream from portal
-- sends one message at a time
-- records outcome
-
-### Phase 5 — later improvements
-- double opt-in
-- segmentation
-- bounce handling
-- suppression lists
-- analytics
-
-## Guardrails
-
-Do not:
-- fold newsletter sender into operator mailbox profiles
-- use technical contact mailbox onboarding as the newsletter control plane
-- treat a flat file as the canonical subscriber system
-- mix newsletter design with legacy inbound cleanup
-- broaden into a full CRM before the core model exists
-
-## Deliverables
-
-Return:
-1. newsletter sender model
-2. subscriber store schema
-3. signup/unsubscribe flow design
-4. portal/Lambda boundary design
-5. campaign/send-job design
-6. files changed or proposed
-7. tests run and results if implementation occurs
-8. anything intentionally deferred
-
-## Done means
-
-This plan is ready when:
-- newsletter is clearly separated from operator mailbox onboarding
-- the portal is defined as the canonical subscriber store
-- Lambda delivery is defined as a consumer of portal-owned recipient truth
-- `subscribed` boolean handling is explicit
-- signup and unsubscribe flows are concretely specified
-- the path to `news@<domain>` sender support is clear without reintroducing schema drift
+- deploy tooling must preserve `/srv/webapps/clients/<domain>/contacts/`
+- runtime scripts must not silently redirect newsletter data back into older
+  tenant-private locations
+- restart scripts should be validated alongside portal deploy scripts so the
+  live service does not drift away from the canonicalized paths
