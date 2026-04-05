@@ -264,18 +264,50 @@ def _aws_smtp_password(secret_access_key: str, *, region: str) -> str:
 
 
 def _upsert_secret_string(secret_name: str, payload: dict[str, Any]) -> None:
+    _upsert_secret_string_with_description(secret_name, payload)
+
+
+def _smtp_secret_description(secret_name: str) -> str:
+    token = str(secret_name or "").strip()
+    if not token:
+        return "SES SMTP credentials for AWS-CMS send-as onboarding"
+    prefix = "aws-cms/smtp/"
+    profile_suffix = token[len(prefix) :] if token.startswith(prefix) else token
+    profile_suffix = profile_suffix.strip().strip("/")
+    profile_id = f"aws-csm.{profile_suffix}" if profile_suffix else "aws-csm"
+    return f"SES SMTP credentials for {profile_id} send-as onboarding"
+
+
+def _upsert_secret_string_with_description(secret_name: str, payload: dict[str, Any], *, description: str = "") -> None:
     token = str(secret_name or "").strip()
     if not token:
         raise _AwsProvisionError("Missing SMTP credentials secret name.", status_code=400)
     secret_string = json.dumps(payload, separators=(",", ":"))
+    description_token = str(description or "").strip()
     try:
         _aws_cli_json(["secretsmanager", "describe-secret", "--secret-id", token, "--output", "json"])
     except _AwsProvisionError as exc:
         if "ResourceNotFoundException" not in str(exc):
             raise
-        _aws_secret_payload(["secretsmanager", "create-secret"], {"Name": token, "SecretString": secret_string})
+        create_payload = {"Name": token, "SecretString": secret_string}
+        if description_token:
+            create_payload["Description"] = description_token
+        _aws_secret_payload(["secretsmanager", "create-secret"], create_payload)
         return
     _aws_secret_payload(["secretsmanager", "put-secret-value"], {"SecretId": token, "SecretString": secret_string})
+    if description_token:
+        _aws_cli_json(
+            [
+                "secretsmanager",
+                "update-secret",
+                "--secret-id",
+                token,
+                "--description",
+                description_token,
+                "--output",
+                "json",
+            ]
+        )
 
 
 def _message_id_from_s3_key(key: str) -> str:
@@ -555,6 +587,8 @@ def _aws_secret_string(secret_name: str) -> str:
         if "ResourceNotFoundException" in message:
             return ""
         raise
+    if completed is None:
+        return ""
     return _decode_bytes(completed.stdout or b"").strip()
 
 
@@ -650,7 +684,11 @@ def _create_smtp_secret_material(secret_name: str, *, region: str) -> dict[str, 
         "tls_mode": "TLS",
         "provisioned_at": _utc_now_iso(),
     }
-    _upsert_secret_string(secret_name, secret_payload)
+    _upsert_secret_string_with_description(
+        secret_name,
+        secret_payload,
+        description=_smtp_secret_description(secret_name),
+    )
     return {
         "secret_name": str(secret_name or "").strip(),
         "username": access_key_id,
@@ -668,6 +706,18 @@ def _provision_smtp_secret_material(private_dir: Path, *, secret_name: str, regi
     try:
         existing = _smtp_secret_material(token)
         if _smtp_secret_is_real(existing):
+            _aws_cli_json(
+                [
+                    "secretsmanager",
+                    "update-secret",
+                    "--secret-id",
+                    token,
+                    "--description",
+                    _smtp_secret_description(token),
+                    "--output",
+                    "json",
+                ]
+            )
             return existing
 
         access_keys = _aws_smtp_access_key_metadata()
@@ -695,6 +745,18 @@ def _provision_smtp_secret_material(private_dir: Path, *, secret_name: str, regi
                     "reused_from_secret": str(material.get("secret_name") or ""),
                 },
             )
+            _aws_cli_json(
+                [
+                    "secretsmanager",
+                    "update-secret",
+                    "--secret-id",
+                    token,
+                    "--description",
+                    _smtp_secret_description(token),
+                    "--output",
+                    "json",
+                ]
+            )
             return _smtp_secret_material(token)
     finally:
         try:
@@ -721,6 +783,34 @@ def _update_aws_profile(private_dir: Path, tenant_id: str, patch: dict[str, Any]
         "warnings": warnings,
         "profile_path": str(path),
     }, path
+
+
+def _reconcile_profile_smtp_secret(profile: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(profile or {})
+    smtp = payload.get("smtp") if isinstance(payload.get("smtp"), dict) else {}
+    secret_name = str(smtp.get("credentials_secret_name") or "").strip()
+    if not secret_name:
+        return payload
+    secret_material = _smtp_secret_material(secret_name)
+    secret_state = str(secret_material.get("state") or "").strip().lower()
+    current_state = str(smtp.get("credentials_secret_state") or "").strip()
+    current_username = str(smtp.get("username") or "").strip()
+    desired_state = current_state
+    desired_username = current_username
+    if secret_state in {"missing", "placeholder"}:
+        desired_state = secret_state
+        desired_username = ""
+    elif secret_state == "configured":
+        desired_username = str(secret_material.get("persisted_username") or secret_material.get("username") or "").strip()
+        if current_state.lower() != "auth_failed":
+            desired_state = "configured"
+    if desired_state == current_state and desired_username == current_username:
+        return payload
+    smtp_patch = dict(smtp)
+    smtp_patch["credentials_secret_state"] = desired_state
+    smtp_patch["username"] = desired_username
+    payload["smtp"] = smtp_patch
+    return payload
 
 
 def _refresh_provider_status_for_profile(private_dir: Path, tenant_id: str) -> dict[str, Any]:
@@ -834,7 +924,13 @@ def _begin_onboarding_for_profile(private_dir: Path, tenant_id: str) -> dict[str
     }
 
 
-def _prepare_send_as_for_profile(private_dir: Path, tenant_id: str, *, operator_inbox_target: str = "") -> dict[str, Any]:
+def _stage_smtp_credentials_for_profile(
+    private_dir: Path,
+    tenant_id: str,
+    *,
+    operator_inbox_target: str = "",
+    response_action: str = "stage_smtp_credentials",
+) -> dict[str, Any]:
     status_payload, _, _ = _aws_profile_status(private_dir, tenant_id)
     profile = status_payload.get("profile") if isinstance(status_payload.get("profile"), dict) else {}
     canonical_profile_id, canonical_tenant_id = _aws_profile_refs(profile, tenant_id)
@@ -881,7 +977,7 @@ def _prepare_send_as_for_profile(private_dir: Path, tenant_id: str, *, operator_
     updated_smtp = updated_profile.get("smtp") if isinstance(updated_profile.get("smtp"), dict) else {}
     return {
         "ok": True,
-        "action": "prepare_send_as",
+        "action": response_action,
         "status": "completed",
         "tenant_id": canonical_tenant_id,
         "profile_id": canonical_profile_id,
@@ -906,6 +1002,15 @@ def _prepare_send_as_for_profile(private_dir: Path, tenant_id: str, *, operator_
         "profile_path": updated["profile_path"],
         "warnings": updated["warnings"],
     }
+
+
+def _prepare_send_as_for_profile(private_dir: Path, tenant_id: str, *, operator_inbox_target: str = "") -> dict[str, Any]:
+    return _stage_smtp_credentials_for_profile(
+        private_dir,
+        tenant_id,
+        operator_inbox_target=operator_inbox_target,
+        response_action="prepare_send_as",
+    )
 
 
 def _capture_verification_for_profile(private_dir: Path, tenant_id: str) -> dict[str, Any]:
@@ -1267,6 +1372,9 @@ def _aws_profile_status(private_dir: Path, profile_id: str) -> tuple[dict[str, A
         }
     )
     profile, errors, warnings = normalize_aws_csm_profile_payload(raw, profile_hint=route_token)
+    reconciled = _reconcile_profile_smtp_secret(profile)
+    if reconciled != profile:
+        profile, errors, warnings = normalize_aws_csm_profile_payload(reconciled, profile_hint=route_token)
     workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
     identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
     smtp = profile.get("smtp") if isinstance(profile.get("smtp"), dict) else {}
@@ -1871,6 +1979,7 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
         if action in {
             "begin_onboarding",
             "prepare_send_as",
+            "stage_smtp_credentials",
             "refresh_provider_status",
             "refresh_inbound_status",
             "capture_verification",
@@ -1883,6 +1992,12 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
                     response = _begin_onboarding_for_profile(private_dir, token)
                 elif action == "prepare_send_as":
                     response = _prepare_send_as_for_profile(
+                        private_dir,
+                        token,
+                        operator_inbox_target=str(body.get("operator_inbox_target") or body.get("email") or "").strip(),
+                    )
+                elif action == "stage_smtp_credentials":
+                    response = _stage_smtp_credentials_for_profile(
                         private_dir,
                         token,
                         operator_inbox_target=str(body.get("operator_inbox_target") or body.get("email") or "").strip(),

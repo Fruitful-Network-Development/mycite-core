@@ -1564,6 +1564,11 @@
     return token === "placeholder" || token === "placeholder_present";
   }
 
+  function awsSecretIsPlaceholderBacked(smtp) {
+    var source = smtp && typeof smtp === "object" ? smtp : {};
+    return awsSecretStateIsPlaceholder(source.credentials_secret_state);
+  }
+
   function awsSecretIsProvisioned(smtp) {
     var source = smtp && typeof smtp === "object" ? smtp : {};
     return !awsSecretStateIsPlaceholder(source.credentials_secret_state) && text(source.credentials_secret_state) === "configured" && !!text(source.username);
@@ -1752,7 +1757,11 @@
       "handoff status": awsHandoffStatusLabel(workflow)
     }));
     if (!awsSecretIsProvisioned(smtp)) {
-      out.push("<p><strong>No secret provisioned:</strong> begin onboarding to provision real SES SMTP credentials before Gmail handoff.</p>");
+      if (awsSecretIsPlaceholderBacked(smtp)) {
+        out.push("<p><strong>Placeholder-backed SMTP:</strong> provision real SES SMTP credentials before Gmail handoff.</p>");
+      } else {
+        out.push("<p><strong>No secret provisioned:</strong> begin onboarding to provision real SES SMTP credentials before Gmail handoff.</p>");
+      }
     } else if (text(smtp.credentials_secret_state) === "auth_failed" && !text(smtp.username)) {
       out.push("<p><strong>SMTP auth failed:</strong> the referenced credential set is present, but not yet usable for SES SMTP handoff.</p>");
     } else if (workflow.is_ready_for_user_handoff && !workflow.is_send_as_confirmed) {
@@ -1768,7 +1777,11 @@
     var out = [];
     out.push('<article class="card aws-csm-handoffCard"><div class="card__kicker">SMTP Handoff</div><div class="card__title">Use these values in the supporting email app</div><div class="card__body">');
     if (!awsSecretIsProvisioned(smtp)) {
-      out.push("<p><strong>No secret provisioned:</strong> the portal will only display SMTP copy fields after real SES SMTP secret material has been provisioned.</p>");
+      if (awsSecretIsPlaceholderBacked(smtp)) {
+        out.push("<p><strong>Placeholder-backed SMTP:</strong> the portal will only display SMTP copy fields after real SES SMTP secret material has replaced the placeholder secret.</p>");
+      } else {
+        out.push("<p><strong>No secret provisioned:</strong> the portal will only display SMTP copy fields after real SES SMTP secret material has been provisioned.</p>");
+      }
       if (text(smtp.secret_ref)) {
         out.push("<p><strong>Secret ref:</strong> <code>" + esc(text(smtp.secret_ref)) + "</code></p>");
       }
@@ -1842,7 +1855,11 @@
       if (workflow.is_ready_for_user_handoff && !workflow.is_send_as_confirmed) {
         out.push("<p><strong>Ready:</strong> the mailbox can proceed to Gmail send-as handoff as soon as you load the SMTP bundle.</p>");
       } else if (!awsSecretIsProvisioned(awsSmtpFromCard(selectedCard))) {
-        out.push("<p><strong>Blocked before handoff:</strong> no real SES SMTP secret has been provisioned for this mailbox yet.</p>");
+        if (awsSecretIsPlaceholderBacked(awsSmtpFromCard(selectedCard))) {
+          out.push("<p><strong>Blocked before handoff:</strong> this mailbox is still backed by placeholder SMTP material.</p>");
+        } else {
+          out.push("<p><strong>Blocked before handoff:</strong> no real SES SMTP secret has been provisioned for this mailbox yet.</p>");
+        }
       } else if (Array.isArray(workflow.configuration_blockers_now) && workflow.configuration_blockers_now.length) {
         out.push("<p><strong>Blocked before handoff:</strong> " + esc(workflow.configuration_blockers_now.join(", ")) + "</p>");
       }
