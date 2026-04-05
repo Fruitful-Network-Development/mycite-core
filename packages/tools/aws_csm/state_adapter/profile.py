@@ -80,6 +80,19 @@ def _default_profile_id(*, tenant_id: str, mailbox_local_part: str) -> str:
     return ""
 
 
+def _has_gmail_confirmation_evidence(
+    *,
+    verification_link: str,
+    verification_latest_message_reference: str,
+    latest_message_has_verification_link: bool,
+) -> bool:
+    return bool(
+        _text(verification_link)
+        or _text(verification_latest_message_reference)
+        or latest_message_has_verification_link
+    )
+
+
 def _credentials_secret_state(
     *,
     secret_name: str,
@@ -148,24 +161,6 @@ def _receive_state(
     else:
         derived = "receive_configured"
 
-    if token in {
-        "receive_unconfigured",
-        "receive_configured",
-        "receive_pending",
-        "receive_verified",
-        "receive_operational",
-    }:
-        # Respect the explicit state only when it is already at least as strong
-        # as the currently derived state.
-        rank = {
-            "receive_unconfigured": 0,
-            "receive_configured": 1,
-            "receive_pending": 2,
-            "receive_verified": 3,
-            "receive_operational": 4,
-        }
-        if rank[token] >= rank[derived]:
-            return token
     return derived
 
 
@@ -242,6 +237,11 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
         verification_raw.get("email_received_at") or body.get("verification_email_received_at")
     )
     verification_verified_at = _text(verification_raw.get("verified_at") or body.get("verified_at"))
+    verification_latest_message_reference = _text(
+        verification_raw.get("latest_message_reference")
+        if "latest_message_reference" in verification_raw
+        else body.get("verification_latest_message_reference", "")
+    )
     verified_provider_statuses = {"verified", "success", "active", "ready", "configured"}
     confirmed_send_as_statuses = {"active", "configured", "verified", "ready"}
 
@@ -302,6 +302,20 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
         portal_native_display_ready = bool(capture_source_reference or has_capture_metadata)
     if not latest_message_has_verification_link:
         latest_message_has_verification_link = bool(_text(verification_link))
+    has_confirmation_evidence = _has_gmail_confirmation_evidence(
+        verification_link=verification_link,
+        verification_latest_message_reference=verification_latest_message_reference,
+        latest_message_has_verification_link=latest_message_has_verification_link,
+    )
+    if (
+        verification_status in confirmed_send_as_statuses
+        or provider_status in confirmed_send_as_statuses
+        or verification_portal_state == "verified"
+    ) and not has_confirmation_evidence:
+        verification_status = "not_started"
+        provider_status = "not_started"
+        verification_portal_state = ""
+        verification_verified_at = ""
     send_as_confirmed = provider_status in confirmed_send_as_statuses or verification_status == "verified"
     receive_state = _receive_state(
         explicit_state=_text(inbound_raw.get("receive_state") or body.get("receive_state")),
@@ -358,9 +372,7 @@ def normalize_aws_csm_profile_payload(payload: Any, *, profile_hint: str = "") -
         "email_received_at": verification_email_received_at,
         "verified_at": verification_verified_at,
         "portal_state": verification_portal_state,
-        "latest_message_reference": verification_raw.get("latest_message_reference")
-        if "latest_message_reference" in verification_raw
-        else body.get("verification_latest_message_reference", ""),
+        "latest_message_reference": verification_latest_message_reference,
     }
     provider = {
         "gmail_send_as_status": provider_status,

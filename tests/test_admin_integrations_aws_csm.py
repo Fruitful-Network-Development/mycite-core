@@ -430,6 +430,49 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             self.assertEqual(workflow.get("completion_boundary"), "completed")
             self.assertTrue(bool(workflow.get("is_send_as_confirmed")))
 
+    def test_admin_aws_confirm_verified_requires_confirmation_evidence(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            module, client = self._make_client_with_module(private_dir)
+
+            client.put(
+                "/portal/api/admin/aws/profile/aws-csm.tff.technicalContact",
+                headers=self._headers(),
+                json={
+                    "identity": {
+                        "tenant_id": "tff",
+                        "domain": "trappfamilyfarm.com",
+                        "region": "us-east-1",
+                        "mailbox_local_part": "technicalContact",
+                        "operator_inbox_target": "trapp.family.farm@gmail.com",
+                        "single_user_email": "trapp.family.farm@gmail.com",
+                        "send_as_email": "technicalContact@trappfamilyfarm.com",
+                    },
+                    "smtp": {
+                        "username": "AKIAEXAMPLE",
+                        "credentials_secret_name": "aws-cms/smtp/tff.technicalContact",
+                        "credentials_secret_state": "configured",
+                        "forward_to_email": "trapp.family.farm@gmail.com",
+                    },
+                    "verification": {"status": "not_started"},
+                    "provider": {
+                        "aws_ses_identity_status": "verified",
+                        "gmail_send_as_status": "not_started",
+                    },
+                },
+            )
+
+            with mock.patch.object(module, "_find_latest_verification_message", return_value=({}, {})):
+                response = client.post(
+                    "/portal/api/admin/aws/profile/aws-csm.tff.technicalContact/provision",
+                    headers=self._headers(),
+                    json={"action": "confirm_verified"},
+                )
+
+            self.assertEqual(response.status_code, 409)
+            payload = response.get_json() or {}
+            self.assertIn("no confirmation evidence", str((payload.get("errors") or [""])[0]).lower())
+
     def test_admin_aws_replay_verification_forward_uses_existing_forwarder_path(self):
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir) / "private"
@@ -760,6 +803,96 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             self.assertTrue(bool(workflow.get("is_ready_for_user_handoff")))
             self.assertEqual(handoff.get("username"), "AKIAStage")
             self.assertEqual(handoff.get("password"), "smtp-password-xyz")
+
+    def test_admin_aws_stage_smtp_credentials_resets_stale_verified_state_without_evidence(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.tff.technicalContact.json").write_text(
+                json.dumps(
+                    {
+                        "identity": {
+                            "profile_id": "aws-csm.tff.technicalContact",
+                            "tenant_id": "tff",
+                            "domain": "trappfamilyfarm.com",
+                            "region": "us-east-1",
+                            "mailbox_local_part": "technicalContact",
+                            "operator_inbox_target": "trapp.family.farm@gmail.com",
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "smtp": {
+                            "host": "email-smtp.us-east-1.amazonaws.com",
+                            "port": "587",
+                            "username": "AKIASTALE",
+                            "credentials_secret_name": "aws-cms/smtp/tff.technicalContact",
+                            "credentials_secret_state": "configured",
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "verification": {
+                            "status": "verified",
+                            "portal_state": "verified",
+                            "verified_at": "2026-04-05T17:37:16.583968+00:00",
+                        },
+                        "provider": {
+                            "aws_ses_identity_status": "verified",
+                            "gmail_send_as_status": "verified",
+                        },
+                        "workflow": {
+                            "initiated": True,
+                        },
+                        "inbound": {
+                            "receive_routing_target": "trapp.family.farm@gmail.com",
+                            "receive_verified": True,
+                            "receive_verified_at": "2026-04-05T17:37:16.583968+00:00",
+                            "portal_native_display_ready": True,
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            module, client = self._make_client_with_module(private_dir)
+
+            with mock.patch.object(
+                module,
+                "_provision_smtp_secret_material",
+                return_value={
+                    "secret_name": "aws-cms/smtp/tff.technicalContact",
+                    "username": "AKIARESET",
+                    "persisted_username": "AKIARESET",
+                    "password": "smtp-password-reset",
+                    "state": "configured",
+                },
+            ), mock.patch.object(
+                module,
+                "_ses_identity_status",
+                return_value={
+                    "aws_ses_identity_status": "verified",
+                    "identity_payload": {"VerificationStatus": "SUCCESS"},
+                },
+            ):
+                response = client.post(
+                    "/portal/api/admin/aws/profile/aws-csm.tff.technicalContact/provision",
+                    headers=self._headers(),
+                    json={"action": "stage_smtp_credentials"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json() or {}
+            profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+            verification = profile.get("verification") if isinstance(profile.get("verification"), dict) else {}
+            provider = profile.get("provider") if isinstance(profile.get("provider"), dict) else {}
+            workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
+            inbound = profile.get("inbound") if isinstance(profile.get("inbound"), dict) else {}
+            smtp = profile.get("smtp") if isinstance(profile.get("smtp"), dict) else {}
+            self.assertEqual(verification.get("status"), "not_started")
+            self.assertEqual(provider.get("gmail_send_as_status"), "not_started")
+            self.assertFalse(bool(workflow.get("is_send_as_confirmed")))
+            self.assertTrue(bool(workflow.get("is_ready_for_user_handoff")))
+            self.assertFalse(bool(inbound.get("receive_verified")))
+            self.assertEqual(inbound.get("receive_state"), "receive_pending")
+            self.assertEqual(smtp.get("username"), "AKIARESET")
 
     def test_admin_aws_provision_smtp_secret_reuses_newest_real_secret_when_two_keys_are_active(self):
         with TemporaryDirectory() as temp_dir:

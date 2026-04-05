@@ -1,0 +1,82 @@
+Delivered-To: dylancarsonmontgomery@gmail.com
+Received: by 2002:a05:7108:78c1:b0:54e:2939:8558 with SMTP id h1csp908520gdu;
+        Sun, 5 Apr 2026 03:08:41 -0700 (PDT)
+X-Received: by 2002:a05:620a:454a:b0:8d5:7d39:41e1 with SMTP id af79cd13be357-8d57d394612mr622198985a.7.1775383721227;
+        Sun, 05 Apr 2026 03:08:41 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1775383721; cv=none;
+        d=google.com; s=arc-20240605;
+        b=DqfFBcdGwCnCjy6iN6MZ6YSa06/2Rmg6/JtzaqZMlUuzXt+mn7kWfYdDvLIMF/6TQ2
+         1mEE5zeXBpAIhcvTbJNNAaNWi5rgKm1DXhJJlljDOQMQ3h785lXTFAc17i9QHY7wrraU
+         4433H4lvi7LFOj/lhhG+NCw5Olza3XhFbIGJX60ID4PuwnCMlG9aXH3Ek64oAPV+Kfd+
+         bUWfjVQB8TgW8EmnBaqa6I5/y7BVvPjb6/goHSQFeFJzLAKGza2c2d5a9mB3HAbyX+aG
+         e9xYWtqSlyupAHkP3NTqH23kVfsJ9ijoq2/7YYSMO6Ss783kMMs7/cyLpWqsWCTHok/l
+         O0Nw==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=feedback-id:date:message-id:mime-version:content-transfer-encoding
+         :reply-to:subject:to:from:dkim-signature:dkim-signature;
+        bh=MXEsao5/61b/6q3P40RknMbfY2oviW+ChloV27B1Pro=;
+        fh=VirLth2DJFhuptnsr0HtNEkrMIMQYe9F5L+bLc93Ktk=;
+        b=izwBgA8AXrr06onPVSJNEw1rnRgRzie7A9xMgnVxe7BFJqLWL76+le/fGjMNh2ecgj
+         tmA9vo6LvwBGoxTYyBz6u0D5+6GzePaiL7FhUH9qINNtZFFxaICfhw6JBG1kG7MGcXq3
+         GQ7XRNvEifMdZkBEKwQZwl1LqVDFqNhBgGibnT7zZCepRkEU+rp+S5cBgxWv2yJnHOpi
+         cecDXDeiy7ctiCLTTw+Omyp+wpphPsxx0PfBIfw5aUdOg28YqfZ7DPIKT7pMeQdySEBQ
+         1+jrKYpwQxHq1IvvZ1ATAZbp0EPtX8R748vD1vuP6xcPEUk9pjvYtNEO/N8R9duSaWnH
+         KMew==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@fruitfulnetworkdevelopment.com header.s=qctu6aiwav2j5l3bbntgucvtzu5z52br header.b=dITpSPsn;
+       dkim=pass header.i=@amazonses.com header.s=224i4yxa5dv7c2xz3womw6peuasteono header.b=c8iIa9Nx;
+       spf=pass (google.com: domain of 0100019d5d1db16a-a4c04f6b-bf30-4718-8a13-d81ba4436890-000000@dcmontgomery.fruitfulnetworkdevelopment.com designates 54.240.8.176 as permitted sender) smtp.mailfrom=0100019d5d1db16a-a4c04f6b-bf30-4718-8a13-d81ba4436890-000000@dcmontgomery.fruitfulnetworkdevelopment.com;
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=fruitfulnetworkdevelopment.com
+Return-Path: <0100019d5d1db16a-a4c04f6b-bf30-4718-8a13-d81ba4436890-000000@dcmontgomery.fruitfulnetworkdevelopment.com>
+Received: from a8-176.smtp-out.amazonses.com (a8-176.smtp-out.amazonses.com. [54.240.8.176])
+        by mx.google.com with ESMTPS id af79cd13be357-8d59a443ffasi436777985a.150.2026.04.05.03.08.40
+        for <dylancarsonmontgomery@gmail.com>
+        (version=TLS1_3 cipher=TLS_AES_128_GCM_SHA256 bits=128/128);
+        Sun, 05 Apr 2026 03:08:41 -0700 (PDT)
+Received-SPF: pass (google.com: domain of 0100019d5d1db16a-a4c04f6b-bf30-4718-8a13-d81ba4436890-000000@dcmontgomery.fruitfulnetworkdevelopment.com designates 54.240.8.176 as permitted sender) client-ip=54.240.8.176;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@fruitfulnetworkdevelopment.com header.s=qctu6aiwav2j5l3bbntgucvtzu5z52br header.b=dITpSPsn;
+       dkim=pass header.i=@amazonses.com header.s=224i4yxa5dv7c2xz3womw6peuasteono header.b=c8iIa9Nx;
+       spf=pass (google.com: domain of 0100019d5d1db16a-a4c04f6b-bf30-4718-8a13-d81ba4436890-000000@dcmontgomery.fruitfulnetworkdevelopment.com designates 54.240.8.176 as permitted sender) smtp.mailfrom=0100019d5d1db16a-a4c04f6b-bf30-4718-8a13-d81ba4436890-000000@dcmontgomery.fruitfulnetworkdevelopment.com;
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=fruitfulnetworkdevelopment.com
+DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/simple;
+	s=qctu6aiwav2j5l3bbntgucvtzu5z52br;
+	d=fruitfulnetworkdevelopment.com; t=1775383720;
+	h=From:To:Subject:Reply-To:Content-Type:Content-Transfer-Encoding:MIME-Version:Message-ID:Date;
+	bh=MXEsao5/61b/6q3P40RknMbfY2oviW+ChloV27B1Pro=;
+	b=dITpSPsn0oHlZKmU79ripaRkKmFADIZVmv/UGD2y6gjB+8R1exg7QOEbshAnm9/n
+	TtmEhr4mdPCBV8ls2MF9OYyyd53ro4C3CWWGGYHjCPc9u6Cis83xVOW/johFfeKitX7
+	WuZ2YS+xOwnXuDXEBgG/GXkbi+j7NTUWf1ZP/RxRR4dT6WrGLtT8DLaX1kjRQZZUfxP
+	E4URo4cuZgBajnmLE9mWZUjz3HBh5psDG9kd2mUrv2Q8k6pAS+lUwkvfSyNMOYyaLDT
+	c/UIwhCscRETnaAF2J6sW6YA5DrVJVA45Re0X7b0xOmsdfnRVbPAfVCQt8SOAsKTXsV
+	dZZbVc0PBg==
+DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/simple;
+	s=224i4yxa5dv7c2xz3womw6peuasteono; d=amazonses.com; t=1775383720;
+	h=From:To:Subject:Reply-To:Content-Type:Content-Transfer-Encoding:MIME-Version:Message-ID:Date:Feedback-ID;
+	bh=MXEsao5/61b/6q3P40RknMbfY2oviW+ChloV27B1Pro=;
+	b=c8iIa9NxFOumT9ip7OzMb8jfx5/29OwNd2ipd5vkeIXV2J8K15HRAZ17BBLZ3Kce
+	ni8+LEUoHEIKaRjLZ9b+tgFT3QZkHFfOvv4UzQzTazHu1lNbUuf4Zl3b6J0ZNo4+dZT
+	CjIPx6o6VZuUr0pIU/3fb2RvRfJc2SwKit0Wpyek=
+From: forwarder@fruitfulnetworkdevelopment.com
+To: dylancarsonmontgomery@gmail.com
+Subject: [FWD] Report domain: fruitfulnetworkdevelopment.com Submitter:
+ google.com Report-ID: 776299823874969730
+Reply-To: noreply-dmarc-support@google.com
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+Message-ID: <0100019d5d1db16a-a4c04f6b-bf30-4718-8a13-d81ba4436890-000000@email.amazonses.com>
+Date: Sun, 5 Apr 2026 10:08:40 +0000
+Feedback-ID: ::1.us-east-1.I1P7YGAwgniWgQZ0WgsQzbXlB/KcjXm4hEWr+Ii/oqU=:AmazonSES
+X-SES-Outgoing: 2026.04.05-54.240.8.176
+
+Forwarded message received by SES.
+
+Original From: noreply-dmarc-support@google.com
+S3 Object: s3://ses-inbound-fnd-mail/inbound/0c6lhjcq7i4aehq6f5erirv4glica5u1=
+f271o8g1
+
+---- Original Message (best-effort) ----
+
+(No plain-text body found; open the S3 object for full raw message.)

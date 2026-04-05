@@ -1574,13 +1574,32 @@
     return !awsSecretStateIsPlaceholder(source.credentials_secret_state) && text(source.credentials_secret_state) === "configured" && !!text(source.username);
   }
 
+  function awsHasConfirmationEvidence(card, verificationState) {
+    var verification = awsVerificationFromCard(card);
+    var inbound = awsInboundFromCard(card);
+    var state = verificationState && typeof verificationState === "object" ? verificationState : {};
+    var message = state.verification_message && typeof state.verification_message === "object"
+      ? state.verification_message
+      : {};
+    return !!(
+      text(message.confirmation_link) ||
+      text(message.s3_uri) ||
+      text(message.message_id) ||
+      text(verification.link) ||
+      text(verification.latest_message_reference) ||
+      inbound.latest_message_has_verification_link
+    );
+  }
+
   function awsProvisioningLabel(card) {
     var smtp = awsSmtpFromCard(card);
     var workflow = awsWorkflowFromCard(card);
     var verification = awsVerificationFromCard(card);
-    var provider = awsProviderFromCard(card);
-    if (workflow && workflow.is_send_as_confirmed) return "Gmail verified";
-    if (text(verification.status) === "verified" || text(provider.gmail_send_as_status) === "verified") return "Gmail verified";
+    var hasEvidence = awsHasConfirmationEvidence(card);
+    if (workflow && workflow.is_send_as_confirmed && hasEvidence) return "Gmail verified";
+    if (hasEvidence || text(verification.status) === "pending" || text(verification.portal_state) === "verification_email_received") {
+      return "Gmail pending";
+    }
     if (workflow && workflow.is_ready_for_user_handoff) return "Gmail handoff pending";
     if (awsSecretIsProvisioned(smtp)) return "Secret provisioned / SMTP ready";
     return "No secret provisioned";
@@ -1821,6 +1840,7 @@
       ? verificationState.verification_message
       : {};
     var confirmationLink = text(verificationMessage.confirmation_link || verification.link);
+    var canConfirmVerified = awsHasConfirmationEvidence(selectedCard, verificationState) && !workflow.is_send_as_confirmed;
     var out = [];
     out.push('<article class="card"><div class="card__kicker">Verification</div><div class="card__title">' + esc(text(selectedCard.title || identity.domain || "AWS-CMS profile")) + '</div><div class="card__body">');
     out.push("<p>This workflow begins in the portal, hands the SMTP settings to the operator, then watches the receive path for the Gmail verification message.</p>");
@@ -1829,7 +1849,9 @@
     out.push('<div class="aws-csm-flowForm__actions">');
     out.push('<button type="button" class="data-tool__actionBtn is-active" data-aws-action="begin-onboarding">Begin Onboarding</button>');
     out.push('<button type="button" class="data-tool__actionBtn" data-aws-action="refresh-verification">Check Verification</button>');
-    out.push('<button type="button" class="data-tool__actionBtn" data-aws-action="confirm-verified">Confirm Verified</button>');
+    if (canConfirmVerified) {
+      out.push('<button type="button" class="data-tool__actionBtn" data-aws-action="confirm-verified">Confirm Verified</button>');
+    }
     out.push("</div></div>");
     out.push(renderCardKeyValueRows({
       status: text(verification.status),
@@ -1880,6 +1902,9 @@
       out.push("<p><strong>Watching:</strong> the portal is polling the receive path for the Gmail verification message.</p>");
     } else {
       out.push("<p><strong>No verification email captured yet.</strong> Start onboarding, configure Send mail as in the supporting inbox, then the portal will look for the verification email.</p>");
+    }
+    if (!canConfirmVerified && !workflow.is_send_as_confirmed) {
+      out.push("<p><strong>Verification lock:</strong> Gmail verification cannot be confirmed until the portal has captured confirmation evidence for this mailbox.</p>");
     }
     out.push("</div></article>");
     return out.join("");

@@ -341,6 +341,23 @@
 
   async function confirmVerified() {
     var profileId = selectedProfile();
+    var profile = state.latestProfile && typeof state.latestProfile.profile === "object" ? state.latestProfile.profile : {};
+    var verification = profile.verification || {};
+    var inbound = profile.inbound || {};
+    var latestMessage = state.latestVerification && state.latestVerification.verification_message && typeof state.latestVerification.verification_message === "object"
+      ? state.latestVerification.verification_message
+      : {};
+    var hasEvidence = !!(
+      String(latestMessage.confirmation_link || "").trim() ||
+      String(latestMessage.s3_uri || "").trim() ||
+      String(latestMessage.message_id || "").trim() ||
+      String(verification.link || "").trim() ||
+      String(verification.latest_message_reference || "").trim() ||
+      !!inbound.latest_message_has_verification_link
+    );
+    if (!hasEvidence) {
+      throw new Error("Gmail verification cannot be confirmed until the portal has captured confirmation evidence for this mailbox.");
+    }
     var ok = window.confirm("Mark " + profileId + " as Gmail verified after the operator has completed the confirmation link?");
     if (!ok) return null;
     var payload = await runProvision("confirm_verified");
