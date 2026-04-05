@@ -186,14 +186,15 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
                 },
             )
 
-            rejected = client.post(
-                "/portal/api/admin/aws/profile/fnd/provision",
-                headers=self._headers(),
-                json={"action": "emailer_sync_preview"},
-            )
-            self.assertEqual(rejected.status_code, 400)
-            payload = rejected.get_json() or {}
-            self.assertIn("newsletter/emailer actions are not part of the active AWS-CMS scope", list(payload.get("errors") or []))
+            for action in ("emailer_sync_preview", "newsletter_unsubscribe"):
+                rejected = client.post(
+                    "/portal/api/admin/aws/profile/fnd/provision",
+                    headers=self._headers(),
+                    json={"action": action},
+                )
+                self.assertEqual(rejected.status_code, 400)
+                payload = rejected.get_json() or {}
+                self.assertIn("newsletter/emailer actions are not part of the active AWS-CMS scope", list(payload.get("errors") or []))
 
     def test_admin_aws_capture_verification_returns_metadata_and_updates_profile(self):
         with TemporaryDirectory() as temp_dir:
@@ -887,11 +888,14 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             inbound = profile.get("inbound") if isinstance(profile.get("inbound"), dict) else {}
             smtp = profile.get("smtp") if isinstance(profile.get("smtp"), dict) else {}
             self.assertEqual(verification.get("status"), "not_started")
+            self.assertEqual(verification.get("portal_state"), "awaiting_gmail_handoff")
             self.assertEqual(provider.get("gmail_send_as_status"), "not_started")
             self.assertFalse(bool(workflow.get("is_send_as_confirmed")))
             self.assertTrue(bool(workflow.get("is_ready_for_user_handoff")))
+            self.assertEqual(workflow.get("handoff_status"), "ready_for_gmail_handoff")
             self.assertFalse(bool(inbound.get("receive_verified")))
             self.assertEqual(inbound.get("receive_state"), "receive_pending")
+            self.assertEqual(smtp.get("credentials_secret_state"), "configured")
             self.assertEqual(smtp.get("username"), "AKIARESET")
 
     def test_admin_aws_provision_smtp_secret_reuses_newest_real_secret_when_two_keys_are_active(self):
