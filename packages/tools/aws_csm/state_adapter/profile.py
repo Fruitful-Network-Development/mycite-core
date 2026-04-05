@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from tools._shared.tool_contracts.service_catalog import AWS_CSM_DEFAULT_REGION, AWS_CSM_PROFILE_SCHEMA
+from packages.tools._shared.tool_contracts.service_catalog import (
+    AWS_CSM_DEFAULT_REGION,
+    AWS_CSM_PROFILE_SCHEMA,
+)
 
 
 def _text(value: object) -> str:

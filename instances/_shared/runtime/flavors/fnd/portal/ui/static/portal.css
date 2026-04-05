@@ -5868,6 +5868,10 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   width: 100%;
 }
 
+.system-tool-interface__controls[hidden] {
+  display: none;
+}
+
 .system-tool-interface__body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -5906,6 +5910,215 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .ide-shell[data-shell-composition="tool"] .system-tool-interface__body > .card .card__body,
 .ide-shell[data-shell-composition="tool"] .system-tool-interface__body > article .card__body {
   min-width: 0;
+}
+
+.aws-csm-domainSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 86%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 62%, transparent);
+}
+
+.aws-csm-domainSection--compact {
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 18%, rgba(255, 255, 255, 0.02));
+}
+
+.aws-csm-domainSection__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.aws-csm-domainSection__title,
+.aws-csm-domainSection__count {
+  min-width: 0;
+}
+
+.aws-csm-domainSection__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--ink, #243026);
+}
+
+.aws-csm-domainSection__count {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink2, #667068);
+}
+
+.aws-csm-profileGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.aws-csm-profileGrid--compact {
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
+.aws-csm-profileCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+  width: 100%;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 92%, white 8%);
+  color: var(--ink, #243026);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease, background 0.12s ease;
+}
+
+.aws-csm-profileCard:hover {
+  border-color: color-mix(in srgb, var(--accent, #0b6b46) 40%, var(--line, #c8cec8) 60%);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.aws-csm-profileCard.is-active {
+  border-color: color-mix(in srgb, var(--accent, #0b6b46) 62%, var(--line, #c8cec8) 38%);
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 82%, white 18%);
+}
+
+.aws-csm-profileCard--compact {
+  padding: 0.62rem 0.68rem;
+  border-radius: 10px;
+  gap: 0.3rem;
+}
+
+.aws-csm-profileCard__title,
+.aws-csm-profileCard__meta,
+.aws-csm-profileCard__stats,
+.aws-csm-profileCard__stats span {
+  min-width: 0;
+}
+
+.aws-csm-profileCard__title {
+  font-weight: 700;
+  line-height: 1.22;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aws-csm-profileCard__meta {
+  font-size: 0.78rem;
+  color: var(--ink2, #667068);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aws-csm-profileCard__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.32rem 0.55rem;
+  font-size: 0.72rem;
+  color: var(--ink2, #667068);
+}
+
+.aws-csm-profileCard__stats span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aws-csm-overviewIntro .card__body p:last-child {
+  margin-bottom: 0;
+}
+
+.aws-csm-flowForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  margin: 0.85rem 0 1rem;
+}
+
+.aws-csm-flowForm__field {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.aws-csm-flowForm__field span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink2, #667068);
+}
+
+.aws-csm-flowForm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.aws-csm-infoGrid {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.aws-csm-infoRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: start;
+}
+
+.aws-csm-infoRow dt {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink2, #667068);
+}
+
+.aws-csm-infoRow dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+}
+
+.aws-csm-infoRow dd span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aws-csm-copyBtn {
+  padding: 0.22rem 0.45rem;
+  font-size: 0.72rem;
+}
+
+.aws-csm-fileList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.aws-csm-fileCard .card__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agro-scaffold {

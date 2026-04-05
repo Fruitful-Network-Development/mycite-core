@@ -174,18 +174,6 @@ def _build_inspector_cards(context: dict[str, Any]) -> list[dict[str, Any]]:
                 kind="source_relationship",
             )
         )
-    cards.append(
-        build_inspector_card(
-            card_id="mediations",
-            title="Compatible Mediations",
-            summary=f"{len(compatible_tools)} available",
-            body={
-                "tool_ids": [str(item.get("tool_id") or "") for item in compatible_tools if isinstance(item, dict)],
-                "tools": [dict(item) for item in compatible_tools if isinstance(item, dict)],
-            },
-            kind="mediation",
-        )
-    )
     return cards
 
 

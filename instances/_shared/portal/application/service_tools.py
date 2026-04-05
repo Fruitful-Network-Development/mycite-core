@@ -10,12 +10,12 @@ from _shared.portal.core_services.config_loader import load_active_private_confi
 from mycite_core.runtime_paths import utility_tools_dir
 from mycite_core.state_machine.controls import CONFIG_CONTEXT_SCHEMA, build_inspector_card
 from mycite_core.state_machine.tool_capabilities import compatible_tools_for_context
-from tools._shared.tool_contracts.service_catalog import (
+from packages.tools._shared.tool_contracts.service_catalog import (
     SERVICE_TOOL_BINDINGS_SCHEMA,
     SERVICE_TOOL_CONTRACT_SCHEMA,
     service_tool_definition,
 )
-from tools.aws_csm.state_adapter.profile import normalize_aws_csm_profile_payload
+from packages.tools.aws_csm.state_adapter.profile import normalize_aws_csm_profile_payload
 
 
 def _text(value: object) -> str:
@@ -809,6 +809,35 @@ def _service_profile_interface_cards(namespace: str, profile_cards: list[dict[st
     return out
 
 
+def _aws_profile_domain_sections(profile_cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for card in profile_cards:
+        if not isinstance(card, dict):
+            continue
+        body = dict(card.get("body")) if isinstance(card.get("body"), dict) else {}
+        identity = dict(body.get("identity")) if isinstance(body.get("identity"), dict) else {}
+        domain = _text(identity.get("domain")) or "unscoped"
+        grouped.setdefault(domain, []).append(card)
+    out: list[dict[str, Any]] = []
+    for domain in sorted(grouped.keys(), key=lambda item: item.lower()):
+        cards = sorted(
+            grouped.get(domain) or [],
+            key=lambda item: (
+                _text((((item.get("body") or {}) if isinstance(item.get("body"), dict) else {}).get("identity") or {}).get("mailbox_local_part")).lower(),
+                _text(item.get("title")).lower(),
+                _text(item.get("card_id")).lower(),
+            ),
+        )
+        out.append(
+            {
+                "domain": domain,
+                "card_count": len(cards),
+                "cards": cards,
+            }
+        )
+    return out
+
+
 def build_service_tool_config_context(
     tool_id: str,
     *,
@@ -981,6 +1010,7 @@ def build_service_tool_config_context(
         },
         "collection_files": collection_files,
         "profile_cards": profile_cards,
+        "profile_domain_sections": _aws_profile_domain_sections(profile_cards) if namespace == "aws-csm" else [],
         "derived_internal_members": derived_internal_members,
         "analytics_snapshots": analytics_snapshots,
         "warnings": warnings,
