@@ -1,0 +1,17 @@
+{
+  "schema": "mycite.service_tool.newsletter.profile.v1",
+  "domain": "fruitfulnetworkdevelopment.com",
+  "list_address": "news@fruitfulnetworkdevelopment.com",
+  "sender_address": "news@fruitfulnetworkdevelopment.com",
+  "selected_author_profile_id": "aws-csm.fnd.dylan",
+  "selected_author_address": "dylan@fruitfulnetworkdevelopment.com",
+  "selected_sender_profile_id": "aws-csm.fnd.dylan",
+  "selected_sender_address": "dylan@fruitfulnetworkdevelopment.com",
+  "contact_log_path": "/srv/webapps/clients/fruitfulnetworkdevelopment.com/contacts/fruitfulnetworkdevelopment.com-contact_log.json",
+  "delivery_mode": "aws_sqs_lambda_us_east_1",
+  "aws_region": "us-east-1",
+  "dispatch_queue_url": "https://sqs.us-east-1.amazonaws.com/065948377733/aws-cms-newsletter-dispatch",
+  "dispatch_queue_arn": "arn:aws:sqs:us-east-1:065948377733:aws-cms-newsletter-dispatch",
+  "dispatcher_lambda_name": "newsletter-dispatcher",
+  "dispatcher_callback_url": "https://fruitfulnetworkdevelopment.com/__fnd/newsletter/dispatch-result"
+}

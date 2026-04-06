@@ -2396,8 +2396,10 @@
     out.push(renderCardKeyValueRows({
       domain: newsletterDomainFromCard(selected),
       "list address": text(body.list_address),
-      "selected sender": text(sender.send_as_email),
-      "sender profile": text(sender.profile_id),
+      "newsletter sender": text(body.sender_address || body.list_address),
+      "author mailbox": text(sender.send_as_email),
+      "author profile": text(sender.profile_id),
+      "delivery mode": text((body.profile || {}).delivery_mode || "aws_sqs_lambda_us_east_1"),
       "contact log": text(body.contact_log_path),
       contacts: String(body.contact_count || 0),
       subscribed: String(body.subscribed_count || 0),
@@ -2454,9 +2456,9 @@
     var bucket = providerStateFor(tool.tool_id);
     var out = [];
     out.push('<article class="card"><div class="card__kicker">Compose</div><div class="card__title">Send a one-by-one test newsletter</div><div class="card__body">');
-    out.push('<p>The live send uses the selected verified mailbox as the SES sender and keeps <code>' + esc(text(body.list_address)) + '</code> as the reply-to list address.</p>');
+    out.push('<p>The live send queues one recipient job at a time. The selected verified mailbox submits the newsletter to <code>' + esc(text(body.list_address)) + '</code>, and recipients receive it from <code>' + esc(text(body.sender_address || body.list_address)) + '</code>.</p>');
     out.push('<div class="aws-csm-flowForm">');
-    out.push('<label class="aws-csm-flowForm__field"><span>Verified sender</span><select class="data-tool__fieldInput" data-newsletter-sender>');
+    out.push('<label class="aws-csm-flowForm__field"><span>Author mailbox</span><select class="data-tool__fieldInput" data-newsletter-sender>');
     verified.forEach(function (item) {
       if (!item || typeof item !== "object") return;
       var profileId = text(item.profile_id);
@@ -2472,10 +2474,11 @@
     out.push('</div></div>');
     out.push(renderCardKeyValueRows({
       domain: newsletterDomainFromCard(selected),
-      "reply-to list": text(body.list_address),
+      "newsletter sender": text(body.sender_address || body.list_address),
+      "submission target": text(body.list_address),
       subscribed: String(body.subscribed_count || 0),
       unsubscribed: String(body.unsubscribed_count || 0),
-      "verified senders": String(verified.length),
+      "verified author mailboxes": String(verified.length),
       status: newsletterStatusLabel(selected)
     }));
     if (!verified.length) {
@@ -2495,8 +2498,10 @@
         "completed at": text(latestDispatch.completed_at),
         "requested by": text(latestDispatch.requested_by),
         sender: text(latestDispatch.sender_address),
+        author: text(latestDispatch.author_address),
         "reply to": text(latestDispatch.reply_to_address),
         targets: String(latestDispatch.target_count || 0),
+        queued: String(latestDispatch.queued_count || 0),
         sent: String(latestDispatch.sent_count || 0)
       }));
       var results = Array.isArray(latestDispatch.results) ? latestDispatch.results : [];
@@ -2525,7 +2530,8 @@
         "contact log": text(body.contact_log_path),
         "profile path": text(body.profile_path),
         "list address": text(body.list_address),
-        "selected sender": text((body.selected_sender || {}).send_as_email)
+        "newsletter sender": text(body.sender_address || body.list_address),
+        "author mailbox": text((body.selected_author || body.selected_sender || {}).send_as_email)
       }));
       out.push('</div></article>');
     }
