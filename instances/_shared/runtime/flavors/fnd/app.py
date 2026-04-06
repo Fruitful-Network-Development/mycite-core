@@ -61,6 +61,7 @@ from instances._shared.runtime.flavors.fnd.portal.api.aliases import (
 )
 from instances._shared.runtime.flavors.fnd.portal.api.config import register_config_routes
 from instances._shared.runtime.flavors.fnd.portal.api.inbox import register_inbox_routes
+from instances._shared.runtime.flavors.fnd.portal.api.newsletter_admin import register_newsletter_admin_routes
 from instances._shared.runtime.flavors.fnd.portal.api.paypal_checkout import register_paypal_checkout_routes
 from instances._shared.runtime.flavors.fnd.portal.api.progeny_config import register_progeny_config_routes
 from instances._shared.runtime.flavors.fnd.portal.api.progeny_workbench import register_progeny_workbench_routes
@@ -2140,6 +2141,10 @@ register_website_analytics_routes(
     private_dir=PRIVATE_DIR,
     options_private_fn=_options_private,
     msn_id_provider=lambda: MSN_ID,
+)
+register_newsletter_admin_routes(
+    app,
+    private_dir=PRIVATE_DIR,
 )
 register_admin_integration_routes(
     app,
