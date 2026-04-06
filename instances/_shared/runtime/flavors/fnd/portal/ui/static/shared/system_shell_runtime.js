@@ -2042,6 +2042,7 @@
     var payload = await awsRunProvision(tool, "prepare_send_as", {
       operator_inbox_target: operatorEmail
     });
+    await awsRunProvision(tool, "enable_inbound_capture");
     awsStartVerificationWatcher(tool);
     return payload;
   }

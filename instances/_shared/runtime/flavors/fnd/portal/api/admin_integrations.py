@@ -436,6 +436,204 @@ def _active_inbound_chain(*, region: str, domain: str) -> dict[str, Any]:
     }
 
 
+def _exact_hosted_zone_id_for_domain(domain: str) -> str:
+    domain_token = str(domain or "").strip().rstrip(".").lower()
+    if not domain_token:
+        return ""
+    payload = _aws_cli_json(
+        [
+            "route53",
+            "list-hosted-zones-by-name",
+            "--dns-name",
+            domain_token,
+            "--max-items",
+            "2",
+            "--output",
+            "json",
+        ]
+    )
+    zones = payload.get("HostedZones") if isinstance(payload.get("HostedZones"), list) else []
+    expected_name = f"{domain_token}."
+    for zone in zones:
+        if not isinstance(zone, dict):
+            continue
+        if str(zone.get("Name") or "").strip().lower() != expected_name:
+            continue
+        zone_id = str(zone.get("Id") or "").strip()
+        if zone_id.startswith("/hostedzone/"):
+            return zone_id.removeprefix("/hostedzone/")
+        return zone_id
+    return ""
+
+
+def _mx_value_for_region(region: str) -> str:
+    token = str(region or "").strip() or "us-east-1"
+    return f"10 inbound-smtp.{token}.amazonaws.com"
+
+
+def _rule_name_for_domain(domain: str) -> str:
+    token = re.sub(r"[^a-z0-9]+", "-", str(domain or "").strip().lower()).strip("-")
+    if not token:
+        token = "mailbox"
+    return f"portal-capture-{token}"[:64]
+
+
+def _find_any_s3_receipt_action(receipt_payload: dict[str, Any]) -> dict[str, str]:
+    rules = receipt_payload.get("Rules") if isinstance(receipt_payload.get("Rules"), list) else []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        actions = rule.get("Actions") if isinstance(rule.get("Actions"), list) else []
+        for action in actions:
+            s3_action = action.get("S3Action") if isinstance(action, dict) else {}
+            if not isinstance(s3_action, dict):
+                continue
+            bucket = str(s3_action.get("BucketName") or "").strip()
+            if not bucket:
+                continue
+            return {
+                "bucket": bucket,
+                "prefix": str(s3_action.get("ObjectKeyPrefix") or "").strip(),
+            }
+    return {}
+
+
+def _ensure_domain_mx_record(*, domain: str, region: str) -> dict[str, str]:
+    zone_id = _exact_hosted_zone_id_for_domain(domain)
+    if not zone_id:
+        raise _AwsProvisionError(
+            f"Route53 hosted zone for {domain} was not found, so inbound verification capture cannot be enabled.",
+            status_code=409,
+        )
+    mx_value = _mx_value_for_region(region)
+    _aws_cli_json(
+        [
+            "route53",
+            "change-resource-record-sets",
+            "--hosted-zone-id",
+            zone_id,
+            "--change-batch",
+            json.dumps(
+                {
+                    "Comment": f"AWS-CMS inbound verification capture for {domain}",
+                    "Changes": [
+                        {
+                            "Action": "UPSERT",
+                            "ResourceRecordSet": {
+                                "Name": domain,
+                                "Type": "MX",
+                                "TTL": 300,
+                                "ResourceRecords": [{"Value": mx_value}],
+                            },
+                        }
+                    ],
+                },
+                separators=(",", ":"),
+            ),
+            "--output",
+            "json",
+        ]
+    )
+    return {
+        "hosted_zone_id": zone_id,
+        "mx_value": mx_value,
+    }
+
+
+def _ensure_domain_receipt_rule(*, domain: str, region: str) -> dict[str, Any]:
+    receipt = _aws_cli_json(["--region", region, "ses", "describe-active-receipt-rule-set", "--output", "json"])
+    metadata = receipt.get("Metadata") if isinstance(receipt.get("Metadata"), dict) else {}
+    rule_set_name = str(metadata.get("Name") or "").strip()
+    if not rule_set_name:
+        raise _AwsProvisionError(
+            f"No active SES receipt rule set is configured in {region}, so inbound verification capture cannot be enabled.",
+            status_code=409,
+        )
+    existing_rule = _matching_receipt_rule(receipt if isinstance(receipt, dict) else {}, domain=domain)
+    if existing_rule:
+        actions = existing_rule.get("Actions") if isinstance(existing_rule.get("Actions"), list) else []
+        for action in actions:
+            s3_action = action.get("S3Action") if isinstance(action, dict) else {}
+            if isinstance(s3_action, dict) and str(s3_action.get("BucketName") or "").strip():
+                return _active_inbound_chain(region=region, domain=domain)
+
+    shared_capture = _find_any_s3_receipt_action(receipt if isinstance(receipt, dict) else {})
+    bucket = str(shared_capture.get("bucket") or "").strip()
+    if not bucket:
+        raise _AwsProvisionError(
+            "No reusable SES S3 capture bucket was found in the active receipt rule set.",
+            status_code=409,
+        )
+    prefix = f"inbound/{domain.strip().lower()}/"
+    rule_name = _rule_name_for_domain(domain)
+    rule_payload = {
+        "Name": rule_name,
+        "Enabled": True,
+        "TlsPolicy": "Optional",
+        "Recipients": [domain],
+        "Actions": [{"S3Action": {"BucketName": bucket, "ObjectKeyPrefix": prefix}}],
+        "ScanEnabled": True,
+    }
+    if existing_rule:
+        _aws_cli_json(
+            [
+                "--region",
+                region,
+                "ses",
+                "update-receipt-rule",
+                "--rule-set-name",
+                rule_set_name,
+                "--rule",
+                json.dumps(rule_payload, separators=(",", ":")),
+                "--output",
+                "json",
+            ]
+        )
+    else:
+        _aws_cli_json(
+            [
+                "--region",
+                region,
+                "ses",
+                "create-receipt-rule",
+                "--rule-set-name",
+                rule_set_name,
+                "--rule",
+                json.dumps(rule_payload, separators=(",", ":")),
+                "--output",
+                "json",
+            ]
+        )
+    return _active_inbound_chain(region=region, domain=domain)
+
+
+def _enable_inbound_capture_for_profile(private_dir: Path, tenant_id: str) -> dict[str, Any]:
+    status_payload, _, _ = _aws_profile_status(private_dir, tenant_id)
+    profile = status_payload.get("profile") if isinstance(status_payload.get("profile"), dict) else {}
+    canonical_profile_id, canonical_tenant_id = _aws_profile_refs(profile, tenant_id)
+    identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
+    domain = str(identity.get("domain") or "").strip()
+    region = str(identity.get("region") or status_payload.get("region") or "us-east-1")
+    if not domain:
+        raise _AwsProvisionError("Mailbox profile is missing identity.domain, so inbound capture cannot be enabled.", status_code=400)
+    route53_result = _ensure_domain_mx_record(domain=domain, region=region)
+    chain = _ensure_domain_receipt_rule(domain=domain, region=region)
+    refreshed = _refresh_inbound_status_for_profile(private_dir, tenant_id)
+    refreshed["action"] = "enable_inbound_capture"
+    refreshed["mx_record"] = {
+        "domain": domain,
+        "hosted_zone_id": str(route53_result.get("hosted_zone_id") or ""),
+        "value": str(route53_result.get("mx_value") or ""),
+    }
+    refreshed["tenant_id"] = canonical_tenant_id
+    refreshed["profile_id"] = canonical_profile_id
+    refreshed["legacy_inbound"] = _legacy_inbound_summary(
+        chain,
+        message_payload=refreshed.get("verification_message") if isinstance(refreshed.get("verification_message"), dict) else {},
+    )
+    return refreshed
+
+
 def _candidate_message_payload(raw_bytes: bytes, *, bucket: str, key: str, captured_at: str) -> dict[str, Any]:
     message = BytesParser(policy=policy.default).parsebytes(raw_bytes)
     message_text = _message_text_from_email(message)
@@ -2057,6 +2255,7 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             "begin_onboarding",
             "prepare_send_as",
             "stage_smtp_credentials",
+            "enable_inbound_capture",
             "refresh_provider_status",
             "refresh_inbound_status",
             "capture_verification",
@@ -2079,6 +2278,8 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
                         token,
                         operator_inbox_target=str(body.get("operator_inbox_target") or body.get("email") or "").strip(),
                     )
+                elif action == "enable_inbound_capture":
+                    response = _enable_inbound_capture_for_profile(private_dir, token)
                 elif action == "refresh_provider_status":
                     response = _refresh_provider_status_for_profile(private_dir, token)
                 elif action == "refresh_inbound_status":
