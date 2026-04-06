@@ -2306,6 +2306,338 @@
     return out.join("");
   }
 
+  function newsletterBodyFromCard(card) {
+    return card && card.body && typeof card.body === "object" ? card.body : {};
+  }
+
+  function newsletterDomainFromCard(card) {
+    var body = newsletterBodyFromCard(card);
+    return text(body.domain || card && card.title || "");
+  }
+
+  function newsletterCards(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    return Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
+  }
+
+  function newsletterSelectDomain(toolId, domain) {
+    var bucket = providerStateFor(toolId);
+    bucket.selectedDomain = text(domain).toLowerCase();
+  }
+
+  function newsletterSelectedCard(tool) {
+    var cards = newsletterCards(tool);
+    if (!cards.length) return null;
+    var bucket = providerStateFor(tool.tool_id);
+    var selected = text(bucket.selectedDomain).toLowerCase();
+    if (!selected) {
+      newsletterSelectDomain(tool.tool_id, newsletterDomainFromCard(cards[0]));
+      return cards[0];
+    }
+    for (var i = 0; i < cards.length; i += 1) {
+      if (newsletterDomainFromCard(cards[i]).toLowerCase() === selected) {
+        return cards[i];
+      }
+    }
+    return cards[0];
+  }
+
+  function newsletterVerifiedSenders(card) {
+    var body = newsletterBodyFromCard(card);
+    return Array.isArray(body.verified_senders) ? body.verified_senders : [];
+  }
+
+  function newsletterSelectedSender(card) {
+    var body = newsletterBodyFromCard(card);
+    return body.selected_sender && typeof body.selected_sender === "object" ? body.selected_sender : {};
+  }
+
+  function newsletterStatusLabel(card) {
+    var body = newsletterBodyFromCard(card);
+    var sender = newsletterSelectedSender(card);
+    if (!newsletterVerifiedSenders(card).length) return "no verified sender";
+    if (!text(sender.send_as_email)) return "sender required";
+    if (Number(body.subscribed_count || 0) <= 0) return "ready / no subscribers";
+    return "ready to send";
+  }
+
+  function renderNewsletterDomainCards(tool) {
+    var cards = newsletterCards(tool);
+    if (!cards.length) {
+      return '<div class="ide-controlpanel__empty">No newsletter domains are staged yet. Add a newsletter-admin domain profile and contact log first.</div>';
+    }
+    var selected = newsletterSelectedCard(tool);
+    var selectedDomain = newsletterDomainFromCard(selected).toLowerCase();
+    var out = [];
+    cards.forEach(function (card) {
+      var body = newsletterBodyFromCard(card);
+      var domain = newsletterDomainFromCard(card);
+      var active = domain.toLowerCase() === selectedDomain;
+      out.push('<button type="button" class="system-tool-contextCard' + (active ? ' is-active' : '') + '" data-newsletter-domain="' + esc(domain) + '">');
+      out.push('<strong>' + esc(domain) + '</strong>');
+      out.push('<small>' + esc(newsletterStatusLabel(card)) + '</small>');
+      out.push('<span>' + esc(String(body.subscribed_count || 0)) + ' subscribed · ' + esc(String(body.unsubscribed_count || 0)) + ' unsubscribed</span>');
+      out.push('</button>');
+    });
+    return out.join("");
+  }
+
+  function renderNewsletterOverview(tool) {
+    var cards = newsletterCards(tool);
+    if (!cards.length) {
+      return '<p class="data-tool__empty">No newsletter domains are configured.</p>';
+    }
+    var selected = newsletterSelectedCard(tool);
+    var body = newsletterBodyFromCard(selected);
+    var sender = newsletterSelectedSender(selected);
+    var out = [];
+    out.push('<article class="card"><div class="card__kicker">Newsletter Admin</div><div class="card__title">' + esc(newsletterDomainFromCard(selected)) + '</div><div class="card__body">');
+    out.push('<p>The website contact log under <code>/srv/webapps/clients/&lt;domain&gt;/contacts/</code> is the canonical list for signup, send, and unsubscribe state.</p>');
+    out.push(renderCardKeyValueRows({
+      domain: newsletterDomainFromCard(selected),
+      "list address": text(body.list_address),
+      "selected sender": text(sender.send_as_email),
+      "sender profile": text(sender.profile_id),
+      "contact log": text(body.contact_log_path),
+      contacts: String(body.contact_count || 0),
+      subscribed: String(body.subscribed_count || 0),
+      unsubscribed: String(body.unsubscribed_count || 0),
+      status: newsletterStatusLabel(selected)
+    }));
+    out.push('</div></article>');
+    out.push('<article class="card"><div class="card__kicker">Domains</div><div class="card__title">Newsletter-ready domains</div><div class="card__body">');
+    out.push(renderNewsletterDomainCards(tool));
+    out.push('</div></article>');
+    return out.join("");
+  }
+
+  function renderNewsletterContacts(tool) {
+    var selected = newsletterSelectedCard(tool);
+    if (!selected) {
+      return '<p class="data-tool__empty">Select a newsletter domain to inspect contacts.</p>';
+    }
+    var body = newsletterBodyFromCard(selected);
+    var contacts = Array.isArray(body.contacts) ? body.contacts : [];
+    var out = [];
+    out.push('<article class="card"><div class="card__kicker">Canonical Contact Log</div><div class="card__title">' + esc(newsletterDomainFromCard(selected)) + '</div><div class="card__body">');
+    out.push('<p><strong>Path:</strong> <code>' + esc(text(body.contact_log_path)) + '</code></p>');
+    if (!contacts.length) {
+      out.push('<p>No contacts are in the canonical log yet. Submit a website signup form to create the first subscriber.</p>');
+    } else {
+      out.push('<table class="fnd-ebi-table"><thead><tr><th>Email</th><th>Name</th><th>Status</th><th>Sent</th><th>Last sent</th><th>Updated</th></tr></thead><tbody>');
+      contacts.forEach(function (row) {
+        if (!row || typeof row !== "object") return;
+        out.push('<tr>');
+        out.push('<td><code>' + esc(text(row.email)) + '</code></td>');
+        out.push('<td>' + esc(text(row.name)) + '</td>');
+        out.push('<td>' + esc(row.subscribed ? "subscribed" : "unsubscribed") + '</td>');
+        out.push('<td>' + esc(String(row.send_count || 0)) + '</td>');
+        out.push('<td>' + esc(text(row.last_newsletter_sent_at)) + '</td>');
+        out.push('<td>' + esc(text(row.updated_at)) + '</td>');
+        out.push('</tr>');
+      });
+      out.push('</tbody></table>');
+    }
+    out.push('</div></article>');
+    return out.join("");
+  }
+
+  function renderNewsletterComposer(tool) {
+    var selected = newsletterSelectedCard(tool);
+    if (!selected) {
+      return '<p class="data-tool__empty">Select a newsletter domain to compose a test send.</p>';
+    }
+    var body = newsletterBodyFromCard(selected);
+    var verified = newsletterVerifiedSenders(selected);
+    var sender = newsletterSelectedSender(selected);
+    var latestDispatch = body.latest_dispatch && typeof body.latest_dispatch === "object" ? body.latest_dispatch : {};
+    var bucket = providerStateFor(tool.tool_id);
+    var out = [];
+    out.push('<article class="card"><div class="card__kicker">Compose</div><div class="card__title">Send a one-by-one test newsletter</div><div class="card__body">');
+    out.push('<p>The live send uses the selected verified mailbox as the SES sender and keeps <code>' + esc(text(body.list_address)) + '</code> as the reply-to list address.</p>');
+    out.push('<div class="aws-csm-flowForm">');
+    out.push('<label class="aws-csm-flowForm__field"><span>Verified sender</span><select class="data-tool__fieldInput" data-newsletter-sender>');
+    verified.forEach(function (item) {
+      if (!item || typeof item !== "object") return;
+      var profileId = text(item.profile_id);
+      var selectedAttr = profileId === text(sender.profile_id) ? ' selected="selected"' : "";
+      out.push('<option value="' + esc(profileId) + '"' + selectedAttr + '>' + esc(text(item.send_as_email)) + '</option>');
+    });
+    out.push('</select></label>');
+    out.push('<label class="aws-csm-flowForm__field"><span>Subject</span><input type="text" class="data-tool__fieldInput" data-newsletter-subject placeholder="Test newsletter subject" value="Newsletter test for ' + esc(newsletterDomainFromCard(selected)) + '" /></label>');
+    out.push('<label class="aws-csm-flowForm__field"><span>Body</span><textarea class="data-tool__fieldInput" data-newsletter-body rows="8" placeholder="Write a test message.">This is a test newsletter message for ' + esc(newsletterDomainFromCard(selected)) + '.\n\nIf this reaches you, the signup, canonical contact log, send, and unsubscribe loop is wired through the live website-root contact log.</textarea></label>');
+    out.push('<div class="aws-csm-flowForm__actions">');
+    out.push('<button type="button" class="data-tool__actionBtn is-active" data-newsletter-action="send">Send to subscribed contacts</button>');
+    out.push('<button type="button" class="data-tool__actionBtn" data-newsletter-action="refresh">Refresh</button>');
+    out.push('</div></div>');
+    out.push(renderCardKeyValueRows({
+      domain: newsletterDomainFromCard(selected),
+      "reply-to list": text(body.list_address),
+      subscribed: String(body.subscribed_count || 0),
+      unsubscribed: String(body.unsubscribed_count || 0),
+      "verified senders": String(verified.length),
+      status: newsletterStatusLabel(selected)
+    }));
+    if (!verified.length) {
+      out.push('<p><strong>Blocked:</strong> no Gmail-verified mailbox is available for this domain yet.</p>');
+    }
+    if (bucket.pendingNewsletterAction) {
+      out.push('<p><strong>Working:</strong> ' + esc(text(bucket.pendingNewsletterAction)) + '…</p>');
+    }
+    if (text(bucket.newsletterError)) {
+      out.push('<p class="fnd-ebi-warning"><strong>Action error:</strong> ' + esc(text(bucket.newsletterError)) + '</p>');
+    }
+    out.push('</div></article>');
+    if (latestDispatch && Object.keys(latestDispatch).length) {
+      out.push('<article class="card"><div class="card__kicker">Latest Dispatch</div><div class="card__title">' + esc(text(latestDispatch.subject || "dispatch")) + '</div><div class="card__body">');
+      out.push(renderCardKeyValueRows({
+        "requested at": text(latestDispatch.requested_at),
+        "completed at": text(latestDispatch.completed_at),
+        "requested by": text(latestDispatch.requested_by),
+        sender: text(latestDispatch.sender_address),
+        "reply to": text(latestDispatch.reply_to_address),
+        targets: String(latestDispatch.target_count || 0),
+        sent: String(latestDispatch.sent_count || 0)
+      }));
+      var results = Array.isArray(latestDispatch.results) ? latestDispatch.results : [];
+      if (results.length) {
+        out.push('<table class="fnd-ebi-table"><thead><tr><th>Email</th><th>Status</th><th>Message</th><th>Unsubscribe</th></tr></thead><tbody>');
+        results.forEach(function (row) {
+          if (!row || typeof row !== "object") return;
+          out.push('<tr><td><code>' + esc(text(row.email)) + '</code></td><td>' + esc(text(row.status)) + '</td><td>' + esc(text(row.message_id || row.error)) + '</td><td>' + esc(limitText(text(row.unsubscribe_url), 72)) + '</td></tr>');
+        });
+        out.push('</tbody></table>');
+      }
+      out.push('</div></article>');
+    }
+    return out.join("");
+  }
+
+  function renderNewsletterFiles(tool) {
+    var ctx = toolContext(tool.tool_id) || {};
+    var files = Array.isArray(ctx.collection_files) ? ctx.collection_files : [];
+    var selected = newsletterSelectedCard(tool);
+    var out = [];
+    if (selected) {
+      var body = newsletterBodyFromCard(selected);
+      out.push('<article class="card"><div class="card__kicker">Focused Domain</div><div class="card__title">' + esc(newsletterDomainFromCard(selected)) + '</div><div class="card__body">');
+      out.push(renderCardKeyValueRows({
+        "contact log": text(body.contact_log_path),
+        "profile path": text(body.profile_path),
+        "list address": text(body.list_address),
+        "selected sender": text((body.selected_sender || {}).send_as_email)
+      }));
+      out.push('</div></article>');
+    }
+    if (!files.length) {
+      out.push('<p class="data-tool__empty">No newsletter-admin tool files were discovered.</p>');
+      return out.join("");
+    }
+    out.push('<table class="fnd-ebi-table"><thead><tr><th>File</th><th>Kind</th><th>Records</th></tr></thead><tbody>');
+    files.forEach(function (file) {
+      if (!file || typeof file !== "object") return;
+      out.push('<tr><td><code>' + esc(text(file.relative_path || file.path || file.file_name)) + '</code></td><td>' + esc(text(file.content_kind)) + '</td><td>' + esc(String(file.record_count || 0)) + '</td></tr>');
+    });
+    out.push('</tbody></table>');
+    return out.join("");
+  }
+
+  function newsletterRefresh(tool) {
+    var bucket = providerStateFor(tool.tool_id);
+    bucket.newsletterError = "";
+    return ensureToolContext(tool, true).then(function () {
+      renderAll();
+    }).catch(function (err) {
+      bucket.newsletterError = err && err.message ? err.message : "Refresh failed.";
+      renderAll();
+      throw err;
+    });
+  }
+
+  function newsletterSaveSender(tool, root) {
+    var selected = newsletterSelectedCard(tool);
+    if (!selected) return Promise.resolve();
+    var domain = newsletterDomainFromCard(selected);
+    var select = qs("[data-newsletter-sender]", root || els.toolInterfaceBody);
+    var profileId = text(select && select.value);
+    if (!profileId) return Promise.resolve();
+    var bucket = providerStateFor(tool.tool_id);
+    bucket.pendingNewsletterAction = "Saving sender";
+    bucket.newsletterError = "";
+    renderAll();
+    return api("/portal/api/admin/newsletter/domain/" + encodeURIComponent(domain) + "/config", "POST", {
+      selected_sender_profile_id: profileId
+    }).then(function () {
+      bucket.pendingNewsletterAction = "";
+      return ensureToolContext(tool, true);
+    }).then(function () {
+      renderAll();
+    }).catch(function (err) {
+      bucket.pendingNewsletterAction = "";
+      bucket.newsletterError = err && err.message ? err.message : "Unable to save sender.";
+      renderAll();
+      throw err;
+    });
+  }
+
+  function newsletterSend(tool, root) {
+    var selected = newsletterSelectedCard(tool);
+    if (!selected) return Promise.resolve();
+    var domain = newsletterDomainFromCard(selected);
+    var senderSelect = qs("[data-newsletter-sender]", root || els.toolInterfaceBody);
+    var subjectInput = qs("[data-newsletter-subject]", root || els.toolInterfaceBody);
+    var bodyInput = qs("[data-newsletter-body]", root || els.toolInterfaceBody);
+    var subject = text(subjectInput && subjectInput.value);
+    var body = text(bodyInput && bodyInput.value);
+    var selectedSenderProfileId = text(senderSelect && senderSelect.value);
+    var bucket = providerStateFor(tool.tool_id);
+    bucket.pendingNewsletterAction = "Sending newsletter";
+    bucket.newsletterError = "";
+    renderAll();
+    return api("/portal/api/admin/newsletter/domain/" + encodeURIComponent(domain) + "/send", "POST", {
+      subject: subject,
+      body_text: body,
+      selected_sender_profile_id: selectedSenderProfileId
+    }).then(function () {
+      bucket.pendingNewsletterAction = "";
+      return ensureToolContext(tool, true);
+    }).then(function () {
+      renderAll();
+    }).catch(function (err) {
+      bucket.pendingNewsletterAction = "";
+      bucket.newsletterError = err && err.message ? err.message : "Newsletter send failed.";
+      renderAll();
+      throw err;
+    });
+  }
+
+  function bindNewsletterInterfaceActions(tool, root) {
+    qsa("[data-newsletter-domain]", root || els.toolInterfaceBody).forEach(function (node) {
+      node.addEventListener("click", function () {
+        newsletterSelectDomain(tool.tool_id, node.getAttribute("data-newsletter-domain"));
+        state.activeMediationMode = "overview";
+        renderAll();
+      });
+    });
+    qsa("[data-newsletter-sender]", root || els.toolInterfaceBody).forEach(function (node) {
+      node.addEventListener("change", function () {
+        newsletterSaveSender(tool, root).catch(function () {});
+      });
+    });
+    qsa("[data-newsletter-action]", root || els.toolInterfaceBody).forEach(function (node) {
+      node.addEventListener("click", function () {
+        var action = text(node.getAttribute("data-newsletter-action"));
+        if (action === "send") {
+          newsletterSend(tool, root).catch(function () {});
+          return;
+        }
+        if (action === "refresh") {
+          newsletterRefresh(tool).catch(function () {});
+        }
+      });
+    });
+  }
+
   var fndEbiMediationProvider = {
     defaultMode: function (tool) {
       return normalizeModeId(toolInterfaceContribution(tool).default_mode || "overview") || "overview";
@@ -2445,10 +2777,68 @@
     }
   };
 
+  var newsletterAdminProvider = {
+    defaultMode: function (tool) {
+      return normalizeModeId(toolInterfaceContribution(tool).default_mode || "overview") || "overview";
+    },
+    modes: function (tool) {
+      var contribution = toolInterfaceContribution(tool);
+      var rawModes = Array.isArray(contribution.modes) ? contribution.modes : ["overview", "contacts", "composer", "files"];
+      return rawModes.map(function (mode) {
+        var id = normalizeModeId(mode) || "overview";
+        return { id: id, label: titleCase(mode) };
+      });
+    },
+    title: function (tool) {
+      return text(tool && (tool.label || tool.tool_id)) || "Newsletter Admin";
+    },
+    kicker: function () {
+      return "Website-owned contact logs";
+    },
+    meta: function (tool) {
+      var cards = newsletterCards(tool);
+      var selected = newsletterSelectedCard(tool);
+      var focus = selected ? " · focus: " + newsletterDomainFromCard(selected) : "";
+      return "Domains: " + String(cards.length) + focus;
+    },
+    ensureReady: function (tool, force) {
+      return ensureToolContext(tool, force).then(function (ctx) {
+        var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
+        if (cards.length) {
+          newsletterSelectDomain(tool.tool_id, newsletterDomainFromCard(newsletterSelectedCard(tool) || cards[0]));
+        }
+        ensureInterfacePanelForServiceTool(tool);
+        return ctx;
+      });
+    },
+    render: function (tool, mode) {
+      if (mode === "contacts") return renderNewsletterContacts(tool);
+      if (mode === "composer") return renderNewsletterComposer(tool);
+      if (mode === "files") return renderNewsletterFiles(tool);
+      return renderNewsletterOverview(tool);
+    },
+    renderInterface: function (tool, mode) {
+      return this.render(tool, mode);
+    },
+    renderControlPanel: function (tool) {
+      return renderNewsletterDomainCards(tool);
+    },
+    bind: function (tool, root) {
+      bindNewsletterInterfaceActions(tool, root || els.mediationBody);
+    },
+    bindInterface: function (tool) {
+      bindNewsletterInterfaceActions(tool, els.toolInterfaceBody);
+    },
+    bindControlPanel: function (tool) {
+      bindNewsletterInterfaceActions(tool, els.toolContextMount);
+    }
+  };
+
   var mediationProviders = {
     agro_erp: agroMediationProvider,
     fnd_ebi: fndEbiMediationProvider,
-    aws_platform_admin: awsServiceMediationProvider
+    aws_platform_admin: awsServiceMediationProvider,
+    newsletter_admin: newsletterAdminProvider
   };
 
   function bootstrapMediateToolFromQuery() {

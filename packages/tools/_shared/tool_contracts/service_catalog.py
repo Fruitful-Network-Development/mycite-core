@@ -6,6 +6,7 @@ SERVICE_TOOL_CONTRACT_SCHEMA = "mycite.service_tool.contract.v1"
 SERVICE_TOOL_BINDINGS_SCHEMA = "mycite.service_tool.config_bindings.v1"
 FND_EBI_PROFILE_SCHEMA = "mycite.service_tool.fnd_ebi.profile.v1"
 AWS_CSM_PROFILE_SCHEMA = "mycite.service_tool.aws_csm.profile.v1"
+NEWSLETTER_PROFILE_SCHEMA = "mycite.service_tool.newsletter.profile.v1"
 AWS_CSM_DEFAULT_REGION = "us-east-1"
 
 SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
@@ -35,6 +36,21 @@ SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "collection_patterns": ["tool.*.aws-csm.json"],
         "member_patterns": ["spec.json", "aws-csm.*.json", "*audit*.json", "actions.ndjson", "provision_requests.ndjson"],
         "profile_schema": AWS_CSM_PROFILE_SCHEMA,
+    },
+    "newsletter_admin": {
+        "namespace": "newsletter-admin",
+        "workspace_id": "service.newsletter_admin",
+        "label": "Newsletter contact lists",
+        "default_mode": "overview",
+        "modes": ["overview", "contacts", "composer", "files"],
+        "config_patterns": [
+            "tool.*.newsletter-admin.json",
+            "newsletter-admin.{portal_instance_id}.json",
+            "newsletter-admin.*.json",
+        ],
+        "collection_patterns": ["tool.*.newsletter-admin.json"],
+        "member_patterns": ["spec.json", "newsletter-admin.*.json", "*.ndjson"],
+        "profile_schema": NEWSLETTER_PROFILE_SCHEMA,
     },
     "paypal_service_agreement": {
         "namespace": "paypal-csm",

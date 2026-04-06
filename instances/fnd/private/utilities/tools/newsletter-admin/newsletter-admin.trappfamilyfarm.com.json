@@ -1,0 +1,10 @@
+{
+  "schema": "mycite.service_tool.newsletter.profile.v1",
+  "domain": "trappfamilyfarm.com",
+  "list_address": "news@trappfamilyfarm.com",
+  "selected_sender_profile_id": "aws-csm.tff.technicalContact",
+  "selected_sender_address": "technicalContact@trappfamilyfarm.com",
+  "contact_log_path": "/srv/webapps/clients/trappfamilyfarm.com/contacts/trappfamilyfarm.com-contact_log.json",
+  "delivery_mode": "aws_ses_cli"
+}
+
