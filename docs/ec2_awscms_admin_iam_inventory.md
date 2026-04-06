@@ -211,6 +211,89 @@ Create, update, and pass mail/newsletter Lambda execution roles.
 }
 ```
 
+### 6.) `AWSCMSNewsletterQueueManagement`
+
+**Purpose**
+
+Manage SQS queues used by newsletter delivery flows when queue-backed dispatch is enabled.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowQueueDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:ListQueues",
+        "sqs:GetQueueUrl"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowManageNewsletterQueues",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:CreateQueue",
+        "sqs:DeleteQueue",
+        "sqs:GetQueueAttributes",
+        "sqs:SetQueueAttributes",
+        "sqs:TagQueue",
+        "sqs:UntagQueue",
+        "sqs:SendMessage",
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:PurgeQueue"
+      ],
+      "Resource": [
+        "arn:aws:sqs:us-east-1:065948377733:newsletter-*",
+        "arn:aws:sqs:us-east-1:065948377733:aws-cms-newsletter-*"
+      ]
+    }
+  ]
+}
+```
+
+### 7.) `AWSCMSLegacySharedSmtpRetirement`
+
+**Purpose**
+
+Provide the minimum additional IAM access needed to inspect and retire the legacy shared SMTP IAM user `aws-cms-smtp` after the hard cut to the per-mailbox model.
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowInspectLegacySharedSmtpUserForRetirement",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetUser",
+        "iam:ListAccessKeys",
+        "iam:ListUserPolicies",
+        "iam:GetUserPolicy",
+        "iam:ListUserTags",
+        "iam:ListServiceSpecificCredentials"
+      ],
+      "Resource": "arn:aws:iam::065948377733:user/aws-cms-smtp"
+    },
+    {
+      "Sid": "AllowRetireLegacySharedSmtpUserArtifacts",
+      "Effect": "Allow",
+      "Action": [
+        "iam:DeleteAccessKey",
+        "iam:UpdateAccessKey",
+        "iam:DeleteUserPolicy",
+        "iam:DeleteServiceSpecificCredential",
+        "iam:UntagUser",
+        "iam:TagUser",
+        "iam:DeleteUser"
+      ],
+      "Resource": "arn:aws:iam::065948377733:user/aws-cms-smtp"
+    }
+  ]
+}
+```
+
 ## Attached managed policies
 
 These are attached to `EC2-AWSCMS-Admin` and provide the broader service-level access.
