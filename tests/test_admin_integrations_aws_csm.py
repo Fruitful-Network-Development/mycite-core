@@ -805,6 +805,98 @@ class AdminIntegrationsAwsCsmTests(unittest.TestCase):
             self.assertEqual(handoff.get("username"), "AKIAStage")
             self.assertEqual(handoff.get("password"), "smtp-password-xyz")
 
+    def test_admin_aws_enable_inbound_capture_provisions_mx_and_receipt_rule(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            root = private_dir / "utilities" / "tools" / "aws-csm"
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "aws-csm.tff.technicalContact.json").write_text(
+                json.dumps(
+                    {
+                        "identity": {
+                            "profile_id": "aws-csm.tff.technicalContact",
+                            "tenant_id": "tff",
+                            "domain": "trappfamilyfarm.com",
+                            "region": "us-east-1",
+                            "mailbox_local_part": "technicalContact",
+                            "operator_inbox_target": "trapp.family.farm@gmail.com",
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "smtp": {
+                            "host": "email-smtp.us-east-1.amazonaws.com",
+                            "port": "587",
+                            "username": "AKIAStage",
+                            "credentials_secret_name": "aws-cms/smtp/tff.technicalContact",
+                            "credentials_secret_state": "configured",
+                            "send_as_email": "technicalContact@trappfamilyfarm.com",
+                        },
+                        "provider": {
+                            "aws_ses_identity_status": "verified",
+                            "gmail_send_as_status": "not_started",
+                        },
+                        "workflow": {
+                            "initiated": True,
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            module, client = self._make_client_with_module(private_dir)
+
+            with mock.patch.object(
+                module,
+                "_ensure_domain_mx_record",
+                return_value={
+                    "hosted_zone_id": "Z07127663NGY0TH4ZZIEI",
+                    "mx_value": "10 inbound-smtp.us-east-1.amazonaws.com",
+                },
+            ), mock.patch.object(
+                module,
+                "_ensure_domain_receipt_rule",
+                return_value={
+                    "receipt_rule_set": "fnd-inbound-rules",
+                    "receipt_rule_name": "portal-capture-trappfamilyfarm-com",
+                    "receipt_rule_recipients": ["trappfamilyfarm.com"],
+                    "s3_bucket": "ses-inbound-fnd-mail",
+                    "s3_prefix": "inbound/trappfamilyfarm.com/",
+                    "lambda_function": "",
+                },
+            ), mock.patch.object(
+                module,
+                "_find_latest_verification_message",
+                return_value=(
+                    {},
+                    {
+                        "receipt_rule_set": "fnd-inbound-rules",
+                        "receipt_rule_name": "portal-capture-trappfamilyfarm-com",
+                        "receipt_rule_recipients": ["trappfamilyfarm.com"],
+                        "s3_bucket": "ses-inbound-fnd-mail",
+                        "s3_prefix": "inbound/trappfamilyfarm.com/",
+                        "lambda_function": "",
+                    },
+                ),
+            ):
+                response = client.post(
+                    "/portal/api/admin/aws/profile/aws-csm.tff.technicalContact/provision",
+                    headers=self._headers(),
+                    json={"action": "enable_inbound_capture"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json() or {}
+            self.assertEqual(payload.get("action"), "enable_inbound_capture")
+            self.assertEqual(payload.get("status"), "completed")
+            mx_record = payload.get("mx_record") if isinstance(payload.get("mx_record"), dict) else {}
+            self.assertEqual(mx_record.get("value"), "10 inbound-smtp.us-east-1.amazonaws.com")
+            legacy = payload.get("legacy_inbound") if isinstance(payload.get("legacy_inbound"), dict) else {}
+            self.assertEqual(legacy.get("receipt_rule_name"), "portal-capture-trappfamilyfarm-com")
+            self.assertEqual(legacy.get("capture_source_kind"), "s3_object")
+            profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+            inbound = profile.get("inbound") if isinstance(profile.get("inbound"), dict) else {}
+            self.assertEqual(inbound.get("receive_state"), "receive_pending")
+            self.assertEqual(inbound.get("legacy_dependency_state"), "portal_native_pending")
+
     def test_admin_aws_stage_smtp_credentials_resets_stale_verified_state_without_evidence(self):
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir) / "private"
