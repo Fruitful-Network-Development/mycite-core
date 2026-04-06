@@ -254,6 +254,15 @@ Manage SQS queues used by newsletter delivery flows when queue-backed dispatch i
 }
 ```
 
+Current live intent:
+
+- queue-backed newsletter dispatch is currently hard-coded to `us-east-1`
+- the canonical queue name is `aws-cms-newsletter-dispatch`
+- the dispatcher Lambda consumes one queued recipient job at a time
+- `news@<domain>` is the real outbound sender for newsletter delivery
+- verified operator mailboxes such as `technicalContact@<domain>` act as
+  newsletter authors, not the final outward sender identity
+
 ### 7.) `AWSCMSLegacySharedSmtpRetirement`
 
 **Purpose**
@@ -293,6 +302,16 @@ Provide the minimum additional IAM access needed to inspect and retire the legac
   ]
 }
 ```
+
+Current caution:
+
+- this retirement policy does **not** authorize blind removal of the
+  `aws-cms-smtp` user while AWS-CMS mailbox SMTP still depends on it
+- safe immediate cleanup should focus first on legacy newsletter artifacts that
+  are no longer part of the canonical control plane, such as
+  `mode-c-broadcast-command` and `broadcast-command-processor`
+- the shared SMTP user should only be retired after mailbox provisioning has
+  fully moved away from it
 
 ## Attached managed policies
 

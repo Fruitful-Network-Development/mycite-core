@@ -37,6 +37,10 @@ def newsletter_secret_path(private_dir: Path) -> Path:
     return newsletter_state_root(private_dir) / ".newsletter-signing-secret"
 
 
+def newsletter_dispatch_secret_path(private_dir: Path) -> Path:
+    return newsletter_state_root(private_dir) / ".newsletter-dispatch-secret"
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists() or not path.is_file():
         return {}
@@ -235,14 +239,26 @@ def load_newsletter_profile(private_dir: Path, domain: str) -> tuple[Path, dict[
     token = _text(domain).lower()
     path = newsletter_profile_path(private_dir, token)
     payload = _read_json(path)
+    list_address = _text(payload.get("list_address")) or f"news@{token}"
+    selected_author_profile_id = _text(payload.get("selected_author_profile_id") or payload.get("selected_sender_profile_id"))
+    selected_author_address = _text(payload.get("selected_author_address") or payload.get("selected_sender_address"))
+    sender_address = _text(payload.get("sender_address")) or list_address
     profile = {
         "schema": NEWSLETTER_PROFILE_SCHEMA,
         "domain": token,
-        "list_address": _text(payload.get("list_address")) or f"news@{token}",
-        "selected_sender_profile_id": _text(payload.get("selected_sender_profile_id")),
-        "selected_sender_address": _text(payload.get("selected_sender_address")),
+        "list_address": list_address,
+        "sender_address": sender_address,
+        "selected_author_profile_id": selected_author_profile_id,
+        "selected_author_address": selected_author_address,
+        "selected_sender_profile_id": selected_author_profile_id,
+        "selected_sender_address": selected_author_address,
         "contact_log_path": _text(payload.get("contact_log_path")) or str(newsletter_contact_log_path(private_dir, token)),
-        "delivery_mode": _text(payload.get("delivery_mode")) or "aws_ses_cli",
+        "delivery_mode": _text(payload.get("delivery_mode")) or "aws_sqs_lambda_us_east_1",
+        "aws_region": _text(payload.get("aws_region")) or "us-east-1",
+        "dispatch_queue_url": _text(payload.get("dispatch_queue_url")),
+        "dispatch_queue_arn": _text(payload.get("dispatch_queue_arn")),
+        "dispatcher_lambda_name": _text(payload.get("dispatcher_lambda_name")),
+        "dispatcher_callback_url": _text(payload.get("dispatcher_callback_url")),
         "updated_at": _text(payload.get("updated_at")) or _utc_now_iso(),
     }
     return path, profile
@@ -347,6 +363,18 @@ def newsletter_signing_secret(private_dir: Path) -> str:
     return token
 
 
+def newsletter_dispatch_secret(private_dir: Path) -> str:
+    path = newsletter_dispatch_secret_path(private_dir)
+    if path.exists() and path.is_file():
+        token = _text(path.read_text(encoding="utf-8"))
+        if token:
+            return token
+    token = secrets.token_urlsafe(32)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(token + "\n", encoding="utf-8")
+    return token
+
+
 def unsubscribe_token(secret: str, *, domain: str, email: str) -> str:
     payload = f"{_text(domain).lower()}|{_text(email).lower()}".encode("utf-8")
     digest = hmac.new(_text(secret).encode("utf-8"), payload, hashlib.sha256).hexdigest()
@@ -378,7 +406,7 @@ def resolve_newsletter_domain_state(private_dir: Path, domain: str) -> dict[str,
     profile_path, profile = load_newsletter_profile(private_dir, token)
     verified = verified_sender_profiles(private_dir, token)
     selected = {}
-    selected_profile_id = _text(profile.get("selected_sender_profile_id"))
+    selected_profile_id = _text(profile.get("selected_author_profile_id") or profile.get("selected_sender_profile_id"))
     for item in verified:
         if _text(item.get("profile_id")) == selected_profile_id:
             selected = dict(item)
@@ -386,6 +414,8 @@ def resolve_newsletter_domain_state(private_dir: Path, domain: str) -> dict[str,
     if not selected:
         selected = preferred_sender(verified)
     if selected:
+        profile["selected_author_profile_id"] = _text(selected.get("profile_id"))
+        profile["selected_author_address"] = _text(selected.get("send_as_email"))
         profile["selected_sender_profile_id"] = _text(selected.get("profile_id"))
         profile["selected_sender_address"] = _text(selected.get("send_as_email"))
     summary = contact_summary(contact_log)
@@ -398,8 +428,10 @@ def resolve_newsletter_domain_state(private_dir: Path, domain: str) -> dict[str,
         "contact_log_path": str(contact_log_path),
         "profile": profile,
         "verified_senders": verified,
+        "selected_author": selected,
         "selected_sender": selected,
         "list_address": _text(profile.get("list_address")) or f"news@{token}",
+        "sender_address": _text(profile.get("sender_address")) or _text(profile.get("list_address")) or f"news@{token}",
         "contacts": list(contact_log.get("contacts") or []),
         "contacts_preview": contacts_preview,
         "dispatches": dispatches,

@@ -53,6 +53,9 @@ class NewsletterServiceToolMediationTests(unittest.TestCase):
                     {
                         "schema": "mycite.service_tool.newsletter.profile.v1",
                         "domain": "trappfamilyfarm.com",
+                        "sender_address": "news@trappfamilyfarm.com",
+                        "selected_author_profile_id": "aws-csm.tff.technicalContact",
+                        "selected_author_address": "technicalContact@trappfamilyfarm.com",
                         "selected_sender_profile_id": "aws-csm.tff.technicalContact",
                         "selected_sender_address": "technicalContact@trappfamilyfarm.com",
                     }
@@ -103,3 +106,4 @@ class NewsletterServiceToolMediationTests(unittest.TestCase):
             self.assertEqual(body.get("domain"), "trappfamilyfarm.com")
             self.assertEqual(body.get("subscribed_count"), 1)
             self.assertEqual(((body.get("selected_sender") or {}).get("send_as_email")), "technicalContact@trappfamilyfarm.com")
+            self.assertEqual(body.get("sender_address"), "news@trappfamilyfarm.com")

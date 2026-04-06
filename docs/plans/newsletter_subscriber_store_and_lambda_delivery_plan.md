@@ -91,15 +91,37 @@ That flow should:
 
 Unsubscribe should never delete the record.
 
-## Lambda Delivery Boundary
+## Queue and Lambda Delivery Boundary
+
+The canonical live delivery path is queue-backed and region-pinned:
+
+- region: `us-east-1`
+- queue: `aws-cms-newsletter-dispatch`
+- dispatcher Lambda: `newsletter-dispatcher`
+
+This is intentionally hard-coded for the current live stack. If a future
+region expansion is needed, it should be a deliberate refactor rather than an
+implicit fallback.
+
+The queue/Lambda system should work like this:
+
+1. the selected verified mailbox, currently `technicalContact@<domain>`,
+   submits newsletter content to `news@<domain>`
+2. the portal records the recipient snapshot from the canonical website contact
+   log
+3. the portal enqueues one SQS message per subscribed recipient
+4. the Lambda sends one email at a time from `news@<domain>`
+5. the Lambda reports per-recipient results back to the portal so the website
+   contact log remains the source of truth
 
 Lambda should:
 
-- read a deliberate recipient snapshot derived from the website contact log
+- treat `news@<domain>` as the real outbound sender
+- treat the selected verified mailbox as the author/reply target
 - send one email at a time
 - respect `subscribed=true`
 - skip unsubscribed or suppressed recipients
-- emit auditable send results
+- emit auditable per-recipient send results
 
 Lambda should not become the source of contact truth.
 
@@ -114,6 +136,20 @@ Required separation:
   routes
 - mailbox onboarding state and newsletter contact-list state stay in separate
   files and separate tools
+
+## Legacy AWS Retirement Note
+
+The old newsletter-shaped AWS artifacts are not canonical anymore once the
+queue/Lambda path is active.
+
+Retirement target:
+
+- SES receipt rule `mode-c-broadcast-command`
+- Lambda `broadcast-command-processor`
+
+These belong to the older `broadcast@fruitfulnetworkdevelopment.com` path and
+should not remain as a second newsletter control plane after the
+`news@<domain>` queue-backed system is live.
 
 ## Suggested Future Tests
 

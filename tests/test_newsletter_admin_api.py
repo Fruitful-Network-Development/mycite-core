@@ -102,10 +102,18 @@ class NewsletterAdminApiTests(unittest.TestCase):
                     "schema": "mycite.service_tool.newsletter.profile.v1",
                     "domain": domain,
                     "list_address": f"news@{domain}",
+                    "sender_address": f"news@{domain}",
+                    "selected_author_profile_id": profile_id,
+                    "selected_author_address": sender_email,
                     "selected_sender_profile_id": profile_id,
                     "selected_sender_address": sender_email,
                     "contact_log_path": str(frontend_root.parent / "contacts" / f"{domain}-contact_log.json"),
-                    "delivery_mode": "aws_ses_cli",
+                    "delivery_mode": "aws_sqs_lambda_us_east_1",
+                    "aws_region": "us-east-1",
+                    "dispatch_queue_url": "https://sqs.us-east-1.amazonaws.com/065948377733/aws-cms-newsletter-dispatch",
+                    "dispatch_queue_arn": "arn:aws:sqs:us-east-1:065948377733:aws-cms-newsletter-dispatch",
+                    "dispatcher_lambda_name": "newsletter-dispatcher",
+                    "dispatcher_callback_url": f"https://{domain}/__fnd/newsletter/dispatch-result",
                 }
             )
             + "\n",
@@ -147,7 +155,7 @@ class NewsletterAdminApiTests(unittest.TestCase):
             payload = json.loads(log_path.read_text(encoding="utf-8"))
             self.assertFalse((payload.get("contacts") or [])[0].get("subscribed"))
 
-    def test_admin_send_uses_verified_sender_and_records_dispatch(self):
+    def test_admin_send_queues_recipient_jobs_and_callback_records_delivery(self):
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir) / "private"
             log_path = self._seed_domain(
@@ -161,7 +169,7 @@ class NewsletterAdminApiTests(unittest.TestCase):
                 "/__fnd/newsletter/subscribe",
                 data={"domain": "cuyahogavalleycountrysideconservancy.org", "email": "reader@example.com"},
             )
-            with mock.patch.object(module, "_aws_cli_json", return_value={"MessageId": "mid-123"}):
+            with mock.patch.object(module, "_aws_cli_json", side_effect=[{"MessageId": "submission-copy-1"}, {"MessageId": "queue-msg-1"}]):
                 response = client.post(
                     "/portal/api/admin/newsletter/domain/cuyahogavalleycountrysideconservancy.org/send",
                     headers=self._headers(),
@@ -176,8 +184,30 @@ class NewsletterAdminApiTests(unittest.TestCase):
             dispatches = payload.get("dispatches") or []
             self.assertEqual(len(dispatches), 1)
             self.assertEqual((dispatches[0].get("sender_profile_id")), "aws-csm.cvcc.technicalContact")
+            self.assertEqual((dispatches[0].get("sender_address")), "news@cuyahogavalleycountrysideconservancy.org")
+            self.assertEqual((dispatches[0].get("author_address")), "technicalContact@cuyahogavalleycountrysideconservancy.org")
+            self.assertEqual((dispatches[0].get("queued_count")), 1)
+            self.assertEqual((dispatches[0].get("sent_count")), 0)
+            self.assertEqual(((dispatches[0].get("results") or [])[0].get("queue_message_id")), "queue-msg-1")
+            contacts = payload.get("contacts") or []
+            self.assertEqual((contacts[0].get("send_count")), 0)
+
+            callback = client.post(
+                "/__fnd/newsletter/dispatch-result",
+                headers={"X-Newsletter-Dispatch-Token": module.newsletter_dispatch_secret(private_dir)},
+                json={
+                    "domain": "cuyahogavalleycountrysideconservancy.org",
+                    "dispatch_id": dispatches[0].get("dispatch_id"),
+                    "email": "reader@example.com",
+                    "status": "sent",
+                    "message_id": "ses-msg-1",
+                },
+            )
+            self.assertEqual(callback.status_code, 200)
+            payload = json.loads(log_path.read_text(encoding="utf-8"))
+            dispatches = payload.get("dispatches") or []
             self.assertEqual((dispatches[0].get("sent_count")), 1)
-            self.assertEqual(((dispatches[0].get("results") or [])[0].get("message_id")), "mid-123")
+            self.assertEqual(((dispatches[0].get("results") or [])[0].get("message_id")), "ses-msg-1")
             contacts = payload.get("contacts") or []
             self.assertEqual((contacts[0].get("send_count")), 1)
 
