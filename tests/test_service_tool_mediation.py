@@ -826,9 +826,10 @@ class ServiceToolMediationTests(unittest.TestCase):
         module = _load_service_tools_module()
         meta = module.build_service_tool_meta("aws_platform_admin")
         interface_panel = meta.get("interface_panel_contribution") if isinstance(meta.get("interface_panel_contribution"), dict) else {}
-        self.assertEqual(interface_panel.get("label"), "AWS send-as onboarding")
+        self.assertEqual(interface_panel.get("label"), "AWS mailbox and newsletter operations")
         self.assertEqual(interface_panel.get("default_mode"), "overview")
         self.assertEqual(interface_panel.get("lens_id"), "service.aws_csm")
+        self.assertIn("newsletter", interface_panel.get("modes") or [])
         self.assertEqual(meta.get("shell_composition_mode"), "tool")
         self.assertEqual(meta.get("foreground_surface"), "interface_panel")
         collection_datum = ((meta.get("service_contract") or {}).get("collection_datum")) or {}

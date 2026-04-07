@@ -24,9 +24,9 @@ SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
     "aws_platform_admin": {
         "namespace": "aws-csm",
         "workspace_id": "service.aws_csm",
-        "label": "AWS send-as onboarding",
+        "label": "AWS mailbox and newsletter operations",
         "default_mode": "overview",
-        "modes": ["overview", "smtp", "verification", "files"],
+        "modes": ["overview", "smtp", "verification", "newsletter", "files"],
         "config_patterns": [
             "tool.*.aws-csm.json",
             "aws-csm.{portal_instance_id}.*.json",
@@ -36,21 +36,6 @@ SERVICE_TOOL_DEFINITIONS: dict[str, dict[str, Any]] = {
         "collection_patterns": ["tool.*.aws-csm.json"],
         "member_patterns": ["spec.json", "aws-csm.*.json", "*audit*.json", "actions.ndjson", "provision_requests.ndjson"],
         "profile_schema": AWS_CSM_PROFILE_SCHEMA,
-    },
-    "newsletter_admin": {
-        "namespace": "newsletter-admin",
-        "workspace_id": "service.newsletter_admin",
-        "label": "Newsletter contact lists",
-        "default_mode": "overview",
-        "modes": ["overview", "contacts", "composer", "files"],
-        "config_patterns": [
-            "tool.*.newsletter-admin.json",
-            "newsletter-admin.{portal_instance_id}.json",
-            "newsletter-admin.*.json",
-        ],
-        "collection_patterns": ["tool.*.newsletter-admin.json"],
-        "member_patterns": ["spec.json", "newsletter-admin.*.json", "*.ndjson"],
-        "profile_schema": NEWSLETTER_PROFILE_SCHEMA,
     },
     "paypal_service_agreement": {
         "namespace": "paypal-csm",

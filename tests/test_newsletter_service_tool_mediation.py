@@ -17,7 +17,7 @@ def _load_service_tools_module():
 
 
 class NewsletterServiceToolMediationTests(unittest.TestCase):
-    def test_newsletter_service_tool_context_reads_website_contact_logs(self):
+    def test_aws_newsletter_context_prefers_canonical_profile_over_progeny_drift(self):
         module = _load_service_tools_module()
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir) / "private"
@@ -72,6 +72,15 @@ class NewsletterServiceToolMediationTests(unittest.TestCase):
             )
             aws_root = private_dir / "utilities" / "tools" / "aws-csm"
             aws_root.mkdir(parents=True, exist_ok=True)
+            (aws_root / "spec.json").write_text(
+                json.dumps({"schema": "mycite.portal.tool_spec.v1", "tool_id": "aws-csm", "inherited_inputs": [], "outputs": []})
+                + "\n",
+                encoding="utf-8",
+            )
+            (aws_root / "tool.3-2-3.aws-csm.json").write_text(
+                json.dumps({"schema": "mycite.portal.tool_collection.v1", "member_files": ["spec.json", "aws-csm.tff.technicalContact.json"]}) + "\n",
+                encoding="utf-8",
+            )
             (aws_root / "aws-csm.tff.technicalContact.json").write_text(
                 json.dumps(
                     {
@@ -91,19 +100,48 @@ class NewsletterServiceToolMediationTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
+            progeny_root = private_dir / "network" / "progeny"
+            progeny_root.mkdir(parents=True, exist_ok=True)
+            (progeny_root / "member-trapp.json").write_text(
+                json.dumps(
+                    {
+                        "profile_refs": {
+                            "paypal_site_domain": "trappfamilyfarm.com",
+                            "newsletter_ingest_address": "hermes@trappfamilyfarm.com",
+                            "newsletter_sender_address": "news@trappfamilyfarm.com",
+                            "newsletter_allowed_from_csv": "mark@trappfamilyfarm.com",
+                            "newsletter_dispatch_mode": "aws_internal",
+                        },
+                        "email_policy": {
+                            "newsletter": {
+                                "allowed_from": ["mark@trappfamilyfarm.com"],
+                                "ingest_address": "hermes@trappfamilyfarm.com",
+                                "sender_address": "news@trappfamilyfarm.com",
+                                "dispatch_mode": "aws_internal",
+                            }
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             payload = module.build_service_tool_config_context(
-                "newsletter_admin",
+                "aws_platform_admin",
                 private_dir=private_dir,
-                tool_tabs=[{"tool_id": "newsletter_admin", **module.build_service_tool_meta("newsletter_admin")}],
+                tool_tabs=[{"tool_id": "aws_platform_admin", **module.build_service_tool_meta("aws_platform_admin")}],
                 portal_instance_id="fnd",
                 msn_id="3-2-3",
             )
             self.assertTrue(payload.get("ok"))
-            self.assertEqual(payload.get("tool_namespace"), "newsletter-admin")
-            cards = payload.get("profile_cards") or []
-            self.assertEqual(len(cards), 1)
-            body = (cards[0].get("body") or {}) if isinstance(cards[0], dict) else {}
+            self.assertEqual(payload.get("tool_namespace"), "aws-csm")
+            sections = payload.get("profile_domain_sections") or []
+            self.assertEqual(len(sections), 1)
+            newsletter_cards = sections[0].get("newsletter_cards") if isinstance(sections[0], dict) else []
+            self.assertEqual(len(newsletter_cards), 1)
+            body = (newsletter_cards[0].get("body") or {}) if isinstance(newsletter_cards[0], dict) else {}
             self.assertEqual(body.get("domain"), "trappfamilyfarm.com")
             self.assertEqual(body.get("subscribed_count"), 1)
             self.assertEqual(((body.get("selected_sender") or {}).get("send_as_email")), "technicalContact@trappfamilyfarm.com")
             self.assertEqual(body.get("sender_address"), "news@trappfamilyfarm.com")
+            warnings = body.get("warnings") if isinstance(body.get("warnings"), list) else []
+            self.assertTrue(any("compatibility drift" in str(item) for item in warnings))

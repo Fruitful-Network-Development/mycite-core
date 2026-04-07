@@ -1,4 +1,46 @@
-# Current workflow is incorrect, not faulted, needs fixing.
+# Newsletter Workflow Correction
+
+## Status
+
+Implemented on April 7, 2026.
+
+## Corrected Workflow
+
+- Newsletter no longer exists as a standalone mediated tool surface.
+- Newsletter administration now lives inside the AWS-CMS service tool domain cards.
+- Canonical newsletter operational state stays in:
+  - `private/utilities/tools/newsletter-admin/newsletter-admin.<domain>.json`
+- Canonical subscriber state stays in:
+  - `/srv/webapps/clients/<domain>/contacts/<domain>-contact_log.json`
+- The only intended send trigger is an inbound email sent from the selected verified mailbox to `news@<domain>`.
+- Manual admin composition/send through `/portal/api/admin/newsletter/domain/<domain>/send` is retired and now returns an explicit inbound-only error.
+- Processing a newsletter now means:
+  1. send the email from the selected verified mailbox to `news@<domain>`
+  2. capture that message through the inbound mail chain
+  3. validate that the captured sender matches the selected verified AWS-CMS mailbox
+  4. validate that the captured recipient matches the canonical newsletter list address
+  5. enqueue one SQS dispatch job per subscribed contact
+  6. record dispatch state back into the canonical website contact log
+
+## Compatibility Boundary
+
+- Progeny `email_policy.newsletter` and `profile_refs.newsletter_*` remain compatibility-read only.
+- When progeny newsletter fields disagree with the canonical newsletter profile JSON, the portal surfaces warnings and keeps the canonical newsletter profile as the operational source.
+- The legacy standalone `newsletter-admin` tool package remains only as a compatibility lane for shared runtime routes and state adapters. It is no longer part of the configured tool surface.
+
+## Operational Note
+
+For live FND domains, the portal no longer treats a manually composed portal payload as newsletter content. The authored inbound message is the content source. The portal mediation view now exists to:
+
+- choose the verified sender mailbox
+- inspect contact-log health
+- inspect compatibility warnings against progeny newsletter metadata
+- inspect the latest inbound message status
+- process the captured inbound message into queued recipient jobs
+
+## Historical Context
+
+The sections below capture the pre-correction mismatch that prompted this fix.
 
 ## Inquery:
 Consider this email I sent as `technicalContact@trappfamilyfarm.com` to `news@trappfamilyfarm.com`.
@@ -10,7 +52,7 @@ However, the other attached email, is the one that was received upon the agents 
 Consider where the logic is not aligned for this to be the case.
 
 
-## Response:
+## Prior Response:
 Sending a normal email from the technical‑contact mailbox to the `news@…` address does not trigger the queue‑backed newsletter loop, because there is no inbound monitor that treats arbitrary mail to `news@…` as a newsletter.
 
 The queue/Lambda path is invoked only through the portal’s “newsletter‑admin” tool.  When an admin submits a newsletter, the portal resolves the verified sender, queues one message per subscribed contact and sends the bulk messages via the `newsletter‑dispatcher` Lambda.  In that process the portal itself sends a *copy* of the newsletter from the selected author (`technicalContact@domain`) to the list address (`news@domain`) using SES.  This step exists so the author can keep a copy of what was sent; it is *not* a trigger.  The plan document explicitly describes the live flow as “portal submit → SES copy from `technicalContact` to `news@domain` → one SQS message per subscribed contact → Lambda sends from `news@domain`”.  No part of the code watches for random incoming mail to `news@…` and turns it into a newsletter.
@@ -20,7 +62,9 @@ By contrast, the second attached email shows the actual queue‑driven newslette
 In short, the mismatch arises because you attempted to trigger the newsletter loop by sending an email directly.  The implemented logic requires using the portal’s newsletter‑admin interface; it does not listen for incoming mail to `news@…` as a trigger.
 
 
-## Conclusion: I want to align the workflow to work as I described, their should not be a separate tool for newsletter. There should only be the mediation view of newsletter type profile JSON's that allow for a selection of the user that can send newsletters.
+## Prior Conclusion:
+
+I want to align the workflow to work as I described, their should not be a separate tool for newsletter. There should only be the mediation view of newsletter type profile JSON's that allow for a selection of the user that can send newsletters.
 
 
 ## Test email newsletter with the incorrect workflow, but correct usage of the unsubscribe:

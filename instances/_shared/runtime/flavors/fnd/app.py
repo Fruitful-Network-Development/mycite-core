@@ -720,6 +720,8 @@ def _configured_tool_status_items() -> list[Dict[str, Any]]:
         raw_name = str(entry.get("name") or entry.get("tool_id") or entry.get("id") or "").strip().lower()
         if not raw_name:
             continue
+        if raw_name in {"newsletter-admin", "newsletter_admin"}:
+            continue
         runtime_id = raw_name.replace("-", "_")
         tab = next((item for item in TOOL_TABS if str(item.get("tool_id") or "").strip().lower() == runtime_id), {})
         if not tab:

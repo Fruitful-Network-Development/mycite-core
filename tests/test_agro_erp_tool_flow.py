@@ -156,6 +156,35 @@ class AgroErpToolFlowTests(unittest.TestCase):
         self.assertTrue(payload.get("ok"))
         self.assertTrue(isinstance(payload.get("plan"), dict))
 
+    def test_time_schema_uses_sandbox_anchor_not_utility_collection(self):
+        data_dir = Path(self.module.os.environ["DATA_DIR"])
+        sandbox_root = data_dir / "sandbox" / "agro-erp"
+        sandbox_root.mkdir(parents=True, exist_ok=True)
+        anchor_path = sandbox_root / "tool.3-2-3-17-77-2-6-3-1-6.agro-erp.json"
+        anchor_path.write_text(
+            json.dumps(
+                {
+                    "1-1-1": [
+                        ["1-1-1", "0-0-1", "00000010001110000100001110011000100001100111111011111010001111101000101101101111100111100"],
+                        ["UTC_mixed_radix"],
+                    ]
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        utility_root = Path(self.module.os.environ["PRIVATE_DIR"]) / "utilities" / "tools" / "agro-erp"
+        utility_root.mkdir(parents=True, exist_ok=True)
+        (utility_root / anchor_path.name).write_text(
+            json.dumps({"1-1-1": [["1-1-1", "0-0-1", "0"], ["wrong"]]}) + "\n",
+            encoding="utf-8",
+        )
+        response = self.client.post("/portal/tools/agro_erp/time/filter", json={"selected_scope": "13-787-26-3-26"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json() or {}
+        authority = payload.get("schema_authority") if isinstance(payload.get("schema_authority"), dict) else {}
+        self.assertIn("/data/sandbox/agro-erp/", str(authority.get("anchor_path") or ""))
+
     def test_apply_flow_for_product_type_and_gestation_uses_shared_write_pipeline(self):
         calls = []
 

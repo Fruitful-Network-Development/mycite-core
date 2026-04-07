@@ -57,6 +57,25 @@ def parse_public_resource_catalog(card_payload: dict[str, Any], *, source_msn_id
                     metadata={k: v for k, v in item.items() if k not in {"resource_id", "kind", "export_family", "href", "lens_hint", "availability"}},
                 )
             )
+    accessible = card_payload.get("accessible")
+    if isinstance(accessible, dict):
+        for ref_token, metadata in sorted(accessible.items()):
+            ref_id = _as_text(ref_token)
+            if not ref_id:
+                continue
+            meta = metadata if isinstance(metadata, dict) else {}
+            out.append(
+                PublicResourceDescriptor(
+                    resource_id=f"accessible:{ref_id}",
+                    kind="accessible_ref",
+                    export_family="mycite.public.accessible_ref.v1",
+                    href="",
+                    lens_hint=_as_text(meta.get("lens_hint")) or "datum",
+                    availability={"public": False, "accessible": True},
+                    source_msn_id=source_msn_id,
+                    metadata={"target_ref": ref_id, **meta},
+                )
+            )
     deduped: dict[str, PublicResourceDescriptor] = {}
     for item in out:
         deduped[item.resource_id] = item

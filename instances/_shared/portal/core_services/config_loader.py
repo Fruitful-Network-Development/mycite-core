@@ -13,7 +13,7 @@ _CONTRACT_FILE_RE = re.compile(
     re.IGNORECASE,
 )
 _REFERENCE_FILE_RE = re.compile(
-    r"^rf\.(?P<source>[A-Za-z0-9._:-]+)\.(?P<name>[A-Za-z0-9_.-]+)\.(?:json|bin)$",
+    r"^(?P<prefix>rf|ref)\.(?P<source>[A-Za-z0-9._:-]+)\.(?P<name>[A-Za-z0-9_.-]+)\.(?P<ext>json|bin)$",
     re.IGNORECASE,
 )
 
@@ -46,6 +46,18 @@ def _reference_file_parts(token: str) -> tuple[str, str]:
     if not match:
         return ("", "")
     return (str(match.group("source") or "").strip(), str(match.group("name") or "").strip())
+
+
+def _reference_file_payload(token: str) -> dict[str, str]:
+    match = _REFERENCE_FILE_RE.fullmatch(str(token or "").strip())
+    if not match:
+        return {"prefix": "", "source": "", "name": "", "ext": ""}
+    return {
+        "prefix": str(match.group("prefix") or "").strip().lower(),
+        "source": str(match.group("source") or "").strip(),
+        "name": str(match.group("name") or "").strip(),
+        "ext": str(match.group("ext") or "").strip().lower(),
+    }
 
 
 def _infer_reference_source_msn(item: dict[str, Any], *, local_msn_id: str) -> str:
@@ -84,10 +96,12 @@ def _normalize_reference_entries(raw: Any, *, local_msn_id: str) -> list[dict[st
         form_source, form_name = _reference_file_parts(str(item.get("mss_form") or ""))
         name = str(item.get("name") or form_name or title_name).strip().lower()
         if not name:
+            _LOG.warning("Ignoring malformed reference without name: %s", item)
             continue
         source_msn_id = _infer_reference_source_msn(item, local_msn_id=local_msn_id)
         source_msn_id = str(source_msn_id or form_source or title_source).strip()
         if not source_msn_id:
+            _LOG.warning("Ignoring malformed reference without source_msn_id: %s", item)
             continue
         if local_msn_id and source_msn_id == local_msn_id:
             fallback = form_source or title_source
@@ -104,8 +118,14 @@ def _normalize_reference_entries(raw: Any, *, local_msn_id: str) -> list[dict[st
         normalized["title"] = f"rf.{source_msn_id}.{name}"
         normalized["mss_form"] = canonical_mss_form
         legacy_mss_form = str(item.get("mss_form") or "").strip()
+        legacy_title = str(item.get("title") or "").strip()
+        if legacy_title and legacy_title != normalized["title"]:
+            normalized["legacy_title"] = legacy_title
         if legacy_mss_form and legacy_mss_form != canonical_mss_form:
             normalized["legacy_mss_form"] = legacy_mss_form
+        legacy_payload = _reference_file_payload(legacy_mss_form)
+        if legacy_payload["prefix"] == "ref" or legacy_payload["ext"] == "json":
+            normalized["compatibility_warning"] = "legacy reference form normalized to canonical rf.<source>.<name>.bin"
         out.append(normalized)
     return out
 

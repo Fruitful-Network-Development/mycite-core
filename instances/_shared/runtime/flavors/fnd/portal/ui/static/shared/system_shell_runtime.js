@@ -1654,6 +1654,7 @@
       out.push('<div class="aws-csm-newsletterCard__stats">');
       if (text(card.sender_address)) out.push('<span title="' + esc(text(card.sender_address)) + '">' + esc(limitText(text(card.sender_address), 34)) + '</span>');
       if (text(card.ingest_address)) out.push('<span title="' + esc(text(card.ingest_address)) + '">' + esc(limitText(text(card.ingest_address), 34)) + '</span>');
+      if (text((card.body || {}).selected_sender && (card.body || {}).selected_sender.send_as_email)) out.push('<span title="' + esc(text((card.body || {}).selected_sender.send_as_email)) + '">' + esc(limitText(text((card.body || {}).selected_sender.send_as_email), 34)) + '</span>');
       if (text(card.allowed_from_csv)) out.push('<span title="' + esc(text(card.allowed_from_csv)) + '">' + esc(limitText(text(card.allowed_from_csv), 34)) + '</span>');
       out.push('</div></article>');
     });
@@ -1732,7 +1733,7 @@
     }).length;
     var out = [];
     out.push('<article class="card aws-csm-overviewIntro"><div class="card__kicker">Tool Sandbox</div><div class="card__title">AWS-CMS mailbox profiles</div><div class="card__body">');
-    out.push("<p>Select a mailbox profile to enter the onboarding workflow. Profiles are grouped by domain, and newsletter cards appear only when the sandbox already carries newsletter sender/ingest state for that domain.</p>");
+    out.push("<p>Select a mailbox profile to enter the onboarding workflow. Profiles are grouped by domain, and newsletter cards reflect the canonical newsletter profile plus website contact-log state for that domain.</p>");
     out.push("<p><strong>Total profiles:</strong> " + esc(String(cards.length)) + " · <strong>Ready for handoff:</strong> " + esc(String(ready)) + "</p>");
     if (!selectedCard) {
       out.push("<p><strong>Next step:</strong> choose a profile card below to open Overview, SMTP, Verification, and Files for that mailbox only.</p>");
@@ -2053,14 +2054,15 @@
   }
 
   function bindAwsInterfaceActions(tool, root) {
-    qsa("[data-aws-profile]", root || els.toolInterfaceBody).forEach(function (node) {
+    var targetRoot = root || els.toolInterfaceBody;
+    qsa("[data-aws-profile]", targetRoot).forEach(function (node) {
       node.addEventListener("click", function () {
         awsSelectProfile(tool.tool_id, node.getAttribute("data-aws-profile"));
         state.activeMediationMode = "overview";
         renderAll();
       });
     });
-    qsa("[data-aws-file]", root || els.toolInterfaceBody).forEach(function (node) {
+    qsa("[data-aws-file]", targetRoot).forEach(function (node) {
       node.addEventListener("click", function () {
         var bucket = providerStateFor(tool.tool_id);
         bucket.selectedFile = text(node.getAttribute("data-aws-file"));
@@ -2072,14 +2074,14 @@
         renderAll();
       });
     });
-    qsa("[data-copy-text]", root || els.toolInterfaceBody).forEach(function (node) {
+    qsa("[data-copy-text]", targetRoot).forEach(function (node) {
       node.addEventListener("click", function () {
         var value = text(node.getAttribute("data-copy-text"));
         if (!value || !navigator.clipboard || typeof navigator.clipboard.writeText !== "function") return;
         navigator.clipboard.writeText(value).catch(function () {});
       });
     });
-    qsa("[data-aws-action]", root || els.toolInterfaceBody).forEach(function (node) {
+    qsa("[data-aws-action]", targetRoot).forEach(function (node) {
       node.addEventListener("click", function () {
         var action = text(node.getAttribute("data-aws-action"));
         if (action === "begin-onboarding") {
@@ -2095,6 +2097,7 @@
         }
       });
     });
+    bindNewsletterInterfaceActions(tool, targetRoot);
   }
 
   function awsHandoffStatusLabel(workflow) {
@@ -2357,8 +2360,142 @@
     var sender = newsletterSelectedSender(card);
     if (!newsletterVerifiedSenders(card).length) return "no verified sender";
     if (!text(sender.send_as_email)) return "sender required";
+    if (text((body.profile || {}).last_inbound_status) === "processed") return "latest inbound processed";
     if (Number(body.subscribed_count || 0) <= 0) return "ready / no subscribers";
-    return "ready to send";
+    return "ready for inbound mail";
+  }
+
+  function awsSelectedNewsletterCard(tool) {
+    var selectedProfile = awsSelectedCard(tool);
+    var identity = awsIdentityFromCard(selectedProfile);
+    var domain = text(identity.domain).toLowerCase();
+    if (!domain) return null;
+    var sections = awsProfileSections(tool);
+    for (var i = 0; i < sections.length; i += 1) {
+      var section = sections[i] || {};
+      if (text(section.domain).toLowerCase() !== domain) continue;
+      var cards = Array.isArray(section.newsletter_cards) ? section.newsletter_cards : [];
+      return cards.length ? cards[0] : null;
+    }
+    return null;
+  }
+
+  function activeNewsletterCardForTool(tool) {
+    if (text(tool && tool.tool_id) === "aws_platform_admin") {
+      return awsSelectedNewsletterCard(tool);
+    }
+    return newsletterSelectedCard(tool);
+  }
+
+  function renderAwsNewsletter(tool) {
+    var selectedProfile = awsSelectedCard(tool);
+    if (!selectedProfile) {
+      return '<p class="data-tool__empty">Select an AWS mailbox profile to inspect newsletter state for its domain.</p>';
+    }
+    var card = awsSelectedNewsletterCard(tool);
+    if (!card) {
+      var identity = awsIdentityFromCard(selectedProfile);
+      return '<p class="data-tool__empty">No canonical newsletter profile is staged for <code>' + esc(text(identity.domain)) + '</code>.</p>';
+    }
+    var body = newsletterBodyFromCard(card);
+    var sender = newsletterSelectedSender(card);
+    var verified = newsletterVerifiedSenders(card);
+    var profile = body.profile && typeof body.profile === "object" ? body.profile : {};
+    var compatibility = body.compatibility && typeof body.compatibility === "object" ? body.compatibility : {};
+    var latestDispatch = body.latest_dispatch && typeof body.latest_dispatch === "object" ? body.latest_dispatch : {};
+    var contacts = Array.isArray(body.contacts_preview) ? body.contacts_preview : [];
+    var warnings = Array.isArray(body.warnings) ? body.warnings : [];
+    var bucket = providerStateFor(tool.tool_id);
+    var out = [];
+    out.push('<article class="card"><div class="card__kicker">Newsletter Workflow</div><div class="card__title">' + esc(newsletterDomainFromCard(card)) + '</div><div class="card__body">');
+    out.push('<p>The canonical workflow is now inbound only. Send the newsletter from the selected verified mailbox to <code>' + esc(text(body.list_address)) + '</code>, then process the captured inbound message here.</p>');
+    out.push(renderCardKeyValueRows({
+      domain: newsletterDomainFromCard(card),
+      "list address": text(body.list_address),
+      "newsletter sender": text(body.sender_address || body.list_address),
+      "selected author mailbox": text(sender.send_as_email),
+      "selected author profile": text(sender.profile_id),
+      "delivery mode": text(profile.delivery_mode || "aws_sqs_lambda_us_east_1"),
+      "dispatch mode": text(profile.dispatch_mode || card.dispatch_mode),
+      "contact log": text(body.contact_log_path),
+      subscribed: String(body.subscribed_count || 0),
+      unsubscribed: String(body.unsubscribed_count || 0),
+      "last inbound status": text(profile.last_inbound_status),
+      "last inbound subject": text(profile.last_inbound_subject),
+      "last inbound sender": text(profile.last_inbound_sender),
+      "last inbound checked": text(profile.last_inbound_checked_at),
+      "last inbound processed": text(profile.last_inbound_processed_at)
+    }));
+    out.push('<div class="aws-csm-flowForm">');
+    out.push('<label class="aws-csm-flowForm__field"><span>Verified sender</span><select class="data-tool__fieldInput" data-newsletter-sender>');
+    verified.forEach(function (item) {
+      if (!item || typeof item !== "object") return;
+      var profileId = text(item.profile_id);
+      var selectedAttr = profileId === text(sender.profile_id) ? ' selected="selected"' : "";
+      out.push('<option value="' + esc(profileId) + '"' + selectedAttr + '>' + esc(text(item.send_as_email)) + '</option>');
+    });
+    out.push('</select></label>');
+    out.push('<div class="aws-csm-flowForm__actions">');
+    out.push('<button type="button" class="data-tool__actionBtn" data-newsletter-action="save-sender">Save sender</button>');
+    out.push('<button type="button" class="data-tool__actionBtn is-active" data-newsletter-action="process-inbound">Process latest inbound email</button>');
+    out.push('<button type="button" class="data-tool__actionBtn" data-newsletter-action="refresh">Refresh</button>');
+    out.push('</div></div>');
+    if (bucket.pendingNewsletterAction) {
+      out.push('<p><strong>Working:</strong> ' + esc(text(bucket.pendingNewsletterAction)) + '…</p>');
+    }
+    if (text(bucket.newsletterError)) {
+      out.push('<p class="fnd-ebi-warning"><strong>Action error:</strong> ' + esc(text(bucket.newsletterError)) + '</p>');
+    }
+    if (warnings.length) {
+      out.push('<p><strong>Compatibility warnings:</strong> ' + esc(warnings.join(" | ")) + '</p>');
+    }
+    out.push('</div></article>');
+    out.push('<article class="card"><div class="card__kicker">Compatibility Read</div><div class="card__title">Progeny newsletter fields</div><div class="card__body">');
+    out.push(renderCardKeyValueRows({
+      "compatibility file": text(compatibility.source_path),
+      "progeny sender": text(compatibility.sender_address),
+      "progeny ingest": text(compatibility.ingest_address),
+      "progeny allowed from": text(compatibility.allowed_from_csv),
+      "progeny dispatch mode": text(compatibility.dispatch_mode)
+    }));
+    out.push('</div></article>');
+    out.push('<article class="card"><div class="card__kicker">Contact Log</div><div class="card__title">' + esc(String(body.subscribed_count || 0)) + ' subscribed contact' + (Number(body.subscribed_count || 0) === 1 ? '' : 's') + '</div><div class="card__body">');
+    if (!contacts.length) {
+      out.push('<p>No contacts are in the canonical website contact log yet.</p>');
+    } else {
+      out.push('<table class="fnd-ebi-table"><thead><tr><th>Email</th><th>Status</th><th>Sent</th><th>Last sent</th></tr></thead><tbody>');
+      contacts.forEach(function (row) {
+        if (!row || typeof row !== "object") return;
+        out.push('<tr><td><code>' + esc(text(row.email)) + '</code></td><td>' + esc(row.subscribed ? "subscribed" : "unsubscribed") + '</td><td>' + esc(String(row.send_count || 0)) + '</td><td>' + esc(text(row.last_newsletter_sent_at)) + '</td></tr>');
+      });
+      out.push('</tbody></table>');
+    }
+    out.push('</div></article>');
+    if (latestDispatch && Object.keys(latestDispatch).length) {
+      out.push('<article class="card"><div class="card__kicker">Latest Dispatch</div><div class="card__title">' + esc(text(latestDispatch.subject || "dispatch")) + '</div><div class="card__body">');
+      out.push(renderCardKeyValueRows({
+        "requested at": text(latestDispatch.requested_at),
+        "completed at": text(latestDispatch.completed_at),
+        sender: text(latestDispatch.sender_address),
+        author: text(latestDispatch.author_address),
+        "source message": text(latestDispatch.source_message_id),
+        targets: String(latestDispatch.target_count || 0),
+        queued: String(latestDispatch.queued_count || 0),
+        sent: String(latestDispatch.sent_count || 0),
+        failed: String(latestDispatch.failed_count || 0)
+      }));
+      var results = Array.isArray(latestDispatch.results) ? latestDispatch.results : [];
+      if (results.length) {
+        out.push('<table class="fnd-ebi-table"><thead><tr><th>Email</th><th>Status</th><th>Message</th></tr></thead><tbody>');
+        results.forEach(function (row) {
+          if (!row || typeof row !== "object") return;
+          out.push('<tr><td><code>' + esc(text(row.email)) + '</code></td><td>' + esc(text(row.status)) + '</td><td>' + esc(text(row.message_id || row.queue_message_id || row.error)) + '</td></tr>');
+        });
+        out.push('</tbody></table>');
+      }
+      out.push('</div></article>');
+    }
+    return out.join("");
   }
 
   function renderNewsletterDomainCards(tool) {
@@ -2561,7 +2698,7 @@
   }
 
   function newsletterSaveSender(tool, root) {
-    var selected = newsletterSelectedCard(tool);
+    var selected = activeNewsletterCardForTool(tool);
     if (!selected) return Promise.resolve();
     var domain = newsletterDomainFromCard(selected);
     var select = qs("[data-newsletter-sender]", root || els.toolInterfaceBody);
@@ -2586,32 +2723,22 @@
     });
   }
 
-  function newsletterSend(tool, root) {
-    var selected = newsletterSelectedCard(tool);
+  function newsletterProcessInbound(tool) {
+    var selected = activeNewsletterCardForTool(tool);
     if (!selected) return Promise.resolve();
     var domain = newsletterDomainFromCard(selected);
-    var senderSelect = qs("[data-newsletter-sender]", root || els.toolInterfaceBody);
-    var subjectInput = qs("[data-newsletter-subject]", root || els.toolInterfaceBody);
-    var bodyInput = qs("[data-newsletter-body]", root || els.toolInterfaceBody);
-    var subject = text(subjectInput && subjectInput.value);
-    var body = text(bodyInput && bodyInput.value);
-    var selectedSenderProfileId = text(senderSelect && senderSelect.value);
     var bucket = providerStateFor(tool.tool_id);
-    bucket.pendingNewsletterAction = "Sending newsletter";
+    bucket.pendingNewsletterAction = "Processing inbound newsletter";
     bucket.newsletterError = "";
     renderAll();
-    return api("/portal/api/admin/newsletter/domain/" + encodeURIComponent(domain) + "/send", "POST", {
-      subject: subject,
-      body_text: body,
-      selected_sender_profile_id: selectedSenderProfileId
-    }).then(function () {
+    return api("/portal/api/admin/newsletter/domain/" + encodeURIComponent(domain) + "/process_inbound", "POST", {}).then(function () {
       bucket.pendingNewsletterAction = "";
       return ensureToolContext(tool, true);
     }).then(function () {
       renderAll();
     }).catch(function (err) {
       bucket.pendingNewsletterAction = "";
-      bucket.newsletterError = err && err.message ? err.message : "Newsletter send failed.";
+      bucket.newsletterError = err && err.message ? err.message : "Inbound processing failed.";
       renderAll();
       throw err;
     });
@@ -2633,8 +2760,12 @@
     qsa("[data-newsletter-action]", root || els.toolInterfaceBody).forEach(function (node) {
       node.addEventListener("click", function () {
         var action = text(node.getAttribute("data-newsletter-action"));
-        if (action === "send") {
-          newsletterSend(tool, root).catch(function () {});
+        if (action === "save-sender") {
+          newsletterSaveSender(tool, root).catch(function () {});
+          return;
+        }
+        if (action === "process-inbound") {
+          newsletterProcessInbound(tool).catch(function () {});
           return;
         }
         if (action === "refresh") {
@@ -2715,11 +2846,12 @@
     },
     modes: function (tool) {
       var contribution = toolInterfaceContribution(tool);
-      var rawModes = Array.isArray(contribution.modes) ? contribution.modes : ["overview", "smtp", "verification", "files"];
+      var rawModes = Array.isArray(contribution.modes) ? contribution.modes : ["overview", "smtp", "verification", "newsletter", "files"];
       return rawModes.map(function (mode) {
         var id = normalizeModeId(mode) || "overview";
         var label = titleCase(mode);
         if (id === "smtp") label = "SMTP";
+        if (id === "newsletter") label = "Newsletter";
         if (id === "files") label = "File";
         return { id: id, label: label };
       });
@@ -2761,6 +2893,9 @@
       if (mode === "verification") {
         return renderAwsVerification(tool);
       }
+      if (mode === "newsletter") {
+        return renderAwsNewsletter(tool);
+      }
       if (mode === "files") {
         return renderAwsFiles(tool);
       }
@@ -2783,68 +2918,10 @@
     }
   };
 
-  var newsletterAdminProvider = {
-    defaultMode: function (tool) {
-      return normalizeModeId(toolInterfaceContribution(tool).default_mode || "overview") || "overview";
-    },
-    modes: function (tool) {
-      var contribution = toolInterfaceContribution(tool);
-      var rawModes = Array.isArray(contribution.modes) ? contribution.modes : ["overview", "contacts", "composer", "files"];
-      return rawModes.map(function (mode) {
-        var id = normalizeModeId(mode) || "overview";
-        return { id: id, label: titleCase(mode) };
-      });
-    },
-    title: function (tool) {
-      return text(tool && (tool.label || tool.tool_id)) || "Newsletter Admin";
-    },
-    kicker: function () {
-      return "Website-owned contact logs";
-    },
-    meta: function (tool) {
-      var cards = newsletterCards(tool);
-      var selected = newsletterSelectedCard(tool);
-      var focus = selected ? " · focus: " + newsletterDomainFromCard(selected) : "";
-      return "Domains: " + String(cards.length) + focus;
-    },
-    ensureReady: function (tool, force) {
-      return ensureToolContext(tool, force).then(function (ctx) {
-        var cards = Array.isArray(ctx.profile_cards) ? ctx.profile_cards : [];
-        if (cards.length) {
-          newsletterSelectDomain(tool.tool_id, newsletterDomainFromCard(newsletterSelectedCard(tool) || cards[0]));
-        }
-        ensureInterfacePanelForServiceTool(tool);
-        return ctx;
-      });
-    },
-    render: function (tool, mode) {
-      if (mode === "contacts") return renderNewsletterContacts(tool);
-      if (mode === "composer") return renderNewsletterComposer(tool);
-      if (mode === "files") return renderNewsletterFiles(tool);
-      return renderNewsletterOverview(tool);
-    },
-    renderInterface: function (tool, mode) {
-      return this.render(tool, mode);
-    },
-    renderControlPanel: function (tool) {
-      return renderNewsletterDomainCards(tool);
-    },
-    bind: function (tool, root) {
-      bindNewsletterInterfaceActions(tool, root || els.mediationBody);
-    },
-    bindInterface: function (tool) {
-      bindNewsletterInterfaceActions(tool, els.toolInterfaceBody);
-    },
-    bindControlPanel: function (tool) {
-      bindNewsletterInterfaceActions(tool, els.toolContextMount);
-    }
-  };
-
   var mediationProviders = {
     agro_erp: agroMediationProvider,
     fnd_ebi: fndEbiMediationProvider,
-    aws_platform_admin: awsServiceMediationProvider,
-    newsletter_admin: newsletterAdminProvider
+    aws_platform_admin: awsServiceMediationProvider
   };
 
   function bootstrapMediateToolFromQuery() {

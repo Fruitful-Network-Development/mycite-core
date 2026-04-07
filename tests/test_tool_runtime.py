@@ -112,6 +112,25 @@ class ToolRuntimeTests(unittest.TestCase):
             )
             self.assertEqual(runtime.read_enabled_tools(private_dir, "3-2-3"), ["aws_platform_admin"])
 
+    def test_read_enabled_tools_suppresses_legacy_standalone_newsletter_tool(self):
+        runtime = _load_tool_runtime_module()
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            (private_dir / "config.json").write_text(
+                json.dumps(
+                    {
+                        "msn_id": "3-2-3",
+                        "tools_configuration": [
+                            {"name": "newsletter-admin", "mount_target": "peripherals.tools"},
+                            {"name": "aws-csm", "mount_target": "peripherals.tools"},
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(runtime.read_enabled_tools(private_dir, "3-2-3"), ["aws_platform_admin"])
+
     def test_read_enabled_tools_filters_disabled_status(self):
         runtime = _load_tool_runtime_module()
         with TemporaryDirectory() as temp_dir:

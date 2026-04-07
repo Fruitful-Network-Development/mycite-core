@@ -15,6 +15,7 @@ from mycite_core.state_machine.tool_capabilities import normalize_tool_capabilit
 _TOOL_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _LOG = logging.getLogger("mycite.tool_runtime")
 _LEGACY_CORE_TOOL_IDS = {"data_tool"}
+_SUPPRESSED_STANDALONE_TOOL_IDS = {"newsletter_admin"}
 _ALLOWED_MOUNT_TARGETS = {"utilities", "peripherals.tools"}
 _DEFAULT_MOUNT_TARGET = "peripherals.tools"
 _SERVICE_TOOL_PRIMARY_BY_NAMESPACE = {
@@ -102,6 +103,8 @@ def _normalize_tool_configuration_entries(raw: Any) -> list[dict[str, str]]:
         try:
             tool_id = _normalize_manifest_tool_id(raw_id)
         except ValueError:
+            continue
+        if tool_id in _SUPPRESSED_STANDALONE_TOOL_IDS:
             continue
         if tool_id in seen:
             continue

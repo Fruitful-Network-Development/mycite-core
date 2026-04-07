@@ -74,7 +74,7 @@ def references_root(data_root: Path) -> Path:
 
 
 def local_resources_dir(data_root: Path) -> Path:
-    return resources_root(data_root)
+    return resources_root(data_root) / "local"
 
 
 def inherited_resources_dir(data_root: Path) -> Path:
@@ -99,9 +99,18 @@ def payload_cache_root(data_root: Path) -> Path:
 
 
 def ensure_layout(data_root: Path) -> None:
-    resources_root(data_root).mkdir(parents=True, exist_ok=True)
+    local_resources_dir(data_root).mkdir(parents=True, exist_ok=True)
     references_root(data_root).mkdir(parents=True, exist_ok=True)
     ensure_payload_layout(data_root)
+
+
+def _resource_data_root(path: Path) -> Path:
+    current = Path(path).resolve()
+    for candidate in (current, *current.parents):
+        name = candidate.name.lower()
+        if name in {"resources", "references"}:
+            return candidate.parent
+    return current.parent
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -217,8 +226,8 @@ def resource_file_path(
         else:
             filename = build_canonical_reference_filename(source, name)
     if token_scope == LOCAL_SCOPE:
-        return resources_root(data_root) / filename
-    return references_root(data_root) / filename
+        return local_resources_dir(data_root) / filename
+    return references_root(data_root) / _safe_token(source_msn_id or parsed["msn_id"]) / filename
 
 
 def _default_index(schema: str) -> dict[str, Any]:
@@ -425,15 +434,16 @@ def _materialize_cache_for_path(path: Path, payload: dict[str, Any]) -> str:
     parsed = _parse_canonical_filename(path.name)
     if not parsed["prefix"] or parsed["ext"] != "json":
         return ""
+    data_root = _resource_data_root(path)
     bitstring = _extract_bitstring(payload, source_msn_id=parsed["msn_id"])
     cache_path = payload_bin_path(
-        path.parent.parent,
+        data_root,
         path.stem,
         default_prefix=parsed["prefix"],
         source_msn_id=parsed["msn_id"],
     )
     decoded_cache_path = decoded_payload_cache_path(
-        path.parent.parent,
+        data_root,
         path.stem,
         default_prefix=parsed["prefix"],
         source_msn_id=parsed["msn_id"],
@@ -515,20 +525,52 @@ def _entry_from_file(path: Path, *, scope: str) -> dict[str, Any]:
     )
 
 
+def _legacy_root_entry(path: Path, *, scope: str) -> dict[str, Any]:
+    payload = read_resource_file(path)
+    version_hash = _as_text(payload.get("version_hash")) or compute_version_hash(payload)
+    parsed = _parse_canonical_filename(path.name)
+    return _normalize_index_entry(
+        {
+            "resource_id": _as_text(payload.get("resource_id")) or path.stem,
+            "resource_name": path.name,
+            "resource_kind": _as_text(payload.get("resource_kind") or payload.get("kind") or parsed["name"] or "resource"),
+            "scope": scope,
+            "source_msn_id": _as_text(payload.get("source_msn_id")) or parsed["msn_id"],
+            "path": str(path),
+            "version_hash": version_hash,
+            "updated_at": int(payload.get("updated_at") or int(path.stat().st_mtime * 1000)),
+            "status": "legacy_root",
+        },
+        scope=scope,
+    )
+
+
 def load_index(data_root: Path, *, scope: str) -> dict[str, Any]:
     ensure_layout(data_root)
     token_scope = _normalize_scope(scope)
-    root = resources_root(data_root) if token_scope == LOCAL_SCOPE else references_root(data_root)
     payload = _default_index(
-        "mycite.portal.resources.catalog.v2"
+        "mycite.portal.resources.index.local.v1"
         if token_scope == LOCAL_SCOPE
-        else "mycite.portal.references.catalog.v2"
+        else "mycite.portal.references.index.inherited.v1"
     )
     resources: list[dict[str, Any]] = []
-    for path in sorted(root.glob("*.json"), key=lambda item: item.name):
+    canonical_paths: list[Path] = []
+    legacy_paths: list[Path] = []
+    if token_scope == LOCAL_SCOPE:
+        canonical_paths.extend(sorted(local_resources_dir(data_root).glob("*.json"), key=lambda item: item.name))
+        legacy_paths.extend(sorted(resources_root(data_root).glob("*.json"), key=lambda item: item.name))
+    else:
+        for directory in sorted(references_root(data_root).iterdir(), key=lambda item: item.name.lower()) if references_root(data_root).exists() else []:
+            if directory.is_dir():
+                canonical_paths.extend(sorted(directory.glob("*.json"), key=lambda item: (directory.name, item.name)))
+        legacy_paths.extend(sorted(references_root(data_root).glob("*.json"), key=lambda item: item.name))
+    for path in canonical_paths:
         resources.append(_entry_from_file(path, scope=token_scope))
+    for path in legacy_paths:
+        resources.append(_legacy_root_entry(path, scope=token_scope))
     resources.sort(
         key=lambda item: (
+            1 if _as_text(item.get("status")) == "legacy_root" else 0,
             _as_text(item.get("source_msn_id")),
             _as_text(item.get("resource_name")),
             _as_text(item.get("resource_id")),
@@ -536,6 +578,10 @@ def load_index(data_root: Path, *, scope: str) -> dict[str, Any]:
     )
     payload["resources"] = resources
     payload["catalog_mode"] = "filesystem_enumeration"
+    payload["compatibility"] = {
+        "legacy_root_mode": "read_only_compat",
+        "migration_recommended": bool(legacy_paths),
+    }
     return payload
 
 
@@ -551,12 +597,16 @@ def save_index(data_root: Path, *, scope: str, payload: dict[str, Any]) -> dict[
         )
     )
     out = _default_index(
-        "mycite.portal.resources.catalog.v2"
+        "mycite.portal.resources.index.local.v1"
         if token_scope == LOCAL_SCOPE
-        else "mycite.portal.references.catalog.v2"
+        else "mycite.portal.references.index.inherited.v1"
     )
     out["resources"] = normalized
     out["catalog_mode"] = "filesystem_enumeration"
+    out["compatibility"] = {
+        "legacy_root_mode": "read_only_compat",
+        "migration_recommended": False,
+    }
     return out
 
 
@@ -575,7 +625,13 @@ def remove_inherited_source(data_root: Path, *, source_msn_id: str) -> dict[str,
     token = _safe_token(source_msn_id)
     removed_count = 0
     for root in (references_root(data_root), payloads_root(data_root), payload_cache_root(data_root)):
-        for path in sorted(root.glob(f"rf.{token}.*")):
+        for path in sorted(root.glob(f"**/rf.{token}.*")):
+            try:
+                path.unlink()
+                removed_count += 1
+            except Exception:
+                continue
+        for path in sorted(root.glob(f"**/ref.{token}.*")):
             try:
                 path.unlink()
                 removed_count += 1
@@ -604,7 +660,7 @@ def _infer_local_msn_id(data_root: Path) -> str:
     candidates = []
     for pattern in ("rc.*.json", "rec.*.json"):
         candidates.extend(sorted(resources_root(data_root).glob(pattern)))
-        candidates.extend(sorted((resources_root(data_root) / "local").glob(pattern)))
+        candidates.extend(sorted(local_resources_dir(data_root).glob(pattern)))
     for path in candidates:
         match = re.match(r"^(?:rc|rec)\.(?P<msn>[0-9]+(?:-[0-9]+)*)\.", path.name)
         if match is not None:
@@ -676,22 +732,23 @@ def migrate_legacy_root_rec_files(
     ensure_layout(data_root)
     migrated: list[dict[str, Any]] = []
     msn_id = _as_text(local_msn_id) or _infer_local_msn_id(data_root)
-    for root in (resources_root(data_root), resources_root(data_root) / "local"):
+    for root in (resources_root(data_root), local_resources_dir(data_root)):
         if not root.exists():
             continue
         for path in sorted(root.glob("rec.*.json")):
+            if path.parent == local_resources_dir(data_root):
+                continue
             payload = _read_json(path)
             match = re.match(r"^rec\.(?P<msn>[0-9]+(?:-[0-9]+)*)\.(?P<name>.+)\.json$", path.name)
             token_msn = _as_text(match.group("msn")) if match is not None else msn_id
-            token_name = _as_text(match.group("name")) if match is not None else _strip_resource_suffix(path.name)
-            target = resource_file_path(
-                data_root,
-                scope=LOCAL_SCOPE,
-                source_msn_id=token_msn,
-                resource_name=token_name,
-            )
+            _token_name = _as_text(match.group("name")) if match is not None else _strip_resource_suffix(path.name)
+            target = local_resources_dir(data_root) / path.name
             if apply_changes:
                 _write_json(target, payload)
                 _materialize_cache_for_path(target, payload)
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
             migrated.append({"legacy_path": str(path), "resource_path": str(target), "resource_id": target.stem})
     return {"ok": True, "migrated": migrated, "count": len(migrated)}

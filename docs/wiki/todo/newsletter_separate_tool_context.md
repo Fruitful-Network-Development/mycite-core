@@ -1,5 +1,11 @@
 # Newsletter Contact Lists as a Separate Service-Tool Pattern
 
+## Status
+
+Superseded.
+
+The active contract keeps newsletter state separate from AWS mailbox profile JSON, but it does not expose newsletter as a standalone service-tool. Newsletter mediation now lives inside AWS-CMS domain cards while canonical newsletter profile JSON remains under `private/utilities/tools/newsletter-admin/`.
+
 ## Purpose
 
 Define newsletter list management as a separate service-tool lane that does not

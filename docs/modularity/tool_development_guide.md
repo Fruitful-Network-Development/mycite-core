@@ -20,8 +20,15 @@ internal shape:
    state-adapter module, not through ad hoc `Path(...)` math inside routes.
 3. Canonical live state belongs under:
    `/srv/mycite-state/instances/<instance_id>/private/utilities/tools/<tool-namespace>/...`
-4. Do not write tool state into the repo.
-5. Do not treat `/srv/compose/portals/state/*` as equal-truth state; those
+4. Tool utility collections, profile JSONs, specs, and audit files belong under
+   `/srv/mycite-state/instances/<instance_id>/private/utilities/tools/<tool-namespace>/...`
+5. Tool datum anchors belong under
+   `/srv/mycite-state/instances/<instance_id>/data/sandbox/<tool-namespace>/...`
+6. Payload binaries and decoded payload cache files belong under
+   `/srv/mycite-state/instances/<instance_id>/data/payloads/` and
+   `/srv/mycite-state/instances/<instance_id>/data/payloads/cache/`
+7. Do not write tool state into the repo.
+8. Do not treat `/srv/compose/portals/state/*` as equal-truth state; those
    paths are compatibility seams only.
 
 ## Dependency rules
@@ -34,6 +41,8 @@ internal shape:
    paths.
 4. Tool-specific business rules belong in the tool module, not in
    `portals/_shared/portal/application/service_tools.py`.
+5. `private/config.json` controls exposure, mount status, and utility
+   collection selection only. It does not replace sandbox datum anchors.
 
 ## Registration rules
 

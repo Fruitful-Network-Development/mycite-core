@@ -56,7 +56,7 @@ def _service_tool_contract(definition: dict[str, Any], *, portal_instance_id: st
         "mediation_host_path": "/portal/system",
         "anchor_contract": {
             "pattern": f"tool.<msn_id>.{namespace}.json" if namespace else "",
-            "authoritative": "config.tools_configuration[].anchor",
+            "authoritative": "config.tools_configuration[].anchor (utility collection selector only)",
             "compatibility_patterns": _expand_patterns(definition.get("config_patterns"), portal_instance_id=portal_instance_id),
         },
         "config_datum": {
@@ -162,7 +162,7 @@ def _pick_config_anchor_file(private_dir: Path, root: Path, namespace: str, patt
         path = root / file_name
         if path.exists() and path.is_file():
             return path, warnings
-        warnings.append(f"configured anchor is missing for {namespace}: {file_name}")
+        warnings.append(f"configured utility collection is missing for {namespace}: {file_name}")
     fallback = _pick_canonical_file(root, patterns)
     return fallback, warnings
 
@@ -810,52 +810,47 @@ def _service_profile_interface_cards(namespace: str, profile_cards: list[dict[st
     return out
 
 def _aws_newsletter_cards(private_dir: Path) -> list[dict[str, Any]]:
-    progeny_root = private_dir / "network" / "progeny"
-    if not progeny_root.exists() or not progeny_root.is_dir():
-        return []
     out: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str]] = set()
-    for path in sorted(progeny_root.glob("*.json")):
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            payload = {}
-        refs = payload.get("profile_refs") if isinstance(payload.get("profile_refs"), dict) else {}
-        policy = payload.get("email_policy") if isinstance(payload.get("email_policy"), dict) else {}
-        newsletter = policy.get("newsletter") if isinstance(policy.get("newsletter"), dict) else {}
-        sender_address = _text(newsletter.get("sender_address") or refs.get("newsletter_sender_address"))
-        ingest_address = _text(newsletter.get("ingest_address") or refs.get("newsletter_ingest_address"))
-        allowed_from = list(newsletter.get("allowed_from") or []) if isinstance(newsletter.get("allowed_from"), list) else []
-        allowed_from_csv = _text(refs.get("newsletter_allowed_from_csv")) or ", ".join(
-            [_text(item) for item in allowed_from if _text(item)]
-        )
-        dispatch_mode = _text(newsletter.get("dispatch_mode") or refs.get("newsletter_dispatch_mode")) or "aws_internal"
-        domain = ""
-        if "@" in sender_address:
-            domain = sender_address.split("@", 1)[1].strip().lower()
-        elif "@" in ingest_address:
-            domain = ingest_address.split("@", 1)[1].strip().lower()
-        else:
-            domain = _text(refs.get("paypal_site_domain")).lower()
-        if not domain or not (sender_address or ingest_address):
-            continue
-        dedupe_key = (domain, sender_address.lower(), ingest_address.lower())
-        if dedupe_key in seen:
-            continue
-        seen.add(dedupe_key)
-        out.append(
-            {
-                "card_id": f"aws-csm.newsletter.{domain}",
-                "kind": "newsletter",
+    for domain in newsletter_domains(private_dir):
+        state = resolve_newsletter_domain_state(private_dir, domain)
+        selected_sender = dict(state.get("selected_sender") or {})
+        compatibility = dict(state.get("compatibility") or {})
+        summary = f"{int(state.get('subscribed_count') or 0)} subscribed"
+        if _text(selected_sender.get("send_as_email")):
+            summary += f" · sender {selected_sender.get('send_as_email')}"
+        card = build_inspector_card(
+            card_id=f"aws-csm.newsletter.{domain}",
+            title=_text(state.get("sender_address")) or f"news@{domain}",
+            summary=summary,
+            kind="newsletter",
+            body={
                 "domain": domain,
-                "title": sender_address or f"newsletter@{domain}",
-                "sender_address": sender_address,
-                "ingest_address": ingest_address,
-                "allowed_from_csv": allowed_from_csv,
-                "dispatch_mode": dispatch_mode,
-                "source_path": str(path),
-            }
+                "contact_log_path": _text(state.get("contact_log_path")),
+                "profile_path": _text(state.get("profile_path")),
+                "list_address": _text(state.get("list_address")),
+                "sender_address": _text(state.get("sender_address")),
+                "profile": dict(state.get("profile") or {}),
+                "selected_author": dict(state.get("selected_author") or {}),
+                "selected_sender": selected_sender,
+                "verified_senders": list(state.get("verified_senders") or []),
+                "contacts": list(state.get("contacts") or []),
+                "contacts_preview": list(state.get("contacts_preview") or []),
+                "dispatches": list(state.get("dispatches") or []),
+                "latest_dispatch": dict(state.get("latest_dispatch") or {}),
+                "compatibility": compatibility,
+                "warnings": list(state.get("warnings") or []),
+                "contact_count": int(state.get("contact_count") or 0),
+                "subscribed_count": int(state.get("subscribed_count") or 0),
+                "unsubscribed_count": int(state.get("unsubscribed_count") or 0),
+            },
         )
+        card["domain"] = domain
+        card["sender_address"] = _text(state.get("sender_address"))
+        card["ingest_address"] = _text(compatibility.get("ingest_address")) or _text(state.get("list_address"))
+        card["allowed_from_csv"] = _text(compatibility.get("allowed_from_csv"))
+        card["dispatch_mode"] = _text((state.get("profile") or {}).get("dispatch_mode")) or _text(compatibility.get("dispatch_mode")) or "inbound_mail_workflow"
+        card["source_path"] = _text(compatibility.get("source_path") or state.get("profile_path"))
+        out.append(card)
     return out
 
 
@@ -1081,13 +1076,6 @@ def build_service_tool_config_context(
                         warnings.append(f"{snapshot.get('domain')}: {token}")
             profile_cards = _merge_fnd_ebi_snapshots_into_cards(profile_cards, analytics_snapshots)
             collection_members.extend(derived_internal_members)
-        if namespace == "newsletter-admin":
-            newsletter_cards, newsletter_members, newsletter_warnings = _newsletter_profile_cards(private_dir)
-            profile_cards = newsletter_cards
-            derived_internal_members.extend(newsletter_members)
-            collection_members.extend(newsletter_members)
-            warnings.extend(newsletter_warnings)
-
         for record in (config_datum, collection_datum, *collection_members):
             if record:
                 collection_files.append(record)

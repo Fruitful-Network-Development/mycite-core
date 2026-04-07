@@ -57,9 +57,10 @@ class ConfigLoaderContractTests(unittest.TestCase):
             references = payload.get("references") if isinstance(payload.get("references"), list) else []
             self.assertEqual(len(references), 1)
             self.assertEqual(references[0].get("name"), "msn")
-            self.assertEqual(references[0].get("mss_form"), "ref.a.msn.json")
-            self.assertEqual(references[0].get("title"), "ref.a.msn")
+            self.assertEqual(references[0].get("mss_form"), "rf.a.msn.bin")
+            self.assertEqual(references[0].get("title"), "rf.a.msn")
             self.assertEqual(references[0].get("source_msn_id"), "a")
+            self.assertEqual(references[0].get("legacy_mss_form"), "ref.a.msn.json")
             self.assertNotIn("refferences", payload)
 
     def test_reference_normalization_prefers_provider_from_contract(self):
@@ -87,7 +88,7 @@ class ConfigLoaderContractTests(unittest.TestCase):
             references = payload.get("references") if isinstance(payload.get("references"), list) else []
             self.assertEqual(len(references), 1)
             self.assertEqual(references[0].get("source_msn_id"), "3-2-3-17-77-1-6-4-1-4")
-            self.assertEqual(references[0].get("mss_form"), "ref.3-2-3-17-77-1-6-4-1-4.msn.json")
+            self.assertEqual(references[0].get("mss_form"), "rf.3-2-3-17-77-1-6-4-1-4.msn.bin")
             self.assertEqual(references[0].get("legacy_mss_form"), "ref.3-2-3-17-77-2-6-3-1-6.msn.json")
 
 

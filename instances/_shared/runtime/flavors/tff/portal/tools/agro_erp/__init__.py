@@ -51,7 +51,6 @@ from _shared.portal.application.coordinate_hops import (
     decode_coordinate_token as decode_coordinate_hops_token,
 )
 from _shared.portal.application.time_address_schema import schema_from_anchor_payload, validate_address_with_schema
-from _shared.portal.runtime_paths import utility_tools_dir
 from portal.core_services.runtime import resolve_active_private_config_path
 from mycite_core.contract_line.store import get_contract, list_contracts
 from portal.services.datum_refs import normalize_datum_ref
@@ -675,7 +674,7 @@ def _active_tool_anchor_path(config: dict[str, Any]) -> Path | None:
         if name in {"agro-erp", "agro_erp"}:
             anchor_name = str(item.get("anchor") or "").strip()
             break
-    tool_root = utility_tools_dir(_private_dir()) / "agro-erp"
+    tool_root = _data_dir() / "sandbox" / "agro-erp"
     if anchor_name:
         candidate = tool_root / anchor_name
         if candidate.exists() and candidate.is_file():
