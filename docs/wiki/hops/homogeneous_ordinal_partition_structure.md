@@ -194,25 +194,142 @@ So a shorter address inside a HOPS is not a new structure. It is a less specific
 
 ## Chronological HOPS
 
-The chronological HOPS in the anthology base is the datum `1-1-1`, created in reference to `0-0-1` (`time-ordinal-position`). Its stored structural magnitude is:
+The chronological HOPS in the anthology base is the datum `1-1-1`, created in reference to `0-0-1` (`time-ordinal-position`). In the revised chronology model, the structure no longer uses years as the core repeating unit. It uses **quadrenniums** so that leap-year inclusion is handled inside a fixed day-capacity segment rather than by introducing separate year types.
+
+Its stored structural magnitude is:
 
 ```text
-00000010001110000100001110011000100001100111111011111010001111101000101101101111100111100
+00000010000110000000110011010101111000011011001100011101111001111101000111110100011111010001011011010111000111100111100
 ```
 
 The corresponding denotational capacities are interpreted as:
 
 ```text
-14-1000-1000-365-60-60
+4-1000-1000-1000-1461-24-60-60
 ```
 
-This is a chronological partition structure.
+This means:
 
-Its interpretation is contextual rather than structural:
+- `4` — top chronological partition
+- `1000` — second chronological partition
+- `1000` — third chronological partition
+- `1000` — quadrennium ordinal inside the larger chronology
+- `1461` — day ordinal inside the quadrennium
+- `24` — hour
+- `60` — minute
+- `60` — second
 
-- the first denotations establish the large-scale chronological framing
-- later denotations narrow toward year-, day-, and smaller-unit selection
-- addresses inside the structure can therefore be used at different specificities while remaining structurally comparable
+The purpose of the `1461` day segment is to treat a full four-year cycle as one fixed repeated container:
+
+```text
+365 + 365 + 365 + 366 = 1461
+```
+
+Under this convention, a full date is interpreted inside a quadrennium container rather than a year container.
+
+### Structural derivation
+
+The minimal binary values are:
+
+```text
+100
+1111101000
+1111101000
+1111101000
+10110110101
+11000
+111100
+111100
+```
+
+Their cumulative exclusive stop positions are:
+
+```text
+3
+13
+23
+33
+44
+49
+55
+```
+
+So the encoded structure is:
+
+```text
+0000001
+00001
+1000
+000011
+001101
+010111
+100001
+101100
+110001
+110111
+100 1111101000 1111101000 1111101000 10110110101 11000 111100 111100
+```
+
+### Address interpretation
+
+Addresses inside this chronology are ordinal container paths. They are not direct decimal renderings of Gregorian date text.
+
+A date is resolved by:
+
+1. identifying the containing quadrennium
+2. identifying the day ordinal inside that quadrennium
+3. optionally continuing into hour, minute, and second
+
+A day-only address therefore stops at:
+
+```text
+<top>-<second>-<third>-<quadrennium>-<day>
+```
+
+### Universe-age framing
+
+If the universe is taken to be:
+
+```text
+13787002024 years old
+```
+
+then, under the quadrennium model, that becomes:
+
+```text
+3446750506 quadrenniums
+```
+
+Using the adopted ordinal container convention, that chronology is represented as:
+
+```text
+4-447-751-507
+```
+
+and a present-day date such as April 6, 2026 is represented at day specificity as:
+
+```text
+4-447-751-507-827
+```
+
+because 2026 falls in the quadrennium `2024–2027`, and April 6, 2026 is day `827` of that quadrennium.
+
+### Example date addresses
+
+Under this revised chronological HOPS, the following example dates resolve as:
+
+```text
+0000-01-01 = 4-447-751-1-1
+1999-12-31 = 4-447-751-500-1461
+2000-01-01 = 4-447-751-501-1
+2026-07-04 = 4-447-751-507-916
+```
+
+These examples assume the same convention used throughout this chronology section:
+
+- quadrennia are aligned to four-year Gregorian groupings
+- day values are `1`-indexed within the quadrennium
+- leap-day inclusion is absorbed into the fixed `1461`-day container
 
 The paired incremental unit in the anthology base is `1-1-2` (`tiu-babel-second`). That unit does not replace the HOPS. It complements it by naming the smallest operating unit associated with the chronological space.
 

@@ -1,0 +1,10 @@
+{
+  "schema": "mycite.portal.tool_spec.v1",
+  "tool_id": "newsletter-admin",
+  "inherited_inputs": [],
+  "outputs": [],
+  "mediation": {
+    "mode": "service_profile_cards"
+  }
+}
+

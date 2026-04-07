@@ -1,0 +1,16 @@
+{
+  "schema": "portals.paypal.tenant.config.v1",
+  "tenant_id": "demo-tenant",
+  "profile_id": "test",
+  "checkout_context": {
+    "paypal_profile_id": "test",
+    "site_base_url": "",
+    "return_url": "https://portal.fruitfulnetworkdevelopment.com/ok",
+    "cancel_url": "https://portal.fruitfulnetworkdevelopment.com/cancel",
+    "webhook_listener_url": "",
+    "brand_name": ""
+  },
+  "environment": "sandbox",
+  "configured": true,
+  "updated_unix_ms": 1773278221895
+}
