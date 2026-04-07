@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 
 
 def _load_portal_build_module():
-    path = Path(__file__).resolve().parents[1] / "portals" / "scripts" / "portal_build.py"
+    path = Path(__file__).resolve().parents[1] / "instances" / "scripts" / "portal_build.py"
     spec = importlib.util.spec_from_file_location("portal_build_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

@@ -833,7 +833,15 @@ def _smtp_secret_is_real(secret_material: dict[str, Any] | None) -> bool:
 
 
 def _aws_smtp_provision_lock_path(private_dir: Path) -> Path:
-    return _aws_csm_root(private_dir) / ".smtp_provision.lock"
+    root = _aws_csm_root(private_dir)
+    visible = root / "smtp_provision.lock"
+    legacy = root / ".smtp_provision.lock"
+    if legacy.exists() and not visible.exists():
+        try:
+            legacy.replace(visible)
+        except Exception:
+            pass
+    return visible
 
 
 def _with_aws_smtp_provision_lock(private_dir: Path):
@@ -1721,8 +1729,6 @@ def _resolve_legacy_root(private_dir: Path, scope: str) -> Path | None:
         candidates.append(Path(env_value))
     if scope == "paypal":
         candidates.append(_legacy_paypal_root(private_dir))
-    candidates.append(private_dir.parent / f"{scope}_proxy")
-    candidates.append(Path(f"/srv/compose/portals/state/{scope}_proxy"))
     for candidate in candidates:
         if candidate.exists() and candidate.is_dir():
             return candidate
@@ -1887,6 +1893,11 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
             except Exception:
                 pass
         return response
+
+    # Newsletter mediation belongs to the AWS-CMS admin surface, not a standalone tool surface.
+    from instances._shared.runtime.flavors.fnd.portal.api.newsletter_admin import register_aws_newsletter_routes
+
+    register_aws_newsletter_routes(app, private_dir=private_dir)
 
     @app.get("/portal/api/admin/paypal/tenant/<tenant_id>/status")
     def admin_paypal_tenant_status(tenant_id: str):
@@ -2205,7 +2216,7 @@ def register_admin_integration_routes(app: Flask, *, private_dir: Path) -> None:
                 "ok": False,
                 "profile_id": token,
                 "tenant_id": _aws_csm_profile_file_token(token).split(".", 1)[0],
-                "errors": ["newsletter/emailer actions are not part of the active AWS-CMS scope"],
+                "errors": ["newsletter workflow is mediated through the AWS-CMS newsletter surface, not mailbox provision actions"],
             }
             _append_action(private_dir, "aws", "aws.profile.provision.rejected", rejected)
             return jsonify(rejected), 400

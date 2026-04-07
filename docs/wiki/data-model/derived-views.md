@@ -49,7 +49,7 @@ This page owns derived graph and presentation view rules. It does not own:
 
 - anthology graph view logic under shared portal data-engine workbench code
 - `data/presentation/datum_icons.json`
-- shared icon and directive routes under `portals/_shared/portal/api/data_workspace.py`
+- shared icon and directive routes under `instances/_shared/portal/api/data_workspace.py`
 
 ## Source Docs
 

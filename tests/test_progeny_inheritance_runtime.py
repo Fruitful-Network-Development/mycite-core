@@ -10,7 +10,7 @@ from tempfile import TemporaryDirectory
 
 
 def _load_inheritance_module():
-    path = Path(__file__).resolve().parents[1] / "portals" / "_shared" / "portal" / "progeny_model" / "inheritance.py"
+    path = Path(__file__).resolve().parents[1] / "instances" / "_shared" / "portal" / "progeny_model" / "inheritance.py"
     spec = importlib.util.spec_from_file_location("shared_progeny_inheritance_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -19,7 +19,7 @@ def _load_inheritance_module():
 
 
 def _load_network_cards_module():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    portals_root = Path(__file__).resolve().parents[1] / "instances"
     token = str(portals_root)
     if token not in sys.path:
         sys.path.insert(0, token)

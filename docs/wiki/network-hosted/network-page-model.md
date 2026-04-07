@@ -50,7 +50,7 @@ This page owns the NETWORK surface and its current tabs. It does not own:
 ## Authoritative Paths / Files
 
 - `docs/NETWORK_PAGE_MODEL.md`
-- shared network and contract code under `portals/_shared/portal/**`
+- shared network and contract code under `instances/_shared/portal/**`
 
 ## Source Docs
 

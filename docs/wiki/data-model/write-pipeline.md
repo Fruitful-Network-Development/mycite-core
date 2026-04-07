@@ -50,9 +50,9 @@ This page owns preview/apply semantics and write-policy framing. It does not own
 ## Authoritative Paths / Files
 
 - `docs/CANONICAL_DATA_ENGINE.md`
-- `portals/_shared/portal/data_engine/write_pipeline.py`
-- `portals/_shared/portal/data_engine/field_contracts.py`
-- `portals/_shared/portal/data_engine/geometry_datums.py`
+- `instances/_shared/portal/data_engine/write_pipeline.py`
+- `instances/_shared/portal/data_engine/field_contracts.py`
+- `instances/_shared/portal/data_engine/geometry_datums.py`
 
 ## Source Docs
 

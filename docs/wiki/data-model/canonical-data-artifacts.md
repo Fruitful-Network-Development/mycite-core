@@ -57,8 +57,8 @@ This page defines canonical runtime artifacts and ownership boundaries. It does 
 
 - `docs/CANONICAL_DATA_ENGINE.md`
 - `anthology-base.json`
-- `portals/_shared/portal/data_engine/anthology_registry.py`
-- `portals/_shared/portal/data_engine/anthology_overlay.py`
+- `instances/_shared/portal/data_engine/anthology_registry.py`
+- `instances/_shared/portal/data_engine/anthology_overlay.py`
 
 ## Source Docs
 

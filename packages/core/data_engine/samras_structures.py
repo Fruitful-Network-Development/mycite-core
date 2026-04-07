@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Backward-compatible shim. Canonical shared implementation now lives under
-# portals/_shared/portal/sandbox/samras.py.
+# instances/_shared/portal/sandbox/samras.py.
 #
 # IMPORTANT:
 # SAMRAS structure addressing is NOT the same context as anthology/resource
@@ -10,4 +10,7 @@ from __future__ import annotations
 # See:
 # - datum_structure.py
 # - mss_compact_array_reference.py
-from portals._shared.portal.sandbox.samras import *  # noqa: F401,F403
+try:  # pragma: no cover - import path depends on caller setup
+    from _shared.portal.sandbox.samras import *  # noqa: F401,F403
+except Exception:  # pragma: no cover - package callers may only expose repo root
+    from instances._shared.portal.sandbox.samras import *  # noqa: F401,F403

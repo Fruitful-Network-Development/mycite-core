@@ -53,6 +53,15 @@ def _normalized_email(value: object) -> str:
     return token
 
 
+def _preserved_email(value: object) -> str:
+    token = _text(value)
+    for _name, address in getaddresses([token]):
+        candidate = str(address or "").strip()
+        if _normalized_email(candidate):
+            return candidate
+    return token if _normalized_email(token) else ""
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -331,7 +340,7 @@ def _queue_inbound_newsletter(
     state = resolve_newsletter_domain_state(private_dir, domain)
     profile = dict(state.get("profile") or {})
     selected = dict(state.get("selected_author") or state.get("selected_sender") or {})
-    author_address = _normalized_email(selected.get("send_as_email"))
+    author_address = _preserved_email(inbound_message.get("sender")) or _preserved_email(selected.get("send_as_email"))
     if not author_address:
         raise RuntimeError(f"No verified sender is available for {domain}")
     queue_url = _text(profile.get("dispatch_queue_url"))
@@ -524,8 +533,8 @@ def process_latest_inbound_newsletter(private_dir: Path, *, domain: str) -> dict
     return {"ok": True, "dispatch": dispatch, "inbound_message": message_payload, "inbound_chain": chain}
 
 
-def register_newsletter_admin_routes(app: Flask, *, private_dir: Path) -> None:
-    @app.get("/portal/api/admin/newsletter/status")
+def register_aws_newsletter_routes(app: Flask, *, private_dir: Path) -> None:
+    @app.get("/portal/api/admin/aws/newsletter/status")
     def newsletter_admin_status():
         ok, failure = _ensure_admin()
         if not ok:
@@ -539,14 +548,14 @@ def register_newsletter_admin_routes(app: Flask, *, private_dir: Path) -> None:
             }
         )
 
-    @app.get("/portal/api/admin/newsletter/domain/<domain>")
+    @app.get("/portal/api/admin/aws/newsletter/domain/<domain>")
     def newsletter_admin_domain(domain: str):
         ok, failure = _ensure_admin()
         if not ok:
             return failure
         return jsonify({"ok": True, **resolve_newsletter_domain_state(private_dir, domain)})
 
-    @app.post("/portal/api/admin/newsletter/domain/<domain>/config")
+    @app.post("/portal/api/admin/aws/newsletter/domain/<domain>/config")
     def newsletter_admin_config(domain: str):
         ok, failure = _ensure_admin()
         if not ok:
@@ -570,7 +579,7 @@ def register_newsletter_admin_routes(app: Flask, *, private_dir: Path) -> None:
         save_newsletter_profile(profile_path, profile)
         return jsonify({"ok": True, **resolve_newsletter_domain_state(private_dir, domain)})
 
-    @app.post("/portal/api/admin/newsletter/domain/<domain>/send")
+    @app.post("/portal/api/admin/aws/newsletter/domain/<domain>/send")
     def newsletter_admin_send(domain: str):
         ok, failure = _ensure_admin()
         if not ok:
@@ -579,13 +588,13 @@ def register_newsletter_admin_routes(app: Flask, *, private_dir: Path) -> None:
             jsonify(
                 {
                     "ok": False,
-                    "error": "inbound-mail workflow only: send a message from the selected verified mailbox to the canonical news@<domain> address, then process the captured inbound message",
+                    "error": "AWS-CMS newsletter mediation is inbound-mail workflow only: send a message from the selected verified mailbox to the canonical news@<domain> address, then process the captured inbound message",
                 }
             ),
             409,
         )
 
-    @app.post("/portal/api/admin/newsletter/domain/<domain>/process_inbound")
+    @app.post("/portal/api/admin/aws/newsletter/domain/<domain>/process_inbound")
     def newsletter_admin_process_inbound(domain: str):
         ok, failure = _ensure_admin()
         if not ok:
@@ -594,7 +603,7 @@ def register_newsletter_admin_routes(app: Flask, *, private_dir: Path) -> None:
         status_code = 200 if bool(result.get("ok")) else 400
         return jsonify({**result, **resolve_newsletter_domain_state(private_dir, domain)}), status_code
 
-    @app.post("/portal/api/admin/newsletter/domain/<domain>/contact")
+    @app.post("/portal/api/admin/aws/newsletter/domain/<domain>/contact")
     def newsletter_admin_contact(domain: str):
         ok, failure = _ensure_admin()
         if not ok:
@@ -728,12 +737,12 @@ def register_newsletter_admin_routes(app: Flask, *, private_dir: Path) -> None:
             return jsonify({"ok": True, "domain": domain, "contact": updated, "contact_log_path": str(path)})
         return _html_message("Unsubscribed", message)
 
-    @app.route("/portal/api/admin/newsletter/status", methods=["OPTIONS"])
-    @app.route("/portal/api/admin/newsletter/domain/<domain>", methods=["OPTIONS"])
-    @app.route("/portal/api/admin/newsletter/domain/<domain>/config", methods=["OPTIONS"])
-    @app.route("/portal/api/admin/newsletter/domain/<domain>/send", methods=["OPTIONS"])
-    @app.route("/portal/api/admin/newsletter/domain/<domain>/process_inbound", methods=["OPTIONS"])
-    @app.route("/portal/api/admin/newsletter/domain/<domain>/contact", methods=["OPTIONS"])
+    @app.route("/portal/api/admin/aws/newsletter/status", methods=["OPTIONS"])
+    @app.route("/portal/api/admin/aws/newsletter/domain/<domain>", methods=["OPTIONS"])
+    @app.route("/portal/api/admin/aws/newsletter/domain/<domain>/config", methods=["OPTIONS"])
+    @app.route("/portal/api/admin/aws/newsletter/domain/<domain>/send", methods=["OPTIONS"])
+    @app.route("/portal/api/admin/aws/newsletter/domain/<domain>/process_inbound", methods=["OPTIONS"])
+    @app.route("/portal/api/admin/aws/newsletter/domain/<domain>/contact", methods=["OPTIONS"])
     @app.route("/__fnd/newsletter/subscribe", methods=["OPTIONS"])
     @app.route("/__fnd/newsletter/dispatch-result", methods=["OPTIONS"])
     @app.route("/__fnd/newsletter/unsubscribe", methods=["OPTIONS"])
@@ -743,3 +752,7 @@ def register_newsletter_admin_routes(app: Flask, *, private_dir: Path) -> None:
         response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Portal-User, X-Portal-Username, X-Portal-Roles"
         response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
         return response
+
+
+def register_newsletter_admin_routes(app: Flask, *, private_dir: Path) -> None:
+    register_aws_newsletter_routes(app, private_dir=private_dir)

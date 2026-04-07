@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def _load_schema_module():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    portals_root = Path(__file__).resolve().parents[1] / "instances"
     token = str(portals_root)
     if token not in sys.path:
         sys.path.insert(0, token)

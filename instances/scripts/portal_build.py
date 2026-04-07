@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PORTALS_ROOT = REPO_ROOT / "portals"
+INSTANCES_ROOT = REPO_ROOT / "instances"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 BUILD_SCHEMA = "mycite.portal.build.v1"
@@ -55,7 +55,7 @@ SEED_PATTERNS = (
 
 
 def _load_shared_hosted_model():
-    token = str(PORTALS_ROOT)
+    token = str(INSTANCES_ROOT)
     if token not in sys.path:
         sys.path.insert(0, token)
     import _shared.portal.hosted_model as module

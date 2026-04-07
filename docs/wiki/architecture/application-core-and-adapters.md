@@ -50,8 +50,8 @@ This page owns high-level organization and responsibility boundaries. It does no
 
 - `docs/application_organization_refactor_report.md`
 - `docs/PORTAL_CORE_ARCHITECTURE.md`
-- `portals/_shared/portal/**`
-- `portals/_shared/runtime/flavors/*`
+- `instances/_shared/portal/**`
+- `instances/_shared/runtime/flavors/*`
 
 ## Source Docs
 

@@ -55,8 +55,8 @@ This page owns storage ownership and file-shape expectations. It does not own:
 ## Authoritative Paths / Files
 
 - `docs/RESOURCE_STORAGE_CONVENTIONS.md`
-- `portals/_shared/portal/data_engine/resource_registry.py`
-- `portals/_shared/portal/samras/`
+- `instances/_shared/portal/data_engine/resource_registry.py`
+- `instances/_shared/portal/samras/`
 
 ## Source Docs
 

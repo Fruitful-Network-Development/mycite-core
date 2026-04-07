@@ -17,7 +17,7 @@ except ModuleNotFoundError:  # pragma: no cover - environment-dependent
 
 
 def _load_tenant_progeny_module():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    portals_root = Path(__file__).resolve().parents[1] / "instances"
     flavor_root = portals_root / "_shared" / "runtime" / "flavors" / "fnd"
     for token in (str(portals_root), str(flavor_root)):
         if token not in sys.path:

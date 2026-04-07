@@ -7,7 +7,7 @@ import string
 try:
     from _shared.portal.application.coordinate_hops import decode_coordinate_token as decode_coordinate_hops_token
 except Exception:  # pragma: no cover - import path varies in dynamic loaders
-    from portals._shared.portal.application.coordinate_hops import decode_coordinate_token as decode_coordinate_hops_token
+    from instances._shared.portal.application.coordinate_hops import decode_coordinate_token as decode_coordinate_hops_token
 
 
 _COORD_SCALE = 10_000_000.0

@@ -4,7 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 
-portals_root = Path(__file__).resolve().parents[1] / "portals"
+portals_root = Path(__file__).resolve().parents[1] / "instances"
 token = str(portals_root)
 if token not in sys.path:
     sys.path.insert(0, token)

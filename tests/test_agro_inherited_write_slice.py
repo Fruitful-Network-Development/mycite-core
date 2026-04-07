@@ -17,7 +17,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 
 def _load_register_data_routes():
-    path = Path(__file__).resolve().parents[1] / "portals" / "_shared" / "portal" / "api" / "data_workspace.py"
+    path = Path(__file__).resolve().parents[1] / "instances" / "_shared" / "portal" / "api" / "data_workspace.py"
     portals_root = path.parents[4]
     token = str(portals_root)
     if token not in sys.path:

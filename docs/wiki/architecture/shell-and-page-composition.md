@@ -115,7 +115,7 @@ This page owns visible shell and page composition. It does not own:
 - `docs/module_system_contract.md`
 - `docs/PORTAL_SHELL_UI.md`
 - `docs/SHELL_COMPOSITION.md`
-- `portals/_shared/runtime/flavors/*/portal/ui/templates/services/system.html`
+- `instances/_shared/runtime/flavors/*/portal/ui/templates/services/system.html`
 
 ## Source Docs
 

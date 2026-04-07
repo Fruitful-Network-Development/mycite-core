@@ -13,7 +13,7 @@ def _as_text(value: object) -> str:
 
 
 def default_base_registry_path() -> Path:
-    # .../repo/mycite-core/portals/_shared/portal/data_engine/anthology_registry.py
+    # .../repo/mycite-core/instances/_shared/portal/data_engine/anthology_registry.py
     # parents[4] => /srv/repo/mycite-core
     return Path(__file__).resolve().parents[4] / "anthology-base.json"
 

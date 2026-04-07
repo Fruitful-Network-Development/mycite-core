@@ -44,7 +44,7 @@ This page owns the responsibility split between engine and UI. It does not own:
 
 - `docs/shape_addressed_mixed-radix_address_space.md`
 - `docs/SANDBOX_ENGINE.md`
-- `portals/_shared/portal/samras/`
+- `instances/_shared/portal/samras/`
 
 ## Source Docs
 

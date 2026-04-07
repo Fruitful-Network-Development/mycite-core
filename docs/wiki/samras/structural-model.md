@@ -59,8 +59,8 @@ This page owns the structural model. It does not own:
 ## Authoritative Paths / Files
 
 - `docs/shape_addressed_mixed-radix_address_space.md`
-- `portals/_shared/portal/samras/structure.py`
-- `portals/_shared/portal/samras/codec.py`
+- `instances/_shared/portal/samras/structure.py`
+- `instances/_shared/portal/samras/codec.py`
 
 ## Source Docs
 

@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 
 
 def _load_tool_runtime_module():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    portals_root = Path(__file__).resolve().parents[1] / "instances"
     token = str(portals_root)
     if token not in sys.path:
         sys.path.insert(0, token)
@@ -17,7 +17,7 @@ def _load_tool_runtime_module():
 
 
 def _load_tool_specs_module():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    portals_root = Path(__file__).resolve().parents[1] / "instances"
     token = str(portals_root)
     if token not in sys.path:
         sys.path.insert(0, token)
@@ -25,7 +25,7 @@ def _load_tool_specs_module():
 
 
 def _load_registry_module():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    portals_root = Path(__file__).resolve().parents[1] / "instances"
     token = str(portals_root)
     if token not in sys.path:
         sys.path.insert(0, token)

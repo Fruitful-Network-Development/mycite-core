@@ -64,7 +64,7 @@ This page owns member-service integration abstractions. It does not own:
 
 ## Authoritative Paths / Files
 
-- FND provider integration code under `portals/_shared/runtime/flavors/fnd/portal/**`
+- FND provider integration code under `instances/_shared/runtime/flavors/fnd/portal/**`
 - profile metadata stored in progeny and hosted-related runtime state
 
 ## Source Docs

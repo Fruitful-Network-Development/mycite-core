@@ -19,7 +19,7 @@ except ModuleNotFoundError:  # pragma: no cover
 def _load_agro_module():
     path = (
         Path(__file__).resolve().parents[1]
-        / "portals"
+        / "instances"
         / "_shared"
         / "runtime"
         / "flavors"
@@ -48,7 +48,7 @@ class AgroPlanWorkspaceFlowTests(unittest.TestCase):
             __name__,
             template_folder=str(
                 Path(__file__).resolve().parents[1]
-                / "portals"
+                / "instances"
                 / "_shared"
                 / "runtime"
                 / "flavors"

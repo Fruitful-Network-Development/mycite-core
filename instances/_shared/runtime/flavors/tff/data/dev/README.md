@@ -10,6 +10,6 @@ Allowed in this namespace:
 
 Policy:
 
-- Experimental modules stay under the shared runtime flavor path `portals/_shared/runtime/flavors/tff/data/dev/**`.
+- Experimental modules stay under the shared runtime flavor path `instances/_shared/runtime/flavors/tff/data/dev/**`.
 - Example portals (`mycite-ne-example`, `mycite-le-example`) keep only stable engine modules.
 - A future runtime flag such as `enable_dev_data_features` may gate these experiments in FND.

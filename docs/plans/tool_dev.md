@@ -1,13 +1,17 @@
 # Plan for continued development of Tools
 
-> Tools should be packaged with all of their code in the live implementations under `mycite-state/instances/<portal>/private/utilities/tools/<tool>/code/`
-> Tools should be kept seperate from their sandboxes for any datum files at `mycite-state/instances/<portal>/data/sandbox/<tool>/`
-> Tool data can be kept in `repo/mycite-core/instances/deployed/<portal>/data/sandbox/<tool>/`, but no tool directory is kept per deployed instance, since that is spesific to the tool package that should be isolated in `repo/mycite-core/packages/tools/<tool>/`
-* Tool code, either service or general, should only consist of using core portal functionailties.
-* If tool use must go beyond this, only aceptiable for service tools, then it can use a singular service modulae that exists as a part of the portal core logic as a `peripheral` module.
+> Tool code does not live in instance state. Canonical tool code belongs in `repo/mycite-core/packages/tools/<tool>/` plus shared runtime glue under `repo/mycite-core/instances/_shared/runtime/flavors/*`.
+> Utility files that are not datums live under `mycite-state/instances/<portal>/private/utilities/tools/<tool>/`.
+> Tool datum authority lives under `mycite-state/instances/<portal>/data/sandbox/<tool>/`.
+> Payload binaries and decoded cache authority live under `mycite-state/instances/<portal>/data/payloads/` and `mycite-state/instances/<portal>/data/payloads/cache/`.
+* Tool code, either service or general, should only consist of using core portal surfaces.
+* If tool use must go beyond this, only service tools may do so, and they should attach through a singular shared-core peripheral/service seam rather than inventing private runtime logic.
 
-
-- The main goal is to keep with a canotical portal core that maintains tool ports for tools to attach to for use of functionaility.
+- The main goal is to keep a canonical portal core that maintains tool ports for tools to attach to for use of functionality.
+- The shell surface is more important than hidden convenience logic. The portal defines what is legal, exposes that through stable mediation/context payloads, and tools attach to that surface.
+- `private/config.json` only controls tool exposure and utility collection selection. It does not define sandbox datum truth.
+- `private/utilities/tools/<tool>/` is for non-datum tool state only. Hidden dotfile operations and live code copies are drift and should be removed.
+- `data/sandbox/<tool>/` and canonical hyphae/datum identity handling are the datum-facing authority for tool workflows.
 
 - Ideally, every tool functionality can be deffined for an existing module of the portal, where in the portal can maintain portas for the tools use of those capacities.
 
@@ -269,73 +273,25 @@ Notice that refference-magnitude tuples have refference values of `rf.<datum_add
 ---
 
 
-### Output
+## Active Decisions
 
-Implemented the FND realignment across shared code, the FND runtime, the live FND utility collections, tests, and docs.
+- `private/config.json` is the tool exposure and utility-collection selector only.
+- `private/utilities/tools/<tool>/` holds non-datum tool files only.
+- `data/sandbox/<tool>/` is the only datum authority for tool sandboxes.
+- `data/payloads/` and `data/payloads/cache/` are the only payload binary and decoded-cache authorities.
+- The shell surface is primary. Tools attach through portal-defined mediation/context surfaces and must not invent hidden operational channels.
+- Datum validation should fail closed with visible diagnostics when human-authored datum files are malformed. Derived payload binaries/cache may be regenerated, but human-authored datum files should not be silently rewritten.
 
-The main contract fixes are in [config_loader.py](/srv/repo/mycite-core/instances/_shared/portal/core_services/config_loader.py), [resource_registry.py](/srv/repo/mycite-core/instances/_shared/portal/data_engine/resource_registry.py), and [__init__.py](/srv/repo/mycite-core/instances/_shared/runtime/flavors/tff/portal/tools/agro_erp/__init__.py). `private/config.json` now behaves as tool exposure plus utility-collection selection only, legacy `refferences` and `ref.*.json` normalize to canonical `rf.<source>.<name>.bin`, resource indexes use scoped layouts with read-only legacy-root compatibility, and AGRO time-schema authority now resolves from `data/sandbox/agro-erp/` instead of utility files. I also added a small legacy import shim at [portals/__init__.py](/srv/repo/mycite-core/portals/__init__.py) so the older `portals._shared...` tests keep working.
+## Resolved Drift To Keep Cut
 
-The newsletter workflow is now folded into AWS-CMS instead of a standalone tool. The service/runtime changes are in [service_catalog.py](/srv/repo/mycite-core/packages/tools/_shared/tool_contracts/service_catalog.py), [runtime.py](/srv/repo/mycite-core/packages/tools/_shared/tool_state_api/runtime.py), [service_tools.py](/srv/repo/mycite-core/instances/_shared/portal/application/service_tools.py), [state_adapter.py](/srv/repo/mycite-core/packages/tools/newsletter_admin/state_adapter.py), [newsletter_admin.py](/srv/repo/mycite-core/instances/_shared/runtime/flavors/fnd/portal/api/newsletter_admin.py), and [system_shell_runtime.js](/srv/repo/mycite-core/instances/_shared/runtime/flavors/fnd/portal/ui/static/shared/system_shell_runtime.js). The old `newsletter-admin` tool surface is suppressed, AWS-CMS now mediates canonical newsletter profile JSON plus contact-log health, progeny newsletter fields are compatibility-read only with visible drift warnings, manual admin send now returns an explicit inbound-only error, and the new processing path consumes captured inbound mail to `news@<domain>`, validates the selected verified sender, queues one SQS job per subscribed recipient, and records dispatch state back into the canonical website contact log. I also converted the FND utility manifests to plain `tool_collection.v1` JSON in both repo and live state, including [tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json](/srv/repo/mycite-core/instances/deployed/fnd/private/utilities/tools/aws-csm/tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json).
+- Standalone `newsletter-admin` tool framing is retired. Newsletter mediation belongs under the AWS-CMS admin surface.
+- Manual admin newsletter send is retired in favor of inbound mediation through `news@<domain>`.
+- `portals/...` and `/srv/compose/portals/state/...` are retired vocabulary. Current code, tests, and docs should point at `instances/...` and `/srv/mycite-state/instances/...`.
+- Hidden dotfile secrets and live code copies inside instance utility roots are drift and should be migrated to visible runtime helper files or removed.
+- Runtime/process wrappers belong in `srv-infra`, but they must point at canonical repo locations and canonical live state roots.
 
-The documentation now matches the corrected layout and workflow, including [portal-config-model.md](/srv/repo/mycite-core/docs/wiki/runtime-build/portal-config-model.md), [time-address-schema.md](/srv/repo/mycite-core/docs/wiki/tools/time-address-schema.md), [agro-erp-datum-decision-ledger.md](/srv/repo/mycite-core/docs/wiki/tools/agro-erp-datum-decision-ledger.md), [tool_development_guide.md](/srv/repo/mycite-core/docs/modularity/tool_development_guide.md), and [news_letter_workflow_correction.md](/srv/repo/mycite-core/docs/plans/news_letter_workflow_correction.md).
+## Interface Precedent
 
-Verification: `python3 -m unittest tests.test_config_loader_contract tests.test_tool_runtime tests.test_service_tool_mediation tests.test_newsletter_service_tool_mediation tests.test_newsletter_admin_api tests.test_coordinate_hops tests.test_runtime_paths tests.test_shell_tool_runtime_contracts tests.test_resource_registry_boundaries tests.test_external_resource_catalog tests.test_external_resource_identity_and_planner tests.test_agro_erp_tool_flow tests.test_time_address_schema tests.test_fnd_portal_shell_routes` from `/srv/repo/mycite-core` passed with `73` tests OK and `16` skipped.
-
-
-
----
-
-
-
-# Review/Alignment Accessment
-
-## Prompt:
-
-Consider the file[tool_dev.md](repo/mycite-core/docs/plans/tool_dev.md), do a comprehensive aurdit of the live instances and mycite-repo.
-Also look for opertunities to delete anything nested in `/srv/compose/`.
-
-My goal here is to prevent tools and code from being kept in hidden places and un managable operations.
-
-Consider the comprehsive review of how datums and the state machine is meant to operate with and on datum files and spaces. More importantly consider the implications of how the the current core must be adjusted to have this better orgnization of operations, modulaized responsability, etc.
-
-By enfrouceing or incorperating the use of datums in an algarithmic cantotical identification, the data egnine can be begin to take shape for handling datums based on thier strucure.
-This organization of modular degin is the most important as it will be adapting as it s developed to get closer to the end goal, depite not fully knowing what they is yet.
-
-Having the contracts and hyphae forms aligned to reflect the intentions outlined for the maps default tool may be necissary as many datums might be errored. (expexially ASCII and other binary representation, pruhaps having magnitudes letters and such, rather than binary.)
-This is why the ability to handle and simplify the system page of the portal and how it understands and modularizes the interfacing is of utmost importance.
-Any further enfourcemnt or alerts of illigal datums can be made dynamiclly invovled in the development process if development is being built from a sturdy interface.
-
-Where the UI interface is seperate, its still wholey reactive to the logic and strucure of the state machine, so the resulting visualization and interfacing should be a goal of making the UI shell very strict about not going beyond the bonds of what it deffines. There fore haveing the shell provide small opennings for more dynamic functionaility, like a tools spesifc mediation visualization, or the data engine function call the allows for functions to insert themselves for visulaizing datums or cells.
-
-Access this process and task with respect to the file and current repo/implementations.
-Return the comprehensive finddings, that help further spesify alignment.
-
----
-
-## Output:
-Reviewed against [tool_dev.md](/srv/repo/mycite-core/docs/plans/tool_dev.md), the live FND/TFF instances, the running services, and `/srv/compose`. The plan’s direction is strong, but the current system still has multiple competing operational authorities.
-
-**Findings**
-- Critical: live tool utility state is not fully represented in the repo deployment mirrors. The only live-vs-repo delta for both instances is `private/utilities/tools`, which means tool collections can exist in live state outside the tracked deployed mirror. See [fnd live state](/srv/mycite-state/instances/fnd/private/utilities/tools) and [fnd deployed mirror](/srv/repo/mycite-core/instances/deployed/fnd).
-- Critical: process supervision is split. `tff` is cleanly supervised, but `fnd` is still serving on port `5101` while `fnd-portal.service` is inactive, and [`paypal-proxy.service`](/srv/repo/srv-infra/systemd/paypal-proxy.service) is restart-looping because it points at the old non-existent `tools/paypal_csm/backend` path.
-- High: newsletter is only half-migrated. [`tool_state_api runtime.py`](/srv/repo/mycite-core/packages/tools/_shared/tool_state_api/runtime.py) suppresses `newsletter_admin` as a standalone tool, but [`fnd config.json`](/srv/mycite-state/instances/fnd/private/config.json) still declares `newsletter-admin`, [`fnd app.py`](/srv/repo/mycite-core/instances/_shared/runtime/flavors/fnd/app.py) still registers newsletter routes, and [`newsletter_admin state_adapter.py`](/srv/repo/mycite-core/packages/tools/newsletter_admin/state_adapter.py) still uses hidden secret dotfiles in [newsletter-admin live root](/srv/mycite-state/instances/fnd/private/utilities/tools/newsletter-admin). That directly conflicts with your goal of eliminating hidden operational state.
-- High: datum authority is still semantically blurry. [`service_tools.py`](/srv/repo/mycite-core/instances/_shared/portal/application/service_tools.py) correctly treats config anchors as utility collection selectors, and the AGRO runtime in [`agro_erp`](/srv/repo/mycite-core/instances/_shared/runtime/flavors/tff/portal/tools/agro_erp/__init__.py) reads from `data/sandbox/agro-erp`; but [`time_address_schema.py`](/srv/repo/mycite-core/instances/_shared/portal/application/time_address_schema.py) still resolves tool anchors under `private/utilities/tools`, and [`view_model.py`](/srv/repo/mycite-core/mycite_core/state_machine/view_model.py) exposes that utility root as `sandbox_root`. The codebase is still teaching two different meanings for “sandbox.”
-- High: docs and tests still describe the old `portals/...` and `/srv/compose/portals/state/...` world. See [`README.md`](/srv/repo/mycite-core/README.md), [`portal-config-model.md`](/srv/repo/mycite-core/docs/wiki/runtime-build/portal-config-model.md), and [`time-address-schema.md`](/srv/repo/mycite-core/docs/wiki/tools/time-address-schema.md). Several portal and AGRO tests fail for stale-path reasons, which means part of the safety net is validating a layout that no longer exists.
-- Medium-high: the data engine still keeps too many legal homes for reference and binary material. [`resource_registry.py`](/srv/repo/mycite-core/instances/_shared/portal/data_engine/resource_registry.py) supports `data/resources`, `data/references`, and compatibility fallbacks in addition to `data/payloads` and `data/payloads/cache`. That preserves backward compatibility, but it also preserves the exact kind of hidden placement surface you want to remove.
-- Medium: there is still state-like content inside the code tree. [paypal-csm runtime data](/srv/repo/mycite-core/instances/_shared/runtime/flavors/fnd/private/utilities/tools/paypal-csm) contains NDJSON records under a runtime flavor path, which mixes code and mutable records in one place.
-- Medium: the repo already has the right primitives for your datum-centered direction. [`datum_identity.py`](/srv/repo/mycite-core/instances/_shared/portal/data_engine/datum_identity.py), [`config_loader.py`](/srv/repo/mycite-core/instances/_shared/portal/core_services/config_loader.py), and [`bacillete_rules.py`](/srv/repo/mycite-core/instances/_shared/portal/data_engine/rules/bacillete_rules.py) give you canonical identity, legacy-reference normalization, and structure-aware validation. The missing piece is stricter authority enforcement, not a brand-new core model.
-
-**Alignment**
-- The clean contract implied by [tool_dev.md](/srv/repo/mycite-core/docs/plans/tool_dev.md) is the right one: `private/config.json` should only declare enabled tool collections, `private/utilities/tools/<tool>/` should only hold non-datum specs/profiles, `data/sandbox/<tool>/` should be the only tool datum authority, and `data/payloads/` should be the only binary/payload/cache authority.
-- Inference from the current code: the maps-default-tool, hyphae, and contract alignment work should be treated as a boundary-enforcement problem first. If those flows keep resolving through utility manifests, legacy references, or ad hoc binary surfaces, datum-family logic will stay fragmented no matter how good the schema rules are.
-- The portal shell should be stricter than it is now. It should only expose state-machine-declared surfaces plus narrow extension points for datum/tool visualizers. Right now the shell and view model still know too much about legacy storage layout, which weakens the interface boundary you want.
-- I did not do a semantic-by-semantic sweep of every datum file in every sandbox, so I would not recommend an encoding-policy change yet. Structural enforcement should come first; dynamic “illegal datum” alerts should be layered on after the authority model is singular.
-
-**`/srv/compose`**
-- Safe delete candidates now: [/srv/compose/portals/docker-compose.yml.bak.20260401T000618Z](/srv/compose/portals/docker-compose.yml.bak.20260401T000618Z), [/srv/compose/portals/fnd_portal-state-backup-20260331-231553.tgz](/srv/compose/portals/fnd_portal-state-backup-20260331-231553.tgz), and [/srv/compose/portals/tff_portal-state-backup-20260331-231553.tgz](/srv/compose/portals/tff_portal-state-backup-20260331-231553.tgz).
-- Likely deletable after confirming no active dependency: [/srv/compose/portals/host_control_api](/srv/compose/portals/host_control_api), because the active control API appears to be sourced from [/srv/repo/srv-infra/compose/portals/host_control_api](/srv/repo/srv-infra/compose/portals/host_control_api).
-- Hold off on deleting the rest of [/srv/compose/portals](/srv/compose/portals) until `paypal-proxy` is re-homed and the last old-path references are removed. I did not find obvious deletion candidates under [/srv/compose/platform](/srv/compose/platform); that stack is active.
-
-**Verification**
-- I ran the core contract suites around tool runtime, config loading, resource registry, time-address schema, datum rules, newsletter, AGRO, and the portal shell.
-- The meaningful failures were stale-path failures tied to the removed `portals/...` layout, plus one newsletter behavior mismatch where inbound processing lowercases `author_address`. No files were changed.
+- The UI shell should be strict about legal surfaces and state-machine-declared context.
+- Small extension points are allowed for tool-specific mediation views, datum-family renderers, and data-engine-provided visualizers, but those attach to the shell rather than bypassing it.
+- The system page should remain the strongest legality boundary so dynamic datum alerts, family rules, hyphae forms, and tool mediation can all project through one canonical interface contract.

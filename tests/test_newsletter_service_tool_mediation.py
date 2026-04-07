@@ -9,8 +9,8 @@ from tempfile import TemporaryDirectory
 
 
 def _load_service_tools_module():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
-    token = str(portals_root)
+    instances_root = Path(__file__).resolve().parents[1] / "instances"
+    token = str(instances_root)
     if token not in sys.path:
         sys.path.insert(0, token)
     return importlib.import_module("_shared.portal.application.service_tools")
@@ -39,15 +39,6 @@ class NewsletterServiceToolMediationTests(unittest.TestCase):
             )
             newsletter_root = private_dir / "utilities" / "tools" / "newsletter-admin"
             newsletter_root.mkdir(parents=True, exist_ok=True)
-            (newsletter_root / "spec.json").write_text(
-                json.dumps({"schema": "mycite.portal.tool_spec.v1", "tool_id": "newsletter-admin", "inherited_inputs": [], "outputs": []})
-                + "\n",
-                encoding="utf-8",
-            )
-            (newsletter_root / "tool.3-2-3.newsletter-admin.json").write_text(
-                json.dumps({"member_files": ["newsletter-admin.trappfamilyfarm.com.json"]}) + "\n",
-                encoding="utf-8",
-            )
             (newsletter_root / "newsletter-admin.trappfamilyfarm.com.json").write_text(
                 json.dumps(
                     {
@@ -72,13 +63,14 @@ class NewsletterServiceToolMediationTests(unittest.TestCase):
             )
             aws_root = private_dir / "utilities" / "tools" / "aws-csm"
             aws_root.mkdir(parents=True, exist_ok=True)
-            (aws_root / "spec.json").write_text(
-                json.dumps({"schema": "mycite.portal.tool_spec.v1", "tool_id": "aws-csm", "inherited_inputs": [], "outputs": []})
-                + "\n",
-                encoding="utf-8",
-            )
             (aws_root / "tool.3-2-3.aws-csm.json").write_text(
-                json.dumps({"schema": "mycite.portal.tool_collection.v1", "member_files": ["spec.json", "aws-csm.tff.technicalContact.json"]}) + "\n",
+                json.dumps(
+                    {
+                        "schema": "mycite.portal.tool_collection.v1",
+                        "member_files": ["aws-csm.tff.technicalContact.json"],
+                    }
+                )
+                + "\n",
                 encoding="utf-8",
             )
             (aws_root / "aws-csm.tff.technicalContact.json").write_text(

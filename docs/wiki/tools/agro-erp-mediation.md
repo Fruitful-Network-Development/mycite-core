@@ -79,10 +79,10 @@ This page owns the AGRO-ERP mediation role. It does not own:
 ## Authoritative Paths / Files
 
 - `docs/AGRO_ERP_TOOL.md`
-- TFF AGRO tool code under `portals/_shared/runtime/flavors/tff/portal/tools/agro_erp/`
-- shared data-engine APIs under `portals/_shared/portal/`
-- shared time-address engine under `portals/_shared/portal/application/time_address.py`
-- shared time-schema decode under `portals/_shared/portal/application/time_address_schema.py`
+- TFF AGRO tool code under `instances/_shared/runtime/flavors/tff/portal/tools/agro_erp/`
+- shared data-engine APIs under `instances/_shared/portal/`
+- shared time-address engine under `instances/_shared/portal/application/time_address.py`
+- shared time-schema decode under `instances/_shared/portal/application/time_address_schema.py`
 
 ## Source Docs
 

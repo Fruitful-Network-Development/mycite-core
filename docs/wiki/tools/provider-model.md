@@ -43,7 +43,8 @@ Runtime normalization rules:
 
 - `tools_configuration[].name` (or legacy `tool_id`) is accepted as source token.
 - hyphenated slugs normalize to underscore ids for provider import and capability matching.
-- per-tool state roots and specs remain slug-oriented on disk under `private/utilities/tools/<tool-slug>/`.
+- per-tool utility roots remain slug-oriented on disk under `private/utilities/tools/<tool-slug>/`.
+- live tool code does not belong under instance state; canonical code lives under `packages/tools/` and shared runtime glue under `instances/_shared/runtime/flavors/*`.
 
 ## Event Provenance Contract
 
@@ -67,7 +68,7 @@ This page owns the provider contract. It does not own:
 
 - `docs/development_declaration_state_machine.md`
 - `docs/application_organization_refactor_report.md`
-- shared runtime and provider integration code under `portals/_shared/`
+- shared runtime and provider integration code under `instances/_shared/`
 
 ## Source Docs
 

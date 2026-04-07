@@ -1,6 +1,6 @@
 # Mycite Portal Wiki
 
-This wiki is the primary maintained knowledge base for the Mycite Portal application in `repo/mycite-core`.
+`docs/wiki` is the primary maintained knowledge base for the Mycite Portal application in `repo/mycite-core`.
 
 It explains the current portal model in concept-first pages so future refactors can update one local topic instead of auditing a large set of mixed milestone docs.
 
@@ -10,9 +10,14 @@ It explains the current portal model in concept-first pages so future refactors 
 - Stable explanations of the `SYSTEM` workbench, data model, MSS, SAMRAS, sandbox, hosted model, and build/runtime boundaries.
 - The maintenance workflow for updating documentation after code or architecture changes.
 
-## Former `docs/` Tree
+## Relationship To `docs/`
 
-The former `docs/` tree has been retired. Its current, valid content has been consolidated into this wiki, and its superseded material has been reduced to lineage notes in `archive/`.
+The broader `docs/` tree remains active.
+
+- `docs/wiki/` owns current concept and contract pages.
+- `docs/plans/` owns active direction-setting plans when they define implementation precedent.
+- `docs/modularity/` owns supporting module and contract notes.
+- `docs/archive/` holds historical or superseded material for lineage only.
 
 ## Source-Of-Truth Precedence
 
@@ -31,6 +36,7 @@ When sources disagree, prefer the newer model:
 - sandbox as a lifecycle engine, not the inventory owner
 - SAMRAS structural logic from the migrated shape-addressed mixed-radix source specification
 - `spacial` as compatibility vocabulary, not the canonical state concept
+- shell-surface legality over hidden tool logic or stray runtime placement
 
 ## Wiki Structure
 

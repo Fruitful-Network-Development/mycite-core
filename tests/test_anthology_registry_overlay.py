@@ -10,8 +10,8 @@ from pathlib import Path
 
 
 def _load_module(name: str):
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
-    token = str(portals_root)
+    instances_root = Path(__file__).resolve().parents[1] / "instances"
+    token = str(instances_root)
     if token not in sys.path:
         sys.path.insert(0, token)
     return importlib.import_module(name)
@@ -20,7 +20,7 @@ def _load_module(name: str):
 def _load_fnd_storage_module():
     path = (
         Path(__file__).resolve().parents[1]
-        / "portals"
+        / "instances"
         / "_shared"
         / "runtime"
         / "flavors"
@@ -142,7 +142,7 @@ class AnthologyRegistryOverlayTests(unittest.TestCase):
     def test_backward_compat_with_existing_raw_compact_anthology_files(self):
         overlay_mod = _load_module("_shared.portal.data_engine.anthology_overlay")
         repo_root = Path(__file__).resolve().parents[1]
-        example_overlay = repo_root / "compose" / "portals" / "state" / "example_portal" / "data" / "anthology.json"
+        example_overlay = repo_root / "instances" / "convention" / "data" / "system" / "anthology.json"
         report = overlay_mod.load_overlay_merge_for_path(
             overlay_path=example_overlay,
             strict=False,
@@ -170,17 +170,18 @@ class AnthologyRegistryOverlayTests(unittest.TestCase):
             storage = storage_mod.JsonStorageBackend(root)
             rows = storage.load_rows("anthology")
             identifiers = {str(row.get("identifier") or "") for row in rows}
-            # Base row loaded from anthology-base.json.
-            self.assertIn("1-1-2", identifiers)
-            # Portal-local overlay row remains present.
+            # Local datum-space storage should only load declared local anchor rows
+            # instead of silently merging a repo-global anthology base.
+            self.assertNotIn("1-1-2", identifiers)
+            self.assertIn("0-0-1", identifiers)
             self.assertIn("8-1-1", identifiers)
 
-            # Persisting should keep overlay semantics and avoid re-writing identical base duplicates.
+            # Persisting should preserve the local anchor rows already present.
             persist = storage.persist_rows("anthology", rows)
             self.assertTrue(persist.get("ok"))
             overlay_after = json.loads((root / "anthology.json").read_text(encoding="utf-8"))
+            self.assertIn("0-0-1", overlay_after)
             self.assertIn("8-1-1", overlay_after)
-            # This row exists in anthology-base.json and should be stripped from overlay output.
             self.assertNotIn("1-1-2", overlay_after)
 
     def test_canonical_anthology_context_builds_rows_and_compact_payload(self):

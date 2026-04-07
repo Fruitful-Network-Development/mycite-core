@@ -2498,193 +2498,6 @@
     return out.join("");
   }
 
-  function renderNewsletterDomainCards(tool) {
-    var cards = newsletterCards(tool);
-    if (!cards.length) {
-      return '<div class="ide-controlpanel__empty">No newsletter domains are staged yet. Add a newsletter-admin domain profile and contact log first.</div>';
-    }
-    var selected = newsletterSelectedCard(tool);
-    var selectedDomain = newsletterDomainFromCard(selected).toLowerCase();
-    var out = [];
-    cards.forEach(function (card) {
-      var body = newsletterBodyFromCard(card);
-      var domain = newsletterDomainFromCard(card);
-      var active = domain.toLowerCase() === selectedDomain;
-      out.push('<button type="button" class="system-tool-contextCard' + (active ? ' is-active' : '') + '" data-newsletter-domain="' + esc(domain) + '">');
-      out.push('<strong>' + esc(domain) + '</strong>');
-      out.push('<small>' + esc(newsletterStatusLabel(card)) + '</small>');
-      out.push('<span>' + esc(String(body.subscribed_count || 0)) + ' subscribed · ' + esc(String(body.unsubscribed_count || 0)) + ' unsubscribed</span>');
-      out.push('</button>');
-    });
-    return out.join("");
-  }
-
-  function renderNewsletterOverview(tool) {
-    var cards = newsletterCards(tool);
-    if (!cards.length) {
-      return '<p class="data-tool__empty">No newsletter domains are configured.</p>';
-    }
-    var selected = newsletterSelectedCard(tool);
-    var body = newsletterBodyFromCard(selected);
-    var sender = newsletterSelectedSender(selected);
-    var out = [];
-    out.push('<article class="card"><div class="card__kicker">Newsletter Admin</div><div class="card__title">' + esc(newsletterDomainFromCard(selected)) + '</div><div class="card__body">');
-    out.push('<p>The website contact log under <code>/srv/webapps/clients/&lt;domain&gt;/contacts/</code> is the canonical list for signup, send, and unsubscribe state.</p>');
-    out.push(renderCardKeyValueRows({
-      domain: newsletterDomainFromCard(selected),
-      "list address": text(body.list_address),
-      "newsletter sender": text(body.sender_address || body.list_address),
-      "author mailbox": text(sender.send_as_email),
-      "author profile": text(sender.profile_id),
-      "delivery mode": text((body.profile || {}).delivery_mode || "aws_sqs_lambda_us_east_1"),
-      "contact log": text(body.contact_log_path),
-      contacts: String(body.contact_count || 0),
-      subscribed: String(body.subscribed_count || 0),
-      unsubscribed: String(body.unsubscribed_count || 0),
-      status: newsletterStatusLabel(selected)
-    }));
-    out.push('</div></article>');
-    out.push('<article class="card"><div class="card__kicker">Domains</div><div class="card__title">Newsletter-ready domains</div><div class="card__body">');
-    out.push(renderNewsletterDomainCards(tool));
-    out.push('</div></article>');
-    return out.join("");
-  }
-
-  function renderNewsletterContacts(tool) {
-    var selected = newsletterSelectedCard(tool);
-    if (!selected) {
-      return '<p class="data-tool__empty">Select a newsletter domain to inspect contacts.</p>';
-    }
-    var body = newsletterBodyFromCard(selected);
-    var contacts = Array.isArray(body.contacts) ? body.contacts : [];
-    var out = [];
-    out.push('<article class="card"><div class="card__kicker">Canonical Contact Log</div><div class="card__title">' + esc(newsletterDomainFromCard(selected)) + '</div><div class="card__body">');
-    out.push('<p><strong>Path:</strong> <code>' + esc(text(body.contact_log_path)) + '</code></p>');
-    if (!contacts.length) {
-      out.push('<p>No contacts are in the canonical log yet. Submit a website signup form to create the first subscriber.</p>');
-    } else {
-      out.push('<table class="fnd-ebi-table"><thead><tr><th>Email</th><th>Name</th><th>Status</th><th>Sent</th><th>Last sent</th><th>Updated</th></tr></thead><tbody>');
-      contacts.forEach(function (row) {
-        if (!row || typeof row !== "object") return;
-        out.push('<tr>');
-        out.push('<td><code>' + esc(text(row.email)) + '</code></td>');
-        out.push('<td>' + esc(text(row.name)) + '</td>');
-        out.push('<td>' + esc(row.subscribed ? "subscribed" : "unsubscribed") + '</td>');
-        out.push('<td>' + esc(String(row.send_count || 0)) + '</td>');
-        out.push('<td>' + esc(text(row.last_newsletter_sent_at)) + '</td>');
-        out.push('<td>' + esc(text(row.updated_at)) + '</td>');
-        out.push('</tr>');
-      });
-      out.push('</tbody></table>');
-    }
-    out.push('</div></article>');
-    return out.join("");
-  }
-
-  function renderNewsletterComposer(tool) {
-    var selected = newsletterSelectedCard(tool);
-    if (!selected) {
-      return '<p class="data-tool__empty">Select a newsletter domain to compose a test send.</p>';
-    }
-    var body = newsletterBodyFromCard(selected);
-    var verified = newsletterVerifiedSenders(selected);
-    var sender = newsletterSelectedSender(selected);
-    var latestDispatch = body.latest_dispatch && typeof body.latest_dispatch === "object" ? body.latest_dispatch : {};
-    var bucket = providerStateFor(tool.tool_id);
-    var out = [];
-    out.push('<article class="card"><div class="card__kicker">Compose</div><div class="card__title">Send a one-by-one test newsletter</div><div class="card__body">');
-    out.push('<p>The live send queues one recipient job at a time. The selected verified mailbox submits the newsletter to <code>' + esc(text(body.list_address)) + '</code>, and recipients receive it from <code>' + esc(text(body.sender_address || body.list_address)) + '</code>.</p>');
-    out.push('<div class="aws-csm-flowForm">');
-    out.push('<label class="aws-csm-flowForm__field"><span>Author mailbox</span><select class="data-tool__fieldInput" data-newsletter-sender>');
-    verified.forEach(function (item) {
-      if (!item || typeof item !== "object") return;
-      var profileId = text(item.profile_id);
-      var selectedAttr = profileId === text(sender.profile_id) ? ' selected="selected"' : "";
-      out.push('<option value="' + esc(profileId) + '"' + selectedAttr + '>' + esc(text(item.send_as_email)) + '</option>');
-    });
-    out.push('</select></label>');
-    out.push('<label class="aws-csm-flowForm__field"><span>Subject</span><input type="text" class="data-tool__fieldInput" data-newsletter-subject placeholder="Test newsletter subject" value="Newsletter test for ' + esc(newsletterDomainFromCard(selected)) + '" /></label>');
-    out.push('<label class="aws-csm-flowForm__field"><span>Body</span><textarea class="data-tool__fieldInput" data-newsletter-body rows="8" placeholder="Write a test message.">This is a test newsletter message for ' + esc(newsletterDomainFromCard(selected)) + '.\n\nIf this reaches you, the signup, canonical contact log, send, and unsubscribe loop is wired through the live website-root contact log.</textarea></label>');
-    out.push('<div class="aws-csm-flowForm__actions">');
-    out.push('<button type="button" class="data-tool__actionBtn is-active" data-newsletter-action="send">Send to subscribed contacts</button>');
-    out.push('<button type="button" class="data-tool__actionBtn" data-newsletter-action="refresh">Refresh</button>');
-    out.push('</div></div>');
-    out.push(renderCardKeyValueRows({
-      domain: newsletterDomainFromCard(selected),
-      "newsletter sender": text(body.sender_address || body.list_address),
-      "submission target": text(body.list_address),
-      subscribed: String(body.subscribed_count || 0),
-      unsubscribed: String(body.unsubscribed_count || 0),
-      "verified author mailboxes": String(verified.length),
-      status: newsletterStatusLabel(selected)
-    }));
-    if (!verified.length) {
-      out.push('<p><strong>Blocked:</strong> no Gmail-verified mailbox is available for this domain yet.</p>');
-    }
-    if (bucket.pendingNewsletterAction) {
-      out.push('<p><strong>Working:</strong> ' + esc(text(bucket.pendingNewsletterAction)) + '…</p>');
-    }
-    if (text(bucket.newsletterError)) {
-      out.push('<p class="fnd-ebi-warning"><strong>Action error:</strong> ' + esc(text(bucket.newsletterError)) + '</p>');
-    }
-    out.push('</div></article>');
-    if (latestDispatch && Object.keys(latestDispatch).length) {
-      out.push('<article class="card"><div class="card__kicker">Latest Dispatch</div><div class="card__title">' + esc(text(latestDispatch.subject || "dispatch")) + '</div><div class="card__body">');
-      out.push(renderCardKeyValueRows({
-        "requested at": text(latestDispatch.requested_at),
-        "completed at": text(latestDispatch.completed_at),
-        "requested by": text(latestDispatch.requested_by),
-        sender: text(latestDispatch.sender_address),
-        author: text(latestDispatch.author_address),
-        "reply to": text(latestDispatch.reply_to_address),
-        targets: String(latestDispatch.target_count || 0),
-        queued: String(latestDispatch.queued_count || 0),
-        sent: String(latestDispatch.sent_count || 0)
-      }));
-      var results = Array.isArray(latestDispatch.results) ? latestDispatch.results : [];
-      if (results.length) {
-        out.push('<table class="fnd-ebi-table"><thead><tr><th>Email</th><th>Status</th><th>Message</th><th>Unsubscribe</th></tr></thead><tbody>');
-        results.forEach(function (row) {
-          if (!row || typeof row !== "object") return;
-          out.push('<tr><td><code>' + esc(text(row.email)) + '</code></td><td>' + esc(text(row.status)) + '</td><td>' + esc(text(row.message_id || row.error)) + '</td><td>' + esc(limitText(text(row.unsubscribe_url), 72)) + '</td></tr>');
-        });
-        out.push('</tbody></table>');
-      }
-      out.push('</div></article>');
-    }
-    return out.join("");
-  }
-
-  function renderNewsletterFiles(tool) {
-    var ctx = toolContext(tool.tool_id) || {};
-    var files = Array.isArray(ctx.collection_files) ? ctx.collection_files : [];
-    var selected = newsletterSelectedCard(tool);
-    var out = [];
-    if (selected) {
-      var body = newsletterBodyFromCard(selected);
-      out.push('<article class="card"><div class="card__kicker">Focused Domain</div><div class="card__title">' + esc(newsletterDomainFromCard(selected)) + '</div><div class="card__body">');
-      out.push(renderCardKeyValueRows({
-        "contact log": text(body.contact_log_path),
-        "profile path": text(body.profile_path),
-        "list address": text(body.list_address),
-        "newsletter sender": text(body.sender_address || body.list_address),
-        "author mailbox": text((body.selected_author || body.selected_sender || {}).send_as_email)
-      }));
-      out.push('</div></article>');
-    }
-    if (!files.length) {
-      out.push('<p class="data-tool__empty">No newsletter-admin tool files were discovered.</p>');
-      return out.join("");
-    }
-    out.push('<table class="fnd-ebi-table"><thead><tr><th>File</th><th>Kind</th><th>Records</th></tr></thead><tbody>');
-    files.forEach(function (file) {
-      if (!file || typeof file !== "object") return;
-      out.push('<tr><td><code>' + esc(text(file.relative_path || file.path || file.file_name)) + '</code></td><td>' + esc(text(file.content_kind)) + '</td><td>' + esc(String(file.record_count || 0)) + '</td></tr>');
-    });
-    out.push('</tbody></table>');
-    return out.join("");
-  }
-
   function newsletterRefresh(tool) {
     var bucket = providerStateFor(tool.tool_id);
     bucket.newsletterError = "";
@@ -2708,7 +2521,7 @@
     bucket.pendingNewsletterAction = "Saving sender";
     bucket.newsletterError = "";
     renderAll();
-    return api("/portal/api/admin/newsletter/domain/" + encodeURIComponent(domain) + "/config", "POST", {
+    return api("/portal/api/admin/aws/newsletter/domain/" + encodeURIComponent(domain) + "/config", "POST", {
       selected_sender_profile_id: profileId
     }).then(function () {
       bucket.pendingNewsletterAction = "";
@@ -2731,7 +2544,7 @@
     bucket.pendingNewsletterAction = "Processing inbound newsletter";
     bucket.newsletterError = "";
     renderAll();
-    return api("/portal/api/admin/newsletter/domain/" + encodeURIComponent(domain) + "/process_inbound", "POST", {}).then(function () {
+    return api("/portal/api/admin/aws/newsletter/domain/" + encodeURIComponent(domain) + "/process_inbound", "POST", {}).then(function () {
       bucket.pendingNewsletterAction = "";
       return ensureToolContext(tool, true);
     }).then(function () {

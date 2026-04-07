@@ -47,8 +47,8 @@ This page owns policy classification and write consequences. It does not own:
 ## Authoritative Paths / Files
 
 - `docs/datum_rule_policy_v2.md`
-- `portals/_shared/portal/data_engine/rules/policy.py`
-- `portals/_shared/portal/data_engine/rules/write_evaluation.py`
+- `instances/_shared/portal/data_engine/rules/policy.py`
+- `instances/_shared/portal/data_engine/rules/write_evaluation.py`
 
 ## Source Docs
 

@@ -52,7 +52,7 @@ This page owns the anthology-backed time-series abstraction. It does not own:
 
 ## Authoritative Paths / Files
 
-- shared time-series data routes under `portals/_shared/portal/**`
+- shared time-series data routes under `instances/_shared/portal/**`
 - anthology-backed event rows under `data/anthology.json`
 
 ## Source Docs
