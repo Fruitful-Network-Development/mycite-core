@@ -58,7 +58,7 @@ Example decoded denotations from current staged magnitude:
 - `portals/_shared/portal/application/time_address_schema.py`
 - `portals/_shared/portal/application/time_address.py`
 - `portals/_shared/runtime/flavors/tff/portal/tools/agro_erp/__init__.py`
-- `compose/portals/state/tff_portal/private/utilities/tools/agro-erp/tool.*.agro-erp.json`
+- `compose/portals/state/tff_portal/data/sandbox/agro-erp/tool.*.agro-erp.json`
 
 ## Update Triggers
 

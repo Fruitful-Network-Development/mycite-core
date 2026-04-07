@@ -7,11 +7,15 @@ import subprocess
 import tempfile
 import uuid
 from datetime import datetime, timezone
+from email import policy
+from email.parser import BytesParser
+from email.utils import getaddresses
 from pathlib import Path
 from typing import Any
 
 from flask import Flask, Response, jsonify, make_response, request
 
+from instances._shared.runtime.flavors.fnd.portal.api.admin_integrations import _active_inbound_chain as _newsletter_active_inbound_chain
 from packages.tools.newsletter_admin.state_adapter import (
     NEWSLETTER_PROFILE_SCHEMA,
     contact_summary,
@@ -30,6 +34,7 @@ from packages.tools.newsletter_admin.state_adapter import (
 )
 
 _AWS_CLI_BIN = str(os.getenv("AWS_CLI_BIN", "aws")).strip() or "aws"
+_AWS_CAPTURE_SCAN_LIMIT = 40
 
 
 def _text(value: object) -> str:
@@ -167,6 +172,17 @@ def _aws_cli_json(args: list[str], *, input_payload: dict[str, Any] | None = Non
         return {"raw": stdout}
 
 
+def _aws_cli_bytes(args: list[str]) -> bytes:
+    env = dict(os.environ)
+    env["AWS_PAGER"] = ""
+    completed = subprocess.run([_AWS_CLI_BIN, *args], capture_output=True, check=False, env=env)
+    if completed.returncode != 0:
+        stderr = (completed.stderr or b"").decode("utf-8", errors="replace").strip()
+        stdout = (completed.stdout or b"").decode("utf-8", errors="replace").strip()
+        raise RuntimeError(stderr or stdout or f"{_AWS_CLI_BIN} exited {completed.returncode}")
+    return completed.stdout or b""
+
+
 def _render_text_body(content: str, unsubscribe_url: str) -> str:
     body = _text(content)
     out = body.rstrip()
@@ -199,6 +215,106 @@ def _render_submission_html_body(content: str) -> str:
     return body or "<p>(No message body provided.)</p>"
 
 
+def _message_text_from_email(message: Any) -> str:
+    if hasattr(message, "walk"):
+        for part in message.walk():
+            if str(part.get_content_type() or "").lower() != "text/plain":
+                continue
+            if str(part.get_content_disposition() or "").lower() == "attachment":
+                continue
+            try:
+                return str(part.get_content() or "")
+            except Exception:
+                payload = part.get_payload(decode=True)
+                if payload:
+                    charset = str(part.get_content_charset() or "utf-8")
+                    return payload.decode(charset, errors="replace")
+    payload = message.get_payload(decode=True)
+    if payload:
+        charset = str(message.get_content_charset() or "utf-8")
+        return payload.decode(charset, errors="replace")
+    try:
+        return str(message.get_content() or "")
+    except Exception:
+        return ""
+
+
+def _candidate_message_payload(raw_bytes: bytes, *, bucket: str, key: str, captured_at: str) -> dict[str, Any]:
+    message = BytesParser(policy=policy.default).parsebytes(raw_bytes)
+    return {
+        "message_id": Path(str(key or "").strip()).name,
+        "sender": _text(message.get("From")),
+        "subject": _text(message.get("Subject")),
+        "recipient": _text(message.get("To")),
+        "to": _text(message.get("To")),
+        "captured_at": _text(captured_at),
+        "s3_bucket": bucket,
+        "s3_key": key,
+        "s3_uri": f"s3://{bucket}/{key}",
+        "plain_text": _message_text_from_email(message),
+    }
+
+
+def _email_addresses(value: object) -> set[str]:
+    out: set[str] = set()
+    token = _text(value)
+    for _name, address in getaddresses([token]):
+        normalized = _normalized_email(address)
+        if normalized:
+            out.add(normalized)
+    fallback = _normalized_email(token)
+    if fallback:
+        out.add(fallback)
+    return out
+
+
+def _latest_inbound_newsletter_message(
+    *,
+    region: str,
+    domain: str,
+    expected_sender: str,
+    expected_recipient: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    chain = _newsletter_active_inbound_chain(region=region, domain=domain)
+    bucket = _text(chain.get("s3_bucket"))
+    prefix = _text(chain.get("s3_prefix"))
+    if not bucket:
+        return {}, chain
+    objects = _aws_cli_json(
+        [
+            "s3api",
+            "list-objects-v2",
+            "--bucket",
+            bucket,
+            "--prefix",
+            prefix,
+            "--output",
+            "json",
+            "--query",
+            f"reverse(sort_by(Contents,&LastModified))[:{_AWS_CAPTURE_SCAN_LIMIT}].[Key,LastModified,Size]",
+        ]
+    )
+    sender_token = _normalized_email(expected_sender)
+    recipient_token = _normalized_email(expected_recipient)
+    for item in list(objects or []):
+        if not isinstance(item, list) or len(item) < 2:
+            continue
+        key = _text(item[0])
+        captured_at = _text(item[1])
+        raw_bytes = _aws_cli_bytes(["s3", "cp", f"s3://{bucket}/{key}", "-"])
+        candidate = _candidate_message_payload(raw_bytes, bucket=bucket, key=key, captured_at=captured_at)
+        senders = _email_addresses(candidate.get("sender"))
+        recipients = _email_addresses(candidate.get("recipient")) | _email_addresses(candidate.get("to"))
+        if sender_token and sender_token not in senders:
+            continue
+        if recipient_token and recipient_token not in recipients:
+            continue
+        if not _text(candidate.get("subject")) and not _text(candidate.get("plain_text")):
+            continue
+        return candidate, chain
+    return {}, chain
+
+
 def _newsletter_callback_url(profile: dict[str, Any], domain: str) -> str:
     token = _text((profile or {}).get("dispatcher_callback_url"))
     if token:
@@ -206,24 +322,16 @@ def _newsletter_callback_url(profile: dict[str, Any], domain: str) -> str:
     return f"https://{_text(domain).lower()}/__fnd/newsletter/dispatch-result"
 
 
-def _dispatch_newsletter(
+def _queue_inbound_newsletter(
     private_dir: Path,
     *,
     domain: str,
-    subject: str,
-    body_text: str,
-    selected_sender_profile_id: str = "",
+    inbound_message: dict[str, Any],
 ) -> dict[str, Any]:
     state = resolve_newsletter_domain_state(private_dir, domain)
-    verified = list(state.get("verified_senders") or [])
     profile = dict(state.get("profile") or {})
     selected = dict(state.get("selected_author") or state.get("selected_sender") or {})
-    if selected_sender_profile_id:
-        for item in verified:
-            if _text(item.get("profile_id")) == _text(selected_sender_profile_id):
-                selected = dict(item)
-                break
-    author_address = _text(selected.get("send_as_email"))
+    author_address = _normalized_email(selected.get("send_as_email"))
     if not author_address:
         raise RuntimeError(f"No verified sender is available for {domain}")
     queue_url = _text(profile.get("dispatch_queue_url"))
@@ -233,6 +341,12 @@ def _dispatch_newsletter(
     if delivery_mode != "aws_sqs_lambda_us_east_1":
         raise RuntimeError(f"Unsupported newsletter delivery mode for {domain}: {delivery_mode}")
     region = _text(profile.get("aws_region")) or "us-east-1"
+    subject = _text(inbound_message.get("subject"))
+    body_text = _text(inbound_message.get("plain_text")).strip()
+    if not subject:
+        raise RuntimeError("Inbound newsletter is missing a subject")
+    if not body_text:
+        raise RuntimeError("Inbound newsletter is missing a plain-text body")
     recipients = [
         dict(item)
         for item in list(state.get("contacts") or [])
@@ -248,21 +362,6 @@ def _dispatch_newsletter(
     callback_url = _newsletter_callback_url(profile, domain)
     results: list[dict[str, Any]] = []
     path, contact_log = load_contact_log(private_dir, domain)
-    submission_copy = _aws_cli_json(
-        ["ses", "send-email", "--region", region, "--output", "json"],
-        input_payload={
-            "Source": author_address,
-            "Destination": {"ToAddresses": [list_address]},
-            "Message": {
-                "Subject": {"Data": _text(subject), "Charset": "UTF-8"},
-                "Body": {
-                    "Text": {"Data": _render_submission_text_body(body_text), "Charset": "UTF-8"},
-                    "Html": {"Data": _render_submission_html_body(body_text), "Charset": "UTF-8"},
-                },
-            },
-            "ReplyToAddresses": [author_address],
-        },
-    )
     for recipient in recipients:
         email = _normalized_email(recipient.get("email"))
         if not email:
@@ -284,6 +383,9 @@ def _dispatch_newsletter(
             "callback_url": callback_url,
             "callback_token": callback_secret,
             "aws_region": region,
+            "source_kind": "inbound_email",
+            "source_message_id": _text(inbound_message.get("message_id")),
+            "source_message_s3_uri": _text(inbound_message.get("s3_uri")),
         }
         result_row = {
             "email": email,
@@ -322,15 +424,104 @@ def _dispatch_newsletter(
         "queued_count": sum(1 for row in results if _text(row.get("status")) == "queued"),
         "sent_count": 0,
         "failed_count": sum(1 for row in results if _text(row.get("status")) == "failed"),
-        "submission_copy_message_id": _text((submission_copy or {}).get("MessageId")),
         "delivery_mode": delivery_mode,
         "aws_region": region,
+        "source_kind": "inbound_email",
+        "source_message_id": _text(inbound_message.get("message_id")),
+        "source_message_s3_uri": _text(inbound_message.get("s3_uri")),
+        "source_message_captured_at": _text(inbound_message.get("captured_at")),
         "status": "queued",
         "results": results,
     }
     contact_log["dispatches"] = list(contact_log.get("dispatches") or [])[-19:] + [dispatch_row]
     save_contact_log(path, contact_log)
     return dispatch_row
+
+
+def _persist_inbound_status(
+    private_dir: Path,
+    *,
+    domain: str,
+    profile: dict[str, Any],
+    message_payload: dict[str, Any] | None,
+    status: str,
+    error: str = "",
+    dispatch_id: str = "",
+) -> None:
+    profile_path, current = load_newsletter_profile(private_dir, domain)
+    body = dict(current)
+    body.update(dict(profile or {}))
+    message = dict(message_payload or {})
+    body["last_inbound_message_id"] = _text(message.get("message_id"))
+    body["last_inbound_status"] = _text(status)
+    body["last_inbound_checked_at"] = _utc_now_iso()
+    body["last_inbound_subject"] = _text(message.get("subject"))
+    body["last_inbound_sender"] = _text(message.get("sender"))
+    body["last_inbound_recipient"] = _text(message.get("recipient") or message.get("to"))
+    body["last_inbound_s3_uri"] = _text(message.get("s3_uri"))
+    body["last_inbound_error"] = _text(error)
+    if _text(status) == "processed":
+        body["last_inbound_processed_at"] = _utc_now_iso()
+    if dispatch_id:
+        body["last_dispatch_id"] = dispatch_id
+    save_newsletter_profile(profile_path, body)
+
+
+def process_latest_inbound_newsletter(private_dir: Path, *, domain: str) -> dict[str, Any]:
+    state = resolve_newsletter_domain_state(private_dir, domain)
+    profile = dict(state.get("profile") or {})
+    selected = dict(state.get("selected_author") or state.get("selected_sender") or {})
+    author_address = _normalized_email(selected.get("send_as_email"))
+    list_address = _normalized_email(state.get("list_address") or f"news@{domain}")
+    if not author_address:
+        _persist_inbound_status(private_dir, domain=domain, profile=profile, message_payload=None, status="blocked", error="selected sender is not verified")
+        return {"ok": False, "error": "selected sender is not verified for this domain"}
+    try:
+        message_payload, chain = _latest_inbound_newsletter_message(
+            region=_text(profile.get("aws_region")) or "us-east-1",
+            domain=domain,
+            expected_sender=author_address,
+            expected_recipient=list_address,
+        )
+    except Exception as exc:
+        _persist_inbound_status(private_dir, domain=domain, profile=profile, message_payload=None, status="error", error=_text(exc))
+        return {"ok": False, "error": _text(exc)}
+    if not message_payload:
+        _persist_inbound_status(private_dir, domain=domain, profile=profile, message_payload=None, status="no_message", error="no captured inbound newsletter matched the selected sender")
+        return {"ok": False, "error": "no captured inbound newsletter matched the selected sender", "inbound_chain": chain}
+    if _text(profile.get("last_inbound_message_id")) == _text(message_payload.get("message_id")) and _text(profile.get("last_inbound_status")) == "processed":
+        _persist_inbound_status(private_dir, domain=domain, profile=profile, message_payload=message_payload, status="already_processed", dispatch_id=_text(profile.get("last_dispatch_id")))
+        return {
+            "ok": True,
+            "already_processed": True,
+            "dispatch_id": _text(profile.get("last_dispatch_id")),
+            "inbound_message": message_payload,
+            "inbound_chain": chain,
+        }
+    sender_addresses = _email_addresses(message_payload.get("sender"))
+    recipient_addresses = _email_addresses(message_payload.get("recipient")) | _email_addresses(message_payload.get("to"))
+    if author_address not in sender_addresses:
+        error = f"inbound sender does not match the selected verified sender: {author_address}"
+        _persist_inbound_status(private_dir, domain=domain, profile=profile, message_payload=message_payload, status="blocked", error=error)
+        return {"ok": False, "error": error, "inbound_message": message_payload, "inbound_chain": chain}
+    if list_address not in recipient_addresses:
+        error = f"inbound recipient does not target the canonical list address: {list_address}"
+        _persist_inbound_status(private_dir, domain=domain, profile=profile, message_payload=message_payload, status="blocked", error=error)
+        return {"ok": False, "error": error, "inbound_message": message_payload, "inbound_chain": chain}
+    try:
+        dispatch = _queue_inbound_newsletter(private_dir, domain=domain, inbound_message=message_payload)
+    except Exception as exc:
+        _persist_inbound_status(private_dir, domain=domain, profile=profile, message_payload=message_payload, status="error", error=_text(exc))
+        return {"ok": False, "error": _text(exc), "inbound_message": message_payload, "inbound_chain": chain}
+    _persist_inbound_status(
+        private_dir,
+        domain=domain,
+        profile=profile,
+        message_payload=message_payload,
+        status="processed",
+        dispatch_id=_text(dispatch.get("dispatch_id")),
+    )
+    return {"ok": True, "dispatch": dispatch, "inbound_message": message_payload, "inbound_chain": chain}
 
 
 def register_newsletter_admin_routes(app: Flask, *, private_dir: Path) -> None:
@@ -384,24 +575,24 @@ def register_newsletter_admin_routes(app: Flask, *, private_dir: Path) -> None:
         ok, failure = _ensure_admin()
         if not ok:
             return failure
-        body = _request_payload()
-        subject = _text(body.get("subject"))
-        message = _text(body.get("body_text") or body.get("body"))
-        if not subject:
-            return jsonify({"ok": False, "error": "subject is required"}), 400
-        if not message:
-            return jsonify({"ok": False, "error": "body_text is required"}), 400
-        try:
-            dispatch = _dispatch_newsletter(
-                private_dir,
-                domain=domain,
-                subject=subject,
-                body_text=message,
-                selected_sender_profile_id=_text(body.get("selected_sender_profile_id")),
-            )
-        except Exception as exc:
-            return jsonify({"ok": False, "error": _text(exc)}), 400
-        return jsonify({"ok": True, "dispatch": dispatch, **resolve_newsletter_domain_state(private_dir, domain)})
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "inbound-mail workflow only: send a message from the selected verified mailbox to the canonical news@<domain> address, then process the captured inbound message",
+                }
+            ),
+            409,
+        )
+
+    @app.post("/portal/api/admin/newsletter/domain/<domain>/process_inbound")
+    def newsletter_admin_process_inbound(domain: str):
+        ok, failure = _ensure_admin()
+        if not ok:
+            return failure
+        result = process_latest_inbound_newsletter(private_dir, domain=domain)
+        status_code = 200 if bool(result.get("ok")) else 400
+        return jsonify({**result, **resolve_newsletter_domain_state(private_dir, domain)}), status_code
 
     @app.post("/portal/api/admin/newsletter/domain/<domain>/contact")
     def newsletter_admin_contact(domain: str):
@@ -541,6 +732,7 @@ def register_newsletter_admin_routes(app: Flask, *, private_dir: Path) -> None:
     @app.route("/portal/api/admin/newsletter/domain/<domain>", methods=["OPTIONS"])
     @app.route("/portal/api/admin/newsletter/domain/<domain>/config", methods=["OPTIONS"])
     @app.route("/portal/api/admin/newsletter/domain/<domain>/send", methods=["OPTIONS"])
+    @app.route("/portal/api/admin/newsletter/domain/<domain>/process_inbound", methods=["OPTIONS"])
     @app.route("/portal/api/admin/newsletter/domain/<domain>/contact", methods=["OPTIONS"])
     @app.route("/__fnd/newsletter/subscribe", methods=["OPTIONS"])
     @app.route("/__fnd/newsletter/dispatch-result", methods=["OPTIONS"])

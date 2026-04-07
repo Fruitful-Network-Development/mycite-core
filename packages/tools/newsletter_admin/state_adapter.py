@@ -60,6 +60,19 @@ def _fallback_client_root(domain: str) -> Path:
     return Path("/srv/webapps/clients") / _text(domain).lower()
 
 
+def _csv_addresses(value: object) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    raw = _text(value).replace(";", ",")
+    for token in raw.split(","):
+        item = _text(token).lower()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
 def newsletter_site_roots(private_dir: Path) -> dict[str, Path]:
     root = utility_tools_dir(Path(private_dir)) / "fnd-ebi"
     out: dict[str, Path] = {}
@@ -83,6 +96,43 @@ def newsletter_contact_log_path(private_dir: Path, domain: str) -> Path:
         site_root = (_fallback_client_root(token) / "frontend").resolve()
     client_root = site_root.parent
     return (client_root / "contacts" / f"{token}-contact_log.json").resolve()
+
+
+def _compatibility_newsletter_profile(private_dir: Path, domain: str) -> dict[str, Any]:
+    token = _text(domain).lower()
+    root = Path(private_dir) / "network" / "progeny"
+    if not root.exists() or not root.is_dir():
+        return {}
+    for path in sorted(root.glob("*.json")):
+        payload = _read_json(path)
+        refs = payload.get("profile_refs") if isinstance(payload.get("profile_refs"), dict) else {}
+        policy = payload.get("email_policy") if isinstance(payload.get("email_policy"), dict) else {}
+        newsletter = policy.get("newsletter") if isinstance(policy.get("newsletter"), dict) else {}
+        sender_address = _text(newsletter.get("sender_address") or refs.get("newsletter_sender_address")).lower()
+        ingest_address = _text(newsletter.get("ingest_address") or refs.get("newsletter_ingest_address")).lower()
+        resolved_domain = ""
+        if "@" in sender_address:
+            resolved_domain = sender_address.split("@", 1)[1].strip().lower()
+        elif "@" in ingest_address:
+            resolved_domain = ingest_address.split("@", 1)[1].strip().lower()
+        else:
+            resolved_domain = _text(refs.get("paypal_site_domain") or payload.get("domain")).lower()
+        if resolved_domain != token:
+            continue
+        allowed_from = list(newsletter.get("allowed_from") or []) if isinstance(newsletter.get("allowed_from"), list) else []
+        allowed_from_csv = _text(refs.get("newsletter_allowed_from_csv")) or ", ".join(
+            [_text(item).lower() for item in allowed_from if _text(item)]
+        )
+        return {
+            "domain": token,
+            "sender_address": sender_address,
+            "ingest_address": ingest_address,
+            "allowed_from_csv": allowed_from_csv,
+            "allowed_from": _csv_addresses(allowed_from_csv),
+            "dispatch_mode": _text(newsletter.get("dispatch_mode") or refs.get("newsletter_dispatch_mode")) or "aws_internal",
+            "source_path": str(path),
+        }
+    return {}
 
 
 def default_contact_log(domain: str) -> dict[str, Any]:
@@ -248,6 +298,7 @@ def load_newsletter_profile(private_dir: Path, domain: str) -> tuple[Path, dict[
         "domain": token,
         "list_address": list_address,
         "sender_address": sender_address,
+        "dispatch_mode": _text(payload.get("dispatch_mode")) or "inbound_mail_workflow",
         "selected_author_profile_id": selected_author_profile_id,
         "selected_author_address": selected_author_address,
         "selected_sender_profile_id": selected_author_profile_id,
@@ -259,6 +310,16 @@ def load_newsletter_profile(private_dir: Path, domain: str) -> tuple[Path, dict[
         "dispatch_queue_arn": _text(payload.get("dispatch_queue_arn")),
         "dispatcher_lambda_name": _text(payload.get("dispatcher_lambda_name")),
         "dispatcher_callback_url": _text(payload.get("dispatcher_callback_url")),
+        "last_inbound_message_id": _text(payload.get("last_inbound_message_id")),
+        "last_inbound_status": _text(payload.get("last_inbound_status")),
+        "last_inbound_checked_at": _text(payload.get("last_inbound_checked_at")),
+        "last_inbound_processed_at": _text(payload.get("last_inbound_processed_at")),
+        "last_inbound_subject": _text(payload.get("last_inbound_subject")),
+        "last_inbound_sender": _text(payload.get("last_inbound_sender")),
+        "last_inbound_recipient": _text(payload.get("last_inbound_recipient")),
+        "last_inbound_error": _text(payload.get("last_inbound_error")),
+        "last_inbound_s3_uri": _text(payload.get("last_inbound_s3_uri")),
+        "last_dispatch_id": _text(payload.get("last_dispatch_id")),
         "updated_at": _text(payload.get("updated_at")) or _utc_now_iso(),
     }
     return path, profile
@@ -348,6 +409,24 @@ def newsletter_domains(private_dir: Path) -> list[str]:
                 continue
             if _text(provider_raw.get("gmail_send_as_status") or (normalized.get("provider") or {}).get("gmail_send_as_status")).lower() == "verified" and _text(verification_raw.get("status") or (normalized.get("verification") or {}).get("status")).lower() == "verified":
                 domains.add(domain)
+    progeny_root = Path(private_dir) / "network" / "progeny"
+    if progeny_root.exists() and progeny_root.is_dir():
+        for path in sorted(progeny_root.glob("*.json")):
+            payload = _read_json(path)
+            refs = payload.get("profile_refs") if isinstance(payload.get("profile_refs"), dict) else {}
+            policy = payload.get("email_policy") if isinstance(payload.get("email_policy"), dict) else {}
+            newsletter = policy.get("newsletter") if isinstance(policy.get("newsletter"), dict) else {}
+            sender_address = _text(newsletter.get("sender_address") or refs.get("newsletter_sender_address")).lower()
+            ingest_address = _text(newsletter.get("ingest_address") or refs.get("newsletter_ingest_address")).lower()
+            domain = ""
+            if "@" in sender_address:
+                domain = sender_address.split("@", 1)[1].strip().lower()
+            elif "@" in ingest_address:
+                domain = ingest_address.split("@", 1)[1].strip().lower()
+            else:
+                domain = _text(refs.get("paypal_site_domain") or payload.get("domain")).lower()
+            if domain:
+                domains.add(domain)
     return sorted(domains)
 
 
@@ -404,6 +483,7 @@ def resolve_newsletter_domain_state(private_dir: Path, domain: str) -> dict[str,
     token = _text(domain).lower()
     contact_log_path, contact_log = load_contact_log(private_dir, token)
     profile_path, profile = load_newsletter_profile(private_dir, token)
+    compatibility = _compatibility_newsletter_profile(private_dir, token)
     verified = verified_sender_profiles(private_dir, token)
     selected = {}
     selected_profile_id = _text(profile.get("selected_author_profile_id") or profile.get("selected_sender_profile_id"))
@@ -418,6 +498,31 @@ def resolve_newsletter_domain_state(private_dir: Path, domain: str) -> dict[str,
         profile["selected_author_address"] = _text(selected.get("send_as_email"))
         profile["selected_sender_profile_id"] = _text(selected.get("profile_id"))
         profile["selected_sender_address"] = _text(selected.get("send_as_email"))
+    warnings: list[str] = []
+    if compatibility:
+        compat_sender = _text(compatibility.get("sender_address")).lower()
+        compat_ingest = _text(compatibility.get("ingest_address")).lower()
+        compat_mode = _text(compatibility.get("dispatch_mode"))
+        selected_address = _text(profile.get("selected_sender_address") or selected.get("send_as_email")).lower()
+        if compat_sender and compat_sender != _text(profile.get("sender_address")).lower():
+            warnings.append(
+                f"compatibility drift: progeny sender_address ({compat_sender}) does not match canonical profile ({_text(profile.get('sender_address')).lower()})"
+            )
+        if compat_ingest and compat_ingest != _text(profile.get("list_address")).lower():
+            warnings.append(
+                f"compatibility drift: progeny ingest_address ({compat_ingest}) does not match canonical profile ({_text(profile.get('list_address')).lower()})"
+            )
+        if compat_mode and compat_mode != _text(profile.get("dispatch_mode")):
+            warnings.append(
+                f"compatibility drift: progeny dispatch_mode ({compat_mode}) does not match canonical profile ({_text(profile.get('dispatch_mode'))})"
+            )
+        allowed_from = list(compatibility.get("allowed_from") or [])
+        if selected_address and allowed_from and selected_address not in allowed_from:
+            warnings.append(
+                f"compatibility drift: selected sender ({selected_address}) is outside progeny allowed_from ({', '.join(allowed_from)})"
+            )
+    if selected_profile_id and not selected:
+        warnings.append(f"canonical selected sender is not currently verified for {token}: {selected_profile_id}")
     summary = contact_summary(contact_log)
     dispatches = list(contact_log.get("dispatches") or [])
     latest_dispatch = dict(dispatches[-1]) if dispatches else {}
@@ -427,6 +532,7 @@ def resolve_newsletter_domain_state(private_dir: Path, domain: str) -> dict[str,
         "profile_path": str(profile_path),
         "contact_log_path": str(contact_log_path),
         "profile": profile,
+        "compatibility": compatibility,
         "verified_senders": verified,
         "selected_author": selected,
         "selected_sender": selected,
@@ -436,5 +542,6 @@ def resolve_newsletter_domain_state(private_dir: Path, domain: str) -> dict[str,
         "contacts_preview": contacts_preview,
         "dispatches": dispatches,
         "latest_dispatch": latest_dispatch,
+        "warnings": warnings,
         **summary,
     }

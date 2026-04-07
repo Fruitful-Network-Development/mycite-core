@@ -155,7 +155,31 @@ class NewsletterAdminApiTests(unittest.TestCase):
             payload = json.loads(log_path.read_text(encoding="utf-8"))
             self.assertFalse((payload.get("contacts") or [])[0].get("subscribed"))
 
-    def test_admin_send_queues_recipient_jobs_and_callback_records_delivery(self):
+    def test_admin_send_rejects_manual_dispatch_in_favor_of_inbound_workflow(self):
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir) / "private"
+            self._seed_domain(
+                private_dir,
+                "cuyahogavalleycountrysideconservancy.org",
+                "aws-csm.cvcc.technicalContact",
+                "technicalContact@cuyahogavalleycountrysideconservancy.org",
+            )
+            module, client = self._make_client_with_module(private_dir)
+            response = client.post(
+                "/portal/api/admin/newsletter/domain/cuyahogavalleycountrysideconservancy.org/send",
+                headers=self._headers(),
+                json={
+                    "subject": "Test subject",
+                    "body_text": "Test body",
+                    "selected_sender_profile_id": "aws-csm.cvcc.technicalContact",
+                },
+            )
+            self.assertEqual(response.status_code, 409)
+            payload = response.get_json() or {}
+            self.assertFalse(payload.get("ok"))
+            self.assertIn("inbound-mail workflow only", str(payload.get("error") or ""))
+
+    def test_process_inbound_queues_recipient_jobs_and_callback_records_delivery(self):
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir) / "private"
             log_path = self._seed_domain(
@@ -169,15 +193,42 @@ class NewsletterAdminApiTests(unittest.TestCase):
                 "/__fnd/newsletter/subscribe",
                 data={"domain": "cuyahogavalleycountrysideconservancy.org", "email": "reader@example.com"},
             )
-            with mock.patch.object(module, "_aws_cli_json", side_effect=[{"MessageId": "submission-copy-1"}, {"MessageId": "queue-msg-1"}]):
+            client.post(
+                "/__fnd/newsletter/subscribe",
+                data={"domain": "cuyahogavalleycountrysideconservancy.org", "email": "skip@example.com"},
+            )
+            token = module.unsubscribe_token(
+                module.newsletter_signing_secret(private_dir),
+                domain="cuyahogavalleycountrysideconservancy.org",
+                email="skip@example.com",
+            )
+            client.get(
+                "/__fnd/newsletter/unsubscribe?domain=cuyahogavalleycountrysideconservancy.org&email=skip@example.com&token=" + token,
+                headers={"Accept": "text/html"},
+            )
+            inbound_bytes = (
+                "From: technicalContact@cuyahogavalleycountrysideconservancy.org\n"
+                "To: news@cuyahogavalleycountrysideconservancy.org\n"
+                "Subject: Inbound newsletter subject\n"
+                "\n"
+                "Inbound newsletter body.\n"
+            ).encode("utf-8")
+            with mock.patch.object(
+                module,
+                "_newsletter_active_inbound_chain",
+                return_value={"s3_bucket": "bucket", "s3_prefix": "inbound/cvcc/"},
+            ), mock.patch.object(
+                module,
+                "_aws_cli_json",
+                side_effect=[
+                    [["inbound/cvcc/message-1", "2026-04-06T05:44:11Z", 128]],
+                    {"MessageId": "queue-msg-1"},
+                ],
+            ), mock.patch.object(module, "_aws_cli_bytes", return_value=inbound_bytes):
                 response = client.post(
-                    "/portal/api/admin/newsletter/domain/cuyahogavalleycountrysideconservancy.org/send",
+                    "/portal/api/admin/newsletter/domain/cuyahogavalleycountrysideconservancy.org/process_inbound",
                     headers=self._headers(),
-                    json={
-                        "subject": "Test subject",
-                        "body_text": "Test body",
-                        "selected_sender_profile_id": "aws-csm.cvcc.technicalContact",
-                    },
+                    json={},
                 )
             self.assertEqual(response.status_code, 200)
             payload = json.loads(log_path.read_text(encoding="utf-8"))
@@ -187,10 +238,13 @@ class NewsletterAdminApiTests(unittest.TestCase):
             self.assertEqual((dispatches[0].get("sender_address")), "news@cuyahogavalleycountrysideconservancy.org")
             self.assertEqual((dispatches[0].get("author_address")), "technicalContact@cuyahogavalleycountrysideconservancy.org")
             self.assertEqual((dispatches[0].get("queued_count")), 1)
-            self.assertEqual((dispatches[0].get("sent_count")), 0)
+            self.assertEqual((dispatches[0].get("target_count")), 1)
+            self.assertEqual((dispatches[0].get("source_kind")), "inbound_email")
             self.assertEqual(((dispatches[0].get("results") or [])[0].get("queue_message_id")), "queue-msg-1")
             contacts = payload.get("contacts") or []
-            self.assertEqual((contacts[0].get("send_count")), 0)
+            by_email = {str(item.get("email") or ""): item for item in contacts}
+            self.assertEqual((by_email["reader@example.com"].get("send_count")), 0)
+            self.assertEqual((by_email["skip@example.com"].get("send_count")), 0)
 
             callback = client.post(
                 "/__fnd/newsletter/dispatch-result",
@@ -209,7 +263,9 @@ class NewsletterAdminApiTests(unittest.TestCase):
             self.assertEqual((dispatches[0].get("sent_count")), 1)
             self.assertEqual(((dispatches[0].get("results") or [])[0].get("message_id")), "ses-msg-1")
             contacts = payload.get("contacts") or []
-            self.assertEqual((contacts[0].get("send_count")), 1)
+            by_email = {str(item.get("email") or ""): item for item in contacts}
+            self.assertEqual((by_email["reader@example.com"].get("send_count")), 1)
+            self.assertEqual((by_email["skip@example.com"].get("send_count")), 0)
 
     def test_public_signup_rejects_invalid_email(self):
         with TemporaryDirectory() as temp_dir:

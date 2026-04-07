@@ -1,5 +1,11 @@
 # Newsletter Contact Lists as a Separate Service-Tool Pattern
 
+## Status
+
+Superseded.
+
+Do not introduce a standalone newsletter service-tool surface. The active workflow keeps canonical newsletter profile JSON under `private/utilities/tools/newsletter-admin/`, canonical contact logs under `/srv/webapps/clients/<domain>/contacts/`, and mediates newsletter administration from AWS-CMS domain cards.
+
 ## Purpose
 
 Define newsletter list management as a separate service-tool lane that does not

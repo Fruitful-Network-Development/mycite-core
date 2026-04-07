@@ -30,12 +30,13 @@ Tool-layer mediation context uses:
 The on-disk sandbox contract for instance-led tools is:
 
 - `private/utilities/tools/<tool-slug>/spec.json`
-- `private/utilities/tools/<tool-slug>/tool.<msn_id>.<tool-slug>.json` (anchor)
-- optional tool-local members referenced by the anchor payload
+- `private/utilities/tools/<tool-slug>/tool.<msn_id>.<tool-slug>.json` (utility collection selector / member manifest)
+- `data/sandbox/<tool-slug>/tool.<msn_id>.<tool-slug>.json` (sandbox datum anchor)
+- optional tool-local members referenced by the utility collection payload
 
 For service-style tools (`fnd-ebi`, `aws-csm`) the canonical boundary is:
 
-- anchor (`tool.<msn_id>.<tool>.json`) defines collection identity
+- utility collection selector (`tool.<msn_id>.<tool>.json`) defines collection identity
 - `spec.json` defines tool capability/IO schema (declarative)
 - profile JSON members (`<tool>.*.json`) hold mutable service staging state
 

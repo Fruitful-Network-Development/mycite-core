@@ -31,8 +31,8 @@ Each topic includes current freeze state and implementation boundary.
 
 2. **AGRO local anchor identity**
    - State: **Frozen**
-   - Decision: per-tool anchor follows `tool.<msn_id>.agro-erp.json` under `private/utilities/tools/agro-erp/`.
-   - Boundary: anchor is configuration/projection root, not a second anthology.
+   - Decision: the authoritative AGRO datum anchor follows `tool.<msn_id>.agro-erp.json` under `data/sandbox/agro-erp/`.
+   - Boundary: utility collection files under `private/utilities/tools/agro-erp/` are non-datum selectors only; schema authority comes from the sandbox anchor, not the utility collection.
 
 3. **Coordinate representation and coordinate datum mediation**
    - State: **Open**
