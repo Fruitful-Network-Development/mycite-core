@@ -289,6 +289,30 @@ Verification: `python3 -m unittest tests.test_config_loader_contract tests.test_
 
 # Review/Alignment Accessment
 
+## Prompt:
+
+Consider the file[tool_dev.md](repo/mycite-core/docs/plans/tool_dev.md), do a comprehensive aurdit of the live instances and mycite-repo.
+Also look for opertunities to delete anything nested in `/srv/compose/`.
+
+My goal here is to prevent tools and code from being kept in hidden places and un managable operations.
+
+Consider the comprehsive review of how datums and the state machine is meant to operate with and on datum files and spaces. More importantly consider the implications of how the the current core must be adjusted to have this better orgnization of operations, modulaized responsability, etc.
+
+By enfrouceing or incorperating the use of datums in an algarithmic cantotical identification, the data egnine can be begin to take shape for handling datums based on thier strucure.
+This organization of modular degin is the most important as it will be adapting as it s developed to get closer to the end goal, depite not fully knowing what they is yet.
+
+Having the contracts and hyphae forms aligned to reflect the intentions outlined for the maps default tool may be necissary as many datums might be errored. (expexially ASCII and other binary representation, pruhaps having magnitudes letters and such, rather than binary.)
+This is why the ability to handle and simplify the system page of the portal and how it understands and modularizes the interfacing is of utmost importance.
+Any further enfourcemnt or alerts of illigal datums can be made dynamiclly invovled in the development process if development is being built from a sturdy interface.
+
+Where the UI interface is seperate, its still wholey reactive to the logic and strucure of the state machine, so the resulting visualization and interfacing should be a goal of making the UI shell very strict about not going beyond the bonds of what it deffines. There fore haveing the shell provide small opennings for more dynamic functionaility, like a tools spesifc mediation visualization, or the data engine function call the allows for functions to insert themselves for visulaizing datums or cells.
+
+Access this process and task with respect to the file and current repo/implementations.
+Return the comprehensive finddings, that help further spesify alignment.
+
+---
+
+## Output:
 Reviewed against [tool_dev.md](/srv/repo/mycite-core/docs/plans/tool_dev.md), the live FND/TFF instances, the running services, and `/srv/compose`. The plan’s direction is strong, but the current system still has multiple competing operational authorities.
 
 **Findings**
