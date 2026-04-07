@@ -48,8 +48,8 @@ This page owns validity and mutation rules. It does not own:
 ## Authoritative Paths / Files
 
 - `docs/shape_addressed_mixed-radix_address_space.md`
-- `portals/_shared/portal/samras/validation.py`
-- `portals/_shared/portal/samras/mutation.py`
+- `instances/_shared/portal/samras/validation.py`
+- `instances/_shared/portal/samras/mutation.py`
 
 ## Source Docs
 

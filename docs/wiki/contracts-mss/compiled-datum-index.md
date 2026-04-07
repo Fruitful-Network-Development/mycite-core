@@ -36,7 +36,7 @@ This page owns the compiled index abstraction. It does not own:
 ## Authoritative Paths / Files
 
 - `docs/CONTRACT_COMPACT_INDEX.md`
-- `portals/_shared/portal/data_engine/datum_identity.py`
+- `instances/_shared/portal/data_engine/datum_identity.py`
 
 ## Source Docs
 

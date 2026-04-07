@@ -14,10 +14,6 @@ Canonical
 
 Repo code lives in `/srv/repo/mycite-core`. Live file-backed portal state lives under `/srv/mycite-state/instances/<instance_id>/`.
 
-Transitional note:
-
-- legacy compatibility symlinks may still exist under `/srv/compose/portals/state/<portal_instance>` while the host/runtime repo finishes dropping old path assumptions.
-
 The portal runtime is file-backed. There is no application database in the portal runtime. Build specs materialize state, but live runtime behavior reads canonical state artifacts and shared services.
 
 Working rule:
@@ -41,8 +37,8 @@ This page owns repo-versus-live-state and documentation ownership boundaries. It
 ## Authoritative Paths / Files
 
 - `README.md`
-- `wiki/README.md`
-- `README.md`
+- `docs/wiki/README.md`
+- `docs/plans/tool_dev.md`
 
 ## Source Docs
 

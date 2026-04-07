@@ -28,7 +28,7 @@ def _load_register_data_routes():
 
     path = (
         Path(__file__).resolve().parents[1]
-        / "portals"
+        / "instances"
         / "_shared"
         / "portal"
         / "api"

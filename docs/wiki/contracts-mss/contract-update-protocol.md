@@ -52,7 +52,7 @@ This page owns revisioned contract-update messaging. It does not own:
 ## Authoritative Paths / Files
 
 - `docs/CONTRACT_UPDATE_PROTOCOL.md`
-- contract API surfaces under `portals/_shared/portal/**`
+- contract API surfaces under `instances/_shared/portal/**`
 
 ## Source Docs
 

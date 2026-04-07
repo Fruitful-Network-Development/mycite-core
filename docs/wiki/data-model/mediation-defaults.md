@@ -50,7 +50,7 @@ This page owns the shared mediation registry contract. It does not own:
 ## Authoritative Paths / Files
 
 - `docs/DATUM_MEDIATION_DEFAULTS.md`
-- `portals/_shared/portal/mediation/`
+- `instances/_shared/portal/mediation/`
 
 ## Source Docs
 

@@ -54,7 +54,7 @@ This page owns public resource isolate handling. It does not own:
 
 ## Authoritative Paths / Files
 
-- `portals/_shared/portal/data_engine/external_resources/`
+- `instances/_shared/portal/data_engine/external_resources/`
 - shared `/portal/api/data/external/*` endpoints
 
 ## Source Docs

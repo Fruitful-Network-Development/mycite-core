@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from portals._shared.portal.data_engine.external_resources.isolate_identity import compute_isolate_identity
-from portals._shared.portal.data_engine.external_resources.write_planner import plan_local_materialization
+from _shared.portal.data_engine.external_resources.isolate_identity import compute_isolate_identity
+from _shared.portal.data_engine.external_resources.write_planner import plan_local_materialization
 
 
 class ExternalResourceIdentityPlannerTests(unittest.TestCase):

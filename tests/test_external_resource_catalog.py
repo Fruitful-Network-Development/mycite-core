@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from portals._shared.portal.data_engine.external_resources.contact_card_catalog import parse_public_resource_catalog
+from _shared.portal.data_engine.external_resources.contact_card_catalog import parse_public_resource_catalog
 
 
 class ExternalResourceCatalogTests(unittest.TestCase):

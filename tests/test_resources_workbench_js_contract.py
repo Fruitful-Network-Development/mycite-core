@@ -13,7 +13,7 @@ class ResourcesWorkbenchJsContractTests(unittest.TestCase):
     def test_resources_loader_and_state_are_singular(self) -> None:
         js = (
             REPO_ROOT
-            / "portals/_shared/runtime/flavors/fnd/portal/ui/static/tools/data_tool.js"
+            / "instances/_shared/runtime/flavors/fnd/portal/ui/static/tools/data_tool.js"
         ).read_text(encoding="utf-8")
         self.assertIn("loadSystemResourceWorkbench", js)
         self.assertIn("resourcesWorkbenchState", js)

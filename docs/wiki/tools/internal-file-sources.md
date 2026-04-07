@@ -161,11 +161,12 @@ Current reference onboarding case:
 - `aws-csm.fnd.dylan.json` with canonical sender `dylan@fruitfulnetworkdevelopment.com`
 - legacy FND inbound automation and `dcmontgomery.*` mail artifacts remain classified as active legacy infrastructure, not baseline onboarding truth
 
-Active AWS-CMS scope does not include:
+AWS mailbox provision actions do not own newsletter workflow dispatch. Newsletter mediation is hosted inside the AWS-CMS surface under `/portal/api/admin/aws/newsletter/...`, while mailbox provisioning stays under `/portal/api/admin/aws/profile/...`.
 
-- newsletter workflows
-- emailer preview or queue-sync flows
+Active AWS-CMS scope still does not include:
+
 - member-facing or tenant-facing self-service onboarding
+- any hidden standalone newsletter tool shell
 
 ## Ownership Boundary
 

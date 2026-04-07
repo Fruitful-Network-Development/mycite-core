@@ -845,6 +845,7 @@ def _aws_newsletter_cards(private_dir: Path) -> list[dict[str, Any]]:
             },
         )
         card["domain"] = domain
+        card["api_surface_root"] = f"/portal/api/admin/aws/newsletter/domain/{domain}"
         card["sender_address"] = _text(state.get("sender_address"))
         card["ingest_address"] = _text(compatibility.get("ingest_address")) or _text(state.get("list_address"))
         card["allowed_from_csv"] = _text(compatibility.get("allowed_from_csv"))
@@ -892,61 +893,6 @@ def _aws_profile_domain_sections(profile_cards: list[dict[str, Any]], *, private
             }
         )
     return out
-
-
-def _newsletter_profile_cards(private_dir: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
-    cards: list[dict[str, Any]] = []
-    derived_members: list[dict[str, Any]] = []
-    warnings: list[str] = []
-    for domain in newsletter_domains(private_dir):
-        state = resolve_newsletter_domain_state(private_dir, domain)
-        selected_sender = dict(state.get("selected_sender") or {})
-        summary = f"{int(state.get('subscribed_count') or 0)} subscribed"
-        if _text(selected_sender.get("send_as_email")):
-            summary += f" · sender {selected_sender.get('send_as_email')}"
-        cards.append(
-            build_inspector_card(
-                card_id=f"newsletter-admin.{domain}",
-                title=domain,
-                summary=summary,
-                kind="profile",
-                body={
-                    "domain": domain,
-                    "contact_log_path": _text(state.get("contact_log_path")),
-                    "profile_path": _text(state.get("profile_path")),
-                    "list_address": _text(state.get("list_address")),
-                    "sender_address": _text(state.get("sender_address")),
-                    "profile": dict(state.get("profile") or {}),
-                    "selected_author": dict(state.get("selected_author") or {}),
-                    "selected_sender": selected_sender,
-                    "verified_senders": list(state.get("verified_senders") or []),
-                    "contacts": list(state.get("contacts") or []),
-                    "contacts_preview": list(state.get("contacts_preview") or []),
-                    "dispatches": list(state.get("dispatches") or []),
-                    "latest_dispatch": dict(state.get("latest_dispatch") or {}),
-                    "contact_count": int(state.get("contact_count") or 0),
-                    "subscribed_count": int(state.get("subscribed_count") or 0),
-                    "unsubscribed_count": int(state.get("unsubscribed_count") or 0),
-                },
-            )
-        )
-        contact_log_path = Path(_text(state.get("contact_log_path")))
-        if contact_log_path.exists() and contact_log_path.is_file():
-            kind, payload = _load_json_or_lines(contact_log_path)
-            derived_members.append(
-                {
-                    "file_name": contact_log_path.name,
-                    "relative_path": str(contact_log_path),
-                    "path": str(contact_log_path),
-                    "content_kind": kind,
-                    "record_count": len((payload or {}).get("contacts") or []) if isinstance(payload, dict) else 1,
-                    "schema": _text(payload.get("schema")) if isinstance(payload, dict) else "",
-                    "summary": _json_summary(payload),
-                }
-            )
-        else:
-            warnings.append(f"contact log is missing for newsletter domain: {domain}")
-    return cards, derived_members, warnings
 
 
 def build_service_tool_config_context(
@@ -1086,6 +1032,7 @@ def build_service_tool_config_context(
         warnings.append(f"collection datum is missing for tool namespace: {namespace}")
 
     service_contract = _service_tool_contract(definition, portal_instance_id=portal_instance_id)
+    data_root = private_dir.parent / "data"
 
     config_context = {
         "ok": True,
@@ -1100,12 +1047,22 @@ def build_service_tool_config_context(
         "msn_id": _text(msn_id),
         "portal_instance_context": _instance_payload(portal_instance_context),
         "binding_truth": "tool_state_files",
-        "browse_truth": "tool_json_collection",
+        "browse_truth": "utility_collection_files",
+        "datum_truth": "tool_sandbox_datums",
+        "payload_truth": "compiled_payload_bins",
         "staging_truth": "tool_scoped_manual_edits",
         "commit_truth": "tool_state_files",
         "tool_namespace": namespace,
         "mediation_host_path": "/portal/system",
         "collection_root": str(root),
+        "surface_contract": {
+            "surface_kind": "tool_mediation",
+            "utility_collection_root": str(root),
+            "tool_sandbox_root": str(data_root / "sandbox" / namespace),
+            "payload_root": str(data_root / "payloads"),
+            "payload_cache_root": str(data_root / "payloads" / "cache"),
+            "legal_attachment_points": ["config_context", "control_panel", "interface_panel"],
+        },
         "service_contract": service_contract,
         "config_datum": config_datum,
         "collection_datum": collection_datum,

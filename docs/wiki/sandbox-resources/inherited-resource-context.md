@@ -66,8 +66,8 @@ This page owns inherited resource adaptation and refresh framing. It does not ow
 
 - `docs/SANDBOX_ENGINE.md`
 - `docs/CANONICAL_DATA_ENGINE.md`
-- `portals/_shared/portal/sandbox/engine.py`
-- `portals/_shared/portal/data_engine/inherited_contract_resources.py`
+- `instances/_shared/portal/sandbox/engine.py`
+- `instances/_shared/portal/data_engine/inherited_contract_resources.py`
 
 ## Source Docs
 

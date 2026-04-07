@@ -107,7 +107,7 @@ The repo now appears materially closer to the chosen canonical contract.
 
 ### 5.1 Resource registry and canonical layout
 
-`portals/_shared/portal/data_engine/resource_registry.py` now appears to implement:
+`instances/_shared/portal/data_engine/resource_registry.py` now appears to implement:
 
 - `resources/`
 - `references/`
@@ -127,37 +127,37 @@ It also appears to include:
 
 ### 5.2 Runtime startup behavior
 
-`portals/_shared/runtime/flavors/fnd/app.py` now appears to warm the system resource workbench without materializing legacy root files.
+`instances/_shared/runtime/flavors/fnd/app.py` now appears to warm the system resource workbench without materializing legacy root files.
 
 That is a major change from the earlier state.
 
 ### 5.3 Icons no longer depend on `datum_icons.json`
 
-`portals/_shared/runtime/flavors/fnd/data/storage_json.py` now appears to derive icon mappings from anthology rows, not from a separate `data/presentation/datum_icons.json` sidecar.
+`instances/_shared/runtime/flavors/fnd/data/storage_json.py` now appears to derive icon mappings from anthology rows, not from a separate `data/presentation/datum_icons.json` sidecar.
 
 That is aligned with the chosen contract.
 
 ### 5.4 External-resource cache restriction
 
-`portals/_shared/portal/data_engine/external_resources/cache.py` now appears to define an in-memory compatibility cache rather than persisting external-resource JSON under `data/cache`.
+`instances/_shared/portal/data_engine/external_resources/cache.py` now appears to define an in-memory compatibility cache rather than persisting external-resource JSON under `data/cache`.
 
 That is aligned with the rule that `data/cache/` should only hold encoded/MSS forms.
 
 ### 5.5 Config normalization now understands canonical reference semantics
 
-`portals/_shared/portal/core_services/config_loader.py` now appears to normalize reference entries into canonical `rf.<source>.<name>.bin` form and remove old `refferences` drift.
+`instances/_shared/portal/core_services/config_loader.py` now appears to normalize reference entries into canonical `rf.<source>.<name>.bin` form and remove old `refferences` drift.
 
 ### 5.6 Local publish path now writes canonical local resources
 
-`portals/_shared/portal/sandbox/local_resource_lifecycle.py` now appears to publish local resources into canonical `rc.*` resource files.
+`instances/_shared/portal/sandbox/local_resource_lifecycle.py` now appears to publish local resources into canonical `rc.*` resource files.
 
 ### 5.7 Inherited contract resources now materialize as canonical references
 
-`portals/_shared/portal/data_engine/inherited_contract_resources.py` now appears to materialize imported references as canonical `rf.*` references with reference-scoped metadata.
+`instances/_shared/portal/data_engine/inherited_contract_resources.py` now appears to materialize imported references as canonical `rf.*` references with reference-scoped metadata.
 
 ### 5.8 System workbench now appears to resolve TXA/MSN through canonical resources
 
-`portals/_shared/portal/sandbox/resource_workbench.py` now appears to resolve:
+`instances/_shared/portal/sandbox/resource_workbench.py` now appears to resolve:
 - anthology via `data/anthology.json`
 - TXA via `data/resources/rc.*.txa.json`
 - MSN via `data/resources/rc.*.msn.json`

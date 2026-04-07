@@ -1,0 +1,9 @@
+{
+  "schema": "mycite.portal.tool_collection.v1",
+  "member_files": [
+    "spec.json",
+    "fnd-ebi.fnd.json",
+    "fnd-ebi.tff.json",
+    "fnd-ebi.cvcc.json"
+  ]
+}

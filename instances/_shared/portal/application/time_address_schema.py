@@ -153,8 +153,19 @@ def validate_address_with_schema(address: str, schema_payload: dict[str, Any]) -
     return {"ok": True, "mode": "full", "warnings": []}
 
 
-def anchor_path_for_tool(private_dir: Path, tool_slug: str, anchor_file: str) -> Path:
-    return Path(private_dir) / "utilities" / "tools" / tool_slug / anchor_file
+def _tool_sandbox_root(path: Path) -> Path:
+    token = Path(path)
+    if token.name == "sandbox":
+        return token
+    if token.name == "data":
+        return token / "sandbox"
+    if token.name == "private":
+        return token.parent / "data" / "sandbox"
+    return token / "sandbox"
+
+
+def anchor_path_for_tool(state_root: Path, tool_slug: str, anchor_file: str) -> Path:
+    return _tool_sandbox_root(Path(state_root)) / tool_slug / anchor_file
 
 
 __all__ = [

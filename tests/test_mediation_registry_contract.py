@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def _load_registry():
-    path = Path(__file__).resolve().parents[1] / "portals" / "_shared" / "portal" / "mediation" / "registry.py"
+    path = Path(__file__).resolve().parents[1] / "instances" / "_shared" / "portal" / "mediation" / "registry.py"
     spec = importlib.util.spec_from_file_location("shared_mediation_registry_contract_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

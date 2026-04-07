@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 
 
 def _load_workspace_stack():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    portals_root = Path(__file__).resolve().parents[1] / "instances"
     flavor_root = portals_root / "_shared" / "runtime" / "flavors" / "fnd"
     for token in (str(flavor_root), str(portals_root)):
         if token not in sys.path:

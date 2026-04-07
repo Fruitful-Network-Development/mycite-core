@@ -12,7 +12,7 @@ Canonical
 
 ## Current Contract
 
-This wiki is the primary maintained application knowledge base. The former `docs/` tree has been retired and folded into the wiki and archive lineage notes.
+`docs/wiki` is the primary maintained application knowledge base for current conceptual contracts. The surrounding `docs/` tree remains active for plans, modularity notes, and archive lineage.
 
 Documentation is classified using these labels:
 
@@ -28,7 +28,7 @@ The precedence for synthesizing current truth is:
 3. supporting docs
 4. historical and background docs for lineage only
 
-Portal-level docs outside this wiki should stay lightweight and should not redefine canonical contracts.
+Portal-level docs outside this wiki should stay lightweight unless they are the active plan or module note explicitly carrying implementation precedent.
 
 ## Boundaries
 
@@ -41,9 +41,9 @@ This page owns documentation roles and precedence. It does not own:
 
 ## Authoritative Paths / Files
 
-- `wiki/README.md`
-- `wiki/Home.md`
-- `wiki/README.md`
+- `docs/wiki/README.md`
+- `docs/wiki/Home.md`
+- `docs/plans/tool_dev.md`
 
 ## Source Docs
 
@@ -54,5 +54,5 @@ This page owns documentation roles and precedence. It does not own:
 
 - Changes to documentation classification
 - Changes to source-of-truth precedence
-- Changes to the role split between `wiki/` and `docs/`
+- Changes to the role split between `docs/wiki/`, `docs/plans/`, and `docs/modularity/`
 - Changes to portal-level documentation policy

@@ -39,8 +39,8 @@ Materialization does not overwrite `data/anthology.json`.
 
 Canonical commands are:
 
-- `python3 portals/scripts/portal_build.py capture`
-- `python3 portals/scripts/portal_build.py materialize`
+- `python3 instances/scripts/portal_build.py capture`
+- `python3 instances/scripts/portal_build.py materialize`
 
 ## Boundaries
 
@@ -55,7 +55,7 @@ This page owns build-spec authority and materialization boundaries. It does not 
 
 - `docs/PORTAL_BUILD_SPEC.md`
 - `portals/*/build.json`
-- `portals/scripts/portal_build.py`
+- `instances/scripts/portal_build.py`
 
 ## Source Docs
 

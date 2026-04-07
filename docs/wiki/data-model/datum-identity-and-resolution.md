@@ -55,8 +55,8 @@ This page owns semantic identity and resolution order. It does not own:
 
 - `docs/CANONICAL_DATA_ENGINE.md`
 - `docs/CONTRACT_COMPACT_INDEX.md`
-- `portals/_shared/portal/data_engine/datum_identity.py`
-- `portals/_shared/portal/services/public_datum_resolver.py`
+- `instances/_shared/portal/data_engine/datum_identity.py`
+- `instances/_shared/portal/services/public_datum_resolver.py`
 
 ## Source Docs
 

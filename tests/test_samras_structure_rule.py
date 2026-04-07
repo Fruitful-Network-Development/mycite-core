@@ -22,7 +22,7 @@ CORRECTED_MSN_PATH = Path("/srv/mycite-state/instances/fnd/data/samras-msn.json"
 
 
 def _load_samras_module():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    portals_root = Path(__file__).resolve().parents[1] / "instances"
     token = str(portals_root)
     if token not in sys.path:
         sys.path.insert(0, token)
@@ -44,7 +44,7 @@ def _load_register_data_routes():
 
 
 def _load_registry_module():
-    portals_root = Path(__file__).resolve().parents[1] / "portals"
+    portals_root = Path(__file__).resolve().parents[1] / "instances"
     token = str(portals_root)
     if token not in sys.path:
         sys.path.insert(0, token)
@@ -107,7 +107,7 @@ class SamrasStructureRuleTests(unittest.TestCase):
             self.assertTrue(any("reconstructed from staged address rows" in item for item in workspace.warnings))
 
     def test_sandbox_save_path_writes_canonical_binary_only(self):
-        portals_root = Path(__file__).resolve().parents[1] / "portals"
+        portals_root = Path(__file__).resolve().parents[1] / "instances"
         token = str(portals_root)
         if token not in sys.path:
             sys.path.insert(0, token)
@@ -130,7 +130,7 @@ class SamrasStructureRuleTests(unittest.TestCase):
             self.assertNotIn("-", canonical)
 
     def test_sandbox_rejects_title_rows_outside_governing_structure(self):
-        portals_root = Path(__file__).resolve().parents[1] / "portals"
+        portals_root = Path(__file__).resolve().parents[1] / "instances"
         token = str(portals_root)
         if token not in sys.path:
             sys.path.insert(0, token)

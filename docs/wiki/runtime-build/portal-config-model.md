@@ -46,7 +46,8 @@ The runtime authority chain is intentionally layered and non-interchangeable:
 | `data/payloads/*.bin` + `data/payloads/cache/*.json` | compiled payload binaries plus decoded cache materializations | resource registry + contact-card/public payload flows + sandbox import/export | derived from canonical resource/reference state | accidental manual edits | derived artifacts only; rewrite is allowed only during payload/cache materialization |
 | `private/utilities/tools/fnd-ebi/fnd-ebi.*.json` | FND-EBI profile contract (`domain`, `site_root`, analytics settings) | service-tool mediation context builder | local-only | legacy schema omission | normalized to `mycite.service_tool.fnd_ebi.profile.v1` |
 | `private/utilities/tools/aws-csm/aws-csm.*.json` | AWS-CMS profile contract (identity/smtp/verification/provider staging, placeholder-secret metadata, handoff-boundary state) | service-tool mediation context builder | local-only | mixed legacy flat fields | normalized to `mycite.service_tool.aws_csm.profile.v1` |
-| `private/utilities/tools/newsletter-admin/newsletter-admin.<domain>.json` | canonical newsletter operational profile (`list_address`, selected verified sender, queue/Lambda config, inbound-processing state) | AWS-CMS newsletter mediation + newsletter runtime routes | local-only | drift against progeny newsletter metadata | canonical operational source; progeny newsletter fields are compatibility-read only |
+| `private/utilities/tools/newsletter-admin/newsletter-admin.<domain>.json` | canonical newsletter operational profile (`list_address`, selected verified sender, queue/Lambda config, inbound-processing state) | AWS-CMS newsletter mediation + AWS newsletter admin routes | local-only | drift against progeny newsletter metadata | canonical operational source; progeny newsletter fields are compatibility-read only |
+| `private/utilities/tools/newsletter-admin/runtime_secrets.json` | visible runtime helper secrets for unsubscribe signing and dispatch callbacks | AWS newsletter runtime helpers | local-only | hidden dotfile carryover | canonical helper state; hidden dotfiles are retired |
 | `private/utilities/tools/aws-csm/*audit*.json` | non-destructive AWS-CMS audit artifacts (for example FND sender classification reports and SMTP secret health snapshots) | service-tool file collection + operator inspection scripts | local-only | confusion with live profile authority | audit-only; never treated as canonical profile state |
 
 Boundary statement:
@@ -82,13 +83,13 @@ This page owns portal config canonicalization. It does not own:
 
 ## Authoritative Paths / Files
 
-- `compose/portals/state/<instance>/private/config.json`
-- `portals/_shared/portal/tools/runtime.py`
-- `portals/_shared/portal/runtime_paths.py`
+- `/srv/mycite-state/instances/<instance>/private/config.json`
+- `instances/_shared/portal/tools/runtime.py`
+- `mycite_core/runtime_host/paths.py`
 
 ## Source Docs
 
-- `docs/PORTAL_UNIFIED_MODEL.md`
+- `docs/plans/tool_dev.md`
 
 ## Update Triggers
 

@@ -13,6 +13,7 @@ from packages.tools.aws_csm.state_adapter.profile import normalize_aws_csm_profi
 
 NEWSLETTER_CONTACT_LOG_SCHEMA = "mycite.webapp.contact_log.v1"
 NEWSLETTER_PROFILE_SCHEMA = "mycite.service_tool.newsletter.profile.v1"
+NEWSLETTER_RUNTIME_SECRETS_SCHEMA = "mycite.service_tool.newsletter.runtime_secrets.v1"
 NEWSLETTER_NAMESPACE = "newsletter-admin"
 
 
@@ -41,6 +42,10 @@ def newsletter_dispatch_secret_path(private_dir: Path) -> Path:
     return newsletter_state_root(private_dir) / ".newsletter-dispatch-secret"
 
 
+def newsletter_runtime_secrets_path(private_dir: Path) -> Path:
+    return newsletter_state_root(private_dir) / "runtime_secrets.json"
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists() or not path.is_file():
         return {}
@@ -54,6 +59,46 @@ def _read_json(path: Path) -> dict[str, Any]:
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _load_runtime_secrets(private_dir: Path) -> tuple[Path, dict[str, Any]]:
+    path = newsletter_runtime_secrets_path(private_dir)
+    payload = _read_json(path)
+    if _text(payload.get("schema")) != NEWSLETTER_RUNTIME_SECRETS_SCHEMA:
+        payload = {"schema": NEWSLETTER_RUNTIME_SECRETS_SCHEMA}
+    signing_path = newsletter_secret_path(private_dir)
+    dispatch_path = newsletter_dispatch_secret_path(private_dir)
+    if not _text(payload.get("signing_secret")) and signing_path.exists() and signing_path.is_file():
+        payload["signing_secret"] = _text(signing_path.read_text(encoding="utf-8"))
+    if not _text(payload.get("dispatch_secret")) and dispatch_path.exists() and dispatch_path.is_file():
+        payload["dispatch_secret"] = _text(dispatch_path.read_text(encoding="utf-8"))
+    return path, payload
+
+
+def _save_runtime_secrets(path: Path, payload: dict[str, Any]) -> None:
+    body = dict(payload if isinstance(payload, dict) else {})
+    body["schema"] = NEWSLETTER_RUNTIME_SECRETS_SCHEMA
+    _write_json(path, body)
+
+
+def _cleanup_legacy_secret_files(private_dir: Path) -> None:
+    for path in (newsletter_secret_path(private_dir), newsletter_dispatch_secret_path(private_dir)):
+        try:
+            if path.exists() and path.is_file():
+                path.unlink()
+        except Exception:
+            continue
+
+
+def _retired_newsletter_metadata_files(private_dir: Path) -> list[str]:
+    root = newsletter_state_root(private_dir)
+    files: list[str] = []
+    if (root / "spec.json").exists():
+        files.append("spec.json")
+    for path in sorted(root.glob("tool.*.newsletter-admin.json")):
+        if path.is_file():
+            files.append(path.name)
+    return files
 
 
 def _fallback_client_root(domain: str) -> Path:
@@ -431,26 +476,24 @@ def newsletter_domains(private_dir: Path) -> list[str]:
 
 
 def newsletter_signing_secret(private_dir: Path) -> str:
-    path = newsletter_secret_path(private_dir)
-    if path.exists() and path.is_file():
-        token = _text(path.read_text(encoding="utf-8"))
-        if token:
-            return token
-    token = secrets.token_urlsafe(32)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(token + "\n", encoding="utf-8")
+    path, payload = _load_runtime_secrets(private_dir)
+    token = _text(payload.get("signing_secret"))
+    if not token:
+        token = secrets.token_urlsafe(32)
+        payload["signing_secret"] = token
+    _save_runtime_secrets(path, payload)
+    _cleanup_legacy_secret_files(private_dir)
     return token
 
 
 def newsletter_dispatch_secret(private_dir: Path) -> str:
-    path = newsletter_dispatch_secret_path(private_dir)
-    if path.exists() and path.is_file():
-        token = _text(path.read_text(encoding="utf-8"))
-        if token:
-            return token
-    token = secrets.token_urlsafe(32)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(token + "\n", encoding="utf-8")
+    path, payload = _load_runtime_secrets(private_dir)
+    token = _text(payload.get("dispatch_secret"))
+    if not token:
+        token = secrets.token_urlsafe(32)
+        payload["dispatch_secret"] = token
+    _save_runtime_secrets(path, payload)
+    _cleanup_legacy_secret_files(private_dir)
     return token
 
 
@@ -499,6 +542,19 @@ def resolve_newsletter_domain_state(private_dir: Path, domain: str) -> dict[str,
         profile["selected_sender_profile_id"] = _text(selected.get("profile_id"))
         profile["selected_sender_address"] = _text(selected.get("send_as_email"))
     warnings: list[str] = []
+    retired_metadata = _retired_newsletter_metadata_files(private_dir)
+    if retired_metadata:
+        warnings.append("retired standalone newsletter tool metadata is still present: " + ", ".join(retired_metadata))
+    legacy_secret_files = [
+        path.name
+        for path in (newsletter_secret_path(private_dir), newsletter_dispatch_secret_path(private_dir))
+        if path.exists() and path.is_file()
+    ]
+    if legacy_secret_files:
+        warnings.append(
+            "legacy hidden newsletter secret files should be migrated to runtime_secrets.json: "
+            + ", ".join(legacy_secret_files)
+        )
     if compatibility:
         compat_sender = _text(compatibility.get("sender_address")).lower()
         compat_ingest = _text(compatibility.get("ingest_address")).lower()
@@ -529,6 +585,7 @@ def resolve_newsletter_domain_state(private_dir: Path, domain: str) -> dict[str,
     contacts_preview = list(contact_log.get("contacts") or [])[:50]
     return {
         "domain": token,
+        "api_surface_root": f"/portal/api/admin/aws/newsletter/domain/{token}",
         "profile_path": str(profile_path),
         "contact_log_path": str(contact_log_path),
         "profile": profile,

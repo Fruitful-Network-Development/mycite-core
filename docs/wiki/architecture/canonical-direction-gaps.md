@@ -41,11 +41,10 @@ Track implementation-risk areas where legacy behavior, recent changes, and canon
 - **AGRO datum-family freeze set (coordinates, parcels, chronology, role bindings)**
   - Current direction: default AGRO mediation is now an empty dual-pane scaffold.
   - Open detail: final datum schemas and identifier ranges for non-empty panes remain intentionally unfrozen.
-  - Canonical ledger: `wiki/tools/agro-erp-datum-decision-ledger.md`.
+  - Canonical ledger: `docs/wiki/tools/agro-erp-datum-decision-ledger.md`.
 
 - **Slug-vs-id manifest normalization**
   - Current direction: instance manifests use hyphenated slugs while runtime/provider ids normalize to underscore ids.
   - Open detail: long-term policy for cross-layer naming visibility in APIs and wiki examples.
 
 These are acceptable temporary ambiguities; implementers must document chosen policy when changing shell/tool routing.
-

@@ -12,9 +12,9 @@ Canonical
 
 ## Current Contract
 
-Shared-core authority lives under `portals/_shared/portal/**`. It owns API composition, data-engine semantics, MSS and contract logic, sandbox ownership, and runtime helpers.
+Shared-core authority lives under `instances/_shared/portal/**`. It owns API composition, data-engine semantics, MSS and contract logic, sandbox ownership, and runtime helpers.
 
-Flavor runtimes under `portals/_shared/runtime/flavors/*` are composition wrappers. They may carry:
+Flavor runtimes under `instances/_shared/runtime/flavors/*` are composition wrappers. They may carry:
 
 - flavor flags
 - behavior toggles
@@ -43,9 +43,9 @@ This page owns shared-core versus flavor runtime boundaries. It does not own:
 
 ## Authoritative Paths / Files
 
-- `docs/PORTAL_CORE_ARCHITECTURE.md`
-- `portals/_shared/portal/**`
-- `portals/_shared/runtime/flavors/*`
+- `docs/plans/tool_dev.md`
+- `instances/_shared/portal/**`
+- `instances/_shared/runtime/flavors/*`
 
 ## Source Docs
 

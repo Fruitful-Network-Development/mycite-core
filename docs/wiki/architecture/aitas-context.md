@@ -52,7 +52,7 @@ This page explains the AITAS compatibility layer. It does not define:
 
 - `docs/AITAS_CONTEXT_MODEL.md`
 - `docs/development_declaration_state_machine.md`
-- `portals/_shared/portal/data_engine/aitas_context.py`
+- `instances/_shared/portal/data_engine/aitas_context.py`
 
 ## Source Docs
 

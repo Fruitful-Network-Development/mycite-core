@@ -55,10 +55,10 @@ Example decoded denotations from current staged magnitude:
 
 ## Authoritative Paths / Files
 
-- `portals/_shared/portal/application/time_address_schema.py`
-- `portals/_shared/portal/application/time_address.py`
-- `portals/_shared/runtime/flavors/tff/portal/tools/agro_erp/__init__.py`
-- `compose/portals/state/tff_portal/data/sandbox/agro-erp/tool.*.agro-erp.json`
+- `instances/_shared/portal/application/time_address_schema.py`
+- `instances/_shared/portal/application/time_address.py`
+- `instances/_shared/runtime/flavors/tff/portal/tools/agro_erp/__init__.py`
+- `/srv/mycite-state/instances/tff/data/sandbox/agro-erp/tool.*.agro-erp.json`
 
 ## Update Triggers
 

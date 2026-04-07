@@ -59,7 +59,7 @@ This page owns compact-array semantics and wire behavior. It does not own:
 
 - `docs/MSS_COMPACT_ARRAY_SPEC.md`
 - `docs/MSS_CONTRACT_CONTEXT_STATUS.md`
-- `portals/_shared/portal/mss/`
+- `instances/_shared/portal/mss/`
 
 ## Source Docs
 

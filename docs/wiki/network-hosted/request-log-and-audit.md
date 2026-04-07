@@ -57,7 +57,7 @@ This page owns request-log and local-audit separation. It does not own:
 
 ## Authoritative Paths / Files
 
-- `portals/_shared/portal/services/request_log_store.py`
+- `instances/_shared/portal/services/request_log_store.py`
 - request-log API surfaces under runtime flavor portal APIs
 - local audit logging under `portal.services.local_audit_log`
 

@@ -8,7 +8,7 @@ from pathlib import Path
 def _load_module():
     path = (
         Path(__file__).resolve().parents[1]
-        / "portals"
+        / "instances"
         / "_shared"
         / "portal"
         / "data_engine"

@@ -255,20 +255,25 @@ def build_system_sandbox_context_payload(
     token = _text(tool_id).lower().replace("_", "-")
     sandbox_attention = f"sandbox:utilities/tools/{token}" if token else "sandbox:utilities/tools"
     document = build_workbench_document(
-        document_id="workbench:system:tool_sandbox",
+        document_id="workbench:system:tool_surface",
         instance_id="system",
-        logical_key="portal-tool-sandbox",
-        display_name="Portal tool sandbox",
+        logical_key="portal-tool-surface",
+        display_name="Portal tool mediation surface",
         family_kind="system",
-        family_type="tool_sandbox",
+        family_type="tool_surface",
         family_subtype="mediation",
         scope_kind="local",
         workspace="system",
         payload={
             "mediation_host_path": "/portal/system",
-            "sandbox_root": "private/utilities/tools",
             "tool_id": _text(tool_id).lower(),
-            "note": "Synthetic sandbox context for config-context service tools.",
+            "surface_kind": "tool_mediation",
+            "utility_collection_root": "private/utilities/tools",
+            "tool_sandbox_root": "data/sandbox",
+            "payload_root": "data/payloads",
+            "payload_cache_root": "data/payloads/cache",
+            "legal_attachment_points": ["config_context", "control_panel", "interface_panel"],
+            "note": "Synthetic tool mediation context. Utility collections are non-datum selectors; sandbox datums and payload binaries are separate authorities.",
         },
     )
     context = build_selected_context_payload(
@@ -285,7 +290,7 @@ def build_system_sandbox_context_payload(
         system_state["focus_kind"] = "sandbox"
         system_state["attention_plane"] = "sandbox"
         system_state["attention_address"] = sandbox_attention
-        system_state["active_filename"] = _text(tool_id).lower() or "tool_sandbox"
+        system_state["active_filename"] = _text(tool_id).lower() or "tool_surface"
         system_state["focus_depth"] = 0
         subject = system_state.get("subject") if isinstance(system_state.get("subject"), dict) else {}
         subject.update({"kind": "sandbox", "file": _text(tool_id).lower(), "datum_id": "", "datum_label": ""})

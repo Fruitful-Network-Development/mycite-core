@@ -56,8 +56,8 @@ This page owns lifecycle behavior. It does not own:
 ## Authoritative Paths / Files
 
 - `docs/SANDBOX_ENGINE.md`
-- `portals/_shared/portal/sandbox/`
-- `portals/_shared/portal/api/data_workspace.py`
+- `instances/_shared/portal/sandbox/`
+- `instances/_shared/portal/api/data_workspace.py`
 
 ## Source Docs
 

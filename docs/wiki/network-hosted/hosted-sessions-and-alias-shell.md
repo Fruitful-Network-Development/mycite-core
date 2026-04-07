@@ -40,7 +40,7 @@ This page owns hosted-session derivation and alias-shell framing. It does not ow
 
 - `docs/HOSTED_SESSIONS.md`
 - `docs/HOSTED_SHELL_ALIAS.md`
-- hosted model and alias shell code under `portals/_shared/portal/**`
+- hosted model and alias shell code under `instances/_shared/portal/**`
 
 ## Source Docs
 

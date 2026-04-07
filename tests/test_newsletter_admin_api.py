@@ -166,7 +166,7 @@ class NewsletterAdminApiTests(unittest.TestCase):
             )
             module, client = self._make_client_with_module(private_dir)
             response = client.post(
-                "/portal/api/admin/newsletter/domain/cuyahogavalleycountrysideconservancy.org/send",
+                "/portal/api/admin/aws/newsletter/domain/cuyahogavalleycountrysideconservancy.org/send",
                 headers=self._headers(),
                 json={
                     "subject": "Test subject",
@@ -226,7 +226,7 @@ class NewsletterAdminApiTests(unittest.TestCase):
                 ],
             ), mock.patch.object(module, "_aws_cli_bytes", return_value=inbound_bytes):
                 response = client.post(
-                    "/portal/api/admin/newsletter/domain/cuyahogavalleycountrysideconservancy.org/process_inbound",
+                    "/portal/api/admin/aws/newsletter/domain/cuyahogavalleycountrysideconservancy.org/process_inbound",
                     headers=self._headers(),
                     json={},
                 )

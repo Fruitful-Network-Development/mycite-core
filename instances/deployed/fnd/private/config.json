@@ -30,14 +30,6 @@
       "name": "aws-csm",
       "mount_target": "peripherals.tools",
       "status": "enabled"
-    },
-    {
-      "managing_contract": "contract-~.json",
-      "title": "tool.3-2-3-17-77-1-6-4-1-4.newsletter-admin",
-      "anchor": "tool.3-2-3-17-77-1-6-4-1-4.newsletter-admin.json",
-      "name": "newsletter-admin",
-      "mount_target": "peripherals.tools",
-      "status": "enabled"
     }
   ],
   "hosted": {

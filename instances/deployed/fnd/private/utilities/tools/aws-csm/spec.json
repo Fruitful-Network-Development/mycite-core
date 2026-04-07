@@ -1,0 +1,9 @@
+{
+  "schema": "mycite.portal.tool_spec.v1",
+  "tool_id": "aws-csm",
+  "inherited_inputs": [],
+  "outputs": [],
+  "mediation": {
+    "mode": "service_profile_cards"
+  }
+}

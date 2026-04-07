@@ -8,7 +8,7 @@ Canonical topic
 
 ## Current Contract
 
-Governance pages explain how this wiki and the repo/runtime boundary should be maintained now that the former `docs/` tree has been retired.
+Governance pages explain how `docs/wiki`, the surrounding `docs/` tree, and the repo/runtime boundary should be maintained together.
 
 ## Pages
 

@@ -17,7 +17,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 
 def _load_agro_module():
-    path = Path(__file__).resolve().parents[1] / "portals" / "_shared" / "runtime" / "flavors" / "tff" / "portal" / "tools" / "agro_erp" / "__init__.py"
+    path = Path(__file__).resolve().parents[1] / "instances" / "_shared" / "runtime" / "flavors" / "tff" / "portal" / "tools" / "agro_erp" / "__init__.py"
     portals_root = path.parents[6]
     token = str(portals_root)
     if token not in sys.path:
@@ -33,7 +33,7 @@ def _load_agro_module():
 class AgroErpToolFlowTests(unittest.TestCase):
     def setUp(self):
         self.module = _load_agro_module()
-        self.app = Flask(__name__, template_folder=str(Path(__file__).resolve().parents[1] / "portals" / "_shared" / "runtime" / "flavors" / "tff" / "portal" / "ui" / "templates"))
+        self.app = Flask(__name__, template_folder=str(Path(__file__).resolve().parents[1] / "instances" / "_shared" / "runtime" / "flavors" / "tff" / "portal" / "ui" / "templates"))
         self.app.register_blueprint(self.module.agro_erp_bp)
         self.tmp = TemporaryDirectory()
         tmp_path = Path(self.tmp.name)
