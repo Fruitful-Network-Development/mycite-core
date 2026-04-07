@@ -1,0 +1,9 @@
+{
+  "schema": "mycite.portal.tool_spec.v1",
+  "tool_id": "maps",
+  "inherited_inputs": [],
+  "outputs": [],
+  "mediation": {
+    "mode": "SAMRAS"
+  }
+}

@@ -1,0 +1,542 @@
+{
+  "aws": {
+    "active_receipt_rule_set": {
+      "Metadata": {
+        "CreatedTimestamp": "2026-02-06T02:27:09.139000+00:00",
+        "Name": "fnd-inbound-rules"
+      },
+      "Rules": [
+        {
+          "Actions": [
+            {
+              "S3Action": {
+                "BucketName": "ses-inbound-fnd-mail",
+                "ObjectKeyPrefix": "inbound/broadcast/"
+              }
+            }
+          ],
+          "Enabled": true,
+          "Name": "mode-c-broadcast-command",
+          "Recipients": [
+            "broadcast@fruitfulnetworkdevelopment.com"
+          ],
+          "ScanEnabled": true,
+          "TlsPolicy": "Optional"
+        },
+        {
+          "Actions": [
+            {
+              "S3Action": {
+                "BucketName": "ses-inbound-fnd-mail",
+                "ObjectKeyPrefix": "inbound/"
+              }
+            },
+            {
+              "LambdaAction": {
+                "FunctionArn": "arn:aws:lambda:us-east-1:065948377733:function:ses-forwarder",
+                "InvocationType": "Event"
+              }
+            }
+          ],
+          "Enabled": true,
+          "Name": "mode-a-forward-dcmontgomery",
+          "Recipients": [
+            "fruitfulnetworkdevelopment.com"
+          ],
+          "ScanEnabled": true,
+          "TlsPolicy": "Optional"
+        }
+      ]
+    },
+    "address_identities": {
+      "dcmontgomery@fruitfulnetworkdevelopment.com": {
+        "ok": false,
+        "payload": {},
+        "stderr": "An error occurred (NotFoundException) when calling the GetEmailIdentity operation: Email identity <dcmontgomery@fruitfulnetworkdevelopment.com> does not exist."
+      },
+      "dylan@fruitfulnetworkdevelopment.com": {
+        "ok": false,
+        "payload": {},
+        "stderr": "An error occurred (NotFoundException) when calling the GetEmailIdentity operation: Email identity <dylan@fruitfulnetworkdevelopment.com> does not exist."
+      },
+      "marilyn@fruitfulnetworkdevelopment.com": {
+        "ok": false,
+        "payload": {},
+        "stderr": "An error occurred (NotFoundException) when calling the GetEmailIdentity operation: Email identity <marilyn@fruitfulnetworkdevelopment.com> does not exist."
+      }
+    },
+    "hosted_zone": {
+      "CallerReference": "RISWorkflow-RD:a1440f8f-5f30-4ac6-bbea-fa9814c120ff",
+      "Config": {
+        "Comment": "HostedZone created by Route53 Registrar",
+        "PrivateZone": false
+      },
+      "Id": "/hostedzone/Z0820667F5GC4U3JXL9V",
+      "Name": "fruitfulnetworkdevelopment.com.",
+      "ResourceRecordSetCount": 15
+    },
+    "mail_records": [
+      {
+        "Name": "fruitfulnetworkdevelopment.com.",
+        "ResourceRecords": [
+          {
+            "Value": "10 inbound-smtp.us-east-1.amazonaws.com"
+          }
+        ],
+        "TTL": 300,
+        "Type": "MX"
+      },
+      {
+        "Name": "fruitfulnetworkdevelopment.com.",
+        "ResourceRecords": [
+          {
+            "Value": "\"v=spf1 include:amazonses.com ~all\""
+          }
+        ],
+        "TTL": 300,
+        "Type": "TXT"
+      },
+      {
+        "Name": "_dmarc.fruitfulnetworkdevelopment.com.",
+        "ResourceRecords": [
+          {
+            "Value": "\"v=DMARC1; p=none; rua=mailto:dcmontgomery@fruitfulnetworkdevelopment.com; adkim=s; aspf=s\""
+          }
+        ],
+        "TTL": 300,
+        "Type": "TXT"
+      },
+      {
+        "Name": "5n3jbbq4gsmqvzgrobwo2h6kvlm2ep5w._domainkey.fruitfulnetworkdevelopment.com.",
+        "ResourceRecords": [
+          {
+            "Value": "5n3jbbq4gsmqvzgrobwo2h6kvlm2ep5w.dkim.amazonses.com"
+          }
+        ],
+        "TTL": 1800,
+        "Type": "CNAME"
+      },
+      {
+        "Name": "6np5p2vaqwqkj57zziyzzy766r2kn6ry._domainkey.fruitfulnetworkdevelopment.com.",
+        "ResourceRecords": [
+          {
+            "Value": "6np5p2vaqwqkj57zziyzzy766r2kn6ry.dkim.amazonses.com"
+          }
+        ],
+        "TTL": 1800,
+        "Type": "CNAME"
+      },
+      {
+        "Name": "qctu6aiwav2j5l3bbntgucvtzu5z52br._domainkey.fruitfulnetworkdevelopment.com.",
+        "ResourceRecords": [
+          {
+            "Value": "qctu6aiwav2j5l3bbntgucvtzu5z52br.dkim.amazonses.com"
+          }
+        ],
+        "TTL": 1800,
+        "Type": "CNAME"
+      },
+      {
+        "Name": "dcmontgomery.fruitfulnetworkdevelopment.com.",
+        "ResourceRecords": [
+          {
+            "Value": "10 feedback-smtp.us-east-1.amazonses.com"
+          }
+        ],
+        "TTL": 300,
+        "Type": "MX"
+      },
+      {
+        "Name": "dcmontgomery.fruitfulnetworkdevelopment.com.",
+        "ResourceRecords": [
+          {
+            "Value": "\"v=spf1 include:amazonses.com ~all\""
+          }
+        ],
+        "TTL": 300,
+        "Type": "TXT"
+      }
+    ],
+    "referenced_buckets": {
+      "ses-inbound-fnd-mail": {
+        "latest_object": "2026-03-31T12:09:31+00:00",
+        "prefixes": [
+          "inbound/broadcast/",
+          "inbound/"
+        ]
+      }
+    },
+    "referenced_lambdas": {
+      "ses-forwarder": {
+        "arn": "arn:aws:lambda:us-east-1:065948377733:function:ses-forwarder",
+        "payload": {
+          "Architectures": [
+            "x86_64"
+          ],
+          "CodeSha256": "U4XZqmctETZ8UquJWaoZpXzN5H9gcYCggZKYkD7cTyc=",
+          "CodeSize": 1270,
+          "Description": "",
+          "Environment": {
+            "Variables": {
+              "FORWARD_TO": "dylancarsonmontgomery@gmail.com",
+              "FROM_ADDRESS": "forwarder@fruitfulnetworkdevelopment.com",
+              "S3_BUCKET": "ses-inbound-fnd-mail",
+              "S3_PREFIX": "inbound/",
+              "SES_REGION": "us-east-1"
+            }
+          },
+          "EphemeralStorage": {
+            "Size": 512
+          },
+          "FunctionArn": "arn:aws:lambda:us-east-1:065948377733:function:ses-forwarder",
+          "FunctionName": "ses-forwarder",
+          "Handler": "lambda_function.lambda_handler",
+          "LastModified": "2026-02-06T03:45:39.000+0000",
+          "LastUpdateStatus": "Successful",
+          "LoggingConfig": {
+            "LogFormat": "Text",
+            "LogGroup": "/aws/lambda/ses-forwarder"
+          },
+          "MemorySize": 128,
+          "PackageType": "Zip",
+          "RevisionId": "3bab4bcb-58ce-4967-b4e2-85eef6917999",
+          "Role": "arn:aws:iam::065948377733:role/service-role/ses-forwarder-role-l0ypgdpr",
+          "Runtime": "python3.12",
+          "RuntimeVersionConfig": {
+            "RuntimeVersionArn": "arn:aws:lambda:us-east-1::runtime:db3c84011294fca0fe7b1a23046dff08606163e107373f3875220c35007134cf"
+          },
+          "SnapStart": {
+            "ApplyOn": "None",
+            "OptimizationStatus": "Off"
+          },
+          "State": "Active",
+          "Timeout": 3,
+          "TracingConfig": {
+            "Mode": "PassThrough"
+          },
+          "Version": "$LATEST"
+        }
+      }
+    },
+    "ses_domain_identity": {
+      "DkimAttributes": {
+        "CurrentSigningKeyLength": "RSA_2048_BIT",
+        "LastKeyGenerationTimestamp": "2025-12-28T23:09:37.990000+00:00",
+        "NextSigningKeyLength": "RSA_2048_BIT",
+        "SigningAttributesOrigin": "AWS_SES",
+        "SigningEnabled": true,
+        "Status": "SUCCESS",
+        "Tokens": [
+          "qctu6aiwav2j5l3bbntgucvtzu5z52br",
+          "5n3jbbq4gsmqvzgrobwo2h6kvlm2ep5w",
+          "6np5p2vaqwqkj57zziyzzy766r2kn6ry"
+        ]
+      },
+      "FeedbackForwardingStatus": true,
+      "IdentityType": "DOMAIN",
+      "MailFromAttributes": {
+        "BehaviorOnMxFailure": "USE_DEFAULT_VALUE",
+        "MailFromDomain": "dcmontgomery.fruitfulnetworkdevelopment.com",
+        "MailFromDomainStatus": "SUCCESS"
+      },
+      "Policies": {},
+      "Tags": [],
+      "VerificationInfo": {
+        "LastCheckedTimestamp": "2026-03-31T12:32:05.213000+00:00",
+        "LastSuccessTimestamp": "2026-03-31T12:32:05.298000+00:00",
+        "SOARecord": {
+          "AdminEmail": "awsdns-hostmaster.amazon.com",
+          "PrimaryNameServer": "ns-1147.awsdns-15.org",
+          "SerialNumber": 1
+        }
+      },
+      "VerificationStatus": "SUCCESS",
+      "VerifiedForSendingStatus": true
+    },
+    "smtp_secret_health": {
+      "exists": true,
+      "keys": [
+        "password",
+        "username"
+      ],
+      "password_state": "present",
+      "secret_name": "aws-cms/smtp/fnd",
+      "smtp_auth_state": "success",
+      "usable_for_handoff": true,
+      "username_state": "present"
+    },
+    "smtp_secrets": [
+      {
+        "ARN": "arn:aws:secretsmanager:us-east-1:065948377733:secret:aws-cms/smtp/fnd-EmB2P9",
+        "CreatedDate": "2026-03-30T04:50:55.827000+00:00",
+        "Description": "Placeholder SES SMTP credentials for aws-csm.fnd send-as onboarding",
+        "LastAccessedDate": "2026-03-31T00:00:00+00:00",
+        "LastChangedDate": "2026-03-31T06:25:52.863000+00:00",
+        "Name": "aws-cms/smtp/fnd",
+        "SecretVersionsToStages": {
+          "444e97a0-72ff-4818-ab64-8feea95f3232": [
+            "AWSPREVIOUS"
+          ],
+          "9b966dd1-384c-45e9-a9e1-807f62ba5015": [
+            "AWSCURRENT"
+          ]
+        }
+      },
+      {
+        "ARN": "arn:aws:secretsmanager:us-east-1:065948377733:secret:aws-cms/smtp/cvcc-0NX2gQ",
+        "CreatedDate": "2026-03-30T04:50:55.856000+00:00",
+        "Description": "Placeholder SES SMTP credentials for aws-csm.cvcc send-as onboarding",
+        "LastAccessedDate": "2026-03-31T00:00:00+00:00",
+        "LastChangedDate": "2026-03-30T04:50:56.092000+00:00",
+        "Name": "aws-cms/smtp/cvcc",
+        "SecretVersionsToStages": {
+          "d5a1b5ea-d5c4-4171-98f4-6ac5b7454659": [
+            "AWSCURRENT"
+          ]
+        }
+      },
+      {
+        "ARN": "arn:aws:secretsmanager:us-east-1:065948377733:secret:aws-cms/smtp/tff-J0kLEX",
+        "CreatedDate": "2026-03-30T04:50:55.861000+00:00",
+        "Description": "Placeholder SES SMTP credentials for aws-csm.tff send-as onboarding",
+        "LastAccessedDate": "2026-03-31T00:00:00+00:00",
+        "LastChangedDate": "2026-03-30T04:50:56.115000+00:00",
+        "Name": "aws-cms/smtp/tff",
+        "SecretVersionsToStages": {
+          "56ed8088-f476-4f48-bf84-6e2dd5c57f03": [
+            "AWSCURRENT"
+          ]
+        }
+      }
+    ]
+  },
+  "canonical_root": "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm",
+  "canonical_sender": "dylan@fruitfulnetworkdevelopment.com",
+  "classification": [
+    {
+      "classification": "current and mappable",
+      "item": "SES domain identity fruitfulnetworkdevelopment.com",
+      "recommended_action": "Keep as the canonical domain-level send-as identity.",
+      "source": "AWS SES"
+    },
+    {
+      "classification": "current and mappable",
+      "item": "SMTP secret reference aws-cms/smtp/fnd",
+      "recommended_action": "Keep the secret reference external to profile JSON.",
+      "source": "AWS Secrets Manager"
+    },
+    {
+      "classification": "current and mappable",
+      "item": "SMTP secret payload aws-cms/smtp/fnd",
+      "recommended_action": "Keep the secret contents external; current SMTP credentials are usable for send-as handoff.",
+      "source": "AWS Secrets Manager + SES SMTP auth"
+    },
+    {
+      "classification": "current and mappable",
+      "item": "Route 53 DKIM records for fruitfulnetworkdevelopment.com",
+      "recommended_action": "Keep the SES-issued DKIM records in place.",
+      "source": "AWS Route 53"
+    },
+    {
+      "classification": "current and mappable",
+      "item": "Hosted zone fruitfulnetworkdevelopment.com",
+      "recommended_action": "Use the hosted zone for non-destructive DNS inspection and exact SES record placement.",
+      "source": "AWS Route 53"
+    },
+    {
+      "classification": "legacy and conflicting",
+      "item": "Custom MAIL FROM dcmontgomery.fruitfulnetworkdevelopment.com",
+      "recommended_action": "Do not mutate live mail-from settings blindly. Plan a neutral or canonical mail-from replacement before cleanup.",
+      "source": "AWS SES"
+    },
+    {
+      "classification": "legacy and conflicting",
+      "item": "DMARC record _dmarc.fruitfulnetworkdevelopment.com.",
+      "recommended_action": "Retarget DMARC reporting to a canonical or neutral mailbox only after the legacy FND path is explicitly retired.",
+      "source": "AWS Route 53"
+    },
+    {
+      "classification": "legacy and conflicting",
+      "item": "Legacy record dcmontgomery.fruitfulnetworkdevelopment.com.",
+      "recommended_action": "Treat as part of the legacy dcmontgomery mail-from path; preview replacement before removal.",
+      "source": "AWS Route 53"
+    },
+    {
+      "classification": "legacy and conflicting",
+      "item": "Active receipt rule set fnd-inbound-rules",
+      "recommended_action": "Keep for now, but do not treat inbound forwarding as part of the current AWS-CMS send-as baseline.",
+      "source": "AWS SES inbound"
+    },
+    {
+      "classification": "legacy and conflicting",
+      "item": "S3 bucket ses-inbound-fnd-mail",
+      "recommended_action": "Bucket is tied to active inbound capture and should be treated as legacy inbound infrastructure. Prefixes: inbound/broadcast/, inbound/. Latest object: 2026-03-31T12:09:31+00:00.",
+      "source": "AWS S3"
+    },
+    {
+      "classification": "legacy and conflicting",
+      "item": "Lambda ses-forwarder",
+      "recommended_action": "Treat as legacy inbound automation until the FND cleanup plan explicitly decides whether to keep or retire it.",
+      "source": "AWS Lambda"
+    },
+    {
+      "classification": "current and mappable",
+      "item": "Canonical sender candidate dylan@fruitfulnetworkdevelopment.com",
+      "recommended_action": "Use this as the reference FND sender path for future onboarding.",
+      "source": "AWS-CMS staged profile and local code references"
+    }
+  ],
+  "domain": "fruitfulnetworkdevelopment.com",
+  "generated_at": "2026-03-31T17:02:08Z",
+  "local_references": {
+    "dcmontgomery@fruitfulnetworkdevelopment.com": [
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:52",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:55",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:103",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:390",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:52",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:55",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:103",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:368",
+      "/srv/repo/mycite-core/scripts/aws_csm_inspect.py:247",
+      "/srv/repo/mycite-core/tests/test_aws_csm_inspect.py:64",
+      "/srv/repo/mycite-core/tests/test_aws_csm_inspect.py:95"
+    ],
+    "dylan@fruitfulnetworkdevelopment.com": [
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/aws-csm.fnd.json:10",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/aws-csm.fnd.json:20",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:57",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:60",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:312",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:382",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:403",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:57",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:60",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:296",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:360",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:373",
+      "/srv/repo/mycite-core/tests/test_service_tool_mediation.py:241",
+      "/srv/repo/mycite-core/tests/test_service_tool_mediation.py:306",
+      "/srv/repo/mycite-core/tests/test_service_tool_mediation.py:309",
+      "/srv/repo/mycite-core/tests/test_service_tool_mediation.py:372",
+      "/srv/repo/mycite-core/tests/test_service_tool_mediation.py:375",
+      "/srv/repo/mycite-core/tests/test_aws_csm_inspect.py:48",
+      "/srv/repo/mycite-core/tests/test_aws_csm_inspect.py:52",
+      "/srv/repo/mycite-core/tests/test_aws_csm_inspect.py:63",
+      "/srv/repo/mycite-core/tests/test_aws_csm_inspect.py:72",
+      "/srv/repo/mycite-core/tests/test_aws_csm_inspect.py:75",
+      "/srv/repo/mycite-core/tests/test_admin_integrations_aws_csm.py:99",
+      "/srv/repo/mycite-core/tests/test_admin_integrations_aws_csm.py:162",
+      "/srv/repo/mycite-core/wiki/tools/internal-file-sources.md:114"
+    ],
+    "fruitfulnetworkdevelopment.com": [
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/aws-csm.fnd.json:6",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/aws-csm.fnd.json:10",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/aws-csm.fnd.json:20",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:21",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:44",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:52",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:55",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:57",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:21",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:44",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:52",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:55",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:57",
+      "/srv/repo/mycite-core/scripts/aws_csm_inspect.py:245",
+      "/srv/repo/mycite-core/scripts/aws_csm_inspect.py:247",
+      "/srv/repo/mycite-core/scripts/aws_csm_inspect.py:248",
+      "/srv/repo/mycite-core/tests/test_service_tool_mediation.py:67",
+      "/srv/repo/mycite-core/tests/test_service_tool_mediation.py:88",
+      "/srv/repo/mycite-core/tests/test_service_tool_mediation.py:128",
+      "/srv/repo/mycite-core/tests/test_service_tool_mediation.py:239",
+      "/srv/repo/mycite-core/tests/test_service_tool_mediation.py:241",
+      "/srv/repo/mycite-core/tests/test_aws_csm_inspect.py:47",
+      "/srv/repo/mycite-core/tests/test_aws_csm_inspect.py:48",
+      "/srv/repo/mycite-core/tests/test_aws_csm_inspect.py:52",
+      "/srv/repo/mycite-core/tests/test_aws_csm_inspect.py:57",
+      "/srv/repo/mycite-core/tests/test_aws_csm_inspect.py:63",
+      "/srv/repo/mycite-core/tests/test_admin_integrations_aws_csm.py:96",
+      "/srv/repo/mycite-core/tests/test_admin_integrations_aws_csm.py:99",
+      "/srv/repo/mycite-core/tests/test_admin_integrations_aws_csm.py:160",
+      "/srv/repo/mycite-core/tests/test_admin_integrations_aws_csm.py:162",
+      "/srv/repo/mycite-core/mss/anthology-notes.txt:79",
+      "/srv/repo/mycite-core/wiki/tools/internal-file-sources.md:114",
+      "/srv/repo/mycite-core/portals/_shared/runtime/flavors/fnd/portal/ui/templates/tools/paypal_service_agreement_home.html:15",
+      "/srv/repo/mycite-core/portals/_shared/runtime/flavors/tff/data/anthology.json:92"
+    ],
+    "marilyn@fruitfulnetworkdevelopment.com": [
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:62",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:65",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-31.json:466",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:62",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:65",
+      "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/fnd-sender-audit.2026-03-30.json:413",
+      "/srv/repo/mycite-core/scripts/aws_csm_inspect.py:248",
+      "/srv/repo/mycite-core/tests/test_aws_csm_inspect.py:65"
+    ]
+  },
+  "profile": {
+    "identity": {
+      "domain": "fruitfulnetworkdevelopment.com",
+      "profile_id": "aws-csm.fnd",
+      "region": "us-east-1",
+      "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+      "single_user_email": "dylancarsonmontgomery@gmail.com",
+      "single_user_msn_id": "",
+      "tenant_id": "fnd"
+    },
+    "provider": {
+      "aws_ses_identity_status": "verified",
+      "gmail_send_as_status": "not_started",
+      "last_checked_at": "2026-03-31T12:32:05.213000+00:00"
+    },
+    "schema": "mycite.service_tool.aws_csm.profile.v1",
+    "smtp": {
+      "credentials_secret_name": "aws-cms/smtp/fnd",
+      "credentials_secret_state": "configured",
+      "credentials_source": "operator_managed",
+      "forward_to_email": "dylancarsonmontgomery@gmail.com",
+      "forwarding_status": "active",
+      "handoff_ready": true,
+      "host": "email-smtp.us-east-1.amazonaws.com",
+      "local_part": "FND",
+      "port": "587",
+      "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+      "username": "AKIAQ6WWUMKCYREGBOUY"
+    },
+    "verification": {
+      "code": "",
+      "email_received_at": "",
+      "link": "",
+      "portal_state": "awaiting_gmail_handoff",
+      "status": "not_started",
+      "verified_at": ""
+    },
+    "workflow": {
+      "completion_boundary": "gmail_inbox_dependent",
+      "configuration_blockers_now": [],
+      "flow": "single_user_send_as",
+      "gmail_handoff_blockers_now": [
+        "verification.status",
+        "provider.gmail_send_as_status"
+      ],
+      "handoff_status": "ready_for_gmail_handoff",
+      "is_ready_for_user_handoff": true,
+      "is_send_as_confirmed": false,
+      "missing_required_now": [
+        "verification.status",
+        "provider.gmail_send_as_status"
+      ],
+      "schema": "mycite.service_tool.aws_csm.onboarding.v1"
+    }
+  },
+  "profile_path": "/srv/compose/portals/state/fnd_portal/private/utilities/tools/aws-csm/aws-csm.fnd.json",
+  "provider_last_checked_at": "2026-03-31T12:32:05.213000+00:00",
+  "safe_next_steps": [
+    "SMTP credentials are usable; continue to Gmail send-as handoff.",
+    "Keep Gmail send-as verification as the next human handoff boundary unless an operator can complete it live.",
+    "Do not remove legacy inbound FND resources until a previewed cleanup plan is approved."
+  ],
+  "tenant": "fnd"
+}
