@@ -1,9 +1,0 @@
-{
-  "schema": "mycite.portal.tool_collection.v1",
-  "member_files": [
-    "spec.json",
-    "keycloak-sso.fnd.json",
-    "keycloak-sso.tff.json",
-    "keycloak-sso.admin.json"
-  ]
-}
