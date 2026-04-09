@@ -255,3 +255,57 @@ Remaining ambiguities that should stay frozen for MVP are:
 - which tools, sandboxes, and runtime flavors come immediately after MVP
 
 ---
+
+## Considerations & Assessment
+
+This is a good boundary.
+
+It is materially better than a broader “first useful feature” MVP because it is now explicitly architecture-proving rather than feature-proving. That fits the current V2 scaffold, which defines V2 as documentation-first, authority-led, and explicitly not a partial port of V1  The boundary also follows the repo’s precedence model instead of inventing a parallel one, which is important because `authority_stack.md` already fixes how V2 decisions are supposed to resolve 
+
+The strongest part is the chosen slice itself. The `Shell Action To Local Audit` path is narrow, coherent, and cleanly aligned with the structural invariants. It proves:
+
+* one pure core concern
+* one pure shell/state concern
+* one explicit port
+* one adapter family
+* one runtime composition path
+* one integration path
+  without dragging in tools, sandboxes, domain breadth, or runtime-flavor expansion  
+
+That is exactly the kind of MVP boundary you want when the goal is to validate dependency direction and prevent V1-style mixing. The current `mvp_boundary.md` is especially strong in three ways.
+
+First, it selects `local_audit` as the cross-domain proving module rather than something more ambitious like contracts or reference exchange. That is the correct narrowing move. The document explicitly explains why this is the smallest coherent semantic surface and why it avoids pulling in broader policy and network complexity 
+
+Second, it makes tools and sandboxes truly optional rather than conceptually “probably later in MVP.” That is a major improvement. The included module areas now clearly exclude all tools and all sandboxes, and the proving slice says they do not participate at all 
+
+Third, it uses partial phase inclusion correctly. Instead of claiming “complete phases 02–10,” it identifies only the required outputs from included phases and explicitly defers the rest. That makes the MVP smaller and less likely to expand by accident  
+
+So, from a workload perspective, this is the first point where the project becomes realistically executable in a small number of disciplined prompts.
+
+The main caution is this:
+
+This MVP proves architectural legitimacy, not product legitimacy.
+
+That is not a flaw, but it is important to be conscious of it. The chosen slice validates that V2 can:
+
+* normalize datum refs
+* reduce serialized shell state
+* use a real port
+* persist through a real adapter
+* compose one runtime path
+* preserve import boundaries
+
+What it does not yet prove is that V2’s more distinctive long-term structures—Hanus as a meaningful interface surface, HOPS/SAMRAS mediation, MSS, tool attachment, or sandbox orchestration—survive contact with implementation. That is acceptable for MVP, but only if you continue to treat this as an architecture MVP and not as evidence that higher-complexity slices are already safe.
+
+The other thing I would specifically watch is whether the runtime path remains truly “shell-facing” and not quietly “route-shaped.” If the implementation of this MVP starts centering HTTP or framework concerns too early, the slice could accidentally prove adapter/runtime convenience more than shell composition. The repo’s invariants already warn against hosts owning domain logic, so keep that pressure high during implementation 
+
+My judgment is:
+
+This MVP boundary is appropriately narrow.
+It is much less likely to drift.
+It should reduce the prompt count meaningfully.
+It is now small enough that future prompts can be operational instead of architectural.
+
+If this boundary is held firm, you are probably no longer looking at 10 to 18 prompts for MVP. You are closer to about 5 to 8 disciplined prompts, because the slice excludes tools, sandboxes, domains, HOPS/SAMRAS, MSS, and multi-flavor runtime work. The biggest remaining risk is not scope size. It is accidental scope contamination during implementation.
+
+---
