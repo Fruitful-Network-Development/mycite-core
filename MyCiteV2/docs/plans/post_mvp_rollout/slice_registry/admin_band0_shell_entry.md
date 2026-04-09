@@ -55,7 +55,7 @@ This gives operators and, later, trusted tenant admins one predictable way to en
 ## Out of scope
 
 - provider dashboards
-- AWS details
+- AWS detail payloads
 - tool execution
 - writable actions
 - flavor-specific runtime paths
@@ -74,6 +74,7 @@ Warnings:
 
 - first admin-first slice
 - admin home/status and tool registry may extend this entrypoint later, but they may not create parallel shell landings by convenience
+- later tool slices may add separate cataloged runtime entrypoints, but they may not replace the shell landing path
 
 ## Frozen questions
 

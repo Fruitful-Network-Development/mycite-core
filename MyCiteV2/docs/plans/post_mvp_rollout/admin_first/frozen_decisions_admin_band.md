@@ -33,8 +33,14 @@ Until `Admin Band 0` is stable:
 - the tool registry must remain deny-by-default
 - AWS may be planned, but not trusted-tenant exposed
 
+After `Admin Band 0` is stable and `admin_band1.aws_read_only_surface` passes its gate:
+
+- AWS may be trusted-tenant exposed as read-only
+- the registry may mark AWS launchable
+- AWS narrow write still remains frozen out
+
 ## Questions intentionally frozen
 
 - whether the admin home/status surface and the tool registry remain distinct views or later become one shell payload
-- the exact future port and adapter names for AWS read-only and AWS narrow write seams
+- the exact future AWS narrow write seam and adapter names
 - whether PayPal or keycloak follows AGRO-ERP or remains a later independent track

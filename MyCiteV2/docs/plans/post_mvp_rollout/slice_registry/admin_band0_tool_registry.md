@@ -37,8 +37,8 @@ This gives operators a stable way to discover future admin tools without letting
 
 ## Required runtime composition
 
-- no second public runtime entrypoint
 - extend `admin.shell_entry` with one registry payload and launch-resolution path
+- catalog later approved tool entrypoints without letting the registry become a direct provider route
 
 ## Required tests
 
@@ -51,7 +51,7 @@ This gives operators a stable way to discover future admin tools without letting
 ## Client exposure gates
 
 - `newsletter-admin` must not appear as a standalone entry
-- AWS may be listed as planned, but not launchable for trusted-tenant use until its own slice gate passes
+- AWS may be listed as launchable only after `admin_band1.aws_read_only_surface` passes its own slice gate
 - Maps and AGRO-ERP must remain blocked behind AWS-first ordering
 
 ## Out of scope
@@ -76,7 +76,7 @@ Warnings:
 
 - follows `admin_band0.shell_entry`
 - may land alongside or immediately after `admin_band0.home_status`
-- must be stable before `admin_band1.aws_read_only_surface` is implemented
+- must be stable before `admin_band1.aws_read_only_surface` is implemented and launched
 
 ## Frozen questions
 

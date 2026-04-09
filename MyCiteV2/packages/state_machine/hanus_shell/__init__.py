@@ -6,6 +6,7 @@ from .admin_shell import (
     ADMIN_BAND2_AWS_NAME,
     ADMIN_ENTRYPOINT_ID,
     ADMIN_EXPOSURE_INTERNAL_ONLY,
+    ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
     ADMIN_HOME_STATUS_SLICE_ID,
     ADMIN_SHELL_ENTRY_SLICE_ID,
     ADMIN_SHELL_REQUEST_SCHEMA,
@@ -18,9 +19,11 @@ from .admin_shell import (
     AdminShellSelection,
     AdminSurfaceCatalogEntry,
     AdminTenantScope,
+    AdminToolLaunchDecision,
     AdminToolRegistryEntry,
     build_admin_surface_catalog,
     build_admin_tool_registry_entries,
+    resolve_admin_tool_launch,
     resolve_admin_shell_request,
 )
 from .contracts import (
@@ -39,6 +42,7 @@ __all__ = [
     "ADMIN_BAND2_AWS_NAME",
     "ADMIN_ENTRYPOINT_ID",
     "ADMIN_EXPOSURE_INTERNAL_ONLY",
+    "ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY",
     "ADMIN_HOME_STATUS_SLICE_ID",
     "ADMIN_SHELL_ENTRY_SLICE_ID",
     "ADMIN_SHELL_REQUEST_SCHEMA",
@@ -51,6 +55,7 @@ __all__ = [
     "AdminShellSelection",
     "AdminSurfaceCatalogEntry",
     "AdminTenantScope",
+    "AdminToolLaunchDecision",
     "AdminToolRegistryEntry",
     "SHELL_ACTION_SCHEMA",
     "SHELL_RESULT_SCHEMA",
@@ -61,5 +66,6 @@ __all__ = [
     "build_admin_surface_catalog",
     "build_admin_tool_registry_entries",
     "reduce_shell_action",
+    "resolve_admin_tool_launch",
     "resolve_admin_shell_request",
 ]

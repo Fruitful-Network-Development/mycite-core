@@ -12,6 +12,7 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND0_NAME,
     ADMIN_BAND1_AWS_NAME,
+    ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
     ADMIN_HOME_STATUS_SLICE_ID,
     ADMIN_SHELL_ENTRY_SLICE_ID,
     ADMIN_SHELL_REQUEST_SCHEMA,
@@ -21,6 +22,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AdminTenantScope,
     build_admin_surface_catalog,
     build_admin_tool_registry_entries,
+    resolve_admin_tool_launch,
     resolve_admin_shell_request,
 )
 
@@ -54,7 +56,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         self.assertEqual(selection.active_surface_id, ADMIN_HOME_STATUS_SLICE_ID)
         self.assertEqual(selection.selection_status, "available")
 
-    def test_tool_registry_surface_is_available_but_aws_is_gated(self) -> None:
+    def test_tool_registry_surface_is_available_and_aws_redirects_to_registry(self) -> None:
         tool_registry_selection = resolve_admin_shell_request(
             {
                 "schema": ADMIN_SHELL_REQUEST_SCHEMA,
@@ -74,10 +76,10 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         self.assertEqual(tool_registry_selection.active_surface_id, ADMIN_TOOL_REGISTRY_SLICE_ID)
 
         self.assertFalse(aws_selection.allowed)
-        self.assertEqual(aws_selection.active_surface_id, ADMIN_HOME_STATUS_SLICE_ID)
+        self.assertEqual(aws_selection.active_surface_id, ADMIN_TOOL_REGISTRY_SLICE_ID)
         self.assertEqual(aws_selection.selection_status, "gated")
-        self.assertEqual(aws_selection.reason_code, "slice_gated")
-        self.assertIn("Admin Band 0", aws_selection.reason_message)
+        self.assertEqual(aws_selection.reason_code, "launch_via_registry")
+        self.assertIn("admin.aws.read_only", aws_selection.reason_message)
 
     def test_non_internal_audience_is_denied_for_admin_band0(self) -> None:
         selection = resolve_admin_shell_request(
@@ -92,7 +94,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         self.assertEqual(selection.selection_status, "audience_denied")
         self.assertEqual(selection.reason_code, "audience_not_allowed")
 
-    def test_catalog_and_registry_are_serializable_and_deny_by_default(self) -> None:
+    def test_catalog_and_registry_are_serializable_and_shell_owned(self) -> None:
         surface_catalog = [entry.to_dict() for entry in build_admin_surface_catalog()]
         tool_entries = [entry.to_dict() for entry in build_admin_tool_registry_entries()]
 
@@ -138,16 +140,47 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "slice_id": AWS_READ_ONLY_SLICE_ID,
                     "entrypoint_id": "admin.aws.read_only",
                     "admin_band": ADMIN_BAND1_AWS_NAME,
-                    "exposure_status": "planned_not_approved_for_build",
+                    "exposure_status": "implemented_trusted_tenant_read_only",
                     "read_write_posture": "read-only",
-                    "status_summary": "planned_next",
+                    "status_summary": "launchable_read_only",
                     "audience": "trusted-tenant-admin",
-                    "internal_only_reason": "Admin Band 0 must remain stable before the AWS read-only slice can launch.",
-                    "launchable": False,
+                    "internal_only_reason": "",
+                    "launchable": True,
                 }
             ],
         )
         self.assertNotIn("newsletter-admin", json.dumps(tool_entries, sort_keys=True))
+
+    def test_launch_decision_is_shell_owned_and_approved_for_trusted_tenant(self) -> None:
+        allowed = resolve_admin_tool_launch(
+            slice_id=AWS_READ_ONLY_SLICE_ID,
+            audience="trusted-tenant",
+            expected_entrypoint_id="admin.aws.read_only",
+        )
+        mismatch = resolve_admin_tool_launch(
+            slice_id=AWS_READ_ONLY_SLICE_ID,
+            audience="trusted-tenant",
+            expected_entrypoint_id="admin.aws.other",
+        )
+
+        self.assertTrue(allowed.allowed)
+        self.assertEqual(allowed.selection_status, "available")
+        self.assertEqual(allowed.exposure_status, "implemented_trusted_tenant_read_only")
+        self.assertEqual(
+            json.loads(json.dumps(allowed.to_dict(), sort_keys=True)),
+            {
+                "schema": "mycite.v2.admin.shell.state.v1",
+                "slice_id": AWS_READ_ONLY_SLICE_ID,
+                "entrypoint_id": "admin.aws.read_only",
+                "allowed": True,
+                "selection_status": "available",
+                "reason_code": "",
+                "reason_message": "",
+                "exposure_status": "implemented_trusted_tenant_read_only",
+            },
+        )
+        self.assertFalse(mismatch.allowed)
+        self.assertEqual(mismatch.reason_code, "catalog_mismatch")
 
     def test_request_contract_rejects_invalid_schema_and_audience(self) -> None:
         with self.assertRaisesRegex(ValueError, "admin_shell_request.schema"):
@@ -164,6 +197,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
 
     def test_band_name_is_fixed_for_admin_band0(self) -> None:
         self.assertEqual(ADMIN_BAND0_NAME, "Admin Band 0 Internal Admin Replacement")
+        self.assertEqual(ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY, "trusted-tenant-read-only")
 
 
 if __name__ == "__main__":

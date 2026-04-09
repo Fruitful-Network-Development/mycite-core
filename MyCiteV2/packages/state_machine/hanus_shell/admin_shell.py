@@ -11,6 +11,7 @@ ADMIN_BAND1_AWS_NAME = "Admin Band 1 Trusted-Tenant AWS Read-Only"
 ADMIN_BAND2_AWS_NAME = "Admin Band 2 Trusted-Tenant AWS Narrow Write"
 
 ADMIN_EXPOSURE_INTERNAL_ONLY = "internal-only"
+ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY = "trusted-tenant-read-only"
 ADMIN_ENTRYPOINT_ID = "admin.shell_entry"
 
 ADMIN_SHELL_ENTRY_SLICE_ID = "admin_band0.shell_entry"
@@ -178,6 +179,46 @@ class AdminToolRegistryEntry:
 
 
 @dataclass(frozen=True)
+class AdminToolLaunchDecision:
+    slice_id: str
+    entrypoint_id: str
+    allowed: bool
+    selection_status: str
+    reason_code: str = ""
+    reason_message: str = ""
+    exposure_status: str = ""
+
+    def __post_init__(self) -> None:
+        slice_id = _as_text(self.slice_id)
+        entrypoint_id = _as_text(self.entrypoint_id)
+        selection_status = _as_text(self.selection_status).lower()
+        if not slice_id:
+            raise ValueError("admin_tool_launch_decision.slice_id is required")
+        if not entrypoint_id:
+            raise ValueError("admin_tool_launch_decision.entrypoint_id is required")
+        if selection_status not in {"available", "gated", "audience_denied", "unknown"}:
+            raise ValueError("admin_tool_launch_decision.selection_status is invalid")
+        object.__setattr__(self, "slice_id", slice_id)
+        object.__setattr__(self, "entrypoint_id", entrypoint_id)
+        object.__setattr__(self, "selection_status", selection_status)
+        object.__setattr__(self, "reason_code", _as_text(self.reason_code).lower())
+        object.__setattr__(self, "reason_message", _as_text(self.reason_message))
+        object.__setattr__(self, "exposure_status", _as_text(self.exposure_status))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": ADMIN_SHELL_STATE_SCHEMA,
+            "slice_id": self.slice_id,
+            "entrypoint_id": self.entrypoint_id,
+            "allowed": bool(self.allowed),
+            "selection_status": self.selection_status,
+            "reason_code": self.reason_code,
+            "reason_message": self.reason_message,
+            "exposure_status": self.exposure_status,
+        }
+
+
+@dataclass(frozen=True)
 class AdminShellSelection:
     requested_slice_id: str
     active_surface_id: str
@@ -243,13 +284,84 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             slice_id=AWS_READ_ONLY_SLICE_ID,
             entrypoint_id=AWS_READ_ONLY_ENTRYPOINT_ID,
             admin_band=ADMIN_BAND1_AWS_NAME,
-            exposure_status="planned_not_approved_for_build",
+            exposure_status="implemented_trusted_tenant_read_only",
             read_write_posture="read-only",
-            status_summary="planned_next",
+            status_summary="launchable_read_only",
             audience="trusted-tenant-admin",
-            internal_only_reason="Admin Band 0 must remain stable before the AWS read-only slice can launch.",
-            launchable=False,
+            internal_only_reason="",
+            launchable=True,
         ),
+    )
+
+
+def resolve_admin_tool_launch(
+    *,
+    slice_id: object,
+    audience: object,
+    expected_entrypoint_id: object,
+) -> AdminToolLaunchDecision:
+    requested_slice_id = _as_text(slice_id)
+    normalized_audience = _as_text(audience).lower() or "internal"
+    normalized_entrypoint_id = _as_text(expected_entrypoint_id)
+
+    for entry in build_admin_tool_registry_entries():
+        if entry.slice_id != requested_slice_id:
+            continue
+        if entry.entrypoint_id != normalized_entrypoint_id:
+            return AdminToolLaunchDecision(
+                slice_id=entry.slice_id,
+                entrypoint_id=entry.entrypoint_id,
+                allowed=False,
+                selection_status="unknown",
+                reason_code="catalog_mismatch",
+                reason_message="Requested AWS entrypoint does not match the shell-owned registry.",
+                exposure_status=entry.exposure_status,
+            )
+        if not entry.launchable:
+            return AdminToolLaunchDecision(
+                slice_id=entry.slice_id,
+                entrypoint_id=entry.entrypoint_id,
+                allowed=False,
+                selection_status="gated",
+                reason_code="slice_gated",
+                reason_message=entry.internal_only_reason or "Requested admin tool slice is not launchable.",
+                exposure_status=entry.exposure_status,
+            )
+        if normalized_audience == "trusted-tenant" and entry.audience != "trusted-tenant-admin":
+            return AdminToolLaunchDecision(
+                slice_id=entry.slice_id,
+                entrypoint_id=entry.entrypoint_id,
+                allowed=False,
+                selection_status="audience_denied",
+                reason_code="audience_not_allowed",
+                reason_message="Requested admin tool slice is not approved for the requested audience.",
+                exposure_status=entry.exposure_status,
+            )
+        if normalized_audience not in _ALLOWED_AUDIENCES:
+            return AdminToolLaunchDecision(
+                slice_id=entry.slice_id,
+                entrypoint_id=entry.entrypoint_id,
+                allowed=False,
+                selection_status="audience_denied",
+                reason_code="audience_not_allowed",
+                reason_message="Requested admin tool slice is not approved for the requested audience.",
+                exposure_status=entry.exposure_status,
+            )
+        return AdminToolLaunchDecision(
+            slice_id=entry.slice_id,
+            entrypoint_id=entry.entrypoint_id,
+            allowed=True,
+            selection_status="available",
+            exposure_status=entry.exposure_status,
+        )
+
+    return AdminToolLaunchDecision(
+        slice_id=requested_slice_id or AWS_READ_ONLY_SLICE_ID,
+        entrypoint_id=normalized_entrypoint_id or AWS_READ_ONLY_ENTRYPOINT_ID,
+        allowed=False,
+        selection_status="unknown",
+        reason_code="slice_unknown",
+        reason_message="Requested admin tool slice is not registered in the shell-owned registry.",
     )
 
 
@@ -283,11 +395,11 @@ def resolve_admin_shell_request(request: AdminShellRequest | dict[str, Any] | No
         if requested_slice_id == tool_entry.slice_id:
             return AdminShellSelection(
                 requested_slice_id=requested_slice_id,
-                active_surface_id=ADMIN_HOME_STATUS_SLICE_ID,
+                active_surface_id=ADMIN_TOOL_REGISTRY_SLICE_ID,
                 selection_status="gated",
                 allowed=False,
-                reason_code="slice_gated",
-                reason_message=tool_entry.internal_only_reason,
+                reason_code="launch_via_registry",
+                reason_message="AWS read-only launches through the shell-owned registry and the admin.aws.read_only entrypoint.",
             )
 
     return AdminShellSelection(
@@ -306,6 +418,7 @@ __all__ = [
     "ADMIN_BAND2_AWS_NAME",
     "ADMIN_ENTRYPOINT_ID",
     "ADMIN_EXPOSURE_INTERNAL_ONLY",
+    "ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY",
     "ADMIN_HOME_STATUS_SLICE_ID",
     "ADMIN_SHELL_ENTRY_SLICE_ID",
     "ADMIN_SHELL_REQUEST_SCHEMA",
@@ -318,8 +431,10 @@ __all__ = [
     "AdminShellSelection",
     "AdminSurfaceCatalogEntry",
     "AdminTenantScope",
+    "AdminToolLaunchDecision",
     "AdminToolRegistryEntry",
     "build_admin_surface_catalog",
     "build_admin_tool_registry_entries",
+    "resolve_admin_tool_launch",
     "resolve_admin_shell_request",
 ]

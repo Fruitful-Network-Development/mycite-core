@@ -19,6 +19,7 @@ This file catalogs runtime entrypoints and constrains how new ones are added.
 |---|---|---|---|---|---|---|
 | `mvp.shell_action_to_local_audit` | `instances._shared.runtime.mvp_runtime.run_shell_action_to_local_audit` | `Shell Action To Local Audit` | Band 0 | internal-only | serialized shell action payload, caller-supplied audit storage file | normalized subject, normalized shell verb, normalized shell state, persisted audit identifier, persisted audit timestamp |
 | `admin.shell_entry` | `instances._shared.runtime.admin_runtime.run_admin_shell_entry` | `admin_band0.shell_entry` | `Admin Band 0 Internal Admin Replacement` | internal-only | serialized admin shell request payload, optional caller-supplied audit storage file | admin runtime envelope with normalized tenant scope, shell selection state, home/status or registry surface payload, and gated-slice error handling |
+| `admin.aws.read_only` | `instances._shared.runtime.admin_aws_runtime.run_admin_aws_read_only` | `admin_band1.aws_read_only_surface` | `Admin Band 1 Trusted-Tenant AWS Read-Only` | trusted-tenant read-only | serialized AWS read-only request payload, caller-supplied AWS status snapshot file | admin runtime envelope with trusted-tenant-safe AWS operational visibility payload, explicit launch decision, and no write behavior |
 
 ## Required catalog fields for future entrypoints
 
@@ -42,7 +43,7 @@ Every new entrypoint must be added here before implementation and must record:
 
 ## Forbidden runtime drift
 
-- No tool wiring in shared runtime entrypoints during the current band.
+- No unapproved or uncataloged tool wiring in shared runtime entrypoints during the current band.
 - No sandbox orchestration in shared runtime entrypoints during the current band.
 - No hidden read or write side channels.
 - No instance-led directory math inside inward layers.
