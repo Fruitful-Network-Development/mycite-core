@@ -15,14 +15,22 @@ FORBIDDEN_IMPORT_PREFIXES = (
     "mycite_core",
 )
 
-FORBIDDEN_TEXT_TOKENS = (
+GENERAL_FORBIDDEN_TEXT_TOKENS = (
     "FastAPI",
     "flask",
-    "sandbox",
-    "tool",
-    "route",
     "http://",
     "https://",
+)
+
+ADMIN_RUNTIME_FORBIDDEN_TEXT_TOKENS = (
+    "newsletter-admin",
+    "newsletter_admin",
+    "paypal",
+    "keycloak",
+    "analytics",
+    "progeny_workbench",
+    "portal/api/admin/",
+    "packages/tools",
 )
 
 
@@ -37,26 +45,26 @@ def _is_allowed_absolute_import(module_name: str) -> bool:
 
 class RuntimeCompositionBoundaryTests(unittest.TestCase):
     def test_runtime_imports_compose_inward_layers_only(self) -> None:
-        runtime_file = RUNTIME_DIR / "mvp_runtime.py"
         violations: list[str] = []
 
-        tree = ast.parse(runtime_file.read_text(encoding="utf-8"), filename=str(runtime_file))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    module_name = alias.name
+        for runtime_file in sorted(RUNTIME_DIR.glob("*.py")):
+            tree = ast.parse(runtime_file.read_text(encoding="utf-8"), filename=str(runtime_file))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        module_name = alias.name
+                        if module_name.startswith(FORBIDDEN_IMPORT_PREFIXES):
+                            violations.append(f"{runtime_file.name}: forbidden import {module_name}")
+                        elif not _is_allowed_absolute_import(module_name):
+                            violations.append(f"{runtime_file.name}: non-runtime import {module_name}")
+                elif isinstance(node, ast.ImportFrom):
+                    if node.level:
+                        continue
+                    module_name = node.module or ""
                     if module_name.startswith(FORBIDDEN_IMPORT_PREFIXES):
-                        violations.append(f"mvp_runtime.py: forbidden import {module_name}")
-                    elif not _is_allowed_absolute_import(module_name):
-                        violations.append(f"mvp_runtime.py: non-runtime import {module_name}")
-            elif isinstance(node, ast.ImportFrom):
-                if node.level:
-                    continue
-                module_name = node.module or ""
-                if module_name.startswith(FORBIDDEN_IMPORT_PREFIXES):
-                    violations.append(f"mvp_runtime.py: forbidden import {module_name}")
-                elif module_name and not _is_allowed_absolute_import(module_name):
-                    violations.append(f"mvp_runtime.py: non-runtime import {module_name}")
+                        violations.append(f"{runtime_file.name}: forbidden import {module_name}")
+                    elif module_name and not _is_allowed_absolute_import(module_name):
+                        violations.append(f"{runtime_file.name}: non-runtime import {module_name}")
 
         self.assertEqual(violations, [])
 
@@ -64,12 +72,22 @@ class RuntimeCompositionBoundaryTests(unittest.TestCase):
         runtime_python_files = sorted(path.name for path in RUNTIME_DIR.glob("*.py"))
         flavor_python_files = sorted(path.name for path in FLAVORS_DIR.glob("*.py"))
 
-        self.assertEqual(runtime_python_files, ["mvp_runtime.py"])
+        self.assertEqual(runtime_python_files, ["admin_runtime.py", "mvp_runtime.py"])
         self.assertEqual(flavor_python_files, [])
 
-    def test_runtime_source_contains_no_tool_sandbox_or_route_logic(self) -> None:
-        text = (RUNTIME_DIR / "mvp_runtime.py").read_text(encoding="utf-8")
-        violations = [token for token in FORBIDDEN_TEXT_TOKENS if token in text]
+    def test_runtime_source_contains_no_framework_or_legacy_provider_logic(self) -> None:
+        violations: list[str] = []
+
+        for runtime_file in sorted(RUNTIME_DIR.glob("*.py")):
+            text = runtime_file.read_text(encoding="utf-8")
+            for token in GENERAL_FORBIDDEN_TEXT_TOKENS:
+                if token in text:
+                    violations.append(f"{runtime_file.name}: forbidden token {token!r}")
+            if runtime_file.name == "admin_runtime.py":
+                for token in ADMIN_RUNTIME_FORBIDDEN_TEXT_TOKENS:
+                    if token in text:
+                        violations.append(f"{runtime_file.name}: forbidden token {token!r}")
+
         self.assertEqual(violations, [])
 
 

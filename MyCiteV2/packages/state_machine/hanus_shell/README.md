@@ -8,6 +8,8 @@ Authority: [../../../docs/plans/authority_stack.md](../../../docs/plans/authorit
 - serialized shell state
 - pure shell reducer
 - normalized shell result
+- serialized admin shell request and selection state for the internal admin band
+- shell-owned admin slice catalog and tool-registry gating rules
 
 This package does not own:
 
