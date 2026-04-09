@@ -23,6 +23,7 @@ Start with [docs/plans/authority_stack.md](docs/plans/authority_stack.md). That 
 - Read [docs/decisions/README.md](docs/decisions/README.md).
 - Read [docs/plans/master_build_sequence.md](docs/plans/master_build_sequence.md).
 - Read [docs/plans/mvp_boundary.md](docs/plans/mvp_boundary.md) if you need the first proving slice rather than the whole build.
+- Read [docs/plans/post_mvp_rollout/README.md](docs/plans/post_mvp_rollout/README.md) after the MVP is proven and the next work is controlled portal rollout.
 - Use [docs/plans/v1-migration/README.md](docs/plans/v1-migration/README.md) only after the v2 ontology is clear.
 
 ## Working rules
