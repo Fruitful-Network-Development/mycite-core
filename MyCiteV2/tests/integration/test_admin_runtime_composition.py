@@ -66,11 +66,12 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             available_slice_ids = [entry["slice_id"] for entry in result["surface_payload"]["available_admin_slices"]]
             self.assertEqual(available_slice_ids, [ADMIN_HOME_STATUS_SLICE_ID, ADMIN_TOOL_REGISTRY_SLICE_ID])
 
-            gated_tool_entries = result["surface_payload"]["gated_tool_slices"]
-            self.assertEqual(len(gated_tool_entries), 1)
-            self.assertEqual(gated_tool_entries[0]["tool_id"], "aws")
-            self.assertEqual(gated_tool_entries[0]["slice_id"], AWS_READ_ONLY_SLICE_ID)
-            self.assertFalse(gated_tool_entries[0]["launchable"])
+            available_tool_entries = result["surface_payload"]["available_tool_slices"]
+            self.assertEqual(len(available_tool_entries), 1)
+            self.assertEqual(available_tool_entries[0]["tool_id"], "aws")
+            self.assertEqual(available_tool_entries[0]["slice_id"], AWS_READ_ONLY_SLICE_ID)
+            self.assertTrue(available_tool_entries[0]["launchable"])
+            self.assertEqual(result["surface_payload"]["gated_tool_slices"], [])
 
     def test_tool_registry_surface_is_catalog_driven_and_deny_by_default(self) -> None:
         result = run_admin_shell_entry(
@@ -86,12 +87,12 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         self.assertEqual(result["surface_payload"]["schema"], ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA)
         self.assertEqual(result["surface_payload"]["registry_owner"], "shell")
         self.assertEqual(result["surface_payload"]["default_posture"], "deny-by-default")
-        self.assertEqual(result["surface_payload"]["launchable_tool_slice_ids"], [])
-        self.assertEqual(result["surface_payload"]["gated_tool_slice_ids"], [AWS_READ_ONLY_SLICE_ID])
+        self.assertEqual(result["surface_payload"]["launchable_tool_slice_ids"], [AWS_READ_ONLY_SLICE_ID])
+        self.assertEqual(result["surface_payload"]["gated_tool_slice_ids"], [])
         self.assertEqual(len(result["surface_payload"]["tool_entries"]), 1)
         self.assertNotIn("newsletter-admin", json.dumps(result["surface_payload"], sort_keys=True))
 
-    def test_requested_aws_slice_is_gated_and_does_not_launch(self) -> None:
+    def test_requested_aws_slice_redirects_to_registry_and_does_not_launch_inline(self) -> None:
         result = run_admin_shell_entry(
             {
                 "schema": ADMIN_SHELL_REQUEST_SCHEMA,
@@ -100,17 +101,17 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(result["slice_id"], ADMIN_HOME_STATUS_SLICE_ID)
+        self.assertEqual(result["slice_id"], ADMIN_TOOL_REGISTRY_SLICE_ID)
         self.assertEqual(result["requested_slice_id"], AWS_READ_ONLY_SLICE_ID)
         self.assertEqual(
             result["error"],
             {
-                "code": "slice_gated",
-                "message": "Admin Band 0 must remain stable before the AWS read-only slice can launch.",
+                "code": "launch_via_registry",
+                "message": "AWS read-only launches through the shell-owned registry and the admin.aws.read_only entrypoint.",
             },
         )
         self.assertEqual(result["warnings"], [result["error"]["message"]])
-        self.assertEqual(result["surface_payload"]["schema"], ADMIN_HOME_STATUS_SURFACE_SCHEMA)
+        self.assertEqual(result["surface_payload"]["schema"], ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA)
 
     def test_non_internal_request_is_denied_without_surface_payload(self) -> None:
         result = run_admin_shell_entry(

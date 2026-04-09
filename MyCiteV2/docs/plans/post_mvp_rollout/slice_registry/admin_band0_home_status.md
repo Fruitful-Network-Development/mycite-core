@@ -53,7 +53,7 @@ This tells an operator what is intentionally available before any tool slice is 
 
 ## Client exposure gates
 
-- clearly marks all tool slices as internal-only or not yet approved
+- clearly marks each tool slice as either launchable or still gated
 - exposes no direct launch side effects
 - exposes no provider-secret or instance-path data
 
@@ -62,7 +62,7 @@ This tells an operator what is intentionally available before any tool slice is 
 - provider-specific deep status
 - tool launch controls
 - writable actions
-- AWS, Maps, and AGRO details beyond “not yet available” posture
+- AWS, Maps, and AGRO detail payloads beyond the registry-linked availability posture
 
 ## V1 evidence and drift warnings
 

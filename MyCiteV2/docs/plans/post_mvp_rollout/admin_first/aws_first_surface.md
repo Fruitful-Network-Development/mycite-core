@@ -53,17 +53,18 @@ It is a read-only AWS operational visibility surface launched through the admin 
 - the AWS slice has a registry entry, a runtime entrypoint plan, and a gate record
 - the standalone `newsletter-admin` surface is absent from the registry
 
-## Likely later seams
+## Approved seams for the first AWS slice
 
-This file does not authorize new ports or adapters yet.
+Approved for the first AWS read-only slice:
 
-It does identify the likely future seam shapes:
+- one AWS read-only status seam: `packages/ports/aws_read_only_status/`
+- one filesystem-backed AWS read-only adapter: `packages/adapters/filesystem/aws_read_only_status.py`
 
-- one AWS read-only status seam
-- one AWS narrow write seam
+Still frozen until the write slice is approved:
+
+- the exact AWS narrow write seam and adapter names
+- whether the write slice reuses shared provider state adapters or adds a dedicated write adapter
 - optional use of existing `local_audit` for accepted write-path audit emission
-
-The exact port and adapter names remain frozen until the AWS read-only slice is approved for build.
 
 ## First AWS narrow write candidate
 

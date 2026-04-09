@@ -10,6 +10,7 @@ Authority: [../../../docs/plans/authority_stack.md](../../../docs/plans/authorit
 - normalized shell result
 - serialized admin shell request and selection state for the internal admin band
 - shell-owned admin slice catalog and tool-registry gating rules
+- shell-owned admin tool launch decisions for the AWS read-only slice
 
 This package does not own:
 

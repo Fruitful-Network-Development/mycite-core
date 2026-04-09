@@ -68,6 +68,8 @@ def _build_home_status_surface(
     tool_entries = [entry.to_dict() for entry in build_admin_tool_registry_entries()]
     launchable_tool_slice_ids = [entry["slice_id"] for entry in tool_entries if entry["launchable"]]
     gated_tool_slice_ids = [entry["slice_id"] for entry in tool_entries if not entry["launchable"]]
+    available_tool_slices = [entry for entry in tool_entries if entry["launchable"]]
+    gated_tool_slices = [entry for entry in tool_entries if not entry["launchable"]]
 
     return {
         "schema": ADMIN_HOME_STATUS_SURFACE_SCHEMA,
@@ -75,7 +77,8 @@ def _build_home_status_surface(
         "current_admin_band": ADMIN_BAND0_NAME,
         "exposure_posture": ADMIN_EXPOSURE_INTERNAL_ONLY,
         "available_admin_slices": surface_catalog,
-        "gated_tool_slices": tool_entries,
+        "available_tool_slices": available_tool_slices,
+        "gated_tool_slices": gated_tool_slices,
         "runtime_health": {
             "entrypoint_status": "ready",
             "registry_status": "deny-by-default",

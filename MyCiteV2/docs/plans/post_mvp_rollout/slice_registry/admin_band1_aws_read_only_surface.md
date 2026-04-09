@@ -4,7 +4,7 @@
 
 ## Status
 
-`candidate`
+`implemented_trusted_tenant_read_only`
 
 ## Purpose
 
@@ -20,23 +20,22 @@ This restores real admin utility quickly by showing AWS mailbox readiness, newsl
 
 ## Exposure status
 
-`planned_not_approved_for_build`
+`trusted_tenant_read_only`
 
 ## Owning layers
 
-- future AWS tool semantics under `packages/tools/`
-- future AWS read-only provider seam once explicitly approved
+- `packages/modules/cross_domain/aws_operational_visibility/`
+- `packages/ports/aws_read_only_status/`
+- `packages/adapters/filesystem/aws_read_only_status.py`
 - `instances/_shared/runtime/` for one AWS read-only admin runtime entrypoint launched from the registry
 
 ## Required ports
 
-- one future AWS read-only status seam
-- exact port name is frozen until the slice is approved for build
+- `packages/ports/aws_read_only_status/`
 
 ## Required adapters
 
-- one future AWS read-only adapter family
-- exact adapter name is frozen until the slice is approved for build
+- `packages/adapters/filesystem/aws_read_only_status.py`
 
 ## Required runtime composition
 
@@ -58,6 +57,7 @@ This restores real admin utility quickly by showing AWS mailbox readiness, newsl
 - standalone `newsletter-admin` must not be present as a launchable surface
 - the slice must expose no writes and no secret-bearing values
 - Gmail verification state must remain evidence-based only
+- launch resolution must remain shell-owned via the registry
 
 ## Out of scope
 
@@ -89,5 +89,4 @@ Warnings:
 
 ## Frozen questions
 
-- the exact future AWS read-only seam names
 - whether dispatch-health visibility belongs in the first read-only slice or a later AWS follow-up slice

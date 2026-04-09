@@ -8,6 +8,7 @@ Implemented for the MVP:
 
 - one composition entrypoint for the `Shell Action To Local Audit` slice
 - one composition entrypoint for `Admin Band 0 Internal Admin Replacement`
+- one composition entrypoint for `admin_band1.aws_read_only_surface`
 
 Not implemented for the MVP:
 
