@@ -6,6 +6,8 @@ This ledger maps old portal workflow areas to post-MVP rollout intent.
 
 The unit of classification is workflow area, not file parity.
 
+Admin and provider replacement is broken out further in [admin_first/admin_first_parity_ledger.md](admin_first/admin_first_parity_ledger.md).
+
 | Workflow area | V1 evidence | Classification | Target band | V2 rebuild note |
 |---|---|---|---|---|
 | Portal home, service navigation, network cards, shell landing | `instances/_shared/runtime/flavors/fnd/app.py`, `instances/_shared/runtime/flavors/fnd/portal/core_services/runtime.py` | first-band target | Band 1 | Rebuild as a read-only home and tenant status surface. Do not recreate host-owned navigation logic. |

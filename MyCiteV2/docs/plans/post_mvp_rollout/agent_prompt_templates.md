@@ -105,3 +105,76 @@ Record pass or fail for each gate, list the blocking items, and state whether th
 - `implemented_internal`
 - `approved_for_exposure`
 ```
+
+## Template 5: Specify An Admin-First Slice
+
+```text
+Work only inside `MyCiteV2/`.
+
+Your task is to define or refine the admin-first slice file at `<slice_file>`.
+
+Read first:
+1. `MyCiteV2/docs/plans/authority_stack.md`
+2. `MyCiteV2/docs/plans/post_mvp_rollout/README.md`
+3. `MyCiteV2/docs/plans/post_mvp_rollout/admin_first/README.md`
+4. `MyCiteV2/docs/plans/post_mvp_rollout/admin_first/admin_first_rollout_band.md`
+5. `MyCiteV2/docs/plans/post_mvp_rollout/admin_first/frozen_decisions_admin_band.md`
+6. `MyCiteV2/docs/plans/post_mvp_rollout/admin_first/tool_registry_and_launcher_surface.md`
+7. `<slice_file>`
+8. `MyCiteV2/docs/testing/slice_gate_template.md`
+
+Do not implement code.
+Do not widen scope beyond the slice file and directly supporting planning docs.
+Return the exact files updated, the slice classification, and the next gate needed before implementation.
+```
+
+## Template 6: Implement An Approved Admin Shell Or Admin Surface Slice
+
+```text
+Work only inside `MyCiteV2/`.
+
+Implement only the approved admin-first slice documented in `<slice_file>`.
+
+Read first:
+1. `MyCiteV2/docs/plans/authority_stack.md`
+2. `MyCiteV2/docs/plans/post_mvp_rollout/admin_first/README.md`
+3. `MyCiteV2/docs/plans/post_mvp_rollout/admin_first/admin_first_rollout_band.md`
+4. `MyCiteV2/docs/plans/post_mvp_rollout/admin_first/frozen_decisions_admin_band.md`
+5. `MyCiteV2/docs/plans/post_mvp_rollout/admin_first/admin_shell_entry_requirements.md`
+6. `MyCiteV2/docs/plans/post_mvp_rollout/admin_first/admin_runtime_envelope.md`
+7. `<slice_file>`
+8. `MyCiteV2/docs/plans/post_mvp_rollout/runtime_entrypoints.md`
+9. `MyCiteV2/docs/testing/slice_gate_template.md`
+
+Touch only the owning layers named in the slice file.
+Do not touch unrelated worktree changes.
+Do not add tool execution or provider semantics unless the slice file explicitly calls for them.
+Return exact files changed, tests run, the runtime entrypoint touched, and whether the slice gate is now satisfied.
+```
+
+## Template 7: Implement An Approved Admin Tool Slice
+
+```text
+Work only inside `MyCiteV2/`.
+
+Implement only the approved admin-first tool slice documented in `<slice_file>`.
+
+Read first:
+1. `MyCiteV2/docs/plans/authority_stack.md`
+2. `MyCiteV2/docs/plans/post_mvp_rollout/admin_first/README.md`
+3. `MyCiteV2/docs/plans/post_mvp_rollout/admin_first/admin_first_rollout_band.md`
+4. `MyCiteV2/docs/plans/post_mvp_rollout/admin_first/frozen_decisions_admin_band.md`
+5. `MyCiteV2/docs/plans/post_mvp_rollout/admin_first/tool_registry_and_launcher_surface.md`
+6. `<tool_track_doc>`
+7. `<slice_file>`
+8. `MyCiteV2/docs/plans/post_mvp_rollout/runtime_entrypoints.md`
+9. `MyCiteV2/docs/testing/slice_gate_template.md`
+
+Implement only the bounded tool-bearing slice named in the slice file.
+Use:
+- `aws_first_surface.md` for AWS work
+- `maps_follow_on_surface.md` for Maps work
+- `agro_erp_follow_on_surface.md` for AGRO-ERP work
+Do not add direct tool routes, a second shell entry, or flavor-specific runtime code.
+Return exact files changed, tests run, the runtime entrypoint touched, and remaining blockers.
+```

@@ -6,7 +6,10 @@ Use this template before any post-MVP slice is implemented.
 
 ## Slice ID
 
-Use `band<number>.<short_name>`.
+Use one of:
+
+- `band<number>.<short_name>`
+- `admin_band<number>.<short_name>`
 
 ## Status
 
@@ -30,7 +33,10 @@ State why a client, tenant, or operator should care about this slice now.
 
 ## Rollout band
 
-Name exactly one band from [../portal_rollout_bands.md](../portal_rollout_bands.md).
+Name exactly one band from:
+
+- [../portal_rollout_bands.md](../portal_rollout_bands.md), or
+- [../admin_first/admin_first_rollout_band.md](../admin_first/admin_first_rollout_band.md)
 
 ## Exposure status
 

@@ -338,11 +338,3 @@ These are intentionally left open rather than solved in this pass:
 
 
 ---
-
-
-## CONSIDERATION & ASSSMENT
-
-HERE
-
-
----
