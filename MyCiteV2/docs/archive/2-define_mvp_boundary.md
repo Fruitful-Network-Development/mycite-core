@@ -256,7 +256,7 @@ Remaining ambiguities that should stay frozen for MVP are:
 
 ---
 
-## Considerations & Assessment
+## CONSIDERATION & ASSSMENT
 
 This is a good boundary.
 

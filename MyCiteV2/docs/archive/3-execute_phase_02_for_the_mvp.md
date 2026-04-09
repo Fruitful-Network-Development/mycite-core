@@ -233,9 +233,7 @@ These remain intentionally deferred to later phases:
 
 ---
 
-## Considerations & Assessment
-
-# 13. Phase 02 assessment
+## CONSIDERATION & ASSSMENT
 
 This looks correct and phase-appropriate.
 
