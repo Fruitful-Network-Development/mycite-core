@@ -18,6 +18,7 @@ This file catalogs runtime entrypoints and constrains how new ones are added.
 | Entrypoint id | Callable | Slice | Band | Exposure status | Inputs | Outputs |
 |---|---|---|---|---|---|---|
 | `mvp.shell_action_to_local_audit` | `instances._shared.runtime.mvp_runtime.run_shell_action_to_local_audit` | `Shell Action To Local Audit` | Band 0 | internal-only | serialized shell action payload, caller-supplied audit storage file | normalized subject, normalized shell verb, normalized shell state, persisted audit identifier, persisted audit timestamp |
+| `admin.shell_entry` | `instances._shared.runtime.admin_runtime.run_admin_shell_entry` | `admin_band0.shell_entry` | `Admin Band 0 Internal Admin Replacement` | internal-only | serialized admin shell request payload, optional caller-supplied audit storage file | admin runtime envelope with normalized tenant scope, shell selection state, home/status or registry surface payload, and gated-slice error handling |
 
 ## Required catalog fields for future entrypoints
 

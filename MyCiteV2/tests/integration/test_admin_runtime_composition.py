@@ -1,0 +1,136 @@
+from __future__ import annotations
+
+import json
+import sys
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from MyCiteV2.instances._shared.runtime.admin_runtime import (
+    ADMIN_HOME_STATUS_SURFACE_SCHEMA,
+    ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA,
+    run_admin_shell_entry,
+)
+from MyCiteV2.packages.state_machine.hanus_shell import (
+    ADMIN_BAND0_NAME,
+    ADMIN_ENTRYPOINT_ID,
+    ADMIN_HOME_STATUS_SLICE_ID,
+    ADMIN_SHELL_REQUEST_SCHEMA,
+    ADMIN_TOOL_REGISTRY_SLICE_ID,
+    AWS_READ_ONLY_SLICE_ID,
+)
+
+
+class AdminRuntimeCompositionTests(unittest.TestCase):
+    def test_default_admin_shell_entry_returns_internal_home_status(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            audit_storage_file = Path(temp_dir) / "local_audit.ndjson"
+
+            result = run_admin_shell_entry(
+                {
+                    "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+                    "requested_slice_id": ADMIN_HOME_STATUS_SLICE_ID,
+                    "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+                },
+                audit_storage_file=audit_storage_file,
+            )
+
+            self.assertEqual(result["schema"], ADMIN_RUNTIME_ENVELOPE_SCHEMA)
+            self.assertEqual(result["admin_band"], ADMIN_BAND0_NAME)
+            self.assertEqual(result["exposure_status"], "internal-only")
+            self.assertEqual(result["entrypoint_id"], ADMIN_ENTRYPOINT_ID)
+            self.assertEqual(result["slice_id"], ADMIN_HOME_STATUS_SLICE_ID)
+            self.assertEqual(result["requested_slice_id"], ADMIN_HOME_STATUS_SLICE_ID)
+            self.assertEqual(result["read_write_posture"], "read-only")
+            self.assertEqual(result["tenant_scope"], {"scope_id": "internal-admin", "audience": "internal"})
+            self.assertIsNone(result["error"])
+            self.assertEqual(result["warnings"], [])
+            self.assertEqual(result["surface_payload"]["schema"], ADMIN_HOME_STATUS_SURFACE_SCHEMA)
+            self.assertEqual(result["surface_payload"]["active_surface_id"], ADMIN_HOME_STATUS_SLICE_ID)
+            self.assertEqual(result["surface_payload"]["current_admin_band"], ADMIN_BAND0_NAME)
+            self.assertEqual(
+                result["surface_payload"]["runtime_health"]["audit_log"],
+                {
+                    "status": "configured",
+                    "record_readback": "ok",
+                    "storage_state": "missing_or_empty",
+                },
+            )
+            self.assertFalse(audit_storage_file.exists())
+
+            available_slice_ids = [entry["slice_id"] for entry in result["surface_payload"]["available_admin_slices"]]
+            self.assertEqual(available_slice_ids, [ADMIN_HOME_STATUS_SLICE_ID, ADMIN_TOOL_REGISTRY_SLICE_ID])
+
+            gated_tool_entries = result["surface_payload"]["gated_tool_slices"]
+            self.assertEqual(len(gated_tool_entries), 1)
+            self.assertEqual(gated_tool_entries[0]["tool_id"], "aws")
+            self.assertEqual(gated_tool_entries[0]["slice_id"], AWS_READ_ONLY_SLICE_ID)
+            self.assertFalse(gated_tool_entries[0]["launchable"])
+
+    def test_tool_registry_surface_is_catalog_driven_and_deny_by_default(self) -> None:
+        result = run_admin_shell_entry(
+            {
+                "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+                "requested_slice_id": ADMIN_TOOL_REGISTRY_SLICE_ID,
+                "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+            }
+        )
+
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["slice_id"], ADMIN_TOOL_REGISTRY_SLICE_ID)
+        self.assertEqual(result["surface_payload"]["schema"], ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA)
+        self.assertEqual(result["surface_payload"]["registry_owner"], "shell")
+        self.assertEqual(result["surface_payload"]["default_posture"], "deny-by-default")
+        self.assertEqual(result["surface_payload"]["launchable_tool_slice_ids"], [])
+        self.assertEqual(result["surface_payload"]["gated_tool_slice_ids"], [AWS_READ_ONLY_SLICE_ID])
+        self.assertEqual(len(result["surface_payload"]["tool_entries"]), 1)
+        self.assertNotIn("newsletter-admin", json.dumps(result["surface_payload"], sort_keys=True))
+
+    def test_requested_aws_slice_is_gated_and_does_not_launch(self) -> None:
+        result = run_admin_shell_entry(
+            {
+                "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+                "requested_slice_id": AWS_READ_ONLY_SLICE_ID,
+                "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+            }
+        )
+
+        self.assertEqual(result["slice_id"], ADMIN_HOME_STATUS_SLICE_ID)
+        self.assertEqual(result["requested_slice_id"], AWS_READ_ONLY_SLICE_ID)
+        self.assertEqual(
+            result["error"],
+            {
+                "code": "slice_gated",
+                "message": "Admin Band 0 must remain stable before the AWS read-only slice can launch.",
+            },
+        )
+        self.assertEqual(result["warnings"], [result["error"]["message"]])
+        self.assertEqual(result["surface_payload"]["schema"], ADMIN_HOME_STATUS_SURFACE_SCHEMA)
+
+    def test_non_internal_request_is_denied_without_surface_payload(self) -> None:
+        result = run_admin_shell_entry(
+            {
+                "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+                "requested_slice_id": ADMIN_HOME_STATUS_SLICE_ID,
+                "tenant_scope": {"scope_id": "tenant-a", "audience": "trusted-tenant"},
+            }
+        )
+
+        self.assertEqual(result["slice_id"], ADMIN_HOME_STATUS_SLICE_ID)
+        self.assertEqual(
+            result["error"],
+            {
+                "code": "audience_not_allowed",
+                "message": "Admin Band 0 is internal-only and rejects non-internal audiences.",
+            },
+        )
+        self.assertIsNone(result["surface_payload"])
+
+
+if __name__ == "__main__":
+    unittest.main()

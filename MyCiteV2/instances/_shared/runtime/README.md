@@ -7,10 +7,11 @@ Authority: [../../../docs/plans/authority_stack.md](../../../docs/plans/authorit
 Implemented for the MVP:
 
 - one composition entrypoint for the `Shell Action To Local Audit` slice
+- one composition entrypoint for `Admin Band 0 Internal Admin Replacement`
 
 Not implemented for the MVP:
 
 - flavor-specific runtime composition
 - tools
 - sandboxes
-- additional runtime paths
+- provider-admin replacement slices beyond the internal admin band
