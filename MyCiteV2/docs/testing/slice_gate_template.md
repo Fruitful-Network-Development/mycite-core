@@ -49,6 +49,14 @@ Use this checklist when deciding whether a slice is ready for implementation or 
 - [ ] Band 2 slice is the only writable slice under active rollout
 - [ ] Band 3 rollout has separate explicit approval
 
+## Admin/tool-bearing gate
+
+- [ ] If this is an admin-first slice, the admin-first ordering is respected
+- [ ] The admin shell remains the only stable landing surface
+- [ ] The tool registry/launcher owns discoverability and launch resolution
+- [ ] No direct tool route bypasses the shell
+- [ ] AWS precedes Maps and Maps precedes AGRO-ERP where relevant
+
 ## Decision
 
 - Result: `approved_for_build` / `blocked` / `approved_for_exposure`

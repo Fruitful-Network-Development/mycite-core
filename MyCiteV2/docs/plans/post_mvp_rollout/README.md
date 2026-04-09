@@ -16,6 +16,7 @@ Use it after the MVP is proven and before any new client-visible slice is specif
 6. Read [runtime_entrypoints.md](runtime_entrypoints.md).
 7. Read [port_adapter_ownership_matrix.md](port_adapter_ownership_matrix.md).
 8. Use [agent_prompt_templates.md](agent_prompt_templates.md) when handing work to future agents.
+9. When the goal is operational replacement of the old admin portal or tool-bearing rollout, switch to [admin_first/README.md](admin_first/README.md).
 
 ## Operating rules
 
@@ -24,6 +25,7 @@ Use it after the MVP is proven and before any new client-visible slice is specif
 - Runtime entrypoints must remain composition-only. See [runtime_entrypoints.md](runtime_entrypoints.md).
 - Read-only rollout bands come before writable rollout bands.
 - V1 workflow evidence may inform prioritization, but it may not define v2 structure.
+- Admin-first operational replacement and tool-bearing rollout are governed by [admin_first/README.md](admin_first/README.md). That track nests under, and may not bypass, the global rollout bands.
 
 ## Current band status
 

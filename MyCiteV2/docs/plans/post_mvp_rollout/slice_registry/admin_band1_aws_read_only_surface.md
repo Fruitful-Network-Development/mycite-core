@@ -1,0 +1,93 @@
+# Slice ID
+
+`admin_band1.aws_read_only_surface`
+
+## Status
+
+`candidate`
+
+## Purpose
+
+Provide the first trusted-tenant-safe tool-bearing surface: a read-only AWS operational visibility slice launched through the admin shell and registry.
+
+## Client value
+
+This restores real admin utility quickly by showing AWS mailbox readiness, newsletter operational posture, and handoff status without introducing writes.
+
+## Rollout band
+
+`Admin Band 1 Trusted-Tenant AWS Read-Only`
+
+## Exposure status
+
+`planned_not_approved_for_build`
+
+## Owning layers
+
+- future AWS tool semantics under `packages/tools/`
+- future AWS read-only provider seam once explicitly approved
+- `instances/_shared/runtime/` for one AWS read-only admin runtime entrypoint launched from the registry
+
+## Required ports
+
+- one future AWS read-only status seam
+- exact port name is frozen until the slice is approved for build
+
+## Required adapters
+
+- one future AWS read-only adapter family
+- exact adapter name is frozen until the slice is approved for build
+
+## Required runtime composition
+
+- one shared runtime entrypoint: `admin.aws.read_only`
+- launchable only through the admin shell registry
+
+## Required tests
+
+- tool-surface unit loop for AWS read-only semantics
+- contract loop for the approved AWS read-only seam
+- adapter loop for the approved AWS read-only adapter
+- integration loop for admin-shell-to-AWS-read-only launch
+- architecture boundary loop proving the shell still owns discoverability and launch legality
+- slice gate checklist from [../../../testing/slice_gate_template.md](../../../testing/slice_gate_template.md)
+
+## Client exposure gates
+
+- `Admin Band 0` slices must already be stable
+- standalone `newsletter-admin` must not be present as a launchable surface
+- the slice must expose no writes and no secret-bearing values
+- Gmail verification state must remain evidence-based only
+
+## Out of scope
+
+- provisioning writes
+- manual newsletter send
+- PayPal
+- analytics
+- Maps
+- AGRO-ERP
+- raw credential display
+
+## V1 evidence and drift warnings
+
+- `instances/_shared/runtime/flavors/fnd/portal/api/admin_integrations.py`
+- `packages/tools/aws_csm/*`
+- `docs/plans/tool_dev.md`
+- `docs/plans/news_letter_workflow_correction.md`
+
+Warnings:
+
+- do not recreate a mixed AWS plus PayPal plus newsletter dashboard
+- do not let AWS become the shell entry by convenience
+- do not let compatibility-read progeny newsletter fields override the canonical newsletter operational profile
+
+## Implementation ordering
+
+- follows `admin_band0.shell_entry`, `admin_band0.home_status`, and `admin_band0.tool_registry`
+- first real tool-bearing slice
+
+## Frozen questions
+
+- the exact future AWS read-only seam names
+- whether dispatch-health visibility belongs in the first read-only slice or a later AWS follow-up slice

@@ -17,6 +17,7 @@ This file records what is deliberately frozen so future agents do not widen scop
   1. `band1.portal_home_tenant_status`
   2. one of `band1.audit_activity_visibility` or `band1.operational_status_surface`
   3. Band 2 writable work only after a Band 1 slice is safely exposed
+- Operational replacement of the old admin portal follows the nested admin-first sequence in `post_mvp_rollout/admin_first/`. That sequence does not authorize broader client rollout ahead of the parent global band.
 - No tool or sandbox work is part of the current band.
 - No flavor-specific runtime expansion is part of the current band.
 - No second public runtime entrypoint may be added without a slice registry entry and runtime catalog update.

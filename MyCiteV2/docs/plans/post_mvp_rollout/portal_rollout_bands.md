@@ -18,6 +18,16 @@ This file defines the only approved exposure progression for post-MVP portal wor
 - Runtime composition remains thin in every band.
 - Tools and sandboxes are not assumed to be part of the next band.
 
+## Admin-first overlay
+
+Operational replacement of the old admin portal uses the nested admin-first track in [admin_first/admin_first_rollout_band.md](admin_first/admin_first_rollout_band.md).
+
+- `Admin Band 0` nests under `Band 0 Internal Only`.
+- `Admin Band 1` nests under `Band 1 Trusted-Tenant Read-Only`.
+- `Admin Band 2` nests under `Band 2 Trusted-Tenant Writable Slice`.
+
+That track does not bypass the global bands. It specifies the order for admin shell, registry, AWS, Maps, and AGRO work inside them.
+
 ## Band 0: Internal Only
 
 Audience:

@@ -61,3 +61,11 @@ Use [../../testing/slice_gate_template.md](../../testing/slice_gate_template.md)
 
 - Not approved in the current operating band.
 - Requires an explicit future decision after Band 1 and Band 2 success.
+
+### Admin-first tool-bearing addition
+
+- `Admin Band 0` shell entry, runtime envelope, home/status surface, and tool registry/launcher must already be stable.
+- The tool-bearing slice must launch through the shell-owned registry and a cataloged runtime entrypoint.
+- AWS must be the first trusted-tenant tool-bearing slice.
+- Maps may not start before AWS is stable.
+- AGRO-ERP may not start before Maps is stable.

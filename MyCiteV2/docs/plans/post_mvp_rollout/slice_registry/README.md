@@ -21,7 +21,8 @@ This registry is the mandatory staging surface for post-MVP slice work.
 
 ## Naming rule
 
-- Use `band<number>_<short_slice_name>.md`.
+- Use `band<number>_<short_slice_name>.md` for the general rollout track.
+- Use `admin_band<number>_<short_slice_name>.md` for the admin-first track.
 - The filename should describe the rollout band and the user-facing slice.
 
 ## Required process
@@ -50,3 +51,8 @@ Every slice file must let a future agent answer, without prior chat context:
 - [band1_audit_activity_visibility.md](band1_audit_activity_visibility.md)
 - [band1_operational_status_surface.md](band1_operational_status_surface.md)
 - [band2_profile_basics_write_surface.md](band2_profile_basics_write_surface.md)
+- [admin_band0_shell_entry.md](admin_band0_shell_entry.md)
+- [admin_band0_home_status.md](admin_band0_home_status.md)
+- [admin_band0_tool_registry.md](admin_band0_tool_registry.md)
+- [admin_band1_aws_read_only_surface.md](admin_band1_aws_read_only_surface.md)
+- [admin_band2_aws_narrow_write_surface.md](admin_band2_aws_narrow_write_surface.md)
