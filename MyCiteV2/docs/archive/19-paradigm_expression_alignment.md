@@ -148,3 +148,61 @@ Here is a concise report aligned with [19-paradigm_expression_alignment.md](file
 **Three levels of truth (as requested):** shell contract = state machine + runtime (`shell_composition`, `shell_chrome`, legality); rendering = template + `v2_portal_shell.js` + `portal.js` presentation hooks; visual parity = V1 CSS/classes unchanged in spirit.
 
 ---
+
+## PROMPT:
+
+I am still getting a view of the portal tht has no chnages.
+
+---
+
+
+## OUTPUT
+
+
+## What you’re seeing vs this repo
+
+The page in your screenshot matches **older** HTML, not what is in `/srv/repo/mycite-core` now:
+
+| Your screenshot | Current `portal.html` in repo |
+|-----------------|----------------------------------|
+| Title line **“MyCite V2”** | **“MyCite”** in the menubar |
+| Static **“V2 shell”** + long paragraph in the control panel | **“Context”** + short **“Loading shell regions…”** + **build id** |
+| **“Portal: V2 native”** (human-readable) | **“Portal: v2_native”** (literal `host_shape`) |
+
+So the live host is almost certainly still running an **old build** (old wheel, old checkout, or a process that was never restarted after deploy).
+
+The **unstyled** look means **`/portal/static/portal.css` is not being applied** (404 from wrong upstream, blocked load, or HTML served from something that is not the V2 Flask app).
+
+## What we changed in-repo (so you can verify after deploy)
+
+1. **`portal.html`**  
+   - Assets use **fixed paths**: `/portal/static/portal.css`, `/portal/static/portal.js`, `/portal/static/v2_portal_shell.js`, logo SVG.  
+   - HTML comment: `shell-template: v2-composition build=…`  
+   - Activity footer line: **`build: …`** (from env, default **`not-set`** until you set it).
+
+2. **`app.py`**  
+   - **`MYCITE_V2_PORTAL_BUILD_ID`** passed into the template (set in systemd to a git SHA or release tag).
+
+3. **`v2_portal_shell.js`**  
+   - If **`POST /portal/api/v2/admin/shell`** fails (non-JSON, 401, 502, etc.), the UI shows **HTTP status + a snippet of the body** instead of hanging on “Loading…”.
+
+## What you should do on the server
+
+1. **Deploy** this `mycite-core` revision and **restart** the V2 portal unit (e.g. `mycite-v2-fnd-portal.service` or whatever runs gunicorn/flask on **6101**).
+
+2. **Set a build id** (optional but useful):
+   - `Environment=MYCITE_V2_PORTAL_BUILD_ID=2026-04-10-1` (or git SHA) in the unit file, then `daemon-reload` + restart.
+
+3. **Confirm nginx** (on the box, not only in git):
+   - `location ^~ /portal` → **6101** (FND) / **6203** (TFF cookie), as in your `srv-infra` snippet.
+
+4. **Smoke checks** (after deploy):
+   - `curl -sI https://portal.fruitfulnetworkdevelopment.com/portal/static/portal.css` → **200**
+   - Open `/portal` → **View source** and search for **`shell-template: v2-composition`** and **`build:`** in the footer. If those are missing, you are **not** on this template.
+
+5. In the browser **Network** tab: if **`v2_portal_shell.js`** or **`portal.css`** is red, or **`admin/shell`** returns **401/403/502**, fix auth/upstream first; the new JS will surface that in the page text.
+
+Until the process behind **`portal.fruitfulnetworkdevelopment.com/portal`** serves this template and static files from the V2 app, the UI will **not** change no matter what is in the git repo alone.
+
+---
+

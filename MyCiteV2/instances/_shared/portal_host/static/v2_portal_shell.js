@@ -43,8 +43,19 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then(function (r) {
-      return r.json().then(function (j) {
-        return { ok: r.ok, status: r.status, json: j };
+      return r.text().then(function (text) {
+        var j = null;
+        try {
+          j = text ? JSON.parse(text) : null;
+        } catch (_) {
+          j = null;
+        }
+        return {
+          ok: r.ok,
+          status: r.status,
+          json: j,
+          bodySnippet: text ? text.slice(0, 280) : "",
+        };
       });
     });
   }
@@ -440,8 +451,17 @@
     lastShellRequest = requestBody;
     return postJson(SHELL_URL, requestBody).then(function (r) {
       var env = r.json;
-      if (!env || env.schema !== RUNTIME_ENVELOPE_SCHEMA) {
-        showFatal("Invalid or missing runtime envelope from shell route.");
+      if (!r.ok || !env) {
+        showFatal(
+          "Shell POST failed (HTTP " +
+            r.status +
+            "). Check auth, nginx upstream (6101), and service logs. " +
+            (r.bodySnippet ? "Body: " + r.bodySnippet : "")
+        );
+        return;
+      }
+      if (env.schema !== RUNTIME_ENVELOPE_SCHEMA) {
+        showFatal("Invalid runtime envelope schema from shell route.");
         return;
       }
       var comp = env.shell_composition;

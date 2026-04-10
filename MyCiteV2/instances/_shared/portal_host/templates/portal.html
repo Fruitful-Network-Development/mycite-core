@@ -31,7 +31,8 @@
     .pagehead__sub { font-size: 13px; opacity: 0.75; margin-top: 4px; }
     .viewport { flex: 1; overflow: auto; }
   </style>
-  <link rel="stylesheet" href="{{ url_for('static', filename='portal.css') }}" />
+  {# Absolute path avoids SCRIPT_NAME mismatches behind some reverse proxies; must match Flask static_url_path. #}
+  <link rel="stylesheet" href="/portal/static/portal.css" />
 </head>
 <body
   class="v2-native-portal"
@@ -40,7 +41,13 @@
   data-host-shape="{{ host_shape }}"
   data-analytics-domain="{{ analytics_domain }}"
 >
+  <!-- shell-template: v2-composition build={{ portal_build_id }} -->
   <script type="application/json" id="v2-bootstrap-shell-request">{{ bootstrap_shell_request | tojson }}</script>
+  <noscript>
+    <p style="margin:12px;padding:12px;background:#fff3cd;border:1px solid #ffc107;font-family:sans-serif">
+      This portal requires JavaScript. The shell loads composition from <code>POST /portal/api/v2/admin/shell</code>.
+    </p>
+  </noscript>
   <div
     class="ide-shell"
     data-active-service="system"
@@ -79,7 +86,7 @@
     <div class="ide-body">
       <aside class="ide-activitybar" aria-label="Activity bar">
         <a class="ide-logo" href="/portal/system" aria-label="Go to SYSTEM">
-          <img src="{{ url_for('static', filename='icons/logos/fnd.svg') }}" alt="" width="28" height="28" />
+          <img src="/portal/static/icons/logos/fnd.svg" alt="" width="28" height="28" />
         </a>
         <nav id="v2-activity-nav" class="ide-activitynav" aria-label="Primary navigation"></nav>
         <div class="ide-activityfooter">
@@ -87,6 +94,7 @@
           <div class="ide-sessionLine ide-sessionLine--dim">tenant: {{ tenant_id }}</div>
           <div class="ide-sessionLine ide-sessionLine--dim">msn_id: (unset)</div>
           <div class="ide-sessionLine ide-sessionLine--dim">signed in: (unknown)</div>
+          <div class="ide-sessionLine ide-sessionLine--dim">build: {{ portal_build_id }}</div>
           <a class="ide-sessionAction" href="/oauth2/sign_in?rd=%2Fportal%2Fsystem">Switch Active Portal</a>
           <a class="ide-sessionAction" href="/oauth2/sign_out?rd=%2Foauth2%2Fsign_in%3Frd%3D%252Fportal%252Fsystem">Sign Out</a>
         </div>
@@ -94,10 +102,10 @@
 
       <aside id="portalControlPanel" class="ide-controlpanel" data-shell-region="control-panel" aria-label="Control panel" aria-hidden="false">
         <section class="ide-controlpanel__section">
-          <header class="ide-controlpanel__title">V2 shell</header>
-          <p class="ide-controlpanel__empty" style="margin:0;font-size:13px;line-height:1.45">
-            Navigation and tool launchers are driven by <code>POST /portal/api/v2/admin/shell</code>.
-            AWS tools require a trusted-tenant audience and the live AWS profile file.
+          <header class="ide-controlpanel__title">Context</header>
+          <p id="v2-control-panel-placeholder" class="ide-controlpanel__empty" style="margin:0;font-size:13px;line-height:1.45">
+            Loading shell regions from the runtime… If this text stays visible, the shell POST failed or JavaScript is blocked.
+            Build <code>{{ portal_build_id }}</code>.
           </p>
         </section>
       </aside>
@@ -152,7 +160,7 @@
     </div>
   </div>
 
-  <script src="{{ url_for('static', filename='portal.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='v2_portal_shell.js') }}" defer></script>
+  <script src="/portal/static/portal.js" defer></script>
+  <script src="/portal/static/v2_portal_shell.js" defer></script>
 </body>
 </html>
