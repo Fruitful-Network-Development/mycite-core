@@ -7,6 +7,20 @@
   const SHELL_URL = "/portal/api/v2/admin/shell";
   const RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.admin.runtime.envelope.v1";
   let lastShellRequest = null;
+  let lastComposition = null;
+
+  function cloneRequestWithoutChrome(req) {
+    var next = JSON.parse(JSON.stringify(req || {}));
+    delete next.shell_chrome;
+    return next;
+  }
+
+  function postShellChrome(chromePartial) {
+    if (!lastShellRequest) return Promise.resolve();
+    var next = JSON.parse(JSON.stringify(lastShellRequest));
+    next.shell_chrome = Object.assign({}, next.shell_chrome || {}, chromePartial);
+    return loadShell(next);
+  }
 
   function qs(sel, root) {
     return (root || document).querySelector(sel);
@@ -226,8 +240,56 @@
       return;
     }
     if (kind === "datum_workbench") {
+      var summ = wb.summary || {};
+      var warns = wb.warnings || [];
+      var warnBlock =
+        warns.length > 0
+          ? '<div class="v2-card" style="margin-bottom:12px"><h3>Warnings</h3><ul>' +
+            warns.map(function (w) {
+              return "<li>" + escapeHtml(String(w)) + "</li>";
+            }).join("") +
+            "</ul></div>"
+          : "";
+      var meta =
+        '<div class="v2-card-grid">' +
+        '<article class="v2-card"><h3>Rows</h3><p>' +
+        escapeHtml(String(summ.row_count != null ? summ.row_count : "—")) +
+        "</p></article>" +
+        '<article class="v2-card"><h3>OK</h3><p>' +
+        escapeHtml(String(summ.ok != null ? summ.ok : "—")) +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Tenant</h3><p>' +
+        escapeHtml(String(summ.tenant_id || "—")) +
+        "</p></article></div>";
+      var preview = wb.rows_preview || [];
+      var table =
+        "<table class=\"v2-table\"><thead><tr><th>Resource</th><th>Subject</th><th>Relation</th><th>Object</th></tr></thead><tbody>" +
+        preview
+          .map(function (row) {
+            return (
+              "<tr><td><code>" +
+              escapeHtml(String((row && row.resource_id) || "")) +
+              "</code></td><td>" +
+              escapeHtml(String((row && row.subject_ref) || "")) +
+              "</td><td>" +
+              escapeHtml(String((row && row.relation) || "")) +
+              "</td><td>" +
+              escapeHtml(String((row && row.object_ref) || "")) +
+              "</td></tr>"
+            );
+          })
+          .join("") +
+        "</tbody></table>";
+      body.innerHTML = warnBlock + meta + table;
+      return;
+    }
+    if (kind === "tool_collapsed_inspector") {
       body.innerHTML =
-        '<pre class="v2-json-panel">' + escapeHtml(JSON.stringify(wb.document || {}, null, 2)) + "</pre>";
+        '<div class="v2-card"><h3>' +
+        escapeHtml(wb.title || "Tool") +
+        "</h3><p>" +
+        escapeHtml(wb.subtitle || "") +
+        "</p></div>";
       return;
     }
     if (kind === "tool_placeholder") {
@@ -255,6 +317,61 @@
     if (kind === "json_document") {
       content.innerHTML =
         '<pre class="v2-json-panel">' + escapeHtml(JSON.stringify(region.document || {}, null, 2)) + "</pre>";
+      return;
+    }
+    if (kind === "aws_read_only_surface") {
+      var ps = region.profile_summary || {};
+      var doms = (region.allowed_send_domains || []).join(", ");
+      var cw = (region.compatibility_warnings || [])
+        .map(function (w) {
+          return "<li>" + escapeHtml(String(w)) + "</li>";
+        })
+        .join("");
+      content.innerHTML =
+        '<dl class="v2-surface-dl">' +
+        "<dt>Tenant scope</dt><dd>" +
+        escapeHtml(region.tenant_scope_id || "—") +
+        "</dd>" +
+        "<dt>Mailbox readiness</dt><dd>" +
+        escapeHtml(region.mailbox_readiness || "—") +
+        "</dd>" +
+        "<dt>SMTP</dt><dd>" +
+        escapeHtml(region.smtp_state || "—") +
+        "</dd>" +
+        "<dt>Gmail</dt><dd>" +
+        escapeHtml(region.gmail_state || "—") +
+        "</dd>" +
+        "<dt>Verified sender</dt><dd><code>" +
+        escapeHtml(region.selected_verified_sender || "") +
+        "</code></dd>" +
+        "<dt>Allowed send domains</dt><dd>" +
+        escapeHtml(doms || "—") +
+        "</dd>" +
+        "<dt>Profile</dt><dd>" +
+        escapeHtml(ps.profile_id || "—") +
+        " · " +
+        escapeHtml(ps.domain || "—") +
+        "</dd>" +
+        "<dt>Write capability</dt><dd>" +
+        escapeHtml(region.write_capability || "—") +
+        "</dd></dl>" +
+        (cw ? "<section class=\"v2-card\" style=\"margin-top:12px\"><h3>Compatibility</h3><ul>" + cw + "</ul></section>" : "");
+      return;
+    }
+    if (kind === "aws_tool_error") {
+      var wn = (region.warnings || [])
+        .map(function (w) {
+          return "<li>" + escapeHtml(String(w)) + "</li>";
+        })
+        .join("");
+      content.innerHTML =
+        '<div class="v2-card" style="border-color:#c5221f"><h3>' +
+        escapeHtml(region.error_code || "error") +
+        "</h3><p>" +
+        escapeHtml(region.error_message || "") +
+        "</p>" +
+        (wn ? "<ul>" + wn + "</ul>" : "") +
+        "</div>";
       return;
     }
     if (kind === "narrow_write_form") {
@@ -296,7 +413,7 @@
           out.textContent = "…";
           postJson(contract.route || "/portal/api/v2/admin/aws/narrow-write", body).then(function (res) {
             out.textContent = JSON.stringify(res.json, null, 2);
-            if (lastShellRequest) loadShell(lastShellRequest);
+            if (lastShellRequest) loadShell(cloneRequestWithoutChrome(lastShellRequest));
           });
         });
       }
@@ -333,6 +450,10 @@
         return;
       }
       applyChrome(comp);
+      lastComposition = comp;
+      if (window.PortalShell && typeof window.PortalShell.rebalanceWorkbench === "function") {
+        window.PortalShell.rebalanceWorkbench();
+      }
       var act = comp.regions.activity_bar || {};
       renderActivityItems(act.items);
       renderControlPanel(comp.regions.control_panel);
@@ -352,20 +473,13 @@
       showFatal("Shell request failed.");
     });
 
-    var closeBtn = qs("[data-inspector-close]");
-    if (closeBtn) {
-      closeBtn.addEventListener("click", function () {
-        var shell = qs(".ide-shell");
-        var inspector = document.getElementById("portalInspector");
-        if (inspector) {
-          inspector.classList.add("is-collapsed");
-          inspector.setAttribute("aria-hidden", "true");
-        }
-        if (shell) {
-          shell.setAttribute("data-inspector-collapsed", "true");
-        }
-      });
-    }
+    document.addEventListener("mycite:v2:inspector-dismiss-request", function () {
+      postShellChrome({ inspector_collapsed: true });
+    });
+    document.addEventListener("mycite:v2:inspector-toggle-request", function () {
+      var collapsed = !!(lastComposition && lastComposition.inspector_collapsed);
+      postShellChrome({ inspector_collapsed: !collapsed });
+    });
   }
 
   if (document.readyState === "loading") {

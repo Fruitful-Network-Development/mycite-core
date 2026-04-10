@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from MyCiteV2.packages.adapters.filesystem import (
     FilesystemAuditLogAdapter,
@@ -23,6 +23,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_SLICE_ID,
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
+    AdminShellChrome,
     AdminShellRequest,
     build_admin_surface_catalog,
     build_admin_tool_registry_entries,
@@ -275,7 +276,6 @@ def _workbench_home(*, surface_payload: dict[str, Any] | None) -> dict[str, Any]
         "subtitle": "Band 0 internal shell projection",
         "visible": True,
         "blocks": blocks,
-        "surface_echo": sp,
     }
 
 
@@ -293,13 +293,23 @@ def _workbench_registry(*, surface_payload: dict[str, Any] | None) -> dict[str, 
 
 
 def _workbench_datum(*, datum_dict: dict[str, Any]) -> dict[str, Any]:
+    rows = datum_dict.get("rows") or []
+    preview: list[Any] = list(cast(list[Any], rows)[:40]) if isinstance(rows, list) else []
     return {
         "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "datum_workbench",
         "title": "Resource workbench",
-        "subtitle": f"{datum_dict.get('row_count', '—')} rows",
+        "subtitle": f"{datum_dict.get('row_count', '—')} rows · tenant {_as_text(datum_dict.get('tenant_id')) or '—'}",
         "visible": True,
-        "document": datum_dict,
+        "summary": {
+            "ok": datum_dict.get("ok"),
+            "row_count": datum_dict.get("row_count"),
+            "tenant_id": datum_dict.get("tenant_id"),
+            "materialization_status": datum_dict.get("materialization_status"),
+            "source_files": datum_dict.get("source_files"),
+        },
+        "warnings": list(datum_dict.get("warnings") or []),
+        "rows_preview": preview,
     }
 
 
@@ -319,6 +329,66 @@ def _inspector_json(*, title: str, document: dict[str, Any] | None) -> dict[str,
         "kind": "json_document",
         "document": document or {},
     }
+
+
+def _inspector_aws_read_only_surface(*, surface: dict[str, Any]) -> dict[str, Any]:
+    profile = surface.get("canonical_newsletter_operational_profile") or {}
+    return {
+        "schema": ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
+        "title": "AWS read-only",
+        "kind": "aws_read_only_surface",
+        "tenant_scope_id": _as_text(surface.get("tenant_scope_id")),
+        "mailbox_readiness": _as_text(surface.get("mailbox_readiness")),
+        "smtp_state": _as_text(surface.get("smtp_state")),
+        "gmail_state": _as_text(surface.get("gmail_state")),
+        "verified_evidence_state": _as_text(surface.get("verified_evidence_state")),
+        "selected_verified_sender": _as_text(surface.get("selected_verified_sender")),
+        "allowed_send_domains": list(surface.get("allowed_send_domains") or []),
+        "write_capability": _as_text(surface.get("write_capability")),
+        "profile_summary": {
+            "profile_id": _as_text(profile.get("profile_id")),
+            "domain": _as_text(profile.get("domain")),
+            "list_address": _as_text(profile.get("list_address")),
+            "delivery_mode": _as_text(profile.get("delivery_mode")),
+        },
+        "compatibility_warnings": list(surface.get("compatibility_warnings") or []),
+        "inbound_capture": surface.get("inbound_capture"),
+        "dispatch_health": surface.get("dispatch_health"),
+    }
+
+
+def _inspector_aws_tool_error(*, error: dict[str, Any], warnings: list[str]) -> dict[str, Any]:
+    return {
+        "schema": ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
+        "title": "AWS tool",
+        "kind": "aws_tool_error",
+        "error_code": _as_text(error.get("code")),
+        "error_message": _as_text(error.get("message")),
+        "warnings": list(warnings),
+    }
+
+
+def _apply_shell_chrome_to_composition(composition: dict[str, Any], chrome: AdminShellChrome) -> None:
+    echo = chrome.to_dict()
+    if echo:
+        composition["requested_shell_chrome"] = echo
+    if chrome.control_panel_collapsed is not None:
+        composition["control_panel_collapsed"] = bool(chrome.control_panel_collapsed)
+    if chrome.inspector_collapsed is None:
+        return
+    composition["inspector_collapsed"] = bool(chrome.inspector_collapsed)
+    if composition.get("composition_mode") == "tool" and chrome.inspector_collapsed:
+        composition["foreground_shell_region"] = "center-workbench"
+        wb = composition["regions"].get("workbench")
+        if isinstance(wb, dict) and wb.get("visible") is False:
+            composition["regions"]["workbench"] = {
+                **wb,
+                "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
+                "visible": True,
+                "kind": "tool_collapsed_inspector",
+                "title": wb.get("title") or "Tool",
+                "subtitle": "Interface panel dismissed in shell state. Re-open via the menu bar or repeat the shell request without collapsing shell_chrome.",
+            }
 
 
 def _inspector_narrow_write_form(
@@ -478,7 +548,9 @@ def _build_regions_and_surface(
         err = aws_env.get("error")
         if err:
             wb = _workbench_error(title="AWS (read-only)", message=_as_text((err or {}).get("message")) or "AWS surface failed.")
-            ins = _inspector_json(title="AWS read-only", document={"error": err, "envelope": {k: aws_env[k] for k in ("warnings", "shell_state") if k in aws_env}})
+            raw_w = aws_env.get("warnings") or []
+            wlist = list(raw_w) if isinstance(raw_w, (list, tuple)) else []
+            ins = _inspector_aws_tool_error(error=err if isinstance(err, dict) else {}, warnings=wlist)
         else:
             wb = {
                 "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
@@ -487,7 +559,7 @@ def _build_regions_and_surface(
                 "subtitle": "Primary projection is in the interface panel",
                 "visible": False,
             }
-            ins = _inspector_json(title="AWS read-only", document=sp or {})
+            ins = _inspector_aws_read_only_surface(surface=sp if isinstance(sp, dict) else {})
         comp = build_shell_composition_payload(
             active_surface_id=active,
             portal_tenant_id=portal_tenant_id,
@@ -573,6 +645,7 @@ def run_admin_shell_entry(
 
     shell_composition["page_title"] = page_title
     shell_composition["page_subtitle"] = page_subtitle
+    _apply_shell_chrome_to_composition(shell_composition, normalized_request.shell_chrome)
 
     error = None
     warnings: list[str] = []

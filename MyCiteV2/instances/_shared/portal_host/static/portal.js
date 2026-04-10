@@ -163,6 +163,7 @@
     const workbench = qs(".ide-workbench");
     const ideBody = qs(".ide-body");
     if (!shell || !controlPanel || !inspector || !workbench) return null;
+    const shellDriverV2 = document.body && document.body.getAttribute("data-portal-shell-driver") === "v2-composition";
 
     function clamp(value, min, max) {
       const n = Number(value);
@@ -296,7 +297,7 @@
         const isOpen = target === "control-panel"
           ? shell.getAttribute("data-control-panel-collapsed") !== "true"
           : shell.getAttribute("data-inspector-collapsed") !== "true";
-        const forceOpen = currentShellComposition() === "tool" && target === "inspector";
+        const forceOpen = !shellDriverV2 && currentShellComposition() === "tool" && target === "inspector";
         button.classList.toggle("is-active", isOpen);
         button.setAttribute("aria-pressed", isOpen ? "true" : "false");
         button.disabled = forceOpen;
@@ -337,7 +338,7 @@
     }
 
     function setInspectorOpen(open, persist) {
-      const isOpen = currentShellComposition() === "tool" ? true : !!open;
+      const isOpen = !shellDriverV2 && currentShellComposition() === "tool" ? true : !!open;
       shell.setAttribute("data-inspector-collapsed", isOpen ? "false" : "true");
       inspector.classList.toggle("is-collapsed", !isOpen);
       inspector.setAttribute("aria-hidden", isOpen ? "false" : "true");
@@ -422,6 +423,10 @@
           return;
         }
         if (currentShellComposition() === "tool") {
+          if (shellDriverV2) {
+            document.dispatchEvent(new CustomEvent("mycite:v2:inspector-toggle-request"));
+            return;
+          }
           setInspectorOpen(true, false);
           return;
         }
@@ -446,6 +451,7 @@
     const titleEl = qs("#portalInspectorTitle");
     const contentEl = qs("#portalInspectorContent");
     if (!shell || !inspector || !titleEl || !contentEl) return;
+    const shellDriverV2 = document.body && document.body.getAttribute("data-portal-shell-driver") === "v2-composition";
 
     function systemShellRoot() {
       return qs("#systemShellInspectorRoot", contentEl);
@@ -592,7 +598,13 @@
     }
 
     qsa("[data-inspector-close]").forEach(btn => {
-      btn.addEventListener("click", close);
+      btn.addEventListener("click", () => {
+        if (shellDriverV2) {
+          document.dispatchEvent(new CustomEvent("mycite:v2:inspector-dismiss-request"));
+          return;
+        }
+        close();
+      });
     });
 
     document.addEventListener("click", event => {
@@ -610,7 +622,9 @@
 
     document.addEventListener("click", event => {
       const navLink = event.target && event.target.closest ? event.target.closest(".ide-activitylink") : null;
-      if (navLink) close();
+      if (!navLink) return;
+      if (shellDriverV2) return;
+      close();
     });
 
     document.addEventListener("mycite:shell:composition-changed", event => {
