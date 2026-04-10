@@ -60,11 +60,17 @@ Approved for the first AWS read-only slice:
 - one AWS read-only status seam: `packages/ports/aws_read_only_status/`
 - one filesystem-backed AWS read-only adapter: `packages/adapters/filesystem/aws_read_only_status.py`
 
-Still frozen until the write slice is approved:
+Approved for the first AWS narrow write slice:
 
-- the exact AWS narrow write seam and adapter names
-- whether the write slice reuses shared provider state adapters or adds a dedicated write adapter
-- optional use of existing `local_audit` for accepted write-path audit emission
+- one AWS narrow-write seam: `packages/ports/aws_narrow_write/`
+- one filesystem-backed AWS narrow-write adapter: `packages/adapters/filesystem/aws_narrow_write.py`
+- accepted write-path audit emission through `packages/modules/cross_domain/local_audit/`
+
+Still frozen after the first write slice:
+
+- any writable field beyond `selected_verified_sender`
+- whether later AWS follow-on slices reuse the same adapter or split by write family
+- any write path broader than bounded operational profile stewardship
 
 ## First AWS narrow write candidate
 
@@ -75,7 +81,7 @@ The first AWS narrow write candidate is:
 Its job is limited to bounded AWS operational profile stewardship, such as:
 
 - selecting the active verified sender
-- updating the canonical newsletter operational profile fields that AWS owns operationally
+- confirming that change through the canonical newsletter operational profile read-back
 
 It must not include:
 

@@ -4,7 +4,7 @@
 
 ## Status
 
-`candidate`
+`implemented_trusted_tenant_narrow_write`
 
 ## Purpose
 
@@ -20,24 +20,25 @@ This offers the smallest useful AWS write path without reopening the old portal'
 
 ## Exposure status
 
-`planned_not_approved_for_build`
+`trusted_tenant_narrow_write`
 
 ## Owning layers
 
-- future AWS tool semantics under `packages/tools/`
-- one future AWS narrow-write seam
+- `packages/modules/cross_domain/aws_narrow_write/`
+- `packages/ports/aws_narrow_write/`
+- `packages/adapters/filesystem/aws_narrow_write.py`
 - `packages/modules/cross_domain/local_audit/` for accepted write-path audit emission
 - existing `packages/ports/audit_log/` plus its adapter for audit persistence
 - `instances/_shared/runtime/` for one bounded AWS write runtime entrypoint
 
 ## Required ports
 
-- one future AWS narrow-write seam
+- `packages/ports/aws_narrow_write/`
 - existing `audit_log`
 
 ## Required adapters
 
-- one future AWS narrow-write adapter family
+- `packages/adapters/filesystem/aws_narrow_write.py`
 - existing filesystem `audit_log` adapter
 
 ## Required runtime composition
@@ -60,9 +61,10 @@ This offers the smallest useful AWS write path without reopening the old portal'
 
 - `admin_band1.aws_read_only_surface` must already be stable
 - the writable field set must remain explicitly bounded
+- the bounded writable field set is `selected_verified_sender` only
 - manual newsletter send stays retired
 - Gmail verification status may not be toggled without confirmation evidence
-- rollback or manual repair instructions must exist before exposure
+- rollback or manual repair instructions must exist before exposure and are recorded in [../admin_first/aws_narrow_write_recovery.md](../admin_first/aws_narrow_write_recovery.md)
 
 ## Out of scope
 
@@ -93,4 +95,4 @@ Warnings:
 
 ## Frozen questions
 
-- whether the first bounded write path is limited to selected verified sender and newsletter operational profile stewardship, or needs one additional bounded AWS operational field set
+- whether any second AWS narrow-write field family is ever approved after `selected_verified_sender`

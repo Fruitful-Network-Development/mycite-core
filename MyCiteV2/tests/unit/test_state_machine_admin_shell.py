@@ -12,11 +12,15 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND0_NAME,
     ADMIN_BAND1_AWS_NAME,
+    ADMIN_BAND2_AWS_NAME,
+    ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
     ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
     ADMIN_HOME_STATUS_SLICE_ID,
     ADMIN_SHELL_ENTRY_SLICE_ID,
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
+    AWS_NARROW_WRITE_ENTRYPOINT_ID,
+    AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_SLICE_ID,
     AdminShellRequest,
     AdminTenantScope,
@@ -79,7 +83,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         self.assertEqual(aws_selection.active_surface_id, ADMIN_TOOL_REGISTRY_SLICE_ID)
         self.assertEqual(aws_selection.selection_status, "gated")
         self.assertEqual(aws_selection.reason_code, "launch_via_registry")
-        self.assertIn("admin.aws.read_only", aws_selection.reason_message)
+        self.assertIn("registry", aws_selection.reason_message)
 
     def test_non_internal_audience_is_denied_for_admin_band0(self) -> None:
         selection = resolve_admin_shell_request(
@@ -146,6 +150,19 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "audience": "trusted-tenant-admin",
                     "internal_only_reason": "",
                     "launchable": True,
+                },
+                {
+                    "tool_id": "aws_narrow_write",
+                    "label": "AWS Admin Narrow Write",
+                    "slice_id": AWS_NARROW_WRITE_SLICE_ID,
+                    "entrypoint_id": AWS_NARROW_WRITE_ENTRYPOINT_ID,
+                    "admin_band": ADMIN_BAND2_AWS_NAME,
+                    "exposure_status": "implemented_trusted_tenant_narrow_write",
+                    "read_write_posture": "write",
+                    "status_summary": "launchable_narrow_write",
+                    "audience": "trusted-tenant-admin",
+                    "internal_only_reason": "",
+                    "launchable": True,
                 }
             ],
         )
@@ -161,6 +178,11 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
             slice_id=AWS_READ_ONLY_SLICE_ID,
             audience="trusted-tenant",
             expected_entrypoint_id="admin.aws.other",
+        )
+        write_allowed = resolve_admin_tool_launch(
+            slice_id=AWS_NARROW_WRITE_SLICE_ID,
+            audience="trusted-tenant",
+            expected_entrypoint_id=AWS_NARROW_WRITE_ENTRYPOINT_ID,
         )
 
         self.assertTrue(allowed.allowed)
@@ -181,6 +203,9 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         )
         self.assertFalse(mismatch.allowed)
         self.assertEqual(mismatch.reason_code, "catalog_mismatch")
+        self.assertTrue(write_allowed.allowed)
+        self.assertEqual(write_allowed.entrypoint_id, AWS_NARROW_WRITE_ENTRYPOINT_ID)
+        self.assertEqual(write_allowed.exposure_status, "implemented_trusted_tenant_narrow_write")
 
     def test_request_contract_rejects_invalid_schema_and_audience(self) -> None:
         with self.assertRaisesRegex(ValueError, "admin_shell_request.schema"):
@@ -198,6 +223,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
     def test_band_name_is_fixed_for_admin_band0(self) -> None:
         self.assertEqual(ADMIN_BAND0_NAME, "Admin Band 0 Internal Admin Replacement")
         self.assertEqual(ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY, "trusted-tenant-read-only")
+        self.assertEqual(ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE, "trusted-tenant-narrow-write")
 
 
 if __name__ == "__main__":

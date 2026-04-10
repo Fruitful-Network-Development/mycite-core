@@ -3,11 +3,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.adapters.filesystem import FilesystemAwsReadOnlyStatusAdapter
+from MyCiteV2.packages.adapters.filesystem import (
+    FilesystemAuditLogAdapter,
+    FilesystemAwsNarrowWriteAdapter,
+    FilesystemAwsReadOnlyStatusAdapter,
+)
+from MyCiteV2.packages.modules.cross_domain.aws_narrow_write import AwsNarrowWriteService
 from MyCiteV2.packages.modules.cross_domain.aws_operational_visibility import AwsOperationalVisibilityService
+from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND1_AWS_NAME,
+    ADMIN_BAND2_AWS_NAME,
+    ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
     ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
+    AWS_NARROW_WRITE_ENTRYPOINT_ID,
+    AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
     AWS_READ_ONLY_SLICE_ID,
     AdminTenantScope,
@@ -17,6 +27,12 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
 ADMIN_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.admin.runtime.envelope.v1"
 ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.aws.read_only.request.v1"
 ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA = "mycite.v2.admin.aws.read_only.surface.v1"
+ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA = "mycite.v2.admin.aws.narrow_write.request.v1"
+ADMIN_AWS_NARROW_WRITE_SURFACE_SCHEMA = "mycite.v2.admin.aws.narrow_write.surface.v1"
+
+AWS_NARROW_WRITE_RECOVERY_REFERENCE = (
+    "docs/plans/post_mvp_rollout/admin_first/aws_narrow_write_recovery.md"
+)
 
 
 def _as_text(value: object) -> str:
@@ -36,7 +52,7 @@ def _normalize_request(payload: dict[str, Any] | None) -> AdminTenantScope:
     return AdminTenantScope.from_value(payload.get("tenant_scope"))
 
 
-def _build_surface_payload(*, tenant_scope: AdminTenantScope, visibility: dict[str, Any]) -> dict[str, Any]:
+def _build_read_only_surface_payload(*, tenant_scope: AdminTenantScope, visibility: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema": ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA,
         "active_surface_id": AWS_READ_ONLY_SLICE_ID,
@@ -51,6 +67,25 @@ def _build_surface_payload(*, tenant_scope: AdminTenantScope, visibility: dict[s
         "inbound_capture": visibility["inbound_capture"],
         "dispatch_health": visibility["dispatch_health"],
         "write_capability": "not_available",
+    }
+
+
+def _normalize_narrow_write_request(
+    payload: dict[str, Any] | None,
+) -> tuple[AdminTenantScope, dict[str, Any]]:
+    if payload is None:
+        raise ValueError("admin.aws.narrow_write requires a request payload")
+    if not isinstance(payload, dict):
+        raise ValueError("admin.aws.narrow_write request payload must be a dict")
+    schema = _as_text(payload.get("schema"))
+    if schema != ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA:
+        raise ValueError(f"admin.aws.narrow_write request.schema must be {ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA}")
+    tenant_scope = AdminTenantScope.from_value(payload.get("tenant_scope"))
+    return tenant_scope, {
+        "tenant_scope_id": tenant_scope.scope_id,
+        "focus_subject": payload.get("focus_subject"),
+        "profile_id": payload.get("profile_id"),
+        "selected_verified_sender": payload.get("selected_verified_sender"),
     }
 
 
@@ -128,7 +163,7 @@ def run_admin_aws_read_only(
             },
         }
 
-    surface_payload = _build_surface_payload(tenant_scope=tenant_scope, visibility=surface.to_dict())
+    surface_payload = _build_read_only_surface_payload(tenant_scope=tenant_scope, visibility=surface.to_dict())
 
     return {
         "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
@@ -142,5 +177,117 @@ def run_admin_aws_read_only(
         "shell_state": launch_decision.to_dict(),
         "surface_payload": surface_payload,
         "warnings": list(surface_payload["compatibility_warnings"]),
+        "error": None,
+    }
+
+
+def run_admin_aws_narrow_write(
+    request_payload: dict[str, Any] | None = None,
+    *,
+    aws_status_file: str | Path | None = None,
+    audit_storage_file: str | Path | None = None,
+) -> dict[str, Any]:
+    tenant_scope, write_request = _normalize_narrow_write_request(request_payload)
+    launch_decision = resolve_admin_tool_launch(
+        slice_id=AWS_NARROW_WRITE_SLICE_ID,
+        audience=tenant_scope.audience,
+        expected_entrypoint_id=AWS_NARROW_WRITE_ENTRYPOINT_ID,
+    )
+
+    if not launch_decision.allowed:
+        message = launch_decision.reason_message
+        return {
+            "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+            "admin_band": ADMIN_BAND2_AWS_NAME,
+            "exposure_status": ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
+            "tenant_scope": tenant_scope.to_dict(),
+            "requested_slice_id": AWS_NARROW_WRITE_SLICE_ID,
+            "slice_id": AWS_NARROW_WRITE_SLICE_ID,
+            "entrypoint_id": AWS_NARROW_WRITE_ENTRYPOINT_ID,
+            "read_write_posture": "write",
+            "shell_state": launch_decision.to_dict(),
+            "surface_payload": None,
+            "warnings": [message] if message else [],
+            "error": {
+                "code": launch_decision.reason_code,
+                "message": message,
+            },
+        }
+
+    if aws_status_file is None:
+        return {
+            "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+            "admin_band": ADMIN_BAND2_AWS_NAME,
+            "exposure_status": ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
+            "tenant_scope": tenant_scope.to_dict(),
+            "requested_slice_id": AWS_NARROW_WRITE_SLICE_ID,
+            "slice_id": AWS_NARROW_WRITE_SLICE_ID,
+            "entrypoint_id": AWS_NARROW_WRITE_ENTRYPOINT_ID,
+            "read_write_posture": "write",
+            "shell_state": launch_decision.to_dict(),
+            "surface_payload": None,
+            "warnings": ["AWS narrow write requires an existing status snapshot file."],
+            "error": {
+                "code": "status_source_not_configured",
+                "message": "AWS narrow write requires an existing status snapshot file.",
+            },
+        }
+
+    if audit_storage_file is None:
+        return {
+            "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+            "admin_band": ADMIN_BAND2_AWS_NAME,
+            "exposure_status": ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
+            "tenant_scope": tenant_scope.to_dict(),
+            "requested_slice_id": AWS_NARROW_WRITE_SLICE_ID,
+            "slice_id": AWS_NARROW_WRITE_SLICE_ID,
+            "entrypoint_id": AWS_NARROW_WRITE_ENTRYPOINT_ID,
+            "read_write_posture": "write",
+            "shell_state": launch_decision.to_dict(),
+            "surface_payload": None,
+            "warnings": ["AWS narrow write requires the local audit storage path."],
+            "error": {
+                "code": "audit_log_not_configured",
+                "message": "AWS narrow write requires the local audit storage path.",
+            },
+        }
+
+    write_adapter = FilesystemAwsNarrowWriteAdapter(aws_status_file)
+    write_service = AwsNarrowWriteService(write_adapter)
+    outcome = write_service.apply_write(write_request)
+
+    audit_service = LocalAuditService(FilesystemAuditLogAdapter(audit_storage_file))
+    audit_receipt = audit_service.append_record(outcome.to_local_audit_payload())
+
+    confirmed_read_only_surface = _build_read_only_surface_payload(
+        tenant_scope=tenant_scope,
+        visibility=outcome.confirmed_visibility.to_dict(),
+    )
+    surface_payload = {
+        "schema": ADMIN_AWS_NARROW_WRITE_SURFACE_SCHEMA,
+        "active_surface_id": AWS_NARROW_WRITE_SLICE_ID,
+        "writable_field_set": ["selected_verified_sender"],
+        "requested_change": {
+            "profile_id": outcome.command.profile_id,
+            "selected_verified_sender": outcome.command.selected_verified_sender,
+        },
+        "confirmed_read_only_surface": confirmed_read_only_surface,
+        "audit": audit_receipt.to_dict(),
+        "rollback_reference": AWS_NARROW_WRITE_RECOVERY_REFERENCE,
+        "write_status": "applied",
+    }
+
+    return {
+        "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+        "admin_band": ADMIN_BAND2_AWS_NAME,
+        "exposure_status": ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
+        "tenant_scope": tenant_scope.to_dict(),
+        "requested_slice_id": AWS_NARROW_WRITE_SLICE_ID,
+        "slice_id": AWS_NARROW_WRITE_SLICE_ID,
+        "entrypoint_id": AWS_NARROW_WRITE_ENTRYPOINT_ID,
+        "read_write_posture": "write",
+        "shell_state": launch_decision.to_dict(),
+        "surface_payload": surface_payload,
+        "warnings": list(confirmed_read_only_surface["compatibility_warnings"]),
         "error": None,
     }
