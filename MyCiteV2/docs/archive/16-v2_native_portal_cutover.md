@@ -179,3 +179,27 @@ fifth, fix top-level V2 documentation drift.
 The single next hardening move should be: codify the live systemd and nginx state as versioned infra, then add one deployment-readiness smoke suite against the actual routed `/portal` surface. That will remove the largest remaining source of drift.
 
 ---
+
+## PROMPT
+
+My portal seem to get a 500 error when I try to acess my portal at `https://portal.fruitfulnetworkdevelopment.com/portal/system`, reading:
+"500 Internal Server Error nginx/1.26.3"
+
+---
+
+
+## OUTPUT
+
+The V2 cutover itself was not the problem. The portal apps on `6101/6203` were healthy; the 500 was coming from nginx’s auth gate because nothing was listening on `127.0.0.1:4181`. In practice, Docker had not been running after the host restart, so Keycloak and the portal `oauth2-proxy` were down. nginx’s `auth_request` to `/oauth2/auth` failed, and `/portal/system` surfaced as a `500`.
+
+I restored the auth stack by starting Docker, bringing up `keycloak`, `keycloak_db`, `portal_oauth2_proxy_redis`, and `portal_oauth2_proxy`, and then added a small boot-time hardening unit so the same race does not happen again. The tracked repo addition is [repo service file](/srv/repo/srv-infra/systemd/compose-auth-stack.service), and the live installed unit is [live unit](/etc/systemd/system/compose-auth-stack.service). That unit starts Keycloak, waits for readiness, then starts the portal auth proxy. I left the other pre-existing `srv-infra` edits alone.
+
+Verification at `2026-04-10 19:55 UTC`:
+- `https://auth.fruitfulnetworkdevelopment.com/health/ready` returns `200 OK`
+- `http://127.0.0.1:4181/oauth2/auth` returns `401 Unauthorized` locally, which is expected when unauthenticated
+- `https://portal.fruitfulnetworkdevelopment.com/portal/system` now returns `200 OK` instead of `500`
+- `docker ps` shows all four auth containers up
+
+If you reload the portal now, you should get the sign-in flow or the portal page, not the nginx 500.
+
+---
