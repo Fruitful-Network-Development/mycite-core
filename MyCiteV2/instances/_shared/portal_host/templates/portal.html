@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MyCite V2 Portal</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f6f7f9;
+      color: #202124;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #f6f7f9;
+    }
+    main {
+      width: min(1040px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0;
+    }
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid #d8dee4;
+      padding-bottom: 20px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+      line-height: 1.15;
+    }
+    p {
+      line-height: 1.5;
+    }
+    .pill {
+      display: inline-block;
+      border: 1px solid #8aa0b4;
+      border-radius: 8px;
+      padding: 6px 10px;
+      background: #ffffff;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-top: 24px;
+    }
+    section {
+      background: #ffffff;
+      border: 1px solid #d8dee4;
+      border-radius: 8px;
+      padding: 18px;
+      min-height: 132px;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+    code, pre {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 13px;
+    }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      margin: 0;
+    }
+    button {
+      border: 1px solid #1f883d;
+      border-radius: 8px;
+      background: #1f883d;
+      color: #ffffff;
+      padding: 10px 14px;
+      font: inherit;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body data-host-shape="{{ host_shape }}" data-tenant-id="{{ tenant_id }}">
+  <main>
+    <header>
+      <div>
+        <h1>MyCite V2 Portal</h1>
+        <p>Tenant <strong>{{ tenant_id }}</strong> is served by the V2 native host for {{ analytics_domain }}.</p>
+      </div>
+      <span class="pill">{{ host_shape }}</span>
+    </header>
+    <div class="grid">
+      <section>
+        <h2>Datum</h2>
+        <p id="datum-summary">Checking canonical system datum...</p>
+      </section>
+      <section>
+        <h2>AWS</h2>
+        <p id="aws-summary">Checking live profile mapping...</p>
+      </section>
+      <section>
+        <h2>Health</h2>
+        <button type="button" id="refresh-health">Refresh</button>
+      </section>
+    </div>
+    <section style="margin-top:16px">
+      <h2>Status Payload</h2>
+      <pre id="health-json">Loading...</pre>
+    </section>
+  </main>
+  <script>
+    async function loadHealth() {
+      const response = await fetch('/portal/healthz', { credentials: 'same-origin' });
+      const payload = await response.json();
+      document.getElementById('datum-summary').textContent =
+        `${payload.datum_health.row_count} canonical rows loaded`;
+      document.getElementById('aws-summary').textContent =
+        payload.aws_config_health.live_profile_mapping ? 'Live AWS profile mapped' : 'AWS profile mapping needs attention';
+      document.getElementById('health-json').textContent = JSON.stringify(payload, null, 2);
+    }
+    document.getElementById('refresh-health').addEventListener('click', loadHealth);
+    loadHealth().catch((error) => {
+      document.getElementById('health-json').textContent = String(error);
+    });
+  </script>
+</body>
+</html>
