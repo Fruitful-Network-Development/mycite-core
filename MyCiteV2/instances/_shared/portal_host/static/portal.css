@@ -3182,6 +3182,12 @@ body.is-modal-open {
   color: #fff;
 }
 
+.ide-controlpanel__link.is-gated {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
 .ide-controlpanel__link.is-active {
   border-color: rgba(30, 108, 147, 0.85);
   background: rgba(30, 108, 147, 0.26);

@@ -221,14 +221,16 @@ def _control_panel_region(*, portal_tenant_id: str, nav_active_slice_id: str) ->
         )
     tool_entries: list[dict[str, Any]] = []
     for tool in build_admin_tool_registry_entries():
-        tool_entries.append(
-            {
-                "label": tool.label,
-                "meta": tool.entrypoint_id,
-                "active": tool.slice_id == nav_active_slice_id,
-                "shell_request": bodies.get(tool.slice_id),
-            }
-        )
+        shell_request = bodies.get(tool.slice_id)
+        entry: dict[str, Any] = {
+            "label": tool.label,
+            "meta": tool.entrypoint_id,
+            "active": tool.slice_id == nav_active_slice_id,
+            "shell_request": shell_request,
+        }
+        if not tool.launchable:
+            entry["gated"] = True
+        tool_entries.append(entry)
     return {
         "schema": ADMIN_SHELL_REGION_CONTROL_PANEL_SCHEMA,
         "sections": [

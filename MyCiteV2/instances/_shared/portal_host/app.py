@@ -17,7 +17,12 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import ADMIN_RUNTIME_EN
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_HOME_STATUS_SLICE_ID,
     ADMIN_SHELL_REQUEST_SCHEMA,
+    ADMIN_TOOL_REGISTRY_SLICE_ID,
+    AWS_READ_ONLY_SLICE_ID,
+    AWS_NARROW_WRITE_SLICE_ID,
+    DATUM_RESOURCE_WORKBENCH_SLICE_ID,
     INTERNAL_ADMIN_SCOPE_ID,
+    build_portal_activity_dispatch_bodies,
 )
 from MyCiteV2.packages.adapters.filesystem import (
     AnalyticsEventPathResolver,
@@ -145,6 +150,30 @@ class V2PortalHostConfig:
         }
 
 
+URL_SLUG_TO_SLICE_ID: dict[str, str] = {
+    "home": ADMIN_HOME_STATUS_SLICE_ID,
+    "system": ADMIN_HOME_STATUS_SLICE_ID,
+    "tools": ADMIN_TOOL_REGISTRY_SLICE_ID,
+    "registry": ADMIN_TOOL_REGISTRY_SLICE_ID,
+    "aws": AWS_READ_ONLY_SLICE_ID,
+    "aws-write": AWS_NARROW_WRITE_SLICE_ID,
+    "datum": DATUM_RESOURCE_WORKBENCH_SLICE_ID,
+    "mediate_tool-aws_platform_admin": AWS_READ_ONLY_SLICE_ID,
+}
+
+
+def _bootstrap_request_for_slug(slug: str, tenant_id: str) -> dict[str, Any]:
+    """Build the correct shell request body for a URL slug, using the same
+    dispatch bodies the activity bar and control panel use."""
+    slice_id = URL_SLUG_TO_SLICE_ID.get(slug, ADMIN_HOME_STATUS_SLICE_ID)
+    bodies = build_portal_activity_dispatch_bodies(portal_tenant_id=tenant_id)
+    return bodies.get(slice_id, {
+        "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+        "requested_slice_id": ADMIN_HOME_STATUS_SLICE_ID,
+        "tenant_scope": {"scope_id": INTERNAL_ADMIN_SCOPE_ID, "audience": "internal"},
+    })
+
+
 def _json_payload() -> dict[str, Any]:
     payload = request.get_json(silent=True)
     return payload if isinstance(payload, dict) else {}
@@ -188,7 +217,14 @@ def _required_live_aws_status_file(config: V2PortalHostConfig) -> Path | None:
     return None
 
 
+def _portal_package_static_dir() -> Path:
+    return Path(__file__).resolve().parent / "static"
+
+
 def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
+    static_dir = _portal_package_static_dir()
+    portal_css = static_dir / "portal.css"
+    portal_js = static_dir / "v2_portal_shell.js"
     datum_result = FilesystemSystemDatumStoreAdapter(config.data_dir).read_system_resource_workbench(
         SystemDatumStoreRequest(tenant_id=config.tenant_id)
     )
@@ -206,13 +242,22 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         "audit_storage_file_configured": config.aws_audit_storage_file is not None,
     }
     datum_payload = datum_result.to_dict()
-    health_ok = bool(datum_payload["ok"]) and bool(aws_health["live_profile_mapping"])
+    static_ok = portal_css.is_file() and portal_js.is_file()
+    health_ok = bool(datum_payload["ok"]) and bool(aws_health["live_profile_mapping"]) and static_ok
 
     return {
         "schema": V2_PORTAL_HEALTH_SCHEMA,
         "ok": health_ok,
         "host_shape": HOST_SHAPE,
         "tenant_id": config.tenant_id,
+        "portal_static_bundle": {
+            "package_static_dir": str(static_dir),
+            "portal_css_present": portal_css.is_file(),
+            "portal_css_size_bytes": portal_css.stat().st_size if portal_css.is_file() else 0,
+            "v2_portal_shell_js_present": portal_js.is_file(),
+            "static_url_path": "/portal/static",
+            "static_ok": static_ok,
+        },
         "state_roots": config.to_public_dict(),
         "datum_health": {
             "ok": datum_payload["ok"],
@@ -243,12 +288,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         payload = _build_health(host_config)
         return jsonify(payload), 200 if payload["ok"] else 503
 
-    def _portal_shell_page() -> str:
-        bootstrap_shell_request = {
-            "schema": ADMIN_SHELL_REQUEST_SCHEMA,
-            "requested_slice_id": ADMIN_HOME_STATUS_SLICE_ID,
-            "tenant_scope": {"scope_id": INTERNAL_ADMIN_SCOPE_ID, "audience": "internal"},
-        }
+    def _portal_shell_page(slug: str = "") -> str:
+        bootstrap_shell_request = _bootstrap_request_for_slug(slug, host_config.tenant_id)
         return render_template(
             "portal.html",
             tenant_id=host_config.tenant_id,
@@ -261,9 +302,14 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     @app.get("/portal")
     @app.get("/portal/")
     @app.get("/portal/home")
-    @app.get("/portal/system")
     def portal_home() -> str:
-        return _portal_shell_page()
+        return _portal_shell_page("home")
+
+    @app.get("/portal/system")
+    @app.get("/portal/system/<path:tool_slug>")
+    def portal_system(tool_slug: str = "") -> str:
+        slug = tool_slug.strip("/") if tool_slug else "system"
+        return _portal_shell_page(slug)
 
     @app.post("/portal/api/v2/admin/shell")
     def admin_shell() -> tuple[Any, int]:

@@ -206,3 +206,112 @@ Until the process behind **`portal.fruitfulnetworkdevelopment.com/portal`** serv
 
 ---
 
+## CONSIDERATION (reconciled against repo at `/srv/repo`)
+
+An earlier **inline review** (previous version of this section) claimed that `portal.html` still had the static **“V2 shell”** paragraph, that **`MYCITE_V2_PORTAL_BUILD_ID` / `shell-template` / build footer** were missing, and that **`srv-infra` nginx** still sent **`/healthz` and `/portal` to `5101`**. That text reflected a **different tree or branch** than the canonical checkout under **`/srv/repo`** on this machine, or a search that did not hit the updated paths.
+
+**What `/srv/repo/mycite-core` actually contains (verify locally):**
+
+- **`portal.html`**: HTML comment `shell-template: v2-composition build={{ portal_build_id }}`; `v2-bootstrap-shell-request`; control panel title **Context** with a **runtime placeholder** (not the old long “V2 shell” blurb); activity footer includes **`build: {{ portal_build_id }}`**; static assets referenced as **`/portal/static/...`**.
+- **`app.py`**: `PORTAL_BUILD_ID` from env var **`MYCITE_V2_PORTAL_BUILD_ID`** (default label **`not-set`**); `render_template(..., portal_build_id=PORTAL_BUILD_ID, bootstrap_shell_request=...)`.
+
+**What `/srv/repo/srv-infra` actually contains** for `portal.fruitfulnetworkdevelopment.com.conf`:
+
+- **`location = /healthz`** → **`proxy_pass http://127.0.0.1:6101/healthz`** (V2 FND portal host).
+- **`location ^~ /portal`** → **`set $portal_upstream http://127.0.0.1:6101`** with **`6203`** when `portal_instance=tff`; **`proxy_pass $portal_upstream`**.
+- **`5101`** remains only on **legacy** `location ^~ /portal/api/admin/paypal/` and **`/portal/api/admin/aws/`** (old paths), **not** on `/portal` or `/healthz`.
+
+**What the screenshot still validly shows**
+
+- **Unstyled HTML** strongly implies the **live** response path is not applying **`/portal/static/portal.css`** (404, wrong upstream, blocked request, or HTML not served by the Flask app that owns `static_url_path=/portal/static`). That is **orthogonal** to whether composition logic exists in Python.
+- If **view source** on production lacks **`shell-template: v2-composition`** and **`build:`**, the **running** portal process or **deployed** nginx config **differs** from this repo revision—compare **`/etc/nginx/sites-enabled/...`** and the unit actually listening on **6101**.
+
+**Commands (truth on disk)**
+
+```bash
+cd /srv/repo/mycite-core
+grep -n "shell-template\|portal_build_id\|V2 shell\|bootstrap_shell_request" \
+  MyCiteV2/instances/_shared/portal_host/templates/portal.html \
+  MyCiteV2/instances/_shared/portal_host/app.py
+
+cd /srv/repo/srv-infra
+grep -n "proxy_pass\|set \$portal_upstream\|healthz" \
+  nginx/sites-available/portal.fruitfulnetworkdevelopment.com.conf
+```
+
+**On the server (live vs repo)**
+
+```bash
+curl -sI https://portal.fruitfulnetworkdevelopment.com/portal/static/portal.css
+curl -sI https://portal.fruitfulnetworkdevelopment.com/portal/system
+# Compare HTML body to repo template; look for shell-template and build: lines.
+```
+
+**Conclusion:** The superseded review mixed accurate observations (**CSS not applied on the live site**) with **incorrect claims about the current `mycite-core` + `srv-infra` trees at `/srv/repo`**. Treat **git + deployed config** as separate: align production with this repo and fix static/upstream until `portal.css` returns **200** and the template markers appear in view source.
+
+---
+
+## UPDATES:
+
+
+Here is a concise read on that review versus **this** workspace.
+
+### The review was wrong about the repo at `/srv/repo`
+
+On disk today:
+
+- **`portal.html`** does **not** use the old static **“V2 shell”** block. The control panel is **“Context”** plus a **runtime placeholder** that mentions **`portal_build_id`**. There is an HTML comment **`shell-template: v2-composition build={{ portal_build_id }}`**, **`v2-bootstrap-shell-request`**, and **`build: {{ portal_build_id }}`** in the activity footer.
+- **`app.py`** defines **`PORTAL_BUILD_ID`** from **`MYCITE_V2_PORTAL_BUILD_ID`** and passes **`portal_build_id=`** into **`render_template`** along with **`bootstrap_shell_request`**.
+- **`srv-infra`** `portal.fruitfulnetworkdevelopment.com.conf` sends **`/healthz`** and **`location ^~ /portal`** to **6101 / 6203**, not 5101. **5101** is only for **legacy** **`/portal/api/admin/paypal/`** and **`/portal/api/admin/aws/`**.
+
+So the review’s “grep comes back empty” / “nginx still 5101 for portal and healthz” / “no build wiring” statements do **not** match **`/srv/repo/mycite-core`** and **`/srv/repo/srv-infra`** as they exist here. Likely causes: another clone/branch, old commit, or paths that weren’t the ones above.
+
+### What the review got right
+
+- A **mostly unstyled** page is still best explained by **`/portal/static/portal.css` not being applied** on the **live** path (or HTML not coming from the V2 app that serves that static tree). That’s a **deploy/upstream/browser-network** issue, not “composition missing in Python.”
+- **Production** can still diverge from **git**: you only know after **view source** (look for **`shell-template`** / **`build:`**) and **`curl -I …/portal/static/portal.css`** on the real host.
+
+### Doc update
+
+The **CONSIDERATION** block in **`19-paradigm_expression_alignment.md`** (lines 211–263) is **replaced** with a short **reconciled** section: it keeps the good part (CSS/live path), corrects the mistaken repo/nginx claims, and points at the same **grep/curl** checks so the file matches **`/srv/repo`** as the authority.
+
+---
+
+
+## RETURNED:
+
+
+Here is what was fixed and verified.
+
+## What was wrong (from the analysis)
+
+- **In-app behavior was already correct**: `/portal/static/portal.css` is served by the V2 portal host with a 200 and real CSS (tests already covered this).
+- **“Unstyled” in production** was consistent with **edge routing** (nginx sending `/portal` traffic to the wrong upstream) or a **broken deploy** (static files missing from the package), not with Flask’s catch-all vs static route order.
+- Operators had **no signal in health** that the shell static bundle was present on disk.
+
+## What we changed (repo)
+
+1. **`portal_host` health** (`app.py`)  
+   - Added `portal_static_bundle`: package static dir, `portal_css_present`, `portal_css_size_bytes`, `v2_portal_shell_js_present`, `static_url_path`, `static_ok`.  
+   - **`ok` is now false (503)** if `portal.css` or `v2_portal_shell.js` is missing from the package — broken or partial installs fail health checks immediately.
+
+2. **Nginx** (`srv-infra/nginx/sites-available/portal.fruitfulnetworkdevelopment.com.conf`)  
+   - Added an explicit **`location ^~ /portal/static/`** block (same auth and **6101 / 6203** upstream logic as `/portal`) so static requests are **explicitly** tied to the V2 portal, with a comment that **longest-prefix** routing keeps `/portal/static/*` on that upstream even if the broader `/portal` block is edited later.
+
+3. **Tests** (`test_v2_native_portal_host.py`)  
+   - Asserts `portal_static_bundle` and `static_ok` on a healthy instance.
+
+## Verification
+
+All five tests in `MyCiteV2.tests.integration.test_v2_native_portal_host` pass with `/srv/venvs/fnd_portal/bin/python3`.
+
+## Production checklist (so the live issue stays solved)
+
+1. Deploy this revision and **reload nginx** from `srv-infra` (so the new `/portal/static/` location is active).  
+2. Ensure **`/portal` and `/portal/static/`** still target **6101** (and **6203** for TFF), not legacy **5101**.  
+3. After deploy, **`GET /portal/healthz`** (or `/healthz` through nginx) should be **200** with `portal_static_bundle.static_ok: true` and a non-zero `portal_css_size_bytes`.  
+4. Optionally set **`MYCITE_V2_PORTAL_BUILD_ID`** in the unit environment so the HTML footer proves which build is running.
+
+**Bottom line:** The codebase now **fails closed** if shell CSS/JS are missing and **documents/defends** nginx routing for static assets; combined with correct upstream and deploy, the unstyled-shell symptom is addressed end-to-end.
+
+---
