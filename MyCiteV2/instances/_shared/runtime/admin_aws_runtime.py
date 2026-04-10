@@ -66,6 +66,7 @@ def _build_read_only_surface_payload(*, tenant_scope: AdminTenantScope, visibili
         "gmail_state": visibility["gmail_state"],
         "verified_evidence_state": visibility["verified_evidence_state"],
         "selected_verified_sender": visibility["selected_verified_sender"],
+        "allowed_send_domains": list(visibility.get("allowed_send_domains") or []),
         "canonical_newsletter_operational_profile": visibility["canonical_newsletter_profile"],
         "compatibility_warnings": visibility["compatibility_warnings"],
         "inbound_capture": visibility["inbound_capture"],

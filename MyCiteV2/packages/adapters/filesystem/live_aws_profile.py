@@ -42,6 +42,51 @@ def _local_part(email: str) -> str:
     return email.split("@", 1)[0] if "@" in email else ""
 
 
+def _normalize_optional_domain_list(value: object, *, field_name: str) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be a list of domain strings or null")
+    seen: set[str] = set()
+    out: list[str] = []
+    for index, item in enumerate(value):
+        token = _as_text(item).lower()
+        if not token or "." not in token:
+            raise ValueError(f"{field_name}[{index}] must be a domain-like value")
+        if token not in seen:
+            seen.add(token)
+            out.append(token)
+    return tuple(sorted(out))
+
+
+def _effective_allowed_send_domains(*, primary_domain: str, extra_domains: tuple[str, ...]) -> tuple[str, ...]:
+    primary = _as_text(primary_domain).lower()
+    if not primary:
+        return tuple(sorted(extra_domains))
+    return tuple(sorted({primary} | set(extra_domains)))
+
+
+def _sender_email_domain(email: object) -> str:
+    token = _as_text(email).lower()
+    if "@" not in token:
+        return ""
+    return token.split("@", 1)[1]
+
+
+def _selected_verified_sender_allowed(email: object, allowed_domains: tuple[str, ...]) -> bool:
+    domain = _sender_email_domain(email)
+    if not domain or not allowed_domains:
+        return False
+    return domain in frozenset(allowed_domains)
+
+
+def _extract_allowed_send_domains_from_profile(payload: dict[str, Any]) -> tuple[str, ...]:
+    return _normalize_optional_domain_list(
+        payload.get("allowed_send_domains"),
+        field_name="allowed_send_domains",
+    )
+
+
 def is_live_aws_profile_file(storage_file: str | Path | None) -> bool:
     if storage_file is None:
         return False
@@ -90,9 +135,10 @@ class FilesystemLiveAwsProfileAdapter(AwsReadOnlyStatusPort, AwsNarrowWritePort)
 
         selected_sender = _email(normalized_request.selected_verified_sender)
         domain = _as_text(identity.get("domain")).lower()
-        selected_domain = selected_sender.split("@", 1)[1] if "@" in selected_sender else ""
-        if domain and selected_domain != domain:
-            raise ValueError("live aws profile selected_verified_sender must stay within the profile domain")
+        extra_domains = _extract_allowed_send_domains_from_profile(payload)
+        allowed_domains = _effective_allowed_send_domains(primary_domain=domain, extra_domains=extra_domains)
+        if allowed_domains and not _selected_verified_sender_allowed(selected_sender, allowed_domains):
+            raise ValueError("live aws profile selected_verified_sender must use an allowed send domain")
 
         identity["send_as_email"] = selected_sender
         identity["mailbox_local_part"] = _local_part(selected_sender) or _as_text(identity.get("mailbox_local_part"))
@@ -178,6 +224,9 @@ class FilesystemLiveAwsProfileAdapter(AwsReadOnlyStatusPort, AwsNarrowWritePort)
         inbound_ready = _as_bool(inbound.get("receive_verified")) or _as_bool(inbound.get("portal_native_display_ready"))
         latest_message_id = _as_text(inbound.get("latest_message_id"))
 
+        extra_domains = _extract_allowed_send_domains_from_profile(payload)
+        allowed_domains = _effective_allowed_send_domains(primary_domain=domain, extra_domains=extra_domains)
+
         return {
             "tenant_scope_id": _as_text(tenant_scope_id),
             "mailbox_readiness": mailbox_readiness,
@@ -187,6 +236,7 @@ class FilesystemLiveAwsProfileAdapter(AwsReadOnlyStatusPort, AwsNarrowWritePort)
             if gmail_verified
             else ("sender_selected" if selected_sender else "not_verified"),
             "selected_verified_sender": selected_sender,
+            "allowed_send_domains": list(allowed_domains),
             "canonical_newsletter_profile": profile,
             "compatibility": {"canonical_profile_matches_compatibility_inputs": True},
             "inbound_capture": {

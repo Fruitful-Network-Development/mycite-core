@@ -433,3 +433,27 @@ When the mailbox flow is fully per-mailbox and the legacy shared SMTP/service-sp
 - Managed policies are carrying the broad service access.
 - Inline policies are being used for narrow, account-specific IAM purpose.
 - This file is intended as an operational inventory and change log anchor.
+
+---
+
+## V2 portal, SES, and sender domains (operational contract)
+
+**Deployment vs this inventory**
+
+- This document describes **IAM permissions** on `EC2-AWSCMS-Admin`. It does **not** prove that a given EC2 instance has the matching **instance profile** attached, that the AWS-CMS tooling runs on that host, or that `MYCITE_V2_AWS_STATUS_FILE` on the V2 portal points at the intended live profile JSON.
+- Confirm separately: instance profile attachment, working `aws sts get-caller-identity` on the tool host, and V2 `/portal/healthz` reporting `aws_config_health.live_profile_mapping: true`.
+
+**`MYCITE_V2_AWS_STATUS_FILE`**
+
+- V2 native portal hosts expect this env var to reference a **live** `mycite.service_tool.aws_csm.profile.v1` JSON artifact (see [instances/_shared/portal_host/app.py](../instances/_shared/portal_host/app.py) and [docs/archive/16-v2_native_portal_cutover.md](archive/16-v2_native_portal_cutover.md)).
+- IAM path rules such as `arn:aws:iam::065948377733:user/aws-cms/smtp/*` govern **SMTP credential IAM users**, not which **email domain** may appear on messages. Authoritative domain policy for the portal narrow-write path is enforced in application code plus **SES identity verification**.
+
+**SES and secondary domains (e.g. `cvccboard.org`)**
+
+- To send as `user@cvccboard.org`, **Amazon SES** must have that address or domain **verified** in the account (and DNS in Route53 updated when using domain verification). `AmazonSESFullAccess` on this role is sufficient to *manage* identities operationally; it does not replace the verification step.
+- The V2 live profile JSON may declare optional top-level `allowed_send_domains` (e.g. `["cvccboard.org"]`) in addition to `identity.domain` (e.g. `cuyahogavalleycountrysideconservancy.org`). Narrow write to `selected_verified_sender` is allowed only when the sender’s domain is in the **union** of `identity.domain` and `allowed_send_domains`. If `allowed_send_domains` is omitted, behavior matches the previous **single-domain** rule (primary domain only).
+- **Rollback:** remove or narrow `allowed_send_domains` in the live profile file, revert the sender via the same narrow-write surface, or restore the profile JSON from backup/version control; IAM changes are not required for that rollback.
+
+**IAM does not encode mailbox email domain**
+
+- Creating IAM users under `/aws-cms/smtp/` does not assert or restrict `@domain` for SES sending. Hardening for multiple sender domains is **SES verification + V2 profile allowlist + operational review**, not an IAM path change (unless you later scope `AmazonSESFullAccess` down to explicit identity ARNs).

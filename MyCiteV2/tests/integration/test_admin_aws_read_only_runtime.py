@@ -166,6 +166,7 @@ class AdminAwsReadOnlyRuntimeIntegrationTests(unittest.TestCase):
             self.assertIsNone(result["error"])
             surface = result["surface_payload"]
             self.assertEqual(surface["selected_verified_sender"], "dylan@fruitfulnetworkdevelopment.com")
+            self.assertEqual(surface["allowed_send_domains"], ["fruitfulnetworkdevelopment.com"])
             self.assertEqual(
                 surface["canonical_newsletter_operational_profile"]["profile_id"],
                 "aws-csm.fnd.dylan",
