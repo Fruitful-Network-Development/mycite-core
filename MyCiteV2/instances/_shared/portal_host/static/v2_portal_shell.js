@@ -168,6 +168,10 @@
             sm.textContent = ent.meta;
             link.appendChild(sm);
           }
+          if (ent.gated) {
+            link.classList.add("is-gated");
+            link.setAttribute("aria-disabled", "true");
+          }
           link.addEventListener("click", function (e) {
             e.preventDefault();
             if (ent.shell_request) loadShell(ent.shell_request);

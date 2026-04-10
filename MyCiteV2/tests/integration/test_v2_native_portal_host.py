@@ -33,8 +33,11 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_HOME_STATUS_SLICE_ID,
     ADMIN_SHELL_COMPOSITION_SCHEMA,
     ADMIN_SHELL_REQUEST_SCHEMA,
+    ADMIN_TOOL_REGISTRY_SLICE_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
+    AWS_READ_ONLY_SLICE_ID,
+    DATUM_RESOURCE_WORKBENCH_SLICE_ID,
 )
 
 
@@ -120,6 +123,12 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertEqual(payload["schema"], V2_PORTAL_HEALTH_SCHEMA)
             self.assertEqual(payload["host_shape"], HOST_SHAPE)
             self.assertTrue(payload["ok"])
+            bundle = payload.get("portal_static_bundle") or {}
+            self.assertTrue(bundle.get("static_ok"))
+            self.assertTrue(bundle.get("portal_css_present"))
+            self.assertTrue(bundle.get("v2_portal_shell_js_present"))
+            self.assertGreater(int(bundle.get("portal_css_size_bytes") or 0), 0)
+            self.assertEqual(bundle.get("static_url_path"), "/portal/static")
             self.assertEqual(payload["datum_health"]["row_count"], 1)
             self.assertTrue(payload["aws_config_health"]["live_profile_mapping"])
             self.assertIn("/clients/trappfamilyfarm.com/analytics", payload["analytics_root"]["analytics_root"])
@@ -224,8 +233,50 @@ class V2NativePortalHostTests(unittest.TestCase):
                 self.assertEqual(system.status_code, 200)
                 self.assertIn(b"ide-shell", system.data)
                 self.assertIn(b"v2_portal_shell.js", system.data)
+                self.assertIn(b"admin_band0.home_status", system.data)
             finally:
                 system.close()
+
+    def test_url_deep_linking_bootstraps_to_correct_slice(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config = _build_config(root)
+            client = create_app(config).test_client()
+
+            tools_page = client.get("/portal/system/tools")
+            try:
+                self.assertEqual(tools_page.status_code, 200)
+                self.assertIn(ADMIN_TOOL_REGISTRY_SLICE_ID.encode(), tools_page.data)
+            finally:
+                tools_page.close()
+
+            aws_page = client.get("/portal/system/aws")
+            try:
+                self.assertEqual(aws_page.status_code, 200)
+                self.assertIn(AWS_READ_ONLY_SLICE_ID.encode(), aws_page.data)
+            finally:
+                aws_page.close()
+
+            datum_page = client.get("/portal/system/datum")
+            try:
+                self.assertEqual(datum_page.status_code, 200)
+                self.assertIn(DATUM_RESOURCE_WORKBENCH_SLICE_ID.encode(), datum_page.data)
+            finally:
+                datum_page.close()
+
+            v1_compat = client.get("/portal/system/mediate_tool-aws_platform_admin")
+            try:
+                self.assertEqual(v1_compat.status_code, 200)
+                self.assertIn(AWS_READ_ONLY_SLICE_ID.encode(), v1_compat.data)
+            finally:
+                v1_compat.close()
+
+            unknown = client.get("/portal/system/nonexistent")
+            try:
+                self.assertEqual(unknown.status_code, 200)
+                self.assertIn(b"admin_band0.home_status", unknown.data)
+            finally:
+                unknown.close()
 
     def test_analytics_collect_writes_only_to_clients_domain_path(self) -> None:
         with TemporaryDirectory() as temp_dir:
