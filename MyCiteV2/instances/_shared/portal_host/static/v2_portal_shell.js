@@ -1,4 +1,4 @@
-/* V2 native portal: hydrate activity bar from admin shell; call JSON tool routes only. */
+/* V2 native portal: activity bar from admin shell catalog; JSON tool routes only. */
 (function () {
   const ADMIN_SHELL_REQUEST_SCHEMA = "mycite.v2.admin.shell.request.v1";
   const ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.aws.read_only.request.v1";
@@ -7,6 +7,7 @@
   const SLICE_REGISTRY = "admin_band0.tool_registry";
   const SLICE_AWS_RO = "admin_band1.aws_read_only_surface";
   const SLICE_AWS_NW = "admin_band2.aws_narrow_write_surface";
+  const SLICE_DATUM = "datum.workbench";
 
   const qs = (sel, root) => (root || document).querySelector(sel);
   const qsa = (sel, root) => Array.from((root || document).querySelectorAll(sel));
@@ -14,6 +15,14 @@
   const tenantId = (document.body.dataset.tenantId || "fnd").trim();
 
   let lastAwsReadOnly = null;
+
+  const SLICE_HANDLERS = {
+    [SLICE_HOME]: loadHome,
+    [SLICE_REGISTRY]: loadToolRegistry,
+    [SLICE_AWS_RO]: loadAwsReadOnly,
+    [SLICE_AWS_NW]: loadAwsNarrowWriteForm,
+    [SLICE_DATUM]: loadResourceWorkbench,
+  };
 
   function postJson(url, body) {
     return fetch(url, {
@@ -31,6 +40,12 @@
     if (t) t.textContent = title;
     if (s) s.textContent = subtitle;
     if (b) b.innerHTML = html;
+  }
+
+  function setActiveNav(sliceId) {
+    qsa("#v2-activity-nav .ide-activitylink").forEach((a) => {
+      a.classList.toggle("is-active", a.dataset.sliceId === sliceId);
+    });
   }
 
   function openInspector(title, jsonPayload) {
@@ -101,9 +116,7 @@
 
   async function loadHome() {
     setWorkbench("Home", "Admin shell + host health", "<p>Loading…</p>");
-    qsa("#v2-activity-nav .ide-activitylink").forEach((a) => a.classList.remove("is-active"));
-    const homeLink = qs('#v2-activity-nav a[data-nav="home"]');
-    if (homeLink) homeLink.classList.add("is-active");
+    setActiveNav(SLICE_HOME);
 
     const [healthR, shellR] = await Promise.all([
       fetch("/portal/healthz", { credentials: "same-origin" }).then((r) => r.json()),
@@ -129,9 +142,7 @@
 
   async function loadToolRegistry() {
     setWorkbench("Tool registry", "Shell-owned catalog", "<p>Loading…</p>");
-    qsa("#v2-activity-nav .ide-activitylink").forEach((a) => a.classList.remove("is-active"));
-    const link = qs('#v2-activity-nav a[data-nav="registry"]');
-    if (link) link.classList.add("is-active");
+    setActiveNav(SLICE_REGISTRY);
 
     const shellR = await postJson("/portal/api/v2/admin/shell", {
       schema: ADMIN_SHELL_REQUEST_SCHEMA,
@@ -140,16 +151,14 @@
     });
     setWorkbench(
       "Tool registry",
-      "Launch AWS tools from the activity bar",
+      "Tools below are registered by the shell; launch uses cataloged runtime entrypoints.",
       '<pre class="v2-json-panel">' + JSON.stringify(shellR.json, null, 2) + "</pre>"
     );
   }
 
   async function loadAwsReadOnly() {
     setWorkbench("AWS (read-only)", "Trusted-tenant runtime envelope", "<p>Loading…</p>");
-    qsa("#v2-activity-nav .ide-activitylink").forEach((a) => a.classList.remove("is-active"));
-    const link = qs('#v2-activity-nav a[data-nav="aws-ro"]');
-    if (link) link.classList.add("is-active");
+    setActiveNav(SLICE_AWS_RO);
 
     const res = await postJson("/portal/api/v2/admin/aws/read-only", {
       schema: ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
@@ -171,9 +180,7 @@
 
   async function loadResourceWorkbench() {
     setWorkbench("Resource workbench", "Canonical system datum", "<p>Loading…</p>");
-    qsa("#v2-activity-nav .ide-activitylink").forEach((a) => a.classList.remove("is-active"));
-    const link = qs('#v2-activity-nav a[data-nav="datum"]');
-    if (link) link.classList.add("is-active");
+    setActiveNav(SLICE_DATUM);
 
     const r = await fetch("/portal/api/v2/data/system/resource-workbench", { credentials: "same-origin" });
     const j = await r.json();
@@ -186,9 +193,7 @@
 
   function loadAwsNarrowWriteForm() {
     setWorkbench("AWS narrow write", "Bounded field: selected_verified_sender", "");
-    qsa("#v2-activity-nav .ide-activitylink").forEach((a) => a.classList.remove("is-active"));
-    const link = qs('#v2-activity-nav a[data-nav="aws-nw"]');
-    if (link) link.classList.add("is-active");
+    setActiveNav(SLICE_AWS_NW);
 
     const sp = lastAwsReadOnly && lastAwsReadOnly.surface_payload;
     const profileId =
@@ -213,7 +218,7 @@
       "</form>" +
       '<pre id="v2-narrow-write-result" class="v2-json-panel" style="margin-top:12px" hidden></pre>';
 
-    setWorkbench("AWS narrow write", "Read-only surface must be loaded once this session for profile hints.", html);
+    setWorkbench("AWS narrow write", "Load AWS read-only once per session for profile hints.", html);
 
     const form = qs("#v2-narrow-write-form");
     const out = qs("#v2-narrow-write-result");
@@ -237,37 +242,104 @@
     });
   }
 
-  function buildActivityNav() {
-    const nav = qs("#v2-activity-nav");
-    if (!nav) return;
+  function labelForEntry(entry, sliceId) {
+    const raw = (entry && (entry.label || entry.tool_id)) || sliceId;
+    const u = String(raw).toUpperCase();
+    return u.length > 22 ? u.slice(0, 20) + "…" : u;
+  }
 
-    const items = [
-      { nav: "home", label: "HOME", action: loadHome },
-      { nav: "registry", label: "REGISTRY", action: loadToolRegistry },
-      { nav: "aws-ro", label: "AWS", action: loadAwsReadOnly },
-      { nav: "aws-nw", label: "AWS WRITE", action: loadAwsNarrowWriteForm },
-      { nav: "datum", label: "DATUM", action: loadResourceWorkbench },
-    ];
-
+  function buildFallbackNav(nav) {
     nav.innerHTML = "";
+    const items = [
+      { id: SLICE_HOME, label: "HOME", fn: loadHome },
+      { id: SLICE_REGISTRY, label: "REGISTRY", fn: loadToolRegistry },
+      { id: SLICE_AWS_RO, label: "AWS", fn: loadAwsReadOnly },
+      { id: SLICE_AWS_NW, label: "AWS WRITE", fn: loadAwsNarrowWriteForm },
+      { id: SLICE_DATUM, label: "DATUM", fn: loadResourceWorkbench },
+    ];
     items.forEach((item) => {
       const a = document.createElement("a");
       a.className = "ide-activitylink";
       a.href = "#";
-      a.dataset.nav = item.nav;
+      a.dataset.sliceId = item.id;
       a.innerHTML = "<span>" + item.label + "</span>";
       a.addEventListener("click", (e) => {
         e.preventDefault();
-        item.action();
+        item.fn();
       });
       nav.appendChild(a);
     });
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    buildActivityNav();
-    loadHome();
+  async function buildActivityNavFromShellCatalog() {
+    const nav = qs("#v2-activity-nav");
+    if (!nav) return;
+
+    const shellR = await postJson("/portal/api/v2/admin/shell", {
+      schema: ADMIN_SHELL_REQUEST_SCHEMA,
+      requested_slice_id: SLICE_HOME,
+      tenant_scope: { scope_id: "internal-admin", audience: "internal" },
+    });
+
+    const sp = shellR.json && shellR.json.surface_payload;
+    nav.innerHTML = "";
+    const seen = new Set();
+
+    function addLink(sliceId, entry) {
+      if (seen.has(sliceId)) return;
+      const fn = SLICE_HANDLERS[sliceId];
+      if (!fn) return;
+      seen.add(sliceId);
+      const a = document.createElement("a");
+      a.className = "ide-activitylink";
+      a.href = "#";
+      a.dataset.sliceId = sliceId;
+      a.innerHTML = "<span>" + labelForEntry(entry, sliceId) + "</span>";
+      a.title = (entry && entry.label) || sliceId;
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        fn();
+      });
+      nav.appendChild(a);
+    }
+
+    if (sp && Array.isArray(sp.available_admin_slices)) {
+      sp.available_admin_slices.forEach((entry) => {
+        if (!entry || !entry.launchable || !entry.slice_id) return;
+        addLink(entry.slice_id, entry);
+      });
+    }
+
+    if (sp && Array.isArray(sp.available_tool_slices)) {
+      sp.available_tool_slices.forEach((entry) => {
+        if (!entry || !entry.launchable || !entry.slice_id) return;
+        addLink(entry.slice_id, entry);
+      });
+    }
+
+    addLink(SLICE_DATUM, { label: "Resource workbench" });
+
+    if (!nav.children.length) {
+      buildFallbackNav(nav);
+    }
+  }
+
+  function boot() {
+    buildActivityNavFromShellCatalog()
+      .then(() => loadHome())
+      .catch(() => {
+        const nav = qs("#v2-activity-nav");
+        if (nav) buildFallbackNav(nav);
+        return loadHome();
+      });
+
     const closeBtn = qs("[data-inspector-close]");
     if (closeBtn) closeBtn.addEventListener("click", closeInspector);
-  });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
 })();

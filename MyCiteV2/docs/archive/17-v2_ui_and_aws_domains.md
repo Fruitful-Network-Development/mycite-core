@@ -166,3 +166,61 @@ Here is what was implemented:
 **Your next ops steps:** Verify `cvccboard.org` in SES, add `"allowed_send_domains": ["cvccboard.org"]` to the relevant live profile JSON, then use narrow-write (or your aws-csm tool) to set board addresses; IAM inventory as written is already sufficient for SES/mailbox IAM work—tightening is optional (e.g. replacing `AmazonSESFullAccess` with scoped policies).
 
 ---
+
+## PROMPT:
+
+When I visit `portal.fruitfulnetworkdevelopment.com/portal/system`, I get the blank page and message that reads:
+"Not Found
+
+The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
+
+---
+
+## OUTPUT:
+
+
+Here’s what was wrong and what we changed.
+
+### Cause
+The V2 native app only registered **`/portal`**, **`/portal/`**, and **`/portal/home`**. **`/portal/system`** is the old V1 “SYSTEM” URL (and what oauth2-proxy / bookmarks often use), so Flask had no rule for it and returned **404 Not Found** (blank/error page).
+
+### Fix
+1. **`app.py`** — Register **`GET /portal/system`** and serve the same shell as home via a shared `_portal_shell_page()` helper.
+2. **`portal.html`** — Point the logo and OAuth links at **`/portal/system`** so they match V1-style redirects.
+3. **`test_v2_native_portal_host.py`** — Assert **`GET /portal/system`** returns 200 and includes the shell assets.
+
+After you **deploy this revision and restart** the V2 portal unit (e.g. `mycite-v2-fnd-portal.service`), `https://portal.fruitfulnetworkdevelopment.com/portal/system` should return the portal shell instead of 404.
+
+---
+
+## PROMPT:
+
+There does not seem to be a recreation of the UI sheel that attaches to the core interface surfacing, or at least a recreation of the shell from the version 1 in this new paradgm.
+
+---
+
+## OUTPUT:
+
+
+Here’s what was going wrong and what we changed.
+
+### Why it looked “unstyled”
+1. **Nginx was still sending `/portal` to the old V1 ports** (`5101` / `5203`) in [`portal.fruitfulnetworkdevelopment.com.conf`](repo/srv-infra/nginx/sites-available/portal.fruitfulnetworkdevelopment.com.conf). The V2 app with **`/portal/static/...`** lives on **`6101` / `6203`**. So the HTML could be wrong/upstream-mixed and **`portal.css` often returned 404`**, which matches a bare, default-styled page.
+2. The **shell was only partially “V1-like”** without CSS: `portal.css` carries almost all of the IDE layout (activity bar, workbench, inspector, themes).
+
+### What we fixed in-repo
+1. **Nginx** (in `srv-infra`): `/portal`, `/healthz`, and the default `/` JSON proxy now target **`6101`** (FND) with **`6203`** when `portal_instance=tff`, matching the V2 cutover.
+2. **Template** [`portal.html`](repo/mycite-core/MyCiteV2/instances/_shared/portal_host/templates/portal.html):
+   - **`{{ url_for('static', ...) }}`** for CSS, JS, and the logo so asset URLs stay correct.
+   - A **small inline “layout fallback”** so if CSS still fails, you still get a dark activity strip + basic IDE-ish layout instead of a raw HTML dump.
+   - Scripts use **`defer`** and keep order: `portal.js` then `v2_portal_shell.js`.
+3. **Client** [`v2_portal_shell.js`](repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell.js): the activity bar is built from **`surface_payload.available_admin_slices`** and **`available_tool_slices`** from `POST /portal/api/v2/admin/shell`, then **DATUM** is appended — aligned with “catalog-driven” shell surfacing.
+
+### What you need to do on the server
+1. **Deploy** the updated MyCiteV2 + `srv-infra` nginx snippet.
+2. **`sudo nginx -t && sudo systemctl reload nginx`** so `/portal` and `/portal/static/*` hit **6101/6203**.
+3. **Restart** the V2 portal units if you updated app code.
+
+After reload, open devtools → Network: **`portal.css`** should be **200** and the full V1-style IDE chrome from `portal.css` should apply on top of the fallback layout.
+
+---

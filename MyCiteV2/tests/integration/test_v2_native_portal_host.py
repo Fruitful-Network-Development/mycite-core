@@ -209,6 +209,14 @@ class V2NativePortalHostTests(unittest.TestCase):
             finally:
                 home.close()
 
+            system = client.get("/portal/system")
+            try:
+                self.assertEqual(system.status_code, 200)
+                self.assertIn(b"ide-shell", system.data)
+                self.assertIn(b"v2_portal_shell.js", system.data)
+            finally:
+                system.close()
+
     def test_analytics_collect_writes_only_to_clients_domain_path(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

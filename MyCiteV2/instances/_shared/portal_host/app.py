@@ -234,16 +234,20 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         payload = _build_health(host_config)
         return jsonify(payload), 200 if payload["ok"] else 503
 
-    @app.get("/portal")
-    @app.get("/portal/")
-    @app.get("/portal/home")
-    def portal_home() -> str:
+    def _portal_shell_page() -> str:
         return render_template(
             "portal.html",
             tenant_id=host_config.tenant_id,
             host_shape=HOST_SHAPE,
             analytics_domain=host_config.analytics_domain,
         )
+
+    @app.get("/portal")
+    @app.get("/portal/")
+    @app.get("/portal/home")
+    @app.get("/portal/system")
+    def portal_home() -> str:
+        return _portal_shell_page()
 
     @app.post("/portal/api/v2/admin/shell")
     def admin_shell() -> tuple[Any, int]:
