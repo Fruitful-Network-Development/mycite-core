@@ -219,9 +219,12 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
 
 def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     host_config = config or V2PortalHostConfig.from_env()
+    _host_dir = Path(__file__).resolve().parent
     app = Flask(
         __name__,
-        template_folder=str(Path(__file__).with_name("templates")),
+        template_folder=str(_host_dir / "templates"),
+        static_folder=str(_host_dir / "static"),
+        static_url_path="/portal/static",
     )
     app.config["MYCITE_V2_PORTAL_HOST_CONFIG"] = host_config
 
@@ -338,6 +341,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.get("/<path:resource_path>")
     def public_resource(resource_path: str) -> Any:
+        if resource_path == "portal" or resource_path.startswith("portal/"):
+            abort(404)
         requested = Path(resource_path)
         if requested.is_absolute() or ".." in requested.parts or not resource_path.endswith(".json"):
             abort(404)

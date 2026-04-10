@@ -71,6 +71,7 @@ class AwsOperationalVisibilityTests(unittest.TestCase):
                 "gmail_state": "gmail_pending",
                 "verified_evidence_state": "sender_selected",
                 "selected_verified_sender": "alerts@example.com",
+                "allowed_send_domains": ["example.com"],
                 "canonical_newsletter_profile": {
                     "profile_id": "newsletter.example.com",
                     "domain": "example.com",
@@ -140,6 +141,56 @@ class AwsOperationalVisibilityTests(unittest.TestCase):
                 }
             )
 
+    def test_secondary_send_domain_must_cover_selected_sender(self) -> None:
+        with self.assertRaisesRegex(ValueError, "allowed_send_domains"):
+            normalize_aws_operational_visibility(
+                {
+                    "tenant_scope_id": "tenant-a",
+                    "mailbox_readiness": "ready",
+                    "smtp_state": "smtp_ready",
+                    "gmail_state": "gmail_verified",
+                    "verified_evidence_state": "verified_evidence_present",
+                    "selected_verified_sender": "board@cvccboard.org",
+                    "allowed_send_domains": ["cuyahogavalleycountrysideconservancy.org"],
+                    "canonical_newsletter_profile": {
+                        "profile_id": "aws-csm.cvcc.technicalContact",
+                        "domain": "cuyahogavalleycountrysideconservancy.org",
+                        "list_address": "board@cvccboard.org",
+                        "selected_verified_sender": "board@cvccboard.org",
+                        "delivery_mode": "inbound-mail-only",
+                    },
+                    "compatibility": {"canonical_profile_matches_compatibility_inputs": True},
+                    "inbound_capture": {"status": "ready"},
+                    "dispatch_health": {"status": "healthy"},
+                }
+            )
+
+        summary = normalize_aws_operational_visibility(
+            {
+                "tenant_scope_id": "tenant-a",
+                "mailbox_readiness": "ready",
+                "smtp_state": "smtp_ready",
+                "gmail_state": "gmail_verified",
+                "verified_evidence_state": "verified_evidence_present",
+                "selected_verified_sender": "board@cvccboard.org",
+                "allowed_send_domains": ["cvccboard.org"],
+                "canonical_newsletter_profile": {
+                    "profile_id": "aws-csm.cvcc.technicalContact",
+                    "domain": "cuyahogavalleycountrysideconservancy.org",
+                    "list_address": "board@cvccboard.org",
+                    "selected_verified_sender": "board@cvccboard.org",
+                    "delivery_mode": "inbound-mail-only",
+                },
+                "compatibility": {"canonical_profile_matches_compatibility_inputs": True},
+                "inbound_capture": {"status": "ready"},
+                "dispatch_health": {"status": "healthy"},
+            }
+        )
+        self.assertEqual(
+            list(summary.allowed_send_domains),
+            ["cuyahogavalleycountrysideconservancy.org", "cvccboard.org"],
+        )
+
     def test_service_reads_through_port_and_returns_none_when_missing(self) -> None:
         payload = {
             "tenant_scope_id": "tenant-a",
@@ -165,6 +216,7 @@ class AwsOperationalVisibilityTests(unittest.TestCase):
         result = service.read_surface("tenant-a")
         missing = missing_service.read_surface("tenant-a")
 
+        self.assertEqual(result.to_dict()["allowed_send_domains"], ["example.com"])
         self.assertEqual(
             result.to_dict()["dispatch_health"],
             {

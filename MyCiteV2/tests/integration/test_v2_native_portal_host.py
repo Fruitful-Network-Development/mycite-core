@@ -158,6 +158,10 @@ class V2NativePortalHostTests(unittest.TestCase):
                 read_only_payload["surface_payload"]["selected_verified_sender"],
                 "technicalcontact@trappfamilyfarm.com",
             )
+            self.assertEqual(
+                read_only_payload["surface_payload"]["allowed_send_domains"],
+                ["trappfamilyfarm.com"],
+            )
 
             narrow_write = client.post(
                 "/portal/api/v2/admin/aws/narrow-write",
@@ -183,6 +187,27 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertEqual(public_json.status_code, 200)
             self.assertEqual(public_json.get_json(), {"ok": True})
             public_json.close()
+
+    def test_portal_static_css_and_shell_markup(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config = _build_config(root)
+            client = create_app(config).test_client()
+
+            css = client.get("/portal/static/portal.css")
+            try:
+                self.assertEqual(css.status_code, 200)
+                self.assertIn(b"ide-shell", css.data)
+            finally:
+                css.close()
+
+            home = client.get("/portal/")
+            try:
+                self.assertEqual(home.status_code, 200)
+                self.assertIn(b"ide-shell", home.data)
+                self.assertIn(b"v2_portal_shell.js", home.data)
+            finally:
+                home.close()
 
     def test_analytics_collect_writes_only_to_clients_domain_path(self) -> None:
         with TemporaryDirectory() as temp_dir:

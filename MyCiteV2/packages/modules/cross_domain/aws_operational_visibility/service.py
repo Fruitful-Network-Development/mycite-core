@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from MyCiteV2.packages.modules.cross_domain.aws_operational_visibility.sender_domain_policy import (
+    effective_allowed_send_domains,
+    normalize_optional_domain_list,
+    selected_verified_sender_allowed,
+)
 from MyCiteV2.packages.ports.aws_read_only_status import AwsReadOnlyStatusPort, AwsReadOnlyStatusRequest
 
 FORBIDDEN_AWS_VISIBILITY_KEYS = frozenset(
@@ -34,6 +39,7 @@ _ALLOWED_TOP_LEVEL_FIELDS = frozenset(
         "gmail_state",
         "verified_evidence_state",
         "selected_verified_sender",
+        "allowed_send_domains",
         "canonical_newsletter_profile",
         "compatibility",
         "inbound_capture",
@@ -105,6 +111,13 @@ def _normalize_email(value: object, *, field_name: str) -> str:
     token = _as_text(value).lower()
     if not token or "@" not in token or token.startswith("@") or token.endswith("@"):
         raise ValueError(f"{field_name} must be an email-like value")
+    return token
+
+
+def _normalize_domain_token(value: object, *, field_name: str) -> str:
+    token = _as_text(value).lower()
+    if not token or "." not in token:
+        raise ValueError(f"{field_name} must be a domain-like value")
     return token
 
 
@@ -196,6 +209,7 @@ class AwsReadOnlyOperationalVisibility:
     gmail_state: str
     verified_evidence_state: str
     selected_verified_sender: str
+    allowed_send_domains: tuple[str, ...]
     canonical_newsletter_profile: CanonicalNewsletterOperationalProfile
     compatibility_warnings: tuple[str, ...]
     inbound_capture: dict[str, str]
@@ -259,6 +273,16 @@ class AwsReadOnlyOperationalVisibility:
                 "aws_operational_visibility.canonical_newsletter_profile must be a profile or dict"
             )
         object.__setattr__(self, "canonical_newsletter_profile", profile)
+        if not isinstance(self.allowed_send_domains, tuple):
+            raise ValueError("aws_operational_visibility.allowed_send_domains must be a tuple of domains")
+        normalized_allowed = tuple(
+            _normalize_domain_token(
+                item,
+                field_name=f"aws_operational_visibility.allowed_send_domains[{index}]",
+            )
+            for index, item in enumerate(self.allowed_send_domains)
+        )
+        object.__setattr__(self, "allowed_send_domains", tuple(sorted(set(normalized_allowed))))
         object.__setattr__(
             self,
             "compatibility_warnings",
@@ -275,6 +299,7 @@ class AwsReadOnlyOperationalVisibility:
             "gmail_state": self.gmail_state,
             "verified_evidence_state": self.verified_evidence_state,
             "selected_verified_sender": self.selected_verified_sender,
+            "allowed_send_domains": list(self.allowed_send_domains),
             "canonical_newsletter_profile": self.canonical_newsletter_profile.to_dict(),
             "compatibility_warnings": list(self.compatibility_warnings),
             "inbound_capture": dict(self.inbound_capture),
@@ -297,6 +322,15 @@ def normalize_aws_operational_visibility(
     )
 
     profile = CanonicalNewsletterOperationalProfile.from_dict(payload.get("canonical_newsletter_profile"))
+
+    if "allowed_send_domains" not in payload or payload.get("allowed_send_domains") is None:
+        secondary_domains: tuple[str, ...] = ()
+    else:
+        secondary_domains = normalize_optional_domain_list(
+            payload.get("allowed_send_domains"),
+            field_name="aws_operational_visibility.allowed_send_domains",
+        )
+    merged_allowed = effective_allowed_send_domains(primary_domain=profile.domain, extra_domains=secondary_domains)
 
     compatibility = payload.get("compatibility") or {}
     if not isinstance(compatibility, dict):
@@ -355,6 +389,10 @@ def normalize_aws_operational_visibility(
         raise ValueError(
             "aws_operational_visibility.selected_verified_sender must match canonical_newsletter_profile.selected_verified_sender"
         )
+    if merged_allowed and not selected_verified_sender_allowed(selected_verified_sender, merged_allowed):
+        raise ValueError(
+            "aws_operational_visibility.selected_verified_sender must use a domain listed in allowed_send_domains"
+        )
 
     return AwsReadOnlyOperationalVisibility(
         tenant_scope_id=payload.get("tenant_scope_id"),
@@ -363,6 +401,7 @@ def normalize_aws_operational_visibility(
         gmail_state=payload.get("gmail_state"),
         verified_evidence_state=payload.get("verified_evidence_state"),
         selected_verified_sender=selected_verified_sender,
+        allowed_send_domains=merged_allowed,
         canonical_newsletter_profile=profile,
         compatibility_warnings=compatibility_warnings,
         inbound_capture=normalized_inbound_capture,

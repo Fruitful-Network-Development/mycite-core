@@ -241,7 +241,7 @@ class AdminAwsNarrowWriteRuntimeIntegrationTests(unittest.TestCase):
             }
             profile_file.write_text(json.dumps(original_payload) + "\n", encoding="utf-8")
 
-            with self.assertRaisesRegex(ValueError, "selected_verified_sender"):
+            with self.assertRaisesRegex(ValueError, "allowed send domain"):
                 run_admin_aws_narrow_write(
                     {
                         "schema": ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA,

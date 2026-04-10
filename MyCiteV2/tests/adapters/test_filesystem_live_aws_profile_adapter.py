@@ -72,6 +72,7 @@ class FilesystemLiveAwsProfileAdapterTests(unittest.TestCase):
             self.assertEqual(payload["gmail_state"], "gmail_verified")
             self.assertEqual(payload["verified_evidence_state"], "verified_evidence_present")
             self.assertEqual(payload["selected_verified_sender"], "technicalcontact@trappfamilyfarm.com")
+            self.assertEqual(payload["allowed_send_domains"], ["trappfamilyfarm.com"])
             self.assertEqual(
                 payload["canonical_newsletter_profile"],
                 {
@@ -134,6 +135,36 @@ class FilesystemLiveAwsProfileAdapterTests(unittest.TestCase):
                 )
 
             self.assertEqual(json.loads(profile_file.read_text(encoding="utf-8")), original)
+
+    def test_narrow_write_accepts_secondary_domain_when_allowlisted(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            profile_file = Path(temp_dir) / "aws-csm.cvcc.json"
+            base = _live_profile()
+            payload = dict(base)
+            payload["identity"] = dict(payload["identity"])  # type: ignore[arg-type]
+            payload["identity"]["domain"] = "cuyahogavalleycountrysideconservancy.org"
+            payload["identity"]["tenant_id"] = "cvcc"
+            payload["identity"]["profile_id"] = "aws-csm.cvcc.technicalContact"
+            payload["identity"]["send_as_email"] = "board@cvccboard.org"
+            payload["identity"]["mailbox_local_part"] = "board"
+            payload["smtp"] = dict(payload["smtp"])  # type: ignore[arg-type]
+            payload["smtp"]["send_as_email"] = "board@cvccboard.org"
+            payload["smtp"]["local_part"] = "board"
+            payload["allowed_send_domains"] = ["cvccboard.org"]
+            profile_file.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+            adapter = FilesystemLiveAwsProfileAdapter(profile_file)
+
+            result = adapter.apply_aws_narrow_write(
+                AwsNarrowWriteRequest(
+                    tenant_scope_id="cvcc",
+                    profile_id="aws-csm.cvcc.technicalContact",
+                    selected_verified_sender="chair@cvccboard.org",
+                )
+            )
+
+            stored = json.loads(profile_file.read_text(encoding="utf-8"))
+            self.assertEqual(stored["identity"]["send_as_email"], "chair@cvccboard.org")
+            self.assertEqual(result.source.payload["selected_verified_sender"], "chair@cvccboard.org")
 
 
 if __name__ == "__main__":

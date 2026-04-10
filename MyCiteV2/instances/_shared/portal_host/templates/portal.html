@@ -1,130 +1,129 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MyCite V2 Portal</title>
-  <style>
-    :root {
-      color-scheme: light;
-      font-family: Arial, Helvetica, sans-serif;
-      background: #f6f7f9;
-      color: #202124;
-    }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background: #f6f7f9;
-    }
-    main {
-      width: min(1040px, calc(100% - 32px));
-      margin: 0 auto;
-      padding: 32px 0;
-    }
-    header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 16px;
-      border-bottom: 1px solid #d8dee4;
-      padding-bottom: 20px;
-    }
-    h1 {
-      margin: 0 0 8px;
-      font-size: 32px;
-      line-height: 1.15;
-    }
-    p {
-      line-height: 1.5;
-    }
-    .pill {
-      display: inline-block;
-      border: 1px solid #8aa0b4;
-      border-radius: 8px;
-      padding: 6px 10px;
-      background: #ffffff;
-      font-size: 14px;
-      white-space: nowrap;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 16px;
-      margin-top: 24px;
-    }
-    section {
-      background: #ffffff;
-      border: 1px solid #d8dee4;
-      border-radius: 8px;
-      padding: 18px;
-      min-height: 132px;
-    }
-    h2 {
-      margin: 0 0 10px;
-      font-size: 18px;
-    }
-    code, pre {
-      font-family: "SFMono-Regular", Consolas, monospace;
-      font-size: 13px;
-    }
-    pre {
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      margin: 0;
-    }
-    button {
-      border: 1px solid #1f883d;
-      border-radius: 8px;
-      background: #1f883d;
-      color: #ffffff;
-      padding: 10px 14px;
-      font: inherit;
-      cursor: pointer;
-    }
-  </style>
+  <link rel="stylesheet" href="/portal/static/portal.css" />
 </head>
-<body data-host-shape="{{ host_shape }}" data-tenant-id="{{ tenant_id }}">
-  <main>
-    <header>
-      <div>
-        <h1>MyCite V2 Portal</h1>
-        <p>Tenant <strong>{{ tenant_id }}</strong> is served by the V2 native host for {{ analytics_domain }}.</p>
+<body
+  class="v2-native-portal"
+  data-tenant-id="{{ tenant_id }}"
+  data-host-shape="{{ host_shape }}"
+  data-analytics-domain="{{ analytics_domain }}"
+>
+  <div
+    class="ide-shell"
+    data-active-service="system"
+    data-shell-composition="system"
+    data-foreground-shell-region="center-workbench"
+    data-control-panel-collapsed="false"
+    data-inspector-collapsed="true"
+  >
+    <header class="ide-menubar" aria-label="Menu bar">
+      <nav class="ide-menubar__menu" aria-label="Application menu">
+        <span>File</span>
+        <span>Edit</span>
+        <span>Selection</span>
+        <span>View</span>
+        <span>Go</span>
+        <span>Run</span>
+        <span>Terminal</span>
+        <span>Help</span>
+      </nav>
+      <div class="ide-menubar__center" aria-label="Page label">
+        <span class="ide-menubar__pageTitle">MyCite V2</span>
+        <span class="ide-menubar__pageSub">{{ host_shape }} · {{ tenant_id }} · {{ analytics_domain }}</span>
       </div>
-      <span class="pill">{{ host_shape }}</span>
+      <div class="ide-menubar__right">
+        <div class="ide-menubar__shellActions" aria-label="Shell layout controls">
+          <button type="button" class="ide-sessionAction ide-sessionAction--button" data-shell-toggle="control-panel">Context</button>
+          <button type="button" class="ide-sessionAction ide-sessionAction--button" data-shell-toggle="inspector">Interface Panel</button>
+        </div>
+        <label class="themebar ide-menubar__theme" aria-label="Portal theme selector">
+          <span class="themebar__label">Theme</span>
+          <select class="themebar__select" data-theme-selector data-theme-scope="portal"></select>
+        </label>
+      </div>
     </header>
-    <div class="grid">
-      <section>
-        <h2>Datum</h2>
-        <p id="datum-summary">Checking canonical system datum...</p>
-      </section>
-      <section>
-        <h2>AWS</h2>
-        <p id="aws-summary">Checking live profile mapping...</p>
-      </section>
-      <section>
-        <h2>Health</h2>
-        <button type="button" id="refresh-health">Refresh</button>
-      </section>
+
+    <div class="ide-body">
+      <aside class="ide-activitybar" aria-label="Activity bar">
+        <a class="ide-logo" href="/portal" aria-label="Go to portal home">
+          <img src="/portal/static/icons/logos/fnd.svg" alt="Portal logo" />
+        </a>
+        <nav id="v2-activity-nav" class="ide-activitynav" aria-label="Primary navigation"></nav>
+        <div class="ide-activityfooter">
+          <div class="ide-sessionLine">Portal: V2 native</div>
+          <div class="ide-sessionLine ide-sessionLine--dim">tenant: {{ tenant_id }}</div>
+          <div class="ide-sessionLine ide-sessionLine--dim">host: {{ host_shape }}</div>
+          <a class="ide-sessionAction" href="/oauth2/sign_in?rd=%2Fportal">Switch Active Portal</a>
+          <a class="ide-sessionAction" href="/oauth2/sign_out?rd=%2Foauth2%2Fsign_in%3Frd%3D%252Fportal">Sign Out</a>
+        </div>
+      </aside>
+
+      <aside id="portalControlPanel" class="ide-controlpanel" data-shell-region="control-panel" aria-label="Control panel" aria-hidden="false">
+        <section class="ide-controlpanel__section">
+          <header class="ide-controlpanel__title">V2 shell</header>
+          <p class="ide-controlpanel__empty" style="margin:0;font-size:13px;line-height:1.45">
+            Navigation and tool launchers are driven by <code>POST /portal/api/v2/admin/shell</code>.
+            AWS tools require a trusted-tenant audience and the live AWS profile file.
+          </p>
+        </section>
+      </aside>
+
+      <button type="button" class="ide-splitter ide-splitter--controlpanel" data-splitter="control-panel" aria-label="Resize control panel"></button>
+
+      <main
+        class="ide-workbench"
+        data-shell-region="center-workbench"
+        data-active-service="system"
+        data-foreground-visible="true"
+        aria-hidden="false"
+      >
+        <div class="pagehead pagehead--withTools">
+          <div class="pagehead__meta">
+            <div class="pagehead__title" id="v2-workbench-title">Home</div>
+            <div class="pagehead__sub" id="v2-workbench-subtitle">Loading admin shell…</div>
+          </div>
+          <label class="themebar pagehead__theme" aria-label="Portal theme selector">
+            <span class="themebar__label">Theme</span>
+            <select class="themebar__select" data-theme-selector data-theme-scope="portal"></select>
+          </label>
+        </div>
+
+        <section class="viewport">
+          <div id="v2-workbench-body" class="v2-workbench-body"></div>
+        </section>
+      </main>
+
+      <button type="button" class="ide-splitter ide-splitter--inspector" data-splitter="inspector" aria-label="Resize interface panel"></button>
+
+      <aside
+        id="portalInspector"
+        class="ide-inspector is-collapsed"
+        data-shell-region="interface-panel"
+        data-primary-surface="false"
+        data-surface-layout="sidebar"
+        aria-label="Interface panel"
+        aria-hidden="true"
+      >
+        <header class="ide-inspector__header">
+          <div>
+            <div class="ide-inspector__kicker">Interface Panel</div>
+            <div id="portalInspectorTitle" class="ide-inspector__title">Overview</div>
+          </div>
+          <button type="button" class="ide-inspector__close" data-inspector-close>Close Panel</button>
+        </header>
+        <section id="portalInspectorContent" class="ide-inspector__content" data-interface-panel-scroll-root="true">
+          <p class="ide-inspector__empty" id="portalInspectorEmptyDefault">Open a tool from the activity bar.</p>
+          <pre id="v2-inspector-json" class="v2-json-panel" hidden></pre>
+        </section>
+      </aside>
     </div>
-    <section style="margin-top:16px">
-      <h2>Status Payload</h2>
-      <pre id="health-json">Loading...</pre>
-    </section>
-  </main>
-  <script>
-    async function loadHealth() {
-      const response = await fetch('/portal/healthz', { credentials: 'same-origin' });
-      const payload = await response.json();
-      document.getElementById('datum-summary').textContent =
-        `${payload.datum_health.row_count} canonical rows loaded`;
-      document.getElementById('aws-summary').textContent =
-        payload.aws_config_health.live_profile_mapping ? 'Live AWS profile mapped' : 'AWS profile mapping needs attention';
-      document.getElementById('health-json').textContent = JSON.stringify(payload, null, 2);
-    }
-    document.getElementById('refresh-health').addEventListener('click', loadHealth);
-    loadHealth().catch((error) => {
-      document.getElementById('health-json').textContent = String(error);
-    });
-  </script>
+  </div>
+
+  <script src="/portal/static/portal.js"></script>
+  <script src="/portal/static/v2_portal_shell.js"></script>
 </body>
 </html>
