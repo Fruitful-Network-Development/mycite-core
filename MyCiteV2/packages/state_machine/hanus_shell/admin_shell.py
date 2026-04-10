@@ -5,6 +5,7 @@ from typing import Any
 
 ADMIN_SHELL_REQUEST_SCHEMA = "mycite.v2.admin.shell.request.v1"
 ADMIN_SHELL_STATE_SCHEMA = "mycite.v2.admin.shell.state.v1"
+ADMIN_TOOL_DESCRIPTOR_SCHEMA = "mycite.v2.admin.tool_descriptor.v1"
 
 ADMIN_BAND0_NAME = "Admin Band 0 Internal Admin Replacement"
 ADMIN_BAND1_AWS_NAME = "Admin Band 1 Trusted-Tenant AWS Read-Only"
@@ -24,6 +25,11 @@ AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
 AWS_NARROW_WRITE_ENTRYPOINT_ID = "admin.aws.narrow_write"
 
 INTERNAL_ADMIN_SCOPE_ID = "internal-admin"
+ADMIN_TOOL_DEFAULT_POSTURE = "deny-by-default"
+ADMIN_TOOL_DISCOVERY_MODE = "catalog-driven"
+ADMIN_TOOL_LAUNCH_CONTRACT = "shell-owned-registry"
+ADMIN_TOOL_SURFACE_READ_ONLY = "read-only"
+ADMIN_TOOL_SURFACE_BOUNDED_WRITE = "bounded-write"
 
 _ALLOWED_AUDIENCES = frozenset({"internal", "trusted-tenant"})
 
@@ -147,10 +153,17 @@ class AdminToolRegistryEntry:
     admin_band: str
     exposure_status: str
     read_write_posture: str
+    surface_pattern: str
     status_summary: str
     audience: str
     internal_only_reason: str
+    audit_required: bool = False
+    read_after_write_required: bool = False
     launchable: bool = False
+    schema: str = field(default=ADMIN_TOOL_DESCRIPTOR_SCHEMA, init=False)
+    discovery_mode: str = field(default=ADMIN_TOOL_DISCOVERY_MODE, init=False)
+    launch_contract: str = field(default=ADMIN_TOOL_LAUNCH_CONTRACT, init=False)
+    default_posture: str = field(default=ADMIN_TOOL_DEFAULT_POSTURE, init=False)
 
     def __post_init__(self) -> None:
         if not _as_text(self.tool_id):
@@ -163,9 +176,22 @@ class AdminToolRegistryEntry:
             raise ValueError("admin_tool_registry.entrypoint_id is required")
         if self.read_write_posture not in {"read-only", "write"}:
             raise ValueError("admin_tool_registry.read_write_posture must be read-only or write")
+        if self.surface_pattern not in {ADMIN_TOOL_SURFACE_READ_ONLY, ADMIN_TOOL_SURFACE_BOUNDED_WRITE}:
+            raise ValueError("admin_tool_registry.surface_pattern is invalid")
+        if self.read_write_posture == "read-only":
+            if self.surface_pattern != ADMIN_TOOL_SURFACE_READ_ONLY:
+                raise ValueError("read-only admin tools must use the read-only surface pattern")
+            if self.audit_required or self.read_after_write_required:
+                raise ValueError("read-only admin tools must not require write audit or read-after-write")
+        if self.read_write_posture == "write":
+            if self.surface_pattern != ADMIN_TOOL_SURFACE_BOUNDED_WRITE:
+                raise ValueError("writable admin tools must use the bounded-write surface pattern")
+            if not self.audit_required or not self.read_after_write_required:
+                raise ValueError("writable admin tools must require audit and read-after-write confirmation")
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "schema": self.schema,
             "tool_id": self.tool_id,
             "label": self.label,
             "slice_id": self.slice_id,
@@ -173,9 +199,15 @@ class AdminToolRegistryEntry:
             "admin_band": self.admin_band,
             "exposure_status": self.exposure_status,
             "read_write_posture": self.read_write_posture,
+            "surface_pattern": self.surface_pattern,
             "status_summary": self.status_summary,
             "audience": self.audience,
             "internal_only_reason": self.internal_only_reason,
+            "audit_required": bool(self.audit_required),
+            "read_after_write_required": bool(self.read_after_write_required),
+            "discovery_mode": self.discovery_mode,
+            "launch_contract": self.launch_contract,
+            "default_posture": self.default_posture,
             "launchable": bool(self.launchable),
         }
 
@@ -288,6 +320,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             admin_band=ADMIN_BAND1_AWS_NAME,
             exposure_status="implemented_trusted_tenant_read_only",
             read_write_posture="read-only",
+            surface_pattern=ADMIN_TOOL_SURFACE_READ_ONLY,
             status_summary="launchable_read_only",
             audience="trusted-tenant-admin",
             internal_only_reason="",
@@ -301,9 +334,12 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             admin_band=ADMIN_BAND2_AWS_NAME,
             exposure_status="implemented_trusted_tenant_narrow_write",
             read_write_posture="write",
+            surface_pattern=ADMIN_TOOL_SURFACE_BOUNDED_WRITE,
             status_summary="launchable_narrow_write",
             audience="trusted-tenant-admin",
             internal_only_reason="",
+            audit_required=True,
+            read_after_write_required=True,
             launchable=True,
         ),
     )
@@ -439,7 +475,13 @@ __all__ = [
     "ADMIN_SHELL_ENTRY_SLICE_ID",
     "ADMIN_SHELL_REQUEST_SCHEMA",
     "ADMIN_SHELL_STATE_SCHEMA",
+    "ADMIN_TOOL_DEFAULT_POSTURE",
+    "ADMIN_TOOL_DESCRIPTOR_SCHEMA",
+    "ADMIN_TOOL_DISCOVERY_MODE",
+    "ADMIN_TOOL_LAUNCH_CONTRACT",
     "ADMIN_TOOL_REGISTRY_SLICE_ID",
+    "ADMIN_TOOL_SURFACE_BOUNDED_WRITE",
+    "ADMIN_TOOL_SURFACE_READ_ONLY",
     "AWS_NARROW_WRITE_SLICE_ID",
     "AWS_NARROW_WRITE_ENTRYPOINT_ID",
     "AWS_READ_ONLY_ENTRYPOINT_ID",

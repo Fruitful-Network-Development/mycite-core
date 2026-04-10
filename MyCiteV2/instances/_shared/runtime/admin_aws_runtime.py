@@ -23,15 +23,15 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AdminTenantScope,
     resolve_admin_tool_launch,
 )
-
-ADMIN_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.admin.runtime.envelope.v1"
-ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.aws.read_only.request.v1"
-ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA = "mycite.v2.admin.aws.read_only.surface.v1"
-ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA = "mycite.v2.admin.aws.narrow_write.request.v1"
-ADMIN_AWS_NARROW_WRITE_SURFACE_SCHEMA = "mycite.v2.admin.aws.narrow_write.surface.v1"
-
-AWS_NARROW_WRITE_RECOVERY_REFERENCE = (
-    "docs/plans/post_mvp_rollout/admin_first/aws_narrow_write_recovery.md"
+from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA,
+    ADMIN_AWS_NARROW_WRITE_SURFACE_SCHEMA,
+    ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
+    ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA,
+    ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    AWS_NARROW_WRITE_RECOVERY_REFERENCE,
+    build_admin_runtime_envelope,
+    build_admin_runtime_error,
 )
 
 
@@ -103,82 +103,71 @@ def run_admin_aws_read_only(
 
     if not launch_decision.allowed:
         message = launch_decision.reason_message
-        return {
-            "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
-            "admin_band": ADMIN_BAND1_AWS_NAME,
-            "exposure_status": ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
-            "tenant_scope": tenant_scope.to_dict(),
-            "requested_slice_id": AWS_READ_ONLY_SLICE_ID,
-            "slice_id": AWS_READ_ONLY_SLICE_ID,
-            "entrypoint_id": AWS_READ_ONLY_ENTRYPOINT_ID,
-            "read_write_posture": "read-only",
-            "shell_state": launch_decision.to_dict(),
-            "surface_payload": None,
-            "warnings": [message] if message else [],
-            "error": {
-                "code": launch_decision.reason_code,
-                "message": message,
-            },
-        }
+        return build_admin_runtime_envelope(
+            admin_band=ADMIN_BAND1_AWS_NAME,
+            exposure_status=ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
+            tenant_scope=tenant_scope.to_dict(),
+            requested_slice_id=AWS_READ_ONLY_SLICE_ID,
+            slice_id=AWS_READ_ONLY_SLICE_ID,
+            entrypoint_id=AWS_READ_ONLY_ENTRYPOINT_ID,
+            read_write_posture="read-only",
+            shell_state=launch_decision.to_dict(),
+            surface_payload=None,
+            warnings=[message] if message else [],
+            error=build_admin_runtime_error(code=launch_decision.reason_code, message=message),
+        )
 
     if aws_status_file is None:
-        return {
-            "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
-            "admin_band": ADMIN_BAND1_AWS_NAME,
-            "exposure_status": ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
-            "tenant_scope": tenant_scope.to_dict(),
-            "requested_slice_id": AWS_READ_ONLY_SLICE_ID,
-            "slice_id": AWS_READ_ONLY_SLICE_ID,
-            "entrypoint_id": AWS_READ_ONLY_ENTRYPOINT_ID,
-            "read_write_posture": "read-only",
-            "shell_state": launch_decision.to_dict(),
-            "surface_payload": None,
-            "warnings": ["AWS read-only status source is not configured."],
-            "error": {
-                "code": "status_source_not_configured",
-                "message": "AWS read-only status source is not configured.",
-            },
-        }
+        message = "AWS read-only status source is not configured."
+        return build_admin_runtime_envelope(
+            admin_band=ADMIN_BAND1_AWS_NAME,
+            exposure_status=ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
+            tenant_scope=tenant_scope.to_dict(),
+            requested_slice_id=AWS_READ_ONLY_SLICE_ID,
+            slice_id=AWS_READ_ONLY_SLICE_ID,
+            entrypoint_id=AWS_READ_ONLY_ENTRYPOINT_ID,
+            read_write_posture="read-only",
+            shell_state=launch_decision.to_dict(),
+            surface_payload=None,
+            warnings=[message],
+            error=build_admin_runtime_error(code="status_source_not_configured", message=message),
+        )
 
     adapter = FilesystemAwsReadOnlyStatusAdapter(aws_status_file)
     service = AwsOperationalVisibilityService(adapter)
     surface = service.read_surface(tenant_scope.scope_id)
 
     if surface is None:
-        return {
-            "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
-            "admin_band": ADMIN_BAND1_AWS_NAME,
-            "exposure_status": ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
-            "tenant_scope": tenant_scope.to_dict(),
-            "requested_slice_id": AWS_READ_ONLY_SLICE_ID,
-            "slice_id": AWS_READ_ONLY_SLICE_ID,
-            "entrypoint_id": AWS_READ_ONLY_ENTRYPOINT_ID,
-            "read_write_posture": "read-only",
-            "shell_state": launch_decision.to_dict(),
-            "surface_payload": None,
-            "warnings": ["No AWS read-only status snapshot matched the requested tenant scope."],
-            "error": {
-                "code": "status_snapshot_not_found",
-                "message": "No AWS read-only status snapshot matched the requested tenant scope.",
-            },
-        }
+        message = "No AWS read-only status snapshot matched the requested tenant scope."
+        return build_admin_runtime_envelope(
+            admin_band=ADMIN_BAND1_AWS_NAME,
+            exposure_status=ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
+            tenant_scope=tenant_scope.to_dict(),
+            requested_slice_id=AWS_READ_ONLY_SLICE_ID,
+            slice_id=AWS_READ_ONLY_SLICE_ID,
+            entrypoint_id=AWS_READ_ONLY_ENTRYPOINT_ID,
+            read_write_posture="read-only",
+            shell_state=launch_decision.to_dict(),
+            surface_payload=None,
+            warnings=[message],
+            error=build_admin_runtime_error(code="status_snapshot_not_found", message=message),
+        )
 
     surface_payload = _build_read_only_surface_payload(tenant_scope=tenant_scope, visibility=surface.to_dict())
 
-    return {
-        "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
-        "admin_band": ADMIN_BAND1_AWS_NAME,
-        "exposure_status": ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
-        "tenant_scope": tenant_scope.to_dict(),
-        "requested_slice_id": AWS_READ_ONLY_SLICE_ID,
-        "slice_id": AWS_READ_ONLY_SLICE_ID,
-        "entrypoint_id": AWS_READ_ONLY_ENTRYPOINT_ID,
-        "read_write_posture": "read-only",
-        "shell_state": launch_decision.to_dict(),
-        "surface_payload": surface_payload,
-        "warnings": list(surface_payload["compatibility_warnings"]),
-        "error": None,
-    }
+    return build_admin_runtime_envelope(
+        admin_band=ADMIN_BAND1_AWS_NAME,
+        exposure_status=ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
+        tenant_scope=tenant_scope.to_dict(),
+        requested_slice_id=AWS_READ_ONLY_SLICE_ID,
+        slice_id=AWS_READ_ONLY_SLICE_ID,
+        entrypoint_id=AWS_READ_ONLY_ENTRYPOINT_ID,
+        read_write_posture="read-only",
+        shell_state=launch_decision.to_dict(),
+        surface_payload=surface_payload,
+        warnings=list(surface_payload["compatibility_warnings"]),
+        error=None,
+    )
 
 
 def run_admin_aws_narrow_write(
@@ -196,61 +185,51 @@ def run_admin_aws_narrow_write(
 
     if not launch_decision.allowed:
         message = launch_decision.reason_message
-        return {
-            "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
-            "admin_band": ADMIN_BAND2_AWS_NAME,
-            "exposure_status": ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
-            "tenant_scope": tenant_scope.to_dict(),
-            "requested_slice_id": AWS_NARROW_WRITE_SLICE_ID,
-            "slice_id": AWS_NARROW_WRITE_SLICE_ID,
-            "entrypoint_id": AWS_NARROW_WRITE_ENTRYPOINT_ID,
-            "read_write_posture": "write",
-            "shell_state": launch_decision.to_dict(),
-            "surface_payload": None,
-            "warnings": [message] if message else [],
-            "error": {
-                "code": launch_decision.reason_code,
-                "message": message,
-            },
-        }
+        return build_admin_runtime_envelope(
+            admin_band=ADMIN_BAND2_AWS_NAME,
+            exposure_status=ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
+            tenant_scope=tenant_scope.to_dict(),
+            requested_slice_id=AWS_NARROW_WRITE_SLICE_ID,
+            slice_id=AWS_NARROW_WRITE_SLICE_ID,
+            entrypoint_id=AWS_NARROW_WRITE_ENTRYPOINT_ID,
+            read_write_posture="write",
+            shell_state=launch_decision.to_dict(),
+            surface_payload=None,
+            warnings=[message] if message else [],
+            error=build_admin_runtime_error(code=launch_decision.reason_code, message=message),
+        )
 
     if aws_status_file is None:
-        return {
-            "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
-            "admin_band": ADMIN_BAND2_AWS_NAME,
-            "exposure_status": ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
-            "tenant_scope": tenant_scope.to_dict(),
-            "requested_slice_id": AWS_NARROW_WRITE_SLICE_ID,
-            "slice_id": AWS_NARROW_WRITE_SLICE_ID,
-            "entrypoint_id": AWS_NARROW_WRITE_ENTRYPOINT_ID,
-            "read_write_posture": "write",
-            "shell_state": launch_decision.to_dict(),
-            "surface_payload": None,
-            "warnings": ["AWS narrow write requires an existing status snapshot file."],
-            "error": {
-                "code": "status_source_not_configured",
-                "message": "AWS narrow write requires an existing status snapshot file.",
-            },
-        }
+        message = "AWS narrow write requires an existing status snapshot file."
+        return build_admin_runtime_envelope(
+            admin_band=ADMIN_BAND2_AWS_NAME,
+            exposure_status=ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
+            tenant_scope=tenant_scope.to_dict(),
+            requested_slice_id=AWS_NARROW_WRITE_SLICE_ID,
+            slice_id=AWS_NARROW_WRITE_SLICE_ID,
+            entrypoint_id=AWS_NARROW_WRITE_ENTRYPOINT_ID,
+            read_write_posture="write",
+            shell_state=launch_decision.to_dict(),
+            surface_payload=None,
+            warnings=[message],
+            error=build_admin_runtime_error(code="status_source_not_configured", message=message),
+        )
 
     if audit_storage_file is None:
-        return {
-            "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
-            "admin_band": ADMIN_BAND2_AWS_NAME,
-            "exposure_status": ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
-            "tenant_scope": tenant_scope.to_dict(),
-            "requested_slice_id": AWS_NARROW_WRITE_SLICE_ID,
-            "slice_id": AWS_NARROW_WRITE_SLICE_ID,
-            "entrypoint_id": AWS_NARROW_WRITE_ENTRYPOINT_ID,
-            "read_write_posture": "write",
-            "shell_state": launch_decision.to_dict(),
-            "surface_payload": None,
-            "warnings": ["AWS narrow write requires the local audit storage path."],
-            "error": {
-                "code": "audit_log_not_configured",
-                "message": "AWS narrow write requires the local audit storage path.",
-            },
-        }
+        message = "AWS narrow write requires the local audit storage path."
+        return build_admin_runtime_envelope(
+            admin_band=ADMIN_BAND2_AWS_NAME,
+            exposure_status=ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
+            tenant_scope=tenant_scope.to_dict(),
+            requested_slice_id=AWS_NARROW_WRITE_SLICE_ID,
+            slice_id=AWS_NARROW_WRITE_SLICE_ID,
+            entrypoint_id=AWS_NARROW_WRITE_ENTRYPOINT_ID,
+            read_write_posture="write",
+            shell_state=launch_decision.to_dict(),
+            surface_payload=None,
+            warnings=[message],
+            error=build_admin_runtime_error(code="audit_log_not_configured", message=message),
+        )
 
     write_adapter = FilesystemAwsNarrowWriteAdapter(aws_status_file)
     write_service = AwsNarrowWriteService(write_adapter)
@@ -277,17 +256,16 @@ def run_admin_aws_narrow_write(
         "write_status": "applied",
     }
 
-    return {
-        "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
-        "admin_band": ADMIN_BAND2_AWS_NAME,
-        "exposure_status": ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
-        "tenant_scope": tenant_scope.to_dict(),
-        "requested_slice_id": AWS_NARROW_WRITE_SLICE_ID,
-        "slice_id": AWS_NARROW_WRITE_SLICE_ID,
-        "entrypoint_id": AWS_NARROW_WRITE_ENTRYPOINT_ID,
-        "read_write_posture": "write",
-        "shell_state": launch_decision.to_dict(),
-        "surface_payload": surface_payload,
-        "warnings": list(confirmed_read_only_surface["compatibility_warnings"]),
-        "error": None,
-    }
+    return build_admin_runtime_envelope(
+        admin_band=ADMIN_BAND2_AWS_NAME,
+        exposure_status=ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
+        tenant_scope=tenant_scope.to_dict(),
+        requested_slice_id=AWS_NARROW_WRITE_SLICE_ID,
+        slice_id=AWS_NARROW_WRITE_SLICE_ID,
+        entrypoint_id=AWS_NARROW_WRITE_ENTRYPOINT_ID,
+        read_write_posture="write",
+        shell_state=launch_decision.to_dict(),
+        surface_payload=surface_payload,
+        warnings=list(confirmed_read_only_surface["compatibility_warnings"]),
+        error=None,
+    )

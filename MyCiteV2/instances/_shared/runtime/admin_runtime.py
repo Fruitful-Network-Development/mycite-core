@@ -19,10 +19,12 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     build_admin_tool_registry_entries,
     resolve_admin_shell_request,
 )
-
-ADMIN_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.admin.runtime.envelope.v1"
-ADMIN_HOME_STATUS_SURFACE_SCHEMA = "mycite.v2.admin.home_status.surface.v1"
-ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA = "mycite.v2.admin.tool_registry.surface.v1"
+from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    ADMIN_HOME_STATUS_SURFACE_SCHEMA,
+    ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA,
+    build_admin_runtime_envelope,
+)
 
 
 def _normalize_request(payload: dict[str, Any] | None) -> AdminShellRequest:
@@ -158,17 +160,16 @@ def run_admin_shell_entry(
         if selection.reason_message:
             warnings.append(selection.reason_message)
 
-    return {
-        "schema": ADMIN_RUNTIME_ENVELOPE_SCHEMA,
-        "admin_band": ADMIN_BAND0_NAME,
-        "exposure_status": ADMIN_EXPOSURE_INTERNAL_ONLY,
-        "tenant_scope": normalized_request.tenant_scope.to_dict(),
-        "requested_slice_id": normalized_request.requested_slice_id,
-        "slice_id": selection.active_surface_id,
-        "entrypoint_id": ADMIN_ENTRYPOINT_ID,
-        "read_write_posture": "read-only",
-        "shell_state": selection.to_dict(),
-        "surface_payload": surface_payload,
-        "warnings": warnings,
-        "error": error,
-    }
+    return build_admin_runtime_envelope(
+        admin_band=ADMIN_BAND0_NAME,
+        exposure_status=ADMIN_EXPOSURE_INTERNAL_ONLY,
+        tenant_scope=normalized_request.tenant_scope.to_dict(),
+        requested_slice_id=normalized_request.requested_slice_id,
+        slice_id=selection.active_surface_id,
+        entrypoint_id=ADMIN_ENTRYPOINT_ID,
+        read_write_posture="read-only",
+        shell_state=selection.to_dict(),
+        surface_payload=surface_payload,
+        warnings=warnings,
+        error=error,
+    )

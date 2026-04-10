@@ -17,6 +17,7 @@ Use it after the MVP is proven and before any new client-visible slice is specif
 7. Read [port_adapter_ownership_matrix.md](port_adapter_ownership_matrix.md).
 8. Use [agent_prompt_templates.md](agent_prompt_templates.md) when handing work to future agents.
 9. When the goal is operational replacement of the old admin portal or tool-bearing rollout, switch to [admin_first/README.md](admin_first/README.md).
+10. After AWS read-only and AWS narrow-write are stable, use [post_aws_tool_platform/README.md](post_aws_tool_platform/README.md) before starting Maps or later tools.
 
 ## Operating rules
 
@@ -29,9 +30,9 @@ Use it after the MVP is proven and before any new client-visible slice is specif
 
 ## Current band status
 
-- Current exposure band: `Band 0 Internal Only`.
-- Current build target: `Band 1 Trusted-Tenant Read-Only`.
-- Writable slice work may be specified now, but it is not approved for implementation until Band 1 slices are stable.
+- Current admin-first platform status: post-AWS tool platform stabilized.
+- Completed admin-first slices: `Admin Band 0`, `admin_band1.aws_read_only_surface`, and `admin_band2.aws_narrow_write_surface`.
+- Next allowed admin-first tool track: Maps, after reading [post_aws_tool_platform/README.md](post_aws_tool_platform/README.md) and [admin_first/maps_follow_on_surface.md](admin_first/maps_follow_on_surface.md).
 
 ## Preferred near-term sequence
 
@@ -42,7 +43,7 @@ Use it after the MVP is proven and before any new client-visible slice is specif
    Choose one narrow slice, not both at once.
 3. Keep [band2_profile_basics_write_surface.md](slice_registry/band2_profile_basics_write_surface.md) in specification-only status until at least one Band 1 slice is exposed safely.
 
-Tools, sandboxes, broad workflow parity, and runtime flavor expansion stay outside this sequence.
+Sandboxes, broad workflow parity, runtime flavor expansion, and AGRO-ERP-before-Maps remain outside this sequence.
 
 ## Initial slice registry entries
 

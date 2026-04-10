@@ -26,6 +26,7 @@ Use [../../testing/slice_gate_template.md](../../testing/slice_gate_template.md)
 - Runtime code composes only. It does not own new semantics.
 - No hidden flavor expansion or second runtime path appears.
 - No forbidden v1 drift pattern reappears.
+- Tool-bearing slices have one shell-owned descriptor and one runtime entrypoint descriptor.
 
 ## Gate 4: Test readiness
 
@@ -69,3 +70,9 @@ Use [../../testing/slice_gate_template.md](../../testing/slice_gate_template.md)
 - AWS must be the first trusted-tenant tool-bearing slice.
 - Maps may not start before AWS is stable.
 - AGRO-ERP may not start before Maps is stable.
+
+### Post-AWS platform addition
+
+- Future tools must follow [post_aws_tool_platform/future_tool_drop_in_contract.md](post_aws_tool_platform/future_tool_drop_in_contract.md).
+- Read-only tools must follow the read-only pattern in [post_aws_tool_platform/read_only_and_bounded_write_patterns.md](post_aws_tool_platform/read_only_and_bounded_write_patterns.md).
+- Writable tools must follow the bounded-write pattern in [post_aws_tool_platform/read_only_and_bounded_write_patterns.md](post_aws_tool_platform/read_only_and_bounded_write_patterns.md).

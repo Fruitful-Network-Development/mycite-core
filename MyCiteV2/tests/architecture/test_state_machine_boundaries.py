@@ -28,6 +28,10 @@ FORBIDDEN_TEXT_TOKENS = (
     "/network/",
     "http://",
     "https://",
+    "pkgutil",
+    "importlib",
+    ".glob(",
+    ".rglob(",
 )
 
 

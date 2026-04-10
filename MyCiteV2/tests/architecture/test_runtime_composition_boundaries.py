@@ -20,6 +20,10 @@ GENERAL_FORBIDDEN_TEXT_TOKENS = (
     "flask",
     "http://",
     "https://",
+    "pkgutil",
+    "importlib",
+    ".glob(",
+    ".rglob(",
 )
 
 ADMIN_RUNTIME_FORBIDDEN_TEXT_TOKENS = (
@@ -83,7 +87,10 @@ class RuntimeCompositionBoundaryTests(unittest.TestCase):
         runtime_python_files = sorted(path.name for path in RUNTIME_DIR.glob("*.py"))
         flavor_python_files = sorted(path.name for path in FLAVORS_DIR.glob("*.py"))
 
-        self.assertEqual(runtime_python_files, ["admin_aws_runtime.py", "admin_runtime.py", "mvp_runtime.py"])
+        self.assertEqual(
+            runtime_python_files,
+            ["admin_aws_runtime.py", "admin_runtime.py", "mvp_runtime.py", "runtime_platform.py"],
+        )
         self.assertEqual(flavor_python_files, [])
 
     def test_runtime_source_contains_no_framework_or_legacy_provider_logic(self) -> None:

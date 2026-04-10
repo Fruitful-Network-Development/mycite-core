@@ -178,3 +178,27 @@ Use:
 Do not add direct tool routes, a second shell entry, or flavor-specific runtime code.
 Return exact files changed, tests run, the runtime entrypoint touched, and remaining blockers.
 ```
+
+## Template 8: Implement A Post-AWS Tool Slice
+
+```text
+Work only inside `MyCiteV2/`.
+
+Implement only the approved post-AWS tool slice documented in `<slice_file>`.
+
+Read first:
+1. `MyCiteV2/docs/plans/authority_stack.md`
+2. `MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/README.md`
+3. `MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/future_tool_drop_in_contract.md`
+4. `MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/tool_descriptor_contract.md`
+5. `MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/runtime_entrypoint_catalog.md`
+6. `MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/read_only_and_bounded_write_patterns.md`
+7. `<tool_track_doc>`
+8. `<slice_file>`
+9. `MyCiteV2/docs/testing/slice_gate_template.md`
+
+Implement one slice only.
+Add one semantic owner, one port seam, one adapter family if needed, one runtime entrypoint, one shell-owned descriptor, and one test/gate set.
+Do not add dynamic discovery, a second shell, flavor-specific runtime code, broad provider-admin parity, or unrelated tool semantics.
+Return exact files changed, tests run, descriptor added, runtime entrypoint added, and remaining blockers.
+```

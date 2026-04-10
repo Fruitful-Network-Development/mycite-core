@@ -22,19 +22,24 @@ The envelope exists before tool exposure so future tools inherit the same safety
 
 ## Minimum envelope fields
 
-Every future admin runtime response should carry, at minimum:
+Every future admin runtime response must carry:
 
+- `schema`
 - `admin_band`
 - `exposure_status`
 - `tenant_scope`
+- `requested_slice_id`
 - `slice_id`
 - `entrypoint_id`
 - `read_write_posture`
 - `shell_state`
 - `surface_payload`
 - `warnings`
+- `error`
 
 These are runtime-envelope fields, not tool-owned semantics.
+
+The code-level helper is `instances/_shared/runtime/runtime_platform.py`.
 
 ## Tenant-safe rules
 

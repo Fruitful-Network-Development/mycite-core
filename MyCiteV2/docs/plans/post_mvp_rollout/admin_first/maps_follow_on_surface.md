@@ -20,6 +20,8 @@ Those are not needed to restore a usable admin portal as quickly and safely as A
 
 - `Admin Band 0` is stable
 - the AWS read-only slice is stable
+- the AWS narrow-write slice is stable
+- the post-AWS tool platform is stable
 - the tool registry/launcher model is proven
 - a dedicated Maps slice file exists
 - any reopened mediation-surface work is explicitly approved

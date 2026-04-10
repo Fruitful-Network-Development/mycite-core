@@ -4,6 +4,8 @@ Authority: [../authority_stack.md](../authority_stack.md)
 
 This file catalogs runtime entrypoints and constrains how new ones are added.
 
+The code-level admin runtime entrypoint catalog is `instances/_shared/runtime/runtime_platform.py`.
+
 ## Policy
 
 - Runtime entrypoints live under `instances/_shared/runtime/`.
@@ -41,6 +43,7 @@ Every new entrypoint must be added here before implementation and must record:
 - A second public runtime entrypoint may not be added until its slice file exists in [slice_registry/](slice_registry/).
 - A runtime entrypoint may not be added for an exposure band that is currently frozen.
 - A runtime entrypoint may not be added just to compensate for missing lower-layer contracts.
+- Every admin tool-bearing runtime entrypoint must be present in both `runtime_platform.py` and the shell-owned registry descriptor list.
 
 ## Forbidden runtime drift
 

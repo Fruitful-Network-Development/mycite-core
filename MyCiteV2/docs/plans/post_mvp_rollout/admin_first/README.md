@@ -33,9 +33,10 @@ Maps and AGRO-ERP remain follow-on planning surfaces. They do not displace AWS-f
 6. Read [admin_home_and_status_surface.md](admin_home_and_status_surface.md).
 7. Read [tool_registry_and_launcher_surface.md](tool_registry_and_launcher_surface.md).
 8. Read [aws_first_surface.md](aws_first_surface.md).
-9. Read [maps_follow_on_surface.md](maps_follow_on_surface.md).
-10. Read [agro_erp_follow_on_surface.md](agro_erp_follow_on_surface.md).
-11. Use the matching slice files in [../slice_registry/](../slice_registry/).
+9. After AWS read-only and AWS narrow-write are complete, read [../post_aws_tool_platform/README.md](../post_aws_tool_platform/README.md).
+10. Read [maps_follow_on_surface.md](maps_follow_on_surface.md).
+11. Read [agro_erp_follow_on_surface.md](agro_erp_follow_on_surface.md).
+12. Use the matching slice files in [../slice_registry/](../slice_registry/).
 
 ## Core rules
 
@@ -50,6 +51,7 @@ Maps and AGRO-ERP remain follow-on planning surfaces. They do not displace AWS-f
 
 ## Current planning target
 
-- The first stable admin operating band is `Admin Band 0 Internal Admin Replacement`.
-- The first real tool-bearing target is `Admin Band 1 Trusted-Tenant AWS Read-Only`.
-- No tool becomes trusted-tenant usable until the `Admin Band 0` shell, envelope, home/status, and registry/launcher slices are stable.
+- `Admin Band 0 Internal Admin Replacement` is the stable admin shell base.
+- `Admin Band 1 Trusted-Tenant AWS Read-Only` and `Admin Band 2 Trusted-Tenant AWS Narrow Write` are the reference tool slices.
+- [../post_aws_tool_platform/README.md](../post_aws_tool_platform/README.md) now governs future tool drop-in work.
+- The next allowed tool track is Maps; AGRO-ERP still follows Maps.
