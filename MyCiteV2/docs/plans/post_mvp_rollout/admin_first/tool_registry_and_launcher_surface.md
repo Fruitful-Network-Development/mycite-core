@@ -24,9 +24,15 @@ Every future admin tool entry must declare:
 - `admin_band`
 - `exposure_status`
 - `read_write_posture`
+- `surface_pattern`
 - `status_summary`
 - `audience`
 - `internal_only_reason` if not yet exposed
+- `audit_required`
+- `read_after_write_required`
+- `discovery_mode`
+- `launch_contract`
+- `default_posture`
 
 ## Launcher rules
 
@@ -36,6 +42,7 @@ Every future admin tool entry must declare:
 - A tool may not define shell verbs, shell legality, or navigation truth.
 - A runtime entrypoint may not be considered launchable until it is in both:
   - `runtime_entrypoints.md`
+  - `instances/_shared/runtime/runtime_platform.py`
   - the shell-owned registry
 
 ## AWS-first rule

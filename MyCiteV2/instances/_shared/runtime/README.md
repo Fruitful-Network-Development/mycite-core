@@ -6,6 +6,7 @@ Authority: [../../../docs/plans/authority_stack.md](../../../docs/plans/authorit
 
 Implemented in shared runtime:
 
+- one shared admin runtime descriptor catalog and envelope helper
 - one composition entrypoint for the `Shell Action To Local Audit` slice
 - one composition entrypoint for `Admin Band 0 Internal Admin Replacement`
 - one composition entrypoint for `admin_band1.aws_read_only_surface`

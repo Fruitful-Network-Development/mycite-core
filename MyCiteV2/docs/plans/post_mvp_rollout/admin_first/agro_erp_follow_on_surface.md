@@ -26,6 +26,7 @@ That makes it a poor first operational replacement target.
 
 - the admin shell, runtime envelope, and registry/launcher are stable
 - the AWS-first path is proven
+- the post-AWS tool platform is stable
 - the first Maps slice is proven or at least implemented internally
 - AGRO-ERP has its own slice file and gate record
 - any HOPS or time-projection seams needed for AGRO are explicitly approved
