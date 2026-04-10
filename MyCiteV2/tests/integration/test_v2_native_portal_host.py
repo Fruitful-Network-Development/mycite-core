@@ -214,6 +214,8 @@ class V2NativePortalHostTests(unittest.TestCase):
                 self.assertIn(b"v2_portal_shell.js", home.data)
                 self.assertIn(b"v2-bootstrap-shell-request", home.data)
                 self.assertIn(b"admin_band0.home_status", home.data)
+                self.assertIn(b"shell-template: v2-composition", home.data)
+                self.assertIn(b"/portal/static/portal.css", home.data)
             finally:
                 home.close()
 

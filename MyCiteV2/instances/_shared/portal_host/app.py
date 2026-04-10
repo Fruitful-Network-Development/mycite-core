@@ -42,6 +42,10 @@ def _as_text(value: object) -> str:
     return str(value).strip()
 
 
+# Set on the server (e.g. systemd Environment=) so the HTML shows which build is running.
+PORTAL_BUILD_ID = _as_text(os.environ.get("MYCITE_V2_PORTAL_BUILD_ID")) or "not-set"
+
+
 def _env_path(name: str, default: str) -> Path:
     return Path(os.environ.get(name) or default)
 
@@ -251,6 +255,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             host_shape=HOST_SHAPE,
             analytics_domain=host_config.analytics_domain,
             bootstrap_shell_request=bootstrap_shell_request,
+            portal_build_id=PORTAL_BUILD_ID,
         )
 
     @app.get("/portal")
