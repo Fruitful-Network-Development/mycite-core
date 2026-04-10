@@ -8,6 +8,7 @@ Implemented in this phase:
 
 - one narrow `AuditLogPort` implementation backed by one caller-supplied NDJSON file
 - one narrow AWS read-only status adapter backed by one caller-supplied JSON snapshot file
+- one narrow AWS write adapter backed by one caller-supplied JSON snapshot file
 
 Not implemented in this phase:
 
@@ -15,4 +16,5 @@ Not implemented in this phase:
 - instance-led directory layout
 - local-audit semantic validation
 - AWS operational-visibility semantic validation
+- AWS narrow-write semantic validation
 - broader filesystem framework behavior

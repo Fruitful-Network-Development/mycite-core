@@ -42,5 +42,5 @@ After `Admin Band 0` is stable and `admin_band1.aws_read_only_surface` passes it
 ## Questions intentionally frozen
 
 - whether the admin home/status surface and the tool registry remain distinct views or later become one shell payload
-- the exact future AWS narrow write seam and adapter names
+- whether any AWS narrow-write field beyond `selected_verified_sender` is ever approved in this track
 - whether PayPal or keycloak follows AGRO-ERP or remains a later independent track

@@ -12,6 +12,7 @@ ADMIN_BAND2_AWS_NAME = "Admin Band 2 Trusted-Tenant AWS Narrow Write"
 
 ADMIN_EXPOSURE_INTERNAL_ONLY = "internal-only"
 ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY = "trusted-tenant-read-only"
+ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE = "trusted-tenant-narrow-write"
 ADMIN_ENTRYPOINT_ID = "admin.shell_entry"
 
 ADMIN_SHELL_ENTRY_SLICE_ID = "admin_band0.shell_entry"
@@ -20,6 +21,7 @@ ADMIN_TOOL_REGISTRY_SLICE_ID = "admin_band0.tool_registry"
 AWS_READ_ONLY_SLICE_ID = "admin_band1.aws_read_only_surface"
 AWS_NARROW_WRITE_SLICE_ID = "admin_band2.aws_narrow_write_surface"
 AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
+AWS_NARROW_WRITE_ENTRYPOINT_ID = "admin.aws.narrow_write"
 
 INTERNAL_ADMIN_SCOPE_ID = "internal-admin"
 
@@ -291,6 +293,19 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             internal_only_reason="",
             launchable=True,
         ),
+        AdminToolRegistryEntry(
+            tool_id="aws_narrow_write",
+            label="AWS Admin Narrow Write",
+            slice_id=AWS_NARROW_WRITE_SLICE_ID,
+            entrypoint_id=AWS_NARROW_WRITE_ENTRYPOINT_ID,
+            admin_band=ADMIN_BAND2_AWS_NAME,
+            exposure_status="implemented_trusted_tenant_narrow_write",
+            read_write_posture="write",
+            status_summary="launchable_narrow_write",
+            audience="trusted-tenant-admin",
+            internal_only_reason="",
+            launchable=True,
+        ),
     )
 
 
@@ -399,7 +414,7 @@ def resolve_admin_shell_request(request: AdminShellRequest | dict[str, Any] | No
                 selection_status="gated",
                 allowed=False,
                 reason_code="launch_via_registry",
-                reason_message="AWS read-only launches through the shell-owned registry and the admin.aws.read_only entrypoint.",
+                reason_message="AWS tool slices launch through the shell-owned registry and their cataloged runtime entrypoints.",
             )
 
     return AdminShellSelection(
@@ -418,6 +433,7 @@ __all__ = [
     "ADMIN_BAND2_AWS_NAME",
     "ADMIN_ENTRYPOINT_ID",
     "ADMIN_EXPOSURE_INTERNAL_ONLY",
+    "ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE",
     "ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY",
     "ADMIN_HOME_STATUS_SLICE_ID",
     "ADMIN_SHELL_ENTRY_SLICE_ID",
@@ -425,6 +441,7 @@ __all__ = [
     "ADMIN_SHELL_STATE_SCHEMA",
     "ADMIN_TOOL_REGISTRY_SLICE_ID",
     "AWS_NARROW_WRITE_SLICE_ID",
+    "AWS_NARROW_WRITE_ENTRYPOINT_ID",
     "AWS_READ_ONLY_ENTRYPOINT_ID",
     "AWS_READ_ONLY_SLICE_ID",
     "AdminShellRequest",
