@@ -4,7 +4,34 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MyCite V2 Portal</title>
-  <link rel="stylesheet" href="/portal/static/portal.css" />
+  {# url_for keeps static URLs correct behind SCRIPT_NAME / proxies; matches V1 /portal/static layout #}
+  <style id="v2-shell-layout-fallback">
+    /* If portal.css fails to load, keep IDE-like regions readable until fixed (nginx upstream, deploy). */
+    html { height: 100%; }
+    body.v2-native-portal { margin: 0; min-height: 100%; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #202124; background: #f6f7f9; }
+    .ide-shell { display: flex; flex-direction: column; min-height: 100vh; }
+    .ide-menubar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; background: #fff; border-bottom: 1px solid #d8dee4; }
+    .ide-menubar__menu { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; opacity: 0.85; }
+    .ide-menubar__center { display: flex; flex-direction: column; gap: 2px; text-align: center; flex: 1 1 200px; }
+    .ide-menubar__pageTitle { font-weight: 600; font-size: 15px; }
+    .ide-menubar__pageSub { font-size: 12px; opacity: 0.75; }
+    .ide-body { display: flex; flex: 1; min-height: 0; background: #f6f7f9; }
+    .ide-activitybar { width: 56px; flex-shrink: 0; display: flex; flex-direction: column; background: #2d333b; color: #e6edf3; border-right: 1px solid #1f2428; }
+    .ide-logo { display: flex; justify-content: center; padding: 10px 0; }
+    .ide-logo img { width: 28px; height: auto; filter: brightness(0) invert(1); opacity: 0.9; }
+    .ide-activitynav { display: flex; flex-direction: column; gap: 2px; padding: 6px 4px; flex: 1; }
+    .ide-activitylink { color: inherit; text-decoration: none; padding: 8px 4px; font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-align: center; border-radius: 6px; line-height: 1.2; }
+    .ide-activitylink:hover { background: rgba(255,255,255,0.08); }
+    .ide-activitylink.is-active { background: rgba(255,255,255,0.14); outline: 1px solid rgba(255,255,255,0.25); }
+    .ide-activityfooter { font-size: 10px; padding: 8px 6px; border-top: 1px solid #1f2428; opacity: 0.85; }
+    .ide-sessionAction { color: #8ab4ff; text-decoration: none; display: block; margin-top: 6px; font-size: 10px; }
+    .ide-workbench { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #fff; border-left: 1px solid #d8dee4; }
+    .pagehead { display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 18px; border-bottom: 1px solid #d8dee4; gap: 12px; }
+    .pagehead__title { font-size: 18px; font-weight: 600; margin: 0; }
+    .pagehead__sub { font-size: 13px; opacity: 0.75; margin-top: 4px; }
+    .viewport { flex: 1; overflow: auto; }
+  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='portal.css') }}" />
 </head>
 <body
   class="v2-native-portal"
@@ -49,16 +76,16 @@
 
     <div class="ide-body">
       <aside class="ide-activitybar" aria-label="Activity bar">
-        <a class="ide-logo" href="/portal" aria-label="Go to portal home">
-          <img src="/portal/static/icons/logos/fnd.svg" alt="Portal logo" />
+        <a class="ide-logo" href="/portal/system" aria-label="Go to SYSTEM">
+          <img src="{{ url_for('static', filename='icons/logos/fnd.svg') }}" alt="" width="28" height="28" />
         </a>
         <nav id="v2-activity-nav" class="ide-activitynav" aria-label="Primary navigation"></nav>
         <div class="ide-activityfooter">
           <div class="ide-sessionLine">Portal: V2 native</div>
           <div class="ide-sessionLine ide-sessionLine--dim">tenant: {{ tenant_id }}</div>
           <div class="ide-sessionLine ide-sessionLine--dim">host: {{ host_shape }}</div>
-          <a class="ide-sessionAction" href="/oauth2/sign_in?rd=%2Fportal">Switch Active Portal</a>
-          <a class="ide-sessionAction" href="/oauth2/sign_out?rd=%2Foauth2%2Fsign_in%3Frd%3D%252Fportal">Sign Out</a>
+          <a class="ide-sessionAction" href="/oauth2/sign_in?rd=%2Fportal%2Fsystem">Switch Active Portal</a>
+          <a class="ide-sessionAction" href="/oauth2/sign_out?rd=%2Foauth2%2Fsign_in%3Frd%3D%252Fportal%252Fsystem">Sign Out</a>
         </div>
       </aside>
 
@@ -123,7 +150,7 @@
     </div>
   </div>
 
-  <script src="/portal/static/portal.js"></script>
-  <script src="/portal/static/v2_portal_shell.js"></script>
+  <script src="{{ url_for('static', filename='portal.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='v2_portal_shell.js') }}" defer></script>
 </body>
 </html>
