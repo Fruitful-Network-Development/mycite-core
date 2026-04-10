@@ -1,0 +1,663 @@
+{
+  "schema": "mycite.portal.build.v1",
+  "portal_id": "mycite-le_tff",
+  "portal_instance_id": "tff",
+  "runtime_flavor": "tff",
+  "state_root_hint": "/srv/mycite-state/instances/tff",
+  "meta": {
+    "msn_id": "3-2-3-17-77-2-6-3-1-6",
+    "title": "mycite-le_tff"
+  },
+  "tools": {
+    "configuration": [],
+    "enabled": [],
+    "core_system_surfaces": [
+      "data_tool"
+    ],
+    "retired": [
+      "legacy_admin",
+      "paypal_demo"
+    ],
+    "mount_targets": {}
+  },
+  "private_config": {
+    "canonical": {
+      "msn_id": "3-2-3-17-77-2-6-3-1-6",
+      "resources": [],
+      "request_log": [
+        "1-0-3"
+      ],
+      "contracts": [
+        "contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json"
+      ],
+      "private_key_ref": "vault://keys/3-2-3-17-77-2-6-3-1-6_private.pem",
+      "aliases": [],
+      "tools_configuration": [],
+      "hosted": {},
+      "references": [
+        {
+          "managing_contract": "contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json",
+          "title": "rf.3-2-3-17-77-1-6-4-1-4.msn",
+          "mss_form": "rf.3-2-3-17-77-1-6-4-1-4.msn.bin",
+          "name": "msn",
+          "source_msn_id": "3-2-3-17-77-1-6-4-1-4"
+        },
+        {
+          "managing_contract": "contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json",
+          "title": "rf.3-2-3-17-77-1-6-4-1-4.txa",
+          "mss_form": "rf.3-2-3-17-77-1-6-4-1-4.txa.bin",
+          "name": "txa",
+          "source_msn_id": "3-2-3-17-77-1-6-4-1-4"
+        }
+      ],
+      "progeny": {
+        "admin": [],
+        "member": [],
+        "user": []
+      }
+    },
+    "canonical_source": "/srv/mycite-state/instances/tff/private/config.json",
+    "legacy_compat": [
+      {
+        "filename": "mycite-config-3-2-3-17-77-2-6-3-1-6.json",
+        "payload": {
+          "msn_id": "3-2-3-17-77-2-6-3-1-6",
+          "resources": [],
+          "request_log": [
+            "1-0-3"
+          ],
+          "contracts": [
+            "contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json"
+          ],
+          "private_key_ref": "vault://keys/3-2-3-17-77-2-6-3-1-6_private.pem",
+          "aliases": [],
+          "tools_configuration": [],
+          "hosted": {},
+          "references": [
+            {
+              "managing_contract": "contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json",
+              "title": "rf.3-2-3-17-77-1-6-4-1-4.msn",
+              "mss_form": "rf.3-2-3-17-77-1-6-4-1-4.msn.bin",
+              "name": "msn",
+              "source_msn_id": "3-2-3-17-77-1-6-4-1-4"
+            },
+            {
+              "managing_contract": "contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json",
+              "title": "rf.3-2-3-17-77-1-6-4-1-4.txa",
+              "mss_form": "rf.3-2-3-17-77-1-6-4-1-4.txa.bin",
+              "name": "txa",
+              "source_msn_id": "3-2-3-17-77-1-6-4-1-4"
+            }
+          ],
+          "progeny": {
+            "admin": [],
+            "member": [],
+            "user": []
+          }
+        },
+        "source": ""
+      }
+    ]
+  },
+  "hosted": {
+    "filename": "hosted.json",
+    "source": "/srv/mycite-state/instances/tff/private/network/hosted.json",
+    "payload": {
+      "schema": "mycite.network.hosted.v2",
+      "type": "subject_congregation",
+      "type_values": {
+        "default_hosted": [
+          {
+            "stream": "classroom/stream.json"
+          },
+          {
+            "classwork": "classroom/classwork.json"
+          },
+          {
+            "people": "classroom/people.json"
+          },
+          {
+            "workflow": "classroom/workflow.json"
+          }
+        ],
+        "channels": [
+          "contracts.json",
+          "request_log.json"
+        ],
+        "members": [
+          "members.json"
+        ],
+        "orientation": {
+          "style": "google_classroom_reference",
+          "hero_title": "TFF Member Workspace"
+        }
+      },
+      "subject_congregation": {
+        "style": "google_classroom_reference",
+        "hero_title": "TFF Member Workspace",
+        "tabs": [
+          {
+            "id": "stream",
+            "label": "Stream",
+            "description": "Subscription updates and hosted activity."
+          },
+          {
+            "id": "classwork",
+            "label": "Classwork",
+            "description": "Subject congregation tasks and assignments."
+          },
+          {
+            "id": "people",
+            "label": "People",
+            "description": "Broadcaster directory for MSN/resource lookup."
+          },
+          {
+            "id": "workflow",
+            "label": "Workflow",
+            "description": "Hosted website analytics and operations."
+          }
+        ],
+        "calendar_enabled": false
+      },
+      "broadcaster": {
+        "schema": "mycite.network.broadcaster.v1",
+        "enabled": true,
+        "stream": {
+          "title": "Subscriptions",
+          "description": "Updates for followed subscriptions and hosted surfaces."
+        },
+        "discover": {
+          "title": "Discover",
+          "description": "Search people, organizations, groups, and tools.",
+          "search_key": "msn_id"
+        },
+        "calendar": {
+          "title": "Calendar",
+          "description": "Events and scheduled activity."
+        },
+        "workflow": {
+          "title": "Workflow",
+          "description": "Website analytics for hosted domains."
+        },
+        "resource_types": [
+          "portal",
+          "resource"
+        ],
+        "people": {
+          "title": "People",
+          "description": "Search portals and resources by msn_id.",
+          "search_key": "msn_id"
+        }
+      },
+      "progeny": {
+        "storage": {
+          "mode": "single_directory",
+          "directory": "private/network/progeny",
+          "logical_id_pattern": "progeny.<provider_msn_id>.<progeny_type>.<alias_associated_msn_id>",
+          "filename_pattern": "msn-<provider_msn_id>.<progeny_type>-<alias_associated_msn_id>.json",
+          "legacy_read_dirs": []
+        },
+        "templates": {
+          "admin": {
+            "profile_type": "admin",
+            "msn_id": "",
+            "title": "",
+            "contract": null,
+            "template_version": "1.0.0",
+            "capabilities": {
+              "paypal": false,
+              "aws": true,
+              "analytics": true
+            },
+            "profile_refs": {
+              "contact_collection_ref": "",
+              "aws_profile_id": "",
+              "aws_emailer_list_ref": "",
+              "aws_emailer_entry_ref": "",
+              "website_domain": "",
+              "website_base_url": "",
+              "website_analytics_profile_id": "",
+              "website_analytics_ref": "",
+              "website_analytics_callback_email": "",
+              "email_transport_mode": "forwarder_no_smtp",
+              "email_forwarder_address": "",
+              "email_operator_inbox": "",
+              "email_poc_address": "",
+              "email_inbound_aliases_csv": "",
+              "email_reply_allowed_from_csv": "",
+              "email_reply_send_as_csv": "",
+              "email_reply_send_as_policy": "original_contacted_alias",
+              "newsletter_ingest_address": "",
+              "newsletter_sender_address": "",
+              "newsletter_allowed_from_csv": "",
+              "newsletter_dispatch_mode": "aws_internal"
+            },
+            "email_policy": {
+              "mode": "forwarder_no_smtp",
+              "smtp_enabled": false,
+              "forwarder_address": "",
+              "operator_inbox": "",
+              "poc_address": "",
+              "inbound_aliases": [],
+              "reply": {
+                "allowed_from": [],
+                "send_as": [],
+                "send_as_policy": "original_contacted_alias"
+              },
+              "newsletter": {
+                "allowed_from": [],
+                "ingest_address": "",
+                "sender_address": "",
+                "dispatch_mode": "aws_internal"
+              }
+            },
+            "hosted_interface": {
+              "layout": "subject_congregation",
+              "default_tab": "stream",
+              "tabs": [
+                "stream",
+                "classwork",
+                "people",
+                "workflow"
+              ]
+            },
+            "config": {
+              "contacts": "",
+              "status": true,
+              "email_map": {
+                "inbox_inbound": {},
+                "proxy_outbound": {}
+              },
+              "website": {
+                "domain": "",
+                "base_url": "",
+                "analytics_callback_email": ""
+              },
+              "roles": [
+                "admin"
+              ],
+              "permissions": [
+                "*"
+              ]
+            }
+          },
+          "member": {
+            "profile_type": "member",
+            "msn_id": "",
+            "title": "",
+            "contract": null,
+            "template_version": "1.1.0",
+            "capabilities": {
+              "paypal": true,
+              "aws": true,
+              "analytics": true
+            },
+            "profile_refs": {
+              "contact_collection_ref": "",
+              "aws_profile_id": "",
+              "aws_emailer_list_ref": "",
+              "aws_emailer_entry_ref": "",
+              "website_domain": "",
+              "website_base_url": "",
+              "website_analytics_profile_id": "",
+              "website_analytics_ref": "",
+              "website_analytics_callback_email": "",
+              "email_transport_mode": "forwarder_no_smtp",
+              "email_forwarder_address": "",
+              "email_operator_inbox": "",
+              "email_poc_address": "",
+              "email_inbound_aliases_csv": "",
+              "email_reply_allowed_from_csv": "",
+              "email_reply_send_as_csv": "",
+              "email_reply_send_as_policy": "original_contacted_alias",
+              "newsletter_ingest_address": "",
+              "newsletter_sender_address": "",
+              "newsletter_allowed_from_csv": "",
+              "newsletter_dispatch_mode": "aws_internal",
+              "paypal_profile_id": "",
+              "paypal_site_domain": "",
+              "paypal_site_base_url": "",
+              "paypal_checkout_return_url": "",
+              "paypal_checkout_cancel_url": "",
+              "paypal_webhook_listener_url": "",
+              "paypal_checkout_brand_name": ""
+            },
+            "email_policy": {
+              "mode": "forwarder_no_smtp",
+              "smtp_enabled": false,
+              "forwarder_address": "",
+              "operator_inbox": "",
+              "poc_address": "",
+              "inbound_aliases": [],
+              "reply": {
+                "allowed_from": [],
+                "send_as": [],
+                "send_as_policy": "original_contacted_alias"
+              },
+              "newsletter": {
+                "allowed_from": [],
+                "ingest_address": "",
+                "sender_address": "",
+                "dispatch_mode": "aws_internal"
+              }
+            },
+            "hosted_interface": {
+              "layout": "subject_congregation",
+              "default_tab": "stream",
+              "tabs": [
+                "stream",
+                "classwork",
+                "people",
+                "workflow"
+              ]
+            },
+            "config": {
+              "contacts": "",
+              "status": true,
+              "email_map": {
+                "inbox_inbound": {},
+                "proxy_outbound": {}
+              },
+              "website": {
+                "domain": "",
+                "base_url": "",
+                "analytics_callback_email": ""
+              },
+              "paypal": {
+                "website_domain": "",
+                "site_base_url": "",
+                "webhook_listener_url": ""
+              }
+            }
+          },
+          "user": {
+            "profile_type": "user",
+            "msn_id": "",
+            "title": "",
+            "contract": null,
+            "template_version": "1.0.0",
+            "capabilities": {
+              "paypal": false,
+              "aws": true,
+              "analytics": true
+            },
+            "profile_refs": {
+              "contact_collection_ref": "",
+              "aws_profile_id": "",
+              "aws_emailer_list_ref": "",
+              "aws_emailer_entry_ref": "",
+              "website_domain": "",
+              "website_base_url": "",
+              "website_analytics_profile_id": "",
+              "website_analytics_ref": "",
+              "website_analytics_callback_email": "",
+              "email_transport_mode": "forwarder_no_smtp",
+              "email_forwarder_address": "",
+              "email_operator_inbox": "",
+              "email_poc_address": "",
+              "email_inbound_aliases_csv": "",
+              "email_reply_allowed_from_csv": "",
+              "email_reply_send_as_csv": "",
+              "email_reply_send_as_policy": "original_contacted_alias",
+              "newsletter_ingest_address": "",
+              "newsletter_sender_address": "",
+              "newsletter_allowed_from_csv": "",
+              "newsletter_dispatch_mode": "aws_internal"
+            },
+            "email_policy": {
+              "mode": "forwarder_no_smtp",
+              "smtp_enabled": false,
+              "forwarder_address": "",
+              "operator_inbox": "",
+              "poc_address": "",
+              "inbound_aliases": [],
+              "reply": {
+                "allowed_from": [],
+                "send_as": [],
+                "send_as_policy": "original_contacted_alias"
+              },
+              "newsletter": {
+                "allowed_from": [],
+                "ingest_address": "",
+                "sender_address": "",
+                "dispatch_mode": "aws_internal"
+              }
+            },
+            "hosted_interface": {
+              "layout": "subject_congregation",
+              "default_tab": "stream",
+              "tabs": [
+                "stream",
+                "classwork",
+                "people",
+                "workflow"
+              ]
+            },
+            "config": {
+              "contacts": "",
+              "status": true,
+              "email_map": {
+                "inbox_inbound": {},
+                "proxy_outbound": {}
+              },
+              "website": {
+                "domain": "",
+                "base_url": "",
+                "analytics_callback_email": ""
+              },
+              "preferences": {
+                "notifications": true
+              }
+            }
+          }
+        }
+      },
+      "aws": {
+        "email_transport_mode": "forwarder_only",
+        "callback_mailboxes": {
+          "fnd_callback_addresses": [],
+          "member_callback_addresses": []
+        }
+      },
+      "workflow": {
+        "analytics_provider": "nginx_hosted",
+        "domain_ref_fields": [
+          "website_domain",
+          "paypal_site_domain"
+        ],
+        "callback_mailboxes": [],
+        "metrics": [
+          "page_views_7d",
+          "unique_visitors_7d",
+          "contact_events_30d"
+        ]
+      }
+    }
+  },
+  "public_profiles": {
+    "msn_card": {
+      "filename": "msn-3-2-3-17-77-2-6-3-1-6.json",
+      "source": "",
+      "payload": {}
+    },
+    "fnd_card": {
+      "filename": "fnd-3-2-3-17-77-2-6-3-1-6.json",
+      "source": "/srv/mycite-state/instances/tff/public/fnd-3-2-3-17-77-2-6-3-1-6.json",
+      "payload": {
+        "msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "title": "trapp_family_farm",
+        "entity_type": "legal_entity",
+        "bio": "Brand profile for the TFF portal workbench.",
+        "logo": "",
+        "banner": "",
+        "property": {
+          "property": [
+            "4-7-1",
+            "4-11-1",
+            "4-30-1"
+          ],
+          "farmable_land": "4-24-1",
+          "alt_areas": [
+            "4-5-1",
+            "4-5-2",
+            "4-5-3",
+            "4-5-4",
+            "4-7-2",
+            "4-11-2"
+          ]
+        },
+        "schema": "mycite.fnd.profile.v1"
+      }
+    }
+  },
+  "seed_files": [
+    {
+      "target": "private/network/aliases/alias-3-2-3-17-77-1-6-4-1-4-3-2-3-17-77-2-6-3-1-6-member.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/tff/private/network/aliases/alias-3-2-3-17-77-1-6-4-1-4-3-2-3-17-77-2-6-3-1-6-member.json",
+      "payload_json": {
+        "msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "alias_host": "3-2-3-17-77-1-6-4-1-4",
+        "host_title": "fruitful_network_development_llc",
+        "company_msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "client_msn_id": "3-2-3-17-77-1-6-4-1-4",
+        "contract_id": "contract-fnd-tff-member-001",
+        "progeny_type": "member",
+        "status": "active",
+        "member_msn_id": "3-2-3-17-77-2-6-3-1-1",
+        "child_msn_id": "3-2-3-17-77-2-6-3-1-1",
+        "fields": {
+          "alias_contract_ref": "contract-fnd-tff-member-001",
+          "progeny_template_ref": "fnd_member_progeny_template_v1",
+          "workspace_layout": "classroom_orientation"
+        }
+      }
+    },
+    {
+      "target": "private/contracts/contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/tff/private/contracts/contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json",
+      "payload_json": {
+        "contract_initiator": "3-2-3-17-77-2-6-3-1-6",
+        "initiate_receiver": "3-2-3-17-77-1-6-4-1-4",
+        "symmetric_key_ref": "vault://keys/key.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.sym.pem",
+        "interfaces": [
+          {
+            "host": "3-2-3-17-77-1-6-4-1-4",
+            "progeny": "progeny.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.user",
+            "guest": "3-2-3-17-77-2-6-3-1-6",
+            "alias": "alias.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.user"
+          },
+          {
+            "host": "3-2-3-17-77-1-6-4-1-4",
+            "progeny": "progeny.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.member",
+            "guest": "3-2-3-17-77-2-6-3-1-6",
+            "alias": "alias.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.member"
+          }
+        ],
+        "contract_id": "3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6",
+        "contract_type": "portal_data_exchange",
+        "owner_msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "counterparty_msn_id": "3-2-3-17-77-1-6-4-1-4",
+        "tracked_resource_ids": [
+          "rc.3-2-3-17-77-1-6-4-1-4.msn",
+          "rc.3-2-3-17-77-1-6-4-1-4.txa",
+          "rc.3-2-3-17-77-2-6-3-1-6.msn",
+          "rc.3-2-3-17-77-2-6-3-1-6.txa"
+        ],
+        "details": {
+          "tracked_resource_ids": [
+            "rc.3-2-3-17-77-1-6-4-1-4.msn",
+            "rc.3-2-3-17-77-1-6-4-1-4.txa",
+            "rc.3-2-3-17-77-2-6-3-1-6.msn",
+            "rc.3-2-3-17-77-2-6-3-1-6.txa"
+          ]
+        },
+        "schema": "mycite.portal.contract.v2",
+        "status": "pending",
+        "template_version": "1.0.0",
+        "created_unix_ms": 1774822828605,
+        "updated_unix_ms": 1774822828605,
+        "owner_mss": "",
+        "counterparty_mss": "",
+        "owner_selected_refs": [],
+        "counterparty_selected_refs": []
+      }
+    },
+    {
+      "target": "private/network/progeny/msn-3-2-3-17-77-2-6-3-1-6.admin-3-2-3-17-77-2-6-3-1-1.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/tff/private/network/progeny/msn-3-2-3-17-77-2-6-3-1-6.admin-3-2-3-17-77-2-6-3-1-1.json",
+      "payload_json": {
+        "alias_expected": true,
+        "contact": {},
+        "display": {
+          "subtitle": "Auto-seeded local progeny profile",
+          "title": "3-2-3-17-77-2-6-3-1-1"
+        },
+        "msn_id": "3-2-3-17-77-2-6-3-1-1",
+        "progeny_id": "msn-3-2-3-17-77-2-6-3-1-6.admin-3-2-3-17-77-2-6-3-1-1",
+        "progeny_type": "admin",
+        "schema": "mycite.progeny.profile_card.v1",
+        "source": {
+          "kind": "config_ref_seed",
+          "local_only": true,
+          "ref": "msn-3-2-3-17-77-2-6-3-1-6.admin-3-2-3-17-77-2-6-3-1-1.json"
+        },
+        "status": {
+          "note": "Auto-generated from mycite-config progeny reference.",
+          "state": "active"
+        }
+      }
+    },
+    {
+      "target": "private/network/progeny/msn-3-2-3-17-77-2-6-3-1-6.member-3-2-3-17-77-2-6-3-1-1.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/tff/private/network/progeny/msn-3-2-3-17-77-2-6-3-1-6.member-3-2-3-17-77-2-6-3-1-1.json",
+      "payload_json": {
+        "alias_expected": false,
+        "contact": {},
+        "display": {
+          "subtitle": "Auto-seeded local progeny profile",
+          "title": "3-2-3-17-77-2-6-3-1-1"
+        },
+        "msn_id": "3-2-3-17-77-2-6-3-1-1",
+        "progeny_id": "msn-3-2-3-17-77-2-6-3-1-6.member-3-2-3-17-77-2-6-3-1-1",
+        "progeny_type": "member",
+        "schema": "mycite.progeny.profile_card.v1",
+        "source": {
+          "kind": "config_ref_seed",
+          "local_only": true,
+          "ref": "msn-3-2-3-17-77-2-6-3-1-6.member-3-2-3-17-77-2-6-3-1-1.json"
+        },
+        "status": {
+          "note": "Auto-generated from mycite-config progeny reference.",
+          "state": "active"
+        }
+      }
+    },
+    {
+      "target": "private/utilities/vault/keypass_inventory.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/tff/private/utilities/vault/keypass_inventory.json",
+      "payload_json": {
+        "schema": "mycite.utilities.vault.inventory.v1",
+        "entries": [
+          {
+            "id": "portal_support_email",
+            "label": "Portal Support Email",
+            "group": "portal",
+            "value": "",
+            "masked": false,
+            "revealable": true,
+            "editable": true,
+            "notes": "Interim plaintext inventory entry for the in-application KeyPass workbench."
+          }
+        ]
+      }
+    }
+  ],
+  "anthology": {
+    "authoritative": false,
+    "path_hint": "/srv/mycite-state/instances/tff/data/anthology.json",
+    "sha256": "",
+    "notes": [
+      "State-owned anthology; phase-1 materialize never overwrites this file."
+    ]
+  }
+}

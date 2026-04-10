@@ -4,9 +4,14 @@ Authority: [../../authority_stack.md](../../authority_stack.md)
 
 This file defines when MyCiteV2 can be treated as the operational admin portal base.
 
+There are two readiness levels:
+
+- runtime readiness: V2 admin shell, registry, runtime envelope, AWS read-only, and AWS narrow-write are implemented and tested
+- deployment readiness: the live `/portal` boundary reaches those V2 runtime entrypoints through an approved bridge or V2 host
+
 ## Cutover statement
 
-MyCiteV2 is the stable admin portal base when:
+MyCiteV2 is runtime-ready as the stable admin portal base when:
 
 - `admin.shell_entry` is the intended admin landing path
 - shell-owned registry descriptors are the only tool launch surface
@@ -15,6 +20,13 @@ MyCiteV2 is the stable admin portal base when:
 - AWS read-only remains green
 - AWS narrow-write remains green
 - old provider-admin routes are not used as v2 entry surfaces
+
+MyCiteV2 is deployment-ready when:
+
+- [deployment_bridge_contract.md](deployment_bridge_contract.md) is implemented
+- [live_state_authority_and_mapping.md](live_state_authority_and_mapping.md) is implemented for any live AWS exposure
+- [cutover_execution_sequence.md](cutover_execution_sequence.md) reaches the requested exposure step
+- the live `/portal` route can reach V2 runtime entrypoints without root compatibility links
 
 ## Operational replacement rule
 
@@ -41,9 +53,16 @@ Forbidden:
 - verify no provider secrets appear in runtime payloads
 - verify unknown tools are denied by shell-owned launch policy
 - verify Maps and AGRO-ERP are absent until their own slices are approved
+- verify the live bridge or host is explicit and tested
+- verify no root-level compatibility symlinks are needed
+- verify live AWS writes use one canonical live artifact
 
 ## Current cutover posture
 
-V2 can begin replacing the old admin portal operationally as the stable shell, registry, runtime envelope, AWS read-only, and AWS narrow-write base.
+Current status: runtime-ready, not fully deployed.
+
+V2 can begin replacing the old admin portal operationally only after the deployment bridge slice is implemented.
 
 Future tool work is local slice work, not shared-platform redesign.
+
+The next implementation slice for live cutover is [../slice_registry/admin_band0_v2_deployment_bridge.md](../slice_registry/admin_band0_v2_deployment_bridge.md).

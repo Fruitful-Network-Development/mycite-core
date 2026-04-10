@@ -1,0 +1,1014 @@
+{
+  "schema": "mycite.portal.build.v1",
+  "portal_id": "mycite-le_fnd",
+  "portal_instance_id": "fnd",
+  "runtime_flavor": "fnd",
+  "state_root_hint": "/srv/mycite-state/instances/fnd",
+  "meta": {
+    "msn_id": "3-2-3-17-77-1-6-4-1-4",
+    "title": "mycite-le_fnd"
+  },
+  "tools": {
+    "configuration": [],
+    "enabled": [],
+    "core_system_surfaces": [
+      "data_tool"
+    ],
+    "retired": [
+      "legacy_admin",
+      "paypal_demo"
+    ],
+    "mount_targets": {}
+  },
+  "private_config": {
+    "canonical": {
+      "msn_id": "3-2-3-17-77-1-6-4-1-4",
+      "resources": [
+        "1-0-5",
+        "1-0-6",
+        "1-0-7"
+      ],
+      "request_log": [
+        "1-0-3"
+      ],
+      "references": [],
+      "contracts": [
+        "contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json"
+      ],
+      "private_key_ref": "vault://keys/3-2-3-17-77-1-6-4-1-4_private.pem",
+      "aliases": [],
+      "tools_configuration": [],
+      "hosted": {
+        "hosting_type": "subject_congregation",
+        "pages": [
+          "stream",
+          "people",
+          "calendar",
+          "workflow"
+        ],
+        "progeny_types": [
+          "admin",
+          "member",
+          "user"
+        ],
+        "progeny": {
+          "admin": [],
+          "member": [
+            "progeny.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.member.json"
+          ],
+          "user": [
+            "progeny.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.user.json"
+          ]
+        },
+        "user_exposed": [
+          "tool.3-2-3-17-77-1-6-4-1-4.fnd-ebi.json"
+        ],
+        "member_exposed": [
+          "hosted.3-2-3-17-77-2-6-3-1-6.fnd.json"
+        ]
+      },
+      "progeny": {
+        "admin": [],
+        "member": [],
+        "user": []
+      }
+    },
+    "canonical_source": "/srv/mycite-state/instances/fnd/private/config.json",
+    "legacy_compat": [
+      {
+        "filename": "mycite-config-3-2-3-17-77-1-6-4-1-4.json",
+        "payload": {
+          "msn_id": "3-2-3-17-77-1-6-4-1-4",
+          "resources": [
+            "1-0-5",
+            "1-0-6",
+            "1-0-7"
+          ],
+          "request_log": [
+            "1-0-3"
+          ],
+          "references": [],
+          "contracts": [
+            "contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json"
+          ],
+          "private_key_ref": "vault://keys/3-2-3-17-77-1-6-4-1-4_private.pem",
+          "aliases": [],
+          "tools_configuration": [],
+          "hosted": {
+            "hosting_type": "subject_congregation",
+            "pages": [
+              "stream",
+              "people",
+              "calendar",
+              "workflow"
+            ],
+            "progeny_types": [
+              "admin",
+              "member",
+              "user"
+            ],
+            "progeny": {
+              "admin": [],
+              "member": [
+                "progeny.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.member.json"
+              ],
+              "user": [
+                "progeny.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.user.json"
+              ]
+            },
+            "user_exposed": [
+              "tool.3-2-3-17-77-1-6-4-1-4.fnd-ebi.json"
+            ],
+            "member_exposed": [
+              "hosted.3-2-3-17-77-2-6-3-1-6.fnd.json"
+            ]
+          },
+          "progeny": {
+            "admin": [],
+            "member": [],
+            "user": []
+          }
+        },
+        "source": "/srv/mycite-state/instances/fnd/private/mycite-config-3-2-3-17-77-1-6-4-1-4.json"
+      }
+    ]
+  },
+  "hosted": {
+    "filename": "hosted.json",
+    "source": "/srv/mycite-state/instances/fnd/private/network/hosted.json",
+    "payload": {
+      "schema": "mycite.network.hosted.v2",
+      "type": "subject_congregation",
+      "type_values": {
+        "default_hosted": [
+          {
+            "stream": "classroom/stream.json"
+          },
+          {
+            "classwork": "classroom/classwork.json"
+          },
+          {
+            "discover": "classroom/people.json"
+          },
+          {
+            "calendar": "classroom/calendar.json"
+          },
+          {
+            "workflow": "classroom/workflow.json"
+          }
+        ],
+        "channels": [
+          "contracts.json",
+          "request_log.json"
+        ],
+        "members": [
+          "members.json"
+        ],
+        "orientation": {
+          "style": "google_classroom_reference",
+          "hero_title": "Member Orientation"
+        }
+      },
+      "subject_congregation": {
+        "style": "google_classroom_reference",
+        "hero_title": "Member Orientation",
+        "tabs": [
+          {
+            "id": "stream",
+            "label": "Stream",
+            "description": "Subscription updates and hosted activity."
+          },
+          {
+            "id": "classwork",
+            "label": "Classwork",
+            "description": "Subject congregation tasks and assignments."
+          },
+          {
+            "id": "discover",
+            "label": "Discover",
+            "description": "Browse people, organizations, groups, and tools."
+          },
+          {
+            "id": "calendar",
+            "label": "Calendar",
+            "description": "Events and scheduled activity."
+          },
+          {
+            "id": "workflow",
+            "label": "Workflow",
+            "description": "Hosted website analytics and operations."
+          }
+        ],
+        "calendar_enabled": true
+      },
+      "broadcaster": {
+        "schema": "mycite.network.broadcaster.v1",
+        "enabled": true,
+        "stream": {
+          "title": "Stream",
+          "description": "Updates for followed subscriptions and hosted surfaces."
+        },
+        "discover": {
+          "title": "Discover",
+          "description": "Search people, organizations, groups, and tools.",
+          "search_key": "msn_id"
+        },
+        "calendar": {
+          "title": "Calendar",
+          "description": "Events and scheduled activity."
+        },
+        "workflow": {
+          "title": "Workflow",
+          "description": "Website analytics for hosted domains."
+        },
+        "resource_types": [
+          "portal",
+          "resource",
+          "organization",
+          "group",
+          "tool"
+        ]
+      },
+      "progeny": {
+        "storage": {
+          "mode": "single_directory",
+          "directory": "private/network/progeny",
+          "logical_id_pattern": "progeny.<provider_msn_id>.<progeny_type>.<alias_associated_msn_id>",
+          "filename_pattern": "msn-<provider_msn_id>.<progeny_type>-<alias_associated_msn_id>.json",
+          "legacy_read_dirs": []
+        },
+        "templates": {
+          "admin": {
+            "profile_type": "admin",
+            "msn_id": "",
+            "title": "",
+            "contract": null,
+            "template_version": "1.0.0",
+            "capabilities": {
+              "paypal": false,
+              "aws": true,
+              "analytics": true
+            },
+            "profile_refs": {
+              "contact_collection_ref": "",
+              "aws_profile_id": "",
+              "aws_emailer_list_ref": "",
+              "aws_emailer_entry_ref": "",
+              "website_domain": "",
+              "website_base_url": "",
+              "website_analytics_profile_id": "",
+              "website_analytics_ref": "",
+              "website_analytics_callback_email": "",
+              "email_transport_mode": "forwarder_no_smtp",
+              "email_forwarder_address": "",
+              "email_operator_inbox": "",
+              "email_poc_address": "",
+              "email_inbound_aliases_csv": "",
+              "email_reply_allowed_from_csv": "",
+              "email_reply_send_as_csv": "",
+              "email_reply_send_as_policy": "original_contacted_alias",
+              "newsletter_ingest_address": "",
+              "newsletter_sender_address": "",
+              "newsletter_allowed_from_csv": "",
+              "newsletter_dispatch_mode": "aws_internal"
+            },
+            "email_policy": {
+              "mode": "forwarder_no_smtp",
+              "smtp_enabled": false,
+              "forwarder_address": "",
+              "operator_inbox": "",
+              "poc_address": "",
+              "inbound_aliases": [],
+              "reply": {
+                "allowed_from": [],
+                "send_as": [],
+                "send_as_policy": "original_contacted_alias"
+              },
+              "newsletter": {
+                "allowed_from": [],
+                "ingest_address": "",
+                "sender_address": "",
+                "dispatch_mode": "aws_internal"
+              }
+            },
+            "hosted_interface": {
+              "layout": "subject_congregation",
+              "default_tab": "stream",
+              "tabs": [
+                "stream",
+                "classwork",
+                "discover"
+              ]
+            },
+            "config": {
+              "contacts": "",
+              "status": true,
+              "email_map": {
+                "inbox_inbound": {},
+                "proxy_outbound": {}
+              },
+              "website": {
+                "domain": "",
+                "base_url": "",
+                "analytics_callback_email": ""
+              },
+              "roles": [
+                "admin"
+              ],
+              "permissions": [
+                "*"
+              ]
+            }
+          },
+          "member": {
+            "profile_type": "member",
+            "msn_id": "",
+            "title": "",
+            "contract": null,
+            "template_version": "1.1.0",
+            "capabilities": {
+              "paypal": true,
+              "aws": true,
+              "analytics": true
+            },
+            "profile_refs": {
+              "contact_collection_ref": "",
+              "aws_profile_id": "",
+              "aws_emailer_list_ref": "",
+              "aws_emailer_entry_ref": "",
+              "website_domain": "",
+              "website_base_url": "",
+              "website_analytics_profile_id": "",
+              "website_analytics_ref": "",
+              "website_analytics_callback_email": "",
+              "email_transport_mode": "forwarder_no_smtp",
+              "email_forwarder_address": "",
+              "email_operator_inbox": "",
+              "email_poc_address": "",
+              "email_inbound_aliases_csv": "",
+              "email_reply_allowed_from_csv": "",
+              "email_reply_send_as_csv": "",
+              "email_reply_send_as_policy": "original_contacted_alias",
+              "newsletter_ingest_address": "",
+              "newsletter_sender_address": "",
+              "newsletter_allowed_from_csv": "",
+              "newsletter_dispatch_mode": "aws_internal",
+              "paypal_profile_id": "",
+              "paypal_site_domain": "",
+              "paypal_site_base_url": "",
+              "paypal_checkout_return_url": "",
+              "paypal_checkout_cancel_url": "",
+              "paypal_webhook_listener_url": "",
+              "paypal_checkout_brand_name": ""
+            },
+            "email_policy": {
+              "mode": "forwarder_no_smtp",
+              "smtp_enabled": false,
+              "forwarder_address": "",
+              "operator_inbox": "",
+              "poc_address": "",
+              "inbound_aliases": [],
+              "reply": {
+                "allowed_from": [],
+                "send_as": [],
+                "send_as_policy": "original_contacted_alias"
+              },
+              "newsletter": {
+                "allowed_from": [],
+                "ingest_address": "",
+                "sender_address": "",
+                "dispatch_mode": "aws_internal"
+              }
+            },
+            "hosted_interface": {
+              "layout": "subject_congregation",
+              "default_tab": "stream",
+              "tabs": [
+                "stream",
+                "classwork",
+                "discover",
+                "calendar",
+                "workflow"
+              ]
+            },
+            "config": {
+              "contacts": "",
+              "status": true,
+              "email_map": {
+                "inbox_inbound": {},
+                "proxy_outbound": {}
+              },
+              "website": {
+                "domain": "",
+                "base_url": "",
+                "analytics_callback_email": ""
+              },
+              "paypal": {
+                "website_domain": "",
+                "site_base_url": "",
+                "webhook_listener_url": ""
+              }
+            }
+          },
+          "user": {
+            "profile_type": "user",
+            "msn_id": "",
+            "title": "",
+            "contract": null,
+            "template_version": "1.0.0",
+            "capabilities": {
+              "paypal": false,
+              "aws": true,
+              "analytics": true
+            },
+            "profile_refs": {
+              "contact_collection_ref": "",
+              "aws_profile_id": "",
+              "aws_emailer_list_ref": "",
+              "aws_emailer_entry_ref": "",
+              "website_domain": "",
+              "website_base_url": "",
+              "website_analytics_profile_id": "",
+              "website_analytics_ref": "",
+              "website_analytics_callback_email": "",
+              "email_transport_mode": "forwarder_no_smtp",
+              "email_forwarder_address": "",
+              "email_operator_inbox": "",
+              "email_poc_address": "",
+              "email_inbound_aliases_csv": "",
+              "email_reply_allowed_from_csv": "",
+              "email_reply_send_as_csv": "",
+              "email_reply_send_as_policy": "original_contacted_alias",
+              "newsletter_ingest_address": "",
+              "newsletter_sender_address": "",
+              "newsletter_allowed_from_csv": "",
+              "newsletter_dispatch_mode": "aws_internal"
+            },
+            "email_policy": {
+              "mode": "forwarder_no_smtp",
+              "smtp_enabled": false,
+              "forwarder_address": "",
+              "operator_inbox": "",
+              "poc_address": "",
+              "inbound_aliases": [],
+              "reply": {
+                "allowed_from": [],
+                "send_as": [],
+                "send_as_policy": "original_contacted_alias"
+              },
+              "newsletter": {
+                "allowed_from": [],
+                "ingest_address": "",
+                "sender_address": "",
+                "dispatch_mode": "aws_internal"
+              }
+            },
+            "hosted_interface": {
+              "layout": "subject_congregation",
+              "default_tab": "stream",
+              "tabs": [
+                "stream",
+                "classwork",
+                "discover"
+              ]
+            },
+            "config": {
+              "contacts": "",
+              "status": true,
+              "email_map": {
+                "inbox_inbound": {},
+                "proxy_outbound": {}
+              },
+              "website": {
+                "domain": "",
+                "base_url": "",
+                "analytics_callback_email": ""
+              },
+              "preferences": {
+                "notifications": true
+              }
+            }
+          }
+        }
+      },
+      "aws": {
+        "email_transport_mode": "forwarder_only",
+        "callback_mailboxes": {
+          "fnd_callback_addresses": [],
+          "member_callback_addresses": []
+        }
+      },
+      "workflow": {
+        "analytics_provider": "nginx_hosted",
+        "domain_ref_fields": [
+          "website_domain",
+          "paypal_site_domain"
+        ],
+        "callback_mailboxes": [],
+        "metrics": [
+          "page_views_7d",
+          "unique_visitors_7d",
+          "contact_events_30d"
+        ]
+      }
+    }
+  },
+  "public_profiles": {
+    "msn_card": {
+      "filename": "msn-3-2-3-17-77-1-6-4-1-4.json",
+      "source": "/srv/mycite-state/instances/fnd/public/msn-3-2-3-17-77-1-6-4-1-4.json",
+      "payload": {}
+    },
+    "fnd_card": {
+      "filename": "fnd-3-2-3-17-77-1-6-4-1-4.json",
+      "source": "/srv/mycite-state/instances/fnd/public/fnd-3-2-3-17-77-1-6-4-1-4.json",
+      "payload": {
+        "schema": "mycite.fnd.profile.v1",
+        "msn_id": "3-2-3-17-77-1-6-4-1-4",
+        "title": "fruitful_network_development_llc",
+        "summary": "Brand profile for the FND portal workbench.",
+        "logo": "",
+        "banner": "",
+        "property": {
+          "property": [
+            "4-4-1"
+          ],
+          "alt_areas": []
+        }
+      }
+    }
+  },
+  "seed_files": [
+    {
+      "target": "private/network/aliases/alias-3-2-3-17-77-2-6-3-1-6-3-2-3-17-77-1-6-4-1-4-member.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/fnd/private/network/aliases/alias-3-2-3-17-77-2-6-3-1-6-3-2-3-17-77-1-6-4-1-4-member.json",
+      "payload_json": {
+        "msn_id": "3-2-3-17-77-1-6-4-1-4",
+        "alias_host": "3-2-3-17-77-2-6-3-1-6",
+        "host_title": "trapp_family_farm",
+        "company_msn_id": "3-2-3-17-77-1-6-4-1-4",
+        "client_msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "contract_id": "contract-fnd-tff-member-001",
+        "progeny_type": "member",
+        "status": "active",
+        "member_msn_id": "3-2-3-17-77-2-6-3-1-1",
+        "child_msn_id": "3-2-3-17-77-2-6-3-1-1",
+        "fields": {
+          "alias_contract_ref": "contract-fnd-tff-member-001",
+          "alias_profile_host": "tff_portal",
+          "workspace_layout": "classroom_orientation"
+        }
+      }
+    },
+    {
+      "target": "private/contracts/contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/fnd/private/contracts/contract-3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.json",
+      "payload_json": {
+        "contract_initiator": "3-2-3-17-77-2-6-3-1-6",
+        "initiate_receiver": "3-2-3-17-77-1-6-4-1-4",
+        "symmetric_key_ref": "vault://keys/key.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.sym.pem",
+        "interfaces": [
+          {
+            "host": "3-2-3-17-77-1-6-4-1-4",
+            "progeny": "progeny.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.user",
+            "guest": "3-2-3-17-77-2-6-3-1-6",
+            "alias": "alias.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.user"
+          },
+          {
+            "host": "3-2-3-17-77-1-6-4-1-4",
+            "progeny": "progeny.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.member",
+            "guest": "3-2-3-17-77-2-6-3-1-6",
+            "alias": "alias.3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6.member"
+          }
+        ],
+        "contract_id": "3-2-3-17-77-1-6-4-1-4.3-2-3-17-77-2-6-3-1-6",
+        "contract_type": "portal_data_exchange",
+        "owner_msn_id": "3-2-3-17-77-1-6-4-1-4",
+        "counterparty_msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "tracked_resource_ids": [
+          "rc.3-2-3-17-77-1-6-4-1-4.msn",
+          "rc.3-2-3-17-77-1-6-4-1-4.registrar",
+          "rc.3-2-3-17-77-1-6-4-1-4.txa"
+        ],
+        "details": {
+          "tracked_resource_ids": [
+            "rc.3-2-3-17-77-1-6-4-1-4.msn",
+            "rc.3-2-3-17-77-1-6-4-1-4.registrar",
+            "rc.3-2-3-17-77-1-6-4-1-4.txa"
+          ]
+        },
+        "schema": "mycite.portal.contract.v2",
+        "status": "pending",
+        "template_version": "1.0.0",
+        "created_unix_ms": 1774822828451,
+        "updated_unix_ms": 1774822828451,
+        "owner_mss": "",
+        "counterparty_mss": "",
+        "owner_selected_refs": [],
+        "counterparty_selected_refs": []
+      }
+    },
+    {
+      "target": "private/network/progeny/msn-3-2-3-17-77-1-6-4-1-4.member-3-2-3-17-77-2-6-3-1-6.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/fnd/private/network/progeny/msn-3-2-3-17-77-1-6-4-1-4.member-3-2-3-17-77-2-6-3-1-6.json",
+      "payload_json": {
+        "profile_type": "member",
+        "msn_id": "3-2-3-17-77-2-6-3-1-6",
+        "title": "trapp_family_farm",
+        "contract": {
+          "contract_id": "contract-fnd-tff-member-001",
+          "status": "active",
+          "counterparty_msn_id": "3-2-3-17-77-2-6-3-1-6",
+          "signature_required": true
+        },
+        "template_version": "1.1.0",
+        "capabilities": {
+          "paypal": true,
+          "aws": true
+        },
+        "contract_refs": {
+          "authorization_contract_id": "contract-fnd-tff-member-001",
+          "service_agreement_ref": "fnd-member-service-v1"
+        },
+        "profile_refs": {
+          "contact_collection_ref": "8-0-1",
+          "aws_profile_id": "aws:member:1",
+          "aws_emailer_list_ref": "10-0-1",
+          "aws_emailer_entry_ref": "9-2-1",
+          "paypal_profile_id": "paypal:member:1",
+          "paypal_site_domain": "trappfamilyfarm.com",
+          "paypal_site_base_url": "https://trappfamilyfarm.com",
+          "paypal_checkout_return_url": "https://trappfamilyfarm.com/payments/paypal/return",
+          "paypal_checkout_cancel_url": "https://trappfamilyfarm.com/payments/paypal/cancel",
+          "paypal_webhook_listener_url": "https://api.trappfamilyfarm.com/paypal/webhook",
+          "paypal_checkout_brand_name": "Trapp Family Farm",
+          "email_transport_mode": "forwarder_no_smtp",
+          "email_forwarder_address": "proxy@trappfamilyfarm.com",
+          "email_operator_inbox": "trapp.family.farm@gmail.com",
+          "email_poc_address": "mark@trappfamilyfarm.com",
+          "email_inbound_aliases_csv": "info@trappfamilyfarm.com,mark@trappfamilyfarm.com",
+          "email_reply_allowed_from_csv": "mark@trappfamilyfarm.com",
+          "email_reply_send_as_csv": "info@trappfamilyfarm.com,mark@trappfamilyfarm.com",
+          "email_reply_send_as_policy": "original_contacted_alias",
+          "newsletter_ingest_address": "hermes@trappfamilyfarm.com",
+          "newsletter_sender_address": "news@trappfamilyfarm.com",
+          "newsletter_allowed_from_csv": "mark@trappfamilyfarm.com",
+          "newsletter_dispatch_mode": "aws_internal"
+        },
+        "email_policy": {
+          "mode": "forwarder_no_smtp",
+          "smtp_enabled": false,
+          "forwarder_address": "proxy@trappfamilyfarm.com",
+          "operator_inbox": "trapp.family.farm@gmail.com",
+          "poc_address": "mark@trappfamilyfarm.com",
+          "inbound_aliases": [
+            "info@trappfamilyfarm.com",
+            "mark@trappfamilyfarm.com"
+          ],
+          "reply": {
+            "allowed_from": [
+              "mark@trappfamilyfarm.com"
+            ],
+            "send_as": [
+              "info@trappfamilyfarm.com",
+              "mark@trappfamilyfarm.com"
+            ],
+            "send_as_policy": "original_contacted_alias"
+          },
+          "newsletter": {
+            "allowed_from": [
+              "mark@trappfamilyfarm.com"
+            ],
+            "ingest_address": "hermes@trappfamilyfarm.com",
+            "sender_address": "news@trappfamilyfarm.com",
+            "dispatch_mode": "aws_internal"
+          }
+        },
+        "hosted_interface": {
+          "layout": "classroom_orientation",
+          "default_tab": "stream",
+          "tabs": [
+            "stream",
+            "classwork",
+            "people",
+            "workflow"
+          ]
+        },
+        "alias_profile": {
+          "host_portal": "tff_portal",
+          "alias_id": "alias-3-2-3-17-77-1-6-4-1-4-3-2-3-17-77-2-6-3-1-6-board_member"
+        },
+        "config": {
+          "contacts": "8-0-1",
+          "status": true,
+          "email_map": {
+            "inbox_inbound": {
+              "info@trappfamilyfarm.com": [
+                "proxy@trappfamilyfarm.com"
+              ],
+              "mark@trappfamilyfarm.com": [
+                "proxy@trappfamilyfarm.com"
+              ],
+              "proxy@trappfamilyfarm.com": [
+                "trapp.family.farm@gmail.com"
+              ]
+            },
+            "proxy_outbound": {
+              "proxy@trappfamilyfarm.com": [
+                "info@trappfamilyfarm.com",
+                "mark@trappfamilyfarm.com"
+              ],
+              "trapp.family.farm@gmail.com": [
+                "proxy@trappfamilyfarm.com",
+                "hermes@trappfamilyfarm.com"
+              ],
+              "hermes@trappfamilyfarm.com": [
+                "lambda"
+              ],
+              "lambda": [
+                "news@trappfamilyfarm.com"
+              ]
+            }
+          },
+          "paypal": {
+            "website_domain": "trappfamilyfarm.com",
+            "site_base_url": "https://trappfamilyfarm.com",
+            "webhook_listener_url": "https://api.trappfamilyfarm.com/paypal/webhook"
+          }
+        }
+      }
+    },
+    {
+      "target": "private/utilities/tools/fnd-ebi/fnd-ebi.cvcc.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/fnd/private/utilities/tools/fnd-ebi/fnd-ebi.cvcc.json",
+      "payload_json": {
+        "schema": "mycite.service_tool.fnd_ebi.profile.v1",
+        "domain": "cuyahogavalleycountrysideconservancy.org",
+        "site_root": "/srv/webapps/cuyahogavalleycountrysideconservancy.org/frontend",
+        "analytics": {
+          "enabled": true,
+          "script_path": "/__fnd/analytics.js",
+          "collect_path": "/__fnd/collect",
+          "cookie": {
+            "name": "__Host-fnd_aid",
+            "path": "/",
+            "domain": null,
+            "secure": true,
+            "http_only": true,
+            "same_site": "Lax",
+            "max_age_seconds": 63072000,
+            "refresh_on_hit": true
+          },
+          "session": {
+            "idle_timeout_seconds": 1800,
+            "heartbeat_seconds": 15
+          },
+          "capture": {
+            "page_view": true,
+            "entry": true,
+            "exit": true,
+            "heartbeat": true,
+            "scroll_depth": true,
+            "outbound_click": true,
+            "file_download": true,
+            "form_submit": true,
+            "cta_click": true,
+            "js_error": true,
+            "web_vitals": true
+          },
+          "server_enrichment": {
+            "remote_addr": true,
+            "host": true,
+            "uri": true,
+            "query_string": true,
+            "referer": true,
+            "user_agent": true,
+            "request_time": true,
+            "status": true,
+            "bytes_sent": true
+          }
+        }
+      }
+    },
+    {
+      "target": "private/utilities/tools/fnd-ebi/fnd-ebi.fnd.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/fnd/private/utilities/tools/fnd-ebi/fnd-ebi.fnd.json",
+      "payload_json": {
+        "schema": "mycite.service_tool.fnd_ebi.profile.v1",
+        "domain": "fruitfulnetworkdevelopment.com",
+        "site_root": "/srv/webapps/fruitfulnetworkdevelopment.com/frontend",
+        "analytics": {
+          "enabled": true,
+          "script_path": "/__fnd/analytics.js",
+          "collect_path": "/__fnd/collect",
+          "cookie": {
+            "name": "__Host-fnd_aid",
+            "path": "/",
+            "domain": null,
+            "secure": true,
+            "http_only": true,
+            "same_site": "Lax",
+            "max_age_seconds": 63072000,
+            "refresh_on_hit": true
+          },
+          "session": {
+            "idle_timeout_seconds": 1800,
+            "heartbeat_seconds": 15
+          },
+          "capture": {
+            "page_view": true,
+            "entry": true,
+            "exit": true,
+            "heartbeat": true,
+            "scroll_depth": true,
+            "outbound_click": true,
+            "file_download": true,
+            "form_submit": true,
+            "cta_click": true,
+            "js_error": true,
+            "web_vitals": true
+          },
+          "server_enrichment": {
+            "remote_addr": true,
+            "host": true,
+            "uri": true,
+            "query_string": true,
+            "referer": true,
+            "user_agent": true,
+            "request_time": true,
+            "status": true,
+            "bytes_sent": true
+          }
+        }
+      }
+    },
+    {
+      "target": "private/utilities/tools/fnd-ebi/fnd-ebi.tff.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/fnd/private/utilities/tools/fnd-ebi/fnd-ebi.tff.json",
+      "payload_json": {
+        "schema": "mycite.service_tool.fnd_ebi.profile.v1",
+        "domain": "trappfamilyfarm.com",
+        "site_root": "/srv/webapps/trappfamilyfarm.com/frontend",
+        "analytics": {
+          "enabled": true,
+          "script_path": "/__fnd/analytics.js",
+          "collect_path": "/__fnd/collect",
+          "cookie": {
+            "name": "__Host-fnd_aid",
+            "path": "/",
+            "domain": null,
+            "secure": true,
+            "http_only": true,
+            "same_site": "Lax",
+            "max_age_seconds": 63072000,
+            "refresh_on_hit": true
+          },
+          "session": {
+            "idle_timeout_seconds": 1800,
+            "heartbeat_seconds": 15
+          },
+          "capture": {
+            "page_view": true,
+            "entry": true,
+            "exit": true,
+            "heartbeat": true,
+            "scroll_depth": true,
+            "outbound_click": true,
+            "file_download": true,
+            "form_submit": true,
+            "cta_click": true,
+            "js_error": true,
+            "web_vitals": true
+          },
+          "server_enrichment": {
+            "remote_addr": true,
+            "host": true,
+            "uri": true,
+            "query_string": true,
+            "referer": true,
+            "user_agent": true,
+            "request_time": true,
+            "status": true,
+            "bytes_sent": true
+          }
+        }
+      }
+    },
+    {
+      "target": "private/utilities/tools/fnd-ebi/spec.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/fnd/private/utilities/tools/fnd-ebi/spec.json",
+      "payload_json": {
+        "schema": "mycite.portal.tool_spec.v1",
+        "tool_id": "fnd-ebi",
+        "inherited_inputs": [],
+        "outputs": [],
+        "mediation": {
+          "mode": "service_profile_cards"
+        }
+      }
+    },
+    {
+      "target": "private/utilities/tools/fnd-ebi/tool.3-2-3-17-77-1-6-4-1-4.fnd-ebi.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/fnd/private/utilities/tools/fnd-ebi/tool.3-2-3-17-77-1-6-4-1-4.fnd-ebi.json",
+      "payload_json": {
+        "schema": "mycite.portal.tool_collection.v1",
+        "member_files": [
+          "spec.json",
+          "fnd-ebi.fnd.json",
+          "fnd-ebi.tff.json",
+          "fnd-ebi.cvcc.json"
+        ]
+      }
+    },
+    {
+      "target": "private/utilities/tools/newsletter-admin/newsletter-admin.cuyahogavalleycountrysideconservancy.org.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/fnd/private/utilities/tools/newsletter-admin/newsletter-admin.cuyahogavalleycountrysideconservancy.org.json",
+      "payload_json": {
+        "schema": "mycite.service_tool.newsletter.profile.v1",
+        "domain": "cuyahogavalleycountrysideconservancy.org",
+        "list_address": "news@cuyahogavalleycountrysideconservancy.org",
+        "sender_address": "news@cuyahogavalleycountrysideconservancy.org",
+        "selected_author_profile_id": "aws-csm.cvcc.technicalContact",
+        "selected_author_address": "technicalContact@cuyahogavalleycountrysideconservancy.org",
+        "selected_sender_profile_id": "aws-csm.cvcc.technicalContact",
+        "selected_sender_address": "technicalContact@cuyahogavalleycountrysideconservancy.org",
+        "contact_log_path": "/srv/webapps/cuyahogavalleycountrysideconservancy.org/contact/cuyahogavalleycountrysideconservancy.org-contact_log.json",
+        "delivery_mode": "aws_sqs_lambda_us_east_1",
+        "aws_region": "us-east-1",
+        "dispatch_queue_url": "https://sqs.us-east-1.amazonaws.com/065948377733/aws-cms-newsletter-dispatch",
+        "dispatch_queue_arn": "arn:aws:sqs:us-east-1:065948377733:aws-cms-newsletter-dispatch",
+        "dispatcher_lambda_name": "newsletter-dispatcher",
+        "dispatcher_callback_url": "https://cuyahogavalleycountrysideconservancy.org/__fnd/newsletter/dispatch-result"
+      }
+    },
+    {
+      "target": "private/utilities/tools/newsletter-admin/newsletter-admin.fruitfulnetworkdevelopment.com.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/fnd/private/utilities/tools/newsletter-admin/newsletter-admin.fruitfulnetworkdevelopment.com.json",
+      "payload_json": {
+        "schema": "mycite.service_tool.newsletter.profile.v1",
+        "domain": "fruitfulnetworkdevelopment.com",
+        "list_address": "news@fruitfulnetworkdevelopment.com",
+        "sender_address": "news@fruitfulnetworkdevelopment.com",
+        "selected_author_profile_id": "aws-csm.fnd.dylan",
+        "selected_author_address": "dylan@fruitfulnetworkdevelopment.com",
+        "selected_sender_profile_id": "aws-csm.fnd.dylan",
+        "selected_sender_address": "dylan@fruitfulnetworkdevelopment.com",
+        "contact_log_path": "/srv/webapps/fruitfulnetworkdevelopment.com/contact/fruitfulnetworkdevelopment.com-contact_log.json",
+        "delivery_mode": "aws_sqs_lambda_us_east_1",
+        "aws_region": "us-east-1",
+        "dispatch_queue_url": "https://sqs.us-east-1.amazonaws.com/065948377733/aws-cms-newsletter-dispatch",
+        "dispatch_queue_arn": "arn:aws:sqs:us-east-1:065948377733:aws-cms-newsletter-dispatch",
+        "dispatcher_lambda_name": "newsletter-dispatcher",
+        "dispatcher_callback_url": "https://fruitfulnetworkdevelopment.com/__fnd/newsletter/dispatch-result"
+      }
+    },
+    {
+      "target": "private/utilities/tools/newsletter-admin/newsletter-admin.trappfamilyfarm.com.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/fnd/private/utilities/tools/newsletter-admin/newsletter-admin.trappfamilyfarm.com.json",
+      "payload_json": {
+        "schema": "mycite.service_tool.newsletter.profile.v1",
+        "domain": "trappfamilyfarm.com",
+        "list_address": "news@trappfamilyfarm.com",
+        "sender_address": "news@trappfamilyfarm.com",
+        "selected_author_profile_id": "aws-csm.tff.technicalContact",
+        "selected_author_address": "technicalContact@trappfamilyfarm.com",
+        "selected_sender_profile_id": "aws-csm.tff.technicalContact",
+        "selected_sender_address": "technicalContact@trappfamilyfarm.com",
+        "contact_log_path": "/srv/webapps/trappfamilyfarm.com/contact/trappfamilyfarm.com-contact_log.json",
+        "delivery_mode": "aws_sqs_lambda_us_east_1",
+        "aws_region": "us-east-1",
+        "dispatch_queue_url": "https://sqs.us-east-1.amazonaws.com/065948377733/aws-cms-newsletter-dispatch",
+        "dispatch_queue_arn": "arn:aws:sqs:us-east-1:065948377733:aws-cms-newsletter-dispatch",
+        "dispatcher_lambda_name": "newsletter-dispatcher",
+        "dispatcher_callback_url": "https://trappfamilyfarm.com/__fnd/newsletter/dispatch-result"
+      }
+    },
+    {
+      "target": "private/utilities/vault/keypass_inventory.json",
+      "source_hint": "/srv/repo/mycite-core/MyCiteV1/instances/deployed/fnd/private/utilities/vault/keypass_inventory.json",
+      "payload_json": {
+        "schema": "mycite.utilities.vault.inventory.v1",
+        "entries": [
+          {
+            "id": "portal_support_email",
+            "label": "Portal Support Email",
+            "group": "portal",
+            "value": "",
+            "masked": false,
+            "revealable": true,
+            "editable": true,
+            "notes": "Interim plaintext inventory entry for the in-application KeyPass workbench."
+          }
+        ]
+      }
+    }
+  ],
+  "anthology": {
+    "authoritative": false,
+    "path_hint": "/srv/mycite-state/instances/fnd/data/anthology.json",
+    "sha256": "",
+    "notes": [
+      "State-owned anthology; phase-1 materialize never overwrites this file."
+    ]
+  }
+}

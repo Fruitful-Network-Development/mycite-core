@@ -32,6 +32,7 @@ Use it after the MVP is proven and before any new client-visible slice is specif
 
 - Current admin-first platform status: post-AWS tool platform stabilized.
 - Completed admin-first slices: `Admin Band 0`, `admin_band1.aws_read_only_surface`, and `admin_band2.aws_narrow_write_surface`.
+- Live `/portal` cutover status: bridge not implemented; use [post_aws_tool_platform/deployment_bridge_contract.md](post_aws_tool_platform/deployment_bridge_contract.md).
 - Next allowed admin-first tool track: Maps, after reading [post_aws_tool_platform/README.md](post_aws_tool_platform/README.md) and [admin_first/maps_follow_on_surface.md](admin_first/maps_follow_on_surface.md).
 
 ## Preferred near-term sequence
