@@ -138,4 +138,44 @@ Implemented the V2 native cutover.
 
 V1 is still present on disk as an archive, but it is no longer serving the deployed portal paths.
 
-___
+---
+
+
+## CONISDERATIONS
+
+1. Repo and portal hardening assessment
+
+The repo updates moved the portal from “V2-ready in principle” to an actual V2-native host shape.
+
+Before the latest cutover review, the repo explicitly said V2 was validated but not yet serving live `/portal`; live FND and TFF were still on the V1 Flask/Gunicorn host, and the next required step was a V2-owned host or bridge (`MyCiteV2/docs/audits/live_cutover_review_2026-04-10.md`). The latest portal commit, `432d0288794446d1af62f110bcd5713d40167fe3` (“V2 Native Portal Cutover”), changes that materially: it adds a V2-native host at `MyCiteV2/instances/_shared/portal_host/app.py`, adds canonical datum loading from `data/system/anthology.json`, adds canonical analytics event pathing under `/srv/webapps/clients/<domain>/analytics/events/YYYY-MM.ndjson`, and adds host-boundary tests forbidding V1 imports and bridge reuse.
+
+So the portal is no longer mainly blocked on architecture. The remaining work is hardening.
+
+The highest remaining gap is deployment codification. The cutover commit reports systemd, nginx, and service-control changes, but those are described in the commit report rather than clearly represented as the canonical infra source of truth in the repo. That is the main source of future drift. The next hardening step should be to make the live `mycite-v2-fnd-portal.service`, `mycite-v2-tff-portal.service`, nginx routing, and portal control scripts repo-owned and reproducible, rather than depending on server-side edits remembered through commit notes.
+
+The second gap is configuration fail-fast behavior. `V2PortalHostConfig.from_env()` in `MyCiteV2/instances/_shared/portal_host/app.py` still falls back to `fnd` when tenant env is absent. That is acceptable for convenience, but weak for production. For a hardened portal host, tenant selection, state roots, AWS status file, and audit file paths should be explicit and validated at startup. Right now some of that failure is deferred to health checks or route execution. In production, misconfiguration should stop the service from booting.
+
+The third gap is security-edge certainty. The V2 host exposes admin shell and AWS endpoints, and the runtime envelope handles audience and availability decisions, but the host file itself does not show a complete edge-auth story. If auth is enforced upstream, that needs to be treated as a tested deployment contract, not an assumption. If it is not fully enforced upstream, this is the biggest unresolved operational risk. The portal should have one explicit statement of where authentication and tenant authorization are enforced, and one end-to-end test proving that unauthorized requests fail before or at the host boundary.
+
+The fourth gap is observability depth. The new `/portal/healthz` is useful, but it is still a narrow readiness probe. It checks canonical datum loading, analytics root resolution, and AWS profile mapping. That is good enough for cutover, not for stable operations. What is still missing is stronger structured logging, request correlation, explicit startup diagnostics, audit sink writability checks, and a black-box smoke path that verifies real proxy-to-host behavior after deployment. The analytics path resolver and datum store are hardened at the code level, but you still want live probes that catch host-level regression, not just unit and integration regressions.
+
+The fifth gap is documentation drift. `MyCiteV2/README.md` still says `packages/` holds inert placeholders only, `instances/` holds runtime composition placeholders only, and `tests/` holds planned placeholders only. That is now false. The repo contains implemented runtime, host, adapters, ports, and tests. This matters because your V2 tree is documentation-first, so stale top-level docs become an authority problem. The repo now needs one current operator/developer entry document that describes the actual V2 portal host, service names, ports, env contract, health semantics, canonical state paths, and rollback rules.
+
+The sixth gap is end-to-end deployment regression coverage. The latest commit adds useful host, datum, analytics, and architecture-boundary tests, and the commit reports `122 tests OK`. That is solid. But those are still mostly code-level and local-host verifications. What still remains is one black-box suite for the deployed surface: `/portal`, `/portal/healthz`, `portal_instance=tff`, JSON public resource serving, admin shell launch, AWS read-only, AWS narrow-write failure modes, and analytics collect through the actual proxy path. That is the level that protects development from server drift and accidental routing regressions.
+
+The seventh gap is UI-shell maturity. The new `portal.html` is enough as a cutover shell, but it is still a minimal status surface. For development quality, that is acceptable for now. For longer-term portal hardening, the shell should become a stable host for tool surfaces, not just a health page with a few cards. That is not the immediate blocker, but it is the next layer after operational hardening.
+
+The eighth gap is readiness policy around datum materialization. `live_system_datum_store.py` correctly blocks legacy fallback and treats missing root-level files as warnings, which is good. But it also only warns when `data/system/sources/*.json` or `data/payloads/cache/*.json` are absent. You still need to decide whether those are legitimately optional in production or whether they should fail readiness. Right now the policy is lenient. Hardening means making that policy explicit.
+
+The repo is therefore in a better state than before: the core cutover appears to be done, the V1 bridge path is intentionally excluded, canonical datum and analytics paths are enforced, and the portal host is now V2-native. What remains is mostly not another architectural pass. It is operational hardening.
+
+Priority order for what still remains:
+first, make deployment config fully repo-authoritative;
+second, remove startup ambiguity and require explicit production config;
+third, lock down and test the real auth/authorization edge;
+fourth, add black-box deployed-surface smoke tests;
+fifth, fix top-level V2 documentation drift.
+
+The single next hardening move should be: codify the live systemd and nginx state as versioned infra, then add one deployment-readiness smoke suite against the actual routed `/portal` surface. That will remove the largest remaining source of drift.
+
+---
