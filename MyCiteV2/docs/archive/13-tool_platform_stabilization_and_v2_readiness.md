@@ -341,4 +341,42 @@ Return:
 - What remains before Maps follow-on: no more AWS expansion is required for this slice. The next prompt can start the first Maps slice by defining or implementing its own narrow seam, adapter, runtime entrypoint, and registry entry through the existing admin shell and runtime catalog, without changing the two AWS slices.
 - Deferred ambiguities that should stay frozen: whether any AWS writable field beyond `selected_verified_sender` is ever approved, whether dispatch-health gets a later AWS follow-up slice, whether admin home and tool registry eventually merge into one shell payload, and the exact first Maps seam/adapter names.
 
+The requested `Post-AWS Tool Platform Stabilization And V2 Cutover Readiness` pass is already implemented in the current `MyCiteV2/` tree, and I did not create duplicate registry/runtime/framework surfaces. I verified the implementation as-is; `git status --short MyCiteV2` is clean.
+
+**Files**
+The shared platform/cutover implementation is centered on:
+
+- [runtime_platform.py](/srv/repo/mycite-core/MyCiteV2/instances/_shared/runtime/runtime_platform.py)
+- [admin_shell.py](/srv/repo/mycite-core/MyCiteV2/packages/state_machine/hanus_shell/admin_shell.py)
+- [admin_runtime.py](/srv/repo/mycite-core/MyCiteV2/instances/_shared/runtime/admin_runtime.py)
+- [admin_aws_runtime.py](/srv/repo/mycite-core/MyCiteV2/instances/_shared/runtime/admin_aws_runtime.py)
+- [test_admin_tool_platform_contract.py](/srv/repo/mycite-core/MyCiteV2/tests/unit/test_admin_tool_platform_contract.py)
+- [test_admin_runtime_platform_contracts.py](/srv/repo/mycite-core/MyCiteV2/tests/integration/test_admin_runtime_platform_contracts.py)
+- [post_aws_tool_platform/README.md](/srv/repo/mycite-core/MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/README.md)
+- [future_tool_drop_in_contract.md](/srv/repo/mycite-core/MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/future_tool_drop_in_contract.md)
+- [v2_admin_cutover_readiness.md](/srv/repo/mycite-core/MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/v2_admin_cutover_readiness.md)
+- [decision_record_0012_post_aws_tool_platform_stabilization.md](/srv/repo/mycite-core/MyCiteV2/docs/decisions/decision_record_0012_post_aws_tool_platform_stabilization.md)
+
+**Implemented Surfaces**
+- Shared platform surfaces: shell-owned `AdminToolRegistryEntry` descriptors, static runtime entrypoint descriptors, shared runtime envelope construction, explicit read-only and bounded-write patterns, and boundary tests preventing dynamic discovery or bypass routes.
+- Deployable V2/cutover surfaces: `admin.shell_entry` remains the intended admin landing path, `runtime_platform.py` is the admin runtime catalog, and docs define slice-by-slice operational displacement of the old portal without route-level parity porting.
+- Future-tool drop-in contract: one slice file, one semantic owner, one seam, one adapter family if needed, one runtime entrypoint, one shell-owned registry descriptor, and one test/gate set.
+- Normalized rather than redesigned: Admin Band 0 behavior, AWS read-only behavior, AWS narrow-write behavior, registry-launched execution, read-after-write confirmation, and accepted-write audit emission.
+
+**Verification**
+Ran the required regression stack across MVP, Admin Band 0, AWS read-only, AWS narrow-write, and the shared platform layer:
+
+`Ran 90 tests in 0.161s`  
+`OK`
+
+Also ran `py_compile` on the runtime/platform modules; all passed.
+
+**Status**
+Yes, the codebase is now in the intended stable-consistent-core state for individual tool development. Future tools can plug into the fixed shell, registry, runtime catalog, envelope, gate, read-only/write, and audit patterns without re-solving shared platform policy.
+
+**Next Prompt**
+Implement the first Maps slice as a narrow read-only admin tool slice. The prompt should point to [future_tool_drop_in_contract.md](/srv/repo/mycite-core/MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/future_tool_drop_in_contract.md), [read_only_and_bounded_write_patterns.md](/srv/repo/mycite-core/MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/read_only_and_bounded_write_patterns.md), and [maps_follow_on_surface.md](/srv/repo/mycite-core/MyCiteV2/docs/plans/post_mvp_rollout/admin_first/maps_follow_on_surface.md), then require one Maps slice file, seam, adapter, runtime entrypoint, registry descriptor, and tests.
+
+Deferred ambiguities: exact first Maps boundary, whether Maps requires reopening `mediation_surface`, Maps seam/adapter names, and environment-specific traffic cutover from old admin routes.
+
 ---
