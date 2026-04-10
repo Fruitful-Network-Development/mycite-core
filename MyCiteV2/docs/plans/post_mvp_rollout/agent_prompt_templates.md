@@ -202,3 +202,31 @@ Add one semantic owner, one port seam, one adapter family if needed, one runtime
 Do not add dynamic discovery, a second shell, flavor-specific runtime code, broad provider-admin parity, or unrelated tool semantics.
 Return exact files changed, tests run, descriptor added, runtime entrypoint added, and remaining blockers.
 ```
+
+## Template 9: Implement The V2 Deployment Bridge
+
+```text
+Work only inside `MyCiteV2/` unless the chosen bridge shape explicitly requires a tiny V1 host mount.
+
+Implement only the V2 deployment bridge slice.
+
+Read first:
+1. `MyCiteV2/docs/plans/authority_stack.md`
+2. `MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/README.md`
+3. `MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/deployment_bridge_contract.md`
+4. `MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/live_state_authority_and_mapping.md`
+5. `MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/cutover_execution_sequence.md`
+6. `MyCiteV2/docs/plans/post_mvp_rollout/slice_registry/admin_band0_v2_deployment_bridge.md`
+7. current V2 Admin Band 0 and AWS tests
+
+Pick Shape B from `deployment_bridge_contract.md` unless there is an explicit reason to build a separate V2 service.
+
+Expose only cataloged V2 runtime entrypoints:
+- `admin.shell_entry`
+- `admin.aws.read_only`
+- `admin.aws.narrow_write`
+
+Do not add dynamic discovery, route parity, Maps, AGRO-ERP, root compatibility symlinks, or duplicate write state.
+Run V2 unit, contract, adapter, integration, and architecture tests plus bridge-specific tests.
+Return exact files changed, route surface added, tests run, and remaining deployment steps.
+```
