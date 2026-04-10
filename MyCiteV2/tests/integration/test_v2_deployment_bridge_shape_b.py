@@ -76,6 +76,29 @@ def _status_snapshot(selected_sender: str = "alerts@example.com") -> dict[str, o
     }
 
 
+def _live_profile(selected_sender: str = "technicalcontact@trappfamilyfarm.com") -> dict[str, object]:
+    return {
+        "schema": "mycite.service_tool.aws_csm.profile.v1",
+        "identity": {
+            "profile_id": "aws-csm.tff.technicalContact",
+            "tenant_id": "tff",
+            "domain": "trappfamilyfarm.com",
+            "mailbox_local_part": "technicalcontact",
+            "send_as_email": selected_sender,
+        },
+        "smtp": {
+            "handoff_ready": True,
+            "credentials_secret_state": "configured",
+            "send_as_email": selected_sender,
+            "local_part": "technicalcontact",
+        },
+        "verification": {"status": "verified"},
+        "provider": {"gmail_send_as_status": "verified"},
+        "workflow": {"initiated": True, "lifecycle_state": "operational", "is_mailbox_operational": True},
+        "inbound": {"receive_verified": True, "latest_message_id": "message-1"},
+    }
+
+
 def _load_portal_app_module(flavor: str, temp_root: Path, status_file: Path, audit_file: Path):
     instances_root = MYCITE_V1_ROOT / "instances"
     runtime_root = instances_root / "_shared" / "runtime" / "flavors" / flavor
@@ -173,6 +196,7 @@ class V2DeploymentBridgeShapeBTests(unittest.TestCase):
                 {
                     "audit_storage_file": True,
                     "aws_status_file": True,
+                    "aws_live_profile_mapping": False,
                     "aws_audit_storage_file": True,
                 },
             )
@@ -245,6 +269,53 @@ class V2DeploymentBridgeShapeBTests(unittest.TestCase):
             stored = json.loads(status_file.read_text(encoding="utf-8"))
             self.assertEqual(stored["selected_verified_sender"], "new@example.com")
             self.assertEqual(stored["canonical_newsletter_profile"]["selected_verified_sender"], "new@example.com")
+
+    def test_bridge_maps_live_aws_profile_without_creating_shadow_status(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            status_file = temp_root / "aws-csm.tff.technicalContact.json"
+            audit_file = temp_root / "aws_audit.ndjson"
+            status_file.write_text(json.dumps(_live_profile("technicalcontact@trappfamilyfarm.com")) + "\n", encoding="utf-8")
+            module = _load_portal_app_module("tff", temp_root, status_file, audit_file)
+            client = module.app.test_client()
+
+            health = client.get("/portal/api/v2/admin/bridge/health")
+            self.assertEqual(health.status_code, 200)
+            self.assertTrue((health.get_json() or {})["configured_inputs"]["aws_live_profile_mapping"])
+
+            read_only = client.post(
+                "/portal/api/v2/admin/aws/read-only",
+                json={
+                    "schema": ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+            )
+            self.assertEqual(read_only.status_code, 200)
+            read_only_payload = read_only.get_json() or {}
+            self.assertEqual(
+                read_only_payload["surface_payload"]["selected_verified_sender"],
+                "technicalcontact@trappfamilyfarm.com",
+            )
+            self.assertEqual(
+                read_only_payload["surface_payload"]["canonical_newsletter_operational_profile"]["profile_id"],
+                "aws-csm.tff.technicalContact",
+            )
+
+            narrow_write = client.post(
+                "/portal/api/v2/admin/aws/narrow-write",
+                json={
+                    "schema": ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                    "focus_subject": "3-2-3-17-77-1-6-4-1-4.4-1-77",
+                    "profile_id": "aws-csm.tff.technicalContact",
+                    "selected_verified_sender": "ops@trappfamilyfarm.com",
+                },
+            )
+            self.assertEqual(narrow_write.status_code, 200)
+            stored = json.loads(status_file.read_text(encoding="utf-8"))
+            self.assertEqual(stored["identity"]["send_as_email"], "ops@trappfamilyfarm.com")
+            self.assertEqual(stored["smtp"]["send_as_email"], "ops@trappfamilyfarm.com")
+            self.assertFalse((temp_root / "aws_status.json").exists())
 
     def test_bridge_denies_unknown_slices_and_non_internal_admin_band0_audience(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -341,6 +412,7 @@ class V2DeploymentBridgePureAdapterTests(unittest.TestCase):
 
         self.assertEqual(health["schema"], V2_ADMIN_BRIDGE_HEALTH_SCHEMA)
         self.assertTrue(health["configured_inputs"]["aws_status_file"])
+        self.assertFalse(health["configured_inputs"]["aws_live_profile_mapping"])
         self.assertNotIn("/tmp/aws.json", json.dumps(health, sort_keys=True))
 
 

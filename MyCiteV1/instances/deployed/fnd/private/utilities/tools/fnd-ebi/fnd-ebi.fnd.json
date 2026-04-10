@@ -1,7 +1,7 @@
 {
   "schema": "mycite.service_tool.fnd_ebi.profile.v1",
   "domain": "fruitfulnetworkdevelopment.com",
-  "site_root": "/srv/webapps/fruitfulnetworkdevelopment.com/frontend",
+  "site_root": "/srv/webapps/clients/fruitfulnetworkdevelopment.com/frontend",
   "analytics": {
     "enabled": true,
     "script_path": "/__fnd/analytics.js",

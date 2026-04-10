@@ -337,6 +337,10 @@ def _resolve_system_resource_file(*, data_root: Path, file_key: str) -> tuple[Pa
         if candidates:
             path = candidates[0]
             return path, _read_json_object(path)
+        legacy_path = root / f"samras-{token}.json"
+        if legacy_path.is_file():
+            return legacy_path, _read_json_object(legacy_path)
+        return legacy_path, {}
     return None, {}
 
 

@@ -1,7 +1,7 @@
 {
   "schema": "mycite.service_tool.fnd_ebi.profile.v1",
   "domain": "trappfamilyfarm.com",
-  "site_root": "/srv/webapps/trappfamilyfarm.com/frontend",
+  "site_root": "/srv/webapps/clients/trappfamilyfarm.com/frontend",
   "analytics": {
     "enabled": true,
     "script_path": "/__fnd/analytics.js",

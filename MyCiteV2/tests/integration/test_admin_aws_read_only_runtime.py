@@ -121,6 +121,60 @@ class AdminAwsReadOnlyRuntimeIntegrationTests(unittest.TestCase):
             },
         )
 
+    def test_live_aws_profile_file_is_mapped_at_runtime(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            profile_file = Path(temp_dir) / "aws-csm.fnd.dylan.json"
+            profile_file.write_text(
+                json.dumps(
+                    {
+                        "schema": "mycite.service_tool.aws_csm.profile.v1",
+                        "identity": {
+                            "profile_id": "aws-csm.fnd.dylan",
+                            "tenant_id": "fnd",
+                            "domain": "fruitfulnetworkdevelopment.com",
+                            "mailbox_local_part": "dylan",
+                            "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                        },
+                        "smtp": {
+                            "handoff_ready": True,
+                            "credentials_secret_state": "configured",
+                            "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                        },
+                        "verification": {"status": "verified"},
+                        "provider": {"gmail_send_as_status": "verified"},
+                        "workflow": {
+                            "initiated": True,
+                            "lifecycle_state": "operational",
+                            "is_mailbox_operational": True,
+                        },
+                        "inbound": {"receive_verified": True, "latest_message_id": "message-1"},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_admin_aws_read_only(
+                {
+                    "schema": ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "fnd", "audience": "trusted-tenant"},
+                },
+                aws_status_file=profile_file,
+            )
+
+            self.assertEqual(result["schema"], ADMIN_RUNTIME_ENVELOPE_SCHEMA)
+            self.assertIsNone(result["error"])
+            surface = result["surface_payload"]
+            self.assertEqual(surface["selected_verified_sender"], "dylan@fruitfulnetworkdevelopment.com")
+            self.assertEqual(
+                surface["canonical_newsletter_operational_profile"]["profile_id"],
+                "aws-csm.fnd.dylan",
+            )
+            self.assertEqual(surface["mailbox_readiness"], "ready")
+            serialized = json.dumps(surface, sort_keys=True)
+            self.assertNotIn("credentials_secret_state", serialized)
+            self.assertNotIn("latest_message_id", serialized)
+
 
 if __name__ == "__main__":
     unittest.main()

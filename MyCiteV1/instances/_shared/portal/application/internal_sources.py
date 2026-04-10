@@ -58,9 +58,17 @@ def detect_content_kind(path: Path, *, kind_hint: str = "") -> str:
     return "text"
 
 
-def derive_client_analytics_paths(site_root: str, *, now_utc: datetime | None = None) -> dict[str, Path]:
+def _canonical_client_root(site_root: str) -> Path:
     root = Path(_text(site_root))
     client_root = root.parent
+    legacy_webapps_root = Path("/srv/webapps")
+    if client_root.parent == legacy_webapps_root:
+        return legacy_webapps_root / "clients" / client_root.name
+    return client_root
+
+
+def derive_client_analytics_paths(site_root: str, *, now_utc: datetime | None = None) -> dict[str, Path]:
+    client_root = _canonical_client_root(site_root)
     analytics_root = client_root / "analytics"
     now = now_utc or datetime.now(timezone.utc)
     month_token = f"{now.year:04d}-{now.month:02d}"

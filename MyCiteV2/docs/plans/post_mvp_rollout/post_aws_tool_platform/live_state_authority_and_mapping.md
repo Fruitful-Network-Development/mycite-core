@@ -55,6 +55,8 @@ Create an adapter that reads and writes the canonical live AWS profile JSON dire
 
 Required before exposing `admin.aws.narrow_write` against live state.
 
+Implementation status: selected and implemented for the Shape B bridge. `MYCITE_V2_AWS_STATUS_FILE` is the deployment input and must point at the canonical live AWS profile JSON. The adapter maps live `mycite.service_tool.aws_csm.profile.v1` fields into the approved V2 status surface and updates only `identity.send_as_email` / `smtp.send_as_email` for the narrow write field `selected_verified_sender`.
+
 ## Narrow-write authority
 
 `admin.aws.narrow_write` may only be exposed when:
