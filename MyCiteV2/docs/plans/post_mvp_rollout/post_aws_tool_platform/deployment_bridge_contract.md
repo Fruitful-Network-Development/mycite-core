@@ -4,6 +4,8 @@ Authority: [../../authority_stack.md](../../authority_stack.md)
 
 This document defines the smallest acceptable bridge that can make the tested V2 admin runtime reachable from the live portal without recreating V1 route drift.
 
+Implementation status: Shape B is implemented by `MyCiteV2/packages/adapters/portal_runtime/v1_host_bridge.py` and mounted in the FND/TFF V1 hosts.
+
 ## Goal
 
 Expose the V2 admin shell and cataloged AWS admin runtime entrypoints through the live portal boundary while keeping V1 and V2 as isolated directories.
@@ -41,6 +43,15 @@ The route names may be adjusted by the implementing agent, but the conceptual su
 - one AWS read-only launch route for `admin.aws.read_only`
 - one AWS narrow-write launch route for `admin.aws.narrow_write`
 - one health or readiness route proving V2 bridge wiring without exposing secret-bearing payloads
+
+Implemented route surface:
+
+- `GET /portal/api/v2/admin/bridge/health`
+- `POST /portal/api/v2/admin/shell`
+- `POST /portal/api/v2/admin/aws/read-only`
+- `POST /portal/api/v2/admin/aws/narrow-write`
+
+The AWS routes require explicit configured V2-compatible AWS status input. They must not be treated as live trusted-tenant AWS exposure until [live_state_authority_and_mapping.md](live_state_authority_and_mapping.md) is implemented.
 
 ## Forbidden bridge behavior
 
