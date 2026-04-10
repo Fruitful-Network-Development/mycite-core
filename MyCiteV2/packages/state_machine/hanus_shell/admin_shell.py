@@ -87,23 +87,65 @@ class AdminTenantScope:
 
 
 @dataclass(frozen=True)
+class AdminShellChrome:
+    """Optional layout hints merged by runtime into shell_composition (not alternate shell truth)."""
+
+    inspector_collapsed: bool | None = None
+    control_panel_collapsed: bool | None = None
+
+    def __post_init__(self) -> None:
+        ic = self.inspector_collapsed
+        cp = self.control_panel_collapsed
+        if ic is not None and not isinstance(ic, bool):
+            raise ValueError("shell_chrome.inspector_collapsed must be a bool or null")
+        if cp is not None and not isinstance(cp, bool):
+            raise ValueError("shell_chrome.control_panel_collapsed must be a bool or null")
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        if self.inspector_collapsed is not None:
+            out["inspector_collapsed"] = self.inspector_collapsed
+        if self.control_panel_collapsed is not None:
+            out["control_panel_collapsed"] = self.control_panel_collapsed
+        return out
+
+    @classmethod
+    def from_value(cls, payload: dict[str, Any] | None) -> "AdminShellChrome":
+        if payload is None:
+            return cls()
+        if not isinstance(payload, dict):
+            raise ValueError("shell_chrome must be a dict or null")
+        return cls(
+            inspector_collapsed=payload.get("inspector_collapsed"),
+            control_panel_collapsed=payload.get("control_panel_collapsed"),
+        )
+
+
+@dataclass(frozen=True)
 class AdminShellRequest:
     requested_slice_id: str = ADMIN_HOME_STATUS_SLICE_ID
     tenant_scope: AdminTenantScope = field(default_factory=AdminTenantScope)
+    shell_chrome: AdminShellChrome = field(default_factory=AdminShellChrome)
     schema: str = field(default=ADMIN_SHELL_REQUEST_SCHEMA, init=False)
 
     def __post_init__(self) -> None:
         requested_slice_id = _as_text(self.requested_slice_id) or ADMIN_HOME_STATUS_SLICE_ID
         tenant_scope = self.tenant_scope if isinstance(self.tenant_scope, AdminTenantScope) else AdminTenantScope.from_value(self.tenant_scope)
+        shell_chrome = self.shell_chrome if isinstance(self.shell_chrome, AdminShellChrome) else AdminShellChrome.from_value(self.shell_chrome)
         object.__setattr__(self, "requested_slice_id", requested_slice_id)
         object.__setattr__(self, "tenant_scope", tenant_scope)
+        object.__setattr__(self, "shell_chrome", shell_chrome)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        body: dict[str, Any] = {
             "schema": self.schema,
             "requested_slice_id": self.requested_slice_id,
             "tenant_scope": self.tenant_scope.to_dict(),
         }
+        chrome = self.shell_chrome.to_dict()
+        if chrome:
+            body["shell_chrome"] = chrome
+        return body
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any] | None) -> "AdminShellRequest":
@@ -115,6 +157,7 @@ class AdminShellRequest:
         return cls(
             requested_slice_id=payload.get("requested_slice_id") or ADMIN_HOME_STATUS_SLICE_ID,
             tenant_scope=AdminTenantScope.from_value(payload.get("tenant_scope")),
+            shell_chrome=AdminShellChrome.from_value(payload.get("shell_chrome") if isinstance(payload.get("shell_chrome"), dict) else None),
         )
 
 
@@ -659,6 +702,7 @@ __all__ = [
     "AWS_READ_ONLY_ENTRYPOINT_ID",
     "AWS_READ_ONLY_SLICE_ID",
     "DATUM_RESOURCE_WORKBENCH_SLICE_ID",
+    "AdminShellChrome",
     "AdminShellRequest",
     "AdminShellSelection",
     "AdminSurfaceCatalogEntry",

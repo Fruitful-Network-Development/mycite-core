@@ -6597,3 +6597,19 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   background: var(--ide-panel-bg, #f6f8fa);
   font-weight: 600;
 }
+.v2-surface-dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) 1fr;
+  gap: 6px 12px;
+  font-size: 13px;
+}
+.v2-surface-dl dt {
+  margin: 0;
+  font-weight: 600;
+  opacity: 0.85;
+}
+.v2-surface-dl dd {
+  margin: 0;
+  word-break: break-word;
+}

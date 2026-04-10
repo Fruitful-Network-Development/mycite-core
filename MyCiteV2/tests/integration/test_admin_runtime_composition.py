@@ -195,7 +195,57 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             self.assertEqual(result["shell_composition"]["foreground_shell_region"], "interface-panel")
             self.assertFalse(result["shell_composition"]["inspector_collapsed"])
             ins = result["shell_composition"]["regions"]["inspector"]
-            self.assertEqual(ins["kind"], "json_document")
+            self.assertEqual(ins["kind"], "aws_read_only_surface")
+            self.assertEqual(ins["tenant_scope_id"], "tff")
+
+    def test_shell_chrome_mediates_inspector_collapse_in_tool_mode(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            status_file = Path(temp_dir) / "aws.json"
+            status_file.write_text(
+                json.dumps(
+                    {
+                        "schema": "mycite.service_tool.aws_csm.profile.v1",
+                        "identity": {
+                            "profile_id": "aws-csm.tff.x",
+                            "tenant_id": "tff",
+                            "domain": "trappfamilyfarm.com",
+                            "mailbox_local_part": "x",
+                            "send_as_email": "x@trappfamilyfarm.com",
+                        },
+                        "smtp": {"handoff_ready": True, "credentials_secret_state": "configured"},
+                        "verification": {"status": "verified"},
+                        "provider": {"gmail_send_as_status": "verified"},
+                        "workflow": {
+                            "initiated": True,
+                            "lifecycle_state": "operational",
+                            "is_ready_for_user_handoff": True,
+                            "is_mailbox_operational": True,
+                        },
+                        "inbound": {"receive_verified": True, "receive_state": "receive_operational"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            data_dir = Path(temp_dir) / "data"
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text("{}\n", encoding="utf-8")
+
+            dismissed = run_admin_shell_entry(
+                {
+                    "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+                    "requested_slice_id": AWS_READ_ONLY_SLICE_ID,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                    "shell_chrome": {"inspector_collapsed": True},
+                },
+                portal_tenant_id="tff",
+                aws_status_file=status_file,
+                data_dir=data_dir,
+            )
+            self.assertTrue(dismissed["shell_composition"]["inspector_collapsed"])
+            self.assertEqual(dismissed["shell_composition"]["foreground_shell_region"], "center-workbench")
+            wb = dismissed["shell_composition"]["regions"]["workbench"]
+            self.assertEqual(wb.get("kind"), "tool_collapsed_inspector")
 
 
 if __name__ == "__main__":

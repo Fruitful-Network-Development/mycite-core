@@ -231,3 +231,15 @@ The strongest single correction is this: stop asking for a recreation of the old
 - Verified with **`/srv/venvs/fnd_portal/bin/python3`** on the modules listed above (including AWS runtime integration tests).
 
 ---
+
+## CONSIDERATIONS:
+
+Considering the updated repo, the implementation has moved materially closer to the correct V2 paradigm.
+
+It is no longer just a V1-looking page. The state machine now defines an explicit shell composition schema, region schemas, activity dispatch bodies, and functions that derive composition mode, active service, foreground region, and inspector state from the active surface . The runtime now builds region payloads for activity bar, control panel, workbench, and inspector, and returns `shell_composition` inside the admin runtime envelope instead of only returning generic catalog data . The host now bootstraps the page with a server-issued shell request and passes tenant, AWS status file, and datum context into `run_admin_shell_entry()` . The template and client now consume that shell request and render runtime-issued regions, rather than building the real shell out of hardcoded fallback navigation  .
+
+So the prompt should now change. It should no longer ask the agent to “manifest” the V2 shell paradigm from scratch. That part now exists in-repo. The correct prompt now is a hardening and completion prompt that protects the new shell contract and removes the remaining drift.
+
+The main remaining drift is that some shell behavior is still mutated locally in the browser. In `v2_portal_shell.js`, the inspector close action still directly collapses the inspector in DOM state instead of round-tripping through shell-owned state . Also, the workbench and inspector are still heavily JSON-document oriented in several places, which means the shell contract exists, but many surfaces are still only semantically thin projections rather than fully articulated V1-like interface surfaces  . And operationally, `srv-infra` still shows `/portal` and `/healthz` routing to `5101` and `5203`, so deploy reality is still separate from repo intent .
+
+---

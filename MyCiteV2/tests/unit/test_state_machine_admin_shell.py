@@ -235,6 +235,18 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "admin_tenant_scope.audience"):
             AdminTenantScope.from_value({"scope_id": "internal-admin", "audience": "partner"})
 
+    def test_shell_chrome_round_trips_in_request_dict(self) -> None:
+        payload = {
+            "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+            "requested_slice_id": ADMIN_HOME_STATUS_SLICE_ID,
+            "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+            "shell_chrome": {"inspector_collapsed": True, "control_panel_collapsed": False},
+        }
+        req = AdminShellRequest.from_dict(payload)
+        self.assertTrue(req.shell_chrome.inspector_collapsed)
+        self.assertFalse(req.shell_chrome.control_panel_collapsed)
+        self.assertEqual(req.to_dict()["shell_chrome"], payload["shell_chrome"])
+
     def test_band_name_is_fixed_for_admin_band0(self) -> None:
         self.assertEqual(ADMIN_BAND0_NAME, "Admin Band 0 Internal Admin Replacement")
         self.assertEqual(ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY, "trusted-tenant-read-only")
