@@ -20,6 +20,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND0_NAME,
     ADMIN_ENTRYPOINT_ID,
     ADMIN_HOME_STATUS_SLICE_ID,
+    ADMIN_SHELL_COMPOSITION_SCHEMA,
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
     AWS_NARROW_WRITE_SLICE_ID,
@@ -75,6 +76,14 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             )
             self.assertTrue(all(entry["launchable"] for entry in available_tool_entries))
             self.assertEqual(result["surface_payload"]["gated_tool_slices"], [])
+            comp = result["shell_composition"]
+            self.assertEqual(comp["schema"], ADMIN_SHELL_COMPOSITION_SCHEMA)
+            self.assertIn("regions", comp)
+            self.assertIn("activity_bar", comp["regions"])
+            self.assertIn("control_panel", comp["regions"])
+            self.assertIn("workbench", comp["regions"])
+            self.assertIn("inspector", comp["regions"])
+            self.assertTrue(comp["regions"]["activity_bar"]["items"])
 
     def test_tool_registry_surface_is_catalog_driven_and_deny_by_default(self) -> None:
         result = run_admin_shell_entry(
@@ -97,6 +106,8 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         self.assertEqual(result["surface_payload"]["gated_tool_slice_ids"], [])
         self.assertEqual(len(result["surface_payload"]["tool_entries"]), 2)
         self.assertNotIn("newsletter-admin", json.dumps(result["surface_payload"], sort_keys=True))
+        self.assertEqual(result["shell_composition"]["composition_mode"], "system")
+        self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "tool_registry")
 
     def test_requested_aws_slice_redirects_to_registry_and_does_not_launch_inline(self) -> None:
         result = run_admin_shell_entry(
@@ -118,6 +129,7 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         )
         self.assertEqual(result["warnings"], [result["error"]["message"]])
         self.assertEqual(result["surface_payload"]["schema"], ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA)
+        self.assertEqual(result["shell_composition"]["regions"]["workbench"].get("banner", {}).get("code"), "launch_via_registry")
 
     def test_non_internal_request_is_denied_without_surface_payload(self) -> None:
         result = run_admin_shell_entry(
@@ -129,14 +141,61 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         )
 
         self.assertEqual(result["slice_id"], ADMIN_HOME_STATUS_SLICE_ID)
-        self.assertEqual(
-            result["error"],
-            {
-                "code": "audience_not_allowed",
-                "message": "Admin Band 0 is internal-only and rejects non-internal audiences.",
-            },
-        )
+        self.assertEqual(result["error"]["code"], "audience_not_allowed")
+        self.assertIn("Trusted-tenant shell requests", result["error"]["message"])
         self.assertIsNone(result["surface_payload"])
+        self.assertIsNotNone(result["shell_composition"])
+
+    def test_trusted_tenant_aws_read_only_slice_composes_tool_mode(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            status_file = Path(temp_dir) / "aws.json"
+            status_file.write_text(
+                json.dumps(
+                    {
+                        "schema": "mycite.service_tool.aws_csm.profile.v1",
+                        "identity": {
+                            "profile_id": "aws-csm.tff.x",
+                            "tenant_id": "tff",
+                            "domain": "trappfamilyfarm.com",
+                            "mailbox_local_part": "x",
+                            "send_as_email": "x@trappfamilyfarm.com",
+                        },
+                        "smtp": {"handoff_ready": True, "credentials_secret_state": "configured"},
+                        "verification": {"status": "verified"},
+                        "provider": {"gmail_send_as_status": "verified"},
+                        "workflow": {
+                            "initiated": True,
+                            "lifecycle_state": "operational",
+                            "is_ready_for_user_handoff": True,
+                            "is_mailbox_operational": True,
+                        },
+                        "inbound": {"receive_verified": True, "receive_state": "receive_operational"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            data_dir = Path(temp_dir) / "data"
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text("{}\n", encoding="utf-8")
+
+            result = run_admin_shell_entry(
+                {
+                    "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+                    "requested_slice_id": AWS_READ_ONLY_SLICE_ID,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+                portal_tenant_id="tff",
+                aws_status_file=status_file,
+                data_dir=data_dir,
+            )
+            self.assertIsNone(result["error"])
+            self.assertEqual(result["slice_id"], AWS_READ_ONLY_SLICE_ID)
+            self.assertEqual(result["shell_composition"]["composition_mode"], "tool")
+            self.assertEqual(result["shell_composition"]["foreground_shell_region"], "interface-panel")
+            self.assertFalse(result["shell_composition"]["inspector_collapsed"])
+            ins = result["shell_composition"]["regions"]["inspector"]
+            self.assertEqual(ins["kind"], "json_document")
 
 
 if __name__ == "__main__":

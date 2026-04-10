@@ -14,6 +14,11 @@ from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
 )
 from MyCiteV2.instances._shared.runtime.admin_runtime import run_admin_shell_entry
 from MyCiteV2.instances._shared.runtime.runtime_platform import ADMIN_RUNTIME_ENVELOPE_SCHEMA
+from MyCiteV2.packages.state_machine.hanus_shell import (
+    ADMIN_HOME_STATUS_SLICE_ID,
+    ADMIN_SHELL_REQUEST_SCHEMA,
+    INTERNAL_ADMIN_SCOPE_ID,
+)
 from MyCiteV2.packages.adapters.filesystem import (
     AnalyticsEventPathResolver,
     FilesystemSystemDatumStoreAdapter,
@@ -235,11 +240,17 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         return jsonify(payload), 200 if payload["ok"] else 503
 
     def _portal_shell_page() -> str:
+        bootstrap_shell_request = {
+            "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+            "requested_slice_id": ADMIN_HOME_STATUS_SLICE_ID,
+            "tenant_scope": {"scope_id": INTERNAL_ADMIN_SCOPE_ID, "audience": "internal"},
+        }
         return render_template(
             "portal.html",
             tenant_id=host_config.tenant_id,
             host_shape=HOST_SHAPE,
             analytics_domain=host_config.analytics_domain,
+            bootstrap_shell_request=bootstrap_shell_request,
         )
 
     @app.get("/portal")
@@ -256,6 +267,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 run_admin_shell_entry(
                     _json_payload(),
                     audit_storage_file=host_config.admin_audit_storage_file,
+                    portal_tenant_id=host_config.tenant_id,
+                    aws_status_file=host_config.aws_status_file,
+                    data_dir=host_config.data_dir,
                 )
             )
         except ValueError as exc:

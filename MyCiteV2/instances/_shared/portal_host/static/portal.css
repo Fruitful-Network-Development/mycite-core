@@ -6580,3 +6580,20 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   outline: 2px solid var(--ide-accent, #1f883d);
   outline-offset: -2px;
 }
+.v2-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 8px;
+}
+.v2-table th,
+.v2-table td {
+  border: 1px solid var(--ide-border, #d8dee4);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.v2-table thead th {
+  background: var(--ide-panel-bg, #f6f8fa);
+  font-weight: 600;
+}

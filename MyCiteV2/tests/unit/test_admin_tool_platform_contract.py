@@ -92,6 +92,7 @@ class AdminToolPlatformContractTests(unittest.TestCase):
             read_write_posture="read-only",
             shell_state={"allowed": True},
             surface_payload={"schema": "test.surface"},
+            shell_composition={"schema": "mycite.v2.admin.shell.composition.v1"},
             warnings=[],
             error=None,
         )

@@ -45,6 +45,12 @@ class V2NativePortalHostBoundaryTests(unittest.TestCase):
         self.assertIn("/portal/api/v2/admin/shell", source)
         self.assertIn("/portal/api/v2/data/system/resource-workbench", source)
 
+    def test_portal_shell_js_has_no_fallback_catalog_nav(self) -> None:
+        js = (HOST_DIR / "static" / "v2_portal_shell.js").read_text(encoding="utf-8")
+        self.assertNotIn("buildFallbackNav", js)
+        self.assertNotIn("admin_band0.home_status", js)
+        self.assertNotIn("SLICE_", js)
+
 
 if __name__ == "__main__":
     unittest.main()
