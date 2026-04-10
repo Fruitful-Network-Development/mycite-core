@@ -59,10 +59,12 @@ Forbidden:
 
 ## Current cutover posture
 
-Current status: runtime-ready, not fully deployed.
+Current status: runtime-ready with an internal Shape B deployment bridge mounted, not fully live-state cut over.
 
-V2 can begin replacing the old admin portal operationally only after the deployment bridge slice is implemented.
+V2 `admin.shell_entry` can be reached through the live portal host bridge after the FND/TFF services are running the updated V1 host code.
+
+Trusted-tenant AWS exposure is still blocked on live state mapping. The AWS bridge routes are mounted, but they require explicit configured V2-compatible AWS status input and must not be claimed as live canonical AWS state access until [live_state_authority_and_mapping.md](live_state_authority_and_mapping.md) is implemented.
 
 Future tool work is local slice work, not shared-platform redesign.
 
-The next implementation slice for live cutover is [../slice_registry/admin_band0_v2_deployment_bridge.md](../slice_registry/admin_band0_v2_deployment_bridge.md).
+The next implementation slice for live cutover is the live AWS profile mapping adapter described in [live_state_authority_and_mapping.md](live_state_authority_and_mapping.md).

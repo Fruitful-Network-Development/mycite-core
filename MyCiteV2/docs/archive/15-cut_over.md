@@ -89,13 +89,39 @@ The key remaining truth: `/portal` is not cut over to V2 yet. I documented that 
 
 ## PROMPT:
 
-HERE
+Implement the admin_band0.v2_deployment_bridge slice from the V2 docs, with Shape B.
 
 ---
 
 
 ## OUTPUT:
 
-HERE
+Implemented `admin_band0.v2_deployment_bridge` with Shape B and restarted the deployed FND/TFF portal services so the bridge is live on the local upstreams.
+
+What changed:
+- Added the V2-owned bridge adapter at [v1_host_bridge.py](/srv/repo/mycite-core/MyCiteV2/packages/adapters/portal_runtime/v1_host_bridge.py):78.
+- Mounted the bridge in the FND host at [app.py](/srv/repo/mycite-core/MyCiteV1/instances/_shared/runtime/flavors/fnd/app.py):190 and [app.py](/srv/repo/mycite-core/MyCiteV1/instances/_shared/runtime/flavors/fnd/app.py):2175.
+- Mounted the bridge in the TFF host at [app.py](/srv/repo/mycite-core/MyCiteV1/instances/_shared/runtime/flavors/tff/app.py):215 and [app.py](/srv/repo/mycite-core/MyCiteV1/instances/_shared/runtime/flavors/tff/app.py):1985.
+- Added route/integration coverage at [test_v2_deployment_bridge_shape_b.py](/srv/repo/mycite-core/MyCiteV2/tests/integration/test_v2_deployment_bridge_shape_b.py):140.
+- Added boundary checks preventing dynamic discovery or V1-owned runtime semantics at [test_v2_deployment_bridge_boundaries.py](/srv/repo/mycite-core/MyCiteV2/tests/architecture/test_v2_deployment_bridge_boundaries.py):29.
+- Updated V2 docs to mark the slice implemented while keeping AWS live-state mapping as the next gate: [admin_band0_v2_deployment_bridge.md](/srv/repo/mycite-core/MyCiteV2/docs/plans/post_mvp_rollout/slice_registry/admin_band0_v2_deployment_bridge.md):7 and [deployment_bridge_contract.md](/srv/repo/mycite-core/MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/deployment_bridge_contract.md):47.
+
+Mounted routes:
+- `GET /portal/api/v2/admin/bridge/health`
+- `POST /portal/api/v2/admin/shell`
+- `POST /portal/api/v2/admin/aws/read-only`
+- `POST /portal/api/v2/admin/aws/narrow-write`
+
+Verification:
+- V2 unit, contract, adapter, integration, and architecture suites pass.
+- V2 integration suite passes under both `/srv/venvs/fnd_portal` and `/srv/venvs/tff_portal`.
+- FND/TFF services restarted and are active.
+- `http://127.0.0.1:5101/portal/api/v2/admin/bridge/health` returns `shape_b_v1_host_to_v2_runtime`.
+- `http://127.0.0.1:5203/portal/api/v2/admin/bridge/health` returns `shape_b_v1_host_to_v2_runtime`.
+- FND and TFF `POST /portal/api/v2/admin/shell` return V2 `mycite.v2.admin.runtime.envelope.v1` envelopes for `admin.shell_entry`.
+
+Important remaining gate: AWS bridge routes are mounted, but live AWS state mapping is intentionally still closed. On live FND, `admin.aws.read_only` currently returns `503 status_source_not_configured` because `MYCITE_V2_AWS_STATUS_FILE` is not configured and the canonical live AWS profile mapping adapter has not been implemented yet. I documented that in [v2_admin_cutover_readiness.md](/srv/repo/mycite-core/MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/v2_admin_cutover_readiness.md):62.
+
+One test caveat: the older broad V1 shell route tests still fail in unrelated legacy areas (`FND /portal/api/data/resources/local` returns 404 in the harness, and TFF is missing old tool imports). The new bridge-specific tests pass and cover the changed route surface directly.
 
 ---

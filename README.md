@@ -9,7 +9,7 @@ Canonical source for the MyCite portal core, shared runtime, tool modules, and p
 - Root-level legacy code directories are intentionally absent; use the explicit V1 or V2 root
 - Live instance state lives under `/srv/mycite-state/instances/<instance_id>/`
 - Portal runtime is file-backed; there is no application database in the portal core
-- Native runtime is systemd-first for live FND and TFF portals; the live web host is V1 until a V2 host/bridge is explicitly mounted
+- Native runtime is systemd-first for live FND and TFF portals; the live web host remains V1 with an internal V2 admin bridge mounted
 - `/srv/compose/portals/` is now limited to auth-support infrastructure and transitional host files
 
 ## Canonical Authority

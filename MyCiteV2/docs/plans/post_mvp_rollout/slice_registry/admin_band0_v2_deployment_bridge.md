@@ -4,7 +4,7 @@
 
 ## Status
 
-`specified_not_implemented`
+`implemented_internal_bridge`
 
 ## Purpose
 
@@ -35,7 +35,7 @@ This is the operational cutover slice that turns V2 from a tested runtime base i
 
 ## Required adapters
 
-- one portal runtime bridge or host adapter
+- one portal runtime bridge adapter: `MyCiteV2/packages/adapters/portal_runtime/v1_host_bridge.py`
 - one live AWS profile mapping adapter before `admin.aws.narrow_write` is exposed against live state
 
 ## Required runtime composition
@@ -49,18 +49,24 @@ This is the operational cutover slice that turns V2 from a tested runtime base i
 
 ## Required tests
 
-- bridge route or host-adapter tests
-- unknown-slice denial tests
-- audience denial tests
-- no-secret payload tests
-- no dynamic discovery or package scanning architecture tests
-- V2 Admin Band 0, AWS read-only, and AWS narrow-write regression tests
+- bridge route tests: `MyCiteV2/tests/integration/test_v2_deployment_bridge_shape_b.py`
+- unknown-slice denial tests: implemented
+- audience denial tests: implemented
+- no-secret payload tests: implemented
+- no dynamic discovery or package scanning architecture tests: `MyCiteV2/tests/architecture/test_v2_deployment_bridge_boundaries.py`
+- V2 Admin Band 0, AWS read-only, and AWS narrow-write regression tests: required for each bridge change
 
 ## Client exposure gates
 
 - starts internal-only
 - cannot expose trusted-tenant AWS read-only until live-state mapping is explicit
 - cannot expose AWS narrow-write until read-after-write and audit use the canonical live artifact
+
+Current gate result:
+
+- `admin.shell_entry` is mounted through the V1 host bridge.
+- `admin.aws.read_only` and `admin.aws.narrow_write` are mounted as routes, but require explicit configured V2-compatible AWS status input before they can return live AWS surfaces.
+- Live canonical AWS profile mapping remains pending; do not claim trusted-tenant AWS exposure against live state yet.
 
 ## Out of scope
 
@@ -89,16 +95,24 @@ Warnings:
 
 ## Implementation ordering
 
-1. confirm bridge shape
-2. mount `admin.shell_entry`
-3. add bridge tests and architecture checks
-4. add live AWS read-only state mapping
-5. expose `admin.aws.read_only`
-6. add canonical live write mapping
-7. expose `admin.aws.narrow_write`
+1. confirm bridge shape: done, Shape B
+2. mount `admin.shell_entry`: done
+3. add bridge tests and architecture checks: done
+4. add live AWS read-only state mapping: pending
+5. expose `admin.aws.read_only` against live state: pending
+6. add canonical live write mapping: pending
+7. expose `admin.aws.narrow_write` against live state: pending
 
 ## Frozen questions
 
-- whether Shape A or Shape B is the preferred first production bridge
 - exact route names for the bridge surface
 - exact field mapping from live AWS profile JSON to V2 AWS status snapshot
+
+Resolved:
+
+- Shape B is implemented first.
+- Route surface:
+  - `GET /portal/api/v2/admin/bridge/health`
+  - `POST /portal/api/v2/admin/shell`
+  - `POST /portal/api/v2/admin/aws/read-only`
+  - `POST /portal/api/v2/admin/aws/narrow-write`

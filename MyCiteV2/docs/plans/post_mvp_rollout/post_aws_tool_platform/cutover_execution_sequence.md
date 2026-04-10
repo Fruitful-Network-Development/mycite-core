@@ -31,6 +31,8 @@ Done when:
 - V2 Admin Band 0 and AWS regression tests pass
 - nginx can route to the bridge through the existing `/portal` upstream
 
+Status: done for the internal bridge route surface. The V1 host now mounts explicit V2 bridge routes for shell entry, AWS read-only, AWS narrow-write, and bridge health.
+
 ## Step 3: Implement Live State Mapping
 
 Use [live_state_authority_and_mapping.md](live_state_authority_and_mapping.md).
@@ -46,6 +48,8 @@ Done when:
 - no V2 shadow state exists
 - read-after-write proves the canonical live artifact changed
 - denied writes leave live state unchanged
+
+Status: pending. The bridge routes exist, but live AWS state mapping is not yet implemented.
 
 ## Step 4: Gate Internal Exposure
 

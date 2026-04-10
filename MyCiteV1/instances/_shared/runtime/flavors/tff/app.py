@@ -12,8 +12,9 @@ from urllib.parse import quote, urlencode
 REPO_ROOT_IMPORT = Path(__file__).resolve().parents[5]
 INSTANCES_ROOT_IMPORT = REPO_ROOT_IMPORT / "instances"
 PACKAGES_ROOT_IMPORT = REPO_ROOT_IMPORT / "packages"
+V2_REPO_PARENT_IMPORT = REPO_ROOT_IMPORT.parent
 FLAVOR_ROOT_IMPORT = Path(__file__).resolve().parent
-for path in (REPO_ROOT_IMPORT, INSTANCES_ROOT_IMPORT, PACKAGES_ROOT_IMPORT, FLAVOR_ROOT_IMPORT):
+for path in (REPO_ROOT_IMPORT, INSTANCES_ROOT_IMPORT, PACKAGES_ROOT_IMPORT, V2_REPO_PARENT_IMPORT, FLAVOR_ROOT_IMPORT):
     token = str(path)
     if token not in sys.path:
         sys.path.insert(0, token)
@@ -97,6 +98,7 @@ from instances._shared.runtime.flavors.tff.portal.tools.runtime import (
     read_enabled_tools,
     register_tool_blueprints,
 )
+from MyCiteV2.packages.adapters.portal_runtime import V2AdminBridgeConfig, register_v2_admin_bridge_routes
 from mycite_core.contract_line.store import get_contract, list_contracts
 from mycite_core.external_events.feed import (
     build_network_message_feed as shared_build_network_message_feed,
@@ -203,6 +205,26 @@ app.jinja_loader = ChoiceLoader(
 )
 app.static_folder = str(SHARED_SHELL_STATIC_DIR)
 install_read_only_guard(app, enabled=PORTAL_READ_ONLY)
+
+
+def _optional_env_path(name: str) -> Optional[Path]:
+    token = str(app.config.get(name) or os.environ.get(name) or "").strip()
+    return Path(token) if token else None
+
+
+def _v2_admin_bridge_config() -> V2AdminBridgeConfig:
+    return V2AdminBridgeConfig(
+        audit_storage_file=_optional_env_path("MYCITE_V2_ADMIN_AUDIT_FILE")
+        or PRIVATE_DIR
+        / "local_audit"
+        / "v2_admin_bridge.ndjson",
+        aws_status_file=_optional_env_path("MYCITE_V2_AWS_STATUS_FILE"),
+        aws_audit_storage_file=_optional_env_path("MYCITE_V2_AWS_AUDIT_FILE")
+        or PRIVATE_DIR
+        / "local_audit"
+        / "v2_aws_narrow_write.ndjson",
+    )
+
 
 # Warm the system workbench view without materializing legacy root files.
 try:
@@ -1959,6 +1981,10 @@ register_contract_handshake_routes(
     msn_id_provider=lambda: MSN_ID,
     options_private_fn=_options_private,
     workspace=DATA_WORKSPACE,
+)
+register_v2_admin_bridge_routes(
+    app,
+    config_provider=_v2_admin_bridge_config,
 )
 register_data_routes(
     app,
