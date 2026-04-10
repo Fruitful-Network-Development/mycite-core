@@ -6,6 +6,12 @@ from typing import Any
 ADMIN_SHELL_REQUEST_SCHEMA = "mycite.v2.admin.shell.request.v1"
 ADMIN_SHELL_STATE_SCHEMA = "mycite.v2.admin.shell.state.v1"
 ADMIN_TOOL_DESCRIPTOR_SCHEMA = "mycite.v2.admin.tool_descriptor.v1"
+ADMIN_SHELL_COMPOSITION_SCHEMA = "mycite.v2.admin.shell.composition.v1"
+ADMIN_SHELL_REGION_ACTIVITY_BAR_SCHEMA = "mycite.v2.admin.shell.region.activity_bar.v1"
+ADMIN_SHELL_REGION_CONTROL_PANEL_SCHEMA = "mycite.v2.admin.shell.region.control_panel.v1"
+ADMIN_SHELL_REGION_WORKBENCH_SCHEMA = "mycite.v2.admin.shell.region.workbench.v1"
+ADMIN_SHELL_REGION_INSPECTOR_SCHEMA = "mycite.v2.admin.shell.region.inspector.v1"
+DATUM_RESOURCE_WORKBENCH_SLICE_ID = "datum.resource_workbench"
 
 ADMIN_BAND0_NAME = "Admin Band 0 Internal Admin Replacement"
 ADMIN_BAND1_AWS_NAME = "Admin Band 1 Trusted-Tenant AWS Read-Only"
@@ -420,7 +426,64 @@ def resolve_admin_shell_request(request: AdminShellRequest | dict[str, Any] | No
     normalized_request = request if isinstance(request, AdminShellRequest) else AdminShellRequest.from_dict(request)
 
     requested_slice_id = normalized_request.requested_slice_id
-    if normalized_request.tenant_scope.audience != "internal":
+    audience = normalized_request.tenant_scope.audience
+
+    if audience not in _ALLOWED_AUDIENCES:
+        return AdminShellSelection(
+            requested_slice_id=requested_slice_id,
+            active_surface_id=ADMIN_HOME_STATUS_SLICE_ID,
+            selection_status="audience_denied",
+            allowed=False,
+            reason_code="audience_not_allowed",
+            reason_message="Admin shell request uses an unsupported tenant audience.",
+        )
+
+    if requested_slice_id == ADMIN_SHELL_ENTRY_SLICE_ID:
+        requested_slice_id = ADMIN_HOME_STATUS_SLICE_ID
+
+    if requested_slice_id == DATUM_RESOURCE_WORKBENCH_SLICE_ID:
+        return AdminShellSelection(
+            requested_slice_id=requested_slice_id,
+            active_surface_id=DATUM_RESOURCE_WORKBENCH_SLICE_ID,
+            selection_status="available",
+            allowed=True,
+        )
+
+    if audience == "trusted-tenant":
+        for tool_entry in build_admin_tool_registry_entries():
+            if requested_slice_id != tool_entry.slice_id:
+                continue
+            launch = resolve_admin_tool_launch(
+                slice_id=tool_entry.slice_id,
+                audience=audience,
+                expected_entrypoint_id=tool_entry.entrypoint_id,
+            )
+            if launch.allowed:
+                return AdminShellSelection(
+                    requested_slice_id=requested_slice_id,
+                    active_surface_id=tool_entry.slice_id,
+                    selection_status="available",
+                    allowed=True,
+                )
+            return AdminShellSelection(
+                requested_slice_id=requested_slice_id,
+                active_surface_id=ADMIN_TOOL_REGISTRY_SLICE_ID,
+                selection_status=launch.selection_status,
+                allowed=False,
+                reason_code=launch.reason_code or "tool_launch_denied",
+                reason_message=launch.reason_message or "Shell registry denied this tool launch.",
+            )
+
+        return AdminShellSelection(
+            requested_slice_id=requested_slice_id,
+            active_surface_id=ADMIN_HOME_STATUS_SLICE_ID,
+            selection_status="audience_denied",
+            allowed=False,
+            reason_code="audience_not_allowed",
+            reason_message="Trusted-tenant shell requests are limited to shell-registered tool slices and datum workbench.",
+        )
+
+    if audience != "internal":
         return AdminShellSelection(
             requested_slice_id=requested_slice_id,
             active_surface_id=ADMIN_HOME_STATUS_SLICE_ID,
@@ -429,9 +492,6 @@ def resolve_admin_shell_request(request: AdminShellRequest | dict[str, Any] | No
             reason_code="audience_not_allowed",
             reason_message="Admin Band 0 is internal-only and rejects non-internal audiences.",
         )
-
-    if requested_slice_id == ADMIN_SHELL_ENTRY_SLICE_ID:
-        requested_slice_id = ADMIN_HOME_STATUS_SLICE_ID
 
     available_surface_ids = {entry.slice_id for entry in build_admin_surface_catalog()}
     if requested_slice_id in available_surface_ids:
@@ -463,7 +523,114 @@ def resolve_admin_shell_request(request: AdminShellRequest | dict[str, Any] | No
     )
 
 
+def map_surface_to_active_service(active_surface_id: str) -> str:
+    sid = _as_text(active_surface_id)
+    if sid in {AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID}:
+        return "aws"
+    if sid == DATUM_RESOURCE_WORKBENCH_SLICE_ID:
+        return "datum"
+    if sid == ADMIN_TOOL_REGISTRY_SLICE_ID:
+        return "registry"
+    return "system"
+
+
+def shell_composition_mode_for_surface(active_surface_id: str) -> str:
+    sid = _as_text(active_surface_id)
+    if sid in {AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID}:
+        return "tool"
+    return "system"
+
+
+def foreground_region_for_surface(active_surface_id: str) -> str:
+    if shell_composition_mode_for_surface(active_surface_id) == "tool":
+        return "interface-panel"
+    return "center-workbench"
+
+
+def inspector_collapsed_for_surface(active_surface_id: str) -> bool:
+    return shell_composition_mode_for_surface(active_surface_id) != "tool"
+
+
+def build_portal_activity_dispatch_bodies(
+    *,
+    portal_tenant_id: str,
+    internal_scope_id: str = INTERNAL_ADMIN_SCOPE_ID,
+) -> dict[str, dict[str, Any]]:
+    """Shell-owned POST bodies for activity navigation (client must not invent these)."""
+    tenant = _as_text(portal_tenant_id) or "fnd"
+    internal = _as_text(internal_scope_id) or INTERNAL_ADMIN_SCOPE_ID
+    bodies: dict[str, dict[str, Any]] = {
+        ADMIN_HOME_STATUS_SLICE_ID: {
+            "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+            "requested_slice_id": ADMIN_HOME_STATUS_SLICE_ID,
+            "tenant_scope": {"scope_id": internal, "audience": "internal"},
+        },
+        ADMIN_TOOL_REGISTRY_SLICE_ID: {
+            "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+            "requested_slice_id": ADMIN_TOOL_REGISTRY_SLICE_ID,
+            "tenant_scope": {"scope_id": internal, "audience": "internal"},
+        },
+        DATUM_RESOURCE_WORKBENCH_SLICE_ID: {
+            "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+            "requested_slice_id": DATUM_RESOURCE_WORKBENCH_SLICE_ID,
+            "tenant_scope": {"scope_id": internal, "audience": "internal"},
+        },
+    }
+    tt_scope = {"scope_id": tenant, "audience": "trusted-tenant"}
+    for entry in build_admin_tool_registry_entries():
+        if not entry.launchable:
+            continue
+        bodies[entry.slice_id] = {
+            "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+            "requested_slice_id": entry.slice_id,
+            "tenant_scope": tt_scope,
+        }
+    return bodies
+
+
+def build_shell_composition_payload(
+    *,
+    active_surface_id: str,
+    portal_tenant_id: str,
+    page_title: str,
+    page_subtitle: str,
+    activity_items: list[dict[str, Any]],
+    control_panel: dict[str, Any],
+    workbench: dict[str, Any],
+    inspector: dict[str, Any],
+    control_panel_collapsed: bool = False,
+) -> dict[str, Any]:
+    mode = shell_composition_mode_for_surface(active_surface_id)
+    active_tool_slice_id: str | None = None
+    if mode == "tool":
+        active_tool_slice_id = _as_text(active_surface_id)
+    return {
+        "schema": ADMIN_SHELL_COMPOSITION_SCHEMA,
+        "composition_mode": mode,
+        "active_service": map_surface_to_active_service(active_surface_id),
+        "active_surface_id": _as_text(active_surface_id),
+        "active_tool_slice_id": active_tool_slice_id,
+        "foreground_shell_region": foreground_region_for_surface(active_surface_id),
+        "control_panel_collapsed": bool(control_panel_collapsed),
+        "inspector_collapsed": inspector_collapsed_for_surface(active_surface_id),
+        "portal_tenant_id": _as_text(portal_tenant_id),
+        "page_title": _as_text(page_title) or "MyCite",
+        "page_subtitle": _as_text(page_subtitle),
+        "regions": {
+            "activity_bar": {
+                "schema": ADMIN_SHELL_REGION_ACTIVITY_BAR_SCHEMA,
+                "dispatch": "post_admin_shell",
+                "items": list(activity_items),
+            },
+            "control_panel": dict(control_panel),
+            "workbench": dict(workbench),
+            "inspector": dict(inspector),
+        },
+    }
+
+
 __all__ = [
+    "INTERNAL_ADMIN_SCOPE_ID",
     "ADMIN_BAND0_NAME",
     "ADMIN_BAND1_AWS_NAME",
     "ADMIN_BAND2_AWS_NAME",
@@ -472,7 +639,12 @@ __all__ = [
     "ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE",
     "ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY",
     "ADMIN_HOME_STATUS_SLICE_ID",
+    "ADMIN_SHELL_COMPOSITION_SCHEMA",
     "ADMIN_SHELL_ENTRY_SLICE_ID",
+    "ADMIN_SHELL_REGION_ACTIVITY_BAR_SCHEMA",
+    "ADMIN_SHELL_REGION_CONTROL_PANEL_SCHEMA",
+    "ADMIN_SHELL_REGION_INSPECTOR_SCHEMA",
+    "ADMIN_SHELL_REGION_WORKBENCH_SCHEMA",
     "ADMIN_SHELL_REQUEST_SCHEMA",
     "ADMIN_SHELL_STATE_SCHEMA",
     "ADMIN_TOOL_DEFAULT_POSTURE",
@@ -486,6 +658,7 @@ __all__ = [
     "AWS_NARROW_WRITE_ENTRYPOINT_ID",
     "AWS_READ_ONLY_ENTRYPOINT_ID",
     "AWS_READ_ONLY_SLICE_ID",
+    "DATUM_RESOURCE_WORKBENCH_SLICE_ID",
     "AdminShellRequest",
     "AdminShellSelection",
     "AdminSurfaceCatalogEntry",
@@ -494,6 +667,12 @@ __all__ = [
     "AdminToolRegistryEntry",
     "build_admin_surface_catalog",
     "build_admin_tool_registry_entries",
+    "build_portal_activity_dispatch_bodies",
+    "build_shell_composition_payload",
+    "foreground_region_for_surface",
+    "inspector_collapsed_for_surface",
+    "map_surface_to_active_service",
     "resolve_admin_tool_launch",
     "resolve_admin_shell_request",
+    "shell_composition_mode_for_surface",
 ]

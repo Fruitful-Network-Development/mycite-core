@@ -224,3 +224,31 @@ Here’s what was going wrong and what we changed.
 After reload, open devtools → Network: **`portal.css`** should be **200** and the full V1-style IDE chrome from `portal.css` should apply on top of the fallback layout.
 
 ---
+
+## CONSIDERATIONS:
+
+([Past chat][1])([Past chat][1])([Past chat][1])([Past chat][1])
+
+1. Diagnosis
+
+Your instruction fell short at the exact layer that determines whether V2 becomes a real modal shell or just a V1-looking page.
+
+V2’s current architecture does not define the old portal behavior as shell-owned modal state. The repo defines the shell surface as serialized state and legality owned by `packages/state_machine`, and explicitly says a UI widget is not a shell surface and tools may not define alternate shell state . In the actual admin shell implementation, Band 0 only owns `home_status` and `tool_registry`; AWS is registered as a tool entry, not promoted to a first-class shell surface, and requesting AWS through the shell resolves as `launch_via_registry` rather than as an active shell surface . The runtime reflects that too: `run_admin_shell_entry()` only returns home or registry payloads, with tool discovery metadata, not a richer modal composition contract .
+
+So the agent had no strong architectural instruction to recreate the V1 shell as a V2-native shell state machine. What it built instead is a V1-shaped chrome around direct route calls. The current `portal.html` has the V1-style regions visually present, but the control panel is mostly static explanatory text, the workbench is a generic title/body container, and the inspector is basically a JSON dump area . The client code confirms this: `v2_portal_shell.js` hardcodes slice IDs, builds fallback nav in JS, calls AWS and datum routes directly, and opens the inspector by dumping raw JSON into a `<pre>` . That is not the old shell recreated in the new paradigm. It is a host page styled like the old shell.
+
+The contrast with V1 is the key. The V1 base template was not just CSS and layout. It was parameterized around service nav, activity tool links, control panel sections, foreground shell regions, inspector roots, and transient inspector mounts . Your instruction asked for “recreate the old portal styles and layout,” but the real missing requirement was “preserve the old composition semantics as shell-owned state.” Without that, the agent had room to satisfy the request cosmetically while missing the modal paradigm.
+
+There is also a second failure mode: the archive notes overstate what is actually deployed across repos. `17-v2_ui_and_aws_domains.md` says nginx was updated so `/portal` targets V2 ports `6101` and `6203` . But the current `srv-infra` nginx config still proxies `/portal`, `/healthz`, and related traffic to `5101` and `5203` . So even if the V2 portal host code is present in `mycite-core`, the operational path still appears to point at the old upstreams. That alone can make the UI seem “failed” even when repo code changed.
+
+The AWS portion is better specified and more real than the UI portion. The IAM inventory now correctly says IAM does not enforce sender domain, that SES verification is required, and that V2 uses `allowed_send_domains` in the live profile contract . The code for that exists both in the semantic layer and the filesystem adapter: sender domains are normalized, unioned with `identity.domain`, and narrow write rejects senders outside that allowed set  . So the AWS tool notes are not the weak point. The weak point is that the UI instruction never forced the shell/tool boundary to be re-expressed as a true V2 interaction model.
+
+The short version of what was missing from your instruction is this: you specified visual parity, but not shell-state parity; you specified tool usage, but not composition ownership; and you treated repo changes and deployment changes as if they were one deliverable, when they are separate. The result was predictable: V1 appearance, V2 route calls, but no genuine modal shell.
+
+The instruction needed four non-negotiable acceptance conditions. The old portal’s modal behavior had to be redefined as shell-owned serialized state, not JS-managed view state. No direct tool orchestration from the page except through a shell-defined interaction contract. The control panel, workbench, and inspector needed to be populated from V2 surface payloads with the same composition semantics V1 had. And cross-repo completion had to include nginx upstream cutover and health verification, not just template and JS edits.
+
+If you want, I can turn this into the exact replacement prompt that would force the agent to implement the missing shell-state layer instead of just recreating the chrome.
+
+[1]: https://chatgpt.com/c/69d55e56-79a0-8329-ba09-57bf3a3e64ca "Repository update analysis"
+
+---

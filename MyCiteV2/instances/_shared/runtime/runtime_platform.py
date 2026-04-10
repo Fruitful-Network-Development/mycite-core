@@ -46,6 +46,7 @@ ADMIN_RUNTIME_REQUIRED_ENVELOPE_KEYS = (
     "read_write_posture",
     "shell_state",
     "surface_payload",
+    "shell_composition",
     "warnings",
     "error",
 )
@@ -170,6 +171,7 @@ def build_admin_runtime_envelope(
     read_write_posture: str,
     shell_state: dict[str, Any],
     surface_payload: dict[str, Any] | None,
+    shell_composition: dict[str, Any] | None = None,
     warnings: list[str] | tuple[str, ...] | None = None,
     error: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -186,6 +188,7 @@ def build_admin_runtime_envelope(
         "read_write_posture": read_write_posture,
         "shell_state": dict(shell_state),
         "surface_payload": surface_payload,
+        "shell_composition": shell_composition,
         "warnings": list(warnings or []),
         "error": error,
     }

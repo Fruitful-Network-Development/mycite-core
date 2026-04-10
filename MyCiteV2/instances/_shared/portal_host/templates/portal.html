@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MyCite V2 Portal</title>
+  <title>MyCite Portal</title>
   {# url_for keeps static URLs correct behind SCRIPT_NAME / proxies; matches V1 /portal/static layout #}
   <style id="v2-shell-layout-fallback">
     /* If portal.css fails to load, keep IDE-like regions readable until fixed (nginx upstream, deploy). */
@@ -39,6 +39,7 @@
   data-host-shape="{{ host_shape }}"
   data-analytics-domain="{{ analytics_domain }}"
 >
+  <script type="application/json" id="v2-bootstrap-shell-request">{{ bootstrap_shell_request | tojson }}</script>
   <div
     class="ide-shell"
     data-active-service="system"
@@ -59,8 +60,8 @@
         <span>Help</span>
       </nav>
       <div class="ide-menubar__center" aria-label="Page label">
-        <span class="ide-menubar__pageTitle">MyCite V2</span>
-        <span class="ide-menubar__pageSub">{{ host_shape }} · {{ tenant_id }} · {{ analytics_domain }}</span>
+        <span class="ide-menubar__pageTitle">MyCite</span>
+        <span class="ide-menubar__pageSub">{{ host_shape }} · tenant {{ tenant_id }} · {{ analytics_domain }}</span>
       </div>
       <div class="ide-menubar__right">
         <div class="ide-menubar__shellActions" aria-label="Shell layout controls">
@@ -81,9 +82,10 @@
         </a>
         <nav id="v2-activity-nav" class="ide-activitynav" aria-label="Primary navigation"></nav>
         <div class="ide-activityfooter">
-          <div class="ide-sessionLine">Portal: V2 native</div>
+          <div class="ide-sessionLine">Portal: {{ host_shape }}</div>
           <div class="ide-sessionLine ide-sessionLine--dim">tenant: {{ tenant_id }}</div>
-          <div class="ide-sessionLine ide-sessionLine--dim">host: {{ host_shape }}</div>
+          <div class="ide-sessionLine ide-sessionLine--dim">msn_id: (unset)</div>
+          <div class="ide-sessionLine ide-sessionLine--dim">signed in: (unknown)</div>
           <a class="ide-sessionAction" href="/oauth2/sign_in?rd=%2Fportal%2Fsystem">Switch Active Portal</a>
           <a class="ide-sessionAction" href="/oauth2/sign_out?rd=%2Foauth2%2Fsign_in%3Frd%3D%252Fportal%252Fsystem">Sign Out</a>
         </div>
@@ -143,8 +145,7 @@
           <button type="button" class="ide-inspector__close" data-inspector-close>Close Panel</button>
         </header>
         <section id="portalInspectorContent" class="ide-inspector__content" data-interface-panel-scroll-root="true">
-          <p class="ide-inspector__empty" id="portalInspectorEmptyDefault">Open a tool from the activity bar.</p>
-          <pre id="v2-inspector-json" class="v2-json-panel" hidden></pre>
+          <div id="v2-inspector-dynamic"></div>
         </section>
       </aside>
     </div>

@@ -31,6 +31,7 @@ from MyCiteV2.packages.ports.datum_store import SYSTEM_DATUM_RESOURCE_WORKBENCH_
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_ENTRYPOINT_ID,
     ADMIN_HOME_STATUS_SLICE_ID,
+    ADMIN_SHELL_COMPOSITION_SCHEMA,
     ADMIN_SHELL_REQUEST_SCHEMA,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
@@ -143,6 +144,11 @@ class V2NativePortalHostTests(unittest.TestCase):
             shell_payload = shell.get_json() or {}
             self.assertEqual(shell_payload["schema"], ADMIN_RUNTIME_ENVELOPE_SCHEMA)
             self.assertEqual(shell_payload["entrypoint_id"], ADMIN_ENTRYPOINT_ID)
+            comp = shell_payload.get("shell_composition") or {}
+            self.assertEqual(comp.get("schema"), ADMIN_SHELL_COMPOSITION_SCHEMA)
+            regions = comp.get("regions") or {}
+            self.assertIn("activity_bar", regions)
+            self.assertIn("workbench", regions)
 
             read_only = client.post(
                 "/portal/api/v2/admin/aws/read-only",
@@ -206,6 +212,8 @@ class V2NativePortalHostTests(unittest.TestCase):
                 self.assertEqual(home.status_code, 200)
                 self.assertIn(b"ide-shell", home.data)
                 self.assertIn(b"v2_portal_shell.js", home.data)
+                self.assertIn(b"v2-bootstrap-shell-request", home.data)
+                self.assertIn(b"admin_band0.home_status", home.data)
             finally:
                 home.close()
 

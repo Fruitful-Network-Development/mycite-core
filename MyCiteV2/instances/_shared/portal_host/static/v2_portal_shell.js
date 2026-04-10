@@ -1,28 +1,26 @@
-/* V2 native portal: activity bar from admin shell catalog; JSON tool routes only. */
+/**
+ * V2 portal: renders shell chrome from runtime-issued shell_composition only.
+ * Dispatches navigation via POST /portal/api/v2/admin/shell using server-provided shell_request bodies.
+ * Tool writes use submit_contract routes from the inspector region only.
+ */
 (function () {
-  const ADMIN_SHELL_REQUEST_SCHEMA = "mycite.v2.admin.shell.request.v1";
-  const ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.aws.read_only.request.v1";
-  const ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA = "mycite.v2.admin.aws.narrow_write.request.v1";
-  const SLICE_HOME = "admin_band0.home_status";
-  const SLICE_REGISTRY = "admin_band0.tool_registry";
-  const SLICE_AWS_RO = "admin_band1.aws_read_only_surface";
-  const SLICE_AWS_NW = "admin_band2.aws_narrow_write_surface";
-  const SLICE_DATUM = "datum.workbench";
+  const SHELL_URL = "/portal/api/v2/admin/shell";
+  const RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.admin.runtime.envelope.v1";
+  let lastShellRequest = null;
 
-  const qs = (sel, root) => (root || document).querySelector(sel);
-  const qsa = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+  function qs(sel, root) {
+    return (root || document).querySelector(sel);
+  }
 
-  const tenantId = (document.body.dataset.tenantId || "fnd").trim();
-
-  let lastAwsReadOnly = null;
-
-  const SLICE_HANDLERS = {
-    [SLICE_HOME]: loadHome,
-    [SLICE_REGISTRY]: loadToolRegistry,
-    [SLICE_AWS_RO]: loadAwsReadOnly,
-    [SLICE_AWS_NW]: loadAwsNarrowWriteForm,
-    [SLICE_DATUM]: loadResourceWorkbench,
-  };
+  function readBootstrapRequest() {
+    const el = document.getElementById("v2-bootstrap-shell-request");
+    if (!el || !el.textContent) return null;
+    try {
+      return JSON.parse(el.textContent);
+    } catch {
+      return null;
+    }
+  }
 
   function postJson(url, body) {
     return fetch(url, {
@@ -30,311 +28,344 @@
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }).then((r) => r.json().then((j) => ({ ok: r.ok, status: r.status, json: j })));
-  }
-
-  function setWorkbench(title, subtitle, html) {
-    const t = qs("#v2-workbench-title");
-    const s = qs("#v2-workbench-subtitle");
-    const b = qs("#v2-workbench-body");
-    if (t) t.textContent = title;
-    if (s) s.textContent = subtitle;
-    if (b) b.innerHTML = html;
-  }
-
-  function setActiveNav(sliceId) {
-    qsa("#v2-activity-nav .ide-activitylink").forEach((a) => {
-      a.classList.toggle("is-active", a.dataset.sliceId === sliceId);
-    });
-  }
-
-  function openInspector(title, jsonPayload) {
-    const shell = qs(".ide-shell");
-    const inspector = qs("#portalInspector");
-    const titleEl = qs("#portalInspectorTitle");
-    const emptyEl = qs("#portalInspectorEmptyDefault");
-    const pre = qs("#v2-inspector-json");
-    if (titleEl) titleEl.textContent = title;
-    if (emptyEl) emptyEl.hidden = true;
-    if (pre) {
-      pre.hidden = false;
-      pre.textContent = JSON.stringify(jsonPayload, null, 2);
-    }
-    if (inspector) {
-      inspector.classList.remove("is-collapsed");
-      inspector.setAttribute("aria-hidden", "false");
-    }
-    if (shell) {
-      shell.setAttribute("data-inspector-collapsed", "false");
-      shell.setAttribute("data-shell-composition", "tool");
-    }
-  }
-
-  function closeInspector() {
-    const shell = qs(".ide-shell");
-    const inspector = qs("#portalInspector");
-    const emptyEl = qs("#portalInspectorEmptyDefault");
-    const pre = qs("#v2-inspector-json");
-    if (emptyEl) emptyEl.hidden = false;
-    if (pre) {
-      pre.hidden = true;
-      pre.textContent = "";
-    }
-    if (inspector) {
-      inspector.classList.add("is-collapsed");
-      inspector.setAttribute("aria-hidden", "true");
-    }
-    if (shell) {
-      shell.setAttribute("data-inspector-collapsed", "true");
-      shell.setAttribute("data-shell-composition", "system");
-    }
-  }
-
-  function renderHomeCards(health, shellEnvelope) {
-    const hOk = health && health.ok;
-    const datum = health && health.datum_health;
-    const aws = health && health.aws_config_health;
-    const surface = shellEnvelope && shellEnvelope.surface_payload;
-    const audit = surface && surface.runtime_health && surface.runtime_health.audit_log;
-    return (
-      '<div class="v2-card-grid">' +
-      '<article class="v2-card"><h3>Portal health</h3><p>' +
-      (hOk ? "Ready" : "Degraded — see /portal/healthz") +
-      "</p></article>" +
-      '<article class="v2-card"><h3>Canonical datum</h3><p>' +
-      (datum ? datum.row_count + " rows" : "—") +
-      "</p></article>" +
-      '<article class="v2-card"><h3>AWS profile file</h3><p>' +
-      (aws && aws.live_profile_mapping ? "Live profile mapped" : "Not a live profile") +
-      "</p></article>" +
-      '<article class="v2-card"><h3>Admin audit</h3><p>' +
-      (audit ? audit.status : "—") +
-      "</p></article>" +
-      "</div>"
-    );
-  }
-
-  async function loadHome() {
-    setWorkbench("Home", "Admin shell + host health", "<p>Loading…</p>");
-    setActiveNav(SLICE_HOME);
-
-    const [healthR, shellR] = await Promise.all([
-      fetch("/portal/healthz", { credentials: "same-origin" }).then((r) => r.json()),
-      postJson("/portal/api/v2/admin/shell", {
-        schema: ADMIN_SHELL_REQUEST_SCHEMA,
-        requested_slice_id: SLICE_HOME,
-        tenant_scope: { scope_id: "internal-admin", audience: "internal" },
-      }),
-    ]);
-
-    const err = shellR.json && shellR.json.error;
-    const subtitle = err && err.message ? err.message : "Internal admin shell";
-    setWorkbench(
-      "Home",
-      subtitle,
-      renderHomeCards(healthR, shellR.json) +
-        '<h3 style="margin-top:1.25rem;font-size:14px">Shell envelope</h3>' +
-        '<pre class="v2-json-panel" style="margin-top:8px">' +
-        JSON.stringify(shellR.json, null, 2) +
-        "</pre>"
-    );
-  }
-
-  async function loadToolRegistry() {
-    setWorkbench("Tool registry", "Shell-owned catalog", "<p>Loading…</p>");
-    setActiveNav(SLICE_REGISTRY);
-
-    const shellR = await postJson("/portal/api/v2/admin/shell", {
-      schema: ADMIN_SHELL_REQUEST_SCHEMA,
-      requested_slice_id: SLICE_REGISTRY,
-      tenant_scope: { scope_id: "internal-admin", audience: "internal" },
-    });
-    setWorkbench(
-      "Tool registry",
-      "Tools below are registered by the shell; launch uses cataloged runtime entrypoints.",
-      '<pre class="v2-json-panel">' + JSON.stringify(shellR.json, null, 2) + "</pre>"
-    );
-  }
-
-  async function loadAwsReadOnly() {
-    setWorkbench("AWS (read-only)", "Trusted-tenant runtime envelope", "<p>Loading…</p>");
-    setActiveNav(SLICE_AWS_RO);
-
-    const res = await postJson("/portal/api/v2/admin/aws/read-only", {
-      schema: ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
-      tenant_scope: { scope_id: tenantId, audience: "trusted-tenant" },
-    });
-    lastAwsReadOnly = res.json;
-    const sp = res.json && res.json.surface_payload;
-    const allowed = sp && sp.allowed_send_domains ? sp.allowed_send_domains.join(", ") : "";
-    setWorkbench(
-      "AWS (read-only)",
-      res.ok ? "Surface loaded" : "Error — see JSON",
-      (allowed ? "<p><strong>Allowed send domains:</strong> " + allowed + "</p>" : "") +
-        '<pre class="v2-json-panel">' +
-        JSON.stringify(res.json, null, 2) +
-        "</pre>"
-    );
-    openInspector("AWS read-only", res.json);
-  }
-
-  async function loadResourceWorkbench() {
-    setWorkbench("Resource workbench", "Canonical system datum", "<p>Loading…</p>");
-    setActiveNav(SLICE_DATUM);
-
-    const r = await fetch("/portal/api/v2/data/system/resource-workbench", { credentials: "same-origin" });
-    const j = await r.json();
-    setWorkbench(
-      "Resource workbench",
-      j.row_count != null ? j.row_count + " rows" : "—",
-      '<pre class="v2-json-panel">' + JSON.stringify(j, null, 2) + "</pre>"
-    );
-  }
-
-  function loadAwsNarrowWriteForm() {
-    setWorkbench("AWS narrow write", "Bounded field: selected_verified_sender", "");
-    setActiveNav(SLICE_AWS_NW);
-
-    const sp = lastAwsReadOnly && lastAwsReadOnly.surface_payload;
-    const profileId =
-      (sp && sp.canonical_newsletter_operational_profile && sp.canonical_newsletter_operational_profile.profile_id) || "";
-    const currentSender = (sp && sp.selected_verified_sender) || "";
-
-    const html =
-      '<form id="v2-narrow-write-form" class="v2-card" style="max-width:520px">' +
-      "<h3>Update verified sender</h3>" +
-      '<p style="font-size:13px;margin:0 0 10px">Uses tenant <code>' +
-      tenantId +
-      "</code> and trusted-tenant audience.</p>" +
-      '<label style="display:block;font-size:13px;margin-bottom:6px">profile_id</label>' +
-      '<input name="profile_id" value="' +
-      profileId +
-      '" style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:6px 8px" />' +
-      '<label style="display:block;font-size:13px;margin-bottom:6px">selected_verified_sender</label>' +
-      '<input name="selected_verified_sender" value="' +
-      currentSender +
-      '" style="width:100%;box-sizing:border-box;margin-bottom:12px;padding:6px 8px" />' +
-      '<button type="submit" class="ide-sessionAction ide-sessionAction--button" style="border-radius:6px">Apply narrow write</button>' +
-      "</form>" +
-      '<pre id="v2-narrow-write-result" class="v2-json-panel" style="margin-top:12px" hidden></pre>';
-
-    setWorkbench("AWS narrow write", "Load AWS read-only once per session for profile hints.", html);
-
-    const form = qs("#v2-narrow-write-form");
-    const out = qs("#v2-narrow-write-result");
-    if (!form || !out) return;
-
-    form.addEventListener("submit", async (ev) => {
-      ev.preventDefault();
-      const fd = new FormData(form);
-      const body = {
-        schema: ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA,
-        tenant_scope: { scope_id: tenantId, audience: "trusted-tenant" },
-        focus_subject: "v2-portal-ui",
-        profile_id: (fd.get("profile_id") || "").toString().trim(),
-        selected_verified_sender: (fd.get("selected_verified_sender") || "").toString().trim(),
-      };
-      out.hidden = false;
-      out.textContent = "…";
-      const res = await postJson("/portal/api/v2/admin/aws/narrow-write", body);
-      out.textContent = JSON.stringify(res.json, null, 2);
-      openInspector("AWS narrow write", res.json);
-    });
-  }
-
-  function labelForEntry(entry, sliceId) {
-    const raw = (entry && (entry.label || entry.tool_id)) || sliceId;
-    const u = String(raw).toUpperCase();
-    return u.length > 22 ? u.slice(0, 20) + "…" : u;
-  }
-
-  function buildFallbackNav(nav) {
-    nav.innerHTML = "";
-    const items = [
-      { id: SLICE_HOME, label: "HOME", fn: loadHome },
-      { id: SLICE_REGISTRY, label: "REGISTRY", fn: loadToolRegistry },
-      { id: SLICE_AWS_RO, label: "AWS", fn: loadAwsReadOnly },
-      { id: SLICE_AWS_NW, label: "AWS WRITE", fn: loadAwsNarrowWriteForm },
-      { id: SLICE_DATUM, label: "DATUM", fn: loadResourceWorkbench },
-    ];
-    items.forEach((item) => {
-      const a = document.createElement("a");
-      a.className = "ide-activitylink";
-      a.href = "#";
-      a.dataset.sliceId = item.id;
-      a.innerHTML = "<span>" + item.label + "</span>";
-      a.addEventListener("click", (e) => {
-        e.preventDefault();
-        item.fn();
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        return { ok: r.ok, status: r.status, json: j };
       });
-      nav.appendChild(a);
     });
   }
 
-  async function buildActivityNavFromShellCatalog() {
-    const nav = qs("#v2-activity-nav");
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function applyChrome(comp) {
+    var el = qs(".ide-shell");
+    if (!el || !comp) return;
+    el.setAttribute("data-active-service", comp.active_service || "system");
+    el.setAttribute("data-shell-composition", comp.composition_mode || "system");
+    el.setAttribute("data-foreground-shell-region", comp.foreground_shell_region || "center-workbench");
+    el.setAttribute("data-control-panel-collapsed", comp.control_panel_collapsed ? "true" : "false");
+    el.setAttribute("data-inspector-collapsed", comp.inspector_collapsed ? "true" : "false");
+    if (comp.active_tool_slice_id) {
+      el.setAttribute("data-active-mediate-tool", comp.active_tool_slice_id);
+    } else {
+      el.removeAttribute("data-active-mediate-tool");
+    }
+
+    var menubarTitle = qs(".ide-menubar__pageTitle");
+    var menubarSub = qs(".ide-menubar__pageSub");
+    if (menubarTitle && comp.page_title) menubarTitle.textContent = comp.page_title;
+    if (menubarSub && comp.page_subtitle != null) menubarSub.textContent = comp.page_subtitle;
+
+    var pageheadTitle = qs("#v2-workbench-title");
+    var pageheadSub = qs("#v2-workbench-subtitle");
+    var wbRegion = comp.regions && comp.regions.workbench;
+    if (pageheadTitle && wbRegion && wbRegion.title) pageheadTitle.textContent = wbRegion.title;
+    if (pageheadSub && wbRegion && wbRegion.subtitle != null) pageheadSub.textContent = wbRegion.subtitle;
+
+    var wb = qs(".ide-workbench");
+    if (wb) {
+      var tool = comp.composition_mode === "tool";
+      wb.setAttribute("data-foreground-visible", tool ? "false" : "true");
+      wb.setAttribute("aria-hidden", tool ? "true" : "false");
+    }
+
+    var insp = document.getElementById("portalInspector");
+    if (insp) {
+      var collapsed = !!comp.inspector_collapsed;
+      insp.classList.toggle("is-collapsed", collapsed);
+      insp.setAttribute("aria-hidden", collapsed ? "true" : "false");
+      insp.setAttribute("data-primary-surface", comp.composition_mode === "tool" ? "true" : "false");
+      insp.setAttribute("data-surface-layout", comp.composition_mode === "tool" ? "primary-fill" : "sidebar");
+    }
+  }
+
+  function renderActivityItems(items) {
+    var nav = document.getElementById("v2-activity-nav");
     if (!nav) return;
-
-    const shellR = await postJson("/portal/api/v2/admin/shell", {
-      schema: ADMIN_SHELL_REQUEST_SCHEMA,
-      requested_slice_id: SLICE_HOME,
-      tenant_scope: { scope_id: "internal-admin", audience: "internal" },
-    });
-
-    const sp = shellR.json && shellR.json.surface_payload;
+    if (!items || !items.length) {
+      nav.innerHTML =
+        '<p class="ide-sessionLine ide-sessionLine--dim" style="padding:8px;text-align:center;font-size:10px">No activity items from shell composition.</p>';
+      return;
+    }
     nav.innerHTML = "";
-    const seen = new Set();
-
-    function addLink(sliceId, entry) {
-      if (seen.has(sliceId)) return;
-      const fn = SLICE_HANDLERS[sliceId];
-      if (!fn) return;
-      seen.add(sliceId);
-      const a = document.createElement("a");
-      a.className = "ide-activitylink";
+    items.forEach(function (item) {
+      var a = document.createElement("a");
+      a.className = "ide-activitylink" + (item.active ? " is-active" : "");
       a.href = "#";
-      a.dataset.sliceId = sliceId;
-      a.innerHTML = "<span>" + labelForEntry(entry, sliceId) + "</span>";
-      a.title = (entry && entry.label) || sliceId;
-      a.addEventListener("click", (e) => {
+      a.setAttribute("aria-label", item.label || "");
+      var label = (item.label || "").toUpperCase();
+      a.innerHTML = "<span>" + escapeHtml(label.length > 22 ? label.slice(0, 20) + "…" : label) + "</span>";
+      a.addEventListener("click", function (e) {
         e.preventDefault();
-        fn();
+        if (!item.shell_request) return;
+        loadShell(item.shell_request);
       });
       nav.appendChild(a);
-    }
+    });
+  }
 
-    if (sp && Array.isArray(sp.available_admin_slices)) {
-      sp.available_admin_slices.forEach((entry) => {
-        if (!entry || !entry.launchable || !entry.slice_id) return;
-        addLink(entry.slice_id, entry);
-      });
-    }
+  function renderControlPanel(region) {
+    var root = document.getElementById("portalControlPanel");
+    if (!root || !region || !region.sections) return;
+    root.innerHTML = "";
+    region.sections.forEach(function (sec) {
+      var section = document.createElement("section");
+      section.className = "ide-controlpanel__section";
+      var h = document.createElement("header");
+      h.className = "ide-controlpanel__title";
+      h.textContent = sec.title || "";
+      section.appendChild(h);
+      var entries = sec.entries || [];
+      if (!entries.length) {
+        var empty = document.createElement("div");
+        empty.className = "ide-controlpanel__empty";
+        empty.textContent = "No entries";
+        section.appendChild(empty);
+      } else {
+        var ul = document.createElement("ul");
+        ul.className = "ide-controlpanel__list";
+        entries.forEach(function (ent) {
+          var li = document.createElement("li");
+          var link = document.createElement("a");
+          link.className = "ide-controlpanel__link" + (ent.active ? " is-active" : "");
+          link.href = "#";
+          var span = document.createElement("span");
+          span.textContent = ent.label || "";
+          link.appendChild(span);
+          if (ent.meta) {
+            var sm = document.createElement("small");
+            sm.textContent = ent.meta;
+            link.appendChild(sm);
+          }
+          link.addEventListener("click", function (e) {
+            e.preventDefault();
+            if (ent.shell_request) loadShell(ent.shell_request);
+          });
+          li.appendChild(link);
+          ul.appendChild(li);
+        });
+        section.appendChild(ul);
+      }
+      root.appendChild(section);
+    });
+  }
 
-    if (sp && Array.isArray(sp.available_tool_slices)) {
-      sp.available_tool_slices.forEach((entry) => {
-        if (!entry || !entry.launchable || !entry.slice_id) return;
-        addLink(entry.slice_id, entry);
-      });
+  function renderWorkbench(wb) {
+    var body = document.getElementById("v2-workbench-body");
+    if (!body || !wb) {
+      return;
     }
-
-    addLink(SLICE_DATUM, { label: "Resource workbench" });
-
-    if (!nav.children.length) {
-      buildFallbackNav(nav);
+    var kind = wb.kind || "empty";
+    if (kind === "hidden" || wb.visible === false) {
+      body.innerHTML = '<p class="ide-controlpanel__empty">Workbench hidden for this shell mode.</p>';
+      return;
     }
+    if (kind === "error") {
+      body.innerHTML =
+        '<div class="v2-card"><h3>' +
+        escapeHtml(wb.title || "Error") +
+        "</h3><p>" +
+        escapeHtml(wb.message || "") +
+        "</p></div>";
+      return;
+    }
+    if (kind === "home_summary") {
+      var blocks = wb.blocks || [];
+      var cards =
+        '<div class="v2-card-grid">' +
+        blocks
+          .map(function (b) {
+            return (
+              '<article class="v2-card"><h3>' +
+              escapeHtml(b.label || "") +
+              "</h3><p>" +
+              escapeHtml(String(b.value != null ? b.value : "—")) +
+              "</p></article>"
+            );
+          })
+          .join("") +
+        "</div>";
+      body.innerHTML = cards;
+      return;
+    }
+    if (kind === "tool_registry") {
+      var rows = wb.tool_rows || [];
+      var banner = wb.banner;
+      var bannerHtml = "";
+      if (banner && banner.message) {
+        bannerHtml =
+          '<div class="v2-card" style="border-color:#c5221f;margin-bottom:12px"><p><strong>' +
+          escapeHtml(banner.code || "notice") +
+          ":</strong> " +
+          escapeHtml(banner.message) +
+          "</p></div>";
+      }
+      var table =
+        "<table class=\"v2-table\"><thead><tr><th>Tool</th><th>Slice</th><th>Entrypoint</th></tr></thead><tbody>" +
+        rows
+          .map(function (row) {
+            return (
+              "<tr><td>" +
+              escapeHtml(row.label || row.tool_id || "") +
+              "</td><td><code>" +
+              escapeHtml(row.slice_id || "") +
+              "</code></td><td><code>" +
+              escapeHtml(row.entrypoint_id || "") +
+              "</code></td></tr>"
+            );
+          })
+          .join("") +
+        "</tbody></table>";
+      body.innerHTML = bannerHtml + table;
+      return;
+    }
+    if (kind === "datum_workbench") {
+      body.innerHTML =
+        '<pre class="v2-json-panel">' + escapeHtml(JSON.stringify(wb.document || {}, null, 2)) + "</pre>";
+      return;
+    }
+    if (kind === "tool_placeholder") {
+      body.innerHTML = '<p class="ide-controlpanel__empty">' + escapeHtml(wb.subtitle || "") + "</p>";
+      return;
+    }
+    body.innerHTML = '<pre class="v2-json-panel">' + escapeHtml(JSON.stringify(wb, null, 2)) + "</pre>";
+  }
+
+  function renderInspector(region) {
+    var titleEl = document.getElementById("portalInspectorTitle");
+    var content = document.getElementById("v2-inspector-dynamic");
+    if (!region) {
+      if (titleEl) titleEl.textContent = "Overview";
+      if (content) content.innerHTML = "";
+      return;
+    }
+    if (titleEl) titleEl.textContent = region.title || "Interface panel";
+    if (!content) return;
+    var kind = region.kind || "empty";
+    if (kind === "empty") {
+      content.innerHTML = "<p class=\"ide-inspector__empty\">" + escapeHtml(region.body_text || "") + "</p>";
+      return;
+    }
+    if (kind === "json_document") {
+      content.innerHTML =
+        '<pre class="v2-json-panel">' + escapeHtml(JSON.stringify(region.document || {}, null, 2)) + "</pre>";
+      return;
+    }
+    if (kind === "narrow_write_form") {
+      var contract = region.submit_contract || {};
+      var initial = contract.initial_values || {};
+      var fixed = contract.fixed_request_fields || {};
+      var html =
+        '<form id="v2-narrow-write-form" class="v2-card" style="max-width:520px">' +
+        "<h3>Bounded write</h3>" +
+        '<p class="ide-controlpanel__empty" style="margin:0 0 10px">Request schema: <code>' +
+        escapeHtml(contract.request_schema || "") +
+        "</code></p>" +
+        '<label class="ide-controlpanel__empty" style="display:block;margin-bottom:4px">profile_id</label>' +
+        '<input name="profile_id" value="' +
+        escapeHtml(initial.profile_id || "") +
+        '" style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:6px 8px" />' +
+        '<label class="ide-controlpanel__empty" style="display:block;margin-bottom:4px">selected_verified_sender</label>' +
+        '<input name="selected_verified_sender" value="' +
+        escapeHtml(initial.selected_verified_sender || "") +
+        '" style="width:100%;box-sizing:border-box;margin-bottom:12px;padding:6px 8px" />' +
+        '<button type="submit" class="ide-sessionAction ide-sessionAction--button" style="border-radius:6px">Apply narrow write</button>' +
+        "</form>" +
+        '<pre id="v2-narrow-write-result" class="v2-json-panel" style="margin-top:12px" hidden></pre>';
+      content.innerHTML = html;
+      var form = document.getElementById("v2-narrow-write-form");
+      var out = document.getElementById("v2-narrow-write-result");
+      if (form && out) {
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var fd = new FormData(form);
+          var body = {
+            schema: contract.request_schema,
+            profile_id: (fd.get("profile_id") || "").toString().trim(),
+            selected_verified_sender: (fd.get("selected_verified_sender") || "").toString().trim(),
+          };
+          if (fixed.focus_subject != null) body.focus_subject = fixed.focus_subject;
+          if (fixed.tenant_scope) body.tenant_scope = fixed.tenant_scope;
+          out.hidden = false;
+          out.textContent = "…";
+          postJson(contract.route || "/portal/api/v2/admin/aws/narrow-write", body).then(function (res) {
+            out.textContent = JSON.stringify(res.json, null, 2);
+            if (lastShellRequest) loadShell(lastShellRequest);
+          });
+        });
+      }
+      return;
+    }
+    content.innerHTML = '<pre class="v2-json-panel">' + escapeHtml(JSON.stringify(region, null, 2)) + "</pre>";
+  }
+
+  function showFatal(message) {
+    var nav = document.getElementById("v2-activity-nav");
+    if (nav) {
+      nav.innerHTML =
+        '<p class="ide-sessionLine" style="padding:8px;color:#c5221f;font-size:10px;text-align:center">' +
+        escapeHtml(message) +
+        "</p>";
+    }
+    var body = document.getElementById("v2-workbench-body");
+    if (body) {
+      body.innerHTML = "<p>" + escapeHtml(message) + "</p>";
+    }
+  }
+
+  function loadShell(requestBody) {
+    lastShellRequest = requestBody;
+    return postJson(SHELL_URL, requestBody).then(function (r) {
+      var env = r.json;
+      if (!env || env.schema !== RUNTIME_ENVELOPE_SCHEMA) {
+        showFatal("Invalid or missing runtime envelope from shell route.");
+        return;
+      }
+      var comp = env.shell_composition;
+      if (!comp || !comp.regions) {
+        showFatal("Runtime envelope is missing shell_composition.regions.");
+        return;
+      }
+      applyChrome(comp);
+      var act = comp.regions.activity_bar || {};
+      renderActivityItems(act.items);
+      renderControlPanel(comp.regions.control_panel);
+      renderWorkbench(comp.regions.workbench);
+      renderInspector(comp.regions.inspector);
+      return env;
+    });
   }
 
   function boot() {
-    buildActivityNavFromShellCatalog()
-      .then(() => loadHome())
-      .catch(() => {
-        const nav = qs("#v2-activity-nav");
-        if (nav) buildFallbackNav(nav);
-        return loadHome();
-      });
+    var bootstrap = readBootstrapRequest();
+    if (!bootstrap) {
+      showFatal("Missing server bootstrap shell request.");
+      return;
+    }
+    loadShell(bootstrap).catch(function () {
+      showFatal("Shell request failed.");
+    });
 
-    const closeBtn = qs("[data-inspector-close]");
-    if (closeBtn) closeBtn.addEventListener("click", closeInspector);
+    var closeBtn = qs("[data-inspector-close]");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", function () {
+        var shell = qs(".ide-shell");
+        var inspector = document.getElementById("portalInspector");
+        if (inspector) {
+          inspector.classList.add("is-collapsed");
+          inspector.setAttribute("aria-hidden", "true");
+        }
+        if (shell) {
+          shell.setAttribute("data-inspector-collapsed", "true");
+        }
+      });
+    }
   }
 
   if (document.readyState === "loading") {
