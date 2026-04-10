@@ -7,10 +7,14 @@ from MyCiteV2.packages.adapters.filesystem import (
     FilesystemAuditLogAdapter,
     FilesystemAwsNarrowWriteAdapter,
     FilesystemAwsReadOnlyStatusAdapter,
+    FilesystemLiveAwsProfileAdapter,
+    is_live_aws_profile_file,
 )
 from MyCiteV2.packages.modules.cross_domain.aws_narrow_write import AwsNarrowWriteService
 from MyCiteV2.packages.modules.cross_domain.aws_operational_visibility import AwsOperationalVisibilityService
 from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
+from MyCiteV2.packages.ports.aws_narrow_write import AwsNarrowWritePort
+from MyCiteV2.packages.ports.aws_read_only_status import AwsReadOnlyStatusPort
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND1_AWS_NAME,
     ADMIN_BAND2_AWS_NAME,
@@ -70,6 +74,18 @@ def _build_read_only_surface_payload(*, tenant_scope: AdminTenantScope, visibili
     }
 
 
+def _aws_read_only_status_port_for_file(aws_status_file: str | Path) -> AwsReadOnlyStatusPort:
+    if is_live_aws_profile_file(aws_status_file):
+        return FilesystemLiveAwsProfileAdapter(aws_status_file)
+    return FilesystemAwsReadOnlyStatusAdapter(aws_status_file)
+
+
+def _aws_narrow_write_port_for_file(aws_status_file: str | Path) -> AwsNarrowWritePort:
+    if is_live_aws_profile_file(aws_status_file):
+        return FilesystemLiveAwsProfileAdapter(aws_status_file)
+    return FilesystemAwsNarrowWriteAdapter(aws_status_file)
+
+
 def _normalize_narrow_write_request(
     payload: dict[str, Any] | None,
 ) -> tuple[AdminTenantScope, dict[str, Any]]:
@@ -93,6 +109,7 @@ def run_admin_aws_read_only(
     request_payload: dict[str, Any] | None = None,
     *,
     aws_status_file: str | Path | None = None,
+    aws_status_port: AwsReadOnlyStatusPort | None = None,
 ) -> dict[str, Any]:
     tenant_scope = _normalize_request(request_payload)
     launch_decision = resolve_admin_tool_launch(
@@ -117,7 +134,7 @@ def run_admin_aws_read_only(
             error=build_admin_runtime_error(code=launch_decision.reason_code, message=message),
         )
 
-    if aws_status_file is None:
+    if aws_status_port is None and aws_status_file is None:
         message = "AWS read-only status source is not configured."
         return build_admin_runtime_envelope(
             admin_band=ADMIN_BAND1_AWS_NAME,
@@ -133,7 +150,7 @@ def run_admin_aws_read_only(
             error=build_admin_runtime_error(code="status_source_not_configured", message=message),
         )
 
-    adapter = FilesystemAwsReadOnlyStatusAdapter(aws_status_file)
+    adapter = aws_status_port or _aws_read_only_status_port_for_file(aws_status_file)
     service = AwsOperationalVisibilityService(adapter)
     surface = service.read_surface(tenant_scope.scope_id)
 
@@ -175,6 +192,7 @@ def run_admin_aws_narrow_write(
     *,
     aws_status_file: str | Path | None = None,
     audit_storage_file: str | Path | None = None,
+    aws_narrow_write_port: AwsNarrowWritePort | None = None,
 ) -> dict[str, Any]:
     tenant_scope, write_request = _normalize_narrow_write_request(request_payload)
     launch_decision = resolve_admin_tool_launch(
@@ -199,7 +217,7 @@ def run_admin_aws_narrow_write(
             error=build_admin_runtime_error(code=launch_decision.reason_code, message=message),
         )
 
-    if aws_status_file is None:
+    if aws_narrow_write_port is None and aws_status_file is None:
         message = "AWS narrow write requires an existing status snapshot file."
         return build_admin_runtime_envelope(
             admin_band=ADMIN_BAND2_AWS_NAME,
@@ -231,7 +249,7 @@ def run_admin_aws_narrow_write(
             error=build_admin_runtime_error(code="audit_log_not_configured", message=message),
         )
 
-    write_adapter = FilesystemAwsNarrowWriteAdapter(aws_status_file)
+    write_adapter = aws_narrow_write_port or _aws_narrow_write_port_for_file(aws_status_file)
     write_service = AwsNarrowWriteService(write_adapter)
     outcome = write_service.apply_write(write_request)
 

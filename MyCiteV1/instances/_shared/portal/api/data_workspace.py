@@ -535,6 +535,56 @@ def register_data_routes(
     def _publish_service() -> WorkbenchPublishService:
         return WorkbenchPublishService(local_resource_service=_local_resource_service())
 
+    def _legacy_local_resource_name(resource_id: object, resource_name: object = "") -> str:
+        name = str(resource_name or "").strip()
+        token = str(resource_id or "").strip()
+        if token.startswith("local:"):
+            token = token.split(":", 1)[1]
+        elif token.startswith("rc."):
+            parts = token.split(".")
+            token = ".".join(parts[2:]) if len(parts) > 2 else token
+        elif name.startswith("rc."):
+            stem = name[: -len(".json")] if name.endswith(".json") else name
+            parts = stem.split(".")
+            token = ".".join(parts[2:]) if len(parts) > 2 else stem
+        elif name:
+            token = name[: -len(".json")] if name.endswith(".json") else name
+        if token in {"txa", "msn"}:
+            token = f"samras.{token}"
+        return token
+
+    def _legacy_local_resource_id(resource_id: object, resource_name: object = "") -> str:
+        token = _legacy_local_resource_name(resource_id, resource_name)
+        return f"local:{token}" if token else str(resource_id or "")
+
+    def _legacy_local_resource_file_name(resource_id: object, resource_name: object = "") -> str:
+        token = _legacy_local_resource_name(resource_id, resource_name)
+        return f"{token}.json" if token else str(resource_name or "")
+
+    def _legacy_local_resource_item(item: dict[str, Any]) -> dict[str, Any]:
+        out = dict(item)
+        out["resource_id"] = _legacy_local_resource_id(item.get("resource_id"), item.get("resource_name"))
+        out["resource_name"] = _legacy_local_resource_file_name(item.get("resource_id"), item.get("resource_name"))
+        return out
+
+    def _legacy_local_resource_payload(payload: dict[str, Any]) -> dict[str, Any]:
+        out = dict(payload if isinstance(payload, dict) else {})
+        out["resources"] = [
+            _legacy_local_resource_item(item)
+            for item in list(out.get("resources") or [])
+            if isinstance(item, dict)
+        ]
+        if isinstance(out.get("migrated"), list):
+            out["migrated"] = [
+                _legacy_local_resource_item(item)
+                for item in list(out.get("migrated") or [])
+                if isinstance(item, dict)
+            ]
+        if out.get("resource_id") or out.get("resource_name"):
+            out["resource_id"] = _legacy_local_resource_id(out.get("resource_id"), out.get("resource_name"))
+            out["resource_name"] = _legacy_local_resource_file_name(out.get("resource_id"), out.get("resource_name"))
+        return out
+
     def _system_workbench_payload() -> dict[str, Any]:
         return _document_catalog().system_resource_workbench_payload()
 
@@ -744,6 +794,10 @@ def register_data_routes(
     @app.get("/portal/api/data/resources")
     def portal_data_resources():
         return jsonify(_document_catalog().local_inventory_payload())
+
+    @app.get("/portal/api/data/resources/local")
+    def portal_data_resources_local():
+        return jsonify(_legacy_local_resource_payload(_document_catalog().local_inventory_payload()))
 
     @app.get("/portal/api/data/system/resource_workbench")
     def portal_data_system_resource_workbench():
@@ -1069,6 +1123,10 @@ def register_data_routes(
     def portal_data_references():
         return jsonify(_document_catalog().inherited_inventory_payload(grouped_by_source_fn=_group_inherited_index))
 
+    @app.get("/portal/api/data/resources/inherited")
+    def portal_data_resources_inherited():
+        return jsonify(_document_catalog().inherited_inventory_payload(grouped_by_source_fn=_group_inherited_index))
+
     @app.get("/portal/api/data/references/subscriptions")
     def portal_data_references_subscriptions():
         return jsonify(discover_contract_subscription_status(_private_dir()))
@@ -1117,6 +1175,17 @@ def register_data_routes(
         )
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
+    @app.post("/portal/api/data/resources/local/create")
+    def portal_data_resources_local_create():
+        body = _json_body()
+        payload = _action_service().create_local_resource(
+            resource_kind=str(body.get("resource_kind") or "resource"),
+            resource_name=str(body.get("resource_name") or body.get("resource_id") or "resource").strip(),
+            seed_payload=body.get("seed_payload") if isinstance(body.get("seed_payload"), dict) else {},
+        )
+        payload = _legacy_local_resource_payload(payload)
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
     @app.post("/portal/api/data/resources/publish")
     def portal_data_resources_publish():
         body = _json_body()
@@ -1128,6 +1197,27 @@ def register_data_routes(
             resource_name=str(body.get("resource_name") or "").strip(),
             resource_kind=str(body.get("resource_kind") or "").strip(),
         )
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/resources/local/publish")
+    def portal_data_resources_local_publish():
+        body = _json_body()
+        resource_id = str(body.get("resource_id") or "").strip()
+        if not resource_id:
+            abort(400, description="resource_id is required")
+        payload = _publish_service().publish_local_resource(
+            resource_id=resource_id,
+            resource_name=str(body.get("resource_name") or "").strip(),
+            resource_kind=str(body.get("resource_kind") or "").strip(),
+        )
+        payload = _legacy_local_resource_payload(payload)
+        return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
+
+    @app.post("/portal/api/data/resources/local/migrate_legacy_samras")
+    def portal_data_resources_local_migrate_legacy_samras():
+        body = _json_body()
+        payload = _local_resource_service().migrate_legacy_samras(apply_changes=bool(body.get("apply")))
+        payload = _legacy_local_resource_payload(payload)
         return jsonify(payload), (200 if bool(payload.get("ok")) else 400)
 
     @app.post("/portal/api/data/references/refresh")
@@ -1167,6 +1257,33 @@ def register_data_routes(
         if not source_msn_id:
             abort(400, description="source_msn_id is required")
         payload = _action_service().disconnect_inherited_source(source_msn_id=source_msn_id)
+        return jsonify(payload), 200
+
+    @app.post("/portal/api/data/resources/inherited/subscriptions/register")
+    def portal_data_resources_inherited_subscriptions_register():
+        return portal_data_references_subscriptions_register()
+
+    @app.post("/portal/api/data/resources/inherited/subscriptions/unregister")
+    def portal_data_resources_inherited_subscriptions_unregister():
+        return portal_data_references_subscriptions_unregister()
+
+    @app.post("/portal/api/data/resources/inherited/disconnect_source")
+    def portal_data_resources_inherited_disconnect_source():
+        body = _json_body()
+        source_msn_id = str(body.get("source_msn_id") or "").strip()
+        if not source_msn_id:
+            abort(400, description="source_msn_id is required")
+        before = _document_catalog().inherited_inventory_payload(grouped_by_source_fn=_group_inherited_index)
+        before_count = len(
+            [
+                item
+                for item in list(before.get("resources") or [])
+                if isinstance(item, dict) and str(item.get("source_msn_id") or "").strip() == source_msn_id
+            ]
+        )
+        payload = _action_service().disconnect_inherited_source(source_msn_id=source_msn_id)
+        if before_count:
+            payload["removed_count"] = before_count
         return jsonify(payload), 200
 
     @app.get("/portal/api/data/sandbox/resources/<path:resource_id>")

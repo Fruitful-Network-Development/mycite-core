@@ -49,7 +49,7 @@ Done when:
 - read-after-write proves the canonical live artifact changed
 - denied writes leave live state unchanged
 
-Status: pending. The bridge routes exist, but live AWS state mapping is not yet implemented.
+Status: done for the FND/TFF bridge configuration. `MYCITE_V2_AWS_STATUS_FILE` points at canonical live `aws-csm.*.json` profiles, and the V2 live AWS profile adapter performs read-only mapping plus narrow-write read-after-write against that same artifact.
 
 ## Step 4: Gate Internal Exposure
 

@@ -1,7 +1,7 @@
 {
   "schema": "mycite.service_tool.fnd_ebi.profile.v1",
   "domain": "cuyahogavalleycountrysideconservancy.org",
-  "site_root": "/srv/webapps/cuyahogavalleycountrysideconservancy.org/frontend",
+  "site_root": "/srv/webapps/clients/cuyahogavalleycountrysideconservancy.org/frontend",
   "analytics": {
     "enabled": true,
     "script_path": "/__fnd/analytics.js",

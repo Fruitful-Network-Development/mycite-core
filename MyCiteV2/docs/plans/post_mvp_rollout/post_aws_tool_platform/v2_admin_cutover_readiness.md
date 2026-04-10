@@ -59,12 +59,12 @@ Forbidden:
 
 ## Current cutover posture
 
-Current status: runtime-ready with an internal Shape B deployment bridge mounted, not fully live-state cut over.
+Current status: runtime-ready with a Shape B deployment bridge mounted for the admin shell and AWS slices.
 
 V2 `admin.shell_entry` can be reached through the live portal host bridge after the FND/TFF services are running the updated V1 host code.
 
-Trusted-tenant AWS exposure is still blocked on live state mapping. The AWS bridge routes are mounted, but they require explicit configured V2-compatible AWS status input and must not be claimed as live canonical AWS state access until [live_state_authority_and_mapping.md](live_state_authority_and_mapping.md) is implemented.
+Trusted-tenant AWS exposure now reads and writes the configured canonical live AWS profile JSON through the V2 live profile adapter. `MYCITE_V2_AWS_STATUS_FILE` must point at the approved live `aws-csm.*.json` profile for each deployed portal service.
 
 Future tool work is local slice work, not shared-platform redesign.
 
-The next implementation slice for live cutover is the live AWS profile mapping adapter described in [live_state_authority_and_mapping.md](live_state_authority_and_mapping.md).
+The remaining cutover work is exposure gating and future tool slices; the live AWS profile mapping gate is closed for the FND/TFF bridge configuration.

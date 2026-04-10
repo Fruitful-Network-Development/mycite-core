@@ -13,6 +13,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
     build_admin_runtime_entrypoint_catalog,
 )
+from MyCiteV2.packages.adapters.filesystem import is_live_aws_profile_file
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_ENTRYPOINT_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
@@ -126,6 +127,7 @@ def build_v2_admin_bridge_health(config: V2AdminBridgeConfig | None = None) -> d
         "configured_inputs": {
             "audit_storage_file": bridge_config.audit_storage_file is not None,
             "aws_status_file": bridge_config.aws_status_file is not None,
+            "aws_live_profile_mapping": is_live_aws_profile_file(bridge_config.aws_status_file),
             "aws_audit_storage_file": bridge_config.aws_audit_storage_file is not None,
         },
     }

@@ -20,12 +20,18 @@ class InternalSourcesTests(unittest.TestCase):
     def test_derive_client_analytics_paths(self):
         module = _load_internal_sources_module()
         derived = module.derive_client_analytics_paths("/srv/webapps/example.com/frontend")
-        self.assertEqual(str(derived["client_root"]), "/srv/webapps/example.com")
-        self.assertEqual(str(derived["analytics_root"]), "/srv/webapps/example.com/analytics")
+        self.assertEqual(str(derived["client_root"]), "/srv/webapps/clients/example.com")
+        self.assertEqual(str(derived["analytics_root"]), "/srv/webapps/clients/example.com/analytics")
         self.assertTrue(str(derived["access_log"]).endswith("/analytics/nginx/access.log"))
         self.assertTrue(str(derived["events_file"]).endswith(".ndjson"))
         self.assertEqual(len(derived.get("events_file_candidates") or []), 2)
         self.assertIn("/analytics/evnts/", str((derived.get("events_file_legacy"))))
+
+    def test_derive_client_analytics_paths_keeps_canonical_clients_root(self):
+        module = _load_internal_sources_module()
+        derived = module.derive_client_analytics_paths("/srv/webapps/clients/example.com/frontend")
+        self.assertEqual(str(derived["client_root"]), "/srv/webapps/clients/example.com")
+        self.assertEqual(str(derived["analytics_root"]), "/srv/webapps/clients/example.com/analytics")
 
     def test_read_internal_file_detects_kinds_and_counts(self):
         module = _load_internal_sources_module()

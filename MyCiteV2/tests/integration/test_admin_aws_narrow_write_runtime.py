@@ -169,6 +169,93 @@ class AdminAwsNarrowWriteRuntimeIntegrationTests(unittest.TestCase):
                 original_payload,
             )
 
+    def test_live_aws_profile_narrow_write_updates_canonical_live_artifact(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            profile_file = Path(temp_dir) / "aws-csm.tff.technicalContact.json"
+            audit_file = Path(temp_dir) / "audit.ndjson"
+            original_payload = {
+                "schema": "mycite.service_tool.aws_csm.profile.v1",
+                "identity": {
+                    "profile_id": "aws-csm.tff.technicalContact",
+                    "tenant_id": "tff",
+                    "domain": "trappfamilyfarm.com",
+                    "mailbox_local_part": "technicalcontact",
+                    "send_as_email": "technicalcontact@trappfamilyfarm.com",
+                },
+                "smtp": {
+                    "handoff_ready": True,
+                    "credentials_secret_state": "configured",
+                    "send_as_email": "technicalcontact@trappfamilyfarm.com",
+                    "local_part": "technicalcontact",
+                },
+                "verification": {"status": "verified"},
+                "provider": {"gmail_send_as_status": "verified"},
+                "workflow": {
+                    "initiated": True,
+                    "lifecycle_state": "operational",
+                    "is_mailbox_operational": True,
+                },
+                "inbound": {"receive_verified": True, "latest_message_id": "message-1"},
+            }
+            profile_file.write_text(json.dumps(original_payload) + "\n", encoding="utf-8")
+
+            result = run_admin_aws_narrow_write(
+                {
+                    "schema": ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                    "focus_subject": FOCUS_SUBJECT,
+                    "profile_id": "aws-csm.tff.technicalContact",
+                    "selected_verified_sender": "ops@trappfamilyfarm.com",
+                },
+                aws_status_file=profile_file,
+                audit_storage_file=audit_file,
+            )
+
+            self.assertEqual(result["schema"], ADMIN_RUNTIME_ENVELOPE_SCHEMA)
+            self.assertIsNone(result["error"])
+            stored = json.loads(profile_file.read_text(encoding="utf-8"))
+            self.assertEqual(stored["identity"]["send_as_email"], "ops@trappfamilyfarm.com")
+            self.assertEqual(stored["smtp"]["send_as_email"], "ops@trappfamilyfarm.com")
+            confirmed = result["surface_payload"]["confirmed_read_only_surface"]
+            self.assertEqual(confirmed["selected_verified_sender"], "ops@trappfamilyfarm.com")
+            self.assertTrue(audit_file.exists())
+
+    def test_live_aws_profile_denied_write_leaves_canonical_artifact_unchanged(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            profile_file = Path(temp_dir) / "aws-csm.tff.technicalContact.json"
+            original_payload = {
+                "schema": "mycite.service_tool.aws_csm.profile.v1",
+                "identity": {
+                    "profile_id": "aws-csm.tff.technicalContact",
+                    "tenant_id": "tff",
+                    "domain": "trappfamilyfarm.com",
+                    "send_as_email": "technicalcontact@trappfamilyfarm.com",
+                },
+                "smtp": {
+                    "handoff_ready": True,
+                    "send_as_email": "technicalcontact@trappfamilyfarm.com",
+                },
+                "verification": {"status": "verified"},
+                "workflow": {"initiated": True},
+                "inbound": {},
+            }
+            profile_file.write_text(json.dumps(original_payload) + "\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "selected_verified_sender"):
+                run_admin_aws_narrow_write(
+                    {
+                        "schema": ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA,
+                        "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                        "focus_subject": FOCUS_SUBJECT,
+                        "profile_id": "aws-csm.tff.technicalContact",
+                        "selected_verified_sender": "ops@example.com",
+                    },
+                    aws_status_file=profile_file,
+                    audit_storage_file=Path(temp_dir) / "audit.ndjson",
+                )
+
+            self.assertEqual(json.loads(profile_file.read_text(encoding="utf-8")), original_payload)
+
 
 if __name__ == "__main__":
     unittest.main()

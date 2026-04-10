@@ -120,8 +120,59 @@ Verification:
 - `http://127.0.0.1:5203/portal/api/v2/admin/bridge/health` returns `shape_b_v1_host_to_v2_runtime`.
 - FND and TFF `POST /portal/api/v2/admin/shell` return V2 `mycite.v2.admin.runtime.envelope.v1` envelopes for `admin.shell_entry`.
 
-Important remaining gate: AWS bridge routes are mounted, but live AWS state mapping is intentionally still closed. On live FND, `admin.aws.read_only` currently returns `503 status_source_not_configured` because `MYCITE_V2_AWS_STATUS_FILE` is not configured and the canonical live AWS profile mapping adapter has not been implemented yet. I documented that in [v2_admin_cutover_readiness.md](/srv/repo/mycite-core/MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/v2_admin_cutover_readiness.md):62.
+Superseded on 2026-04-10: the AWS bridge routes are mounted and live AWS state mapping is implemented for the FND/TFF Shape B bridge. `MYCITE_V2_AWS_STATUS_FILE` now points at canonical live `aws-csm.*.json` profiles, and the V2 live AWS profile adapter handles read-only mapping plus narrow-write read-after-write against the same artifact. See [v2_admin_cutover_readiness.md](/srv/repo/mycite-core/MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/v2_admin_cutover_readiness.md).
 
 One test caveat: the older broad V1 shell route tests still fail in unrelated legacy areas (`FND /portal/api/data/resources/local` returns 404 in the harness, and TFF is missing old tool imports). The new bridge-specific tests pass and cover the changed route surface directly.
+
+---
+
+
+## PROMPT:
+
+Address the closed AWS state mapping 
+Makeing sure MYCITE_V2_AWS_STATUS_FILE is configured and the canonical live AWS profile mapping adapter has not been implemented yet. I documented that in v2_admin_cutover_readiness.md:62.
+
+Also determine why each time a user visits a site, anayltics are now created at e.g. `webapps/trappfamilyfarm.com/analytics/events/2026-04.ndjson`. This creates the directory each time for any the sites, when an event happens for one. instead of for e.g. `webapps/clients/trappfamilyfarm.com/analytics/events/2026-04.ndjson`. 
+
+Also address this:
+
+One test caveat: the older broad V1 shell route tests still fail in unrelated legacy areas (FND /portal/api/data/resources/local returns 404 in the harness, and TFF is missing old tool imports). The new bridge-specific tests pass and cover the changed route surface directly.
+
+---
+
+
+## OUTPUT:
+
+Implemented the V2 cutover cleanup and live bridge fixes.
+
+**What Changed**
+- Added the canonical live AWS profile adapter in [live_aws_profile.py](/srv/repo/mycite-core/MyCiteV2/packages/adapters/filesystem/live_aws_profile.py):58. It reads live `aws-csm.*.json` profiles, maps them into the V2 AWS surface, and narrow-writes only `selected_verified_sender` back to the same live profile fields.
+- Wired V2 AWS runtime to auto-detect live AWS profile files from `MYCITE_V2_AWS_STATUS_FILE` while keeping the older snapshot adapter path intact in [admin_aws_runtime.py](/srv/repo/mycite-core/MyCiteV2/instances/_shared/runtime/admin_aws_runtime.py):77.
+- Updated bridge health to report `aws_live_profile_mapping: true` without exposing paths in [v1_host_bridge.py](/srv/repo/mycite-core/MyCiteV2/packages/adapters/portal_runtime/v1_host_bridge.py):120.
+- Configured deployed services:
+  - FND: `MYCITE_V2_AWS_STATUS_FILE=/srv/mycite-state/instances/fnd/private/utilities/tools/aws-csm/aws-csm.fnd.dylan.json`
+  - TFF: `MYCITE_V2_AWS_STATUS_FILE=/srv/mycite-state/instances/fnd/private/utilities/tools/aws-csm/aws-csm.tff.technicalContact.json`
+- Fixed analytics path drift. The bug was caused by `site_root` still pointing at `/srv/webapps/<domain>/frontend`, and the old derivation used that parent directly. It now canonicalizes to `/srv/webapps/clients/<domain>` in [internal_sources.py](/srv/repo/mycite-core/MyCiteV1/instances/_shared/portal/application/internal_sources.py):61.
+- Updated live and deployed FND EBI profiles so their `site_root` values point into `/srv/webapps/clients/...`.
+- Merged the stray TFF analytics rows from `/srv/webapps/trappfamilyfarm.com/analytics/events/2026-04.ndjson` into `/srv/webapps/clients/trappfamilyfarm.com/analytics/events/2026-04.ndjson`, then moved the old file aside as a migrated archive.
+- Restored old V1 resource aliases used by the broad shell tests, without re-enabling the old table route shims, in [data_workspace.py](/srv/repo/mycite-core/MyCiteV1/instances/_shared/portal/api/data_workspace.py):798 and [data_workspace.py](/srv/repo/mycite-core/MyCiteV1/instances/_shared/portal/api/data_workspace.py):1216.
+- Added TFF compatibility tool metadata shims for `fnd_ebi` and `aws_platform_admin`.
+- Added/updated V2 docs so the AWS live-state mapping gate is no longer documented as pending.
+
+**Live Verification**
+- Restarted `fnd-portal.service` and `tff-portal.service`; both are active.
+- FND bridge health returns `aws_status_file: true` and `aws_live_profile_mapping: true`.
+- TFF bridge health returns `aws_status_file: true` and `aws_live_profile_mapping: true`.
+- FND V2 AWS read-only returns `dylan@fruitfulnetworkdevelopment.com` from the live profile.
+- TFF V2 AWS read-only returns `technicalcontact@trappfamilyfarm.com` from the live profile.
+- A live analytics collect check for `trappfamilyfarm.com` wrote to:
+  `/srv/webapps/clients/trappfamilyfarm.com/analytics/events/2026-04.ndjson`
+
+**Tests Run**
+- `PYTHONPATH=/srv/repo/mycite-core/MyCiteV1 /srv/venvs/fnd_portal/bin/python -m unittest MyCiteV1.tests.test_internal_sources MyCiteV1.tests.test_data_write_pipeline_routes MyCiteV1.tests.test_fnd_portal_shell_routes MyCiteV1.tests.test_tff_portal_shell_routes MyCiteV1.tests.test_anthology_registry_overlay`
+  - `31 tests OK`
+- `/srv/venvs/fnd_portal/bin/python -m unittest MyCiteV2.tests.adapters.test_filesystem_live_aws_profile_adapter MyCiteV2.tests.integration.test_admin_aws_read_only_runtime MyCiteV2.tests.integration.test_admin_aws_narrow_write_runtime MyCiteV2.tests.integration.test_v2_deployment_bridge_shape_b`
+  - `19 tests OK`
+- Also ran every `MyCiteV2/tests/test_*.py` file directly with the portal venv; all passed.
 
 ---
