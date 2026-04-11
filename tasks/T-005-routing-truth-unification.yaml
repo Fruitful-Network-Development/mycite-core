@@ -1,0 +1,68 @@
+id: T-005
+title: Unify repo routing truth with live host routing truth
+primary_type: repo_and_deploy
+owner: lead
+status: proposed
+priority: high
+objective: >
+  Remove drift between srv-infra nginx intent, actual on-host nginx
+  configuration, and observed live portal routing behavior.
+authority:
+  precedence:
+    - MyCiteV2/docs/ontology/structural_invariants.md
+    - MyCiteV2/docs/plans/authority_stack.md
+    - MyCiteV2/docs/audits/v2_shell_visual_parity_and_standards_audit_2026-04-10.md
+  notes:
+    - Hosts compose modules.
+    - Live routing must be made explicit and fail-closed.
+scope:
+  repos:
+    - srv-infra
+    - mycite-core
+  repo_paths:
+    - nginx/sites-available/portal.fruitfulnetworkdevelopment.com.conf
+    - MyCiteV2/instances/_shared/portal_host/app.py
+    - MyCiteV2/instances/_shared/portal_host/templates/portal.html
+  live_systems:
+    - on-host nginx config for portal.fruitfulnetworkdevelopment.com
+    - live HTTP routes for /portal, /portal/static/*, and /healthz
+required_outputs:
+  - A checked-in nginx config that matches known-good live behavior.
+  - Evidence showing the actual host config matches the checked-in config.
+  - Captured reload/test output from nginx on-host.
+acceptance:
+  - Repo nginx config reflects intended V2 routing for /portal and any explicit /portal/static location if used.
+  - Actual host nginx config is inspected and captured in the reports.
+  - Any routing mismatch between repo and host is either fixed or explicitly documented as a blocker.
+  - Live HTTP behavior after reload matches the checked-in routing intent.
+  - Verifier confirms that repo config, host config, and live behavior agree.
+implementation_requirements:
+  - Do not rely on comments alone; confirm actual host file contents.
+  - Treat /portal, /portal/static/*, and /healthz as separate checks.
+  - Capture nginx -t output and reload output.
+verification_requirements:
+  - Verifier must inspect repo nginx config.
+  - Verifier must inspect actual host nginx config.
+  - Verifier must rerun live HTTP checks after reload.
+artifacts:
+  implementation_report: reports/T-005-implementation.md
+  verification_report: reports/T-005-verification.md
+  host_config_snapshot: reports/T-005-host-nginx-snapshot.conf
+suggested_commands:
+  repo:
+    - cd /srv/repo/srv-infra && grep -n "location \^~ /portal/static/\|location \^~ /portal \|set \$portal_upstream\|healthz" nginx/sites-available/portal.fruitfulnetworkdevelopment.com.conf
+  host:
+    - cd /etc/nginx/sites-available && sudo nginx -t
+    - cd /etc/nginx/sites-available && sudo systemctl reload nginx
+  live:
+    - cd /tmp && curl -I https://portal.fruitfulnetworkdevelopment.com/portal/static/portal.css
+    - cd /tmp && curl -I https://portal.fruitfulnetworkdevelopment.com/portal/system
+    - cd /tmp && curl -s https://portal.fruitfulnetworkdevelopment.com/healthz | python3 -m json.tool
+lead_handoff:
+  implementer:
+    focus: align repo config and host config
+  verifier:
+    focus: prove repo-host-live routing agreement
+closure_rule: >
+  Lead may close only when verifier confirms routing truth is unified across
+  repo, host, and live behavior.
