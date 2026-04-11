@@ -1,0 +1,135 @@
+id: T-010
+title: Implement V2 shell-owned AWS-CSM mailbox onboarding workflow (V1 provision parity)
+primary_type: repo_only
+owner: lead
+status: resolved
+verification_result: pass
+priority: high
+
+objective: >
+  Add registry-backed, shell-owned AWS-CSM mailbox onboarding orchestration for
+  trusted-tenant canonical profile files so each V1 provision-class action has a
+  deliberate V2 mapping (bounded writes, read-after-write, audit where writes occur),
+  without cloning V1 Flask route shapes or treating browser JS as alternate shell truth.
+
+authority:
+  precedence:
+    - MyCiteV2/docs/ontology/structural_invariants.md
+    - MyCiteV2/docs/decisions/decision_record_0012_post_aws_tool_platform_stabilization.md
+    - MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/read_only_and_bounded_write_patterns.md
+    - reports/T-009-investigation.md
+  notes:
+    - V1 admin_integrations provision handlers are behavioral evidence only.
+    - T-008 sandbox slice stays internal read-only unless this task explicitly extends policy.
+    - replay_verification_forward is legacy Lambda compatibility — default V2 path is
+      portal-native capture; replay is optional, gated, or explicitly deferred with repo proof.
+
+scope:
+  repos:
+    - mycite-core
+  repo_paths:
+    - reports/T-009-investigation.md
+    - MyCiteV2/packages/state_machine/hanus_shell/admin_shell.py
+    - MyCiteV2/instances/_shared/runtime/admin_runtime.py
+    - MyCiteV2/instances/_shared/runtime/admin_aws_runtime.py
+    - MyCiteV2/instances/_shared/runtime/runtime_platform.py
+    - MyCiteV2/instances/_shared/portal_host/app.py
+    - MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell.js
+    - MyCiteV2/docs/contracts/shell_region_kinds.md
+    - MyCiteV2/docs/plans/post_mvp_rollout/slice_registry/
+    - MyCiteV2/packages/modules/cross_domain/aws_narrow_write/
+    - MyCiteV2/packages/modules/cross_domain/aws_operational_visibility/
+    - MyCiteV2/packages/ports/aws_narrow_write/
+    - MyCiteV2/packages/ports/aws_read_only_status/
+    - MyCiteV2/packages/adapters/filesystem/live_aws_profile.py
+    - MyCiteV2/packages/sandboxes/tool/
+    - MyCiteV2/tests/
+    - tasks/T-010-v2-aws-csm-onboarding-workflow.yaml
+  live_systems: []
+
+required_outputs:
+  - New or extended runtime entrypoint(s) and shell registry wiring for onboarding-class
+    operations against canonical live profile files (trusted-tenant), with explicit
+    fail-closed behavior when prerequisites are missing.
+  - Semantic layer that encodes V1-equivalent state transitions and evidence checks
+    (especially confirm_verified) without importing MyCiteV1.
+  - Ports + adapters (or test doubles registered in integration tests) for external IO
+    used by onboarding (at minimum profile persistence; design seams for SES/S3/Route53
+    receipt operations as required by accepted actions).
+  - Slice registry documentation for any new admin band / surface id.
+  - Unit and integration tests proving shell launch legality, bounded writes, and
+    non-regression for existing Band 1 / Band 2 / Band 3 behaviors.
+  - reports/T-010-implementation.md and reports/T-010-verification.md.
+
+acceptance:
+  - reports/T-009-investigation.md parity table is satisfied in code or explicitly
+    deferred only for replay_verification_forward with a documented default
+    (omit vs gated compat) and tests for the chosen policy.
+  - Each of the following V1 actions has a named V2 mapping (verb, entrypoint, or
+    bounded field set) in the implementation report:
+    begin_onboarding, prepare_send_as, stage_smtp_credentials, capture_verification,
+    refresh_provider_status, refresh_inbound_status, enable_inbound_capture,
+    replay_verification_forward, confirm_receive_verified, confirm_verified.
+  - No new HTTP routes copy the V1 shape `/portal/api/admin/aws/profile/<id>/provision`.
+  - Shell composition and activity dispatch remain authoritative; client JS only renders
+    server-issued requests.
+  - T-008 production and sandbox AWS tool slices do not regress (existing unittest
+    modules for admin AWS surfaces still pass).
+  - execution.repo_test_command passes independently in verification.
+
+implementation_requirements:
+  - Read reports/T-009-investigation.md before coding; do not contradict sandbox
+    read-only posture unless slice docs and tests explicitly expand it.
+  - Prefer extending bounded-write contracts or adding a dedicated bounded onboarding
+    entrypoint over ad-hoc multi-field narrow writes without audit/read-after-write.
+  - Keep domain logic out of adapters; sandboxes coordinate only if staging policy
+    requires it.
+  - Append new unittest module paths to execution.repo_test_command when tests are added.
+  - Update shell_region_kinds.md when new region kinds or submit contracts are emitted.
+
+verification_requirements:
+  - Verifier runs execution.repo_test_command verbatim and records stdout/stderr in
+    reports/T-010-verification.md.
+  - Verifier fails if Band 1/2/3 regressions appear or if shell allows onboarding writes
+    without cataloged entrypoint / audit requirements stated in the task.
+
+artifacts:
+  implementation_report: reports/T-010-implementation.md
+  verification_report: reports/T-010-verification.md
+  investigation_reference: reports/T-009-investigation.md
+  template_paths:
+    - reports/templates/implementation_report_template.md
+    - reports/templates/verification_report_template.md
+
+execution:
+  current_role: lead
+  next_role: none
+  requires_verifier: true
+  handoff_files:
+    lead_to_implementer: reports/handoffs/T-010/lead_to_implementer.md
+    implementer_to_verifier: reports/handoffs/T-010/implementer_to_verifier.md
+    verifier_to_lead: reports/handoffs/T-010/verifier_to_lead.md
+  reports:
+    implementation: reports/T-010-implementation.md
+    verification: reports/T-010-verification.md
+  repo_test_command: >-
+    cd /srv/repo/mycite-core &&
+    PYTHONPATH=/srv/repo/mycite-core /srv/venvs/fnd_portal/bin/python3 -m unittest
+    MyCiteV2.tests.architecture.test_state_machine_boundaries
+    MyCiteV2.tests.architecture.test_runtime_composition_boundaries
+    MyCiteV2.tests.architecture.test_sandboxes_tool_boundaries
+    MyCiteV2.tests.integration.test_admin_aws_read_only_runtime
+    MyCiteV2.tests.integration.test_admin_aws_narrow_write_runtime
+    MyCiteV2.tests.integration.test_admin_aws_csm_sandbox_runtime
+    MyCiteV2.tests.integration.test_admin_aws_csm_onboarding_runtime
+    MyCiteV2.tests.unit.test_admin_tool_platform_contract
+    MyCiteV2.tests.unit.test_state_machine_admin_shell
+    MyCiteV2.tests.integration.test_admin_runtime_composition
+    MyCiteV2.tests.integration.test_admin_runtime_platform_contracts -v
+  live_check_command: not_applicable
+
+closure_rule: >
+  Lead may set status to resolved only when verification_result is pass,
+  reports/T-010-verification.md exists with verbatim repo test transcripts,
+  reports/T-010-implementation.md exists, acceptance criteria in this task file
+  are satisfied, and handoff files for T-010 are complete per tasks/README.md.

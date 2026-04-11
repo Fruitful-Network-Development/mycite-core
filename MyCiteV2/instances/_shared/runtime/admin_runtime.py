@@ -20,6 +20,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
     ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
+    AWS_CSM_ONBOARDING_SLICE_ID,
     AWS_CSM_SANDBOX_SLICE_ID,
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_SLICE_ID,
@@ -39,6 +40,7 @@ from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
     run_admin_aws_read_only,
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    ADMIN_AWS_CSM_ONBOARDING_REQUEST_SCHEMA,
     ADMIN_HOME_STATUS_SURFACE_SCHEMA,
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
     ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA,
@@ -395,6 +397,48 @@ def _apply_shell_chrome_to_composition(composition: dict[str, Any], chrome: Admi
             }
 
 
+def _inspector_csm_onboarding_form(
+    *,
+    portal_tenant_id: str,
+    read_only_document: dict[str, Any] | None,
+) -> dict[str, Any]:
+    sp = read_only_document or {}
+    profile = sp.get("canonical_newsletter_operational_profile") or {}
+    initial = {
+        "profile_id": _as_text(profile.get("profile_id")),
+        "onboarding_action": "begin_onboarding",
+    }
+    return {
+        "schema": ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
+        "title": "AWS-CSM onboarding",
+        "kind": "csm_onboarding_form",
+        "read_only_context": sp,
+        "submit_contract": {
+            "route": "/portal/api/v2/admin/aws/csm-onboarding",
+            "method": "POST",
+            "request_schema": ADMIN_AWS_CSM_ONBOARDING_REQUEST_SCHEMA,
+            "field_names": ["profile_id", "onboarding_action"],
+            "initial_values": initial,
+            "fixed_request_fields": {
+                "focus_subject": "v2-portal-shell",
+                "tenant_scope": {"scope_id": portal_tenant_id, "audience": "trusted-tenant"},
+            },
+            "onboarding_action_options": [
+                "begin_onboarding",
+                "prepare_send_as",
+                "stage_smtp_credentials",
+                "capture_verification",
+                "refresh_provider_status",
+                "refresh_inbound_status",
+                "enable_inbound_capture",
+                "replay_verification_forward",
+                "confirm_receive_verified",
+                "confirm_verified",
+            ],
+        },
+    }
+
+
 def _inspector_narrow_write_form(
     *,
     portal_tenant_id: str,
@@ -610,6 +654,42 @@ def _build_regions_and_surface(
             inspector=ins,
         )
         return sp_wrap, comp, "MyCite", "AWS narrow write"
+
+    if active == AWS_CSM_ONBOARDING_SLICE_ID:
+        aws_path = _live_aws_path(aws_status_file)
+        ro_payload = {
+            "schema": ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
+            "tenant_scope": {"scope_id": portal_tenant_id, "audience": "trusted-tenant"},
+        }
+        aws_env = run_admin_aws_read_only(ro_payload, aws_status_file=aws_path)
+        ro_surface = aws_env.get("surface_payload") if not aws_env.get("error") else None
+        wb = {
+            "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
+            "kind": "tool_placeholder",
+            "title": "AWS-CSM onboarding",
+            "subtitle": "Bounded orchestration projection",
+            "visible": False,
+        }
+        ins = _inspector_csm_onboarding_form(
+            portal_tenant_id=portal_tenant_id,
+            read_only_document=ro_surface if isinstance(ro_surface, dict) else None,
+        )
+        sp_wrap = {
+            "schema": "mycite.v2.admin.aws.csm_onboarding.panel_surface.v1",
+            "read_only_preview_error": aws_env.get("error"),
+            "read_only_surface": ro_surface,
+        }
+        comp = build_shell_composition_payload(
+            active_surface_id=active,
+            portal_tenant_id=portal_tenant_id,
+            page_title="MyCite",
+            page_subtitle="AWS-CSM onboarding",
+            activity_items=_activity_items(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+            control_panel=_control_panel_region(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+            workbench=wb,
+            inspector=ins,
+        )
+        return sp_wrap, comp, "MyCite", "AWS-CSM onboarding"
 
     if active == AWS_CSM_SANDBOX_SLICE_ID:
         sandbox_path = _live_aws_path(aws_csm_sandbox_status_file)

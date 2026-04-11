@@ -32,7 +32,7 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `schema` | yes | Always `mycite.v2.admin.shell.composition.v1` (`ADMIN_SHELL_COMPOSITION_SCHEMA`). |
-| `composition_mode` | yes | `"tool"` or `"system"` from `shell_composition_mode_for_surface(active_surface_id)` (tool for AWS read-only, narrow-write, and **internal AWS-CSM sandbox** slice IDs; otherwise system). |
+| `composition_mode` | yes | `"tool"` or `"system"` from `shell_composition_mode_for_surface(active_surface_id)` (tool for AWS read-only, narrow-write, **AWS-CSM onboarding** (Band 4), and **internal AWS-CSM sandbox** slice IDs; otherwise system). |
 | `active_service` | yes | `"aws"`, `"datum"`, `"registry"`, or `"system"` from `map_surface_to_active_service`. |
 | `active_surface_id` | yes | Resolved active surface slice id (text). |
 | `active_tool_slice_id` | conditional | Non-null only when `composition_mode == "tool"`; equals the active AWS tool slice id. |
@@ -128,7 +128,7 @@ Workbench payloads use `schema: mycite.v2.admin.shell.region.workbench.v1` (`ADM
 | `home_summary` | `schema`, `kind`, `title`, `visible`, `blocks` | `subtitle` | `_workbench_home` | Parses `blocks` as label/value cards (`b.label`, `b.value`). Nested block `kind` (e.g. `"metric"`) is informational for authors; JS does not switch on it. |
 | `tool_registry` | `schema`, `kind`, `title`, `visible`, `tool_rows` | `subtitle`, `banner` (`code`, `message`) | `_workbench_registry`; blocked registry path with `banner` | Table from `tool_rows`; optional banner |
 | `datum_workbench` | `schema`, `kind`, `title`, `visible`, `summary`, `warnings`, `rows_preview` | `subtitle` | `_workbench_datum` | Summary cards, warnings list, preview table columns `resource_id`, `subject_ref`, `relation`, `object_ref` |
-| `tool_placeholder` | `schema`, `kind`, `title`, `visible` (`false` for AWS primary inspector layout), `subtitle` | — | AWS read-only, narrow-write, and **AWS-CSM sandbox** success paths | Treated like hidden body: `visible === false` shows empty/workbench-hidden copy; subtitle as message |
+| `tool_placeholder` | `schema`, `kind`, `title`, `visible` (`false` for AWS primary inspector layout), `subtitle` | — | AWS read-only, narrow-write, **AWS-CSM onboarding**, and **AWS-CSM sandbox** success paths | Treated like hidden body: `visible === false` shows empty/workbench-hidden copy; subtitle as message |
 | `tool_collapsed_inspector` | `schema`, `kind`, `title`, `subtitle`, `visible` (`true`) | — | `_apply_shell_chrome_to_composition` only | Dedicated branch — dismissal card |
 
 ### Workbench presentation note
@@ -147,6 +147,7 @@ Inspector payloads use `schema: mycite.v2.admin.shell.region.inspector.v1` (`ADM
 | `aws_read_only_surface` | `schema`, `kind`, `title`, `tenant_scope_id`, `mailbox_readiness`, `smtp_state`, `gmail_state`, `verified_evidence_state`, `selected_verified_sender`, `allowed_send_domains`, `write_capability`, `profile_summary` | `compatibility_warnings`, `inbound_capture`, `dispatch_health` | `_inspector_aws_read_only_surface` | Definition list + optional compatibility list |
 | `aws_tool_error` | `schema`, `kind`, `title`, `error_code`, `error_message`, `warnings` | — | `_inspector_aws_tool_error` | Error card + warnings list |
 | `narrow_write_form` | `schema`, `kind`, `title`, `read_only_context`, `submit_contract` | — | `_inspector_narrow_write_form` | Form + POST to `submit_contract.route` with schema and fixed fields |
+| `csm_onboarding_form` | `schema`, `kind`, `title`, `read_only_context`, `submit_contract`, `onboarding_action_options` | — | `_inspector_csm_onboarding_form` | Select + `profile_id` + POST to `/portal/api/v2/admin/aws/csm-onboarding` using server-issued schema and fixed `tenant_scope` / `focus_subject` |
 
 ### `json_document` inspector kind
 

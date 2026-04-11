@@ -434,6 +434,65 @@
       }
       return;
     }
+    if (kind === "csm_onboarding_form") {
+      var contract = region.submit_contract || {};
+      var initial = contract.initial_values || {};
+      var fixed = contract.fixed_request_fields || {};
+      var options = contract.onboarding_action_options || [];
+      var optHtml = options
+        .map(function (a) {
+          return (
+            '<option value="' +
+            escapeHtml(a) +
+            '"' +
+            (a === (initial.onboarding_action || "") ? " selected" : "") +
+            ">" +
+            escapeHtml(a) +
+            "</option>"
+          );
+        })
+        .join("");
+      var html =
+        '<form id="v2-csm-onboarding-form" class="v2-card" style="max-width:560px">' +
+        "<h3>AWS-CSM onboarding</h3>" +
+        '<p class="ide-controlpanel__empty" style="margin:0 0 10px">Request schema: <code>' +
+        escapeHtml(contract.request_schema || "") +
+        "</code></p>" +
+        '<label class="ide-controlpanel__empty" style="display:block;margin-bottom:4px">onboarding_action</label>' +
+        '<select name="onboarding_action" style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:6px 8px">' +
+        optHtml +
+        "</select>" +
+        '<label class="ide-controlpanel__empty" style="display:block;margin-bottom:4px">profile_id</label>' +
+        '<input name="profile_id" value="' +
+        escapeHtml(initial.profile_id || "") +
+        '" style="width:100%;box-sizing:border-box;margin-bottom:12px;padding:6px 8px" />' +
+        '<button type="submit" class="ide-sessionAction ide-sessionAction--button" style="border-radius:6px">Apply onboarding step</button>' +
+        "</form>" +
+        '<pre id="v2-csm-onboarding-result" class="v2-json-panel" style="margin-top:12px" hidden></pre>';
+      content.innerHTML = html;
+      var form = document.getElementById("v2-csm-onboarding-form");
+      var out = document.getElementById("v2-csm-onboarding-result");
+      if (form && out) {
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var fd = new FormData(form);
+          var body = {
+            schema: contract.request_schema,
+            profile_id: (fd.get("profile_id") || "").toString().trim(),
+            onboarding_action: (fd.get("onboarding_action") || "").toString().trim(),
+          };
+          if (fixed.focus_subject != null) body.focus_subject = fixed.focus_subject;
+          if (fixed.tenant_scope) body.tenant_scope = fixed.tenant_scope;
+          out.hidden = false;
+          out.textContent = "…";
+          postJson(contract.route || "/portal/api/v2/admin/aws/csm-onboarding", body).then(function (res) {
+            out.textContent = JSON.stringify(res.json, null, 2);
+            if (lastShellRequest) loadShell(cloneRequestWithoutChrome(lastShellRequest));
+          });
+        });
+      }
+      return;
+    }
     content.innerHTML = '<pre class="v2-json-panel">' + escapeHtml(JSON.stringify(region, null, 2)) + "</pre>";
   }
 

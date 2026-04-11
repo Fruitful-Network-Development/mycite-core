@@ -66,9 +66,9 @@ def _live_profile_fnd() -> dict[str, object]:
 class AdminAwsCsmSandboxRuntimeIntegrationTests(unittest.TestCase):
     def test_registry_includes_distinct_sandbox_descriptor(self) -> None:
         entries = list(build_admin_tool_registry_entries())
-        self.assertEqual(len(entries), 3)
+        self.assertEqual(len(entries), 4)
         ids = [e.tool_id for e in entries]
-        self.assertEqual(ids, ["aws", "aws_narrow_write", "aws_csm_sandbox"])
+        self.assertEqual(ids, ["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding"])
         sandbox = entries[2]
         self.assertEqual(sandbox.slice_id, AWS_CSM_SANDBOX_SLICE_ID)
         self.assertEqual(sandbox.entrypoint_id, AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID)
@@ -167,7 +167,7 @@ class AdminAwsCsmSandboxRuntimeIntegrationTests(unittest.TestCase):
             self.assertEqual(result["entrypoint_id"], AWS_READ_ONLY_ENTRYPOINT_ID)
             self.assertEqual(result["slice_id"], AWS_READ_ONLY_SLICE_ID)
 
-    def test_registry_surface_lists_three_tools(self) -> None:
+    def test_registry_surface_lists_all_catalog_tools(self) -> None:
         result = run_admin_shell_entry(
             {
                 "schema": ADMIN_SHELL_REQUEST_SCHEMA,
@@ -175,7 +175,7 @@ class AdminAwsCsmSandboxRuntimeIntegrationTests(unittest.TestCase):
                 "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
             }
         )
-        self.assertEqual(len(result["surface_payload"]["tool_entries"]), 3)
+        self.assertEqual(len(result["surface_payload"]["tool_entries"]), 4)
 
 
 if __name__ == "__main__":
