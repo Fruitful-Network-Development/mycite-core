@@ -9,7 +9,7 @@ Define the serialized shell state, AITAS vocabulary, NIMM directives, and mediat
 - [../authority_stack.md](../authority_stack.md)
 - [../../ontology/interface_surfaces.md](../../ontology/interface_surfaces.md)
 - [../v1-migration/hanus_interface_analysis.md](../v1-migration/hanus_interface_analysis.md)
-- [../../../../docs/plans/hanus_interface_model.md](../../../../docs/plans/hanus_interface_model.md)
+- [../../V1/plans/hanus_interface_model.md](../../V1/plans/hanus_interface_model.md)
 
 ## inputs
 

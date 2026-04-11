@@ -18,9 +18,9 @@ Authority: [../authority_stack.md](../authority_stack.md)
 
 ## Retain as concept only
 
-- Hanus attention/intention model from `../../../../docs/plans/hanus_interface_model.md`
-- HOPS and chronology concepts from `../../../../docs/wiki/hops/homogeneous_ordinal_partition_structure.md`
-- tool authority rules from `../../../../docs/plans/tool_dev.md`
+- Hanus attention/intention model from [../../V1/plans/hanus_interface_model.md](../../V1/plans/hanus_interface_model.md)
+- HOPS and chronology concepts from [../../V1/wiki/hops/homogeneous_ordinal_partition_structure.md](../../V1/wiki/hops/homogeneous_ordinal_partition_structure.md)
+- tool authority rules from [../../V1/plans/tool_dev.md](../../V1/plans/tool_dev.md)
 
 ## Historical evidence only
 

@@ -8,7 +8,7 @@ This file is the single precedence source for MyCiteV2.
 2. [../decisions/](../decisions/)
 3. [phases/](phases/) and [phase_completion_definition.md](phase_completion_definition.md)
 4. [v1-migration/](v1-migration/)
-5. `../../../docs/plans/*.md` from v1
+5. Legacy v1 planning and wiki snapshots under [../V1/](../V1/) (subordinate to items 1–4; migration and drift evidence only)
 6. v1 code as implementation-history evidence only
 
 ## Resolution rule

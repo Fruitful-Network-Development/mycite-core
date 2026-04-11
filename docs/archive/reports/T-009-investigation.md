@@ -6,7 +6,7 @@
 
 **Surface:** `POST /portal/api/admin/aws/profile/<profile_id>/provision` with JSON `action` in `MyCiteV1/instances/_shared/runtime/flavors/fnd/portal/api/admin_integrations.py` (see `allowed_actions` and dispatch ~L2224–2305). UI triggers the same verbs from `aws_platform_admin.js` and `system_shell_runtime.js`.
 
-**Semantics contract:** `MyCiteV1/docs/modularity/contracts/aws_csm.md` describes mailbox-scoped profile JSON, workflow vs verification vs inbound independence, and IAM/SMTP operational model.
+**Semantics contract:** [`docs/V1/modularity/contracts/aws_csm.md`](../docs/V1/modularity/contracts/aws_csm.md) describes mailbox-scoped profile JSON, workflow vs verification vs inbound independence, and IAM/SMTP operational model.
 
 **Normalization:** `MyCiteV1/packages/tools/aws_csm/state_adapter/profile.py` (`normalize_aws_csm_profile_payload`) — evidence for field semantics; V2 uses the same **live profile schema** via `FilesystemLiveAwsProfileAdapter` / `mycite.service_tool.aws_csm.profile.v1`, not this package as structure.
 

@@ -4,7 +4,7 @@ Authority: [../authority_stack.md](../authority_stack.md)
 
 This document synthesizes Hanus-facing lessons from:
 
-- [../../../../docs/plans/hanus_interface_model.md](../../../../docs/plans/hanus_interface_model.md)
+- [../../V1/plans/hanus_interface_model.md](../../V1/plans/hanus_interface_model.md)
 - [historical/1-Analysis.md](historical/1-Analysis.md)
 
 ## Core takeaways
