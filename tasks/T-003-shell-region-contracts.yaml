@@ -2,8 +2,8 @@ id: T-003
 title: Formalize shell region and kind contracts
 primary_type: repo_only
 owner: lead
-status: in_progress
-verification_result: pending
+status: verified_pass
+verification_result: pass
 priority: high
 
 objective: >
@@ -61,8 +61,8 @@ artifacts:
   contract_doc: MyCiteV2/docs/contracts/shell_region_kinds.md
 
 execution:
-  current_role: implementer
-  next_role: verifier
+  current_role: lead
+  next_role: lead
   requires_verifier: true
   handoff_files:
     lead_to_implementer: reports/handoffs/T-003/lead_to_implementer.md

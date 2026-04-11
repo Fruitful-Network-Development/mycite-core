@@ -1,59 +1,48 @@
-# Lead → Implementer handoff: T-003
+# Lead → Implementer: T-003 shell region and kind contracts
 
 ## Task classification
 
-- **Primary type:** `repo_only` (documentation derived from repo code; no deploy or live URL acceptance).
-- **Evidence for closure:** Implementation report, contract document at scoped path, implementer→verifier handoff; verifier must independently diff doc vs. the three code files listed in the task.
-- **Verifier:** Required (`requires_verifier: true`). Lead does not close until `verification_result: pass` and verifier handoff recommend resolution.
+- **primary_type:** `repo_only` (confirmed; no live systems in scope).
+- **Evidence for closure:** Contract document at `MyCiteV2/docs/contracts/shell_region_kinds.md` (or task-approved equivalent path), implementation report, implementer→verifier handoff, independent verifier pass. No deploy or live URL checks required.
 
-## Exact files to read (minimal)
+## Exact files to read (in order)
 
-1. `agent/constraints.md` — authority order, shell invariants, minimal-context rule.
-2. `tasks/T-003-shell-region-contracts.yaml` — objective, acceptance, artifacts, closure rule.
-3. **Scope — derive contract only from these implementations:**
-   - `MyCiteV2/packages/state_machine/hanus_shell/admin_shell.py`
-   - `MyCiteV2/instances/_shared/runtime/admin_runtime.py`
-   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell.js`
-4. **Authority citations for the doc (open as needed for quotes / invariants):**
-   - `MyCiteV2/docs/ontology/structural_invariants.md`
-   - `MyCiteV2/docs/plans/authority_stack.md`
-   - `MyCiteV2/docs/ontology/interface_surfaces.md`
-5. **Output location:** `MyCiteV2/docs/contracts/` (create `shell_region_kinds.md` if missing).
-
-Do not expand scope beyond these paths unless a contradiction in the three primary code files forces a one-hop read elsewhere—and then record that in the implementation report.
+1. `MyCiteV2/docs/ontology/structural_invariants.md` — navigation purity, shell vs tool boundaries.
+2. `MyCiteV2/docs/plans/authority_stack.md` and `MyCiteV2/docs/ontology/interface_surfaces.md` — task authority list.
+3. `MyCiteV2/packages/state_machine/hanus_shell/admin_shell.py` — region schemas, `build_shell_composition_payload`, `build_portal_activity_dispatch_bodies`, `foreground_region_for_surface`, `inspector_collapsed_for_surface`, workbench/inspector payload builders and any `kind` / surface discriminant.
+4. `MyCiteV2/instances/_shared/runtime/admin_runtime.py` — functions that emit or assemble `shell_composition` and region payloads into the runtime envelope.
+5. `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell.js` — `applyChrome`, region render branches (workbench, inspector, activity bar, control panel), handling of `composition_mode` and `foreground_shell_region`.
+6. `MyCiteV2/docs/contracts/README.md` — align tone and cross-links with existing contract docs.
 
 ## Exact goal
 
-Produce **`MyCiteV2/docs/contracts/shell_region_kinds.md`** (or update if partially present) that:
+Produce a **single canonical contract document** that makes implicit shell region conventions explicit: enumerate every supported **workbench** and **inspector** kind (and any other region kinds if the code uses a unified discriminant), document required vs optional fields per kind, map each kind to the **runtime function(s)** that emit it and the **client renderer branch** that consumes it, and clearly separate **shell composition contract** (serializable truth from runtime) from **presentation behavior** (DOM/CSS/UX in JS).
 
-- Enumerates **all** workbench region kinds and **all** inspector region kinds **supported in code today** (no invented kinds; no omissions).
-- For each kind: required vs. optional payload fields; which **runtime** function/method emits it; which **client** branch in `v2_portal_shell.js` consumes it.
-- Explains **`composition_mode`** and **foreground region** semantics as implemented (not as desired future behavior unless clearly flagged as non-contract aspirational).
-- Clearly separates **shell composition contract** (what the shell state machine / runtime promises) from **presentation** (how the renderer chooses to lay out or style).
+The task file names the deliverable as `MyCiteV2/docs/contracts/shell_region_kinds.md` (`artifacts.contract_doc`); use that path unless you discover a naming conflict with `docs/contracts/README.md`, in which case note it in the implementation report and align with the task owner.
 
 ## Constraints that matter
 
-- Derive semantics **from code**, not prompt history or archive narration (`agent/constraints.md` §2, §7).
-- Preserve invariants: navigation/shell state serializable; tools attach via shell-defined surfaces; a UI widget is not a shell surface (`structural_invariants.md` / task `authority.notes`).
-- Cite the task’s authority paths **inside** the contract doc where rules are restated.
-- Keep “future tool extension” notes **short** and actionable per task YAML.
+- Derive the contract **from the three scoped code files**, not from chat or archive narrative (`agent/constraints.md` §2–3, §7).
+- Cite the task **authority** paths inside the new doc.
+- Preserve invariants: **shell_composition** is shell truth; tools attach through shell-defined surfaces; **UI widget is not a shell surface**; do not document alternate “browser shell” state.
+- Keep extension notes for future tools **short and actionable** per task YAML.
 
 ## Required outputs
 
-1. **`MyCiteV2/docs/contracts/shell_region_kinds.md`** — canonical contract (path fixed in task `artifacts.contract_doc`).
-2. **`reports/T-003-implementation.md`** — per `tasks/README.md` §9 (files changed, why, commands, tests, deploy N/A, gaps, recommended next status).
-3. **`reports/handoffs/T-003/implementer_to_verifier.md`** — per README §8: files changed, commands, reports, risks, what verifier must check independently, recommended `status` / `execution` fields.
+1. **Contract doc:** `MyCiteV2/docs/contracts/shell_region_kinds.md` (per task `artifacts.contract_doc`), satisfying every bullet under task `acceptance:` (enumeration of workbench kinds, inspector kinds, fields, runtime emitters, client consumers, composition_mode / foreground region semantics, contract vs presentation).
+2. **Implementation report:** `reports/T-003-implementation.md` with the sections required by `tasks/README.md` §9 (files changed, why, commands, tests, deploy N/A, gaps, recommended next status).
+3. **Handoff:** `reports/handoffs/T-003/implementer_to_verifier.md` per `tasks/README.md` §8.
+4. **Task YAML updates (implementer):** After work, set `status` to `verification_pending` (or `blocked` if stuck), `execution.current_role` to `verifier`, `execution.next_role` to `lead`. Do **not** set `verification_result` or mark the task resolved.
 
 ## Stop conditions
 
-- Stop when acceptance bullets in the task YAML are satisfiable from the written doc + repo; do not refactor portal code unless the task scope is formally expanded.
-- If the three files disagree on a kind or field, document the ambiguity and the code locations; do not silently pick one behavior as “the contract” without noting the conflict.
+- Stop and set task `blocked` with reason in the implementation report if the code and an honest contract cannot be reconciled (e.g. ambiguous kinds with no single emitter).
+- Do not invent kinds or fields not present in the scoped Python/JS; if something looks like a kind in HTML only, classify it as presentation, not contract.
+- `repo_test_command` is `not_applicable`; run targeted checks only if you add code (you should not need to for a doc-only task).
 
-## Recommended next task state (after your work)
+## Recommended next task status after implementation
 
-- Set `status` to **`verification_pending`**.
-- Set `execution.current_role` to **`verifier`**.
-- Set `execution.next_role` to **`lead`**.
-- Leave `verification_result: pending` until verifier completes.
-
-`repo_test_command` is `not_applicable`; run tests only if you touch executable code beyond docs (prefer doc-only change).
+- `status: verification_pending`
+- `execution.current_role: verifier`
+- `execution.next_role: lead`
+- Leave `verification_result: pending` for the verifier.
