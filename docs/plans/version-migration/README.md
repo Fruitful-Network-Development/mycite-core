@@ -11,23 +11,32 @@ Use this directory to answer:
 - which concepts should be recreated
 - which v1 areas must be split before recreation
 - which sources are evidence only
-- what remains in scope for V1 retirement review
+- which retained V1 materials still matter as lower-precedence migration evidence
 
-Do not use this directory as the active live cutover work queue. For the
-current post-cutover hardening path, use
-[../post_mvp_rollout/post_aws_tool_platform/v2_native_cutover_hardening.md](../post_mvp_rollout/post_aws_tool_platform/v2_native_cutover_hardening.md).
-Use
-[../post_mvp_rollout/post_aws_tool_platform/v1_retirement_execution_ledger.md](../post_mvp_rollout/post_aws_tool_platform/v1_retirement_execution_ledger.md)
-for the active removal/quarantine pass, and
-[../phases/11_cleanup_and_v1_retirement_review.md](../phases/11_cleanup_and_v1_retirement_review.md)
-for the formal exit gate.
+Do not use this directory as the active live cutover or retirement work queue.
+The canonical V2 retirement sequence is already closed through
+[../records/22-v1_retirement_closure.md](../records/22-v1_retirement_closure.md).
 
-## Current long-term sequence
+## Retirement status
 
-1. finish V2-native hardening
-2. resolve the V1 retirement execution ledger
-3. close the Phase 11 retirement review
-4. only then reopen deferred client-visible or later tool planning
+1. V2-native hardening is complete.
+2. The V1 retirement execution ledger is resolved.
+3. Phase 11 retirement review is closed.
+4. Follow-on planning resumes from the reopened Band 1 sequence in
+   [../post_mvp_rollout/current_planning_index.md](../post_mvp_rollout/current_planning_index.md).
+
+## Post-closure entrypoints
+
+- Use [../records/22-v1_retirement_closure.md](../records/22-v1_retirement_closure.md)
+  for the formal closure statement.
+- Use [../post_mvp_rollout/current_planning_index.md](../post_mvp_rollout/current_planning_index.md)
+  for the active post-retirement work queue.
+- Use [../post_mvp_rollout/post_aws_tool_platform/v2_native_cutover_hardening.md](../post_mvp_rollout/post_aws_tool_platform/v2_native_cutover_hardening.md)
+  only when you need the completed closure packet details.
+- Use [../post_mvp_rollout/post_aws_tool_platform/v1_retirement_execution_ledger.md](../post_mvp_rollout/post_aws_tool_platform/v1_retirement_execution_ledger.md)
+  only when you need the resolved residue dispositions.
+- Use [../phases/11_cleanup_and_v1_retirement_review.md](../phases/11_cleanup_and_v1_retirement_review.md)
+  only when you need the completed retirement gate wording.
 
 ## Canonical documents
 

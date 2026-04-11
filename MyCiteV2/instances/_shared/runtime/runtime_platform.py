@@ -28,6 +28,11 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_READ_ONLY_ENTRYPOINT_ID,
     AWS_READ_ONLY_SLICE_ID,
 )
+from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
+    BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+    BAND1_TRUSTED_TENANT_READ_ONLY_NAME,
+    TRUSTED_TENANT_PORTAL_EXPOSURE_STATUS,
+)
 
 ADMIN_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.admin.runtime.envelope.v1"
 ADMIN_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA = "mycite.v2.admin.runtime_entrypoint_descriptor.v1"
@@ -39,6 +44,10 @@ ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA = "mycite.v2.admin.aws.narrow_write.reques
 ADMIN_AWS_NARROW_WRITE_SURFACE_SCHEMA = "mycite.v2.admin.aws.narrow_write.surface.v1"
 ADMIN_AWS_CSM_ONBOARDING_REQUEST_SCHEMA = "mycite.v2.admin.aws.csm_onboarding.request.v1"
 ADMIN_AWS_CSM_ONBOARDING_SURFACE_SCHEMA = "mycite.v2.admin.aws.csm_onboarding.surface.v1"
+TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.portal.runtime.envelope.v1"
+TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA = "mycite.v2.portal.runtime_entrypoint_descriptor.v1"
+TRUSTED_TENANT_HOME_SURFACE_SCHEMA = "mycite.v2.portal.home_tenant_status.surface.v1"
+TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID = "portal.home.tenant_status"
 
 AWS_NARROW_WRITE_RECOVERY_REFERENCE = (
     "docs/plans/post_mvp_rollout/admin_first/aws_narrow_write_recovery.md"
@@ -51,6 +60,21 @@ ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT = "admin-shell-entry"
 ADMIN_RUNTIME_REQUIRED_ENVELOPE_KEYS = (
     "schema",
     "admin_band",
+    "exposure_status",
+    "tenant_scope",
+    "requested_slice_id",
+    "slice_id",
+    "entrypoint_id",
+    "read_write_posture",
+    "shell_state",
+    "surface_payload",
+    "shell_composition",
+    "warnings",
+    "error",
+)
+TRUSTED_TENANT_RUNTIME_REQUIRED_ENVELOPE_KEYS = (
+    "schema",
+    "rollout_band",
     "exposure_status",
     "tenant_scope",
     "requested_slice_id",
@@ -108,6 +132,50 @@ class AdminRuntimeEntrypointDescriptor:
             "callable_path": self.callable_path,
             "slice_id": self.slice_id,
             "admin_band": self.admin_band,
+            "exposure_status": self.exposure_status,
+            "read_write_posture": self.read_write_posture,
+            "launch_contract": self.launch_contract,
+            "surface_pattern": self.surface_pattern,
+            "surface_schema": self.surface_schema,
+            "required_configuration": list(self.required_configuration),
+        }
+
+
+@dataclass(frozen=True)
+class TrustedTenantRuntimeEntrypointDescriptor:
+    entrypoint_id: str
+    callable_path: str
+    slice_id: str
+    rollout_band: str
+    exposure_status: str
+    read_write_posture: str
+    launch_contract: str
+    surface_pattern: str
+    surface_schema: str
+    required_configuration: tuple[str, ...] = ()
+    schema: str = field(default=TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA, init=False)
+
+    def __post_init__(self) -> None:
+        if not _as_text(self.entrypoint_id):
+            raise ValueError("trusted_tenant_runtime_entrypoint.entrypoint_id is required")
+        if not _as_text(self.callable_path):
+            raise ValueError("trusted_tenant_runtime_entrypoint.callable_path is required")
+        if not _as_text(self.slice_id):
+            raise ValueError("trusted_tenant_runtime_entrypoint.slice_id is required")
+        if self.read_write_posture != "read-only":
+            raise ValueError("trusted_tenant_runtime_entrypoint.read_write_posture must be read-only")
+        if self.launch_contract != ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT:
+            raise ValueError("trusted_tenant_runtime_entrypoint.launch_contract is invalid")
+        if self.surface_pattern != "tenant-home":
+            raise ValueError("trusted_tenant_runtime_entrypoint.surface_pattern is invalid")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "entrypoint_id": self.entrypoint_id,
+            "callable_path": self.callable_path,
+            "slice_id": self.slice_id,
+            "rollout_band": self.rollout_band,
             "exposure_status": self.exposure_status,
             "read_write_posture": self.read_write_posture,
             "launch_contract": self.launch_contract,
@@ -190,6 +258,33 @@ def resolve_admin_runtime_entrypoint(entrypoint_id: object) -> AdminRuntimeEntry
     return None
 
 
+def build_trusted_tenant_runtime_entrypoint_catalog() -> tuple[TrustedTenantRuntimeEntrypointDescriptor, ...]:
+    return (
+        TrustedTenantRuntimeEntrypointDescriptor(
+            entrypoint_id=TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID,
+            callable_path="MyCiteV2.instances._shared.runtime.tenant_portal_runtime.run_trusted_tenant_portal_home",
+            slice_id=BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+            rollout_band=BAND1_TRUSTED_TENANT_READ_ONLY_NAME,
+            exposure_status=TRUSTED_TENANT_PORTAL_EXPOSURE_STATUS,
+            read_write_posture="read-only",
+            launch_contract=ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT,
+            surface_pattern="tenant-home",
+            surface_schema=TRUSTED_TENANT_HOME_SURFACE_SCHEMA,
+            required_configuration=("data_dir", "public_dir", "tenant_domain"),
+        ),
+    )
+
+
+def resolve_trusted_tenant_runtime_entrypoint(
+    entrypoint_id: object,
+) -> TrustedTenantRuntimeEntrypointDescriptor | None:
+    normalized_entrypoint_id = _as_text(entrypoint_id)
+    for descriptor in build_trusted_tenant_runtime_entrypoint_catalog():
+        if descriptor.entrypoint_id == normalized_entrypoint_id:
+            return descriptor
+    return None
+
+
 def build_admin_runtime_error(*, code: str, message: str) -> dict[str, str]:
     return {
         "code": _as_text(code),
@@ -231,6 +326,47 @@ def build_admin_runtime_envelope(
     }
 
 
+def build_trusted_tenant_runtime_error(*, code: str, message: str) -> dict[str, str]:
+    return {
+        "code": _as_text(code),
+        "message": _as_text(message),
+    }
+
+
+def build_trusted_tenant_runtime_envelope(
+    *,
+    rollout_band: str,
+    exposure_status: str,
+    tenant_scope: dict[str, Any],
+    requested_slice_id: str,
+    slice_id: str,
+    entrypoint_id: str,
+    read_write_posture: str,
+    shell_state: dict[str, Any],
+    surface_payload: dict[str, Any] | None,
+    shell_composition: dict[str, Any] | None = None,
+    warnings: list[str] | tuple[str, ...] | None = None,
+    error: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if read_write_posture != "read-only":
+        raise ValueError("trusted tenant runtime envelope read_write_posture must be read-only")
+    return {
+        "schema": TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
+        "rollout_band": rollout_band,
+        "exposure_status": exposure_status,
+        "tenant_scope": dict(tenant_scope),
+        "requested_slice_id": requested_slice_id,
+        "slice_id": slice_id,
+        "entrypoint_id": entrypoint_id,
+        "read_write_posture": read_write_posture,
+        "shell_state": dict(shell_state),
+        "surface_payload": surface_payload,
+        "shell_composition": shell_composition,
+        "warnings": list(warnings or []),
+        "error": error,
+    }
+
+
 __all__ = [
     "ADMIN_AWS_CSM_ONBOARDING_REQUEST_SCHEMA",
     "ADMIN_AWS_CSM_ONBOARDING_SURFACE_SCHEMA",
@@ -250,5 +386,15 @@ __all__ = [
     "build_admin_runtime_entrypoint_catalog",
     "build_admin_runtime_envelope",
     "build_admin_runtime_error",
+    "build_trusted_tenant_runtime_envelope",
+    "build_trusted_tenant_runtime_entrypoint_catalog",
+    "build_trusted_tenant_runtime_error",
     "resolve_admin_runtime_entrypoint",
+    "resolve_trusted_tenant_runtime_entrypoint",
+    "TRUSTED_TENANT_HOME_SURFACE_SCHEMA",
+    "TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID",
+    "TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA",
+    "TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA",
+    "TRUSTED_TENANT_RUNTIME_REQUIRED_ENVELOPE_KEYS",
+    "TrustedTenantRuntimeEntrypointDescriptor",
 ]

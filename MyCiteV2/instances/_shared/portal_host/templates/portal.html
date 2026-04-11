@@ -40,12 +40,14 @@
   data-tenant-id="{{ tenant_id }}"
   data-host-shape="{{ host_shape }}"
   data-analytics-domain="{{ analytics_domain }}"
+  data-shell-endpoint="{{ shell_endpoint }}"
+  data-runtime-envelope-schema="{{ runtime_envelope_schema }}"
 >
   <!-- shell-template: v2-composition build={{ portal_build_id }} -->
   <script type="application/json" id="v2-bootstrap-shell-request">{{ bootstrap_shell_request | tojson }}</script>
   <noscript>
     <p style="margin:12px;padding:12px;background:#fff3cd;border:1px solid #ffc107;font-family:sans-serif">
-      This portal requires JavaScript. The shell loads composition from <code>POST /portal/api/v2/admin/shell</code>.
+      This portal requires JavaScript. The shell loads composition from <code>POST {{ shell_endpoint }}</code>.
     </p>
   </noscript>
   <div
@@ -85,7 +87,7 @@
 
     <div class="ide-body">
       <aside class="ide-activitybar" aria-label="Activity bar">
-        <a class="ide-logo" href="/portal/system" aria-label="Go to SYSTEM">
+        <a class="ide-logo" href="{{ logo_href }}" aria-label="Go to portal home">
           <img src="/portal/static/icons/logos/fnd.svg" alt="" width="28" height="28" />
         </a>
         <nav id="v2-activity-nav" class="ide-activitynav" aria-label="Primary navigation"></nav>
@@ -122,7 +124,7 @@
         <div class="pagehead pagehead--withTools">
           <div class="pagehead__meta">
             <div class="pagehead__title" id="v2-workbench-title">Home</div>
-            <div class="pagehead__sub" id="v2-workbench-subtitle">Loading admin shell…</div>
+            <div class="pagehead__sub" id="v2-workbench-subtitle">{{ shell_loading_label }}</div>
           </div>
           <label class="themebar pagehead__theme" aria-label="Portal theme selector">
             <span class="themebar__label">Theme</span>

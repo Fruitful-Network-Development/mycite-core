@@ -20,26 +20,54 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.portal_host import V2PortalHostConfig, create_app
-from MyCiteV2.instances._shared.portal_host.app import HOST_SHAPE, V2_PORTAL_HEALTH_SCHEMA
-from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
-    ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA,
-    ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
-    ADMIN_RUNTIME_ENVELOPE_SCHEMA,
-)
-from MyCiteV2.packages.ports.datum_store import SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA
-from MyCiteV2.packages.state_machine.hanus_shell import (
-    ADMIN_ENTRYPOINT_ID,
-    ADMIN_HOME_STATUS_SLICE_ID,
-    ADMIN_SHELL_COMPOSITION_SCHEMA,
-    ADMIN_SHELL_REQUEST_SCHEMA,
-    ADMIN_TOOL_REGISTRY_SLICE_ID,
-    AWS_CSM_SANDBOX_SLICE_ID,
-    AWS_NARROW_WRITE_ENTRYPOINT_ID,
-    AWS_READ_ONLY_ENTRYPOINT_ID,
-    AWS_READ_ONLY_SLICE_ID,
-    DATUM_RESOURCE_WORKBENCH_SLICE_ID,
-)
+if HAS_FLASK:
+    from MyCiteV2.instances._shared.portal_host import V2PortalHostConfig, create_app
+    from MyCiteV2.instances._shared.portal_host.app import HOST_SHAPE, V2_PORTAL_HEALTH_SCHEMA
+    from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
+        ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA,
+        ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
+        ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    )
+    from MyCiteV2.instances._shared.runtime.runtime_platform import TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA
+    from MyCiteV2.packages.ports.datum_store import SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA
+    from MyCiteV2.packages.state_machine.hanus_shell import (
+        ADMIN_ENTRYPOINT_ID,
+        ADMIN_HOME_STATUS_SLICE_ID,
+        ADMIN_SHELL_COMPOSITION_SCHEMA,
+        ADMIN_SHELL_REQUEST_SCHEMA,
+        ADMIN_TOOL_REGISTRY_SLICE_ID,
+        AWS_CSM_SANDBOX_SLICE_ID,
+        AWS_NARROW_WRITE_ENTRYPOINT_ID,
+        AWS_READ_ONLY_ENTRYPOINT_ID,
+        AWS_READ_ONLY_SLICE_ID,
+        DATUM_RESOURCE_WORKBENCH_SLICE_ID,
+    )
+    from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
+        BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+        TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA,
+    )
+else:  # pragma: no cover
+    V2PortalHostConfig = object  # type: ignore[assignment]
+    create_app = None  # type: ignore[assignment]
+    HOST_SHAPE = "v2_native"
+    V2_PORTAL_HEALTH_SCHEMA = "mycite.v2.portal.health.v1"
+    ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA = "mycite.v2.admin.aws.narrow_write.request.v1"
+    ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.aws.read_only.request.v1"
+    ADMIN_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.admin.runtime.envelope.v1"
+    TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.portal.runtime.envelope.v1"
+    SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA = "mycite.v2.data.system_resource_workbench.surface.v1"
+    ADMIN_ENTRYPOINT_ID = "admin.shell_entry"
+    ADMIN_HOME_STATUS_SLICE_ID = "admin_band0.home_status"
+    ADMIN_SHELL_COMPOSITION_SCHEMA = "mycite.v2.admin.shell.composition.v1"
+    ADMIN_SHELL_REQUEST_SCHEMA = "mycite.v2.admin.shell.request.v1"
+    ADMIN_TOOL_REGISTRY_SLICE_ID = "admin_band0.tool_registry"
+    AWS_CSM_SANDBOX_SLICE_ID = "admin_band3.aws_csm_sandbox_surface"
+    AWS_NARROW_WRITE_ENTRYPOINT_ID = "admin.aws.narrow_write"
+    AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
+    AWS_READ_ONLY_SLICE_ID = "admin_band1.aws_read_only_surface"
+    DATUM_RESOURCE_WORKBENCH_SLICE_ID = "datum.resource_workbench"
+    BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID = "band1.portal_home_tenant_status"
+    TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA = "mycite.v2.portal.tenant_home.request.v1"
 
 
 def _live_profile(selected_sender: str = "technicalcontact@trappfamilyfarm.com") -> dict[str, object]:
@@ -106,6 +134,36 @@ def _build_config(temp_root: Path, *, aws_status_file: Path | None = None) -> V2
         aws_status_file=aws_status_file,
         aws_audit_storage_file=private_dir / "local_audit" / "v2_aws_narrow_write.ndjson",
         admin_audit_storage_file=private_dir / "local_audit" / "v2_admin.ndjson",
+    )
+
+
+def _write_publication_home_data(config: V2PortalHostConfig) -> None:
+    (config.data_dir / "system" / "anthology.json").write_text(
+        json.dumps(
+            {
+                "0-0-1": [["0-0-1", "~", "0-0-0"], ["time-ordinal-position"]],
+                "6-2-3": [
+                    ["6-3-3", "3-1-4", "f7472617070", "4-1-1", "3-2-3-17-77-2-6-3-1-6"],
+                    ["trappfamilyfarm.com"],
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (config.public_dir / "3-2-3-17-77-2-6-3-1-6.json").write_text(
+        json.dumps({"title": "trapp_family_farm", "entity_type": "legal_entity"}) + "\n",
+        encoding="utf-8",
+    )
+    (config.public_dir / "fnd-3-2-3-17-77-2-6-3-1-6.json").write_text(
+        json.dumps(
+            {
+                "summary": "Read-only summary for the trusted-tenant landing surface.",
+                "links": [{"href": "https://trappfamilyfarm.com"}],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
     )
 
 
@@ -305,6 +363,40 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertEqual(public_json.status_code, 200)
             self.assertEqual(public_json.get_json(), {"ok": True})
             public_json.close()
+
+    def test_portal_home_bootstraps_trusted_tenant_runtime_and_home_api_returns_band1_surface(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config = _build_config(root)
+            _write_publication_home_data(config)
+            client = create_app(config).test_client()
+
+            portal = client.get("/portal/home")
+            self.assertEqual(portal.status_code, 200)
+            body = portal.get_data(as_text=True)
+            self.assertIn('data-shell-endpoint="/portal/api/v2/tenant/home"', body)
+            self.assertIn('data-runtime-envelope-schema="mycite.v2.portal.runtime.envelope.v1"', body)
+
+            home = client.post(
+                "/portal/api/v2/tenant/home",
+                json={
+                    "schema": TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA,
+                    "requested_slice_id": BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+            )
+            self.assertEqual(home.status_code, 200)
+            payload = home.get_json() or {}
+            self.assertEqual(payload["schema"], TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA)
+            self.assertEqual(payload["slice_id"], BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID)
+            self.assertEqual(
+                payload["surface_payload"]["tenant_profile"]["profile_title"],
+                "Trapp Family Farm",
+            )
+            self.assertEqual(
+                payload["surface_payload"]["tenant_profile"]["public_website_url"],
+                "https://trappfamilyfarm.com",
+            )
 
     def test_portal_static_css_and_shell_markup(self) -> None:
         with TemporaryDirectory() as temp_dir:

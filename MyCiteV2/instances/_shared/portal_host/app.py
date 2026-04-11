@@ -15,7 +15,11 @@ from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
     run_admin_aws_read_only,
 )
 from MyCiteV2.instances._shared.runtime.admin_runtime import run_admin_shell_entry
-from MyCiteV2.instances._shared.runtime.runtime_platform import ADMIN_RUNTIME_ENVELOPE_SCHEMA
+from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
+)
+from MyCiteV2.instances._shared.runtime.tenant_portal_runtime import run_trusted_tenant_portal_home
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_HOME_STATUS_SLICE_ID,
     ADMIN_SHELL_REQUEST_SCHEMA,
@@ -26,6 +30,11 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
     INTERNAL_ADMIN_SCOPE_ID,
     build_portal_activity_dispatch_bodies,
+)
+from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
+    BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+    TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA,
+    build_trusted_tenant_portal_dispatch_bodies,
 )
 from MyCiteV2.packages.adapters.filesystem import (
     AnalyticsEventPathResolver,
@@ -274,6 +283,18 @@ def _bootstrap_request_for_slug(slug: str, tenant_id: str) -> dict[str, Any]:
     })
 
 
+def _tenant_portal_bootstrap_request(tenant_id: str) -> dict[str, Any]:
+    bodies = build_trusted_tenant_portal_dispatch_bodies(portal_tenant_id=tenant_id)
+    return bodies.get(
+        BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+        {
+            "schema": TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA,
+            "requested_slice_id": BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+            "tenant_scope": {"scope_id": tenant_id, "audience": "trusted-tenant"},
+        },
+    )
+
+
 def _json_payload() -> dict[str, Any]:
     payload = request.get_json(silent=True)
     return payload if isinstance(payload, dict) else {}
@@ -288,13 +309,22 @@ def _runtime_status_code(envelope: dict[str, Any]) -> int:
         return 403
     if code in {"slice_unknown", "status_snapshot_not_found"}:
         return 404
-    if code in {"status_source_not_configured", "audit_log_not_configured"}:
+    if code in {
+        "status_source_not_configured",
+        "audit_log_not_configured",
+        "publication_source_not_configured",
+    }:
         return 503
+    if code == "tenant_scope_mismatch":
+        return 403
     return 400
 
 
 def _runtime_response(envelope: dict[str, Any]) -> tuple[Any, int]:
-    if envelope.get("schema") != ADMIN_RUNTIME_ENVELOPE_SCHEMA:
+    if envelope.get("schema") not in {
+        ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+        TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
+    }:
         return (
             jsonify(
                 {
@@ -400,21 +430,38 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         return jsonify(payload), 200 if payload["ok"] else 503
 
     def _portal_shell_page(slug: str = "") -> str:
-        bootstrap_shell_request = _bootstrap_request_for_slug(slug, host_config.tenant_id)
         return render_template(
             "portal.html",
             tenant_id=host_config.tenant_id,
             host_shape=HOST_SHAPE,
             analytics_domain=host_config.analytics_domain,
-            bootstrap_shell_request=bootstrap_shell_request,
             portal_build_id=PORTAL_BUILD_ID,
+            bootstrap_shell_request=_bootstrap_request_for_slug(slug, host_config.tenant_id),
+            runtime_envelope_schema=ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+            shell_endpoint="/portal/api/v2/admin/shell",
+            shell_loading_label="Loading admin shell…",
+            logo_href="/portal/system",
+        )
+
+    def _tenant_portal_page() -> str:
+        return render_template(
+            "portal.html",
+            tenant_id=host_config.tenant_id,
+            host_shape=HOST_SHAPE,
+            analytics_domain=host_config.analytics_domain,
+            bootstrap_shell_request=_tenant_portal_bootstrap_request(host_config.tenant_id),
+            portal_build_id=PORTAL_BUILD_ID,
+            runtime_envelope_schema=TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
+            shell_endpoint="/portal/api/v2/tenant/home",
+            shell_loading_label="Loading portal home…",
+            logo_href="/portal/home",
         )
 
     @app.get("/portal")
     @app.get("/portal/")
     @app.get("/portal/home")
     def portal_home() -> str:
-        return _portal_shell_page("home")
+        return _tenant_portal_page()
 
     @app.get("/portal/system")
     @app.get("/portal/system/<path:tool_slug>")
@@ -433,6 +480,21 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     aws_status_file=host_config.aws_status_file,
                     aws_csm_sandbox_status_file=host_config.aws_csm_sandbox_status_file,
                     data_dir=host_config.data_dir,
+                )
+            )
+        except ValueError as exc:
+            return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": "invalid_request", "message": str(exc)}}), 400
+
+    @app.post("/portal/api/v2/tenant/home")
+    def trusted_tenant_home() -> tuple[Any, int]:
+        try:
+            return _runtime_response(
+                run_trusted_tenant_portal_home(
+                    _json_payload(),
+                    data_dir=host_config.data_dir,
+                    public_dir=host_config.public_dir,
+                    portal_tenant_id=host_config.tenant_id,
+                    tenant_domain=host_config.analytics_domain,
                 )
             )
         except ValueError as exc:
