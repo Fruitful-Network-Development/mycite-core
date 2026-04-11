@@ -8,15 +8,19 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND1_AWS_NAME,
     ADMIN_BAND2_AWS_NAME,
     ADMIN_BAND3_AWS_SANDBOX_NAME,
+    ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
     ADMIN_ENTRYPOINT_ID,
     ADMIN_EXPOSURE_INTERNAL_ONLY,
     ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY,
+    ADMIN_EXPOSURE_TRUSTED_TENANT_CSM_ONBOARDING,
     ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
     ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
     ADMIN_HOME_STATUS_SLICE_ID,
     ADMIN_TOOL_LAUNCH_CONTRACT,
     ADMIN_TOOL_SURFACE_BOUNDED_WRITE,
     ADMIN_TOOL_SURFACE_READ_ONLY,
+    AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
+    AWS_CSM_ONBOARDING_SLICE_ID,
     AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
     AWS_CSM_SANDBOX_SLICE_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
@@ -33,9 +37,14 @@ ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.aws.read_only.request.v1"
 ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA = "mycite.v2.admin.aws.read_only.surface.v1"
 ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA = "mycite.v2.admin.aws.narrow_write.request.v1"
 ADMIN_AWS_NARROW_WRITE_SURFACE_SCHEMA = "mycite.v2.admin.aws.narrow_write.surface.v1"
+ADMIN_AWS_CSM_ONBOARDING_REQUEST_SCHEMA = "mycite.v2.admin.aws.csm_onboarding.request.v1"
+ADMIN_AWS_CSM_ONBOARDING_SURFACE_SCHEMA = "mycite.v2.admin.aws.csm_onboarding.surface.v1"
 
 AWS_NARROW_WRITE_RECOVERY_REFERENCE = (
     "docs/plans/post_mvp_rollout/admin_first/aws_narrow_write_recovery.md"
+)
+AWS_CSM_ONBOARDING_RECOVERY_REFERENCE = (
+    "docs/plans/post_mvp_rollout/post_aws_tool_platform/read_only_and_bounded_write_patterns.md"
 )
 
 ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT = "admin-shell-entry"
@@ -158,6 +167,18 @@ def build_admin_runtime_entrypoint_catalog() -> tuple[AdminRuntimeEntrypointDesc
             surface_schema=ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA,
             required_configuration=("aws_csm_sandbox_status_file",),
         ),
+        AdminRuntimeEntrypointDescriptor(
+            entrypoint_id=AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
+            callable_path="MyCiteV2.instances._shared.runtime.admin_aws_runtime.run_admin_aws_csm_onboarding",
+            slice_id=AWS_CSM_ONBOARDING_SLICE_ID,
+            admin_band=ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
+            exposure_status=ADMIN_EXPOSURE_TRUSTED_TENANT_CSM_ONBOARDING,
+            read_write_posture="write",
+            launch_contract=ADMIN_TOOL_LAUNCH_CONTRACT,
+            surface_pattern=ADMIN_TOOL_SURFACE_BOUNDED_WRITE,
+            surface_schema=ADMIN_AWS_CSM_ONBOARDING_SURFACE_SCHEMA,
+            required_configuration=("aws_status_file", "audit_storage_file"),
+        ),
     )
 
 
@@ -211,6 +232,8 @@ def build_admin_runtime_envelope(
 
 
 __all__ = [
+    "ADMIN_AWS_CSM_ONBOARDING_REQUEST_SCHEMA",
+    "ADMIN_AWS_CSM_ONBOARDING_SURFACE_SCHEMA",
     "ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA",
     "ADMIN_AWS_NARROW_WRITE_SURFACE_SCHEMA",
     "ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA",
@@ -221,6 +244,7 @@ __all__ = [
     "ADMIN_RUNTIME_REQUIRED_ENVELOPE_KEYS",
     "ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT",
     "ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA",
+    "AWS_CSM_ONBOARDING_RECOVERY_REFERENCE",
     "AWS_NARROW_WRITE_RECOVERY_REFERENCE",
     "AdminRuntimeEntrypointDescriptor",
     "build_admin_runtime_entrypoint_catalog",

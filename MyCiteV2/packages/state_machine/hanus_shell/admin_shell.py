@@ -17,11 +17,13 @@ ADMIN_BAND0_NAME = "Admin Band 0 Internal Admin Replacement"
 ADMIN_BAND1_AWS_NAME = "Admin Band 1 Trusted-Tenant AWS Read-Only"
 ADMIN_BAND2_AWS_NAME = "Admin Band 2 Trusted-Tenant AWS Narrow Write"
 ADMIN_BAND3_AWS_SANDBOX_NAME = "Admin Band 3 Internal AWS-CSM Sandbox"
+ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME = "Admin Band 4 Trusted-Tenant AWS-CSM Onboarding"
 
 ADMIN_EXPOSURE_INTERNAL_ONLY = "internal-only"
 ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY = "internal-sandbox-read-only"
 ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY = "trusted-tenant-read-only"
 ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE = "trusted-tenant-narrow-write"
+ADMIN_EXPOSURE_TRUSTED_TENANT_CSM_ONBOARDING = "trusted-tenant-csm-onboarding"
 ADMIN_ENTRYPOINT_ID = "admin.shell_entry"
 
 ADMIN_SHELL_ENTRY_SLICE_ID = "admin_band0.shell_entry"
@@ -30,9 +32,11 @@ ADMIN_TOOL_REGISTRY_SLICE_ID = "admin_band0.tool_registry"
 AWS_READ_ONLY_SLICE_ID = "admin_band1.aws_read_only_surface"
 AWS_NARROW_WRITE_SLICE_ID = "admin_band2.aws_narrow_write_surface"
 AWS_CSM_SANDBOX_SLICE_ID = "admin_band3.aws_csm_sandbox_surface"
+AWS_CSM_ONBOARDING_SLICE_ID = "admin_band4.aws_csm_onboarding_surface"
 AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
 AWS_NARROW_WRITE_ENTRYPOINT_ID = "admin.aws.narrow_write"
 AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID = "admin.aws.csm_sandbox_read_only"
+AWS_CSM_ONBOARDING_ENTRYPOINT_ID = "admin.aws.csm_onboarding"
 
 INTERNAL_ADMIN_SCOPE_ID = "internal-admin"
 ADMIN_TOOL_DEFAULT_POSTURE = "deny-by-default"
@@ -409,6 +413,22 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             internal_only_reason="",
             launchable=True,
         ),
+        AdminToolRegistryEntry(
+            tool_id="aws_csm_onboarding",
+            label="AWS-CSM Mailbox Onboarding",
+            slice_id=AWS_CSM_ONBOARDING_SLICE_ID,
+            entrypoint_id=AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
+            admin_band=ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
+            exposure_status="implemented_trusted_tenant_csm_onboarding",
+            read_write_posture="write",
+            surface_pattern=ADMIN_TOOL_SURFACE_BOUNDED_WRITE,
+            status_summary="launchable_bounded_onboarding",
+            audience="trusted-tenant-admin",
+            internal_only_reason="",
+            audit_required=True,
+            read_after_write_required=True,
+            launchable=True,
+        ),
     )
 
 
@@ -633,7 +653,7 @@ def resolve_admin_shell_request(request: AdminShellRequest | dict[str, Any] | No
 
 def map_surface_to_active_service(active_surface_id: str) -> str:
     sid = _as_text(active_surface_id)
-    if sid in {AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID}:
+    if sid in {AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID}:
         return "aws"
     if sid == DATUM_RESOURCE_WORKBENCH_SLICE_ID:
         return "datum"
@@ -644,7 +664,7 @@ def map_surface_to_active_service(active_surface_id: str) -> str:
 
 def shell_composition_mode_for_surface(active_surface_id: str) -> str:
     sid = _as_text(active_surface_id)
-    if sid in {AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID}:
+    if sid in {AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID}:
         return "tool"
     return "system"
 
@@ -750,11 +770,13 @@ __all__ = [
     "ADMIN_BAND1_AWS_NAME",
     "ADMIN_BAND2_AWS_NAME",
     "ADMIN_BAND3_AWS_SANDBOX_NAME",
+    "ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME",
     "ADMIN_ENTRYPOINT_ID",
     "ADMIN_EXPOSURE_INTERNAL_ONLY",
     "ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY",
     "ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE",
     "ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY",
+    "ADMIN_EXPOSURE_TRUSTED_TENANT_CSM_ONBOARDING",
     "ADMIN_HOME_STATUS_SLICE_ID",
     "ADMIN_SHELL_COMPOSITION_SCHEMA",
     "ADMIN_SHELL_ENTRY_SLICE_ID",
@@ -771,6 +793,8 @@ __all__ = [
     "ADMIN_TOOL_REGISTRY_SLICE_ID",
     "ADMIN_TOOL_SURFACE_BOUNDED_WRITE",
     "ADMIN_TOOL_SURFACE_READ_ONLY",
+    "AWS_CSM_ONBOARDING_ENTRYPOINT_ID",
+    "AWS_CSM_ONBOARDING_SLICE_ID",
     "AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID",
     "AWS_CSM_SANDBOX_SLICE_ID",
     "AWS_NARROW_WRITE_SLICE_ID",

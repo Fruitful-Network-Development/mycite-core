@@ -9,6 +9,7 @@ from typing import Any
 from flask import Flask, Response, abort, jsonify, render_template, request, send_from_directory
 
 from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
+    run_admin_aws_csm_onboarding,
     run_admin_aws_csm_sandbox_read_only,
     run_admin_aws_narrow_write,
     run_admin_aws_read_only,
@@ -366,6 +367,20 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         try:
             return _runtime_response(
                 run_admin_aws_narrow_write(
+                    _json_payload(),
+                    aws_status_file=_required_live_aws_status_file(host_config),
+                    audit_storage_file=host_config.aws_audit_storage_file,
+                )
+            )
+        except ValueError as exc:
+            return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": "invalid_request", "message": str(exc)}}), 400
+
+    @app.post("/portal/api/v2/admin/aws/csm-onboarding")
+    def admin_aws_csm_onboarding() -> tuple[Any, int]:
+        """Trusted-tenant bounded AWS-CSM mailbox onboarding (shell registry entry ``admin.aws.csm_onboarding``)."""
+        try:
+            return _runtime_response(
+                run_admin_aws_csm_onboarding(
                     _json_payload(),
                     aws_status_file=_required_live_aws_status_file(host_config),
                     audit_storage_file=host_config.aws_audit_storage_file,

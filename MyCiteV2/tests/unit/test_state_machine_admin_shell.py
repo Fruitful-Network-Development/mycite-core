@@ -14,6 +14,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND1_AWS_NAME,
     ADMIN_BAND2_AWS_NAME,
     ADMIN_BAND3_AWS_SANDBOX_NAME,
+    ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
     ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
     ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
     ADMIN_HOME_STATUS_SLICE_ID,
@@ -21,6 +22,8 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_DESCRIPTOR_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
+    AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
+    AWS_CSM_ONBOARDING_SLICE_ID,
     AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
     AWS_CSM_SANDBOX_SLICE_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
@@ -202,6 +205,26 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "default_posture": "deny-by-default",
                     "launchable": True,
                 },
+                {
+                    "schema": ADMIN_TOOL_DESCRIPTOR_SCHEMA,
+                    "tool_id": "aws_csm_onboarding",
+                    "label": "AWS-CSM Mailbox Onboarding",
+                    "slice_id": AWS_CSM_ONBOARDING_SLICE_ID,
+                    "entrypoint_id": AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
+                    "admin_band": ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
+                    "exposure_status": "implemented_trusted_tenant_csm_onboarding",
+                    "read_write_posture": "write",
+                    "surface_pattern": "bounded-write",
+                    "status_summary": "launchable_bounded_onboarding",
+                    "audience": "trusted-tenant-admin",
+                    "internal_only_reason": "",
+                    "audit_required": True,
+                    "read_after_write_required": True,
+                    "discovery_mode": "catalog-driven",
+                    "launch_contract": "shell-owned-registry",
+                    "default_posture": "deny-by-default",
+                    "launchable": True,
+                },
             ],
         )
         self.assertNotIn("newsletter-admin", json.dumps(tool_entries, sort_keys=True))
@@ -244,6 +267,14 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         self.assertTrue(write_allowed.allowed)
         self.assertEqual(write_allowed.entrypoint_id, AWS_NARROW_WRITE_ENTRYPOINT_ID)
         self.assertEqual(write_allowed.exposure_status, "implemented_trusted_tenant_narrow_write")
+
+        onboarding_allowed = resolve_admin_tool_launch(
+            slice_id=AWS_CSM_ONBOARDING_SLICE_ID,
+            audience="trusted-tenant",
+            expected_entrypoint_id=AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
+        )
+        self.assertTrue(onboarding_allowed.allowed)
+        self.assertEqual(onboarding_allowed.entrypoint_id, AWS_CSM_ONBOARDING_ENTRYPOINT_ID)
 
     def test_request_contract_rejects_invalid_schema_and_audience(self) -> None:
         with self.assertRaisesRegex(ValueError, "admin_shell_request.schema"):

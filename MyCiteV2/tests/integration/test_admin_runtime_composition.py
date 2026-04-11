@@ -23,6 +23,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_SHELL_COMPOSITION_SCHEMA,
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
+    AWS_CSM_ONBOARDING_SLICE_ID,
     AWS_CSM_SANDBOX_SLICE_ID,
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_SLICE_ID,
@@ -70,10 +71,15 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             self.assertEqual(available_slice_ids, [ADMIN_HOME_STATUS_SLICE_ID, ADMIN_TOOL_REGISTRY_SLICE_ID])
 
             available_tool_entries = result["surface_payload"]["available_tool_slices"]
-            self.assertEqual(len(available_tool_entries), 3)
+            self.assertEqual(len(available_tool_entries), 4)
             self.assertEqual(
                 [entry["slice_id"] for entry in available_tool_entries],
-                [AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID],
+                [
+                    AWS_READ_ONLY_SLICE_ID,
+                    AWS_NARROW_WRITE_SLICE_ID,
+                    AWS_CSM_SANDBOX_SLICE_ID,
+                    AWS_CSM_ONBOARDING_SLICE_ID,
+                ],
             )
             self.assertTrue(all(entry["launchable"] for entry in available_tool_entries))
             self.assertEqual(result["surface_payload"]["gated_tool_slices"], [])
@@ -102,10 +108,15 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         self.assertEqual(result["surface_payload"]["default_posture"], "deny-by-default")
         self.assertEqual(
             result["surface_payload"]["launchable_tool_slice_ids"],
-            [AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID],
+            [
+                AWS_READ_ONLY_SLICE_ID,
+                AWS_NARROW_WRITE_SLICE_ID,
+                AWS_CSM_SANDBOX_SLICE_ID,
+                AWS_CSM_ONBOARDING_SLICE_ID,
+            ],
         )
         self.assertEqual(result["surface_payload"]["gated_tool_slice_ids"], [])
-        self.assertEqual(len(result["surface_payload"]["tool_entries"]), 3)
+        self.assertEqual(len(result["surface_payload"]["tool_entries"]), 4)
         self.assertNotIn("newsletter-admin", json.dumps(result["surface_payload"], sort_keys=True))
         self.assertEqual(result["shell_composition"]["composition_mode"], "system")
         self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "tool_registry")
