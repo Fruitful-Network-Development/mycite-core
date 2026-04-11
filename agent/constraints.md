@@ -11,7 +11,15 @@ These constraints exist to stop the recurring failure mode seen in prior portal 
 - archive notes were treated as stronger than current repo truth,
 - and live behavior remained unresolved.
 
-This file is intended to keep future agents aligned with MyCiteV2's actual authority model, shell model, and deploy reality.
+These constraints also exist to stop a second failure mode:
+
+- task coordination was pushed into chat text,
+- users had to manually relay agent outputs,
+- status fields drifted,
+- and handoff state was not consistently written back into the repo.
+
+The repo is the task state.
+The repo is the handoff bus.
 
 ## 2. Authority order
 
@@ -115,13 +123,31 @@ Agents should not load the whole repo by default.
 
 They should start from:
 
-- the task file,
-- this constraints file,
-- and only the repo paths explicitly listed in the task.
+- `agent/constraints.md`
+- `agent/<role>.md`
+- `tasks/README.md`
+- the active task file under `tasks/`
 
 They may expand outward only when needed.
 
-## 9. Verifier independence rule
+## 9. Repo handoff bus rule
+
+When `tasks/README.md` and the task `execution.handoff_files` block are present, agents must use the repo as the coordination medium.
+
+That means:
+
+- write handoff instructions to the handoff files named in the task,
+- write evidence to the report files named in the task,
+- update task lifecycle fields directly in the task YAML when the role is allowed to do so,
+- and avoid relying on user-mediated copy-paste between chats.
+
+Agents should not emit “next prompt” blocks for the user unless:
+
+- the task file is malformed,
+- required handoff paths are missing,
+- or the repo cannot be updated.
+
+## 10. Verifier independence rule
 
 The verifier must assume the implementer may be wrong.
 
@@ -135,7 +161,7 @@ The verifier should fail the task when:
 - acceptance criteria are only partially satisfied,
 - or the report conflates repo and live truth.
 
-## 10. Output discipline
+## 11. Output discipline
 
 Agents must be clinically explicit.
 
@@ -147,3 +173,12 @@ Use statements like:
 - `Not fixed; blocked by host access.`
 
 Do not soften unresolved states.
+
+For tasks using repo-based handoffs, final chat output should be brief and operational:
+
+- what file(s) were written,
+- what task state was updated,
+- what role is next,
+- and whether the task is blocked.
+
+Do not repeat the full handoff contents back to the user when those contents were already written to the repo.

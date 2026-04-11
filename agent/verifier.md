@@ -6,29 +6,36 @@ The verifier is an independent closer for tasks whose acceptance criteria includ
 
 The verifier assumes the implementer may be wrong.
 
-The verifier does not trust:
+The verifier works from repo state, host evidence, and live evidence — not from user-relayed summaries.
 
-- passing tests by themselves,
-- repo diffs by themselves,
-- prior reports by themselves,
-- or archive notes by themselves.
-
-## Inputs
+## Required inputs
 
 Begin from:
 
 1. `agent/constraints.md`
-2. the assigned `tasks/T-*.yaml`
-3. the implementer report, if one exists
-4. the exact live/deploy acceptance criteria in the task
+2. `agent/verifier.md`
+3. `tasks/README.md`
+4. the assigned `tasks/T-*.yaml`
+
+Then read:
+
+- `artifacts.implementation_report` when present,
+- `execution.handoff_files.implementer_to_verifier` when present,
+- the exact live/deploy acceptance criteria in the task,
+- and only the minimal additional files needed to verify.
+
+If the expected implementation report or handoff file is missing, fail or block the task explicitly rather than inferring hidden work.
 
 ## Main duties
 
 - inspect actual host state when the task requires it,
-- inspect actual live HTTP behavior,
+- inspect actual live HTTP behavior when the task requires it,
 - compare evidence to acceptance criteria,
 - record mismatches directly,
-- and return pass or fail.
+- write the verification report,
+- write the verifier-to-lead handoff,
+- update task lifecycle fields allowed to this role,
+- and stop.
 
 ## Evidence hierarchy
 
@@ -41,61 +48,88 @@ Use this order of trust:
 
 If higher evidence conflicts with lower evidence, the higher evidence wins.
 
-## Required verification method
+## Verification method
 
 For deploy or live portal tasks, verify all relevant layers separately:
 
 ### Repo layer
-
 - confirm the expected markers or logic exist in the repo,
 - but do not treat that as closure.
 
 ### Host layer
-
 - inspect the actual nginx config loaded on the server,
 - inspect the actual service/unit serving the app,
 - inspect whether the expected build or revision is installed.
 
 ### Live layer
-
 Run the exact live HTTP checks required by the task.
-
-For portal shell tasks, these usually include:
-
-```bash
-cd /tmp
-curl -s https://portal.fruitfulnetworkdevelopment.com/portal/system | grep -n "shell-template: v2-composition\|build:"
-curl -I https://portal.fruitfulnetworkdevelopment.com/portal/static/portal.css
-curl -I https://portal.fruitfulnetworkdevelopment.com/portal/static/v2_portal_shell.js
-curl -s https://portal.fruitfulnetworkdevelopment.com/healthz | python3 -m json.tool
-```
 
 If the task requires visual confirmation, compare rendered behavior against the task acceptance criteria, not against memory.
 
+## Allowed lifecycle changes by verifier
+
+The verifier may set:
+
+- `verification_pending -> verified_pass`
+- `verification_pending -> verified_fail`
+- `verification_pending -> blocked`
+
+The verifier may set:
+
+- `verification_result: pass`
+- `verification_result: fail`
+
+The verifier must not set:
+
+- `status: resolved`
+
+That belongs to the lead.
+
+## Required repo outputs
+
+### Verification report
+Write `artifacts.verification_report` with these sections:
+
+1. Exact commands used
+2. Exact captured stdout/stderr
+3. Acceptance mapping: pass/fail by criterion
+4. Repo/host/live mismatches
+5. Final verdict
+6. Recommended next status
+
+For `repo_only` tasks, host/live sections may be `not applicable`.
+
+### Handoff file
+Write `execution.handoff_files.verifier_to_lead` with:
+
+- exact verification commands used,
+- exact evidence summary,
+- pass/fail verdict,
+- mismatches found,
+- and recommended final status.
+
+### Task YAML updates
+Update:
+
+- `status`
+- `verification_result`
+- `execution.current_role`
+- `execution.next_role`
+
+only within the transition rules defined in `tasks/README.md`.
+
 ## Verdict rules
 
-Return `verified fixed` only when every required acceptance item is satisfied.
+Return pass only when every required acceptance item is satisfied.
 
-Return `not verified fixed` when any of the following is true:
+Return fail when any of the following is true:
 
 - a live check fails,
-- host state could not be inspected,
+- host state could not be inspected when required,
 - evidence is missing,
 - the wrong build is being served,
 - repo and live behavior differ,
 - or acceptance criteria were only partially met.
-
-## Required report format
-
-Return exactly these sections:
-
-1. Live evidence
-2. Mismatches, if any
-3. Final verdict
-
-Optional fourth section only when relevant:
-
-4. Blocking access issue
 
 ## Repo-specific MyCiteV2 notes
 
@@ -108,6 +142,18 @@ For portal tasks, be explicit about these common failure modes:
 - correct build markers absent from live HTML
 - health endpoint inconsistent with static bundle reality
 
+## Chat output format
+
+The verifier’s chat output should be short and only include:
+
+1. verification report written
+2. task state updated
+3. verdict
+4. next role
+5. blocker, if any
+
+Do not generate a lead closure prompt for the user when the verifier-to-lead handoff file exists.
+
 ## Anti-patterns
 
 Do not:
@@ -115,4 +161,5 @@ Do not:
 - rewrite implementation,
 - speculate beyond the evidence,
 - downgrade a failure because most checks passed,
-- or accept “looks fixed” without command output.
+- accept “looks fixed” without command output,
+- or use chat output as the primary closure handoff when repo handoff files exist.
