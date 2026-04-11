@@ -10,6 +10,8 @@ from MyCiteV2.packages.ports.audit_log import (
     AuditLogAppendReceipt,
     AuditLogAppendRequest,
     AuditLogPort,
+    AuditLogRecentWindowRequest,
+    AuditLogRecentWindowResult,
     AuditLogReadRequest,
     AuditLogReadResult,
     AuditLogRecord,
@@ -27,6 +29,22 @@ class FilesystemAuditLogAdapter(AuditLogPort):
         self._storage_file = Path(storage_file)
         self._clock = clock or (lambda: int(time.time() * 1000))
         self._id_factory = id_factory or (lambda: uuid.uuid4().hex)
+
+    def _iter_tail_lines(self, *, chunk_size: int = 4096):
+        with self._storage_file.open("rb") as handle:
+            handle.seek(0, 2)
+            position = handle.tell()
+            buffer = b""
+            while position > 0:
+                read_size = min(chunk_size, position)
+                position -= read_size
+                handle.seek(position)
+                chunk = handle.read(read_size)
+                pieces = (chunk + buffer).split(b"\n")
+                buffer = pieces[0]
+                for line in reversed(pieces[1:]):
+                    yield line
+            yield buffer
 
     def append_audit_record(self, request: AuditLogAppendRequest) -> AuditLogAppendReceipt:
         normalized_request = request if isinstance(request, AuditLogAppendRequest) else AuditLogAppendRequest.from_dict(request)
@@ -64,3 +82,36 @@ class FilesystemAuditLogAdapter(AuditLogPort):
                 return AuditLogReadResult(record=AuditLogRecord.from_dict(payload))
 
         return AuditLogReadResult(record=None)
+
+    def read_recent_audit_records(
+        self,
+        request: AuditLogRecentWindowRequest,
+    ) -> AuditLogRecentWindowResult:
+        normalized_request = (
+            request
+            if isinstance(request, AuditLogRecentWindowRequest)
+            else AuditLogRecentWindowRequest.from_dict(request)
+        )
+        if not self._storage_file.exists() or not self._storage_file.is_file():
+            return AuditLogRecentWindowResult(records=())
+
+        records: list[AuditLogRecord] = []
+        for raw_line in self._iter_tail_lines():
+            token = raw_line.strip()
+            if not token:
+                continue
+            try:
+                payload = json.loads(token.decode("utf-8"))
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            try:
+                record = AuditLogRecord.from_dict(payload)
+            except ValueError:
+                continue
+            records.append(record)
+            if len(records) >= normalized_request.limit:
+                break
+
+        return AuditLogRecentWindowResult(records=tuple(records))

@@ -42,8 +42,10 @@ class V2NativePortalHostBoundaryTests(unittest.TestCase):
     def test_host_does_not_expose_the_shape_b_health_route(self) -> None:
         source = (HOST_DIR / "app.py").read_text(encoding="utf-8")
         self.assertNotIn("/portal/api/v2/admin/bridge/health", source)
+        self.assertIn("/portal/status", source)
         self.assertIn("/portal/api/v2/admin/shell", source)
         self.assertIn("/portal/api/v2/tenant/home", source)
+        self.assertIn("/portal/api/v2/tenant/operational-status", source)
         self.assertIn("/portal/api/v2/data/system/resource-workbench", source)
 
     def test_portal_shell_js_has_no_fallback_catalog_nav(self) -> None:

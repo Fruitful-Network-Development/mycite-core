@@ -10,7 +10,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
     TRUSTED_TENANT_HOME_SURFACE_SCHEMA,
+    TRUSTED_TENANT_OPERATIONAL_STATUS_ENTRYPOINT_ID,
+    TRUSTED_TENANT_OPERATIONAL_STATUS_SURFACE_SCHEMA,
     TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID,
     TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
     TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA,
@@ -28,7 +31,10 @@ class PortalRuntimePlatformContractTests(unittest.TestCase):
 
         self.assertEqual(
             [entry["schema"] for entry in descriptors],
-            [TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA],
+            [
+                TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA,
+                TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA,
+            ],
         )
         self.assertEqual(
             descriptors,
@@ -45,6 +51,22 @@ class PortalRuntimePlatformContractTests(unittest.TestCase):
                     "surface_pattern": "tenant-home",
                     "surface_schema": TRUSTED_TENANT_HOME_SURFACE_SCHEMA,
                     "required_configuration": ["data_dir", "public_dir", "tenant_domain"],
+                },
+                {
+                    "schema": TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA,
+                    "entrypoint_id": TRUSTED_TENANT_OPERATIONAL_STATUS_ENTRYPOINT_ID,
+                    "callable_path": (
+                        "MyCiteV2.instances._shared.runtime.tenant_operational_status_runtime."
+                        "run_trusted_tenant_operational_status"
+                    ),
+                    "slice_id": BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+                    "rollout_band": "Band 1 Trusted-Tenant Read-Only",
+                    "exposure_status": "trusted-tenant-read-only",
+                    "read_write_posture": "read-only",
+                    "launch_contract": "admin-shell-entry",
+                    "surface_pattern": "tenant-operational-status",
+                    "surface_schema": TRUSTED_TENANT_OPERATIONAL_STATUS_SURFACE_SCHEMA,
+                    "required_configuration": ["audit_storage_file"],
                 }
             ],
         )
@@ -53,6 +75,12 @@ class PortalRuntimePlatformContractTests(unittest.TestCase):
         self.assertEqual(
             resolve_trusted_tenant_runtime_entrypoint(TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID).entrypoint_id,
             TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID,
+        )
+        self.assertEqual(
+            resolve_trusted_tenant_runtime_entrypoint(
+                TRUSTED_TENANT_OPERATIONAL_STATUS_ENTRYPOINT_ID
+            ).entrypoint_id,
+            TRUSTED_TENANT_OPERATIONAL_STATUS_ENTRYPOINT_ID,
         )
 
     def test_trusted_tenant_runtime_envelope_shape_is_fixed(self) -> None:

@@ -28,7 +28,11 @@ if HAS_FLASK:
         ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
         ADMIN_RUNTIME_ENVELOPE_SCHEMA,
     )
-    from MyCiteV2.instances._shared.runtime.runtime_platform import TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA
+    from MyCiteV2.instances._shared.runtime.runtime_platform import (
+        BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+        TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+        TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
+    )
     from MyCiteV2.packages.ports.datum_store import SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA
     from MyCiteV2.packages.state_machine.hanus_shell import (
         ADMIN_ENTRYPOINT_ID,
@@ -66,6 +70,8 @@ else:  # pragma: no cover
     AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
     AWS_READ_ONLY_SLICE_ID = "admin_band1.aws_read_only_surface"
     DATUM_RESOURCE_WORKBENCH_SLICE_ID = "datum.resource_workbench"
+    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID = "band1.operational_status_surface"
+    TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA = "mycite.v2.portal.operational_status.request.v1"
     BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID = "band1.portal_home_tenant_status"
     TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA = "mycite.v2.portal.tenant_home.request.v1"
 
@@ -396,6 +402,45 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertEqual(
                 payload["surface_payload"]["tenant_profile"]["public_website_url"],
                 "https://trappfamilyfarm.com",
+            )
+            self.assertEqual(
+                [entry["slice_id"] for entry in payload["surface_payload"]["available_slices"]],
+                [
+                    BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+                    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+                ],
+            )
+
+    def test_portal_status_bootstraps_operational_status_runtime_and_api_returns_band1_surface(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config = _build_config(root)
+            client = create_app(config).test_client()
+
+            portal = client.get("/portal/status")
+            self.assertEqual(portal.status_code, 200)
+            body = portal.get_data(as_text=True)
+            self.assertIn('data-shell-endpoint="/portal/api/v2/tenant/operational-status"', body)
+            self.assertIn('data-runtime-envelope-schema="mycite.v2.portal.runtime.envelope.v1"', body)
+
+            status = client.post(
+                "/portal/api/v2/tenant/operational-status",
+                json={
+                    "schema": TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+            )
+            self.assertEqual(status.status_code, 200)
+            payload = status.get_json() or {}
+            self.assertEqual(payload["schema"], TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA)
+            self.assertEqual(payload["slice_id"], BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID)
+            self.assertEqual(
+                payload["surface_payload"]["audit_persistence"]["health_state"],
+                "no_recent_persistence_evidence",
+            )
+            self.assertEqual(
+                payload["shell_composition"]["regions"]["workbench"]["kind"],
+                "operational_status",
             )
 
     def test_portal_static_css_and_shell_markup(self) -> None:

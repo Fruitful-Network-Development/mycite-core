@@ -11,9 +11,16 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
     TRUSTED_TENANT_HOME_SURFACE_SCHEMA,
+    TRUSTED_TENANT_OPERATIONAL_STATUS_ENTRYPOINT_ID,
+    TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+    TRUSTED_TENANT_OPERATIONAL_STATUS_SURFACE_SCHEMA,
     TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID,
     TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
+)
+from MyCiteV2.instances._shared.runtime.tenant_operational_status_runtime import (
+    run_trusted_tenant_operational_status,
 )
 from MyCiteV2.instances._shared.runtime.tenant_portal_runtime import run_trusted_tenant_portal_home
 from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
@@ -144,6 +151,118 @@ class TenantPortalRuntimeIntegrationTests(unittest.TestCase):
 
             self.assertEqual(result["error"]["code"], "tenant_scope_mismatch")
             self.assertEqual(result["slice_id"], BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID)
+
+    def test_operational_status_runtime_returns_degraded_safe_surface_when_no_recent_audit_exists(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            audit_storage_file = Path(temp_dir) / "audit.ndjson"
+
+            result = run_trusted_tenant_operational_status(
+                {
+                    "schema": TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+                audit_storage_file=audit_storage_file,
+                portal_tenant_id="tff",
+            )
+
+            self.assertEqual(result["schema"], TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA)
+            self.assertEqual(result["entrypoint_id"], TRUSTED_TENANT_OPERATIONAL_STATUS_ENTRYPOINT_ID)
+            self.assertEqual(result["surface_payload"]["schema"], TRUSTED_TENANT_OPERATIONAL_STATUS_SURFACE_SCHEMA)
+            self.assertIsNone(result["error"])
+            self.assertEqual(
+                result["surface_payload"]["audit_persistence"]["health_state"],
+                "no_recent_persistence_evidence",
+            )
+            self.assertEqual(
+                result["shell_composition"]["regions"]["workbench"]["kind"],
+                "operational_status",
+            )
+
+    def test_operational_status_runtime_returns_recent_persistence_when_records_exist(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            audit_storage_file = Path(temp_dir) / "audit.ndjson"
+            audit_storage_file.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "record_id": "audit-0001",
+                                "recorded_at_unix_ms": 1770000000001,
+                                "record": {"event_type": "shell.transition.accepted"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "record_id": "audit-0002",
+                                "recorded_at_unix_ms": 1770000000002,
+                                "record": {"event_type": "shell.transition.accepted"},
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_trusted_tenant_operational_status(
+                {
+                    "schema": TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+                audit_storage_file=audit_storage_file,
+                portal_tenant_id="tff",
+            )
+
+            self.assertEqual(
+                result["surface_payload"]["audit_persistence"]["health_state"],
+                "recent_persistence_observed",
+            )
+            self.assertEqual(
+                result["surface_payload"]["audit_persistence"]["latest_recorded_at_unix_ms"],
+                1770000000002,
+            )
+            self.assertEqual(
+                result["shell_composition"]["regions"]["inspector"]["kind"],
+                "operational_status_summary",
+            )
+
+    def test_operational_status_runtime_reports_unavailable_for_unreadable_storage(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            audit_storage_file = Path(temp_dir) / "audit.ndjson"
+            audit_storage_file.write_bytes(b"\x80\x81")
+
+            result = run_trusted_tenant_operational_status(
+                {
+                    "schema": TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+                audit_storage_file=audit_storage_file,
+                portal_tenant_id="tff",
+            )
+
+            self.assertIsNone(result["error"])
+            self.assertEqual(
+                result["surface_payload"]["audit_persistence"]["health_state"],
+                "unavailable",
+            )
+            self.assertEqual(
+                result["surface_payload"]["audit_persistence"]["storage_state"],
+                "unreadable",
+            )
+
+    def test_operational_status_runtime_rejects_cross_tenant_scope(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            result = run_trusted_tenant_operational_status(
+                {
+                    "schema": TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "other", "audience": "trusted-tenant"},
+                },
+                audit_storage_file=Path(temp_dir) / "audit.ndjson",
+                portal_tenant_id="tff",
+            )
+
+            self.assertEqual(result["error"]["code"], "tenant_scope_mismatch")
+            self.assertEqual(result["slice_id"], BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
     resolve_trusted_tenant_portal_request,
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
     TRUSTED_TENANT_HOME_SURFACE_SCHEMA,
     TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID,
     build_trusted_tenant_runtime_envelope,
@@ -43,6 +44,31 @@ def _normalize_request(payload: dict[str, Any] | None) -> TrustedTenantPortalReq
     if not isinstance(payload, dict):
         raise ValueError("trusted_tenant_portal_runtime.request_payload must be a dict")
     return TrustedTenantPortalRequest.from_dict(payload)
+
+
+def build_trusted_tenant_visible_slice_catalog() -> tuple[dict[str, Any], ...]:
+    return (
+        {
+            "slice_id": BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+            "label": "Portal Home and Tenant Status",
+            "exposure_status": "implemented_trusted_tenant_read_only",
+            "read_write_posture": "read-only",
+            "status_summary": "default_landing",
+            "surface_kind": "tenant_home_status",
+            "launchable": True,
+            "default_surface": True,
+        },
+        {
+            "slice_id": BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+            "label": "Operational Status",
+            "exposure_status": "implemented_trusted_tenant_read_only",
+            "read_write_posture": "read-only",
+            "status_summary": "read_only_status_surface",
+            "surface_kind": "operational_status",
+            "launchable": True,
+            "default_surface": False,
+        },
+    )
 
 
 def _activity_items(*, portal_tenant_id: str, nav_active_slice_id: str) -> list[dict[str, Any]]:
@@ -143,10 +169,10 @@ def _inspector_summary(summary: PublicationTenantSummary) -> dict[str, Any]:
 def _surface_payload(
     *,
     summary: PublicationTenantSummary,
+    available_slices: list[dict[str, Any]],
     selection_allowed: bool,
     selection_reason: str = "",
 ) -> dict[str, Any]:
-    slice_catalog = [entry.to_dict() for entry in build_trusted_tenant_portal_surface_catalog()]
     payload = {
         "schema": TRUSTED_TENANT_HOME_SURFACE_SCHEMA,
         "active_surface_id": BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
@@ -158,7 +184,7 @@ def _surface_payload(
             "audience": "trusted-tenant",
         },
         "tenant_profile": summary.to_dict(),
-        "available_slices": slice_catalog,
+        "available_slices": list(available_slices),
         "slice_gate_posture": {
             "hidden_write_actions": "blocked",
             "provider_admin_surfaces": "out_of_band",
@@ -312,9 +338,10 @@ def run_trusted_tenant_portal_home(
         )
     )
 
-    available_slices = [entry.to_dict() for entry in build_trusted_tenant_portal_surface_catalog()]
+    available_slices = [dict(entry) for entry in build_trusted_tenant_visible_slice_catalog()]
     surface_payload = _surface_payload(
         summary=summary,
+        available_slices=available_slices,
         selection_allowed=selection.allowed,
         selection_reason=selection.reason_message,
     )
@@ -370,5 +397,6 @@ def run_trusted_tenant_portal_home(
 
 __all__ = [
     "TRUSTED_TENANT_HOME_SURFACE_SCHEMA",
+    "build_trusted_tenant_visible_slice_catalog",
     "run_trusted_tenant_portal_home",
 ]
