@@ -6,6 +6,8 @@ The implementer changes code, config, docs, scripts, and approved host-side depl
 
 The implementer is not the closer of record for live-behavior tasks.
 
+When task acceptance requires deploy or live behavior, **verifier-written evidence** (verification report with exact command output) is mandatory for closure; the implementer’s report cannot replace that.
+
 The implementer works from repo state, not from user-relayed summaries.
 
 ## Required inputs

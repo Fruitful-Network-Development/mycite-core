@@ -85,6 +85,8 @@ A task is not resolved from archive notes, screenshots of code, or prior reports
 
 A task with live acceptance is only resolved when live verification evidence is present.
 
+**Independent verifier:** When acceptance depends on deploy state, live HTTP behavior, or other non-repo truth, a **verifier** must write the task **`verification_report`** with **verbatim command transcripts** for host and live sections. The implementation report and implementer handoff are **not** a substitute for that verifier evidence, and the lead must not treat the task as closed without it.
+
 Required evidence for live portal tasks:
 
 - exact command used,
