@@ -1,8 +1,13 @@
 # Cutover Execution Sequence
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
-This is the shortest safe sequence for moving from tested V2 admin runtime to live `/portal` use.
+This is the historical shortest safe sequence that moved V2 from tested admin
+runtime to live `/portal` use.
+
+Status: completed. Keep this file as cutover-history evidence. Use
+[v2_native_cutover_hardening.md](v2_native_cutover_hardening.md) for the
+remaining active work.
 
 ## Step 1: Lock The Isolation Boundary
 
@@ -19,11 +24,11 @@ Done when:
 
 Use [deployment_bridge_contract.md](deployment_bridge_contract.md).
 
-Preferred path for fewest prompts:
+Historical path used for the fewest prompts:
 
-- implement Shape B first
-- mount a tiny V1 host bridge to cataloged V2 runtime entrypoints
-- keep all V2 decisions in V2 runtime/catalog docs
+- Shape B was implemented first
+- a tiny V1 host bridge mounted cataloged V2 runtime entrypoints
+- all V2 decisions stayed in V2 runtime/catalog docs
 
 Done when:
 

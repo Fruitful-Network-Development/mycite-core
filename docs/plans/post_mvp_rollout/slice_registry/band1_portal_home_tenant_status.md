@@ -84,8 +84,9 @@ Warnings:
 
 ## Implementation ordering
 
-- candidate for the first Band 1 slice
-- should be specified and reviewed before any writable slice work begins
+- first deferred Band 1 slice after the hardening sequence, retirement ledger,
+  and Phase 11 retirement review are closed
+- must be reopened before any other deferred Band 1 or Band 2 slice advances
 
 ## Frozen questions
 

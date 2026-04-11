@@ -1,6 +1,6 @@
 # Architecture Boundary Checks
 
-Authority: [../plans/authority_stack.md](../plans/authority_stack.md)
+Authority: [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md)
 
 This file defines the checks future automation must enforce.
 
@@ -23,6 +23,7 @@ This file defines the checks future automation must enforce.
 
 ## Evidence sources for the initial rule set
 
-- [../../../docs/plans/tool_dev.md](../../../docs/plans/tool_dev.md)
-- [../../../docs/plans/tool_alignment.md](../../../docs/plans/tool_alignment.md)
-- [../plans/v1-migration/v1_drift_ledger.md](../plans/v1-migration/v1_drift_ledger.md)
+- [../contracts/tool_state_and_datum_authority.md](../contracts/tool_state_and_datum_authority.md)
+- [../contracts/repo_and_runtime_boundary.md](../contracts/repo_and_runtime_boundary.md)
+- [../plans/version-migration/v1_drift_ledger.md](../plans/version-migration/v1_drift_ledger.md)
+- [../plans/legacy/v1-tool_dev.md](../plans/legacy/v1-tool_dev.md)

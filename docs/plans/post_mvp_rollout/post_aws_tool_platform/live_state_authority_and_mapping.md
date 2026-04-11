@@ -1,8 +1,9 @@
 # Live State Authority And Mapping
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
-This document defines how V2 may read and write live deployment state during the V2 admin cutover.
+This document defines how V2 reads and writes live deployment state during the
+native-host V2 posture after cutover.
 
 ## Live roots
 
@@ -15,7 +16,7 @@ This document defines how V2 may read and write live deployment state during the
 
 V2 code may not create an independent operational state tree that can drift from live portal state.
 
-During the bridge phase:
+During cutover and ongoing live operation:
 
 - V2 read-only surfaces must read from an explicit adapter input.
 - V2 writes must target the same canonical live artifact that the read path confirms.
@@ -41,21 +42,13 @@ The live V1 AWS state currently stores mailbox profiles under:
 
 - `/srv/mycite-state/instances/fnd/private/utilities/tools/aws-csm/aws-csm.*.json`
 
-The bridge implementation must choose exactly one mapping:
+The native V2 host uses the canonical profile adapter mapping:
 
-### Mapping A: Derived Read-Only Snapshot
-
-Create an adapter that derives the V2 AWS read-only snapshot from live V1 AWS profile JSON at request time.
-
-Allowed only for read-only exposure.
-
-### Mapping B: Canonical V2-Compatible Profile Adapter
-
-Create an adapter that reads and writes the canonical live AWS profile JSON directly while presenting the V2 runtime with the stable V2 status shape.
-
-Required before exposing `admin.aws.narrow_write` against live state.
-
-Implementation status: selected and implemented for the Shape B bridge. `MYCITE_V2_AWS_STATUS_FILE` is the deployment input and must point at the canonical live AWS profile JSON. The adapter maps live `mycite.service_tool.aws_csm.profile.v1` fields into the approved V2 status surface and updates only `identity.send_as_email` / `smtp.send_as_email` for the narrow write field `selected_verified_sender`.
+`MYCITE_V2_AWS_STATUS_FILE` is the deployment input and must point at the
+canonical live AWS profile JSON. The adapter maps live
+`mycite.service_tool.aws_csm.profile.v1` fields into the approved V2 status
+surface and updates only `identity.send_as_email` / `smtp.send_as_email` for
+the narrow write field `selected_verified_sender`.
 
 ## Narrow-write authority
 
@@ -70,7 +63,7 @@ Implementation status: selected and implemented for the Shape B bridge. `MYCITE_
 
 The live `portal.fruitfulnetworkdevelopment.com/portal` route currently chooses the FND or TFF V1 host by cookie and nginx upstream.
 
-The V2 deployment bridge must preserve tenant selection explicitly:
+The V2-native host must preserve tenant selection explicitly:
 
 - FND shell entry uses the FND live state root.
 - TFF shell entry uses the TFF live state root.

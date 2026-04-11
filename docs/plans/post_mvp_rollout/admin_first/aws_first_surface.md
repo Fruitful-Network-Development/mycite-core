@@ -1,6 +1,6 @@
 # AWS-First Surface
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
 This file defines the first real tool-bearing target in the admin-first path.
 

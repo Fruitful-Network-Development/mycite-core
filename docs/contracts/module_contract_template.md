@@ -1,6 +1,6 @@
 # Module Contract Template
 
-Use this template for any future module contract. Terms must come from [../glossary/ontology_terms.md](../glossary/ontology_terms.md). Authority order is defined in [../plans/authority_stack.md](../plans/authority_stack.md).
+Use this template for any future module contract. Terms must come from [../glossary/ontology_terms.md](../glossary/ontology_terms.md). Authority order is defined in [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md).
 
 ## Purpose
 

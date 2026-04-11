@@ -6,6 +6,11 @@
 
 `implemented_trusted_tenant_csm_onboarding`
 
+## Record-only note
+
+This slice is already implemented. Keep this file only as slice-spec history.
+Use [../../../records/T-010-implementation.md](../../../records/T-010-implementation.md) for completion evidence and [../current_planning_index.md](../current_planning_index.md) for current active planning.
+
 ## Purpose
 
 Shell-owned, registry-backed orchestration for **trusted-tenant** canonical live AWS-CSM profile files (`mycite.service_tool.aws_csm.profile.v1`), mapping V1 provision-class actions to bounded writes with audit and read-after-write confirmation through the same visibility path as Band 1.

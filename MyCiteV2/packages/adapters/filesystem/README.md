@@ -1,6 +1,6 @@
 # Filesystem Adapter
 
-Authority: [../../../docs/plans/authority_stack.md](../../../docs/plans/authority_stack.md)
+Authority: [../../../../docs/plans/v2-authority_stack.md](../../../../docs/plans/v2-authority_stack.md)
 
 `packages/adapters/filesystem/` owns filesystem-backed port implementations only.
 

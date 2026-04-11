@@ -1,6 +1,6 @@
 # Slice Registry
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
 This registry is the mandatory staging surface for post-MVP slice work.
 
@@ -9,6 +9,10 @@ This registry is the mandatory staging surface for post-MVP slice work.
 - No new post-MVP implementation starts without a slice file in this directory.
 - Slice files must use [slice_template.md](slice_template.md).
 - Slice files are the narrowest approved planning unit for future agent work.
+- Only `candidate` and `approved_for_build` slices are active planning entrypoints.
+- A `candidate` slice is not active if [../current_planning_index.md](../current_planning_index.md) places it in deferred follow-on planning behind the hardening and retirement sequence.
+- `implemented_*` slice files are record-only slice history and must point to a
+  completion record.
 
 ## Required slice statuses
 
@@ -33,6 +37,7 @@ This registry is the mandatory staging surface for post-MVP slice work.
 4. Link the needed tests and [../../testing/slice_gate_template.md](../../../testing/slice_gate_template.md).
 5. Update [../runtime_entrypoints.md](../runtime_entrypoints.md) before adding a new runtime entrypoint.
 6. Pass [../client_exposure_gates.md](../client_exposure_gates.md) before requesting client exposure.
+7. If the slice is implemented, move future readers to [../current_planning_index.md](../current_planning_index.md) and the matching record in `docs/records/`.
 
 ## Minimum slice packet
 
@@ -45,15 +50,13 @@ Every slice file must let a future agent answer, without prior chat context:
 - what remains explicitly out of scope
 - which v1 areas are evidence only or drift warnings
 
-## Initial entries
+## Deferred follow-on entries
 
 - [band1_portal_home_tenant_status.md](band1_portal_home_tenant_status.md)
-- [band1_audit_activity_visibility.md](band1_audit_activity_visibility.md)
 - [band1_operational_status_surface.md](band1_operational_status_surface.md)
+- [band1_audit_activity_visibility.md](band1_audit_activity_visibility.md)
 - [band2_profile_basics_write_surface.md](band2_profile_basics_write_surface.md)
-- [admin_band0_shell_entry.md](admin_band0_shell_entry.md)
-- [admin_band0_home_status.md](admin_band0_home_status.md)
-- [admin_band0_tool_registry.md](admin_band0_tool_registry.md)
-- [admin_band1_aws_read_only_surface.md](admin_band1_aws_read_only_surface.md)
-- [admin_band2_aws_narrow_write_surface.md](admin_band2_aws_narrow_write_surface.md)
-- [admin_band3_aws_csm_sandbox_surface.md](admin_band3_aws_csm_sandbox_surface.md)
+
+Implemented admin-first slice history is no longer listed here as follow-on
+planning. Use [../current_planning_index.md](../current_planning_index.md) and
+`docs/records/` for those surfaces.

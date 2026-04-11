@@ -1,6 +1,6 @@
 # Import Rules
 
-Authority: [../plans/authority_stack.md](../plans/authority_stack.md)
+Authority: [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md)
 
 ## Allowed directions
 

@@ -1,6 +1,6 @@
 # Tool Registry And Launcher Surface
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
 This file defines how admin tools are discovered and launched without letting tools define shell legality.
 

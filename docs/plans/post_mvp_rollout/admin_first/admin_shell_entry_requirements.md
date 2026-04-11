@@ -1,6 +1,6 @@
 # Admin Shell Entry Requirements
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
 This file defines the single stable admin shell entry required before tool-bearing admin rollout.
 

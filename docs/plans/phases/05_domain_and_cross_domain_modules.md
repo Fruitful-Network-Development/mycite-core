@@ -6,7 +6,7 @@ Recreate domain semantics and cross-domain semantics without collapsing them int
 
 ## source authorities
 
-- [../authority_stack.md](../authority_stack.md)
+- [../v2-authority_stack.md](../v2-authority_stack.md)
 - [../../ontology/structural_invariants.md](../../ontology/structural_invariants.md)
 - [../v1-migration/v1_retention_vs_recreation.md](../v1-migration/v1_retention_vs_recreation.md)
 

@@ -1,15 +1,8 @@
-"""Portal-runtime-facing adapter implementations."""
+"""Historical portal-runtime bridge package.
 
-from .v1_host_bridge import (
-    V2AdminBridgeConfig,
-    build_v2_admin_bridge_health,
-    register_v2_admin_bridge_routes,
-    run_v2_admin_bridge_entrypoint,
-)
+The package root intentionally exports no bridge symbols. Any remaining bridge
+evidence must import `v1_host_bridge` directly so active code cannot treat this
+package as a normal V2 adapter surface.
+"""
 
-__all__ = [
-    "V2AdminBridgeConfig",
-    "build_v2_admin_bridge_health",
-    "register_v2_admin_bridge_routes",
-    "run_v2_admin_bridge_entrypoint",
-]
+__all__: list[str] = []

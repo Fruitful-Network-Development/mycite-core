@@ -7,7 +7,7 @@ This document is the **canonical wire contract** for `shell_composition.regions`
 Precedence and invariants are grounded in:
 
 - [structural_invariants.md](../ontology/structural_invariants.md) — navigation purity; tools attach through shell-defined surfaces; browser JS is not alternate shell truth.
-- [authority_stack.md](../plans/authority_stack.md) — documentation precedence.
+- [v2-authority_stack.md](../plans/v2-authority_stack.md) — documentation precedence.
 - [interface_surfaces.md](../ontology/interface_surfaces.md) — shell vs tool surface rules.
 
 Implementation sources of truth (enumerations and field shapes):

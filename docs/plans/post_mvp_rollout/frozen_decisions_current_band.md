@@ -1,6 +1,6 @@
 # Frozen Decisions For The Current Band
 
-Authority: [../authority_stack.md](../authority_stack.md)
+Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
 This file records what is deliberately frozen so future agents do not widen scope by convenience.
 

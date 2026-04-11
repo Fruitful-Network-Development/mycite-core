@@ -1,6 +1,6 @@
 # Runtime Entrypoint Catalog
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
 The canonical runtime entrypoint descriptor is `AdminRuntimeEntrypointDescriptor` in `instances/_shared/runtime/runtime_platform.py`.
 

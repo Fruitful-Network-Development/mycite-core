@@ -79,10 +79,13 @@ def _build_config(temp_root: Path, *, aws_status_file: Path | None = None) -> V2
     public_dir = temp_root / "public"
     private_dir = temp_root / "private"
     data_dir = temp_root / "data"
+    webapps_root = temp_root / "webapps"
     (data_dir / "system" / "sources").mkdir(parents=True)
     (data_dir / "payloads" / "cache").mkdir(parents=True)
     public_dir.mkdir(parents=True)
     private_dir.mkdir(parents=True)
+    (private_dir / "local_audit").mkdir(parents=True)
+    webapps_root.mkdir(parents=True)
     (data_dir / "system" / "anthology.json").write_text(
         json.dumps({"0-0-1": [["0-0-1", "~", "0-0-0"], ["time-ordinal-position"]]}) + "\n",
         encoding="utf-8",
@@ -99,7 +102,7 @@ def _build_config(temp_root: Path, *, aws_status_file: Path | None = None) -> V2
         private_dir=private_dir,
         data_dir=data_dir,
         analytics_domain="trappfamilyfarm.com",
-        analytics_webapps_root=temp_root / "webapps",
+        analytics_webapps_root=webapps_root,
         aws_status_file=aws_status_file,
         aws_audit_storage_file=private_dir / "local_audit" / "v2_aws_narrow_write.ndjson",
         admin_audit_storage_file=private_dir / "local_audit" / "v2_admin.ndjson",
@@ -108,6 +111,105 @@ def _build_config(temp_root: Path, *, aws_status_file: Path | None = None) -> V2
 
 @unittest.skipUnless(HAS_FLASK, "flask is not installed in host python")
 class V2NativePortalHostTests(unittest.TestCase):
+    def test_from_env_requires_portal_instance_id(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "PORTAL_RUNTIME_FLAVOR": "fnd",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(ValueError, "PORTAL_INSTANCE_ID"):
+                V2PortalHostConfig.from_env()
+
+    def test_from_env_requires_existing_state_directories(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            status_file = root / "aws-csm.tff.technicalContact.json"
+            status_file.write_text(json.dumps(_live_profile()) + "\n", encoding="utf-8")
+            (root / "webapps").mkdir()
+            (root / "audit").mkdir()
+
+            with patch.dict(
+                os.environ,
+                {
+                    "PORTAL_INSTANCE_ID": "tff",
+                    "PORTAL_RUNTIME_FLAVOR": "tff",
+                    "PUBLIC_DIR": str(root / "missing-public"),
+                    "PRIVATE_DIR": str(root / "missing-private"),
+                    "DATA_DIR": str(root / "missing-data"),
+                    "MYCITE_ANALYTICS_DOMAIN": "trappfamilyfarm.com",
+                    "MYCITE_WEBAPPS_ROOT": str(root / "webapps"),
+                    "MYCITE_V2_AWS_STATUS_FILE": str(status_file),
+                    "MYCITE_V2_AWS_AUDIT_FILE": str(root / "audit" / "aws.ndjson"),
+                    "MYCITE_V2_ADMIN_AUDIT_FILE": str(root / "audit" / "admin.ndjson"),
+                },
+                clear=True,
+            ):
+                with self.assertRaisesRegex(ValueError, "PUBLIC_DIR"):
+                    V2PortalHostConfig.from_env()
+
+    def test_from_env_requires_live_aws_status_file(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            public_dir = root / "public"
+            private_dir = root / "private"
+            data_dir = root / "data"
+            webapps_root = root / "webapps"
+            audit_root = root / "audit"
+            for path in (public_dir, private_dir, data_dir, webapps_root, audit_root):
+                path.mkdir(parents=True)
+            invalid_status_file = root / "aws-status.json"
+            invalid_status_file.write_text(json.dumps({"tenant_scope_id": "tff"}) + "\n", encoding="utf-8")
+
+            with patch.dict(
+                os.environ,
+                {
+                    "PORTAL_INSTANCE_ID": "tff",
+                    "PORTAL_RUNTIME_FLAVOR": "tff",
+                    "PUBLIC_DIR": str(public_dir),
+                    "PRIVATE_DIR": str(private_dir),
+                    "DATA_DIR": str(data_dir),
+                    "MYCITE_ANALYTICS_DOMAIN": "trappfamilyfarm.com",
+                    "MYCITE_WEBAPPS_ROOT": str(webapps_root),
+                    "MYCITE_V2_AWS_STATUS_FILE": str(invalid_status_file),
+                    "MYCITE_V2_AWS_AUDIT_FILE": str(audit_root / "aws.ndjson"),
+                    "MYCITE_V2_ADMIN_AUDIT_FILE": str(audit_root / "admin.ndjson"),
+                },
+                clear=True,
+            ):
+                with self.assertRaisesRegex(ValueError, "MYCITE_V2_AWS_STATUS_FILE"):
+                    V2PortalHostConfig.from_env()
+
+    def test_from_env_requires_audit_sinks(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            public_dir = root / "public"
+            private_dir = root / "private"
+            data_dir = root / "data"
+            webapps_root = root / "webapps"
+            for path in (public_dir, private_dir, data_dir, webapps_root):
+                path.mkdir(parents=True)
+            status_file = root / "aws-csm.tff.technicalContact.json"
+            status_file.write_text(json.dumps(_live_profile()) + "\n", encoding="utf-8")
+
+            with patch.dict(
+                os.environ,
+                {
+                    "PORTAL_INSTANCE_ID": "tff",
+                    "PORTAL_RUNTIME_FLAVOR": "tff",
+                    "PUBLIC_DIR": str(public_dir),
+                    "PRIVATE_DIR": str(private_dir),
+                    "DATA_DIR": str(data_dir),
+                    "MYCITE_ANALYTICS_DOMAIN": "trappfamilyfarm.com",
+                    "MYCITE_WEBAPPS_ROOT": str(webapps_root),
+                    "MYCITE_V2_AWS_STATUS_FILE": str(status_file),
+                },
+                clear=True,
+            ):
+                with self.assertRaisesRegex(ValueError, "MYCITE_V2_AWS_AUDIT_FILE"):
+                    V2PortalHostConfig.from_env()
+
     def test_portal_and_health_are_native_v2_without_admin_bridge_route(self) -> None:
         with TemporaryDirectory() as temp_dir:
             client = create_app(_build_config(Path(temp_dir))).test_client()
@@ -306,28 +408,13 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertTrue(expected.exists())
             self.assertFalse((root / "webapps" / "trappfamilyfarm.com" / "analytics" / "events" / "2026-04.ndjson").exists())
 
-    def test_non_live_aws_mapping_fails_closed_for_health_and_aws_routes(self) -> None:
+    def test_invalid_live_aws_mapping_fails_fast_at_startup(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             status_file = root / "aws-status.json"
             status_file.write_text(json.dumps({"tenant_scope_id": "tff"}) + "\n", encoding="utf-8")
-            client = create_app(_build_config(root, aws_status_file=status_file)).test_client()
-
-            health = client.get("/portal/healthz")
-            self.assertEqual(health.status_code, 503)
-            self.assertFalse((health.get_json() or {})["aws_config_health"]["live_profile_mapping"])
-
-            read_only = client.post(
-                "/portal/api/v2/admin/aws/read-only",
-                json={
-                    "schema": ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
-                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
-                },
-            )
-            self.assertEqual(read_only.status_code, 503)
-            payload = read_only.get_json() or {}
-            self.assertEqual(payload["schema"], ADMIN_RUNTIME_ENVELOPE_SCHEMA)
-            self.assertEqual(payload["error"]["code"], "status_source_not_configured")
+            with self.assertRaisesRegex(ValueError, "MYCITE_V2_AWS_STATUS_FILE"):
+                create_app(_build_config(root, aws_status_file=status_file))
 
 
 if __name__ == "__main__":

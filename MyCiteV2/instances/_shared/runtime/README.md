@@ -1,6 +1,6 @@
 # Runtime
 
-Authority: [../../../docs/plans/authority_stack.md](../../../docs/plans/authority_stack.md)
+Authority: [../../../../docs/plans/v2-authority_stack.md](../../../../docs/plans/v2-authority_stack.md)
 
 `instances/_shared/runtime/` owns shared runtime composition only.
 

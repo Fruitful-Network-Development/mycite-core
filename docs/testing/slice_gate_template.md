@@ -1,6 +1,6 @@
 # Slice Gate Template
 
-Authority: [../plans/authority_stack.md](../plans/authority_stack.md)
+Authority: [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md)
 
 Use this checklist when deciding whether a slice is ready for implementation or exposure.
 

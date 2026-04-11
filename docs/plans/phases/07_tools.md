@@ -6,7 +6,7 @@ Recreate tool packages as shell-attached capability owners rather than alternate
 
 ## source authorities
 
-- [../authority_stack.md](../authority_stack.md)
+- [../v2-authority_stack.md](../v2-authority_stack.md)
 - [../../ontology/interface_surfaces.md](../../ontology/interface_surfaces.md)
 - [../../V1/plans/tool_dev.md](../../V1/plans/tool_dev.md)
 

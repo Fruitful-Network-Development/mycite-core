@@ -1,15 +1,15 @@
 # Admin-First Rollout
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
-This subtree defines the post-MVP operating surface for replacing the old portal operationally through an admin-first path.
+This subtree defines the admin-first sequencing context for replacing the old
+portal operationally through an admin-first path.
 
-Use this subtree when the goal is:
+Use this subtree now when the goal is:
 
-- restore one usable admin shell before broader client rollout
-- stage tool-bearing work without letting tools own shell legality
-- make AWS the first real tool-bearing target
-- keep Maps and AGRO-ERP sequenced after AWS
+- understand why the admin/AWS foundation was built in its current order
+- keep Maps and AGRO-ERP sequenced correctly after the canonical V2 and V1 retirement closure
+- avoid reopening completed admin-first foundation work as if it were still the active plan
 
 ## Relationship to the global rollout bands
 
@@ -25,18 +25,22 @@ Maps and AGRO-ERP remain follow-on planning surfaces. They do not displace AWS-f
 
 ## Use order
 
-1. Read [admin_first_rollout_band.md](admin_first_rollout_band.md).
-2. Read [frozen_decisions_admin_band.md](frozen_decisions_admin_band.md).
-3. Read [admin_first_parity_ledger.md](admin_first_parity_ledger.md).
-4. Read [admin_shell_entry_requirements.md](admin_shell_entry_requirements.md).
-5. Read [admin_runtime_envelope.md](admin_runtime_envelope.md).
-6. Read [admin_home_and_status_surface.md](admin_home_and_status_surface.md).
-7. Read [tool_registry_and_launcher_surface.md](tool_registry_and_launcher_surface.md).
-8. Read [aws_first_surface.md](aws_first_surface.md).
-9. After AWS read-only and AWS narrow-write are complete, read [../post_aws_tool_platform/README.md](../post_aws_tool_platform/README.md).
-10. Read [maps_follow_on_surface.md](maps_follow_on_surface.md).
-11. Read [agro_erp_follow_on_surface.md](agro_erp_follow_on_surface.md).
-12. Use the matching slice files in [../slice_registry/](../slice_registry/).
+1. Read [../current_planning_index.md](../current_planning_index.md).
+2. Read [admin_first_rollout_band.md](admin_first_rollout_band.md).
+3. Read [frozen_decisions_admin_band.md](frozen_decisions_admin_band.md).
+4. Read [../post_aws_tool_platform/README.md](../post_aws_tool_platform/README.md).
+5. Read [../../../records/22-v1_retirement_closure.md](../../../records/22-v1_retirement_closure.md).
+6. Read [maps_follow_on_surface.md](maps_follow_on_surface.md) only after the active Band 1 and Band 2 sequence reaches Maps.
+7. Read [agro_erp_follow_on_surface.md](agro_erp_follow_on_surface.md) only after Maps is reopened.
+
+Historical design context for already-implemented work:
+
+- [admin_shell_entry_requirements.md](admin_shell_entry_requirements.md)
+- [admin_runtime_envelope.md](admin_runtime_envelope.md)
+- [admin_home_and_status_surface.md](admin_home_and_status_surface.md)
+- [tool_registry_and_launcher_surface.md](tool_registry_and_launcher_surface.md)
+- [aws_first_surface.md](aws_first_surface.md)
+- [aws_narrow_write_recovery.md](aws_narrow_write_recovery.md)
 
 ## Core rules
 
@@ -51,7 +55,6 @@ Maps and AGRO-ERP remain follow-on planning surfaces. They do not displace AWS-f
 
 ## Current planning target
 
-- `Admin Band 0 Internal Admin Replacement` is the stable admin shell base.
-- `Admin Band 1 Trusted-Tenant AWS Read-Only` and `Admin Band 2 Trusted-Tenant AWS Narrow Write` are the reference tool slices.
-- [../post_aws_tool_platform/README.md](../post_aws_tool_platform/README.md) now governs future tool drop-in work.
-- The next allowed tool track is Maps; AGRO-ERP still follows Maps.
+- The admin shell and AWS-first foundation are implemented and should be read through [../../../records/README.md](../../../records/README.md), not as open planning.
+- [../current_planning_index.md](../current_planning_index.md) now governs the reopened long-term sequence after retirement closure.
+- Maps and AGRO-ERP remain deferred follow-on planning, not current execution targets.

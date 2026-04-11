@@ -1,42 +1,50 @@
 # MyCiteV2
 
-MyCiteV2 is a documentation-first program space for rebuilding MyCite correctly from scratch. It is not a partial port of v1, not a compatibility mirror, and not a place for opportunistic feature work before the ontology, authority model, dependency direction, and build order are explicit.
+MyCiteV2 is the modular V2 code root. The authoritative semantics still live in
+`../docs/`; this tree is the corresponding implementation surface for the V2
+portal host, runtime, packages, and tests.
 
-Start with [docs/plans/authority_stack.md](docs/plans/authority_stack.md). That file defines the precedence order for all v2 decisions.
+Start with [../docs/plans/v2-authority_stack.md](../docs/plans/v2-authority_stack.md). That file defines the precedence order for all v2 decisions.
 
 ## What v2 is
 
-- An architecture-led scaffold that externalizes structural invariants, phase order, import boundaries, and migration reasoning.
-- A low-drift surface for future agents to read before writing code.
-- A place where v1 is treated as evidence, not as a package template.
+- A docs-first but implemented modular codebase for the current V2 portal.
+- A place where V1 concepts are recreated under clarified ownership and
+  dependency rules.
+- A low-drift surface where ports, adapters, state-machine logic, runtime
+  composition, and host transport stay separated.
 
 ## What v2 is not
 
-- Not an in-progress rewrite of v1 modules.
-- Not a place to copy `mycite_core/`, `packages/hosts/`, or instance-led paths into new shapes.
-- Not a second authority surface beside the docs in this tree.
+- Not a V1 parity mirror.
+- Not a place to copy old root paths or let deployment topology define
+  semantics.
+- Not a second documentation authority beside `../docs/`.
 
 ## How to navigate this tree
 
-- Read [docs/plans/authority_stack.md](docs/plans/authority_stack.md).
-- Read [docs/ontology/structural_invariants.md](docs/ontology/structural_invariants.md).
-- Read [docs/decisions/README.md](docs/decisions/README.md).
-- Read [docs/plans/master_build_sequence.md](docs/plans/master_build_sequence.md).
-- Read [docs/plans/mvp_boundary.md](docs/plans/mvp_boundary.md) if you need the first proving slice rather than the whole build.
-- Read [docs/plans/post_mvp_rollout/README.md](docs/plans/post_mvp_rollout/README.md) after the MVP is proven and the next work is controlled portal rollout.
-- Read [docs/plans/post_mvp_rollout/admin_first/README.md](docs/plans/post_mvp_rollout/admin_first/README.md) when the goal is operational replacement of the old admin portal through an AWS-first, tool-bearing path.
-- Use [docs/plans/v1-migration/README.md](docs/plans/v1-migration/README.md) only after the v2 ontology is clear.
+- Read [../docs/README.md](../docs/README.md).
+- Read [../docs/plans/v2-authority_stack.md](../docs/plans/v2-authority_stack.md).
+- Read [../docs/contracts/v2_surface_ownership_map.md](../docs/contracts/v2_surface_ownership_map.md).
+- Read [../docs/ontology/structural_invariants.md](../docs/ontology/structural_invariants.md).
+- Read [../docs/ontology/retained_cross_version_concepts.md](../docs/ontology/retained_cross_version_concepts.md).
+- Read [../docs/decisions/README.md](../docs/decisions/README.md).
+- Read [../docs/plans/post_mvp_rollout/current_planning_index.md](../docs/plans/post_mvp_rollout/current_planning_index.md) for current rollout and hardening work.
+- Read [../docs/plans/post_mvp_rollout/post_aws_tool_platform/v2_native_cutover_hardening.md](../docs/plans/post_mvp_rollout/post_aws_tool_platform/v2_native_cutover_hardening.md) if the work touches live deployment, repo clarity, or V1 retirement.
+- Use [../docs/plans/version-migration/README.md](../docs/plans/version-migration/README.md) for V1 evidence and retirement review, not as the active live cutover queue.
+- Use [../docs/records/README.md](../docs/records/README.md) for completed work.
 
 ## Working rules
 
-- Use glossary-defined terms only. See [docs/glossary/ontology_terms.md](docs/glossary/ontology_terms.md).
+- Use glossary-defined terms only. See [../docs/glossary/ontology_terms.md](../docs/glossary/ontology_terms.md).
 - Do not infer architecture from v1 path names.
-- Do not implement beyond inert scaffolding during the scaffold phase. See [docs/plans/implementation_prohibition_for_scaffold_phase.md](docs/plans/implementation_prohibition_for_scaffold_phase.md).
-- Do not treat `docs/wiki/` or `docs/audits/` as authority. See [docs/ontology/non_authoritative_zones.md](docs/ontology/non_authoritative_zones.md).
+- Treat scaffold-phase prohibition docs as historical phase guidance, not as a claim that V2 is still scaffold-only.
+- Do not treat `docs/wiki/` or `docs/audits/` as authority. See [../docs/ontology/non_authoritative_zones.md](../docs/ontology/non_authoritative_zones.md).
 
 ## Directory intent
 
-- `docs/` holds the authoritative v2 ontology, decisions, plans, and enforcement rules.
-- `packages/` holds inert package placeholders only.
-- `instances/` holds runtime composition placeholders only. It is not an instance-led architecture surface.
-- `tests/` holds planned test-loop placeholders only.
+- `../docs/` holds the authoritative v2 ontology, decisions, plans, contracts, and completion records.
+- `instances/_shared/portal_host/` holds the V2-native portal host and shell assets.
+- `instances/_shared/runtime/` holds shared runtime composition and entrypoint catalogs.
+- `packages/` holds the modular V2 layers plus any still-unimplemented placeholder subpackages.
+- `tests/` holds implemented boundary-loop verification suites.

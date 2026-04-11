@@ -1,6 +1,6 @@
 # Future Tool Drop-In Contract
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
 Future post-AWS tools must be implemented one slice at a time.
 

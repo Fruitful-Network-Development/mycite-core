@@ -1,6 +1,6 @@
 # Maps Follow-On Surface
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
 This file defines what must be true before Maps work begins after AWS.
 

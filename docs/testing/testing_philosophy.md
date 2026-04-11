@@ -1,6 +1,6 @@
 # Testing Philosophy
 
-Authority: [../plans/authority_stack.md](../plans/authority_stack.md)
+Authority: [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md)
 
 V2 uses layered test loops so phase completion is checked at the same boundary where meaning lives.
 

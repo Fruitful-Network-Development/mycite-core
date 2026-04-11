@@ -1,6 +1,6 @@
 # Progressive Solidification
 
-Authority: [../plans/authority_stack.md](../plans/authority_stack.md)
+Authority: [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md)
 
 Implementation in v2 proceeds by ordered solidification. Order matters because later layers depend on earlier meaning.
 
@@ -21,6 +21,6 @@ Implementation in v2 proceeds by ordered solidification. Order matters because l
 ## Rules
 
 - A later phase may not define missing meaning for an earlier phase.
-- A phase is incomplete until its completion gate passes. See [../plans/phase_completion_definition.md](../plans/phase_completion_definition.md).
+- A phase is incomplete until its completion gate passes. See [../plans/v2-phase_completion_definition.md](../plans/v2-phase_completion_definition.md).
 - Each phase must use the fixed section schema defined in [../plans/phases/](../plans/phases/).
 - Scaffold-phase work is inert by design. See [../plans/implementation_prohibition_for_scaffold_phase.md](../plans/implementation_prohibition_for_scaffold_phase.md).

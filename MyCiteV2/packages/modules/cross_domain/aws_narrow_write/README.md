@@ -1,6 +1,6 @@
 # AWS Narrow Write
 
-Authority: [../../../../docs/plans/authority_stack.md](../../../../docs/plans/authority_stack.md)
+Authority: [../../../../../docs/plans/v2-authority_stack.md](../../../../../docs/plans/v2-authority_stack.md)
 
 `packages/modules/cross_domain/aws_narrow_write/` owns the semantic policy for the first AWS operational write slice.
 

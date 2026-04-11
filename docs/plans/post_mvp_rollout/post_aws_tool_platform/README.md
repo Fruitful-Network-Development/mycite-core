@@ -1,10 +1,14 @@
 # Post-AWS Tool Platform
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
-This subtree defines the stabilized shared platform after the AWS read-only and AWS narrow-write slices are complete.
+This subtree defines the stabilized shared platform after the AWS read-only and
+AWS narrow-write slices are complete.
 
-Use this subtree before building any post-AWS tool such as Maps or AGRO-ERP.
+Use this subtree for two things:
+
+- current platform contracts that future tools must obey
+- retained posture and proof for the canonical V2 closure sequence
 
 ## Platform status
 
@@ -15,7 +19,12 @@ Use this subtree before building any post-AWS tool such as Maps or AGRO-ERP.
 - admin runtime responses use the shared runtime envelope helper
 - read-only and bounded-write slice patterns are documented and tested
 
-Live deployment cutover is a separate deployment bridge step. V2 is not the live `/portal` web host until [deployment_bridge_contract.md](deployment_bridge_contract.md), [live_state_authority_and_mapping.md](live_state_authority_and_mapping.md), and [cutover_execution_sequence.md](cutover_execution_sequence.md) are satisfied.
+Current live posture:
+
+- V2-native portal host is the live `/portal` surface for FND and TFF.
+- Shape B bridge work is historical cutover evidence, not the default shape for new work.
+- Canonical live AWS profile mapping remains current and must stay aligned with the deployed V2 host.
+- The V1 retirement ledger and Phase 11 gate are closed through [../../../records/22-v1_retirement_closure.md](../../../records/22-v1_retirement_closure.md).
 
 ## Use order
 
@@ -24,11 +33,14 @@ Live deployment cutover is a separate deployment bridge step. V2 is not the live
 3. Read [runtime_envelope_and_launch_results.md](runtime_envelope_and_launch_results.md).
 4. Read [read_only_and_bounded_write_patterns.md](read_only_and_bounded_write_patterns.md).
 5. Read [future_tool_drop_in_contract.md](future_tool_drop_in_contract.md).
-6. Read [v2_admin_cutover_readiness.md](v2_admin_cutover_readiness.md).
-7. For live `/portal` cutover, read [deployment_bridge_contract.md](deployment_bridge_contract.md).
-8. For FND/TFF state mapping, read [live_state_authority_and_mapping.md](live_state_authority_and_mapping.md).
-9. For implementation order, read [cutover_execution_sequence.md](cutover_execution_sequence.md).
-10. Use [../slice_registry/admin_band0_v2_deployment_bridge.md](../slice_registry/admin_band0_v2_deployment_bridge.md) as the bridge slice.
+6. Read [../../../records/22-v1_retirement_closure.md](../../../records/22-v1_retirement_closure.md) for the formal closure of the V1 retirement sequence.
+7. Read [v2_native_cutover_hardening.md](v2_native_cutover_hardening.md) only when the work needs the underlying closure packet details.
+8. Read [v1_retirement_execution_ledger.md](v1_retirement_execution_ledger.md) only when the work needs the resolved residue ledger.
+9. Read [../../../contracts/portal_auth_and_audience_boundary.md](../../../contracts/portal_auth_and_audience_boundary.md) when the work changes browser auth, trusted headers, or audience checks.
+10. Read [v2_admin_cutover_readiness.md](v2_admin_cutover_readiness.md) for current posture.
+11. Read [live_state_authority_and_mapping.md](live_state_authority_and_mapping.md) for canonical live AWS mapping rules.
+12. Read [deployment_bridge_contract.md](deployment_bridge_contract.md) and [cutover_execution_sequence.md](cutover_execution_sequence.md) only as historical cutover design and sequencing evidence.
+13. Use [../slice_registry/admin_band0_v2_deployment_bridge.md](../slice_registry/admin_band0_v2_deployment_bridge.md) only as a record-linked slice history.
 
 ## Non-negotiable rules
 
@@ -40,3 +52,7 @@ Live deployment cutover is a separate deployment bridge step. V2 is not the live
 - AWS is the reference implementation for read-only and bounded-write patterns, not a broad provider-admin template.
 - Root-level V1 compatibility package paths must not be recreated for V2 cutover.
 - Live V2 writes must target one canonical live artifact, not a generated shadow snapshot.
+- New work must not extend bridge-only surfaces when the V2-native host already owns the live boundary.
+- Future tool drop-in work may resume only through the reopened slice order in
+  [../current_planning_index.md](../current_planning_index.md); bridge-era
+  surfaces do not reopen as an alternate track.
