@@ -2,8 +2,8 @@ id: T-006
 title: Add operational smoke gates for portal regression prevention
 primary_type: repo_and_deploy
 owner: lead
-status: proposed
-verification_result: pending
+status: resolved
+verification_result: pass
 priority: medium
 
 objective: >
@@ -62,7 +62,7 @@ artifacts:
 
 execution:
   current_role: lead
-  next_role: implementer
+  next_role: none
   requires_verifier: true
   handoff_files:
     lead_to_implementer: reports/handoffs/T-006/lead_to_implementer.md

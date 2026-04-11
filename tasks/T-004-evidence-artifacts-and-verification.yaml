@@ -2,8 +2,8 @@ id: T-004
 title: Standardize implementation and verification evidence artifacts
 primary_type: repo_only
 owner: lead
-status: proposed
-verification_result: pending
+status: resolved
+verification_result: pass
 priority: high
 
 objective: >
@@ -64,7 +64,7 @@ artifacts:
 
 execution:
   current_role: lead
-  next_role: implementer
+  next_role: none
   requires_verifier: true
   handoff_files:
     lead_to_implementer: reports/handoffs/T-004/lead_to_implementer.md
@@ -77,5 +77,7 @@ execution:
   live_check_command: not_applicable
 
 closure_rule: >
-  Lead may close only when verifier confirms the templates enforce
-  implementation-versus-verification separation.
+  Lead may set status: resolved only when reports/T-004-verification.md exists,
+  the verifier records verification_result: pass, and the verifier confirms
+  the templates enforce implementation-versus-verification separation and
+  support repo_only and repo_and_deploy evidence patterns per acceptance.

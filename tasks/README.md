@@ -249,6 +249,34 @@ For `repo_only` tasks, host/live sections may say `not applicable`.
 
 For `repo_and_deploy` tasks, host/live sections are mandatory.
 
+### 9.1 Standard report templates
+
+Reusable shells live under `reports/templates/`:
+
+- `reports/templates/implementation_report_template.md` — implementation evidence with separate repo / host / live sections.
+- `reports/templates/verification_report_template.md` — independent verification with verbatim command blocks and a required final verdict.
+
+Copy a template when starting a new task report; keep headings so evidence classes stay separable.
+
+### 9.2 Task YAML: artifact paths and closure
+
+- Declare **`artifacts.implementation_report`** and **`artifacts.verification_report`** (paths under `reports/`) whenever verification is required.
+- Mirror the same paths under **`execution.reports.implementation`** and **`execution.reports.verification`** so roles discover them from one place.
+- **`closure_rule`** in the task YAML must state what exists before the lead may set `status: resolved`: name the **implementation** and **verification** report files when both apply, and when closure depends on non-repo truth, name **`verification_result: pass`** (or the task’s explicit waiver) and that the **verifier report** contains the required host/live transcripts (see §9.3). Do not fold “tests passed” or “implementer says done” into `closure_rule` as sufficient proof for live-behavior tasks.
+- Optionally declare **`artifacts.template_paths`** listing `reports/templates/implementation_report_template.md` and `reports/templates/verification_report_template.md` when the task authors want an explicit pointer to the standard shells (see `tasks/T-004-evidence-artifacts-and-verification.yaml`).
+
+### 9.3 When verifier evidence is mandatory
+
+The **verifier** must produce a written **`verification_report`** (using the standard template) with **exact commands and captured output** for any task where closure depends on non-repo truth. Treat verifier evidence as **mandatory** when any of the following holds:
+
+- `primary_type` is `repo_and_deploy` or `deploy_only`, or
+- `acceptance` mentions live URLs, rendered portal behavior, nginx, systemd, OAuth, static asset delivery, health endpoints, or similar operational proof, or
+- `scope.live_systems` is non-empty or the task otherwise requires host/live inspection.
+
+For those tasks, **narrative-only** claims in chat or an implementation report alone are **not** sufficient: the verifier report must contain host/live sections with transcripts unless the criterion is explicitly waived in the task. For `repo_only` tasks with no live acceptance, host/live sections may be a single `not applicable` line, but the verifier still issues **pass** or **fail** when `execution.requires_verifier` is true.
+
+The **implementer** does not substitute for the verifier on these tasks. The **lead** must not mark **`resolved`** until **`verification_result: pass`** (or the task’s stated closure exception) and the verification report exist.
+
 ---
 
 ## 10. Required task sections
@@ -300,6 +328,10 @@ verification_requirements:
 artifacts:
   implementation_report: reports/T-000-implementation.md
   verification_report: reports/T-000-verification.md
+  # optional: explicit pointers to standard report shells
+  template_paths:
+    - reports/templates/implementation_report_template.md
+    - reports/templates/verification_report_template.md
 
 execution:
   current_role: lead
@@ -316,7 +348,9 @@ execution:
   live_check_command: <canonical live command or not_applicable>
 
 closure_rule: >
-  State exactly what must exist before lead may mark the task resolved.
+  State exactly what must exist before lead may mark the task resolved
+  (e.g. verifier pass, verification report on disk with required transcripts
+  when §9.3 applies).
 ```
 
 ---

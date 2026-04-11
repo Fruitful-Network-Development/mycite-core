@@ -2,8 +2,8 @@ id: T-005
 title: Unify repo routing truth with live host routing truth
 primary_type: repo_and_deploy
 owner: lead
-status: proposed
-verification_result: pending
+status: resolved
+verification_result: pass
 priority: high
 
 objective: >
@@ -61,7 +61,7 @@ artifacts:
 
 execution:
   current_role: lead
-  next_role: implementer
+  next_role: none
   requires_verifier: true
   handoff_files:
     lead_to_implementer: reports/handoffs/T-005/lead_to_implementer.md

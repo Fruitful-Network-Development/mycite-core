@@ -133,6 +133,8 @@ The lead may close a task only when all are true:
 5. any required verifier pass has occurred,
 6. and blockers are either removed or explicitly recorded.
 
+When closure depends on **deploy state, live HTTP behavior, or other non-repo truth**, a **verifier-written** `verification_report` (per `tasks/README.md` §9 and `reports/templates/verification_report_template.md`) with **verbatim command transcripts** in the host and live sections is **mandatory**. The implementation report and implementer narrative **do not** substitute for that evidence, and the lead must not set `status: resolved` without `verification_result: pass` (or the task’s stated closure exception) and that report on disk.
+
 If one of those is missing, the lead must leave the task open.
 
 ## Chat output format

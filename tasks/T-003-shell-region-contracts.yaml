@@ -2,7 +2,7 @@ id: T-003
 title: Formalize shell region and kind contracts
 primary_type: repo_only
 owner: lead
-status: verified_pass
+status: resolved
 verification_result: pass
 priority: high
 
@@ -62,7 +62,7 @@ artifacts:
 
 execution:
   current_role: lead
-  next_role: lead
+  next_role: none
   requires_verifier: true
   handoff_files:
     lead_to_implementer: reports/handoffs/T-003/lead_to_implementer.md

@@ -4,6 +4,8 @@
 
 The verifier is an independent closer for tasks whose acceptance criteria include deploy state or live behavior.
 
+For any task where acceptance or `primary_type` implies host or live truth, **your verification report with exact command transcripts is mandatory** for lead closure. Summaries without captured output do not satisfy that bar.
+
 The verifier assumes the implementer may be wrong.
 
 The verifier works from repo state, host evidence, and live evidence — not from user-relayed summaries.

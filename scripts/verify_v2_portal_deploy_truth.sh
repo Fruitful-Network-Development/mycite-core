@@ -16,6 +16,8 @@ PORTAL_SYSTEMD_UNIT="${PORTAL_SYSTEMD_UNIT:-mycite-v2-fnd-portal.service}"
 FND_PORTAL_LOOPBACK="${FND_PORTAL_LOOPBACK:-http://127.0.0.1:6101}"
 SKIP_HOST="${VERIFY_DEPLOY_TRUTH_SKIP_HOST:-0}"
 ALLOW_PARTIAL="${VERIFY_DEPLOY_TRUTH_ALLOW_PARTIAL:-0}"
+# Optional: override path to nginx binary (defaults to PATH, else /usr/sbin/nginx).
+NGINX_BIN="${NGINX_BIN:-}"
 
 REPO_NGINX="${SRV_INFRA}/nginx/sites-available/portal.fruitfulnetworkdevelopment.com.conf"
 PORTAL_HTML="${MYCITE_CORE}/MyCiteV2/instances/_shared/portal_host/templates/portal.html"
@@ -178,11 +180,19 @@ nginx_dump() {
   if [[ "$SKIP_HOST" == "1" ]]; then
     return 1
   fi
+  local ngx="$NGINX_BIN"
+  if [[ -z "$ngx" ]]; then
+    ngx="$(command -v nginx 2>/dev/null || true)"
+  fi
+  if [[ -z "$ngx" && -x /usr/sbin/nginx ]]; then
+    ngx=/usr/sbin/nginx
+  fi
+  [[ -n "$ngx" ]] || return 1
   if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-    sudo nginx -T
+    sudo -n "$ngx" -T
     return $?
   fi
-  if nginx -T 2>/dev/null; then
+  if "$ngx" -T 2>/dev/null; then
     return 0
   fi
   return 1
