@@ -29,8 +29,8 @@ Canonical source for the MyCite portal core, shared runtime, tool modules, and p
 - `MyCiteV1/instances/scripts/` capture/materialization helpers
 - `MyCiteV1/packages/tools/` standalone tool modules and state adapters
 - `MyCiteV1/packages/core/` core data-engine and related packages
-- `MyCiteV1/docs/wiki/` maintained product and architecture documentation
-- `MyCiteV1/docs/plans/` active planning documents
+- [`docs/V1/wiki/`](docs/V1/wiki/) maintained V1 product and architecture documentation (mirror; `MyCiteV1/docs/` may be absent in some checkouts)
+- [`docs/V1/plans/`](docs/V1/plans/) V1 planning snapshot
 - `MyCiteV2/` isolated V2 rebuild, admin runtime, architecture gates, and rollout docs
 
 ## Key Entry Points
@@ -44,16 +44,17 @@ Canonical source for the MyCite portal core, shared runtime, tool modules, and p
 
 ## Canonical Docs
 
-- [`MyCiteV1/docs/ownership-boundary.md`](MyCiteV1/docs/ownership-boundary.md)
-- [`MyCiteV1/docs/wiki/README.md`](MyCiteV1/docs/wiki/README.md)
-- [`MyCiteV1/docs/wiki/architecture/system-state-machine.md`](MyCiteV1/docs/wiki/architecture/system-state-machine.md)
-- [`MyCiteV1/docs/wiki/data-model/datum-identity-and-resolution.md`](MyCiteV1/docs/wiki/data-model/datum-identity-and-resolution.md)
-- [`MyCiteV1/docs/wiki/runtime-build/portal-config-model.md`](MyCiteV1/docs/wiki/runtime-build/portal-config-model.md)
-- [`MyCiteV1/docs/wiki/tools/time-address-schema.md`](MyCiteV1/docs/wiki/tools/time-address-schema.md)
-- [`MyCiteV1/docs/wiki/tools/internal-file-sources.md`](MyCiteV1/docs/wiki/tools/internal-file-sources.md)
-- [`MyCiteV1/docs/plans/tool_dev.md`](MyCiteV1/docs/plans/tool_dev.md)
-- [`MyCiteV2/docs/plans/authority_stack.md`](MyCiteV2/docs/plans/authority_stack.md)
-- [`MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/README.md`](MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/README.md)
+- [`docs/V1/ownership-boundary.md`](docs/V1/ownership-boundary.md)
+- [`docs/V1/wiki/README.md`](docs/V1/wiki/README.md)
+- [`docs/V1/wiki/architecture/system-state-machine.md`](docs/V1/wiki/architecture/system-state-machine.md)
+- [`docs/V1/wiki/data-model/datum-identity-and-resolution.md`](docs/V1/wiki/data-model/datum-identity-and-resolution.md)
+- [`docs/V1/wiki/runtime-build/portal-config-model.md`](docs/V1/wiki/runtime-build/portal-config-model.md)
+- [`docs/V1/wiki/tools/time-address-schema.md`](docs/V1/wiki/tools/time-address-schema.md)
+- [`docs/V1/wiki/tools/internal-file-sources.md`](docs/V1/wiki/tools/internal-file-sources.md)
+- [`docs/V1/plans/tool_dev.md`](docs/V1/plans/tool_dev.md)
+- [`docs/README.md`](docs/README.md) (authoritative V2 doc tree)
+- [`docs/plans/authority_stack.md`](docs/plans/authority_stack.md)
+- [`docs/plans/post_mvp_rollout/post_aws_tool_platform/README.md`](docs/plans/post_mvp_rollout/post_aws_tool_platform/README.md)
 
 ## Working Rule
 

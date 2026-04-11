@@ -19,7 +19,7 @@ authority:
     - MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/read_only_and_bounded_write_patterns.md
     - MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/runtime_entrypoint_catalog.md
     - MyCiteV2/docs/plans/post_mvp_rollout/admin_first/admin_first_parity_ledger.md
-    - MyCiteV1/docs/modularity/contracts/aws_csm.md
+    - docs/V1/modularity/contracts/aws_csm.md
   notes:
     - V1 is evidence for workflow semantics and operator requirements, not a structural template.
     - V2 onboarding parity must map into shell-owned slices, entrypoints, orchestration, and tests.
@@ -30,8 +30,8 @@ scope:
   repos:
     - mycite-core
   repo_paths:
-    - MyCiteV1/docs/modularity/contracts/aws_csm.md
-    - MyCiteV1/docs/archive/aws_cms_mailbox_profile_refactor_plan.md
+    - docs/V1/modularity/contracts/aws_csm.md
+    - docs/V1/archive/aws_cms_mailbox_profile_refactor_plan.md
     - MyCiteV1/instances/_shared/runtime/flavors/fnd/portal/api/admin_integrations.py
     - MyCiteV1/instances/_shared/runtime/flavors/fnd/portal/ui/templates/tools/aws_platform_admin_home.html
     - MyCiteV1/packages/tools/aws_csm/state_adapter/profile.py
