@@ -410,6 +410,14 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.get("/<path:resource_path>")
     def public_resource(resource_path: str) -> Any:
+        # Catch-all must not shadow /portal/static/* — Flask's static route loses to this
+        # rule in some WSGI setups, which returned 404 for CSS/JS and broke styling.
+        if resource_path.startswith("portal/static/"):
+            rel = resource_path.removeprefix("portal/static/")
+            if not rel or ".." in Path(rel).parts:
+                abort(404)
+            return send_from_directory(str(_host_dir / "static"), rel)
+
         if resource_path == "portal" or resource_path.startswith("portal/"):
             abort(404)
         requested = Path(resource_path)

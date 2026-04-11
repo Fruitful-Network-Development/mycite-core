@@ -1,6 +1,6 @@
 # TITLE
 
-## PROMPT:
+## Prompt:
 
 HERE
 
