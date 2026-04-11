@@ -11,9 +11,15 @@ FLAVORS_DIR = RUNTIME_DIR / "flavors"
 
 FORBIDDEN_IMPORT_PREFIXES = (
     "MyCiteV2.packages.tools",
-    "MyCiteV2.packages.sandboxes",
     "mycite_core",
 )
+
+
+def _forbidden_sandboxes_import(module_name: str) -> bool:
+    """ADR 0006: allow ``sandboxes.tool`` orchestration from runtime; block other sandboxes."""
+    if not module_name.startswith("MyCiteV2.packages.sandboxes"):
+        return False
+    return not module_name.startswith("MyCiteV2.packages.sandboxes.tool")
 
 GENERAL_FORBIDDEN_TEXT_TOKENS = (
     "FastAPI",
@@ -68,7 +74,9 @@ class RuntimeCompositionBoundaryTests(unittest.TestCase):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
                         module_name = alias.name
-                        if module_name.startswith(FORBIDDEN_IMPORT_PREFIXES):
+                        if module_name.startswith(FORBIDDEN_IMPORT_PREFIXES) or _forbidden_sandboxes_import(
+                            module_name
+                        ):
                             violations.append(f"{runtime_file.name}: forbidden import {module_name}")
                         elif not _is_allowed_absolute_import(module_name):
                             violations.append(f"{runtime_file.name}: non-runtime import {module_name}")
@@ -76,7 +84,7 @@ class RuntimeCompositionBoundaryTests(unittest.TestCase):
                     if node.level:
                         continue
                     module_name = node.module or ""
-                    if module_name.startswith(FORBIDDEN_IMPORT_PREFIXES):
+                    if module_name.startswith(FORBIDDEN_IMPORT_PREFIXES) or _forbidden_sandboxes_import(module_name):
                         violations.append(f"{runtime_file.name}: forbidden import {module_name}")
                     elif module_name and not _is_allowed_absolute_import(module_name):
                         violations.append(f"{runtime_file.name}: non-runtime import {module_name}")

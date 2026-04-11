@@ -20,6 +20,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
     ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
+    AWS_CSM_SANDBOX_SLICE_ID,
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_SLICE_ID,
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
@@ -34,6 +35,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
 from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
     ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA,
     ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
+    run_admin_aws_csm_sandbox_read_only,
     run_admin_aws_read_only,
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
@@ -430,6 +432,7 @@ def _build_regions_and_surface(
     portal_tenant_id: str,
     audit_storage_file: str | Path | None,
     aws_status_file: str | Path | None,
+    aws_csm_sandbox_status_file: str | Path | None,
     data_dir: str | Path | None,
     selection: Any,
     normalized_request: AdminShellRequest,
@@ -440,6 +443,7 @@ def _build_regions_and_surface(
         if normalized_request.tenant_scope.audience == "internal" and selection.active_surface_id in {
             ADMIN_HOME_STATUS_SLICE_ID,
             ADMIN_TOOL_REGISTRY_SLICE_ID,
+            AWS_CSM_SANDBOX_SLICE_ID,
         }:
             surface_fallback = _select_band0_surface_payload(
                 active_surface_id=selection.active_surface_id,
@@ -607,6 +611,44 @@ def _build_regions_and_surface(
         )
         return sp_wrap, comp, "MyCite", "AWS narrow write"
 
+    if active == AWS_CSM_SANDBOX_SLICE_ID:
+        sandbox_path = _live_aws_path(aws_csm_sandbox_status_file)
+        ro_payload = {
+            "schema": ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
+            "tenant_scope": {"scope_id": portal_tenant_id, "audience": "internal"},
+        }
+        aws_env = run_admin_aws_csm_sandbox_read_only(ro_payload, aws_sandbox_status_file=sandbox_path)
+        sp = aws_env.get("surface_payload")
+        err = aws_env.get("error")
+        if err:
+            wb = _workbench_error(
+                title="AWS-CSM Sandbox",
+                message=_as_text((err or {}).get("message")) or "Sandbox AWS surface failed.",
+            )
+            raw_w = aws_env.get("warnings") or []
+            wlist = list(raw_w) if isinstance(raw_w, (list, tuple)) else []
+            ins = _inspector_aws_tool_error(error=err if isinstance(err, dict) else {}, warnings=wlist)
+        else:
+            wb = {
+                "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
+                "kind": "tool_placeholder",
+                "title": "AWS-CSM Sandbox",
+                "subtitle": "Read-only sandbox profile (interface panel)",
+                "visible": False,
+            }
+            ins = _inspector_aws_read_only_surface(surface=sp if isinstance(sp, dict) else {})
+        comp = build_shell_composition_payload(
+            active_surface_id=active,
+            portal_tenant_id=portal_tenant_id,
+            page_title="MyCite",
+            page_subtitle="AWS-CSM sandbox",
+            activity_items=_activity_items(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+            control_panel=_control_panel_region(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+            workbench=wb,
+            inspector=ins,
+        )
+        return sp, comp, "MyCite", "AWS-CSM sandbox"
+
     sp = _build_home_status_surface(audit_storage_file=audit_storage_file)
     comp = build_shell_composition_payload(
         active_surface_id=ADMIN_HOME_STATUS_SLICE_ID,
@@ -627,6 +669,7 @@ def run_admin_shell_entry(
     audit_storage_file: str | Path | None = None,
     portal_tenant_id: str = "fnd",
     aws_status_file: str | Path | None = None,
+    aws_csm_sandbox_status_file: str | Path | None = None,
     data_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     normalized_request = _normalize_request(request_payload)
@@ -640,6 +683,7 @@ def run_admin_shell_entry(
         portal_tenant_id=_as_text(portal_tenant_id) or "fnd",
         audit_storage_file=audit_storage_file,
         aws_status_file=aws_status_file,
+        aws_csm_sandbox_status_file=aws_csm_sandbox_status_file,
         data_dir=data_dir,
         selection=selection,
         normalized_request=normalized_request,

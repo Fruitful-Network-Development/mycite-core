@@ -15,11 +15,16 @@ from MyCiteV2.packages.modules.cross_domain.aws_operational_visibility import Aw
 from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
 from MyCiteV2.packages.ports.aws_narrow_write import AwsNarrowWritePort
 from MyCiteV2.packages.ports.aws_read_only_status import AwsReadOnlyStatusPort
+from MyCiteV2.packages.sandboxes.tool import validate_staged_aws_csm_profile_path
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND1_AWS_NAME,
     ADMIN_BAND2_AWS_NAME,
+    ADMIN_BAND3_AWS_SANDBOX_NAME,
+    ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY,
     ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
     ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
+    AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+    AWS_CSM_SANDBOX_SLICE_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
@@ -56,10 +61,16 @@ def _normalize_request(payload: dict[str, Any] | None) -> AdminTenantScope:
     return AdminTenantScope.from_value(payload.get("tenant_scope"))
 
 
-def _build_read_only_surface_payload(*, tenant_scope: AdminTenantScope, visibility: dict[str, Any]) -> dict[str, Any]:
+def _build_read_only_surface_payload(
+    *,
+    tenant_scope: AdminTenantScope,
+    visibility: dict[str, Any],
+    active_surface_id: str | None = None,
+) -> dict[str, Any]:
+    surface_id = active_surface_id or AWS_READ_ONLY_SLICE_ID
     return {
         "schema": ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA,
-        "active_surface_id": AWS_READ_ONLY_SLICE_ID,
+        "active_surface_id": surface_id,
         "tenant_scope_id": tenant_scope.scope_id,
         "mailbox_readiness": visibility["mailbox_readiness"],
         "smtp_state": visibility["smtp_state"],
@@ -171,7 +182,11 @@ def run_admin_aws_read_only(
             error=build_admin_runtime_error(code="status_snapshot_not_found", message=message),
         )
 
-    surface_payload = _build_read_only_surface_payload(tenant_scope=tenant_scope, visibility=surface.to_dict())
+    surface_payload = _build_read_only_surface_payload(
+        tenant_scope=tenant_scope,
+        visibility=surface.to_dict(),
+        active_surface_id=AWS_READ_ONLY_SLICE_ID,
+    )
 
     return build_admin_runtime_envelope(
         admin_band=ADMIN_BAND1_AWS_NAME,
@@ -180,6 +195,139 @@ def run_admin_aws_read_only(
         requested_slice_id=AWS_READ_ONLY_SLICE_ID,
         slice_id=AWS_READ_ONLY_SLICE_ID,
         entrypoint_id=AWS_READ_ONLY_ENTRYPOINT_ID,
+        read_write_posture="read-only",
+        shell_state=launch_decision.to_dict(),
+        surface_payload=surface_payload,
+        warnings=list(surface_payload["compatibility_warnings"]),
+        error=None,
+    )
+
+
+def run_admin_aws_csm_sandbox_read_only(
+    request_payload: dict[str, Any] | None = None,
+    *,
+    aws_sandbox_status_file: str | Path | None = None,
+    aws_status_port: AwsReadOnlyStatusPort | None = None,
+) -> dict[str, Any]:
+    """Read-only AWS operational visibility using a **sandbox** profile path (internal audience only)."""
+    tenant_scope = _normalize_request(request_payload)
+    if tenant_scope.audience != "internal":
+        return build_admin_runtime_envelope(
+            admin_band=ADMIN_BAND3_AWS_SANDBOX_NAME,
+            exposure_status=ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY,
+            tenant_scope=tenant_scope.to_dict(),
+            requested_slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+            slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+            entrypoint_id=AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+            read_write_posture="read-only",
+            shell_state={
+                "schema": "mycite.v2.admin.shell.state.v1",
+                "slice_id": AWS_CSM_SANDBOX_SLICE_ID,
+                "entrypoint_id": AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+                "allowed": False,
+                "selection_status": "audience_denied",
+                "reason_code": "audience_not_allowed",
+                "reason_message": "AWS-CSM sandbox read-only requires internal audience.",
+            },
+            surface_payload=None,
+            warnings=["AWS-CSM sandbox requires internal audience."],
+            error=build_admin_runtime_error(
+                code="audience_not_allowed",
+                message="AWS-CSM sandbox read-only requires internal audience.",
+            ),
+        )
+
+    launch_decision = resolve_admin_tool_launch(
+        slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+        audience=tenant_scope.audience,
+        expected_entrypoint_id=AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+    )
+
+    if not launch_decision.allowed:
+        message = launch_decision.reason_message
+        return build_admin_runtime_envelope(
+            admin_band=ADMIN_BAND3_AWS_SANDBOX_NAME,
+            exposure_status=ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY,
+            tenant_scope=tenant_scope.to_dict(),
+            requested_slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+            slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+            entrypoint_id=AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+            read_write_posture="read-only",
+            shell_state=launch_decision.to_dict(),
+            surface_payload=None,
+            warnings=[message] if message else [],
+            error=build_admin_runtime_error(code=launch_decision.reason_code, message=message),
+        )
+
+    if aws_status_port is None and aws_sandbox_status_file is None:
+        message = "AWS-CSM sandbox status file is not configured."
+        return build_admin_runtime_envelope(
+            admin_band=ADMIN_BAND3_AWS_SANDBOX_NAME,
+            exposure_status=ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY,
+            tenant_scope=tenant_scope.to_dict(),
+            requested_slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+            slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+            entrypoint_id=AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+            read_write_posture="read-only",
+            shell_state=launch_decision.to_dict(),
+            surface_payload=None,
+            warnings=[message],
+            error=build_admin_runtime_error(code="status_source_not_configured", message=message),
+        )
+
+    if aws_status_port is not None:
+        adapter = aws_status_port
+    else:
+        try:
+            validated = validate_staged_aws_csm_profile_path(aws_sandbox_status_file)
+        except ValueError as exc:
+            message = str(exc)
+            return build_admin_runtime_envelope(
+                admin_band=ADMIN_BAND3_AWS_SANDBOX_NAME,
+                exposure_status=ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY,
+                tenant_scope=tenant_scope.to_dict(),
+                requested_slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+                slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+                entrypoint_id=AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+                read_write_posture="read-only",
+                shell_state=launch_decision.to_dict(),
+                surface_payload=None,
+                warnings=[message],
+                error=build_admin_runtime_error(code="sandbox_profile_invalid", message=message),
+            )
+        adapter = _aws_read_only_status_port_for_file(validated)
+    service = AwsOperationalVisibilityService(adapter)
+    surface = service.read_surface(tenant_scope.scope_id)
+
+    if surface is None:
+        message = "No AWS read-only status snapshot matched the requested tenant scope."
+        return build_admin_runtime_envelope(
+            admin_band=ADMIN_BAND3_AWS_SANDBOX_NAME,
+            exposure_status=ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY,
+            tenant_scope=tenant_scope.to_dict(),
+            requested_slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+            slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+            entrypoint_id=AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+            read_write_posture="read-only",
+            shell_state=launch_decision.to_dict(),
+            surface_payload=None,
+            warnings=[message],
+            error=build_admin_runtime_error(code="status_snapshot_not_found", message=message),
+        )
+
+    surface_payload = _build_read_only_surface_payload(
+        tenant_scope=tenant_scope,
+        visibility=surface.to_dict(),
+        active_surface_id=AWS_CSM_SANDBOX_SLICE_ID,
+    )
+
+    return build_admin_runtime_envelope(
+        admin_band=ADMIN_BAND3_AWS_SANDBOX_NAME,
+        exposure_status=ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY,
+        tenant_scope=tenant_scope.to_dict(),
+        requested_slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+        slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+        entrypoint_id=AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
         read_write_posture="read-only",
         shell_state=launch_decision.to_dict(),
         surface_payload=surface_payload,

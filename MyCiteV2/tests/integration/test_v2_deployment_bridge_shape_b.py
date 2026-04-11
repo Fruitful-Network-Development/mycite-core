@@ -39,6 +39,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_HOME_STATUS_SLICE_ID,
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
+    AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
@@ -189,7 +190,12 @@ class V2DeploymentBridgeShapeBTests(unittest.TestCase):
             self.assertEqual(payload["bridge_shape"], "shape_b_v1_host_to_v2_runtime")
             self.assertEqual(
                 [entry["entrypoint_id"] for entry in payload["runtime_catalog"]],
-                [ADMIN_ENTRYPOINT_ID, AWS_READ_ONLY_ENTRYPOINT_ID, AWS_NARROW_WRITE_ENTRYPOINT_ID],
+                [
+                    ADMIN_ENTRYPOINT_ID,
+                    AWS_READ_ONLY_ENTRYPOINT_ID,
+                    AWS_NARROW_WRITE_ENTRYPOINT_ID,
+                    AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+                ],
             )
             self.assertEqual(
                 payload["configured_inputs"],
@@ -198,6 +204,8 @@ class V2DeploymentBridgeShapeBTests(unittest.TestCase):
                     "aws_status_file": True,
                     "aws_live_profile_mapping": False,
                     "aws_audit_storage_file": True,
+                    "aws_csm_sandbox_status_file": False,
+                    "aws_csm_sandbox_live_profile_mapping": False,
                 },
             )
             self.assertNotIn(str(temp_root), json.dumps(payload, sort_keys=True))

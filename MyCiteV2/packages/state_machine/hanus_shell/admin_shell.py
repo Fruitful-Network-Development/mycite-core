@@ -16,8 +16,10 @@ DATUM_RESOURCE_WORKBENCH_SLICE_ID = "datum.resource_workbench"
 ADMIN_BAND0_NAME = "Admin Band 0 Internal Admin Replacement"
 ADMIN_BAND1_AWS_NAME = "Admin Band 1 Trusted-Tenant AWS Read-Only"
 ADMIN_BAND2_AWS_NAME = "Admin Band 2 Trusted-Tenant AWS Narrow Write"
+ADMIN_BAND3_AWS_SANDBOX_NAME = "Admin Band 3 Internal AWS-CSM Sandbox"
 
 ADMIN_EXPOSURE_INTERNAL_ONLY = "internal-only"
+ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY = "internal-sandbox-read-only"
 ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY = "trusted-tenant-read-only"
 ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE = "trusted-tenant-narrow-write"
 ADMIN_ENTRYPOINT_ID = "admin.shell_entry"
@@ -27,8 +29,10 @@ ADMIN_HOME_STATUS_SLICE_ID = "admin_band0.home_status"
 ADMIN_TOOL_REGISTRY_SLICE_ID = "admin_band0.tool_registry"
 AWS_READ_ONLY_SLICE_ID = "admin_band1.aws_read_only_surface"
 AWS_NARROW_WRITE_SLICE_ID = "admin_band2.aws_narrow_write_surface"
+AWS_CSM_SANDBOX_SLICE_ID = "admin_band3.aws_csm_sandbox_surface"
 AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
 AWS_NARROW_WRITE_ENTRYPOINT_ID = "admin.aws.narrow_write"
+AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID = "admin.aws.csm_sandbox_read_only"
 
 INTERNAL_ADMIN_SCOPE_ID = "internal-admin"
 ADMIN_TOOL_DEFAULT_POSTURE = "deny-by-default"
@@ -391,6 +395,20 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             read_after_write_required=True,
             launchable=True,
         ),
+        AdminToolRegistryEntry(
+            tool_id="aws_csm_sandbox",
+            label="AWS-CSM Sandbox (read-only)",
+            slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+            entrypoint_id=AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+            admin_band=ADMIN_BAND3_AWS_SANDBOX_NAME,
+            exposure_status="implemented_internal_sandbox_read_only",
+            read_write_posture="read-only",
+            surface_pattern=ADMIN_TOOL_SURFACE_READ_ONLY,
+            status_summary="launchable_sandbox_read_only",
+            audience="internal-admin",
+            internal_only_reason="",
+            launchable=True,
+        ),
     )
 
 
@@ -435,6 +453,26 @@ def resolve_admin_tool_launch(
                 selection_status="audience_denied",
                 reason_code="audience_not_allowed",
                 reason_message="Requested admin tool slice is not approved for the requested audience.",
+                exposure_status=entry.exposure_status,
+            )
+        if normalized_audience == "internal" and entry.audience == "trusted-tenant-admin":
+            return AdminToolLaunchDecision(
+                slice_id=entry.slice_id,
+                entrypoint_id=entry.entrypoint_id,
+                allowed=False,
+                selection_status="audience_denied",
+                reason_code="audience_not_allowed",
+                reason_message="Trusted-tenant AWS tools are not launched with internal audience at this entrypoint.",
+                exposure_status=entry.exposure_status,
+            )
+        if normalized_audience == "trusted-tenant" and entry.audience == "internal-admin":
+            return AdminToolLaunchDecision(
+                slice_id=entry.slice_id,
+                entrypoint_id=entry.entrypoint_id,
+                allowed=False,
+                selection_status="audience_denied",
+                reason_code="audience_not_allowed",
+                reason_message="Internal sandbox tools are not approved for trusted-tenant audience.",
                 exposure_status=entry.exposure_status,
             )
         if normalized_audience not in _ALLOWED_AUDIENCES:
@@ -545,6 +583,33 @@ def resolve_admin_shell_request(request: AdminShellRequest | dict[str, Any] | No
             allowed=True,
         )
 
+    if audience == "internal":
+        for tool_entry in build_admin_tool_registry_entries():
+            if tool_entry.audience != "internal-admin":
+                continue
+            if requested_slice_id != tool_entry.slice_id:
+                continue
+            launch = resolve_admin_tool_launch(
+                slice_id=tool_entry.slice_id,
+                audience=audience,
+                expected_entrypoint_id=tool_entry.entrypoint_id,
+            )
+            if launch.allowed:
+                return AdminShellSelection(
+                    requested_slice_id=requested_slice_id,
+                    active_surface_id=tool_entry.slice_id,
+                    selection_status="available",
+                    allowed=True,
+                )
+            return AdminShellSelection(
+                requested_slice_id=requested_slice_id,
+                active_surface_id=ADMIN_TOOL_REGISTRY_SLICE_ID,
+                selection_status=launch.selection_status,
+                allowed=False,
+                reason_code=launch.reason_code or "tool_launch_denied",
+                reason_message=launch.reason_message or "Shell registry denied this tool launch.",
+            )
+
     for tool_entry in build_admin_tool_registry_entries():
         if requested_slice_id == tool_entry.slice_id:
             return AdminShellSelection(
@@ -568,7 +633,7 @@ def resolve_admin_shell_request(request: AdminShellRequest | dict[str, Any] | No
 
 def map_surface_to_active_service(active_surface_id: str) -> str:
     sid = _as_text(active_surface_id)
-    if sid in {AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID}:
+    if sid in {AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID}:
         return "aws"
     if sid == DATUM_RESOURCE_WORKBENCH_SLICE_ID:
         return "datum"
@@ -579,7 +644,7 @@ def map_surface_to_active_service(active_surface_id: str) -> str:
 
 def shell_composition_mode_for_surface(active_surface_id: str) -> str:
     sid = _as_text(active_surface_id)
-    if sid in {AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID}:
+    if sid in {AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID}:
         return "tool"
     return "system"
 
@@ -622,6 +687,13 @@ def build_portal_activity_dispatch_bodies(
     tt_scope = {"scope_id": tenant, "audience": "trusted-tenant"}
     for entry in build_admin_tool_registry_entries():
         if not entry.launchable:
+            continue
+        if entry.audience == "internal-admin":
+            bodies[entry.slice_id] = {
+                "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+                "requested_slice_id": entry.slice_id,
+                "tenant_scope": {"scope_id": internal, "audience": "internal"},
+            }
             continue
         bodies[entry.slice_id] = {
             "schema": ADMIN_SHELL_REQUEST_SCHEMA,
@@ -677,8 +749,10 @@ __all__ = [
     "ADMIN_BAND0_NAME",
     "ADMIN_BAND1_AWS_NAME",
     "ADMIN_BAND2_AWS_NAME",
+    "ADMIN_BAND3_AWS_SANDBOX_NAME",
     "ADMIN_ENTRYPOINT_ID",
     "ADMIN_EXPOSURE_INTERNAL_ONLY",
+    "ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY",
     "ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE",
     "ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY",
     "ADMIN_HOME_STATUS_SLICE_ID",
@@ -697,6 +771,8 @@ __all__ = [
     "ADMIN_TOOL_REGISTRY_SLICE_ID",
     "ADMIN_TOOL_SURFACE_BOUNDED_WRITE",
     "ADMIN_TOOL_SURFACE_READ_ONLY",
+    "AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID",
+    "AWS_CSM_SANDBOX_SLICE_ID",
     "AWS_NARROW_WRITE_SLICE_ID",
     "AWS_NARROW_WRITE_ENTRYPOINT_ID",
     "AWS_READ_ONLY_ENTRYPOINT_ID",

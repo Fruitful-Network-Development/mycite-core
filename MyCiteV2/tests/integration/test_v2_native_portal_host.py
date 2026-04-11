@@ -34,6 +34,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_SHELL_COMPOSITION_SCHEMA,
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
+    AWS_CSM_SANDBOX_SLICE_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
     AWS_READ_ONLY_SLICE_ID,
@@ -256,6 +257,13 @@ class V2NativePortalHostTests(unittest.TestCase):
                 self.assertIn(AWS_READ_ONLY_SLICE_ID.encode(), aws_page.data)
             finally:
                 aws_page.close()
+
+            sandbox_page = client.get("/portal/system/aws-csm-sandbox")
+            try:
+                self.assertEqual(sandbox_page.status_code, 200)
+                self.assertIn(AWS_CSM_SANDBOX_SLICE_ID.encode(), sandbox_page.data)
+            finally:
+                sandbox_page.close()
 
             datum_page = client.get("/portal/system/datum")
             try:

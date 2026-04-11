@@ -56,3 +56,4 @@ Every slice file must let a future agent answer, without prior chat context:
 - [admin_band0_tool_registry.md](admin_band0_tool_registry.md)
 - [admin_band1_aws_read_only_surface.md](admin_band1_aws_read_only_surface.md)
 - [admin_band2_aws_narrow_write_surface.md](admin_band2_aws_narrow_write_surface.md)
+- [admin_band3_aws_csm_sandbox_surface.md](admin_band3_aws_csm_sandbox_surface.md)

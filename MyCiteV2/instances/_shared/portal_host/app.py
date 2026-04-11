@@ -9,6 +9,7 @@ from typing import Any
 from flask import Flask, Response, abort, jsonify, render_template, request, send_from_directory
 
 from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
+    run_admin_aws_csm_sandbox_read_only,
     run_admin_aws_narrow_write,
     run_admin_aws_read_only,
 )
@@ -18,8 +19,9 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_HOME_STATUS_SLICE_ID,
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
-    AWS_READ_ONLY_SLICE_ID,
+    AWS_CSM_SANDBOX_SLICE_ID,
     AWS_NARROW_WRITE_SLICE_ID,
+    AWS_READ_ONLY_SLICE_ID,
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
     INTERNAL_ADMIN_SCOPE_ID,
     build_portal_activity_dispatch_bodies,
@@ -90,6 +92,7 @@ class V2PortalHostConfig:
     analytics_domain: str
     analytics_webapps_root: Path
     aws_status_file: Path | None = None
+    aws_csm_sandbox_status_file: Path | None = None
     aws_audit_storage_file: Path | None = None
     admin_audit_storage_file: Path | None = None
 
@@ -109,6 +112,11 @@ class V2PortalHostConfig:
         object.__setattr__(self, "aws_status_file", None if self.aws_status_file is None else Path(self.aws_status_file))
         object.__setattr__(
             self,
+            "aws_csm_sandbox_status_file",
+            None if self.aws_csm_sandbox_status_file is None else Path(self.aws_csm_sandbox_status_file),
+        )
+        object.__setattr__(
+            self,
             "aws_audit_storage_file",
             None if self.aws_audit_storage_file is None else Path(self.aws_audit_storage_file),
         )
@@ -125,6 +133,7 @@ class V2PortalHostConfig:
             tenant_id = "fnd"
         instance_root = Path(f"/srv/mycite-state/instances/{tenant_id}")
         status_file = _as_text(os.environ.get("MYCITE_V2_AWS_STATUS_FILE"))
+        sandbox_status = _as_text(os.environ.get("MYCITE_V2_AWS_CSM_SANDBOX_STATUS_FILE"))
         aws_audit_file = _as_text(os.environ.get("MYCITE_V2_AWS_AUDIT_FILE"))
         admin_audit_file = _as_text(os.environ.get("MYCITE_V2_ADMIN_AUDIT_FILE"))
         return cls(
@@ -135,6 +144,7 @@ class V2PortalHostConfig:
             analytics_domain=_as_text(os.environ.get("MYCITE_ANALYTICS_DOMAIN")) or TENANT_DOMAINS.get(tenant_id, ""),
             analytics_webapps_root=_env_path("MYCITE_WEBAPPS_ROOT", "/srv/webapps"),
             aws_status_file=Path(status_file) if status_file else None,
+            aws_csm_sandbox_status_file=Path(sandbox_status) if sandbox_status else None,
             aws_audit_storage_file=Path(aws_audit_file) if aws_audit_file else None,
             admin_audit_storage_file=Path(admin_audit_file) if admin_audit_file else None,
         )
@@ -157,6 +167,7 @@ URL_SLUG_TO_SLICE_ID: dict[str, str] = {
     "registry": ADMIN_TOOL_REGISTRY_SLICE_ID,
     "aws": AWS_READ_ONLY_SLICE_ID,
     "aws-write": AWS_NARROW_WRITE_SLICE_ID,
+    "aws-csm-sandbox": AWS_CSM_SANDBOX_SLICE_ID,
     "datum": DATUM_RESOURCE_WORKBENCH_SLICE_ID,
     "mediate_tool-aws_platform_admin": AWS_READ_ONLY_SLICE_ID,
 }
@@ -217,6 +228,14 @@ def _required_live_aws_status_file(config: V2PortalHostConfig) -> Path | None:
     return None
 
 
+def _optional_sandbox_live_profile_file(config: V2PortalHostConfig) -> Path | None:
+    """Separate from ``MYCITE_V2_AWS_STATUS_FILE``: optional staging/sandbox profile path."""
+    p = config.aws_csm_sandbox_status_file
+    if p is not None and is_live_aws_profile_file(p):
+        return p
+    return None
+
+
 def _portal_package_static_dir() -> Path:
     return Path(__file__).resolve().parent / "static"
 
@@ -234,12 +253,15 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         year_month=analytics_month,
     )
     aws_status_file = config.aws_status_file
+    sandbox_file = config.aws_csm_sandbox_status_file
     aws_health = {
         "configured": aws_status_file is not None,
         "exists": bool(aws_status_file and aws_status_file.exists() and aws_status_file.is_file()),
         "live_profile_mapping": is_live_aws_profile_file(aws_status_file),
         "status_file": None if aws_status_file is None else str(aws_status_file),
         "audit_storage_file_configured": config.aws_audit_storage_file is not None,
+        "sandbox_status_file": None if sandbox_file is None else str(sandbox_file),
+        "sandbox_live_profile_mapping": is_live_aws_profile_file(sandbox_file),
     }
     datum_payload = datum_result.to_dict()
     static_ok = portal_css.is_file() and portal_js.is_file()
@@ -320,6 +342,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     audit_storage_file=host_config.admin_audit_storage_file,
                     portal_tenant_id=host_config.tenant_id,
                     aws_status_file=host_config.aws_status_file,
+                    aws_csm_sandbox_status_file=host_config.aws_csm_sandbox_status_file,
                     data_dir=host_config.data_dir,
                 )
             )
@@ -346,6 +369,35 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     _json_payload(),
                     aws_status_file=_required_live_aws_status_file(host_config),
                     audit_storage_file=host_config.aws_audit_storage_file,
+                )
+            )
+        except ValueError as exc:
+            return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": "invalid_request", "message": str(exc)}}), 400
+
+    @app.post("/portal/api/v2/admin/aws/csm-sandbox/read-only")
+    def admin_aws_csm_sandbox_read_only() -> tuple[Any, int]:
+        """Internal-audience read-only projection using ``MYCITE_V2_AWS_CSM_SANDBOX_STATUS_FILE`` only."""
+        sandbox_file = _optional_sandbox_live_profile_file(host_config)
+        if sandbox_file is None:
+            return jsonify(
+                {
+                    "schema": V2_PORTAL_ERROR_SCHEMA,
+                    "ok": False,
+                    "error": {
+                        "code": "sandbox_status_not_configured",
+                        "message": (
+                            "Set MYCITE_V2_AWS_CSM_SANDBOX_STATUS_FILE to a valid "
+                            "mycite.service_tool.aws_csm.profile.v1 JSON path (independent of "
+                            "MYCITE_V2_AWS_STATUS_FILE used by trusted-tenant AWS routes)."
+                        ),
+                    },
+                }
+            ), 503
+        try:
+            return _runtime_response(
+                run_admin_aws_csm_sandbox_read_only(
+                    _json_payload(),
+                    aws_sandbox_status_file=sandbox_file,
                 )
             )
         except ValueError as exc:
