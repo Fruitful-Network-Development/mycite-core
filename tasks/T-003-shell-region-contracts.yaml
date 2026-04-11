@@ -1,0 +1,59 @@
+id: T-003
+title: Formalize shell region and kind contracts
+primary_type: repo_only
+owner: lead
+status: proposed
+priority: high
+objective: >
+  Turn the implicit workbench, inspector, activity-bar, and control-panel
+  shape conventions into explicit V2 contract documentation anchored to the
+  current runtime and renderer implementation.
+authority:
+  precedence:
+    - MyCiteV2/docs/ontology/structural_invariants.md
+    - MyCiteV2/docs/plans/authority_stack.md
+    - MyCiteV2/docs/ontology/interface_surfaces.md
+  notes:
+    - Navigation state must be pure, explicit, and serializable.
+    - UI widget is not shell surface.
+    - Tool attachment rules must remain shell-owned.
+scope:
+  repos:
+    - mycite-core
+  repo_paths:
+    - MyCiteV2/packages/state_machine/hanus_shell/admin_shell.py
+    - MyCiteV2/instances/_shared/runtime/admin_runtime.py
+    - MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell.js
+    - MyCiteV2/docs/contracts/
+required_outputs:
+  - A canonical contract doc for shell region kinds and payload fields.
+  - Clear mapping from each kind to runtime producer and client renderer.
+  - Explicit notes on composition_mode and foreground region semantics.
+acceptance:
+  - A document exists at MyCiteV2/docs/contracts/shell_region_kinds.md or an equally precise path.
+  - The doc enumerates all currently supported workbench kinds.
+  - The doc enumerates all currently supported inspector kinds.
+  - The doc states required fields and optional fields for each kind.
+  - The doc states which runtime function emits each kind.
+  - The doc states which client renderer branch consumes each kind.
+  - The doc distinguishes shell composition contract from presentation behavior.
+  - The verifier finds no documented kind invented without code support and no code-supported kind omitted from the doc.
+implementation_requirements:
+  - Derive the contract from code, not from prompt history.
+  - Cite exact repo authorities inside the document.
+  - Keep future tool extension notes concise and actionable.
+verification_requirements:
+  - Verifier must compare the document against admin_shell.py, admin_runtime.py, and v2_portal_shell.js.
+  - Verifier must report missing, duplicated, or ambiguous contract items.
+artifacts:
+  implementation_report: reports/T-003-implementation.md
+  verification_report: reports/T-003-verification.md
+  contract_doc: MyCiteV2/docs/contracts/shell_region_kinds.md
+lead_handoff:
+  implementer:
+    focus: write the contract from actual runtime and renderer code
+  verifier:
+    focus: perform code-to-doc reconciliation only
+closure_rule: >
+  Lead may close only when verifier confirms the contract doc matches the
+  current code path without invented semantics.

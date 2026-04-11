@@ -1,0 +1,73 @@
+id: T-002
+title: Deploy truth automation for V2 portal
+primary_type: repo_and_deploy
+owner: lead
+status: proposed
+priority: high
+objective: >
+  Make repo truth, host truth, and live HTTP truth checkable through one
+  deterministic operational verification path for the V2 portal shell.
+authority:
+  precedence:
+    - MyCiteV2/docs/ontology/structural_invariants.md
+    - MyCiteV2/docs/plans/authority_stack.md
+    - MyCiteV2/docs/ontology/interface_surfaces.md
+    - MyCiteV2/docs/audits/v2_shell_visual_parity_and_standards_audit_2026-04-10.md
+  notes:
+    - Tools do not invent alternate shell state.
+    - Hosts compose modules and do not own domain logic.
+    - Repo diffs and unit tests are not proof of live behavior.
+scope:
+  repos:
+    - mycite-core
+    - srv-infra
+  repo_paths:
+    - MyCiteV2/instances/_shared/portal_host/app.py
+    - MyCiteV2/instances/_shared/portal_host/templates/portal.html
+    - MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell.js
+    - MyCiteV2/tests/integration/test_v2_native_portal_host.py
+    - nginx/sites-available/portal.fruitfulnetworkdevelopment.com.conf
+  live_systems:
+    - portal.fruitfulnetworkdevelopment.com
+    - nginx on the portal host
+    - systemd unit serving the V2 portal host
+required_outputs:
+  - A deterministic deploy verification entrypoint in the repo.
+  - A short operator doc for running it locally and on-host.
+  - Captured command output proving host and live state.
+acceptance:
+  - A single documented command or script checks template markers, static assets, health output, nginx routing target, and running service identity.
+  - The command fails non-zero when template markers, asset routes, or health expectations are missing.
+  - The command checks live /portal/system, /portal/static/portal.css, /portal/static/v2_portal_shell.js, and /healthz.
+  - The command or companion step checks actual on-host nginx config and actual running systemd unit state.
+  - The implementation report includes exact files added or changed.
+  - The verification report includes exact command output from an independent verification pass.
+implementation_requirements:
+  - Do not hide host-specific checks behind mocked tests only.
+  - Keep the verification path shell-scriptable and deterministic.
+  - Prefer one stable command over many ad hoc instructions.
+  - If host access is unavailable, mark the task blocked instead of complete.
+verification_requirements:
+  - Verifier must rerun the documented deploy-truth command independently.
+  - Verifier must compare repo nginx intent against actual host nginx configuration.
+  - Verifier must refuse closure if any live endpoint disagrees with repo intent.
+artifacts:
+  implementation_report: reports/T-002-implementation.md
+  verification_report: reports/T-002-verification.md
+  operator_doc: reports/T-002-operator-runbook.md
+suggested_commands:
+  repo:
+    - cd /srv/repo/mycite-core && PYTHONPATH=/srv/repo/mycite-core /srv/venvs/fnd_portal/bin/python3 -m pytest MyCiteV2/tests
+  live:
+    - cd /tmp && curl -s https://portal.fruitfulnetworkdevelopment.com/portal/system | grep -n "shell-template: v2-composition\|build:"
+    - cd /tmp && curl -I https://portal.fruitfulnetworkdevelopment.com/portal/static/portal.css
+    - cd /tmp && curl -I https://portal.fruitfulnetworkdevelopment.com/portal/static/v2_portal_shell.js
+    - cd /tmp && curl -s https://portal.fruitfulnetworkdevelopment.com/healthz | python3 -m json.tool
+lead_handoff:
+  implementer:
+    focus: create deterministic deploy-truth automation and docs
+  verifier:
+    focus: rerun the automation independently and judge live truth only
+closure_rule: >
+  Lead may close only after verifier evidence shows repo truth, host truth,
+  and live truth are aligned.
