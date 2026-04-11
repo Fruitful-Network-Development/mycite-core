@@ -1,8 +1,8 @@
 id: T-002
 title: Deploy truth automation for V2 portal
-primary_type: repo_and_deploy
+primary_type: resolved
 owner: lead
-status: proposed
+status: in_progress
 priority: high
 objective: >
   Make repo truth, host truth, and live HTTP truth checkable through one
