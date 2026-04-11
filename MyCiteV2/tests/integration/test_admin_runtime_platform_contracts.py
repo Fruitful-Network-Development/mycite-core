@@ -21,6 +21,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import ADMIN_RUNTIME_RE
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_HOME_STATUS_SLICE_ID,
     ADMIN_SHELL_REQUEST_SCHEMA,
+    AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
     build_admin_tool_registry_entries,
@@ -90,7 +91,14 @@ class AdminRuntimePlatformIntegrationTests(unittest.TestCase):
     def test_tool_registry_descriptors_match_runtime_entrypoint_ids(self) -> None:
         entrypoint_ids = [entry.entrypoint_id for entry in build_admin_tool_registry_entries()]
 
-        self.assertEqual(entrypoint_ids, [AWS_READ_ONLY_ENTRYPOINT_ID, AWS_NARROW_WRITE_ENTRYPOINT_ID])
+        self.assertEqual(
+            entrypoint_ids,
+            [
+                AWS_READ_ONLY_ENTRYPOINT_ID,
+                AWS_NARROW_WRITE_ENTRYPOINT_ID,
+                AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+            ],
+        )
         self.assertNotIn("provider-admin", json.dumps(entrypoint_ids, sort_keys=True))
 
 

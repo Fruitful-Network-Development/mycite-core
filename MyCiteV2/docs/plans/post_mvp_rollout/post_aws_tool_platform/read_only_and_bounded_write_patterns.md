@@ -18,6 +18,20 @@ Required pieces:
 - no write methods
 - no local-audit write emission unless the slice explicitly records a read-access audit requirement
 
+### Internal sandbox read-only (separate path)
+
+Reference slice: `admin_band3.aws_csm_sandbox_surface`
+
+- Reuses the same read-only **port** and **live profile** adapter family as Band 1,
+  but uses a **distinct** registry entry, slice id, runtime entrypoint, and
+  **optional** host env **`MYCITE_V2_AWS_CSM_SANDBOX_STATUS_FILE`** (independent
+  of **`MYCITE_V2_AWS_STATUS_FILE`** / `_required_live_aws_status_file` on
+  trusted-tenant routes).
+- **Internal audience only** at launch resolution; trusted-tenant cannot select
+  this slice.
+- Orchestration boundary: `MyCiteV2/packages/sandboxes/tool/` validates the
+  staged file path before the runtime attaches the adapter.
+
 ## Bounded-write pattern
 
 Reference slice: `admin_band2.aws_narrow_write_surface`

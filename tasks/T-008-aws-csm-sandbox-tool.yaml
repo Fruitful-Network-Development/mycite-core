@@ -1,0 +1,113 @@
+id: T-008
+title: Implement AWS-CSM sandbox tool orchestration and shell-facing surface
+primary_type: repo_only
+owner: lead
+status: resolved
+verification_result: pass
+priority: high
+
+objective: >
+  Add a V2-legal AWS-CSM sandbox workflow: orchestration under packages/sandboxes/tool,
+  a shell-registered tool surface distinct from the two trusted-tenant production AWS slices,
+  runtime entrypoint(s), tests, and documentation — without treating browser JS or adapters
+  as alternate shell truth.
+
+authority:
+  precedence:
+    - MyCiteV2/docs/ontology/structural_invariants.md
+    - MyCiteV2/docs/decisions/decision_record_0006_sandboxes_are_orchestration_boundaries.md
+    - MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/read_only_and_bounded_write_patterns.md
+    - MyCiteV2/docs/plans/post_mvp_rollout/post_aws_tool_platform/future_tool_drop_in_contract.md
+    - MyCiteV2/docs/contracts/shell_region_kinds.md
+  notes:
+    - Sandboxes own orchestration only; semantic validation stays in modules; adapters stay thin.
+    - One new slice worth of registry + runtime + tests per future_tool_drop_in_contract.
+
+scope:
+  repos:
+    - mycite-core
+  repo_paths:
+    - MyCiteV2/packages/sandboxes/tool/
+    - MyCiteV2/packages/state_machine/hanus_shell/admin_shell.py
+    - MyCiteV2/instances/_shared/runtime/admin_runtime.py
+    - MyCiteV2/instances/_shared/runtime/admin_aws_runtime.py
+    - MyCiteV2/instances/_shared/portal_host/app.py
+    - MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell.js
+    - MyCiteV2/docs/contracts/shell_region_kinds.md
+    - MyCiteV2/docs/plans/post_mvp_rollout/slice_registry/
+    - MyCiteV2/tests/
+  live_systems: []
+
+required_outputs:
+  - Implemented sandboxes/tool orchestration for staged aws_csm.profile.v1 handling (paths and
+    lifecycle defined in code and docs, not only README placeholder text).
+  - New admin slice file under slice_registry/ describing the sandbox tool slice, band, and gates.
+  - Shell registry entry + dispatch bodies + runtime composition paths for the new surface.
+  - Unit, integration, and architecture tests proving shell-owned launch and sandbox boundary rules.
+  - Updated shell_region_kinds.md for any new region kinds or routes actually emitted.
+
+acceptance:
+  - Sandbox orchestration lives under MyCiteV2/packages/sandboxes/tool/ and does not import forbidden
+    packages per existing architecture tests (state_machine, modules ownership unchanged).
+  - build_admin_tool_registry_entries (or successor API) includes a distinct sandbox AWS-CSM tool
+    descriptor; trusted-tenant production AWS read-only and narrow-write behavior remains unchanged
+    for existing slice IDs and entrypoints.
+  - New runtime entrypoint(s) are invoked only through shell-approved paths (registry + launch
+    resolution), with explicit fail-closed behavior when sandbox roots or profiles are missing or invalid.
+  - pytest targets for the new code pass in CI/local; architecture tests cover import boundaries.
+  - reports/T-008-implementation.md and reports/T-008-verification.md exist with separated repo /
+    host / live sections (host/live may state not applicable where unchanged).
+
+implementation_requirements:
+  - Do not copy MyCiteV1/packages/tools/aws_csm as a structural template; V1 remains evidence only.
+  - Prefer reusing existing aws_csm.profile.v1 mapping via current ports/adapters where possible;
+    add new adapters or facades only if the sandbox root contract requires it.
+  - Any new HTTP route or env knob must be documented next to MYCITE_V2_AWS_STATUS_FILE semantics in
+    repo docs (e.g. post_aws_tool_platform or slice file), including interaction with
+    _required_live_aws_status_file if routes are added under portal_host.
+  - Extend execution.repo_test_command to append new unittest module paths whenever new automated
+    tests are added for the sandbox slice (keep a single canonical command string).
+  - If narrow write is offered for sandbox artifacts, keep bounded-write pattern: explicit field set,
+    read-after-write, local audit as required by admin_shell.AdminToolRegistryEntry rules for write tools.
+
+verification_requirements:
+  - Verifier runs execution.repo_test_command independently (same PYTHONPATH and interpreter as
+    written) and confirms acceptance mapping.
+  - Verifier fails if shell registry allows sandbox launch without cataloged entrypoint or if
+    production AWS slices regress in tests.
+
+artifacts:
+  implementation_report: reports/T-008-implementation.md
+  verification_report: reports/T-008-verification.md
+  investigation_reference: reports/T-007-investigation.md
+  template_paths:
+    - reports/templates/implementation_report_template.md
+    - reports/templates/verification_report_template.md
+
+execution:
+  current_role: lead
+  next_role: none
+  requires_verifier: true
+  handoff_files:
+    lead_to_implementer: reports/handoffs/T-008/lead_to_implementer.md
+    implementer_to_verifier: reports/handoffs/T-008/implementer_to_verifier.md
+    verifier_to_lead: reports/handoffs/T-008/verifier_to_lead.md
+  reports:
+    implementation: reports/T-008-implementation.md
+    verification: reports/T-008-verification.md
+  repo_test_command: >-
+    cd /srv/repo/mycite-core &&
+    PYTHONPATH=/srv/repo/mycite-core /srv/venvs/fnd_portal/bin/python3 -m unittest
+    MyCiteV2.tests.architecture.test_state_machine_boundaries
+    MyCiteV2.tests.architecture.test_runtime_composition_boundaries
+    MyCiteV2.tests.architecture.test_sandboxes_tool_boundaries
+    MyCiteV2.tests.integration.test_admin_aws_read_only_runtime
+    MyCiteV2.tests.integration.test_admin_aws_narrow_write_runtime
+    MyCiteV2.tests.integration.test_admin_aws_csm_sandbox_runtime -v
+  live_check_command: not_applicable
+
+closure_rule: >
+  Lead may set status to resolved only when verification_result is pass, reports/T-008-verification.md
+  exists with verbatim command transcripts for the repo test section, reports/T-008-implementation.md
+  exists, and acceptance criteria in this task file are satisfied. Host and live sections may be
+  not applicable for this repo_only task if no deploy-facing acceptance was added.

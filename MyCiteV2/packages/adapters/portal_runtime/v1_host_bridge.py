@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
+    run_admin_aws_csm_sandbox_read_only,
     run_admin_aws_narrow_write,
     run_admin_aws_read_only,
 )
@@ -16,6 +17,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
 from MyCiteV2.packages.adapters.filesystem import is_live_aws_profile_file
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_ENTRYPOINT_ID,
+    AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
 )
@@ -28,6 +30,7 @@ V2_ADMIN_BRIDGE_ERROR_SCHEMA = "mycite.v2.admin.deployment_bridge.error.v1"
 class V2AdminBridgeConfig:
     audit_storage_file: str | Path | None = None
     aws_status_file: str | Path | None = None
+    aws_csm_sandbox_status_file: str | Path | None = None
     aws_audit_storage_file: str | Path | None = None
 
 
@@ -63,6 +66,8 @@ def _runtime_status_code(envelope: dict[str, Any]) -> int:
         return 404
     if code in {"status_source_not_configured", "audit_log_not_configured"}:
         return 503
+    if code == "sandbox_profile_invalid":
+        return 400
     return 400
 
 
@@ -107,6 +112,13 @@ def run_v2_admin_bridge_entrypoint(
                     audit_storage_file=bridge_config.aws_audit_storage_file,
                 )
             )
+        if entrypoint_id == AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID:
+            return _runtime_result(
+                run_admin_aws_csm_sandbox_read_only(
+                    request_payload,
+                    aws_sandbox_status_file=bridge_config.aws_csm_sandbox_status_file,
+                )
+            )
     except ValueError as exc:
         return _safe_error_payload(code="invalid_request", message=str(exc), status_code=400)
 
@@ -129,6 +141,10 @@ def build_v2_admin_bridge_health(config: V2AdminBridgeConfig | None = None) -> d
             "aws_status_file": bridge_config.aws_status_file is not None,
             "aws_live_profile_mapping": is_live_aws_profile_file(bridge_config.aws_status_file),
             "aws_audit_storage_file": bridge_config.aws_audit_storage_file is not None,
+            "aws_csm_sandbox_status_file": bridge_config.aws_csm_sandbox_status_file is not None,
+            "aws_csm_sandbox_live_profile_mapping": is_live_aws_profile_file(
+                bridge_config.aws_csm_sandbox_status_file
+            ),
         },
     }
 

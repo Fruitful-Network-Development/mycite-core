@@ -32,7 +32,7 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `schema` | yes | Always `mycite.v2.admin.shell.composition.v1` (`ADMIN_SHELL_COMPOSITION_SCHEMA`). |
-| `composition_mode` | yes | `"tool"` or `"system"` from `shell_composition_mode_for_surface(active_surface_id)` (tool for AWS read-only / narrow-write slice IDs; otherwise system). |
+| `composition_mode` | yes | `"tool"` or `"system"` from `shell_composition_mode_for_surface(active_surface_id)` (tool for AWS read-only, narrow-write, and **internal AWS-CSM sandbox** slice IDs; otherwise system). |
 | `active_service` | yes | `"aws"`, `"datum"`, `"registry"`, or `"system"` from `map_surface_to_active_service`. |
 | `active_surface_id` | yes | Resolved active surface slice id (text). |
 | `active_tool_slice_id` | conditional | Non-null only when `composition_mode == "tool"`; equals the active AWS tool slice id. |
@@ -128,7 +128,7 @@ Workbench payloads use `schema: mycite.v2.admin.shell.region.workbench.v1` (`ADM
 | `home_summary` | `schema`, `kind`, `title`, `visible`, `blocks` | `subtitle` | `_workbench_home` | Parses `blocks` as label/value cards (`b.label`, `b.value`). Nested block `kind` (e.g. `"metric"`) is informational for authors; JS does not switch on it. |
 | `tool_registry` | `schema`, `kind`, `title`, `visible`, `tool_rows` | `subtitle`, `banner` (`code`, `message`) | `_workbench_registry`; blocked registry path with `banner` | Table from `tool_rows`; optional banner |
 | `datum_workbench` | `schema`, `kind`, `title`, `visible`, `summary`, `warnings`, `rows_preview` | `subtitle` | `_workbench_datum` | Summary cards, warnings list, preview table columns `resource_id`, `subject_ref`, `relation`, `object_ref` |
-| `tool_placeholder` | `schema`, `kind`, `title`, `visible` (`false` for AWS primary inspector layout), `subtitle` | — | AWS read-only / narrow-write success paths | Treated like hidden body: `visible === false` shows empty/workbench-hidden copy; subtitle as message |
+| `tool_placeholder` | `schema`, `kind`, `title`, `visible` (`false` for AWS primary inspector layout), `subtitle` | — | AWS read-only, narrow-write, and **AWS-CSM sandbox** success paths | Treated like hidden body: `visible === false` shows empty/workbench-hidden copy; subtitle as message |
 | `tool_collapsed_inspector` | `schema`, `kind`, `title`, `subtitle`, `visible` (`true`) | — | `_apply_shell_chrome_to_composition` only | Dedicated branch — dismissal card |
 
 ### Workbench presentation note
