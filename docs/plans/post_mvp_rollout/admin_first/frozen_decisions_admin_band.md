@@ -1,6 +1,6 @@
 # Frozen Decisions For The Admin Band
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
 This file records what remains deliberately frozen during the admin-first track.
 

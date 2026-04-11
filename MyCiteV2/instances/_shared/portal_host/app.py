@@ -58,6 +58,55 @@ def _env_path(name: str, default: str) -> Path:
     return Path(os.environ.get(name) or default)
 
 
+def _required_env_text(name: str) -> str:
+    value = _as_text(os.environ.get(name))
+    if not value:
+        raise ValueError(f"{name} is required for the V2 portal host")
+    return value
+
+
+def _validate_existing_dir(path: Path, *, env_name: str) -> Path:
+    resolved = Path(path)
+    if not resolved.exists():
+        raise ValueError(f"{env_name} must point to an existing directory: {resolved}")
+    if not resolved.is_dir():
+        raise ValueError(f"{env_name} must point to a directory: {resolved}")
+    return resolved
+
+
+def _validate_existing_live_profile_file(path: Path | None, *, env_name: str, required: bool) -> Path | None:
+    if path is None:
+        if required:
+            raise ValueError(f"{env_name} is required for the V2 portal host")
+        return None
+    resolved = Path(path)
+    if not resolved.exists():
+        raise ValueError(f"{env_name} must point to an existing file: {resolved}")
+    if not resolved.is_file():
+        raise ValueError(f"{env_name} must point to a file: {resolved}")
+    if not is_live_aws_profile_file(resolved):
+        raise ValueError(
+            f"{env_name} must point to a mycite.service_tool.aws_csm.profile.v1 JSON file: {resolved}"
+        )
+    return resolved
+
+
+def _validate_audit_sink(path: Path | None, *, env_name: str, required: bool) -> Path | None:
+    if path is None:
+        if required:
+            raise ValueError(f"{env_name} is required for the V2 portal host")
+        return None
+    resolved = Path(path)
+    if resolved.exists() and not resolved.is_file():
+        raise ValueError(f"{env_name} must point to a file path, not a directory: {resolved}")
+    parent = resolved.parent
+    if not parent.exists():
+        raise ValueError(f"{env_name} parent directory does not exist: {parent}")
+    if not parent.is_dir():
+        raise ValueError(f"{env_name} parent must be a directory: {parent}")
+    return resolved
+
+
 def _current_year_month() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m")
 
@@ -101,53 +150,92 @@ class V2PortalHostConfig:
         tenant_id = _as_text(self.tenant_id).lower()
         if not tenant_id:
             raise ValueError("v2_portal_host.tenant_id is required")
-        domain = _as_text(self.analytics_domain).lower() or TENANT_DOMAINS.get(tenant_id, "")
+        domain = _as_text(self.analytics_domain).lower()
         if not domain:
             raise ValueError("v2_portal_host.analytics_domain is required")
         object.__setattr__(self, "tenant_id", tenant_id)
-        object.__setattr__(self, "public_dir", Path(self.public_dir))
-        object.__setattr__(self, "private_dir", Path(self.private_dir))
-        object.__setattr__(self, "data_dir", Path(self.data_dir))
+        object.__setattr__(
+            self,
+            "public_dir",
+            _validate_existing_dir(Path(self.public_dir), env_name="PUBLIC_DIR"),
+        )
+        object.__setattr__(
+            self,
+            "private_dir",
+            _validate_existing_dir(Path(self.private_dir), env_name="PRIVATE_DIR"),
+        )
+        object.__setattr__(
+            self,
+            "data_dir",
+            _validate_existing_dir(Path(self.data_dir), env_name="DATA_DIR"),
+        )
         object.__setattr__(self, "analytics_domain", domain)
-        object.__setattr__(self, "analytics_webapps_root", Path(self.analytics_webapps_root))
-        object.__setattr__(self, "aws_status_file", None if self.aws_status_file is None else Path(self.aws_status_file))
+        object.__setattr__(
+            self,
+            "analytics_webapps_root",
+            _validate_existing_dir(Path(self.analytics_webapps_root), env_name="MYCITE_WEBAPPS_ROOT"),
+        )
+        object.__setattr__(
+            self,
+            "aws_status_file",
+            _validate_existing_live_profile_file(
+                None if self.aws_status_file is None else Path(self.aws_status_file),
+                env_name="MYCITE_V2_AWS_STATUS_FILE",
+                required=True,
+            ),
+        )
         object.__setattr__(
             self,
             "aws_csm_sandbox_status_file",
-            None if self.aws_csm_sandbox_status_file is None else Path(self.aws_csm_sandbox_status_file),
+            _validate_existing_live_profile_file(
+                None if self.aws_csm_sandbox_status_file is None else Path(self.aws_csm_sandbox_status_file),
+                env_name="MYCITE_V2_AWS_CSM_SANDBOX_STATUS_FILE",
+                required=False,
+            ),
         )
         object.__setattr__(
             self,
             "aws_audit_storage_file",
-            None if self.aws_audit_storage_file is None else Path(self.aws_audit_storage_file),
+            _validate_audit_sink(
+                None if self.aws_audit_storage_file is None else Path(self.aws_audit_storage_file),
+                env_name="MYCITE_V2_AWS_AUDIT_FILE",
+                required=True,
+            ),
         )
         object.__setattr__(
             self,
             "admin_audit_storage_file",
-            None if self.admin_audit_storage_file is None else Path(self.admin_audit_storage_file),
+            _validate_audit_sink(
+                None if self.admin_audit_storage_file is None else Path(self.admin_audit_storage_file),
+                env_name="MYCITE_V2_ADMIN_AUDIT_FILE",
+                required=True,
+            ),
         )
 
     @classmethod
     def from_env(cls) -> "V2PortalHostConfig":
-        tenant_id = _as_text(os.environ.get("PORTAL_INSTANCE_ID") or os.environ.get("PORTAL_RUNTIME_FLAVOR")).lower()
-        if not tenant_id:
-            tenant_id = "fnd"
-        instance_root = Path(f"/srv/mycite-state/instances/{tenant_id}")
-        status_file = _as_text(os.environ.get("MYCITE_V2_AWS_STATUS_FILE"))
+        tenant_id = _required_env_text("PORTAL_INSTANCE_ID").lower()
+        runtime_flavor = _as_text(os.environ.get("PORTAL_RUNTIME_FLAVOR")).lower()
+        if runtime_flavor and runtime_flavor != tenant_id:
+            raise ValueError(
+                "PORTAL_RUNTIME_FLAVOR must match PORTAL_INSTANCE_ID when both are set "
+                f"(got {runtime_flavor!r} vs {tenant_id!r})"
+            )
+        status_file = _required_env_text("MYCITE_V2_AWS_STATUS_FILE")
         sandbox_status = _as_text(os.environ.get("MYCITE_V2_AWS_CSM_SANDBOX_STATUS_FILE"))
-        aws_audit_file = _as_text(os.environ.get("MYCITE_V2_AWS_AUDIT_FILE"))
-        admin_audit_file = _as_text(os.environ.get("MYCITE_V2_ADMIN_AUDIT_FILE"))
+        aws_audit_file = _required_env_text("MYCITE_V2_AWS_AUDIT_FILE")
+        admin_audit_file = _required_env_text("MYCITE_V2_ADMIN_AUDIT_FILE")
         return cls(
             tenant_id=tenant_id,
-            public_dir=_env_path("PUBLIC_DIR", str(instance_root / "public")),
-            private_dir=_env_path("PRIVATE_DIR", str(instance_root / "private")),
-            data_dir=_env_path("DATA_DIR", str(instance_root / "data")),
-            analytics_domain=_as_text(os.environ.get("MYCITE_ANALYTICS_DOMAIN")) or TENANT_DOMAINS.get(tenant_id, ""),
-            analytics_webapps_root=_env_path("MYCITE_WEBAPPS_ROOT", "/srv/webapps"),
-            aws_status_file=Path(status_file) if status_file else None,
+            public_dir=Path(_required_env_text("PUBLIC_DIR")),
+            private_dir=Path(_required_env_text("PRIVATE_DIR")),
+            data_dir=Path(_required_env_text("DATA_DIR")),
+            analytics_domain=_required_env_text("MYCITE_ANALYTICS_DOMAIN"),
+            analytics_webapps_root=Path(_required_env_text("MYCITE_WEBAPPS_ROOT")),
+            aws_status_file=Path(status_file),
             aws_csm_sandbox_status_file=Path(sandbox_status) if sandbox_status else None,
-            aws_audit_storage_file=Path(aws_audit_file) if aws_audit_file else None,
-            admin_audit_storage_file=Path(admin_audit_file) if admin_audit_file else None,
+            aws_audit_storage_file=Path(aws_audit_file),
+            admin_audit_storage_file=Path(admin_audit_file),
         )
 
     def to_public_dict(self) -> dict[str, Any]:
@@ -496,6 +584,3 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         return send_from_directory(host_config.public_dir, resource_path)
 
     return app
-
-
-app = create_app()

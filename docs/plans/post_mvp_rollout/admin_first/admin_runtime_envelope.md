@@ -1,6 +1,6 @@
 # Admin Runtime Envelope
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
 This file defines the tenant-safe runtime envelope that every admin-first slice must pass through.
 

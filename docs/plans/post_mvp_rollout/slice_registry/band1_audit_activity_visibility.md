@@ -81,8 +81,10 @@ Warnings:
 
 ## Implementation ordering
 
-- candidate for the first or second Band 1 slice
-- may share runtime composition helpers with the portal home slice only if runtime remains composition-only
+- third deferred slice after `band1.portal_home_tenant_status` and
+  `band1.operational_status_surface`
+- may share runtime composition helpers with earlier deferred Band 1 slices
+  only if runtime remains composition-only
 
 ## Frozen questions
 

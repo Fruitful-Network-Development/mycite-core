@@ -6,6 +6,11 @@
 
 `implemented_internal`
 
+## Record-only note
+
+This slice is already implemented. Keep this file only as slice-spec history.
+Use [../../../records/10-admin_band_0_internal_admin_replacement.md](../../../records/10-admin_band_0_internal_admin_replacement.md) for completion evidence and [../current_planning_index.md](../current_planning_index.md) for current active planning.
+
 ## Purpose
 
 Create the one stable admin shell landing path that replaces the old portal's mixed provider and service navigation as the operator starting point.

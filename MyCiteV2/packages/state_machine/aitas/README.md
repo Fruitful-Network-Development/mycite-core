@@ -1,6 +1,6 @@
 # AITAS
 
-Authority: [../../../docs/plans/authority_stack.md](../../../docs/plans/authority_stack.md)
+Authority: [../../../../docs/plans/v2-authority_stack.md](../../../../docs/plans/v2-authority_stack.md)
 
 `packages/state_machine/aitas/` owns the MVP AITAS subset:
 

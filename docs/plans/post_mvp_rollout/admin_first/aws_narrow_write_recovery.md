@@ -1,6 +1,6 @@
 # AWS Narrow Write Recovery
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
 This file records the minimum rollback and manual recovery procedure for `admin_band2.aws_narrow_write_surface`.
 

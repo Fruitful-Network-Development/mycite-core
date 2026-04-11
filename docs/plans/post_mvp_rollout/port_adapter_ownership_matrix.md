@@ -1,6 +1,6 @@
 # Port And Adapter Ownership Matrix
 
-Authority: [../authority_stack.md](../authority_stack.md)
+Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
 This matrix fixes ownership boundaries for current and future seams.
 

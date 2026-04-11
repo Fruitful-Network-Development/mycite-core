@@ -18,6 +18,7 @@ Use these terms exactly. See [../contracts/terminology_usage_rules.md](../contra
 - `Hanus interface surface`: the serialized button-shell style interface model that shapes shell interaction without becoming host logic.
 - `NIMM`: the directive set for navigate, investigate, mediate, and manipulate.
 - `HOPS`: homogeneous ordinal partition structure.
+- `MSS`: compact-array scoped anthology context carried between portals or contracts.
 - `datum authority`: the explicit source of truth for a datum.
 - `derived artifact`: any output regenerated from authoritative inputs, including payload binaries and caches.
 - `runtime composition`: host wiring that composes inward layers without owning their semantics.

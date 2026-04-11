@@ -6,7 +6,7 @@ Validate cross-layer behavior only after inward layers, ports, adapters, tools, 
 
 ## source authorities
 
-- [../authority_stack.md](../authority_stack.md)
+- [../v2-authority_stack.md](../v2-authority_stack.md)
 - [../../testing/testing_philosophy.md](../../testing/testing_philosophy.md)
 - [../../testing/architecture_boundary_checks.md](../../testing/architecture_boundary_checks.md)
 

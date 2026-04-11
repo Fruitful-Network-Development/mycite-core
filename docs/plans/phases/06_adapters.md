@@ -6,7 +6,7 @@ Implement outward-facing port implementations without redefining core, shell, or
 
 ## source authorities
 
-- [../authority_stack.md](../authority_stack.md)
+- [../v2-authority_stack.md](../v2-authority_stack.md)
 - [../../contracts/import_rules.md](../../contracts/import_rules.md)
 - [../../testing/architecture_boundary_checks.md](../../testing/architecture_boundary_checks.md)
 

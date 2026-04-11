@@ -1,6 +1,6 @@
 # Runtime Entrypoints
 
-Authority: [../authority_stack.md](../authority_stack.md)
+Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
 This file catalogs runtime entrypoints and constrains how new ones are added.
 

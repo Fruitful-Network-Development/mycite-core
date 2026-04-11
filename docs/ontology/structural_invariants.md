@@ -1,6 +1,6 @@
 # Structural Invariants
 
-This file is the highest-precedence structural source in v2. See [../plans/authority_stack.md](../plans/authority_stack.md).
+This file is the highest-precedence structural source in v2. See [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md).
 
 ## Non-negotiable truths
 

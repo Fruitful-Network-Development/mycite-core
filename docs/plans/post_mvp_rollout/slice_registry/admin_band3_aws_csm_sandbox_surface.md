@@ -6,6 +6,11 @@
 
 `implemented_internal_sandbox_read_only`
 
+## Record-only note
+
+This slice is already implemented. Keep this file only as slice-spec history.
+Use [../../../records/T-008-implementation.md](../../../records/T-008-implementation.md) for completion evidence and [../current_planning_index.md](../current_planning_index.md) for current active planning.
+
 ## Purpose
 
 Provide an **internal-only** read-only AWS-CSM projection against a **separate**

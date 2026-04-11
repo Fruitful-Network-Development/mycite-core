@@ -6,7 +6,7 @@ Implement orchestration boundaries for staged work, mediation context, and deriv
 
 ## source authorities
 
-- [../authority_stack.md](../authority_stack.md)
+- [../v2-authority_stack.md](../v2-authority_stack.md)
 - [../../ontology/interface_surfaces.md](../../ontology/interface_surfaces.md)
 - [../../decisions/decision_record_0006_sandboxes_are_orchestration_boundaries.md](../../decisions/decision_record_0006_sandboxes_are_orchestration_boundaries.md)
 

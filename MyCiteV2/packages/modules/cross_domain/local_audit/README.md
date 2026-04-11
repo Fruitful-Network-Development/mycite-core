@@ -1,6 +1,6 @@
 # Local Audit
 
-Authority: [../../../../docs/plans/authority_stack.md](../../../../docs/plans/authority_stack.md)
+Authority: [../../../../../docs/plans/v2-authority_stack.md](../../../../../docs/plans/v2-authority_stack.md)
 
 `packages/modules/cross_domain/local_audit/` owns the MVP local-audit semantic boundary.
 

@@ -14,10 +14,11 @@ V2 authority is anchored in this tree:
 
 1. `docs/ontology/structural_invariants.md`
 2. `docs/decisions/*.md`
-3. `docs/plans/phases/*.md` and `docs/plans/phase_completion_definition.md`
-4. `docs/plans/v1-migration/*.md`
-5. v1 plan docs
-6. v1 code as evidence only
+3. `docs/plans/phases/*.md` and `docs/plans/v2-phase_completion_definition.md`
+4. `docs/plans/post_mvp_rollout/*.md`
+5. `docs/plans/version-migration/*.md`
+6. v1 plan docs and `docs/*/legacy/`
+7. v1 code as evidence only
 
 ## Consequences
 

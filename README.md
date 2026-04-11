@@ -1,6 +1,7 @@
 # mycite-core
 
-Canonical source for the MyCite portal core, shared runtime, tool modules, and product documentation.
+Canonical source for MyCiteV1 history, MyCiteV2 implementation, and the
+authoritative V2 documentation tree.
 
 ## Runtime Boundaries
 
@@ -9,7 +10,7 @@ Canonical source for the MyCite portal core, shared runtime, tool modules, and p
 - Root-level legacy code directories are intentionally absent; use the explicit V1 or V2 root
 - Live instance state lives under `/srv/mycite-state/instances/<instance_id>/`
 - Portal runtime is file-backed; there is no application database in the portal core
-- Native runtime is systemd-first for live FND and TFF portals; the live web host remains V1 with an internal V2 admin bridge mounted
+- Native runtime is systemd-first for live FND and TFF portals; the live `/portal` host is V2-native, while V1 remains in-repo as migration evidence and retirement-review scope
 - `/srv/compose/portals/` is now limited to auth-support infrastructure and transitional host files
 
 ## Canonical Authority
@@ -23,38 +24,40 @@ Canonical source for the MyCite portal core, shared runtime, tool modules, and p
 
 ## Repository Layout
 
-- `MyCiteV1/instances/_shared/` shared portal and runtime code
-- `MyCiteV1/instances/deployed/` repo-tracked deployed instance mirrors
-- `MyCiteV1/instances/convention/` convention/reference instance artifacts
-- `MyCiteV1/instances/scripts/` capture/materialization helpers
-- `MyCiteV1/packages/tools/` standalone tool modules and state adapters
-- `MyCiteV1/packages/core/` core data-engine and related packages
-- [`docs/V1/wiki/`](docs/V1/wiki/) maintained V1 product and architecture documentation (mirror; `MyCiteV1/docs/` may be absent in some checkouts)
-- [`docs/V1/plans/`](docs/V1/plans/) V1 planning snapshot
-- `MyCiteV2/` isolated V2 rebuild, admin runtime, architecture gates, and rollout docs
+- `MyCiteV1/` legacy implementation and migration evidence; not the target architecture source for new work
+- `MyCiteV2/` current modular V2 code root
+- `MyCiteV2/instances/_shared/portal_host/` V2-native portal host and shell assets
+- `MyCiteV2/instances/_shared/runtime/` runtime entrypoint composition and admin runtime surfaces
+- `MyCiteV2/packages/core/` pure structures, identities, and datum refs
+- `MyCiteV2/packages/state_machine/` shell state, reducer logic, and launch legality
+- `MyCiteV2/packages/ports/` boundary contracts
+- `MyCiteV2/packages/adapters/` concrete filesystem and portal/runtime adapters
+- `MyCiteV2/packages/modules/` domain and cross-domain use-case surfaces
+- `MyCiteV2/packages/sandboxes/` orchestration and staged mediation surfaces
+- `MyCiteV2/tests/` unit, contract, integration, and architecture verification loops
+- `docs/` authoritative V2 contracts, ontology, plans, and records
 
 ## Key Entry Points
 
-- Shared portal logic: `MyCiteV1/instances/_shared/portal/**`
-- Flavor runtime composition: `MyCiteV1/instances/_shared/runtime/flavors/*`
-- Tool build/runtime contracts: `MyCiteV1/packages/tools/_shared/**`
-- Portal build script: `python3 MyCiteV1/instances/scripts/portal_build.py`
+- V2 portal host: `MyCiteV2/instances/_shared/portal_host/app.py`
 - V2 admin runtime catalog: `MyCiteV2/instances/_shared/runtime/runtime_platform.py`
 - V2 admin shell entry: `MyCiteV2/instances/_shared/runtime/admin_runtime.py`
+- V2 modular ownership map: `docs/contracts/v2_surface_ownership_map.md`
+- V2 cutover hardening plan: `docs/plans/post_mvp_rollout/post_aws_tool_platform/v2_native_cutover_hardening.md`
 
 ## Canonical Docs
 
-- [`docs/V1/ownership-boundary.md`](docs/V1/ownership-boundary.md)
-- [`docs/V1/wiki/README.md`](docs/V1/wiki/README.md)
-- [`docs/V1/wiki/architecture/system-state-machine.md`](docs/V1/wiki/architecture/system-state-machine.md)
-- [`docs/V1/wiki/data-model/datum-identity-and-resolution.md`](docs/V1/wiki/data-model/datum-identity-and-resolution.md)
-- [`docs/V1/wiki/runtime-build/portal-config-model.md`](docs/V1/wiki/runtime-build/portal-config-model.md)
-- [`docs/V1/wiki/tools/time-address-schema.md`](docs/V1/wiki/tools/time-address-schema.md)
-- [`docs/V1/wiki/tools/internal-file-sources.md`](docs/V1/wiki/tools/internal-file-sources.md)
-- [`docs/V1/plans/tool_dev.md`](docs/V1/plans/tool_dev.md)
 - [`docs/README.md`](docs/README.md) (authoritative V2 doc tree)
-- [`docs/plans/authority_stack.md`](docs/plans/authority_stack.md)
+- [`docs/plans/v2-authority_stack.md`](docs/plans/v2-authority_stack.md)
+- [`docs/contracts/v2_surface_ownership_map.md`](docs/contracts/v2_surface_ownership_map.md)
+- [`docs/contracts/repo_and_runtime_boundary.md`](docs/contracts/repo_and_runtime_boundary.md)
+- [`docs/contracts/tool_state_and_datum_authority.md`](docs/contracts/tool_state_and_datum_authority.md)
+- [`docs/plans/post_mvp_rollout/current_planning_index.md`](docs/plans/post_mvp_rollout/current_planning_index.md)
 - [`docs/plans/post_mvp_rollout/post_aws_tool_platform/README.md`](docs/plans/post_mvp_rollout/post_aws_tool_platform/README.md)
+- [`docs/plans/post_mvp_rollout/post_aws_tool_platform/v2_native_cutover_hardening.md`](docs/plans/post_mvp_rollout/post_aws_tool_platform/v2_native_cutover_hardening.md)
+- [`docs/plans/version-migration/README.md`](docs/plans/version-migration/README.md)
+- [`docs/records/README.md`](docs/records/README.md)
+- `docs/plans/legacy/`, `docs/contracts/legacy/`, and `docs/wiki/legacy/` only as audited V1 evidence
 
 ## Working Rule
 

@@ -1,17 +1,23 @@
 # V2 Admin Cutover Readiness
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
-This file defines when MyCiteV2 can be treated as the operational admin portal base.
+This file states the current cutover posture for MyCiteV2 as the operational
+admin portal base.
 
-There are two readiness levels:
+Use [v2_native_cutover_hardening.md](v2_native_cutover_hardening.md) for the
+active remaining work. This file is a posture reference, not the main work
+queue.
 
-- runtime readiness: V2 admin shell, registry, runtime envelope, AWS read-only, and AWS narrow-write are implemented and tested
-- deployment readiness: the live `/portal` boundary reaches those V2 runtime entrypoints through an approved bridge or V2 host
+There are three readiness levels:
+
+- platform readiness: V2 admin shell, registry, runtime envelope, AWS read-only, and AWS narrow-write are implemented and tested
+- deployment readiness: the live `/portal` boundary reaches those V2 runtime entrypoints through an approved V2 deployment shape
+- hardening readiness: the live deployment contract, auth boundary, smoke coverage, and V1 retirement review are explicit and current
 
 ## Cutover statement
 
-MyCiteV2 is runtime-ready as the stable admin portal base when:
+MyCiteV2 is platform-ready as the stable admin portal base when:
 
 - `admin.shell_entry` is the intended admin landing path
 - shell-owned registry descriptors are the only tool launch surface
@@ -23,10 +29,16 @@ MyCiteV2 is runtime-ready as the stable admin portal base when:
 
 MyCiteV2 is deployment-ready when:
 
-- [deployment_bridge_contract.md](deployment_bridge_contract.md) is implemented
+- the live `/portal` route reaches approved V2 runtime entrypoints through the current V2 host shape
 - [live_state_authority_and_mapping.md](live_state_authority_and_mapping.md) is implemented for any live AWS exposure
-- [cutover_execution_sequence.md](cutover_execution_sequence.md) reaches the requested exposure step
 - the live `/portal` route can reach V2 runtime entrypoints without root compatibility links
+
+MyCiteV2 is hardening-ready when:
+
+- deployment shape, ports, env contract, and rollback are repo-owned or explicitly contract-defined
+- auth and audience enforcement are documented and tested
+- black-box smoke checks exist for the deployed portal boundary
+- V1 retention vs retirement is recorded explicitly
 
 ## Operational replacement rule
 
@@ -53,18 +65,26 @@ Forbidden:
 - verify no provider secrets appear in runtime payloads
 - verify unknown tools are denied by shell-owned launch policy
 - verify Maps and AGRO-ERP are absent until their own slices are approved
-- verify the live bridge or host is explicit and tested
+- verify the live V2 host shape is explicit and tested
 - verify no root-level compatibility symlinks are needed
 - verify live AWS writes use one canonical live artifact
+- verify auth and audience denial behavior at the deployed edge
+- verify the hardening items in [v2_native_cutover_hardening.md](v2_native_cutover_hardening.md) remain accurate
 
 ## Current cutover posture
 
-Current status: runtime-ready with a Shape B deployment bridge mounted for the admin shell and AWS slices.
+Current status: platform-ready and deployment-ready through the V2-native portal
+host for FND and TFF.
 
-V2 `admin.shell_entry` can be reached through the live portal host bridge after the FND/TFF services are running the updated V1 host code.
+V2 `admin.shell_entry` is reached through the live V2 portal host rather than
+through a bridge-owned live boundary.
 
-Trusted-tenant AWS exposure now reads and writes the configured canonical live AWS profile JSON through the V2 live profile adapter. `MYCITE_V2_AWS_STATUS_FILE` must point at the approved live `aws-csm.*.json` profile for each deployed portal service.
+Trusted-tenant AWS exposure reads and writes the configured canonical live AWS
+profile JSON through the V2 live profile adapter.
+`MYCITE_V2_AWS_STATUS_FILE` must point at the approved live `aws-csm.*.json`
+profile for each deployed portal service.
 
-Future tool work is local slice work, not shared-platform redesign.
+Shape B bridge work remains historical cutover evidence only.
 
-The remaining cutover work is exposure gating and future tool slices; the live AWS profile mapping gate is closed for the FND/TFF bridge configuration.
+The remaining cutover work is hardening and clarity work, not shared-platform
+redesign.

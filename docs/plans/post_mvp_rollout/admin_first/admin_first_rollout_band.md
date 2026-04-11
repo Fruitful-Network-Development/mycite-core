@@ -1,6 +1,6 @@
 # Admin-First Rollout Band
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
 This file defines the admin-first rollout ordering that replaces the old portal operationally without widening general client rollout.
 

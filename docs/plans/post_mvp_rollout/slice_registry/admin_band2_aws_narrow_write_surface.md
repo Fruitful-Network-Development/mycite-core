@@ -6,6 +6,11 @@
 
 `implemented_trusted_tenant_narrow_write`
 
+## Record-only note
+
+This slice is already implemented. Keep this file only as slice-spec history.
+Use [../../../records/12-admin_band_2_aws_narrow_write_surface.md](../../../records/12-admin_band_2_aws_narrow_write_surface.md) for completion evidence and [../current_planning_index.md](../current_planning_index.md) for current active planning.
+
 ## Purpose
 
 Provide one bounded AWS operational write workflow after the AWS read-only surface is stable.

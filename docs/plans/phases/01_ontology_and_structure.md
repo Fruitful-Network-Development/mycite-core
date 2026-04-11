@@ -6,7 +6,7 @@ Fix v2 vocabulary, authority order, invariants, directory shape, and inert scaff
 
 ## source authorities
 
-- [../authority_stack.md](../authority_stack.md)
+- [../v2-authority_stack.md](../v2-authority_stack.md)
 - [../../ontology/structural_invariants.md](../../ontology/structural_invariants.md)
 - [../../contracts/terminology_usage_rules.md](../../contracts/terminology_usage_rules.md)
 

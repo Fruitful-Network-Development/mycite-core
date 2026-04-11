@@ -6,7 +6,7 @@ Define explicit capability seams for external storage, eventing, projection, and
 
 ## source authorities
 
-- [../authority_stack.md](../authority_stack.md)
+- [../v2-authority_stack.md](../v2-authority_stack.md)
 - [../../contracts/import_rules.md](../../contracts/import_rules.md)
 - [../v1-migration/mycite_v2_structure_report.md](../v1-migration/mycite_v2_structure_report.md)
 

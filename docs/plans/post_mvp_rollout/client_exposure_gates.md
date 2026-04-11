@@ -1,6 +1,6 @@
 # Client Exposure Gates
 
-Authority: [../authority_stack.md](../authority_stack.md)
+Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
 No slice becomes client-visible until all gates in this file are satisfied.
 

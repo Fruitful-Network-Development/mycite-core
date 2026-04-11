@@ -1,6 +1,6 @@
 # AWS Operational Visibility
 
-Authority: [../../../../docs/plans/authority_stack.md](../../../../docs/plans/authority_stack.md)
+Authority: [../../../../../docs/plans/v2-authority_stack.md](../../../../../docs/plans/v2-authority_stack.md)
 
 `packages/modules/cross_domain/aws_operational_visibility/` owns the semantic policy for the first AWS read-only admin slice.
 

@@ -1,8 +1,10 @@
 # State Machine
 
-Authority: [../../docs/plans/authority_stack.md](../../docs/plans/authority_stack.md)
+Authority: [../../../docs/plans/v2-authority_stack.md](../../../docs/plans/v2-authority_stack.md)
 
 `packages/state_machine/` owns shell legality, AITAS vocabulary, NIMM directives, Hanus shell behavior, and mediation surface behavior.
+
+Retained Hanus/AITAS/NIMM concept sources are summarized in [../../../docs/ontology/retained_cross_version_concepts.md](../../../docs/ontology/retained_cross_version_concepts.md).
 
 Implemented for the MVP so far:
 

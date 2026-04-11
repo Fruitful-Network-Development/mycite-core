@@ -1,6 +1,6 @@
 # Runtime Envelope And Launch Results
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
 The shared admin runtime envelope helper is `build_admin_runtime_envelope` in `instances/_shared/runtime/runtime_platform.py`.
 

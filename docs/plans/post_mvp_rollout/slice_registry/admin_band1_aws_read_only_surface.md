@@ -6,6 +6,11 @@
 
 `implemented_trusted_tenant_read_only`
 
+## Record-only note
+
+This slice is already implemented. Keep this file only as slice-spec history.
+Use [../../../records/11-admin_band_1_aws_read_only_surface.md](../../../records/11-admin_band_1_aws_read_only_surface.md) for completion evidence and [../current_planning_index.md](../current_planning_index.md) for current active planning.
+
 ## Purpose
 
 Provide the first trusted-tenant-safe tool-bearing surface: a read-only AWS operational visibility slice launched through the admin shell and registry.

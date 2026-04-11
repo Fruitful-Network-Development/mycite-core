@@ -81,8 +81,9 @@ Warnings:
 
 ## Implementation ordering
 
-- candidate for Band 1 after the portal home slice is specified
-- may be implemented before broader analytics work
+- second deferred Band 1 slice after `band1.portal_home_tenant_status`
+- preferred ahead of audit activity visibility so the first read-only expansion
+  remains orientation and operational safety first
 
 ## Frozen questions
 

@@ -1,6 +1,6 @@
 # Tool Descriptor Contract
 
-Authority: [../../authority_stack.md](../../authority_stack.md)
+Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
 The canonical admin tool descriptor is `AdminToolRegistryEntry` in `packages/state_machine/hanus_shell/admin_shell.py`.
 

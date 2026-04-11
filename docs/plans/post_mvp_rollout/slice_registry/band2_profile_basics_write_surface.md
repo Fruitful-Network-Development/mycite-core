@@ -94,8 +94,9 @@ Warnings:
 
 ## Implementation ordering
 
-- specify during Band 1
-- do not implement until at least one Band 1 slice passes its exposure gate
+- deferred writable slice after the three read-only deferred slices are stable
+- do not reopen until the Band 1 home, operational status, and audit activity
+  slices have passed their exposure gates
 
 ## Frozen questions
 

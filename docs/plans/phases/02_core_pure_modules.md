@@ -6,7 +6,7 @@ Recreate pure core structures and utilities that do not depend on shell, runtime
 
 ## source authorities
 
-- [../authority_stack.md](../authority_stack.md)
+- [../v2-authority_stack.md](../v2-authority_stack.md)
 - [../../ontology/dependency_direction.md](../../ontology/dependency_direction.md)
 - [../v1-migration/source_authority_index.md](../v1-migration/source_authority_index.md)
 

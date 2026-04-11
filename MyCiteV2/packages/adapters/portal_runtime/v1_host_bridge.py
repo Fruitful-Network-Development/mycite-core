@@ -1,3 +1,10 @@
+"""Historical V1-host bridge retained only for retirement evidence.
+
+This module is quarantined. The canonical live V2 portal boundary is
+`MyCiteV2.instances._shared.portal_host`, and active code should not import
+this bridge except for explicit historical tests or record replay.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

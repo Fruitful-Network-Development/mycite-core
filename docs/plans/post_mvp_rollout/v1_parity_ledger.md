@@ -1,6 +1,6 @@
 # V1 Parity Ledger
 
-Authority: [../authority_stack.md](../authority_stack.md)
+Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
 This ledger maps old portal workflow areas to post-MVP rollout intent.
 
