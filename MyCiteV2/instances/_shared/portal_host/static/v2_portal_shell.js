@@ -303,6 +303,80 @@
       body.innerHTML = warningBlock + cards + details + '<div class="v2-card" style="margin-top:12px"><h3>Available slices</h3>' + slicesHtml + "</div>";
       return;
     }
+    if (kind === "operational_status") {
+      var auditPersistence = wb.audit_persistence || {};
+      var statusWarnings = wb.warnings || [];
+      var statusSlices = wb.available_slices || [];
+      var statusWarningBlock =
+        statusWarnings.length > 0
+          ? '<div class="v2-card" style="margin-bottom:12px"><h3>Warnings</h3><ul>' +
+            statusWarnings
+              .map(function (warning) {
+                return "<li>" + escapeHtml(String(warning)) + "</li>";
+              })
+              .join("") +
+            "</ul></div>"
+          : "";
+      var statusCards =
+        '<div class="v2-card-grid">' +
+        '<article class="v2-card"><h3>Rollout band</h3><p>' +
+        escapeHtml(wb.current_rollout_band || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Exposure</h3><p>' +
+        escapeHtml(wb.exposure_status || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Read/write posture</h3><p>' +
+        escapeHtml(wb.read_write_posture || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Audit health</h3><p>' +
+        escapeHtml(String(auditPersistence.health_state || "—").replace(/_/g, " ")) +
+        "</p></article>" +
+        "</div>";
+      var statusDetails =
+        '<dl class="v2-surface-dl">' +
+        "<dt>Storage state</dt><dd>" +
+        escapeHtml(String(auditPersistence.storage_state || "—").replace(/_/g, " ")) +
+        "</dd>" +
+        "<dt>Recent window limit</dt><dd>" +
+        escapeHtml(String(auditPersistence.recent_window_limit != null ? auditPersistence.recent_window_limit : "—")) +
+        "</dd>" +
+        "<dt>Recent record count</dt><dd>" +
+        escapeHtml(String(auditPersistence.recent_record_count != null ? auditPersistence.recent_record_count : "—")) +
+        "</dd>" +
+        "<dt>Latest persisted at</dt><dd>" +
+        escapeHtml(
+          String(
+            auditPersistence.latest_recorded_at_unix_ms != null
+              ? auditPersistence.latest_recorded_at_unix_ms
+              : "—"
+          )
+        ) +
+        "</dd></dl>";
+      var statusTable =
+        "<table class=\"v2-table\"><thead><tr><th>Slice</th><th>Status</th><th>Posture</th></tr></thead><tbody>" +
+        statusSlices
+          .map(function (slice) {
+            return (
+              "<tr><td>" +
+              escapeHtml(slice.label || slice.slice_id || "") +
+              "</td><td>" +
+              escapeHtml(slice.status_summary || "—") +
+              "</td><td>" +
+              escapeHtml(slice.read_write_posture || "—") +
+              "</td></tr>"
+            );
+          })
+          .join("") +
+        "</tbody></table>";
+      body.innerHTML =
+        statusWarningBlock +
+        statusCards +
+        statusDetails +
+        '<div class="v2-card" style="margin-top:12px"><h3>Visible slices</h3>' +
+        statusTable +
+        "</div>";
+      return;
+    }
     if (kind === "tool_registry") {
       var rows = wb.tool_rows || [];
       var banner = wb.banner;
@@ -496,6 +570,39 @@
         "</dd>" +
         "<dt>Available documents</dt><dd>" +
         escapeHtml((summary.available_documents || []).join(", ") || "—") +
+        "</dd></dl>";
+      return;
+    }
+    if (kind === "operational_status_summary") {
+      var operational = region.audit_persistence || {};
+      content.innerHTML =
+        '<dl class="v2-surface-dl">' +
+        "<dt>Rollout band</dt><dd>" +
+        escapeHtml(region.current_rollout_band || "—") +
+        "</dd>" +
+        "<dt>Exposure</dt><dd>" +
+        escapeHtml(region.exposure_status || "—") +
+        "</dd>" +
+        "<dt>Read/write posture</dt><dd>" +
+        escapeHtml(region.read_write_posture || "—") +
+        "</dd>" +
+        "<dt>Audit health</dt><dd>" +
+        escapeHtml(String(operational.health_state || "—").replace(/_/g, " ")) +
+        "</dd>" +
+        "<dt>Storage state</dt><dd>" +
+        escapeHtml(String(operational.storage_state || "—").replace(/_/g, " ")) +
+        "</dd>" +
+        "<dt>Recent records</dt><dd>" +
+        escapeHtml(String(operational.recent_record_count != null ? operational.recent_record_count : "—")) +
+        "</dd>" +
+        "<dt>Latest persisted at</dt><dd>" +
+        escapeHtml(
+          String(
+            operational.latest_recorded_at_unix_ms != null
+              ? operational.latest_recorded_at_unix_ms
+              : "—"
+          )
+        ) +
         "</dd></dl>";
       return;
     }

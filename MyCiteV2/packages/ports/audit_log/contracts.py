@@ -5,6 +5,7 @@ from typing import Any, Protocol, runtime_checkable
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
+AUDIT_LOG_RECENT_WINDOW_LIMIT = 20
 
 
 def _as_text(value: object) -> str:
@@ -204,6 +205,77 @@ class AuditLogReadResult:
         return cls(record=payload.get("record"))
 
 
+@dataclass(frozen=True)
+class AuditLogRecentWindowRequest:
+    limit: int = AUDIT_LOG_RECENT_WINDOW_LIMIT
+
+    def __post_init__(self) -> None:
+        limit = _normalize_non_negative_int(
+            self.limit,
+            field_name="audit_log_recent_window.limit",
+        )
+        if limit != AUDIT_LOG_RECENT_WINDOW_LIMIT:
+            raise ValueError(
+                "audit_log_recent_window.limit must be "
+                f"{AUDIT_LOG_RECENT_WINDOW_LIMIT}"
+            )
+        object.__setattr__(self, "limit", limit)
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "limit": self.limit,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any] | None) -> "AuditLogRecentWindowRequest":
+        if payload is None:
+            return cls()
+        if not isinstance(payload, dict):
+            raise ValueError("audit_log_recent_window must be a dict")
+        return cls(limit=payload.get("limit", AUDIT_LOG_RECENT_WINDOW_LIMIT))
+
+
+@dataclass(frozen=True)
+class AuditLogRecentWindowResult:
+    records: tuple[AuditLogRecord, ...]
+
+    def __post_init__(self) -> None:
+        normalized: list[AuditLogRecord] = []
+        for index, record in enumerate(self.records):
+            if isinstance(record, AuditLogRecord):
+                normalized.append(record)
+                continue
+            if isinstance(record, dict):
+                normalized.append(AuditLogRecord.from_dict(record))
+                continue
+            raise ValueError(
+                "audit_log_recent_window_result.records[] must be an AuditLogRecord or dict "
+                f"(index {index})"
+            )
+        object.__setattr__(self, "records", tuple(normalized))
+
+    @property
+    def record_count(self) -> int:
+        return len(self.records)
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        return {
+            "record_count": self.record_count,
+            "records": [record.to_dict() for record in self.records],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "AuditLogRecentWindowResult":
+        if not isinstance(payload, dict):
+            raise ValueError("audit_log_recent_window_result must be a dict")
+        records = payload.get("records")
+        if records is None:
+            records = []
+        if not isinstance(records, list):
+            raise ValueError("audit_log_recent_window_result.records must be a list")
+        return cls(records=tuple(records))
+
+
 @runtime_checkable
 class AuditLogPort(Protocol):
     def append_audit_record(self, request: AuditLogAppendRequest) -> AuditLogAppendReceipt:
@@ -211,3 +283,9 @@ class AuditLogPort(Protocol):
 
     def read_audit_record(self, request: AuditLogReadRequest) -> AuditLogReadResult:
         """Read one previously persisted audit record by opaque identifier."""
+
+    def read_recent_audit_records(
+        self,
+        request: AuditLogRecentWindowRequest,
+    ) -> AuditLogRecentWindowResult:
+        """Read the fixed newest-first recent audit window."""

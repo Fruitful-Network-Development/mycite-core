@@ -3,6 +3,7 @@
 from .service import (
     FORBIDDEN_LOCAL_AUDIT_KEYS,
     LocalAuditRecord,
+    LocalAuditOperationalStatusSummary,
     LocalAuditService,
     StoredLocalAuditRecord,
     normalize_local_audit_record,
@@ -11,6 +12,7 @@ from .service import (
 __all__ = [
     "FORBIDDEN_LOCAL_AUDIT_KEYS",
     "LocalAuditRecord",
+    "LocalAuditOperationalStatusSummary",
     "LocalAuditService",
     "StoredLocalAuditRecord",
     "normalize_local_audit_record",

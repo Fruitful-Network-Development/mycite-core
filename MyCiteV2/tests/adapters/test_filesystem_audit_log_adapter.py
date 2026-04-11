@@ -4,13 +4,20 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import json
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.adapters.filesystem import FilesystemAuditLogAdapter
-from MyCiteV2.packages.ports.audit_log import AuditLogAppendRequest, AuditLogPort, AuditLogReadRequest
+from MyCiteV2.packages.ports.audit_log import (
+    AUDIT_LOG_RECENT_WINDOW_LIMIT,
+    AuditLogAppendRequest,
+    AuditLogPort,
+    AuditLogRecentWindowRequest,
+    AuditLogReadRequest,
+)
 
 
 class FilesystemAuditLogAdapterTests(unittest.TestCase):
@@ -85,6 +92,82 @@ class FilesystemAuditLogAdapterTests(unittest.TestCase):
 
             self.assertEqual(missing_before_write.to_dict(), {"found": False, "record": None})
             self.assertEqual(missing_after_write.to_dict(), {"found": False, "record": None})
+
+    def test_recent_window_returns_newest_valid_records_and_skips_malformed_lines(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            storage_file = Path(temp_dir) / "audit.ndjson"
+            records = [
+                {
+                    "record_id": "audit-0001",
+                    "recorded_at_unix_ms": 1770000000001,
+                    "record": {"event_type": "shell.transition.accepted"},
+                },
+                {
+                    "record_id": "audit-0002",
+                    "recorded_at_unix_ms": 1770000000002,
+                    "record": {"event_type": "shell.transition.accepted"},
+                },
+                {
+                    "record_id": "audit-0003",
+                    "recorded_at_unix_ms": 1770000000003,
+                    "record": {"event_type": "shell.transition.accepted"},
+                },
+            ]
+            storage_file.write_text(
+                "\n".join(
+                    [
+                        json.dumps(records[0], separators=(",", ":")),
+                        "{not-json",
+                        "",
+                        json.dumps(records[1], separators=(",", ":")),
+                        json.dumps({"record_id": "bad", "recorded_at_unix_ms": -1, "record": {}}),
+                        json.dumps(records[2], separators=(",", ":")),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            adapter = FilesystemAuditLogAdapter(storage_file)
+            recent = adapter.read_recent_audit_records(AuditLogRecentWindowRequest())
+
+            self.assertEqual(
+                [record.record_id for record in recent.records],
+                ["audit-0003", "audit-0002", "audit-0001"],
+            )
+            self.assertEqual(recent.record_count, 3)
+
+    def test_recent_window_returns_empty_when_storage_is_missing(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            adapter = FilesystemAuditLogAdapter(Path(temp_dir) / "missing.ndjson")
+
+            recent = adapter.read_recent_audit_records(AuditLogRecentWindowRequest())
+
+            self.assertEqual(recent.to_dict(), {"record_count": 0, "records": []})
+
+    def test_recent_window_is_bounded_to_fixed_limit(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            storage_file = Path(temp_dir) / "audit.ndjson"
+            lines = []
+            for index in range(AUDIT_LOG_RECENT_WINDOW_LIMIT + 3):
+                lines.append(
+                    json.dumps(
+                        {
+                            "record_id": f"audit-{index:04d}",
+                            "recorded_at_unix_ms": 1770000000000 + index,
+                            "record": {"event_type": "shell.transition.accepted"},
+                        },
+                        separators=(",", ":"),
+                    )
+                )
+            storage_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+            adapter = FilesystemAuditLogAdapter(storage_file)
+            recent = adapter.read_recent_audit_records(AuditLogRecentWindowRequest())
+
+            self.assertEqual(recent.record_count, AUDIT_LOG_RECENT_WINDOW_LIMIT)
+            self.assertEqual(recent.records[0].record_id, f"audit-{AUDIT_LOG_RECENT_WINDOW_LIMIT + 2:04d}")
+            self.assertEqual(recent.records[-1].record_id, "audit-0003")
 
 
 if __name__ == "__main__":

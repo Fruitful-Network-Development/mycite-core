@@ -10,8 +10,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.ports.audit_log import (
+    AUDIT_LOG_RECENT_WINDOW_LIMIT,
     AuditLogAppendReceipt,
     AuditLogAppendRequest,
+    AuditLogRecentWindowRequest,
+    AuditLogRecentWindowResult,
     AuditLogReadRequest,
     AuditLogReadResult,
     AuditLogRecord,
@@ -103,6 +106,55 @@ class AuditLogContractTests(unittest.TestCase):
         )
         self.assertFalse(missing.found)
         self.assertEqual(missing.to_dict(), {"found": False, "record": None})
+
+    def test_recent_window_request_is_fixed_and_serializable(self) -> None:
+        request = AuditLogRecentWindowRequest.from_dict({})
+
+        self.assertEqual(request.to_dict(), {"limit": AUDIT_LOG_RECENT_WINDOW_LIMIT})
+        self.assertEqual(
+            json.loads(json.dumps(request.to_dict(), sort_keys=True)),
+            request.to_dict(),
+        )
+
+        with self.assertRaisesRegex(ValueError, str(AUDIT_LOG_RECENT_WINDOW_LIMIT)):
+            AuditLogRecentWindowRequest.from_dict({"limit": 10})
+
+    def test_recent_window_result_serializes_records_newest_first(self) -> None:
+        result = AuditLogRecentWindowResult.from_dict(
+            {
+                "records": [
+                    {
+                        "record_id": "audit-0002",
+                        "recorded_at_unix_ms": 1770000000002,
+                        "record": {"event_type": "shell.transition.accepted"},
+                    },
+                    {
+                        "record_id": "audit-0001",
+                        "recorded_at_unix_ms": 1770000000001,
+                        "record": {"event_type": "shell.transition.accepted"},
+                    },
+                ]
+            }
+        )
+
+        self.assertEqual(
+            result.to_dict(),
+            {
+                "record_count": 2,
+                "records": [
+                    {
+                        "record_id": "audit-0002",
+                        "recorded_at_unix_ms": 1770000000002,
+                        "record": {"event_type": "shell.transition.accepted"},
+                    },
+                    {
+                        "record_id": "audit-0001",
+                        "recorded_at_unix_ms": 1770000000001,
+                        "record": {"event_type": "shell.transition.accepted"},
+                    },
+                ],
+            },
+        )
 
     def test_record_contract_rejects_missing_identifier_or_timestamp(self) -> None:
         with self.assertRaisesRegex(ValueError, "record_id is required"):

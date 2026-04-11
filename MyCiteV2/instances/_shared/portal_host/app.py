@@ -17,7 +17,11 @@ from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
 from MyCiteV2.instances._shared.runtime.admin_runtime import run_admin_shell_entry
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
     TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
+)
+from MyCiteV2.instances._shared.runtime.tenant_operational_status_runtime import (
+    run_trusted_tenant_operational_status,
 )
 from MyCiteV2.instances._shared.runtime.tenant_portal_runtime import run_trusted_tenant_portal_home
 from MyCiteV2.packages.state_machine.hanus_shell import (
@@ -295,6 +299,13 @@ def _tenant_portal_bootstrap_request(tenant_id: str) -> dict[str, Any]:
     )
 
 
+def _tenant_operational_status_bootstrap_request(tenant_id: str) -> dict[str, Any]:
+    return {
+        "schema": TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+        "tenant_scope": {"scope_id": tenant_id, "audience": "trusted-tenant"},
+    }
+
+
 def _json_payload() -> dict[str, Any]:
     payload = request.get_json(silent=True)
     return payload if isinstance(payload, dict) else {}
@@ -457,11 +468,29 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             logo_href="/portal/home",
         )
 
+    def _tenant_operational_status_page() -> str:
+        return render_template(
+            "portal.html",
+            tenant_id=host_config.tenant_id,
+            host_shape=HOST_SHAPE,
+            analytics_domain=host_config.analytics_domain,
+            bootstrap_shell_request=_tenant_operational_status_bootstrap_request(host_config.tenant_id),
+            portal_build_id=PORTAL_BUILD_ID,
+            runtime_envelope_schema=TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
+            shell_endpoint="/portal/api/v2/tenant/operational-status",
+            shell_loading_label="Loading operational status…",
+            logo_href="/portal/status",
+        )
+
     @app.get("/portal")
     @app.get("/portal/")
     @app.get("/portal/home")
     def portal_home() -> str:
         return _tenant_portal_page()
+
+    @app.get("/portal/status")
+    def portal_status() -> str:
+        return _tenant_operational_status_page()
 
     @app.get("/portal/system")
     @app.get("/portal/system/<path:tool_slug>")
@@ -495,6 +524,19 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     public_dir=host_config.public_dir,
                     portal_tenant_id=host_config.tenant_id,
                     tenant_domain=host_config.analytics_domain,
+                )
+            )
+        except ValueError as exc:
+            return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": "invalid_request", "message": str(exc)}}), 400
+
+    @app.post("/portal/api/v2/tenant/operational-status")
+    def trusted_tenant_operational_status() -> tuple[Any, int]:
+        try:
+            return _runtime_response(
+                run_trusted_tenant_operational_status(
+                    _json_payload(),
+                    audit_storage_file=host_config.admin_audit_storage_file,
+                    portal_tenant_id=host_config.tenant_id,
                 )
             )
         except ValueError as exc:

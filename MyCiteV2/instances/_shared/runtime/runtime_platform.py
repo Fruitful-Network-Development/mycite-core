@@ -47,7 +47,11 @@ ADMIN_AWS_CSM_ONBOARDING_SURFACE_SCHEMA = "mycite.v2.admin.aws.csm_onboarding.su
 TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.portal.runtime.envelope.v1"
 TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA = "mycite.v2.portal.runtime_entrypoint_descriptor.v1"
 TRUSTED_TENANT_HOME_SURFACE_SCHEMA = "mycite.v2.portal.home_tenant_status.surface.v1"
+TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA = "mycite.v2.portal.operational_status.request.v1"
+TRUSTED_TENANT_OPERATIONAL_STATUS_SURFACE_SCHEMA = "mycite.v2.portal.operational_status.surface.v1"
 TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID = "portal.home.tenant_status"
+TRUSTED_TENANT_OPERATIONAL_STATUS_ENTRYPOINT_ID = "portal.operational_status"
+BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID = "band1.operational_status_surface"
 
 AWS_NARROW_WRITE_RECOVERY_REFERENCE = (
     "docs/plans/post_mvp_rollout/admin_first/aws_narrow_write_recovery.md"
@@ -166,7 +170,7 @@ class TrustedTenantRuntimeEntrypointDescriptor:
             raise ValueError("trusted_tenant_runtime_entrypoint.read_write_posture must be read-only")
         if self.launch_contract != ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT:
             raise ValueError("trusted_tenant_runtime_entrypoint.launch_contract is invalid")
-        if self.surface_pattern != "tenant-home":
+        if self.surface_pattern not in {"tenant-home", "tenant-operational-status"}:
             raise ValueError("trusted_tenant_runtime_entrypoint.surface_pattern is invalid")
 
     def to_dict(self) -> dict[str, Any]:
@@ -271,6 +275,21 @@ def build_trusted_tenant_runtime_entrypoint_catalog() -> tuple[TrustedTenantRunt
             surface_pattern="tenant-home",
             surface_schema=TRUSTED_TENANT_HOME_SURFACE_SCHEMA,
             required_configuration=("data_dir", "public_dir", "tenant_domain"),
+        ),
+        TrustedTenantRuntimeEntrypointDescriptor(
+            entrypoint_id=TRUSTED_TENANT_OPERATIONAL_STATUS_ENTRYPOINT_ID,
+            callable_path=(
+                "MyCiteV2.instances._shared.runtime.tenant_operational_status_runtime."
+                "run_trusted_tenant_operational_status"
+            ),
+            slice_id=BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+            rollout_band=BAND1_TRUSTED_TENANT_READ_ONLY_NAME,
+            exposure_status=TRUSTED_TENANT_PORTAL_EXPOSURE_STATUS,
+            read_write_posture="read-only",
+            launch_contract=ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT,
+            surface_pattern="tenant-operational-status",
+            surface_schema=TRUSTED_TENANT_OPERATIONAL_STATUS_SURFACE_SCHEMA,
+            required_configuration=("audit_storage_file",),
         ),
     )
 
@@ -391,7 +410,11 @@ __all__ = [
     "build_trusted_tenant_runtime_error",
     "resolve_admin_runtime_entrypoint",
     "resolve_trusted_tenant_runtime_entrypoint",
+    "BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID",
     "TRUSTED_TENANT_HOME_SURFACE_SCHEMA",
+    "TRUSTED_TENANT_OPERATIONAL_STATUS_ENTRYPOINT_ID",
+    "TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA",
+    "TRUSTED_TENANT_OPERATIONAL_STATUS_SURFACE_SCHEMA",
     "TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID",
     "TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA",
     "TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA",
