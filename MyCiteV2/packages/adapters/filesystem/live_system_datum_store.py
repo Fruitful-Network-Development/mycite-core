@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.ports.datum_store import (
+    PublicationTenantSummaryRequest,
+    PublicationTenantSummaryResult,
+    PublicationTenantSummarySource,
     SystemDatumResourceRow,
     SystemDatumStorePort,
     SystemDatumStoreRequest,
@@ -29,6 +32,13 @@ def _as_text_tuple(value: object) -> tuple[str, ...]:
         return tuple(_as_text(item) for item in value if _as_text(item))
     token = _as_text(value)
     return (token,) if token else ()
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Expected object JSON in {path}")
+    return payload
 
 
 def _extract_row(resource_id: str, raw: Any) -> SystemDatumResourceRow:
@@ -62,8 +72,9 @@ def _extract_row(resource_id: str, raw: Any) -> SystemDatumResourceRow:
 
 
 class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
-    def __init__(self, data_dir: str | Path) -> None:
+    def __init__(self, data_dir: str | Path, *, public_dir: str | Path | None = None) -> None:
         self._data_dir = Path(data_dir)
+        self._public_dir = None if public_dir is None else Path(public_dir)
 
     def read_system_resource_workbench(self, request: SystemDatumStoreRequest) -> SystemDatumWorkbenchResult:
         normalized_request = (
@@ -120,3 +131,158 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
             },
             warnings=tuple(warnings),
         )
+
+    def read_publication_tenant_summary(
+        self,
+        request: PublicationTenantSummaryRequest,
+    ) -> PublicationTenantSummaryResult:
+        normalized_request = (
+            request
+            if isinstance(request, PublicationTenantSummaryRequest)
+            else PublicationTenantSummaryRequest.from_dict(request)
+        )
+
+        anthology_file = self._data_dir / "system" / "anthology.json"
+        warnings: list[str] = []
+        resolution_status: dict[str, Any] = {
+            "anthology": "missing",
+            "domain_match": "missing",
+            "public_profile": "missing",
+            "tenant_profile": "missing",
+        }
+
+        if not anthology_file.exists() or not anthology_file.is_file():
+            warnings.append("Canonical system anthology is missing at data/system/anthology.json.")
+            return PublicationTenantSummaryResult(
+                source=None,
+                resolution_status=resolution_status,
+                warnings=tuple(warnings),
+            )
+
+        try:
+            anthology_payload = _read_json_object(anthology_file)
+        except (json.JSONDecodeError, ValueError):
+            warnings.append("Canonical system anthology is not a valid JSON object.")
+            resolution_status["anthology"] = "invalid"
+            return PublicationTenantSummaryResult(
+                source=None,
+                resolution_status=resolution_status,
+                warnings=tuple(warnings),
+            )
+
+        resolution_status["anthology"] = "loaded"
+        profile_id = _resolve_profile_id_from_domain(
+            anthology_payload=anthology_payload,
+            tenant_domain=normalized_request.tenant_domain,
+        )
+        if not profile_id:
+            warnings.append(
+                "No canonical publication profile mapping was found for the requested tenant domain."
+            )
+            return PublicationTenantSummaryResult(
+                source=None,
+                resolution_status=resolution_status,
+                warnings=tuple(warnings),
+            )
+
+        resolution_status["domain_match"] = "matched"
+        public_profile, public_status = _load_publication_profile(
+            public_dir=self._public_dir,
+            profile_id=profile_id,
+            include_fnd=False,
+        )
+        tenant_profile, tenant_status = _load_publication_profile(
+            public_dir=self._public_dir,
+            profile_id=profile_id,
+            include_fnd=True,
+        )
+        resolution_status["public_profile"] = public_status
+        resolution_status["tenant_profile"] = tenant_status
+
+        if public_status == "missing":
+            warnings.append("No public publication profile document was found for the resolved tenant profile.")
+        elif public_status == "invalid":
+            warnings.append("The resolved public publication profile document is invalid JSON.")
+        if tenant_status == "missing":
+            warnings.append("No tenant publication profile document was found for the resolved tenant profile.")
+        elif tenant_status == "invalid":
+            warnings.append("The resolved tenant publication profile document is invalid JSON.")
+
+        return PublicationTenantSummaryResult(
+            source=PublicationTenantSummarySource(
+                tenant_id=normalized_request.tenant_id,
+                tenant_domain=normalized_request.tenant_domain,
+                profile_id=profile_id,
+                public_profile=public_profile,
+                tenant_profile=tenant_profile,
+            ),
+            resolution_status=resolution_status,
+            warnings=tuple(warnings),
+        )
+
+
+def _resolve_profile_id_from_domain(
+    *,
+    anthology_payload: dict[str, Any],
+    tenant_domain: str,
+) -> str:
+    normalized_domain = _as_text(tenant_domain).lower()
+    if not normalized_domain:
+        return ""
+    for resource_id in sorted(anthology_payload.keys()):
+        raw = anthology_payload[resource_id]
+        labels = tuple(label.lower() for label in _extract_labels(raw))
+        if normalized_domain not in labels:
+            continue
+        profile_id = _extract_profile_id(raw)
+        if profile_id:
+            return profile_id
+    return ""
+
+
+def _extract_labels(raw: Any) -> tuple[str, ...]:
+    if isinstance(raw, list) and len(raw) > 1:
+        return _as_text_tuple(raw[1])
+    if isinstance(raw, dict):
+        return _as_text_tuple(raw.get("labels") or raw.get("label") or raw.get("name"))
+    return ()
+
+
+def _extract_profile_id(raw: Any) -> str:
+    if isinstance(raw, list) and raw:
+        triple = raw[0]
+        if isinstance(triple, list) and len(triple) > 4:
+            return _as_text(triple[4])
+    if isinstance(raw, dict):
+        return _as_text(raw.get("profile_id") or raw.get("msn_id"))
+    return ""
+
+
+def _candidate_profile_paths(*, public_dir: Path, profile_id: str, include_fnd: bool) -> tuple[Path, ...]:
+    candidates = [
+        public_dir / f"{profile_id}.json",
+        public_dir / f"msn-{profile_id}.json",
+        public_dir / f"mss-{profile_id}.json",
+    ]
+    if include_fnd:
+        candidates = [public_dir / f"fnd-{profile_id}.json"]
+    return tuple(candidates)
+
+
+def _load_publication_profile(
+    *,
+    public_dir: Path | None,
+    profile_id: str,
+    include_fnd: bool,
+) -> tuple[dict[str, Any] | None, str]:
+    if public_dir is None:
+        return None, "missing"
+    saw_invalid = False
+    for path in _candidate_profile_paths(public_dir=public_dir, profile_id=profile_id, include_fnd=include_fnd):
+        if not path.exists() or not path.is_file():
+            continue
+        try:
+            return _read_json_object(path), "loaded"
+        except (json.JSONDecodeError, ValueError):
+            saw_invalid = True
+    return None, "invalid" if saw_invalid else "missing"

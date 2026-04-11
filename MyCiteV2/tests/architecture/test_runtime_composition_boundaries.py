@@ -97,7 +97,13 @@ class RuntimeCompositionBoundaryTests(unittest.TestCase):
 
         self.assertEqual(
             runtime_python_files,
-            ["admin_aws_runtime.py", "admin_runtime.py", "mvp_runtime.py", "runtime_platform.py"],
+            [
+                "admin_aws_runtime.py",
+                "admin_runtime.py",
+                "mvp_runtime.py",
+                "runtime_platform.py",
+                "tenant_portal_runtime.py",
+            ],
         )
         self.assertEqual(flavor_python_files, [])
 

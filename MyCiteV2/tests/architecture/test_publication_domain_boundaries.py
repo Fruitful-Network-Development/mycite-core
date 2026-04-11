@@ -6,26 +6,22 @@ import unittest
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PACKAGE_DIR = PROJECT_ROOT / "packages" / "adapters" / "filesystem"
+PACKAGE_DIR = PROJECT_ROOT / "packages" / "modules" / "domains" / "publication"
 
 FORBIDDEN_IMPORT_PREFIXES = (
     "MyCiteV2.instances",
     "instances",
-    "MyCiteV2.packages.modules",
+    "MyCiteV2.packages.adapters",
     "MyCiteV2.packages.tools",
     "MyCiteV2.packages.sandboxes",
     "mycite_core",
 )
 
 FORBIDDEN_TEXT_TOKENS = (
-    "focus_subject",
-    "shell_verb",
-    "event_type",
-    "private_key",
-    "password",
-    "api_key",
-    "runtime_paths",
     "instances/_shared",
+    "runtime_paths",
+    "aliases.py",
+    "tenant_progeny",
 )
 
 
@@ -36,17 +32,13 @@ def _is_allowed_absolute_import(module_name: str) -> bool:
     if root_name in getattr(sys, "stdlib_module_names", set()):
         return True
     return (
-        module_name.startswith("MyCiteV2.packages.ports.audit_log")
-        or module_name.startswith("MyCiteV2.packages.ports.aws_csm_onboarding")
-        or module_name.startswith("MyCiteV2.packages.ports.aws_read_only_status")
-        or module_name.startswith("MyCiteV2.packages.ports.aws_narrow_write")
+        module_name.startswith("MyCiteV2.packages.modules.domains.publication")
         or module_name.startswith("MyCiteV2.packages.ports.datum_store")
-        or module_name.startswith("MyCiteV2.packages.adapters.filesystem")
     )
 
 
-class FilesystemAdapterBoundaryTests(unittest.TestCase):
-    def test_imports_remain_adapter_side_without_module_semantics(self) -> None:
+class PublicationDomainBoundaryTests(unittest.TestCase):
+    def test_imports_remain_inward_and_adapter_free(self) -> None:
         violations: list[str] = []
 
         for path in sorted(PACKAGE_DIR.glob("*.py")):
@@ -58,7 +50,7 @@ class FilesystemAdapterBoundaryTests(unittest.TestCase):
                         if module_name.startswith(FORBIDDEN_IMPORT_PREFIXES):
                             violations.append(f"{path.name}: forbidden import {module_name}")
                         elif not _is_allowed_absolute_import(module_name):
-                            violations.append(f"{path.name}: non-adapter import {module_name}")
+                            violations.append(f"{path.name}: non-domain import {module_name}")
                 elif isinstance(node, ast.ImportFrom):
                     if node.level:
                         continue
@@ -66,11 +58,11 @@ class FilesystemAdapterBoundaryTests(unittest.TestCase):
                     if module_name.startswith(FORBIDDEN_IMPORT_PREFIXES):
                         violations.append(f"{path.name}: forbidden import {module_name}")
                     elif module_name and not _is_allowed_absolute_import(module_name):
-                        violations.append(f"{path.name}: non-adapter import {module_name}")
+                        violations.append(f"{path.name}: non-domain import {module_name}")
 
         self.assertEqual(violations, [])
 
-    def test_source_contains_no_local_audit_semantic_knowledge(self) -> None:
+    def test_source_contains_no_runtime_or_alias_progeny_leakage(self) -> None:
         violations: list[str] = []
 
         for path in sorted(PACKAGE_DIR.glob("*.py")):

@@ -1,11 +1,14 @@
 /**
  * V2 portal: renders shell chrome from runtime-issued shell_composition only.
- * Dispatches navigation via POST /portal/api/v2/admin/shell using server-provided shell_request bodies.
+ * Dispatches navigation via the page-selected shell endpoint using server-provided shell_request bodies.
  * Tool writes use submit_contract routes from the inspector region only.
  */
 (function () {
-  const SHELL_URL = "/portal/api/v2/admin/shell";
-  const RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.admin.runtime.envelope.v1";
+  const BODY_DATA = document.body || document.documentElement;
+  const SHELL_URL = (BODY_DATA && BODY_DATA.getAttribute("data-shell-endpoint")) || "/portal/api/v2/admin/shell";
+  const RUNTIME_ENVELOPE_SCHEMA =
+    (BODY_DATA && BODY_DATA.getAttribute("data-runtime-envelope-schema")) ||
+    "mycite.v2.admin.runtime.envelope.v1";
   let lastShellRequest = null;
   let lastComposition = null;
 
@@ -223,6 +226,83 @@
       body.innerHTML = cards;
       return;
     }
+    if (kind === "tenant_home_status") {
+      var tenantProfile = wb.tenant_profile || {};
+      var availableSlices = wb.available_slices || [];
+      var warnings = wb.warnings || [];
+      var warningBlock =
+        warnings.length > 0
+          ? '<div class="v2-card" style="margin-bottom:12px"><h3>Warnings</h3><ul>' +
+            warnings
+              .map(function (warning) {
+                return "<li>" + escapeHtml(String(warning)) + "</li>";
+              })
+              .join("") +
+            "</ul></div>"
+          : "";
+      var cards =
+        '<div class="v2-card-grid">' +
+        '<article class="v2-card"><h3>You are here</h3><p>' +
+        escapeHtml(wb.where_you_are || "Portal home") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Rollout band</h3><p>' +
+        escapeHtml(wb.rollout_band || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Exposure</h3><p>' +
+        escapeHtml(wb.exposure_status || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Profile in view</h3><p>' +
+        escapeHtml(tenantProfile.profile_title || "—") +
+        "</p></article>" +
+        "</div>";
+      var details =
+        '<dl class="v2-surface-dl">' +
+        "<dt>Tenant</dt><dd>" +
+        escapeHtml(tenantProfile.tenant_id || "—") +
+        "</dd>" +
+        "<dt>Domain</dt><dd>" +
+        escapeHtml(tenantProfile.tenant_domain || "—") +
+        "</dd>" +
+        "<dt>Entity type</dt><dd>" +
+        escapeHtml(tenantProfile.entity_type || "—") +
+        "</dd>" +
+        "<dt>Profile summary</dt><dd>" +
+        escapeHtml(tenantProfile.profile_summary || "—") +
+        "</dd>" +
+        "<dt>Contact email</dt><dd>" +
+        escapeHtml(tenantProfile.contact_email || "—") +
+        "</dd>" +
+        "<dt>Public website</dt><dd>" +
+        escapeHtml(tenantProfile.public_website_url || "—") +
+        "</dd>" +
+        "<dt>Publication mode</dt><dd>" +
+        escapeHtml(tenantProfile.publication_mode || "—") +
+        "</dd>" +
+        "<dt>Profile resolution</dt><dd>" +
+        escapeHtml(tenantProfile.profile_resolution || "—") +
+        "</dd>" +
+        "<dt>Available documents</dt><dd>" +
+        escapeHtml((tenantProfile.available_documents || []).join(", ") || "—") +
+        "</dd></dl>";
+      var slicesHtml =
+        "<table class=\"v2-table\"><thead><tr><th>Slice</th><th>Status</th><th>Posture</th></tr></thead><tbody>" +
+        availableSlices
+          .map(function (slice) {
+            return (
+              "<tr><td>" +
+              escapeHtml(slice.label || slice.slice_id || "") +
+              "</td><td>" +
+              escapeHtml(slice.status_summary || "—") +
+              "</td><td>" +
+              escapeHtml(slice.read_write_posture || "—") +
+              "</td></tr>"
+            );
+          })
+          .join("") +
+        "</tbody></table>";
+      body.innerHTML = warningBlock + cards + details + '<div class="v2-card" style="margin-top:12px"><h3>Available slices</h3>' + slicesHtml + "</div>";
+      return;
+    }
     if (kind === "tool_registry") {
       var rows = wb.tool_rows || [];
       var banner = wb.banner;
@@ -387,6 +467,36 @@
         "</p>" +
         (wn ? "<ul>" + wn + "</ul>" : "") +
         "</div>";
+      return;
+    }
+    if (kind === "tenant_profile_summary") {
+      var summary = region.summary || {};
+      content.innerHTML =
+        '<dl class="v2-surface-dl">' +
+        "<dt>Profile title</dt><dd>" +
+        escapeHtml(summary.profile_title || "—") +
+        "</dd>" +
+        "<dt>Tenant</dt><dd>" +
+        escapeHtml(summary.tenant_id || "—") +
+        "</dd>" +
+        "<dt>Domain</dt><dd>" +
+        escapeHtml(summary.tenant_domain || "—") +
+        "</dd>" +
+        "<dt>Entity type</dt><dd>" +
+        escapeHtml(summary.entity_type || "—") +
+        "</dd>" +
+        "<dt>Profile summary</dt><dd>" +
+        escapeHtml(summary.profile_summary || "—") +
+        "</dd>" +
+        "<dt>Contact email</dt><dd>" +
+        escapeHtml(summary.contact_email || "—") +
+        "</dd>" +
+        "<dt>Public website</dt><dd>" +
+        escapeHtml(summary.public_website_url || "—") +
+        "</dd>" +
+        "<dt>Available documents</dt><dd>" +
+        escapeHtml((summary.available_documents || []).join(", ") || "—") +
+        "</dd></dl>";
       return;
     }
     if (kind === "narrow_write_form") {
