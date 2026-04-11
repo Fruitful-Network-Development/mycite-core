@@ -3,19 +3,24 @@ title: Add operational smoke gates for portal regression prevention
 primary_type: repo_and_deploy
 owner: lead
 status: proposed
+verification_result: pending
 priority: medium
+
 objective: >
   Turn the recent portal shell closure checks into a repeatable regression
   gate that combines repo tests with live smoke verification.
+
 authority:
   precedence:
     - MyCiteV2/docs/ontology/structural_invariants.md
     - MyCiteV2/docs/plans/authority_stack.md
     - MyCiteV2/tests/architecture/test_v2_native_portal_host_boundaries.py
     - MyCiteV2/tests/integration/test_v2_native_portal_host.py
+    - tasks/T-002-deploy-truth-automation.yaml
   notes:
     - Repo tests are necessary but not sufficient.
     - Live smoke checks are mandatory when acceptance includes live behavior.
+
 scope:
   repos:
     - mycite-core
@@ -23,44 +28,59 @@ scope:
   repo_paths:
     - MyCiteV2/tests/
     - scripts/
-    - docs/ or reports/ for smoke-run instructions
+    - docs/
+    - reports/
   live_systems:
     - portal.fruitfulnetworkdevelopment.com
+
 required_outputs:
   - A documented smoke gate procedure or script.
   - A clear sequence: repo tests first, live smoke second.
   - Evidence artifact paths for both the implementer and verifier runs.
+
 acceptance:
   - Repo test command for the portal host is documented and stable.
   - Live smoke command set is documented and stable.
   - The smoke gate explicitly checks shell markers, static assets, and health static bundle.
   - The verifier can run the gate without reading prompt history.
   - A failure in either repo tests or live smoke is sufficient to block task closure.
+
 implementation_requirements:
   - Keep the gate narrow to current portal shell risks.
   - Reuse current test and live-check commands where possible.
   - Do not replace integration tests with smoke checks; layer them.
+
 verification_requirements:
   - Verifier must run repo tests or review fresh output from the exact documented command.
   - Verifier must run live smoke independently.
   - Verifier must issue a final verdict of pass or fail.
+
 artifacts:
   implementation_report: reports/T-006-implementation.md
   verification_report: reports/T-006-verification.md
   smoke_gate_doc: reports/T-006-smoke-gate.md
-suggested_commands:
-  repo:
-    - cd /srv/repo/mycite-core && PYTHONPATH=/srv/repo/mycite-core /srv/venvs/fnd_portal/bin/python3 -m pytest MyCiteV2/tests
-  live:
-    - cd /tmp && curl -s https://portal.fruitfulnetworkdevelopment.com/portal/system | grep -n "shell-template: v2-composition\|build:"
-    - cd /tmp && curl -I https://portal.fruitfulnetworkdevelopment.com/portal/static/portal.css
-    - cd /tmp && curl -I https://portal.fruitfulnetworkdevelopment.com/portal/static/v2_portal_shell.js
-    - cd /tmp && curl -s https://portal.fruitfulnetworkdevelopment.com/healthz | python3 -m json.tool
-lead_handoff:
-  implementer:
-    focus: document and wire the smoke gate
-  verifier:
-    focus: independently run the gate and issue final verdict
+
+execution:
+  current_role: lead
+  next_role: implementer
+  requires_verifier: true
+  handoff_files:
+    lead_to_implementer: reports/handoffs/T-006/lead_to_implementer.md
+    implementer_to_verifier: reports/handoffs/T-006/implementer_to_verifier.md
+    verifier_to_lead: reports/handoffs/T-006/verifier_to_lead.md
+  reports:
+    implementation: reports/T-006-implementation.md
+    verification: reports/T-006-verification.md
+  repo_test_command: >-
+    cd /srv/repo/mycite-core &&
+    for d in MyCiteV2/tests/adapters MyCiteV2/tests/architecture MyCiteV2/tests/contracts MyCiteV2/tests/integration MyCiteV2/tests/unit; do
+      echo "== $d ==" &&
+      PYTHONPATH=/srv/repo/mycite-core /srv/venvs/fnd_portal/bin/python3 -m unittest discover -s "$d" -p "test*.py" -v || exit 1;
+    done
+  live_check_command: >-
+    cd /srv/repo/mycite-core &&
+    bash scripts/verify_v2_portal_deploy_truth.sh
+
 closure_rule: >
   Lead may close only when verifier confirms both repo tests and live smoke
   checks pass using the documented gate.
