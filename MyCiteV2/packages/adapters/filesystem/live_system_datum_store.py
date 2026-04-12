@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.ports.datum_store import (
+    PublicationProfileBasicsWriteRequest,
+    PublicationProfileBasicsWriteResult,
     PublicationTenantSummaryRequest,
     PublicationTenantSummaryResult,
     PublicationTenantSummarySource,
@@ -141,7 +143,104 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
             if isinstance(request, PublicationTenantSummaryRequest)
             else PublicationTenantSummaryRequest.from_dict(request)
         )
+        (
+            profile_id,
+            public_profile,
+            public_status,
+            tenant_profile,
+            tenant_status,
+            resolution_status,
+            warnings,
+        ) = self._resolve_publication_profiles(
+            tenant_domain=normalized_request.tenant_domain,
+        )
+        if not profile_id:
+            return PublicationTenantSummaryResult(
+                source=None,
+                resolution_status=resolution_status,
+                warnings=tuple(warnings),
+            )
+        return PublicationTenantSummaryResult(
+            source=PublicationTenantSummarySource(
+                tenant_id=normalized_request.tenant_id,
+                tenant_domain=normalized_request.tenant_domain,
+                profile_id=profile_id,
+                public_profile=public_profile,
+                tenant_profile=tenant_profile,
+            ),
+            resolution_status=resolution_status,
+            warnings=tuple(warnings),
+        )
 
+    def write_publication_profile_basics(
+        self,
+        request: PublicationProfileBasicsWriteRequest,
+    ) -> PublicationProfileBasicsWriteResult:
+        normalized_request = (
+            request
+            if isinstance(request, PublicationProfileBasicsWriteRequest)
+            else PublicationProfileBasicsWriteRequest.from_dict(request)
+        )
+        (
+            profile_id,
+            _public_profile,
+            _public_status,
+            tenant_profile,
+            tenant_status,
+            _resolution_status,
+            warnings,
+        ) = self._resolve_publication_profiles(
+            tenant_domain=normalized_request.tenant_domain,
+        )
+        if not profile_id:
+            raise ValueError(
+                "No canonical publication profile mapping was found for the requested tenant domain."
+            )
+        if self._public_dir is None:
+            raise ValueError("Publication profile basics write requires public_dir.")
+        if tenant_status == "invalid":
+            raise ValueError("The resolved tenant publication profile document is invalid JSON.")
+
+        next_payload = dict(tenant_profile or {})
+        next_payload["title"] = normalized_request.profile_title
+        next_payload["summary"] = normalized_request.profile_summary
+        next_payload["contact_email"] = normalized_request.contact_email
+        next_payload["public_website_url"] = normalized_request.public_website_url
+
+        target_path = _tenant_profile_path(public_dir=self._public_dir, profile_id=profile_id)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(
+            json.dumps(next_payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        confirmed = self.read_publication_tenant_summary(
+            PublicationTenantSummaryRequest(
+                tenant_id=normalized_request.tenant_id,
+                tenant_domain=normalized_request.tenant_domain,
+            )
+        )
+        if confirmed.source is None:
+            raise ValueError("Publication profile basics read-after-write confirmation failed.")
+        return PublicationProfileBasicsWriteResult(
+            source=confirmed.source,
+            resolution_status=confirmed.resolution_status,
+            warnings=confirmed.warnings,
+        )
+
+    def _resolve_publication_profiles(
+        self,
+        *,
+        tenant_domain: str,
+    ) -> tuple[
+        str,
+        dict[str, Any] | None,
+        str,
+        dict[str, Any] | None,
+        str,
+        dict[str, Any],
+        list[str],
+    ]:
         anthology_file = self._data_dir / "system" / "anthology.json"
         warnings: list[str] = []
         resolution_status: dict[str, Any] = {
@@ -153,37 +252,25 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
 
         if not anthology_file.exists() or not anthology_file.is_file():
             warnings.append("Canonical system anthology is missing at data/system/anthology.json.")
-            return PublicationTenantSummaryResult(
-                source=None,
-                resolution_status=resolution_status,
-                warnings=tuple(warnings),
-            )
+            return "", None, "missing", None, "missing", resolution_status, warnings
 
         try:
             anthology_payload = _read_json_object(anthology_file)
         except (json.JSONDecodeError, ValueError):
             warnings.append("Canonical system anthology is not a valid JSON object.")
             resolution_status["anthology"] = "invalid"
-            return PublicationTenantSummaryResult(
-                source=None,
-                resolution_status=resolution_status,
-                warnings=tuple(warnings),
-            )
+            return "", None, "missing", None, "missing", resolution_status, warnings
 
         resolution_status["anthology"] = "loaded"
         profile_id = _resolve_profile_id_from_domain(
             anthology_payload=anthology_payload,
-            tenant_domain=normalized_request.tenant_domain,
+            tenant_domain=tenant_domain,
         )
         if not profile_id:
             warnings.append(
                 "No canonical publication profile mapping was found for the requested tenant domain."
             )
-            return PublicationTenantSummaryResult(
-                source=None,
-                resolution_status=resolution_status,
-                warnings=tuple(warnings),
-            )
+            return "", None, "missing", None, "missing", resolution_status, warnings
 
         resolution_status["domain_match"] = "matched"
         public_profile, public_status = _load_publication_profile(
@@ -207,17 +294,14 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
             warnings.append("No tenant publication profile document was found for the resolved tenant profile.")
         elif tenant_status == "invalid":
             warnings.append("The resolved tenant publication profile document is invalid JSON.")
-
-        return PublicationTenantSummaryResult(
-            source=PublicationTenantSummarySource(
-                tenant_id=normalized_request.tenant_id,
-                tenant_domain=normalized_request.tenant_domain,
-                profile_id=profile_id,
-                public_profile=public_profile,
-                tenant_profile=tenant_profile,
-            ),
-            resolution_status=resolution_status,
-            warnings=tuple(warnings),
+        return (
+            profile_id,
+            public_profile,
+            public_status,
+            tenant_profile,
+            tenant_status,
+            resolution_status,
+            warnings,
         )
 
 
@@ -265,8 +349,12 @@ def _candidate_profile_paths(*, public_dir: Path, profile_id: str, include_fnd: 
         public_dir / f"mss-{profile_id}.json",
     ]
     if include_fnd:
-        candidates = [public_dir / f"fnd-{profile_id}.json"]
+        candidates = [_tenant_profile_path(public_dir=public_dir, profile_id=profile_id)]
     return tuple(candidates)
+
+
+def _tenant_profile_path(*, public_dir: Path, profile_id: str) -> Path:
+    return public_dir / f"fnd-{profile_id}.json"
 
 
 def _load_publication_profile(

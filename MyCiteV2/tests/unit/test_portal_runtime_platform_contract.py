@@ -12,12 +12,15 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
     TRUSTED_TENANT_AUDIT_ACTIVITY_ENTRYPOINT_ID,
     TRUSTED_TENANT_AUDIT_ACTIVITY_SURFACE_SCHEMA,
     TRUSTED_TENANT_HOME_SURFACE_SCHEMA,
     TRUSTED_TENANT_OPERATIONAL_STATUS_ENTRYPOINT_ID,
     TRUSTED_TENANT_OPERATIONAL_STATUS_SURFACE_SCHEMA,
     TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID,
+    TRUSTED_TENANT_PROFILE_BASICS_WRITE_ENTRYPOINT_ID,
+    TRUSTED_TENANT_PROFILE_BASICS_WRITE_SURFACE_SCHEMA,
     TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
     TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA,
     TRUSTED_TENANT_RUNTIME_REQUIRED_ENVELOPE_KEYS,
@@ -35,6 +38,7 @@ class PortalRuntimePlatformContractTests(unittest.TestCase):
         self.assertEqual(
             [entry["schema"] for entry in descriptors],
             [
+                TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA,
                 TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA,
                 TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA,
                 TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA,
@@ -88,6 +92,22 @@ class PortalRuntimePlatformContractTests(unittest.TestCase):
                     "surface_schema": TRUSTED_TENANT_AUDIT_ACTIVITY_SURFACE_SCHEMA,
                     "required_configuration": ["audit_storage_file"],
                 },
+                {
+                    "schema": TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA,
+                    "entrypoint_id": TRUSTED_TENANT_PROFILE_BASICS_WRITE_ENTRYPOINT_ID,
+                    "callable_path": (
+                        "MyCiteV2.instances._shared.runtime.tenant_profile_basics_write_runtime."
+                        "run_trusted_tenant_profile_basics_write"
+                    ),
+                    "slice_id": BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
+                    "rollout_band": "Band 2 Trusted-Tenant Writable Slice",
+                    "exposure_status": "trusted-tenant-writable",
+                    "read_write_posture": "write",
+                    "launch_contract": "admin-shell-entry",
+                    "surface_pattern": "tenant-profile-basics-write",
+                    "surface_schema": TRUSTED_TENANT_PROFILE_BASICS_WRITE_SURFACE_SCHEMA,
+                    "required_configuration": ["data_dir", "public_dir", "tenant_domain", "audit_storage_file"],
+                },
             ],
         )
         self.assertEqual(json.loads(json.dumps(descriptors, sort_keys=True)), descriptors)
@@ -107,6 +127,12 @@ class PortalRuntimePlatformContractTests(unittest.TestCase):
                 TRUSTED_TENANT_AUDIT_ACTIVITY_ENTRYPOINT_ID
             ).entrypoint_id,
             TRUSTED_TENANT_AUDIT_ACTIVITY_ENTRYPOINT_ID,
+        )
+        self.assertEqual(
+            resolve_trusted_tenant_runtime_entrypoint(
+                TRUSTED_TENANT_PROFILE_BASICS_WRITE_ENTRYPOINT_ID
+            ).entrypoint_id,
+            TRUSTED_TENANT_PROFILE_BASICS_WRITE_ENTRYPOINT_ID,
         )
 
     def test_trusted_tenant_runtime_envelope_shape_is_fixed(self) -> None:

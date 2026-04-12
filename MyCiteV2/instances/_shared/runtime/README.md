@@ -11,6 +11,7 @@ Implemented in shared runtime:
 - one composition entrypoint for `Admin Band 0 Internal Admin Replacement`
 - one composition entrypoint for `admin_band1.aws_read_only_surface`
 - one composition entrypoint for `admin_band2.aws_narrow_write_surface`
+- one composition entrypoint for `band2.profile_basics_write_surface`
 
 Not implemented in shared runtime:
 

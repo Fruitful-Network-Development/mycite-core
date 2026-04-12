@@ -105,6 +105,7 @@ class RuntimeCompositionBoundaryTests(unittest.TestCase):
                 "tenant_audit_activity_runtime.py",
                 "tenant_operational_status_runtime.py",
                 "tenant_portal_runtime.py",
+                "tenant_profile_basics_write_runtime.py",
             ],
         )
         self.assertEqual(flavor_python_files, [])

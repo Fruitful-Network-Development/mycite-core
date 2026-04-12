@@ -13,6 +13,7 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
     TRUSTED_TENANT_AUDIT_ACTIVITY_ENTRYPOINT_ID,
     TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
     TRUSTED_TENANT_AUDIT_ACTIVITY_SURFACE_SCHEMA,
@@ -21,6 +22,9 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
     TRUSTED_TENANT_OPERATIONAL_STATUS_SURFACE_SCHEMA,
     TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID,
+    TRUSTED_TENANT_PROFILE_BASICS_WRITE_ENTRYPOINT_ID,
+    TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
+    TRUSTED_TENANT_PROFILE_BASICS_WRITE_SURFACE_SCHEMA,
     TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
 )
 from MyCiteV2.instances._shared.runtime.tenant_audit_activity_runtime import (
@@ -29,7 +33,12 @@ from MyCiteV2.instances._shared.runtime.tenant_audit_activity_runtime import (
 from MyCiteV2.instances._shared.runtime.tenant_operational_status_runtime import (
     run_trusted_tenant_operational_status,
 )
+from MyCiteV2.instances._shared.runtime.tenant_profile_basics_write_runtime import (
+    run_trusted_tenant_profile_basics_write,
+)
 from MyCiteV2.instances._shared.runtime.tenant_portal_runtime import run_trusted_tenant_portal_home
+from MyCiteV2.packages.adapters.filesystem import FilesystemAuditLogAdapter
+from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
 from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
     BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
     TRUSTED_TENANT_PORTAL_COMPOSITION_SCHEMA,
@@ -109,6 +118,7 @@ class TenantPortalRuntimeIntegrationTests(unittest.TestCase):
                     BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
                     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
                     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
                 ],
             )
 
@@ -198,6 +208,7 @@ class TenantPortalRuntimeIntegrationTests(unittest.TestCase):
                     BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
                     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
                     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
                 ],
             )
 
@@ -376,6 +387,7 @@ class TenantPortalRuntimeIntegrationTests(unittest.TestCase):
                     BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
                     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
                     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
                 ],
             )
 
@@ -412,6 +424,159 @@ class TenantPortalRuntimeIntegrationTests(unittest.TestCase):
 
             self.assertEqual(result["error"]["code"], "tenant_scope_mismatch")
             self.assertEqual(result["slice_id"], BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID)
+
+    def test_profile_basics_runtime_bootstraps_current_publication_backed_summary(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            public_dir = root / "public"
+            audit_storage_file = root / "audit.ndjson"
+            (data_dir / "system").mkdir(parents=True)
+            public_dir.mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps(
+                    {
+                        "6-2-3": [
+                            ["6-3-3", "3-1-4", "f7472617070", "4-1-1", "3-2-3-17-77-2-6-3-1-6"],
+                            ["trappfamilyfarm.com"],
+                        ]
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (public_dir / "3-2-3-17-77-2-6-3-1-6.json").write_text(
+                json.dumps({"title": "trapp_family_farm", "entity_type": "legal_entity"}) + "\n",
+                encoding="utf-8",
+            )
+            (public_dir / "fnd-3-2-3-17-77-2-6-3-1-6.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Trapp Family Farm",
+                        "summary": "Current tenant-facing summary",
+                        "contact_email": "hello@trappfamilyfarm.com",
+                        "public_website_url": "https://trappfamilyfarm.com",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_trusted_tenant_profile_basics_write(
+                {
+                    "schema": TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+                data_dir=data_dir,
+                public_dir=public_dir,
+                audit_storage_file=audit_storage_file,
+                portal_tenant_id="tff",
+                tenant_domain="trappfamilyfarm.com",
+            )
+
+            self.assertEqual(result["schema"], TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA)
+            self.assertEqual(result["entrypoint_id"], TRUSTED_TENANT_PROFILE_BASICS_WRITE_ENTRYPOINT_ID)
+            self.assertEqual(result["slice_id"], BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID)
+            self.assertIsNone(result["error"])
+            self.assertEqual(result["surface_payload"]["schema"], TRUSTED_TENANT_PROFILE_BASICS_WRITE_SURFACE_SCHEMA)
+            self.assertEqual(result["surface_payload"]["write_status"], "ready")
+            self.assertEqual(
+                result["surface_payload"]["confirmed_profile_basics"]["profile_title"],
+                "Trapp Family Farm",
+            )
+            self.assertEqual(
+                result["shell_composition"]["regions"]["workbench"]["kind"],
+                "profile_basics_write",
+            )
+            self.assertEqual(
+                result["shell_composition"]["regions"]["inspector"]["kind"],
+                "profile_basics_write_form",
+            )
+
+    def test_profile_basics_runtime_applies_write_and_emits_local_audit(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            public_dir = root / "public"
+            audit_storage_file = root / "audit.ndjson"
+            (data_dir / "system").mkdir(parents=True)
+            public_dir.mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps(
+                    {
+                        "6-2-3": [
+                            ["6-3-3", "3-1-4", "f7472617070", "4-1-1", "3-2-3-17-77-2-6-3-1-6"],
+                            ["trappfamilyfarm.com"],
+                        ]
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (public_dir / "3-2-3-17-77-2-6-3-1-6.json").write_text(
+                json.dumps({"title": "trapp_family_farm", "entity_type": "legal_entity"}) + "\n",
+                encoding="utf-8",
+            )
+            (public_dir / "fnd-3-2-3-17-77-2-6-3-1-6.json").write_text(
+                json.dumps({"summary": "Old summary", "custom_flag": "keep-me"}) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_trusted_tenant_profile_basics_write(
+                {
+                    "schema": TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                    "apply_change": True,
+                    "profile_title": "Trapp Family Farm",
+                    "profile_summary": "Updated summary",
+                    "contact_email": "hello@trappfamilyfarm.com",
+                    "public_website_url": "https://trappfamilyfarm.com",
+                },
+                data_dir=data_dir,
+                public_dir=public_dir,
+                audit_storage_file=audit_storage_file,
+                portal_tenant_id="tff",
+                tenant_domain="trappfamilyfarm.com",
+            )
+
+            self.assertIsNone(result["error"])
+            self.assertEqual(result["surface_payload"]["write_status"], "applied")
+            self.assertEqual(
+                result["surface_payload"]["confirmed_profile_basics"]["profile_summary"],
+                "Updated summary",
+            )
+            self.assertTrue(result["surface_payload"]["audit"]["record_id"])
+            stored = LocalAuditService(FilesystemAuditLogAdapter(audit_storage_file)).read_record(
+                result["surface_payload"]["audit"]["record_id"]
+            )
+            self.assertIsNotNone(stored)
+            self.assertEqual(stored.record.event_type, "publication.profile_basics.write.accepted")
+            self.assertEqual(
+                stored.record.details["public_website_url"],
+                "https://trappfamilyfarm.com",
+            )
+            written_payload = json.loads(
+                (public_dir / "fnd-3-2-3-17-77-2-6-3-1-6.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(written_payload["custom_flag"], "keep-me")
+            self.assertEqual(written_payload["title"], "Trapp Family Farm")
+
+    def test_profile_basics_runtime_rejects_cross_tenant_scope(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            result = run_trusted_tenant_profile_basics_write(
+                {
+                    "schema": TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "other", "audience": "trusted-tenant"},
+                },
+                data_dir=Path(temp_dir) / "data",
+                public_dir=Path(temp_dir) / "public",
+                audit_storage_file=Path(temp_dir) / "audit.ndjson",
+                portal_tenant_id="tff",
+                tenant_domain="trappfamilyfarm.com",
+            )
+
+            self.assertEqual(result["error"]["code"], "tenant_scope_mismatch")
+            self.assertEqual(result["slice_id"], BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID)
 
 
 if __name__ == "__main__":

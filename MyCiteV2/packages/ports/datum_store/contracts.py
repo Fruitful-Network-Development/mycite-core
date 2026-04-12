@@ -312,6 +312,102 @@ class PublicationTenantSummaryResult:
         )
 
 
+@dataclass(frozen=True)
+class PublicationProfileBasicsWriteRequest:
+    tenant_id: str
+    tenant_domain: str
+    profile_title: str
+    profile_summary: str = ""
+    contact_email: str = ""
+    public_website_url: str = ""
+
+    def __post_init__(self) -> None:
+        tenant_id = _as_text(self.tenant_id).lower()
+        tenant_domain = _as_text(self.tenant_domain).lower()
+        profile_title = _as_text(self.profile_title)
+        if not tenant_id:
+            raise ValueError("publication_profile_basics_write_request.tenant_id is required")
+        if not tenant_domain or "." not in tenant_domain:
+            raise ValueError(
+                "publication_profile_basics_write_request.tenant_domain must be a domain-like value"
+            )
+        if not profile_title:
+            raise ValueError("publication_profile_basics_write_request.profile_title is required")
+        object.__setattr__(self, "tenant_id", tenant_id)
+        object.__setattr__(self, "tenant_domain", tenant_domain)
+        object.__setattr__(self, "profile_title", profile_title)
+        object.__setattr__(self, "profile_summary", _as_text(self.profile_summary))
+        object.__setattr__(self, "contact_email", _as_text(self.contact_email).lower())
+        object.__setattr__(self, "public_website_url", _as_text(self.public_website_url))
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "tenant_id": self.tenant_id,
+            "tenant_domain": self.tenant_domain,
+            "profile_title": self.profile_title,
+            "profile_summary": self.profile_summary,
+            "contact_email": self.contact_email,
+            "public_website_url": self.public_website_url,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "PublicationProfileBasicsWriteRequest":
+        if not isinstance(payload, dict):
+            raise ValueError("publication_profile_basics_write_request must be a dict")
+        return cls(
+            tenant_id=payload.get("tenant_id"),
+            tenant_domain=payload.get("tenant_domain"),
+            profile_title=payload.get("profile_title"),
+            profile_summary=payload.get("profile_summary") or "",
+            contact_email=payload.get("contact_email") or "",
+            public_website_url=payload.get("public_website_url") or "",
+        )
+
+
+@dataclass(frozen=True)
+class PublicationProfileBasicsWriteResult:
+    source: PublicationTenantSummarySource | dict[str, Any]
+    resolution_status: dict[str, JsonValue]
+    warnings: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        normalized_source = (
+            self.source
+            if isinstance(self.source, PublicationTenantSummarySource)
+            else PublicationTenantSummarySource.from_dict(self.source)
+        )
+        object.__setattr__(self, "source", normalized_source)
+        object.__setattr__(
+            self,
+            "resolution_status",
+            _normalize_json_value(
+                self.resolution_status,
+                field_name="publication_profile_basics_write_result.resolution_status",
+            ),
+        )
+        object.__setattr__(self, "warnings", tuple(_as_text(item) for item in self.warnings if _as_text(item)))
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        return {
+            "source": self.source.to_dict(),
+            "resolution_status": self.resolution_status,
+            "warnings": list(self.warnings),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "PublicationProfileBasicsWriteResult":
+        if not isinstance(payload, dict):
+            raise ValueError("publication_profile_basics_write_result must be a dict")
+        warnings = payload.get("warnings") or ()
+        if not isinstance(warnings, (list, tuple)):
+            raise ValueError("publication_profile_basics_write_result.warnings must be a list")
+        return cls(
+            source=payload.get("source"),
+            resolution_status=payload.get("resolution_status") or {},
+            warnings=tuple(str(item) for item in warnings),
+        )
+
+
 @runtime_checkable
 class SystemDatumStorePort(Protocol):
     def read_system_resource_workbench(self, request: SystemDatumStoreRequest) -> SystemDatumWorkbenchResult:
@@ -325,3 +421,12 @@ class PublicationTenantSummaryPort(Protocol):
         request: PublicationTenantSummaryRequest,
     ) -> PublicationTenantSummaryResult:
         """Read one publication-backed tenant profile projection without writes."""
+
+
+@runtime_checkable
+class PublicationProfileBasicsWritePort(Protocol):
+    def write_publication_profile_basics(
+        self,
+        request: PublicationProfileBasicsWriteRequest,
+    ) -> PublicationProfileBasicsWriteResult:
+        """Apply one bounded publication-backed profile basics write with read-after-write confirmation."""

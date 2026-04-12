@@ -31,8 +31,10 @@ if HAS_FLASK:
     from MyCiteV2.instances._shared.runtime.runtime_platform import (
         BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
         BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+        BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
         TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
         TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+        TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
         TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
     )
     from MyCiteV2.packages.ports.datum_store import SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA
@@ -75,7 +77,9 @@ else:  # pragma: no cover
     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID = "band1.audit_activity_visibility"
     TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA = "mycite.v2.portal.audit_activity.request.v1"
     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID = "band1.operational_status_surface"
+    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID = "band2.profile_basics_write_surface"
     TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA = "mycite.v2.portal.operational_status.request.v1"
+    TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA = "mycite.v2.portal.profile_basics_write.request.v1"
     BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID = "band1.portal_home_tenant_status"
     TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA = "mycite.v2.portal.tenant_home.request.v1"
 
@@ -413,6 +417,7 @@ class V2NativePortalHostTests(unittest.TestCase):
                     BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
                     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
                     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
                 ],
             )
 
@@ -465,6 +470,7 @@ class V2NativePortalHostTests(unittest.TestCase):
                     BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
                     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
                     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
                 ],
             )
             self.assertEqual(
@@ -552,6 +558,7 @@ class V2NativePortalHostTests(unittest.TestCase):
                     BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
                     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
                     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
                 ],
             )
             self.assertEqual(
@@ -611,6 +618,86 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertEqual(
                 [record["record_id"] for record in payload_after_tenant_audit["surface_payload"]["recent_activity"]["records"]],
                 ["tenant-0002", "tenant-0001"],
+            )
+
+    def test_portal_profile_basics_bootstraps_write_surface_and_uses_trusted_tenant_audit_sink(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config = _build_config(root)
+            _write_publication_home_data(config)
+            config.admin_audit_storage_file.write_text(
+                json.dumps(
+                    {
+                        "record_id": "admin-0001",
+                        "recorded_at_unix_ms": 1770000000001,
+                        "record": {
+                            "event_type": "admin.shell.transition.accepted",
+                            "focus_subject": "3-2-3-17-77-1-6-4-1-4.4-1-77",
+                            "shell_verb": "navigate",
+                            "details": {"surface": "internal-admin"},
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            client = create_app(config).test_client()
+
+            portal = client.get("/portal/profile-basics")
+            self.assertEqual(portal.status_code, 200)
+            body = portal.get_data(as_text=True)
+            self.assertIn('data-shell-endpoint="/portal/api/v2/tenant/profile-basics"', body)
+            self.assertIn('data-runtime-envelope-schema="mycite.v2.portal.runtime.envelope.v1"', body)
+
+            bootstrap = client.post(
+                "/portal/api/v2/tenant/profile-basics",
+                json={
+                    "schema": TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+            )
+            self.assertEqual(bootstrap.status_code, 200)
+            payload = bootstrap.get_json() or {}
+            self.assertEqual(payload["schema"], TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA)
+            self.assertEqual(payload["slice_id"], BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID)
+            self.assertEqual(payload["surface_payload"]["write_status"], "ready")
+            self.assertEqual(
+                payload["surface_payload"]["confirmed_profile_basics"]["profile_summary"],
+                "Read-only summary for the trusted-tenant landing surface.",
+            )
+
+            update = client.post(
+                "/portal/api/v2/tenant/profile-basics",
+                json={
+                    "schema": TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                    "apply_change": True,
+                    "profile_title": "Trapp Family Farm",
+                    "profile_summary": "Updated summary from the trusted-tenant write surface.",
+                    "contact_email": "hello@trappfamilyfarm.com",
+                    "public_website_url": "https://trappfamilyfarm.com",
+                },
+            )
+            self.assertEqual(update.status_code, 200)
+            update_payload = update.get_json() or {}
+            self.assertEqual(update_payload["surface_payload"]["write_status"], "applied")
+            self.assertEqual(
+                update_payload["surface_payload"]["confirmed_profile_basics"]["profile_summary"],
+                "Updated summary from the trusted-tenant write surface.",
+            )
+            self.assertTrue(update_payload["surface_payload"]["audit"]["record_id"])
+            stored_tenant_profile = json.loads(
+                (config.public_dir / "fnd-3-2-3-17-77-2-6-3-1-6.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                stored_tenant_profile["summary"],
+                "Updated summary from the trusted-tenant write surface.",
+            )
+            self.assertEqual(stored_tenant_profile["contact_email"], "hello@trappfamilyfarm.com")
+            self.assertFalse(config.admin_audit_storage_file.read_text(encoding="utf-8").count("publication.profile_basics"))
+            self.assertIn(
+                "publication.profile_basics.write.accepted",
+                config.aws_audit_storage_file.read_text(encoding="utf-8"),
             )
 
     def test_portal_static_css_and_shell_markup(self) -> None:

@@ -2,6 +2,9 @@
 
 from .contracts import (
     PUBLICATION_TENANT_SUMMARY_SOURCE_SCHEMA,
+    PublicationProfileBasicsWritePort,
+    PublicationProfileBasicsWriteRequest,
+    PublicationProfileBasicsWriteResult,
     PublicationTenantSummaryPort,
     PublicationTenantSummaryRequest,
     PublicationTenantSummaryResult,
@@ -15,6 +18,9 @@ from .contracts import (
 
 __all__ = [
     "PUBLICATION_TENANT_SUMMARY_SOURCE_SCHEMA",
+    "PublicationProfileBasicsWritePort",
+    "PublicationProfileBasicsWriteRequest",
+    "PublicationProfileBasicsWriteResult",
     "PublicationTenantSummaryPort",
     "PublicationTenantSummaryRequest",
     "PublicationTenantSummaryResult",

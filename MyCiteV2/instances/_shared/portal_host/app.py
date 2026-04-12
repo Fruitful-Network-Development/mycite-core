@@ -19,6 +19,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
     TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
     TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+    TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
     TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
 )
 from MyCiteV2.instances._shared.runtime.tenant_audit_activity_runtime import (
@@ -26,6 +27,9 @@ from MyCiteV2.instances._shared.runtime.tenant_audit_activity_runtime import (
 )
 from MyCiteV2.instances._shared.runtime.tenant_operational_status_runtime import (
     run_trusted_tenant_operational_status,
+)
+from MyCiteV2.instances._shared.runtime.tenant_profile_basics_write_runtime import (
+    run_trusted_tenant_profile_basics_write,
 )
 from MyCiteV2.instances._shared.runtime.tenant_portal_runtime import run_trusted_tenant_portal_home
 from MyCiteV2.packages.state_machine.hanus_shell import (
@@ -317,6 +321,13 @@ def _tenant_audit_activity_bootstrap_request(tenant_id: str) -> dict[str, Any]:
     }
 
 
+def _tenant_profile_basics_bootstrap_request(tenant_id: str) -> dict[str, Any]:
+    return {
+        "schema": TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
+        "tenant_scope": {"scope_id": tenant_id, "audience": "trusted-tenant"},
+    }
+
+
 def _json_payload() -> dict[str, Any]:
     payload = request.get_json(silent=True)
     return payload if isinstance(payload, dict) else {}
@@ -331,12 +342,16 @@ def _runtime_status_code(envelope: dict[str, Any]) -> int:
         return 403
     if code in {"slice_unknown", "status_snapshot_not_found"}:
         return 404
+    if code == "publication_profile_not_found":
+        return 404
     if code in {
         "status_source_not_configured",
         "audit_log_not_configured",
         "publication_source_not_configured",
     }:
         return 503
+    if code == "read_after_write_failed":
+        return 502
     if code == "tenant_scope_mismatch":
         return 403
     return 400
@@ -507,6 +522,20 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             logo_href="/portal/activity",
         )
 
+    def _tenant_profile_basics_page() -> str:
+        return render_template(
+            "portal.html",
+            tenant_id=host_config.tenant_id,
+            host_shape=HOST_SHAPE,
+            analytics_domain=host_config.analytics_domain,
+            bootstrap_shell_request=_tenant_profile_basics_bootstrap_request(host_config.tenant_id),
+            portal_build_id=PORTAL_BUILD_ID,
+            runtime_envelope_schema=TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
+            shell_endpoint="/portal/api/v2/tenant/profile-basics",
+            shell_loading_label="Loading profile basics…",
+            logo_href="/portal/profile-basics",
+        )
+
     @app.get("/portal")
     @app.get("/portal/")
     @app.get("/portal/home")
@@ -520,6 +549,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     @app.get("/portal/activity")
     def portal_activity() -> str:
         return _tenant_audit_activity_page()
+
+    @app.get("/portal/profile-basics")
+    def portal_profile_basics() -> str:
+        return _tenant_profile_basics_page()
 
     @app.get("/portal/system")
     @app.get("/portal/system/<path:tool_slug>")
@@ -579,6 +612,22 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     _json_payload(),
                     audit_storage_file=host_config.aws_audit_storage_file,
                     portal_tenant_id=host_config.tenant_id,
+                )
+            )
+        except ValueError as exc:
+            return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": "invalid_request", "message": str(exc)}}), 400
+
+    @app.post("/portal/api/v2/tenant/profile-basics")
+    def trusted_tenant_profile_basics() -> tuple[Any, int]:
+        try:
+            return _runtime_response(
+                run_trusted_tenant_profile_basics_write(
+                    _json_payload(),
+                    data_dir=host_config.data_dir,
+                    public_dir=host_config.public_dir,
+                    audit_storage_file=host_config.aws_audit_storage_file,
+                    portal_tenant_id=host_config.tenant_id,
+                    tenant_domain=host_config.analytics_domain,
                 )
             )
         except ValueError as exc:

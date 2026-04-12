@@ -26,6 +26,7 @@ from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
     TRUSTED_TENANT_HOME_SURFACE_SCHEMA,
     TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID,
     build_trusted_tenant_runtime_envelope,
@@ -79,7 +80,24 @@ def build_trusted_tenant_visible_slice_catalog() -> tuple[dict[str, Any], ...]:
             "launchable": True,
             "default_surface": False,
         },
+        {
+            "slice_id": BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
+            "label": "Profile Basics",
+            "exposure_status": "implemented_trusted_tenant_writable",
+            "read_write_posture": "write",
+            "status_summary": "bounded_profile_basics_write",
+            "surface_kind": "profile_basics_write",
+            "launchable": True,
+            "default_surface": False,
+        },
     )
+
+
+def _derive_read_write_posture(available_slices: list[dict[str, Any]]) -> str:
+    for entry in available_slices:
+        if _as_text(entry.get("read_write_posture")) == "write":
+            return "write"
+    return "read-only"
 
 
 def _activity_items(*, portal_tenant_id: str, nav_active_slice_id: str) -> list[dict[str, Any]]:
@@ -101,14 +119,17 @@ def _activity_items(*, portal_tenant_id: str, nav_active_slice_id: str) -> list[
 
 def _control_panel_region(*, portal_tenant_id: str, nav_active_slice_id: str) -> dict[str, Any]:
     bodies = build_trusted_tenant_portal_dispatch_bodies(portal_tenant_id=portal_tenant_id)
+    available_slices = [dict(entry) for entry in build_trusted_tenant_visible_slice_catalog()]
+    read_write_posture = _derive_read_write_posture(available_slices)
     slice_entries: list[dict[str, Any]] = []
-    for entry in build_trusted_tenant_portal_surface_catalog():
+    for entry in available_slices:
+        slice_id = _as_text(entry.get("slice_id"))
         slice_entries.append(
             {
-                "label": entry.label,
-                "meta": entry.status_summary,
-                "active": entry.slice_id == nav_active_slice_id,
-                "shell_request": bodies.get(entry.slice_id),
+                "label": _as_text(entry.get("label")),
+                "meta": _as_text(entry.get("status_summary")),
+                "active": slice_id == nav_active_slice_id,
+                "shell_request": bodies.get(slice_id),
             }
         )
     posture_entries = [
@@ -123,6 +144,11 @@ def _control_panel_region(*, portal_tenant_id: str, nav_active_slice_id: str) ->
             "active": False,
         },
         {
+            "label": "Read/write posture",
+            "meta": read_write_posture,
+            "active": False,
+        },
+        {
             "label": "Tenant scope",
             "meta": portal_tenant_id,
             "active": False,
@@ -132,7 +158,7 @@ def _control_panel_region(*, portal_tenant_id: str, nav_active_slice_id: str) ->
         "schema": TRUSTED_TENANT_PORTAL_REGION_CONTROL_PANEL_SCHEMA,
         "sections": [
             {"title": "Available in this band", "entries": slice_entries},
-            {"title": "Read-only posture", "entries": posture_entries},
+            {"title": "Portal posture", "entries": posture_entries},
         ],
     }
 
@@ -152,16 +178,18 @@ def _workbench_home(
     *,
     summary: PublicationTenantSummary,
     available_slices: list[dict[str, Any]],
+    read_write_posture: str,
 ) -> dict[str, Any]:
     return {
         "schema": TRUSTED_TENANT_PORTAL_REGION_WORKBENCH_SCHEMA,
         "kind": "tenant_home_status",
         "title": "Portal home",
-        "subtitle": "Trusted-tenant read-only landing surface",
+        "subtitle": "Trusted-tenant portal landing surface",
         "visible": True,
         "where_you_are": "Portal home",
         "rollout_band": BAND1_TRUSTED_TENANT_READ_ONLY_NAME,
         "exposure_status": TRUSTED_TENANT_PORTAL_EXPOSURE_STATUS,
+        "read_write_posture": read_write_posture,
         "tenant_profile": summary.to_dict(),
         "available_slices": available_slices,
         "warnings": list(summary.warnings),
@@ -181,6 +209,7 @@ def _surface_payload(
     *,
     summary: PublicationTenantSummary,
     available_slices: list[dict[str, Any]],
+    read_write_posture: str,
     selection_allowed: bool,
     selection_reason: str = "",
 ) -> dict[str, Any]:
@@ -189,7 +218,7 @@ def _surface_payload(
         "active_surface_id": BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
         "current_rollout_band": BAND1_TRUSTED_TENANT_READ_ONLY_NAME,
         "exposure_status": TRUSTED_TENANT_PORTAL_EXPOSURE_STATUS,
-        "read_write_posture": "read-only",
+        "read_write_posture": read_write_posture,
         "location": {
             "surface_label": "Portal home",
             "audience": "trusted-tenant",
@@ -250,6 +279,8 @@ def run_trusted_tenant_portal_home(
     normalized_portal_tenant_id = _as_text(portal_tenant_id).lower() or "fnd"
     normalized_tenant_domain = _as_text(tenant_domain).lower()
     nav_active_slice_id = normalized_request.requested_slice_id
+    available_slices = [dict(entry) for entry in build_trusted_tenant_visible_slice_catalog()]
+    read_write_posture = _derive_read_write_posture(available_slices)
 
     if normalized_request.tenant_scope.scope_id.lower() != normalized_portal_tenant_id:
         return build_trusted_tenant_runtime_envelope(
@@ -259,7 +290,7 @@ def run_trusted_tenant_portal_home(
             requested_slice_id=normalized_request.requested_slice_id,
             slice_id=BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
             entrypoint_id=TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID,
-            read_write_posture="read-only",
+            read_write_posture=read_write_posture,
             shell_state=selection.to_dict(),
             surface_payload=None,
             shell_composition=build_trusted_tenant_portal_composition_payload(
@@ -300,7 +331,7 @@ def run_trusted_tenant_portal_home(
             requested_slice_id=normalized_request.requested_slice_id,
             slice_id=BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
             entrypoint_id=TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID,
-            read_write_posture="read-only",
+            read_write_posture=read_write_posture,
             shell_state=selection.to_dict(),
             surface_payload=None,
             shell_composition=build_trusted_tenant_portal_composition_payload(
@@ -349,15 +380,19 @@ def run_trusted_tenant_portal_home(
         )
     )
 
-    available_slices = [dict(entry) for entry in build_trusted_tenant_visible_slice_catalog()]
     surface_payload = _surface_payload(
         summary=summary,
         available_slices=available_slices,
+        read_write_posture=read_write_posture,
         selection_allowed=selection.allowed,
         selection_reason=selection.reason_message,
     )
     if selection.allowed:
-        workbench = _workbench_home(summary=summary, available_slices=available_slices)
+        workbench = _workbench_home(
+            summary=summary,
+            available_slices=available_slices,
+            read_write_posture=read_write_posture,
+        )
     else:
         workbench = _workbench_error(
             message=selection.reason_message or "Requested trusted-tenant slice is not approved."
@@ -397,7 +432,7 @@ def run_trusted_tenant_portal_home(
         requested_slice_id=normalized_request.requested_slice_id,
         slice_id=BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
         entrypoint_id=TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID,
-        read_write_posture="read-only",
+        read_write_posture=read_write_posture,
         shell_state=selection.to_dict(),
         surface_payload=surface_payload,
         shell_composition=shell_composition,
