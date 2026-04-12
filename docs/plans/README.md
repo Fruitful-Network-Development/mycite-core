@@ -10,6 +10,7 @@ which planning surfaces are still unfinished.
 - Use [post_mvp_rollout/README.md](post_mvp_rollout/README.md) once MVP architecture proof is complete and the next work is staged client rollout.
 - Use [post_mvp_rollout/admin_first/README.md](post_mvp_rollout/admin_first/README.md) only for follow-on sequencing context after the admin/AWS foundation is already implemented.
 - Use [post_mvp_rollout/post_aws_tool_platform/README.md](post_mvp_rollout/post_aws_tool_platform/README.md) after AWS read-only and AWS narrow-write are complete and before starting Maps or later tools.
+- Use [v2.3-tool_exposure_and_admin_activity_bar_alignment.md](v2.3-tool_exposure_and_admin_activity_bar_alignment.md) and [v2.3-tool_surface_packet/README.md](v2.3-tool_surface_packet/README.md) when the work is about V2.3-era tool gating, activity-bar exposure, and legacy tool carry-forward decisions.
 - Use [v2-phase_completion_definition.md](v2-phase_completion_definition.md) and [../testing/phase_gates.md](../testing/phase_gates.md) together.
 - Use [v2-implementation_prohibition_for_scaffold_phase.md](v2-implementation_prohibition_for_scaffold_phase.md) during scaffold work.
 - Use [version-migration/](version-migration/) only after the v2 ontology is already fixed.

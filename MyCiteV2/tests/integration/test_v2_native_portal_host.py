@@ -36,6 +36,8 @@ if HAS_FLASK:
         ADMIN_RUNTIME_ENVELOPE_SCHEMA,
     )
     from MyCiteV2.instances._shared.runtime.runtime_platform import (
+        ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
+        ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
         BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
         BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
         BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
@@ -51,11 +53,15 @@ if HAS_FLASK:
         ADMIN_SHELL_COMPOSITION_SCHEMA,
         ADMIN_SHELL_REQUEST_SCHEMA,
         ADMIN_TOOL_REGISTRY_SLICE_ID,
+        AWS_CSM_ONBOARDING_SLICE_ID,
         AWS_CSM_SANDBOX_SLICE_ID,
+        MAPS_READ_ONLY_ENTRYPOINT_ID,
         AWS_NARROW_WRITE_ENTRYPOINT_ID,
+        AWS_NARROW_WRITE_SLICE_ID,
         AWS_READ_ONLY_ENTRYPOINT_ID,
         AWS_READ_ONLY_SLICE_ID,
         DATUM_RESOURCE_WORKBENCH_SLICE_ID,
+        MAPS_READ_ONLY_SLICE_ID,
     )
     from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
         BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
@@ -105,8 +111,10 @@ else:  # pragma: no cover
     TRUSTED_TENANT_SURFACE_CONTRACT_SCHEMA = "mycite.v2.portal.surface_contract.v1"
     V2_PORTAL_HEALTH_SCHEMA = "mycite.v2.portal.health.v1"
     ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA = "mycite.v2.admin.aws.narrow_write.request.v1"
+    ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.maps.read_only.request.v1"
     ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.aws.read_only.request.v1"
     ADMIN_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.admin.runtime.envelope.v1"
+    ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE = "tool_not_exposed"
     TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.portal.runtime.envelope.v1"
     SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA = "mycite.v2.data.system_resource_workbench.surface.v1"
     ADMIN_ENTRYPOINT_ID = "admin.shell_entry"
@@ -114,11 +122,15 @@ else:  # pragma: no cover
     ADMIN_SHELL_COMPOSITION_SCHEMA = "mycite.v2.admin.shell.composition.v1"
     ADMIN_SHELL_REQUEST_SCHEMA = "mycite.v2.admin.shell.request.v1"
     ADMIN_TOOL_REGISTRY_SLICE_ID = "admin_band0.tool_registry"
+    AWS_CSM_ONBOARDING_SLICE_ID = "admin_band4.aws_csm_onboarding_surface"
     AWS_CSM_SANDBOX_SLICE_ID = "admin_band3.aws_csm_sandbox_surface"
+    MAPS_READ_ONLY_ENTRYPOINT_ID = "admin.maps.read_only"
     AWS_NARROW_WRITE_ENTRYPOINT_ID = "admin.aws.narrow_write"
+    AWS_NARROW_WRITE_SLICE_ID = "admin_band2.aws_narrow_write_surface"
     AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
     AWS_READ_ONLY_SLICE_ID = "admin_band1.aws_read_only_surface"
     DATUM_RESOURCE_WORKBENCH_SLICE_ID = "datum.resource_workbench"
+    MAPS_READ_ONLY_SLICE_ID = "admin_band5.maps_read_only_surface"
     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID = "band1.audit_activity_visibility"
     TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA = "mycite.v2.portal.audit_activity.request.v1"
     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID = "band1.operational_status_surface"
@@ -162,7 +174,23 @@ def _live_profile(selected_sender: str = "technicalcontact@trappfamilyfarm.com")
     }
 
 
-def _build_config(temp_root: Path, *, aws_status_file: Path | None = None) -> V2PortalHostConfig:
+def _default_tool_exposure() -> dict[str, object]:
+    return {
+        "aws": {"enabled": True},
+        "aws_narrow_write": {"enabled": True},
+        "aws_csm_onboarding": {"enabled": True},
+        "aws_csm_sandbox": {"enabled": False},
+        "maps": {"enabled": False},
+    }
+
+
+def _build_config(
+    temp_root: Path,
+    *,
+    aws_status_file: Path | None = None,
+    tool_exposure: dict[str, object] | None = None,
+    tenant_id: str = "tff",
+) -> V2PortalHostConfig:
     public_dir = temp_root / "public"
     private_dir = temp_root / "private"
     data_dir = temp_root / "data"
@@ -180,19 +208,73 @@ def _build_config(temp_root: Path, *, aws_status_file: Path | None = None) -> V2
     (data_dir / "system" / "sources" / "sc.example.json").write_text("{}\n", encoding="utf-8")
     (data_dir / "payloads" / "cache" / "sc.example.txa.json").write_text("{}\n", encoding="utf-8")
     (public_dir / "msn-example.json").write_text(json.dumps({"ok": True}) + "\n", encoding="utf-8")
+    (private_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "tools_configuration": [],
+                "tool_exposure": tool_exposure if tool_exposure is not None else _default_tool_exposure(),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     if aws_status_file is None:
         aws_status_file = temp_root / "aws-csm.tff.technicalContact.json"
         aws_status_file.write_text(json.dumps(_live_profile()) + "\n", encoding="utf-8")
     return V2PortalHostConfig(
-        tenant_id="tff",
+        tenant_id=tenant_id,
         public_dir=public_dir,
         private_dir=private_dir,
         data_dir=data_dir,
-        analytics_domain="trappfamilyfarm.com",
+        analytics_domain="fruitfulnetworkdevelopment.com" if tenant_id == "fnd" else "trappfamilyfarm.com",
         analytics_webapps_root=webapps_root,
         aws_status_file=aws_status_file,
         aws_audit_storage_file=private_dir / "local_audit" / "v2_aws_narrow_write.ndjson",
         admin_audit_storage_file=private_dir / "local_audit" / "v2_admin.ndjson",
+    )
+
+
+def _write_maps_data(config: V2PortalHostConfig) -> None:
+    tool_dir = config.data_dir / "sandbox" / "maps"
+    source_dir = tool_dir / "sources"
+    source_dir.mkdir(parents=True, exist_ok=True)
+    (tool_dir / "tool.maps.json").write_text(
+        json.dumps(
+            {
+                "3-1-1": [["3-1-1", "~", "0-0-0"], ["HOPS-babelette-coordinate"]],
+                "3-1-2": [["3-1-2", "~", "0-0-0"], ["SAMRAS-babelette-msn_id"]],
+                "3-1-3": [["3-1-3", "~", "0-0-0"], ["title-babelette"]],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (source_dir / "sc.example.json").write_text(
+        json.dumps(
+            {
+                "anchor_file_version": "<hash here>",
+                "datum_addressing_abstraction_space": {
+                    "4-2-1": [
+                        ["4-2-1", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"],
+                        ["point_alpha"],
+                    ],
+                    "4-2-2": [
+                        [
+                            "4-2-2",
+                            "rf.3-1-1",
+                            "3-76-11-40-92-20-21-92-81-29-56-60-79-56-3-4-39",
+                            "rf.3-1-1",
+                            "3-76-11-40-92-20-21-92-81-25-68-43-68-84-44-22-24",
+                            "rf.3-1-1",
+                            "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73",
+                        ],
+                        ["polygon_1"],
+                    ],
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
     )
 
 
@@ -327,6 +409,52 @@ class V2NativePortalHostTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "MYCITE_V2_AWS_AUDIT_FILE"):
                     V2PortalHostConfig.from_env()
 
+    def test_private_config_tool_exposure_parses_unknown_and_missing_keys(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            public_dir = root / "public"
+            private_dir = root / "private"
+            data_dir = root / "data"
+            webapps_root = root / "webapps"
+            audit_root = private_dir / "local_audit"
+            for path in (public_dir, private_dir, data_dir, webapps_root, audit_root):
+                path.mkdir(parents=True, exist_ok=True)
+            status_file = root / "aws-csm.tff.technicalContact.json"
+            status_file.write_text(json.dumps(_live_profile()) + "\n", encoding="utf-8")
+            (private_dir / "config.json").write_text(
+                json.dumps(
+                    {
+                        "tools_configuration": [],
+                        "tool_exposure": {
+                            "aws": {"enabled": True},
+                            "aws_narrow_write": {},
+                            "ghost_tool": {"enabled": True},
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            config = V2PortalHostConfig(
+                tenant_id="tff",
+                public_dir=public_dir,
+                private_dir=private_dir,
+                data_dir=data_dir,
+                analytics_domain="trappfamilyfarm.com",
+                analytics_webapps_root=webapps_root,
+                aws_status_file=status_file,
+                aws_audit_storage_file=audit_root / "aws.ndjson",
+                admin_audit_storage_file=audit_root / "admin.ndjson",
+            )
+
+            summary = config.tool_exposure_policy or {}
+            self.assertEqual(summary.get("enabled_tool_ids"), ["aws"])
+            self.assertIn("aws_csm_onboarding", summary.get("missing_tool_ids") or [])
+            self.assertIn("maps", summary.get("missing_tool_ids") or [])
+            self.assertIn("aws_narrow_write", summary.get("invalid_tool_ids") or [])
+            self.assertIn("ghost_tool", summary.get("unknown_tool_ids") or [])
+
     def test_portal_and_health_are_native_v2_without_admin_bridge_route(self) -> None:
         with TemporaryDirectory() as temp_dir:
             client = create_app(_build_config(Path(temp_dir))).test_client()
@@ -359,6 +487,10 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertEqual(payload["datum_health"]["readiness_status"]["anthology_status"], "loaded")
             self.assertIn("derived_materialization", payload["datum_health"]["readiness_status"])
             self.assertTrue(payload["aws_config_health"]["live_profile_mapping"])
+            tool_exposure = payload.get("tool_exposure") or {}
+            self.assertEqual(tool_exposure.get("enabled_tool_ids"), ["aws", "aws_narrow_write", "aws_csm_onboarding"])
+            self.assertEqual(tool_exposure.get("disabled_tool_ids"), ["aws_csm_sandbox", "maps"])
+            self.assertEqual(tool_exposure.get("unknown_tool_ids"), [])
             self.assertIn("/clients/trappfamilyfarm.com/analytics", payload["analytics_root"]["analytics_root"])
 
             self.assertEqual(client.get("/portal/api/v2/admin/bridge/health").status_code, 404)
@@ -386,6 +518,17 @@ class V2NativePortalHostTests(unittest.TestCase):
             regions = comp.get("regions") or {}
             self.assertIn("activity_bar", regions)
             self.assertIn("workbench", regions)
+            activity_items = regions.get("activity_bar", {}).get("items") or []
+            self.assertEqual(
+                [item.get("slice_id") for item in activity_items if item.get("slice_id") != DATUM_RESOURCE_WORKBENCH_SLICE_ID],
+                [
+                    ADMIN_HOME_STATUS_SLICE_ID,
+                    ADMIN_TOOL_REGISTRY_SLICE_ID,
+                    AWS_READ_ONLY_SLICE_ID,
+                    AWS_NARROW_WRITE_SLICE_ID,
+                    AWS_CSM_ONBOARDING_SLICE_ID,
+                ],
+            )
 
             read_only = client.post(
                 "/portal/api/v2/admin/aws/read-only",
@@ -419,6 +562,17 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertEqual(narrow_write.status_code, 200)
             narrow_write_payload = narrow_write.get_json() or {}
             self.assertEqual(narrow_write_payload["entrypoint_id"], AWS_NARROW_WRITE_ENTRYPOINT_ID)
+
+            sandbox = client.post(
+                "/portal/api/v2/admin/aws/csm-sandbox/read-only",
+                json={
+                    "schema": ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+                },
+            )
+            self.assertEqual(sandbox.status_code, 404)
+            sandbox_payload = sandbox.get_json() or {}
+            self.assertEqual(sandbox_payload["error"]["code"], ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE)
 
             datum = client.get("/portal/api/v2/data/system/resource-workbench")
             self.assertEqual(datum.status_code, 200)
@@ -849,6 +1003,13 @@ class V2NativePortalHostTests(unittest.TestCase):
             finally:
                 aws_page.close()
 
+            onboarding_page = client.get("/portal/system/aws-csm-onboarding")
+            try:
+                self.assertEqual(onboarding_page.status_code, 200)
+                self.assertIn(AWS_CSM_ONBOARDING_SLICE_ID.encode(), onboarding_page.data)
+            finally:
+                onboarding_page.close()
+
             sandbox_page = client.get("/portal/system/aws-csm-sandbox")
             try:
                 self.assertEqual(sandbox_page.status_code, 200)
@@ -870,12 +1031,88 @@ class V2NativePortalHostTests(unittest.TestCase):
             finally:
                 v1_compat.close()
 
+            tenant_actions_compat = client.get("/portal/system?mediate_tool=aws_tenant_actions")
+            try:
+                self.assertEqual(tenant_actions_compat.status_code, 200)
+                self.assertIn(AWS_CSM_ONBOARDING_SLICE_ID.encode(), tenant_actions_compat.data)
+            finally:
+                tenant_actions_compat.close()
+
             unknown = client.get("/portal/system/nonexistent")
             try:
                 self.assertEqual(unknown.status_code, 200)
                 self.assertIn(b"admin_band0.home_status", unknown.data)
             finally:
                 unknown.close()
+
+    def test_fnd_maps_surface_bootstraps_and_tff_maps_route_stays_hidden(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            fnd_root = Path(temp_dir) / "fnd"
+            fnd_config = _build_config(
+                fnd_root,
+                tenant_id="fnd",
+                tool_exposure={
+                    "aws": {"enabled": True},
+                    "aws_narrow_write": {"enabled": True},
+                    "aws_csm_onboarding": {"enabled": True},
+                    "aws_csm_sandbox": {"enabled": False},
+                    "maps": {"enabled": True},
+                },
+            )
+            _write_maps_data(fnd_config)
+            fnd_client = create_app(fnd_config).test_client()
+
+            maps_page = fnd_client.get("/portal/system/maps")
+            self.assertEqual(maps_page.status_code, 200)
+            self.assertIn(MAPS_READ_ONLY_SLICE_ID.encode(), maps_page.data)
+
+            shell = fnd_client.post(
+                "/portal/api/v2/admin/shell",
+                json={
+                    "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+                    "requested_slice_id": MAPS_READ_ONLY_SLICE_ID,
+                    "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+                },
+            )
+            self.assertEqual(shell.status_code, 200)
+            shell_payload = shell.get_json() or {}
+            self.assertEqual(shell_payload["slice_id"], MAPS_READ_ONLY_SLICE_ID)
+            self.assertEqual(shell_payload["shell_composition"]["regions"]["workbench"]["kind"], "maps_workbench")
+
+            direct = fnd_client.post(
+                "/portal/api/v2/admin/maps/read-only",
+                json={
+                    "schema": ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+                },
+            )
+            self.assertEqual(direct.status_code, 200)
+            direct_payload = direct.get_json() or {}
+            self.assertEqual(direct_payload["entrypoint_id"], MAPS_READ_ONLY_ENTRYPOINT_ID)
+            self.assertEqual(direct_payload["slice_id"], MAPS_READ_ONLY_SLICE_ID)
+            self.assertGreater(
+                int(
+                    ((direct_payload.get("surface_payload") or {}).get("map_projection") or {}).get(
+                        "feature_count"
+                    )
+                    or 0
+                ),
+                0,
+            )
+
+            tff_root = Path(temp_dir) / "tff"
+            tff_config = _build_config(tff_root, tenant_id="tff")
+            tff_client = create_app(tff_config).test_client()
+            hidden = tff_client.post(
+                "/portal/api/v2/admin/maps/read-only",
+                json={
+                    "schema": ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+                },
+            )
+            self.assertEqual(hidden.status_code, 404)
+            hidden_payload = hidden.get_json() or {}
+            self.assertEqual(hidden_payload["error"]["code"], ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE)
 
     def test_analytics_collect_writes_only_to_clients_domain_path(self) -> None:
         with TemporaryDirectory() as temp_dir:

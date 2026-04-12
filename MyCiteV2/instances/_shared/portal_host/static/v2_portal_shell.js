@@ -11,6 +11,7 @@
     "mycite.v2.admin.runtime.envelope.v1";
   let lastShellRequest = null;
   let lastComposition = null;
+  let lastDirectView = null;
 
   function cloneRequestWithoutChrome(req) {
     var next = JSON.parse(JSON.stringify(req || {}));
@@ -19,6 +20,11 @@
   }
 
   function postShellChrome(chromePartial) {
+    if (lastDirectView && lastDirectView.url && lastDirectView.requestBody) {
+      var nextDirect = JSON.parse(JSON.stringify(lastDirectView.requestBody || {}));
+      nextDirect.shell_chrome = Object.assign({}, nextDirect.shell_chrome || {}, chromePartial);
+      return loadRuntimeView(lastDirectView.url, nextDirect);
+    }
     if (!lastShellRequest) return Promise.resolve();
     var next = JSON.parse(JSON.stringify(lastShellRequest));
     next.shell_chrome = Object.assign({}, next.shell_chrome || {}, chromePartial);
@@ -80,6 +86,118 @@
     }
   }
 
+  function renderMapsSvg(mapProjection) {
+    var featureCollection = (mapProjection && mapProjection.feature_collection) || {};
+    var features = featureCollection.features || [];
+    if (!features.length) {
+      return (
+        '<div class="v2-card" style="margin-top:12px"><h3>Geographic pane</h3><p>No projectable features are available for this document.</p></div>'
+      );
+    }
+    var bounds = featureCollection.bounds || [-180, -90, 180, 90];
+    var minLon = Number(bounds[0]);
+    var minLat = Number(bounds[1]);
+    var maxLon = Number(bounds[2]);
+    var maxLat = Number(bounds[3]);
+    if (!isFinite(minLon) || !isFinite(minLat) || !isFinite(maxLon) || !isFinite(maxLat)) {
+      minLon = -180;
+      minLat = -90;
+      maxLon = 180;
+      maxLat = 90;
+    }
+    if (minLon === maxLon) {
+      minLon -= 1;
+      maxLon += 1;
+    }
+    if (minLat === maxLat) {
+      minLat -= 1;
+      maxLat += 1;
+    }
+    var width = 680;
+    var height = 360;
+    var pad = 18;
+    function project(coord) {
+      var lon = Number((coord || [0, 0])[0]);
+      var lat = Number((coord || [0, 0])[1]);
+      var x = pad + ((lon - minLon) / (maxLon - minLon)) * (width - pad * 2);
+      var y = height - pad - ((lat - minLat) / (maxLat - minLat)) * (height - pad * 2);
+      return [x.toFixed(2), y.toFixed(2)];
+    }
+    var shapes = features
+      .map(function (feature) {
+        var geometry = feature.geometry || {};
+        var props = feature.properties || {};
+        var featureId = feature.id || "";
+        var selected = !!feature.selected;
+        var stroke = selected ? "#0b57d0" : "#285943";
+        var fill = selected ? "rgba(11,87,208,0.28)" : "rgba(40,89,67,0.18)";
+        var title = escapeHtml(props.label_text || featureId || "feature");
+        if (geometry.type === "Point") {
+          var point = project(geometry.coordinates || [0, 0]);
+          return (
+            '<g class="v2-map-feature" data-maps-feature-id="' +
+            escapeHtml(featureId) +
+            '">' +
+            '<title>' +
+            title +
+            "</title>" +
+            '<circle cx="' +
+            point[0] +
+            '" cy="' +
+            point[1] +
+            '" r="' +
+            (selected ? "7" : "5") +
+            '" fill="' +
+            fill +
+            '" stroke="' +
+            stroke +
+            '" stroke-width="2"></circle></g>'
+          );
+        }
+        if (geometry.type === "Polygon") {
+          var ring = ((geometry.coordinates || [])[0] || []).map(project);
+          var points = ring
+            .map(function (point) {
+              return point[0] + "," + point[1];
+            })
+            .join(" ");
+          return (
+            '<g class="v2-map-feature" data-maps-feature-id="' +
+            escapeHtml(featureId) +
+            '">' +
+            '<title>' +
+            title +
+            "</title>" +
+            '<polygon points="' +
+            points +
+            '" fill="' +
+            fill +
+            '" stroke="' +
+            stroke +
+            '" stroke-width="' +
+            (selected ? "2.8" : "1.6") +
+            '"></polygon></g>'
+          );
+        }
+        return "";
+      })
+      .join("");
+    return (
+      '<div class="v2-card" style="margin-top:12px"><h3>Geographic pane</h3><svg viewBox="0 0 ' +
+      width +
+      " " +
+      height +
+      '" style="width:100%;height:auto;border:1px solid #d3d9df;background:linear-gradient(180deg,#f7fbf9,#eef4f1)">' +
+      '<rect x="0" y="0" width="' +
+      width +
+      '" height="' +
+      height +
+      '" fill="transparent"></rect>' +
+      shapes +
+      "</svg></div>"
+    );
+  }
+
   function applyChrome(comp) {
     var el = qs(".ide-shell");
     if (!el || !comp) return;
@@ -107,7 +225,7 @@
 
     var wb = qs(".ide-workbench");
     if (wb) {
-      var tool = comp.composition_mode === "tool";
+      var tool = comp.composition_mode === "tool" && !(wbRegion && wbRegion.kind === "maps_workbench");
       wb.setAttribute("data-foreground-visible", tool ? "false" : "true");
       wb.setAttribute("aria-hidden", tool ? "true" : "false");
     }
@@ -218,6 +336,7 @@
     }
     if (kind === "home_summary") {
       var blocks = wb.blocks || [];
+      var notes = wb.notes || [];
       var cards =
         '<div class="v2-card-grid">' +
         blocks
@@ -232,7 +351,23 @@
           })
           .join("") +
         "</div>";
-      body.innerHTML = cards;
+      var noteBlock =
+        notes.length > 0
+          ? '<div class="v2-card" style="margin-top:12px"><h3>Tool exposure</h3><dl class="v2-surface-dl">' +
+            notes
+              .map(function (note) {
+                return (
+                  "<dt>" +
+                  escapeHtml(note.label || "") +
+                  "</dt><dd>" +
+                  escapeHtml(String(note.value != null ? note.value : "—")) +
+                  "</dd>"
+                );
+              })
+              .join("") +
+            "</dl></div>"
+          : "";
+      body.innerHTML = cards + noteBlock;
       return;
     }
     if (kind === "tenant_home_status") {
@@ -593,7 +728,7 @@
           "</p></div>";
       }
       var table =
-        "<table class=\"v2-table\"><thead><tr><th>Tool</th><th>Slice</th><th>Entrypoint</th></tr></thead><tbody>" +
+        "<table class=\"v2-table\"><thead><tr><th>Tool</th><th>Slice</th><th>Entrypoint</th><th>Config</th><th>Visibility</th></tr></thead><tbody>" +
         rows
           .map(function (row) {
             return (
@@ -603,7 +738,11 @@
               escapeHtml(row.slice_id || "") +
               "</code></td><td><code>" +
               escapeHtml(row.entrypoint_id || "") +
-              "</code></td></tr>"
+              "</code></td><td>" +
+              escapeHtml(row.config_enabled ? "enabled" : "disabled") +
+              "</td><td>" +
+              escapeHtml(row.visibility_status || "—") +
+              "</td></tr>"
             );
           })
           .join("") +
@@ -709,6 +848,258 @@
         "</section>";
       return;
     }
+    if (kind === "maps_workbench") {
+      var mapsWarnings = wb.warnings || [];
+      var mapsDocumentCatalog = wb.document_catalog || [];
+      var mapsSelectedDocument = wb.selected_document || {};
+      var mapsSelectedRow = wb.selected_row || {};
+      var mapsProjection = wb.map_projection || {};
+      var mapsSelectedFeature = mapsProjection.selected_feature || {};
+      var mapsLens = wb.lens_state || {};
+      var mapsDiagnosticSummary = wb.diagnostic_summary || {};
+      var mapsRows = wb.rows || [];
+      var mapsRequestContract = wb.request_contract || {};
+
+      function mapsRequestBody(patch) {
+        var fixed = mapsRequestContract.fixed_request_fields || {};
+        var bodyOut = {
+          schema: mapsRequestContract.request_schema || "mycite.v2.admin.maps.read_only.request.v1",
+          selected_document_id: mapsSelectedDocument.document_id || "",
+          selected_row_address: mapsSelectedRow.datum_address || "",
+          selected_feature_id: mapsSelectedFeature.feature_id || "",
+          overlay_mode: mapsLens.overlay_mode || "auto",
+          raw_underlay_visible: !!mapsLens.raw_underlay_visible,
+        };
+        Object.keys(fixed || {}).forEach(function (key) {
+          bodyOut[key] = fixed[key];
+        });
+        Object.keys(patch || {}).forEach(function (key) {
+          bodyOut[key] = patch[key];
+        });
+        return bodyOut;
+      }
+
+      function overlayCellHtml(row) {
+        var overlays = row.overlay_values || [];
+        if (!overlays.length) {
+          return "<code>" + escapeHtml(row.primary_value_token || "—") + "</code>";
+        }
+        return overlays
+          .map(function (overlay) {
+            var display = overlay.display_value || overlay.raw_value || "—";
+            var raw = overlay.raw_value || "";
+            var title = overlay.anchor_label || overlay.overlay_family || "value";
+            var rawHtml =
+              mapsLens.raw_underlay_visible && raw
+                ? '<div><small>raw: <code>' + escapeHtml(raw) + "</code></small></div>"
+                : "";
+            return (
+              '<div style="margin-bottom:6px"><strong>' +
+              escapeHtml(title) +
+              ":</strong> " +
+              escapeHtml(display) +
+              rawHtml +
+              "</div>"
+            );
+          })
+          .join("");
+      }
+
+      var mapsWarningBlock =
+        mapsWarnings.length > 0
+          ? '<div class="v2-card" style="margin-bottom:12px"><h3>Warnings</h3><ul>' +
+            mapsWarnings
+              .map(function (warning) {
+                return "<li>" + escapeHtml(String(warning)) + "</li>";
+              })
+              .join("") +
+            "</ul></div>"
+          : "";
+      var mapsCards =
+        '<div class="v2-card-grid">' +
+        '<article class="v2-card"><h3>Projection</h3><p>' +
+        escapeHtml(String(mapsProjection.projection_state || "—").replace(/_/g, " ")) +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Documents</h3><p>' +
+        escapeHtml(String(mapsDiagnosticSummary.document_count != null ? mapsDiagnosticSummary.document_count : "0")) +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Features</h3><p>' +
+        escapeHtml(String(mapsProjection.feature_count != null ? mapsProjection.feature_count : "0")) +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Rows</h3><p>' +
+        escapeHtml(String(mapsDiagnosticSummary.row_count != null ? mapsDiagnosticSummary.row_count : "0")) +
+        "</p></article>" +
+        "</div>";
+      var lensHtml =
+        '<div class="v2-card" style="margin-top:12px"><h3>Lens</h3>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+        '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-maps-overlay-mode="auto" style="border-radius:6px' +
+        ((mapsLens.overlay_mode || "auto") === "auto" ? ';font-weight:700' : "") +
+        '">Auto overlay</button>' +
+        '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-maps-overlay-mode="raw_only" style="border-radius:6px' +
+        ((mapsLens.overlay_mode || "auto") === "raw_only" ? ';font-weight:700' : "") +
+        '">Raw only</button>' +
+        '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="v2-maps-raw-underlay-toggle"' +
+        (mapsLens.raw_underlay_visible ? " checked" : "") +
+        "> show raw values</label></div></div>";
+      var documentButtons =
+        mapsDocumentCatalog.length > 0
+          ? '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+            mapsDocumentCatalog
+              .map(function (doc) {
+                return (
+                  '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-maps-document-id="' +
+                  escapeHtml(doc.document_id || "") +
+                  '" style="border-radius:6px' +
+                  (doc.selected ? ';font-weight:700' : "") +
+                  '">' +
+                  escapeHtml(doc.document_name || doc.document_id || "document") +
+                  " (" +
+                  escapeHtml(String(doc.projectable_feature_count != null ? doc.projectable_feature_count : 0)) +
+                  ")</button>"
+                );
+              })
+              .join("") +
+            "</div>"
+          : "<p>No authoritative maps documents are cataloged for this tenant.</p>";
+      var selectedFeatureHtml =
+        mapsSelectedFeature && mapsSelectedFeature.feature_id
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Selected feature</h3><dl class="v2-surface-dl">' +
+            "<dt>Feature</dt><dd><code>" +
+            escapeHtml(mapsSelectedFeature.feature_id || "") +
+            "</code></dd><dt>Geometry</dt><dd>" +
+            escapeHtml(mapsSelectedFeature.geometry_type || "—") +
+            "</dd><dt>Row</dt><dd><code>" +
+            escapeHtml(mapsSelectedFeature.row_address || "—") +
+            "</code></dd><dt>Label</dt><dd>" +
+            escapeHtml(mapsSelectedFeature.label_text || "—") +
+            "</dd></dl></section>"
+          : "";
+      var featureRows = (((mapsProjection.feature_collection || {}).features) || []).slice(0, 24);
+      var featureTable =
+        featureRows.length > 0
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Features</h3><table class="v2-table"><thead><tr><th>Feature</th><th>Geometry</th><th>Row</th><th>Label</th></tr></thead><tbody>' +
+            featureRows
+              .map(function (feature) {
+                var props = feature.properties || {};
+                return (
+                  "<tr><td><a href=\"#\" data-maps-feature-id=\"" +
+                  escapeHtml(feature.id || "") +
+                  "\"><code>" +
+                  escapeHtml(feature.id || "") +
+                  "</code></a></td><td>" +
+                  escapeHtml((feature.geometry || {}).type || "—") +
+                  "</td><td><code>" +
+                  escapeHtml(props.row_address || "—") +
+                  "</code></td><td>" +
+                  escapeHtml(props.label_text || "—") +
+                  "</td></tr>"
+                );
+              })
+              .join("") +
+            "</tbody></table></section>"
+          : "";
+      var rowTableRows = mapsRows.slice(0, 180);
+      var rowTable =
+        '<section class="v2-card" style="margin-top:12px"><h3>Rows</h3><table class="v2-table"><thead><tr><th>Address</th><th>Labels</th><th>Diagnostics</th><th>Overlay values</th></tr></thead><tbody>' +
+        rowTableRows
+          .map(function (row) {
+            return (
+              "<tr><td><a href=\"#\" data-maps-row-address=\"" +
+              escapeHtml(row.datum_address || "") +
+              "\"><code>" +
+              escapeHtml(row.datum_address || "") +
+              "</code></a></td><td>" +
+              escapeHtml(row.label_text || "—") +
+              "</td><td>" +
+              escapeHtml(((row.diagnostic_states || []).join(", ")) || "ok") +
+              "</td><td>" +
+              overlayCellHtml(row) +
+              "</td></tr>"
+            );
+          })
+          .join("") +
+        "</tbody></table>" +
+        (mapsRows.length > rowTableRows.length
+          ? '<p class="ide-controlpanel__empty" style="margin-top:8px">Showing first ' +
+            escapeHtml(String(rowTableRows.length)) +
+            " of " +
+            escapeHtml(String(mapsRows.length)) +
+            " rows.</p>"
+          : "") +
+        "</section>";
+      body.innerHTML =
+        mapsWarningBlock +
+        mapsCards +
+        lensHtml +
+        '<section class="v2-card" style="margin-top:12px"><h3>Documents</h3>' +
+        documentButtons +
+        "</section>" +
+        renderMapsSvg(mapsProjection) +
+        selectedFeatureHtml +
+        featureTable +
+        rowTable;
+
+      Array.prototype.forEach.call(body.querySelectorAll("[data-maps-document-id]"), function (el) {
+        el.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          loadRuntimeView(
+            mapsRequestContract.route || "/portal/api/v2/admin/maps/read-only",
+            mapsRequestBody({
+              selected_document_id: el.getAttribute("data-maps-document-id") || "",
+              selected_row_address: "",
+              selected_feature_id: "",
+            })
+          );
+        });
+      });
+      Array.prototype.forEach.call(body.querySelectorAll("[data-maps-row-address]"), function (el) {
+        el.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          loadRuntimeView(
+            mapsRequestContract.route || "/portal/api/v2/admin/maps/read-only",
+            mapsRequestBody({
+              selected_row_address: el.getAttribute("data-maps-row-address") || "",
+              selected_feature_id: "",
+            })
+          );
+        });
+      });
+      Array.prototype.forEach.call(body.querySelectorAll("[data-maps-feature-id]"), function (el) {
+        el.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          loadRuntimeView(
+            mapsRequestContract.route || "/portal/api/v2/admin/maps/read-only",
+            mapsRequestBody({
+              selected_feature_id: el.getAttribute("data-maps-feature-id") || "",
+            })
+          );
+        });
+      });
+      Array.prototype.forEach.call(body.querySelectorAll("[data-maps-overlay-mode]"), function (el) {
+        el.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          loadRuntimeView(
+            mapsRequestContract.route || "/portal/api/v2/admin/maps/read-only",
+            mapsRequestBody({
+              overlay_mode: el.getAttribute("data-maps-overlay-mode") || "auto",
+            })
+          );
+        });
+      });
+      var rawToggle = document.getElementById("v2-maps-raw-underlay-toggle");
+      if (rawToggle) {
+        rawToggle.addEventListener("change", function () {
+          loadRuntimeView(
+            mapsRequestContract.route || "/portal/api/v2/admin/maps/read-only",
+            mapsRequestBody({
+              raw_underlay_visible: !!rawToggle.checked,
+            })
+          );
+        });
+      }
+      return;
+    }
     if (kind === "tool_collapsed_inspector") {
       body.innerHTML =
         '<div class="v2-card"><h3>' +
@@ -789,6 +1180,50 @@
         (datumWarnings
           ? '<section class="v2-card" style="margin-top:12px"><h3>Warnings</h3><ul>' +
             datumWarnings +
+            "</ul></section>"
+          : "");
+      return;
+    }
+    if (kind === "maps_summary") {
+      var mapSelectedDocument = region.selected_document || {};
+      var mapSelectedFeature = region.selected_feature || {};
+      var mapSelectedRow = region.selected_row || {};
+      var mapDiagnosticSummary = region.diagnostic_summary || {};
+      var mapLensState = region.lens_state || {};
+      var mapWarnings = (region.warnings || [])
+        .map(function (warning) {
+          return "<li>" + escapeHtml(String(warning)) + "</li>";
+        })
+        .join("");
+      content.innerHTML =
+        '<dl class="v2-surface-dl">' +
+        "<dt>Document</dt><dd><code>" +
+        escapeHtml(mapSelectedDocument.document_name || "—") +
+        "</code></dd>" +
+        "<dt>Relative path</dt><dd><code>" +
+        escapeHtml(mapSelectedDocument.relative_path || "—") +
+        "</code></dd>" +
+        "<dt>Projection state</dt><dd>" +
+        escapeHtml(String(mapDiagnosticSummary.projection_state || "—").replace(/_/g, " ")) +
+        "</dd>" +
+        "<dt>Feature count</dt><dd>" +
+        escapeHtml(String(mapDiagnosticSummary.feature_count != null ? mapDiagnosticSummary.feature_count : "0")) +
+        "</dd>" +
+        "<dt>Selected feature</dt><dd><code>" +
+        escapeHtml(mapSelectedFeature.feature_id || "—") +
+        "</code></dd>" +
+        "<dt>Selected row</dt><dd><code>" +
+        escapeHtml(mapSelectedRow.datum_address || "—") +
+        "</code></dd>" +
+        "<dt>Overlay mode</dt><dd>" +
+        escapeHtml(mapLensState.overlay_mode || "—") +
+        "</dd></dl>" +
+        '<section class="v2-card" style="margin-top:12px"><h3>Selected row</h3><pre class="v2-json-panel">' +
+        escapeHtml(JSON.stringify(mapSelectedRow.raw || mapSelectedRow || {}, null, 2)) +
+        "</pre></section>" +
+        (mapWarnings
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Warnings</h3><ul>' +
+            mapWarnings +
             "</ul></section>"
           : "");
       return;
@@ -1139,8 +1574,40 @@
     }
   }
 
+  function applyEnvelope(env, options) {
+    if (!env || env.schema !== RUNTIME_ENVELOPE_SCHEMA) {
+      showFatal("Invalid runtime envelope schema from shell route.");
+      return;
+    }
+    var comp = env.shell_composition;
+    if (!comp || !comp.regions) {
+      showFatal("Runtime envelope is missing shell_composition.regions.");
+      return;
+    }
+    if (options && options.trackDirectView) {
+      lastDirectView = {
+        url: options.url,
+        requestBody: JSON.parse(JSON.stringify(options.requestBody || {})),
+      };
+    } else if (options && options.clearDirectView) {
+      lastDirectView = null;
+    }
+    applyChrome(comp);
+    lastComposition = comp;
+    if (window.PortalShell && typeof window.PortalShell.rebalanceWorkbench === "function") {
+      window.PortalShell.rebalanceWorkbench();
+    }
+    var act = comp.regions.activity_bar || {};
+    renderActivityItems(act.items);
+    renderControlPanel(comp.regions.control_panel);
+    renderWorkbench(comp.regions.workbench);
+    renderInspector(comp.regions.inspector);
+    return env;
+  }
+
   function loadShell(requestBody) {
     lastShellRequest = requestBody;
+    lastDirectView = null;
     return postJson(SHELL_URL, requestBody).then(function (r) {
       var env = r.json;
       if (!r.ok || !env) {
@@ -1152,26 +1619,23 @@
         );
         return;
       }
-      if (env.schema !== RUNTIME_ENVELOPE_SCHEMA) {
-        showFatal("Invalid runtime envelope schema from shell route.");
+      return applyEnvelope(env, { clearDirectView: true });
+    });
+  }
+
+  function loadRuntimeView(url, requestBody) {
+    return postJson(url, requestBody).then(function (r) {
+      var env = r.json;
+      if (!r.ok || !env) {
+        showFatal(
+          "Runtime POST failed (HTTP " +
+            r.status +
+            "). " +
+            (r.bodySnippet ? "Body: " + r.bodySnippet : "")
+        );
         return;
       }
-      var comp = env.shell_composition;
-      if (!comp || !comp.regions) {
-        showFatal("Runtime envelope is missing shell_composition.regions.");
-        return;
-      }
-      applyChrome(comp);
-      lastComposition = comp;
-      if (window.PortalShell && typeof window.PortalShell.rebalanceWorkbench === "function") {
-        window.PortalShell.rebalanceWorkbench();
-      }
-      var act = comp.regions.activity_bar || {};
-      renderActivityItems(act.items);
-      renderControlPanel(comp.regions.control_panel);
-      renderWorkbench(comp.regions.workbench);
-      renderInspector(comp.regions.inspector);
-      return env;
+      return applyEnvelope(env, { trackDirectView: true, url: url, requestBody: requestBody });
     });
   }
 

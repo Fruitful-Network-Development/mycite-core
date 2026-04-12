@@ -19,6 +19,7 @@ Use it after the MVP is proven and before any new client-visible slice is specif
 9. Use [agent_prompt_templates.md](agent_prompt_templates.md) when handing work to future agents.
 10. When the work is about the shared post-AWS platform for later tools, read [post_aws_tool_platform/README.md](post_aws_tool_platform/README.md).
 11. When the work is about admin-first follow-on sequencing, read [admin_first/README.md](admin_first/README.md).
+12. When the work is about V2.3-era tool exposure gating or legacy tool carry-forward, read [../v2.3-tool_exposure_and_admin_activity_bar_alignment.md](../v2.3-tool_exposure_and_admin_activity_bar_alignment.md) and [../v2.3-tool_surface_packet/README.md](../v2.3-tool_surface_packet/README.md).
 
 ## Operating rules
 
@@ -36,11 +37,14 @@ Use it after the MVP is proven and before any new client-visible slice is specif
 ## Current band status
 
 - Current admin-first platform status: post-AWS tool platform stabilized.
-- Completed admin-first slices: `Admin Band 0`, `admin_band1.aws_read_only_surface`, `admin_band2.aws_narrow_write_surface`, `admin_band3.aws_csm_sandbox_surface`, and `admin_band4.aws_csm_onboarding_surface`.
+- Completed admin-first slices: `Admin Band 0`, `admin_band1.aws_read_only_surface`, `admin_band2.aws_narrow_write_surface`, `admin_band3.aws_csm_sandbox_surface`, `admin_band4.aws_csm_onboarding_surface`, and `admin_band5.maps_read_only_surface` (FND-first rollout).
 - Live `/portal` cutover status: V2-native portal host deployed for FND and TFF. The earlier Shape B bridge is retained only as historical cutover evidence; see [../../records/22-v1_retirement_closure.md](../../records/22-v1_retirement_closure.md) for the formal closure statement.
 - Canonical live AWS mapping status: current and active through [post_aws_tool_platform/live_state_authority_and_mapping.md](post_aws_tool_platform/live_state_authority_and_mapping.md).
 - Current expansion posture: follow-on slices may resume from the reopened Band
   1 sequence documented in [current_planning_index.md](current_planning_index.md).
+- Tool follow-on work now also uses the V2.3 audit and packet documents when
+  deciding whether a legacy tool becomes a V2 tool, stays isolated, or is
+  retired.
 
 ## Preferred near-term sequence
 
@@ -49,7 +53,7 @@ Use it after the MVP is proven and before any new client-visible slice is specif
 3. Continue with [band1_audit_activity_visibility.md](slice_registry/band1_audit_activity_visibility.md) as the third read-only slice.
 4. Keep [band2_profile_basics_write_surface.md](slice_registry/band2_profile_basics_write_surface.md) sequenced after the three read-only slices above are stable.
 
-Maps, AGRO-ERP, sandboxes, broad workflow parity, and runtime flavor expansion remain outside this sequence.
+AGRO-ERP, broader sandbox follow-ons, broad workflow parity, and runtime flavor expansion remain outside this sequence.
 
 ## Deferred follow-on slices
 

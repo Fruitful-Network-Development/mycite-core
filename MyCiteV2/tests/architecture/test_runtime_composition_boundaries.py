@@ -99,6 +99,7 @@ class RuntimeCompositionBoundaryTests(unittest.TestCase):
             runtime_python_files,
             [
                 "admin_aws_runtime.py",
+                "admin_maps_runtime.py",
                 "admin_runtime.py",
                 "mvp_runtime.py",
                 "runtime_platform.py",

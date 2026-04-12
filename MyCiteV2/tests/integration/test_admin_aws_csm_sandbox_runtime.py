@@ -16,7 +16,11 @@ from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
     run_admin_aws_csm_sandbox_read_only,
     run_admin_aws_read_only,
 )
-from MyCiteV2.instances._shared.runtime.runtime_platform import ADMIN_RUNTIME_ENVELOPE_SCHEMA
+from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
+    build_admin_tool_exposure_policy,
+)
 from MyCiteV2.instances._shared.runtime.admin_runtime import run_admin_shell_entry
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_SHELL_REQUEST_SCHEMA,
@@ -66,9 +70,9 @@ def _live_profile_fnd() -> dict[str, object]:
 class AdminAwsCsmSandboxRuntimeIntegrationTests(unittest.TestCase):
     def test_registry_includes_distinct_sandbox_descriptor(self) -> None:
         entries = list(build_admin_tool_registry_entries())
-        self.assertEqual(len(entries), 4)
+        self.assertEqual(len(entries), 5)
         ids = [e.tool_id for e in entries]
-        self.assertEqual(ids, ["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding"])
+        self.assertEqual(ids, ["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "maps"])
         sandbox = entries[2]
         self.assertEqual(sandbox.slice_id, AWS_CSM_SANDBOX_SLICE_ID)
         self.assertEqual(sandbox.entrypoint_id, AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID)
@@ -130,6 +134,25 @@ class AdminAwsCsmSandboxRuntimeIntegrationTests(unittest.TestCase):
             self.assertEqual(comp.get("composition_mode"), "tool")
             self.assertEqual(comp.get("active_tool_slice_id"), AWS_CSM_SANDBOX_SLICE_ID)
 
+    def test_disabled_sandbox_returns_tool_not_exposed_before_path_validation(self) -> None:
+        policy = build_admin_tool_exposure_policy(
+            {"aws_csm_sandbox": {"enabled": False}},
+            known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "maps"],
+        )
+
+        result = run_admin_aws_csm_sandbox_read_only(
+            {
+                "schema": ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
+                "tenant_scope": {"scope_id": "fnd", "audience": "internal"},
+            },
+            aws_sandbox_status_file=None,
+            tool_exposure_policy=policy,
+        )
+
+        self.assertIsNotNone(result.get("error"))
+        self.assertEqual(result["error"]["code"], ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE)
+        self.assertEqual(result["shell_state"]["reason_code"], ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE)
+
     def test_production_read_only_unchanged_for_trusted_tenant(self) -> None:
         with TemporaryDirectory() as temp_dir:
             status_file = Path(temp_dir) / "aws_status.json"
@@ -175,7 +198,7 @@ class AdminAwsCsmSandboxRuntimeIntegrationTests(unittest.TestCase):
                 "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
             }
         )
-        self.assertEqual(len(result["surface_payload"]["tool_entries"]), 4)
+        self.assertEqual(len(result["surface_payload"]["tool_entries"]), 5)
 
 
 if __name__ == "__main__":

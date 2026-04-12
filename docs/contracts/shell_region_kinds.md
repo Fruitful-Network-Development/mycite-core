@@ -32,10 +32,10 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `schema` | yes | Always `mycite.v2.admin.shell.composition.v1` (`ADMIN_SHELL_COMPOSITION_SCHEMA`). |
-| `composition_mode` | yes | `"tool"` or `"system"` from `shell_composition_mode_for_surface(active_surface_id)` (tool for AWS read-only, narrow-write, **AWS-CSM onboarding** (Band 4), and **internal AWS-CSM sandbox** slice IDs; otherwise system). |
-| `active_service` | yes | `"aws"`, `"datum"`, `"registry"`, or `"system"` from `map_surface_to_active_service`. |
+| `composition_mode` | yes | `"tool"` or `"system"` from `shell_composition_mode_for_surface(active_surface_id)` (tool for AWS read-only, narrow-write, **AWS-CSM onboarding** (Band 4), **internal AWS-CSM sandbox**, and **Maps read-only** slice IDs; otherwise system). |
+| `active_service` | yes | `"aws"`, `"maps"`, `"datum"`, `"registry"`, or `"system"` from `map_surface_to_active_service`. |
 | `active_surface_id` | yes | Resolved active surface slice id (text). |
-| `active_tool_slice_id` | conditional | Non-null only when `composition_mode == "tool"`; equals the active AWS tool slice id. |
+| `active_tool_slice_id` | conditional | Non-null only when `composition_mode == "tool"`; equals the active tool slice id for the current AWS or Maps tool surface. |
 | `foreground_shell_region` | yes | `"interface-panel"` in tool mode; `"center-workbench"` in system mode, unless chrome forces otherwise (see below). |
 | `control_panel_collapsed` | yes | Boolean; parameter to `build_shell_composition_payload`, may be overridden by chrome. |
 | `inspector_collapsed` | yes | From `inspector_collapsed_for_surface` (true when not in tool mode), overridable by chrome. |
@@ -129,6 +129,7 @@ Workbench payloads use `schema: mycite.v2.admin.shell.region.workbench.v1` (`ADM
 | `tool_registry` | `schema`, `kind`, `title`, `visible`, `tool_rows` | `subtitle`, `banner` (`code`, `message`) | `_workbench_registry`; blocked registry path with `banner` | Table from `tool_rows`; optional banner |
 | `datum_workbench` | `schema`, `kind`, `title`, `visible`, `summary`, `warnings`, `documents`, `rows_preview` | `subtitle` | `_workbench_datum` | Summary cards, authoritative document catalog, selected-document diagnostics, preview table columns `datum_address`, `recognized_family`, `diagnostic_states`, `primary_value_token`, and compact reference bindings |
 | `tool_placeholder` | `schema`, `kind`, `title`, `visible` (`false` for AWS primary inspector layout), `subtitle` | — | AWS read-only, narrow-write, **AWS-CSM onboarding**, and **AWS-CSM sandbox** success paths | Treated like hidden body: `visible === false` shows empty/workbench-hidden copy; subtitle as message |
+| `maps_workbench` | `schema`, `kind`, `title`, `visible`, `document_catalog`, `selected_document`, `selected_row`, `map_projection`, `rows`, `diagnostic_summary`, `lens_state`, `request_contract` | `subtitle`, `warnings` | `build_admin_maps_workbench` in `admin_maps_runtime.py`; `run_admin_shell_entry` maps branch | Geographic pane + document chooser + rows/feature cross-selection |
 | `tool_collapsed_inspector` | `schema`, `kind`, `title`, `subtitle`, `visible` (`true`) | — | `_apply_shell_chrome_to_composition` only | Dedicated branch — dismissal card |
 
 ### Workbench presentation note
@@ -149,6 +150,7 @@ Inspector payloads use `schema: mycite.v2.admin.shell.region.inspector.v1` (`ADM
 | `aws_tool_error` | `schema`, `kind`, `title`, `error_code`, `error_message`, `warnings` | — | `_inspector_aws_tool_error` | Error card + warnings list |
 | `narrow_write_form` | `schema`, `kind`, `title`, `read_only_context`, `submit_contract` | — | `_inspector_narrow_write_form` | Form + POST to `submit_contract.route` with schema and fixed fields |
 | `csm_onboarding_form` | `schema`, `kind`, `title`, `read_only_context`, `submit_contract`, `onboarding_action_options` | — | `_inspector_csm_onboarding_form` | Select + `profile_id` + POST to `/portal/api/v2/admin/aws/csm-onboarding` using server-issued schema and fixed `tenant_scope` / `focus_subject` |
+| `maps_summary` | `schema`, `kind`, `title`, `selected_document`, `selected_feature`, `selected_row`, `map_projection`, `diagnostic_summary`, `lens_state` | `warnings` | `build_admin_maps_inspector` in `admin_maps_runtime.py` | Selected document / feature / row summary for the maps slice |
 
 ### `json_document` inspector kind
 

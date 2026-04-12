@@ -25,6 +25,10 @@ Current live posture:
 - Shape B bridge work is historical cutover evidence, not the default shape for new work.
 - Canonical live AWS profile mapping remains current and must stay aligned with the deployed V2 host.
 - The V1 retirement ledger and Phase 11 gate are closed through [../../../records/22-v1_retirement_closure.md](../../../records/22-v1_retirement_closure.md).
+- Current shell-registered admin-tool entries are `aws`, `aws_narrow_write`,
+  `aws_csm_sandbox`, `aws_csm_onboarding`, and `maps`.
+- Current config-gated live exposure keeps `maps` enabled on FND only while TFF
+  remains hidden and blocked.
 
 ## Use order
 
@@ -41,6 +45,7 @@ Current live posture:
 11. Read [live_state_authority_and_mapping.md](live_state_authority_and_mapping.md) for canonical live AWS mapping rules.
 12. Read [deployment_bridge_contract.md](deployment_bridge_contract.md) and [cutover_execution_sequence.md](cutover_execution_sequence.md) only as historical cutover design and sequencing evidence.
 13. Use [../slice_registry/admin_band0_v2_deployment_bridge.md](../slice_registry/admin_band0_v2_deployment_bridge.md) only as a record-linked slice history.
+14. Read [../../v2.3-tool_exposure_and_admin_activity_bar_alignment.md](../../v2.3-tool_exposure_and_admin_activity_bar_alignment.md) when the work needs the proposed V2 config-gate layer above the shell-owned registry.
 
 ## Non-negotiable rules
 
