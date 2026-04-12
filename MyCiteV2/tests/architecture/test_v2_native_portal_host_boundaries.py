@@ -43,9 +43,11 @@ class V2NativePortalHostBoundaryTests(unittest.TestCase):
         source = (HOST_DIR / "app.py").read_text(encoding="utf-8")
         self.assertNotIn("/portal/api/v2/admin/bridge/health", source)
         self.assertIn("/portal/status", source)
+        self.assertIn("/portal/activity", source)
         self.assertIn("/portal/api/v2/admin/shell", source)
         self.assertIn("/portal/api/v2/tenant/home", source)
         self.assertIn("/portal/api/v2/tenant/operational-status", source)
+        self.assertIn("/portal/api/v2/tenant/audit-activity", source)
         self.assertIn("/portal/api/v2/data/system/resource-workbench", source)
 
     def test_portal_shell_js_has_no_fallback_catalog_nav(self) -> None:

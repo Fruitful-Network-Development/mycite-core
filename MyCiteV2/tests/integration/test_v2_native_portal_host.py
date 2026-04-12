@@ -29,7 +29,9 @@ if HAS_FLASK:
         ADMIN_RUNTIME_ENVELOPE_SCHEMA,
     )
     from MyCiteV2.instances._shared.runtime.runtime_platform import (
+        BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
         BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+        TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
         TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
         TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
     )
@@ -70,6 +72,8 @@ else:  # pragma: no cover
     AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
     AWS_READ_ONLY_SLICE_ID = "admin_band1.aws_read_only_surface"
     DATUM_RESOURCE_WORKBENCH_SLICE_ID = "datum.resource_workbench"
+    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID = "band1.audit_activity_visibility"
+    TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA = "mycite.v2.portal.audit_activity.request.v1"
     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID = "band1.operational_status_surface"
     TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA = "mycite.v2.portal.operational_status.request.v1"
     BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID = "band1.portal_home_tenant_status"
@@ -408,6 +412,7 @@ class V2NativePortalHostTests(unittest.TestCase):
                 [
                     BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
                     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+                    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
                 ],
             )
 
@@ -415,6 +420,22 @@ class V2NativePortalHostTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config = _build_config(root)
+            config.admin_audit_storage_file.write_text(
+                json.dumps(
+                    {
+                        "record_id": "admin-0001",
+                        "recorded_at_unix_ms": 1770000000001,
+                        "record": {
+                            "event_type": "admin.shell.transition.accepted",
+                            "focus_subject": "3-2-3-17-77-1-6-4-1-4.4-1-77",
+                            "shell_verb": "navigate",
+                            "details": {"surface": "internal-admin"},
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             client = create_app(config).test_client()
 
             portal = client.get("/portal/status")
@@ -439,8 +460,157 @@ class V2NativePortalHostTests(unittest.TestCase):
                 "no_recent_persistence_evidence",
             )
             self.assertEqual(
+                [entry["slice_id"] for entry in payload["surface_payload"]["available_slices"]],
+                [
+                    BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+                    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+                    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                ],
+            )
+            self.assertEqual(
                 payload["shell_composition"]["regions"]["workbench"]["kind"],
                 "operational_status",
+            )
+
+            config.aws_audit_storage_file.write_text(
+                json.dumps(
+                    {
+                        "record_id": "tenant-0001",
+                        "recorded_at_unix_ms": 1770000000002,
+                        "record": {
+                            "event_type": "aws.narrow_write.applied",
+                            "focus_subject": "3-2-3-17-77-1-6-4-1-4.4-1-77",
+                            "shell_verb": "submit",
+                            "details": {"profile_id": "aws-csm.tff.technicalContact"},
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            status_after_tenant_audit = client.post(
+                "/portal/api/v2/tenant/operational-status",
+                json={
+                    "schema": TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+            )
+            self.assertEqual(status_after_tenant_audit.status_code, 200)
+            payload_after_tenant_audit = status_after_tenant_audit.get_json() or {}
+            self.assertEqual(
+                payload_after_tenant_audit["surface_payload"]["audit_persistence"]["health_state"],
+                "recent_persistence_observed",
+            )
+            self.assertEqual(
+                payload_after_tenant_audit["surface_payload"]["audit_persistence"]["latest_recorded_at_unix_ms"],
+                1770000000002,
+            )
+
+    def test_portal_activity_bootstraps_audit_activity_runtime_and_uses_trusted_tenant_sink_only(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config = _build_config(root)
+            config.admin_audit_storage_file.write_text(
+                json.dumps(
+                    {
+                        "record_id": "admin-0001",
+                        "recorded_at_unix_ms": 1770000000001,
+                        "record": {
+                            "event_type": "admin.shell.transition.accepted",
+                            "focus_subject": "3-2-3-17-77-1-6-4-1-4.4-1-77",
+                            "shell_verb": "navigate",
+                            "details": {"surface": "internal-admin"},
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            client = create_app(config).test_client()
+
+            portal = client.get("/portal/activity")
+            self.assertEqual(portal.status_code, 200)
+            body = portal.get_data(as_text=True)
+            self.assertIn('data-shell-endpoint="/portal/api/v2/tenant/audit-activity"', body)
+            self.assertIn('data-runtime-envelope-schema="mycite.v2.portal.runtime.envelope.v1"', body)
+
+            activity = client.post(
+                "/portal/api/v2/tenant/audit-activity",
+                json={
+                    "schema": TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+            )
+            self.assertEqual(activity.status_code, 200)
+            payload = activity.get_json() or {}
+            self.assertEqual(payload["schema"], TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA)
+            self.assertEqual(payload["slice_id"], BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID)
+            self.assertEqual(payload["surface_payload"]["recent_activity"]["activity_state"], "empty")
+            self.assertEqual(
+                [entry["slice_id"] for entry in payload["surface_payload"]["available_slices"]],
+                [
+                    BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+                    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+                    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                ],
+            )
+            self.assertEqual(
+                payload["shell_composition"]["regions"]["workbench"]["kind"],
+                "audit_activity",
+            )
+            self.assertNotIn("external_events", payload["surface_payload"])
+
+            config.aws_audit_storage_file.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "record_id": "tenant-0001",
+                                "recorded_at_unix_ms": 1770000000001,
+                                "record": {
+                                    "event_type": "aws.onboarding.accepted",
+                                    "focus_subject": "3-2-3-17-77-1-6-4-1-4.4-1-77",
+                                    "shell_verb": "apply",
+                                    "details": {"onboarding_action": "verify_sender"},
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "record_id": "tenant-0002",
+                                "recorded_at_unix_ms": 1770000000002,
+                                "record": {
+                                    "event_type": "aws.narrow_write.applied",
+                                    "focus_subject": "3-2-3-17-77-1-6-4-1-4.4-1-77",
+                                    "shell_verb": "submit",
+                                    "details": {
+                                        "profile_id": "aws-csm.tff.technicalContact",
+                                        "updated_fields": ["selected_verified_sender"],
+                                    },
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            activity_after_tenant_audit = client.post(
+                "/portal/api/v2/tenant/audit-activity",
+                json={
+                    "schema": TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+            )
+            self.assertEqual(activity_after_tenant_audit.status_code, 200)
+            payload_after_tenant_audit = activity_after_tenant_audit.get_json() or {}
+            self.assertEqual(
+                payload_after_tenant_audit["surface_payload"]["recent_activity"]["activity_state"],
+                "recent_activity_observed",
+            )
+            self.assertEqual(
+                [record["record_id"] for record in payload_after_tenant_audit["surface_payload"]["recent_activity"]["records"]],
+                ["tenant-0002", "tenant-0001"],
             )
 
     def test_portal_static_css_and_shell_markup(self) -> None:

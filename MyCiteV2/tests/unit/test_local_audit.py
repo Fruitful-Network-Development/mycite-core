@@ -10,8 +10,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from MyCiteV2.packages.modules.cross_domain.local_audit import (
     LocalAuditRecord,
+    LocalAuditRecentActivityProjection,
     LocalAuditOperationalStatusSummary,
     LocalAuditService,
+    LocalAuditVisibleRecord,
     StoredLocalAuditRecord,
     normalize_local_audit_record,
 )
@@ -217,6 +219,103 @@ class LocalAuditUnitTests(unittest.TestCase):
         self.assertEqual(summary.storage_state, "present")
         self.assertEqual(summary.recent_record_count, 2)
         self.assertEqual(summary.latest_recorded_at_unix_ms, 1770000000002)
+
+    def test_recent_activity_projection_reports_not_configured(self) -> None:
+        service = LocalAuditService(None)
+
+        projection = service.read_recent_activity_projection()
+
+        self.assertIsInstance(projection, LocalAuditRecentActivityProjection)
+        self.assertEqual(
+            projection.to_dict(),
+            {
+                "activity_state": "not_configured",
+                "recent_window_limit": 20,
+                "recent_record_count": 0,
+                "latest_recorded_at_unix_ms": None,
+                "records": [],
+            },
+        )
+
+    def test_recent_activity_projection_reports_unavailable_when_storage_unreadable(self) -> None:
+        port = _FakeAuditLogPort()
+        port.recent_exception = OSError("denied")
+        service = LocalAuditService(port)
+
+        projection = service.read_recent_activity_projection()
+
+        self.assertEqual(projection.activity_state, "unavailable")
+        self.assertEqual(projection.records, ())
+
+    def test_recent_activity_projection_reports_empty_when_recent_window_has_no_valid_records(self) -> None:
+        port = _FakeAuditLogPort()
+        port.recent_records = (
+            AuditLogRecord(
+                record_id="audit-0001",
+                recorded_at_unix_ms=1770000000001,
+                record={"event_type": "shell.transition.accepted"},
+            ),
+        )
+        service = LocalAuditService(port)
+
+        projection = service.read_recent_activity_projection()
+
+        self.assertEqual(projection.activity_state, "empty")
+        self.assertEqual(projection.recent_record_count, 0)
+
+    def test_recent_activity_projection_reports_recent_activity_observed(self) -> None:
+        port = _FakeAuditLogPort()
+        port.recent_records = (
+            AuditLogRecord(
+                record_id="audit-0002",
+                recorded_at_unix_ms=1770000000002,
+                record={
+                    "event_type": "aws.narrow_write.applied",
+                    "focus_subject": LEGACY_HYPHEN_SUBJECT,
+                    "shell_verb": " submit ",
+                    "details": {
+                        "profile_id": "aws-csm.tff.technicalContact",
+                        "updated_fields": ["selected_verified_sender"],
+                    },
+                },
+            ),
+            AuditLogRecord(
+                record_id="audit-0001",
+                recorded_at_unix_ms=1770000000001,
+                record={
+                    "event_type": "aws.onboarding.accepted",
+                    "focus_subject": CANONICAL_SUBJECT,
+                    "shell_verb": "apply",
+                    "details": {"onboarding_action": "verify_sender"},
+                },
+            ),
+        )
+        service = LocalAuditService(port)
+
+        projection = service.read_recent_activity_projection()
+
+        self.assertEqual(projection.activity_state, "recent_activity_observed")
+        self.assertEqual(projection.recent_record_count, 2)
+        self.assertEqual(projection.latest_recorded_at_unix_ms, 1770000000002)
+        self.assertEqual(
+            [record.record_id for record in projection.records],
+            ["audit-0002", "audit-0001"],
+        )
+        self.assertIsInstance(projection.records[0], LocalAuditVisibleRecord)
+        self.assertEqual(
+            projection.to_dict()["records"][0],
+            {
+                "record_id": "audit-0002",
+                "recorded_at_unix_ms": 1770000000002,
+                "event_type": "aws.narrow_write.applied",
+                "shell_verb": "submit",
+                "focus_subject": CANONICAL_SUBJECT,
+                "details": {
+                    "profile_id": "aws-csm.tff.technicalContact",
+                    "updated_fields": ["selected_verified_sender"],
+                },
+            },
+        )
 
 
 if __name__ == "__main__":

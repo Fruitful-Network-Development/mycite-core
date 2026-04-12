@@ -71,6 +71,15 @@
       .replace(/"/g, "&quot;");
   }
 
+  function compactJson(value) {
+    if (value == null) return "—";
+    try {
+      return JSON.stringify(value);
+    } catch (_) {
+      return String(value);
+    }
+  }
+
   function applyChrome(comp) {
     var el = qs(".ide-shell");
     if (!el || !comp) return;
@@ -377,6 +386,103 @@
         "</div>";
       return;
     }
+    if (kind === "audit_activity") {
+      var recentActivity = wb.recent_activity || {};
+      var activityWarnings = wb.warnings || [];
+      var activitySlices = wb.available_slices || [];
+      var activityRecords = recentActivity.records || [];
+      var activityWarningBlock =
+        activityWarnings.length > 0
+          ? '<div class="v2-card" style="margin-bottom:12px"><h3>Warnings</h3><ul>' +
+            activityWarnings
+              .map(function (warning) {
+                return "<li>" + escapeHtml(String(warning)) + "</li>";
+              })
+              .join("") +
+            "</ul></div>"
+          : "";
+      var activityCards =
+        '<div class="v2-card-grid">' +
+        '<article class="v2-card"><h3>Rollout band</h3><p>' +
+        escapeHtml(wb.current_rollout_band || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Exposure</h3><p>' +
+        escapeHtml(wb.exposure_status || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Read/write posture</h3><p>' +
+        escapeHtml(wb.read_write_posture || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Activity state</h3><p>' +
+        escapeHtml(String(recentActivity.activity_state || "—").replace(/_/g, " ")) +
+        "</p></article>" +
+        "</div>";
+      var activityDetails =
+        '<dl class="v2-surface-dl">' +
+        "<dt>Recent window limit</dt><dd>" +
+        escapeHtml(String(recentActivity.recent_window_limit != null ? recentActivity.recent_window_limit : "—")) +
+        "</dd>" +
+        "<dt>Recent record count</dt><dd>" +
+        escapeHtml(String(recentActivity.recent_record_count != null ? recentActivity.recent_record_count : "—")) +
+        "</dd>" +
+        "<dt>Latest recorded at</dt><dd>" +
+        escapeHtml(
+          String(
+            recentActivity.latest_recorded_at_unix_ms != null
+              ? recentActivity.latest_recorded_at_unix_ms
+              : "—"
+          )
+        ) +
+        "</dd></dl>";
+      var activityRows =
+        activityRecords.length > 0
+          ? "<table class=\"v2-table\"><thead><tr><th>Recorded At</th><th>Event</th><th>Verb</th><th>Subject</th><th>Details</th></tr></thead><tbody>" +
+            activityRecords
+              .map(function (record) {
+                return (
+                  "<tr><td>" +
+                  escapeHtml(String(record.recorded_at_unix_ms != null ? record.recorded_at_unix_ms : "—")) +
+                  "</td><td>" +
+                  escapeHtml(record.event_type || "—") +
+                  "</td><td>" +
+                  escapeHtml(record.shell_verb || "—") +
+                  "</td><td><code>" +
+                  escapeHtml(record.focus_subject || "") +
+                  "</code></td><td><code>" +
+                  escapeHtml(compactJson(record.details || {})) +
+                  "</code></td></tr>"
+                );
+              })
+              .join("") +
+            "</tbody></table>"
+          : '<p class="ide-controlpanel__empty">No recent tenant-facing audit activity is visible in this fixed window.</p>';
+      var activitySliceTable =
+        "<table class=\"v2-table\"><thead><tr><th>Slice</th><th>Status</th><th>Posture</th></tr></thead><tbody>" +
+        activitySlices
+          .map(function (slice) {
+            return (
+              "<tr><td>" +
+              escapeHtml(slice.label || slice.slice_id || "") +
+              "</td><td>" +
+              escapeHtml(slice.status_summary || "—") +
+              "</td><td>" +
+              escapeHtml(slice.read_write_posture || "—") +
+              "</td></tr>"
+            );
+          })
+          .join("") +
+        "</tbody></table>";
+      body.innerHTML =
+        activityWarningBlock +
+        activityCards +
+        activityDetails +
+        '<div class="v2-card" style="margin-top:12px"><h3>Recent records</h3>' +
+        activityRows +
+        "</div>" +
+        '<div class="v2-card" style="margin-top:12px"><h3>Visible slices</h3>' +
+        activitySliceTable +
+        "</div>";
+      return;
+    }
     if (kind === "tool_registry") {
       var rows = wb.tool_rows || [];
       var banner = wb.banner;
@@ -604,6 +710,57 @@
           )
         ) +
         "</dd></dl>";
+      return;
+    }
+    if (kind === "audit_activity_summary") {
+      var activity = region.recent_activity || {};
+      var previewRecords = activity.records || [];
+      var previewHtml =
+        previewRecords.length > 0
+          ? "<section class=\"v2-card\" style=\"margin-top:12px\"><h3>Latest records</h3><ul>" +
+            previewRecords
+              .slice(0, 5)
+              .map(function (record) {
+                return (
+                  "<li><strong>" +
+                  escapeHtml(record.event_type || "event") +
+                  "</strong> · " +
+                  escapeHtml(String(record.recorded_at_unix_ms != null ? record.recorded_at_unix_ms : "—")) +
+                  " · <code>" +
+                  escapeHtml(record.focus_subject || "") +
+                  "</code></li>"
+                );
+              })
+              .join("") +
+            "</ul></section>"
+          : "";
+      content.innerHTML =
+        '<dl class="v2-surface-dl">' +
+        "<dt>Rollout band</dt><dd>" +
+        escapeHtml(region.current_rollout_band || "—") +
+        "</dd>" +
+        "<dt>Exposure</dt><dd>" +
+        escapeHtml(region.exposure_status || "—") +
+        "</dd>" +
+        "<dt>Read/write posture</dt><dd>" +
+        escapeHtml(region.read_write_posture || "—") +
+        "</dd>" +
+        "<dt>Activity state</dt><dd>" +
+        escapeHtml(String(activity.activity_state || "—").replace(/_/g, " ")) +
+        "</dd>" +
+        "<dt>Recent records</dt><dd>" +
+        escapeHtml(String(activity.recent_record_count != null ? activity.recent_record_count : "—")) +
+        "</dd>" +
+        "<dt>Latest recorded at</dt><dd>" +
+        escapeHtml(
+          String(
+            activity.latest_recorded_at_unix_ms != null
+              ? activity.latest_recorded_at_unix_ms
+              : "—"
+          )
+        ) +
+        "</dd></dl>" +
+        previewHtml;
       return;
     }
     if (kind === "narrow_write_form") {
