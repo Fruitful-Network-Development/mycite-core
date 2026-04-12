@@ -6,7 +6,7 @@ I have two main issues:
 After the cutover to V2, I want to rebuild the modular UI that adheres to the archetecture deffined by V2 documenttion and code, for interface surfaces. However, I want to rebuild the UI to have a very clean stable, style and layout recreation of the V1 portal.
 see `repo/mycite-core/MyCiteV2/docs/archive/16-v2_native_portal_cutover.md`
 
-Second, is I need you to review `repo/mycite-core/MyCiteV2/docs/ec2_awscms_admin_iam_inventory.md` to make sure that the AWS tool is properly deployed for the AWS and that the tool can be expanded to allow for me to use secondary domains for users emails of `cuyahogavalleycountrysideconservancy.org`.
+Second, is I need you to review `docs/personal_notes/tool_operations/aws_cms_admin_iam_inventory.md` to make sure that the AWS tool is properly deployed for the AWS and that the tool can be expanded to allow for me to use secondary domains for users emails of `cuyahogavalleycountrysideconservancy.org`.
 Essentially, I need to create users that have the email domain of `<user>@cvccboard.org`, but I don't know if the current IAM permissions, roles, and policies are set up for this tool funcitonaility to be hardened in the V2 context for this task.
 
 ---
@@ -36,7 +36,7 @@ todos:
     content: Adapter + integration tests for secondary domain accept/reject; document rollback
     status: pending
   - id: docs-iam
-    content: Extend ec2_awscms_admin_iam_inventory.md with V2 status file, SES prerequisites, and explicit note that IAM path does not encode mailbox domain
+    content: Extend aws_cms_admin_iam_inventory.md with V2 status file, SES prerequisites, and explicit note that IAM path does not encode mailbox domain
     status: pending
 isProject: false
 ---
@@ -45,7 +45,7 @@ isProject: false
 
 - **V2 cutover** ([`docs/archive/16-v2_native_portal_cutover.md`](repo/mycite-core/MyCiteV2/docs/archive/16-v2_native_portal_cutover.md)): Native host is [`instances/_shared/portal_host/app.py`](repo/mycite-core/MyCiteV2/instances/_shared/portal_host/app.py); `/portal` renders a minimal [`templates/portal.html`](repo/mycite-core/MyCiteV2/instances/_shared/portal_host/templates/portal.html). Admin capabilities are **JSON** via `POST /portal/api/v2/admin/shell` and AWS routes. Interface-surface rules are in [`docs/ontology/interface_surfaces.md`](repo/mycite-core/MyCiteV2/docs/ontology/interface_surfaces.md): the **shell owns serialized state and tool legality**; UI is not an alternate shell.
 - **V1 visual system**: [`MyCiteV1/.../portal/ui/templates/base.html`](repo/mycite-core/MyCiteV1/instances/_shared/runtime/flavors/fnd/portal/ui/templates/base.html) + `/portal/static/portal.css` and icons; V1 Flask apps set `static_url_path="/portal/static"`. The V2 host **does not** currently mount `/portal/static` (only `public_dir` JSON and a few special routes in `app.py`), so a V1-looking shell requires **explicit static asset delivery** from the V2 host or nginx.
-- **AWS narrow-write domain rule (critical)**: [`packages/adapters/filesystem/live_aws_profile.py`](repo/mycite-core/MyCiteV2/packages/adapters/filesystem/live_aws_profile.py) enforces `selected_verified_sender`’s domain **equals** `identity.domain`. So `user@cvccboard.org` **fails** today if `identity.domain` is `cuyahogavalleycountrysideconservancy.org`. This is **not** an IAM limitation; it is **application contract + SES identity** work. IAM path [`AWSCMSMailboxUsersPathManagement`](repo/mycite-core/MyCiteV2/docs/ec2_awscms_admin_iam_inventory.md) scopes IAM users to `user/aws-cms/smtp/*` and does not encode mailbox domain strings.
+- **AWS narrow-write domain rule (critical)**: [`packages/adapters/filesystem/live_aws_profile.py`](repo/mycite-core/MyCiteV2/packages/adapters/filesystem/live_aws_profile.py) enforces `selected_verified_sender`’s domain **equals** `identity.domain`. So `user@cvccboard.org` **fails** today if `identity.domain` is `cuyahogavalleycountrysideconservancy.org`. This is **not** an IAM limitation; it is **application contract + SES identity** work. IAM path [`AWSCMSMailboxUsersPathManagement`](../personal_notes/tool_operations/aws_cms_admin_iam_inventory.md) scopes IAM users to `user/aws-cms/smtp/*` and does not encode mailbox domain strings.
 
 ### Part A — Modular UI with V1 layout/style (architecture-safe)
 
@@ -97,7 +97,7 @@ flowchart LR
 
 #### What the IAM doc already supports
 
-- [`docs/ec2_awscms_admin_iam_inventory.md`](repo/mycite-core/MyCiteV2/docs/ec2_awscms_admin_iam_inventory.md): `EC2-AWSCMS-Admin` has **AmazonSESFullAccess**, **AmazonRoute53FullAccess**, broad Lambda/S3, and **narrow IAM user management** under `arn:aws:iam::065948377733:user/aws-cms/smtp/*`. That is **adequate** for creating additional mailbox IAM users and managing SES identities/DNS **in principle**.
+- [`docs/personal_notes/tool_operations/aws_cms_admin_iam_inventory.md`](../personal_notes/tool_operations/aws_cms_admin_iam_inventory.md): `EC2-AWSCMS-Admin` has **AmazonSESFullAccess**, **AmazonRoute53FullAccess**, broad Lambda/S3, and **narrow IAM user management** under `arn:aws:iam::065948377733:user/aws-cms/smtp/*`. That is **adequate** for creating additional mailbox IAM users and managing SES identities/DNS **in principle**.
 - The document is an **inventory**, not proof of deployment: confirm separately that the **instance profile** is attached to the EC2 (or runner) that executes AWS-CMS, and that `aws-csm` tooling uses that role.
 
 #### Gaps for your goal (secondary board domain)
@@ -119,7 +119,7 @@ Implementation sketch:
 2. **Adapter**: In [`live_aws_profile.py`](repo/mycite-core/MyCiteV2/packages/adapters/filesystem/live_aws_profile.py), replace strict `selected_domain == identity.domain` with: **member of** `{identity.domain} ∪ allowed_send_domains` (normalized lowercase). If allowlist absent, preserve current strict behavior for backward compatibility.
 3. **Read-only surface**: Optionally expose allowed domains in the read-only payload so the UI can constrain picker/input.
 4. **Tests**: Add cases in [`tests/adapters/test_filesystem_live_aws_profile_adapter.py`](repo/mycite-core/MyCiteV2/tests/adapters/test_filesystem_live_aws_profile_adapter.py) and integration tests in [`tests/integration/test_admin_aws_narrow_write_runtime.py`](repo/mycite-core/MyCiteV2/tests/integration/test_admin_aws_narrow_write_runtime.py) for accept/reject paths.
-5. **Operational docs**: Update [`ec2_awscms_admin_iam_inventory.md`](repo/mycite-core/MyCiteV2/docs/ec2_awscms_admin_iam_inventory.md) with a short **“V2 portal / SES / profile contract”** section: link to `MYCITE_V2_AWS_STATUS_FILE`, note SES verification prerequisite for any new domain, and state that **IAM does not enforce email domain** — V2 + SES do.
+5. **Operational docs**: Update [`aws_cms_admin_iam_inventory.md`](../personal_notes/tool_operations/aws_cms_admin_iam_inventory.md) with a short **“V2 portal / SES / profile contract”** section: link to `MYCITE_V2_AWS_STATUS_FILE`, note SES verification prerequisite for any new domain, and state that **IAM does not enforce email domain** — V2 + SES do.
 
 #### Hardening note (V2 context)
 
@@ -159,7 +159,7 @@ Here is what was implemented:
 ### Tests & docs
 
 - New/updated tests: operational visibility (secondary domain), live profile adapter (CVCC-style case), native portal static + shell markup, read-only/narrow-write expectations, narrow-write error text.
-- **[`docs/ec2_awscms_admin_iam_inventory.md`](repo/mycite-core/MyCiteV2/docs/ec2_awscms_admin_iam_inventory.md):** New section on V2 status file, SES verification, `allowed_send_domains`, rollback, and that IAM paths do not encode mailbox domains.
+- **[`docs/personal_notes/tool_operations/aws_cms_admin_iam_inventory.md`](../personal_notes/tool_operations/aws_cms_admin_iam_inventory.md):** New section on V2 status file, SES verification, `allowed_send_domains`, rollback, and that IAM paths do not encode mailbox domains.
 
 **Verification:** `125` tests passing with `PYTHONPATH=/srv/repo/mycite-core` and `/srv/venvs/fnd_portal/bin/python3`.
 

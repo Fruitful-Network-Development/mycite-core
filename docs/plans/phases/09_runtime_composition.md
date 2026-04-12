@@ -8,7 +8,7 @@ Compose inward layers into runnable host shapes without giving hosts semantic ow
 
 - [../v2-authority_stack.md](../v2-authority_stack.md)
 - [../../decisions/decision_record_0007_hosts_compose_but_do_not_own_domain_logic.md](../../decisions/decision_record_0007_hosts_compose_but_do_not_own_domain_logic.md)
-- [../v1-migration/v1_audit_map.md](../v1-migration/v1_audit_map.md)
+- [../version-migration/v1_audit_map.md](../version-migration/v1_audit_map.md)
 
 ## inputs
 

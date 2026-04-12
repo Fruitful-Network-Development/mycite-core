@@ -23,4 +23,4 @@ Implementation in v2 proceeds by ordered solidification. Order matters because l
 - A later phase may not define missing meaning for an earlier phase.
 - A phase is incomplete until its completion gate passes. See [../plans/v2-phase_completion_definition.md](../plans/v2-phase_completion_definition.md).
 - Each phase must use the fixed section schema defined in [../plans/phases/](../plans/phases/).
-- Scaffold-phase work is inert by design. See [../plans/implementation_prohibition_for_scaffold_phase.md](../plans/implementation_prohibition_for_scaffold_phase.md).
+- Scaffold-phase work is inert by design. See [../plans/v2-implementation_prohibition_for_scaffold_phase.md](../plans/v2-implementation_prohibition_for_scaffold_phase.md).

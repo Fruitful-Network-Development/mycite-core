@@ -2,6 +2,10 @@
 
 This file is the single precedence source for MyCiteV2 docs and planning.
 
+Lifecycle, registry, and reading-path governance live under
+[../governance/](../governance/). Those documents manage discoverability and
+cleanup, but they do not replace the semantic precedence defined here.
+
 ## Precedence order
 
 1. [../ontology/structural_invariants.md](../ontology/structural_invariants.md) and the ontology files it governs
@@ -21,9 +25,9 @@ must be updated, annotated, or ignored.
 
 ## Normalization rule
 
-If a current document still says `authority_stack.md`, `phase_completion_definition.md`,
-`v1-migration/`, or `docs/V1/`, treat that as stale naming drift and normalize
-it to:
+If a current document still uses the unprefixed authority-stack path, the
+unprefixed phase-completion path, the older migration-root name, or an old V1
+docs path, treat that as stale naming drift and normalize it to:
 
 - `v2-authority_stack.md`
 - `v2-phase_completion_definition.md`
@@ -35,6 +39,8 @@ it to:
 This file must be linked from:
 
 - `docs/README.md`
+- `docs/governance/README.md`
+- `docs/governance/reading_paths.md`
 - `docs/plans/README.md`
 - `MyCiteV2/README.md`
 - every major-root `README.md`
