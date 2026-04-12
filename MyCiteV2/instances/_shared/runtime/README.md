@@ -11,6 +11,10 @@ Implemented in shared runtime:
 - one composition entrypoint for `Admin Band 0 Internal Admin Replacement`
 - one composition entrypoint for `admin_band1.aws_read_only_surface`
 - one composition entrypoint for `admin_band2.aws_narrow_write_surface`
+- one composition path for the admin datum workbench surface using authoritative datum documents plus read-only recognition diagnostics
+- one composition entrypoint for `band1.portal_home_tenant_status`
+- one composition entrypoint for `band1.operational_status_surface`
+- one composition entrypoint for `band1.audit_activity_visibility`
 - one composition entrypoint for `band2.profile_basics_write_surface`
 
 Not implemented in shared runtime:
@@ -18,4 +22,4 @@ Not implemented in shared runtime:
 - flavor-specific runtime composition
 - tools
 - sandboxes
-- provider-admin replacement slices beyond the internal admin band
+- broad datum mutation or repair flows

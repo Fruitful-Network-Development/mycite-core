@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA = "mycite.v2.data.system_resource_workbench.surface.v1"
+AUTHORITATIVE_DATUM_DOCUMENT_ROW_SCHEMA = "mycite.v2.data.authoritative_document_row.v1"
+AUTHORITATIVE_DATUM_DOCUMENT_SCHEMA = "mycite.v2.data.authoritative_document.v1"
+AUTHORITATIVE_DATUM_DOCUMENT_CATALOG_SCHEMA = "mycite.v2.data.authoritative_document_catalog.v1"
 PUBLICATION_TENANT_SUMMARY_SOURCE_SCHEMA = "mycite.v2.data.publication_tenant_summary.source.v1"
 
 JsonScalar = str | int | float | bool | None
@@ -32,6 +35,13 @@ def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
     raise ValueError(f"{field_name} must be JSON-serializable data")
 
 
+def _normalize_object_payload(value: Any, *, field_name: str) -> dict[str, JsonValue]:
+    normalized = _normalize_json_value(value, field_name=field_name)
+    if not isinstance(normalized, dict):
+        raise ValueError(f"{field_name} must be a dict")
+    return normalized
+
+
 @dataclass(frozen=True)
 class SystemDatumStoreRequest:
     tenant_id: str
@@ -50,6 +60,270 @@ class SystemDatumStoreRequest:
         if not isinstance(payload, dict):
             raise ValueError("system_datum_store_request must be a dict")
         return cls(tenant_id=payload.get("tenant_id"))
+
+
+@dataclass(frozen=True)
+class AuthoritativeDatumDocumentRequest:
+    tenant_id: str
+
+    def __post_init__(self) -> None:
+        tenant_id = _as_text(self.tenant_id).lower()
+        if not tenant_id:
+            raise ValueError("authoritative_datum_document_request.tenant_id is required")
+        object.__setattr__(self, "tenant_id", tenant_id)
+
+    def to_dict(self) -> dict[str, str]:
+        return {"tenant_id": self.tenant_id}
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "AuthoritativeDatumDocumentRequest":
+        if not isinstance(payload, dict):
+            raise ValueError("authoritative_datum_document_request must be a dict")
+        return cls(tenant_id=payload.get("tenant_id"))
+
+
+@dataclass(frozen=True)
+class AuthoritativeDatumDocumentRow:
+    datum_address: str
+    raw: JsonValue
+    schema: str = AUTHORITATIVE_DATUM_DOCUMENT_ROW_SCHEMA
+
+    def __post_init__(self) -> None:
+        datum_address = _as_text(self.datum_address)
+        if not datum_address:
+            raise ValueError("authoritative_datum_document_row.datum_address is required")
+        object.__setattr__(self, "datum_address", datum_address)
+        object.__setattr__(
+            self,
+            "raw",
+            _normalize_json_value(self.raw, field_name="authoritative_datum_document_row.raw"),
+        )
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        return {
+            "schema": self.schema,
+            "datum_address": self.datum_address,
+            "raw": self.raw,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "AuthoritativeDatumDocumentRow":
+        if not isinstance(payload, dict):
+            raise ValueError("authoritative_datum_document_row must be a dict")
+        return cls(
+            datum_address=payload.get("datum_address"),
+            raw=payload.get("raw"),
+        )
+
+
+@dataclass(frozen=True)
+class AuthoritativeDatumDocument:
+    document_id: str
+    source_kind: str
+    document_name: str
+    relative_path: str
+    tool_id: str = ""
+    source_authority: str = "authoritative"
+    document_metadata: dict[str, JsonValue] | None = None
+    anchor_document_name: str = ""
+    anchor_document_path: str = ""
+    anchor_document_metadata: dict[str, JsonValue] | None = None
+    anchor_rows: tuple[AuthoritativeDatumDocumentRow | dict[str, Any], ...] = ()
+    rows: tuple[AuthoritativeDatumDocumentRow | dict[str, Any], ...] = ()
+    warnings: tuple[str, ...] = ()
+    schema: str = AUTHORITATIVE_DATUM_DOCUMENT_SCHEMA
+
+    def __post_init__(self) -> None:
+        document_id = _as_text(self.document_id)
+        source_kind = _as_text(self.source_kind).lower()
+        document_name = _as_text(self.document_name)
+        relative_path = _as_text(self.relative_path)
+        tool_id = _as_text(self.tool_id)
+        source_authority = _as_text(self.source_authority).lower() or "authoritative"
+        if not document_id:
+            raise ValueError("authoritative_datum_document.document_id is required")
+        if source_kind not in {"system_anthology", "sandbox_source"}:
+            raise ValueError("authoritative_datum_document.source_kind is invalid")
+        if not document_name:
+            raise ValueError("authoritative_datum_document.document_name is required")
+        if not relative_path:
+            raise ValueError("authoritative_datum_document.relative_path is required")
+        if source_authority != "authoritative":
+            raise ValueError("authoritative_datum_document.source_authority must be authoritative")
+
+        normalized_anchor_rows: list[AuthoritativeDatumDocumentRow] = []
+        for row in self.anchor_rows:
+            normalized_anchor_rows.append(
+                row if isinstance(row, AuthoritativeDatumDocumentRow) else AuthoritativeDatumDocumentRow.from_dict(row)
+            )
+
+        normalized_rows: list[AuthoritativeDatumDocumentRow] = []
+        for row in self.rows:
+            normalized_rows.append(
+                row if isinstance(row, AuthoritativeDatumDocumentRow) else AuthoritativeDatumDocumentRow.from_dict(row)
+            )
+
+        object.__setattr__(self, "document_id", document_id)
+        object.__setattr__(self, "source_kind", source_kind)
+        object.__setattr__(self, "document_name", document_name)
+        object.__setattr__(self, "relative_path", relative_path)
+        object.__setattr__(self, "tool_id", tool_id)
+        object.__setattr__(self, "source_authority", source_authority)
+        object.__setattr__(
+            self,
+            "document_metadata",
+            _normalize_object_payload(
+                self.document_metadata or {},
+                field_name="authoritative_datum_document.document_metadata",
+            ),
+        )
+        object.__setattr__(self, "anchor_document_name", _as_text(self.anchor_document_name))
+        object.__setattr__(self, "anchor_document_path", _as_text(self.anchor_document_path))
+        object.__setattr__(
+            self,
+            "anchor_document_metadata",
+            _normalize_object_payload(
+                self.anchor_document_metadata or {},
+                field_name="authoritative_datum_document.anchor_document_metadata",
+            ),
+        )
+        object.__setattr__(self, "anchor_rows", tuple(normalized_anchor_rows))
+        object.__setattr__(self, "rows", tuple(normalized_rows))
+        object.__setattr__(self, "warnings", tuple(_as_text(item) for item in self.warnings if _as_text(item)))
+
+    @property
+    def row_count(self) -> int:
+        return len(self.rows)
+
+    @property
+    def anchor_row_count(self) -> int:
+        return len(self.anchor_rows)
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        return {
+            "schema": self.schema,
+            "document_id": self.document_id,
+            "source_kind": self.source_kind,
+            "document_name": self.document_name,
+            "relative_path": self.relative_path,
+            "tool_id": self.tool_id,
+            "source_authority": self.source_authority,
+            "document_metadata": self.document_metadata or {},
+            "anchor_document_name": self.anchor_document_name,
+            "anchor_document_path": self.anchor_document_path,
+            "anchor_document_metadata": self.anchor_document_metadata or {},
+            "anchor_rows": [row.to_dict() for row in self.anchor_rows],
+            "anchor_row_count": self.anchor_row_count,
+            "rows": [row.to_dict() for row in self.rows],
+            "row_count": self.row_count,
+            "warnings": list(self.warnings),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "AuthoritativeDatumDocument":
+        if not isinstance(payload, dict):
+            raise ValueError("authoritative_datum_document must be a dict")
+        anchor_rows = payload.get("anchor_rows") or ()
+        if not isinstance(anchor_rows, (list, tuple)):
+            raise ValueError("authoritative_datum_document.anchor_rows must be a list")
+        rows = payload.get("rows") or ()
+        if not isinstance(rows, (list, tuple)):
+            raise ValueError("authoritative_datum_document.rows must be a list")
+        warnings = payload.get("warnings") or ()
+        if not isinstance(warnings, (list, tuple)):
+            raise ValueError("authoritative_datum_document.warnings must be a list")
+        return cls(
+            document_id=payload.get("document_id"),
+            source_kind=payload.get("source_kind"),
+            document_name=payload.get("document_name"),
+            relative_path=payload.get("relative_path"),
+            tool_id=payload.get("tool_id") or "",
+            source_authority=payload.get("source_authority") or "authoritative",
+            document_metadata=payload.get("document_metadata") or {},
+            anchor_document_name=payload.get("anchor_document_name") or "",
+            anchor_document_path=payload.get("anchor_document_path") or "",
+            anchor_document_metadata=payload.get("anchor_document_metadata") or {},
+            anchor_rows=tuple(anchor_rows),
+            rows=tuple(rows),
+            warnings=tuple(str(item) for item in warnings),
+        )
+
+
+@dataclass(frozen=True)
+class AuthoritativeDatumDocumentCatalogResult:
+    tenant_id: str
+    documents: tuple[AuthoritativeDatumDocument | dict[str, Any], ...]
+    source_files: dict[str, JsonValue]
+    readiness_status: dict[str, JsonValue]
+    warnings: tuple[str, ...] = ()
+    schema: str = AUTHORITATIVE_DATUM_DOCUMENT_CATALOG_SCHEMA
+
+    def __post_init__(self) -> None:
+        tenant_id = _as_text(self.tenant_id).lower()
+        if not tenant_id:
+            raise ValueError("authoritative_datum_document_catalog.tenant_id is required")
+        normalized_documents: list[AuthoritativeDatumDocument] = []
+        for document in self.documents:
+            normalized_documents.append(
+                document if isinstance(document, AuthoritativeDatumDocument) else AuthoritativeDatumDocument.from_dict(document)
+            )
+        object.__setattr__(self, "tenant_id", tenant_id)
+        object.__setattr__(self, "documents", tuple(normalized_documents))
+        object.__setattr__(
+            self,
+            "source_files",
+            _normalize_json_value(
+                self.source_files,
+                field_name="authoritative_datum_document_catalog.source_files",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "readiness_status",
+            _normalize_json_value(
+                self.readiness_status,
+                field_name="authoritative_datum_document_catalog.readiness_status",
+            ),
+        )
+        object.__setattr__(self, "warnings", tuple(_as_text(item) for item in self.warnings if _as_text(item)))
+
+    @property
+    def document_count(self) -> int:
+        return len(self.documents)
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.document_count) and self.readiness_status.get("authoritative_catalog") == "loaded"
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        return {
+            "schema": self.schema,
+            "ok": self.ok,
+            "tenant_id": self.tenant_id,
+            "document_count": self.document_count,
+            "documents": [document.to_dict() for document in self.documents],
+            "source_files": self.source_files,
+            "readiness_status": self.readiness_status,
+            "warnings": list(self.warnings),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "AuthoritativeDatumDocumentCatalogResult":
+        if not isinstance(payload, dict):
+            raise ValueError("authoritative_datum_document_catalog must be a dict")
+        documents = payload.get("documents") or ()
+        if not isinstance(documents, (list, tuple)):
+            raise ValueError("authoritative_datum_document_catalog.documents must be a list")
+        warnings = payload.get("warnings") or ()
+        if not isinstance(warnings, (list, tuple)):
+            raise ValueError("authoritative_datum_document_catalog.warnings must be a list")
+        return cls(
+            tenant_id=payload.get("tenant_id"),
+            documents=tuple(documents),
+            source_files=payload.get("source_files") or {},
+            readiness_status=payload.get("readiness_status") or {},
+            warnings=tuple(str(item) for item in warnings),
+        )
 
 
 @dataclass(frozen=True)
@@ -412,6 +686,15 @@ class PublicationProfileBasicsWriteResult:
 class SystemDatumStorePort(Protocol):
     def read_system_resource_workbench(self, request: SystemDatumStoreRequest) -> SystemDatumWorkbenchResult:
         """Read the canonical system datum workbench surface without legacy fallbacks."""
+
+
+@runtime_checkable
+class AuthoritativeDatumDocumentPort(Protocol):
+    def read_authoritative_datum_documents(
+        self,
+        request: AuthoritativeDatumDocumentRequest,
+    ) -> AuthoritativeDatumDocumentCatalogResult:
+        """Read authoritative datum documents without falling back to derived cache or legacy roots."""
 
 
 @runtime_checkable

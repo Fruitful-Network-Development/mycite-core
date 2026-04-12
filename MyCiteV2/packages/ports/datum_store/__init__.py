@@ -1,7 +1,15 @@
 """System datum store port contracts for V2-native portal data loading."""
 
 from .contracts import (
+    AUTHORITATIVE_DATUM_DOCUMENT_CATALOG_SCHEMA,
+    AUTHORITATIVE_DATUM_DOCUMENT_ROW_SCHEMA,
+    AUTHORITATIVE_DATUM_DOCUMENT_SCHEMA,
     PUBLICATION_TENANT_SUMMARY_SOURCE_SCHEMA,
+    AuthoritativeDatumDocument,
+    AuthoritativeDatumDocumentCatalogResult,
+    AuthoritativeDatumDocumentPort,
+    AuthoritativeDatumDocumentRequest,
+    AuthoritativeDatumDocumentRow,
     PublicationProfileBasicsWritePort,
     PublicationProfileBasicsWriteRequest,
     PublicationProfileBasicsWriteResult,
@@ -17,7 +25,15 @@ from .contracts import (
 )
 
 __all__ = [
+    "AUTHORITATIVE_DATUM_DOCUMENT_CATALOG_SCHEMA",
+    "AUTHORITATIVE_DATUM_DOCUMENT_ROW_SCHEMA",
+    "AUTHORITATIVE_DATUM_DOCUMENT_SCHEMA",
     "PUBLICATION_TENANT_SUMMARY_SOURCE_SCHEMA",
+    "AuthoritativeDatumDocument",
+    "AuthoritativeDatumDocumentCatalogResult",
+    "AuthoritativeDatumDocumentPort",
+    "AuthoritativeDatumDocumentRequest",
+    "AuthoritativeDatumDocumentRow",
     "PublicationProfileBasicsWritePort",
     "PublicationProfileBasicsWriteRequest",
     "PublicationProfileBasicsWriteResult",

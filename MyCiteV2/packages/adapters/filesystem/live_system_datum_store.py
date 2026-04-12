@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.ports.datum_store import (
+    AuthoritativeDatumDocument,
+    AuthoritativeDatumDocumentCatalogResult,
+    AuthoritativeDatumDocumentRequest,
+    AuthoritativeDatumDocumentRow,
     PublicationProfileBasicsWriteRequest,
     PublicationProfileBasicsWriteResult,
     PublicationTenantSummaryRequest,
@@ -43,6 +47,55 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _split_document_payload(payload: dict[str, Any]) -> tuple[tuple[AuthoritativeDatumDocumentRow, ...], dict[str, Any]]:
+    row_source: dict[str, Any] = payload
+    metadata: dict[str, Any] = {}
+    if isinstance(payload.get("datum_addressing_abstraction_space"), dict):
+        row_source = payload.get("datum_addressing_abstraction_space") or {}
+        metadata = {
+            key: value for key, value in payload.items() if key != "datum_addressing_abstraction_space"
+        }
+    rows = tuple(
+        AuthoritativeDatumDocumentRow(datum_address=datum_address, raw=raw)
+        for datum_address, raw in row_source.items()
+    )
+    return rows, metadata
+
+
+def _read_document_rows_and_metadata(path: Path) -> tuple[tuple[AuthoritativeDatumDocumentRow, ...], dict[str, Any]]:
+    payload = _read_json_object(path)
+    return _split_document_payload(payload)
+
+
+def _load_anchor_document(path: Path | None) -> tuple[str, str, dict[str, Any], tuple[AuthoritativeDatumDocumentRow, ...], list[str]]:
+    if path is None:
+        return "", "", {}, (), []
+    warnings: list[str] = []
+    try:
+        rows, metadata = _read_document_rows_and_metadata(path)
+    except FileNotFoundError:
+        warnings.append(f"Supporting sandbox anchor document is missing at {path}.")
+        return path.name, str(path), {}, (), warnings
+    except json.JSONDecodeError:
+        warnings.append(f"Supporting sandbox anchor document is not valid JSON at {path}.")
+        return path.name, str(path), {}, (), warnings
+    except ValueError:
+        warnings.append(f"Supporting sandbox anchor document must be a JSON object at {path}.")
+        return path.name, str(path), {}, (), warnings
+    return path.name, str(path), metadata, rows, warnings
+
+
+def _find_tool_anchor_file(tool_dir: Path) -> Path | None:
+    candidates = sorted(tool_dir.glob("tool*.json"))
+    return candidates[0] if candidates else None
+
+
+def _document_id_for_path(*, source_kind: str, tool_id: str, path: Path) -> str:
+    if source_kind == "system_anthology":
+        return "system:anthology"
+    return f"sandbox:{tool_id}:{path.name}"
+
+
 def _extract_row(resource_id: str, raw: Any) -> SystemDatumResourceRow:
     subject_ref = resource_id
     relation = ""
@@ -78,9 +131,14 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
         self._data_dir = Path(data_dir)
         self._public_dir = None if public_dir is None else Path(public_dir)
 
-    def read_system_resource_workbench(self, request: SystemDatumStoreRequest) -> SystemDatumWorkbenchResult:
+    def read_authoritative_datum_documents(
+        self,
+        request: AuthoritativeDatumDocumentRequest,
+    ) -> AuthoritativeDatumDocumentCatalogResult:
         normalized_request = (
-            request if isinstance(request, SystemDatumStoreRequest) else SystemDatumStoreRequest.from_dict(request)
+            request
+            if isinstance(request, AuthoritativeDatumDocumentRequest)
+            else AuthoritativeDatumDocumentRequest.from_dict(request)
         )
         anthology_file = self._data_dir / "system" / "anthology.json"
         system_source_files = sorted((self._data_dir / "system" / "sources").glob("*.json"))
@@ -88,24 +146,88 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
         legacy_root_files = [self._data_dir / filename for filename in LEGACY_ROOT_DATUM_FILENAMES]
         present_legacy_root_files = [path for path in legacy_root_files if path.exists()]
 
-        rows: list[SystemDatumResourceRow] = []
+        documents: list[AuthoritativeDatumDocument] = []
         warnings: list[str] = []
-        canonical_source = "missing"
+        anthology_status = "missing"
 
         if not anthology_file.exists() or not anthology_file.is_file():
             warnings.append("Canonical system anthology is missing at data/system/anthology.json.")
         else:
             try:
-                payload = json.loads(anthology_file.read_text(encoding="utf-8"))
-                if not isinstance(payload, dict):
-                    canonical_source = "invalid"
-                    warnings.append("Canonical system anthology must be a JSON object.")
-                else:
-                    rows = [_extract_row(key, payload[key]) for key in sorted(payload.keys())]
-                    canonical_source = "loaded"
+                rows, metadata = _read_document_rows_and_metadata(anthology_file)
+                documents.append(
+                    AuthoritativeDatumDocument(
+                        document_id=_document_id_for_path(
+                            source_kind="system_anthology",
+                            tool_id="",
+                            path=anthology_file,
+                        ),
+                        source_kind="system_anthology",
+                        document_name=anthology_file.name,
+                        relative_path=str(anthology_file.relative_to(self._data_dir)),
+                        document_metadata=metadata,
+                        rows=rows,
+                    )
+                )
+                anthology_status = "loaded"
             except json.JSONDecodeError:
-                canonical_source = "invalid"
+                anthology_status = "invalid"
                 warnings.append("Canonical system anthology is not valid JSON.")
+            except ValueError:
+                anthology_status = "invalid"
+                warnings.append("Canonical system anthology must be a JSON object.")
+
+        sandbox_source_files: list[Path] = []
+        sandbox_root = self._data_dir / "sandbox"
+        if sandbox_root.exists() and sandbox_root.is_dir():
+            for tool_dir in sorted(path for path in sandbox_root.iterdir() if path.is_dir()):
+                source_dir = tool_dir / "sources"
+                if not source_dir.exists() or not source_dir.is_dir():
+                    continue
+                anchor_file = _find_tool_anchor_file(tool_dir)
+                for source_path in sorted(source_dir.glob("*.json")):
+                    sandbox_source_files.append(source_path)
+                    source_warnings: list[str] = []
+                    try:
+                        rows, metadata = _read_document_rows_and_metadata(source_path)
+                    except json.JSONDecodeError:
+                        rows = ()
+                        metadata = {}
+                        source_warnings.append(f"Sandbox source document is not valid JSON at {source_path}.")
+                    except ValueError:
+                        rows = ()
+                        metadata = {}
+                        source_warnings.append(f"Sandbox source document must be a JSON object at {source_path}.")
+
+                    (
+                        anchor_document_name,
+                        anchor_document_path,
+                        anchor_document_metadata,
+                        anchor_rows,
+                        anchor_warnings,
+                    ) = _load_anchor_document(anchor_file)
+                    source_warnings.extend(anchor_warnings)
+
+                    documents.append(
+                        AuthoritativeDatumDocument(
+                            document_id=_document_id_for_path(
+                                source_kind="sandbox_source",
+                                tool_id=tool_dir.name,
+                                path=source_path,
+                            ),
+                            source_kind="sandbox_source",
+                            document_name=source_path.name,
+                            relative_path=str(source_path.relative_to(self._data_dir)),
+                            tool_id=tool_dir.name,
+                            document_metadata=metadata,
+                            anchor_document_name=anchor_document_name,
+                            anchor_document_path=anchor_document_path,
+                            anchor_document_metadata=anchor_document_metadata,
+                            anchor_rows=anchor_rows,
+                            rows=rows,
+                            warnings=tuple(source_warnings),
+                        )
+                    )
 
         if not system_source_files:
             warnings.append("No canonical system source JSON files were found under data/system/sources.")
@@ -114,24 +236,71 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
         if present_legacy_root_files:
             warnings.append("Legacy root datum files exist but were ignored by the V2 native datum adapter.")
 
-        return SystemDatumWorkbenchResult(
+        derived_materialization = "present"
+        if not system_source_files and not payload_cache_files:
+            derived_materialization = "missing"
+        elif not system_source_files or not payload_cache_files:
+            derived_materialization = "partial"
+
+        authoritative_catalog = "loaded" if documents else "missing"
+
+        return AuthoritativeDatumDocumentCatalogResult(
             tenant_id=normalized_request.tenant_id,
-            rows=tuple(rows),
+            documents=tuple(documents),
             source_files={
                 "anthology": str(anthology_file),
+                "sandbox_source_documents": [str(path) for path in sandbox_source_files],
                 "system_sources": [str(path) for path in system_source_files],
                 "payload_cache": [str(path) for path in payload_cache_files],
                 "legacy_root_candidates": [str(path) for path in legacy_root_files],
                 "ignored_legacy_root_files": [str(path) for path in present_legacy_root_files],
             },
-            materialization_status={
-                "canonical_source": canonical_source,
-                "legacy_root_fallback": "blocked",
+            readiness_status={
+                "authoritative_catalog": authoritative_catalog,
+                "anthology_status": anthology_status,
+                "sandbox_source_document_count": len(sandbox_source_files),
                 "system_source_count": len(system_source_files),
                 "payload_cache_count": len(payload_cache_files),
+                "derived_materialization": derived_materialization,
+                "legacy_root_fallback": "blocked",
                 "legacy_root_conflict_count": len(present_legacy_root_files),
             },
             warnings=tuple(warnings),
+        )
+
+    def read_system_resource_workbench(self, request: SystemDatumStoreRequest) -> SystemDatumWorkbenchResult:
+        normalized_request = (
+            request if isinstance(request, SystemDatumStoreRequest) else SystemDatumStoreRequest.from_dict(request)
+        )
+        catalog = self.read_authoritative_datum_documents(
+            AuthoritativeDatumDocumentRequest(tenant_id=normalized_request.tenant_id)
+        )
+        system_document = next(
+            (document for document in catalog.documents if document.source_kind == "system_anthology"),
+            None,
+        )
+        rows: list[SystemDatumResourceRow] = []
+        if system_document is not None:
+            rows = [
+                _extract_row(row.datum_address, row.raw)
+                for row in sorted(system_document.rows, key=lambda item: item.datum_address)
+            ]
+
+        return SystemDatumWorkbenchResult(
+            tenant_id=normalized_request.tenant_id,
+            rows=tuple(rows),
+            source_files=catalog.source_files,
+            materialization_status={
+                "canonical_source": catalog.readiness_status.get("anthology_status"),
+                "authoritative_catalog": catalog.readiness_status.get("authoritative_catalog"),
+                "sandbox_source_document_count": catalog.readiness_status.get("sandbox_source_document_count"),
+                "derived_materialization": catalog.readiness_status.get("derived_materialization"),
+                "legacy_root_fallback": catalog.readiness_status.get("legacy_root_fallback"),
+                "system_source_count": catalog.readiness_status.get("system_source_count"),
+                "payload_cache_count": catalog.readiness_status.get("payload_cache_count"),
+                "legacy_root_conflict_count": catalog.readiness_status.get("legacy_root_conflict_count"),
+            },
+            warnings=tuple(catalog.warnings),
         )
 
     def read_publication_tenant_summary(
