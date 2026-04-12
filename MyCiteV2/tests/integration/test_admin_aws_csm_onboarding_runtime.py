@@ -19,6 +19,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_AWS_CSM_ONBOARDING_SURFACE_SCHEMA,
     ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    build_admin_tool_exposure_policy,
 )
 from MyCiteV2.instances._shared.runtime.admin_runtime import run_admin_shell_entry
 from MyCiteV2.packages.ports.aws_csm_onboarding import AwsCsmOnboardingCloudPort
@@ -81,7 +82,7 @@ class _FakeOnboardingCloud(AwsCsmOnboardingCloudPort):
 class AdminAwsCsmOnboardingRuntimeIntegrationTests(unittest.TestCase):
     def test_registry_includes_onboarding_tool_for_trusted_tenant(self) -> None:
         entries = list(build_admin_tool_registry_entries())
-        self.assertEqual(len(entries), 4)
+        self.assertEqual(len(entries), 5)
         onboarding = [e for e in entries if e.tool_id == "aws_csm_onboarding"][0]
         self.assertEqual(onboarding.slice_id, AWS_CSM_ONBOARDING_SLICE_ID)
         self.assertEqual(onboarding.entrypoint_id, AWS_CSM_ONBOARDING_ENTRYPOINT_ID)
@@ -101,6 +102,10 @@ class AdminAwsCsmOnboardingRuntimeIntegrationTests(unittest.TestCase):
             profile_file = Path(temp_dir) / "aws_live.json"
             audit_file = Path(temp_dir) / "audit.ndjson"
             profile_file.write_text(json.dumps(_live_profile_tenant_a()) + "\n", encoding="utf-8")
+            tool_exposure_policy = build_admin_tool_exposure_policy(
+                {"aws_csm_onboarding": {"enabled": True}},
+                known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "maps"],
+            )
 
             registry_result = run_admin_shell_entry(
                 {
@@ -123,6 +128,7 @@ class AdminAwsCsmOnboardingRuntimeIntegrationTests(unittest.TestCase):
                 },
                 aws_status_file=profile_file,
                 audit_storage_file=audit_file,
+                tool_exposure_policy=tool_exposure_policy,
             )
 
             self.assertEqual(onboarding_entry["entrypoint_id"], AWS_CSM_ONBOARDING_ENTRYPOINT_ID)

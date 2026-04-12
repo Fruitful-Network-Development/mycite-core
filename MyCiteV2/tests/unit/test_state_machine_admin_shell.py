@@ -15,6 +15,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND2_AWS_NAME,
     ADMIN_BAND3_AWS_SANDBOX_NAME,
     ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
+    ADMIN_BAND5_MAPS_NAME,
     ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
     ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
     ADMIN_HOME_STATUS_SLICE_ID,
@@ -29,6 +30,8 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_SLICE_ID,
+    MAPS_READ_ONLY_ENTRYPOINT_ID,
+    MAPS_READ_ONLY_SLICE_ID,
     AdminShellRequest,
     AdminTenantScope,
     build_admin_surface_catalog,
@@ -225,6 +228,26 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "default_posture": "deny-by-default",
                     "launchable": True,
                 },
+                {
+                    "schema": ADMIN_TOOL_DESCRIPTOR_SCHEMA,
+                    "tool_id": "maps",
+                    "label": "Maps",
+                    "slice_id": MAPS_READ_ONLY_SLICE_ID,
+                    "entrypoint_id": MAPS_READ_ONLY_ENTRYPOINT_ID,
+                    "admin_band": ADMIN_BAND5_MAPS_NAME,
+                    "exposure_status": "implemented_internal_maps_read_only",
+                    "read_write_posture": "read-only",
+                    "surface_pattern": "read-only",
+                    "status_summary": "launchable_maps_read_only",
+                    "audience": "internal-admin",
+                    "internal_only_reason": "",
+                    "audit_required": False,
+                    "read_after_write_required": False,
+                    "discovery_mode": "catalog-driven",
+                    "launch_contract": "shell-owned-registry",
+                    "default_posture": "deny-by-default",
+                    "launchable": True,
+                },
             ],
         )
         self.assertNotIn("newsletter-admin", json.dumps(tool_entries, sort_keys=True))
@@ -275,6 +298,14 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         )
         self.assertTrue(onboarding_allowed.allowed)
         self.assertEqual(onboarding_allowed.entrypoint_id, AWS_CSM_ONBOARDING_ENTRYPOINT_ID)
+
+        maps_allowed = resolve_admin_tool_launch(
+            slice_id=MAPS_READ_ONLY_SLICE_ID,
+            audience="internal",
+            expected_entrypoint_id=MAPS_READ_ONLY_ENTRYPOINT_ID,
+        )
+        self.assertTrue(maps_allowed.allowed)
+        self.assertEqual(maps_allowed.entrypoint_id, MAPS_READ_ONLY_ENTRYPOINT_ID)
 
     def test_request_contract_rejects_invalid_schema_and_audience(self) -> None:
         with self.assertRaisesRegex(ValueError, "admin_shell_request.schema"):

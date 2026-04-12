@@ -33,6 +33,15 @@ as slice-definition history.
 | `admin_band3.aws_csm_sandbox_surface` | record-only | [../../records/T-008-implementation.md](../../records/T-008-implementation.md) |
 | `admin_band4.aws_csm_onboarding_surface` | record-only | [../../records/T-010-implementation.md](../../records/T-010-implementation.md) |
 
+## Implemented V2.3 admin tool surfaces
+
+These are implemented through the V2.3 tool packet and current repo/runtime
+truth, not through the older slice-registry sequence above.
+
+| Surface | Current use | Implementation truth |
+| --- | --- | --- |
+| `admin_band5.maps_read_only_surface` | implemented FND-first admin tool | [../v2.3-tool_surface_packet/maps.md](../v2.3-tool_surface_packet/maps.md) |
+
 ## Record-only cutover plans
 
 These cutover documents describe completed bridge-era or native-cutover work.
@@ -67,8 +76,19 @@ closure.
 | [slice_registry/band1_operational_status_surface.md](slice_registry/band1_operational_status_surface.md) | `second active slice` | Chosen as the next read-only visibility slice after the home surface. |
 | [slice_registry/band1_audit_activity_visibility.md](slice_registry/band1_audit_activity_visibility.md) | `third active slice` | Still sequenced after the operational status surface rather than treated as an equal alternate path. |
 | [slice_registry/band2_profile_basics_write_surface.md](slice_registry/band2_profile_basics_write_surface.md) | `fourth active slice` | Writable follow-on only after the three Band 1 read-only slices are stable. |
-| [admin_first/maps_follow_on_surface.md](admin_first/maps_follow_on_surface.md) | `after Band 1 and Band 2` | Future tool planning still stays subordinate to the reopened general rollout order. |
-| [admin_first/agro_erp_follow_on_surface.md](admin_first/agro_erp_follow_on_surface.md) | `after Maps` | Still follows Maps and remains deferred. |
+| [admin_first/agro_erp_follow_on_surface.md](admin_first/agro_erp_follow_on_surface.md) | `after implemented Maps baseline` | Still follows the Maps carry-forward and remains deferred. |
+
+## Supporting V2.3 tool packet
+
+These documents do not replace the active slice queue above. They exist to make
+tool follow-on work decision-complete before later tool implementation resumes.
+
+| Surface | Current use | Notes |
+| --- | --- | --- |
+| [../v2.3-tool_exposure_and_admin_activity_bar_alignment.md](../v2.3-tool_exposure_and_admin_activity_bar_alignment.md) | active foundational plan | Defines the proposed V2 `tool_exposure` gate and admin activity-bar contract. |
+| [../v2.3-tool_surface_packet/README.md](../v2.3-tool_surface_packet/README.md) | active per-tool planning packet | Index for one plan per current or legacy tool surface. |
+| [../v2.3-tool_surface_packet/maps.md](../v2.3-tool_surface_packet/maps.md) | current implementation truth | Documents the implemented admin Maps read-only slice and its FND-first rollout. |
+| [../../audits/v2_tool_surface_and_legacy_tool_audit_2026-04-12.md](../../audits/v2_tool_surface_and_legacy_tool_audit_2026-04-12.md) | supporting audit | Reconciles repo truth, live admin-shell truth, and legacy evidence. |
 
 ## Reading order for new work
 
@@ -77,8 +97,10 @@ closure.
 3. Read [portal_rollout_bands.md](portal_rollout_bands.md).
 4. Read [frozen_decisions_current_band.md](frozen_decisions_current_band.md).
 5. Read [post_aws_tool_platform/README.md](post_aws_tool_platform/README.md) if the work changes shared post-AWS platform behavior.
-6. Read the next active slice file in the sequence above.
-7. Read the matching completion record only when you need historical implementation context.
+6. Read the V2.3 tool packet documents when the work is about tool exposure,
+   tool carry-forward, or legacy-tool classification.
+7. Read the next active slice file in the sequence above.
+8. Read the matching completion record only when you need historical implementation context.
 
 ## Archive rule
 

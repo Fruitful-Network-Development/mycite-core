@@ -54,8 +54,10 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
     ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA,
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
     AWS_CSM_ONBOARDING_RECOVERY_REFERENCE,
     AWS_NARROW_WRITE_RECOVERY_REFERENCE,
+    admin_tool_exposure_config_enabled,
     build_admin_runtime_envelope,
     build_admin_runtime_error,
 )
@@ -134,11 +136,58 @@ def _normalize_narrow_write_request(
     }
 
 
+def _tool_not_exposed_shell_state(
+    launch_decision: Any,
+    *,
+    message: str,
+) -> dict[str, Any]:
+    shell_state = dict(launch_decision.to_dict())
+    shell_state["allowed"] = False
+    shell_state["selection_status"] = "gated"
+    shell_state["reason_code"] = ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE
+    shell_state["reason_message"] = message
+    return shell_state
+
+
+def _config_gate_envelope(
+    *,
+    tool_exposure_policy: dict[str, Any] | None,
+    tool_id: str,
+    admin_band: str,
+    exposure_status: str,
+    tenant_scope: AdminTenantScope,
+    requested_slice_id: str,
+    slice_id: str,
+    entrypoint_id: str,
+    read_write_posture: str,
+    launch_decision: Any,
+) -> dict[str, Any] | None:
+    if tool_exposure_policy is None:
+        return None
+    if admin_tool_exposure_config_enabled(tool_exposure_policy, tool_id=tool_id):
+        return None
+    message = "Requested admin tool is disabled by instance tool_exposure configuration."
+    return build_admin_runtime_envelope(
+        admin_band=admin_band,
+        exposure_status=exposure_status,
+        tenant_scope=tenant_scope.to_dict(),
+        requested_slice_id=requested_slice_id,
+        slice_id=slice_id,
+        entrypoint_id=entrypoint_id,
+        read_write_posture=read_write_posture,
+        shell_state=_tool_not_exposed_shell_state(launch_decision, message=message),
+        surface_payload=None,
+        warnings=[message],
+        error=build_admin_runtime_error(code=ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE, message=message),
+    )
+
+
 def run_admin_aws_read_only(
     request_payload: dict[str, Any] | None = None,
     *,
     aws_status_file: str | Path | None = None,
     aws_status_port: AwsReadOnlyStatusPort | None = None,
+    tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     tenant_scope = _normalize_request(request_payload)
     launch_decision = resolve_admin_tool_launch(
@@ -162,6 +211,21 @@ def run_admin_aws_read_only(
             warnings=[message] if message else [],
             error=build_admin_runtime_error(code=launch_decision.reason_code, message=message),
         )
+
+    gated = _config_gate_envelope(
+        tool_exposure_policy=tool_exposure_policy,
+        tool_id="aws",
+        admin_band=ADMIN_BAND1_AWS_NAME,
+        exposure_status=ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
+        tenant_scope=tenant_scope,
+        requested_slice_id=AWS_READ_ONLY_SLICE_ID,
+        slice_id=AWS_READ_ONLY_SLICE_ID,
+        entrypoint_id=AWS_READ_ONLY_ENTRYPOINT_ID,
+        read_write_posture="read-only",
+        launch_decision=launch_decision,
+    )
+    if gated is not None:
+        return gated
 
     if aws_status_port is None and aws_status_file is None:
         message = "AWS read-only status source is not configured."
@@ -225,6 +289,7 @@ def run_admin_aws_csm_sandbox_read_only(
     *,
     aws_sandbox_status_file: str | Path | None = None,
     aws_status_port: AwsReadOnlyStatusPort | None = None,
+    tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Read-only AWS operational visibility using a **sandbox** profile path (internal audience only)."""
     tenant_scope = _normalize_request(request_payload)
@@ -275,6 +340,21 @@ def run_admin_aws_csm_sandbox_read_only(
             warnings=[message] if message else [],
             error=build_admin_runtime_error(code=launch_decision.reason_code, message=message),
         )
+
+    gated = _config_gate_envelope(
+        tool_exposure_policy=tool_exposure_policy,
+        tool_id="aws_csm_sandbox",
+        admin_band=ADMIN_BAND3_AWS_SANDBOX_NAME,
+        exposure_status=ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY,
+        tenant_scope=tenant_scope,
+        requested_slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+        slice_id=AWS_CSM_SANDBOX_SLICE_ID,
+        entrypoint_id=AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+        read_write_posture="read-only",
+        launch_decision=launch_decision,
+    )
+    if gated is not None:
+        return gated
 
     if aws_status_port is None and aws_sandbox_status_file is None:
         message = "AWS-CSM sandbox status file is not configured."
@@ -359,6 +439,7 @@ def run_admin_aws_narrow_write(
     aws_status_file: str | Path | None = None,
     audit_storage_file: str | Path | None = None,
     aws_narrow_write_port: AwsNarrowWritePort | None = None,
+    tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     tenant_scope, write_request = _normalize_narrow_write_request(request_payload)
     launch_decision = resolve_admin_tool_launch(
@@ -382,6 +463,21 @@ def run_admin_aws_narrow_write(
             warnings=[message] if message else [],
             error=build_admin_runtime_error(code=launch_decision.reason_code, message=message),
         )
+
+    gated = _config_gate_envelope(
+        tool_exposure_policy=tool_exposure_policy,
+        tool_id="aws_narrow_write",
+        admin_band=ADMIN_BAND2_AWS_NAME,
+        exposure_status=ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
+        tenant_scope=tenant_scope,
+        requested_slice_id=AWS_NARROW_WRITE_SLICE_ID,
+        slice_id=AWS_NARROW_WRITE_SLICE_ID,
+        entrypoint_id=AWS_NARROW_WRITE_ENTRYPOINT_ID,
+        read_write_posture="write",
+        launch_decision=launch_decision,
+    )
+    if gated is not None:
+        return gated
 
     if aws_narrow_write_port is None and aws_status_file is None:
         message = "AWS narrow write requires an existing status snapshot file."
@@ -478,6 +574,7 @@ def run_admin_aws_csm_onboarding(
     audit_storage_file: str | Path | None = None,
     onboarding_profile_store: AwsCsmOnboardingProfileStorePort | None = None,
     onboarding_cloud_port: AwsCsmOnboardingCloudPort | None = None,
+    tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     tenant_scope, full_request = _normalize_csm_onboarding_request(request_payload)
     launch_decision = resolve_admin_tool_launch(
@@ -501,6 +598,21 @@ def run_admin_aws_csm_onboarding(
             warnings=[message] if message else [],
             error=build_admin_runtime_error(code=launch_decision.reason_code, message=message),
         )
+
+    gated = _config_gate_envelope(
+        tool_exposure_policy=tool_exposure_policy,
+        tool_id="aws_csm_onboarding",
+        admin_band=ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
+        exposure_status=ADMIN_EXPOSURE_TRUSTED_TENANT_CSM_ONBOARDING,
+        tenant_scope=tenant_scope,
+        requested_slice_id=AWS_CSM_ONBOARDING_SLICE_ID,
+        slice_id=AWS_CSM_ONBOARDING_SLICE_ID,
+        entrypoint_id=AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
+        read_write_posture="write",
+        launch_decision=launch_decision,
+    )
+    if gated is not None:
+        return gated
 
     if onboarding_profile_store is None and aws_status_file is None:
         message = "AWS CSM onboarding requires an existing live profile file."

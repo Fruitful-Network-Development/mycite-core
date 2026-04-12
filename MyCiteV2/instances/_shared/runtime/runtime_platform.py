@@ -9,6 +9,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND2_AWS_NAME,
     ADMIN_BAND3_AWS_SANDBOX_NAME,
     ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
+    ADMIN_BAND5_MAPS_NAME,
     ADMIN_ENTRYPOINT_ID,
     ADMIN_EXPOSURE_INTERNAL_ONLY,
     ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY,
@@ -23,6 +24,8 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_CSM_ONBOARDING_SLICE_ID,
     AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
     AWS_CSM_SANDBOX_SLICE_ID,
+    MAPS_READ_ONLY_ENTRYPOINT_ID,
+    MAPS_READ_ONLY_SLICE_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
@@ -38,12 +41,15 @@ ADMIN_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.admin.runtime.envelope.v1"
 ADMIN_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA = "mycite.v2.admin.runtime_entrypoint_descriptor.v1"
 ADMIN_HOME_STATUS_SURFACE_SCHEMA = "mycite.v2.admin.home_status.surface.v1"
 ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA = "mycite.v2.admin.tool_registry.surface.v1"
+ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE = "tool_not_exposed"
 ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.aws.read_only.request.v1"
 ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA = "mycite.v2.admin.aws.read_only.surface.v1"
 ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA = "mycite.v2.admin.aws.narrow_write.request.v1"
 ADMIN_AWS_NARROW_WRITE_SURFACE_SCHEMA = "mycite.v2.admin.aws.narrow_write.surface.v1"
 ADMIN_AWS_CSM_ONBOARDING_REQUEST_SCHEMA = "mycite.v2.admin.aws.csm_onboarding.request.v1"
 ADMIN_AWS_CSM_ONBOARDING_SURFACE_SCHEMA = "mycite.v2.admin.aws.csm_onboarding.surface.v1"
+ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.maps.read_only.request.v1"
+ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA = "mycite.v2.admin.maps.read_only.surface.v1"
 TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.portal.runtime.envelope.v1"
 TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA = "mycite.v2.portal.runtime_entrypoint_descriptor.v1"
 TRUSTED_TENANT_HOME_SURFACE_SCHEMA = "mycite.v2.portal.home_tenant_status.surface.v1"
@@ -110,6 +116,100 @@ def _as_text(value: object) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _normalize_known_tool_ids(known_tool_ids: list[str] | tuple[str, ...]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in known_tool_ids:
+        tool_id = _as_text(value)
+        if not tool_id or tool_id in seen:
+            continue
+        normalized.append(tool_id)
+        seen.add(tool_id)
+    return normalized
+
+
+def build_allow_all_admin_tool_exposure_policy(
+    *,
+    known_tool_ids: list[str] | tuple[str, ...],
+) -> dict[str, Any]:
+    normalized_known = _normalize_known_tool_ids(known_tool_ids)
+    return {
+        "known_tool_ids": list(normalized_known),
+        "configured_tool_ids": list(normalized_known),
+        "enabled_tool_ids": list(normalized_known),
+        "disabled_tool_ids": [],
+        "missing_tool_ids": [],
+        "unknown_tool_ids": [],
+        "invalid_tool_ids": [],
+        "configured_tools": {tool_id: True for tool_id in normalized_known},
+        "policy_source": "runtime_default_allow_all",
+    }
+
+
+def build_admin_tool_exposure_policy(
+    raw_policy: object,
+    *,
+    known_tool_ids: list[str] | tuple[str, ...],
+) -> dict[str, Any]:
+    normalized_known = _normalize_known_tool_ids(known_tool_ids)
+    known_set = set(normalized_known)
+    configured_tools: dict[str, bool] = {}
+    unknown_tool_ids: list[str] = []
+    invalid_tool_ids: list[str] = []
+
+    if not isinstance(raw_policy, dict):
+        raw_policy = {}
+
+    for raw_tool_id, raw_entry in raw_policy.items():
+        tool_id = _as_text(raw_tool_id)
+        if not tool_id:
+            continue
+        if tool_id not in known_set:
+            unknown_tool_ids.append(tool_id)
+            continue
+        enabled_value: object | None
+        if isinstance(raw_entry, dict):
+            enabled_value = raw_entry.get("enabled")
+        elif isinstance(raw_entry, bool):
+            enabled_value = raw_entry
+        else:
+            enabled_value = None
+        if not isinstance(enabled_value, bool):
+            invalid_tool_ids.append(tool_id)
+            continue
+        configured_tools[tool_id] = enabled_value
+
+    configured_tool_ids = [tool_id for tool_id in normalized_known if tool_id in configured_tools]
+    enabled_tool_ids = [tool_id for tool_id in normalized_known if configured_tools.get(tool_id) is True]
+    missing_tool_ids = [tool_id for tool_id in normalized_known if tool_id not in configured_tools]
+    disabled_tool_ids = [tool_id for tool_id in normalized_known if configured_tools.get(tool_id) is not True]
+
+    return {
+        "known_tool_ids": list(normalized_known),
+        "configured_tool_ids": list(configured_tool_ids),
+        "enabled_tool_ids": list(enabled_tool_ids),
+        "disabled_tool_ids": list(disabled_tool_ids),
+        "missing_tool_ids": list(missing_tool_ids),
+        "unknown_tool_ids": list(unknown_tool_ids),
+        "invalid_tool_ids": list(invalid_tool_ids),
+        "configured_tools": dict(configured_tools),
+        "policy_source": "private_config_json",
+    }
+
+
+def admin_tool_exposure_config_enabled(
+    tool_exposure_policy: dict[str, Any] | None,
+    *,
+    tool_id: str,
+) -> bool:
+    if tool_exposure_policy is None:
+        return True
+    configured_tools = tool_exposure_policy.get("configured_tools")
+    if not isinstance(configured_tools, dict):
+        return False
+    return configured_tools.get(_as_text(tool_id)) is True
 
 
 @dataclass(frozen=True)
@@ -270,6 +370,18 @@ def build_admin_runtime_entrypoint_catalog() -> tuple[AdminRuntimeEntrypointDesc
             surface_pattern=ADMIN_TOOL_SURFACE_BOUNDED_WRITE,
             surface_schema=ADMIN_AWS_CSM_ONBOARDING_SURFACE_SCHEMA,
             required_configuration=("aws_status_file", "audit_storage_file"),
+        ),
+        AdminRuntimeEntrypointDescriptor(
+            entrypoint_id=MAPS_READ_ONLY_ENTRYPOINT_ID,
+            callable_path="MyCiteV2.instances._shared.runtime.admin_maps_runtime.run_admin_maps_read_only",
+            slice_id=MAPS_READ_ONLY_SLICE_ID,
+            admin_band=ADMIN_BAND5_MAPS_NAME,
+            exposure_status=ADMIN_EXPOSURE_INTERNAL_ONLY,
+            read_write_posture="read-only",
+            launch_contract=ADMIN_TOOL_LAUNCH_CONTRACT,
+            surface_pattern=ADMIN_TOOL_SURFACE_READ_ONLY,
+            surface_schema=ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA,
+            required_configuration=("data_dir",),
         ),
     )
 

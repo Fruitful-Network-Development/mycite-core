@@ -25,6 +25,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_SLICE_ID,
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
+    MAPS_READ_ONLY_SLICE_ID,
     AdminShellChrome,
     AdminShellRequest,
     build_admin_surface_catalog,
@@ -39,11 +40,20 @@ from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
     run_admin_aws_csm_sandbox_read_only,
     run_admin_aws_read_only,
 )
+from MyCiteV2.instances._shared.runtime.admin_maps_runtime import (
+    build_admin_maps_inspector,
+    build_admin_maps_surface_payload,
+    build_admin_maps_workbench,
+)
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_AWS_CSM_ONBOARDING_REQUEST_SCHEMA,
     ADMIN_HOME_STATUS_SURFACE_SCHEMA,
+    ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA,
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
     ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA,
+    admin_tool_exposure_config_enabled,
+    build_allow_all_admin_tool_exposure_policy,
     build_admin_runtime_envelope,
 )
 
@@ -90,16 +100,69 @@ def _build_audit_health(storage_file: str | Path | None) -> dict[str, str]:
     }
 
 
+def _resolved_tool_exposure_policy(tool_exposure_policy: dict[str, Any] | None) -> dict[str, Any]:
+    if tool_exposure_policy is not None:
+        return tool_exposure_policy
+    return build_allow_all_admin_tool_exposure_policy(
+        known_tool_ids=[entry.tool_id for entry in build_admin_tool_registry_entries()]
+    )
+
+
+def _tool_exposure_summary(tool_exposure_policy: dict[str, Any] | None) -> dict[str, Any]:
+    policy = _resolved_tool_exposure_policy(tool_exposure_policy)
+    return {
+        "policy_source": _as_text(policy.get("policy_source")) or "runtime_default_allow_all",
+        "configured_tool_ids": list(policy.get("configured_tool_ids") or []),
+        "enabled_tool_ids": list(policy.get("enabled_tool_ids") or []),
+        "disabled_tool_ids": list(policy.get("disabled_tool_ids") or []),
+        "missing_tool_ids": list(policy.get("missing_tool_ids") or []),
+        "unknown_tool_ids": list(policy.get("unknown_tool_ids") or []),
+        "invalid_tool_ids": list(policy.get("invalid_tool_ids") or []),
+        "configured_tools": dict(policy.get("configured_tools") or {}),
+    }
+
+
+def _runtime_tool_entries(
+    *,
+    tool_exposure_policy: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    policy = _resolved_tool_exposure_policy(tool_exposure_policy)
+    rows: list[dict[str, Any]] = []
+    for entry in build_admin_tool_registry_entries():
+        config_enabled = admin_tool_exposure_config_enabled(policy, tool_id=entry.tool_id)
+        visible_in_activity_bar = bool(entry.launchable and config_enabled)
+        if not entry.launchable:
+            visibility_status = "shell_gated"
+        elif config_enabled:
+            visibility_status = "visible"
+        else:
+            visibility_status = "config_disabled"
+        row = entry.to_dict()
+        row["config_enabled"] = config_enabled
+        row["visibility_status"] = visibility_status
+        row["visible_in_activity_bar"] = visible_in_activity_bar
+        rows.append(row)
+    return rows
+
+
+def _tool_entry_by_slice_id(
+    *,
+    tool_exposure_policy: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    return {entry["slice_id"]: entry for entry in _runtime_tool_entries(tool_exposure_policy=tool_exposure_policy)}
+
+
 def _build_home_status_surface(
     *,
     audit_storage_file: str | Path | None,
+    tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     surface_catalog = [entry.to_dict() for entry in build_admin_surface_catalog()]
-    tool_entries = [entry.to_dict() for entry in build_admin_tool_registry_entries()]
-    launchable_tool_slice_ids = [entry["slice_id"] for entry in tool_entries if entry["launchable"]]
-    gated_tool_slice_ids = [entry["slice_id"] for entry in tool_entries if not entry["launchable"]]
-    available_tool_slices = [entry for entry in tool_entries if entry["launchable"]]
-    gated_tool_slices = [entry for entry in tool_entries if not entry["launchable"]]
+    tool_entries = _runtime_tool_entries(tool_exposure_policy=tool_exposure_policy)
+    launchable_tool_slice_ids = [entry["slice_id"] for entry in tool_entries if entry["visible_in_activity_bar"]]
+    gated_tool_slice_ids = [entry["slice_id"] for entry in tool_entries if not entry["visible_in_activity_bar"]]
+    available_tool_slices = [entry for entry in tool_entries if entry["visible_in_activity_bar"]]
+    gated_tool_slices = [entry for entry in tool_entries if not entry["visible_in_activity_bar"]]
 
     return {
         "schema": ADMIN_HOME_STATUS_SURFACE_SCHEMA,
@@ -114,6 +177,7 @@ def _build_home_status_surface(
             "registry_status": "deny-by-default",
             "provider_route_mode": "shell_only",
             "audit_log": _build_audit_health(audit_storage_file),
+            "tool_exposure": _tool_exposure_summary(tool_exposure_policy),
         },
         "readiness_summary": {
             "shell_entry": "ready",
@@ -121,20 +185,24 @@ def _build_home_status_surface(
             "tool_registry": "ready",
             "launchable_tool_slice_ids": launchable_tool_slice_ids,
             "gated_tool_slice_ids": gated_tool_slice_ids,
-            "next_tool_slice_id": "maps_after_aws" if AWS_NARROW_WRITE_SLICE_ID in launchable_tool_slice_ids else AWS_READ_ONLY_SLICE_ID,
+            "next_tool_slice_id": MAPS_READ_ONLY_SLICE_ID if MAPS_READ_ONLY_SLICE_ID in launchable_tool_slice_ids else AWS_READ_ONLY_SLICE_ID,
         },
         "follow_on_order": [
-            "maps_after_aws",
+            MAPS_READ_ONLY_SLICE_ID,
             "agro_erp_after_maps",
         ],
     }
 
 
-def _build_tool_registry_surface() -> dict[str, Any]:
+def _build_tool_registry_surface(
+    *,
+    tool_exposure_policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     surface_catalog = [entry.to_dict() for entry in build_admin_surface_catalog()]
-    tool_entries = [entry.to_dict() for entry in build_admin_tool_registry_entries()]
+    tool_entries = _runtime_tool_entries(tool_exposure_policy=tool_exposure_policy)
     launchable_tool_slice_ids = [entry["slice_id"] for entry in tool_entries if entry["launchable"]]
-    gated_tool_slice_ids = [entry["slice_id"] for entry in tool_entries if not entry["launchable"]]
+    visible_tool_slice_ids = [entry["slice_id"] for entry in tool_entries if entry["visible_in_activity_bar"]]
+    gated_tool_slice_ids = [entry["slice_id"] for entry in tool_entries if not entry["visible_in_activity_bar"]]
 
     return {
         "schema": ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA,
@@ -143,10 +211,12 @@ def _build_tool_registry_surface() -> dict[str, Any]:
         "default_posture": "deny-by-default",
         "launchable_admin_slice_ids": [entry["slice_id"] for entry in surface_catalog if entry["launchable"]],
         "launchable_tool_slice_ids": launchable_tool_slice_ids,
+        "visible_tool_slice_ids": visible_tool_slice_ids,
         "gated_tool_slice_ids": gated_tool_slice_ids,
         "tool_entries": tool_entries,
+        "tool_exposure": _tool_exposure_summary(tool_exposure_policy),
         "follow_on_constraints": {
-            "maps": "blocked_until_aws",
+            "maps": "implemented_read_only",
             "agro_erp": "blocked_until_maps",
         },
     }
@@ -156,10 +226,14 @@ def _select_band0_surface_payload(
     *,
     active_surface_id: str,
     audit_storage_file: str | Path | None,
+    tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if active_surface_id == ADMIN_TOOL_REGISTRY_SLICE_ID:
-        return _build_tool_registry_surface()
-    return _build_home_status_surface(audit_storage_file=audit_storage_file)
+        return _build_tool_registry_surface(tool_exposure_policy=tool_exposure_policy)
+    return _build_home_status_surface(
+        audit_storage_file=audit_storage_file,
+        tool_exposure_policy=tool_exposure_policy,
+    )
 
 
 def _live_aws_path(aws_status_file: str | Path | None) -> Path | None:
@@ -171,8 +245,18 @@ def _live_aws_path(aws_status_file: str | Path | None) -> Path | None:
     return None
 
 
-def _activity_items(*, portal_tenant_id: str, nav_active_slice_id: str) -> list[dict[str, Any]]:
+def _activity_items(
+    *,
+    portal_tenant_id: str,
+    nav_active_slice_id: str,
+    tool_exposure_policy: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     bodies = build_portal_activity_dispatch_bodies(portal_tenant_id=portal_tenant_id)
+    visible_tool_slice_ids = {
+        entry["slice_id"]
+        for entry in _runtime_tool_entries(tool_exposure_policy=tool_exposure_policy)
+        if entry["visible_in_activity_bar"]
+    }
     items: list[dict[str, Any]] = []
     for entry in build_admin_surface_catalog():
         if not entry.launchable or entry.slice_id not in bodies:
@@ -186,7 +270,7 @@ def _activity_items(*, portal_tenant_id: str, nav_active_slice_id: str) -> list[
             }
         )
     for tool in build_admin_tool_registry_entries():
-        if not tool.launchable or tool.slice_id not in bodies:
+        if not tool.launchable or tool.slice_id not in bodies or tool.slice_id not in visible_tool_slice_ids:
             continue
         items.append(
             {
@@ -209,8 +293,18 @@ def _activity_items(*, portal_tenant_id: str, nav_active_slice_id: str) -> list[
     return items
 
 
-def _control_panel_region(*, portal_tenant_id: str, nav_active_slice_id: str) -> dict[str, Any]:
+def _control_panel_region(
+    *,
+    portal_tenant_id: str,
+    nav_active_slice_id: str,
+    tool_exposure_policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     bodies = build_portal_activity_dispatch_bodies(portal_tenant_id=portal_tenant_id)
+    visible_tool_rows = {
+        entry["slice_id"]: entry
+        for entry in _runtime_tool_entries(tool_exposure_policy=tool_exposure_policy)
+        if entry["visible_in_activity_bar"]
+    }
     surf_entries: list[dict[str, Any]] = []
     for entry in build_admin_surface_catalog():
         if not entry.launchable:
@@ -225,6 +319,8 @@ def _control_panel_region(*, portal_tenant_id: str, nav_active_slice_id: str) ->
         )
     tool_entries: list[dict[str, Any]] = []
     for tool in build_admin_tool_registry_entries():
+        if tool.slice_id not in visible_tool_rows:
+            continue
         shell_request = bodies.get(tool.slice_id)
         entry: dict[str, Any] = {
             "label": tool.label,
@@ -269,11 +365,26 @@ def _workbench_error(*, title: str, message: str) -> dict[str, Any]:
 def _workbench_home(*, surface_payload: dict[str, Any] | None) -> dict[str, Any]:
     sp = surface_payload or {}
     audit = (sp.get("runtime_health") or {}).get("audit_log") or {}
+    tool_exposure = (sp.get("runtime_health") or {}).get("tool_exposure") or {}
     readiness = sp.get("readiness_summary") or {}
+    available_tools = sp.get("available_tool_slices") or []
+    gated_tools = sp.get("gated_tool_slices") or []
     blocks = [
         {"kind": "metric", "label": "Admin audit", "value": _as_text(audit.get("status")) or "—"},
         {"kind": "metric", "label": "Shell entry", "value": _as_text(readiness.get("shell_entry")) or "—"},
         {"kind": "metric", "label": "Tool registry", "value": _as_text(readiness.get("tool_registry")) or "—"},
+        {"kind": "metric", "label": "Visible tools", "value": str(len(available_tools))},
+        {"kind": "metric", "label": "Config gated tools", "value": str(len(gated_tools))},
+    ]
+    notes = [
+        {
+            "label": "Enabled tool ids",
+            "value": ", ".join(tool_exposure.get("enabled_tool_ids") or []) or "None",
+        },
+        {
+            "label": "Config gated tools",
+            "value": ", ".join(entry.get("label") or entry.get("tool_id") or "" for entry in gated_tools) or "None",
+        },
     ]
     return {
         "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
@@ -282,6 +393,7 @@ def _workbench_home(*, surface_payload: dict[str, Any] | None) -> dict[str, Any]
         "subtitle": "Band 0 internal shell projection",
         "visible": True,
         "blocks": blocks,
+        "notes": notes,
     }
 
 
@@ -292,7 +404,7 @@ def _workbench_registry(*, surface_payload: dict[str, Any] | None) -> dict[str, 
         "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "tool_registry",
         "title": "Tool registry",
-        "subtitle": "Shell-owned launch descriptors",
+        "subtitle": "Shell-owned launch descriptors with runtime visibility diagnostics",
         "visible": True,
         "tool_rows": rows,
     }
@@ -498,20 +610,28 @@ def _build_regions_and_surface(
     aws_status_file: str | Path | None,
     aws_csm_sandbox_status_file: str | Path | None,
     data_dir: str | Path | None,
+    tool_exposure_policy: dict[str, Any] | None,
     selection: Any,
     normalized_request: AdminShellRequest,
 ) -> tuple[dict[str, Any] | None, dict[str, Any], str, str]:
     """Returns surface_payload, shell_composition, page_title, page_subtitle."""
     if not selection_ok:
         surface_fallback: dict[str, Any] | None = None
-        if normalized_request.tenant_scope.audience == "internal" and selection.active_surface_id in {
+        if selection.active_surface_id == ADMIN_TOOL_REGISTRY_SLICE_ID:
+            surface_fallback = _select_band0_surface_payload(
+                active_surface_id=selection.active_surface_id,
+                audit_storage_file=audit_storage_file,
+                tool_exposure_policy=tool_exposure_policy,
+            )
+        elif normalized_request.tenant_scope.audience == "internal" and selection.active_surface_id in {
             ADMIN_HOME_STATUS_SLICE_ID,
-            ADMIN_TOOL_REGISTRY_SLICE_ID,
             AWS_CSM_SANDBOX_SLICE_ID,
+            MAPS_READ_ONLY_SLICE_ID,
         }:
             surface_fallback = _select_band0_surface_payload(
                 active_surface_id=selection.active_surface_id,
                 audit_storage_file=audit_storage_file,
+                tool_exposure_policy=tool_exposure_policy,
             )
         if surface_fallback and selection.active_surface_id == ADMIN_TOOL_REGISTRY_SLICE_ID:
             wb: dict[str, Any] = {
@@ -530,7 +650,7 @@ def _build_regions_and_surface(
             )
         comp_layout_surface = (
             selection.active_surface_id
-            if normalized_request.tenant_scope.audience == "internal"
+            if selection.active_surface_id in {ADMIN_HOME_STATUS_SLICE_ID, ADMIN_TOOL_REGISTRY_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID, MAPS_READ_ONLY_SLICE_ID}
             else ADMIN_HOME_STATUS_SLICE_ID
         )
         comp = build_shell_composition_payload(
@@ -538,8 +658,16 @@ def _build_regions_and_surface(
             portal_tenant_id=portal_tenant_id,
             page_title="MyCite",
             page_subtitle="Shell selection blocked",
-            activity_items=_activity_items(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
-            control_panel=_control_panel_region(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+            activity_items=_activity_items(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            control_panel=_control_panel_region(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
             workbench=wb,
             inspector=_inspector_empty(title="Overview"),
         )
@@ -548,29 +676,48 @@ def _build_regions_and_surface(
     active = selection.active_surface_id
 
     if active == ADMIN_HOME_STATUS_SLICE_ID:
-        sp = _build_home_status_surface(audit_storage_file=audit_storage_file)
+        sp = _build_home_status_surface(
+            audit_storage_file=audit_storage_file,
+            tool_exposure_policy=tool_exposure_policy,
+        )
         wb = _workbench_home(surface_payload=sp)
         comp = build_shell_composition_payload(
             active_surface_id=active,
             portal_tenant_id=portal_tenant_id,
             page_title="MyCite",
             page_subtitle="Admin home",
-            activity_items=_activity_items(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
-            control_panel=_control_panel_region(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+            activity_items=_activity_items(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            control_panel=_control_panel_region(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
             workbench=wb,
             inspector=_inspector_empty(),
         )
         return sp, comp, "MyCite", "Admin home"
 
     if active == ADMIN_TOOL_REGISTRY_SLICE_ID:
-        sp = _build_tool_registry_surface()
+        sp = _build_tool_registry_surface(tool_exposure_policy=tool_exposure_policy)
         comp = build_shell_composition_payload(
             active_surface_id=active,
             portal_tenant_id=portal_tenant_id,
             page_title="MyCite",
             page_subtitle="Tool registry",
-            activity_items=_activity_items(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
-            control_panel=_control_panel_region(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+            activity_items=_activity_items(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            control_panel=_control_panel_region(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
             workbench=_workbench_registry(surface_payload=sp),
             inspector=_inspector_empty(title="Registry"),
         )
@@ -585,8 +732,16 @@ def _build_regions_and_surface(
                 portal_tenant_id=portal_tenant_id,
                 page_title="MyCite",
                 page_subtitle="Datum",
-                activity_items=_activity_items(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
-                control_panel=_control_panel_region(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+                activity_items=_activity_items(
+                    portal_tenant_id=portal_tenant_id,
+                    nav_active_slice_id=nav_active_slice_id,
+                    tool_exposure_policy=tool_exposure_policy,
+                ),
+                control_panel=_control_panel_region(
+                    portal_tenant_id=portal_tenant_id,
+                    nav_active_slice_id=nav_active_slice_id,
+                    tool_exposure_policy=tool_exposure_policy,
+                ),
                 workbench=wb,
                 inspector=_inspector_empty(),
             )
@@ -599,8 +754,16 @@ def _build_regions_and_surface(
             portal_tenant_id=portal_tenant_id,
             page_title="MyCite",
             page_subtitle="Authoritative datum",
-            activity_items=_activity_items(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
-            control_panel=_control_panel_region(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+            activity_items=_activity_items(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            control_panel=_control_panel_region(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
             workbench=_workbench_datum(datum_dict=dd),
             inspector=_inspector_datum(datum_dict=dd),
         )
@@ -634,8 +797,16 @@ def _build_regions_and_surface(
             portal_tenant_id=portal_tenant_id,
             page_title="MyCite",
             page_subtitle="AWS read-only",
-            activity_items=_activity_items(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
-            control_panel=_control_panel_region(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+            activity_items=_activity_items(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            control_panel=_control_panel_region(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
             workbench=wb,
             inspector=ins,
         )
@@ -667,8 +838,16 @@ def _build_regions_and_surface(
             portal_tenant_id=portal_tenant_id,
             page_title="MyCite",
             page_subtitle="AWS narrow write",
-            activity_items=_activity_items(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
-            control_panel=_control_panel_region(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+            activity_items=_activity_items(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            control_panel=_control_panel_region(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
             workbench=wb,
             inspector=ins,
         )
@@ -703,8 +882,16 @@ def _build_regions_and_surface(
             portal_tenant_id=portal_tenant_id,
             page_title="MyCite",
             page_subtitle="AWS-CSM onboarding",
-            activity_items=_activity_items(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
-            control_panel=_control_panel_region(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+            activity_items=_activity_items(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            control_panel=_control_panel_region(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
             workbench=wb,
             inspector=ins,
         )
@@ -741,21 +928,95 @@ def _build_regions_and_surface(
             portal_tenant_id=portal_tenant_id,
             page_title="MyCite",
             page_subtitle="AWS-CSM sandbox",
-            activity_items=_activity_items(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
-            control_panel=_control_panel_region(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+            activity_items=_activity_items(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            control_panel=_control_panel_region(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
             workbench=wb,
             inspector=ins,
         )
         return sp, comp, "MyCite", "AWS-CSM sandbox"
 
-    sp = _build_home_status_surface(audit_storage_file=audit_storage_file)
+    if active == MAPS_READ_ONLY_SLICE_ID:
+        if data_dir is None:
+            sp = {
+                "schema": ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA,
+                "active_surface_id": MAPS_READ_ONLY_SLICE_ID,
+                "error": "data_root_not_configured",
+            }
+            wb = _workbench_error(title="Maps", message="Host data directory is not configured for the maps tool.")
+            comp = build_shell_composition_payload(
+                active_surface_id=active,
+                portal_tenant_id=portal_tenant_id,
+                page_title="MyCite",
+                page_subtitle="Maps",
+                activity_items=_activity_items(
+                    portal_tenant_id=portal_tenant_id,
+                    nav_active_slice_id=nav_active_slice_id,
+                    tool_exposure_policy=tool_exposure_policy,
+                ),
+                control_panel=_control_panel_region(
+                    portal_tenant_id=portal_tenant_id,
+                    nav_active_slice_id=nav_active_slice_id,
+                    tool_exposure_policy=tool_exposure_policy,
+                ),
+                workbench=wb,
+                inspector=_inspector_empty(title="Maps"),
+            )
+            return sp, comp, "MyCite", "Maps"
+
+        sp = build_admin_maps_surface_payload(
+            portal_tenant_id=portal_tenant_id,
+            data_dir=data_dir,
+        )
+        comp = build_shell_composition_payload(
+            active_surface_id=active,
+            portal_tenant_id=portal_tenant_id,
+            page_title="MyCite",
+            page_subtitle="Maps",
+            activity_items=_activity_items(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            control_panel=_control_panel_region(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            workbench=build_admin_maps_workbench(
+                surface_payload=sp,
+                portal_tenant_id=portal_tenant_id,
+            ),
+            inspector=build_admin_maps_inspector(surface_payload=sp),
+        )
+        return sp, comp, "MyCite", "Maps"
+
+    sp = _build_home_status_surface(
+        audit_storage_file=audit_storage_file,
+        tool_exposure_policy=tool_exposure_policy,
+    )
     comp = build_shell_composition_payload(
         active_surface_id=ADMIN_HOME_STATUS_SLICE_ID,
         portal_tenant_id=portal_tenant_id,
         page_title="MyCite",
         page_subtitle="Unknown surface",
-        activity_items=_activity_items(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
-        control_panel=_control_panel_region(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
+        activity_items=_activity_items(
+            portal_tenant_id=portal_tenant_id,
+            nav_active_slice_id=nav_active_slice_id,
+            tool_exposure_policy=tool_exposure_policy,
+        ),
+        control_panel=_control_panel_region(
+            portal_tenant_id=portal_tenant_id,
+            nav_active_slice_id=nav_active_slice_id,
+            tool_exposure_policy=tool_exposure_policy,
+        ),
         workbench=_workbench_error(title="Shell", message=f"Unhandled surface: {active}"),
         inspector=_inspector_empty(),
     )
@@ -770,9 +1031,22 @@ def run_admin_shell_entry(
     aws_status_file: str | Path | None = None,
     aws_csm_sandbox_status_file: str | Path | None = None,
     data_dir: str | Path | None = None,
+    tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_request = _normalize_request(request_payload)
     selection = resolve_admin_shell_request(normalized_request)
+    tool_entry = _tool_entry_by_slice_id(tool_exposure_policy=tool_exposure_policy).get(
+        normalized_request.requested_slice_id
+    )
+    if tool_entry is not None and not bool(tool_entry.get("config_enabled")):
+        selection = type(selection)(
+            requested_slice_id=normalized_request.requested_slice_id,
+            active_surface_id=ADMIN_TOOL_REGISTRY_SLICE_ID,
+            selection_status="gated",
+            allowed=False,
+            reason_code=ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
+            reason_message="Requested admin tool is disabled by instance tool_exposure configuration.",
+        )
 
     nav_active_slice_id = normalized_request.requested_slice_id
 
@@ -784,6 +1058,7 @@ def run_admin_shell_entry(
         aws_status_file=aws_status_file,
         aws_csm_sandbox_status_file=aws_csm_sandbox_status_file,
         data_dir=data_dir,
+        tool_exposure_policy=tool_exposure_policy,
         selection=selection,
         normalized_request=normalized_request,
     )

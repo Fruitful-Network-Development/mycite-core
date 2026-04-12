@@ -1,3 +1,7 @@
 # HOPS
 
-Placeholder for pure HOPS structure logic and address-schema helpers.
+Pure V2 carry-forward helpers for bounded HOPS coordinate decoding.
+
+This package intentionally promotes only the mixed-radix coordinate behavior
+needed by the Maps read-only slice. It does not revive the broader legacy HOPS
+or mediation registry stack.

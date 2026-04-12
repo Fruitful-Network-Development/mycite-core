@@ -9,8 +9,13 @@ The canonical runtime entrypoint descriptor is `AdminRuntimeEntrypointDescriptor
 - `admin.shell_entry`
 - `admin.aws.read_only`
 - `admin.aws.narrow_write`
+- `admin.aws.csm_sandbox_read_only`
+- `admin.aws.csm_onboarding`
+- `admin.maps.read_only`
 
-The MVP entrypoint remains valid, but post-AWS tool work uses the admin runtime catalog.
+The MVP entrypoint remains valid, but post-AWS tool work uses the admin runtime
+catalog. Trusted-tenant portal entrypoints are tracked separately in
+[../runtime_entrypoints.md](../runtime_entrypoints.md).
 
 ## Required descriptor fields
 
@@ -32,6 +37,18 @@ Every admin runtime entrypoint descriptor must serialize:
 
 - `admin-shell-entry` is reserved for the deployable admin landing surface.
 - `shell-owned-registry` is required for every tool-bearing entrypoint.
+
+## Current meaning of the catalog
+
+- `admin.aws.read_only` is the Band 1 trusted-tenant-safe read-only AWS surface.
+- `admin.aws.narrow_write` is the Band 2 bounded-write AWS surface.
+- `admin.aws.csm_sandbox_read_only` is the Band 3 internal sandbox-only
+  read-only AWS-CSM surface.
+- `admin.aws.csm_onboarding` is the Band 4 trusted-tenant-safe AWS-CSM
+  onboarding surface.
+- `admin.maps.read_only` is the Band 5 internal read-only Maps inspection
+  surface built on authoritative datum documents plus bounded overlay
+  projection.
 
 ## Runtime role
 

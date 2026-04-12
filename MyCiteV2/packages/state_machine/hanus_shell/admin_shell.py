@@ -18,6 +18,7 @@ ADMIN_BAND1_AWS_NAME = "Admin Band 1 Trusted-Tenant AWS Read-Only"
 ADMIN_BAND2_AWS_NAME = "Admin Band 2 Trusted-Tenant AWS Narrow Write"
 ADMIN_BAND3_AWS_SANDBOX_NAME = "Admin Band 3 Internal AWS-CSM Sandbox"
 ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME = "Admin Band 4 Trusted-Tenant AWS-CSM Onboarding"
+ADMIN_BAND5_MAPS_NAME = "Admin Band 5 Internal Maps Read-Only"
 
 ADMIN_EXPOSURE_INTERNAL_ONLY = "internal-only"
 ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY = "internal-sandbox-read-only"
@@ -33,10 +34,12 @@ AWS_READ_ONLY_SLICE_ID = "admin_band1.aws_read_only_surface"
 AWS_NARROW_WRITE_SLICE_ID = "admin_band2.aws_narrow_write_surface"
 AWS_CSM_SANDBOX_SLICE_ID = "admin_band3.aws_csm_sandbox_surface"
 AWS_CSM_ONBOARDING_SLICE_ID = "admin_band4.aws_csm_onboarding_surface"
+MAPS_READ_ONLY_SLICE_ID = "admin_band5.maps_read_only_surface"
 AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
 AWS_NARROW_WRITE_ENTRYPOINT_ID = "admin.aws.narrow_write"
 AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID = "admin.aws.csm_sandbox_read_only"
 AWS_CSM_ONBOARDING_ENTRYPOINT_ID = "admin.aws.csm_onboarding"
+MAPS_READ_ONLY_ENTRYPOINT_ID = "admin.maps.read_only"
 
 INTERNAL_ADMIN_SCOPE_ID = "internal-admin"
 ADMIN_TOOL_DEFAULT_POSTURE = "deny-by-default"
@@ -429,6 +432,20 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             read_after_write_required=True,
             launchable=True,
         ),
+        AdminToolRegistryEntry(
+            tool_id="maps",
+            label="Maps",
+            slice_id=MAPS_READ_ONLY_SLICE_ID,
+            entrypoint_id=MAPS_READ_ONLY_ENTRYPOINT_ID,
+            admin_band=ADMIN_BAND5_MAPS_NAME,
+            exposure_status="implemented_internal_maps_read_only",
+            read_write_posture="read-only",
+            surface_pattern=ADMIN_TOOL_SURFACE_READ_ONLY,
+            status_summary="launchable_maps_read_only",
+            audience="internal-admin",
+            internal_only_reason="",
+            launchable=True,
+        ),
     )
 
 
@@ -638,7 +655,7 @@ def resolve_admin_shell_request(request: AdminShellRequest | dict[str, Any] | No
                 selection_status="gated",
                 allowed=False,
                 reason_code="launch_via_registry",
-                reason_message="AWS tool slices launch through the shell-owned registry and their cataloged runtime entrypoints.",
+                reason_message="Admin tool slices launch through the shell-owned registry and their cataloged runtime entrypoints.",
             )
 
     return AdminShellSelection(
@@ -655,6 +672,8 @@ def map_surface_to_active_service(active_surface_id: str) -> str:
     sid = _as_text(active_surface_id)
     if sid in {AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID}:
         return "aws"
+    if sid == MAPS_READ_ONLY_SLICE_ID:
+        return "maps"
     if sid == DATUM_RESOURCE_WORKBENCH_SLICE_ID:
         return "datum"
     if sid == ADMIN_TOOL_REGISTRY_SLICE_ID:
@@ -664,7 +683,13 @@ def map_surface_to_active_service(active_surface_id: str) -> str:
 
 def shell_composition_mode_for_surface(active_surface_id: str) -> str:
     sid = _as_text(active_surface_id)
-    if sid in {AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID}:
+    if sid in {
+        AWS_READ_ONLY_SLICE_ID,
+        AWS_NARROW_WRITE_SLICE_ID,
+        AWS_CSM_SANDBOX_SLICE_ID,
+        AWS_CSM_ONBOARDING_SLICE_ID,
+        MAPS_READ_ONLY_SLICE_ID,
+    }:
         return "tool"
     return "system"
 
@@ -771,6 +796,7 @@ __all__ = [
     "ADMIN_BAND2_AWS_NAME",
     "ADMIN_BAND3_AWS_SANDBOX_NAME",
     "ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME",
+    "ADMIN_BAND5_MAPS_NAME",
     "ADMIN_ENTRYPOINT_ID",
     "ADMIN_EXPOSURE_INTERNAL_ONLY",
     "ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY",
@@ -797,6 +823,8 @@ __all__ = [
     "AWS_CSM_ONBOARDING_SLICE_ID",
     "AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID",
     "AWS_CSM_SANDBOX_SLICE_ID",
+    "MAPS_READ_ONLY_ENTRYPOINT_ID",
+    "MAPS_READ_ONLY_SLICE_ID",
     "AWS_NARROW_WRITE_SLICE_ID",
     "AWS_NARROW_WRITE_ENTRYPOINT_ID",
     "AWS_READ_ONLY_ENTRYPOINT_ID",

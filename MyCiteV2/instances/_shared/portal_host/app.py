@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -14,9 +15,14 @@ from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
     run_admin_aws_narrow_write,
     run_admin_aws_read_only,
 )
+from MyCiteV2.instances._shared.runtime.admin_maps_runtime import (
+    run_admin_maps_read_only,
+)
 from MyCiteV2.instances._shared.runtime.admin_runtime import run_admin_shell_entry
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
+    ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
     BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
@@ -24,6 +30,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
     TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
     TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
+    build_admin_tool_exposure_policy,
 )
 from MyCiteV2.instances._shared.runtime.tenant_audit_activity_runtime import (
     run_trusted_tenant_audit_activity,
@@ -40,10 +47,13 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
     AWS_CSM_SANDBOX_SLICE_ID,
+    AWS_CSM_ONBOARDING_SLICE_ID,
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_SLICE_ID,
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
     INTERNAL_ADMIN_SCOPE_ID,
+    MAPS_READ_ONLY_SLICE_ID,
+    build_admin_tool_registry_entries,
     build_portal_activity_dispatch_bodies,
 )
 from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
@@ -171,6 +181,49 @@ def _validate_audit_sink(path: Path | None, *, env_name: str, required: bool) ->
     return resolved
 
 
+def _load_optional_json_object(path: Path) -> dict[str, Any]:
+    resolved = Path(path)
+    if not resolved.exists():
+        return {}
+    if not resolved.is_file():
+        raise ValueError(f"Expected a JSON file path, not a directory: {resolved}")
+    try:
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in {resolved}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"{resolved} must contain a top-level JSON object")
+    return payload
+
+
+def _known_admin_tool_ids() -> list[str]:
+    return [entry.tool_id for entry in build_admin_tool_registry_entries()]
+
+
+def _load_tool_exposure_policy(private_dir: Path, raw_policy: object | None = None) -> dict[str, Any]:
+    source_policy = raw_policy
+    if source_policy is None:
+        private_config = _load_optional_json_object(Path(private_dir) / "config.json")
+        source_policy = private_config.get("tool_exposure")
+    return build_admin_tool_exposure_policy(
+        source_policy,
+        known_tool_ids=_known_admin_tool_ids(),
+    )
+
+
+def _tool_exposure_public_summary(tool_exposure_policy: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "policy_source": _as_text(tool_exposure_policy.get("policy_source")) or "private_config_json",
+        "configured_tool_ids": list(tool_exposure_policy.get("configured_tool_ids") or []),
+        "enabled_tool_ids": list(tool_exposure_policy.get("enabled_tool_ids") or []),
+        "disabled_tool_ids": list(tool_exposure_policy.get("disabled_tool_ids") or []),
+        "missing_tool_ids": list(tool_exposure_policy.get("missing_tool_ids") or []),
+        "unknown_tool_ids": list(tool_exposure_policy.get("unknown_tool_ids") or []),
+        "invalid_tool_ids": list(tool_exposure_policy.get("invalid_tool_ids") or []),
+        "configured_tools": dict(tool_exposure_policy.get("configured_tools") or {}),
+    }
+
+
 def _current_year_month() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m")
 
@@ -218,6 +271,7 @@ class V2PortalHostConfig:
     aws_csm_sandbox_status_file: Path | None = None
     aws_audit_storage_file: Path | None = None
     admin_audit_storage_file: Path | None = None
+    tool_exposure_policy: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         tenant_id = _as_text(self.tenant_id).lower()
@@ -284,6 +338,14 @@ class V2PortalHostConfig:
                 required=True,
             ),
         )
+        object.__setattr__(
+            self,
+            "tool_exposure_policy",
+            _load_tool_exposure_policy(
+                Path(self.private_dir),
+                raw_policy=self.tool_exposure_policy,
+            ),
+        )
 
     @classmethod
     def from_env(cls) -> "V2PortalHostConfig":
@@ -329,9 +391,13 @@ URL_SLUG_TO_SLICE_ID: dict[str, str] = {
     "registry": ADMIN_TOOL_REGISTRY_SLICE_ID,
     "aws": AWS_READ_ONLY_SLICE_ID,
     "aws-write": AWS_NARROW_WRITE_SLICE_ID,
+    "aws-csm-onboarding": AWS_CSM_ONBOARDING_SLICE_ID,
     "aws-csm-sandbox": AWS_CSM_SANDBOX_SLICE_ID,
+    "maps": MAPS_READ_ONLY_SLICE_ID,
     "datum": DATUM_RESOURCE_WORKBENCH_SLICE_ID,
     "mediate_tool-aws_platform_admin": AWS_READ_ONLY_SLICE_ID,
+    "mediate_tool-aws_tenant_actions": AWS_CSM_ONBOARDING_SLICE_ID,
+    "mediate_tool-maps": MAPS_READ_ONLY_SLICE_ID,
 }
 
 
@@ -392,6 +458,8 @@ def _runtime_status_code(envelope: dict[str, Any]) -> int:
     code = _as_text(error.get("code"))
     if code == "audience_not_allowed":
         return 403
+    if code == ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE:
+        return 404
     if code in {"slice_unknown", "status_snapshot_not_found"}:
         return 404
     if code == "publication_profile_not_found":
@@ -400,6 +468,7 @@ def _runtime_status_code(envelope: dict[str, Any]) -> int:
         "status_source_not_configured",
         "audit_log_not_configured",
         "publication_source_not_configured",
+        "data_root_not_configured",
     }:
         return 503
     if code == "read_after_write_failed":
@@ -496,6 +565,7 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         },
         "surface_contract": _trusted_tenant_surface_contract(),
         "state_roots": config.to_public_dict(),
+        "tool_exposure": _tool_exposure_public_summary(config.tool_exposure_policy or {}),
         "datum_health": {
             "ok": datum_ok,
             "row_count": 0 if system_document is None else system_document.row_count,
@@ -618,7 +688,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     @app.get("/portal/system")
     @app.get("/portal/system/<path:tool_slug>")
     def portal_system(tool_slug: str = "") -> str:
-        slug = tool_slug.strip("/") if tool_slug else "system"
+        slug = tool_slug.strip("/") if tool_slug else ""
+        if not slug:
+            legacy_mediate_tool = _as_text(request.args.get("mediate_tool"))
+            slug = f"mediate_tool-{legacy_mediate_tool}" if legacy_mediate_tool else "system"
         return _portal_shell_page(slug)
 
     @app.post("/portal/api/v2/admin/shell")
@@ -632,6 +705,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     aws_status_file=host_config.aws_status_file,
                     aws_csm_sandbox_status_file=host_config.aws_csm_sandbox_status_file,
                     data_dir=host_config.data_dir,
+                    tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
         except ValueError as exc:
@@ -701,6 +775,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 run_admin_aws_read_only(
                     _json_payload(),
                     aws_status_file=_required_live_aws_status_file(host_config),
+                    tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
         except ValueError as exc:
@@ -714,6 +789,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     _json_payload(),
                     aws_status_file=_required_live_aws_status_file(host_config),
                     audit_storage_file=host_config.aws_audit_storage_file,
+                    tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
         except ValueError as exc:
@@ -728,6 +804,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     _json_payload(),
                     aws_status_file=_required_live_aws_status_file(host_config),
                     audit_storage_file=host_config.aws_audit_storage_file,
+                    tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
         except ValueError as exc:
@@ -736,27 +813,29 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     @app.post("/portal/api/v2/admin/aws/csm-sandbox/read-only")
     def admin_aws_csm_sandbox_read_only() -> tuple[Any, int]:
         """Internal-audience read-only projection using ``MYCITE_V2_AWS_CSM_SANDBOX_STATUS_FILE`` only."""
-        sandbox_file = _optional_sandbox_live_profile_file(host_config)
-        if sandbox_file is None:
-            return jsonify(
-                {
-                    "schema": V2_PORTAL_ERROR_SCHEMA,
-                    "ok": False,
-                    "error": {
-                        "code": "sandbox_status_not_configured",
-                        "message": (
-                            "Set MYCITE_V2_AWS_CSM_SANDBOX_STATUS_FILE to a valid "
-                            "mycite.service_tool.aws_csm.profile.v1 JSON path (independent of "
-                            "MYCITE_V2_AWS_STATUS_FILE used by trusted-tenant AWS routes)."
-                        ),
-                    },
-                }
-            ), 503
         try:
             return _runtime_response(
                 run_admin_aws_csm_sandbox_read_only(
                     _json_payload(),
-                    aws_sandbox_status_file=sandbox_file,
+                    aws_sandbox_status_file=_optional_sandbox_live_profile_file(host_config),
+                    tool_exposure_policy=host_config.tool_exposure_policy,
+                )
+            )
+        except ValueError as exc:
+            return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": "invalid_request", "message": str(exc)}}), 400
+
+    @app.post("/portal/api/v2/admin/maps/read-only")
+    def admin_maps_read_only() -> tuple[Any, int]:
+        try:
+            payload = _json_payload()
+            return _runtime_response(
+                run_admin_maps_read_only(
+                    {"schema": ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA, **payload}
+                    if "schema" not in payload
+                    else payload,
+                    data_dir=host_config.data_dir,
+                    portal_tenant_id=host_config.tenant_id,
+                    tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
         except ValueError as exc:
