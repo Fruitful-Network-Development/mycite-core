@@ -9,7 +9,7 @@ from MyCiteV2.packages.adapters.filesystem import (
     is_live_aws_profile_file,
 )
 from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
-from MyCiteV2.packages.ports.datum_store import SystemDatumStoreRequest
+from MyCiteV2.packages.modules.domains.datum_recognition import DatumWorkbenchService
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND0_NAME,
     ADMIN_ENTRYPOINT_ID,
@@ -299,22 +299,30 @@ def _workbench_registry(*, surface_payload: dict[str, Any] | None) -> dict[str, 
 
 
 def _workbench_datum(*, datum_dict: dict[str, Any]) -> dict[str, Any]:
-    rows = datum_dict.get("rows") or []
-    preview: list[Any] = list(cast(list[Any], rows)[:40]) if isinstance(rows, list) else []
+    rows = datum_dict.get("rows_preview") or datum_dict.get("rows") or []
+    preview: list[Any] = list(cast(list[Any], rows)[:60]) if isinstance(rows, list) else []
+    selected_document = datum_dict.get("selected_document") or {}
     return {
         "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "datum_workbench",
-        "title": "Resource workbench",
-        "subtitle": f"{datum_dict.get('row_count', '—')} rows · tenant {_as_text(datum_dict.get('tenant_id')) or '—'}",
+        "title": "Authoritative datum",
+        "subtitle": (
+            f"{datum_dict.get('row_count', '—')} rows · "
+            f"{_as_text(selected_document.get('document_name')) or _as_text(datum_dict.get('tenant_id')) or '—'}"
+        ),
         "visible": True,
         "summary": {
             "ok": datum_dict.get("ok"),
             "row_count": datum_dict.get("row_count"),
+            "document_count": datum_dict.get("document_count"),
             "tenant_id": datum_dict.get("tenant_id"),
-            "materialization_status": datum_dict.get("materialization_status"),
+            "selected_document": selected_document,
+            "diagnostic_totals": datum_dict.get("diagnostic_totals"),
+            "readiness_status": datum_dict.get("readiness_status"),
             "source_files": datum_dict.get("source_files"),
         },
         "warnings": list(datum_dict.get("warnings") or []),
+        "documents": list(datum_dict.get("documents") or []),
         "rows_preview": preview,
     }
 
@@ -334,6 +342,18 @@ def _inspector_json(*, title: str, document: dict[str, Any] | None) -> dict[str,
         "title": title,
         "kind": "json_document",
         "document": document or {},
+    }
+
+
+def _inspector_datum(*, datum_dict: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema": ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
+        "title": "Datum",
+        "kind": "datum_summary",
+        "selected_document": datum_dict.get("selected_document") or {},
+        "readiness_status": datum_dict.get("readiness_status") or {},
+        "source_files": datum_dict.get("source_files") or {},
+        "warnings": list(datum_dict.get("warnings") or []),
     }
 
 
@@ -572,18 +592,17 @@ def _build_regions_and_surface(
             )
             return sp, comp, "MyCite", "Resource workbench"
         adapter = FilesystemSystemDatumStoreAdapter(Path(data_dir))
-        result = adapter.read_system_resource_workbench(SystemDatumStoreRequest(tenant_id=portal_tenant_id))
-        dd = result.to_dict()
+        dd = DatumWorkbenchService(adapter).read_workbench(portal_tenant_id).to_dict()
         sp = {"schema": "mycite.v2.admin.datum_workbench.surface.v1", "workbench": dd}
         comp = build_shell_composition_payload(
             active_surface_id=active,
             portal_tenant_id=portal_tenant_id,
             page_title="MyCite",
-            page_subtitle="Canonical datum",
+            page_subtitle="Authoritative datum",
             activity_items=_activity_items(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
             control_panel=_control_panel_region(portal_tenant_id=portal_tenant_id, nav_active_slice_id=nav_active_slice_id),
             workbench=_workbench_datum(datum_dict=dd),
-            inspector=_inspector_empty(title="Datum"),
+            inspector=_inspector_datum(datum_dict=dd),
         )
         return sp, comp, "MyCite", "Resource workbench"
 

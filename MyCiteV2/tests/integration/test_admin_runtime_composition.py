@@ -27,6 +27,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_CSM_SANDBOX_SLICE_ID,
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_SLICE_ID,
+    DATUM_RESOURCE_WORKBENCH_SLICE_ID,
 )
 
 
@@ -157,6 +158,63 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         self.assertIn("Trusted-tenant shell requests", result["error"]["message"])
         self.assertIsNone(result["surface_payload"])
         self.assertIsNotNone(result["shell_composition"])
+
+    def test_datum_workbench_prefers_authoritative_sandbox_source_and_emits_diagnostics(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir) / "data"
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "sandbox" / "maps" / "sources").mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text("{}\n", encoding="utf-8")
+            (data_dir / "system" / "sources" / "sc.example.json").write_text("{}\n", encoding="utf-8")
+            (data_dir / "sandbox" / "maps" / "tool.maps.json").write_text(
+                json.dumps(
+                    {
+                        "3-1-2": [["3-1-2", "2-0-2", "0"], ["SAMRAS-babelette-msn_id"]],
+                        "3-1-3": [["3-1-3", "2-1-1", "0"], ["title-babelette"]],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "maps" / "sources" / "sc.example.json").write_text(
+                json.dumps(
+                    {
+                        "anchor_file_version": "<hash here>",
+                        "datum_addressing_abstraction_space": {
+                            "4-2-118": [
+                                ["4-2-118", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", "HERE"],
+                                ["summit_county_cities"],
+                            ],
+                            "4-2-120": [
+                                ["4-2-120", "rf.3-1-2", "3-2-3-17-77-1-1", "rf.3-1-3", "HERE"],
+                                ["akron_city"],
+                            ],
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_admin_shell_entry(
+                {
+                    "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+                    "requested_slice_id": DATUM_RESOURCE_WORKBENCH_SLICE_ID,
+                    "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+                },
+                data_dir=data_dir,
+            )
+
+            self.assertIsNone(result["error"])
+            self.assertEqual(result["slice_id"], DATUM_RESOURCE_WORKBENCH_SLICE_ID)
+            workbench = result["surface_payload"]["workbench"]
+            self.assertEqual(workbench["selected_document"]["source_kind"], "sandbox_source")
+            self.assertEqual(workbench["selected_document"]["document_name"], "sc.example.json")
+            self.assertIn("illegal_magnitude_literal", workbench["rows"][0]["diagnostic_states"])
+            self.assertIn("address_irregularity", workbench["rows"][1]["diagnostic_states"])
+            self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "datum_workbench")
+            self.assertEqual(result["shell_composition"]["regions"]["inspector"]["kind"], "datum_summary")
 
     def test_trusted_tenant_aws_read_only_slice_composes_tool_mode(self) -> None:
         with TemporaryDirectory() as temp_dir:

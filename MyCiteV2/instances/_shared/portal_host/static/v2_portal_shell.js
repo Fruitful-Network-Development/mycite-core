@@ -614,6 +614,17 @@
     if (kind === "datum_workbench") {
       var summ = wb.summary || {};
       var warns = wb.warnings || [];
+      var selected = summ.selected_document || {};
+      var docs = wb.documents || [];
+      var diagnostics = summ.diagnostic_totals || {};
+      var diagnosticItems = Object.keys(diagnostics)
+        .filter(function (key) {
+          return Number(diagnostics[key] || 0) > 0;
+        })
+        .map(function (key) {
+          return "<li><code>" + escapeHtml(String(key)) + "</code>: " + escapeHtml(String(diagnostics[key])) + "</li>";
+        })
+        .join("");
       var warnBlock =
         warns.length > 0
           ? '<div class="v2-card" style="margin-bottom:12px"><h3>Warnings</h3><ul>' +
@@ -627,32 +638,75 @@
         '<article class="v2-card"><h3>Rows</h3><p>' +
         escapeHtml(String(summ.row_count != null ? summ.row_count : "—")) +
         "</p></article>" +
-        '<article class="v2-card"><h3>OK</h3><p>' +
-        escapeHtml(String(summ.ok != null ? summ.ok : "—")) +
+        '<article class="v2-card"><h3>Documents</h3><p>' +
+        escapeHtml(String(summ.document_count != null ? summ.document_count : "—")) +
         "</p></article>" +
-        '<article class="v2-card"><h3>Tenant</h3><p>' +
-        escapeHtml(String(summ.tenant_id || "—")) +
+        '<article class="v2-card"><h3>Selected</h3><p>' +
+        escapeHtml(String(selected.document_name || "—")) +
         "</p></article></div>";
-      var preview = wb.rows_preview || [];
-      var table =
-        "<table class=\"v2-table\"><thead><tr><th>Resource</th><th>Subject</th><th>Relation</th><th>Object</th></tr></thead><tbody>" +
-        preview
-          .map(function (row) {
+      var documentsTable =
+        "<table class=\"v2-table\"><thead><tr><th>Document</th><th>Source</th><th>Rows</th><th>Issues</th><th>Anchor</th></tr></thead><tbody>" +
+        docs
+          .map(function (doc) {
             return (
               "<tr><td><code>" +
-              escapeHtml(String((row && row.resource_id) || "")) +
+              escapeHtml(String((doc && doc.document_name) || "")) +
               "</code></td><td>" +
-              escapeHtml(String((row && row.subject_ref) || "")) +
+              escapeHtml(String((doc && doc.source_kind) || "")) +
               "</td><td>" +
-              escapeHtml(String((row && row.relation) || "")) +
+              escapeHtml(String((doc && doc.row_count) || "0")) +
               "</td><td>" +
-              escapeHtml(String((row && row.object_ref) || "")) +
+              escapeHtml(String((doc && doc.diagnostic_row_count) || "0")) +
+              "</td><td>" +
+              escapeHtml(String((doc && doc.anchor_document_name) || "—")) +
               "</td></tr>"
             );
           })
           .join("") +
         "</tbody></table>";
-      body.innerHTML = warnBlock + meta + table;
+      var preview = wb.rows_preview || [];
+      var table =
+        "<table class=\"v2-table\"><thead><tr><th>Address</th><th>Family</th><th>Diagnostics</th><th>Value</th><th>References</th></tr></thead><tbody>" +
+        preview
+          .map(function (row) {
+            var bindings = (row && row.reference_bindings) || [];
+            var refText = bindings
+              .map(function (binding) {
+                var refToken = binding.normalized_reference_form || binding.reference_form || "";
+                var valueToken = binding.value_token ? "=" + binding.value_token : "";
+                return refToken + valueToken;
+              })
+              .join(" | ");
+            return (
+              "<tr><td><code>" +
+              escapeHtml(String((row && row.datum_address) || "")) +
+              "</code></td><td>" +
+              escapeHtml(String((row && row.recognized_family) || "—")) +
+              "</td><td>" +
+              escapeHtml(String(((row && row.diagnostic_states) || []).join(", ") || "ok")) +
+              "</td><td><code>" +
+              escapeHtml(String((row && row.primary_value_token) || "—")) +
+              "</code></td><td>" +
+              escapeHtml(String(refText || "—")) +
+              "</td></tr>"
+            );
+          })
+          .join("") +
+        "</tbody></table>";
+      body.innerHTML =
+        warnBlock +
+        meta +
+        '<section class="v2-card" style="margin-top:12px"><h3>Documents</h3>' +
+        documentsTable +
+        "</section>" +
+        (diagnosticItems
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Diagnostics</h3><ul>' +
+            diagnosticItems +
+            "</ul></section>"
+          : "") +
+        '<section class="v2-card" style="margin-top:12px"><h3>Preview</h3>' +
+        table +
+        "</section>";
       return;
     }
     if (kind === "tool_collapsed_inspector") {
@@ -689,6 +743,54 @@
     if (kind === "json_document") {
       content.innerHTML =
         '<pre class="v2-json-panel">' + escapeHtml(JSON.stringify(region.document || {}, null, 2)) + "</pre>";
+      return;
+    }
+    if (kind === "datum_summary") {
+      var selectedDocument = region.selected_document || {};
+      var datumWarnings = (region.warnings || [])
+        .map(function (warning) {
+          return "<li>" + escapeHtml(String(warning)) + "</li>";
+        })
+        .join("");
+      var totals = selectedDocument.diagnostic_totals || {};
+      var totalItems = Object.keys(totals)
+        .filter(function (key) {
+          return Number(totals[key] || 0) > 0;
+        })
+        .map(function (key) {
+          return "<li><code>" + escapeHtml(String(key)) + "</code>: " + escapeHtml(String(totals[key])) + "</li>";
+        })
+        .join("");
+      content.innerHTML =
+        '<dl class="v2-surface-dl">' +
+        "<dt>Document</dt><dd><code>" +
+        escapeHtml(selectedDocument.document_name || "—") +
+        "</code></dd>" +
+        "<dt>Relative path</dt><dd><code>" +
+        escapeHtml(selectedDocument.relative_path || "—") +
+        "</code></dd>" +
+        "<dt>Source kind</dt><dd>" +
+        escapeHtml(selectedDocument.source_kind || "—") +
+        "</dd>" +
+        "<dt>Anchor file</dt><dd><code>" +
+        escapeHtml(selectedDocument.anchor_document_name || "—") +
+        "</code></dd>" +
+        "<dt>Anchor resolution</dt><dd>" +
+        escapeHtml(selectedDocument.anchor_resolution || "—") +
+        "</dd>" +
+        "<dt>Rows</dt><dd>" +
+        escapeHtml(String(selectedDocument.row_count != null ? selectedDocument.row_count : "—")) +
+        "</dd></dl>" +
+        (totalItems
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Diagnostic totals</h3><ul>' +
+            totalItems +
+            "</ul></section>"
+          : "") +
+        (datumWarnings
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Warnings</h3><ul>' +
+            datumWarnings +
+            "</ul></section>"
+          : "");
       return;
     }
     if (kind === "aws_read_only_surface") {

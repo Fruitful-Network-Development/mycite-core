@@ -53,7 +53,8 @@ from MyCiteV2.packages.adapters.filesystem import (
     FilesystemSystemDatumStoreAdapter,
     is_live_aws_profile_file,
 )
-from MyCiteV2.packages.ports.datum_store import SystemDatumStoreRequest
+from MyCiteV2.packages.modules.domains.datum_recognition import DatumWorkbenchService
+from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
 
 V2_PORTAL_HEALTH_SCHEMA = "mycite.v2.portal.health.v1"
 V2_PORTAL_ERROR_SCHEMA = "mycite.v2.portal.error.v1"
@@ -400,8 +401,13 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
     static_dir = _portal_package_static_dir()
     portal_css = static_dir / "portal.css"
     portal_js = static_dir / "v2_portal_shell.js"
-    datum_result = FilesystemSystemDatumStoreAdapter(config.data_dir).read_system_resource_workbench(
-        SystemDatumStoreRequest(tenant_id=config.tenant_id)
+    datum_store = FilesystemSystemDatumStoreAdapter(config.data_dir)
+    datum_catalog = datum_store.read_authoritative_datum_documents(
+        AuthoritativeDatumDocumentRequest(tenant_id=config.tenant_id)
+    )
+    system_document = next(
+        (document for document in datum_catalog.documents if document.source_kind == "system_anthology"),
+        None,
     )
     analytics_month = _as_text(os.environ.get("MYCITE_ANALYTICS_YEAR_MONTH")) or _current_year_month()
     analytics_resolution = AnalyticsEventPathResolver(config.analytics_webapps_root).resolve_events_file(
@@ -419,9 +425,9 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         "sandbox_status_file": None if sandbox_file is None else str(sandbox_file),
         "sandbox_live_profile_mapping": is_live_aws_profile_file(sandbox_file),
     }
-    datum_payload = datum_result.to_dict()
+    datum_ok = datum_catalog.readiness_status.get("anthology_status") == "loaded"
     static_ok = portal_css.is_file() and portal_js.is_file()
-    health_ok = bool(datum_payload["ok"]) and bool(aws_health["live_profile_mapping"]) and static_ok
+    health_ok = bool(datum_ok) and bool(aws_health["live_profile_mapping"]) and static_ok
 
     return {
         "schema": V2_PORTAL_HEALTH_SCHEMA,
@@ -438,11 +444,13 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         },
         "state_roots": config.to_public_dict(),
         "datum_health": {
-            "ok": datum_payload["ok"],
-            "row_count": datum_payload["row_count"],
-            "source_files": datum_payload["source_files"],
-            "materialization_status": datum_payload["materialization_status"],
-            "warnings": datum_payload["warnings"],
+            "ok": datum_ok,
+            "row_count": 0 if system_document is None else system_document.row_count,
+            "document_count": datum_catalog.document_count,
+            "source_files": datum_catalog.source_files,
+            "materialization_status": datum_catalog.readiness_status,
+            "readiness_status": datum_catalog.readiness_status,
+            "warnings": list(datum_catalog.warnings),
         },
         "analytics_root": analytics_resolution.to_dict(),
         "aws_config_health": aws_health,
@@ -703,8 +711,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.get("/portal/api/v2/data/system/resource-workbench")
     def system_resource_workbench() -> tuple[Any, int]:
-        result = FilesystemSystemDatumStoreAdapter(host_config.data_dir).read_system_resource_workbench(
-            SystemDatumStoreRequest(tenant_id=host_config.tenant_id)
+        result = DatumWorkbenchService(FilesystemSystemDatumStoreAdapter(host_config.data_dir)).read_workbench(
+            host_config.tenant_id
         )
         return jsonify(result.to_dict()), 200 if result.ok else 503
 

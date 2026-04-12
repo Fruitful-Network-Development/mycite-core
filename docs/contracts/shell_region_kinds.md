@@ -127,7 +127,7 @@ Workbench payloads use `schema: mycite.v2.admin.shell.region.workbench.v1` (`ADM
 | `error` | `schema`, `kind`, `title`, `visible`, `message` | `subtitle` | `_workbench_error`; selection-blocked paths | `kind === "error"` — card + message |
 | `home_summary` | `schema`, `kind`, `title`, `visible`, `blocks` | `subtitle` | `_workbench_home` | Parses `blocks` as label/value cards (`b.label`, `b.value`). Nested block `kind` (e.g. `"metric"`) is informational for authors; JS does not switch on it. |
 | `tool_registry` | `schema`, `kind`, `title`, `visible`, `tool_rows` | `subtitle`, `banner` (`code`, `message`) | `_workbench_registry`; blocked registry path with `banner` | Table from `tool_rows`; optional banner |
-| `datum_workbench` | `schema`, `kind`, `title`, `visible`, `summary`, `warnings`, `rows_preview` | `subtitle` | `_workbench_datum` | Summary cards, warnings list, preview table columns `resource_id`, `subject_ref`, `relation`, `object_ref` |
+| `datum_workbench` | `schema`, `kind`, `title`, `visible`, `summary`, `warnings`, `documents`, `rows_preview` | `subtitle` | `_workbench_datum` | Summary cards, authoritative document catalog, selected-document diagnostics, preview table columns `datum_address`, `recognized_family`, `diagnostic_states`, `primary_value_token`, and compact reference bindings |
 | `tool_placeholder` | `schema`, `kind`, `title`, `visible` (`false` for AWS primary inspector layout), `subtitle` | — | AWS read-only, narrow-write, **AWS-CSM onboarding**, and **AWS-CSM sandbox** success paths | Treated like hidden body: `visible === false` shows empty/workbench-hidden copy; subtitle as message |
 | `tool_collapsed_inspector` | `schema`, `kind`, `title`, `subtitle`, `visible` (`true`) | — | `_apply_shell_chrome_to_composition` only | Dedicated branch — dismissal card |
 
@@ -144,6 +144,7 @@ Inspector payloads use `schema: mycite.v2.admin.shell.region.inspector.v1` (`ADM
 | `kind` | Required fields (contract) | Optional | Runtime emitter(s) | Client branch (`renderInspector`) |
 |--------|---------------------------|----------|---------------------|-------------------------------------|
 | `empty` | `schema`, `kind`, `title` | `body_text` | `_inspector_empty` (default overview / registry / datum / errors) | Empty-state paragraph |
+| `datum_summary` | `schema`, `kind`, `title`, `selected_document`, `readiness_status`, `source_files`, `warnings` | — | `_inspector_datum` | Definition list for the selected authoritative datum document plus diagnostic totals / warnings |
 | `aws_read_only_surface` | `schema`, `kind`, `title`, `tenant_scope_id`, `mailbox_readiness`, `smtp_state`, `gmail_state`, `verified_evidence_state`, `selected_verified_sender`, `allowed_send_domains`, `write_capability`, `profile_summary` | `compatibility_warnings`, `inbound_capture`, `dispatch_health` | `_inspector_aws_read_only_surface` | Definition list + optional compatibility list |
 | `aws_tool_error` | `schema`, `kind`, `title`, `error_code`, `error_message`, `warnings` | — | `_inspector_aws_tool_error` | Error card + warnings list |
 | `narrow_write_form` | `schema`, `kind`, `title`, `read_only_context`, `submit_contract` | — | `_inspector_narrow_write_form` | Form + POST to `submit_contract.route` with schema and fixed fields |

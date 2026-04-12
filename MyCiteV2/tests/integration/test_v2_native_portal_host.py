@@ -305,6 +305,8 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertGreater(int(bundle.get("portal_css_size_bytes") or 0), 0)
             self.assertEqual(bundle.get("static_url_path"), "/portal/static")
             self.assertEqual(payload["datum_health"]["row_count"], 1)
+            self.assertEqual(payload["datum_health"]["readiness_status"]["anthology_status"], "loaded")
+            self.assertIn("derived_materialization", payload["datum_health"]["readiness_status"])
             self.assertTrue(payload["aws_config_health"]["live_profile_mapping"])
             self.assertIn("/clients/trappfamilyfarm.com/analytics", payload["analytics_root"]["analytics_root"])
 
@@ -372,11 +374,52 @@ class V2NativePortalHostTests(unittest.TestCase):
             datum_payload = datum.get_json() or {}
             self.assertEqual(datum_payload["schema"], SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA)
             self.assertEqual(datum_payload["row_count"], 1)
+            self.assertEqual(datum_payload["selected_document"]["source_kind"], "system_anthology")
 
             public_json = client.get("/msn-example.json")
             self.assertEqual(public_json.status_code, 200)
             self.assertEqual(public_json.get_json(), {"ok": True})
             public_json.close()
+
+    def test_system_resource_workbench_prefers_sandbox_source_and_reports_diagnostics(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config = _build_config(root)
+            (config.data_dir / "sandbox" / "maps" / "sources").mkdir(parents=True)
+            (config.data_dir / "sandbox" / "maps" / "tool.maps.json").write_text(
+                json.dumps(
+                    {
+                        "3-1-2": [["3-1-2", "2-0-2", "0"], ["SAMRAS-babelette-msn_id"]],
+                        "3-1-3": [["3-1-3", "2-1-1", "0"], ["title-babelette"]],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (config.data_dir / "sandbox" / "maps" / "sources" / "sc.example.json").write_text(
+                json.dumps(
+                    {
+                        "anchor_file_version": "<hash here>",
+                        "datum_addressing_abstraction_space": {
+                            "4-2-118": [
+                                ["4-2-118", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", "HERE"],
+                                ["summit_county_cities"],
+                            ]
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            client = create_app(config).test_client()
+
+            datum = client.get("/portal/api/v2/data/system/resource-workbench")
+            self.assertEqual(datum.status_code, 200)
+            payload = datum.get_json() or {}
+            self.assertEqual(payload["selected_document"]["document_name"], "sc.example.json")
+            self.assertEqual(payload["selected_document"]["anchor_document_name"], "tool.maps.json")
+            self.assertIn("illegal_magnitude_literal", payload["rows"][0]["diagnostic_states"])
+            self.assertEqual(payload["rows"][0]["primary_value_token"], "HERE")
 
     def test_portal_home_bootstraps_trusted_tenant_runtime_and_home_api_returns_band1_surface(self) -> None:
         with TemporaryDirectory() as temp_dir:
