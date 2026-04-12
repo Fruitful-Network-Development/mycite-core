@@ -51,17 +51,26 @@ TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA = "mycite.v2.portal.operational
 TRUSTED_TENANT_OPERATIONAL_STATUS_SURFACE_SCHEMA = "mycite.v2.portal.operational_status.surface.v1"
 TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA = "mycite.v2.portal.audit_activity.request.v1"
 TRUSTED_TENANT_AUDIT_ACTIVITY_SURFACE_SCHEMA = "mycite.v2.portal.audit_activity.surface.v1"
+TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA = "mycite.v2.portal.profile_basics_write.request.v1"
+TRUSTED_TENANT_PROFILE_BASICS_WRITE_SURFACE_SCHEMA = "mycite.v2.portal.profile_basics_write.surface.v1"
 TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID = "portal.home.tenant_status"
 TRUSTED_TENANT_OPERATIONAL_STATUS_ENTRYPOINT_ID = "portal.operational_status"
 TRUSTED_TENANT_AUDIT_ACTIVITY_ENTRYPOINT_ID = "portal.audit_activity"
+TRUSTED_TENANT_PROFILE_BASICS_WRITE_ENTRYPOINT_ID = "portal.profile_basics_write"
 BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID = "band1.operational_status_surface"
 BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID = "band1.audit_activity_visibility"
+BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID = "band2.profile_basics_write_surface"
+BAND2_TRUSTED_TENANT_WRITABLE_NAME = "Band 2 Trusted-Tenant Writable Slice"
+TRUSTED_TENANT_WRITABLE_EXPOSURE_STATUS = "trusted-tenant-writable"
 
 AWS_NARROW_WRITE_RECOVERY_REFERENCE = (
     "docs/plans/post_mvp_rollout/admin_first/aws_narrow_write_recovery.md"
 )
 AWS_CSM_ONBOARDING_RECOVERY_REFERENCE = (
     "docs/plans/post_mvp_rollout/post_aws_tool_platform/read_only_and_bounded_write_patterns.md"
+)
+PROFILE_BASICS_WRITE_RECOVERY_REFERENCE = (
+    "docs/plans/post_mvp_rollout/profile_basics_write_recovery.md"
 )
 
 ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT = "admin-shell-entry"
@@ -170,14 +179,17 @@ class TrustedTenantRuntimeEntrypointDescriptor:
             raise ValueError("trusted_tenant_runtime_entrypoint.callable_path is required")
         if not _as_text(self.slice_id):
             raise ValueError("trusted_tenant_runtime_entrypoint.slice_id is required")
-        if self.read_write_posture != "read-only":
-            raise ValueError("trusted_tenant_runtime_entrypoint.read_write_posture must be read-only")
+        if self.read_write_posture not in {"read-only", "write"}:
+            raise ValueError(
+                "trusted_tenant_runtime_entrypoint.read_write_posture must be read-only or write"
+            )
         if self.launch_contract != ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT:
             raise ValueError("trusted_tenant_runtime_entrypoint.launch_contract is invalid")
         if self.surface_pattern not in {
             "tenant-home",
             "tenant-operational-status",
             "tenant-audit-activity",
+            "tenant-profile-basics-write",
         }:
             raise ValueError("trusted_tenant_runtime_entrypoint.surface_pattern is invalid")
 
@@ -314,6 +326,21 @@ def build_trusted_tenant_runtime_entrypoint_catalog() -> tuple[TrustedTenantRunt
             surface_schema=TRUSTED_TENANT_AUDIT_ACTIVITY_SURFACE_SCHEMA,
             required_configuration=("audit_storage_file",),
         ),
+        TrustedTenantRuntimeEntrypointDescriptor(
+            entrypoint_id=TRUSTED_TENANT_PROFILE_BASICS_WRITE_ENTRYPOINT_ID,
+            callable_path=(
+                "MyCiteV2.instances._shared.runtime.tenant_profile_basics_write_runtime."
+                "run_trusted_tenant_profile_basics_write"
+            ),
+            slice_id=BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
+            rollout_band=BAND2_TRUSTED_TENANT_WRITABLE_NAME,
+            exposure_status=TRUSTED_TENANT_WRITABLE_EXPOSURE_STATUS,
+            read_write_posture="write",
+            launch_contract=ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT,
+            surface_pattern="tenant-profile-basics-write",
+            surface_schema=TRUSTED_TENANT_PROFILE_BASICS_WRITE_SURFACE_SCHEMA,
+            required_configuration=("data_dir", "public_dir", "tenant_domain", "audit_storage_file"),
+        ),
     )
 
 
@@ -390,8 +417,10 @@ def build_trusted_tenant_runtime_envelope(
     warnings: list[str] | tuple[str, ...] | None = None,
     error: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if read_write_posture != "read-only":
-        raise ValueError("trusted tenant runtime envelope read_write_posture must be read-only")
+    if read_write_posture not in {"read-only", "write"}:
+        raise ValueError(
+            "trusted tenant runtime envelope read_write_posture must be read-only or write"
+        )
     return {
         "schema": TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
         "rollout_band": rollout_band,
@@ -424,7 +453,13 @@ __all__ = [
     "ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA",
     "AWS_CSM_ONBOARDING_RECOVERY_REFERENCE",
     "AWS_NARROW_WRITE_RECOVERY_REFERENCE",
+    "BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID",
+    "BAND2_TRUSTED_TENANT_WRITABLE_NAME",
     "AdminRuntimeEntrypointDescriptor",
+    "PROFILE_BASICS_WRITE_RECOVERY_REFERENCE",
+    "TRUSTED_TENANT_PROFILE_BASICS_WRITE_ENTRYPOINT_ID",
+    "TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA",
+    "TRUSTED_TENANT_PROFILE_BASICS_WRITE_SURFACE_SCHEMA",
     "build_admin_runtime_entrypoint_catalog",
     "build_admin_runtime_envelope",
     "build_admin_runtime_error",
@@ -446,5 +481,6 @@ __all__ = [
     "TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA",
     "TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA",
     "TRUSTED_TENANT_RUNTIME_REQUIRED_ENVELOPE_KEYS",
+    "TRUSTED_TENANT_WRITABLE_EXPOSURE_STATUS",
     "TrustedTenantRuntimeEntrypointDescriptor",
 ]

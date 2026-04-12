@@ -1,4 +1,4 @@
 # Publication Domain
 
-Owns read-only publication-backed tenant summary semantics for the first
-trusted-tenant portal home slice.
+Owns publication-backed tenant summary semantics and the first bounded
+trusted-tenant profile-basics write workflow.

@@ -260,6 +260,9 @@
         '<article class="v2-card"><h3>Exposure</h3><p>' +
         escapeHtml(wb.exposure_status || "—") +
         "</p></article>" +
+        '<article class="v2-card"><h3>Read/write posture</h3><p>' +
+        escapeHtml(wb.read_write_posture || "—") +
+        "</p></article>" +
         '<article class="v2-card"><h3>Profile in view</h3><p>' +
         escapeHtml(tenantProfile.profile_title || "—") +
         "</p></article>" +
@@ -480,6 +483,100 @@
         "</div>" +
         '<div class="v2-card" style="margin-top:12px"><h3>Visible slices</h3>' +
         activitySliceTable +
+        "</div>";
+      return;
+    }
+    if (kind === "profile_basics_write") {
+      var profileBasics = wb.confirmed_profile_basics || {};
+      var basicsWarnings = wb.warnings || [];
+      var basicsSlices = wb.available_slices || [];
+      var basicsWarningBlock =
+        basicsWarnings.length > 0
+          ? '<div class="v2-card" style="margin-bottom:12px"><h3>Warnings</h3><ul>' +
+            basicsWarnings
+              .map(function (warning) {
+                return "<li>" + escapeHtml(String(warning)) + "</li>";
+              })
+              .join("") +
+            "</ul></div>"
+          : "";
+      var basicsCards =
+        '<div class="v2-card-grid">' +
+        '<article class="v2-card"><h3>Rollout band</h3><p>' +
+        escapeHtml(wb.current_rollout_band || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Exposure</h3><p>' +
+        escapeHtml(wb.exposure_status || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Read/write posture</h3><p>' +
+        escapeHtml(wb.read_write_posture || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Write status</h3><p>' +
+        escapeHtml(wb.write_status || "—") +
+        "</p></article>" +
+        "</div>";
+      var basicsDetails =
+        '<dl class="v2-surface-dl">' +
+        "<dt>Profile title</dt><dd>" +
+        escapeHtml(profileBasics.profile_title || "—") +
+        "</dd>" +
+        "<dt>Profile summary</dt><dd>" +
+        escapeHtml(profileBasics.profile_summary || "—") +
+        "</dd>" +
+        "<dt>Contact email</dt><dd>" +
+        escapeHtml(profileBasics.contact_email || "—") +
+        "</dd>" +
+        "<dt>Public website</dt><dd>" +
+        escapeHtml(profileBasics.public_website_url || "—") +
+        "</dd>" +
+        "<dt>Entity type</dt><dd>" +
+        escapeHtml(profileBasics.entity_type || "—") +
+        "</dd>" +
+        "<dt>Profile resolution</dt><dd>" +
+        escapeHtml(profileBasics.profile_resolution || "—") +
+        "</dd>" +
+        "<dt>Publication mode</dt><dd>" +
+        escapeHtml(profileBasics.publication_mode || "—") +
+        "</dd></dl>";
+      var requestedChangeHtml = wb.requested_change
+        ? '<section class="v2-card" style="margin-top:12px"><h3>Requested change</h3><pre class="v2-json-panel">' +
+          escapeHtml(JSON.stringify(wb.requested_change, null, 2)) +
+          "</pre></section>"
+        : "";
+      var auditHtml = wb.audit
+        ? '<section class="v2-card" style="margin-top:12px"><h3>Audit receipt</h3><dl class="v2-surface-dl">' +
+          "<dt>Record id</dt><dd><code>" +
+          escapeHtml(wb.audit.record_id || "") +
+          "</code></dd><dt>Recorded at</dt><dd>" +
+          escapeHtml(String(wb.audit.recorded_at_unix_ms != null ? wb.audit.recorded_at_unix_ms : "—")) +
+          "</dd><dt>Recovery</dt><dd>" +
+          escapeHtml(wb.rollback_reference || "—") +
+          "</dd></dl></section>"
+        : "";
+      var basicsSliceTable =
+        "<table class=\"v2-table\"><thead><tr><th>Slice</th><th>Status</th><th>Posture</th></tr></thead><tbody>" +
+        basicsSlices
+          .map(function (slice) {
+            return (
+              "<tr><td>" +
+              escapeHtml(slice.label || slice.slice_id || "") +
+              "</td><td>" +
+              escapeHtml(slice.status_summary || "—") +
+              "</td><td>" +
+              escapeHtml(slice.read_write_posture || "—") +
+              "</td></tr>"
+            );
+          })
+          .join("") +
+        "</tbody></table>";
+      body.innerHTML =
+        basicsWarningBlock +
+        basicsCards +
+        basicsDetails +
+        requestedChangeHtml +
+        auditHtml +
+        '<div class="v2-card" style="margin-top:12px"><h3>Visible slices</h3>' +
+        basicsSliceTable +
         "</div>";
       return;
     }
@@ -761,6 +858,62 @@
         ) +
         "</dd></dl>" +
         previewHtml;
+      return;
+    }
+    if (kind === "profile_basics_write_form") {
+      var contract = region.submit_contract || {};
+      var initial = contract.initial_values || {};
+      var fixed = contract.fixed_request_fields || {};
+      var html =
+        '<form id="v2-profile-basics-form" class="v2-card" style="max-width:620px">' +
+        "<h3>Profile basics</h3>" +
+        '<p class="ide-controlpanel__empty" style="margin:0 0 10px">Request schema: <code>' +
+        escapeHtml(contract.request_schema || "") +
+        "</code></p>" +
+        '<label class="ide-controlpanel__empty" style="display:block;margin-bottom:4px">profile_title</label>' +
+        '<input name="profile_title" value="' +
+        escapeHtml(initial.profile_title || "") +
+        '" style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:6px 8px" />' +
+        '<label class="ide-controlpanel__empty" style="display:block;margin-bottom:4px">profile_summary</label>' +
+        '<textarea name="profile_summary" style="width:100%;min-height:96px;box-sizing:border-box;margin-bottom:10px;padding:6px 8px">' +
+        escapeHtml(initial.profile_summary || "") +
+        "</textarea>" +
+        '<label class="ide-controlpanel__empty" style="display:block;margin-bottom:4px">contact_email</label>' +
+        '<input name="contact_email" value="' +
+        escapeHtml(initial.contact_email || "") +
+        '" style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:6px 8px" />' +
+        '<label class="ide-controlpanel__empty" style="display:block;margin-bottom:4px">public_website_url</label>' +
+        '<input name="public_website_url" value="' +
+        escapeHtml(initial.public_website_url || "") +
+        '" style="width:100%;box-sizing:border-box;margin-bottom:12px;padding:6px 8px" />' +
+        '<button type="submit" class="ide-sessionAction ide-sessionAction--button" style="border-radius:6px">Apply profile update</button>' +
+        "</form>" +
+        '<pre id="v2-profile-basics-result" class="v2-json-panel" style="margin-top:12px" hidden></pre>';
+      content.innerHTML = html;
+      var form = document.getElementById("v2-profile-basics-form");
+      var out = document.getElementById("v2-profile-basics-result");
+      if (form && out) {
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var fd = new FormData(form);
+          var body = {
+            schema: contract.request_schema,
+            profile_title: (fd.get("profile_title") || "").toString().trim(),
+            profile_summary: (fd.get("profile_summary") || "").toString().trim(),
+            contact_email: (fd.get("contact_email") || "").toString().trim(),
+            public_website_url: (fd.get("public_website_url") || "").toString().trim(),
+          };
+          Object.keys(fixed || {}).forEach(function (key) {
+            body[key] = fixed[key];
+          });
+          out.hidden = false;
+          out.textContent = "…";
+          postJson(contract.route || "/portal/api/v2/tenant/profile-basics", body).then(function (res) {
+            out.textContent = JSON.stringify(res.json, null, 2);
+            if (lastShellRequest) loadShell(cloneRequestWithoutChrome(lastShellRequest));
+          });
+        });
+      }
       return;
     }
     if (kind === "narrow_write_form") {

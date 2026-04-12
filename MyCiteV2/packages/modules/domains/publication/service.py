@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from MyCiteV2.packages.ports.datum_store import (
+    PublicationProfileBasicsWritePort,
+    PublicationProfileBasicsWriteRequest,
+    PublicationProfileBasicsWriteResult,
     PublicationTenantSummaryPort,
     PublicationTenantSummaryRequest,
     PublicationTenantSummaryResult,
@@ -12,6 +15,23 @@ from MyCiteV2.packages.ports.datum_store import (
 
 _WEBSITE_KEYS = ("public_website_url", "website_url", "website", "url")
 _EMAIL_KEYS = ("contact_email", "email")
+_PROFILE_BASICS_COMMAND_FIELDS = frozenset(
+    {
+        "tenant_id",
+        "tenant_domain",
+        "profile_title",
+        "profile_summary",
+        "contact_email",
+        "public_website_url",
+    }
+)
+_PROFILE_BASICS_WRITABLE_FIELDS = (
+    "profile_title",
+    "profile_summary",
+    "contact_email",
+    "public_website_url",
+)
+_PROFILE_BASICS_FOCUS_DATUM_ADDRESS = "4-1-1"
 
 
 def _as_text(value: object) -> str:
@@ -32,6 +52,29 @@ def _looks_like_email(value: object) -> bool:
 def _looks_like_public_website(value: object) -> bool:
     token = _as_text(value)
     return token.startswith("https://") or token.startswith("http://")
+
+
+def _looks_like_domain(value: object) -> bool:
+    token = _as_lower(value)
+    return bool(token and "." in token)
+
+
+def _normalize_optional_email(value: object, *, field_name: str) -> str:
+    token = _as_text(value).lower()
+    if not token:
+        return ""
+    if not _looks_like_email(token):
+        raise ValueError(f"{field_name} must be empty or an email-like value")
+    return token
+
+
+def _normalize_optional_public_website(value: object, *, field_name: str) -> str:
+    token = _as_text(value)
+    if not token:
+        return ""
+    if not _looks_like_public_website(token):
+        raise ValueError(f"{field_name} must be empty or an http(s) URL")
+    return token
 
 
 def _pretty_label(value: object, *, fallback: str) -> str:
@@ -290,4 +333,167 @@ class PublicationTenantSummaryService:
         return normalize_publication_tenant_summary(
             projection.source,
             warnings=projection.warnings,
+        )
+
+
+@dataclass(frozen=True)
+class PublicationProfileBasicsCommand:
+    tenant_id: str
+    tenant_domain: str
+    profile_title: str
+    profile_summary: str = ""
+    contact_email: str = ""
+    public_website_url: str = ""
+    writable_field_set: tuple[str, ...] = _PROFILE_BASICS_WRITABLE_FIELDS
+
+    def __post_init__(self) -> None:
+        tenant_id = _as_lower(self.tenant_id)
+        tenant_domain = _as_lower(self.tenant_domain)
+        profile_title = _as_text(self.profile_title)
+        if not tenant_id:
+            raise ValueError("publication_profile_basics.tenant_id is required")
+        if not _looks_like_domain(tenant_domain):
+            raise ValueError("publication_profile_basics.tenant_domain must be a domain-like value")
+        if not profile_title:
+            raise ValueError("publication_profile_basics.profile_title is required")
+        object.__setattr__(self, "tenant_id", tenant_id)
+        object.__setattr__(self, "tenant_domain", tenant_domain)
+        object.__setattr__(self, "profile_title", profile_title)
+        object.__setattr__(self, "profile_summary", _as_text(self.profile_summary))
+        object.__setattr__(
+            self,
+            "contact_email",
+            _normalize_optional_email(
+                self.contact_email,
+                field_name="publication_profile_basics.contact_email",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "public_website_url",
+            _normalize_optional_public_website(
+                self.public_website_url,
+                field_name="publication_profile_basics.public_website_url",
+            ),
+        )
+        object.__setattr__(self, "writable_field_set", tuple(_PROFILE_BASICS_WRITABLE_FIELDS))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tenant_id": self.tenant_id,
+            "tenant_domain": self.tenant_domain,
+            "profile_title": self.profile_title,
+            "profile_summary": self.profile_summary,
+            "contact_email": self.contact_email,
+            "public_website_url": self.public_website_url,
+            "writable_field_set": list(self.writable_field_set),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "PublicationProfileBasicsCommand":
+        if not isinstance(payload, dict):
+            raise ValueError("publication_profile_basics must be a dict")
+        extra_fields = sorted(set(payload.keys()) - _PROFILE_BASICS_COMMAND_FIELDS)
+        if extra_fields:
+            raise ValueError(f"publication_profile_basics has unsupported fields: {extra_fields}")
+        return cls(
+            tenant_id=payload.get("tenant_id"),
+            tenant_domain=payload.get("tenant_domain"),
+            profile_title=payload.get("profile_title"),
+            profile_summary=payload.get("profile_summary") or "",
+            contact_email=payload.get("contact_email") or "",
+            public_website_url=payload.get("public_website_url") or "",
+        )
+
+
+@dataclass(frozen=True)
+class PublicationProfileBasicsOutcome:
+    command: PublicationProfileBasicsCommand
+    profile_id: str
+    confirmed_summary: PublicationTenantSummary
+
+    def __post_init__(self) -> None:
+        profile_id = _as_text(self.profile_id)
+        if not profile_id:
+            raise ValueError("publication_profile_basics_outcome.profile_id is required")
+        object.__setattr__(self, "profile_id", profile_id)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "profile_id": self.profile_id,
+            "updated_fields": list(self.command.writable_field_set),
+            "confirmed_summary": self.confirmed_summary.to_dict(),
+        }
+
+    def to_local_audit_payload(self) -> dict[str, Any]:
+        return {
+            "event_type": "publication.profile_basics.write.accepted",
+            "focus_subject": f"{self.profile_id}.{_PROFILE_BASICS_FOCUS_DATUM_ADDRESS}",
+            "shell_verb": "portal.profile_basics_write",
+            "details": {
+                "tenant_scope_id": self.command.tenant_id,
+                "profile_id": self.profile_id,
+                "updated_fields": list(self.command.writable_field_set),
+                "profile_title": self.command.profile_title,
+                "profile_summary": self.command.profile_summary,
+                "contact_email": self.command.contact_email,
+                "public_website_url": self.command.public_website_url,
+            },
+        }
+
+
+def normalize_publication_profile_basics_command(
+    payload: PublicationProfileBasicsCommand | dict[str, Any],
+) -> PublicationProfileBasicsCommand:
+    if isinstance(payload, PublicationProfileBasicsCommand):
+        return payload
+    return PublicationProfileBasicsCommand.from_dict(payload)
+
+
+class PublicationProfileBasicsService:
+    def __init__(self, datum_store: PublicationProfileBasicsWritePort) -> None:
+        self._datum_store = datum_store
+
+    def apply_write(
+        self,
+        payload: PublicationProfileBasicsCommand | dict[str, Any],
+    ) -> PublicationProfileBasicsOutcome:
+        command = normalize_publication_profile_basics_command(payload)
+        result = self._datum_store.write_publication_profile_basics(
+            PublicationProfileBasicsWriteRequest(
+                tenant_id=command.tenant_id,
+                tenant_domain=command.tenant_domain,
+                profile_title=command.profile_title,
+                profile_summary=command.profile_summary,
+                contact_email=command.contact_email,
+                public_website_url=command.public_website_url,
+            )
+        )
+        normalized_result = (
+            result
+            if isinstance(result, PublicationProfileBasicsWriteResult)
+            else PublicationProfileBasicsWriteResult.from_dict(result)
+        )
+        confirmed_summary = normalize_publication_tenant_summary(
+            normalized_result.source,
+            warnings=normalized_result.warnings,
+        )
+        if confirmed_summary.tenant_id != command.tenant_id:
+            raise ValueError("publication_profile_basics confirmation tenant_id does not match request")
+        if confirmed_summary.tenant_domain != command.tenant_domain:
+            raise ValueError("publication_profile_basics confirmation tenant_domain does not match request")
+        if confirmed_summary.profile_title != command.profile_title:
+            raise ValueError("publication_profile_basics confirmation profile_title does not match request")
+        if confirmed_summary.profile_summary != command.profile_summary:
+            raise ValueError("publication_profile_basics confirmation profile_summary does not match request")
+        if confirmed_summary.contact_email != command.contact_email:
+            raise ValueError("publication_profile_basics confirmation contact_email does not match request")
+        if confirmed_summary.public_website_url != command.public_website_url:
+            raise ValueError(
+                "publication_profile_basics confirmation public_website_url does not match request"
+            )
+        return PublicationProfileBasicsOutcome(
+            command=command,
+            profile_id=normalized_result.source.profile_id,
+            confirmed_summary=confirmed_summary,
         )
