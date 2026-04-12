@@ -17,8 +17,12 @@ from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
 from MyCiteV2.instances._shared.runtime.admin_runtime import run_admin_shell_entry
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
     TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
     TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
+)
+from MyCiteV2.instances._shared.runtime.tenant_audit_activity_runtime import (
+    run_trusted_tenant_audit_activity,
 )
 from MyCiteV2.instances._shared.runtime.tenant_operational_status_runtime import (
     run_trusted_tenant_operational_status,
@@ -306,6 +310,13 @@ def _tenant_operational_status_bootstrap_request(tenant_id: str) -> dict[str, An
     }
 
 
+def _tenant_audit_activity_bootstrap_request(tenant_id: str) -> dict[str, Any]:
+    return {
+        "schema": TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
+        "tenant_scope": {"scope_id": tenant_id, "audience": "trusted-tenant"},
+    }
+
+
 def _json_payload() -> dict[str, Any]:
     payload = request.get_json(silent=True)
     return payload if isinstance(payload, dict) else {}
@@ -482,6 +493,20 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             logo_href="/portal/status",
         )
 
+    def _tenant_audit_activity_page() -> str:
+        return render_template(
+            "portal.html",
+            tenant_id=host_config.tenant_id,
+            host_shape=HOST_SHAPE,
+            analytics_domain=host_config.analytics_domain,
+            bootstrap_shell_request=_tenant_audit_activity_bootstrap_request(host_config.tenant_id),
+            portal_build_id=PORTAL_BUILD_ID,
+            runtime_envelope_schema=TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
+            shell_endpoint="/portal/api/v2/tenant/audit-activity",
+            shell_loading_label="Loading recent activity…",
+            logo_href="/portal/activity",
+        )
+
     @app.get("/portal")
     @app.get("/portal/")
     @app.get("/portal/home")
@@ -491,6 +516,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     @app.get("/portal/status")
     def portal_status() -> str:
         return _tenant_operational_status_page()
+
+    @app.get("/portal/activity")
+    def portal_activity() -> str:
+        return _tenant_audit_activity_page()
 
     @app.get("/portal/system")
     @app.get("/portal/system/<path:tool_slug>")
@@ -535,7 +564,20 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return _runtime_response(
                 run_trusted_tenant_operational_status(
                     _json_payload(),
-                    audit_storage_file=host_config.admin_audit_storage_file,
+                    audit_storage_file=host_config.aws_audit_storage_file,
+                    portal_tenant_id=host_config.tenant_id,
+                )
+            )
+        except ValueError as exc:
+            return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": "invalid_request", "message": str(exc)}}), 400
+
+    @app.post("/portal/api/v2/tenant/audit-activity")
+    def trusted_tenant_audit_activity() -> tuple[Any, int]:
+        try:
+            return _runtime_response(
+                run_trusted_tenant_audit_activity(
+                    _json_payload(),
+                    audit_storage_file=host_config.aws_audit_storage_file,
                     portal_tenant_id=host_config.tenant_id,
                 )
             )

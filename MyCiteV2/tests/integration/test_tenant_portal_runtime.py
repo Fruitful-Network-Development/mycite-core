@@ -11,13 +11,20 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+    TRUSTED_TENANT_AUDIT_ACTIVITY_ENTRYPOINT_ID,
+    TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
+    TRUSTED_TENANT_AUDIT_ACTIVITY_SURFACE_SCHEMA,
     TRUSTED_TENANT_HOME_SURFACE_SCHEMA,
     TRUSTED_TENANT_OPERATIONAL_STATUS_ENTRYPOINT_ID,
     TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
     TRUSTED_TENANT_OPERATIONAL_STATUS_SURFACE_SCHEMA,
     TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID,
     TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
+)
+from MyCiteV2.instances._shared.runtime.tenant_audit_activity_runtime import (
+    run_trusted_tenant_audit_activity,
 )
 from MyCiteV2.instances._shared.runtime.tenant_operational_status_runtime import (
     run_trusted_tenant_operational_status,
@@ -96,6 +103,14 @@ class TenantPortalRuntimeIntegrationTests(unittest.TestCase):
             )
             self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "tenant_home_status")
             self.assertEqual(result["shell_composition"]["regions"]["inspector"]["kind"], "tenant_profile_summary")
+            self.assertEqual(
+                [entry["slice_id"] for entry in result["surface_payload"]["available_slices"]],
+                [
+                    BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+                    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+                    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                ],
+            )
 
     def test_runtime_falls_back_safely_when_publication_summary_cannot_be_resolved(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -176,6 +191,14 @@ class TenantPortalRuntimeIntegrationTests(unittest.TestCase):
             self.assertEqual(
                 result["shell_composition"]["regions"]["workbench"]["kind"],
                 "operational_status",
+            )
+            self.assertEqual(
+                [entry["slice_id"] for entry in result["surface_payload"]["available_slices"]],
+                [
+                    BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+                    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+                    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                ],
             )
 
     def test_operational_status_runtime_returns_recent_persistence_when_records_exist(self) -> None:
@@ -263,6 +286,132 @@ class TenantPortalRuntimeIntegrationTests(unittest.TestCase):
 
             self.assertEqual(result["error"]["code"], "tenant_scope_mismatch")
             self.assertEqual(result["slice_id"], BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID)
+
+    def test_audit_activity_runtime_returns_empty_safe_surface_when_no_recent_audit_exists(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            audit_storage_file = Path(temp_dir) / "audit.ndjson"
+
+            result = run_trusted_tenant_audit_activity(
+                {
+                    "schema": TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+                audit_storage_file=audit_storage_file,
+                portal_tenant_id="tff",
+            )
+
+            self.assertEqual(result["schema"], TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA)
+            self.assertEqual(result["entrypoint_id"], TRUSTED_TENANT_AUDIT_ACTIVITY_ENTRYPOINT_ID)
+            self.assertEqual(result["slice_id"], BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID)
+            self.assertIsNone(result["error"])
+            self.assertEqual(result["surface_payload"]["schema"], TRUSTED_TENANT_AUDIT_ACTIVITY_SURFACE_SCHEMA)
+            self.assertEqual(result["surface_payload"]["recent_activity"]["activity_state"], "empty")
+            self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "audit_activity")
+            self.assertEqual(result["shell_composition"]["regions"]["inspector"]["kind"], "audit_activity_summary")
+
+    def test_audit_activity_runtime_returns_recent_records_from_fixed_window(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            audit_storage_file = Path(temp_dir) / "audit.ndjson"
+            audit_storage_file.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "record_id": "audit-0001",
+                                "recorded_at_unix_ms": 1770000000001,
+                                "record": {
+                                    "event_type": "aws.onboarding.accepted",
+                                    "focus_subject": "3-2-3-17-77-1-6-4-1-4.4-1-77",
+                                    "shell_verb": "apply",
+                                    "details": {"onboarding_action": "verify_sender"},
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "record_id": "audit-0002",
+                                "recorded_at_unix_ms": 1770000000002,
+                                "record": {
+                                    "event_type": "aws.narrow_write.applied",
+                                    "focus_subject": "3-2-3-17-77-1-6-4-1-4.4-1-77",
+                                    "shell_verb": "submit",
+                                    "details": {
+                                        "profile_id": "aws-csm.tff.technicalContact",
+                                        "updated_fields": ["selected_verified_sender"],
+                                    },
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_trusted_tenant_audit_activity(
+                {
+                    "schema": TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+                audit_storage_file=audit_storage_file,
+                portal_tenant_id="tff",
+            )
+
+            self.assertEqual(
+                result["surface_payload"]["recent_activity"]["activity_state"],
+                "recent_activity_observed",
+            )
+            self.assertEqual(
+                result["surface_payload"]["recent_activity"]["latest_recorded_at_unix_ms"],
+                1770000000002,
+            )
+            self.assertEqual(
+                [record["record_id"] for record in result["surface_payload"]["recent_activity"]["records"]],
+                ["audit-0002", "audit-0001"],
+            )
+            self.assertNotIn("external_events", result["surface_payload"])
+            self.assertEqual(
+                [entry["slice_id"] for entry in result["surface_payload"]["available_slices"]],
+                [
+                    BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+                    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+                    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                ],
+            )
+
+    def test_audit_activity_runtime_reports_unavailable_for_unreadable_storage(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            audit_storage_file = Path(temp_dir) / "audit.ndjson"
+            audit_storage_file.write_bytes(b"\x80\x81")
+
+            result = run_trusted_tenant_audit_activity(
+                {
+                    "schema": TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+                },
+                audit_storage_file=audit_storage_file,
+                portal_tenant_id="tff",
+            )
+
+            self.assertIsNone(result["error"])
+            self.assertEqual(
+                result["surface_payload"]["recent_activity"]["activity_state"],
+                "unavailable",
+            )
+
+    def test_audit_activity_runtime_rejects_cross_tenant_scope(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            result = run_trusted_tenant_audit_activity(
+                {
+                    "schema": TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "other", "audience": "trusted-tenant"},
+                },
+                audit_storage_file=Path(temp_dir) / "audit.ndjson",
+                portal_tenant_id="tff",
+            )
+
+            self.assertEqual(result["error"]["code"], "tenant_scope_mismatch")
+            self.assertEqual(result["slice_id"], BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID)
 
 
 if __name__ == "__main__":

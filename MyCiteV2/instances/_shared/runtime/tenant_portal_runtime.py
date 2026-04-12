@@ -24,6 +24,7 @@ from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
     resolve_trusted_tenant_portal_request,
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
     TRUSTED_TENANT_HOME_SURFACE_SCHEMA,
     TRUSTED_TENANT_PORTAL_ENTRYPOINT_ID,
@@ -65,6 +66,16 @@ def build_trusted_tenant_visible_slice_catalog() -> tuple[dict[str, Any], ...]:
             "read_write_posture": "read-only",
             "status_summary": "read_only_status_surface",
             "surface_kind": "operational_status",
+            "launchable": True,
+            "default_surface": False,
+        },
+        {
+            "slice_id": BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+            "label": "Recent Activity",
+            "exposure_status": "implemented_trusted_tenant_read_only",
+            "read_write_posture": "read-only",
+            "status_summary": "recent_local_audit_window",
+            "surface_kind": "audit_activity",
             "launchable": True,
             "default_surface": False,
         },

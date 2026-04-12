@@ -102,6 +102,7 @@ class RuntimeCompositionBoundaryTests(unittest.TestCase):
                 "admin_runtime.py",
                 "mvp_runtime.py",
                 "runtime_platform.py",
+                "tenant_audit_activity_runtime.py",
                 "tenant_operational_status_runtime.py",
                 "tenant_portal_runtime.py",
             ],

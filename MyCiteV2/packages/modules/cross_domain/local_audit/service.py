@@ -46,6 +46,14 @@ _LOCAL_AUDIT_STORAGE_STATES = frozenset(
         "unreadable",
     }
 )
+_LOCAL_AUDIT_ACTIVITY_STATES = frozenset(
+    {
+        "not_configured",
+        "unavailable",
+        "empty",
+        "recent_activity_observed",
+    }
+)
 
 
 def _as_text(value: object) -> str:
@@ -210,6 +218,125 @@ class LocalAuditOperationalStatusSummary:
         }
 
 
+@dataclass(frozen=True)
+class LocalAuditVisibleRecord:
+    record_id: str
+    recorded_at_unix_ms: int
+    event_type: str
+    shell_verb: str
+    focus_subject: str
+    details: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        record_id = _as_text(self.record_id)
+        if not record_id:
+            raise ValueError("local_audit_visible_record.record_id is required")
+        recorded_at_unix_ms = int(self.recorded_at_unix_ms)
+        if recorded_at_unix_ms < 0:
+            raise ValueError("local_audit_visible_record.recorded_at_unix_ms must be non-negative")
+        normalized_record = normalize_local_audit_record(
+            {
+                "event_type": self.event_type,
+                "focus_subject": self.focus_subject,
+                "shell_verb": self.shell_verb,
+                "details": self.details or {},
+            }
+        )
+        object.__setattr__(self, "record_id", record_id)
+        object.__setattr__(self, "recorded_at_unix_ms", recorded_at_unix_ms)
+        object.__setattr__(self, "event_type", normalized_record.event_type)
+        object.__setattr__(self, "shell_verb", normalized_record.shell_verb)
+        object.__setattr__(self, "focus_subject", normalized_record.focus_subject)
+        object.__setattr__(self, "details", normalized_record.details)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "record_id": self.record_id,
+            "recorded_at_unix_ms": self.recorded_at_unix_ms,
+            "event_type": self.event_type,
+            "shell_verb": self.shell_verb,
+            "focus_subject": self.focus_subject,
+            "details": dict(self.details or {}),
+        }
+
+    @classmethod
+    def from_stored_record(cls, record: StoredLocalAuditRecord | dict[str, Any]) -> "LocalAuditVisibleRecord":
+        stored = record if isinstance(record, StoredLocalAuditRecord) else StoredLocalAuditRecord(
+            record_id=record.get("record_id"),
+            recorded_at_unix_ms=record.get("recorded_at_unix_ms"),
+            record=record.get("record"),
+        )
+        return cls(
+            record_id=stored.record_id,
+            recorded_at_unix_ms=stored.recorded_at_unix_ms,
+            event_type=stored.record.event_type,
+            shell_verb=stored.record.shell_verb,
+            focus_subject=stored.record.focus_subject,
+            details=stored.record.details,
+        )
+
+
+@dataclass(frozen=True)
+class LocalAuditRecentActivityProjection:
+    activity_state: str
+    records: tuple[LocalAuditVisibleRecord, ...] = ()
+    recent_window_limit: int = AUDIT_LOG_RECENT_WINDOW_LIMIT
+    latest_recorded_at_unix_ms: int | None = None
+
+    def __post_init__(self) -> None:
+        activity_state = _as_text(self.activity_state).lower()
+        if activity_state not in _LOCAL_AUDIT_ACTIVITY_STATES:
+            raise ValueError("local_audit_recent_activity.activity_state is invalid")
+        if int(self.recent_window_limit) != AUDIT_LOG_RECENT_WINDOW_LIMIT:
+            raise ValueError(
+                "local_audit_recent_activity.recent_window_limit must be "
+                f"{AUDIT_LOG_RECENT_WINDOW_LIMIT}"
+            )
+        normalized_records: list[LocalAuditVisibleRecord] = []
+        for index, record in enumerate(self.records):
+            if isinstance(record, LocalAuditVisibleRecord):
+                normalized_records.append(record)
+                continue
+            if isinstance(record, dict):
+                normalized_records.append(
+                    LocalAuditVisibleRecord(
+                        record_id=record.get("record_id"),
+                        recorded_at_unix_ms=record.get("recorded_at_unix_ms"),
+                        event_type=record.get("event_type"),
+                        shell_verb=record.get("shell_verb"),
+                        focus_subject=record.get("focus_subject"),
+                        details=record.get("details") or {},
+                    )
+                )
+                continue
+            raise ValueError(
+                "local_audit_recent_activity.records[] must be a LocalAuditVisibleRecord or dict "
+                f"(index {index})"
+            )
+        latest_recorded_at_unix_ms = (
+            max(record.recorded_at_unix_ms for record in normalized_records)
+            if normalized_records
+            else None
+        )
+        object.__setattr__(self, "activity_state", activity_state)
+        object.__setattr__(self, "records", tuple(normalized_records))
+        object.__setattr__(self, "recent_window_limit", AUDIT_LOG_RECENT_WINDOW_LIMIT)
+        object.__setattr__(self, "latest_recorded_at_unix_ms", latest_recorded_at_unix_ms)
+
+    @property
+    def recent_record_count(self) -> int:
+        return len(self.records)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "activity_state": self.activity_state,
+            "recent_window_limit": self.recent_window_limit,
+            "recent_record_count": self.recent_record_count,
+            "latest_recorded_at_unix_ms": self.latest_recorded_at_unix_ms,
+            "records": [record.to_dict() for record in self.records],
+        }
+
+
 def normalize_local_audit_record(payload: LocalAuditRecord | dict[str, Any]) -> LocalAuditRecord:
     if isinstance(payload, LocalAuditRecord):
         return payload
@@ -258,6 +385,45 @@ class LocalAuditService:
             storage_state="present",
             recent_record_count=normalized_recent.record_count,
             latest_recorded_at_unix_ms=latest_recorded_at_unix_ms,
+        )
+
+    def read_recent_activity_projection(self) -> LocalAuditRecentActivityProjection:
+        if self._audit_log_port is None:
+            return LocalAuditRecentActivityProjection(activity_state="not_configured")
+
+        try:
+            recent = self._audit_log_port.read_recent_audit_records(AuditLogRecentWindowRequest())
+        except (OSError, UnicodeDecodeError):
+            return LocalAuditRecentActivityProjection(activity_state="unavailable")
+
+        normalized_recent = (
+            recent
+            if isinstance(recent, AuditLogRecentWindowResult)
+            else AuditLogRecentWindowResult.from_dict(recent)
+        )
+        visible_records: list[LocalAuditVisibleRecord] = []
+        for stored in normalized_recent.records:
+            try:
+                semantic_record = normalize_local_audit_record(stored.record)
+            except ValueError:
+                continue
+            visible_records.append(
+                LocalAuditVisibleRecord(
+                    record_id=stored.record_id,
+                    recorded_at_unix_ms=stored.recorded_at_unix_ms,
+                    event_type=semantic_record.event_type,
+                    shell_verb=semantic_record.shell_verb,
+                    focus_subject=semantic_record.focus_subject,
+                    details=semantic_record.details,
+                )
+            )
+
+        if not visible_records:
+            return LocalAuditRecentActivityProjection(activity_state="empty")
+
+        return LocalAuditRecentActivityProjection(
+            activity_state="recent_activity_observed",
+            records=tuple(visible_records),
         )
 
     def append_record(self, payload: LocalAuditRecord | dict[str, Any]) -> AuditLogAppendReceipt:
