@@ -22,7 +22,14 @@ if str(REPO_ROOT) not in sys.path:
 
 if HAS_FLASK:
     from MyCiteV2.instances._shared.portal_host import V2PortalHostConfig, create_app
-    from MyCiteV2.instances._shared.portal_host.app import HOST_SHAPE, V2_PORTAL_HEALTH_SCHEMA
+    from MyCiteV2.instances._shared.portal_host.app import (
+        HOST_SHAPE,
+        TRUSTED_TENANT_ROUTE_CATALOG,
+        TRUSTED_TENANT_STATIC_BUNDLE_PATH,
+        TRUSTED_TENANT_STATIC_RENDER_MARKERS,
+        TRUSTED_TENANT_SURFACE_CONTRACT_SCHEMA,
+        V2_PORTAL_HEALTH_SCHEMA,
+    )
     from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
         ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA,
         ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
@@ -58,6 +65,44 @@ else:  # pragma: no cover
     V2PortalHostConfig = object  # type: ignore[assignment]
     create_app = None  # type: ignore[assignment]
     HOST_SHAPE = "v2_native"
+    TRUSTED_TENANT_ROUTE_CATALOG = (
+        {
+            "page_route": "/portal/home",
+            "api_route": "/portal/api/v2/tenant/home",
+            "request_schema": "mycite.v2.portal.tenant_home.request.v1",
+            "slice_id": "band1.portal_home_tenant_status",
+            "workbench_kind": "tenant_home_status",
+        },
+        {
+            "page_route": "/portal/status",
+            "api_route": "/portal/api/v2/tenant/operational-status",
+            "request_schema": "mycite.v2.portal.operational_status.request.v1",
+            "slice_id": "band1.operational_status_surface",
+            "workbench_kind": "operational_status",
+        },
+        {
+            "page_route": "/portal/activity",
+            "api_route": "/portal/api/v2/tenant/audit-activity",
+            "request_schema": "mycite.v2.portal.audit_activity.request.v1",
+            "slice_id": "band1.audit_activity_visibility",
+            "workbench_kind": "audit_activity",
+        },
+        {
+            "page_route": "/portal/profile-basics",
+            "api_route": "/portal/api/v2/tenant/profile-basics",
+            "request_schema": "mycite.v2.portal.profile_basics_write.request.v1",
+            "slice_id": "band2.profile_basics_write_surface",
+            "workbench_kind": "profile_basics_write",
+        },
+    )
+    TRUSTED_TENANT_STATIC_BUNDLE_PATH = "/portal/static/v2_portal_shell.js"
+    TRUSTED_TENANT_STATIC_RENDER_MARKERS = (
+        "tenant_home_status",
+        "operational_status",
+        "audit_activity",
+        "profile_basics_write",
+    )
+    TRUSTED_TENANT_SURFACE_CONTRACT_SCHEMA = "mycite.v2.portal.surface_contract.v1"
     V2_PORTAL_HEALTH_SCHEMA = "mycite.v2.portal.health.v1"
     ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA = "mycite.v2.admin.aws.narrow_write.request.v1"
     ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.aws.read_only.request.v1"
@@ -298,12 +343,18 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertEqual(payload["schema"], V2_PORTAL_HEALTH_SCHEMA)
             self.assertEqual(payload["host_shape"], HOST_SHAPE)
             self.assertTrue(payload["ok"])
+            self.assertTrue(payload["portal_build_id"])
             bundle = payload.get("portal_static_bundle") or {}
             self.assertTrue(bundle.get("static_ok"))
             self.assertTrue(bundle.get("portal_css_present"))
             self.assertTrue(bundle.get("v2_portal_shell_js_present"))
             self.assertGreater(int(bundle.get("portal_css_size_bytes") or 0), 0)
             self.assertEqual(bundle.get("static_url_path"), "/portal/static")
+            contract = payload.get("surface_contract") or {}
+            self.assertEqual(contract.get("schema"), TRUSTED_TENANT_SURFACE_CONTRACT_SCHEMA)
+            self.assertEqual(contract.get("routes"), [dict(route) for route in TRUSTED_TENANT_ROUTE_CATALOG])
+            self.assertEqual(contract.get("static_bundle_path"), TRUSTED_TENANT_STATIC_BUNDLE_PATH)
+            self.assertEqual(contract.get("required_static_markers"), list(TRUSTED_TENANT_STATIC_RENDER_MARKERS))
             self.assertEqual(payload["datum_health"]["row_count"], 1)
             self.assertEqual(payload["datum_health"]["readiness_status"]["anthology_status"], "loaded")
             self.assertIn("derived_materialization", payload["datum_health"]["readiness_status"])
@@ -762,7 +813,8 @@ class V2NativePortalHostTests(unittest.TestCase):
                 self.assertIn(b"ide-shell", home.data)
                 self.assertIn(b"v2_portal_shell.js", home.data)
                 self.assertIn(b"v2-bootstrap-shell-request", home.data)
-                self.assertIn(b"admin_band0.home_status", home.data)
+                self.assertIn(b"band1.portal_home_tenant_status", home.data)
+                self.assertIn(b"/portal/api/v2/tenant/home", home.data)
                 self.assertIn(b"shell-template: v2-composition", home.data)
                 self.assertIn(b"/portal/static/portal.css", home.data)
             finally:

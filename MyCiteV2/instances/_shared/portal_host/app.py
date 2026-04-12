@@ -17,6 +17,9 @@ from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
 from MyCiteV2.instances._shared.runtime.admin_runtime import run_admin_shell_entry
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
     TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
     TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
     TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
@@ -64,6 +67,45 @@ TENANT_DOMAINS = {
     "fnd": "fruitfulnetworkdevelopment.com",
     "tff": "trappfamilyfarm.com",
 }
+
+TRUSTED_TENANT_SURFACE_CONTRACT_SCHEMA = "mycite.v2.portal.surface_contract.v1"
+TRUSTED_TENANT_ROUTE_CATALOG: tuple[dict[str, str], ...] = (
+    {
+        "page_route": "/portal/home",
+        "api_route": "/portal/api/v2/tenant/home",
+        "request_schema": TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA,
+        "slice_id": BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+        "workbench_kind": "tenant_home_status",
+    },
+    {
+        "page_route": "/portal/status",
+        "api_route": "/portal/api/v2/tenant/operational-status",
+        "request_schema": TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+        "slice_id": BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+        "workbench_kind": "operational_status",
+    },
+    {
+        "page_route": "/portal/activity",
+        "api_route": "/portal/api/v2/tenant/audit-activity",
+        "request_schema": TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
+        "slice_id": BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+        "workbench_kind": "audit_activity",
+    },
+    {
+        "page_route": "/portal/profile-basics",
+        "api_route": "/portal/api/v2/tenant/profile-basics",
+        "request_schema": TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
+        "slice_id": BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
+        "workbench_kind": "profile_basics_write",
+    },
+)
+TRUSTED_TENANT_STATIC_BUNDLE_PATH = "/portal/static/v2_portal_shell.js"
+TRUSTED_TENANT_STATIC_RENDER_MARKERS: tuple[str, ...] = (
+    "tenant_home_status",
+    "operational_status",
+    "audit_activity",
+    "profile_basics_write",
+)
 
 
 def _as_text(value: object) -> str:
@@ -153,6 +195,15 @@ def _analytics_request_payload() -> dict[str, Any]:
         return {key: request.form.get(key) for key in sorted(request.form.keys())}
     raw = request.get_data(as_text=True) or ""
     return {"raw": raw[:8192]} if raw else {}
+
+
+def _trusted_tenant_surface_contract() -> dict[str, Any]:
+    return {
+        "schema": TRUSTED_TENANT_SURFACE_CONTRACT_SCHEMA,
+        "routes": [dict(route) for route in TRUSTED_TENANT_ROUTE_CATALOG],
+        "static_bundle_path": TRUSTED_TENANT_STATIC_BUNDLE_PATH,
+        "required_static_markers": list(TRUSTED_TENANT_STATIC_RENDER_MARKERS),
+    }
 
 
 @dataclass(frozen=True)
@@ -434,6 +485,7 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         "ok": health_ok,
         "host_shape": HOST_SHAPE,
         "tenant_id": config.tenant_id,
+        "portal_build_id": PORTAL_BUILD_ID,
         "portal_static_bundle": {
             "package_static_dir": str(static_dir),
             "portal_css_present": portal_css.is_file(),
@@ -442,6 +494,7 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
             "static_url_path": "/portal/static",
             "static_ok": static_ok,
         },
+        "surface_contract": _trusted_tenant_surface_contract(),
         "state_roots": config.to_public_dict(),
         "datum_health": {
             "ok": datum_ok,
