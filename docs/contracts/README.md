@@ -2,6 +2,9 @@
 
 This directory defines reusable rules for module boundaries, terminology, and imports.
 
+- Start with [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md).
+- Use [../governance/reading_paths.md](../governance/reading_paths.md) when you need the recommended document order for a task instead of a contract-first scan.
+- Use [../governance/document_registry.yaml](../governance/document_registry.yaml) to confirm lifecycle, ownership, and canonical entrypoints for contract docs.
 - [repo_and_runtime_boundary.md](repo_and_runtime_boundary.md) defines the shared repo-owned-authority vs runtime/deployment boundary.
 - [portal_auth_and_audience_boundary.md](portal_auth_and_audience_boundary.md) defines the browser auth, trusted header, and runtime audience split for the live V2 portal.
 - [tool_state_and_datum_authority.md](tool_state_and_datum_authority.md) defines the shared rule for tool code, utility state, datum truth, and derived artifacts.

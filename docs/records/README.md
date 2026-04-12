@@ -3,10 +3,14 @@
 This directory stores completion records, implementation reports, and task
 evidence for work that is already done.
 
+- Start with [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md).
+- Use [../governance/document_registry.yaml](../governance/document_registry.yaml) to disambiguate mixed numbered records, task-coded records, and retained placeholders without renaming files.
+- Use [../governance/reading_paths.md](../governance/reading_paths.md) when you need the current work queue before diving into completion history.
 - Use `docs/plans/` for unfinished work.
 - Use `docs/records/` for completed work.
 - If a plan or slice is already implemented, prefer its record here over the old
   planning prompt or slice spec.
+- Personal discussion artifacts and preserved note material belong in [../personal_notes/README.md](../personal_notes/README.md), not in `docs/records/`.
 
 Records are still subordinate to the v2 authority stack. They capture what was
 done, not a second architecture authority.

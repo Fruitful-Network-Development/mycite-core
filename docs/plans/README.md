@@ -4,6 +4,8 @@ This directory defines active v2 work: how v2 is built, in what order, and
 which planning surfaces are still unfinished.
 
 - Start with [v2-authority_stack.md](v2-authority_stack.md).
+- Use [../governance/README.md](../governance/README.md) for document lifecycle and cleanup rules.
+- Use [../governance/reading_paths.md](../governance/reading_paths.md) for task-based entrypoints across the full docs tree.
 - Use [v2-master_build_sequence.md](v2-master_build_sequence.md) for the phase order.
 - Use [v2-mvp_boundary.md](v2-mvp_boundary.md) for the smallest proving slice.
 - Use [post_mvp_rollout/current_planning_index.md](post_mvp_rollout/current_planning_index.md) for the current post-MVP planning surface.

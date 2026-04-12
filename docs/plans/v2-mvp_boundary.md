@@ -13,7 +13,7 @@ Source precedence for MVP decisions is:
 1. [../ontology/structural_invariants.md](../ontology/structural_invariants.md)
 2. [../decisions/](../decisions/)
 3. [phases/](phases/) and [v2-phase_completion_definition.md](v2-phase_completion_definition.md)
-4. [v1-migration/](v1-migration/)
+4. [version-migration/](version-migration/)
 5. `../../../docs/plans/*.md` from v1
 6. v1 code as evidence only
 

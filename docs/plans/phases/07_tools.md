@@ -8,7 +8,7 @@ Recreate tool packages as shell-attached capability owners rather than alternate
 
 - [../v2-authority_stack.md](../v2-authority_stack.md)
 - [../../ontology/interface_surfaces.md](../../ontology/interface_surfaces.md)
-- [../../V1/plans/tool_dev.md](../../V1/plans/tool_dev.md)
+- [../legacy/v1-tool_dev.md](../legacy/v1-tool_dev.md)
 
 ## inputs
 

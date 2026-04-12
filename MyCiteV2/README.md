@@ -25,6 +25,8 @@ Start with [../docs/plans/v2-authority_stack.md](../docs/plans/v2-authority_stac
 
 - Read [../docs/README.md](../docs/README.md).
 - Read [../docs/plans/v2-authority_stack.md](../docs/plans/v2-authority_stack.md).
+- Read [../docs/governance/README.md](../docs/governance/README.md).
+- Read [../docs/governance/reading_paths.md](../docs/governance/reading_paths.md).
 - Read [../docs/contracts/v2_surface_ownership_map.md](../docs/contracts/v2_surface_ownership_map.md).
 - Read [../docs/ontology/structural_invariants.md](../docs/ontology/structural_invariants.md).
 - Read [../docs/ontology/retained_cross_version_concepts.md](../docs/ontology/retained_cross_version_concepts.md).
@@ -33,6 +35,7 @@ Start with [../docs/plans/v2-authority_stack.md](../docs/plans/v2-authority_stac
 - Read [../docs/plans/post_mvp_rollout/post_aws_tool_platform/v2_native_cutover_hardening.md](../docs/plans/post_mvp_rollout/post_aws_tool_platform/v2_native_cutover_hardening.md) if the work touches live deployment, repo clarity, or V1 retirement.
 - Use [../docs/plans/version-migration/README.md](../docs/plans/version-migration/README.md) for V1 evidence and retirement review, not as the active live cutover queue.
 - Use [../docs/records/README.md](../docs/records/README.md) for completed work.
+- Use [../docs/personal_notes/README.md](../docs/personal_notes/README.md) only for preserved non-authoritative notes and archived discussions.
 
 ## Working rules
 
@@ -40,6 +43,7 @@ Start with [../docs/plans/v2-authority_stack.md](../docs/plans/v2-authority_stac
 - Do not infer architecture from v1 path names.
 - Treat scaffold-phase prohibition docs as historical phase guidance, not as a claim that V2 is still scaffold-only.
 - Do not treat `docs/wiki/` or `docs/audits/` as authority. See [../docs/ontology/non_authoritative_zones.md](../docs/ontology/non_authoritative_zones.md).
+- Do not treat `docs/personal_notes/` as authority. See [../docs/ontology/non_authoritative_zones.md](../docs/ontology/non_authoritative_zones.md).
 
 ## Directory intent
 

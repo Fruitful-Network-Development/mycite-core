@@ -8,7 +8,7 @@ Recreate pure core structures and utilities that do not depend on shell, runtime
 
 - [../v2-authority_stack.md](../v2-authority_stack.md)
 - [../../ontology/dependency_direction.md](../../ontology/dependency_direction.md)
-- [../v1-migration/source_authority_index.md](../v1-migration/source_authority_index.md)
+- [../version-migration/source_authority_index.md](../version-migration/source_authority_index.md)
 
 ## inputs
 

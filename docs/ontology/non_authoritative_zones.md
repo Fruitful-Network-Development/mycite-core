@@ -7,6 +7,7 @@ These surfaces must never become v2 truth.
 ## Documentation zones
 
 - `docs/wiki/`: secondary notes only
+- `docs/personal_notes/`: preserved personal notes, discussions, and operational inventories only
 - `docs/audits/`: evidence only
 - `docs/records/`: completion evidence, not higher architecture authority
 - `docs/plans/legacy/`, `docs/contracts/legacy/`, and `docs/wiki/legacy/`: legacy evidence only

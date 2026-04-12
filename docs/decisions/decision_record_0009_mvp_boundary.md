@@ -12,10 +12,10 @@ MyCiteV2 needs a real proving slice, but broad partial coverage would recreate v
 
 The MVP is the `Shell Action To Local Audit` slice documented in:
 
-- [../plans/mvp_boundary.md](../plans/mvp_boundary.md)
-- [../plans/mvp_acceptance_criteria.md](../plans/mvp_acceptance_criteria.md)
-- [../plans/mvp_out_of_scope.md](../plans/mvp_out_of_scope.md)
-- [../plans/mvp_end_to_end_slice.md](../plans/mvp_end_to_end_slice.md)
+- [../plans/v2-mvp_boundary.md](../plans/v2-mvp_boundary.md)
+- [../plans/v2-mvp_acceptance_criteria.md](../plans/v2-mvp_acceptance_criteria.md)
+- [../plans/v2-mvp_out_of_scope.md](../plans/v2-mvp_out_of_scope.md)
+- [../plans/v2-mvp_end_to_end_slice.md](../plans/v2-mvp_end_to_end_slice.md)
 
 The slice includes:
 

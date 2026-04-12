@@ -1,4 +1,10 @@
-# EC2-AWSCMS-Admin IAM Inventory
+# AWS CMS Admin IAM Inventory
+
+This preserved operational inventory is non-authoritative. Use
+[../../contracts/README.md](../../contracts/README.md),
+[../../plans/v2-authority_stack.md](../../plans/v2-authority_stack.md), and
+[../README.md](../README.md) before using this note to interpret current V2
+behavior.
 
 ## Purpose
 
@@ -445,7 +451,7 @@ When the mailbox flow is fully per-mailbox and the legacy shared SMTP/service-sp
 
 **`MYCITE_V2_AWS_STATUS_FILE`**
 
-- V2 native portal hosts expect this env var to reference a **live** `mycite.service_tool.aws_csm.profile.v1` JSON artifact (see [instances/_shared/portal_host/app.py](../instances/_shared/portal_host/app.py) and [docs/archive/16-v2_native_portal_cutover.md](archive/16-v2_native_portal_cutover.md)).
+- V2 native portal hosts expect this env var to reference a **live** `mycite.service_tool.aws_csm.profile.v1` JSON artifact (see [../../../MyCiteV2/instances/_shared/portal_host/app.py](../../../MyCiteV2/instances/_shared/portal_host/app.py) and [../../records/16-v2_native_portal_cutover.md](../../records/16-v2_native_portal_cutover.md)).
 - IAM path rules such as `arn:aws:iam::065948377733:user/aws-cms/smtp/*` govern **SMTP credential IAM users**, not which **email domain** may appear on messages. Authoritative domain policy for the portal narrow-write path is enforced in application code plus **SES identity verification**.
 
 **SES and secondary domains (e.g. `cvccboard.org`)**
