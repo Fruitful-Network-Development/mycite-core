@@ -27,9 +27,9 @@ docs narrow the next build family; they do not replace slice approval.
 
 | Plan | Queue posture | Primary gate or live ids |
 | --- | --- | --- |
-| [aws_csm.md](aws_csm.md) | `next actual build target` | existing live ids `aws`, `aws_narrow_write`, `aws_csm_sandbox`, `aws_csm_onboarding` |
+| [aws_csm.md](aws_csm.md) | `implemented family root; next slice pending` | existing live ids `aws`, `aws_narrow_write`, `aws_csm_sandbox`, `aws_csm_onboarding`, `aws_csm_newsletter` |
+| [fnd_ebi.md](fnd_ebi.md) | `next actual build target` | `tool_exposure.fnd_ebi` |
 | [maps.md](maps.md) | `near-term candidate` | current live id `maps` |
-| [fnd_ebi.md](fnd_ebi.md) | `near-term candidate` | `tool_exposure.fnd_ebi` |
 | [agro_erp.md](agro_erp.md) | `clarified family, not immediate queue` | `tool_exposure.agro_erp` |
 | [fnd_dcm.md](fnd_dcm.md) | `typed family plan only` | `tool_exposure.fnd_dcm` |
 | [calendar.md](calendar.md) | `typed family plan only` | `tool_exposure.calendar` |

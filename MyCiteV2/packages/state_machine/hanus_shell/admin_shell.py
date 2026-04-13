@@ -14,7 +14,7 @@ ADMIN_SHELL_REGION_INSPECTOR_SCHEMA = "mycite.v2.admin.shell.region.inspector.v1
 DATUM_RESOURCE_WORKBENCH_SLICE_ID = "datum.resource_workbench"
 
 ADMIN_BAND0_NAME = "Admin Band 0 Internal Admin Replacement"
-ADMIN_BAND1_AWS_NAME = "Admin Band 1 Trusted-Tenant AWS Read-Only"
+ADMIN_BAND1_AWS_NAME = "Admin Band 1 Trusted-Tenant AWS-CSM Family"
 ADMIN_BAND2_AWS_NAME = "Admin Band 2 Trusted-Tenant AWS Narrow Write"
 ADMIN_BAND3_AWS_SANDBOX_NAME = "Admin Band 3 Internal AWS-CSM Sandbox"
 ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME = "Admin Band 4 Trusted-Tenant AWS-CSM Onboarding"
@@ -35,6 +35,7 @@ AWS_NARROW_WRITE_SLICE_ID = "admin_band2.aws_narrow_write_surface"
 AWS_CSM_SANDBOX_SLICE_ID = "admin_band3.aws_csm_sandbox_surface"
 AWS_CSM_ONBOARDING_SLICE_ID = "admin_band4.aws_csm_onboarding_surface"
 MAPS_READ_ONLY_SLICE_ID = "admin_band5.maps_read_only_surface"
+AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID = "admin.aws.family_home"
 AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
 AWS_NARROW_WRITE_ENTRYPOINT_ID = "admin.aws.narrow_write"
 AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID = "admin.aws.csm_sandbox_read_only"
@@ -220,6 +221,7 @@ class AdminToolRegistryEntry:
     audit_required: bool = False
     read_after_write_required: bool = False
     launchable: bool = False
+    activity_bar_visible: bool = True
     schema: str = field(default=ADMIN_TOOL_DESCRIPTOR_SCHEMA, init=False)
     discovery_mode: str = field(default=ADMIN_TOOL_DISCOVERY_MODE, init=False)
     launch_contract: str = field(default=ADMIN_TOOL_LAUNCH_CONTRACT, init=False)
@@ -269,6 +271,7 @@ class AdminToolRegistryEntry:
             "launch_contract": self.launch_contract,
             "default_posture": self.default_posture,
             "launchable": bool(self.launchable),
+            "activity_bar_visible": bool(self.activity_bar_visible),
         }
 
 
@@ -374,21 +377,21 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
     return (
         AdminToolRegistryEntry(
             tool_id="aws",
-            label="AWS Admin",
+            label="AWS-CSM",
             slice_id=AWS_READ_ONLY_SLICE_ID,
-            entrypoint_id=AWS_READ_ONLY_ENTRYPOINT_ID,
+            entrypoint_id=AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
             admin_band=ADMIN_BAND1_AWS_NAME,
             exposure_status="implemented_trusted_tenant_read_only",
             read_write_posture="read-only",
             surface_pattern=ADMIN_TOOL_SURFACE_READ_ONLY,
-            status_summary="launchable_read_only",
+            status_summary="launchable_family_home",
             audience="trusted-tenant-admin",
             internal_only_reason="",
             launchable=True,
         ),
         AdminToolRegistryEntry(
             tool_id="aws_narrow_write",
-            label="AWS Admin Narrow Write",
+            label="AWS-CSM Sender Selection",
             slice_id=AWS_NARROW_WRITE_SLICE_ID,
             entrypoint_id=AWS_NARROW_WRITE_ENTRYPOINT_ID,
             admin_band=ADMIN_BAND2_AWS_NAME,
@@ -401,6 +404,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             audit_required=True,
             read_after_write_required=True,
             launchable=True,
+            activity_bar_visible=False,
         ),
         AdminToolRegistryEntry(
             tool_id="aws_csm_sandbox",
@@ -415,6 +419,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             audience="internal-admin",
             internal_only_reason="",
             launchable=True,
+            activity_bar_visible=False,
         ),
         AdminToolRegistryEntry(
             tool_id="aws_csm_onboarding",
@@ -431,6 +436,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             audit_required=True,
             read_after_write_required=True,
             launchable=True,
+            activity_bar_visible=False,
         ),
         AdminToolRegistryEntry(
             tool_id="maps",
@@ -821,6 +827,7 @@ __all__ = [
     "ADMIN_TOOL_SURFACE_READ_ONLY",
     "AWS_CSM_ONBOARDING_ENTRYPOINT_ID",
     "AWS_CSM_ONBOARDING_SLICE_ID",
+    "AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID",
     "AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID",
     "AWS_CSM_SANDBOX_SLICE_ID",
     "MAPS_READ_ONLY_ENTRYPOINT_ID",

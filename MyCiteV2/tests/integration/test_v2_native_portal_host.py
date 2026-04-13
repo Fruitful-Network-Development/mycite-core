@@ -177,6 +177,7 @@ def _live_profile(selected_sender: str = "technicalcontact@trappfamilyfarm.com")
 def _default_tool_exposure() -> dict[str, object]:
     return {
         "aws": {"enabled": True},
+        "aws_csm_newsletter": {"enabled": False},
         "aws_narrow_write": {"enabled": True},
         "aws_csm_onboarding": {"enabled": True},
         "aws_csm_sandbox": {"enabled": False},
@@ -450,6 +451,7 @@ class V2NativePortalHostTests(unittest.TestCase):
 
             summary = config.tool_exposure_policy or {}
             self.assertEqual(summary.get("enabled_tool_ids"), ["aws"])
+            self.assertIn("aws_csm_newsletter", summary.get("missing_tool_ids") or [])
             self.assertIn("aws_csm_onboarding", summary.get("missing_tool_ids") or [])
             self.assertIn("maps", summary.get("missing_tool_ids") or [])
             self.assertIn("aws_narrow_write", summary.get("invalid_tool_ids") or [])
@@ -489,7 +491,7 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertTrue(payload["aws_config_health"]["live_profile_mapping"])
             tool_exposure = payload.get("tool_exposure") or {}
             self.assertEqual(tool_exposure.get("enabled_tool_ids"), ["aws", "aws_narrow_write", "aws_csm_onboarding"])
-            self.assertEqual(tool_exposure.get("disabled_tool_ids"), ["aws_csm_sandbox", "maps"])
+            self.assertEqual(tool_exposure.get("disabled_tool_ids"), ["aws_csm_newsletter", "aws_csm_sandbox", "maps"])
             self.assertEqual(tool_exposure.get("unknown_tool_ids"), [])
             self.assertIn("/clients/trappfamilyfarm.com/analytics", payload["analytics_root"]["analytics_root"])
 
@@ -525,8 +527,6 @@ class V2NativePortalHostTests(unittest.TestCase):
                     ADMIN_HOME_STATUS_SLICE_ID,
                     ADMIN_TOOL_REGISTRY_SLICE_ID,
                     AWS_READ_ONLY_SLICE_ID,
-                    AWS_NARROW_WRITE_SLICE_ID,
-                    AWS_CSM_ONBOARDING_SLICE_ID,
                 ],
             )
 
@@ -1053,6 +1053,7 @@ class V2NativePortalHostTests(unittest.TestCase):
                 tenant_id="fnd",
                 tool_exposure={
                     "aws": {"enabled": True},
+                    "aws_csm_newsletter": {"enabled": False},
                     "aws_narrow_write": {"enabled": True},
                     "aws_csm_onboarding": {"enabled": True},
                     "aws_csm_sandbox": {"enabled": False},

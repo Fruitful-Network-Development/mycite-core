@@ -24,6 +24,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_ENTRYPOINT_ID,
     ADMIN_TOOL_DESCRIPTOR_SCHEMA,
     ADMIN_TOOL_LAUNCH_CONTRACT,
+    AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
     AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
     AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
@@ -79,11 +80,12 @@ class AdminToolPlatformContractTests(unittest.TestCase):
     def test_runtime_entrypoint_catalog_is_static_and_serializable(self) -> None:
         descriptors = [entry.to_dict() for entry in build_admin_runtime_entrypoint_catalog()]
 
-        self.assertEqual([entry["schema"] for entry in descriptors], [ADMIN_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA] * 6)
+        self.assertEqual([entry["schema"] for entry in descriptors], [ADMIN_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA] * 7)
         self.assertEqual(
             [entry["entrypoint_id"] for entry in descriptors],
             [
                 ADMIN_ENTRYPOINT_ID,
+                AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
                 AWS_READ_ONLY_ENTRYPOINT_ID,
                 AWS_NARROW_WRITE_ENTRYPOINT_ID,
                 AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
@@ -93,15 +95,17 @@ class AdminToolPlatformContractTests(unittest.TestCase):
         )
         self.assertEqual(descriptors[0]["launch_contract"], ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT)
         self.assertEqual(descriptors[1]["launch_contract"], ADMIN_TOOL_LAUNCH_CONTRACT)
-        self.assertEqual(descriptors[2]["surface_pattern"], "bounded-write")
-        self.assertEqual(descriptors[2]["required_configuration"], ["aws_status_file", "audit_storage_file"])
-        self.assertEqual(descriptors[3]["entrypoint_id"], AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID)
-        self.assertEqual(descriptors[3]["required_configuration"], ["aws_csm_sandbox_status_file"])
-        self.assertEqual(descriptors[4]["entrypoint_id"], AWS_CSM_ONBOARDING_ENTRYPOINT_ID)
-        self.assertEqual(descriptors[4]["required_configuration"], ["aws_status_file", "audit_storage_file"])
-        self.assertEqual(descriptors[5]["entrypoint_id"], MAPS_READ_ONLY_ENTRYPOINT_ID)
-        self.assertEqual(descriptors[5]["surface_schema"], ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA)
-        self.assertEqual(descriptors[5]["required_configuration"], ["data_dir"])
+        self.assertEqual(descriptors[1]["required_configuration"], ["aws_status_file", "private_dir"])
+        self.assertEqual(descriptors[2]["surface_pattern"], "read-only")
+        self.assertEqual(descriptors[3]["surface_pattern"], "bounded-write")
+        self.assertEqual(descriptors[3]["required_configuration"], ["aws_status_file", "audit_storage_file"])
+        self.assertEqual(descriptors[4]["entrypoint_id"], AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID)
+        self.assertEqual(descriptors[4]["required_configuration"], ["aws_csm_sandbox_status_file"])
+        self.assertEqual(descriptors[5]["entrypoint_id"], AWS_CSM_ONBOARDING_ENTRYPOINT_ID)
+        self.assertEqual(descriptors[5]["required_configuration"], ["aws_status_file", "audit_storage_file"])
+        self.assertEqual(descriptors[6]["entrypoint_id"], MAPS_READ_ONLY_ENTRYPOINT_ID)
+        self.assertEqual(descriptors[6]["surface_schema"], ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA)
+        self.assertEqual(descriptors[6]["required_configuration"], ["data_dir"])
         self.assertEqual(json.loads(json.dumps(descriptors, sort_keys=True)), descriptors)
         self.assertIsNone(resolve_admin_runtime_entrypoint("missing.entrypoint"))
         self.assertEqual(

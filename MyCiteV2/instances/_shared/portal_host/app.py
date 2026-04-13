@@ -10,6 +10,8 @@ from typing import Any
 from flask import Flask, Response, abort, jsonify, render_template, request, send_from_directory
 
 from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
+    run_admin_aws_csm_family_home,
+    run_admin_aws_csm_newsletter,
     run_admin_aws_csm_onboarding,
     run_admin_aws_csm_sandbox_read_only,
     run_admin_aws_narrow_write,
@@ -21,6 +23,8 @@ from MyCiteV2.instances._shared.runtime.admin_maps_runtime import (
 from MyCiteV2.instances._shared.runtime.admin_runtime import run_admin_shell_entry
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
+    ADMIN_AWS_CSM_FAMILY_HOME_REQUEST_SCHEMA,
+    ADMIN_AWS_CSM_NEWSLETTER_REQUEST_SCHEMA,
     ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
     ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
@@ -63,9 +67,12 @@ from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
 )
 from MyCiteV2.packages.adapters.filesystem import (
     AnalyticsEventPathResolver,
+    FilesystemAwsCsmNewsletterStateAdapter,
     FilesystemSystemDatumStoreAdapter,
     is_live_aws_profile_file,
 )
+from MyCiteV2.packages.adapters.event_transport import AwsEc2RoleNewsletterCloudAdapter
+from MyCiteV2.packages.modules.cross_domain.aws_csm_newsletter import AwsCsmNewsletterService
 from MyCiteV2.packages.modules.domains.datum_recognition import DatumWorkbenchService
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
 
@@ -197,7 +204,7 @@ def _load_optional_json_object(path: Path) -> dict[str, Any]:
 
 
 def _known_admin_tool_ids() -> list[str]:
-    return [entry.tool_id for entry in build_admin_tool_registry_entries()]
+    return [entry.tool_id for entry in build_admin_tool_registry_entries()] + ["aws_csm_newsletter"]
 
 
 def _load_tool_exposure_policy(private_dir: Path, raw_policy: object | None = None) -> dict[str, Any]:
@@ -222,6 +229,43 @@ def _tool_exposure_public_summary(tool_exposure_policy: dict[str, Any]) -> dict[
         "invalid_tool_ids": list(tool_exposure_policy.get("invalid_tool_ids") or []),
         "configured_tools": dict(tool_exposure_policy.get("configured_tools") or {}),
     }
+
+
+def _wants_json_response() -> bool:
+    accept = _as_text(request.headers.get("Accept")).lower()
+    return "application/json" in accept or request.method == "POST"
+
+
+def _html_message(title: str, message: str, *, status_code: int = 200) -> Response:
+    markup = (
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        f"<title>{title}</title>"
+        "<style>body{font-family:system-ui,sans-serif;max-width:42rem;margin:3rem auto;padding:0 1rem;line-height:1.6;color:#25302b}"
+        "main{border:1px solid #d8e0d7;border-radius:12px;padding:1.5rem 1.25rem;background:#fbfcfa}"
+        "h1{margin-top:0;font-size:1.5rem}a{color:#275d57}</style></head><body><main>"
+        f"<h1>{title}</h1><p>{message}</p>"
+        "</main></body></html>"
+    )
+    response = Response(markup + "\n", status=status_code, mimetype="text/html")
+    response.headers["Content-Type"] = "text/html; charset=utf-8"
+    return response
+
+
+def _newsletter_service(config: "V2PortalHostConfig") -> AwsCsmNewsletterService:
+    return AwsCsmNewsletterService(
+        FilesystemAwsCsmNewsletterStateAdapter(config.private_dir),
+        AwsEc2RoleNewsletterCloudAdapter(),
+        tenant_id=config.tenant_id,
+    )
+
+
+def _newsletter_dispatch_callback_url(domain: str) -> str:
+    return f"https://{_as_text(domain).lower()}/__fnd/newsletter/dispatch-result"
+
+
+def _newsletter_inbound_callback_url(domain: str) -> str:
+    return f"https://{_as_text(domain).lower()}/__fnd/newsletter/inbound-capture"
 
 
 def _current_year_month() -> str:
@@ -390,6 +434,7 @@ URL_SLUG_TO_SLICE_ID: dict[str, str] = {
     "tools": ADMIN_TOOL_REGISTRY_SLICE_ID,
     "registry": ADMIN_TOOL_REGISTRY_SLICE_ID,
     "aws": AWS_READ_ONLY_SLICE_ID,
+    "aws-csm": AWS_READ_ONLY_SLICE_ID,
     "aws-write": AWS_NARROW_WRITE_SLICE_ID,
     "aws-csm-onboarding": AWS_CSM_ONBOARDING_SLICE_ID,
     "aws-csm-sandbox": AWS_CSM_SANDBOX_SLICE_ID,
@@ -464,11 +509,14 @@ def _runtime_status_code(envelope: dict[str, Any]) -> int:
         return 404
     if code == "publication_profile_not_found":
         return 404
+    if code == "domain_not_found":
+        return 404
     if code in {
         "status_source_not_configured",
         "audit_log_not_configured",
         "publication_source_not_configured",
         "data_root_not_configured",
+        "private_state_not_configured",
     }:
         return 503
     if code == "read_after_write_failed":
@@ -545,6 +593,19 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         "sandbox_status_file": None if sandbox_file is None else str(sandbox_file),
         "sandbox_live_profile_mapping": is_live_aws_profile_file(sandbox_file),
     }
+    newsletter_service = _newsletter_service(config)
+    newsletter_enabled = bool((config.tool_exposure_policy or {}).get("configured_tools", {}).get("aws_csm_newsletter"))
+    newsletter_domains = newsletter_service.list_domains() if newsletter_enabled else []
+    aws_csm_family_health = newsletter_service.family_health(
+        domains=newsletter_domains,
+        dispatcher_callback_builder=_newsletter_dispatch_callback_url,
+        inbound_callback_builder=_newsletter_inbound_callback_url,
+    ) if newsletter_enabled else {
+        "schema": "mycite.v2.admin.aws_csm.family_health.v1",
+        "status": "newsletter_disabled",
+        "domain_count": 0,
+        "ready_domain_count": 0,
+    }
     datum_ok = datum_catalog.readiness_status.get("anthology_status") == "loaded"
     static_ok = portal_css.is_file() and portal_js.is_file()
     health_ok = bool(datum_ok) and bool(aws_health["live_profile_mapping"]) and static_ok
@@ -577,6 +638,7 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         },
         "analytics_root": analytics_resolution.to_dict(),
         "aws_config_health": aws_health,
+        "aws_csm_family_health": aws_csm_family_health,
     }
 
 
@@ -705,6 +767,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     aws_status_file=host_config.aws_status_file,
                     aws_csm_sandbox_status_file=host_config.aws_csm_sandbox_status_file,
                     data_dir=host_config.data_dir,
+                    private_dir=host_config.private_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
@@ -781,6 +844,23 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": "invalid_request", "message": str(exc)}}), 400
 
+    @app.post("/portal/api/v2/admin/aws/family-home")
+    def admin_aws_family_home() -> tuple[Any, int]:
+        try:
+            payload = _json_payload()
+            return _runtime_response(
+                run_admin_aws_csm_family_home(
+                    {"schema": ADMIN_AWS_CSM_FAMILY_HOME_REQUEST_SCHEMA, **payload}
+                    if "schema" not in payload
+                    else payload,
+                    aws_status_file=_required_live_aws_status_file(host_config),
+                    private_dir=host_config.private_dir,
+                    tool_exposure_policy=host_config.tool_exposure_policy,
+                )
+            )
+        except ValueError as exc:
+            return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": "invalid_request", "message": str(exc)}}), 400
+
     @app.post("/portal/api/v2/admin/aws/narrow-write")
     def admin_aws_narrow_write() -> tuple[Any, int]:
         try:
@@ -818,6 +898,22 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 run_admin_aws_csm_sandbox_read_only(
                     _json_payload(),
                     aws_sandbox_status_file=_optional_sandbox_live_profile_file(host_config),
+                    tool_exposure_policy=host_config.tool_exposure_policy,
+                )
+            )
+        except ValueError as exc:
+            return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": "invalid_request", "message": str(exc)}}), 400
+
+    @app.post("/portal/api/v2/admin/aws/newsletter")
+    def admin_aws_newsletter() -> tuple[Any, int]:
+        try:
+            payload = _json_payload()
+            return _runtime_response(
+                run_admin_aws_csm_newsletter(
+                    {"schema": ADMIN_AWS_CSM_NEWSLETTER_REQUEST_SCHEMA, **payload}
+                    if "schema" not in payload
+                    else payload,
+                    private_dir=host_config.private_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
@@ -897,6 +993,118 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             payload=payload,
         )
         return jsonify({"schema": "mycite.v2.analytics.collect.receipt.v1", "ok": True, "events_file": str(resolution.events_file), "warnings": list(resolution.warnings)}), 202
+
+    @app.post("/__fnd/newsletter/subscribe")
+    def newsletter_public_subscribe() -> tuple[Any, int]:
+        if host_config.tenant_id != "fnd":
+            abort(404)
+        body = _json_payload() or {key: request.form.get(key) for key in sorted(request.form.keys())}
+        domain = _request_domain() or _as_text(body.get("domain"))
+        try:
+            email = _as_text(body.get("email"))
+            row = _newsletter_service(host_config).subscribe(
+                domain=domain,
+                email=email,
+                name=_as_text(body.get("name")),
+                zip_code=_as_text(body.get("zip")),
+                dispatcher_callback_url=_newsletter_dispatch_callback_url(domain),
+                inbound_callback_url=_newsletter_inbound_callback_url(domain),
+            )
+        except LookupError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 404
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": True, "domain": domain, "contact": row}), 200
+
+    @app.route("/__fnd/newsletter/unsubscribe", methods=["GET", "POST"])
+    def newsletter_public_unsubscribe() -> tuple[Any, int] | Response:
+        if host_config.tenant_id != "fnd":
+            abort(404)
+        body = _json_payload() or {key: request.form.get(key) for key in sorted(request.form.keys())}
+        domain = _as_text(body.get("domain") or _request_domain() or request.args.get("domain"))
+        email = _as_text(body.get("email") or request.args.get("email"))
+        token = _as_text(body.get("token") or request.args.get("token"))
+        if not domain or not email or not token:
+            message = "The unsubscribe link is incomplete."
+            if _wants_json_response():
+                return jsonify({"ok": False, "error": message}), 400
+            return _html_message("Unsubscribe failed", message, status_code=400)
+        try:
+            updated = _newsletter_service(host_config).unsubscribe(
+                domain=domain,
+                email=email,
+                token=token,
+                dispatcher_callback_url=_newsletter_dispatch_callback_url(domain),
+                inbound_callback_url=_newsletter_inbound_callback_url(domain),
+            )
+        except LookupError as exc:
+            if _wants_json_response():
+                return jsonify({"ok": False, "error": str(exc)}), 404
+            return _html_message("Unsubscribe failed", str(exc), status_code=404)
+        except PermissionError as exc:
+            if _wants_json_response():
+                return jsonify({"ok": False, "error": str(exc)}), 403
+            return _html_message("Unsubscribe failed", str(exc), status_code=403)
+        except ValueError as exc:
+            if _wants_json_response():
+                return jsonify({"ok": False, "error": str(exc)}), 400
+            return _html_message("Unsubscribe failed", str(exc), status_code=400)
+        message = f"{email} has been unsubscribed from {domain}."
+        if _wants_json_response():
+            return jsonify({"ok": True, "domain": domain, "contact": updated}), 200
+        return _html_message("Unsubscribed", message), 200
+
+    @app.post("/__fnd/newsletter/dispatch-result")
+    def newsletter_public_dispatch_result() -> tuple[Any, int]:
+        if host_config.tenant_id != "fnd":
+            abort(404)
+        body = _json_payload()
+        domain = _as_text(body.get("domain") or _request_domain())
+        try:
+            payload = _newsletter_service(host_config).apply_dispatch_result(
+                domain=domain,
+                callback_token=_as_text(request.headers.get("X-Newsletter-Dispatch-Token") or body.get("callback_token")),
+                dispatch_id=_as_text(body.get("dispatch_id")),
+                email=_as_text(body.get("email")),
+                status=_as_text(body.get("status")),
+                message_id=_as_text(body.get("message_id")),
+                queue_message_id=_as_text(body.get("queue_message_id")),
+                error_message=_as_text(body.get("error")),
+                dispatcher_callback_url=_newsletter_dispatch_callback_url(domain),
+                inbound_callback_url=_newsletter_inbound_callback_url(domain),
+            )
+        except PermissionError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 403
+        except (LookupError, ValueError) as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": True, **payload}), 200
+
+    @app.post("/__fnd/newsletter/inbound-capture")
+    def newsletter_public_inbound_capture() -> tuple[Any, int]:
+        if host_config.tenant_id != "fnd":
+            abort(404)
+        body = _json_payload()
+        domain = _as_text(body.get("domain"))
+        try:
+            payload = _newsletter_service(host_config).process_inbound_capture(
+                signature=_as_text(request.headers.get("X-Newsletter-Inbound-Signature") or body.get("signature")),
+                domain=domain,
+                ses_message_id=_as_text(body.get("ses_message_id")),
+                s3_uri=_as_text(body.get("s3_uri")),
+                sender=_as_text(body.get("sender")),
+                recipient=_as_text(body.get("recipient")),
+                subject=_as_text(body.get("subject")),
+                captured_at=_as_text(body.get("captured_at")),
+                dispatcher_callback_url=_newsletter_dispatch_callback_url(domain),
+                inbound_callback_url=_newsletter_inbound_callback_url(domain),
+            )
+        except LookupError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 404
+        except PermissionError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 403
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify(payload), 202
 
     @app.get("/<path:resource_path>")
     def public_resource(resource_path: str) -> Any:

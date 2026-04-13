@@ -21,6 +21,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import ADMIN_RUNTIME_RE
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_HOME_STATUS_SLICE_ID,
     ADMIN_SHELL_REQUEST_SCHEMA,
+    AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
     AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
     AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
@@ -96,7 +97,7 @@ class AdminRuntimePlatformIntegrationTests(unittest.TestCase):
         self.assertEqual(
             entrypoint_ids,
             [
-                AWS_READ_ONLY_ENTRYPOINT_ID,
+                AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
                 AWS_NARROW_WRITE_ENTRYPOINT_ID,
                 AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
                 AWS_CSM_ONBOARDING_ENTRYPOINT_ID,

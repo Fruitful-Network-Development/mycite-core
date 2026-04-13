@@ -35,8 +35,11 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     resolve_admin_shell_request,
 )
 from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
+    ADMIN_AWS_CSM_FAMILY_HOME_REQUEST_SCHEMA,
     ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA,
     ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
+    run_admin_aws_csm_family_home,
+    run_admin_aws_csm_newsletter,
     run_admin_aws_csm_sandbox_read_only,
     run_admin_aws_read_only,
 )
@@ -47,6 +50,7 @@ from MyCiteV2.instances._shared.runtime.admin_maps_runtime import (
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_AWS_CSM_ONBOARDING_REQUEST_SCHEMA,
+    ADMIN_AWS_CSM_FAMILY_HOME_SURFACE_SCHEMA,
     ADMIN_HOME_STATUS_SURFACE_SCHEMA,
     ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA,
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
@@ -130,11 +134,12 @@ def _runtime_tool_entries(
     rows: list[dict[str, Any]] = []
     for entry in build_admin_tool_registry_entries():
         config_enabled = admin_tool_exposure_config_enabled(policy, tool_id=entry.tool_id)
-        visible_in_activity_bar = bool(entry.launchable and config_enabled)
+        activity_bar_visible = bool(entry.to_dict().get("activity_bar_visible", True))
+        visible_in_activity_bar = bool(entry.launchable and config_enabled and activity_bar_visible)
         if not entry.launchable:
             visibility_status = "shell_gated"
         elif config_enabled:
-            visibility_status = "visible"
+            visibility_status = "visible" if activity_bar_visible else "family_subsurface"
         else:
             visibility_status = "config_disabled"
         row = entry.to_dict()
@@ -495,6 +500,21 @@ def _inspector_aws_read_only_surface(*, surface: dict[str, Any]) -> dict[str, An
     }
 
 
+def _inspector_aws_csm_family_home(*, surface: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema": ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
+        "title": "AWS-CSM",
+        "kind": "aws_csm_family_home",
+        "family_health": surface.get("family_health") or {},
+        "primary_read_only": surface.get("primary_read_only") or {},
+        "domain_states": list(surface.get("domain_states") or []),
+        "selected_domain_state": surface.get("selected_domain_state") or {},
+        "newsletter_enabled": bool(surface.get("newsletter_enabled")),
+        "subsurface_navigation": surface.get("subsurface_navigation") or {},
+        "gated_subsurfaces": surface.get("gated_subsurfaces") or {},
+    }
+
+
 def _inspector_aws_tool_error(*, error: dict[str, Any], warnings: list[str]) -> dict[str, Any]:
     return {
         "schema": ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
@@ -610,6 +630,7 @@ def _build_regions_and_surface(
     aws_status_file: str | Path | None,
     aws_csm_sandbox_status_file: str | Path | None,
     data_dir: str | Path | None,
+    private_dir: str | Path | None,
     tool_exposure_policy: dict[str, Any] | None,
     selection: Any,
     normalized_request: AdminShellRequest,
@@ -771,15 +792,20 @@ def _build_regions_and_surface(
 
     if active == AWS_READ_ONLY_SLICE_ID:
         aws_path = _live_aws_path(aws_status_file)
-        ro_payload = {
-            "schema": ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
+        family_payload = {
+            "schema": ADMIN_AWS_CSM_FAMILY_HOME_REQUEST_SCHEMA,
             "tenant_scope": {"scope_id": portal_tenant_id, "audience": "trusted-tenant"},
         }
-        aws_env = run_admin_aws_read_only(ro_payload, aws_status_file=aws_path)
+        aws_env = run_admin_aws_csm_family_home(
+            family_payload,
+            aws_status_file=aws_path,
+            private_dir=private_dir,
+            tool_exposure_policy=tool_exposure_policy,
+        )
         sp = aws_env.get("surface_payload")
         err = aws_env.get("error")
         if err:
-            wb = _workbench_error(title="AWS (read-only)", message=_as_text((err or {}).get("message")) or "AWS surface failed.")
+            wb = _workbench_error(title="AWS-CSM", message=_as_text((err or {}).get("message")) or "AWS surface failed.")
             raw_w = aws_env.get("warnings") or []
             wlist = list(raw_w) if isinstance(raw_w, (list, tuple)) else []
             ins = _inspector_aws_tool_error(error=err if isinstance(err, dict) else {}, warnings=wlist)
@@ -787,16 +813,16 @@ def _build_regions_and_surface(
             wb = {
                 "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
                 "kind": "tool_placeholder",
-                "title": "AWS (read-only)",
-                "subtitle": "Primary projection is in the interface panel",
+                "title": "AWS-CSM",
+                "subtitle": "Family landing surface",
                 "visible": False,
             }
-            ins = _inspector_aws_read_only_surface(surface=sp if isinstance(sp, dict) else {})
+            ins = _inspector_aws_csm_family_home(surface=sp if isinstance(sp, dict) else {})
         comp = build_shell_composition_payload(
             active_surface_id=active,
             portal_tenant_id=portal_tenant_id,
             page_title="MyCite",
-            page_subtitle="AWS read-only",
+            page_subtitle="AWS-CSM",
             activity_items=_activity_items(
                 portal_tenant_id=portal_tenant_id,
                 nav_active_slice_id=nav_active_slice_id,
@@ -808,9 +834,9 @@ def _build_regions_and_surface(
                 tool_exposure_policy=tool_exposure_policy,
             ),
             workbench=wb,
-            inspector=ins,
+                inspector=ins,
         )
-        return sp, comp, "MyCite", "AWS read-only"
+        return sp, comp, "MyCite", "AWS-CSM"
 
     if active == AWS_NARROW_WRITE_SLICE_ID:
         aws_path = _live_aws_path(aws_status_file)
@@ -1031,6 +1057,7 @@ def run_admin_shell_entry(
     aws_status_file: str | Path | None = None,
     aws_csm_sandbox_status_file: str | Path | None = None,
     data_dir: str | Path | None = None,
+    private_dir: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_request = _normalize_request(request_payload)
@@ -1058,6 +1085,7 @@ def run_admin_shell_entry(
         aws_status_file=aws_status_file,
         aws_csm_sandbox_status_file=aws_csm_sandbox_status_file,
         data_dir=data_dir,
+        private_dir=private_dir,
         tool_exposure_policy=tool_exposure_policy,
         selection=selection,
         normalized_request=normalized_request,

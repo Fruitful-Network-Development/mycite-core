@@ -23,6 +23,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_DESCRIPTOR_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
+    AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
     AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
     AWS_CSM_ONBOARDING_SLICE_ID,
     AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
@@ -151,14 +152,14 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                 {
                     "schema": ADMIN_TOOL_DESCRIPTOR_SCHEMA,
                     "tool_id": "aws",
-                    "label": "AWS Admin",
+                    "label": "AWS-CSM",
                     "slice_id": AWS_READ_ONLY_SLICE_ID,
-                    "entrypoint_id": "admin.aws.read_only",
+                    "entrypoint_id": AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
                     "admin_band": ADMIN_BAND1_AWS_NAME,
                     "exposure_status": "implemented_trusted_tenant_read_only",
                     "read_write_posture": "read-only",
                     "surface_pattern": "read-only",
-                    "status_summary": "launchable_read_only",
+                    "status_summary": "launchable_family_home",
                     "audience": "trusted-tenant-admin",
                     "internal_only_reason": "",
                     "audit_required": False,
@@ -167,11 +168,12 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "launch_contract": "shell-owned-registry",
                     "default_posture": "deny-by-default",
                     "launchable": True,
+                    "activity_bar_visible": True,
                 },
                 {
                     "schema": ADMIN_TOOL_DESCRIPTOR_SCHEMA,
                     "tool_id": "aws_narrow_write",
-                    "label": "AWS Admin Narrow Write",
+                    "label": "AWS-CSM Sender Selection",
                     "slice_id": AWS_NARROW_WRITE_SLICE_ID,
                     "entrypoint_id": AWS_NARROW_WRITE_ENTRYPOINT_ID,
                     "admin_band": ADMIN_BAND2_AWS_NAME,
@@ -187,6 +189,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "launch_contract": "shell-owned-registry",
                     "default_posture": "deny-by-default",
                     "launchable": True,
+                    "activity_bar_visible": False,
                 },
                 {
                     "schema": ADMIN_TOOL_DESCRIPTOR_SCHEMA,
@@ -207,6 +210,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "launch_contract": "shell-owned-registry",
                     "default_posture": "deny-by-default",
                     "launchable": True,
+                    "activity_bar_visible": False,
                 },
                 {
                     "schema": ADMIN_TOOL_DESCRIPTOR_SCHEMA,
@@ -227,6 +231,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "launch_contract": "shell-owned-registry",
                     "default_posture": "deny-by-default",
                     "launchable": True,
+                    "activity_bar_visible": False,
                 },
                 {
                     "schema": ADMIN_TOOL_DESCRIPTOR_SCHEMA,
@@ -247,6 +252,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "launch_contract": "shell-owned-registry",
                     "default_posture": "deny-by-default",
                     "launchable": True,
+                    "activity_bar_visible": True,
                 },
             ],
         )
@@ -256,7 +262,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         allowed = resolve_admin_tool_launch(
             slice_id=AWS_READ_ONLY_SLICE_ID,
             audience="trusted-tenant",
-            expected_entrypoint_id="admin.aws.read_only",
+            expected_entrypoint_id=AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
         )
         mismatch = resolve_admin_tool_launch(
             slice_id=AWS_READ_ONLY_SLICE_ID,
@@ -277,7 +283,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
             {
                 "schema": "mycite.v2.admin.shell.state.v1",
                 "slice_id": AWS_READ_ONLY_SLICE_ID,
-                "entrypoint_id": "admin.aws.read_only",
+                "entrypoint_id": AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
                 "allowed": True,
                 "selection_status": "available",
                 "reason_code": "",

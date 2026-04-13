@@ -20,6 +20,7 @@ from MyCiteV2.instances._shared.runtime.admin_runtime import run_admin_shell_ent
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
+    AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
     AWS_READ_ONLY_SLICE_ID,
 )
@@ -79,7 +80,7 @@ class AdminAwsReadOnlyRuntimeIntegrationTests(unittest.TestCase):
             )
 
             self.assertTrue(tool_entry["launchable"])
-            self.assertEqual(tool_entry["entrypoint_id"], AWS_READ_ONLY_ENTRYPOINT_ID)
+            self.assertEqual(tool_entry["entrypoint_id"], AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID)
             self.assertEqual(tool_entry["slice_id"], AWS_READ_ONLY_SLICE_ID)
             self.assertEqual(result["schema"], ADMIN_RUNTIME_ENVELOPE_SCHEMA)
             self.assertEqual(result["entrypoint_id"], AWS_READ_ONLY_ENTRYPOINT_ID)
