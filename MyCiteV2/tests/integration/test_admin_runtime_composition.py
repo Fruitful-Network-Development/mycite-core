@@ -34,6 +34,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_READ_ONLY_SLICE_ID,
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
     CTS_GIS_READ_ONLY_SLICE_ID,
+    FND_EBI_READ_ONLY_SLICE_ID,
 )
 
 
@@ -45,8 +46,9 @@ def _aws_csm_rollout_policy() -> dict[str, object]:
             "aws_narrow_write": {"enabled": True},
             "aws_csm_onboarding": {"enabled": True},
             "aws_csm_sandbox": {"enabled": False},
+            "fnd_ebi": {"enabled": False},
         },
-        known_tool_ids=["aws", "aws_csm_newsletter", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"],
+        known_tool_ids=["aws", "aws_csm_newsletter", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis", "fnd_ebi"],
     )
 
 
@@ -125,12 +127,13 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             )
 
             available_tool_entries = result["surface_payload"]["available_tool_slices"]
-            self.assertEqual(len(available_tool_entries), 2)
+            self.assertEqual(len(available_tool_entries), 3)
             self.assertEqual(
                 [entry["slice_id"] for entry in available_tool_entries],
                 [
                     AWS_READ_ONLY_SLICE_ID,
                     CTS_GIS_READ_ONLY_SLICE_ID,
+                    FND_EBI_READ_ONLY_SLICE_ID,
                 ],
             )
             self.assertTrue(all(entry["launchable"] for entry in available_tool_entries))
@@ -179,11 +182,12 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         gated_tool_entries = result["surface_payload"]["gated_tool_slices"]
         self.assertEqual(
             [entry["slice_id"] for entry in gated_tool_entries],
-            [AWS_CSM_SANDBOX_SLICE_ID, CTS_GIS_READ_ONLY_SLICE_ID],
+            [AWS_CSM_SANDBOX_SLICE_ID, CTS_GIS_READ_ONLY_SLICE_ID, FND_EBI_READ_ONLY_SLICE_ID],
         )
         gated_by_slice = {entry["slice_id"]: entry for entry in gated_tool_entries}
         self.assertEqual(gated_by_slice[AWS_CSM_SANDBOX_SLICE_ID]["visibility_status"], "config_disabled")
         self.assertEqual(gated_by_slice[CTS_GIS_READ_ONLY_SLICE_ID]["visibility_status"], "config_disabled")
+        self.assertEqual(gated_by_slice[FND_EBI_READ_ONLY_SLICE_ID]["visibility_status"], "config_disabled")
         self.assertEqual(
             [entry["slice_id"] for entry in result["surface_payload"]["family_tool_slices"]],
             [AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID],
@@ -194,6 +198,7 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         self.assertNotIn(AWS_CSM_SANDBOX_SLICE_ID, activity_slice_ids)
         self.assertNotIn(AWS_CSM_ONBOARDING_SLICE_ID, activity_slice_ids)
         self.assertNotIn(CTS_GIS_READ_ONLY_SLICE_ID, activity_slice_ids)
+        self.assertNotIn(FND_EBI_READ_ONLY_SLICE_ID, activity_slice_ids)
         self.assertIn(ADMIN_HOME_STATUS_SLICE_ID, activity_slice_ids)
         self.assertIn(ADMIN_NETWORK_ROOT_SLICE_ID, activity_slice_ids)
         self.assertIn(ADMIN_TOOL_REGISTRY_SLICE_ID, activity_slice_ids)
@@ -212,10 +217,16 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         cts_gis_row = [
             row for row in registry["surface_payload"]["tool_entries"] if row["slice_id"] == CTS_GIS_READ_ONLY_SLICE_ID
         ][0]
+        fnd_ebi_row = [
+            row for row in registry["surface_payload"]["tool_entries"] if row["slice_id"] == FND_EBI_READ_ONLY_SLICE_ID
+        ][0]
         self.assertFalse(sandbox_row["config_enabled"])
         self.assertEqual(sandbox_row["visibility_status"], "config_disabled")
         self.assertEqual(cts_gis_row["tool_kind"], "general_tool")
         self.assertEqual(cts_gis_row["tool_id"], "cts_gis")
+        self.assertEqual(fnd_ebi_row["tool_kind"], "service_tool")
+        self.assertEqual(fnd_ebi_row["tool_id"], "fnd_ebi")
+        self.assertFalse(fnd_ebi_row["config_enabled"])
 
     def test_network_root_uses_contract_first_copy(self) -> None:
         result = run_admin_shell_entry(
@@ -271,13 +282,14 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
                 AWS_CSM_SANDBOX_SLICE_ID,
                 AWS_CSM_ONBOARDING_SLICE_ID,
                 CTS_GIS_READ_ONLY_SLICE_ID,
+                FND_EBI_READ_ONLY_SLICE_ID,
             ],
         )
         self.assertEqual(
             result["surface_payload"]["gated_tool_slice_ids"],
             [],
         )
-        self.assertEqual(len(result["surface_payload"]["tool_entries"]), 5)
+        self.assertEqual(len(result["surface_payload"]["tool_entries"]), 6)
         self.assertNotIn("newsletter-admin", json.dumps(result["surface_payload"], sort_keys=True))
         self.assertEqual(result["shell_composition"]["composition_mode"], "system")
         self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "utilities_root")

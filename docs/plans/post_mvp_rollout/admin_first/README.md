@@ -8,7 +8,7 @@ portal operationally through an admin-first path.
 Use this subtree now when the goal is:
 
 - understand why the admin/AWS foundation was built in its current order
-- keep CTS-GIS and AGRO-ERP sequenced correctly after the canonical V2 and V1 retirement closure
+- keep FND-EBI, CTS-GIS, and AGRO-ERP sequenced correctly after the canonical V2 and V1 retirement closure
 - avoid reopening completed admin-first foundation work as if it were still the active plan
 
 ## Relationship to the global rollout bands
@@ -21,7 +21,9 @@ The admin-first track is a nested rollout track, not a second authority stack.
 | `Admin Band 1 Trusted-Tenant AWS Read-Only` | `Band 1 Trusted-Tenant Read-Only` | first trusted-tenant-safe tool-bearing exposure, with AWS status and visibility only |
 | `Admin Band 2 Trusted-Tenant AWS Narrow Write` | `Band 2 Trusted-Tenant Writable Slice` | first bounded AWS write workflow after the read-only AWS slice is stable |
 
-CTS-GIS and AGRO-ERP remain follow-on planning surfaces. They do not displace AWS-first ordering.
+FND-EBI, CTS-GIS, and AGRO-ERP remain follow-on family surfaces after the
+AWS-first ordering. `FND-EBI` is now the first implemented hosted/site
+visibility slice inside that follow-on sequence.
 
 ## Use order
 
@@ -30,8 +32,9 @@ CTS-GIS and AGRO-ERP remain follow-on planning surfaces. They do not displace AW
 3. Read [frozen_decisions_admin_band.md](frozen_decisions_admin_band.md).
 4. Read [../post_aws_tool_platform/README.md](../post_aws_tool_platform/README.md).
 5. Read [../../../records/22-v1_retirement_closure.md](../../../records/22-v1_retirement_closure.md).
-6. Read [cts_gis_follow_on_surface.md](cts_gis_follow_on_surface.md) only after the active Band 1 and Band 2 sequence reaches CTS-GIS.
-7. Read [agro_erp_follow_on_surface.md](agro_erp_follow_on_surface.md) only after CTS-GIS is reopened.
+6. Read [fnd_ebi_read_only_surface.md](fnd_ebi_read_only_surface.md) for the first implemented FND-EBI slice.
+7. Read [cts_gis_follow_on_surface.md](cts_gis_follow_on_surface.md) when the next spatial follow-on work is reopened.
+8. Read [agro_erp_follow_on_surface.md](agro_erp_follow_on_surface.md) only after CTS-GIS is reopened.
 
 Historical design context for already-implemented work:
 
@@ -41,6 +44,7 @@ Historical design context for already-implemented work:
 - [tool_registry_and_launcher_surface.md](tool_registry_and_launcher_surface.md)
 - [aws_first_surface.md](aws_first_surface.md)
 - [aws_narrow_write_recovery.md](aws_narrow_write_recovery.md)
+- [fnd_ebi_read_only_surface.md](fnd_ebi_read_only_surface.md)
 
 ## Core rules
 
@@ -55,6 +59,6 @@ Historical design context for already-implemented work:
 
 ## Current planning target
 
-- The admin shell and AWS-first foundation are implemented and should be read through [../../../records/README.md](../../../records/README.md), not as open planning.
+- The admin shell, AWS-first foundation, and first FND-EBI read-only slice are implemented and should be read through [../../../records/README.md](../../../records/README.md) plus the exact slice docs, not as open planning.
 - [../current_planning_index.md](../current_planning_index.md) now governs the reopened long-term sequence after retirement closure.
 - CTS-GIS and AGRO-ERP remain deferred follow-on planning, not current execution targets.

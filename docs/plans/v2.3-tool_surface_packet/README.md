@@ -14,7 +14,7 @@ Read in this order:
 | Plan | Queue posture | Notes |
 | --- | --- | --- |
 | [aws_csm.md](aws_csm.md) | `implemented family root; next slice pending` | live service-tool family |
-| [fnd_ebi.md](fnd_ebi.md) | `next actual build target` | next service-tool family |
+| [fnd_ebi.md](fnd_ebi.md) | `implemented family root` | live hosted/site visibility family |
 | [cts_gis.md](cts_gis.md) | `implemented general-tool family` | canonical spatial family root |
 | [agro_erp.md](agro_erp.md) | `clarified family, not immediate queue` | later general-tool family |
 

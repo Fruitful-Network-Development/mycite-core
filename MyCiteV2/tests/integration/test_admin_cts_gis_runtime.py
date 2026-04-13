@@ -72,7 +72,7 @@ class AdminCtsGisRuntimeIntegrationTests(unittest.TestCase):
             _write_maps_data(data_dir)
             policy = build_admin_tool_exposure_policy(
                 {"cts_gis": {"enabled": True}},
-                known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"],
+                known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis", "fnd_ebi"],
             )
 
             result = run_admin_cts_gis_read_only(
@@ -107,7 +107,7 @@ class AdminCtsGisRuntimeIntegrationTests(unittest.TestCase):
             _write_minimal_data(data_dir)
             policy = build_admin_tool_exposure_policy(
                 {"cts_gis": {"enabled": True}},
-                known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"],
+                known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis", "fnd_ebi"],
             )
 
             result = run_admin_cts_gis_read_only(
@@ -130,7 +130,7 @@ class AdminCtsGisRuntimeIntegrationTests(unittest.TestCase):
     def test_cts_gis_read_only_returns_tool_not_exposed_before_data_validation(self) -> None:
         policy = build_admin_tool_exposure_policy(
             {"cts_gis": {"enabled": False}},
-            known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"],
+            known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis", "fnd_ebi"],
         )
 
         result = run_admin_cts_gis_read_only(

@@ -82,7 +82,7 @@ class _FakeOnboardingCloud(AwsCsmOnboardingCloudPort):
 class AdminAwsCsmOnboardingRuntimeIntegrationTests(unittest.TestCase):
     def test_registry_includes_onboarding_tool_for_trusted_tenant(self) -> None:
         entries = list(build_admin_tool_registry_entries())
-        self.assertEqual(len(entries), 5)
+        self.assertEqual(len(entries), 6)
         onboarding = [e for e in entries if e.tool_id == "aws_csm_onboarding"][0]
         self.assertEqual(onboarding.slice_id, AWS_CSM_ONBOARDING_SLICE_ID)
         self.assertEqual(onboarding.entrypoint_id, AWS_CSM_ONBOARDING_ENTRYPOINT_ID)
@@ -104,7 +104,7 @@ class AdminAwsCsmOnboardingRuntimeIntegrationTests(unittest.TestCase):
             profile_file.write_text(json.dumps(_live_profile_tenant_a()) + "\n", encoding="utf-8")
             tool_exposure_policy = build_admin_tool_exposure_policy(
                 {"aws_csm_onboarding": {"enabled": True}},
-                known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"],
+                known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis", "fnd_ebi"],
             )
 
             registry_result = run_admin_shell_entry(

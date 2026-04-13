@@ -10,6 +10,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND3_AWS_SANDBOX_NAME,
     ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
     ADMIN_BAND5_CTS_GIS_NAME,
+    ADMIN_BAND6_FND_EBI_NAME,
     ADMIN_ENTRYPOINT_ID,
     ADMIN_EXPOSURE_INTERNAL_ONLY,
     ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY,
@@ -30,6 +31,8 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_CSM_SANDBOX_SLICE_ID,
     CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
     CTS_GIS_READ_ONLY_SLICE_ID,
+    FND_EBI_READ_ONLY_ENTRYPOINT_ID,
+    FND_EBI_READ_ONLY_SLICE_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
@@ -59,6 +62,8 @@ ADMIN_AWS_CSM_ONBOARDING_REQUEST_SCHEMA = "mycite.v2.admin.aws.csm_onboarding.re
 ADMIN_AWS_CSM_ONBOARDING_SURFACE_SCHEMA = "mycite.v2.admin.aws.csm_onboarding.surface.v1"
 ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.cts_gis.read_only.request.v1"
 ADMIN_CTS_GIS_READ_ONLY_SURFACE_SCHEMA = "mycite.v2.admin.cts_gis.read_only.surface.v1"
+ADMIN_FND_EBI_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.fnd_ebi.read_only.request.v1"
+ADMIN_FND_EBI_READ_ONLY_SURFACE_SCHEMA = "mycite.v2.admin.fnd_ebi.read_only.surface.v1"
 TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.portal.runtime.envelope.v1"
 TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA = "mycite.v2.portal.runtime_entrypoint_descriptor.v1"
 TRUSTED_TENANT_HOME_SURFACE_SCHEMA = "mycite.v2.portal.home_tenant_status.surface.v1"
@@ -463,6 +468,20 @@ def build_admin_runtime_entrypoint_catalog() -> tuple[AdminRuntimeEntrypointDesc
             shared_portal_capabilities=("datum_recognition", "spatial_projection"),
             required_configuration=("data_dir",),
         ),
+        AdminRuntimeEntrypointDescriptor(
+            entrypoint_id=FND_EBI_READ_ONLY_ENTRYPOINT_ID,
+            callable_path="MyCiteV2.instances._shared.runtime.admin_fnd_ebi_runtime.run_admin_fnd_ebi_read_only",
+            slice_id=FND_EBI_READ_ONLY_SLICE_ID,
+            admin_band=ADMIN_BAND6_FND_EBI_NAME,
+            exposure_status=ADMIN_EXPOSURE_INTERNAL_ONLY,
+            read_write_posture="read-only",
+            launch_contract=ADMIN_TOOL_LAUNCH_CONTRACT,
+            surface_pattern=ADMIN_TOOL_SURFACE_READ_ONLY,
+            surface_schema=ADMIN_FND_EBI_READ_ONLY_SURFACE_SCHEMA,
+            tool_kind=ADMIN_TOOL_KIND_SERVICE,
+            shared_portal_capabilities=("external_service_binding", "hosted_site_visibility"),
+            required_configuration=("private_dir", "analytics_webapps_root"),
+        ),
     )
 
 
@@ -637,6 +656,10 @@ __all__ = [
     "ADMIN_AWS_NARROW_WRITE_SURFACE_SCHEMA",
     "ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA",
     "ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA",
+    "ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA",
+    "ADMIN_CTS_GIS_READ_ONLY_SURFACE_SCHEMA",
+    "ADMIN_FND_EBI_READ_ONLY_REQUEST_SCHEMA",
+    "ADMIN_FND_EBI_READ_ONLY_SURFACE_SCHEMA",
     "ADMIN_HOME_STATUS_SURFACE_SCHEMA",
     "ADMIN_NETWORK_ROOT_SURFACE_SCHEMA",
     "ADMIN_RUNTIME_ENVELOPE_SCHEMA",

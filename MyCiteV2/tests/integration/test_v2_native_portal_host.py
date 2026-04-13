@@ -37,6 +37,7 @@ if HAS_FLASK:
     )
     from MyCiteV2.instances._shared.runtime.runtime_platform import (
         ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
+        ADMIN_FND_EBI_READ_ONLY_REQUEST_SCHEMA,
         ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
         BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
         BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
@@ -57,12 +58,14 @@ if HAS_FLASK:
         AWS_CSM_ONBOARDING_SLICE_ID,
         AWS_CSM_SANDBOX_SLICE_ID,
         CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
+        FND_EBI_READ_ONLY_ENTRYPOINT_ID,
         AWS_NARROW_WRITE_ENTRYPOINT_ID,
         AWS_NARROW_WRITE_SLICE_ID,
         AWS_READ_ONLY_ENTRYPOINT_ID,
         AWS_READ_ONLY_SLICE_ID,
         DATUM_RESOURCE_WORKBENCH_SLICE_ID,
         CTS_GIS_READ_ONLY_SLICE_ID,
+        FND_EBI_READ_ONLY_SLICE_ID,
     )
     from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
         BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
@@ -113,6 +116,7 @@ else:  # pragma: no cover
     V2_PORTAL_HEALTH_SCHEMA = "mycite.v2.portal.health.v1"
     ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA = "mycite.v2.admin.aws.narrow_write.request.v1"
     ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.cts_gis.read_only.request.v1"
+    ADMIN_FND_EBI_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.fnd_ebi.read_only.request.v1"
     ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.aws.read_only.request.v1"
     ADMIN_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.admin.runtime.envelope.v1"
     ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE = "tool_not_exposed"
@@ -127,12 +131,14 @@ else:  # pragma: no cover
     AWS_CSM_ONBOARDING_SLICE_ID = "admin_band4.aws_csm_onboarding_surface"
     AWS_CSM_SANDBOX_SLICE_ID = "admin_band3.aws_csm_sandbox_surface"
     CTS_GIS_READ_ONLY_ENTRYPOINT_ID = "admin.cts_gis.read_only"
+    FND_EBI_READ_ONLY_ENTRYPOINT_ID = "admin.fnd_ebi.read_only"
     AWS_NARROW_WRITE_ENTRYPOINT_ID = "admin.aws.narrow_write"
     AWS_NARROW_WRITE_SLICE_ID = "admin_band2.aws_narrow_write_surface"
     AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
     AWS_READ_ONLY_SLICE_ID = "admin_band1.aws_read_only_surface"
     DATUM_RESOURCE_WORKBENCH_SLICE_ID = "datum.resource_workbench"
     CTS_GIS_READ_ONLY_SLICE_ID = "admin_band5.cts_gis_read_only_surface"
+    FND_EBI_READ_ONLY_SLICE_ID = "admin_band6.fnd_ebi_read_only_surface"
     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID = "band1.audit_activity_visibility"
     TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA = "mycite.v2.portal.audit_activity.request.v1"
     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID = "band1.operational_status_surface"
@@ -184,6 +190,7 @@ def _default_tool_exposure() -> dict[str, object]:
         "aws_csm_onboarding": {"enabled": True},
         "aws_csm_sandbox": {"enabled": False},
         "cts_gis": {"enabled": False},
+        "fnd_ebi": {"enabled": False},
     }
 
 
@@ -275,6 +282,54 @@ def _write_maps_data(config: V2PortalHostConfig) -> None:
                     ],
                 },
             }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_fnd_ebi_data(config: V2PortalHostConfig, *, year_month: str = "2026-04") -> None:
+    domain = config.analytics_domain
+    tool_root = config.private_dir / "utilities" / "tools" / "fnd-ebi"
+    tool_root.mkdir(parents=True, exist_ok=True)
+    client_root = config.analytics_webapps_root / "clients" / domain
+    site_root = client_root / "site"
+    analytics_root = client_root / "analytics"
+    (analytics_root / "nginx").mkdir(parents=True, exist_ok=True)
+    (analytics_root / "events").mkdir(parents=True, exist_ok=True)
+    site_root.mkdir(parents=True, exist_ok=True)
+    (tool_root / f"fnd-ebi.{config.tenant_id}.json").write_text(
+        json.dumps(
+            {
+                "schema": "mycite.service_tool.fnd_ebi.profile.v1",
+                "domain": domain,
+                "site_root": str(site_root),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (analytics_root / "nginx" / "access.log").write_text(
+        "\n".join(
+            [
+                '127.0.0.1 - - [12/Apr/2026:10:00:00 +0000] "GET / HTTP/1.1" 200 120 "-" "Mozilla/5.0"',
+                '127.0.0.2 - - [12/Apr/2026:10:10:00 +0000] "GET /contact HTTP/1.1" 404 32 "https://example.com" "Mozilla/5.0"',
+                '66.249.66.1 - - [12/Apr/2026:11:00:00 +0000] "GET /wp-admin HTTP/1.1" 404 16 "-" "Googlebot/2.1"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (analytics_root / "nginx" / "error.log").write_text(
+        '[2026/04/12 10:10:00] [error] 100#0: *1 open() "/srv/webapps/clients/example.com/site/missing" failed\n',
+        encoding="utf-8",
+    )
+    (analytics_root / "events" / f"{year_month}.ndjson").write_text(
+        "\n".join(
+            [
+                json.dumps({"event_type": "page_view", "timestamp": "2026-04-12T10:00:00+00:00", "session_id": "sess-1"}),
+                json.dumps({"event_type": "cta_click", "timestamp": "2026-04-12T10:02:00+00:00", "session_id": "sess-1"}),
+            ]
         )
         + "\n",
         encoding="utf-8",
@@ -456,6 +511,7 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertIn("aws_csm_newsletter", summary.get("missing_tool_ids") or [])
             self.assertIn("aws_csm_onboarding", summary.get("missing_tool_ids") or [])
             self.assertIn("cts_gis", summary.get("missing_tool_ids") or [])
+            self.assertIn("fnd_ebi", summary.get("missing_tool_ids") or [])
             self.assertIn("aws_narrow_write", summary.get("invalid_tool_ids") or [])
             self.assertIn("ghost_tool", summary.get("unknown_tool_ids") or [])
 
@@ -498,7 +554,7 @@ class V2NativePortalHostTests(unittest.TestCase):
             )
             self.assertEqual(
                 sorted(tool_exposure.get("disabled_tool_ids") or []),
-                ["aws_csm_newsletter", "aws_csm_sandbox", "cts_gis"],
+                ["aws_csm_newsletter", "aws_csm_sandbox", "cts_gis", "fnd_ebi"],
             )
             self.assertEqual(tool_exposure.get("unknown_tool_ids"), [])
             self.assertIn("/clients/trappfamilyfarm.com/analytics", payload["analytics_root"]["analytics_root"])
@@ -1041,6 +1097,13 @@ class V2NativePortalHostTests(unittest.TestCase):
             finally:
                 utility_aws_page.close()
 
+            utility_fnd_ebi_page = client.get("/portal/utilities/fnd-ebi")
+            try:
+                self.assertEqual(utility_fnd_ebi_page.status_code, 200)
+                self.assertIn(FND_EBI_READ_ONLY_SLICE_ID.encode(), utility_fnd_ebi_page.data)
+            finally:
+                utility_fnd_ebi_page.close()
+
             aws_page = client.get("/portal/system/aws")
             try:
                 self.assertEqual(aws_page.status_code, 200)
@@ -1075,6 +1138,13 @@ class V2NativePortalHostTests(unittest.TestCase):
                 self.assertIn(AWS_READ_ONLY_SLICE_ID.encode(), v1_compat.data)
             finally:
                 v1_compat.close()
+
+            fnd_ebi_compat = client.get("/portal/system/mediate_tool-fnd_ebi")
+            try:
+                self.assertEqual(fnd_ebi_compat.status_code, 200)
+                self.assertIn(FND_EBI_READ_ONLY_SLICE_ID.encode(), fnd_ebi_compat.data)
+            finally:
+                fnd_ebi_compat.close()
 
             tenant_actions_compat = client.get("/portal/system?mediate_tool=aws_tenant_actions")
             try:
@@ -1153,6 +1223,72 @@ class V2NativePortalHostTests(unittest.TestCase):
                 "/portal/api/v2/admin/cts-gis/read-only",
                 json={
                     "schema": ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+                },
+            )
+            self.assertEqual(hidden.status_code, 404)
+            hidden_payload = hidden.get_json() or {}
+            self.assertEqual(hidden_payload["error"]["code"], ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE)
+
+    def test_fnd_ebi_surface_bootstraps_and_direct_route_returns_visibility_summary(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            fnd_root = Path(temp_dir) / "fnd"
+            fnd_config = _build_config(
+                fnd_root,
+                tenant_id="fnd",
+                tool_exposure={
+                    "aws": {"enabled": True},
+                    "aws_csm_newsletter": {"enabled": False},
+                    "aws_narrow_write": {"enabled": True},
+                    "aws_csm_onboarding": {"enabled": True},
+                    "aws_csm_sandbox": {"enabled": False},
+                    "cts_gis": {"enabled": False},
+                    "fnd_ebi": {"enabled": True},
+                },
+            )
+            _write_fnd_ebi_data(fnd_config)
+            fnd_client = create_app(fnd_config).test_client()
+
+            fnd_ebi_page = fnd_client.get("/portal/utilities/fnd-ebi")
+            self.assertEqual(fnd_ebi_page.status_code, 200)
+            self.assertIn(FND_EBI_READ_ONLY_SLICE_ID.encode(), fnd_ebi_page.data)
+
+            shell = fnd_client.post(
+                "/portal/api/v2/admin/shell",
+                json={
+                    "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+                    "requested_slice_id": FND_EBI_READ_ONLY_SLICE_ID,
+                    "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+                },
+            )
+            self.assertEqual(shell.status_code, 200)
+            shell_payload = shell.get_json() or {}
+            self.assertEqual(shell_payload["slice_id"], FND_EBI_READ_ONLY_SLICE_ID)
+            self.assertEqual(shell_payload["shell_composition"]["regions"]["workbench"]["kind"], "fnd_ebi_workbench")
+
+            direct = fnd_client.post(
+                "/portal/api/v2/admin/fnd-ebi/read-only",
+                json={
+                    "schema": ADMIN_FND_EBI_READ_ONLY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+                    "year_month": "2026-04",
+                },
+            )
+            self.assertEqual(direct.status_code, 200)
+            direct_payload = direct.get_json() or {}
+            self.assertEqual(direct_payload["entrypoint_id"], FND_EBI_READ_ONLY_ENTRYPOINT_ID)
+            self.assertEqual(direct_payload["slice_id"], FND_EBI_READ_ONLY_SLICE_ID)
+            self.assertEqual(direct_payload["surface_payload"]["overview"]["domain"], "fruitfulnetworkdevelopment.com")
+            self.assertEqual(direct_payload["surface_payload"]["files"]["access_log"]["state"], "ready")
+            self.assertEqual(direct_payload["shell_composition"]["regions"]["workbench"]["kind"], "fnd_ebi_workbench")
+
+            tff_root = Path(temp_dir) / "tff"
+            tff_config = _build_config(tff_root, tenant_id="tff")
+            tff_client = create_app(tff_config).test_client()
+            hidden = tff_client.post(
+                "/portal/api/v2/admin/fnd-ebi/read-only",
+                json={
+                    "schema": ADMIN_FND_EBI_READ_ONLY_REQUEST_SCHEMA,
                     "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
                 },
             )

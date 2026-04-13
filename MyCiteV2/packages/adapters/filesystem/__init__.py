@@ -6,17 +6,20 @@ from .aws_narrow_write import FilesystemAwsNarrowWriteAdapter
 from .aws_read_only_status import FilesystemAwsReadOnlyStatusAdapter
 from .aws_csm_onboarding_profile_store import FilesystemAwsCsmOnboardingProfileStore
 from .aws_csm_newsletter_state import FilesystemAwsCsmNewsletterStateAdapter
+from .fnd_ebi_read_only import FND_EBI_PROFILE_SCHEMA, FilesystemFndEbiReadOnlyAdapter
 from .live_aws_profile import FilesystemLiveAwsProfileAdapter, is_live_aws_profile_file
 from .live_system_datum_store import FilesystemSystemDatumStoreAdapter
 
 __all__ = [
     "AnalyticsEventPathResolution",
     "AnalyticsEventPathResolver",
+    "FND_EBI_PROFILE_SCHEMA",
     "FilesystemAuditLogAdapter",
     "FilesystemAwsNarrowWriteAdapter",
     "FilesystemAwsReadOnlyStatusAdapter",
     "FilesystemAwsCsmOnboardingProfileStore",
     "FilesystemAwsCsmNewsletterStateAdapter",
+    "FilesystemFndEbiReadOnlyAdapter",
     "FilesystemLiveAwsProfileAdapter",
     "FilesystemSystemDatumStoreAdapter",
     "is_live_aws_profile_file",

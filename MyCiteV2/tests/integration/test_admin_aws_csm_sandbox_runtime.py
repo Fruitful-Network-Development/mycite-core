@@ -70,9 +70,9 @@ def _live_profile_fnd() -> dict[str, object]:
 class AdminAwsCsmSandboxRuntimeIntegrationTests(unittest.TestCase):
     def test_registry_includes_distinct_sandbox_descriptor(self) -> None:
         entries = list(build_admin_tool_registry_entries())
-        self.assertEqual(len(entries), 5)
+        self.assertEqual(len(entries), 6)
         ids = [e.tool_id for e in entries]
-        self.assertEqual(ids, ["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"])
+        self.assertEqual(ids, ["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis", "fnd_ebi"])
         sandbox = entries[2]
         self.assertEqual(sandbox.slice_id, AWS_CSM_SANDBOX_SLICE_ID)
         self.assertEqual(sandbox.entrypoint_id, AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID)
@@ -137,7 +137,7 @@ class AdminAwsCsmSandboxRuntimeIntegrationTests(unittest.TestCase):
     def test_disabled_sandbox_returns_tool_not_exposed_before_path_validation(self) -> None:
         policy = build_admin_tool_exposure_policy(
             {"aws_csm_sandbox": {"enabled": False}},
-            known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"],
+            known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis", "fnd_ebi"],
         )
 
         result = run_admin_aws_csm_sandbox_read_only(
@@ -198,7 +198,7 @@ class AdminAwsCsmSandboxRuntimeIntegrationTests(unittest.TestCase):
                 "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
             }
         )
-        self.assertEqual(len(result["surface_payload"]["tool_entries"]), 5)
+        self.assertEqual(len(result["surface_payload"]["tool_entries"]), 6)
 
 
 if __name__ == "__main__":
