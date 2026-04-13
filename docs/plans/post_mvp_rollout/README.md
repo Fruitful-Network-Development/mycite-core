@@ -42,16 +42,16 @@ Use it after the MVP is proven and before any new client-visible slice is specif
 - Live `/portal` cutover status: V2-native portal host deployed for FND and TFF. The earlier Shape B bridge is retained only as historical cutover evidence; see [../../records/22-v1_retirement_closure.md](../../records/22-v1_retirement_closure.md) for the formal closure statement.
 - Canonical live AWS mapping status: current and active through [post_aws_tool_platform/live_state_authority_and_mapping.md](post_aws_tool_platform/live_state_authority_and_mapping.md).
 - Current expansion posture: follow-on slices may resume from the reopened Band
-  1 sequence documented in [current_planning_index.md](current_planning_index.md), but the narrowed family-root tool queue now treats `AWS-CSM` as the next actual build target, with `FND-EBI` and `Maps` as the other near-term candidates.
+  1 sequence documented in [current_planning_index.md](current_planning_index.md), but the narrowed family-root tool queue now treats `FND-EBI` as the next actual build target. `AWS-CSM` is now implemented as a live family root, and `Maps` remains the other near-term candidate for its next family slice.
 - Tool follow-on work now also uses the V2.3 audit and packet documents when
   deciding whether a legacy tool becomes a V2 tool, stays isolated, or is
   retired.
 
 ## Preferred near-term sequence
 
-1. Use [../v2.3-tool_surface_packet/aws_csm.md](../v2.3-tool_surface_packet/aws_csm.md) as the next actual family-root build target.
-2. Keep [../v2.3-tool_surface_packet/fnd_ebi.md](../v2.3-tool_surface_packet/fnd_ebi.md) as the other narrowed near-term candidate.
-3. Keep [../v2.3-tool_surface_packet/maps.md](../v2.3-tool_surface_packet/maps.md) as the remaining near-term candidate, with portal/default-app expansion as the next family slice.
+1. Use [../v2.3-tool_surface_packet/fnd_ebi.md](../v2.3-tool_surface_packet/fnd_ebi.md) as the next actual family-root build target.
+2. Keep [../v2.3-tool_surface_packet/maps.md](../v2.3-tool_surface_packet/maps.md) as the other narrowed near-term candidate, with portal/default-app expansion as the next family slice.
+3. Use [../v2.3-tool_surface_packet/aws_csm.md](../v2.3-tool_surface_packet/aws_csm.md) as current implementation truth for the live AWS-CSM family root and later AWS follow-on slices.
 4. Treat [../v2.3-tool_surface_packet/fnd_dcm.md](../v2.3-tool_surface_packet/fnd_dcm.md), [../v2.3-tool_surface_packet/calendar.md](../v2.3-tool_surface_packet/calendar.md), [../v2.3-tool_surface_packet/paypal_ppm.md](../v2.3-tool_surface_packet/paypal_ppm.md), and [../v2.3-tool_surface_packet/keycloak_sso.md](../v2.3-tool_surface_packet/keycloak_sso.md) as typed family plans, not immediate build targets.
 
 `fnd_provisioning`, `tenant_progeny_profiles`, `data_tool`, and `operations`

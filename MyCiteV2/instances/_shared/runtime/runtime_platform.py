@@ -20,6 +20,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_TOOL_LAUNCH_CONTRACT,
     ADMIN_TOOL_SURFACE_BOUNDED_WRITE,
     ADMIN_TOOL_SURFACE_READ_ONLY,
+    AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
     AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
     AWS_CSM_ONBOARDING_SLICE_ID,
     AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
@@ -42,6 +43,10 @@ ADMIN_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA = "mycite.v2.admin.runtime_entrypoint
 ADMIN_HOME_STATUS_SURFACE_SCHEMA = "mycite.v2.admin.home_status.surface.v1"
 ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA = "mycite.v2.admin.tool_registry.surface.v1"
 ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE = "tool_not_exposed"
+ADMIN_AWS_CSM_FAMILY_HOME_REQUEST_SCHEMA = "mycite.v2.admin.aws_csm.family_home.request.v1"
+ADMIN_AWS_CSM_FAMILY_HOME_SURFACE_SCHEMA = "mycite.v2.admin.aws_csm.family_home.surface.v1"
+ADMIN_AWS_CSM_NEWSLETTER_REQUEST_SCHEMA = "mycite.v2.admin.aws_csm.newsletter.request.v1"
+ADMIN_AWS_CSM_NEWSLETTER_SURFACE_SCHEMA = "mycite.v2.admin.aws_csm.newsletter.surface.v1"
 ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.aws.read_only.request.v1"
 ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA = "mycite.v2.admin.aws.read_only.surface.v1"
 ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA = "mycite.v2.admin.aws.narrow_write.request.v1"
@@ -322,6 +327,18 @@ def build_admin_runtime_entrypoint_catalog() -> tuple[AdminRuntimeEntrypointDesc
             surface_pattern="admin-shell",
             surface_schema=ADMIN_HOME_STATUS_SURFACE_SCHEMA,
             required_configuration=("audit_storage_file_optional",),
+        ),
+        AdminRuntimeEntrypointDescriptor(
+            entrypoint_id=AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
+            callable_path="MyCiteV2.instances._shared.runtime.admin_aws_runtime.run_admin_aws_csm_family_home",
+            slice_id=AWS_READ_ONLY_SLICE_ID,
+            admin_band=ADMIN_BAND1_AWS_NAME,
+            exposure_status=ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
+            read_write_posture="read-only",
+            launch_contract=ADMIN_TOOL_LAUNCH_CONTRACT,
+            surface_pattern=ADMIN_TOOL_SURFACE_READ_ONLY,
+            surface_schema=ADMIN_AWS_CSM_FAMILY_HOME_SURFACE_SCHEMA,
+            required_configuration=("aws_status_file", "private_dir"),
         ),
         AdminRuntimeEntrypointDescriptor(
             entrypoint_id=AWS_READ_ONLY_ENTRYPOINT_ID,

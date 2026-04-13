@@ -1228,6 +1228,234 @@
           : "");
       return;
     }
+    if (kind === "aws_csm_family_home") {
+      var familyHealth = region.family_health || {};
+      var primaryReadOnly = region.primary_read_only || {};
+      var domainStates = region.domain_states || [];
+      var newsletterContract = region.newsletter_request_contract || {};
+      var newsletterFixed = newsletterContract.fixed_request_fields || {};
+      var navigation = region.subsurface_navigation || {};
+      var gatedSubsurfaces = region.gated_subsurfaces || {};
+      var callerIdentity = familyHealth.caller_identity || {};
+      var queueHealth = familyHealth.dispatch_queue || {};
+      var dispatcherHealth = familyHealth.dispatcher_lambda || {};
+      var inboundHealth = familyHealth.inbound_processor_lambda || {};
+
+      function familyNewsletterBody(patch) {
+        var bodyOut = {
+          schema: newsletterContract.request_schema || "mycite.v2.admin.aws_csm.newsletter.request.v1",
+        };
+        Object.keys(newsletterFixed || {}).forEach(function (key) {
+          bodyOut[key] = newsletterFixed[key];
+        });
+        Object.keys(patch || {}).forEach(function (key) {
+          bodyOut[key] = patch[key];
+        });
+        return bodyOut;
+      }
+
+      var domainSections = domainStates.length
+        ? domainStates
+            .map(function (state, index) {
+              var profile = state.profile || {};
+              var readiness = state.readiness || {};
+              var latestDispatch = state.latest_dispatch || {};
+              var verifiedAuthors = state.verified_author_profiles || [];
+              var options = verifiedAuthors
+                .map(function (author) {
+                  var profileId = author.profile_id || "";
+                  return (
+                    '<option value="' +
+                    escapeHtml(profileId) +
+                    '"' +
+                    (profileId === (profile.selected_author_profile_id || "") ? " selected" : "") +
+                    ">" +
+                    escapeHtml((author.send_as_email || profileId || "author") + (author.role ? " · " + author.role : "")) +
+                    "</option>"
+                  );
+                })
+                .join("");
+              var warnings = (state.warnings || [])
+                .map(function (warning) {
+                  return "<li>" + escapeHtml(String(warning)) + "</li>";
+                })
+                .join("");
+              return (
+                '<section class="v2-card" style="margin-top:12px" data-aws-csm-domain="' +
+                escapeHtml(state.domain || "") +
+                '">' +
+                "<h3>" +
+                escapeHtml(state.domain || "domain") +
+                "</h3>" +
+                '<dl class="v2-surface-dl">' +
+                "<dt>Selected author</dt><dd><code>" +
+                escapeHtml(profile.selected_author_address || "—") +
+                "</code></dd>" +
+                "<dt>Contacts</dt><dd>" +
+                escapeHtml(String(state.contact_count != null ? state.contact_count : "0")) +
+                " total · " +
+                escapeHtml(String(state.subscribed_count != null ? state.subscribed_count : "0")) +
+                " subscribed</dd>" +
+                "<dt>Inbound</dt><dd>" +
+                escapeHtml(readiness.inbound_capture_status || "—") +
+                "</dd>" +
+                "<dt>Dispatch</dt><dd>" +
+                escapeHtml(readiness.dispatch_configured ? "configured" : "not configured") +
+                "</dd>" +
+                "<dt>Latest dispatch</dt><dd><code>" +
+                escapeHtml(latestDispatch.dispatch_id || "—") +
+                "</code></dd>" +
+                "</dl>" +
+                (options
+                  ? '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+                    '<select data-aws-csm-author-select="' +
+                    escapeHtml(state.domain || "") +
+                    '" style="min-width:280px;padding:6px 8px">' +
+                    options +
+                    "</select>" +
+                    '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-csm-select-author="' +
+                    escapeHtml(state.domain || "") +
+                    '" style="border-radius:6px">Select author</button>' +
+                    "</div>"
+                  : '<p class="ide-controlpanel__empty">No verified authors are available for this domain yet.</p>') +
+                '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+                '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-csm-reprocess="' +
+                escapeHtml(state.domain || "") +
+                '" style="border-radius:6px">Reprocess latest inbound</button>' +
+                "</div>" +
+                (warnings
+                  ? '<section class="v2-card" style="margin-top:12px"><h3>Warnings</h3><ul>' + warnings + "</ul></section>"
+                  : "") +
+                (index === 0
+                  ? '<pre id="v2-aws-csm-newsletter-result" class="v2-json-panel" style="margin-top:12px" hidden></pre>'
+                  : "") +
+                "</section>"
+              );
+            })
+            .join("")
+        : '<section class="v2-card" style="margin-top:12px"><h3>Newsletter operations</h3><p>No newsletter domains are currently visible for this AWS-CSM family surface.</p></section>';
+
+      content.innerHTML =
+        '<div class="v2-card-grid">' +
+        '<article class="v2-card"><h3>Mailbox readiness</h3><p>' +
+        escapeHtml(primaryReadOnly.mailbox_readiness || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Verified sender</h3><p><code>' +
+        escapeHtml(primaryReadOnly.selected_verified_sender || "") +
+        "</code></p></article>" +
+        '<article class="v2-card"><h3>Queue</h3><p>' +
+        escapeHtml(queueHealth.status || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Inbound rules</h3><p>' +
+        escapeHtml(String((familyHealth.receipt_rules || []).filter(function (row) { return row.status === "ok"; }).length)) +
+        " ready</p></article>" +
+        "</div>" +
+        '<section class="v2-card" style="margin-top:12px"><h3>Family health</h3><dl class="v2-surface-dl">' +
+        "<dt>STS identity</dt><dd><code>" +
+        escapeHtml(callerIdentity.arn || callerIdentity.status || "—") +
+        "</code></dd>" +
+        "<dt>Ready domains</dt><dd>" +
+        escapeHtml(String(familyHealth.ready_domain_count != null ? familyHealth.ready_domain_count : "0")) +
+        " / " +
+        escapeHtml(String(familyHealth.domain_count != null ? familyHealth.domain_count : "0")) +
+        "</dd>" +
+        "<dt>Dispatch queue</dt><dd>" +
+        escapeHtml(queueHealth.status || "—") +
+        "</dd>" +
+        "<dt>Dispatcher Lambda</dt><dd>" +
+        escapeHtml(dispatcherHealth.status || "—") +
+        "</dd>" +
+        "<dt>Inbound Lambda</dt><dd>" +
+        escapeHtml(inboundHealth.status || "—") +
+        "</dd>" +
+        "</dl></section>" +
+        '<section class="v2-card" style="margin-top:12px"><h3>Family navigation</h3><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<button type="button" class="ide-sessionAction ide-sessionAction--button" id="v2-aws-csm-open-read-only" style="border-radius:6px">Open read-only overview</button>' +
+        '<button type="button" class="ide-sessionAction ide-sessionAction--button" id="v2-aws-csm-open-write" style="border-radius:6px">Open sender selection</button>' +
+        '<button type="button" class="ide-sessionAction ide-sessionAction--button" id="v2-aws-csm-open-onboarding" style="border-radius:6px">Open onboarding</button>' +
+        (gatedSubsurfaces.sandbox
+          ? '<span class="ide-controlpanel__empty" style="align-self:center">Sandbox is intentionally gated for this instance.</span>'
+          : '<button type="button" class="ide-sessionAction ide-sessionAction--button" id="v2-aws-csm-open-sandbox" style="border-radius:6px">Open sandbox</button>') +
+        "</div></section>" +
+        domainSections;
+
+      var resultPanel = document.getElementById("v2-aws-csm-newsletter-result");
+
+      function submitNewsletterAction(bodyPatch) {
+        if (!newsletterContract.route) return Promise.resolve();
+        if (resultPanel) {
+          resultPanel.hidden = false;
+          resultPanel.textContent = "…";
+        }
+        return postJson(newsletterContract.route, familyNewsletterBody(bodyPatch)).then(function (res) {
+          if (resultPanel) resultPanel.textContent = JSON.stringify(res.json, null, 2);
+          if (res.ok && lastShellRequest) {
+            return loadShell(cloneRequestWithoutChrome(lastShellRequest));
+          }
+          return Promise.resolve();
+        });
+      }
+
+      var readOnlyButton = document.getElementById("v2-aws-csm-open-read-only");
+      if (readOnlyButton) {
+        readOnlyButton.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          postJson("/portal/api/v2/admin/aws/read-only", {
+            schema: "mycite.v2.admin.aws.read_only.request.v1",
+            tenant_scope: newsletterFixed.tenant_scope || {},
+          }).then(function (res) {
+            if (resultPanel) {
+              resultPanel.hidden = false;
+              resultPanel.textContent = JSON.stringify(res.json, null, 2);
+            }
+          });
+        });
+      }
+      var writeButton = document.getElementById("v2-aws-csm-open-write");
+      if (writeButton) {
+        writeButton.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          if (navigation.narrow_write_shell_request) loadShell(navigation.narrow_write_shell_request);
+        });
+      }
+      var onboardingButton = document.getElementById("v2-aws-csm-open-onboarding");
+      if (onboardingButton) {
+        onboardingButton.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          if (navigation.onboarding_shell_request) loadShell(navigation.onboarding_shell_request);
+        });
+      }
+      var sandboxButton = document.getElementById("v2-aws-csm-open-sandbox");
+      if (sandboxButton) {
+        sandboxButton.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          if (navigation.sandbox_shell_request) loadShell(navigation.sandbox_shell_request);
+        });
+      }
+      Array.prototype.forEach.call(content.querySelectorAll("[data-aws-csm-select-author]"), function (el) {
+        el.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          var domain = el.getAttribute("data-aws-csm-select-author") || "";
+          var select = content.querySelector('[data-aws-csm-author-select="' + domain.replace(/"/g, '\\"') + '"]');
+          var profileId = select ? select.value : "";
+          submitNewsletterAction({
+            domain: domain,
+            action: "select_author",
+            selected_author_profile_id: profileId,
+          });
+        });
+      });
+      Array.prototype.forEach.call(content.querySelectorAll("[data-aws-csm-reprocess]"), function (el) {
+        el.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          submitNewsletterAction({
+            domain: el.getAttribute("data-aws-csm-reprocess") || "",
+            action: "reprocess_latest_inbound",
+          });
+        });
+      });
+      return;
+    }
     if (kind === "aws_read_only_surface") {
       var ps = region.profile_summary || {};
       var doms = (region.allowed_send_domains || []).join(", ");

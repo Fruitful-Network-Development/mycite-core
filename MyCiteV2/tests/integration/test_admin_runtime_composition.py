@@ -40,12 +40,44 @@ def _aws_csm_rollout_policy() -> dict[str, object]:
     return build_admin_tool_exposure_policy(
         {
             "aws": {"enabled": True},
+            "aws_csm_newsletter": {"enabled": True},
             "aws_narrow_write": {"enabled": True},
             "aws_csm_onboarding": {"enabled": True},
             "aws_csm_sandbox": {"enabled": False},
         },
-        known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "maps"],
+        known_tool_ids=["aws", "aws_csm_newsletter", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "maps"],
     )
+
+
+def _aws_private_dir(temp_dir: str, profile_payload: dict[str, object]) -> Path:
+    private_dir = Path(temp_dir) / "private"
+    aws_root = private_dir / "utilities" / "tools" / "aws-csm"
+    legacy_root = private_dir / "utilities" / "tools" / "newsletter-admin"
+    aws_root.mkdir(parents=True, exist_ok=True)
+    legacy_root.mkdir(parents=True, exist_ok=True)
+    profile_id = ((profile_payload.get("identity") or {}) if isinstance(profile_payload.get("identity"), dict) else {}).get("profile_id")
+    filename = f"{profile_id}.json" if profile_id else "aws-csm.test.profile.json"
+    (aws_root / filename).write_text(json.dumps(profile_payload) + "\n", encoding="utf-8")
+    domain = ((profile_payload.get("identity") or {}) if isinstance(profile_payload.get("identity"), dict) else {}).get("domain") or "trappfamilyfarm.com"
+    (legacy_root / f"newsletter-admin.{domain}.json").write_text(
+        json.dumps(
+            {
+                "schema": "mycite.service_tool.newsletter.profile.v1",
+                "domain": domain,
+                "list_address": f"news@{domain}",
+                "sender_address": f"news@{domain}",
+                "selected_author_profile_id": profile_id,
+                "selected_author_address": ((profile_payload.get("identity") or {}) if isinstance(profile_payload.get("identity"), dict) else {}).get("send_as_email"),
+                "dispatch_queue_url": "https://sqs.us-east-1.amazonaws.com/123456789012/aws-cms-newsletter-dispatch",
+                "dispatch_queue_arn": "arn:aws:sqs:us-east-1:123456789012:aws-cms-newsletter-dispatch",
+                "dispatcher_lambda_name": "newsletter-dispatcher",
+                "aws_region": "us-east-1",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return private_dir
 
 
 class AdminRuntimeCompositionTests(unittest.TestCase):
@@ -89,19 +121,19 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             self.assertEqual(available_slice_ids, [ADMIN_HOME_STATUS_SLICE_ID, ADMIN_TOOL_REGISTRY_SLICE_ID])
 
             available_tool_entries = result["surface_payload"]["available_tool_slices"]
-            self.assertEqual(len(available_tool_entries), 5)
+            self.assertEqual(len(available_tool_entries), 2)
             self.assertEqual(
                 [entry["slice_id"] for entry in available_tool_entries],
                 [
                     AWS_READ_ONLY_SLICE_ID,
-                    AWS_NARROW_WRITE_SLICE_ID,
-                    AWS_CSM_SANDBOX_SLICE_ID,
-                    AWS_CSM_ONBOARDING_SLICE_ID,
                     MAPS_READ_ONLY_SLICE_ID,
                 ],
             )
             self.assertTrue(all(entry["launchable"] for entry in available_tool_entries))
-            self.assertEqual(result["surface_payload"]["gated_tool_slices"], [])
+            self.assertEqual(
+                [entry["slice_id"] for entry in result["surface_payload"]["gated_tool_slices"]],
+                [AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID],
+            )
             comp = result["shell_composition"]
             self.assertEqual(comp["schema"], ADMIN_SHELL_COMPOSITION_SCHEMA)
             self.assertIn("regions", comp)
@@ -124,23 +156,23 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         available_tool_entries = result["surface_payload"]["available_tool_slices"]
         self.assertEqual(
             [entry["slice_id"] for entry in available_tool_entries],
-            [
-                AWS_READ_ONLY_SLICE_ID,
-                AWS_NARROW_WRITE_SLICE_ID,
-                AWS_CSM_ONBOARDING_SLICE_ID,
-            ],
+            [AWS_READ_ONLY_SLICE_ID],
         )
         gated_tool_entries = result["surface_payload"]["gated_tool_slices"]
         self.assertEqual(
             [entry["slice_id"] for entry in gated_tool_entries],
-            [AWS_CSM_SANDBOX_SLICE_ID, MAPS_READ_ONLY_SLICE_ID],
+            [AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID, MAPS_READ_ONLY_SLICE_ID],
         )
-        self.assertTrue(all(entry["visibility_status"] == "config_disabled" for entry in gated_tool_entries))
+        gated_by_slice = {entry["slice_id"]: entry for entry in gated_tool_entries}
+        self.assertEqual(gated_by_slice[AWS_NARROW_WRITE_SLICE_ID]["visibility_status"], "family_subsurface")
+        self.assertEqual(gated_by_slice[AWS_CSM_ONBOARDING_SLICE_ID]["visibility_status"], "family_subsurface")
+        self.assertEqual(gated_by_slice[AWS_CSM_SANDBOX_SLICE_ID]["visibility_status"], "config_disabled")
+        self.assertEqual(gated_by_slice[MAPS_READ_ONLY_SLICE_ID]["visibility_status"], "config_disabled")
         activity_slice_ids = [
             item["slice_id"] for item in result["shell_composition"]["regions"]["activity_bar"]["items"]
         ]
         self.assertNotIn(AWS_CSM_SANDBOX_SLICE_ID, activity_slice_ids)
-        self.assertIn(AWS_CSM_ONBOARDING_SLICE_ID, activity_slice_ids)
+        self.assertNotIn(AWS_CSM_ONBOARDING_SLICE_ID, activity_slice_ids)
         self.assertNotIn(MAPS_READ_ONLY_SLICE_ID, activity_slice_ids)
 
         registry = run_admin_shell_entry(
@@ -196,7 +228,10 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
                 MAPS_READ_ONLY_SLICE_ID,
             ],
         )
-        self.assertEqual(result["surface_payload"]["gated_tool_slice_ids"], [])
+        self.assertEqual(
+            result["surface_payload"]["gated_tool_slice_ids"],
+            [AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID],
+        )
         self.assertEqual(len(result["surface_payload"]["tool_entries"]), 5)
         self.assertNotIn("newsletter-admin", json.dumps(result["surface_payload"], sort_keys=True))
         self.assertEqual(result["shell_composition"]["composition_mode"], "system")
@@ -298,32 +333,29 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
 
     def test_trusted_tenant_aws_read_only_slice_composes_tool_mode(self) -> None:
         with TemporaryDirectory() as temp_dir:
+            profile_payload = {
+                "schema": "mycite.service_tool.aws_csm.profile.v1",
+                "identity": {
+                    "profile_id": "aws-csm.tff.x",
+                    "tenant_id": "tff",
+                    "domain": "trappfamilyfarm.com",
+                    "mailbox_local_part": "x",
+                    "send_as_email": "x@trappfamilyfarm.com",
+                },
+                "smtp": {"handoff_ready": True, "credentials_secret_state": "configured"},
+                "verification": {"status": "verified"},
+                "provider": {"gmail_send_as_status": "verified"},
+                "workflow": {
+                    "initiated": True,
+                    "lifecycle_state": "operational",
+                    "is_ready_for_user_handoff": True,
+                    "is_mailbox_operational": True,
+                },
+                "inbound": {"receive_verified": True, "receive_state": "receive_operational"},
+            }
             status_file = Path(temp_dir) / "aws.json"
-            status_file.write_text(
-                json.dumps(
-                    {
-                        "schema": "mycite.service_tool.aws_csm.profile.v1",
-                        "identity": {
-                            "profile_id": "aws-csm.tff.x",
-                            "tenant_id": "tff",
-                            "domain": "trappfamilyfarm.com",
-                            "mailbox_local_part": "x",
-                            "send_as_email": "x@trappfamilyfarm.com",
-                        },
-                        "smtp": {"handoff_ready": True, "credentials_secret_state": "configured"},
-                        "verification": {"status": "verified"},
-                        "provider": {"gmail_send_as_status": "verified"},
-                        "workflow": {
-                            "initiated": True,
-                            "lifecycle_state": "operational",
-                            "is_ready_for_user_handoff": True,
-                            "is_mailbox_operational": True,
-                        },
-                        "inbound": {"receive_verified": True, "receive_state": "receive_operational"},
-                    }
-                ),
-                encoding="utf-8",
-            )
+            status_file.write_text(json.dumps(profile_payload), encoding="utf-8")
+            private_dir = _aws_private_dir(temp_dir, profile_payload)
             data_dir = Path(temp_dir) / "data"
             (data_dir / "system" / "sources").mkdir(parents=True)
             (data_dir / "payloads" / "cache").mkdir(parents=True)
@@ -338,6 +370,8 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
                 portal_tenant_id="tff",
                 aws_status_file=status_file,
                 data_dir=data_dir,
+                private_dir=private_dir,
+                tool_exposure_policy=_aws_csm_rollout_policy(),
             )
             self.assertIsNone(result["error"])
             self.assertEqual(result["slice_id"], AWS_READ_ONLY_SLICE_ID)
@@ -345,37 +379,34 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             self.assertEqual(result["shell_composition"]["foreground_shell_region"], "interface-panel")
             self.assertFalse(result["shell_composition"]["inspector_collapsed"])
             ins = result["shell_composition"]["regions"]["inspector"]
-            self.assertEqual(ins["kind"], "aws_read_only_surface")
-            self.assertEqual(ins["tenant_scope_id"], "tff")
+            self.assertEqual(ins["kind"], "aws_csm_family_home")
+            self.assertEqual(ins["selected_domain_state"]["domain"], "trappfamilyfarm.com")
 
     def test_shell_chrome_mediates_inspector_collapse_in_tool_mode(self) -> None:
         with TemporaryDirectory() as temp_dir:
+            profile_payload = {
+                "schema": "mycite.service_tool.aws_csm.profile.v1",
+                "identity": {
+                    "profile_id": "aws-csm.tff.x",
+                    "tenant_id": "tff",
+                    "domain": "trappfamilyfarm.com",
+                    "mailbox_local_part": "x",
+                    "send_as_email": "x@trappfamilyfarm.com",
+                },
+                "smtp": {"handoff_ready": True, "credentials_secret_state": "configured"},
+                "verification": {"status": "verified"},
+                "provider": {"gmail_send_as_status": "verified"},
+                "workflow": {
+                    "initiated": True,
+                    "lifecycle_state": "operational",
+                    "is_ready_for_user_handoff": True,
+                    "is_mailbox_operational": True,
+                },
+                "inbound": {"receive_verified": True, "receive_state": "receive_operational"},
+            }
             status_file = Path(temp_dir) / "aws.json"
-            status_file.write_text(
-                json.dumps(
-                    {
-                        "schema": "mycite.service_tool.aws_csm.profile.v1",
-                        "identity": {
-                            "profile_id": "aws-csm.tff.x",
-                            "tenant_id": "tff",
-                            "domain": "trappfamilyfarm.com",
-                            "mailbox_local_part": "x",
-                            "send_as_email": "x@trappfamilyfarm.com",
-                        },
-                        "smtp": {"handoff_ready": True, "credentials_secret_state": "configured"},
-                        "verification": {"status": "verified"},
-                        "provider": {"gmail_send_as_status": "verified"},
-                        "workflow": {
-                            "initiated": True,
-                            "lifecycle_state": "operational",
-                            "is_ready_for_user_handoff": True,
-                            "is_mailbox_operational": True,
-                        },
-                        "inbound": {"receive_verified": True, "receive_state": "receive_operational"},
-                    }
-                ),
-                encoding="utf-8",
-            )
+            status_file.write_text(json.dumps(profile_payload), encoding="utf-8")
+            private_dir = _aws_private_dir(temp_dir, profile_payload)
             data_dir = Path(temp_dir) / "data"
             (data_dir / "system" / "sources").mkdir(parents=True)
             (data_dir / "payloads" / "cache").mkdir(parents=True)
@@ -391,6 +422,8 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
                 portal_tenant_id="tff",
                 aws_status_file=status_file,
                 data_dir=data_dir,
+                private_dir=private_dir,
+                tool_exposure_policy=_aws_csm_rollout_policy(),
             )
             self.assertTrue(dismissed["shell_composition"]["inspector_collapsed"])
             self.assertEqual(dismissed["shell_composition"]["foreground_shell_region"], "center-workbench")
