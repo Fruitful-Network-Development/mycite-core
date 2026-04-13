@@ -9,7 +9,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND2_AWS_NAME,
     ADMIN_BAND3_AWS_SANDBOX_NAME,
     ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
-    ADMIN_BAND5_MAPS_NAME,
+    ADMIN_BAND5_CTS_GIS_NAME,
     ADMIN_ENTRYPOINT_ID,
     ADMIN_EXPOSURE_INTERNAL_ONLY,
     ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY,
@@ -17,6 +17,9 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
     ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
     ADMIN_HOME_STATUS_SLICE_ID,
+    ADMIN_TOOL_KIND_GENERAL,
+    ADMIN_TOOL_KIND_HOST_ALIAS,
+    ADMIN_TOOL_KIND_SERVICE,
     ADMIN_TOOL_LAUNCH_CONTRACT,
     ADMIN_TOOL_SURFACE_BOUNDED_WRITE,
     ADMIN_TOOL_SURFACE_READ_ONLY,
@@ -25,8 +28,8 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_CSM_ONBOARDING_SLICE_ID,
     AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
     AWS_CSM_SANDBOX_SLICE_ID,
-    MAPS_READ_ONLY_ENTRYPOINT_ID,
-    MAPS_READ_ONLY_SLICE_ID,
+    CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
+    CTS_GIS_READ_ONLY_SLICE_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
@@ -54,8 +57,8 @@ ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA = "mycite.v2.admin.aws.narrow_write.reques
 ADMIN_AWS_NARROW_WRITE_SURFACE_SCHEMA = "mycite.v2.admin.aws.narrow_write.surface.v1"
 ADMIN_AWS_CSM_ONBOARDING_REQUEST_SCHEMA = "mycite.v2.admin.aws.csm_onboarding.request.v1"
 ADMIN_AWS_CSM_ONBOARDING_SURFACE_SCHEMA = "mycite.v2.admin.aws.csm_onboarding.surface.v1"
-ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.maps.read_only.request.v1"
-ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA = "mycite.v2.admin.maps.read_only.surface.v1"
+ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.cts_gis.read_only.request.v1"
+ADMIN_CTS_GIS_READ_ONLY_SURFACE_SCHEMA = "mycite.v2.admin.cts_gis.read_only.surface.v1"
 TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.portal.runtime.envelope.v1"
 TRUSTED_TENANT_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA = "mycite.v2.portal.runtime_entrypoint_descriptor.v1"
 TRUSTED_TENANT_HOME_SURFACE_SCHEMA = "mycite.v2.portal.home_tenant_status.surface.v1"
@@ -122,6 +125,36 @@ def _as_text(value: object) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _normalize_admin_runtime_tool_kind(value: object, *, required: bool) -> str | None:
+    tool_kind = _as_text(value).lower()
+    if not tool_kind:
+        if required:
+            raise ValueError("runtime_entrypoint.tool_kind is required for shell-owned tool entrypoints")
+        return None
+    if tool_kind not in {ADMIN_TOOL_KIND_GENERAL, ADMIN_TOOL_KIND_SERVICE, ADMIN_TOOL_KIND_HOST_ALIAS}:
+        raise ValueError(
+            "runtime_entrypoint.tool_kind must be one of: "
+            f"{ADMIN_TOOL_KIND_GENERAL}, {ADMIN_TOOL_KIND_SERVICE}, {ADMIN_TOOL_KIND_HOST_ALIAS}; default_tool is forbidden"
+        )
+    return tool_kind
+
+
+def _normalize_shared_portal_capabilities(value: object) -> tuple[str, ...]:
+    if value in {None, ""}:
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("runtime_entrypoint.shared_portal_capabilities must be a list, tuple, or null")
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        capability = _as_text(item).lower().replace("-", "_").replace(" ", "_")
+        if not capability or capability in seen:
+            continue
+        normalized.append(capability)
+        seen.add(capability)
+    return tuple(normalized)
 
 
 def _normalize_known_tool_ids(known_tool_ids: list[str] | tuple[str, ...]) -> list[str]:
@@ -229,6 +262,8 @@ class AdminRuntimeEntrypointDescriptor:
     launch_contract: str
     surface_pattern: str
     surface_schema: str
+    tool_kind: str | None = None
+    shared_portal_capabilities: tuple[str, ...] = ()
     required_configuration: tuple[str, ...] = ()
     schema: str = field(default=ADMIN_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA, init=False)
 
@@ -245,6 +280,19 @@ class AdminRuntimeEntrypointDescriptor:
             raise ValueError("runtime_entrypoint.launch_contract is invalid")
         if self.surface_pattern not in {"admin-shell", ADMIN_TOOL_SURFACE_READ_ONLY, ADMIN_TOOL_SURFACE_BOUNDED_WRITE}:
             raise ValueError("runtime_entrypoint.surface_pattern is invalid")
+        required_tool_kind = self.launch_contract == ADMIN_TOOL_LAUNCH_CONTRACT
+        object.__setattr__(
+            self,
+            "tool_kind",
+            _normalize_admin_runtime_tool_kind(self.tool_kind, required=required_tool_kind),
+        )
+        object.__setattr__(
+            self,
+            "shared_portal_capabilities",
+            _normalize_shared_portal_capabilities(self.shared_portal_capabilities),
+        )
+        if self.launch_contract == ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT and self.tool_kind is not None:
+            raise ValueError("runtime_entrypoint.tool_kind must be null for root-service shell entrypoints")
         if self.read_write_posture == "write" and self.surface_pattern != ADMIN_TOOL_SURFACE_BOUNDED_WRITE:
             raise ValueError("write runtime entrypoints must use the bounded-write surface pattern")
 
@@ -260,6 +308,8 @@ class AdminRuntimeEntrypointDescriptor:
             "launch_contract": self.launch_contract,
             "surface_pattern": self.surface_pattern,
             "surface_schema": self.surface_schema,
+            "tool_kind": self.tool_kind,
+            "shared_portal_capabilities": list(self.shared_portal_capabilities),
             "required_configuration": list(self.required_configuration),
         }
 
@@ -339,6 +389,8 @@ def build_admin_runtime_entrypoint_catalog() -> tuple[AdminRuntimeEntrypointDesc
             launch_contract=ADMIN_TOOL_LAUNCH_CONTRACT,
             surface_pattern=ADMIN_TOOL_SURFACE_READ_ONLY,
             surface_schema=ADMIN_AWS_CSM_FAMILY_HOME_SURFACE_SCHEMA,
+            tool_kind=ADMIN_TOOL_KIND_SERVICE,
+            shared_portal_capabilities=("external_service_binding",),
             required_configuration=("aws_status_file", "private_dir"),
         ),
         AdminRuntimeEntrypointDescriptor(
@@ -351,6 +403,8 @@ def build_admin_runtime_entrypoint_catalog() -> tuple[AdminRuntimeEntrypointDesc
             launch_contract=ADMIN_TOOL_LAUNCH_CONTRACT,
             surface_pattern=ADMIN_TOOL_SURFACE_READ_ONLY,
             surface_schema=ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA,
+            tool_kind=ADMIN_TOOL_KIND_SERVICE,
+            shared_portal_capabilities=("external_service_binding",),
             required_configuration=("aws_status_file",),
         ),
         AdminRuntimeEntrypointDescriptor(
@@ -363,6 +417,8 @@ def build_admin_runtime_entrypoint_catalog() -> tuple[AdminRuntimeEntrypointDesc
             launch_contract=ADMIN_TOOL_LAUNCH_CONTRACT,
             surface_pattern=ADMIN_TOOL_SURFACE_BOUNDED_WRITE,
             surface_schema=ADMIN_AWS_NARROW_WRITE_SURFACE_SCHEMA,
+            tool_kind=ADMIN_TOOL_KIND_SERVICE,
+            shared_portal_capabilities=("external_service_binding",),
             required_configuration=("aws_status_file", "audit_storage_file"),
         ),
         AdminRuntimeEntrypointDescriptor(
@@ -375,6 +431,8 @@ def build_admin_runtime_entrypoint_catalog() -> tuple[AdminRuntimeEntrypointDesc
             launch_contract=ADMIN_TOOL_LAUNCH_CONTRACT,
             surface_pattern=ADMIN_TOOL_SURFACE_READ_ONLY,
             surface_schema=ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA,
+            tool_kind=ADMIN_TOOL_KIND_SERVICE,
+            shared_portal_capabilities=("external_service_binding", "sandbox_projection"),
             required_configuration=("aws_csm_sandbox_status_file",),
         ),
         AdminRuntimeEntrypointDescriptor(
@@ -387,18 +445,22 @@ def build_admin_runtime_entrypoint_catalog() -> tuple[AdminRuntimeEntrypointDesc
             launch_contract=ADMIN_TOOL_LAUNCH_CONTRACT,
             surface_pattern=ADMIN_TOOL_SURFACE_BOUNDED_WRITE,
             surface_schema=ADMIN_AWS_CSM_ONBOARDING_SURFACE_SCHEMA,
+            tool_kind=ADMIN_TOOL_KIND_SERVICE,
+            shared_portal_capabilities=("external_service_binding",),
             required_configuration=("aws_status_file", "audit_storage_file"),
         ),
         AdminRuntimeEntrypointDescriptor(
-            entrypoint_id=MAPS_READ_ONLY_ENTRYPOINT_ID,
-            callable_path="MyCiteV2.instances._shared.runtime.admin_maps_runtime.run_admin_maps_read_only",
-            slice_id=MAPS_READ_ONLY_SLICE_ID,
-            admin_band=ADMIN_BAND5_MAPS_NAME,
+            entrypoint_id=CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
+            callable_path="MyCiteV2.instances._shared.runtime.admin_cts_gis_runtime.run_admin_cts_gis_read_only",
+            slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
+            admin_band=ADMIN_BAND5_CTS_GIS_NAME,
             exposure_status=ADMIN_EXPOSURE_INTERNAL_ONLY,
             read_write_posture="read-only",
             launch_contract=ADMIN_TOOL_LAUNCH_CONTRACT,
             surface_pattern=ADMIN_TOOL_SURFACE_READ_ONLY,
-            surface_schema=ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA,
+            surface_schema=ADMIN_CTS_GIS_READ_ONLY_SURFACE_SCHEMA,
+            tool_kind=ADMIN_TOOL_KIND_GENERAL,
+            shared_portal_capabilities=("datum_recognition", "spatial_projection"),
             required_configuration=("data_dir",),
         ),
     )

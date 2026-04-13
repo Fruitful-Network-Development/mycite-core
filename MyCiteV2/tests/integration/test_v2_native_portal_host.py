@@ -36,7 +36,7 @@ if HAS_FLASK:
         ADMIN_RUNTIME_ENVELOPE_SCHEMA,
     )
     from MyCiteV2.instances._shared.runtime.runtime_platform import (
-        ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
+        ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
         ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
         BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
         BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
@@ -56,13 +56,13 @@ if HAS_FLASK:
         ADMIN_TOOL_REGISTRY_SLICE_ID,
         AWS_CSM_ONBOARDING_SLICE_ID,
         AWS_CSM_SANDBOX_SLICE_ID,
-        MAPS_READ_ONLY_ENTRYPOINT_ID,
+        CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
         AWS_NARROW_WRITE_ENTRYPOINT_ID,
         AWS_NARROW_WRITE_SLICE_ID,
         AWS_READ_ONLY_ENTRYPOINT_ID,
         AWS_READ_ONLY_SLICE_ID,
         DATUM_RESOURCE_WORKBENCH_SLICE_ID,
-        MAPS_READ_ONLY_SLICE_ID,
+        CTS_GIS_READ_ONLY_SLICE_ID,
     )
     from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
         BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
@@ -112,7 +112,7 @@ else:  # pragma: no cover
     TRUSTED_TENANT_SURFACE_CONTRACT_SCHEMA = "mycite.v2.portal.surface_contract.v1"
     V2_PORTAL_HEALTH_SCHEMA = "mycite.v2.portal.health.v1"
     ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA = "mycite.v2.admin.aws.narrow_write.request.v1"
-    ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.maps.read_only.request.v1"
+    ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.cts_gis.read_only.request.v1"
     ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA = "mycite.v2.admin.aws.read_only.request.v1"
     ADMIN_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.admin.runtime.envelope.v1"
     ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE = "tool_not_exposed"
@@ -126,13 +126,13 @@ else:  # pragma: no cover
     ADMIN_TOOL_REGISTRY_SLICE_ID = "admin_band0.tool_registry"
     AWS_CSM_ONBOARDING_SLICE_ID = "admin_band4.aws_csm_onboarding_surface"
     AWS_CSM_SANDBOX_SLICE_ID = "admin_band3.aws_csm_sandbox_surface"
-    MAPS_READ_ONLY_ENTRYPOINT_ID = "admin.maps.read_only"
+    CTS_GIS_READ_ONLY_ENTRYPOINT_ID = "admin.cts_gis.read_only"
     AWS_NARROW_WRITE_ENTRYPOINT_ID = "admin.aws.narrow_write"
     AWS_NARROW_WRITE_SLICE_ID = "admin_band2.aws_narrow_write_surface"
     AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
     AWS_READ_ONLY_SLICE_ID = "admin_band1.aws_read_only_surface"
     DATUM_RESOURCE_WORKBENCH_SLICE_ID = "datum.resource_workbench"
-    MAPS_READ_ONLY_SLICE_ID = "admin_band5.maps_read_only_surface"
+    CTS_GIS_READ_ONLY_SLICE_ID = "admin_band5.cts_gis_read_only_surface"
     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID = "band1.audit_activity_visibility"
     TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA = "mycite.v2.portal.audit_activity.request.v1"
     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID = "band1.operational_status_surface"
@@ -183,7 +183,7 @@ def _default_tool_exposure() -> dict[str, object]:
         "aws_narrow_write": {"enabled": True},
         "aws_csm_onboarding": {"enabled": True},
         "aws_csm_sandbox": {"enabled": False},
-        "maps": {"enabled": False},
+        "cts_gis": {"enabled": False},
     }
 
 
@@ -455,7 +455,7 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertEqual(summary.get("enabled_tool_ids"), ["aws"])
             self.assertIn("aws_csm_newsletter", summary.get("missing_tool_ids") or [])
             self.assertIn("aws_csm_onboarding", summary.get("missing_tool_ids") or [])
-            self.assertIn("maps", summary.get("missing_tool_ids") or [])
+            self.assertIn("cts_gis", summary.get("missing_tool_ids") or [])
             self.assertIn("aws_narrow_write", summary.get("invalid_tool_ids") or [])
             self.assertIn("ghost_tool", summary.get("unknown_tool_ids") or [])
 
@@ -498,7 +498,7 @@ class V2NativePortalHostTests(unittest.TestCase):
             )
             self.assertEqual(
                 sorted(tool_exposure.get("disabled_tool_ids") or []),
-                ["aws_csm_newsletter", "aws_csm_sandbox", "maps"],
+                ["aws_csm_newsletter", "aws_csm_sandbox", "cts_gis"],
             )
             self.assertEqual(tool_exposure.get("unknown_tool_ids"), [])
             self.assertIn("/clients/trappfamilyfarm.com/analytics", payload["analytics_root"]["analytics_root"])
@@ -1090,7 +1090,7 @@ class V2NativePortalHostTests(unittest.TestCase):
             finally:
                 unknown.close()
 
-    def test_fnd_maps_surface_bootstraps_and_tff_maps_route_stays_hidden(self) -> None:
+    def test_fnd_cts_gis_surface_bootstraps_and_tff_cts_gis_route_stays_hidden(self) -> None:
         with TemporaryDirectory() as temp_dir:
             fnd_root = Path(temp_dir) / "fnd"
             fnd_config = _build_config(
@@ -1102,40 +1102,40 @@ class V2NativePortalHostTests(unittest.TestCase):
                     "aws_narrow_write": {"enabled": True},
                     "aws_csm_onboarding": {"enabled": True},
                     "aws_csm_sandbox": {"enabled": False},
-                    "maps": {"enabled": True},
+                    "cts_gis": {"enabled": True},
                 },
             )
             _write_maps_data(fnd_config)
             fnd_client = create_app(fnd_config).test_client()
 
-            maps_page = fnd_client.get("/portal/system/maps")
-            self.assertEqual(maps_page.status_code, 200)
-            self.assertIn(MAPS_READ_ONLY_SLICE_ID.encode(), maps_page.data)
+            cts_gis_page = fnd_client.get("/portal/utilities/cts-gis")
+            self.assertEqual(cts_gis_page.status_code, 200)
+            self.assertIn(CTS_GIS_READ_ONLY_SLICE_ID.encode(), cts_gis_page.data)
 
             shell = fnd_client.post(
                 "/portal/api/v2/admin/shell",
                 json={
                     "schema": ADMIN_SHELL_REQUEST_SCHEMA,
-                    "requested_slice_id": MAPS_READ_ONLY_SLICE_ID,
+                    "requested_slice_id": CTS_GIS_READ_ONLY_SLICE_ID,
                     "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
                 },
             )
             self.assertEqual(shell.status_code, 200)
             shell_payload = shell.get_json() or {}
-            self.assertEqual(shell_payload["slice_id"], MAPS_READ_ONLY_SLICE_ID)
-            self.assertEqual(shell_payload["shell_composition"]["regions"]["workbench"]["kind"], "maps_workbench")
+            self.assertEqual(shell_payload["slice_id"], CTS_GIS_READ_ONLY_SLICE_ID)
+            self.assertEqual(shell_payload["shell_composition"]["regions"]["workbench"]["kind"], "cts_gis_workbench")
 
             direct = fnd_client.post(
-                "/portal/api/v2/admin/maps/read-only",
+                "/portal/api/v2/admin/cts-gis/read-only",
                 json={
-                    "schema": ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
+                    "schema": ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
                     "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
                 },
             )
             self.assertEqual(direct.status_code, 200)
             direct_payload = direct.get_json() or {}
-            self.assertEqual(direct_payload["entrypoint_id"], MAPS_READ_ONLY_ENTRYPOINT_ID)
-            self.assertEqual(direct_payload["slice_id"], MAPS_READ_ONLY_SLICE_ID)
+            self.assertEqual(direct_payload["entrypoint_id"], CTS_GIS_READ_ONLY_ENTRYPOINT_ID)
+            self.assertEqual(direct_payload["slice_id"], CTS_GIS_READ_ONLY_SLICE_ID)
             self.assertGreater(
                 int(
                     ((direct_payload.get("surface_payload") or {}).get("map_projection") or {}).get(
@@ -1150,9 +1150,9 @@ class V2NativePortalHostTests(unittest.TestCase):
             tff_config = _build_config(tff_root, tenant_id="tff")
             tff_client = create_app(tff_config).test_client()
             hidden = tff_client.post(
-                "/portal/api/v2/admin/maps/read-only",
+                "/portal/api/v2/admin/cts-gis/read-only",
                 json={
-                    "schema": ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
+                    "schema": ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
                     "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
                 },
             )

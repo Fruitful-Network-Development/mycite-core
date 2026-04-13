@@ -1,4 +1,4 @@
-"""Pure HOPS coordinate decoding helpers for V2 maps surfaces."""
+"""Pure HOPS coordinate decoding helpers for V2 CTS-GIS surfaces."""
 
 from __future__ import annotations
 

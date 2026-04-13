@@ -14,6 +14,7 @@ A future tool implementation prompt should name:
 - one adapter family when outward IO is needed
 - one runtime entrypoint
 - one shell-owned registry descriptor
+- one `tool_kind`
 - one test stack
 - one exposure gate target
 
@@ -24,7 +25,7 @@ A future tool implementation prompt should name:
 3. Implement the port seam.
 4. Implement the adapter family.
 5. Add the runtime entrypoint descriptor.
-6. Add the shell-owned registry descriptor.
+6. Add the shell-owned registry descriptor with `tool_kind`.
 7. Add the runtime composition entrypoint.
 8. Add unit, contract, adapter, integration, and architecture tests.
 9. Update docs only for the exact slice and platform catalog.
@@ -33,6 +34,7 @@ A future tool implementation prompt should name:
 
 - descriptor-shape test
 - runtime-entrypoint-catalog test
+- `tool_kind` validation test
 - semantic unit tests
 - port contract tests
 - adapter tests
@@ -42,6 +44,7 @@ A future tool implementation prompt should name:
 
 ## Scope limits
 
-- Maps starts after this platform pass, not during it.
-- AGRO-ERP starts after Maps.
-- PayPal, analytics, progeny, workbench, and sandboxes remain outside this track until explicitly approved.
+- CTS-GIS is already implemented and remains the current spatial family root.
+- AGRO-ERP starts after CTS-GIS follow-on approval.
+- chronology work is mediation-first, not a `calendar` tool drop-in.
+- host-alias work starts only after the hosted/network contracts land.

@@ -57,7 +57,7 @@ This gives operators a stable way to discover future admin tools without letting
 
 - `newsletter-admin` must not appear as a standalone entry
 - AWS may be listed as launchable only after `admin_band1.aws_read_only_surface` passes its own slice gate
-- Maps and AGRO-ERP must remain blocked behind AWS-first ordering
+- CTS-GIS and AGRO-ERP must remain blocked behind AWS-first ordering
 
 ## Out of scope
 

@@ -15,7 +15,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND2_AWS_NAME,
     ADMIN_BAND3_AWS_SANDBOX_NAME,
     ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
-    ADMIN_BAND5_MAPS_NAME,
+    ADMIN_BAND5_CTS_GIS_NAME,
     ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
     ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
     ADMIN_HOME_STATUS_SLICE_ID,
@@ -23,6 +23,8 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_SHELL_ENTRY_SLICE_ID,
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_DESCRIPTOR_SCHEMA,
+    ADMIN_TOOL_KIND_GENERAL,
+    ADMIN_TOOL_KIND_SERVICE,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
     AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
     AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
@@ -33,8 +35,8 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_SLICE_ID,
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
-    MAPS_READ_ONLY_ENTRYPOINT_ID,
-    MAPS_READ_ONLY_SLICE_ID,
+    CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
+    CTS_GIS_READ_ONLY_SLICE_ID,
     AdminShellRequest,
     AdminTenantScope,
     build_admin_surface_catalog,
@@ -113,20 +115,20 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         self.assertEqual(selection.selection_status, "audience_denied")
         self.assertEqual(selection.reason_code, "audience_not_allowed")
 
-    def test_active_service_maps_surfaces_to_root_services_only(self) -> None:
+    def test_active_service_cts_gis_surfaces_to_root_services_only(self) -> None:
         self.assertEqual(map_surface_to_active_service(ADMIN_HOME_STATUS_SLICE_ID), "system")
         self.assertEqual(map_surface_to_active_service(ADMIN_NETWORK_ROOT_SLICE_ID), "network")
         self.assertEqual(map_surface_to_active_service(ADMIN_TOOL_REGISTRY_SLICE_ID), "utilities")
         self.assertEqual(map_surface_to_active_service(DATUM_RESOURCE_WORKBENCH_SLICE_ID), "system")
         self.assertEqual(map_surface_to_active_service(AWS_READ_ONLY_SLICE_ID), "utilities")
-        self.assertEqual(map_surface_to_active_service(MAPS_READ_ONLY_SLICE_ID), "utilities")
+        self.assertEqual(map_surface_to_active_service(CTS_GIS_READ_ONLY_SLICE_ID), "utilities")
 
     def test_dispatch_bodies_include_network_root_and_keep_tool_routes_launchable(self) -> None:
         bodies = build_portal_activity_dispatch_bodies(portal_tenant_id="fnd")
         self.assertIn(ADMIN_NETWORK_ROOT_SLICE_ID, bodies)
         self.assertEqual(bodies[ADMIN_NETWORK_ROOT_SLICE_ID]["requested_slice_id"], ADMIN_NETWORK_ROOT_SLICE_ID)
         self.assertEqual(bodies[AWS_READ_ONLY_SLICE_ID]["tenant_scope"]["audience"], "trusted-tenant")
-        self.assertEqual(bodies[MAPS_READ_ONLY_SLICE_ID]["tenant_scope"]["audience"], "internal")
+        self.assertEqual(bodies[CTS_GIS_READ_ONLY_SLICE_ID]["tenant_scope"]["audience"], "internal")
 
     def test_catalog_and_registry_are_serializable_and_shell_owned(self) -> None:
         surface_catalog = [entry.to_dict() for entry in build_admin_surface_catalog()]
@@ -184,6 +186,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "label": "AWS-CSM",
                     "slice_id": AWS_READ_ONLY_SLICE_ID,
                     "entrypoint_id": AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
+                    "tool_kind": ADMIN_TOOL_KIND_SERVICE,
                     "admin_band": ADMIN_BAND1_AWS_NAME,
                     "exposure_status": "implemented_trusted_tenant_read_only",
                     "read_write_posture": "read-only",
@@ -191,6 +194,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "status_summary": "launchable_family_home",
                     "audience": "trusted-tenant-admin",
                     "internal_only_reason": "",
+                    "shared_portal_capabilities": ["external_service_binding"],
                     "audit_required": False,
                     "read_after_write_required": False,
                     "discovery_mode": "catalog-driven",
@@ -205,6 +209,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "label": "AWS-CSM Sender Selection",
                     "slice_id": AWS_NARROW_WRITE_SLICE_ID,
                     "entrypoint_id": AWS_NARROW_WRITE_ENTRYPOINT_ID,
+                    "tool_kind": ADMIN_TOOL_KIND_SERVICE,
                     "admin_band": ADMIN_BAND2_AWS_NAME,
                     "exposure_status": "implemented_trusted_tenant_narrow_write",
                     "read_write_posture": "write",
@@ -212,6 +217,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "status_summary": "launchable_narrow_write",
                     "audience": "trusted-tenant-admin",
                     "internal_only_reason": "",
+                    "shared_portal_capabilities": ["external_service_binding"],
                     "audit_required": True,
                     "read_after_write_required": True,
                     "discovery_mode": "catalog-driven",
@@ -226,6 +232,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "label": "AWS-CSM Sandbox (read-only)",
                     "slice_id": AWS_CSM_SANDBOX_SLICE_ID,
                     "entrypoint_id": AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+                    "tool_kind": ADMIN_TOOL_KIND_SERVICE,
                     "admin_band": ADMIN_BAND3_AWS_SANDBOX_NAME,
                     "exposure_status": "implemented_internal_sandbox_read_only",
                     "read_write_posture": "read-only",
@@ -233,6 +240,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "status_summary": "launchable_sandbox_read_only",
                     "audience": "internal-admin",
                     "internal_only_reason": "",
+                    "shared_portal_capabilities": ["external_service_binding", "sandbox_projection"],
                     "audit_required": False,
                     "read_after_write_required": False,
                     "discovery_mode": "catalog-driven",
@@ -247,6 +255,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "label": "AWS-CSM Mailbox Onboarding",
                     "slice_id": AWS_CSM_ONBOARDING_SLICE_ID,
                     "entrypoint_id": AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
+                    "tool_kind": ADMIN_TOOL_KIND_SERVICE,
                     "admin_band": ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
                     "exposure_status": "implemented_trusted_tenant_csm_onboarding",
                     "read_write_posture": "write",
@@ -254,6 +263,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "status_summary": "launchable_bounded_onboarding",
                     "audience": "trusted-tenant-admin",
                     "internal_only_reason": "",
+                    "shared_portal_capabilities": ["external_service_binding"],
                     "audit_required": True,
                     "read_after_write_required": True,
                     "discovery_mode": "catalog-driven",
@@ -264,17 +274,19 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                 },
                 {
                     "schema": ADMIN_TOOL_DESCRIPTOR_SCHEMA,
-                    "tool_id": "maps",
-                    "label": "Maps",
-                    "slice_id": MAPS_READ_ONLY_SLICE_ID,
-                    "entrypoint_id": MAPS_READ_ONLY_ENTRYPOINT_ID,
-                    "admin_band": ADMIN_BAND5_MAPS_NAME,
-                    "exposure_status": "implemented_internal_maps_read_only",
+                    "tool_id": "cts_gis",
+                    "label": "CTS-GIS",
+                    "slice_id": CTS_GIS_READ_ONLY_SLICE_ID,
+                    "entrypoint_id": CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
+                    "tool_kind": ADMIN_TOOL_KIND_GENERAL,
+                    "admin_band": ADMIN_BAND5_CTS_GIS_NAME,
+                    "exposure_status": "implemented_internal_cts_gis_read_only",
                     "read_write_posture": "read-only",
                     "surface_pattern": "read-only",
-                    "status_summary": "launchable_maps_read_only",
+                    "status_summary": "launchable_cts_gis_read_only",
                     "audience": "internal-admin",
                     "internal_only_reason": "",
+                    "shared_portal_capabilities": ["datum_recognition", "spatial_projection"],
                     "audit_required": False,
                     "read_after_write_required": False,
                     "discovery_mode": "catalog-driven",
@@ -334,13 +346,13 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         self.assertTrue(onboarding_allowed.allowed)
         self.assertEqual(onboarding_allowed.entrypoint_id, AWS_CSM_ONBOARDING_ENTRYPOINT_ID)
 
-        maps_allowed = resolve_admin_tool_launch(
-            slice_id=MAPS_READ_ONLY_SLICE_ID,
+        cts_gis_allowed = resolve_admin_tool_launch(
+            slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
             audience="internal",
-            expected_entrypoint_id=MAPS_READ_ONLY_ENTRYPOINT_ID,
+            expected_entrypoint_id=CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
         )
-        self.assertTrue(maps_allowed.allowed)
-        self.assertEqual(maps_allowed.entrypoint_id, MAPS_READ_ONLY_ENTRYPOINT_ID)
+        self.assertTrue(cts_gis_allowed.allowed)
+        self.assertEqual(cts_gis_allowed.entrypoint_id, CTS_GIS_READ_ONLY_ENTRYPOINT_ID)
 
     def test_request_contract_rejects_invalid_schema_and_audience(self) -> None:
         with self.assertRaisesRegex(ValueError, "admin_shell_request.schema"):

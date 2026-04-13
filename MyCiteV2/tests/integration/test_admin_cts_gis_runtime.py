@@ -10,14 +10,14 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.admin_maps_runtime import run_admin_maps_read_only
+from MyCiteV2.instances._shared.runtime.admin_cts_gis_runtime import run_admin_cts_gis_read_only
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
-    ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
+    ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
     ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
     build_admin_tool_exposure_policy,
 )
-from MyCiteV2.packages.state_machine.hanus_shell import MAPS_READ_ONLY_ENTRYPOINT_ID, MAPS_READ_ONLY_SLICE_ID
+from MyCiteV2.packages.state_machine.hanus_shell import CTS_GIS_READ_ONLY_ENTRYPOINT_ID, CTS_GIS_READ_ONLY_SLICE_ID
 
 
 def _write_minimal_data(data_dir: Path) -> None:
@@ -64,20 +64,20 @@ def _write_maps_data(data_dir: Path) -> None:
     )
 
 
-class AdminMapsRuntimeIntegrationTests(unittest.TestCase):
-    def test_maps_read_only_returns_projectable_surface_when_enabled(self) -> None:
+class AdminCtsGisRuntimeIntegrationTests(unittest.TestCase):
+    def test_cts_gis_read_only_returns_projectable_surface_when_enabled(self) -> None:
         with TemporaryDirectory() as temp_dir:
             data_dir = Path(temp_dir) / "data"
             _write_minimal_data(data_dir)
             _write_maps_data(data_dir)
             policy = build_admin_tool_exposure_policy(
-                {"maps": {"enabled": True}},
-                known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "maps"],
+                {"cts_gis": {"enabled": True}},
+                known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"],
             )
 
-            result = run_admin_maps_read_only(
+            result = run_admin_cts_gis_read_only(
                 {
-                    "schema": ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
+                    "schema": ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
                     "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
                 },
                 data_dir=data_dir,
@@ -86,10 +86,10 @@ class AdminMapsRuntimeIntegrationTests(unittest.TestCase):
             )
 
             self.assertEqual(result["schema"], ADMIN_RUNTIME_ENVELOPE_SCHEMA)
-            self.assertEqual(result["entrypoint_id"], MAPS_READ_ONLY_ENTRYPOINT_ID)
-            self.assertEqual(result["slice_id"], MAPS_READ_ONLY_SLICE_ID)
+            self.assertEqual(result["entrypoint_id"], CTS_GIS_READ_ONLY_ENTRYPOINT_ID)
+            self.assertEqual(result["slice_id"], CTS_GIS_READ_ONLY_SLICE_ID)
             self.assertIsNone(result["error"])
-            self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "maps_workbench")
+            self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "cts_gis_workbench")
             self.assertEqual(
                 result["surface_payload"]["map_projection"]["projection_state"],
                 "projectable",
@@ -101,18 +101,18 @@ class AdminMapsRuntimeIntegrationTests(unittest.TestCase):
             self.assertIn("overlay_preview", first_row)
             self.assertIn("raw", result["surface_payload"]["selected_row"])
 
-    def test_maps_read_only_returns_renderable_no_documents_surface(self) -> None:
+    def test_cts_gis_read_only_returns_renderable_no_documents_surface(self) -> None:
         with TemporaryDirectory() as temp_dir:
             data_dir = Path(temp_dir) / "data"
             _write_minimal_data(data_dir)
             policy = build_admin_tool_exposure_policy(
-                {"maps": {"enabled": True}},
-                known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "maps"],
+                {"cts_gis": {"enabled": True}},
+                known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"],
             )
 
-            result = run_admin_maps_read_only(
+            result = run_admin_cts_gis_read_only(
                 {
-                    "schema": ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
+                    "schema": ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
                     "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
                 },
                 data_dir=data_dir,
@@ -123,19 +123,19 @@ class AdminMapsRuntimeIntegrationTests(unittest.TestCase):
             self.assertIsNone(result["error"])
             self.assertEqual(
                 result["surface_payload"]["map_projection"]["projection_state"],
-                "no_authoritative_maps_documents",
+                "no_authoritative_cts_gis_documents",
             )
             self.assertEqual(result["surface_payload"]["document_catalog"], [])
 
-    def test_maps_read_only_returns_tool_not_exposed_before_data_validation(self) -> None:
+    def test_cts_gis_read_only_returns_tool_not_exposed_before_data_validation(self) -> None:
         policy = build_admin_tool_exposure_policy(
-            {"maps": {"enabled": False}},
-            known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "maps"],
+            {"cts_gis": {"enabled": False}},
+            known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"],
         )
 
-        result = run_admin_maps_read_only(
+        result = run_admin_cts_gis_read_only(
             {
-                "schema": ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
+                "schema": ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
                 "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
             },
             data_dir=None,

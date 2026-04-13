@@ -64,7 +64,7 @@ Forbidden:
 - verify no dynamic registry scanning exists
 - verify no provider secrets appear in runtime payloads
 - verify unknown tools are denied by shell-owned launch policy
-- verify Maps and AGRO-ERP are absent until their own slices are approved
+- verify CTS-GIS and AGRO-ERP are absent until their own slices are approved
 - verify the live V2 host shape is explicit and tested
 - verify no root-level compatibility symlinks are needed
 - verify live AWS writes use one canonical live artifact

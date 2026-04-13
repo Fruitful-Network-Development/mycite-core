@@ -16,7 +16,7 @@ older V1 principal-panel model without reviving V1 ownership drift.
   not a page-specific module.
 - Tool surfaces still switched the shell into a tool-primary composition that
   hid the workbench and auto-promoted the interface panel.
-- `Maps` was treated too much like a peer principal shell item instead of a
+- `CTS-GIS` was treated too much like a peer principal shell item instead of a
   Utilities-launched tool surface.
 
 ## Corrected target model
@@ -36,7 +36,7 @@ older V1 principal-panel model without reviving V1 ownership drift.
 - `NETWORK` remains intentionally scaffolded before the first FND-EBI slice.
 - `UTILITIES` owns tool/config management.
 - `AWS-CSM` is the first promoted tool family.
-- `Maps` remains implemented but is launched from `UTILITIES`, not pinned as a
+- `CTS-GIS` remains implemented but is launched from `UTILITIES`, not pinned as a
   peer principal activity item.
 
 ## Boundary clarification

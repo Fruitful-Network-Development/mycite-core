@@ -18,7 +18,7 @@ ADMIN_BAND1_AWS_NAME = "Admin Band 1 Trusted-Tenant AWS-CSM Family"
 ADMIN_BAND2_AWS_NAME = "Admin Band 2 Trusted-Tenant AWS Narrow Write"
 ADMIN_BAND3_AWS_SANDBOX_NAME = "Admin Band 3 Internal AWS-CSM Sandbox"
 ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME = "Admin Band 4 Trusted-Tenant AWS-CSM Onboarding"
-ADMIN_BAND5_MAPS_NAME = "Admin Band 5 Internal Maps Read-Only"
+ADMIN_BAND5_CTS_GIS_NAME = "Admin Band 5 Internal CTS-GIS Read-Only"
 
 ADMIN_EXPOSURE_INTERNAL_ONLY = "internal-only"
 ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY = "internal-sandbox-read-only"
@@ -35,13 +35,13 @@ AWS_READ_ONLY_SLICE_ID = "admin_band1.aws_read_only_surface"
 AWS_NARROW_WRITE_SLICE_ID = "admin_band2.aws_narrow_write_surface"
 AWS_CSM_SANDBOX_SLICE_ID = "admin_band3.aws_csm_sandbox_surface"
 AWS_CSM_ONBOARDING_SLICE_ID = "admin_band4.aws_csm_onboarding_surface"
-MAPS_READ_ONLY_SLICE_ID = "admin_band5.maps_read_only_surface"
+CTS_GIS_READ_ONLY_SLICE_ID = "admin_band5.cts_gis_read_only_surface"
 AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID = "admin.aws.family_home"
 AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
 AWS_NARROW_WRITE_ENTRYPOINT_ID = "admin.aws.narrow_write"
 AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID = "admin.aws.csm_sandbox_read_only"
 AWS_CSM_ONBOARDING_ENTRYPOINT_ID = "admin.aws.csm_onboarding"
-MAPS_READ_ONLY_ENTRYPOINT_ID = "admin.maps.read_only"
+CTS_GIS_READ_ONLY_ENTRYPOINT_ID = "admin.cts_gis.read_only"
 
 INTERNAL_ADMIN_SCOPE_ID = "internal-admin"
 ADMIN_TOOL_DEFAULT_POSTURE = "deny-by-default"
@@ -49,8 +49,18 @@ ADMIN_TOOL_DISCOVERY_MODE = "catalog-driven"
 ADMIN_TOOL_LAUNCH_CONTRACT = "shell-owned-registry"
 ADMIN_TOOL_SURFACE_READ_ONLY = "read-only"
 ADMIN_TOOL_SURFACE_BOUNDED_WRITE = "bounded-write"
+ADMIN_TOOL_KIND_GENERAL = "general_tool"
+ADMIN_TOOL_KIND_SERVICE = "service_tool"
+ADMIN_TOOL_KIND_HOST_ALIAS = "host_alias_tool"
 
 _ALLOWED_AUDIENCES = frozenset({"internal", "trusted-tenant"})
+_ALLOWED_ADMIN_TOOL_KINDS = frozenset(
+    {
+        ADMIN_TOOL_KIND_GENERAL,
+        ADMIN_TOOL_KIND_SERVICE,
+        ADMIN_TOOL_KIND_HOST_ALIAS,
+    }
+)
 
 
 def _as_text(value: object) -> str:
@@ -63,6 +73,34 @@ def _require_schema(payload: dict[str, Any], *, expected: str, field_name: str) 
     schema = _as_text(payload.get("schema"))
     if schema != expected:
         raise ValueError(f"{field_name} must be {expected}")
+
+
+def _normalize_tool_kind(value: object, *, field_name: str, required: bool) -> str | None:
+    tool_kind = _as_text(value).lower()
+    if not tool_kind:
+        if required:
+            raise ValueError(f"{field_name} is required")
+        return None
+    if tool_kind not in _ALLOWED_ADMIN_TOOL_KINDS:
+        supported = ", ".join(sorted(_ALLOWED_ADMIN_TOOL_KINDS))
+        raise ValueError(f"{field_name} must be one of: {supported}; default_tool is forbidden")
+    return tool_kind
+
+
+def _normalize_shared_portal_capabilities(value: object, *, field_name: str) -> tuple[str, ...]:
+    if value in {None, ""}:
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise ValueError(f"{field_name} must be a list, tuple, or null")
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        capability = _as_text(item).lower().replace("-", "_").replace(" ", "_")
+        if not capability or capability in seen:
+            continue
+        normalized.append(capability)
+        seen.add(capability)
+    return tuple(normalized)
 
 
 @dataclass(frozen=True)
@@ -218,6 +256,7 @@ class AdminToolRegistryEntry:
     label: str
     slice_id: str
     entrypoint_id: str
+    tool_kind: str
     admin_band: str
     exposure_status: str
     read_write_posture: str
@@ -225,6 +264,7 @@ class AdminToolRegistryEntry:
     status_summary: str
     audience: str
     internal_only_reason: str
+    shared_portal_capabilities: tuple[str, ...] = ()
     audit_required: bool = False
     read_after_write_required: bool = False
     launchable: bool = False
@@ -243,10 +283,23 @@ class AdminToolRegistryEntry:
             raise ValueError("admin_tool_registry.slice_id is required")
         if not _as_text(self.entrypoint_id):
             raise ValueError("admin_tool_registry.entrypoint_id is required")
+        object.__setattr__(
+            self,
+            "tool_kind",
+            _normalize_tool_kind(self.tool_kind, field_name="admin_tool_registry.tool_kind", required=True),
+        )
         if self.read_write_posture not in {"read-only", "write"}:
             raise ValueError("admin_tool_registry.read_write_posture must be read-only or write")
         if self.surface_pattern not in {ADMIN_TOOL_SURFACE_READ_ONLY, ADMIN_TOOL_SURFACE_BOUNDED_WRITE}:
             raise ValueError("admin_tool_registry.surface_pattern is invalid")
+        object.__setattr__(
+            self,
+            "shared_portal_capabilities",
+            _normalize_shared_portal_capabilities(
+                self.shared_portal_capabilities,
+                field_name="admin_tool_registry.shared_portal_capabilities",
+            ),
+        )
         if self.read_write_posture == "read-only":
             if self.surface_pattern != ADMIN_TOOL_SURFACE_READ_ONLY:
                 raise ValueError("read-only admin tools must use the read-only surface pattern")
@@ -265,6 +318,7 @@ class AdminToolRegistryEntry:
             "label": self.label,
             "slice_id": self.slice_id,
             "entrypoint_id": self.entrypoint_id,
+            "tool_kind": self.tool_kind,
             "admin_band": self.admin_band,
             "exposure_status": self.exposure_status,
             "read_write_posture": self.read_write_posture,
@@ -272,6 +326,7 @@ class AdminToolRegistryEntry:
             "status_summary": self.status_summary,
             "audience": self.audience,
             "internal_only_reason": self.internal_only_reason,
+            "shared_portal_capabilities": list(self.shared_portal_capabilities),
             "audit_required": bool(self.audit_required),
             "read_after_write_required": bool(self.read_after_write_required),
             "discovery_mode": self.discovery_mode,
@@ -396,6 +451,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             label="AWS-CSM",
             slice_id=AWS_READ_ONLY_SLICE_ID,
             entrypoint_id=AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
+            tool_kind=ADMIN_TOOL_KIND_SERVICE,
             admin_band=ADMIN_BAND1_AWS_NAME,
             exposure_status="implemented_trusted_tenant_read_only",
             read_write_posture="read-only",
@@ -403,6 +459,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             status_summary="launchable_family_home",
             audience="trusted-tenant-admin",
             internal_only_reason="",
+            shared_portal_capabilities=("external_service_binding",),
             launchable=True,
         ),
         AdminToolRegistryEntry(
@@ -410,6 +467,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             label="AWS-CSM Sender Selection",
             slice_id=AWS_NARROW_WRITE_SLICE_ID,
             entrypoint_id=AWS_NARROW_WRITE_ENTRYPOINT_ID,
+            tool_kind=ADMIN_TOOL_KIND_SERVICE,
             admin_band=ADMIN_BAND2_AWS_NAME,
             exposure_status="implemented_trusted_tenant_narrow_write",
             read_write_posture="write",
@@ -417,6 +475,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             status_summary="launchable_narrow_write",
             audience="trusted-tenant-admin",
             internal_only_reason="",
+            shared_portal_capabilities=("external_service_binding",),
             audit_required=True,
             read_after_write_required=True,
             launchable=True,
@@ -427,6 +486,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             label="AWS-CSM Sandbox (read-only)",
             slice_id=AWS_CSM_SANDBOX_SLICE_ID,
             entrypoint_id=AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
+            tool_kind=ADMIN_TOOL_KIND_SERVICE,
             admin_band=ADMIN_BAND3_AWS_SANDBOX_NAME,
             exposure_status="implemented_internal_sandbox_read_only",
             read_write_posture="read-only",
@@ -434,6 +494,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             status_summary="launchable_sandbox_read_only",
             audience="internal-admin",
             internal_only_reason="",
+            shared_portal_capabilities=("external_service_binding", "sandbox_projection"),
             launchable=True,
             activity_bar_visible=False,
         ),
@@ -442,6 +503,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             label="AWS-CSM Mailbox Onboarding",
             slice_id=AWS_CSM_ONBOARDING_SLICE_ID,
             entrypoint_id=AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
+            tool_kind=ADMIN_TOOL_KIND_SERVICE,
             admin_band=ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
             exposure_status="implemented_trusted_tenant_csm_onboarding",
             read_write_posture="write",
@@ -449,23 +511,26 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             status_summary="launchable_bounded_onboarding",
             audience="trusted-tenant-admin",
             internal_only_reason="",
+            shared_portal_capabilities=("external_service_binding",),
             audit_required=True,
             read_after_write_required=True,
             launchable=True,
             activity_bar_visible=False,
         ),
         AdminToolRegistryEntry(
-            tool_id="maps",
-            label="Maps",
-            slice_id=MAPS_READ_ONLY_SLICE_ID,
-            entrypoint_id=MAPS_READ_ONLY_ENTRYPOINT_ID,
-            admin_band=ADMIN_BAND5_MAPS_NAME,
-            exposure_status="implemented_internal_maps_read_only",
+            tool_id="cts_gis",
+            label="CTS-GIS",
+            slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
+            entrypoint_id=CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
+            tool_kind=ADMIN_TOOL_KIND_GENERAL,
+            admin_band=ADMIN_BAND5_CTS_GIS_NAME,
+            exposure_status="implemented_internal_cts_gis_read_only",
             read_write_posture="read-only",
             surface_pattern=ADMIN_TOOL_SURFACE_READ_ONLY,
-            status_summary="launchable_maps_read_only",
+            status_summary="launchable_cts_gis_read_only",
             audience="internal-admin",
             internal_only_reason="",
+            shared_portal_capabilities=("datum_recognition", "spatial_projection"),
             launchable=True,
             activity_bar_visible=False,
         ),
@@ -492,7 +557,7 @@ def resolve_admin_tool_launch(
                 allowed=False,
                 selection_status="unknown",
                 reason_code="catalog_mismatch",
-                reason_message="Requested AWS entrypoint does not match the shell-owned registry.",
+                reason_message="Requested tool entrypoint does not match the shell-owned registry.",
                 exposure_status=entry.exposure_status,
             )
         if not entry.launchable:
@@ -701,7 +766,7 @@ def map_surface_to_active_service(active_surface_id: str) -> str:
         AWS_NARROW_WRITE_SLICE_ID,
         AWS_CSM_SANDBOX_SLICE_ID,
         AWS_CSM_ONBOARDING_SLICE_ID,
-        MAPS_READ_ONLY_SLICE_ID,
+        CTS_GIS_READ_ONLY_SLICE_ID,
     }:
         return "utilities"
     if sid == DATUM_RESOURCE_WORKBENCH_SLICE_ID:
@@ -716,7 +781,7 @@ def shell_composition_mode_for_surface(active_surface_id: str) -> str:
         AWS_NARROW_WRITE_SLICE_ID,
         AWS_CSM_SANDBOX_SLICE_ID,
         AWS_CSM_ONBOARDING_SLICE_ID,
-        MAPS_READ_ONLY_SLICE_ID,
+        CTS_GIS_READ_ONLY_SLICE_ID,
     }:
         return "tool"
     return "system"
@@ -796,8 +861,8 @@ def activity_icon_id_for_slice(slice_id: object) -> str:
         AWS_CSM_ONBOARDING_SLICE_ID,
     }:
         return "aws"
-    if sid == MAPS_READ_ONLY_SLICE_ID:
-        return "maps"
+    if sid == CTS_GIS_READ_ONLY_SLICE_ID:
+        return "cts_gis"
     return "generic"
 
 
@@ -849,7 +914,7 @@ __all__ = [
     "ADMIN_BAND2_AWS_NAME",
     "ADMIN_BAND3_AWS_SANDBOX_NAME",
     "ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME",
-    "ADMIN_BAND5_MAPS_NAME",
+    "ADMIN_BAND5_CTS_GIS_NAME",
     "ADMIN_ENTRYPOINT_ID",
     "ADMIN_EXPOSURE_INTERNAL_ONLY",
     "ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY",
@@ -869,6 +934,9 @@ __all__ = [
     "ADMIN_TOOL_DEFAULT_POSTURE",
     "ADMIN_TOOL_DESCRIPTOR_SCHEMA",
     "ADMIN_TOOL_DISCOVERY_MODE",
+    "ADMIN_TOOL_KIND_GENERAL",
+    "ADMIN_TOOL_KIND_HOST_ALIAS",
+    "ADMIN_TOOL_KIND_SERVICE",
     "ADMIN_TOOL_LAUNCH_CONTRACT",
     "ADMIN_TOOL_REGISTRY_SLICE_ID",
     "ADMIN_TOOL_SURFACE_BOUNDED_WRITE",
@@ -878,8 +946,8 @@ __all__ = [
     "AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID",
     "AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID",
     "AWS_CSM_SANDBOX_SLICE_ID",
-    "MAPS_READ_ONLY_ENTRYPOINT_ID",
-    "MAPS_READ_ONLY_SLICE_ID",
+    "CTS_GIS_READ_ONLY_ENTRYPOINT_ID",
+    "CTS_GIS_READ_ONLY_SLICE_ID",
     "AWS_NARROW_WRITE_SLICE_ID",
     "AWS_NARROW_WRITE_ENTRYPOINT_ID",
     "AWS_READ_ONLY_ENTRYPOINT_ID",

@@ -33,7 +33,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_NARROW_WRITE_SLICE_ID,
     AWS_READ_ONLY_SLICE_ID,
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
-    MAPS_READ_ONLY_SLICE_ID,
+    CTS_GIS_READ_ONLY_SLICE_ID,
 )
 
 
@@ -46,7 +46,7 @@ def _aws_csm_rollout_policy() -> dict[str, object]:
             "aws_csm_onboarding": {"enabled": True},
             "aws_csm_sandbox": {"enabled": False},
         },
-        known_tool_ids=["aws", "aws_csm_newsletter", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "maps"],
+        known_tool_ids=["aws", "aws_csm_newsletter", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"],
     )
 
 
@@ -130,7 +130,7 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
                 [entry["slice_id"] for entry in available_tool_entries],
                 [
                     AWS_READ_ONLY_SLICE_ID,
-                    MAPS_READ_ONLY_SLICE_ID,
+                    CTS_GIS_READ_ONLY_SLICE_ID,
                 ],
             )
             self.assertTrue(all(entry["launchable"] for entry in available_tool_entries))
@@ -179,11 +179,11 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         gated_tool_entries = result["surface_payload"]["gated_tool_slices"]
         self.assertEqual(
             [entry["slice_id"] for entry in gated_tool_entries],
-            [AWS_CSM_SANDBOX_SLICE_ID, MAPS_READ_ONLY_SLICE_ID],
+            [AWS_CSM_SANDBOX_SLICE_ID, CTS_GIS_READ_ONLY_SLICE_ID],
         )
         gated_by_slice = {entry["slice_id"]: entry for entry in gated_tool_entries}
         self.assertEqual(gated_by_slice[AWS_CSM_SANDBOX_SLICE_ID]["visibility_status"], "config_disabled")
-        self.assertEqual(gated_by_slice[MAPS_READ_ONLY_SLICE_ID]["visibility_status"], "config_disabled")
+        self.assertEqual(gated_by_slice[CTS_GIS_READ_ONLY_SLICE_ID]["visibility_status"], "config_disabled")
         self.assertEqual(
             [entry["slice_id"] for entry in result["surface_payload"]["family_tool_slices"]],
             [AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID],
@@ -193,7 +193,7 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         ]
         self.assertNotIn(AWS_CSM_SANDBOX_SLICE_ID, activity_slice_ids)
         self.assertNotIn(AWS_CSM_ONBOARDING_SLICE_ID, activity_slice_ids)
-        self.assertNotIn(MAPS_READ_ONLY_SLICE_ID, activity_slice_ids)
+        self.assertNotIn(CTS_GIS_READ_ONLY_SLICE_ID, activity_slice_ids)
         self.assertIn(ADMIN_HOME_STATUS_SLICE_ID, activity_slice_ids)
         self.assertIn(ADMIN_NETWORK_ROOT_SLICE_ID, activity_slice_ids)
         self.assertIn(ADMIN_TOOL_REGISTRY_SLICE_ID, activity_slice_ids)
@@ -209,8 +209,30 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         sandbox_row = [
             row for row in registry["surface_payload"]["tool_entries"] if row["slice_id"] == AWS_CSM_SANDBOX_SLICE_ID
         ][0]
+        cts_gis_row = [
+            row for row in registry["surface_payload"]["tool_entries"] if row["slice_id"] == CTS_GIS_READ_ONLY_SLICE_ID
+        ][0]
         self.assertFalse(sandbox_row["config_enabled"])
         self.assertEqual(sandbox_row["visibility_status"], "config_disabled")
+        self.assertEqual(cts_gis_row["tool_kind"], "general_tool")
+        self.assertEqual(cts_gis_row["tool_id"], "cts_gis")
+
+    def test_network_root_uses_contract_first_copy(self) -> None:
+        result = run_admin_shell_entry(
+            {
+                "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+                "requested_slice_id": ADMIN_NETWORK_ROOT_SLICE_ID,
+                "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+            }
+        )
+
+        self.assertEqual(result["slice_id"], ADMIN_NETWORK_ROOT_SLICE_ID)
+        self.assertEqual(result["surface_payload"]["summary"]["hosted_root"], "contracts_first")
+        self.assertIn("contracts are approved", " ".join(result["surface_payload"]["notes"]))
+        self.assertEqual(
+            result["surface_payload"]["tab_panels"]["hosted"]["summary"],
+            "Hosted views stay contract-first here; portal instances and host aliases are not runtime-loaded yet.",
+        )
 
     def test_disabled_tool_request_falls_back_to_registry_with_tool_not_exposed(self) -> None:
         result = run_admin_shell_entry(
@@ -248,7 +270,7 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
                 AWS_NARROW_WRITE_SLICE_ID,
                 AWS_CSM_SANDBOX_SLICE_ID,
                 AWS_CSM_ONBOARDING_SLICE_ID,
-                MAPS_READ_ONLY_SLICE_ID,
+                CTS_GIS_READ_ONLY_SLICE_ID,
             ],
         )
         self.assertEqual(

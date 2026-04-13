@@ -23,4 +23,4 @@ The post-AWS shared platform is fixed around:
 - Future tools add one descriptor, one runtime descriptor, one seam, one adapter family when needed, one runtime entrypoint, and one test/gate set.
 - Tools cannot self-register, scan packages, or own launch legality.
 - Runtime remains composition-only.
-- Maps is the next allowed tool track after this platform pass, but Maps semantics remain outside this decision.
+- CTS-GIS is the next allowed tool track after this platform pass, but CTS-GIS semantics remain outside this decision.

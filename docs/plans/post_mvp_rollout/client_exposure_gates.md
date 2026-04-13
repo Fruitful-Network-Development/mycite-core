@@ -68,8 +68,8 @@ Use [../../testing/slice_gate_template.md](../../testing/slice_gate_template.md)
 - `Admin Band 0` shell entry, runtime envelope, home/status surface, and tool registry/launcher must already be stable.
 - The tool-bearing slice must launch through the shell-owned registry and a cataloged runtime entrypoint.
 - AWS must be the first trusted-tenant tool-bearing slice.
-- Maps may not start before AWS is stable.
-- AGRO-ERP may not start before Maps is stable.
+- CTS-GIS may not start before AWS is stable.
+- AGRO-ERP may not start before CTS-GIS is stable.
 
 ### Post-AWS platform addition
 

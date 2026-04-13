@@ -32,7 +32,7 @@ def _tool_exposure_policy(*, newsletter_enabled: bool = True) -> dict[str, objec
             "aws_csm_onboarding": {"enabled": True},
             "aws_csm_sandbox": {"enabled": False},
         },
-        known_tool_ids=["aws", "aws_csm_newsletter", "aws_narrow_write", "aws_csm_onboarding", "aws_csm_sandbox", "maps"],
+        known_tool_ids=["aws", "aws_csm_newsletter", "aws_narrow_write", "aws_csm_onboarding", "aws_csm_sandbox", "cts_gis"],
     )
 
 

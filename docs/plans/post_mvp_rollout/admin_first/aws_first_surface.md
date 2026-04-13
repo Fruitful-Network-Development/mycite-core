@@ -16,7 +16,7 @@ It has all of the following:
 - a natural read-only first slice
 - a bounded write candidate that can follow later
 
-Maps and AGRO-ERP depend on broader mediation surfaces and are therefore not the fastest safe operational replacement path.
+CTS-GIS and AGRO-ERP depend on broader mediation surfaces and are therefore not the fastest safe operational replacement path.
 
 ## First AWS slice
 

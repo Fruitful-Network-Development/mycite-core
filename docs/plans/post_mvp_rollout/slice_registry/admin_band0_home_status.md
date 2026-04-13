@@ -67,7 +67,7 @@ This tells an operator what is intentionally available before any tool slice is 
 - provider-specific deep status
 - tool launch controls
 - writable actions
-- AWS, Maps, and AGRO detail payloads beyond the registry-linked availability posture
+- AWS, CTS-GIS, and AGRO detail payloads beyond the registry-linked availability posture
 
 ## V1 evidence and drift warnings
 

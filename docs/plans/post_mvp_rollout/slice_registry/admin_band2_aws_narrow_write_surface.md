@@ -77,7 +77,7 @@ This offers the smallest useful AWS write path without reopening the old portal'
 - broad mailbox provisioning
 - raw secret editing
 - PayPal or analytics writes
-- Maps
+- CTS-GIS
 - AGRO-ERP
 
 ## V1 evidence and drift warnings
@@ -96,7 +96,7 @@ Warnings:
 ## Implementation ordering
 
 - follows `admin_band1.aws_read_only_surface`
-- must complete before any Maps slice is approved for build
+- must complete before any CTS-GIS slice is approved for build
 
 ## Frozen questions
 

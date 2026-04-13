@@ -32,11 +32,11 @@ The admin-first planning and implementation order is fixed:
 4. one tool registry/launcher surface
 5. one AWS-first read-only surface
 6. one AWS-first narrow writable/admin workflow if justified
-7. Maps follow-on planning and then implementation
+7. CTS-GIS follow-on planning and then implementation
 8. AGRO-ERP follow-on planning and then implementation
 
-Maps may not displace AWS.
-AGRO-ERP may not displace Maps.
+CTS-GIS may not displace AWS.
+AGRO-ERP may not displace CTS-GIS.
 
 ## What must exist before the old portal can begin to be operationally replaced
 
@@ -66,5 +66,5 @@ All of the following must be true:
 - no tool-owned shell verbs or tool-owned launch legality
 - no provider-admin bundle that mixes AWS, PayPal, analytics, and newsletter into one slice
 - no standalone `newsletter-admin` comeback
-- no Maps or AGRO work before the AWS-first path is proven
+- no CTS-GIS or AGRO work before the AWS-first path is proven
 - no flavor-specific runtime copies

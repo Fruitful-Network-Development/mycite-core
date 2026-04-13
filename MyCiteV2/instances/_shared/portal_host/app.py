@@ -18,15 +18,15 @@ from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
     run_admin_aws_narrow_write,
     run_admin_aws_read_only,
 )
-from MyCiteV2.instances._shared.runtime.admin_maps_runtime import (
-    run_admin_maps_read_only,
+from MyCiteV2.instances._shared.runtime.admin_cts_gis_runtime import (
+    run_admin_cts_gis_read_only,
 )
 from MyCiteV2.instances._shared.runtime.admin_runtime import run_admin_shell_entry
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
     ADMIN_AWS_CSM_FAMILY_HOME_REQUEST_SCHEMA,
     ADMIN_AWS_CSM_NEWSLETTER_REQUEST_SCHEMA,
-    ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
+    ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
     ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
@@ -58,7 +58,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_READ_ONLY_SLICE_ID,
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
     INTERNAL_ADMIN_SCOPE_ID,
-    MAPS_READ_ONLY_SLICE_ID,
+    CTS_GIS_READ_ONLY_SLICE_ID,
     build_admin_tool_registry_entries,
     build_portal_activity_dispatch_bodies,
 )
@@ -442,11 +442,12 @@ URL_SLUG_TO_SLICE_ID: dict[str, str] = {
     "aws-write": AWS_NARROW_WRITE_SLICE_ID,
     "aws-csm-onboarding": AWS_CSM_ONBOARDING_SLICE_ID,
     "aws-csm-sandbox": AWS_CSM_SANDBOX_SLICE_ID,
-    "maps": MAPS_READ_ONLY_SLICE_ID,
+    "cts-gis": CTS_GIS_READ_ONLY_SLICE_ID,
+    "cts_gis": CTS_GIS_READ_ONLY_SLICE_ID,
     "datum": DATUM_RESOURCE_WORKBENCH_SLICE_ID,
     "mediate_tool-aws_platform_admin": AWS_READ_ONLY_SLICE_ID,
     "mediate_tool-aws_tenant_actions": AWS_CSM_ONBOARDING_SLICE_ID,
-    "mediate_tool-maps": MAPS_READ_ONLY_SLICE_ID,
+    "mediate_tool-cts_gis": CTS_GIS_READ_ONLY_SLICE_ID,
 }
 
 
@@ -944,13 +945,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": "invalid_request", "message": str(exc)}}), 400
 
-    @app.post("/portal/api/v2/admin/maps/read-only")
-    def admin_maps_read_only() -> tuple[Any, int]:
+    @app.post("/portal/api/v2/admin/cts-gis/read-only")
+    def admin_cts_gis_read_only() -> tuple[Any, int]:
         try:
             payload = _json_payload()
             return _runtime_response(
-                run_admin_maps_read_only(
-                    {"schema": ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA, **payload}
+                run_admin_cts_gis_read_only(
+                    {"schema": ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA, **payload}
                     if "schema" not in payload
                     else payload,
                     data_dir=host_config.data_dir,

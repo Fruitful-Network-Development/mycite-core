@@ -8,7 +8,7 @@ portal operationally through an admin-first path.
 Use this subtree now when the goal is:
 
 - understand why the admin/AWS foundation was built in its current order
-- keep Maps and AGRO-ERP sequenced correctly after the canonical V2 and V1 retirement closure
+- keep CTS-GIS and AGRO-ERP sequenced correctly after the canonical V2 and V1 retirement closure
 - avoid reopening completed admin-first foundation work as if it were still the active plan
 
 ## Relationship to the global rollout bands
@@ -21,7 +21,7 @@ The admin-first track is a nested rollout track, not a second authority stack.
 | `Admin Band 1 Trusted-Tenant AWS Read-Only` | `Band 1 Trusted-Tenant Read-Only` | first trusted-tenant-safe tool-bearing exposure, with AWS status and visibility only |
 | `Admin Band 2 Trusted-Tenant AWS Narrow Write` | `Band 2 Trusted-Tenant Writable Slice` | first bounded AWS write workflow after the read-only AWS slice is stable |
 
-Maps and AGRO-ERP remain follow-on planning surfaces. They do not displace AWS-first ordering.
+CTS-GIS and AGRO-ERP remain follow-on planning surfaces. They do not displace AWS-first ordering.
 
 ## Use order
 
@@ -30,8 +30,8 @@ Maps and AGRO-ERP remain follow-on planning surfaces. They do not displace AWS-f
 3. Read [frozen_decisions_admin_band.md](frozen_decisions_admin_band.md).
 4. Read [../post_aws_tool_platform/README.md](../post_aws_tool_platform/README.md).
 5. Read [../../../records/22-v1_retirement_closure.md](../../../records/22-v1_retirement_closure.md).
-6. Read [maps_follow_on_surface.md](maps_follow_on_surface.md) only after the active Band 1 and Band 2 sequence reaches Maps.
-7. Read [agro_erp_follow_on_surface.md](agro_erp_follow_on_surface.md) only after Maps is reopened.
+6. Read [cts_gis_follow_on_surface.md](cts_gis_follow_on_surface.md) only after the active Band 1 and Band 2 sequence reaches CTS-GIS.
+7. Read [agro_erp_follow_on_surface.md](agro_erp_follow_on_surface.md) only after CTS-GIS is reopened.
 
 Historical design context for already-implemented work:
 
@@ -48,8 +48,8 @@ Historical design context for already-implemented work:
 - The runtime envelope comes before any trusted-tenant admin exposure.
 - The admin home/status surface comes before the tool registry/launcher surface.
 - The tool registry/launcher surface comes before AWS.
-- AWS comes before Maps.
-- Maps comes before AGRO-ERP.
+- AWS comes before CTS-GIS.
+- CTS-GIS comes before AGRO-ERP.
 - Tools launch through shell-owned registry entries and runtime entrypoints only.
 - The old portal is replaced by slice-by-slice operational takeover, not by package or route parity.
 
@@ -57,4 +57,4 @@ Historical design context for already-implemented work:
 
 - The admin shell and AWS-first foundation are implemented and should be read through [../../../records/README.md](../../../records/README.md), not as open planning.
 - [../current_planning_index.md](../current_planning_index.md) now governs the reopened long-term sequence after retirement closure.
-- Maps and AGRO-ERP remain deferred follow-on planning, not current execution targets.
+- CTS-GIS and AGRO-ERP remain deferred follow-on planning, not current execution targets.

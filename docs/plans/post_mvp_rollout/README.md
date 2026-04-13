@@ -37,31 +37,37 @@ Use it after the MVP is proven and before any new client-visible slice is specif
 ## Current band status
 
 - Current admin-first platform status: post-AWS tool platform stabilized.
-- Completed admin-first slices: `Admin Band 0`, `admin_band1.aws_read_only_surface`, `admin_band2.aws_narrow_write_surface`, `admin_band3.aws_csm_sandbox_surface`, `admin_band4.aws_csm_onboarding_surface`, and `admin_band5.maps_read_only_surface` (FND-first rollout).
+- Completed admin-first slices: `Admin Band 0`, `admin_band1.aws_read_only_surface`, `admin_band2.aws_narrow_write_surface`, `admin_band3.aws_csm_sandbox_surface`, `admin_band4.aws_csm_onboarding_surface`, and `admin_band5.cts_gis_read_only_surface` (FND-first rollout).
 - Current shared admin shell posture: canonical roots are `System`, `Network`, and `Utilities`; the shell keeps a stable four-panel layout; the principal activity bar is visibly labeled as `logo`, `NETWORK`, `SYSTEM`, `UTILITIES`, and promoted `AWS-CSM`; utility tools launch under `Utilities`; `/portal/system/<tool_slug>` remains a compatibility alias beside the canonical `/portal/utilities/<tool_slug>` routes.
 - Implemented trusted-tenant rollout slices: `band1.portal_home_tenant_status`, `band1.operational_status_surface`, `band1.audit_activity_visibility`, and `band2.profile_basics_write_surface`.
 - Live `/portal` cutover status: V2-native portal host deployed for FND and TFF. The earlier Shape B bridge is retained only as historical cutover evidence; see [../../records/22-v1_retirement_closure.md](../../records/22-v1_retirement_closure.md) for the formal closure statement.
 - Canonical live AWS mapping status: current and active through [post_aws_tool_platform/live_state_authority_and_mapping.md](post_aws_tool_platform/live_state_authority_and_mapping.md).
 - Current expansion posture: follow-on slices may resume from the reopened Band
-  1 sequence documented in [current_planning_index.md](current_planning_index.md), but the narrowed family-root tool queue now treats `FND-EBI` as the next actual build target. `AWS-CSM` is now implemented as a live family root, and `Maps` remains the other near-term candidate for its next family slice.
+  1 sequence documented in [current_planning_index.md](current_planning_index.md), but the narrowed family-root tool queue now treats `FND-EBI` as the next actual build target. `AWS-CSM` is the implemented service-tool family root, and `CTS-GIS` is the implemented general-tool spatial family root.
 - Tool follow-on work now also uses the V2.3 audit and packet documents when
   deciding whether a legacy tool becomes a V2 tool, stays isolated, or is
   retired.
 - Current performance posture: root-shell bootstraps should stay light, AWS-CSM
-  family health is cached in-process, and Maps uses summary-first payloads with
-  selected-row detail instead of duplicating full-row state across shell
+  family health is cached in-process, and CTS-GIS uses summary-first payloads
+  with selected-row detail instead of duplicating full-row state across shell
   regions.
 
 ## Preferred near-term sequence
 
 1. Use [../v2.3-tool_surface_packet/fnd_ebi.md](../v2.3-tool_surface_packet/fnd_ebi.md) as the next actual family-root build target.
-2. Keep [../v2.3-tool_surface_packet/maps.md](../v2.3-tool_surface_packet/maps.md) as the other narrowed near-term candidate, with portal/default-app expansion as the next family slice.
+2. Use [../v2.3-tool_surface_packet/cts_gis.md](../v2.3-tool_surface_packet/cts_gis.md) as current spatial family truth; it is implemented now but is not the next immediate build target.
 3. Use [../v2.3-tool_surface_packet/aws_csm.md](../v2.3-tool_surface_packet/aws_csm.md) as current implementation truth for the live AWS-CSM family root and later AWS follow-on slices.
-4. Treat [../v2.3-tool_surface_packet/fnd_dcm.md](../v2.3-tool_surface_packet/fnd_dcm.md), [../v2.3-tool_surface_packet/calendar.md](../v2.3-tool_surface_packet/calendar.md), [../v2.3-tool_surface_packet/paypal_ppm.md](../v2.3-tool_surface_packet/paypal_ppm.md), and [../v2.3-tool_surface_packet/keycloak_sso.md](../v2.3-tool_surface_packet/keycloak_sso.md) as typed family plans, not immediate build targets.
+4. Treat chronology as mediation through [../../contracts/chronology_mediation_contract.md](../../contracts/chronology_mediation_contract.md), not as an active tool packet item.
+5. Treat [../v2.3-tool_surface_packet/fnd_dcm.md](../v2.3-tool_surface_packet/fnd_dcm.md), [../v2.3-tool_surface_packet/paypal_ppm.md](../v2.3-tool_surface_packet/paypal_ppm.md), and [../v2.3-tool_surface_packet/keycloak_sso.md](../v2.3-tool_surface_packet/keycloak_sso.md) as typed family plans, not immediate build targets.
 
-`fnd_provisioning`, `tenant_progeny_profiles`, `data_tool`, and `operations`
-remain outside this narrowed near-term set until they receive the same
-family-level clarification.
+`fnd_provisioning`, `data_tool`, and `operations` remain outside this narrowed
+near-term set until they receive the same family-level clarification.
+
+Hosted/progeny work now starts from
+[../../contracts/host_alias_and_portal_instance_contract.md](../../contracts/host_alias_and_portal_instance_contract.md)
+and
+[../../contracts/network_operation_and_p2p_boundary.md](../../contracts/network_operation_and_p2p_boundary.md),
+not from `tenant_progeny_profiles`.
 
 ## Historical implemented slice specs
 

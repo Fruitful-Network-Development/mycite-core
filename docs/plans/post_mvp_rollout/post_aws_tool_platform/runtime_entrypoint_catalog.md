@@ -11,7 +11,7 @@ The canonical runtime entrypoint descriptor is `AdminRuntimeEntrypointDescriptor
 - `admin.aws.narrow_write`
 - `admin.aws.csm_sandbox_read_only`
 - `admin.aws.csm_onboarding`
-- `admin.maps.read_only`
+- `admin.cts_gis.read_only`
 
 The MVP entrypoint remains valid, but post-AWS tool work uses the admin runtime
 catalog. Trusted-tenant portal entrypoints are tracked separately in
@@ -31,6 +31,8 @@ Every admin runtime entrypoint descriptor must serialize:
 - `launch_contract`
 - `surface_pattern`
 - `surface_schema`
+- `tool_kind`
+- `shared_portal_capabilities`
 - `required_configuration`
 
 ## Launch contracts
@@ -46,7 +48,7 @@ Every admin runtime entrypoint descriptor must serialize:
   read-only AWS-CSM surface.
 - `admin.aws.csm_onboarding` is the Band 4 trusted-tenant-safe AWS-CSM
   onboarding surface.
-- `admin.maps.read_only` is the Band 5 internal read-only Maps inspection
+- `admin.cts_gis.read_only` is the Band 5 internal read-only CTS-GIS inspection
   surface built on authoritative datum documents plus bounded overlay
   projection.
 
