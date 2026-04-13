@@ -32,13 +32,13 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `schema` | yes | Always `mycite.v2.admin.shell.composition.v1` (`ADMIN_SHELL_COMPOSITION_SCHEMA`). |
-| `composition_mode` | yes | `"tool"` or `"system"` from `shell_composition_mode_for_surface(active_surface_id)` (tool for AWS family/tool slices and **Maps read-only**; otherwise system). |
+| `composition_mode` | yes | `"tool"` or `"system"` from `shell_composition_mode_for_surface(active_surface_id)`. This is now a semantic hint only; it no longer swaps the shell into a tool-only layout. |
 | `active_service` | yes | `"system"`, `"network"`, or `"utilities"` from `map_surface_to_active_service`. This is now a root-service identifier, not a per-tool family label. |
 | `active_surface_id` | yes | Resolved active surface slice id (text). |
 | `active_tool_slice_id` | conditional | Non-null only when `composition_mode == "tool"`; equals the active tool slice id for the current AWS or Maps tool surface. |
-| `foreground_shell_region` | yes | `"interface-panel"` in tool mode; `"center-workbench"` in system mode, unless chrome forces otherwise (see below). |
+| `foreground_shell_region` | yes | Currently `"center-workbench"` for both root and tool surfaces. The workbench remains the primary surface even when a tool is active. |
 | `control_panel_collapsed` | yes | Boolean; parameter to `build_shell_composition_payload`, may be overridden by chrome. |
-| `inspector_collapsed` | yes | From `inspector_collapsed_for_surface` (true when not in tool mode), overridable by chrome. |
+| `inspector_collapsed` | yes | Base shell state is collapsed by default; client chrome may explicitly open it. |
 | `portal_tenant_id` | yes | Tenant id string for labeling and datum reads. |
 | `page_title` | yes | Set by runtime (defaults to `"MyCite"` in builder). |
 | `page_subtitle` | yes | Set by runtime after region build. |
@@ -47,13 +47,18 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 
 ### `composition_mode` and `foreground_shell_region`
 
-- **Default mapping** (`admin_shell.py`): tool mode → `foreground_shell_region: "interface-panel"`; system mode → `"center-workbench"`.
-- **Inspector chrome override** (`admin_runtime.py` `_apply_shell_chrome_to_composition`): if `composition_mode == "tool"` and the request sets `shell_chrome.inspector_collapsed` true, the runtime sets `foreground_shell_region` to `"center-workbench"` and may replace the workbench payload with `kind: "tool_collapsed_inspector"` so the center column carries the dismissal message.
+- `composition_mode` remains in the wire contract so tool-aware renderers can
+  branch when needed.
+- The shell no longer uses `composition_mode` to hide the workbench or make the
+  interface panel primary.
+- `foreground_shell_region` now remains `center-workbench` unless a later
+  contract explicitly introduces another stable root layout.
 
 ### `inspector_collapsed` semantics
 
-- Base value: `inspector_collapsed_for_surface` is true when **not** in tool mode (inspector collapsed in system layout), false in tool mode (inspector is the primary surface).
-- Client (`applyChrome`): toggles `#portalInspector` collapsed class, `aria-hidden`, and `data-primary-surface` / `data-surface-layout` from `composition_mode`.
+- Base value: collapsed by default in the principal shell.
+- Client (`applyChrome`): toggles `#portalInspector` collapsed class and
+  `aria-hidden`, but does not swap the shell into a tool-primary composition.
 
 ---
 
@@ -74,7 +79,7 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 | Field | Required | Notes |
 |-------|----------|--------|
 | `slice_id` | yes | Target slice id. |
-| `label` | yes | Human-readable label (used for accessibility / tooltips, not primary visible text in the icon-only bar). |
+| `label` | yes | Human-readable label; this is now also visibly rendered in the principal activity bar. |
 | `aria_label` | yes | Accessibility label for the icon button. |
 | `icon_id` | yes | Shell-owned icon identifier. |
 | `nav_kind` | yes | `root_logo`, `root_service`, or `tool`. |
@@ -84,7 +89,7 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 | `entrypoint_id` | optional | Present on tool registry entries from catalog. |
 | `read_write_posture` | optional | Present on tool entries (`read-only` or `write`). |
 
-**Client branch:** `renderActivityItems` in `v2_portal_shell.js` — builds icon links; dispatches `loadShell(item.shell_request)` on click.
+**Client branch:** `renderActivityItems` in `v2_portal_shell.js` — builds compact icon + visible-label links; dispatches `loadShell(item.shell_request)` on click.
 
 The runtime now emits the fixed root-shell order before visible tools:
 
@@ -117,13 +122,16 @@ Compatibility aliases remain:
 | Field | Required | Notes |
 |-------|----------|--------|
 | `schema` | yes | Control panel region schema. |
+| `kind` | yes | Page-specific control-panel kind such as `system_control_panel`, `network_control_panel`, `utilities_control_panel`, or `aws_csm_control_panel`. |
+| `title` | optional | Region-local title. |
+| `tabs` | optional | Root-tab navigation entries for root pages. |
 | `sections` | yes | Array of sections. |
 
 ### Section object
 
 | Field | Required | Notes |
 |-------|----------|--------|
-| `title` | yes | Section heading (currently `"System"`, `"Network"`, or `"Utilities"`). |
+| `title` | yes | Section heading. |
 | `entries` | yes | Array of entry objects. |
 
 ### Entry object
@@ -137,7 +145,7 @@ Compatibility aliases remain:
 | `href` | optional | Canonical deep-link path when present. |
 | `gated` | optional | When true, client marks link disabled (`aria-disabled`). |
 
-**Client branch:** `renderControlPanel` — iterates `sections` / `entries`; uses `shell_request` when present.
+**Client branch:** `renderControlPanel` — switches on `kind`, renders page-specific module headers and root tabs, then iterates `sections` / `entries`; uses `shell_request` when present.
 
 ---
 
@@ -148,17 +156,17 @@ Workbench payloads use `schema: mycite.v2.admin.shell.region.workbench.v1` (`ADM
 | `kind` | Required fields (contract) | Optional / common | Runtime emitter(s) | Client branch (`renderWorkbench`) |
 |--------|-----------------------------|-------------------|---------------------|-----------------------------------|
 | `error` | `schema`, `kind`, `title`, `visible`, `message` | `subtitle` | `_workbench_error`; selection-blocked paths | `kind === "error"` — card + message |
-| `home_summary` | `schema`, `kind`, `title`, `visible`, `blocks` | `subtitle` | `_workbench_home` | Parses `blocks` as label/value cards (`b.label`, `b.value`). Nested block `kind` (e.g. `"metric"`) is informational for authors; JS does not switch on it. |
-| `tool_registry` | `schema`, `kind`, `title`, `visible`, `tool_rows` | `subtitle`, `banner` (`code`, `message`) | `_workbench_registry`; blocked registry path with `banner` | Utilities launcher table from `tool_rows`; optional banner |
-| `network_root` | `schema`, `kind`, `title`, `visible`, `blocks`, `notes` | `subtitle` | `_workbench_network` | Lightweight hosted/network readiness cards and notes |
+| `system_root` | `schema`, `kind`, `title`, `visible`, `root_tab`, `root_tabs`, `blocks` | `subtitle`, `notes`, `sources_summary`, `sandbox_summary` | `_workbench_home` | System root workbench with root tabs (`home`, `sources`, `sandbox`), status cards, and datum-facing document summaries |
+| `utilities_root` | `schema`, `kind`, `title`, `visible`, `root_tab`, `root_tabs`, `tool_rows` | `subtitle`, `banner`, `config_sections`, `vault_summary` | `_workbench_registry`; blocked registry path with `banner` | Utilities launcher/config/vault root; tool rows include shell-owned launch requests |
+| `network_root` | `schema`, `kind`, `title`, `visible`, `root_tab`, `root_tabs`, `blocks`, `tab_panels` | `subtitle`, `notes` | `_workbench_network` | Lightweight hosted/network root with placeholder tab panels |
 | `datum_workbench` | `schema`, `kind`, `title`, `visible`, `summary`, `warnings`, `documents`, `rows_preview` | `subtitle` | `_workbench_datum` | Summary cards, authoritative document catalog, selected-document diagnostics, preview table columns `datum_address`, `recognized_family`, `diagnostic_states`, `primary_value_token`, and compact reference bindings |
-| `tool_placeholder` | `schema`, `kind`, `title`, `visible` (`false` for AWS primary inspector layout), `subtitle` | — | AWS read-only, narrow-write, **AWS-CSM onboarding**, and **AWS-CSM sandbox** success paths | Treated like hidden body: `visible === false` shows empty/workbench-hidden copy; subtitle as message |
+| `aws_csm_family_workbench` | `schema`, `kind`, `title`, `visible`, `family_health`, `domain_states` | `subtitle`, `selected_domain_state`, `selected_author`, `subsurface_navigation`, `gated_subsurfaces` | `_workbench_aws_csm_family` | Main AWS-CSM family landing in the workbench; interface panel remains secondary |
+| `aws_csm_subsurface_workbench` | `schema`, `kind`, `title`, `visible`, `mode`, `help_text`, `profile_summary` | `subtitle`, `selected_verified_sender`, `mailbox_readiness`, `compatibility_warnings`, `submit_route` | `_workbench_aws_subsurface` | AWS subordinate slice context in the workbench, with the interface panel opened only when the operator chooses to |
 | `maps_workbench` | `schema`, `kind`, `title`, `visible`, `request_contract` | `subtitle`, `warnings`, `diagnostic_summary`, `lens_state`, `selected_document_id`, `selected_row_address`, `selected_feature_id`, `render_from_surface_payload` | `build_admin_maps_workbench` in `admin_maps_runtime.py`; `run_admin_shell_entry` maps branch | Geographic pane + document chooser + rows/feature cross-selection, with heavy maps state read from the canonical `surface_payload` rather than duplicated shell-region payloads |
-| `tool_collapsed_inspector` | `schema`, `kind`, `title`, `subtitle`, `visible` (`true`) | — | `_apply_shell_chrome_to_composition` only | Dedicated branch — dismissal card |
 
 ### Workbench presentation note
 
-If `visible === false` or `kind === "hidden"` (not emitted by current Python paths), `renderWorkbench` shows a generic “Workbench hidden…” message. `tool_placeholder` relies on `visible: false` with `kind: "tool_placeholder"`.
+If `visible === false` or `kind === "hidden"` (not emitted by current Python paths), `renderWorkbench` shows a generic “Workbench hidden…” message.
 
 ---
 

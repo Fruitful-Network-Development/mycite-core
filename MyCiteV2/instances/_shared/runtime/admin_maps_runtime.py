@@ -64,13 +64,19 @@ def _runtime_tool_entries(
     rows: list[dict[str, Any]] = []
     for entry in build_admin_tool_registry_entries():
         config_enabled = admin_tool_exposure_config_enabled(policy, tool_id=entry.tool_id)
-        visible_in_activity_bar = bool(entry.launchable and config_enabled)
+        promoted_tool = entry.tool_id == "aws"
+        family_subsurface = entry.tool_id in {"aws_narrow_write", "aws_csm_onboarding", "aws_csm_sandbox"}
+        visible_in_activity_bar = bool(entry.launchable and config_enabled and promoted_tool)
         if not entry.launchable:
             visibility_status = "shell_gated"
-        elif config_enabled:
-            visibility_status = "visible"
-        else:
+        elif not config_enabled:
             visibility_status = "config_disabled"
+        elif promoted_tool and bool(entry.to_dict().get("activity_bar_visible", True)):
+            visibility_status = "principal_activity"
+        elif family_subsurface:
+            visibility_status = "family_subsurface"
+        else:
+            visibility_status = "utility_tool"
         row = entry.to_dict()
         row["config_enabled"] = config_enabled
         row["visibility_status"] = visibility_status
@@ -109,7 +115,7 @@ def _activity_items(
     items: list[dict[str, Any]] = [
         {
             "slice_id": ADMIN_HOME_STATUS_SLICE_ID,
-            "label": "FND",
+            "label": "Portal",
             "aria_label": "Go to System root",
             "icon_id": "fnd-logo",
             "nav_kind": "root_logo",
@@ -175,66 +181,53 @@ def _control_panel_region(
     tool_exposure_policy: dict[str, Any] | None,
 ) -> dict[str, Any]:
     bodies = build_portal_activity_dispatch_bodies(portal_tenant_id=portal_tenant_id)
-    visible_tool_rows = {
-        entry["slice_id"]: entry
-        for entry in _runtime_tool_entries(tool_exposure_policy=tool_exposure_policy)
-        if entry["visible_in_activity_bar"]
-    }
-    utility_entries: list[dict[str, Any]] = [
-        {
-            "label": "Tool launcher",
-            "meta": ADMIN_TOOL_REGISTRY_SLICE_ID,
-            "active": nav_active_slice_id == ADMIN_TOOL_REGISTRY_SLICE_ID,
-            "shell_request": bodies[ADMIN_TOOL_REGISTRY_SLICE_ID],
-            "href": _canonical_shell_href(ADMIN_TOOL_REGISTRY_SLICE_ID),
-        }
-    ]
-    for tool in build_admin_tool_registry_entries():
-        if tool.slice_id not in visible_tool_rows:
+    utility_entries: list[dict[str, Any]] = []
+    for row in _runtime_tool_entries(tool_exposure_policy=tool_exposure_policy):
+        if row["visibility_status"] not in {"principal_activity", "utility_tool"}:
             continue
         utility_entries.append(
             {
-                "label": tool.label,
-                "meta": tool.entrypoint_id,
-                "active": tool.slice_id == nav_active_slice_id,
-                "shell_request": bodies.get(tool.slice_id),
-                "href": _canonical_shell_href(tool.slice_id),
+                "label": _as_text(row.get("label")) or "tool",
+                "meta": _as_text(row.get("entrypoint_id")) or _as_text(row.get("visibility_status")) or "—",
+                "active": _as_text(row.get("slice_id")) == nav_active_slice_id,
+                "shell_request": bodies.get(_as_text(row.get("slice_id"))),
+                "href": _canonical_shell_href(_as_text(row.get("slice_id"))),
             }
         )
     return {
         "schema": ADMIN_SHELL_REGION_CONTROL_PANEL_SCHEMA,
+        "kind": "utilities_control_panel",
+        "title": "UTILITIES",
+        "tabs": [
+            {
+                "tab_id": "tools",
+                "label": "Tools",
+                "active": True,
+                "href": "/portal/utilities",
+                "shell_request": bodies[ADMIN_TOOL_REGISTRY_SLICE_ID],
+            },
+            {
+                "tab_id": "config",
+                "label": "Config",
+                "active": False,
+                "href": "/portal/utilities?tab=config",
+                "shell_request": {
+                    **bodies[ADMIN_TOOL_REGISTRY_SLICE_ID],
+                    "root_tab": "config",
+                },
+            },
+            {
+                "tab_id": "vault",
+                "label": "Vault",
+                "active": False,
+                "href": "/portal/utilities?tab=vault",
+                "shell_request": {
+                    **bodies[ADMIN_TOOL_REGISTRY_SLICE_ID],
+                    "root_tab": "vault",
+                },
+            },
+        ],
         "sections": [
-            {
-                "title": "System",
-                "entries": [
-                    {
-                        "label": "Home and status",
-                        "meta": "default core root",
-                        "active": nav_active_slice_id == ADMIN_HOME_STATUS_SLICE_ID,
-                        "shell_request": bodies[ADMIN_HOME_STATUS_SLICE_ID],
-                        "href": _canonical_shell_href(ADMIN_HOME_STATUS_SLICE_ID),
-                    },
-                    {
-                        "label": "Authoritative datum",
-                        "meta": DATUM_RESOURCE_WORKBENCH_SLICE_ID,
-                        "active": nav_active_slice_id == DATUM_RESOURCE_WORKBENCH_SLICE_ID,
-                        "shell_request": bodies[DATUM_RESOURCE_WORKBENCH_SLICE_ID],
-                        "href": _canonical_shell_href(DATUM_RESOURCE_WORKBENCH_SLICE_ID),
-                    },
-                ],
-            },
-            {
-                "title": "Network",
-                "entries": [
-                    {
-                        "label": "Network overview",
-                        "meta": "hosted and service follow-on root",
-                        "active": nav_active_slice_id == ADMIN_NETWORK_ROOT_SLICE_ID,
-                        "shell_request": bodies[ADMIN_NETWORK_ROOT_SLICE_ID],
-                        "href": _canonical_shell_href(ADMIN_NETWORK_ROOT_SLICE_ID),
-                    }
-                ],
-            },
             {
                 "title": "Utilities",
                 "entries": utility_entries,
@@ -425,11 +418,8 @@ def _apply_shell_chrome_to_composition(composition: dict[str, Any], chrome: Admi
         composition["requested_shell_chrome"] = echo
     if chrome.control_panel_collapsed is not None:
         composition["control_panel_collapsed"] = bool(chrome.control_panel_collapsed)
-    if chrome.inspector_collapsed is None:
-        return
-    composition["inspector_collapsed"] = bool(chrome.inspector_collapsed)
-    if composition.get("composition_mode") == "tool" and chrome.inspector_collapsed:
-        composition["foreground_shell_region"] = "center-workbench"
+    if chrome.inspector_collapsed is not None:
+        composition["inspector_collapsed"] = bool(chrome.inspector_collapsed)
 
 
 def run_admin_maps_read_only(

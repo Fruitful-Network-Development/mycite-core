@@ -186,17 +186,6 @@
     }
 
     function currentLayoutPolicy() {
-      if (currentShellComposition() === "tool") {
-        return {
-          defaultControlPanelWidth: 320,
-          defaultInspectorWidth: 360,
-          minControlPanelWidth: 240,
-          maxControlPanelWidth: 420,
-          minInspectorWidth: 320,
-          maxInspectorWidth: 720,
-          minWorkbenchWidth: 0,
-        };
-      }
       if (hasSystemWorkbench()) {
         return {
           defaultControlPanelWidth: 248,
@@ -227,9 +216,6 @@
     }
 
     function applyInspectorWidth(value) {
-      if (currentShellComposition() === "tool") {
-        return readShellPxVar("--ide-inspector-w", currentLayoutPolicy().defaultInspectorWidth);
-      }
       const policy = currentLayoutPolicy();
       const width = clamp(value, policy.minInspectorWidth, policy.maxInspectorWidth);
       shell.style.setProperty("--ide-inspector-w", `${width}px`);
@@ -242,10 +228,6 @@
       const policy = currentLayoutPolicy();
       shell.classList.toggle("ide-shell--system-workbench", composition === "system" && hasSystemWorkbench());
       shell.classList.toggle("ide-shell--tool-composition", composition === "tool");
-      if (composition === "tool") {
-        shell.classList.remove("ide-shell--workbench-tight");
-        return;
-      }
       const bodyWidth = ideBody.clientWidth || window.innerWidth || 0;
       if (!bodyWidth) return;
 
@@ -297,15 +279,10 @@
         const isOpen = target === "control-panel"
           ? shell.getAttribute("data-control-panel-collapsed") !== "true"
           : shell.getAttribute("data-inspector-collapsed") !== "true";
-        const forceOpen = !shellDriverV2 && currentShellComposition() === "tool" && target === "inspector";
         button.classList.toggle("is-active", isOpen);
         button.setAttribute("aria-pressed", isOpen ? "true" : "false");
-        button.disabled = forceOpen;
-        if (forceOpen) {
-          button.setAttribute("title", "Tool mode keeps the interface panel visible.");
-        } else {
-          button.removeAttribute("title");
-        }
+        button.disabled = false;
+        button.removeAttribute("title");
       });
     }
 
@@ -319,7 +296,7 @@
 
     function setInspectorWidth(value, persist) {
       const width = applyInspectorWidth(value);
-      if (persist && currentShellComposition() !== "tool") {
+      if (persist) {
         try { window.localStorage.setItem(INSPECTOR_WIDTH_KEY, String(width)); } catch (_) {}
       }
       rebalanceWorkbench();
@@ -338,7 +315,7 @@
     }
 
     function setInspectorOpen(open, persist) {
-      const isOpen = !shellDriverV2 && currentShellComposition() === "tool" ? true : !!open;
+      const isOpen = !!open;
       shell.setAttribute("data-inspector-collapsed", isOpen ? "false" : "true");
       inspector.classList.toggle("is-collapsed", !isOpen);
       inspector.setAttribute("aria-hidden", isOpen ? "false" : "true");
@@ -352,18 +329,14 @@
     function setShellComposition(mode) {
       const composition = String(mode || "").trim().toLowerCase() === "tool" ? "tool" : "system";
       shell.setAttribute("data-shell-composition", composition);
-      shell.setAttribute("data-foreground-shell-region", composition === "tool" ? "interface-panel" : "center-workbench");
-      workbench.setAttribute("data-foreground-visible", composition === "tool" ? "false" : "true");
-      workbench.setAttribute("aria-hidden", composition === "tool" ? "true" : "false");
-      inspector.setAttribute("data-primary-surface", composition === "tool" ? "true" : "false");
-      inspector.setAttribute("data-surface-layout", composition === "tool" ? "primary-fill" : "sidebar");
+      shell.setAttribute("data-foreground-shell-region", "center-workbench");
+      workbench.setAttribute("data-foreground-visible", "true");
+      workbench.setAttribute("aria-hidden", "false");
+      inspector.setAttribute("data-primary-surface", "false");
+      inspector.setAttribute("data-surface-layout", "sidebar");
       document.dispatchEvent(new CustomEvent("mycite:shell:composition-changed", { detail: { composition } }));
-      if (composition === "tool") {
-        setInspectorOpen(true, false);
-      } else {
-        syncShellToggleButtons();
-        rebalanceWorkbench();
-      }
+      syncShellToggleButtons();
+      rebalanceWorkbench();
     }
 
     const storedControlPanel = parseInt(getStoredValue(CONTROL_PANEL_WIDTH_KEY), 10);
@@ -420,14 +393,6 @@
         const target = button.getAttribute("data-shell-toggle") || "";
         if (target === "control-panel") {
           setControlPanelOpen(shell.getAttribute("data-control-panel-collapsed") === "true", true);
-          return;
-        }
-        if (currentShellComposition() === "tool") {
-          if (shellDriverV2) {
-            document.dispatchEvent(new CustomEvent("mycite:v2:inspector-toggle-request"));
-            return;
-          }
-          setInspectorOpen(true, false);
           return;
         }
         setInspectorOpen(shell.getAttribute("data-inspector-collapsed") === "true", true);

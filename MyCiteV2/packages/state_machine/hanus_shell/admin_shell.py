@@ -139,15 +139,18 @@ class AdminShellRequest:
     requested_slice_id: str = ADMIN_HOME_STATUS_SLICE_ID
     tenant_scope: AdminTenantScope = field(default_factory=AdminTenantScope)
     shell_chrome: AdminShellChrome = field(default_factory=AdminShellChrome)
+    root_tab: str = ""
     schema: str = field(default=ADMIN_SHELL_REQUEST_SCHEMA, init=False)
 
     def __post_init__(self) -> None:
         requested_slice_id = _as_text(self.requested_slice_id) or ADMIN_HOME_STATUS_SLICE_ID
         tenant_scope = self.tenant_scope if isinstance(self.tenant_scope, AdminTenantScope) else AdminTenantScope.from_value(self.tenant_scope)
         shell_chrome = self.shell_chrome if isinstance(self.shell_chrome, AdminShellChrome) else AdminShellChrome.from_value(self.shell_chrome)
+        root_tab = _as_text(self.root_tab).lower()
         object.__setattr__(self, "requested_slice_id", requested_slice_id)
         object.__setattr__(self, "tenant_scope", tenant_scope)
         object.__setattr__(self, "shell_chrome", shell_chrome)
+        object.__setattr__(self, "root_tab", root_tab)
 
     def to_dict(self) -> dict[str, Any]:
         body: dict[str, Any] = {
@@ -155,6 +158,8 @@ class AdminShellRequest:
             "requested_slice_id": self.requested_slice_id,
             "tenant_scope": self.tenant_scope.to_dict(),
         }
+        if self.root_tab:
+            body["root_tab"] = self.root_tab
         chrome = self.shell_chrome.to_dict()
         if chrome:
             body["shell_chrome"] = chrome
@@ -171,6 +176,7 @@ class AdminShellRequest:
             requested_slice_id=payload.get("requested_slice_id") or ADMIN_HOME_STATUS_SLICE_ID,
             tenant_scope=AdminTenantScope.from_value(payload.get("tenant_scope")),
             shell_chrome=AdminShellChrome.from_value(payload.get("shell_chrome") if isinstance(payload.get("shell_chrome"), dict) else None),
+            root_tab=payload.get("root_tab") or "",
         )
 
 
@@ -461,6 +467,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             audience="internal-admin",
             internal_only_reason="",
             launchable=True,
+            activity_bar_visible=False,
         ),
     )
 
@@ -716,13 +723,11 @@ def shell_composition_mode_for_surface(active_surface_id: str) -> str:
 
 
 def foreground_region_for_surface(active_surface_id: str) -> str:
-    if shell_composition_mode_for_surface(active_surface_id) == "tool":
-        return "interface-panel"
     return "center-workbench"
 
 
 def inspector_collapsed_for_surface(active_surface_id: str) -> bool:
-    return shell_composition_mode_for_surface(active_surface_id) != "tool"
+    return True
 
 
 def build_portal_activity_dispatch_bodies(

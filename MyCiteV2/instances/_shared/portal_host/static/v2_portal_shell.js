@@ -278,9 +278,8 @@
     var wb = qs(".ide-workbench");
     if (wb) {
       wb.setAttribute("data-active-service", comp.active_service || "system");
-      var tool = comp.composition_mode === "tool" && !(wbRegion && wbRegion.kind === "maps_workbench");
-      wb.setAttribute("data-foreground-visible", tool ? "false" : "true");
-      wb.setAttribute("aria-hidden", tool ? "true" : "false");
+      wb.setAttribute("data-foreground-visible", "true");
+      wb.setAttribute("aria-hidden", "false");
     }
 
     var insp = document.getElementById("portalInspector");
@@ -288,8 +287,8 @@
       var collapsed = !!comp.inspector_collapsed;
       insp.classList.toggle("is-collapsed", collapsed);
       insp.setAttribute("aria-hidden", collapsed ? "true" : "false");
-      insp.setAttribute("data-primary-surface", comp.composition_mode === "tool" ? "true" : "false");
-      insp.setAttribute("data-surface-layout", comp.composition_mode === "tool" ? "primary-fill" : "sidebar");
+      insp.setAttribute("data-primary-surface", "false");
+      insp.setAttribute("data-surface-layout", "sidebar");
     }
   }
 
@@ -311,7 +310,11 @@
       a.href = item.href || "#";
       a.setAttribute("aria-label", item.aria_label || item.label || "");
       a.setAttribute("title", item.aria_label || item.label || "");
-      a.innerHTML = activityIconMarkup(item);
+      a.innerHTML =
+        activityIconMarkup(item) +
+        '<span class="ide-activitylabel">' +
+        escapeHtml(item.label || "") +
+        "</span>";
       a.addEventListener("click", function (e) {
         e.preventDefault();
         if (!item.shell_request) return;
@@ -321,53 +324,152 @@
     });
   }
 
+  function renderControlPanelTabs(region) {
+    var tabs = (region && region.tabs) || [];
+    if (!tabs.length) return "";
+    return (
+      '<div class="ide-controlpanel__tabs">' +
+      tabs
+        .map(function (tab) {
+          return (
+            '<a class="ide-controlpanel__tab' +
+            (tab.active ? " is-active" : "") +
+            '" href="' +
+            escapeHtml(tab.href || "#") +
+            '" data-controlpanel-tab-id="' +
+            escapeHtml(tab.tab_id || "") +
+            '">' +
+            escapeHtml(tab.label || tab.tab_id || "tab") +
+            "</a>"
+          );
+        })
+        .join("") +
+      "</div>"
+    );
+  }
+
+  function renderControlPanelSection(sec, secIndex) {
+    var entries = sec.entries || [];
+    var inner = "";
+    if (!entries.length) {
+      inner = '<div class="ide-controlpanel__empty">No entries</div>';
+    } else {
+      inner =
+        '<ul class="ide-controlpanel__list">' +
+        entries
+          .map(function (ent, entryIndex) {
+            return (
+              "<li>" +
+              '<a class="ide-controlpanel__link' +
+              (ent.active ? " is-active" : "") +
+              (ent.gated ? " is-gated" : "") +
+              '" href="' +
+              escapeHtml(ent.href || "#") +
+              '" data-controlpanel-section-index="' +
+              escapeHtml(String(secIndex)) +
+              '" data-controlpanel-entry-index="' +
+              escapeHtml(String(entryIndex)) +
+              '"' +
+              (ent.gated ? ' aria-disabled="true"' : "") +
+              ">" +
+              "<span>" +
+              escapeHtml(ent.label || "") +
+              "</span>" +
+              (ent.meta ? "<small>" + escapeHtml(ent.meta) + "</small>" : "") +
+              "</a></li>"
+            );
+          })
+          .join("") +
+        "</ul>";
+    }
+    return (
+      '<section class="ide-controlpanel__section">' +
+      '<header class="ide-controlpanel__title">' +
+      escapeHtml(sec.title || "") +
+      "</header>" +
+      inner +
+      "</section>"
+    );
+  }
+
+  function renderSystemControlPanel(region) {
+    return (
+      '<div class="ide-controlpanel__module">' +
+      '<div class="ide-controlpanel__moduleHeader"><div class="ide-controlpanel__moduleTitle">SYSTEM</div><div class="ide-controlpanel__moduleSub">Core sandbox and datum-facing workbench.</div></div>' +
+      renderControlPanelTabs(region) +
+      (region.sections || []).map(renderControlPanelSection).join("") +
+      "</div>"
+    );
+  }
+
+  function renderNetworkControlPanel(region) {
+    return (
+      '<div class="ide-controlpanel__module">' +
+      '<div class="ide-controlpanel__moduleHeader"><div class="ide-controlpanel__moduleTitle">NETWORK</div><div class="ide-controlpanel__moduleSub">Scaffolded hosted and relationship root.</div></div>' +
+      renderControlPanelTabs(region) +
+      (region.sections || []).map(renderControlPanelSection).join("") +
+      "</div>"
+    );
+  }
+
+  function renderUtilitiesControlPanel(region) {
+    return (
+      '<div class="ide-controlpanel__module">' +
+      '<div class="ide-controlpanel__moduleHeader"><div class="ide-controlpanel__moduleTitle">UTILITIES</div><div class="ide-controlpanel__moduleSub">Tool management, config, and follow-on utility tabs.</div></div>' +
+      renderControlPanelTabs(region) +
+      (region.sections || []).map(renderControlPanelSection).join("") +
+      "</div>"
+    );
+  }
+
+  function renderAwsCsmControlPanel(region) {
+    return (
+      '<div class="ide-controlpanel__module">' +
+      '<div class="ide-controlpanel__moduleHeader"><div class="ide-controlpanel__moduleTitle">AWS-CSM</div><div class="ide-controlpanel__moduleSub">Family-local domain and mailbox context.</div></div>' +
+      (region.sections || []).map(renderControlPanelSection).join("") +
+      "</div>"
+    );
+  }
+
   function renderControlPanel(region) {
     var root = document.getElementById("portalControlPanel");
-    if (!root || !region || !region.sections) return;
-    root.innerHTML = "";
-    region.sections.forEach(function (sec) {
-      var section = document.createElement("section");
-      section.className = "ide-controlpanel__section";
-      var h = document.createElement("header");
-      h.className = "ide-controlpanel__title";
-      h.textContent = sec.title || "";
-      section.appendChild(h);
-      var entries = sec.entries || [];
-      if (!entries.length) {
-        var empty = document.createElement("div");
-        empty.className = "ide-controlpanel__empty";
-        empty.textContent = "No entries";
-        section.appendChild(empty);
-      } else {
-        var ul = document.createElement("ul");
-        ul.className = "ide-controlpanel__list";
-        entries.forEach(function (ent) {
-          var li = document.createElement("li");
-          var link = document.createElement("a");
-          link.className = "ide-controlpanel__link" + (ent.active ? " is-active" : "");
-          link.href = ent.href || "#";
-          var span = document.createElement("span");
-          span.textContent = ent.label || "";
-          link.appendChild(span);
-          if (ent.meta) {
-            var sm = document.createElement("small");
-            sm.textContent = ent.meta;
-            link.appendChild(sm);
-          }
-          if (ent.gated) {
-            link.classList.add("is-gated");
-            link.setAttribute("aria-disabled", "true");
-          }
-          link.addEventListener("click", function (e) {
-            e.preventDefault();
-            if (ent.shell_request) loadShell(ent.shell_request);
-          });
-          li.appendChild(link);
-          ul.appendChild(li);
-        });
-        section.appendChild(ul);
-      }
-      root.appendChild(section);
+    if (!root || !region) return;
+    var kind = region.kind || "";
+    if (kind === "system_control_panel") {
+      root.innerHTML = renderSystemControlPanel(region);
+    } else if (kind === "network_control_panel") {
+      root.innerHTML = renderNetworkControlPanel(region);
+    } else if (kind === "utilities_control_panel") {
+      root.innerHTML = renderUtilitiesControlPanel(region);
+    } else if (kind === "aws_csm_control_panel") {
+      root.innerHTML = renderAwsCsmControlPanel(region);
+    } else if (region.sections) {
+      root.innerHTML = (region.sections || []).map(renderControlPanelSection).join("");
+    } else {
+      root.innerHTML =
+        '<section class="ide-controlpanel__section"><header class="ide-controlpanel__title">Context</header><div class="ide-controlpanel__empty">No page-specific control panel is available.</div></section>';
+    }
+
+    Array.prototype.forEach.call(root.querySelectorAll("[data-controlpanel-tab-id], .ide-controlpanel__link"), function (node) {
+      node.addEventListener("click", function (e) {
+        e.preventDefault();
+        var shellRequest = null;
+        if (node.hasAttribute("data-controlpanel-tab-id")) {
+          var tabId = node.getAttribute("data-controlpanel-tab-id") || "";
+          var tabs = region.tabs || [];
+          var match = tabs.filter(function (tab) {
+            return String(tab.tab_id || "") === tabId;
+          })[0];
+          shellRequest = match && match.shell_request;
+        } else {
+          var secIndex = Number(node.getAttribute("data-controlpanel-section-index") || "-1");
+          var entryIndex = Number(node.getAttribute("data-controlpanel-entry-index") || "-1");
+          var section = ((region.sections || [])[secIndex] || {});
+          var entry = ((section.entries || [])[entryIndex] || {});
+          shellRequest = entry && entry.shell_request;
+        }
+        if (shellRequest) loadShell(shellRequest);
+      });
     });
   }
 
@@ -388,6 +490,319 @@
         "</h3><p>" +
         escapeHtml(wb.message || "") +
         "</p></div>";
+      return;
+    }
+    if (kind === "system_root") {
+      var systemTabs = wb.root_tabs || [];
+      var systemTabRow =
+        systemTabs.length > 0
+          ? '<div class="page-tabs">' +
+            systemTabs
+              .map(function (tab) {
+                return (
+                  '<a class="page-tab' +
+                  (tab.active ? " is-active" : "") +
+                  '" href="' +
+                  escapeHtml(tab.href || "#") +
+                  '" data-workbench-root-tab="' +
+                  escapeHtml(tab.tab_id || "") +
+                  '">' +
+                  escapeHtml(tab.label || tab.tab_id || "tab") +
+                  "</a>"
+                );
+              })
+              .join("") +
+            "</div>"
+          : "";
+      var systemBlocks = wb.blocks || [];
+      var systemCards =
+        '<div class="v2-card-grid">' +
+        systemBlocks
+          .map(function (block) {
+            return (
+              '<article class="v2-card"><h3>' +
+              escapeHtml(block.label || "Metric") +
+              "</h3><p>" +
+              escapeHtml(String(block.value != null ? block.value : "—")) +
+              "</p></article>"
+            );
+          })
+          .join("") +
+        "</div>";
+      var systemNotes = wb.notes || [];
+      var systemNoteBlock =
+        systemNotes.length > 0
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Shell posture</h3><dl class="v2-surface-dl">' +
+            systemNotes
+              .map(function (note) {
+                return "<dt>" + escapeHtml(note.label || "") + "</dt><dd>" + escapeHtml(String(note.value || "—")) + "</dd>";
+              })
+              .join("") +
+            "</dl></section>"
+          : "";
+      var sourcesSummary = wb.sources_summary || {};
+      var sandboxSummary = wb.sandbox_summary || {};
+      var docs = (wb.root_tab || "home") === "sandbox" ? sandboxSummary.documents || [] : sourcesSummary.documents || [];
+      var docTable =
+        docs.length > 0
+          ? '<section class="v2-card" style="margin-top:12px"><h3>' +
+            escapeHtml((wb.root_tab || "home") === "sandbox" ? "Sandbox documents" : "Authoritative documents") +
+            '</h3><table class="v2-table"><thead><tr><th>Document</th><th>Source</th><th>Rows</th><th>Issues</th></tr></thead><tbody>' +
+            docs
+              .slice(0, 80)
+              .map(function (doc) {
+                return (
+                  "<tr><td><code>" +
+                  escapeHtml(doc.document_name || "document") +
+                  "</code></td><td>" +
+                  escapeHtml(doc.source_kind || "—") +
+                  "</td><td>" +
+                  escapeHtml(String(doc.row_count != null ? doc.row_count : "—")) +
+                  "</td><td>" +
+                  escapeHtml(String(doc.diagnostic_row_count != null ? doc.diagnostic_row_count : "0")) +
+                  "</td></tr>"
+                );
+              })
+              .join("") +
+            "</tbody></table></section>"
+          : "";
+      body.innerHTML = systemTabRow + systemCards + systemNoteBlock + docTable;
+      Array.prototype.forEach.call(body.querySelectorAll("[data-workbench-root-tab]"), function (node) {
+        node.addEventListener("click", function (e) {
+          e.preventDefault();
+          var tabId = node.getAttribute("data-workbench-root-tab") || "";
+          var match = systemTabs.filter(function (tab) {
+            return String(tab.tab_id || "") === tabId;
+          })[0];
+          if (match && match.shell_request) loadShell(match.shell_request);
+        });
+      });
+      return;
+    }
+    if (kind === "utilities_root") {
+      var utilityTabs = wb.root_tabs || [];
+      var utilityTabRow =
+        utilityTabs.length > 0
+          ? '<div class="page-tabs">' +
+            utilityTabs
+              .map(function (tab) {
+                return (
+                  '<a class="page-tab' +
+                  (tab.active ? " is-active" : "") +
+                  '" href="' +
+                  escapeHtml(tab.href || "#") +
+                  '" data-workbench-utility-tab="' +
+                  escapeHtml(tab.tab_id || "") +
+                  '">' +
+                  escapeHtml(tab.label || tab.tab_id || "tab") +
+                  "</a>"
+                );
+              })
+              .join("") +
+            "</div>"
+          : "";
+      var utilityContent = "";
+      if ((wb.root_tab || "tools") === "config") {
+        utilityContent =
+          '<section class="v2-card"><h3>Config</h3><dl class="v2-surface-dl">' +
+          (wb.config_sections || [])
+            .map(function (section) {
+              return "<dt>" + escapeHtml(section.label || "") + "</dt><dd>" + escapeHtml(section.value || "—") + "</dd>";
+            })
+            .join("") +
+          "</dl></section>";
+      } else if ((wb.root_tab || "tools") === "vault") {
+        var vaultNotes = ((wb.vault_summary || {}).notes) || [];
+        utilityContent =
+          '<section class="v2-card"><h3>Vault</h3><ul>' +
+          (vaultNotes.length
+            ? vaultNotes
+                .map(function (note) {
+                  return "<li>" + escapeHtml(String(note)) + "</li>";
+                })
+                .join("")
+            : "<li>Vault placeholder.</li>") +
+          "</ul></section>";
+      } else {
+        var toolRows = wb.tool_rows || [];
+        utilityContent =
+          '<section class="v2-card"><h3>Tools</h3><table class="v2-table"><thead><tr><th>Tool</th><th>Entrypoint</th><th>Visibility</th></tr></thead><tbody>' +
+          toolRows
+            .map(function (row) {
+              return (
+                "<tr><td><a href=\"" +
+                escapeHtml(row.href || "#") +
+                '" data-utility-tool-slice="' +
+                escapeHtml(row.slice_id || "") +
+                "\">" +
+                escapeHtml(row.label || row.tool_id || "tool") +
+                "</a></td><td><code>" +
+                escapeHtml(row.entrypoint_id || "") +
+                "</code></td><td>" +
+                escapeHtml(row.visibility_status || "—") +
+                "</td></tr>"
+              );
+            })
+            .join("") +
+          "</tbody></table></section>";
+      }
+      body.innerHTML = utilityTabRow + utilityContent;
+      Array.prototype.forEach.call(body.querySelectorAll("[data-workbench-utility-tab]"), function (node) {
+        node.addEventListener("click", function (e) {
+          e.preventDefault();
+          var tabId = node.getAttribute("data-workbench-utility-tab") || "";
+          var match = utilityTabs.filter(function (tab) {
+            return String(tab.tab_id || "") === tabId;
+          })[0];
+          if (match && match.shell_request) loadShell(match.shell_request);
+        });
+      });
+      Array.prototype.forEach.call(body.querySelectorAll("[data-utility-tool-slice]"), function (node) {
+        node.addEventListener("click", function (e) {
+          e.preventDefault();
+          var sliceId = node.getAttribute("data-utility-tool-slice") || "";
+          var rows = wb.tool_rows || [];
+          var match = rows.filter(function (row) {
+            return String(row.slice_id || "") === sliceId;
+          })[0];
+          if (match && match.shell_request) {
+            loadShell(match.shell_request);
+          }
+        });
+      });
+      return;
+    }
+    if (kind === "aws_csm_family_workbench") {
+      var familyHealth = wb.family_health || {};
+      var domainStates = wb.domain_states || [];
+      var selectedDomain = wb.selected_domain_state || {};
+      var selectedAuthor = wb.selected_author || {};
+      var subnav = wb.subsurface_navigation || {};
+      var familyCards =
+        '<div class="v2-card-grid">' +
+        '<article class="v2-card"><h3>Mailbox readiness</h3><p>' +
+        escapeHtml(familyHealth.mailbox_readiness || familyHealth.status || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Verified sender</h3><p>' +
+        escapeHtml(familyHealth.selected_verified_sender || selectedAuthor.address || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Queue</h3><p>' +
+        escapeHtml(familyHealth.dispatch_queue_state || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Inbound rules</h3><p>' +
+        escapeHtml(String(familyHealth.ready_domain_count != null ? familyHealth.ready_domain_count : "0")) +
+        " ready</p></article>" +
+        "</div>";
+      var familyHealthBlock =
+        '<section class="v2-card" style="margin-top:12px"><h3>Family health</h3><dl class="v2-surface-dl">' +
+        "<dt>STS identity</dt><dd><code>" +
+        escapeHtml(familyHealth.sts_identity_arn || "—") +
+        "</code></dd><dt>Ready domains</dt><dd>" +
+        escapeHtml(String(familyHealth.ready_domain_count != null ? familyHealth.ready_domain_count : "0")) +
+        "/" +
+        escapeHtml(String(familyHealth.domain_count != null ? familyHealth.domain_count : "0")) +
+        "</dd><dt>Dispatch queue</dt><dd>" +
+        escapeHtml(familyHealth.dispatch_queue_state || "—") +
+        "</dd><dt>Dispatcher Lambda</dt><dd>" +
+        escapeHtml(familyHealth.dispatcher_lambda_state || "—") +
+        "</dd><dt>Inbound Lambda</dt><dd>" +
+        escapeHtml(familyHealth.inbound_lambda_state || "—") +
+        "</dd></dl></section>";
+      var navButtons =
+        '<section class="v2-card" style="margin-top:12px"><h3>Family navigation</h3><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        [
+          { key: "read_only_shell_request", label: "Open read-only overview" },
+          { key: "narrow_write_shell_request", label: "Open sender selection" },
+          { key: "onboarding_shell_request", label: "Open onboarding" }
+        ]
+          .map(function (item) {
+            var req = subnav[item.key];
+            if (!req) return '<span class="ide-controlpanel__empty">' + escapeHtml(item.label) + "</span>";
+            return (
+              '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-shell-request-key="' +
+              escapeHtml(item.key) +
+              '">' +
+              escapeHtml(item.label) +
+              "</button>"
+            );
+          })
+          .join("") +
+        "</div></section>";
+      var domainCards =
+        domainStates.length > 0
+          ? domainStates
+              .map(function (state) {
+                return (
+                  '<section class="v2-card" style="margin-top:12px"><h3>' +
+                  escapeHtml(state.domain || "domain") +
+                  "</h3><dl class=\"v2-surface-dl\"><dt>Selected author</dt><dd>" +
+                  escapeHtml(((state.selected_author || {}).address) || "—") +
+                  "</dd><dt>Contacts</dt><dd>" +
+                  escapeHtml(String(state.contact_count != null ? state.contact_count : "0")) +
+                  " total · " +
+                  escapeHtml(String(state.subscribed_contact_count != null ? state.subscribed_contact_count : "0")) +
+                  " subscribed</dd><dt>Inbound</dt><dd>" +
+                  escapeHtml(state.inbound_state || "—") +
+                  "</dd><dt>Dispatch</dt><dd>" +
+                  escapeHtml(state.dispatch_state || "—") +
+                  "</dd></dl></section>"
+                );
+              })
+              .join("")
+          : '<section class="v2-card" style="margin-top:12px"><h3>Domain groups</h3><p>No AWS-CSM domain groups are currently configured for this instance.</p></section>';
+      body.innerHTML = familyCards + familyHealthBlock + navButtons + domainCards;
+      Array.prototype.forEach.call(body.querySelectorAll("[data-aws-shell-request-key]"), function (node) {
+        node.addEventListener("click", function () {
+          var key = node.getAttribute("data-aws-shell-request-key") || "";
+          if (subnav[key]) loadShell(subnav[key]);
+        });
+      });
+      return;
+    }
+    if (kind === "aws_csm_subsurface_workbench") {
+      var profileSummary = wb.profile_summary || {};
+      var awsWarnings = wb.compatibility_warnings || [];
+      var openPanelButton =
+        wb.submit_route
+          ? '<button type="button" class="ide-sessionAction ide-sessionAction--button" id="v2-open-aws-interface-panel">Open interface panel</button>'
+          : "";
+      body.innerHTML =
+        '<div class="v2-card-grid">' +
+        '<article class="v2-card"><h3>Profile</h3><p>' +
+        escapeHtml(profileSummary.profile_id || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Domain</h3><p>' +
+        escapeHtml(profileSummary.domain || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Selected sender</h3><p>' +
+        escapeHtml(wb.selected_verified_sender || "—") +
+        "</p></article>" +
+        '<article class="v2-card"><h3>Mailbox readiness</h3><p>' +
+        escapeHtml(wb.mailbox_readiness || "—") +
+        "</p></article>" +
+        "</div>" +
+        '<section class="v2-card" style="margin-top:12px"><h3>' +
+        escapeHtml(wb.title || "AWS-CSM") +
+        '</h3><p>' +
+        escapeHtml(wb.help_text || "") +
+        "</p>" +
+        openPanelButton +
+        "</section>" +
+        (awsWarnings.length
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Warnings</h3><ul>' +
+            awsWarnings
+              .map(function (warning) {
+                return "<li>" + escapeHtml(String(warning)) + "</li>";
+              })
+              .join("") +
+            "</ul></section>"
+          : "");
+      var openPanel = document.getElementById("v2-open-aws-interface-panel");
+      if (openPanel) {
+        openPanel.addEventListener("click", function () {
+          postShellChrome({ inspector_collapsed: false });
+        });
+      }
       return;
     }
     if (kind === "home_summary") {
@@ -905,8 +1320,32 @@
       return;
     }
     if (kind === "network_root") {
+      var networkTabs = wb.root_tabs || [];
       var networkBlocks = wb.blocks || [];
       var networkNotes = wb.notes || [];
+      var activeNetworkTab = wb.root_tab || "messages";
+      var networkPanels = wb.tab_panels || {};
+      var activeNetworkPanel = networkPanels[activeNetworkTab] || {};
+      var networkTabRow =
+        networkTabs.length > 0
+          ? '<div class="page-tabs">' +
+            networkTabs
+              .map(function (tab) {
+                return (
+                  '<a class="page-tab' +
+                  (tab.active ? " is-active" : "") +
+                  '" href="' +
+                  escapeHtml(tab.href || "#") +
+                  '" data-workbench-network-tab="' +
+                  escapeHtml(tab.tab_id || "") +
+                  '">' +
+                  escapeHtml(tab.label || tab.tab_id || "tab") +
+                  "</a>"
+                );
+              })
+              .join("") +
+            "</div>"
+          : "";
       var networkCards =
         '<div class="v2-card-grid">' +
         networkBlocks
@@ -931,7 +1370,23 @@
               .join("") +
             "</ul></section>"
           : "";
-      body.innerHTML = networkCards + networkList;
+      var networkPanel =
+        '<section class="v2-card" style="margin-top:12px"><h3>' +
+        escapeHtml(activeNetworkPanel.title || "Network") +
+        "</h3><p>" +
+        escapeHtml(activeNetworkPanel.summary || "Lightweight placeholder root.") +
+        "</p></section>";
+      body.innerHTML = networkTabRow + networkCards + networkPanel + networkList;
+      Array.prototype.forEach.call(body.querySelectorAll("[data-workbench-network-tab]"), function (node) {
+        node.addEventListener("click", function (e) {
+          e.preventDefault();
+          var tabId = node.getAttribute("data-workbench-network-tab") || "";
+          var match = networkTabs.filter(function (tab) {
+            return String(tab.tab_id || "") === tabId;
+          })[0];
+          if (match && match.shell_request) loadShell(match.shell_request);
+        });
+      });
       return;
     }
     if (kind === "maps_workbench") {
@@ -1185,19 +1640,6 @@
           );
         });
       }
-      return;
-    }
-    if (kind === "tool_collapsed_inspector") {
-      body.innerHTML =
-        '<div class="v2-card"><h3>' +
-        escapeHtml(wb.title || "Tool") +
-        "</h3><p>" +
-        escapeHtml(wb.subtitle || "") +
-        "</p></div>";
-      return;
-    }
-    if (kind === "tool_placeholder") {
-      body.innerHTML = '<p class="ide-controlpanel__empty">' + escapeHtml(wb.subtitle || "") + "</p>";
       return;
     }
     body.innerHTML = '<pre class="v2-json-panel">' + escapeHtml(JSON.stringify(wb, null, 2)) + "</pre>";

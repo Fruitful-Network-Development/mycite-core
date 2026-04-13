@@ -49,6 +49,11 @@ The shared admin shell now uses the canonical root model:
 - `Network` is the lightweight hosted/network root
 - `Utilities` is the canonical tool-bearing root
 - tools are utility-sandbox surfaces, not peer shell roots
+- the principal activity bar is visibly labeled and fixed to:
+  `logo`, `NETWORK`, `SYSTEM`, `UTILITIES`, then the promoted tool family
+  `AWS-CSM`
+- `Maps` remains implemented but is reached through `Utilities`, not as a peer
+  principal activity item
 
 ## Implemented V2.3 trusted-tenant surfaces
 
