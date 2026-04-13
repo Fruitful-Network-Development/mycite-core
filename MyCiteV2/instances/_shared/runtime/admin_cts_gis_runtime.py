@@ -39,7 +39,8 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     build_allow_all_admin_tool_exposure_policy,
 )
 
-_CTS_GIS_SURFACE_CACHE: dict[tuple[str, str, str, str, str, str, bool], dict[str, Any]] = {}
+_CTS_GIS_PROJECTION_CACHE: dict[tuple[str, str, str, bool], dict[str, Any]] = {}
+_CTS_GIS_MEDIATION_CACHE: dict[tuple[str, str, str, bool, str, str, str], dict[str, Any]] = {}
 
 
 def _as_text(value: object) -> str:
@@ -256,12 +257,20 @@ def _normalize_request(
     raw_underlay_visible = payload.get("raw_underlay_visible")
     if raw_underlay_visible is not None and not isinstance(raw_underlay_visible, bool):
         raise ValueError("admin.cts_gis.read_only raw_underlay_visible must be a bool or null")
+    mediation_state = payload.get("mediation_state")
+    if mediation_state is not None and not isinstance(mediation_state, dict):
+        raise ValueError("admin.cts_gis.read_only mediation_state must be a dict or null")
     return tenant_scope, shell_chrome, {
         "selected_document_id": _as_text(payload.get("selected_document_id")),
         "selected_row_address": _as_text(payload.get("selected_row_address")),
         "selected_feature_id": _as_text(payload.get("selected_feature_id")),
         "overlay_mode": overlay_mode,
         "raw_underlay_visible": bool(raw_underlay_visible) if raw_underlay_visible is not None else False,
+        "mediation_state": {
+            "attention_document_id": _as_text((mediation_state or {}).get("attention_document_id")),
+            "attention_node_id": _as_text((mediation_state or {}).get("attention_node_id")),
+            "intention_token": _as_text((mediation_state or {}).get("intention_token")),
+        },
     }
 
 
@@ -313,28 +322,64 @@ def build_admin_cts_gis_surface_payload(
     selected_feature_id: object = "",
     overlay_mode: object = "auto",
     raw_underlay_visible: object = False,
+    mediation_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    cache_key = (
+    projection_key = (
         str(Path(data_dir)),
         _as_text(portal_tenant_id) or "fnd",
-        _as_text(selected_document_id),
-        _as_text(selected_row_address),
-        _as_text(selected_feature_id),
         _as_text(overlay_mode) or "auto",
         bool(raw_underlay_visible),
     )
     now = time.time()
-    cached = _CTS_GIS_SURFACE_CACHE.get(cache_key)
-    if cached is not None and float(cached.get("expires_at") or 0.0) > now:
-        return copy.deepcopy(cached["payload"])
+    service = CtsGisReadOnlyService(FilesystemSystemDatumStoreAdapter(Path(data_dir)))
+    projection_cached = _CTS_GIS_PROJECTION_CACHE.get(projection_key)
+    if projection_cached is not None and float(projection_cached.get("expires_at") or 0.0) > now:
+        projection_bundle = copy.deepcopy(projection_cached["payload"])
+    else:
+        projection_bundle = service.read_projection_bundle(
+            portal_tenant_id,
+            overlay_mode=overlay_mode,
+            raw_underlay_visible=raw_underlay_visible,
+        )
+        _CTS_GIS_PROJECTION_CACHE[projection_key] = {
+            "expires_at": now + 30.0,
+            "payload": copy.deepcopy(projection_bundle),
+        }
 
-    projection = CtsGisReadOnlyService(FilesystemSystemDatumStoreAdapter(Path(data_dir))).read_surface(
-        portal_tenant_id,
+    normalized_request = service.normalize_mediation_request(
+        projection_bundle,
         selected_document_id=selected_document_id,
         selected_row_address=selected_row_address,
         selected_feature_id=selected_feature_id,
-        overlay_mode=overlay_mode,
-        raw_underlay_visible=raw_underlay_visible,
+        mediation_state=mediation_state,
+    )
+    mediation_key = (
+        projection_key[0],
+        projection_key[1],
+        projection_key[2],
+        projection_key[3],
+        _as_text(normalized_request["attention_document_id"]),
+        _as_text(normalized_request["attention_node_id"]),
+        _as_text(normalized_request["intention_token"]),
+    )
+    mediation_cached = _CTS_GIS_MEDIATION_CACHE.get(mediation_key)
+    if mediation_cached is not None and float(mediation_cached.get("expires_at") or 0.0) > now:
+        mediation_surface = copy.deepcopy(mediation_cached["payload"])
+    else:
+        mediation_surface = service.build_mediation_surface(
+            projection_bundle,
+            attention_document_id=normalized_request["attention_document_id"],
+            attention_node_id=normalized_request["attention_node_id"],
+            intention_token=normalized_request["intention_token"],
+        )
+        _CTS_GIS_MEDIATION_CACHE[mediation_key] = {
+            "expires_at": now + 30.0,
+            "payload": copy.deepcopy(mediation_surface),
+        }
+    projection = service.finalize_selection(
+        mediation_surface,
+        selected_row_address=normalized_request["selected_row_address"],
+        selected_feature_id=normalized_request["selected_feature_id"],
     )
     payload = {
         "schema": ADMIN_CTS_GIS_READ_ONLY_SURFACE_SCHEMA,
@@ -344,17 +389,19 @@ def build_admin_cts_gis_surface_payload(
         "read_write_posture": "read-only",
         "document_catalog": projection["document_catalog"],
         "selected_document": projection["selected_document"],
+        "attention_profile": projection.get("attention_profile"),
+        "lineage": projection.get("lineage") or [],
+        "children": projection.get("children") or [],
+        "related_profiles": projection.get("related_profiles") or [],
+        "render_set_summary": projection.get("render_set_summary") or {},
         "selected_row": projection["selected_row"],
         "map_projection": projection["map_projection"],
         "rows": projection["rows"],
         "row_count": projection.get("row_count", len(projection["rows"])),
         "diagnostic_summary": projection["diagnostic_summary"],
         "lens_state": projection["lens_state"],
+        "mediation_state": projection.get("mediation_state") or {},
         "warnings": projection["warnings"],
-    }
-    _CTS_GIS_SURFACE_CACHE[cache_key] = {
-        "expires_at": now + 30.0,
-        "payload": copy.deepcopy(payload),
     }
     return payload
 
@@ -367,14 +414,17 @@ def build_admin_cts_gis_workbench(
     selected_document = surface_payload.get("selected_document") or {}
     map_projection = surface_payload.get("map_projection") or {}
     diagnostic_summary = surface_payload.get("diagnostic_summary") or {}
+    mediation_state = surface_payload.get("mediation_state") or {}
+    attention_profile = surface_payload.get("attention_profile") or {}
+    render_set_summary = surface_payload.get("render_set_summary") or {}
     return {
         "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "cts_gis_workbench",
         "title": "CTS-GIS",
         "subtitle": (
-            f"{_as_text(map_projection.get('projection_state')) or 'inspect_only'}"
+            f"{_as_text(attention_profile.get('profile_label')) or _as_text(selected_document.get('document_name')) or 'No profile'}"
+            f" · {_as_text(render_set_summary.get('render_mode')) or 'self'}"
             f" · {map_projection.get('feature_count', 0)} features"
-            f" · {_as_text(selected_document.get('document_name')) or 'No document'}"
         ),
         "visible": True,
         "render_from_surface_payload": True,
@@ -383,10 +433,11 @@ def build_admin_cts_gis_workbench(
         "selected_feature_id": _as_text((map_projection.get("selected_feature") or {}).get("feature_id")),
         "diagnostic_summary": {
             "document_count": diagnostic_summary.get("document_count"),
-            "row_count": diagnostic_summary.get("row_count"),
-            "feature_count": diagnostic_summary.get("feature_count"),
+            "row_count": diagnostic_summary.get("render_row_count"),
+            "feature_count": diagnostic_summary.get("render_feature_count"),
             "projection_state": diagnostic_summary.get("projection_state"),
         },
+        "mediation_state": mediation_state,
         "lens_state": surface_payload.get("lens_state") or {},
         "warnings": list(surface_payload.get("warnings") or []),
         "request_contract": {
@@ -398,6 +449,7 @@ def build_admin_cts_gis_workbench(
             },
             "overlay_mode_options": ["auto", "raw_only"],
             "portal_tenant_id": portal_tenant_id,
+            "supports_mediation_state": True,
         },
     }
 
@@ -484,12 +536,14 @@ def run_admin_cts_gis_read_only(
         selected_feature_id=request_state["selected_feature_id"],
         overlay_mode=request_state["overlay_mode"],
         raw_underlay_visible=request_state["raw_underlay_visible"],
+        mediation_state=request_state["mediation_state"],
     )
+    attention_profile = surface_payload.get("attention_profile") or {}
     shell_composition = build_shell_composition_payload(
         active_surface_id=CTS_GIS_READ_ONLY_SLICE_ID,
         portal_tenant_id=_as_text(portal_tenant_id) or "fnd",
         page_title="MyCite",
-        page_subtitle="CTS-GIS",
+        page_subtitle=_as_text(attention_profile.get("profile_label")) or "CTS-GIS",
         activity_items=_activity_items(
             portal_tenant_id=_as_text(portal_tenant_id) or "fnd",
             nav_active_slice_id=CTS_GIS_READ_ONLY_SLICE_ID,

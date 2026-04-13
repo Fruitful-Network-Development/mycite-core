@@ -25,6 +25,8 @@ Authority: [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md)
 
 - tools attach to shell-defined context and mediation surfaces
 - tools may not define alternate shell state
+- tools may emit tool-local `mediation_state` and server-issued navigation
+  controls inside those shell-defined surfaces
 - root services remain shell-owned and are not typed as tools
 - chronology is currently mediation, not an active tool family
 

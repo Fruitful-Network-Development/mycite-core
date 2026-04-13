@@ -14,6 +14,9 @@ from MyCiteV2.packages.modules.domains.datum_recognition import (
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentPort
 
 _VALID_OVERLAY_MODES = frozenset({"auto", "raw_only"})
+_DEFAULT_INTENTION_TOKEN = "0"
+_CHILDREN_INTENTION_TOKEN = "1-0"
+_BRANCH_INTENTION_PREFIX = "branch:"
 
 
 def _as_text(value: object) -> str:
@@ -24,6 +27,39 @@ def _as_text(value: object) -> str:
 
 def _as_lower(value: object) -> str:
     return _as_text(value).lower()
+
+
+def _address_tuple(value: object) -> tuple[int, ...]:
+    token = _as_text(value)
+    if not token or any(not part.isdigit() for part in token.split("-")):
+        return ()
+    return tuple(int(part) for part in token.split("-"))
+
+
+def _node_depth(node_id: object) -> int:
+    return len(_address_tuple(node_id))
+
+
+def _parent_node_id(node_id: object) -> str:
+    parts = _address_tuple(node_id)
+    if len(parts) <= 1:
+        return ""
+    return "-".join(str(part) for part in parts[:-1])
+
+
+def _first_non_empty(values: list[object] | tuple[object, ...]) -> str:
+    for value in values:
+        token = _as_text(value)
+        if token:
+            return token
+    return ""
+
+
+def _sorted_addresses(values: set[str] | list[str] | tuple[str, ...]) -> list[str]:
+    return sorted(
+        (_as_text(value) for value in values if _as_text(value)),
+        key=lambda item: (_address_tuple(item) or (10**9,), item),
+    )
 
 
 def _binding_family(anchor_label: object) -> str:
@@ -176,6 +212,9 @@ def _feature_from_row(
     row: DatumRecognitionRow,
     overlays: list[dict[str, Any]],
     coordinates: list[dict[str, Any]],
+    primary_samras_node_id: str,
+    profile_label: str,
+    title_display: str,
 ) -> dict[str, Any] | None:
     if not coordinates:
         return None
@@ -195,8 +234,6 @@ def _feature_from_row(
         geometry = {"type": "Polygon", "coordinates": [ring]}
         geometry_type = "Polygon"
 
-    title_overlay = next((item for item in overlays if item["overlay_family"] == "title_babelette"), None)
-    samras_overlay = next((item for item in overlays if item["overlay_family"] == "samras_babelette"), None)
     return {
         "feature_id": feature_id,
         "row_address": row.datum_address,
@@ -204,8 +241,9 @@ def _feature_from_row(
         "labels": label_tokens,
         "geometry_type": geometry_type,
         "bounds": _feature_bounds(points),
-        "title_display": _as_text((title_overlay or {}).get("display_value")),
-        "samras_display": _as_text((samras_overlay or {}).get("display_value")),
+        "title_display": title_display,
+        "samras_node_id": primary_samras_node_id,
+        "profile_label": profile_label,
         "diagnostic_states": list(row.diagnostic_states),
         "feature": {
             "type": "Feature",
@@ -215,136 +253,339 @@ def _feature_from_row(
                 "row_address": row.datum_address,
                 "label_text": label_text,
                 "labels": label_tokens,
-                "title_display": _as_text((title_overlay or {}).get("display_value")),
-                "samras_display": _as_text((samras_overlay or {}).get("display_value")),
+                "title_display": title_display,
+                "samras_node_id": primary_samras_node_id,
+                "profile_label": profile_label,
                 "diagnostic_states": list(row.diagnostic_states),
             },
         },
     }
 
 
-def _project_document(
+def _linked_row_addresses(row: DatumRecognitionRow, row_address_set: set[str]) -> list[str]:
+    if not isinstance(row.raw, list) or not row.raw or not isinstance(row.raw[0], list):
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for token in row.raw[0]:
+        address = _as_text(token)
+        if address == row.datum_address or address not in row_address_set or address in seen:
+            continue
+        if not _address_tuple(address):
+            continue
+        out.append(address)
+        seen.add(address)
+    return out
+
+
+def _row_projection(
     document: DatumRecognitionDocument,
+    row: DatumRecognitionRow,
     *,
     overlay_mode: str,
+    row_address_set: set[str],
 ) -> dict[str, Any]:
-    rows: list[dict[str, Any]] = []
-    features: list[dict[str, Any]] = []
-    feature_collection_features: list[dict[str, Any]] = []
-    for row in document.rows:
-        overlays = [_binding_overlay(binding, overlay_mode=overlay_mode) for binding in row.reference_bindings]
-        coordinates = _coordinate_entries(row)
-        feature = _feature_from_row(document=document, row=row, overlays=overlays, coordinates=coordinates)
-        if feature is not None:
-            features.append(feature)
-            feature_collection_features.append(dict(feature["feature"]))
-        rows.append(
-            {
-                "datum_address": row.datum_address,
-                "labels": list(row.labels),
-                "label_text": _row_label_text(row),
-                "recognized_family": row.recognized_family,
-                "recognized_anchor": row.recognized_anchor,
-                "primary_value_token": row.primary_value_token,
-                "diagnostic_states": list(row.diagnostic_states),
-                "raw": row.raw,
-                "reference_bindings": [binding.to_dict() for binding in row.reference_bindings],
-                "overlay_values": overlays,
-                "projectable_coordinates": coordinates,
-                "feature_ids": [] if feature is None else [feature["feature_id"]],
-            }
-        )
-
-    bounds = _feature_bounds(
+    overlays = [_binding_overlay(binding, overlay_mode=overlay_mode) for binding in row.reference_bindings]
+    coordinates = _coordinate_entries(row)
+    samras_node_ids = [
+        _as_text(item.get("display_value")) or _as_text(item.get("raw_value"))
+        for item in overlays
+        if _as_text(item.get("overlay_family")) == "samras_babelette"
+        and (_as_text(item.get("display_value")) or _as_text(item.get("raw_value")))
+    ]
+    title_display = _first_non_empty(
         [
-            point
-            for feature in features
-            for point in (
-                [feature["feature"]["geometry"]["coordinates"]]
-                if feature["geometry_type"] == "Point"
-                else feature["feature"]["geometry"]["coordinates"][0]
-            )
+            item.get("display_value")
+            for item in overlays
+            if _as_text(item.get("overlay_family")) == "title_babelette"
         ]
     )
-    projection_state = "projectable" if features else "inspect_only"
-    summary = document.to_summary_dict()
-    summary["projectable_feature_count"] = len(features)
-    summary["projection_state"] = projection_state
+    label_text = _row_label_text(row)
+    primary_samras_node_id = samras_node_ids[0] if samras_node_ids else ""
+    profile_label = _first_non_empty([title_display, label_text, primary_samras_node_id, row.datum_address])
+    feature = _feature_from_row(
+        document=document,
+        row=row,
+        overlays=overlays,
+        coordinates=coordinates,
+        primary_samras_node_id=primary_samras_node_id,
+        profile_label=profile_label,
+        title_display=title_display,
+    )
     return {
-        "document_summary": summary,
-        "rows": rows,
-        "features": features,
-        "map_projection": {
-            "projection_state": projection_state,
-            "feature_count": len(features),
-            "selected_feature": None,
-            "feature_collection": {
-                "type": "FeatureCollection",
-                "features": feature_collection_features,
-                "bounds": bounds,
-            },
-        },
+        "datum_address": row.datum_address,
+        "labels": list(row.labels),
+        "label_text": label_text,
+        "recognized_family": row.recognized_family,
+        "recognized_anchor": row.recognized_anchor,
+        "primary_value_token": row.primary_value_token,
+        "diagnostic_states": list(row.diagnostic_states),
+        "raw": row.raw,
+        "reference_bindings": [binding.to_dict() for binding in row.reference_bindings],
+        "overlay_values": overlays,
+        "projectable_coordinates": coordinates,
+        "feature_ids": [] if feature is None else [feature["feature_id"]],
+        "linked_row_addresses": _linked_row_addresses(row, row_address_set),
+        "samras_node_id": primary_samras_node_id,
+        "samras_node_ids": list(samras_node_ids),
+        "title_display": title_display,
+        "profile_label": profile_label,
+        "depth": _node_depth(primary_samras_node_id),
+        "direct_feature": feature,
     }
 
 
-def _select_feature(features: list[dict[str, Any]], *, selected_feature_id: str) -> dict[str, Any] | None:
-    if selected_feature_id:
-        for feature in features:
-            if feature["feature_id"] == selected_feature_id:
-                return feature
-    return features[0] if features else None
+def _reachable_row_addresses(start_row_address: str, row_index: dict[str, dict[str, Any]]) -> list[str]:
+    if start_row_address not in row_index:
+        return []
+    visited: set[str] = set()
+    stack = [start_row_address]
+    while stack:
+        current = stack.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        for linked in list((row_index.get(current) or {}).get("linked_row_addresses") or []):
+            if linked not in visited and linked in row_index:
+                stack.append(linked)
+    return _sorted_addresses(visited)
 
 
-def _select_row(
-    rows: list[dict[str, Any]],
-    *,
-    selected_row_address: str,
-    selected_feature: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    target_row_address = selected_row_address or _as_text((selected_feature or {}).get("row_address"))
-    if target_row_address:
-        for row in rows:
-            if row["datum_address"] == target_row_address:
-                return row
-    return rows[0] if rows else None
+def _profile_sort_key(profile: dict[str, Any]) -> tuple[int, int, int, str]:
+    return (
+        int(profile.get("depth") or 10**6),
+        0 if profile.get("child_count") else 1,
+        0 if profile.get("feature_count") else 1,
+        _as_text(profile.get("node_id")),
+    )
 
 
-def _row_summary(row: dict[str, Any]) -> dict[str, Any]:
-    overlay_preview = [
-        {
-            "overlay_family": _as_text(overlay.get("overlay_family")) or "raw_only",
-            "display_value": _as_text(overlay.get("display_value")) or _as_text(overlay.get("raw_value")),
-            "raw_value": _as_text(overlay.get("raw_value")),
-            "overlay_state": _as_text(overlay.get("overlay_state")) or "raw_only",
+def _profile_public_summary(profile: dict[str, Any], *, relation: str = "", selected: bool = False) -> dict[str, Any]:
+    return {
+        "node_id": _as_text(profile.get("node_id")),
+        "profile_label": _as_text(profile.get("profile_label")) or _as_text(profile.get("node_id")),
+        "title_display": _as_text(profile.get("title_display")),
+        "row_address": _as_text(profile.get("row_address")),
+        "parent_node_id": _as_text(profile.get("parent_node_id")),
+        "depth": int(profile.get("depth") or 0),
+        "child_count": int(profile.get("child_count") or 0),
+        "feature_count": int(profile.get("feature_count") or 0),
+        "labels": list(profile.get("labels") or []),
+        "document_id": _as_text(profile.get("document_id")),
+        "diagnostic_states": list(profile.get("diagnostic_states") or []),
+        "has_geometry": bool(profile.get("feature_count")),
+        "relation": relation,
+        "selected": bool(selected),
+    }
+
+
+def _placeholder_profile_summary(node_id: str, *, relation: str = "") -> dict[str, Any]:
+    return {
+        "node_id": _as_text(node_id),
+        "profile_label": _as_text(node_id) or "profile",
+        "title_display": "",
+        "row_address": "",
+        "parent_node_id": _parent_node_id(node_id),
+        "depth": _node_depth(node_id),
+        "child_count": 0,
+        "feature_count": 0,
+        "labels": [],
+        "document_id": "",
+        "diagnostic_states": [],
+        "has_geometry": False,
+        "relation": relation,
+        "selected": False,
+        "placeholder": True,
+    }
+
+
+def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mode: str) -> dict[str, Any]:
+    row_address_set = {row.datum_address for row in document.rows}
+    row_views = [_row_projection(document, row, overlay_mode=overlay_mode, row_address_set=row_address_set) for row in document.rows]
+    row_index = {row["datum_address"]: row for row in row_views}
+    feature_index = {
+        row["direct_feature"]["feature_id"]: row["direct_feature"]
+        for row in row_views
+        if row.get("direct_feature") is not None
+    }
+    profiles_by_node: dict[str, dict[str, Any]] = {}
+    for row in row_views:
+        node_id = _as_text(row.get("samras_node_id"))
+        if not node_id:
+            continue
+        reachable_addresses = _reachable_row_addresses(row["datum_address"], row_index)
+        feature_ids: list[str] = []
+        reachable_rows: list[dict[str, Any]] = []
+        for address in reachable_addresses:
+            linked_row = row_index[address]
+            reachable_rows.append(linked_row)
+            for feature_id in list(linked_row.get("feature_ids") or []):
+                if feature_id not in feature_ids:
+                    feature_ids.append(feature_id)
+        candidate = {
+            "node_id": node_id,
+            "row_address": row["datum_address"],
+            "profile_label": row["profile_label"],
+            "title_display": row["title_display"],
+            "labels": list(row.get("labels") or []),
+            "parent_node_id": _parent_node_id(node_id),
+            "depth": _node_depth(node_id),
+            "document_id": document.document_id,
+            "diagnostic_states": list(row.get("diagnostic_states") or []),
+            "feature_ids": list(feature_ids),
+            "feature_count": len(feature_ids),
+            "row_addresses": list(reachable_addresses),
+            "bound_node_ids": list(row.get("samras_node_ids") or [])[1:],
+            "reachable_rows": reachable_rows,
         }
-        for overlay in list(row.get("overlay_values") or [])[:3]
-    ]
+        existing = profiles_by_node.get(node_id)
+        if existing is None:
+            profiles_by_node[node_id] = candidate
+            continue
+        existing["feature_ids"] = _sorted_addresses(set(existing["feature_ids"]) | set(candidate["feature_ids"]))
+        existing["feature_count"] = len(existing["feature_ids"])
+        existing["row_addresses"] = _sorted_addresses(set(existing["row_addresses"]) | set(candidate["row_addresses"]))
+        existing["bound_node_ids"] = _sorted_addresses(set(existing["bound_node_ids"]) | set(candidate["bound_node_ids"]))
+        if candidate["feature_count"] > existing["feature_count"] or (
+            candidate["feature_count"] == existing["feature_count"]
+            and candidate["depth"] < existing["depth"]
+        ):
+            existing["row_address"] = candidate["row_address"]
+            existing["profile_label"] = candidate["profile_label"]
+            existing["title_display"] = candidate["title_display"]
+            existing["labels"] = candidate["labels"]
+            existing["diagnostic_states"] = candidate["diagnostic_states"]
+
+    children_by_parent: dict[str, list[str]] = {}
+    row_profile_index: dict[str, list[str]] = {}
+    feature_profile_index: dict[str, list[str]] = {}
+    for profile in profiles_by_node.values():
+        children_by_parent.setdefault(profile["parent_node_id"], []).append(profile["node_id"])
+        for address in profile["row_addresses"]:
+            row_profile_index.setdefault(address, []).append(profile["node_id"])
+        for feature_id in profile["feature_ids"]:
+            feature_profile_index.setdefault(feature_id, []).append(profile["node_id"])
+    for node_ids in children_by_parent.values():
+        node_ids.sort(key=lambda node_id: (_node_depth(node_id), node_id))
+    for node_id, profile in profiles_by_node.items():
+        profile["child_count"] = len(children_by_parent.get(node_id, []))
+        profile["children"] = list(children_by_parent.get(node_id, []))
+
+    document_summary = document.to_summary_dict()
+    document_summary["projectable_feature_count"] = len(feature_index)
+    document_summary["projection_state"] = "projectable" if feature_index else "inspect_only"
+    document_summary["profile_count"] = len(profiles_by_node)
+    default_attention_node_id = ""
+    sorted_profiles = sorted(profiles_by_node.values(), key=_profile_sort_key)
+    if sorted_profiles:
+        default_attention_node_id = _as_text(sorted_profiles[0]["node_id"])
+    document_summary["default_attention_node_id"] = default_attention_node_id
+
     return {
-        "datum_address": row.get("datum_address"),
-        "labels": list(row.get("labels") or []),
-        "label_text": row.get("label_text"),
-        "recognized_family": row.get("recognized_family"),
-        "recognized_anchor": row.get("recognized_anchor"),
-        "primary_value_token": row.get("primary_value_token"),
-        "diagnostic_states": list(row.get("diagnostic_states") or []),
-        "feature_ids": list(row.get("feature_ids") or []),
-        "overlay_preview": overlay_preview,
-        "selected": bool(row.get("selected")),
-        "selected_feature": bool(row.get("selected_feature")),
+        "document": document,
+        "document_summary": document_summary,
+        "row_views": row_views,
+        "row_index": row_index,
+        "feature_index": feature_index,
+        "profiles": sorted_profiles,
+        "profile_index": profiles_by_node,
+        "children_by_parent": children_by_parent,
+        "row_profile_index": row_profile_index,
+        "feature_profile_index": feature_profile_index,
+        "default_attention_node_id": default_attention_node_id,
     }
+
+
+def _normalize_intention_token(document_bundle: dict[str, Any], attention_node_id: str, requested: object) -> str:
+    token = _as_text(requested) or _DEFAULT_INTENTION_TOKEN
+    children = list((document_bundle.get("children_by_parent") or {}).get(attention_node_id, []))
+    if token == _DEFAULT_INTENTION_TOKEN:
+        return token
+    if token == _CHILDREN_INTENTION_TOKEN:
+        return token if children else _DEFAULT_INTENTION_TOKEN
+    if token.startswith(_BRANCH_INTENTION_PREFIX):
+        branch_node_id = _as_text(token[len(_BRANCH_INTENTION_PREFIX) :])
+        if branch_node_id in children:
+            return token
+    return _DEFAULT_INTENTION_TOKEN
+
+
+def _available_intentions(document_bundle: dict[str, Any], attention_node_id: str) -> list[dict[str, Any]]:
+    profile_index = document_bundle.get("profile_index") or {}
+    attention_profile = profile_index.get(attention_node_id)
+    children = [
+        profile_index[node_id]
+        for node_id in list((document_bundle.get("children_by_parent") or {}).get(attention_node_id, []))
+        if node_id in profile_index
+    ]
+    out = [
+        {
+            "token": _DEFAULT_INTENTION_TOKEN,
+            "kind": "self",
+            "label": "Self",
+            "target_node_id": attention_node_id,
+            "row_count": len((attention_profile or {}).get("row_addresses") or []),
+            "feature_count": int((attention_profile or {}).get("feature_count") or 0),
+            "profile_count": 1 if attention_profile is not None else 0,
+        }
+    ]
+    if children:
+        out.append(
+            {
+                "token": _CHILDREN_INTENTION_TOKEN,
+                "kind": "children",
+                "label": "Immediate children",
+                "target_node_id": attention_node_id,
+                "row_count": sum(len(child.get("row_addresses") or []) for child in children),
+                "feature_count": sum(int(child.get("feature_count") or 0) for child in children),
+                "profile_count": len(children),
+            }
+        )
+        for child in children:
+            out.append(
+                {
+                    "token": f"{_BRANCH_INTENTION_PREFIX}{child['node_id']}",
+                    "kind": "branch",
+                    "label": _as_text(child.get("profile_label")) or _as_text(child.get("node_id")) or "Branch",
+                    "target_node_id": _as_text(child.get("node_id")),
+                    "row_count": len(child.get("row_addresses") or []),
+                    "feature_count": int(child.get("feature_count") or 0),
+                    "profile_count": 1,
+                }
+            )
+    return out
+
+
+def _document_lookup_by_feature_id(
+    projection_bundle: dict[str, Any],
+    selected_feature_id: str,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    for document_bundle in list(projection_bundle.get("documents") or []):
+        feature = (document_bundle.get("feature_index") or {}).get(selected_feature_id)
+        if feature is not None:
+            return document_bundle, feature
+    return None, None
+
+
+def _document_lookup_by_row_address(
+    projection_bundle: dict[str, Any],
+    row_address: str,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    for document_bundle in list(projection_bundle.get("documents") or []):
+        row = (document_bundle.get("row_index") or {}).get(row_address)
+        if row is not None:
+            return document_bundle, row
+    return None, None
 
 
 class CtsGisReadOnlyService:
     def __init__(self, datum_store: AuthoritativeDatumDocumentPort | None) -> None:
         self._datum_store = datum_store
 
-    def read_surface(
+    def read_projection_bundle(
         self,
         tenant_id: str,
         *,
-        selected_document_id: object = "",
-        selected_row_address: object = "",
-        selected_feature_id: object = "",
         overlay_mode: object = "auto",
         raw_underlay_visible: object = False,
     ) -> dict[str, Any]:
@@ -360,133 +601,562 @@ class CtsGisReadOnlyService:
             for document in workbench.documents
             if document.source_kind == "sandbox_source" and document.tool_id in {"maps", "cts_gis"}
         ]
-        projection_cache: dict[str, dict[str, Any]] = {}
+        documents = [
+            _build_document_projection(document, overlay_mode=normalized_overlay_mode) for document in cts_gis_documents
+        ]
+        fallback_document_summary = None
+        if not documents and workbench.selected_document is not None:
+            fallback_document_summary = workbench.selected_document.to_summary_dict()
+            fallback_document_summary["selected"] = True
+        warnings = list(workbench.warnings)
+        for document_bundle in documents:
+            document = document_bundle.get("document")
+            if document is not None:
+                warnings.extend(list(document.warnings))
+        warnings = list(dict.fromkeys(_as_text(item) for item in warnings if _as_text(item)))
+        return {
+            "tenant_id": _as_text(tenant_id) or "fnd",
+            "overlay_mode": normalized_overlay_mode,
+            "raw_underlay_visible": normalized_raw_underlay,
+            "documents": documents,
+            "fallback_document_summary": fallback_document_summary,
+            "warnings": warnings,
+        }
 
-        def project(document: DatumRecognitionDocument) -> dict[str, Any]:
-            cached = projection_cache.get(document.document_id)
-            if cached is not None:
-                return cached
-            projected = _project_document(document, overlay_mode=normalized_overlay_mode)
-            projection_cache[document.document_id] = projected
-            return projected
-
-        selected_document: DatumRecognitionDocument | None = None
+    def normalize_mediation_request(
+        self,
+        projection_bundle: dict[str, Any],
+        *,
+        selected_document_id: object = "",
+        selected_row_address: object = "",
+        selected_feature_id: object = "",
+        mediation_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        documents = list(projection_bundle.get("documents") or [])
         requested_document_id = _as_text(selected_document_id)
-        if requested_document_id:
-            for document in (*cts_gis_documents, *workbench.documents):
-                if document.document_id == requested_document_id:
-                    selected_document = document
-                    break
-        if selected_document is None:
-            first_projectable: DatumRecognitionDocument | None = None
-            first_diagnostic: DatumRecognitionDocument | None = None
-            for document in cts_gis_documents:
-                if first_diagnostic is None and document.diagnostic_row_count > 0:
-                    first_diagnostic = document
-                if project(document)["map_projection"]["feature_count"] > 0:
-                    first_projectable = document
-                    break
-            if first_projectable is not None:
-                selected_document = first_projectable
-            elif first_diagnostic is not None:
-                selected_document = first_diagnostic
-            elif cts_gis_documents:
-                selected_document = cts_gis_documents[0]
-            else:
-                selected_document = workbench.selected_document
+        requested_row_address = _as_text(selected_row_address)
+        requested_feature_id = _as_text(selected_feature_id)
+        mediation_state = mediation_state if isinstance(mediation_state, dict) else {}
+        requested_attention_document_id = _as_text(mediation_state.get("attention_document_id"))
+        requested_attention_node_id = _as_text(mediation_state.get("attention_node_id"))
+        requested_intention_token = _as_text(mediation_state.get("intention_token"))
 
-        selected_projection = project(selected_document) if selected_document is not None else None
-        selected_rows = [] if selected_projection is None else list(selected_projection["rows"])
-        selected_features = [] if selected_projection is None else list(selected_projection["features"])
-        selected_feature = _select_feature(
-            selected_features,
-            selected_feature_id=_as_text(selected_feature_id),
+        selected_document_bundle = None
+        if requested_attention_document_id:
+            for document_bundle in documents:
+                if _as_text((document_bundle.get("document_summary") or {}).get("document_id")) == requested_attention_document_id:
+                    selected_document_bundle = document_bundle
+                    break
+        if selected_document_bundle is None and requested_document_id:
+            for document_bundle in documents:
+                if _as_text((document_bundle.get("document_summary") or {}).get("document_id")) == requested_document_id:
+                    selected_document_bundle = document_bundle
+                    break
+        if selected_document_bundle is None and requested_feature_id:
+            selected_document_bundle, _ = _document_lookup_by_feature_id(projection_bundle, requested_feature_id)
+        if selected_document_bundle is None and requested_row_address:
+            selected_document_bundle, _ = _document_lookup_by_row_address(projection_bundle, requested_row_address)
+        if selected_document_bundle is None:
+            for document_bundle in documents:
+                if _as_text(document_bundle.get("default_attention_node_id")):
+                    selected_document_bundle = document_bundle
+                    break
+        if selected_document_bundle is None and documents:
+            selected_document_bundle = documents[0]
+
+        selected_document_summary = (selected_document_bundle or {}).get("document_summary") or {}
+        attention_document_id = _as_text(selected_document_summary.get("document_id"))
+        profile_index = (selected_document_bundle or {}).get("profile_index") or {}
+        row_profile_index = (selected_document_bundle or {}).get("row_profile_index") or {}
+        feature_profile_index = (selected_document_bundle or {}).get("feature_profile_index") or {}
+
+        attention_node_id = ""
+        if requested_attention_node_id and requested_attention_node_id in profile_index:
+            attention_node_id = requested_attention_node_id
+        if not attention_node_id and requested_feature_id:
+            candidates = list(feature_profile_index.get(requested_feature_id) or [])
+            if candidates:
+                attention_node_id = _as_text(candidates[0])
+        if not attention_node_id and requested_row_address:
+            row_candidates = list(row_profile_index.get(requested_row_address) or [])
+            if row_candidates:
+                attention_node_id = _as_text(row_candidates[0])
+        if not attention_node_id:
+            attention_node_id = _as_text((selected_document_bundle or {}).get("default_attention_node_id"))
+        if not attention_node_id and profile_index:
+            attention_node_id = _as_text(sorted(profile_index.keys(), key=lambda item: (_node_depth(item), item))[0])
+
+        intention_token = _normalize_intention_token(
+            selected_document_bundle or {},
+            attention_node_id,
+            requested_intention_token,
         )
-        selected_row = _select_row(
-            selected_rows,
-            selected_row_address=_as_text(selected_row_address),
-            selected_feature=selected_feature,
+        return {
+            "attention_document_id": attention_document_id,
+            "attention_node_id": attention_node_id,
+            "intention_token": intention_token,
+            "selected_document_id": requested_document_id,
+            "selected_row_address": requested_row_address,
+            "selected_feature_id": requested_feature_id,
+        }
+
+    def build_mediation_surface(
+        self,
+        projection_bundle: dict[str, Any],
+        *,
+        attention_document_id: object = "",
+        attention_node_id: object = "",
+        intention_token: object = _DEFAULT_INTENTION_TOKEN,
+    ) -> dict[str, Any]:
+        documents = list(projection_bundle.get("documents") or [])
+        overlay_mode = _as_text(projection_bundle.get("overlay_mode")) or "auto"
+        raw_underlay_visible = bool(projection_bundle.get("raw_underlay_visible"))
+        selected_document_bundle = None
+        for document_bundle in documents:
+            if _as_text((document_bundle.get("document_summary") or {}).get("document_id")) == _as_text(attention_document_id):
+                selected_document_bundle = document_bundle
+                break
+
+        if selected_document_bundle is None:
+            fallback_document_summary = projection_bundle.get("fallback_document_summary")
+            warnings = list(projection_bundle.get("warnings") or [])
+            if not documents:
+                warnings.append("No authoritative sandbox CTS-GIS documents were available for the current tenant.")
+            warnings = list(dict.fromkeys(_as_text(item) for item in warnings if _as_text(item)))
+            return {
+                "document_catalog": [],
+                "selected_document": fallback_document_summary,
+                "attention_profile": None,
+                "lineage": [],
+                "children": [],
+                "related_profiles": [],
+                "render_set_summary": {
+                    "render_mode": "none",
+                    "render_profile_count": 0,
+                    "render_row_count": 0,
+                    "render_feature_count": 0,
+                },
+                "map_projection": {
+                    "projection_state": "no_authoritative_cts_gis_documents",
+                    "feature_count": 0,
+                    "selected_feature": None,
+                    "feature_collection": {
+                        "type": "FeatureCollection",
+                        "features": [],
+                        "bounds": None,
+                    },
+                },
+                "rows": [],
+                "diagnostic_summary": {
+                    "document_count": 0,
+                    "selected_document_id": _as_text((fallback_document_summary or {}).get("document_id")),
+                    "attention_node_id": "",
+                    "intention_token": _DEFAULT_INTENTION_TOKEN,
+                    "render_row_count": 0,
+                    "render_feature_count": 0,
+                    "projection_state": "no_authoritative_cts_gis_documents",
+                    "document_row_count": _as_text((fallback_document_summary or {}).get("row_count")),
+                },
+                "lens_state": {
+                    "overlay_mode": overlay_mode,
+                    "raw_underlay_visible": raw_underlay_visible,
+                    "lens_presentation_only": True,
+                },
+                "mediation_state": {
+                    "attention_document_id": "",
+                    "attention_node_id": "",
+                    "intention_token": _DEFAULT_INTENTION_TOKEN,
+                    "available_intentions": [],
+                    "selection_summary": {},
+                },
+                "warnings": warnings,
+                "_render_row_views": [],
+                "_render_features": [],
+                "_row_profile_index": {},
+            }
+
+        document_summary = dict(selected_document_bundle.get("document_summary") or {})
+        document_summary["selected"] = True
+        profile_index = selected_document_bundle.get("profile_index") or {}
+        row_profile_index = selected_document_bundle.get("row_profile_index") or {}
+        feature_profile_index = selected_document_bundle.get("feature_profile_index") or {}
+        attention_node_id_text = _as_text(attention_node_id)
+        attention_profile = profile_index.get(attention_node_id_text)
+        intention_token_text = _normalize_intention_token(selected_document_bundle, attention_node_id_text, intention_token)
+        available_intentions = _available_intentions(selected_document_bundle, attention_node_id_text)
+        available_token_set = {option["token"] for option in available_intentions}
+        if intention_token_text not in available_token_set:
+            intention_token_text = _DEFAULT_INTENTION_TOKEN
+
+        render_profiles: list[dict[str, Any]] = []
+        if attention_profile is not None:
+            if intention_token_text == _DEFAULT_INTENTION_TOKEN:
+                render_profiles = [attention_profile]
+            elif intention_token_text == _CHILDREN_INTENTION_TOKEN:
+                render_profiles = [
+                    profile_index[node_id]
+                    for node_id in list((selected_document_bundle.get("children_by_parent") or {}).get(attention_node_id_text, []))
+                    if node_id in profile_index
+                ]
+            elif intention_token_text.startswith(_BRANCH_INTENTION_PREFIX):
+                target_node_id = _as_text(intention_token_text[len(_BRANCH_INTENTION_PREFIX) :])
+                target_profile = profile_index.get(target_node_id)
+                if target_profile is not None:
+                    render_profiles = [target_profile]
+        render_row_addresses: set[str] = set()
+        render_feature_ids: list[str] = []
+        for profile in render_profiles:
+            render_row_addresses.update(profile.get("row_addresses") or [])
+            for feature_id in list(profile.get("feature_ids") or []):
+                if feature_id not in render_feature_ids:
+                    render_feature_ids.append(feature_id)
+        row_index = selected_document_bundle.get("row_index") or {}
+        ordered_render_row_addresses = [
+            address
+            for address in _sorted_addresses(render_row_addresses)
+            if address in row_index
+        ]
+        render_row_views = [row_index[address] for address in ordered_render_row_addresses]
+        feature_index = selected_document_bundle.get("feature_index") or {}
+        render_features = [feature_index[feature_id] for feature_id in render_feature_ids if feature_id in feature_index]
+
+        lineage: list[dict[str, Any]] = []
+        for depth in range(1, _node_depth(attention_node_id_text) + 1):
+            node_id = "-".join(attention_node_id_text.split("-")[:depth])
+            profile = profile_index.get(node_id)
+            if profile is None:
+                lineage.append(_placeholder_profile_summary(node_id))
+            else:
+                lineage.append(
+                    _profile_public_summary(profile, selected=node_id == attention_node_id_text)
+                )
+
+        children = [
+            _profile_public_summary(profile_index[node_id])
+            for node_id in list((selected_document_bundle.get("children_by_parent") or {}).get(attention_node_id_text, []))
+            if node_id in profile_index
+        ]
+        related_profiles: list[dict[str, Any]] = []
+        related_seen: set[str] = set()
+        for bound_node_id in list((attention_profile or {}).get("bound_node_ids") or []):
+            if bound_node_id in related_seen:
+                continue
+            related_seen.add(bound_node_id)
+            profile = profile_index.get(bound_node_id)
+            if profile is None:
+                related_profiles.append(_placeholder_profile_summary(bound_node_id, relation="bound_profile"))
+            else:
+                related_profiles.append(_profile_public_summary(profile, relation="bound_profile"))
+        parent_node_id = _as_text((attention_profile or {}).get("parent_node_id"))
+        for sibling_node_id in list((selected_document_bundle.get("children_by_parent") or {}).get(parent_node_id, [])):
+            if sibling_node_id == attention_node_id_text or sibling_node_id in related_seen or sibling_node_id not in profile_index:
+                continue
+            related_seen.add(sibling_node_id)
+            related_profiles.append(_profile_public_summary(profile_index[sibling_node_id], relation="sibling"))
+
+        feature_collection_features = []
+        for feature in render_features:
+            owner_profile = None
+            for node_id in list(feature_profile_index.get(feature["feature_id"]) or []):
+                if node_id in {_as_text(profile.get("node_id")) for profile in render_profiles}:
+                    owner_profile = profile_index.get(node_id)
+                    break
+            if owner_profile is None:
+                for node_id in list(feature_profile_index.get(feature["feature_id"]) or []):
+                    owner_profile = profile_index.get(node_id)
+                    if owner_profile is not None:
+                        break
+            feature_payload = dict(feature["feature"])
+            feature_properties = dict(feature_payload.get("properties") or {})
+            feature_properties["samras_node_id"] = _as_text((owner_profile or {}).get("node_id")) or _as_text(
+                feature_properties.get("samras_node_id")
+            )
+            feature_properties["profile_label"] = _as_text((owner_profile or {}).get("profile_label")) or _as_text(
+                feature_properties.get("profile_label")
+            )
+            feature_properties["title_display"] = _as_text((owner_profile or {}).get("title_display")) or _as_text(
+                feature_properties.get("title_display")
+            )
+            feature_properties["lineage"] = list(
+                _as_text(item)
+                for item in (
+                    []
+                    if owner_profile is None
+                    else ["-".join(_as_text(owner_profile.get("node_id")).split("-")[:index]) for index in range(1, _node_depth(owner_profile.get("node_id")) + 1)]
+                )
+                if _as_text(item)
+            )
+            feature_properties["parent_node_id"] = _as_text((owner_profile or {}).get("parent_node_id"))
+            feature_properties["attention_member"] = (
+                _as_text((owner_profile or {}).get("node_id")) == attention_node_id_text
+            )
+            feature_payload["properties"] = feature_properties
+            feature_collection_features.append(feature_payload)
+
+        map_bounds = _feature_bounds(
+            [
+                point
+                for feature in render_features
+                for point in (
+                    [feature["feature"]["geometry"]["coordinates"]]
+                    if feature["geometry_type"] == "Point"
+                    else feature["feature"]["geometry"]["coordinates"][0]
+                )
+            ]
         )
+        projection_state = "projectable" if render_features else "inspect_only"
+        warnings = list(projection_bundle.get("warnings") or [])
+        document = selected_document_bundle.get("document")
+        if document is not None:
+            warnings.extend(list(document.warnings))
+        warnings = list(dict.fromkeys(_as_text(item) for item in warnings if _as_text(item)))
+
+        document_catalog = []
+        for document_bundle in documents:
+            summary = dict(document_bundle.get("document_summary") or {})
+            summary["selected"] = _as_text(summary.get("document_id")) == _as_text(document_summary.get("document_id"))
+            document_catalog.append(summary)
+
+        render_set_summary = {
+            "render_mode": (
+                "self"
+                if intention_token_text == _DEFAULT_INTENTION_TOKEN
+                else "children"
+                if intention_token_text == _CHILDREN_INTENTION_TOKEN
+                else "branch"
+            ),
+            "render_profile_count": len(render_profiles),
+            "render_row_count": len(render_row_views),
+            "render_feature_count": len(render_features),
+            "render_profile_labels": [
+                _as_text(profile.get("profile_label")) or _as_text(profile.get("node_id"))
+                for profile in render_profiles
+            ],
+        }
+
+        return {
+            "document_catalog": document_catalog,
+            "selected_document": document_summary,
+            "attention_profile": None
+            if attention_profile is None
+            else _profile_public_summary(attention_profile, selected=True),
+            "lineage": lineage,
+            "children": children,
+            "related_profiles": related_profiles,
+            "render_set_summary": render_set_summary,
+            "map_projection": {
+                "projection_state": projection_state,
+                "feature_count": len(render_features),
+                "selected_feature": None,
+                "feature_collection": {
+                    "type": "FeatureCollection",
+                    "features": feature_collection_features,
+                    "bounds": map_bounds,
+                },
+            },
+            "rows": [],
+            "diagnostic_summary": {
+                "document_count": len(documents),
+                "selected_document_id": _as_text(document_summary.get("document_id")),
+                "attention_node_id": attention_node_id_text,
+                "intention_token": intention_token_text,
+                "document_row_count": int(document_summary.get("row_count") or 0),
+                "render_row_count": len(render_row_views),
+                "render_feature_count": len(render_features),
+                "projection_state": projection_state,
+            },
+            "lens_state": {
+                "overlay_mode": overlay_mode,
+                "raw_underlay_visible": raw_underlay_visible,
+                "lens_presentation_only": True,
+            },
+            "mediation_state": {
+                "attention_document_id": _as_text(document_summary.get("document_id")),
+                "attention_node_id": attention_node_id_text,
+                "intention_token": intention_token_text,
+                "available_intentions": [
+                    {
+                        **option,
+                        "active": _as_text(option.get("token")) == intention_token_text,
+                    }
+                    for option in available_intentions
+                ],
+                "selection_summary": {},
+            },
+            "warnings": warnings,
+            "_render_row_views": render_row_views,
+            "_render_features": render_features,
+            "_row_profile_index": row_profile_index,
+        }
+
+    def finalize_selection(
+        self,
+        mediation_surface: dict[str, Any],
+        *,
+        selected_row_address: object = "",
+        selected_feature_id: object = "",
+    ) -> dict[str, Any]:
+        render_row_views = list(mediation_surface.get("_render_row_views") or [])
+        render_features = list(mediation_surface.get("_render_features") or [])
+        row_profile_index = dict(mediation_surface.get("_row_profile_index") or {})
+        requested_row_address = _as_text(selected_row_address)
+        requested_feature_id = _as_text(selected_feature_id)
+        selected_row = None
+        if requested_row_address:
+            for row in render_row_views:
+                if row["datum_address"] == requested_row_address:
+                    selected_row = row
+                    break
+        selected_feature = None
+        if requested_feature_id:
+            for feature in render_features:
+                if feature["feature_id"] == requested_feature_id:
+                    selected_feature = feature
+                    break
+        if selected_row is None and selected_feature is not None:
+            feature_row_address = _as_text(selected_feature.get("row_address"))
+            for row in render_row_views:
+                if row["datum_address"] == feature_row_address:
+                    selected_row = row
+                    break
+        if selected_row is None and render_row_views:
+            attention_row_address = _as_text((mediation_surface.get("attention_profile") or {}).get("row_address"))
+            for row in render_row_views:
+                if row["datum_address"] == attention_row_address:
+                    selected_row = row
+                    break
+        if selected_row is None and render_row_views:
+            selected_row = render_row_views[0]
+        if selected_feature is None and selected_row is not None:
+            selected_row_feature_ids = list(selected_row.get("feature_ids") or [])
+            for feature in render_features:
+                if feature["feature_id"] in selected_row_feature_ids:
+                    selected_feature = feature
+                    break
+        if selected_feature is None and render_features:
+            selected_feature = render_features[0]
+
         selected_row_address_text = _as_text((selected_row or {}).get("datum_address"))
         selected_feature_id_text = _as_text((selected_feature or {}).get("feature_id"))
-        for row in selected_rows:
-            row["selected"] = row["datum_address"] == selected_row_address_text
-            row["selected_feature"] = selected_feature_id_text in (row.get("feature_ids") or [])
-        feature_collection = (
-            {"type": "FeatureCollection", "features": [], "bounds": None}
-            if selected_projection is None
-            else dict(selected_projection["map_projection"]["feature_collection"])
-        )
+        selected_profile_node_id = ""
+        if selected_row_address_text:
+            selected_profile_candidates = list(row_profile_index.get(selected_row_address_text) or [])
+            if selected_profile_candidates:
+                selected_profile_node_id = _as_text(selected_profile_candidates[0])
+
+        row_summaries = []
+        for row in render_row_views:
+            overlay_preview = [
+                {
+                    "overlay_family": _as_text(overlay.get("overlay_family")) or "raw_only",
+                    "anchor_label": _as_text(overlay.get("anchor_label")) or _as_text(overlay.get("overlay_family")),
+                    "display_value": _as_text(overlay.get("display_value")) or _as_text(overlay.get("raw_value")),
+                    "raw_value": _as_text(overlay.get("raw_value")),
+                    "overlay_state": _as_text(overlay.get("overlay_state")) or "raw_only",
+                }
+                for overlay in list(row.get("overlay_values") or [])[:4]
+            ]
+            row_summaries.append(
+                {
+                    "datum_address": row["datum_address"],
+                    "labels": list(row.get("labels") or []),
+                    "label_text": row.get("label_text"),
+                    "recognized_family": row.get("recognized_family"),
+                    "recognized_anchor": row.get("recognized_anchor"),
+                    "primary_value_token": row.get("primary_value_token"),
+                    "diagnostic_states": list(row.get("diagnostic_states") or []),
+                    "feature_ids": list(row.get("feature_ids") or []),
+                    "overlay_preview": overlay_preview,
+                    "samras_node_id": _as_text(row.get("samras_node_id")),
+                    "profile_label": _as_text(row.get("profile_label")) or _as_text(row.get("samras_node_id")),
+                    "title_display": _as_text(row.get("title_display")),
+                    "linked_row_addresses": list(row.get("linked_row_addresses") or []),
+                    "selected": row["datum_address"] == selected_row_address_text,
+                    "selected_feature": selected_feature_id_text in (row.get("feature_ids") or []),
+                }
+            )
+
+        feature_collection = dict((mediation_surface.get("map_projection") or {}).get("feature_collection") or {})
         feature_collection["features"] = [
             {
                 **feature,
                 "selected": _as_text(feature.get("id")) == selected_feature_id_text,
             }
-            for feature in feature_collection.get("features") or []
+            for feature in list(feature_collection.get("features") or [])
         ]
 
-        projection_state = "no_authoritative_cts_gis_documents"
-        feature_count = 0
-        if cts_gis_documents:
-            projection_state = (
-                _as_text((selected_projection or {}).get("map_projection", {}).get("projection_state"))
-                or "inspect_only"
-            )
-            feature_count = len(selected_features)
-
-        document_catalog = []
-        for document in cts_gis_documents:
-            if selected_document is not None and document.document_id == selected_document.document_id and selected_projection is not None:
-                summary = dict(selected_projection["document_summary"])
-            else:
-                summary = document.to_summary_dict()
-                summary["projectable_feature_count"] = None
-                summary["projection_state"] = "deferred_until_selected"
-            summary["selected"] = bool(selected_document and selected_document.document_id == document.document_id)
-            document_catalog.append(summary)
-
-        warnings = list(workbench.warnings)
-        if selected_document is not None:
-            warnings.extend(selected_document.warnings)
-        if not cts_gis_documents:
-            warnings.append("No authoritative sandbox CTS-GIS documents were available for the current tenant.")
-        warnings = list(dict.fromkeys(_as_text(item) for item in warnings if _as_text(item)))
-
-        selected_document_summary = None
-        if selected_document is not None:
-            if selected_projection is not None:
-                selected_document_summary = dict(selected_projection["document_summary"])
-            else:
-                selected_document_summary = selected_document.to_summary_dict()
-            selected_document_summary["selected"] = True
-
-        return {
-            "document_catalog": document_catalog,
-            "selected_document": selected_document_summary,
+        out = {
+            "document_catalog": list(mediation_surface.get("document_catalog") or []),
+            "selected_document": dict(mediation_surface.get("selected_document") or {}),
+            "attention_profile": (
+                None
+                if mediation_surface.get("attention_profile") is None
+                else dict(mediation_surface.get("attention_profile") or {})
+            ),
+            "lineage": list(mediation_surface.get("lineage") or []),
+            "children": list(mediation_surface.get("children") or []),
+            "related_profiles": list(mediation_surface.get("related_profiles") or []),
+            "render_set_summary": dict(mediation_surface.get("render_set_summary") or {}),
             "selected_row": selected_row,
             "map_projection": {
-                "projection_state": projection_state,
-                "feature_count": feature_count,
+                "projection_state": _as_text((mediation_surface.get("map_projection") or {}).get("projection_state"))
+                or "inspect_only",
+                "feature_count": int((mediation_surface.get("map_projection") or {}).get("feature_count") or 0),
                 "selected_feature": selected_feature,
                 "feature_collection": feature_collection,
             },
-            "rows": [_row_summary(row) for row in selected_rows],
+            "rows": row_summaries,
             "diagnostic_summary": {
-                "document_count": len(cts_gis_documents),
-                "selected_document_id": _as_text((selected_document_summary or {}).get("document_id")),
+                **dict(mediation_surface.get("diagnostic_summary") or {}),
                 "selected_row_address": selected_row_address_text,
                 "selected_feature_id": selected_feature_id_text,
-                "diagnostic_totals": dict((selected_document_summary or {}).get("diagnostic_totals") or {}),
-                "diagnostic_row_count": (selected_document_summary or {}).get("diagnostic_row_count", 0),
-                "row_count": (selected_document_summary or {}).get("row_count", 0),
-                "feature_count": feature_count,
-                "projection_state": projection_state,
             },
-            "lens_state": {
-                "overlay_mode": normalized_overlay_mode,
-                "raw_underlay_visible": normalized_raw_underlay,
-                "lens_presentation_only": True,
+            "lens_state": dict(mediation_surface.get("lens_state") or {}),
+            "mediation_state": {
+                **dict(mediation_surface.get("mediation_state") or {}),
+                "selection_summary": {
+                    "selected_row_address": selected_row_address_text,
+                    "selected_feature_id": selected_feature_id_text,
+                    "selected_profile_node_id": selected_profile_node_id,
+                    "render_row_count": len(row_summaries),
+                    "render_feature_count": int((mediation_surface.get("map_projection") or {}).get("feature_count") or 0),
+                },
             },
-            "row_count": len(selected_rows),
-            "warnings": warnings,
+            "warnings": list(mediation_surface.get("warnings") or []),
         }
+        return out
+
+    def read_surface(
+        self,
+        tenant_id: str,
+        *,
+        selected_document_id: object = "",
+        selected_row_address: object = "",
+        selected_feature_id: object = "",
+        overlay_mode: object = "auto",
+        raw_underlay_visible: object = False,
+        mediation_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        projection_bundle = self.read_projection_bundle(
+            tenant_id,
+            overlay_mode=overlay_mode,
+            raw_underlay_visible=raw_underlay_visible,
+        )
+        normalized_request = self.normalize_mediation_request(
+            projection_bundle,
+            selected_document_id=selected_document_id,
+            selected_row_address=selected_row_address,
+            selected_feature_id=selected_feature_id,
+            mediation_state=mediation_state,
+        )
+        mediation_surface = self.build_mediation_surface(
+            projection_bundle,
+            attention_document_id=normalized_request["attention_document_id"],
+            attention_node_id=normalized_request["attention_node_id"],
+            intention_token=normalized_request["intention_token"],
+        )
+        return self.finalize_selection(
+            mediation_surface,
+            selected_row_address=normalized_request["selected_row_address"],
+            selected_feature_id=normalized_request["selected_feature_id"],
+        )
