@@ -2,6 +2,9 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
+Family root: [PAYPAL-PPM](paypal_ppm.md)\
+Packet role: `subordinate slice direction`
+
 Disposition: `defer`  
 V2 tool id target: `paypal_tenant_actions`  
 Config gate target: `tool_exposure.paypal_tenant_actions`  
@@ -34,5 +37,5 @@ Audience: later decision
 
 ## Carry-forward and do-not-carry-forward
 
-- Defer until a real PayPal follow-on sequence exists.
+- Defer as a later bounded-write slice direction under `PAYPAL-PPM`.
 - Do not recreate the old tenant-actions route shape or config-driven exposure.

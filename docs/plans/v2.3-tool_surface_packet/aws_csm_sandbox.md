@@ -2,6 +2,9 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
+Family root: [AWS-CSM](aws_csm.md)\
+Packet role: `implemented slice doc`
+
 Disposition: `current_v2`  
 V2 tool id: `aws_csm_sandbox`  
 Config gate target: `tool_exposure.aws_csm_sandbox`  
@@ -42,5 +45,6 @@ Audience: `internal-admin`
 ## Carry-forward and do-not-carry-forward
 
 - Keep this as the internal-only staging/sandbox tool.
+- Keep it as a slice of `AWS-CSM`, not as a separate family root.
 - Do not expose it on the trusted-tenant portal.
 - Do not collapse it into the production `aws` tool id.

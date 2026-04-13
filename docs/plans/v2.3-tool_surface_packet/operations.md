@@ -2,6 +2,9 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
+Packet role: `held-out legacy-isolation doc`\
+Queue posture: `outside the narrowed near-term set`
+
 Disposition: `legacy_isolation`  
 V2 tool id target: `operations`  
 Config gate target: `tool_exposure.operations`  

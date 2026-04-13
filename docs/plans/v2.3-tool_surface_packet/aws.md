@@ -2,6 +2,9 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
+Family root: [AWS-CSM](aws_csm.md)\
+Packet role: `implemented slice doc`
+
 Disposition: `current_v2`  
 V2 tool id: `aws`  
 Config gate target: `tool_exposure.aws`  
@@ -41,6 +44,7 @@ Audience: `trusted-tenant-admin`
 ## Carry-forward and do-not-carry-forward
 
 - Keep this as the primary read-only AWS admin surface.
+- Keep it as a slice of `AWS-CSM`, not as a competing family root.
 - Do not create a second `aws_read_only` tool id or a config-owned alias.
 - Do not pull legacy newsletter-admin or broad provider-admin controls into this
   surface.

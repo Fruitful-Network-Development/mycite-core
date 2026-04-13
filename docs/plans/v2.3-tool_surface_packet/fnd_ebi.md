@@ -2,44 +2,72 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
-Disposition: `carry_forward`  
-V2 tool id target: `fnd_ebi`  
-Config gate target: `tool_exposure.fnd_ebi`  
-Audience: `internal-admin` first, trusted-tenant later if approved
+Canonical name: `FND-EBI`\
+Packet role: `family_root`\
+Queue posture: `near-term candidate`\
+Primary future gate target: `tool_exposure.fnd_ebi`
+
+## Completion intent
+
+`FND-EBI` is the single service-and-site operational visibility family for
+hosted websites and related service profiles.
+
+It is:
+
+- profile-led
+- filesystem-backed through bounded internal-source reads
+- shared-core derived
+- read-only first
+
+It is not the web design tool. Analytics and site-operations visibility belong
+here; design/editing belongs in `FND-DCM`.
 
 ## Current code, docs, and live presence
 
 - Current code: no V2 `fnd_ebi` registry entry or runtime entrypoint exists.
-- Legacy evidence: V1 service-tool mediation docs, tests, and utility-state
-  files still exist.
+- Legacy evidence: V1 service-tool mediation docs, tests, utility-state files,
+  and profile-led internal file source rules still exist.
 - Live presence: FND still has `private/utilities/tools/fnd-ebi/` and
   `data/sandbox/fnd-ebi/sources/`; TFF does not.
 
-## Reusable evidence vs legacy baggage
+## Stable data roots
 
-- Reusable evidence: service-profile files, analytics/site-root state, and
-  source-backed registrar data.
-- Legacy baggage: config-driven portal exposure, tool-layer mediation, and V1
-  runtime glue.
+Canonical profile input includes at minimum:
 
-## Required V2 owner layers and dependencies
+- `domain`
+- `site_root`
 
-- Shell registry: a future `fnd_ebi` descriptor if and only if the tool is
-  explicitly approved as a V2 admin slice.
-- Runtime entrypoint: one read-only admin entrypoint first.
-- Semantic owner: one narrow service/analytics visibility module, not a revived
-  legacy tool package.
-- Port and adapter: profile-read seam for `private/utilities/tools/fnd-ebi/`
-  plus any explicit datum read seam needed for sandbox sources.
+From that, the analytics root is derived.
 
-## Admin activity-bar behavior
+For a hosted site under `/srv/webapps/clients/<domain>/`, the operational
+analytics root should be treated as `/srv/webapps/clients/<domain>/analytics/`.
 
-- Hidden and blocked unless `tool_exposure.fnd_ebi.enabled=true`.
-- No activity-bar item until a V2 slice exists.
-- Trusted-tenant exposure is a later decision and is not part of this packet.
+Stable read families under that root are:
 
-## Carry-forward and do-not-carry-forward
+- `events/`
+- `nginx/`
 
-- Carry forward only the narrow service-integration visibility that fits V2
-  shell-owned surfaces.
-- Do not recreate V1 tool mediation or legacy config-driven mounting.
+`analytics` is therefore a child capability direction under `FND-EBI`, not a
+separate root tool.
+
+## Next actual slice under this family
+
+The first implementation slice should be one read-only admin-first
+service-profile and analytics visibility surface.
+
+It should:
+
+- load one service profile
+- derive analytics roots from `site_root`
+- read `nginx/` and `events/`
+- render overview, traffic, events, errors/noise, and file-state summaries
+- surface missing, unreadable, and stale conditions explicitly
+
+## Do not carry forward
+
+Do not carry forward:
+
+- a separate analytics dashboard root
+- a separate generic operations dashboard root
+- raw unrestricted filesystem authority
+- V1 tool mediation or config-driven mounting

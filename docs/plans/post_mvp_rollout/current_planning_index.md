@@ -42,6 +42,18 @@ truth, not through the older slice-registry sequence above.
 | --- | --- | --- |
 | `admin_band5.maps_read_only_surface` | implemented FND-first admin tool | [../v2.3-tool_surface_packet/maps.md](../v2.3-tool_surface_packet/maps.md) |
 
+## Implemented V2.3 trusted-tenant surfaces
+
+These client-facing rollout surfaces are implemented and should no longer be
+read as the active near-term work queue.
+
+| Surface | Current use | Implementation truth |
+| --- | --- | --- |
+| `band1.portal_home_tenant_status` | implemented trusted-tenant surface | [slice_registry/band1_portal_home_tenant_status.md](slice_registry/band1_portal_home_tenant_status.md) |
+| `band1.operational_status_surface` | implemented trusted-tenant surface | [slice_registry/band1_operational_status_surface.md](slice_registry/band1_operational_status_surface.md) |
+| `band1.audit_activity_visibility` | implemented trusted-tenant surface | [slice_registry/band1_audit_activity_visibility.md](slice_registry/band1_audit_activity_visibility.md) |
+| `band2.profile_basics_write_surface` | implemented trusted-tenant surface | [slice_registry/band2_profile_basics_write_surface.md](slice_registry/band2_profile_basics_write_surface.md) |
+
 ## Record-only cutover plans
 
 These cutover documents describe completed bridge-era or native-cutover work.
@@ -65,18 +77,41 @@ ledger, and gate evidence behind the closure record.
 | [../phases/11_cleanup_and_v1_retirement_review.md](../phases/11_cleanup_and_v1_retirement_review.md) | closed phase gate | [../../records/22-v1_retirement_closure.md](../../records/22-v1_retirement_closure.md) |
 | [post_aws_tool_platform/README.md](post_aws_tool_platform/README.md) | platform posture and historical rules | [../../records/22-v1_retirement_closure.md](../../records/22-v1_retirement_closure.md) |
 
-## Active post-MVP planning
+## Active family-root tool planning
 
-These are the current unimplemented planning surfaces after canonical V2
-closure.
+These are the current narrowed near-term family planning surfaces after the
+canonical V2 closure and the implemented client/admin slices above.
 
-| Surface | Status | Why it is now active or sequenced |
+| Surface | Queue posture | Why it is active now |
 | --- | --- | --- |
-| [slice_registry/band1_portal_home_tenant_status.md](slice_registry/band1_portal_home_tenant_status.md) | `first active slice` | First client-facing orientation slice now that canonical V2 and V1 retirement closure are complete. |
-| [slice_registry/band1_operational_status_surface.md](slice_registry/band1_operational_status_surface.md) | `second active slice` | Chosen as the next read-only visibility slice after the home surface. |
-| [slice_registry/band1_audit_activity_visibility.md](slice_registry/band1_audit_activity_visibility.md) | `third active slice` | Still sequenced after the operational status surface rather than treated as an equal alternate path. |
-| [slice_registry/band2_profile_basics_write_surface.md](slice_registry/band2_profile_basics_write_surface.md) | `fourth active slice` | Writable follow-on only after the three Band 1 read-only slices are stable. |
-| [admin_first/agro_erp_follow_on_surface.md](admin_first/agro_erp_follow_on_surface.md) | `after implemented Maps baseline` | Still follows the Maps carry-forward and remains deferred. |
+| [../v2.3-tool_surface_packet/aws_csm.md](../v2.3-tool_surface_packet/aws_csm.md) | `next actual build target` | Canonical next family target: unify the existing AWS-family slices under one read-only family landing surface without changing live tool ids or shell legality. |
+| [../v2.3-tool_surface_packet/fnd_ebi.md](../v2.3-tool_surface_packet/fnd_ebi.md) | `other near-term candidate` | Canonical service/site operational visibility family after the AWS-CSM family landing work. |
+| [../v2.3-tool_surface_packet/maps.md](../v2.3-tool_surface_packet/maps.md) | `other near-term candidate` | Current admin Maps slice is implemented; the next family slice is portal/default-app expansion, not a second spatial root. |
+
+## Typed family plans not in the immediate build queue
+
+These are canonical family-root docs, but they are not in the narrowed
+near-term implementation queue.
+
+| Surface | Current use | Notes |
+| --- | --- | --- |
+| [../v2.3-tool_surface_packet/agro_erp.md](../v2.3-tool_surface_packet/agro_erp.md) | clarified family root | Not held out, but not in the immediate narrowed queue. |
+| [../v2.3-tool_surface_packet/fnd_dcm.md](../v2.3-tool_surface_packet/fnd_dcm.md) | typed family-root plan | New design/content family plan only. |
+| [../v2.3-tool_surface_packet/calendar.md](../v2.3-tool_surface_packet/calendar.md) | typed family-root plan | New chronology family plan only. |
+| [../v2.3-tool_surface_packet/paypal_ppm.md](../v2.3-tool_surface_packet/paypal_ppm.md) | typed family-root plan | Canonical PayPal family root replacing fragmented packet roots. |
+| [../v2.3-tool_surface_packet/keycloak_sso.md](../v2.3-tool_surface_packet/keycloak_sso.md) | typed family-root plan | Clarified auth-provider family plan, not an immediate build target. |
+
+## Held-out leftovers
+
+These packet docs remain preserved but are outside the narrowed near-term set
+until they receive family-level clarification.
+
+| Surface | Queue posture | Notes |
+| --- | --- | --- |
+| [../v2.3-tool_surface_packet/data_tool.md](../v2.3-tool_surface_packet/data_tool.md) | `held out` | Not an approved family root. |
+| [../v2.3-tool_surface_packet/fnd_provisioning.md](../v2.3-tool_surface_packet/fnd_provisioning.md) | `held out` | Preserve until a provisioning family brief exists. |
+| [../v2.3-tool_surface_packet/operations.md](../v2.3-tool_surface_packet/operations.md) | `held out / legacy-isolation` | Not an approved family root. |
+| [../v2.3-tool_surface_packet/tenant_progeny_profiles.md](../v2.3-tool_surface_packet/tenant_progeny_profiles.md) | `held out` | Preserve until a hosted/progeny family brief exists. |
 
 ## Supporting V2.3 tool packet
 
@@ -87,6 +122,8 @@ tool follow-on work decision-complete before later tool implementation resumes.
 | --- | --- | --- |
 | [../v2.3-tool_exposure_and_admin_activity_bar_alignment.md](../v2.3-tool_exposure_and_admin_activity_bar_alignment.md) | active foundational plan | Defines the proposed V2 `tool_exposure` gate and admin activity-bar contract. |
 | [../v2.3-tool_surface_packet/README.md](../v2.3-tool_surface_packet/README.md) | active per-tool planning packet | Index for one plan per current or legacy tool surface. |
+| [../v2.3-tool_surface_packet/aws_csm.md](../v2.3-tool_surface_packet/aws_csm.md) | next family-root target | Canonical next family build target after the doc sync. |
+| [../v2.3-tool_surface_packet/fnd_ebi.md](../v2.3-tool_surface_packet/fnd_ebi.md) | near-term family-root candidate | Narrowed service/site operational visibility family. |
 | [../v2.3-tool_surface_packet/maps.md](../v2.3-tool_surface_packet/maps.md) | current implementation truth | Documents the implemented admin Maps read-only slice and its FND-first rollout. |
 | [../../audits/v2_tool_surface_and_legacy_tool_audit_2026-04-12.md](../../audits/v2_tool_surface_and_legacy_tool_audit_2026-04-12.md) | supporting audit | Reconciles repo truth, live admin-shell truth, and legacy evidence. |
 
@@ -99,7 +136,7 @@ tool follow-on work decision-complete before later tool implementation resumes.
 5. Read [post_aws_tool_platform/README.md](post_aws_tool_platform/README.md) if the work changes shared post-AWS platform behavior.
 6. Read the V2.3 tool packet documents when the work is about tool exposure,
    tool carry-forward, or legacy-tool classification.
-7. Read the next active slice file in the sequence above.
+7. Read the next active family-root doc in the sequence above.
 8. Read the matching completion record only when you need historical implementation context.
 
 ## Archive rule

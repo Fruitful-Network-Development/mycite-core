@@ -2,6 +2,9 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
+Packet role: `held-out leftover`\
+Queue posture: `outside the narrowed near-term set`
+
 Disposition: `defer`  
 V2 tool id target: `tenant_progeny_profiles`  
 Config gate target: `tool_exposure.tenant_progeny_profiles`  

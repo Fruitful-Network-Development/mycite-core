@@ -2,10 +2,21 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
-Disposition: `defer`  
+Family root: [FND-EBI](fnd_ebi.md)\
+Packet role: `subordinate capability direction`
+
+Disposition: `subordinate_capability`\
 V2 tool id target: `analytics`  
 Config gate target: `tool_exposure.analytics`  
 Audience: `internal-admin` first if reopened
+
+## Current packet role
+
+`analytics` is not an approved standalone family root in the narrowed V2.3
+packet.
+
+It is a child capability direction under `FND-EBI`, which already owns the
+profile-led service/site operational visibility family.
 
 ## Current code, docs, and live presence
 
@@ -36,6 +47,7 @@ Audience: `internal-admin` first if reopened
 
 ## Carry-forward and do-not-carry-forward
 
-- Defer analytics until after the current admin/tool gating work.
-- Do not recreate the old mixed analytics dashboard as a default admin shell
+- Keep analytics inside `FND-EBI` as a child capability direction unless a
+  future family brief explicitly says otherwise.
+- Do not recreate the old mixed analytics dashboard as a standalone admin root
   surface.

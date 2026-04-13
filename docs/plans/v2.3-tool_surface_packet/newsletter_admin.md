@@ -2,6 +2,9 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
+Family root: [AWS-CSM](aws_csm.md)\
+Packet role: `retired crosswalk`
+
 Disposition: `discard`  
 V2 tool id target: `newsletter_admin`  
 Config gate target: `tool_exposure.newsletter_admin`  
