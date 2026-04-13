@@ -70,7 +70,7 @@ This restores real admin utility quickly by showing AWS mailbox readiness, newsl
 - manual newsletter send
 - PayPal
 - analytics
-- Maps
+- CTS-GIS
 - AGRO-ERP
 - raw credential display
 

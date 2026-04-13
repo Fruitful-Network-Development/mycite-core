@@ -26,9 +26,9 @@ Current live posture:
 - Canonical live AWS profile mapping remains current and must stay aligned with the deployed V2 host.
 - The V1 retirement ledger and Phase 11 gate are closed through [../../../records/22-v1_retirement_closure.md](../../../records/22-v1_retirement_closure.md).
 - Current shell-registered admin-tool entries are `aws`, `aws_narrow_write`,
-  `aws_csm_sandbox`, `aws_csm_onboarding`, and `maps`.
-- Current config-gated live exposure keeps `maps` enabled on FND only while TFF
-  remains hidden and blocked.
+  `aws_csm_sandbox`, `aws_csm_onboarding`, and `cts_gis`.
+- Current config-gated live exposure keeps `cts_gis` enabled on FND only while
+  TFF remains hidden and blocked.
 
 ## Use order
 
@@ -46,7 +46,7 @@ Current live posture:
 12. Read [deployment_bridge_contract.md](deployment_bridge_contract.md) and [cutover_execution_sequence.md](cutover_execution_sequence.md) only as historical cutover design and sequencing evidence.
 13. Use [../slice_registry/admin_band0_v2_deployment_bridge.md](../slice_registry/admin_band0_v2_deployment_bridge.md) only as a record-linked slice history.
 14. Read [../../v2.3-tool_exposure_and_admin_activity_bar_alignment.md](../../v2.3-tool_exposure_and_admin_activity_bar_alignment.md) when the work needs the proposed V2 config-gate layer above the shell-owned registry.
-15. Read [../../v2.3-tool_surface_packet/aws_csm.md](../../v2.3-tool_surface_packet/aws_csm.md), [../../v2.3-tool_surface_packet/fnd_ebi.md](../../v2.3-tool_surface_packet/fnd_ebi.md), and [../../v2.3-tool_surface_packet/maps.md](../../v2.3-tool_surface_packet/maps.md) for the narrowed next-family queue.
+15. Read [../../v2.3-tool_surface_packet/aws_csm.md](../../v2.3-tool_surface_packet/aws_csm.md), [../../v2.3-tool_surface_packet/fnd_ebi.md](../../v2.3-tool_surface_packet/fnd_ebi.md), and [../../v2.3-tool_surface_packet/cts_gis.md](../../v2.3-tool_surface_packet/cts_gis.md) for the narrowed next-family queue.
 
 ## Non-negotiable rules
 

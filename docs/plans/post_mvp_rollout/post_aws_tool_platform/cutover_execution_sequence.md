@@ -96,4 +96,4 @@ Only after Steps 1-6 pass, update:
 - [README.md](README.md)
 - the matching slice registry entry
 
-The claim may then say V2 is deployed for the admin shell and AWS slices. It must not claim Maps, AGRO-ERP, sandbox, or broader portal parity.
+The claim may then say V2 is deployed for the admin shell and AWS slices. It must not claim CTS-GIS, AGRO-ERP, sandbox, or broader portal parity.

@@ -24,7 +24,7 @@ Audience: `internal-admin` first, later audience review
 
 ## Required V2 owner layers and dependencies
 
-- Shell registry: new future `agro_erp` descriptor only after Maps stabilizes.
+- Shell registry: new future `agro_erp` descriptor only after CTS-GIS stabilizes.
 - Runtime entrypoint: one new admin read-only entrypoint first.
 - Semantic owner: AGRO-oriented module above datum recognition and authoritative
   document reads.
@@ -36,10 +36,10 @@ Audience: `internal-admin` first, later audience review
 ## Admin activity-bar behavior
 
 - Hidden and blocked unless `tool_exposure.agro_erp.enabled=true`.
-- No activity-bar presence before Maps and the datum-inspection path are proven.
+- No activity-bar presence before CTS-GIS and the datum-inspection path are proven.
 - Admin-first only in the first pass.
 
 ## Carry-forward and do-not-carry-forward
 
-- Carry forward AGRO-ERP as a later datum-backed admin tool after Maps.
+- Carry forward AGRO-ERP as a later datum-backed admin tool after CTS-GIS.
 - Do not reuse V1 route trees or mixed tool/workbench composition.

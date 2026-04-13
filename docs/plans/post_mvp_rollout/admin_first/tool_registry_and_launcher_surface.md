@@ -48,8 +48,8 @@ Every future admin tool entry must declare:
 ## AWS-first rule
 
 - The first externalized tool-bearing registry entry is AWS.
-- Maps may not appear in the registry before the AWS read-only slice is stable.
-- AGRO-ERP may not appear in the registry before the Maps follow-on conditions are met.
+- CTS-GIS may not appear in the registry before the AWS read-only slice is stable.
+- AGRO-ERP may not appear in the registry before the CTS-GIS follow-on conditions are met.
 
 ## Forbidden registry drift
 

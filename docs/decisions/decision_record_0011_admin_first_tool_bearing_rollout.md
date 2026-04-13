@@ -19,7 +19,7 @@ That means:
 - then one admin home/status surface
 - then one tool registry/launcher surface
 - then AWS as the first real tool-bearing target
-- then Maps
+- then CTS-GIS
 - then AGRO-ERP
 
 The authoritative docs for this track are the files under [../plans/post_mvp_rollout/admin_first/](../plans/post_mvp_rollout/admin_first/).
@@ -30,4 +30,4 @@ The authoritative docs for this track are the files under [../plans/post_mvp_rol
 - Tools remain shell-attached and runtime-cataloged.
 - AWS becomes the first tool-bearing target because it is the narrowest high-value operational slice with explicit v1 correction guidance.
 - Standalone `newsletter-admin` remains retired.
-- Maps and AGRO-ERP are protected from being pulled forward through convenience.
+- CTS-GIS and AGRO-ERP are protected from being pulled forward through convenience.

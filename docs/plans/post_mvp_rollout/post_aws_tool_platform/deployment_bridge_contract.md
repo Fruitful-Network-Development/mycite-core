@@ -57,7 +57,7 @@ That requirement now lives on as a native-host rule in
 - no dynamic package discovery
 - no route-level parity porting from V1 admin providers
 - no broad `/portal/api/admin/aws/*` recreation as the V2 surface
-- no direct Maps or AGRO-ERP bridge routes
+- no direct CTS-GIS or AGRO-ERP bridge routes
 - no write path that bypasses `admin.aws.narrow_write`
 - no duplicated shell registry in V1
 - no root-level compatibility symlinks

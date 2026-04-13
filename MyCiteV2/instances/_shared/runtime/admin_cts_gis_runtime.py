@@ -6,9 +6,9 @@ import time
 from typing import Any
 
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
-from MyCiteV2.packages.modules.cross_domain.maps import MapsReadOnlyService
+from MyCiteV2.packages.modules.cross_domain.cts_gis import CtsGisReadOnlyService
 from MyCiteV2.packages.state_machine.hanus_shell import (
-    ADMIN_BAND5_MAPS_NAME,
+    ADMIN_BAND5_CTS_GIS_NAME,
     ADMIN_EXPOSURE_INTERNAL_ONLY,
     ADMIN_HOME_STATUS_SLICE_ID,
     ADMIN_NETWORK_ROOT_SLICE_ID,
@@ -17,8 +17,8 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
-    MAPS_READ_ONLY_ENTRYPOINT_ID,
-    MAPS_READ_ONLY_SLICE_ID,
+    CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
+    CTS_GIS_READ_ONLY_SLICE_ID,
     AdminShellChrome,
     AdminTenantScope,
     activity_icon_id_for_slice,
@@ -30,8 +30,8 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     resolve_admin_tool_launch,
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
-    ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
-    ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA,
+    ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
+    ADMIN_CTS_GIS_READ_ONLY_SURFACE_SCHEMA,
     ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
     admin_tool_exposure_config_enabled,
     build_admin_runtime_envelope,
@@ -39,7 +39,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     build_allow_all_admin_tool_exposure_policy,
 )
 
-_MAPS_SURFACE_CACHE: dict[tuple[str, str, str, str, str, str, bool], dict[str, Any]] = {}
+_CTS_GIS_SURFACE_CACHE: dict[tuple[str, str, str, str, str, str, bool], dict[str, Any]] = {}
 
 
 def _as_text(value: object) -> str:
@@ -94,8 +94,8 @@ def _canonical_shell_href(slice_id: str) -> str:
         return "/portal/utilities"
     if slice_id == DATUM_RESOURCE_WORKBENCH_SLICE_ID:
         return "/portal/system/datum"
-    if slice_id == MAPS_READ_ONLY_SLICE_ID:
-        return "/portal/utilities/maps"
+    if slice_id == CTS_GIS_READ_ONLY_SLICE_ID:
+        return "/portal/utilities/cts-gis"
     return "/portal/system"
 
 
@@ -240,22 +240,22 @@ def _normalize_request(
     payload: dict[str, Any] | None,
 ) -> tuple[AdminTenantScope, AdminShellChrome, dict[str, Any]]:
     if payload is None:
-        raise ValueError("admin.maps.read_only requires a request payload")
+        raise ValueError("admin.cts_gis.read_only requires a request payload")
     if not isinstance(payload, dict):
-        raise ValueError("admin.maps.read_only request payload must be a dict")
+        raise ValueError("admin.cts_gis.read_only request payload must be a dict")
     schema = _as_text(payload.get("schema"))
-    if schema != ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA:
-        raise ValueError(f"admin.maps.read_only request.schema must be {ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA}")
+    if schema != ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA:
+        raise ValueError(f"admin.cts_gis.read_only request.schema must be {ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA}")
     tenant_scope = AdminTenantScope.from_value(payload.get("tenant_scope"))
     shell_chrome = AdminShellChrome.from_value(
         payload.get("shell_chrome") if isinstance(payload.get("shell_chrome"), dict) else None
     )
     overlay_mode = _as_text(payload.get("overlay_mode") or "auto").lower()
     if overlay_mode not in {"auto", "raw_only"}:
-        raise ValueError("admin.maps.read_only overlay_mode must be auto or raw_only")
+        raise ValueError("admin.cts_gis.read_only overlay_mode must be auto or raw_only")
     raw_underlay_visible = payload.get("raw_underlay_visible")
     if raw_underlay_visible is not None and not isinstance(raw_underlay_visible, bool):
-        raise ValueError("admin.maps.read_only raw_underlay_visible must be a bool or null")
+        raise ValueError("admin.cts_gis.read_only raw_underlay_visible must be a bool or null")
     return tenant_scope, shell_chrome, {
         "selected_document_id": _as_text(payload.get("selected_document_id")),
         "selected_row_address": _as_text(payload.get("selected_row_address")),
@@ -286,16 +286,16 @@ def _config_gate_envelope(
 ) -> dict[str, Any] | None:
     if tool_exposure_policy is None:
         return None
-    if admin_tool_exposure_config_enabled(tool_exposure_policy, tool_id="maps"):
+    if admin_tool_exposure_config_enabled(tool_exposure_policy, tool_id="cts_gis"):
         return None
     message = "Requested admin tool is disabled by instance tool_exposure configuration."
     return build_admin_runtime_envelope(
-        admin_band=ADMIN_BAND5_MAPS_NAME,
+        admin_band=ADMIN_BAND5_CTS_GIS_NAME,
         exposure_status=ADMIN_EXPOSURE_INTERNAL_ONLY,
         tenant_scope=tenant_scope.to_dict(),
-        requested_slice_id=MAPS_READ_ONLY_SLICE_ID,
-        slice_id=MAPS_READ_ONLY_SLICE_ID,
-        entrypoint_id=MAPS_READ_ONLY_ENTRYPOINT_ID,
+        requested_slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
+        slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
+        entrypoint_id=CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
         read_write_posture="read-only",
         shell_state=_tool_not_exposed_shell_state(launch_decision, message=message),
         surface_payload=None,
@@ -304,7 +304,7 @@ def _config_gate_envelope(
     )
 
 
-def build_admin_maps_surface_payload(
+def build_admin_cts_gis_surface_payload(
     *,
     portal_tenant_id: str,
     data_dir: str | Path,
@@ -324,11 +324,11 @@ def build_admin_maps_surface_payload(
         bool(raw_underlay_visible),
     )
     now = time.time()
-    cached = _MAPS_SURFACE_CACHE.get(cache_key)
+    cached = _CTS_GIS_SURFACE_CACHE.get(cache_key)
     if cached is not None and float(cached.get("expires_at") or 0.0) > now:
         return copy.deepcopy(cached["payload"])
 
-    projection = MapsReadOnlyService(FilesystemSystemDatumStoreAdapter(Path(data_dir))).read_surface(
+    projection = CtsGisReadOnlyService(FilesystemSystemDatumStoreAdapter(Path(data_dir))).read_surface(
         portal_tenant_id,
         selected_document_id=selected_document_id,
         selected_row_address=selected_row_address,
@@ -337,9 +337,9 @@ def build_admin_maps_surface_payload(
         raw_underlay_visible=raw_underlay_visible,
     )
     payload = {
-        "schema": ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA,
-        "active_surface_id": MAPS_READ_ONLY_SLICE_ID,
-        "current_admin_band": ADMIN_BAND5_MAPS_NAME,
+        "schema": ADMIN_CTS_GIS_READ_ONLY_SURFACE_SCHEMA,
+        "active_surface_id": CTS_GIS_READ_ONLY_SLICE_ID,
+        "current_admin_band": ADMIN_BAND5_CTS_GIS_NAME,
         "exposure_status": ADMIN_EXPOSURE_INTERNAL_ONLY,
         "read_write_posture": "read-only",
         "document_catalog": projection["document_catalog"],
@@ -352,14 +352,14 @@ def build_admin_maps_surface_payload(
         "lens_state": projection["lens_state"],
         "warnings": projection["warnings"],
     }
-    _MAPS_SURFACE_CACHE[cache_key] = {
+    _CTS_GIS_SURFACE_CACHE[cache_key] = {
         "expires_at": now + 30.0,
         "payload": copy.deepcopy(payload),
     }
     return payload
 
 
-def build_admin_maps_workbench(
+def build_admin_cts_gis_workbench(
     *,
     surface_payload: dict[str, Any],
     portal_tenant_id: str,
@@ -369,8 +369,8 @@ def build_admin_maps_workbench(
     diagnostic_summary = surface_payload.get("diagnostic_summary") or {}
     return {
         "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
-        "kind": "maps_workbench",
-        "title": "Maps",
+        "kind": "cts_gis_workbench",
+        "title": "CTS-GIS",
         "subtitle": (
             f"{_as_text(map_projection.get('projection_state')) or 'inspect_only'}"
             f" · {map_projection.get('feature_count', 0)} features"
@@ -390,9 +390,9 @@ def build_admin_maps_workbench(
         "lens_state": surface_payload.get("lens_state") or {},
         "warnings": list(surface_payload.get("warnings") or []),
         "request_contract": {
-            "route": "/portal/api/v2/admin/maps/read-only",
+            "route": "/portal/api/v2/admin/cts-gis/read-only",
             "method": "POST",
-            "request_schema": ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA,
+            "request_schema": ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
             "fixed_request_fields": {
                 "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
             },
@@ -402,11 +402,11 @@ def build_admin_maps_workbench(
     }
 
 
-def build_admin_maps_inspector(*, surface_payload: dict[str, Any]) -> dict[str, Any]:
+def build_admin_cts_gis_inspector(*, surface_payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema": ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
-        "title": "Maps",
-        "kind": "maps_summary",
+        "title": "CTS-GIS",
+        "kind": "cts_gis_summary",
         "render_from_surface_payload": True,
         "warnings": list(surface_payload.get("warnings") or []),
     }
@@ -422,7 +422,7 @@ def _apply_shell_chrome_to_composition(composition: dict[str, Any], chrome: Admi
         composition["inspector_collapsed"] = bool(chrome.inspector_collapsed)
 
 
-def run_admin_maps_read_only(
+def run_admin_cts_gis_read_only(
     request_payload: dict[str, Any] | None = None,
     *,
     data_dir: str | Path | None = None,
@@ -431,20 +431,20 @@ def run_admin_maps_read_only(
 ) -> dict[str, Any]:
     tenant_scope, shell_chrome, request_state = _normalize_request(request_payload)
     launch_decision = resolve_admin_tool_launch(
-        slice_id=MAPS_READ_ONLY_SLICE_ID,
+        slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
         audience=tenant_scope.audience,
-        expected_entrypoint_id=MAPS_READ_ONLY_ENTRYPOINT_ID,
+        expected_entrypoint_id=CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
     )
 
     if not launch_decision.allowed:
         message = launch_decision.reason_message
         return build_admin_runtime_envelope(
-            admin_band=ADMIN_BAND5_MAPS_NAME,
+            admin_band=ADMIN_BAND5_CTS_GIS_NAME,
             exposure_status=ADMIN_EXPOSURE_INTERNAL_ONLY,
             tenant_scope=tenant_scope.to_dict(),
-            requested_slice_id=MAPS_READ_ONLY_SLICE_ID,
-            slice_id=MAPS_READ_ONLY_SLICE_ID,
-            entrypoint_id=MAPS_READ_ONLY_ENTRYPOINT_ID,
+            requested_slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
+            slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
+            entrypoint_id=CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
             read_write_posture="read-only",
             shell_state=launch_decision.to_dict(),
             surface_payload=None,
@@ -461,14 +461,14 @@ def run_admin_maps_read_only(
         return gated
 
     if data_dir is None:
-        message = "Maps read-only host data root is not configured."
+        message = "CTS-GIS read-only host data root is not configured."
         return build_admin_runtime_envelope(
-            admin_band=ADMIN_BAND5_MAPS_NAME,
+            admin_band=ADMIN_BAND5_CTS_GIS_NAME,
             exposure_status=ADMIN_EXPOSURE_INTERNAL_ONLY,
             tenant_scope=tenant_scope.to_dict(),
-            requested_slice_id=MAPS_READ_ONLY_SLICE_ID,
-            slice_id=MAPS_READ_ONLY_SLICE_ID,
-            entrypoint_id=MAPS_READ_ONLY_ENTRYPOINT_ID,
+            requested_slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
+            slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
+            entrypoint_id=CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
             read_write_posture="read-only",
             shell_state=launch_decision.to_dict(),
             surface_payload=None,
@@ -476,7 +476,7 @@ def run_admin_maps_read_only(
             error=build_admin_runtime_error(code="data_root_not_configured", message=message),
         )
 
-    surface_payload = build_admin_maps_surface_payload(
+    surface_payload = build_admin_cts_gis_surface_payload(
         portal_tenant_id=_as_text(portal_tenant_id) or "fnd",
         data_dir=data_dir,
         selected_document_id=request_state["selected_document_id"],
@@ -486,35 +486,35 @@ def run_admin_maps_read_only(
         raw_underlay_visible=request_state["raw_underlay_visible"],
     )
     shell_composition = build_shell_composition_payload(
-        active_surface_id=MAPS_READ_ONLY_SLICE_ID,
+        active_surface_id=CTS_GIS_READ_ONLY_SLICE_ID,
         portal_tenant_id=_as_text(portal_tenant_id) or "fnd",
         page_title="MyCite",
-        page_subtitle="Maps",
+        page_subtitle="CTS-GIS",
         activity_items=_activity_items(
             portal_tenant_id=_as_text(portal_tenant_id) or "fnd",
-            nav_active_slice_id=MAPS_READ_ONLY_SLICE_ID,
+            nav_active_slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
             tool_exposure_policy=tool_exposure_policy,
         ),
         control_panel=_control_panel_region(
             portal_tenant_id=_as_text(portal_tenant_id) or "fnd",
-            nav_active_slice_id=MAPS_READ_ONLY_SLICE_ID,
+            nav_active_slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
             tool_exposure_policy=tool_exposure_policy,
         ),
-        workbench=build_admin_maps_workbench(
+        workbench=build_admin_cts_gis_workbench(
             surface_payload=surface_payload,
             portal_tenant_id=_as_text(portal_tenant_id) or "fnd",
         ),
-        inspector=build_admin_maps_inspector(surface_payload=surface_payload),
+        inspector=build_admin_cts_gis_inspector(surface_payload=surface_payload),
     )
     _apply_shell_chrome_to_composition(shell_composition, shell_chrome)
 
     return build_admin_runtime_envelope(
-        admin_band=ADMIN_BAND5_MAPS_NAME,
+        admin_band=ADMIN_BAND5_CTS_GIS_NAME,
         exposure_status=ADMIN_EXPOSURE_INTERNAL_ONLY,
         tenant_scope=tenant_scope.to_dict(),
-        requested_slice_id=MAPS_READ_ONLY_SLICE_ID,
-        slice_id=MAPS_READ_ONLY_SLICE_ID,
-        entrypoint_id=MAPS_READ_ONLY_ENTRYPOINT_ID,
+        requested_slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
+        slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
+        entrypoint_id=CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
         read_write_posture="read-only",
         shell_state=launch_decision.to_dict(),
         surface_payload=surface_payload,
@@ -525,10 +525,10 @@ def run_admin_maps_read_only(
 
 
 __all__ = [
-    "ADMIN_MAPS_READ_ONLY_REQUEST_SCHEMA",
-    "ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA",
-    "build_admin_maps_inspector",
-    "build_admin_maps_surface_payload",
-    "build_admin_maps_workbench",
-    "run_admin_maps_read_only",
+    "ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA",
+    "ADMIN_CTS_GIS_READ_ONLY_SURFACE_SCHEMA",
+    "build_admin_cts_gis_inspector",
+    "build_admin_cts_gis_surface_payload",
+    "build_admin_cts_gis_workbench",
+    "run_admin_cts_gis_read_only",
 ]

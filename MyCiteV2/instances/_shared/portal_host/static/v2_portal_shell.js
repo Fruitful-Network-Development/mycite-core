@@ -119,7 +119,7 @@
         '<path d="M7.5 17.5h8a4 4 0 0 0 .7-7.94A5.2 5.2 0 0 0 6.7 8.5 3.6 3.6 0 0 0 7.5 17.5z"></path>' +
         '<path d="M8 20c2 .9 5 .9 8 0"></path>' +
         "</svg>";
-    } else if (iconId === "maps") {
+    } else if (iconId === "cts_gis") {
       svg =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M12 20s5-4.3 5-9a5 5 0 1 0-10 0c0 4.7 5 9 5 9z"></path><circle cx="12" cy="11" r="1.8"></circle>' +
@@ -138,7 +138,7 @@
     return '<span class="ide-activityicon" aria-hidden="true">' + svg + "</span>";
   }
 
-  function renderMapsSvg(mapProjection) {
+  function renderCtsGisSvg(mapProjection) {
     var featureCollection = (mapProjection && mapProjection.feature_collection) || {};
     var features = featureCollection.features || [];
     if (!features.length) {
@@ -187,7 +187,7 @@
         if (geometry.type === "Point") {
           var point = project(geometry.coordinates || [0, 0]);
           return (
-            '<g class="v2-map-feature" data-maps-feature-id="' +
+            '<g class="v2-map-feature" data-cts-gis-feature-id="' +
             escapeHtml(featureId) +
             '">' +
             '<title>' +
@@ -214,7 +214,7 @@
             })
             .join(" ");
           return (
-            '<g class="v2-map-feature" data-maps-feature-id="' +
+            '<g class="v2-map-feature" data-cts-gis-feature-id="' +
             escapeHtml(featureId) +
             '">' +
             '<title>' +
@@ -1389,28 +1389,28 @@
       });
       return;
     }
-    if (kind === "maps_workbench") {
-      var mapsSurface = (lastEnvelope && lastEnvelope.surface_payload) || {};
-      var mapsWarnings = mapsSurface.warnings || wb.warnings || [];
-      var mapsDocumentCatalog = mapsSurface.document_catalog || [];
-      var mapsSelectedDocument = mapsSurface.selected_document || {};
-      var mapsSelectedRow = mapsSurface.selected_row || {};
-      var mapsProjection = mapsSurface.map_projection || {};
-      var mapsSelectedFeature = mapsProjection.selected_feature || {};
-      var mapsLens = mapsSurface.lens_state || wb.lens_state || {};
-      var mapsDiagnosticSummary = mapsSurface.diagnostic_summary || wb.diagnostic_summary || {};
-      var mapsRows = mapsSurface.rows || [];
-      var mapsRequestContract = wb.request_contract || {};
+    if (kind === "cts_gis_workbench") {
+      var ctsGisSurface = (lastEnvelope && lastEnvelope.surface_payload) || {};
+      var ctsGisWarnings = ctsGisSurface.warnings || wb.warnings || [];
+      var ctsGisDocumentCatalog = ctsGisSurface.document_catalog || [];
+      var ctsGisSelectedDocument = ctsGisSurface.selected_document || {};
+      var ctsGisSelectedRow = ctsGisSurface.selected_row || {};
+      var ctsGisProjection = ctsGisSurface.map_projection || {};
+      var ctsGisSelectedFeature = ctsGisProjection.selected_feature || {};
+      var ctsGisLens = ctsGisSurface.lens_state || wb.lens_state || {};
+      var ctsGisDiagnosticSummary = ctsGisSurface.diagnostic_summary || wb.diagnostic_summary || {};
+      var ctsGisRows = ctsGisSurface.rows || [];
+      var ctsGisRequestContract = wb.request_contract || {};
 
-      function mapsRequestBody(patch) {
-        var fixed = mapsRequestContract.fixed_request_fields || {};
+      function ctsGisRequestBody(patch) {
+        var fixed = ctsGisRequestContract.fixed_request_fields || {};
         var bodyOut = {
-          schema: mapsRequestContract.request_schema || "mycite.v2.admin.maps.read_only.request.v1",
-          selected_document_id: mapsSelectedDocument.document_id || "",
-          selected_row_address: mapsSelectedRow.datum_address || "",
-          selected_feature_id: mapsSelectedFeature.feature_id || "",
-          overlay_mode: mapsLens.overlay_mode || "auto",
-          raw_underlay_visible: !!mapsLens.raw_underlay_visible,
+          schema: ctsGisRequestContract.request_schema || "mycite.v2.admin.cts_gis.read_only.request.v1",
+          selected_document_id: ctsGisSelectedDocument.document_id || "",
+          selected_row_address: ctsGisSelectedRow.datum_address || "",
+          selected_feature_id: ctsGisSelectedFeature.feature_id || "",
+          overlay_mode: ctsGisLens.overlay_mode || "auto",
+          raw_underlay_visible: !!ctsGisLens.raw_underlay_visible,
         };
         Object.keys(fixed || {}).forEach(function (key) {
           bodyOut[key] = fixed[key];
@@ -1432,7 +1432,7 @@
             var raw = overlay.raw_value || "";
             var title = overlay.anchor_label || overlay.overlay_family || "value";
             var rawHtml =
-              mapsLens.raw_underlay_visible && raw
+              ctsGisLens.raw_underlay_visible && raw
                 ? '<div><small>raw: <code>' + escapeHtml(raw) + "</code></small></div>"
                 : "";
             return (
@@ -1447,50 +1447,50 @@
           .join("");
       }
 
-      var mapsWarningBlock =
-        mapsWarnings.length > 0
+      var ctsGisWarningBlock =
+        ctsGisWarnings.length > 0
           ? '<div class="v2-card" style="margin-bottom:12px"><h3>Warnings</h3><ul>' +
-            mapsWarnings
+            ctsGisWarnings
               .map(function (warning) {
                 return "<li>" + escapeHtml(String(warning)) + "</li>";
               })
               .join("") +
             "</ul></div>"
           : "";
-      var mapsCards =
+      var ctsGisCards =
         '<div class="v2-card-grid">' +
         '<article class="v2-card"><h3>Projection</h3><p>' +
-        escapeHtml(String(mapsProjection.projection_state || "—").replace(/_/g, " ")) +
+        escapeHtml(String(ctsGisProjection.projection_state || "—").replace(/_/g, " ")) +
         "</p></article>" +
         '<article class="v2-card"><h3>Documents</h3><p>' +
-        escapeHtml(String(mapsDiagnosticSummary.document_count != null ? mapsDiagnosticSummary.document_count : "0")) +
+        escapeHtml(String(ctsGisDiagnosticSummary.document_count != null ? ctsGisDiagnosticSummary.document_count : "0")) +
         "</p></article>" +
         '<article class="v2-card"><h3>Features</h3><p>' +
-        escapeHtml(String(mapsProjection.feature_count != null ? mapsProjection.feature_count : "0")) +
+        escapeHtml(String(ctsGisProjection.feature_count != null ? ctsGisProjection.feature_count : "0")) +
         "</p></article>" +
         '<article class="v2-card"><h3>Rows</h3><p>' +
-        escapeHtml(String(mapsDiagnosticSummary.row_count != null ? mapsDiagnosticSummary.row_count : "0")) +
+        escapeHtml(String(ctsGisDiagnosticSummary.row_count != null ? ctsGisDiagnosticSummary.row_count : "0")) +
         "</p></article>" +
         "</div>";
       var lensHtml =
         '<div class="v2-card" style="margin-top:12px"><h3>Lens</h3>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
-        '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-maps-overlay-mode="auto" style="border-radius:6px' +
-        ((mapsLens.overlay_mode || "auto") === "auto" ? ';font-weight:700' : "") +
+        '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-cts-gis-overlay-mode="auto" style="border-radius:6px' +
+        ((ctsGisLens.overlay_mode || "auto") === "auto" ? ';font-weight:700' : "") +
         '">Auto overlay</button>' +
-        '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-maps-overlay-mode="raw_only" style="border-radius:6px' +
-        ((mapsLens.overlay_mode || "auto") === "raw_only" ? ';font-weight:700' : "") +
+        '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-cts-gis-overlay-mode="raw_only" style="border-radius:6px' +
+        ((ctsGisLens.overlay_mode || "auto") === "raw_only" ? ';font-weight:700' : "") +
         '">Raw only</button>' +
-        '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="v2-maps-raw-underlay-toggle"' +
-        (mapsLens.raw_underlay_visible ? " checked" : "") +
+        '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="v2-cts-gis-raw-underlay-toggle"' +
+        (ctsGisLens.raw_underlay_visible ? " checked" : "") +
         "> show raw values</label></div></div>";
       var documentButtons =
-        mapsDocumentCatalog.length > 0
+        ctsGisDocumentCatalog.length > 0
           ? '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-            mapsDocumentCatalog
+            ctsGisDocumentCatalog
               .map(function (doc) {
                 return (
-                  '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-maps-document-id="' +
+                  '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-cts-gis-document-id="' +
                   escapeHtml(doc.document_id || "") +
                   '" style="border-radius:6px' +
                   (doc.selected ? ';font-weight:700' : "") +
@@ -1503,21 +1503,21 @@
               })
               .join("") +
             "</div>"
-          : "<p>No authoritative maps documents are cataloged for this tenant.</p>";
+          : "<p>No authoritative CTS-GIS documents are cataloged for this tenant.</p>";
       var selectedFeatureHtml =
-        mapsSelectedFeature && mapsSelectedFeature.feature_id
+        ctsGisSelectedFeature && ctsGisSelectedFeature.feature_id
           ? '<section class="v2-card" style="margin-top:12px"><h3>Selected feature</h3><dl class="v2-surface-dl">' +
             "<dt>Feature</dt><dd><code>" +
-            escapeHtml(mapsSelectedFeature.feature_id || "") +
+            escapeHtml(ctsGisSelectedFeature.feature_id || "") +
             "</code></dd><dt>Geometry</dt><dd>" +
-            escapeHtml(mapsSelectedFeature.geometry_type || "—") +
+            escapeHtml(ctsGisSelectedFeature.geometry_type || "—") +
             "</dd><dt>Row</dt><dd><code>" +
-            escapeHtml(mapsSelectedFeature.row_address || "—") +
+            escapeHtml(ctsGisSelectedFeature.row_address || "—") +
             "</code></dd><dt>Label</dt><dd>" +
-            escapeHtml(mapsSelectedFeature.label_text || "—") +
+            escapeHtml(ctsGisSelectedFeature.label_text || "—") +
             "</dd></dl></section>"
           : "";
-      var featureRows = (((mapsProjection.feature_collection || {}).features) || []).slice(0, 24);
+      var featureRows = (((ctsGisProjection.feature_collection || {}).features) || []).slice(0, 24);
       var featureTable =
         featureRows.length > 0
           ? '<section class="v2-card" style="margin-top:12px"><h3>Features</h3><table class="v2-table"><thead><tr><th>Feature</th><th>Geometry</th><th>Row</th><th>Label</th></tr></thead><tbody>' +
@@ -1525,7 +1525,7 @@
               .map(function (feature) {
                 var props = feature.properties || {};
                 return (
-                  "<tr><td><a href=\"#\" data-maps-feature-id=\"" +
+                  "<tr><td><a href=\"#\" data-cts-gis-feature-id=\"" +
                   escapeHtml(feature.id || "") +
                   "\"><code>" +
                   escapeHtml(feature.id || "") +
@@ -1541,13 +1541,13 @@
               .join("") +
             "</tbody></table></section>"
           : "";
-      var rowTableRows = mapsRows.slice(0, 180);
+      var rowTableRows = ctsGisRows.slice(0, 180);
       var rowTable =
         '<section class="v2-card" style="margin-top:12px"><h3>Rows</h3><table class="v2-table"><thead><tr><th>Address</th><th>Labels</th><th>Diagnostics</th><th>Overlay values</th></tr></thead><tbody>' +
         rowTableRows
           .map(function (row) {
             return (
-              "<tr><td><a href=\"#\" data-maps-row-address=\"" +
+              "<tr><td><a href=\"#\" data-cts-gis-row-address=\"" +
               escapeHtml(row.datum_address || "") +
               "\"><code>" +
               escapeHtml(row.datum_address || "") +
@@ -1562,79 +1562,79 @@
           })
           .join("") +
         "</tbody></table>" +
-        (mapsRows.length > rowTableRows.length
+        (ctsGisRows.length > rowTableRows.length
           ? '<p class="ide-controlpanel__empty" style="margin-top:8px">Showing first ' +
             escapeHtml(String(rowTableRows.length)) +
             " of " +
-            escapeHtml(String(mapsRows.length)) +
+            escapeHtml(String(ctsGisRows.length)) +
             " rows.</p>"
           : "") +
         "</section>";
       body.innerHTML =
-        mapsWarningBlock +
-        mapsCards +
+        ctsGisWarningBlock +
+        ctsGisCards +
         lensHtml +
         '<section class="v2-card" style="margin-top:12px"><h3>Documents</h3>' +
         documentButtons +
         "</section>" +
-        renderMapsSvg(mapsProjection) +
+        renderCtsGisSvg(ctsGisProjection) +
         selectedFeatureHtml +
         featureTable +
         rowTable;
 
-      Array.prototype.forEach.call(body.querySelectorAll("[data-maps-document-id]"), function (el) {
+      Array.prototype.forEach.call(body.querySelectorAll("[data-cts-gis-document-id]"), function (el) {
         el.addEventListener("click", function (ev) {
           ev.preventDefault();
           loadRuntimeView(
-            mapsRequestContract.route || "/portal/api/v2/admin/maps/read-only",
-            mapsRequestBody({
-              selected_document_id: el.getAttribute("data-maps-document-id") || "",
+            ctsGisRequestContract.route || "/portal/api/v2/admin/cts-gis/read-only",
+            ctsGisRequestBody({
+              selected_document_id: el.getAttribute("data-cts-gis-document-id") || "",
               selected_row_address: "",
               selected_feature_id: "",
             })
           );
         });
       });
-      Array.prototype.forEach.call(body.querySelectorAll("[data-maps-row-address]"), function (el) {
+      Array.prototype.forEach.call(body.querySelectorAll("[data-cts-gis-row-address]"), function (el) {
         el.addEventListener("click", function (ev) {
           ev.preventDefault();
           loadRuntimeView(
-            mapsRequestContract.route || "/portal/api/v2/admin/maps/read-only",
-            mapsRequestBody({
-              selected_row_address: el.getAttribute("data-maps-row-address") || "",
+            ctsGisRequestContract.route || "/portal/api/v2/admin/cts-gis/read-only",
+            ctsGisRequestBody({
+              selected_row_address: el.getAttribute("data-cts-gis-row-address") || "",
               selected_feature_id: "",
             })
           );
         });
       });
-      Array.prototype.forEach.call(body.querySelectorAll("[data-maps-feature-id]"), function (el) {
+      Array.prototype.forEach.call(body.querySelectorAll("[data-cts-gis-feature-id]"), function (el) {
         el.addEventListener("click", function (ev) {
           ev.preventDefault();
           loadRuntimeView(
-            mapsRequestContract.route || "/portal/api/v2/admin/maps/read-only",
-            mapsRequestBody({
-              selected_feature_id: el.getAttribute("data-maps-feature-id") || "",
+            ctsGisRequestContract.route || "/portal/api/v2/admin/cts-gis/read-only",
+            ctsGisRequestBody({
+              selected_feature_id: el.getAttribute("data-cts-gis-feature-id") || "",
             })
           );
         });
       });
-      Array.prototype.forEach.call(body.querySelectorAll("[data-maps-overlay-mode]"), function (el) {
+      Array.prototype.forEach.call(body.querySelectorAll("[data-cts-gis-overlay-mode]"), function (el) {
         el.addEventListener("click", function (ev) {
           ev.preventDefault();
           loadRuntimeView(
-            mapsRequestContract.route || "/portal/api/v2/admin/maps/read-only",
-            mapsRequestBody({
-              overlay_mode: el.getAttribute("data-maps-overlay-mode") || "auto",
+            ctsGisRequestContract.route || "/portal/api/v2/admin/cts-gis/read-only",
+            ctsGisRequestBody({
+              overlay_mode: el.getAttribute("data-cts-gis-overlay-mode") || "auto",
             })
           );
         });
       });
-      var rawToggle = document.getElementById("v2-maps-raw-underlay-toggle");
+      var rawToggle = document.getElementById("v2-cts-gis-raw-underlay-toggle");
       if (rawToggle) {
         rawToggle.addEventListener("change", function () {
           loadRuntimeView(
-            mapsRequestContract.route || "/portal/api/v2/admin/maps/read-only",
-            mapsRequestBody({
+            ctsGisRequestContract.route || "/portal/api/v2/admin/cts-gis/read-only",
+            ctsGisRequestBody({
               raw_underlay_visible: !!rawToggle.checked,
             })
           );
@@ -1713,7 +1713,7 @@
           : "");
       return;
     }
-    if (kind === "maps_summary") {
+    if (kind === "cts_gis_summary") {
       var mapSurface = (lastEnvelope && lastEnvelope.surface_payload) || {};
       var mapSelectedDocument = mapSurface.selected_document || {};
       var mapSelectedFeature = (mapSurface.map_projection || {}).selected_feature || {};

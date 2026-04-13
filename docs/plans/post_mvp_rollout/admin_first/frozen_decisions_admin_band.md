@@ -16,8 +16,8 @@ This file records what remains deliberately frozen during the admin-first track.
 - The admin runtime envelope comes before any trusted-tenant admin exposure.
 - The admin home/status surface comes before the tool registry/launcher surface.
 - The tool registry/launcher surface comes before AWS.
-- AWS comes before Maps.
-- Maps comes before AGRO-ERP.
+- AWS comes before CTS-GIS.
+- CTS-GIS comes before AGRO-ERP.
 - `newsletter-admin` stays retired as a standalone admin surface.
 - No PayPal, analytics, keycloak, progeny workbench, or sandbox surface may displace AWS in the admin-first path.
 - No tool may bypass the shell-owned registry/launcher.

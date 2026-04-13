@@ -8,7 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.packages.modules.cross_domain.maps import MapsReadOnlyService
+from MyCiteV2.packages.modules.cross_domain.cts_gis import CtsGisReadOnlyService
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
@@ -33,7 +33,7 @@ def _anchor_row(address: str, label: str) -> AuthoritativeDatumDocumentRow:
     )
 
 
-def _maps_document() -> AuthoritativeDatumDocument:
+def _cts_gis_document() -> AuthoritativeDatumDocument:
     title_binary = (
         "011100110111010101101101011011010110100101110100"
         "0000000000000000"
@@ -92,18 +92,18 @@ def _maps_document() -> AuthoritativeDatumDocument:
     )
 
 
-class MapsReadOnlyUnitTests(unittest.TestCase):
+class CtsGisReadOnlyUnitTests(unittest.TestCase):
     def test_builds_point_and_polygon_features_and_title_overlay(self) -> None:
         store = _FakeDatumStore(
             AuthoritativeDatumDocumentCatalogResult(
                 tenant_id="fnd",
-                documents=(_maps_document(),),
+                documents=(_cts_gis_document(),),
                 source_files={},
                 readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
             )
         )
 
-        surface = MapsReadOnlyService(store).read_surface("fnd")
+        surface = CtsGisReadOnlyService(store).read_surface("fnd")
 
         self.assertEqual(surface["map_projection"]["projection_state"], "projectable")
         self.assertEqual(surface["map_projection"]["feature_count"], 2)
@@ -123,7 +123,7 @@ class MapsReadOnlyUnitTests(unittest.TestCase):
         self.assertEqual(bad_title_overlay["display_value"], "HERE")
         self.assertIn("illegal_magnitude_literal", bad_row["diagnostic_states"])
 
-    def test_reports_no_authoritative_maps_documents_with_fallback_document(self) -> None:
+    def test_reports_no_authoritative_cts_gis_documents_with_fallback_document(self) -> None:
         system_document = AuthoritativeDatumDocument(
             document_id="system:anthology",
             source_kind="system_anthology",
@@ -145,10 +145,10 @@ class MapsReadOnlyUnitTests(unittest.TestCase):
             )
         )
 
-        surface = MapsReadOnlyService(store).read_surface("tff")
+        surface = CtsGisReadOnlyService(store).read_surface("tff")
 
         self.assertEqual(surface["document_catalog"], [])
-        self.assertEqual(surface["map_projection"]["projection_state"], "no_authoritative_maps_documents")
+        self.assertEqual(surface["map_projection"]["projection_state"], "no_authoritative_cts_gis_documents")
         self.assertEqual(surface["map_projection"]["feature_count"], 0)
         self.assertEqual(surface["selected_document"]["document_name"], "anthology.json")
         self.assertTrue(surface["warnings"])

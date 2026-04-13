@@ -34,7 +34,7 @@ Audience: later decision
 ## Admin activity-bar behavior
 
 - Hidden and blocked by default.
-- No activity-bar item until PayPal is explicitly reopened after AWS, Maps, and
+- No activity-bar item until PayPal is explicitly reopened after AWS, CTS-GIS, and
   AGRO follow-on work.
 
 ## Carry-forward and do-not-carry-forward

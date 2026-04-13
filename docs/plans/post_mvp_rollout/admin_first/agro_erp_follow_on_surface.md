@@ -2,18 +2,18 @@
 
 Authority: [../../v2-authority_stack.md](../../v2-authority_stack.md)
 
-This file defines what must be true before AGRO-ERP work begins after Maps.
+This file defines what must be true before AGRO-ERP work begins after CTS-GIS.
 
 ## Sequence rule
 
-AGRO-ERP follows Maps.
+AGRO-ERP follows CTS-GIS.
 
 It does not displace AWS.
-It does not start in parallel with the first Maps reopening.
+It does not start in parallel with the first CTS-GIS reopening.
 
 ## Why AGRO-ERP waits
 
-AGRO-ERP carries more structural breadth than AWS and Maps:
+AGRO-ERP carries more structural breadth than AWS and CTS-GIS:
 
 - tool-bearing mediation
 - HOPS and time-address dependence
@@ -27,7 +27,7 @@ That makes it a poor first operational replacement target.
 - the admin shell, runtime envelope, and registry/launcher are stable
 - the AWS-first path is proven
 - the post-AWS tool platform is stable
-- the first Maps slice is proven or at least implemented internally
+- the first CTS-GIS slice is proven or at least implemented internally
 - AGRO-ERP has its own slice file and gate record
 - any HOPS or time-projection seams needed for AGRO are explicitly approved
 - utility-anchor drift is not reintroduced as a shortcut

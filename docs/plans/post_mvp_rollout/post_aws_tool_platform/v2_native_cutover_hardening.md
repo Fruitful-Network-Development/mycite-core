@@ -217,4 +217,4 @@ This plan is complete when:
 
 - broad V1 parity restoration
 - new bridge-only route growth
-- Maps, AGRO-ERP, or unrelated follow-on tool work before hardening minimums pass
+- CTS-GIS, AGRO-ERP, or unrelated follow-on tool work before hardening minimums pass

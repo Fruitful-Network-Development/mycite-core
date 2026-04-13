@@ -173,7 +173,7 @@ Read first:
 Implement only the bounded tool-bearing slice named in the slice file.
 Use:
 - `aws_first_surface.md` for AWS work
-- `maps_follow_on_surface.md` for Maps work
+- `cts_gis_follow_on_surface.md` for CTS-GIS work
 - `agro_erp_follow_on_surface.md` for AGRO-ERP work
 Do not add direct tool routes, a second shell entry, or flavor-specific runtime code.
 Return exact files changed, tests run, the runtime entrypoint touched, and remaining blockers.

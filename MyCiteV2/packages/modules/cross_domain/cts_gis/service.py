@@ -40,7 +40,7 @@ def _binding_family(anchor_label: object) -> str:
 def _normalize_overlay_mode(value: object) -> str:
     mode = _as_lower(value) or "auto"
     if mode not in _VALID_OVERLAY_MODES:
-        raise ValueError("maps.overlay_mode must be auto or raw_only")
+        raise ValueError("cts_gis.overlay_mode must be auto or raw_only")
     return mode
 
 
@@ -48,7 +48,7 @@ def _normalize_raw_underlay_visible(value: object) -> bool:
     if value is None:
         return False
     if not isinstance(value, bool):
-        raise ValueError("maps.raw_underlay_visible must be a bool when provided")
+        raise ValueError("cts_gis.raw_underlay_visible must be a bool when provided")
     return value
 
 
@@ -334,7 +334,7 @@ def _row_summary(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-class MapsReadOnlyService:
+class CtsGisReadOnlyService:
     def __init__(self, datum_store: AuthoritativeDatumDocumentPort | None) -> None:
         self._datum_store = datum_store
 
@@ -349,16 +349,16 @@ class MapsReadOnlyService:
         raw_underlay_visible: object = False,
     ) -> dict[str, Any]:
         if self._datum_store is None:
-            raise ValueError("maps.datum_store is not configured")
+            raise ValueError("cts_gis.datum_store is not configured")
 
         normalized_overlay_mode = _normalize_overlay_mode(overlay_mode)
         normalized_raw_underlay = _normalize_raw_underlay_visible(raw_underlay_visible)
         workbench = DatumWorkbenchService(self._datum_store).read_workbench(_as_text(tenant_id) or "fnd")
 
-        maps_documents = [
+        cts_gis_documents = [
             document
             for document in workbench.documents
-            if document.source_kind == "sandbox_source" and document.tool_id == "maps"
+            if document.source_kind == "sandbox_source" and document.tool_id in {"maps", "cts_gis"}
         ]
         projection_cache: dict[str, dict[str, Any]] = {}
 
@@ -373,14 +373,14 @@ class MapsReadOnlyService:
         selected_document: DatumRecognitionDocument | None = None
         requested_document_id = _as_text(selected_document_id)
         if requested_document_id:
-            for document in (*maps_documents, *workbench.documents):
+            for document in (*cts_gis_documents, *workbench.documents):
                 if document.document_id == requested_document_id:
                     selected_document = document
                     break
         if selected_document is None:
             first_projectable: DatumRecognitionDocument | None = None
             first_diagnostic: DatumRecognitionDocument | None = None
-            for document in maps_documents:
+            for document in cts_gis_documents:
                 if first_diagnostic is None and document.diagnostic_row_count > 0:
                     first_diagnostic = document
                 if project(document)["map_projection"]["feature_count"] > 0:
@@ -390,8 +390,8 @@ class MapsReadOnlyService:
                 selected_document = first_projectable
             elif first_diagnostic is not None:
                 selected_document = first_diagnostic
-            elif maps_documents:
-                selected_document = maps_documents[0]
+            elif cts_gis_documents:
+                selected_document = cts_gis_documents[0]
             else:
                 selected_document = workbench.selected_document
 
@@ -425,9 +425,9 @@ class MapsReadOnlyService:
             for feature in feature_collection.get("features") or []
         ]
 
-        projection_state = "no_authoritative_maps_documents"
+        projection_state = "no_authoritative_cts_gis_documents"
         feature_count = 0
-        if maps_documents:
+        if cts_gis_documents:
             projection_state = (
                 _as_text((selected_projection or {}).get("map_projection", {}).get("projection_state"))
                 or "inspect_only"
@@ -435,7 +435,7 @@ class MapsReadOnlyService:
             feature_count = len(selected_features)
 
         document_catalog = []
-        for document in maps_documents:
+        for document in cts_gis_documents:
             if selected_document is not None and document.document_id == selected_document.document_id and selected_projection is not None:
                 summary = dict(selected_projection["document_summary"])
             else:
@@ -448,8 +448,8 @@ class MapsReadOnlyService:
         warnings = list(workbench.warnings)
         if selected_document is not None:
             warnings.extend(selected_document.warnings)
-        if not maps_documents:
-            warnings.append("No authoritative sandbox maps documents were available for the current tenant.")
+        if not cts_gis_documents:
+            warnings.append("No authoritative sandbox CTS-GIS documents were available for the current tenant.")
         warnings = list(dict.fromkeys(_as_text(item) for item in warnings if _as_text(item)))
 
         selected_document_summary = None
@@ -472,7 +472,7 @@ class MapsReadOnlyService:
             },
             "rows": [_row_summary(row) for row in selected_rows],
             "diagnostic_summary": {
-                "document_count": len(maps_documents),
+                "document_count": len(cts_gis_documents),
                 "selected_document_id": _as_text((selected_document_summary or {}).get("document_id")),
                 "selected_row_address": selected_row_address_text,
                 "selected_feature_id": selected_feature_id_text,

@@ -76,7 +76,7 @@ Historical gate result:
 
 ## Out of scope
 
-- Maps
+- CTS-GIS
 - AGRO-ERP
 - PayPal
 - analytics

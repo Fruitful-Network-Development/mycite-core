@@ -104,7 +104,7 @@ class AdminAwsCsmOnboardingRuntimeIntegrationTests(unittest.TestCase):
             profile_file.write_text(json.dumps(_live_profile_tenant_a()) + "\n", encoding="utf-8")
             tool_exposure_policy = build_admin_tool_exposure_policy(
                 {"aws_csm_onboarding": {"enabled": True}},
-                known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "maps"],
+                known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"],
             )
 
             registry_result = run_admin_shell_entry(

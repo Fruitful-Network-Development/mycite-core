@@ -55,7 +55,7 @@ Use this checklist when deciding whether a slice is ready for implementation or 
 - [ ] The admin shell remains the only stable landing surface
 - [ ] The tool registry/launcher owns discoverability and launch resolution
 - [ ] No direct tool route bypasses the shell
-- [ ] AWS precedes Maps and Maps precedes AGRO-ERP where relevant
+- [ ] AWS precedes CTS-GIS and CTS-GIS precedes AGRO-ERP where relevant
 
 ## Decision
 

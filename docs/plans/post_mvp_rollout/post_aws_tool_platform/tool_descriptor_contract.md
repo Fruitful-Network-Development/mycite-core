@@ -13,6 +13,7 @@ Every future admin tool descriptor must serialize these fields:
 - `label`
 - `slice_id`
 - `entrypoint_id`
+- `tool_kind`
 - `admin_band`
 - `exposure_status`
 - `read_write_posture`
@@ -20,6 +21,7 @@ Every future admin tool descriptor must serialize these fields:
 - `status_summary`
 - `audience`
 - `internal_only_reason`
+- `shared_portal_capabilities`
 - `audit_required`
 - `read_after_write_required`
 - `discovery_mode`
@@ -32,6 +34,9 @@ Every future admin tool descriptor must serialize these fields:
 - `discovery_mode` is always `catalog-driven`.
 - `launch_contract` is always `shell-owned-registry`.
 - `default_posture` is always `deny-by-default`.
+- `tool_kind` must be one of `general_tool`, `service_tool`, or
+  `host_alias_tool`.
+- `default_tool` is forbidden vocabulary.
 - `read_write_posture=read-only` requires `surface_pattern=read-only`.
 - `read_write_posture=write` requires `surface_pattern=bounded-write`.
 - writable descriptors must require both accepted-write audit and read-after-write confirmation.
@@ -45,6 +50,7 @@ Checklist:
 - create or update the slice file in `docs/plans/post_mvp_rollout/slice_registry/`
 - add exactly one `AdminToolRegistryEntry`
 - add exactly one runtime entrypoint descriptor
+- classify the tool with `tool_kind`
 - keep launch legality in `resolve_admin_tool_launch`
 - add tests for descriptor shape, launch allow/deny, and runtime catalog consistency
 
@@ -55,3 +61,4 @@ Checklist:
 - no provider route as descriptor source truth
 - no mixed provider descriptor that hides multiple tools behind one entry
 - no writable descriptor without audit and read-after-write confirmation
+- no `default_tool` reintroduction

@@ -72,7 +72,7 @@ class AdminAwsCsmSandboxRuntimeIntegrationTests(unittest.TestCase):
         entries = list(build_admin_tool_registry_entries())
         self.assertEqual(len(entries), 5)
         ids = [e.tool_id for e in entries]
-        self.assertEqual(ids, ["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "maps"])
+        self.assertEqual(ids, ["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"])
         sandbox = entries[2]
         self.assertEqual(sandbox.slice_id, AWS_CSM_SANDBOX_SLICE_ID)
         self.assertEqual(sandbox.entrypoint_id, AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID)
@@ -137,7 +137,7 @@ class AdminAwsCsmSandboxRuntimeIntegrationTests(unittest.TestCase):
     def test_disabled_sandbox_returns_tool_not_exposed_before_path_validation(self) -> None:
         policy = build_admin_tool_exposure_policy(
             {"aws_csm_sandbox": {"enabled": False}},
-            known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "maps"],
+            known_tool_ids=["aws", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis"],
         )
 
         result = run_admin_aws_csm_sandbox_read_only(

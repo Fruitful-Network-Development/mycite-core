@@ -14,7 +14,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA,
     ADMIN_RUNTIME_REQUIRED_ENVELOPE_KEYS,
     ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT,
-    ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA,
+    ADMIN_CTS_GIS_READ_ONLY_SURFACE_SCHEMA,
     build_admin_runtime_entrypoint_catalog,
     build_admin_runtime_envelope,
     build_admin_runtime_error,
@@ -23,13 +23,15 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_ENTRYPOINT_ID,
     ADMIN_TOOL_DESCRIPTOR_SCHEMA,
+    ADMIN_TOOL_KIND_GENERAL,
+    ADMIN_TOOL_KIND_SERVICE,
     ADMIN_TOOL_LAUNCH_CONTRACT,
     AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
     AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
     AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
-    MAPS_READ_ONLY_ENTRYPOINT_ID,
+    CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
     AdminToolRegistryEntry,
     build_admin_tool_registry_entries,
 )
@@ -44,18 +46,25 @@ class AdminToolPlatformContractTests(unittest.TestCase):
         self.assertTrue(all(entry["launch_contract"] == ADMIN_TOOL_LAUNCH_CONTRACT for entry in entries))
         self.assertTrue(all(entry["default_posture"] == "deny-by-default" for entry in entries))
         self.assertEqual(entries[0]["surface_pattern"], "read-only")
+        self.assertEqual(entries[0]["tool_kind"], ADMIN_TOOL_KIND_SERVICE)
+        self.assertEqual(entries[0]["shared_portal_capabilities"], ["external_service_binding"])
         self.assertFalse(entries[0]["audit_required"])
         self.assertFalse(entries[0]["read_after_write_required"])
         self.assertEqual(entries[1]["surface_pattern"], "bounded-write")
+        self.assertEqual(entries[1]["tool_kind"], ADMIN_TOOL_KIND_SERVICE)
         self.assertTrue(entries[1]["audit_required"])
         self.assertTrue(entries[1]["read_after_write_required"])
         self.assertEqual(entries[2]["surface_pattern"], "read-only")
+        self.assertEqual(entries[2]["tool_kind"], ADMIN_TOOL_KIND_SERVICE)
         self.assertEqual(entries[2]["audience"], "internal-admin")
         self.assertEqual(entries[3]["surface_pattern"], "bounded-write")
+        self.assertEqual(entries[3]["tool_kind"], ADMIN_TOOL_KIND_SERVICE)
         self.assertTrue(entries[3]["audit_required"])
         self.assertTrue(entries[3]["read_after_write_required"])
         self.assertEqual(entries[3]["audience"], "trusted-tenant-admin")
         self.assertEqual(entries[4]["surface_pattern"], "read-only")
+        self.assertEqual(entries[4]["tool_kind"], ADMIN_TOOL_KIND_GENERAL)
+        self.assertEqual(entries[4]["tool_id"], "cts_gis")
         self.assertFalse(entries[4]["audit_required"])
         self.assertFalse(entries[4]["read_after_write_required"])
         self.assertEqual(entries[4]["audience"], "internal-admin")
@@ -68,12 +77,30 @@ class AdminToolPlatformContractTests(unittest.TestCase):
                 label="Future Tool",
                 slice_id="future.slice",
                 entrypoint_id="future.entrypoint",
+                tool_kind=ADMIN_TOOL_KIND_SERVICE,
                 admin_band="Future Band",
                 exposure_status="candidate",
                 read_write_posture="write",
                 surface_pattern="bounded-write",
                 status_summary="not_ready",
                 audience="trusted-tenant-admin",
+                internal_only_reason="not implemented",
+            )
+
+    def test_descriptor_rejects_default_tool_vocabulary_for_tool_kind(self) -> None:
+        with self.assertRaisesRegex(ValueError, "default_tool is forbidden"):
+            AdminToolRegistryEntry(
+                tool_id="future",
+                label="Future Tool",
+                slice_id="future.slice",
+                entrypoint_id="future.entrypoint",
+                tool_kind="default_tool",
+                admin_band="Future Band",
+                exposure_status="candidate",
+                read_write_posture="read-only",
+                surface_pattern="read-only",
+                status_summary="not_ready",
+                audience="internal-admin",
                 internal_only_reason="not implemented",
             )
 
@@ -90,21 +117,29 @@ class AdminToolPlatformContractTests(unittest.TestCase):
                 AWS_NARROW_WRITE_ENTRYPOINT_ID,
                 AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
                 AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
-                MAPS_READ_ONLY_ENTRYPOINT_ID,
+                CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
             ],
         )
         self.assertEqual(descriptors[0]["launch_contract"], ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT)
+        self.assertIsNone(descriptors[0]["tool_kind"])
+        self.assertEqual(descriptors[0]["shared_portal_capabilities"], [])
         self.assertEqual(descriptors[1]["launch_contract"], ADMIN_TOOL_LAUNCH_CONTRACT)
+        self.assertEqual(descriptors[1]["tool_kind"], ADMIN_TOOL_KIND_SERVICE)
         self.assertEqual(descriptors[1]["required_configuration"], ["aws_status_file", "private_dir"])
         self.assertEqual(descriptors[2]["surface_pattern"], "read-only")
+        self.assertEqual(descriptors[2]["tool_kind"], ADMIN_TOOL_KIND_SERVICE)
         self.assertEqual(descriptors[3]["surface_pattern"], "bounded-write")
+        self.assertEqual(descriptors[3]["tool_kind"], ADMIN_TOOL_KIND_SERVICE)
         self.assertEqual(descriptors[3]["required_configuration"], ["aws_status_file", "audit_storage_file"])
         self.assertEqual(descriptors[4]["entrypoint_id"], AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID)
+        self.assertEqual(descriptors[4]["tool_kind"], ADMIN_TOOL_KIND_SERVICE)
         self.assertEqual(descriptors[4]["required_configuration"], ["aws_csm_sandbox_status_file"])
         self.assertEqual(descriptors[5]["entrypoint_id"], AWS_CSM_ONBOARDING_ENTRYPOINT_ID)
+        self.assertEqual(descriptors[5]["tool_kind"], ADMIN_TOOL_KIND_SERVICE)
         self.assertEqual(descriptors[5]["required_configuration"], ["aws_status_file", "audit_storage_file"])
-        self.assertEqual(descriptors[6]["entrypoint_id"], MAPS_READ_ONLY_ENTRYPOINT_ID)
-        self.assertEqual(descriptors[6]["surface_schema"], ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA)
+        self.assertEqual(descriptors[6]["entrypoint_id"], CTS_GIS_READ_ONLY_ENTRYPOINT_ID)
+        self.assertEqual(descriptors[6]["tool_kind"], ADMIN_TOOL_KIND_GENERAL)
+        self.assertEqual(descriptors[6]["surface_schema"], ADMIN_CTS_GIS_READ_ONLY_SURFACE_SCHEMA)
         self.assertEqual(descriptors[6]["required_configuration"], ["data_dir"])
         self.assertEqual(json.loads(json.dumps(descriptors, sort_keys=True)), descriptors)
         self.assertIsNone(resolve_admin_runtime_entrypoint("missing.entrypoint"))
@@ -113,8 +148,8 @@ class AdminToolPlatformContractTests(unittest.TestCase):
             AWS_NARROW_WRITE_ENTRYPOINT_ID,
         )
         self.assertEqual(
-            resolve_admin_runtime_entrypoint(MAPS_READ_ONLY_ENTRYPOINT_ID).entrypoint_id,
-            MAPS_READ_ONLY_ENTRYPOINT_ID,
+            resolve_admin_runtime_entrypoint(CTS_GIS_READ_ONLY_ENTRYPOINT_ID).entrypoint_id,
+            CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
         )
 
     def test_shared_runtime_envelope_shape_is_fixed(self) -> None:

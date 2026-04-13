@@ -26,7 +26,7 @@ Operational replacement of the old admin portal uses the nested admin-first trac
 - `Admin Band 1` nests under `Band 1 Trusted-Tenant Read-Only`.
 - `Admin Band 2` nests under `Band 2 Trusted-Tenant Writable Slice`.
 
-That track does not bypass the global bands. It specifies the order for admin shell, registry, AWS, Maps, and AGRO work inside them.
+That track does not bypass the global bands. It specifies the order for admin shell, registry, AWS, CTS-GIS, and AGRO work inside them.
 
 ## Band 0: Internal Only
 

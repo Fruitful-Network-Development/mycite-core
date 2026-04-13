@@ -2,41 +2,19 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
-Packet role: `held-out leftover`\
-Queue posture: `outside the narrowed near-term set`
+Packet role: `retired placeholder`\
+Queue posture: `contracts-first hosted/network work`
 
-Disposition: `defer`  
-V2 tool id target: `tenant_progeny_profiles`  
-Config gate target: `tool_exposure.tenant_progeny_profiles`  
-Audience: later decision
+## Current authority
 
-## Current code, docs, and live presence
+Use:
 
-- Current code: no V2 `tenant_progeny_profiles` tool exists.
-- Legacy evidence: V1 portal surfaces and services still exist.
-- Current V2 direction: profile basics write exists, but broader progeny
-  workspace decisions remain frozen or deferred.
+- [../../contracts/host_alias_and_portal_instance_contract.md](../../contracts/host_alias_and_portal_instance_contract.md)
+- [../../contracts/network_operation_and_p2p_boundary.md](../../contracts/network_operation_and_p2p_boundary.md)
 
-## Reusable evidence vs legacy baggage
+## Rework status
 
-- Reusable evidence: profile-summary and tenant/progeny management needs.
-- Legacy baggage: broad workspace/admin coupling and legacy hosted/progeny
-  assumptions.
-
-## Required V2 owner layers and dependencies
-
-- A future V2 version needs explicit domain ownership for hosted/progeny
-  workspace state before any tool is approved.
-- It should build on the publication-backed profile and tenant summary seams,
-  not the V1 service layout.
-- No runtime entrypoint is approved in the current band.
-
-## Admin activity-bar behavior
-
-- Hidden and blocked by default.
-- No activity-bar item until hosted/progeny decisions are reopened.
-
-## Carry-forward and do-not-carry-forward
-
-- Defer until hosted/progeny domain work is explicitly approved.
-- Do not use this tool name to smuggle back the old progeny workbench.
+- no V2 `tenant_progeny_profiles` tool is approved
+- no `tool_exposure.tenant_progeny_profiles` gate is active
+- hosted/progeny work must start from portal-instance, host-alias, progeny-link,
+  and P2P contracts instead of reviving the old progeny workbench name

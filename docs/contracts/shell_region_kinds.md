@@ -35,7 +35,7 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 | `composition_mode` | yes | `"tool"` or `"system"` from `shell_composition_mode_for_surface(active_surface_id)`. This is now a semantic hint only; it no longer swaps the shell into a tool-only layout. |
 | `active_service` | yes | `"system"`, `"network"`, or `"utilities"` from `map_surface_to_active_service`. This is now a root-service identifier, not a per-tool family label. |
 | `active_surface_id` | yes | Resolved active surface slice id (text). |
-| `active_tool_slice_id` | conditional | Non-null only when `composition_mode == "tool"`; equals the active tool slice id for the current AWS or Maps tool surface. |
+| `active_tool_slice_id` | conditional | Non-null only when `composition_mode == "tool"`; equals the active tool slice id for the current AWS or CTS-GIS tool surface. |
 | `foreground_shell_region` | yes | Currently `"center-workbench"` for both root and tool surfaces. The workbench remains the primary surface even when a tool is active. |
 | `control_panel_collapsed` | yes | Boolean; parameter to `build_shell_composition_payload`, may be overridden by chrome. |
 | `inspector_collapsed` | yes | Base shell state is collapsed by default; client chrome may explicitly open it. |
@@ -88,6 +88,7 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 | `href` | optional | Canonical deep-link path for the root or tool. |
 | `entrypoint_id` | optional | Present on tool registry entries from catalog. |
 | `read_write_posture` | optional | Present on tool entries (`read-only` or `write`). |
+| `tool_kind` | optional | Present on tool entries only; root services are not tools. |
 
 **Client branch:** `renderActivityItems` in `v2_portal_shell.js` — builds compact icon + visible-label links; dispatches `loadShell(item.shell_request)` on click.
 
@@ -162,7 +163,7 @@ Workbench payloads use `schema: mycite.v2.admin.shell.region.workbench.v1` (`ADM
 | `datum_workbench` | `schema`, `kind`, `title`, `visible`, `summary`, `warnings`, `documents`, `rows_preview` | `subtitle` | `_workbench_datum` | Summary cards, authoritative document catalog, selected-document diagnostics, preview table columns `datum_address`, `recognized_family`, `diagnostic_states`, `primary_value_token`, and compact reference bindings |
 | `aws_csm_family_workbench` | `schema`, `kind`, `title`, `visible`, `family_health`, `domain_states` | `subtitle`, `selected_domain_state`, `selected_author`, `subsurface_navigation`, `gated_subsurfaces` | `_workbench_aws_csm_family` | Main AWS-CSM family landing in the workbench; interface panel remains secondary |
 | `aws_csm_subsurface_workbench` | `schema`, `kind`, `title`, `visible`, `mode`, `help_text`, `profile_summary` | `subtitle`, `selected_verified_sender`, `mailbox_readiness`, `compatibility_warnings`, `submit_route` | `_workbench_aws_subsurface` | AWS subordinate slice context in the workbench, with the interface panel opened only when the operator chooses to |
-| `maps_workbench` | `schema`, `kind`, `title`, `visible`, `request_contract` | `subtitle`, `warnings`, `diagnostic_summary`, `lens_state`, `selected_document_id`, `selected_row_address`, `selected_feature_id`, `render_from_surface_payload` | `build_admin_maps_workbench` in `admin_maps_runtime.py`; `run_admin_shell_entry` maps branch | Geographic pane + document chooser + rows/feature cross-selection, with heavy maps state read from the canonical `surface_payload` rather than duplicated shell-region payloads |
+| `cts_gis_workbench` | `schema`, `kind`, `title`, `visible`, `request_contract` | `subtitle`, `warnings`, `diagnostic_summary`, `lens_state`, `selected_document_id`, `selected_row_address`, `selected_feature_id`, `render_from_surface_payload` | `build_admin_cts_gis_workbench` in `admin_cts_gis_runtime.py`; `run_admin_shell_entry` CTS-GIS branch | Geographic pane + document chooser + rows/feature cross-selection, with heavy CTS-GIS state read from the canonical `surface_payload` rather than duplicated shell-region payloads |
 
 ### Workbench presentation note
 
@@ -182,7 +183,7 @@ Inspector payloads use `schema: mycite.v2.admin.shell.region.inspector.v1` (`ADM
 | `aws_tool_error` | `schema`, `kind`, `title`, `error_code`, `error_message`, `warnings` | — | `_inspector_aws_tool_error` | Error card + warnings list |
 | `narrow_write_form` | `schema`, `kind`, `title`, `read_only_context`, `submit_contract` | — | `_inspector_narrow_write_form` | Form + POST to `submit_contract.route` with schema and fixed fields |
 | `csm_onboarding_form` | `schema`, `kind`, `title`, `read_only_context`, `submit_contract`, `onboarding_action_options` | — | `_inspector_csm_onboarding_form` | Select + `profile_id` + POST to `/portal/api/v2/admin/aws/csm-onboarding` using server-issued schema and fixed `tenant_scope` / `focus_subject` |
-| `maps_summary` | `schema`, `kind`, `title`, `render_from_surface_payload` | `warnings` | `build_admin_maps_inspector` in `admin_maps_runtime.py` | Selected document / feature / row summary for the maps slice, with the client reading the heavy detail from the canonical `surface_payload` |
+| `cts_gis_summary` | `schema`, `kind`, `title`, `render_from_surface_payload` | `warnings` | `build_admin_cts_gis_inspector` in `admin_cts_gis_runtime.py` | Selected document / feature / row summary for the CTS-GIS slice, with the client reading the heavy detail from the canonical `surface_payload` |
 | `network_summary` | `schema`, `kind`, `title`, `network_state`, `summary`, `notes` | — | `_inspector_network` | Lightweight hosted/network follow-on summary |
 
 ### `json_document` inspector kind
