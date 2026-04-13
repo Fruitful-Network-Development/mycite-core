@@ -13,6 +13,8 @@ typing, and network/domain boundaries.
   tool split.
 - [admin_cts_gis_read_only_surface.md](admin_cts_gis_read_only_surface.md)
   defines the live CTS-GIS read-only surface contract.
+- [cts_gis_hops_projection_lens_contract.md](cts_gis_hops_projection_lens_contract.md)
+  defines the CTS-GIS SAMRAS/HOPS mediation and projection boundary.
 - [admin_fnd_ebi_read_only_surface.md](admin_fnd_ebi_read_only_surface.md)
   defines the live FND-EBI read-only visibility surface contract.
 - [admin_network_root_read_model.md](admin_network_root_read_model.md)

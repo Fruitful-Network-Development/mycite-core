@@ -187,9 +187,14 @@
         var props = feature.properties || {};
         var featureId = feature.id || "";
         var selected = !!feature.selected;
-        var stroke = selected ? "#0b57d0" : "#285943";
-        var fill = selected ? "rgba(11,87,208,0.28)" : "rgba(40,89,67,0.18)";
-        var title = escapeHtml(props.label_text || featureId || "feature");
+        var attentionMember = !!props.attention_member;
+        var stroke = selected ? "#0b57d0" : attentionMember ? "#9a5b00" : "#285943";
+        var fill = selected
+          ? "rgba(11,87,208,0.28)"
+          : attentionMember
+          ? "rgba(154,91,0,0.22)"
+          : "rgba(40,89,67,0.18)";
+        var title = escapeHtml(props.profile_label || props.label_text || featureId || "feature");
         if (geometry.type === "Point") {
           var point = project(geometry.coordinates || [0, 0]);
           return (
@@ -1481,9 +1486,17 @@
       var ctsGisWarnings = ctsGisSurface.warnings || wb.warnings || [];
       var ctsGisDocumentCatalog = ctsGisSurface.document_catalog || [];
       var ctsGisSelectedDocument = ctsGisSurface.selected_document || {};
+      var ctsGisAttentionProfile = ctsGisSurface.attention_profile || {};
+      var ctsGisLineage = ctsGisSurface.lineage || [];
+      var ctsGisChildren = ctsGisSurface.children || [];
+      var ctsGisRelatedProfiles = ctsGisSurface.related_profiles || [];
+      var ctsGisRenderSetSummary = ctsGisSurface.render_set_summary || {};
       var ctsGisSelectedRow = ctsGisSurface.selected_row || {};
       var ctsGisProjection = ctsGisSurface.map_projection || {};
       var ctsGisSelectedFeature = ctsGisProjection.selected_feature || {};
+      var ctsGisMediation = ctsGisSurface.mediation_state || wb.mediation_state || {};
+      var ctsGisAvailableIntentions = ctsGisMediation.available_intentions || [];
+      var ctsGisSelectionSummary = ctsGisMediation.selection_summary || {};
       var ctsGisLens = ctsGisSurface.lens_state || wb.lens_state || {};
       var ctsGisDiagnosticSummary = ctsGisSurface.diagnostic_summary || wb.diagnostic_summary || {};
       var ctsGisRows = ctsGisSurface.rows || [];
@@ -1491,20 +1504,41 @@
 
       function ctsGisRequestBody(patch) {
         var fixed = ctsGisRequestContract.fixed_request_fields || {};
+        var baseMediationState = {
+          attention_document_id: ctsGisMediation.attention_document_id || ctsGisSelectedDocument.document_id || "",
+          attention_node_id: ctsGisMediation.attention_node_id || "",
+          intention_token: ctsGisMediation.intention_token || "0",
+        };
         var bodyOut = {
           schema: ctsGisRequestContract.request_schema || "mycite.v2.admin.cts_gis.read_only.request.v1",
           selected_document_id: ctsGisSelectedDocument.document_id || "",
-          selected_row_address: ctsGisSelectedRow.datum_address || "",
-          selected_feature_id: ctsGisSelectedFeature.feature_id || "",
+          selected_row_address: ctsGisSelectionSummary.selected_row_address || ctsGisSelectedRow.datum_address || "",
+          selected_feature_id: ctsGisSelectionSummary.selected_feature_id || ctsGisSelectedFeature.feature_id || "",
           overlay_mode: ctsGisLens.overlay_mode || "auto",
           raw_underlay_visible: !!ctsGisLens.raw_underlay_visible,
+          mediation_state: baseMediationState,
         };
         Object.keys(fixed || {}).forEach(function (key) {
           bodyOut[key] = fixed[key];
         });
         Object.keys(patch || {}).forEach(function (key) {
+          if (key === "mediation_state") {
+            return;
+          }
+          if (key === "clear_selection") {
+            return;
+          }
           bodyOut[key] = patch[key];
         });
+        if (patch && patch.mediation_state) {
+          Object.keys(patch.mediation_state || {}).forEach(function (key) {
+            bodyOut.mediation_state[key] = patch.mediation_state[key];
+          });
+        }
+        if (patch && patch.clear_selection) {
+          bodyOut.selected_row_address = "";
+          bodyOut.selected_feature_id = "";
+        }
         return bodyOut;
       }
 
@@ -1534,6 +1568,23 @@
           .join("");
       }
 
+      function profileButtonHtml(profile, attrName, isActive) {
+        var label = profile.profile_label || profile.node_id || "profile";
+        var meta = profile.feature_count != null ? " (" + String(profile.feature_count) + ")" : "";
+        return (
+          '<button type="button" class="ide-sessionAction ide-sessionAction--button" ' +
+          attrName +
+          '="' +
+          escapeHtml(profile.node_id || "") +
+          '" style="border-radius:6px' +
+          (isActive ? ';font-weight:700' : "") +
+          '">' +
+          escapeHtml(label) +
+          meta +
+          "</button>"
+        );
+      }
+
       var ctsGisWarningBlock =
         ctsGisWarnings.length > 0
           ? '<div class="v2-card" style="margin-bottom:12px"><h3>Warnings</h3><ul>' +
@@ -1546,17 +1597,17 @@
           : "";
       var ctsGisCards =
         '<div class="v2-card-grid">' +
-        '<article class="v2-card"><h3>Projection</h3><p>' +
-        escapeHtml(String(ctsGisProjection.projection_state || "—").replace(/_/g, " ")) +
+        '<article class="v2-card"><h3>Attention</h3><p>' +
+        escapeHtml(ctsGisAttentionProfile.profile_label || ctsGisAttentionProfile.node_id || "—") +
         "</p></article>" +
-        '<article class="v2-card"><h3>Documents</h3><p>' +
-        escapeHtml(String(ctsGisDiagnosticSummary.document_count != null ? ctsGisDiagnosticSummary.document_count : "0")) +
+        '<article class="v2-card"><h3>Intention</h3><p>' +
+        escapeHtml(String(ctsGisRenderSetSummary.render_mode || ctsGisMediation.intention_token || "—").replace(/_/g, " ")) +
         "</p></article>" +
         '<article class="v2-card"><h3>Features</h3><p>' +
         escapeHtml(String(ctsGisProjection.feature_count != null ? ctsGisProjection.feature_count : "0")) +
         "</p></article>" +
         '<article class="v2-card"><h3>Rows</h3><p>' +
-        escapeHtml(String(ctsGisDiagnosticSummary.row_count != null ? ctsGisDiagnosticSummary.row_count : "0")) +
+        escapeHtml(String(ctsGisDiagnosticSummary.render_row_count != null ? ctsGisDiagnosticSummary.render_row_count : "0")) +
         "</p></article>" +
         "</div>";
       var lensHtml =
@@ -1571,7 +1622,7 @@
         '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="v2-cts-gis-raw-underlay-toggle"' +
         (ctsGisLens.raw_underlay_visible ? " checked" : "") +
         "> show raw values</label></div></div>";
-      var documentButtons =
+      var documentButtonStrip =
         ctsGisDocumentCatalog.length > 0
           ? '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
             ctsGisDocumentCatalog
@@ -1584,13 +1635,96 @@
                   '">' +
                   escapeHtml(doc.document_name || doc.document_id || "document") +
                   " (" +
-                  escapeHtml(String(doc.projectable_feature_count != null ? doc.projectable_feature_count : 0)) +
+                  escapeHtml(String(doc.profile_count != null ? doc.profile_count : doc.projectable_feature_count != null ? doc.projectable_feature_count : 0)) +
                   ")</button>"
                 );
               })
               .join("") +
             "</div>"
           : "<p>No authoritative CTS-GIS documents are cataloged for this tenant.</p>";
+      var lineageHtml =
+        ctsGisLineage.length > 0
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Attention shell</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+            ctsGisLineage
+              .map(function (profile) {
+                return profileButtonHtml(
+                  profile,
+                  "data-cts-gis-node-id",
+                  !!profile.selected || String(profile.node_id || "") === String(ctsGisMediation.attention_node_id || "")
+                );
+              })
+              .join('<span aria-hidden="true">/</span>') +
+            "</div></section>"
+          : "";
+      var intentionHtml =
+        '<section class="v2-card" style="margin-top:12px"><h3>Intention controls</h3>' +
+        (ctsGisAvailableIntentions.length > 0
+          ? '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+            ctsGisAvailableIntentions
+              .map(function (option) {
+                return (
+                  '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-cts-gis-intention-token="' +
+                  escapeHtml(option.token || "") +
+                  '" style="border-radius:6px' +
+                  (option.active ? ';font-weight:700' : "") +
+                  '">' +
+                  escapeHtml(option.label || option.token || "intention") +
+                  " (" +
+                  escapeHtml(String(option.feature_count != null ? option.feature_count : 0)) +
+                  ")</button>"
+                );
+              })
+              .join("") +
+            "</div>"
+          : "<p>No intention controls are available for the current attention state.</p>") +
+        "</section>";
+      var documentsSectionHtml =
+        '<section class="v2-card" style="margin-top:12px"><h3>Documents</h3>' +
+        documentButtonStrip +
+        "</section>";
+      var attentionProfileHtml =
+        ctsGisAttentionProfile && (ctsGisAttentionProfile.node_id || ctsGisAttentionProfile.profile_label)
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Attention profile</h3><dl class="v2-surface-dl">' +
+            "<dt>Profile</dt><dd>" +
+            escapeHtml(ctsGisAttentionProfile.profile_label || "—") +
+            "</dd><dt>Node</dt><dd><code>" +
+            escapeHtml(ctsGisAttentionProfile.node_id || "—") +
+            "</code></dd><dt>Row</dt><dd><code>" +
+            escapeHtml(ctsGisAttentionProfile.row_address || "—") +
+            "</code></dd><dt>Children</dt><dd>" +
+            escapeHtml(String(ctsGisAttentionProfile.child_count != null ? ctsGisAttentionProfile.child_count : "0")) +
+            "</dd><dt>Features</dt><dd>" +
+            escapeHtml(String(ctsGisAttentionProfile.feature_count != null ? ctsGisAttentionProfile.feature_count : "0")) +
+            "</dd></dl></section>'
+          : "";
+      var childrenHtml =
+        '<section class="v2-card" style="margin-top:12px"><h3>Children</h3>' +
+        (ctsGisChildren.length > 0
+          ? '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+            ctsGisChildren
+              .map(function (profile) {
+                return profileButtonHtml(profile, "data-cts-gis-node-id", false);
+              })
+              .join("") +
+            "</div>"
+          : "<p>No direct child profiles are available for the current attention node.</p>") +
+        "</section>";
+      var relatedHtml =
+        ctsGisRelatedProfiles.length > 0
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Related profiles</h3><ul>' +
+            ctsGisRelatedProfiles
+              .map(function (profile) {
+                return (
+                  "<li><strong>" +
+                  escapeHtml(profile.profile_label || profile.node_id || "profile") +
+                  "</strong> <small>" +
+                  escapeHtml(profile.relation || "related") +
+                  "</small></li>"
+                );
+              })
+              .join("") +
+            "</ul></section>"
+          : "";
       var selectedFeatureHtml =
         ctsGisSelectedFeature && ctsGisSelectedFeature.feature_id
           ? '<section class="v2-card" style="margin-top:12px"><h3>Selected feature</h3><dl class="v2-surface-dl">' +
@@ -1601,27 +1735,31 @@
             "</dd><dt>Row</dt><dd><code>" +
             escapeHtml(ctsGisSelectedFeature.row_address || "—") +
             "</code></dd><dt>Label</dt><dd>" +
-            escapeHtml(ctsGisSelectedFeature.label_text || "—") +
+            escapeHtml(ctsGisSelectedFeature.profile_label || ctsGisSelectedFeature.label_text || "—") +
+            "</dd><dt>Node</dt><dd><code>" +
+            escapeHtml(ctsGisSelectedFeature.samras_node_id || "—") +
             "</dd></dl></section>"
           : "";
       var featureRows = (((ctsGisProjection.feature_collection || {}).features) || []).slice(0, 24);
       var featureTable =
         featureRows.length > 0
-          ? '<section class="v2-card" style="margin-top:12px"><h3>Features</h3><table class="v2-table"><thead><tr><th>Feature</th><th>Geometry</th><th>Row</th><th>Label</th></tr></thead><tbody>' +
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Features</h3><table class="v2-table"><thead><tr><th>Feature</th><th>Profile</th><th>Geometry</th><th>Row</th></tr></thead><tbody>' +
             featureRows
               .map(function (feature) {
                 var props = feature.properties || {};
                 return (
                   "<tr><td><a href=\"#\" data-cts-gis-feature-id=\"" +
                   escapeHtml(feature.id || "") +
+                  '" data-cts-gis-feature-node-id="' +
+                  escapeHtml(props.samras_node_id || "") +
                   "\"><code>" +
                   escapeHtml(feature.id || "") +
                   "</code></a></td><td>" +
-                  escapeHtml((feature.geometry || {}).type || "—") +
+                  escapeHtml(props.profile_label || props.label_text || "—") +
                   "</td><td><code>" +
+                  escapeHtml((feature.geometry || {}).type || "—") +
+                  "</code></td><td><code>" +
                   escapeHtml(props.row_address || "—") +
-                  "</code></td><td>" +
-                  escapeHtml(props.label_text || "—") +
                   "</td></tr>"
                 );
               })
@@ -1630,16 +1768,18 @@
           : "";
       var rowTableRows = ctsGisRows.slice(0, 180);
       var rowTable =
-        '<section class="v2-card" style="margin-top:12px"><h3>Rows</h3><table class="v2-table"><thead><tr><th>Address</th><th>Labels</th><th>Diagnostics</th><th>Overlay values</th></tr></thead><tbody>' +
+        '<details class="v2-card" style="margin-top:12px"><summary>Raw datum underlay</summary><div style="margin-top:12px"><table class="v2-table"><thead><tr><th>Address</th><th>Profile</th><th>Diagnostics</th><th>Overlay values</th></tr></thead><tbody>' +
         rowTableRows
           .map(function (row) {
             return (
               "<tr><td><a href=\"#\" data-cts-gis-row-address=\"" +
               escapeHtml(row.datum_address || "") +
+              '" data-cts-gis-row-node-id="' +
+              escapeHtml(row.samras_node_id || "") +
               "\"><code>" +
               escapeHtml(row.datum_address || "") +
               "</code></a></td><td>" +
-              escapeHtml(row.label_text || "—") +
+              escapeHtml(row.profile_label || row.label_text || "—") +
               "</td><td>" +
               escapeHtml(((row.diagnostic_states || []).join(", ")) || "ok") +
               "</td><td>" +
@@ -1656,14 +1796,17 @@
             escapeHtml(String(ctsGisRows.length)) +
             " rows.</p>"
           : "") +
-        "</section>";
+        "</div></details>";
       body.innerHTML =
         ctsGisWarningBlock +
         ctsGisCards +
+        documentsSectionHtml +
+        lineageHtml +
+        intentionHtml +
         lensHtml +
-        '<section class="v2-card" style="margin-top:12px"><h3>Documents</h3>' +
-        documentButtons +
-        "</section>" +
+        attentionProfileHtml +
+        childrenHtml +
+        relatedHtml +
         renderCtsGisSvg(ctsGisProjection) +
         selectedFeatureHtml +
         featureTable +
@@ -1676,8 +1819,44 @@
             ctsGisRequestContract.route || "/portal/api/v2/admin/cts-gis/read-only",
             ctsGisRequestBody({
               selected_document_id: el.getAttribute("data-cts-gis-document-id") || "",
-              selected_row_address: "",
-              selected_feature_id: "",
+              clear_selection: true,
+              mediation_state: {
+                attention_document_id: el.getAttribute("data-cts-gis-document-id") || "",
+                attention_node_id: "",
+                intention_token: "",
+              },
+            })
+          );
+        });
+      });
+      Array.prototype.forEach.call(body.querySelectorAll("[data-cts-gis-node-id]"), function (el) {
+        el.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          loadRuntimeView(
+            ctsGisRequestContract.route || "/portal/api/v2/admin/cts-gis/read-only",
+            ctsGisRequestBody({
+              clear_selection: true,
+              mediation_state: {
+                attention_document_id: ctsGisSelectedDocument.document_id || ctsGisMediation.attention_document_id || "",
+                attention_node_id: el.getAttribute("data-cts-gis-node-id") || "",
+                intention_token: "0",
+              },
+            })
+          );
+        });
+      });
+      Array.prototype.forEach.call(body.querySelectorAll("[data-cts-gis-intention-token]"), function (el) {
+        el.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          loadRuntimeView(
+            ctsGisRequestContract.route || "/portal/api/v2/admin/cts-gis/read-only",
+            ctsGisRequestBody({
+              clear_selection: true,
+              mediation_state: {
+                attention_document_id: ctsGisSelectedDocument.document_id || ctsGisMediation.attention_document_id || "",
+                attention_node_id: ctsGisMediation.attention_node_id || "",
+                intention_token: el.getAttribute("data-cts-gis-intention-token") || "0",
+              },
             })
           );
         });
@@ -1685,11 +1864,19 @@
       Array.prototype.forEach.call(body.querySelectorAll("[data-cts-gis-row-address]"), function (el) {
         el.addEventListener("click", function (ev) {
           ev.preventDefault();
+          var rowNodeId = el.getAttribute("data-cts-gis-row-node-id") || "";
           loadRuntimeView(
             ctsGisRequestContract.route || "/portal/api/v2/admin/cts-gis/read-only",
             ctsGisRequestBody({
               selected_row_address: el.getAttribute("data-cts-gis-row-address") || "",
               selected_feature_id: "",
+              mediation_state: rowNodeId
+                ? {
+                    attention_document_id: ctsGisSelectedDocument.document_id || ctsGisMediation.attention_document_id || "",
+                    attention_node_id: rowNodeId,
+                    intention_token: "0",
+                  }
+                : undefined,
             })
           );
         });
@@ -1697,10 +1884,18 @@
       Array.prototype.forEach.call(body.querySelectorAll("[data-cts-gis-feature-id]"), function (el) {
         el.addEventListener("click", function (ev) {
           ev.preventDefault();
+          var featureNodeId = el.getAttribute("data-cts-gis-feature-node-id") || "";
           loadRuntimeView(
             ctsGisRequestContract.route || "/portal/api/v2/admin/cts-gis/read-only",
             ctsGisRequestBody({
               selected_feature_id: el.getAttribute("data-cts-gis-feature-id") || "",
+              mediation_state: featureNodeId
+                ? {
+                    attention_document_id: ctsGisSelectedDocument.document_id || ctsGisMediation.attention_document_id || "",
+                    attention_node_id: featureNodeId,
+                    intention_token: "0",
+                  }
+                : undefined,
             })
           );
         });
@@ -2069,6 +2264,9 @@
     }
     if (kind === "cts_gis_summary") {
       var mapSurface = (lastEnvelope && lastEnvelope.surface_payload) || {};
+      var mapAttentionProfile = mapSurface.attention_profile || {};
+      var mapMediationState = mapSurface.mediation_state || {};
+      var mapRenderSetSummary = mapSurface.render_set_summary || {};
       var mapSelectedDocument = mapSurface.selected_document || {};
       var mapSelectedFeature = (mapSurface.map_projection || {}).selected_feature || {};
       var mapSelectedRow = mapSurface.selected_row || {};
@@ -2087,11 +2285,14 @@
         "<dt>Relative path</dt><dd><code>" +
         escapeHtml(mapSelectedDocument.relative_path || "—") +
         "</code></dd>" +
-        "<dt>Projection state</dt><dd>" +
-        escapeHtml(String(mapDiagnosticSummary.projection_state || "—").replace(/_/g, " ")) +
+        "<dt>Attention</dt><dd>" +
+        escapeHtml(mapAttentionProfile.profile_label || mapAttentionProfile.node_id || "—") +
+        "</dd>" +
+        "<dt>Intention</dt><dd>" +
+        escapeHtml(String(mapRenderSetSummary.render_mode || mapMediationState.intention_token || "—").replace(/_/g, " ")) +
         "</dd>" +
         "<dt>Feature count</dt><dd>" +
-        escapeHtml(String(mapDiagnosticSummary.feature_count != null ? mapDiagnosticSummary.feature_count : "0")) +
+        escapeHtml(String(mapDiagnosticSummary.render_feature_count != null ? mapDiagnosticSummary.render_feature_count : mapDiagnosticSummary.feature_count != null ? mapDiagnosticSummary.feature_count : "0")) +
         "</dd>" +
         "<dt>Selected feature</dt><dd><code>" +
         escapeHtml(mapSelectedFeature.feature_id || "—") +

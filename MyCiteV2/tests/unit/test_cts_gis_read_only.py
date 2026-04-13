@@ -34,9 +34,13 @@ def _anchor_row(address: str, label: str) -> AuthoritativeDatumDocumentRow:
 
 
 def _cts_gis_document() -> AuthoritativeDatumDocument:
-    title_binary = (
+    summit_binary = (
         "011100110111010101101101011011010110100101110100"
         "0000000000000000"
+    )
+    fairlawn_binary = (
+        "011001100110000101101001011100100110110001100001"
+        "011101110110111000000000"
     )
     return AuthoritativeDatumDocument(
         document_id="sandbox:maps:sc.example.json",
@@ -56,7 +60,7 @@ def _cts_gis_document() -> AuthoritativeDatumDocument:
                 datum_address="4-2-1",
                 raw=[
                     ["4-2-1", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"],
-                    ["point_alpha"],
+                    ["polygon_1"],
                 ],
             ),
             AuthoritativeDatumDocumentRow(
@@ -66,25 +70,50 @@ def _cts_gis_document() -> AuthoritativeDatumDocument:
                         "4-2-2",
                         "rf.3-1-1",
                         "3-76-11-40-92-20-21-92-81-29-56-60-79-56-3-4-39",
-                        "rf.3-1-1",
-                        "3-76-11-40-92-20-21-92-81-25-68-43-68-84-44-22-24",
-                        "rf.3-1-1",
-                        "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73",
                     ],
-                    ["polygon_1"],
+                    ["point_alpha"],
                 ],
             ),
             AuthoritativeDatumDocumentRow(
-                datum_address="4-2-3",
+                datum_address="5-0-1",
                 raw=[
-                    ["4-2-3", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", title_binary],
-                    ["named_area"],
+                    ["5-0-1", "~", "4-2-1"],
+                    ["summit_boundary"],
                 ],
             ),
             AuthoritativeDatumDocumentRow(
-                datum_address="4-2-4",
+                datum_address="6-0-1",
                 raw=[
-                    ["4-2-4", "rf.3-1-2", "3-2-3-17-77-1-1", "rf.3-1-3", "HERE"],
+                    ["6-0-1", "~", "4-2-2"],
+                    ["fairlawn_boundary_collection"],
+                ],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="7-3-1",
+                raw=[
+                    ["7-3-1", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", summit_binary, "5-0-1", "1"],
+                    ["summit_county"],
+                ],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="7-3-2",
+                raw=[
+                    [
+                        "7-3-2",
+                        "rf.3-1-2",
+                        "3-2-3-17-77-1-1",
+                        "rf.3-1-3",
+                        fairlawn_binary,
+                        "6-0-1",
+                        "1",
+                    ],
+                    ["fairlawn_city"],
+                ],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="7-3-3",
+                raw=[
+                    ["7-3-3", "rf.3-1-2", "3-2-3-17-77-1-2", "rf.3-1-3", "HERE"],
                     ["bad_title"],
                 ],
             ),
@@ -93,7 +122,7 @@ def _cts_gis_document() -> AuthoritativeDatumDocument:
 
 
 class CtsGisReadOnlyUnitTests(unittest.TestCase):
-    def test_builds_point_and_polygon_features_and_title_overlay(self) -> None:
+    def test_builds_attention_first_surface_and_profile_linked_projection(self) -> None:
         store = _FakeDatumStore(
             AuthoritativeDatumDocumentCatalogResult(
                 tenant_id="fnd",
@@ -106,22 +135,67 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         surface = CtsGisReadOnlyService(store).read_surface("fnd")
 
         self.assertEqual(surface["map_projection"]["projection_state"], "projectable")
-        self.assertEqual(surface["map_projection"]["feature_count"], 2)
-        self.assertEqual(surface["map_projection"]["selected_feature"]["geometry_type"], "Point")
+        self.assertEqual(surface["map_projection"]["feature_count"], 1)
+        self.assertEqual(surface["map_projection"]["selected_feature"]["geometry_type"], "Polygon")
+        self.assertEqual(surface["attention_profile"]["node_id"], "3-2-3-17-77-1")
+        self.assertEqual(surface["selected_row"]["datum_address"], "7-3-1")
+        self.assertEqual(surface["mediation_state"]["attention_node_id"], "3-2-3-17-77-1")
+        self.assertEqual(surface["mediation_state"]["intention_token"], "0")
+        self.assertIn("1-0", [item["token"] for item in surface["mediation_state"]["available_intentions"]])
         feature_types = [feature["geometry"]["type"] for feature in surface["map_projection"]["feature_collection"]["features"]]
-        self.assertEqual(feature_types, ["Point", "Polygon"])
+        self.assertEqual(feature_types, ["Polygon"])
+        first_feature_props = surface["map_projection"]["feature_collection"]["features"][0]["properties"]
+        self.assertEqual(first_feature_props["samras_node_id"], "3-2-3-17-77-1")
+        self.assertEqual(first_feature_props["profile_label"], "summit")
 
-        named_row = [row for row in surface["rows"] if row["datum_address"] == "4-2-3"][0]
+        named_row = [row for row in surface["rows"] if row["datum_address"] == "7-3-1"][0]
         title_overlay = [entry for entry in named_row["overlay_preview"] if entry["overlay_family"] == "title_babelette"][0]
         self.assertEqual(title_overlay["display_value"], "summit")
 
-        self.assertEqual(surface["selected_row"]["datum_address"], "4-2-1")
-
-        bad_row = [row for row in surface["rows"] if row["datum_address"] == "4-2-4"][0]
+        bad_row_surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77-1-2",
+                "intention_token": "0",
+            },
+        )
+        bad_row = [row for row in bad_row_surface["rows"] if row["datum_address"] == "7-3-3"][0]
         bad_title_overlay = [entry for entry in bad_row["overlay_preview"] if entry["overlay_family"] == "title_babelette"][0]
         self.assertEqual(bad_title_overlay["raw_value"], "HERE")
         self.assertEqual(bad_title_overlay["display_value"], "HERE")
         self.assertIn("illegal_magnitude_literal", bad_row["diagnostic_states"])
+
+    def test_children_intention_and_legacy_row_bridge_select_child_profile(self) -> None:
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(_cts_gis_document(),),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+
+        children_surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77-1",
+                "intention_token": "1-0",
+            },
+        )
+
+        self.assertEqual(children_surface["render_set_summary"]["render_mode"], "children")
+        self.assertEqual(children_surface["map_projection"]["feature_count"], 1)
+        self.assertEqual(children_surface["children"][0]["node_id"], "3-2-3-17-77-1-1")
+        feature_props = children_surface["map_projection"]["feature_collection"]["features"][0]["properties"]
+        self.assertEqual(feature_props["samras_node_id"], "3-2-3-17-77-1-1")
+        self.assertEqual(feature_props["profile_label"], "fairlawn")
+
+        bridged_surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            selected_row_address="7-3-2",
+        )
+        self.assertEqual(bridged_surface["attention_profile"]["node_id"], "3-2-3-17-77-1-1")
+        self.assertEqual(bridged_surface["selected_row"]["datum_address"], "7-3-2")
 
     def test_reports_no_authoritative_cts_gis_documents_with_fallback_document(self) -> None:
         system_document = AuthoritativeDatumDocument(

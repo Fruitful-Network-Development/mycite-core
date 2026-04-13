@@ -32,6 +32,8 @@ def _write_maps_data(data_dir: Path) -> None:
     tool_dir = data_dir / "sandbox" / "maps"
     source_dir = tool_dir / "sources"
     source_dir.mkdir(parents=True)
+    summit_binary = "01110011011101010110110101101101011010010111010000000000"
+    fairlawn_binary = "011001100110000101101001011100100110110001100001011101110110111000000000"
     (tool_dir / "tool.maps.json").write_text(
         json.dumps(
             {
@@ -49,12 +51,36 @@ def _write_maps_data(data_dir: Path) -> None:
                 "anchor_file_version": "<hash here>",
                 "datum_addressing_abstraction_space": {
                     "4-2-1": [
-                        ["4-2-1", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"],
-                        ["point_alpha"],
+                        [
+                            "4-2-1",
+                            "rf.3-1-1",
+                            "3-76-11-40-92-20-21-92-81-29-56-60-79-56-3-4-39",
+                            "rf.3-1-1",
+                            "3-76-11-40-92-20-21-92-81-25-68-43-68-84-44-22-24",
+                            "rf.3-1-1",
+                            "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73",
+                        ],
+                        ["polygon_1"],
                     ],
                     "4-2-2": [
-                        ["4-2-2", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", "0111001101110101011011010110110101101001"],
-                        ["named_area"],
+                        ["4-2-2", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"],
+                        ["point_alpha"],
+                    ],
+                    "5-0-1": [
+                        ["5-0-1", "~", "4-2-1"],
+                        ["summit_boundary"],
+                    ],
+                    "6-0-1": [
+                        ["6-0-1", "~", "4-2-2"],
+                        ["fairlawn_boundary_collection"],
+                    ],
+                    "7-3-1": [
+                        ["7-3-1", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", summit_binary, "5-0-1", "1"],
+                        ["summit_county"],
+                    ],
+                    "7-3-2": [
+                        ["7-3-2", "rf.3-1-2", "3-2-3-17-77-1-1", "rf.3-1-3", fairlawn_binary, "6-0-1", "1"],
+                        ["fairlawn_city"],
                     ],
                 },
             }
@@ -95,11 +121,34 @@ class AdminCtsGisRuntimeIntegrationTests(unittest.TestCase):
                 "projectable",
             )
             self.assertGreater(result["surface_payload"]["map_projection"]["feature_count"], 0)
+            self.assertEqual(result["surface_payload"]["attention_profile"]["node_id"], "3-2-3-17-77-1")
+            self.assertEqual(result["surface_payload"]["mediation_state"]["intention_token"], "0")
+            self.assertIn(
+                "1-0",
+                [item["token"] for item in result["surface_payload"]["mediation_state"]["available_intentions"]],
+            )
             first_row = (result["surface_payload"]["rows"] or [])[0]
             self.assertNotIn("raw", first_row)
             self.assertNotIn("reference_bindings", first_row)
             self.assertIn("overlay_preview", first_row)
             self.assertIn("raw", result["surface_payload"]["selected_row"])
+
+            children_result = run_admin_cts_gis_read_only(
+                {
+                    "schema": ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+                    "mediation_state": {
+                        "attention_node_id": "3-2-3-17-77-1",
+                        "intention_token": "1-0",
+                    },
+                },
+                data_dir=data_dir,
+                portal_tenant_id="fnd",
+                tool_exposure_policy=policy,
+            )
+            self.assertEqual(children_result["surface_payload"]["render_set_summary"]["render_mode"], "children")
+            child_feature = children_result["surface_payload"]["map_projection"]["feature_collection"]["features"][0]
+            self.assertEqual(child_feature["properties"]["samras_node_id"], "3-2-3-17-77-1-1")
 
     def test_cts_gis_read_only_returns_renderable_no_documents_surface(self) -> None:
         with TemporaryDirectory() as temp_dir:

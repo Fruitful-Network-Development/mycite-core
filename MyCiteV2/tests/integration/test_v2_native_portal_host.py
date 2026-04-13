@@ -248,6 +248,8 @@ def _write_maps_data(config: V2PortalHostConfig) -> None:
     tool_dir = config.data_dir / "sandbox" / "maps"
     source_dir = tool_dir / "sources"
     source_dir.mkdir(parents=True, exist_ok=True)
+    summit_binary = "01110011011101010110110101101101011010010111010000000000"
+    fairlawn_binary = "011001100110000101101001011100100110110001100001011101110110111000000000"
     (tool_dir / "tool.maps.json").write_text(
         json.dumps(
             {
@@ -265,12 +267,8 @@ def _write_maps_data(config: V2PortalHostConfig) -> None:
                 "anchor_file_version": "<hash here>",
                 "datum_addressing_abstraction_space": {
                     "4-2-1": [
-                        ["4-2-1", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"],
-                        ["point_alpha"],
-                    ],
-                    "4-2-2": [
                         [
-                            "4-2-2",
+                            "4-2-1",
                             "rf.3-1-1",
                             "3-76-11-40-92-20-21-92-81-29-56-60-79-56-3-4-39",
                             "rf.3-1-1",
@@ -279,6 +277,26 @@ def _write_maps_data(config: V2PortalHostConfig) -> None:
                             "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73",
                         ],
                         ["polygon_1"],
+                    ],
+                    "4-2-2": [
+                        ["4-2-2", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"],
+                        ["point_alpha"],
+                    ],
+                    "5-0-1": [
+                        ["5-0-1", "~", "4-2-1"],
+                        ["summit_boundary"],
+                    ],
+                    "6-0-1": [
+                        ["6-0-1", "~", "4-2-2"],
+                        ["fairlawn_boundary_collection"],
+                    ],
+                    "7-3-1": [
+                        ["7-3-1", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", summit_binary, "5-0-1", "1"],
+                        ["summit_county"],
+                    ],
+                    "7-3-2": [
+                        ["7-3-2", "rf.3-1-2", "3-2-3-17-77-1-1", "rf.3-1-3", fairlawn_binary, "6-0-1", "1"],
+                        ["fairlawn_city"],
                     ],
                 },
             }
@@ -1214,6 +1232,17 @@ class V2NativePortalHostTests(unittest.TestCase):
                     or 0
                 ),
                 0,
+            )
+            self.assertEqual(
+                ((direct_payload.get("surface_payload") or {}).get("attention_profile") or {}).get("node_id"),
+                "3-2-3-17-77-1",
+            )
+            self.assertIn(
+                "1-0",
+                [
+                    item.get("token")
+                    for item in (((direct_payload.get("surface_payload") or {}).get("mediation_state") or {}).get("available_intentions") or [])
+                ],
             )
 
             tff_root = Path(temp_dir) / "tff"
