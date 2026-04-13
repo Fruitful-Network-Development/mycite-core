@@ -14,5 +14,9 @@ This directory stores evidence, notes, and historical inspection output.
   classifies the keep/update/retire work for the V2.3.2 tool and network
   rework.
 - [v2_principal_shell_realignment_2026-04-13.md](v2_principal_shell_realignment_2026-04-13.md) records the V1/V2 shell mismatch and the corrected principal-panel target for the shared V2 admin shell.
+- [v3_4_2_ui_hydration_and_alignment_audit_2026-04-13.md](v3_4_2_ui_hydration_and_alignment_audit_2026-04-13.md)
+  records the hydration hardening, ordered shell-script split, and restored
+  mediation-first CTS-GIS posture that supersede the intermediate
+  workbench-first shell realignment.
 
 Authority remains in [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md).

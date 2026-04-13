@@ -42,6 +42,8 @@
   data-analytics-domain="{{ analytics_domain }}"
   data-shell-endpoint="{{ shell_endpoint }}"
   data-runtime-envelope-schema="{{ runtime_envelope_schema }}"
+  data-shell-boot-state="template"
+  data-shell-watchdog-timeout-ms="1800"
 >
   <!-- shell-template: v2-composition build={{ portal_build_id }} -->
   <script type="application/json" id="v2-bootstrap-shell-request">{{ bootstrap_shell_request | tojson }}</script>
@@ -160,6 +162,10 @@
   </div>
 
   <script src="/portal/static/portal.js" defer></script>
+  <script src="/portal/static/v2_portal_workbench_renderers.js" defer></script>
+  <script src="/portal/static/v2_portal_inspector_renderers.js" defer></script>
+  <script src="/portal/static/v2_portal_shell_core.js" defer></script>
   <script src="/portal/static/v2_portal_shell.js" defer></script>
+  <script src="/portal/static/v2_portal_shell_watchdog.js" defer></script>
 </body>
 </html>

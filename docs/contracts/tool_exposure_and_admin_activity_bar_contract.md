@@ -6,7 +6,8 @@ This contract defines the forward V2 rule for shell-owned tool visibility.
 
 ## Current V2 truth
 
-- shell registry owns tool legality, routing, order, audience, and `tool_kind`
+- shell registry owns tool legality, routing, order, audience, `tool_kind`,
+  and `surface_posture`
 - runtime entrypoint catalog must mirror the shell-owned tool contract
 - `private/config.json.tool_exposure` is the instance visibility gate
 - `System`, `Network`, and `Utilities` are root services, not tools
@@ -19,6 +20,7 @@ The shell registry remains canonical for:
 
 - `tool_id`
 - `tool_kind`
+- `surface_posture`
 - label
 - slice and entrypoint identity
 - audience and launch legality
@@ -58,8 +60,12 @@ Rules:
   5. promoted tool families in shell order
 - current promoted tool family set is intentionally narrow:
   - `AWS-CSM` is promoted
-  - `CTS-GIS` remains a utility tool under `Utilities`
+  - `CTS-GIS` remains a utility tool under `Utilities`, even though its live
+    tool posture is `interface_panel_primary`
 - `nav_kind` remains `root_logo`, `root_service`, or `tool`
+- tool activity items may carry `surface_posture`, but the activity bar still
+  routes through shell-issued `shell_request` bodies instead of client-owned
+  posture logic
 - the browser must render only runtime-issued items and shell-issued
   `shell_request` bodies
 

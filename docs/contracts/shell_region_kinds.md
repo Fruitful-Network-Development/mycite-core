@@ -1,6 +1,9 @@
 # Shell region kinds (V2 admin portal)
 
-This document is the **canonical wire contract** for `shell_composition.regions` in the V2 admin portal shell, derived from the current Python runtime and `v2_portal_shell.js`. It is not a UX specification.
+This document is the **canonical wire contract** for `shell_composition.regions`
+in the V2 admin portal shell, derived from the current Python runtime and the
+ordered portal shell scripts loaded by `portal.html`. It is not a UX
+specification.
 
 ## Authority
 
@@ -14,7 +17,18 @@ Implementation sources of truth (enumerations and field shapes):
 
 - `MyCiteV2/packages/state_machine/hanus_shell/admin_shell.py` — schemas, `build_shell_composition_payload`, `shell_composition_mode_for_surface`, `foreground_region_for_surface`, `inspector_collapsed_for_surface`, `build_portal_activity_dispatch_bodies`.
 - `MyCiteV2/instances/_shared/runtime/admin_runtime.py` — `run_admin_shell_entry`, `_build_regions_and_surface`, region builders, `_apply_shell_chrome_to_composition`.
-- `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell.js` — `applyChrome`, `renderActivityItems`, `renderControlPanel`, `renderWorkbench`, `renderInspector`.
+- `MyCiteV2/instances/_shared/portal_host/templates/portal.html` — ordered
+  shell script loading and `body[data-shell-boot-state]`.
+- `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_core.js` —
+  bootstrap, POST dispatch, envelope validation, chrome application, and boot
+  state transitions.
+- `MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js`
+  — tool-specific workbench renderers keyed by runtime `kind`.
+- `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js`
+  — tool-specific inspector renderers keyed by runtime `kind`.
+- `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_watchdog.js`
+  — visible fatal-state fallback when the shell bundle is missing or hydration
+  stalls.
 
 ## Shell composition contract vs presentation
 
@@ -36,7 +50,7 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 | `active_service` | yes | `"system"`, `"network"`, or `"utilities"` from `map_surface_to_active_service`. This is now a root-service identifier, not a per-tool family label. |
 | `active_surface_id` | yes | Resolved active surface slice id (text). |
 | `active_tool_slice_id` | conditional | Non-null only when `composition_mode == "tool"`; equals the active tool slice id for the current AWS or CTS-GIS tool surface. |
-| `foreground_shell_region` | yes | Currently `"center-workbench"` for both root and tool surfaces. The workbench remains the primary surface even when a tool is active. |
+| `foreground_shell_region` | yes | `"center-workbench"` or `"interface-panel"`. Mediation-first tools such as CTS-GIS may issue `"interface-panel"` as the foreground shell region. |
 | `control_panel_collapsed` | yes | Boolean; parameter to `build_shell_composition_payload`, may be overridden by chrome. |
 | `inspector_collapsed` | yes | Base shell state is collapsed by default; client chrome may explicitly open it. |
 | `portal_tenant_id` | yes | Tenant id string for labeling and datum reads. |
@@ -49,16 +63,24 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 
 - `composition_mode` remains in the wire contract so tool-aware renderers can
   branch when needed.
-- The shell no longer uses `composition_mode` to hide the workbench or make the
-  interface panel primary.
-- `foreground_shell_region` now remains `center-workbench` unless a later
-  contract explicitly introduces another stable root layout.
+- The shell still owns foreground posture; the browser does not infer it.
+- `foreground_shell_region` may be `interface-panel` for a mediation-first tool
+  while the workbench remains mounted as secondary context.
 
 ### `inspector_collapsed` semantics
 
-- Base value: collapsed by default in the principal shell.
-- Client (`applyChrome`): toggles `#portalInspector` collapsed class and
-  `aria-hidden`, but does not swap the shell into a tool-primary composition.
+- Base value: root and workbench-primary surfaces remain collapsed by default.
+- Interface-panel-primary tools default to `inspector_collapsed = false`.
+- When a mediation-first tool is explicitly collapsed through `shell_chrome`,
+  the runtime may swap the workbench to `kind: tool_collapsed_inspector` with a
+  reopen action instead of silently reverting tool posture in the browser.
+
+### DOM boot-state contract
+
+- `body[data-shell-boot-state]` is runtime-visible hydration state:
+  `template`, `bundle_loaded`, `shell_posting`, `hydrated`, or `fatal`.
+- The browser may only advance this state through shell execution or the
+  watchdog fatal fallback; it must not invent alternate shell legality.
 
 ---
 
@@ -89,6 +111,7 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 | `entrypoint_id` | optional | Present on tool registry entries from catalog. |
 | `read_write_posture` | optional | Present on tool entries (`read-only` or `write`). |
 | `tool_kind` | optional | Present on tool entries only; root services are not tools. |
+| `surface_posture` | optional | Present on tool entries only; currently `workbench_primary` or `interface_panel_primary`. |
 
 **Client branch:** `renderActivityItems` in `v2_portal_shell.js` — builds compact icon + visible-label links; dispatches `loadShell(item.shell_request)` on click.
 
@@ -157,13 +180,14 @@ Workbench payloads use `schema: mycite.v2.admin.shell.region.workbench.v1` (`ADM
 | `kind` | Required fields (contract) | Optional / common | Runtime emitter(s) | Client branch (`renderWorkbench`) |
 |--------|-----------------------------|-------------------|---------------------|-----------------------------------|
 | `error` | `schema`, `kind`, `title`, `visible`, `message` | `subtitle` | `_workbench_error`; selection-blocked paths | `kind === "error"` — card + message |
+| `tool_collapsed_inspector` | `schema`, `kind`, `title`, `visible`, `message`, `action_label`, `action_shell_chrome` | `subtitle` | `apply_surface_posture_to_composition` when an interface-panel-primary tool is explicitly collapsed | Shell-issued fallback card that reopens the interface panel |
 | `system_root` | `schema`, `kind`, `title`, `visible`, `root_tab`, `root_tabs`, `blocks` | `subtitle`, `notes`, `sources_summary`, `sandbox_summary` | `_workbench_home` | System root workbench with root tabs (`home`, `sources`, `sandbox`), status cards, and datum-facing document summaries |
 | `utilities_root` | `schema`, `kind`, `title`, `visible`, `root_tab`, `root_tabs`, `tool_rows` | `subtitle`, `banner`, `config_sections`, `vault_summary` | `_workbench_registry`; blocked registry path with `banner` | Utilities launcher/config/vault root; tool rows include shell-owned launch requests |
 | `network_root` | `schema`, `kind`, `title`, `visible`, `root_tab`, `root_tabs`, `blocks`, `tab_panels` | `subtitle`, `notes` | `_workbench_network` | Contract-first hosted/network root with tabbed read-only entity summaries |
 | `datum_workbench` | `schema`, `kind`, `title`, `visible`, `summary`, `warnings`, `documents`, `rows_preview` | `subtitle` | `_workbench_datum` | Summary cards, authoritative document catalog, selected-document diagnostics, preview table columns `datum_address`, `recognized_family`, `diagnostic_states`, `primary_value_token`, and compact reference bindings |
 | `aws_csm_family_workbench` | `schema`, `kind`, `title`, `visible`, `family_health`, `domain_states` | `subtitle`, `selected_domain_state`, `selected_author`, `subsurface_navigation`, `gated_subsurfaces` | `_workbench_aws_csm_family` | Main AWS-CSM family landing in the workbench; interface panel remains secondary |
 | `aws_csm_subsurface_workbench` | `schema`, `kind`, `title`, `visible`, `mode`, `help_text`, `profile_summary` | `subtitle`, `selected_verified_sender`, `mailbox_readiness`, `compatibility_warnings`, `submit_route` | `_workbench_aws_subsurface` | AWS subordinate slice context in the workbench, with the interface panel opened only when the operator chooses to |
-| `cts_gis_workbench` | `schema`, `kind`, `title`, `visible`, `request_contract` | `subtitle`, `warnings`, `diagnostic_summary`, `mediation_state`, `lens_state`, `selected_document_id`, `selected_row_address`, `selected_feature_id`, `render_from_surface_payload` | `build_admin_cts_gis_workbench` in `admin_cts_gis_runtime.py`; `run_admin_shell_entry` CTS-GIS branch | Unified mediation-first CTS-GIS workbench with attention/intention controls, dominant projection pane, profile navigation, and collapsible raw underlay driven from the canonical `surface_payload` |
+| `cts_gis_workbench` | `schema`, `kind`, `title`, `visible`, `request_contract` | `subtitle`, `warnings`, `diagnostic_summary`, `mediation_state`, `lens_state`, `selected_document_id`, `selected_row_address`, `selected_feature_id`, `render_from_surface_payload` | `build_admin_cts_gis_workbench` in `admin_cts_gis_runtime.py`; `run_admin_shell_entry` CTS-GIS branch | Unified mediation-first CTS-GIS workbench with attention/intention controls, dominant projection pane, profile navigation, and collapsible raw underlay driven from the canonical `surface_payload`; this surface stays mounted even when the interface panel is foreground-primary |
 
 ### Workbench presentation note
 
@@ -174,6 +198,11 @@ If `visible === false` or `kind === "hidden"` (not emitted by current Python pat
 ## Region: `inspector` — kinds
 
 Inspector payloads use `schema: mycite.v2.admin.shell.region.inspector.v1` (`ADMIN_SHELL_REGION_INSPECTOR_SCHEMA`) and a **`kind`** string.
+
+The inspector region may also carry presentation hints issued by the runtime:
+
+- `primary_surface: bool`
+- `layout_mode: sidebar | dominant`
 
 | `kind` | Required fields (contract) | Optional | Runtime emitter(s) | Client branch (`renderInspector`) |
 |--------|---------------------------|----------|---------------------|-------------------------------------|

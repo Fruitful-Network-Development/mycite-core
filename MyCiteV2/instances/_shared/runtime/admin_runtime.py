@@ -32,6 +32,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     FND_EBI_READ_ONLY_SLICE_ID,
     AdminShellChrome,
     AdminShellRequest,
+    apply_surface_posture_to_composition,
     activity_icon_id_for_slice,
     build_admin_surface_catalog,
     build_admin_tool_registry_entries,
@@ -612,6 +613,8 @@ def _activity_items(
                 "href": _canonical_shell_href(tool.slice_id),
                 "entrypoint_id": tool.entrypoint_id,
                 "read_write_posture": tool.read_write_posture,
+                "tool_kind": tool.tool_kind,
+                "surface_posture": tool.surface_posture,
             }
         )
     return items
@@ -1871,6 +1874,7 @@ def run_admin_shell_entry(
     shell_composition["page_title"] = page_title
     shell_composition["page_subtitle"] = page_subtitle
     _apply_shell_chrome_to_composition(shell_composition, normalized_request.shell_chrome)
+    apply_surface_posture_to_composition(shell_composition)
 
     error = None
     warnings: list[str] = []

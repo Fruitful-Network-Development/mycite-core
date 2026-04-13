@@ -554,6 +554,10 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertTrue(bundle.get("static_ok"))
             self.assertTrue(bundle.get("portal_css_present"))
             self.assertTrue(bundle.get("v2_portal_shell_js_present"))
+            self.assertTrue(bundle.get("v2_portal_shell_core_js_present"))
+            self.assertTrue(bundle.get("v2_portal_workbench_renderers_js_present"))
+            self.assertTrue(bundle.get("v2_portal_inspector_renderers_js_present"))
+            self.assertTrue(bundle.get("v2_portal_shell_watchdog_js_present"))
             self.assertGreater(int(bundle.get("portal_css_size_bytes") or 0), 0)
             self.assertEqual(bundle.get("static_url_path"), "/portal/static")
             contract = payload.get("surface_contract") or {}
@@ -1049,7 +1053,12 @@ class V2NativePortalHostTests(unittest.TestCase):
             try:
                 self.assertEqual(home.status_code, 200)
                 self.assertIn(b"ide-shell", home.data)
+                self.assertIn(b'data-shell-boot-state="template"', home.data)
                 self.assertIn(b"v2_portal_shell.js", home.data)
+                self.assertIn(b"v2_portal_shell_core.js", home.data)
+                self.assertIn(b"v2_portal_workbench_renderers.js", home.data)
+                self.assertIn(b"v2_portal_inspector_renderers.js", home.data)
+                self.assertIn(b"v2_portal_shell_watchdog.js", home.data)
                 self.assertIn(b"v2-bootstrap-shell-request", home.data)
                 self.assertIn(b"band1.portal_home_tenant_status", home.data)
                 self.assertIn(b"/portal/api/v2/tenant/home", home.data)
@@ -1063,6 +1072,7 @@ class V2NativePortalHostTests(unittest.TestCase):
                 self.assertEqual(system.status_code, 200)
                 self.assertIn(b"ide-shell", system.data)
                 self.assertIn(b"v2_portal_shell.js", system.data)
+                self.assertIn(b"v2_portal_shell_core.js", system.data)
                 self.assertIn(b"admin_band0.home_status", system.data)
             finally:
                 system.close()
@@ -1212,6 +1222,9 @@ class V2NativePortalHostTests(unittest.TestCase):
             shell_payload = shell.get_json() or {}
             self.assertEqual(shell_payload["slice_id"], CTS_GIS_READ_ONLY_SLICE_ID)
             self.assertEqual(shell_payload["shell_composition"]["regions"]["workbench"]["kind"], "cts_gis_workbench")
+            self.assertEqual(shell_payload["shell_composition"]["foreground_shell_region"], "interface-panel")
+            self.assertFalse(shell_payload["shell_composition"]["inspector_collapsed"])
+            self.assertTrue(shell_payload["shell_composition"]["regions"]["inspector"]["primary_surface"])
 
             direct = fnd_client.post(
                 "/portal/api/v2/admin/cts-gis/read-only",

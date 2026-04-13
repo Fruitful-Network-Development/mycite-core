@@ -21,6 +21,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     CTS_GIS_READ_ONLY_SLICE_ID,
     AdminShellChrome,
     AdminTenantScope,
+    apply_surface_posture_to_composition,
     activity_icon_id_for_slice,
     build_admin_surface_catalog,
     build_admin_tool_registry_entries,
@@ -39,7 +40,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     build_allow_all_admin_tool_exposure_policy,
 )
 
-_CTS_GIS_PROJECTION_CACHE: dict[tuple[str, str, str, bool], dict[str, Any]] = {}
+_CTS_GIS_PROJECTION_CACHE: dict[tuple[str, str, str, bool, str], dict[str, Any]] = {}
 _CTS_GIS_MEDIATION_CACHE: dict[tuple[str, str, str, bool, str, str, str], dict[str, Any]] = {}
 
 
@@ -170,6 +171,8 @@ def _activity_items(
                 "href": _canonical_shell_href(tool.slice_id),
                 "entrypoint_id": tool.entrypoint_id,
                 "read_write_posture": tool.read_write_posture,
+                "tool_kind": tool.tool_kind,
+                "surface_posture": tool.surface_posture,
             }
         )
     return items
@@ -324,11 +327,16 @@ def build_admin_cts_gis_surface_payload(
     raw_underlay_visible: object = False,
     mediation_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    requested_attention_document_id = _as_text(
+        mediation_state.get("attention_document_id") if isinstance(mediation_state, dict) else ""
+    )
+    projection_target_document_id = requested_attention_document_id or _as_text(selected_document_id)
     projection_key = (
         str(Path(data_dir)),
         _as_text(portal_tenant_id) or "fnd",
         _as_text(overlay_mode) or "auto",
         bool(raw_underlay_visible),
+        projection_target_document_id,
     )
     now = time.time()
     service = CtsGisReadOnlyService(FilesystemSystemDatumStoreAdapter(Path(data_dir)))
@@ -338,6 +346,10 @@ def build_admin_cts_gis_surface_payload(
     else:
         projection_bundle = service.read_projection_bundle(
             portal_tenant_id,
+            selected_document_id=selected_document_id,
+            selected_row_address=selected_row_address,
+            selected_feature_id=selected_feature_id,
+            attention_document_id=requested_attention_document_id,
             overlay_mode=overlay_mode,
             raw_underlay_visible=raw_underlay_visible,
         )
@@ -561,6 +573,7 @@ def run_admin_cts_gis_read_only(
         inspector=build_admin_cts_gis_inspector(surface_payload=surface_payload),
     )
     _apply_shell_chrome_to_composition(shell_composition, shell_chrome)
+    apply_surface_posture_to_composition(shell_composition)
 
     return build_admin_runtime_envelope(
         admin_band=ADMIN_BAND5_CTS_GIS_NAME,

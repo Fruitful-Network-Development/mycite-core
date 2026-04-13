@@ -115,7 +115,13 @@ class AdminCtsGisRuntimeIntegrationTests(unittest.TestCase):
             self.assertEqual(result["entrypoint_id"], CTS_GIS_READ_ONLY_ENTRYPOINT_ID)
             self.assertEqual(result["slice_id"], CTS_GIS_READ_ONLY_SLICE_ID)
             self.assertIsNone(result["error"])
+            self.assertEqual(result["shell_composition"]["composition_mode"], "tool")
+            self.assertEqual(result["shell_composition"]["foreground_shell_region"], "interface-panel")
+            self.assertFalse(result["shell_composition"]["inspector_collapsed"])
             self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "cts_gis_workbench")
+            self.assertEqual(result["shell_composition"]["regions"]["inspector"]["kind"], "cts_gis_summary")
+            self.assertTrue(result["shell_composition"]["regions"]["inspector"]["primary_surface"])
+            self.assertEqual(result["shell_composition"]["regions"]["inspector"]["layout_mode"], "dominant")
             self.assertEqual(
                 result["surface_payload"]["map_projection"]["projection_state"],
                 "projectable",
@@ -149,6 +155,23 @@ class AdminCtsGisRuntimeIntegrationTests(unittest.TestCase):
             self.assertEqual(children_result["surface_payload"]["render_set_summary"]["render_mode"], "children")
             child_feature = children_result["surface_payload"]["map_projection"]["feature_collection"]["features"][0]
             self.assertEqual(child_feature["properties"]["samras_node_id"], "3-2-3-17-77-1-1")
+
+            collapsed_result = run_admin_cts_gis_read_only(
+                {
+                    "schema": ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+                    "shell_chrome": {"inspector_collapsed": True},
+                },
+                data_dir=data_dir,
+                portal_tenant_id="fnd",
+                tool_exposure_policy=policy,
+            )
+            self.assertEqual(collapsed_result["shell_composition"]["foreground_shell_region"], "center-workbench")
+            self.assertTrue(collapsed_result["shell_composition"]["inspector_collapsed"])
+            self.assertEqual(
+                collapsed_result["shell_composition"]["regions"]["workbench"]["kind"],
+                "tool_collapsed_inspector",
+            )
 
     def test_cts_gis_read_only_returns_renderable_no_documents_surface(self) -> None:
         with TemporaryDirectory() as temp_dir:

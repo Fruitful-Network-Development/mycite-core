@@ -3745,6 +3745,10 @@ body.is-modal-open {
   --ide-inspector-splitter-visible-w: var(--ide-splitter-w);
 }
 
+.ide-shell[data-foreground-shell-region="interface-panel"][data-inspector-collapsed="false"] {
+  --ide-inspector-w: min(680px, 48vw);
+}
+
 .ide-menubar {
   flex: 0 0 var(--ide-menu-h);
   min-height: var(--ide-menu-h);
@@ -3894,6 +3898,22 @@ body.is-modal-open {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+}
+
+.ide-shell[data-foreground-shell-region="interface-panel"][data-inspector-collapsed="false"] .ide-workbench {
+  opacity: 0.94;
+  filter: saturate(0.92);
+}
+
+.ide-inspector[data-primary-surface="true"][data-surface-layout="dominant"] {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 248, 245, 0.96));
+  border-left: 1px solid rgba(40, 89, 67, 0.18);
+  box-shadow: -10px 0 24px rgba(20, 32, 28, 0.12);
+}
+
+.ide-inspector[data-primary-surface="true"][data-surface-layout="dominant"] .ide-inspector__header {
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom-color: rgba(40, 89, 67, 0.16);
 }
 
 .ide-shell[data-control-panel-collapsed="true"] .ide-controlpanel,

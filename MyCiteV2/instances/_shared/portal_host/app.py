@@ -586,6 +586,10 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
     static_dir = _portal_package_static_dir()
     portal_css = static_dir / "portal.css"
     portal_js = static_dir / "v2_portal_shell.js"
+    portal_shell_core_js = static_dir / "v2_portal_shell_core.js"
+    portal_workbench_renderers_js = static_dir / "v2_portal_workbench_renderers.js"
+    portal_inspector_renderers_js = static_dir / "v2_portal_inspector_renderers.js"
+    portal_shell_watchdog_js = static_dir / "v2_portal_shell_watchdog.js"
     datum_store = FilesystemSystemDatumStoreAdapter(config.data_dir)
     datum_catalog = datum_store.read_authoritative_datum_documents(
         AuthoritativeDatumDocumentRequest(tenant_id=config.tenant_id)
@@ -631,7 +635,14 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         }
     )
     datum_ok = datum_catalog.readiness_status.get("anthology_status") == "loaded"
-    static_ok = portal_css.is_file() and portal_js.is_file()
+    static_ok = (
+        portal_css.is_file()
+        and portal_js.is_file()
+        and portal_shell_core_js.is_file()
+        and portal_workbench_renderers_js.is_file()
+        and portal_inspector_renderers_js.is_file()
+        and portal_shell_watchdog_js.is_file()
+    )
     health_ok = bool(datum_ok) and bool(aws_health["live_profile_mapping"]) and static_ok
 
     return {
@@ -645,6 +656,10 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
             "portal_css_present": portal_css.is_file(),
             "portal_css_size_bytes": portal_css.stat().st_size if portal_css.is_file() else 0,
             "v2_portal_shell_js_present": portal_js.is_file(),
+            "v2_portal_shell_core_js_present": portal_shell_core_js.is_file(),
+            "v2_portal_workbench_renderers_js_present": portal_workbench_renderers_js.is_file(),
+            "v2_portal_inspector_renderers_js_present": portal_inspector_renderers_js.is_file(),
+            "v2_portal_shell_watchdog_js_present": portal_shell_watchdog_js.is_file(),
             "static_url_path": "/portal/static",
             "static_ok": static_ok,
         },
