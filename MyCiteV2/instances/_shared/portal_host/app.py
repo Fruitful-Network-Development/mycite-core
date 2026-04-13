@@ -10,6 +10,7 @@ from typing import Any
 from flask import Flask, Response, abort, jsonify, render_template, request, send_from_directory
 
 from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
+    cached_aws_csm_family_health,
     run_admin_aws_csm_family_home,
     run_admin_aws_csm_newsletter,
     run_admin_aws_csm_onboarding,
@@ -48,6 +49,7 @@ from MyCiteV2.instances._shared.runtime.tenant_profile_basics_write_runtime impo
 from MyCiteV2.instances._shared.runtime.tenant_portal_runtime import run_trusted_tenant_portal_home
 from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_HOME_STATUS_SLICE_ID,
+    ADMIN_NETWORK_ROOT_SLICE_ID,
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
     AWS_CSM_SANDBOX_SLICE_ID,
@@ -431,6 +433,8 @@ class V2PortalHostConfig:
 URL_SLUG_TO_SLICE_ID: dict[str, str] = {
     "home": ADMIN_HOME_STATUS_SLICE_ID,
     "system": ADMIN_HOME_STATUS_SLICE_ID,
+    "network": ADMIN_NETWORK_ROOT_SLICE_ID,
+    "utilities": ADMIN_TOOL_REGISTRY_SLICE_ID,
     "tools": ADMIN_TOOL_REGISTRY_SLICE_ID,
     "registry": ADMIN_TOOL_REGISTRY_SLICE_ID,
     "aws": AWS_READ_ONLY_SLICE_ID,
@@ -596,16 +600,23 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
     newsletter_service = _newsletter_service(config)
     newsletter_enabled = bool((config.tool_exposure_policy or {}).get("configured_tools", {}).get("aws_csm_newsletter"))
     newsletter_domains = newsletter_service.list_domains() if newsletter_enabled else []
-    aws_csm_family_health = newsletter_service.family_health(
-        domains=newsletter_domains,
-        dispatcher_callback_builder=_newsletter_dispatch_callback_url,
-        inbound_callback_builder=_newsletter_inbound_callback_url,
-    ) if newsletter_enabled else {
-        "schema": "mycite.v2.admin.aws_csm.family_health.v1",
-        "status": "newsletter_disabled",
-        "domain_count": 0,
-        "ready_domain_count": 0,
-    }
+    aws_csm_family_health = (
+        cached_aws_csm_family_health(
+            service=newsletter_service,
+            portal_tenant_id=config.tenant_id,
+            private_dir=config.private_dir,
+            domains=newsletter_domains,
+            dispatcher_callback_builder=_newsletter_dispatch_callback_url,
+            inbound_callback_builder=_newsletter_inbound_callback_url,
+        )
+        if newsletter_enabled
+        else {
+            "schema": "mycite.v2.admin.aws_csm.family_health.v1",
+            "status": "newsletter_disabled",
+            "domain_count": 0,
+            "ready_domain_count": 0,
+        }
+    )
     datum_ok = datum_catalog.readiness_status.get("anthology_status") == "loaded"
     static_ok = portal_css.is_file() and portal_js.is_file()
     health_ok = bool(datum_ok) and bool(aws_health["live_profile_mapping"]) and static_ok
@@ -746,6 +757,16 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     @app.get("/portal/profile-basics")
     def portal_profile_basics() -> str:
         return _tenant_profile_basics_page()
+
+    @app.get("/portal/network")
+    def portal_network() -> str:
+        return _portal_shell_page("network")
+
+    @app.get("/portal/utilities")
+    @app.get("/portal/utilities/<path:tool_slug>")
+    def portal_utilities(tool_slug: str = "") -> str:
+        slug = tool_slug.strip("/") if tool_slug else "utilities"
+        return _portal_shell_page(slug)
 
     @app.get("/portal/system")
     @app.get("/portal/system/<path:tool_slug>")

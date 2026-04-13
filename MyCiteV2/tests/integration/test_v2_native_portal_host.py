@@ -50,6 +50,7 @@ if HAS_FLASK:
     from MyCiteV2.packages.state_machine.hanus_shell import (
         ADMIN_ENTRYPOINT_ID,
         ADMIN_HOME_STATUS_SLICE_ID,
+        ADMIN_NETWORK_ROOT_SLICE_ID,
         ADMIN_SHELL_COMPOSITION_SCHEMA,
         ADMIN_SHELL_REQUEST_SCHEMA,
         ADMIN_TOOL_REGISTRY_SLICE_ID,
@@ -119,6 +120,7 @@ else:  # pragma: no cover
     SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA = "mycite.v2.data.system_resource_workbench.surface.v1"
     ADMIN_ENTRYPOINT_ID = "admin.shell_entry"
     ADMIN_HOME_STATUS_SLICE_ID = "admin_band0.home_status"
+    ADMIN_NETWORK_ROOT_SLICE_ID = "admin_band0.network_root"
     ADMIN_SHELL_COMPOSITION_SCHEMA = "mycite.v2.admin.shell.composition.v1"
     ADMIN_SHELL_REQUEST_SCHEMA = "mycite.v2.admin.shell.request.v1"
     ADMIN_TOOL_REGISTRY_SLICE_ID = "admin_band0.tool_registry"
@@ -490,8 +492,14 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertIn("derived_materialization", payload["datum_health"]["readiness_status"])
             self.assertTrue(payload["aws_config_health"]["live_profile_mapping"])
             tool_exposure = payload.get("tool_exposure") or {}
-            self.assertEqual(tool_exposure.get("enabled_tool_ids"), ["aws", "aws_narrow_write", "aws_csm_onboarding"])
-            self.assertEqual(tool_exposure.get("disabled_tool_ids"), ["aws_csm_newsletter", "aws_csm_sandbox", "maps"])
+            self.assertEqual(
+                sorted(tool_exposure.get("enabled_tool_ids") or []),
+                ["aws", "aws_csm_onboarding", "aws_narrow_write"],
+            )
+            self.assertEqual(
+                sorted(tool_exposure.get("disabled_tool_ids") or []),
+                ["aws_csm_newsletter", "aws_csm_sandbox", "maps"],
+            )
             self.assertEqual(tool_exposure.get("unknown_tool_ids"), [])
             self.assertIn("/clients/trappfamilyfarm.com/analytics", payload["analytics_root"]["analytics_root"])
 
@@ -522,8 +530,10 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertIn("workbench", regions)
             activity_items = regions.get("activity_bar", {}).get("items") or []
             self.assertEqual(
-                [item.get("slice_id") for item in activity_items if item.get("slice_id") != DATUM_RESOURCE_WORKBENCH_SLICE_ID],
+                [item.get("slice_id") for item in activity_items],
                 [
+                    ADMIN_HOME_STATUS_SLICE_ID,
+                    ADMIN_NETWORK_ROOT_SLICE_ID,
                     ADMIN_HOME_STATUS_SLICE_ID,
                     ADMIN_TOOL_REGISTRY_SLICE_ID,
                     AWS_READ_ONLY_SLICE_ID,
@@ -989,12 +999,33 @@ class V2NativePortalHostTests(unittest.TestCase):
             config = _build_config(root)
             client = create_app(config).test_client()
 
+            network_page = client.get("/portal/network")
+            try:
+                self.assertEqual(network_page.status_code, 200)
+                self.assertIn(ADMIN_NETWORK_ROOT_SLICE_ID.encode(), network_page.data)
+            finally:
+                network_page.close()
+
+            utilities_page = client.get("/portal/utilities")
+            try:
+                self.assertEqual(utilities_page.status_code, 200)
+                self.assertIn(ADMIN_TOOL_REGISTRY_SLICE_ID.encode(), utilities_page.data)
+            finally:
+                utilities_page.close()
+
             tools_page = client.get("/portal/system/tools")
             try:
                 self.assertEqual(tools_page.status_code, 200)
                 self.assertIn(ADMIN_TOOL_REGISTRY_SLICE_ID.encode(), tools_page.data)
             finally:
                 tools_page.close()
+
+            utility_aws_page = client.get("/portal/utilities/aws-csm")
+            try:
+                self.assertEqual(utility_aws_page.status_code, 200)
+                self.assertIn(AWS_READ_ONLY_SLICE_ID.encode(), utility_aws_page.data)
+            finally:
+                utility_aws_page.close()
 
             aws_page = client.get("/portal/system/aws")
             try:

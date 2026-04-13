@@ -112,11 +112,13 @@ class MapsReadOnlyUnitTests(unittest.TestCase):
         self.assertEqual(feature_types, ["Point", "Polygon"])
 
         named_row = [row for row in surface["rows"] if row["datum_address"] == "4-2-3"][0]
-        title_overlay = [entry for entry in named_row["overlay_values"] if entry["overlay_family"] == "title_babelette"][0]
+        title_overlay = [entry for entry in named_row["overlay_preview"] if entry["overlay_family"] == "title_babelette"][0]
         self.assertEqual(title_overlay["display_value"], "summit")
 
+        self.assertEqual(surface["selected_row"]["datum_address"], "4-2-1")
+
         bad_row = [row for row in surface["rows"] if row["datum_address"] == "4-2-4"][0]
-        bad_title_overlay = [entry for entry in bad_row["overlay_values"] if entry["overlay_family"] == "title_babelette"][0]
+        bad_title_overlay = [entry for entry in bad_row["overlay_preview"] if entry["overlay_family"] == "title_babelette"][0]
         self.assertEqual(bad_title_overlay["raw_value"], "HERE")
         self.assertEqual(bad_title_overlay["display_value"], "HERE")
         self.assertIn("illegal_magnitude_literal", bad_row["diagnostic_states"])

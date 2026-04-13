@@ -15,6 +15,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_ENTRYPOINT_ID,
     ADMIN_EXPOSURE_INTERNAL_ONLY,
     ADMIN_HOME_STATUS_SLICE_ID,
+    ADMIN_NETWORK_ROOT_SLICE_ID,
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
@@ -28,10 +29,12 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     MAPS_READ_ONLY_SLICE_ID,
     AdminShellChrome,
     AdminShellRequest,
+    activity_icon_id_for_slice,
     build_admin_surface_catalog,
     build_admin_tool_registry_entries,
     build_portal_activity_dispatch_bodies,
     build_shell_composition_payload,
+    map_surface_to_active_service,
     resolve_admin_shell_request,
 )
 from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
@@ -53,6 +56,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_AWS_CSM_FAMILY_HOME_SURFACE_SCHEMA,
     ADMIN_HOME_STATUS_SURFACE_SCHEMA,
     ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA,
+    ADMIN_NETWORK_ROOT_SURFACE_SCHEMA,
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
     ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
     ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA,
@@ -157,6 +161,38 @@ def _tool_entry_by_slice_id(
     return {entry["slice_id"]: entry for entry in _runtime_tool_entries(tool_exposure_policy=tool_exposure_policy)}
 
 
+def _canonical_shell_href(slice_id: str) -> str:
+    if slice_id == ADMIN_HOME_STATUS_SLICE_ID:
+        return "/portal/system"
+    if slice_id == ADMIN_NETWORK_ROOT_SLICE_ID:
+        return "/portal/network"
+    if slice_id == ADMIN_TOOL_REGISTRY_SLICE_ID:
+        return "/portal/utilities"
+    if slice_id == DATUM_RESOURCE_WORKBENCH_SLICE_ID:
+        return "/portal/system/datum"
+    if slice_id == AWS_READ_ONLY_SLICE_ID:
+        return "/portal/utilities/aws-csm"
+    if slice_id == AWS_NARROW_WRITE_SLICE_ID:
+        return "/portal/utilities/aws-write"
+    if slice_id == AWS_CSM_ONBOARDING_SLICE_ID:
+        return "/portal/utilities/aws-csm-onboarding"
+    if slice_id == AWS_CSM_SANDBOX_SLICE_ID:
+        return "/portal/utilities/aws-csm-sandbox"
+    if slice_id == MAPS_READ_ONLY_SLICE_ID:
+        return "/portal/utilities/maps"
+    return "/portal/system"
+
+
+def _root_surface_label(slice_id: str) -> str:
+    if slice_id == ADMIN_HOME_STATUS_SLICE_ID:
+        return "System"
+    if slice_id == ADMIN_NETWORK_ROOT_SLICE_ID:
+        return "Network"
+    if slice_id == ADMIN_TOOL_REGISTRY_SLICE_ID:
+        return "Utilities"
+    return _as_text(slice_id)
+
+
 def _build_home_status_surface(
     *,
     audit_storage_file: str | Path | None,
@@ -227,12 +263,44 @@ def _build_tool_registry_surface(
     }
 
 
+def _build_network_root_surface(
+    *,
+    tool_exposure_policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    tool_summary = _tool_exposure_summary(tool_exposure_policy)
+    visible_utility_count = len(
+        [entry for entry in _runtime_tool_entries(tool_exposure_policy=tool_exposure_policy) if entry["visible_in_activity_bar"]]
+    )
+    return {
+        "schema": ADMIN_NETWORK_ROOT_SURFACE_SCHEMA,
+        "active_surface_id": ADMIN_NETWORK_ROOT_SLICE_ID,
+        "network_state": "lightweight_placeholder",
+        "summary": {
+            "hosted_root": "pending_fnd_ebi",
+            "tool_visibility_source": tool_summary.get("policy_source") or "runtime_default_allow_all",
+            "visible_utility_count": visible_utility_count,
+        },
+        "blocks": [
+            {"kind": "metric", "label": "Hosted root", "value": "pending"},
+            {"kind": "metric", "label": "Visible utilities", "value": str(visible_utility_count)},
+            {"kind": "metric", "label": "FND-EBI", "value": "follow-on"},
+        ],
+        "notes": [
+            "Network is now a first-class shell root and remains intentionally lightweight in this pass.",
+            "No hosted service runtimes are loaded here until a dedicated network family surface lands.",
+            "System remains the default core root; utility tools continue to launch only when explicitly selected.",
+        ],
+    }
+
+
 def _select_band0_surface_payload(
     *,
     active_surface_id: str,
     audit_storage_file: str | Path | None,
     tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if active_surface_id == ADMIN_NETWORK_ROOT_SLICE_ID:
+        return _build_network_root_surface(tool_exposure_policy=tool_exposure_policy)
     if active_surface_id == ADMIN_TOOL_REGISTRY_SLICE_ID:
         return _build_tool_registry_surface(tool_exposure_policy=tool_exposure_policy)
     return _build_home_status_surface(
@@ -257,23 +325,54 @@ def _activity_items(
     tool_exposure_policy: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     bodies = build_portal_activity_dispatch_bodies(portal_tenant_id=portal_tenant_id)
+    active_service = map_surface_to_active_service(nav_active_slice_id)
     visible_tool_slice_ids = {
         entry["slice_id"]
         for entry in _runtime_tool_entries(tool_exposure_policy=tool_exposure_policy)
         if entry["visible_in_activity_bar"]
     }
-    items: list[dict[str, Any]] = []
-    for entry in build_admin_surface_catalog():
-        if not entry.launchable or entry.slice_id not in bodies:
-            continue
-        items.append(
-            {
-                "slice_id": entry.slice_id,
-                "label": entry.label,
-                "active": entry.slice_id == nav_active_slice_id,
-                "shell_request": bodies[entry.slice_id],
-            }
-        )
+    items: list[dict[str, Any]] = [
+        {
+            "slice_id": ADMIN_HOME_STATUS_SLICE_ID,
+            "label": "FND",
+            "aria_label": "Go to System root",
+            "icon_id": "fnd-logo",
+            "nav_kind": "root_logo",
+            "active": False,
+            "shell_request": bodies[ADMIN_HOME_STATUS_SLICE_ID],
+            "href": _canonical_shell_href(ADMIN_HOME_STATUS_SLICE_ID),
+        },
+        {
+            "slice_id": ADMIN_NETWORK_ROOT_SLICE_ID,
+            "label": "Network",
+            "aria_label": "Open Network root",
+            "icon_id": activity_icon_id_for_slice(ADMIN_NETWORK_ROOT_SLICE_ID),
+            "nav_kind": "root_service",
+            "active": active_service == "network",
+            "shell_request": bodies[ADMIN_NETWORK_ROOT_SLICE_ID],
+            "href": _canonical_shell_href(ADMIN_NETWORK_ROOT_SLICE_ID),
+        },
+        {
+            "slice_id": ADMIN_HOME_STATUS_SLICE_ID,
+            "label": "System",
+            "aria_label": "Open System root",
+            "icon_id": activity_icon_id_for_slice(ADMIN_HOME_STATUS_SLICE_ID),
+            "nav_kind": "root_service",
+            "active": active_service == "system",
+            "shell_request": bodies[ADMIN_HOME_STATUS_SLICE_ID],
+            "href": _canonical_shell_href(ADMIN_HOME_STATUS_SLICE_ID),
+        },
+        {
+            "slice_id": ADMIN_TOOL_REGISTRY_SLICE_ID,
+            "label": "Utilities",
+            "aria_label": "Open Utilities root",
+            "icon_id": activity_icon_id_for_slice(ADMIN_TOOL_REGISTRY_SLICE_ID),
+            "nav_kind": "root_service",
+            "active": active_service == "utilities",
+            "shell_request": bodies[ADMIN_TOOL_REGISTRY_SLICE_ID],
+            "href": _canonical_shell_href(ADMIN_TOOL_REGISTRY_SLICE_ID),
+        },
+    ]
     for tool in build_admin_tool_registry_entries():
         if not tool.launchable or tool.slice_id not in bodies or tool.slice_id not in visible_tool_slice_ids:
             continue
@@ -281,20 +380,16 @@ def _activity_items(
             {
                 "slice_id": tool.slice_id,
                 "label": tool.label,
+                "aria_label": tool.label,
+                "icon_id": activity_icon_id_for_slice(tool.slice_id),
+                "nav_kind": "tool",
                 "active": tool.slice_id == nav_active_slice_id,
                 "shell_request": bodies[tool.slice_id],
+                "href": _canonical_shell_href(tool.slice_id),
                 "entrypoint_id": tool.entrypoint_id,
                 "read_write_posture": tool.read_write_posture,
             }
         )
-    items.append(
-        {
-            "slice_id": DATUM_RESOURCE_WORKBENCH_SLICE_ID,
-            "label": "Resource workbench",
-            "active": DATUM_RESOURCE_WORKBENCH_SLICE_ID == nav_active_slice_id,
-            "shell_request": bodies[DATUM_RESOURCE_WORKBENCH_SLICE_ID],
-        }
-    )
     return items
 
 
@@ -305,53 +400,64 @@ def _control_panel_region(
     tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     bodies = build_portal_activity_dispatch_bodies(portal_tenant_id=portal_tenant_id)
-    visible_tool_rows = {
-        entry["slice_id"]: entry
+    visible_tool_rows = [
+        entry
         for entry in _runtime_tool_entries(tool_exposure_policy=tool_exposure_policy)
         if entry["visible_in_activity_bar"]
-    }
-    surf_entries: list[dict[str, Any]] = []
-    for entry in build_admin_surface_catalog():
-        if not entry.launchable:
+    ]
+    system_entries = [
+        {
+            "label": "Home and status",
+            "meta": "default core root",
+            "active": nav_active_slice_id == ADMIN_HOME_STATUS_SLICE_ID,
+            "shell_request": bodies[ADMIN_HOME_STATUS_SLICE_ID],
+            "href": _canonical_shell_href(ADMIN_HOME_STATUS_SLICE_ID),
+        },
+        {
+            "label": "Authoritative datum",
+            "meta": DATUM_RESOURCE_WORKBENCH_SLICE_ID,
+            "active": nav_active_slice_id == DATUM_RESOURCE_WORKBENCH_SLICE_ID,
+            "shell_request": bodies[DATUM_RESOURCE_WORKBENCH_SLICE_ID],
+            "href": _canonical_shell_href(DATUM_RESOURCE_WORKBENCH_SLICE_ID),
+        },
+    ]
+    network_entries = [
+        {
+            "label": "Network overview",
+            "meta": "hosted and service follow-on root",
+            "active": nav_active_slice_id == ADMIN_NETWORK_ROOT_SLICE_ID,
+            "shell_request": bodies[ADMIN_NETWORK_ROOT_SLICE_ID],
+            "href": _canonical_shell_href(ADMIN_NETWORK_ROOT_SLICE_ID),
+        }
+    ]
+    utility_entries: list[dict[str, Any]] = [
+        {
+            "label": "Tool launcher",
+            "meta": ADMIN_TOOL_REGISTRY_SLICE_ID,
+            "active": nav_active_slice_id == ADMIN_TOOL_REGISTRY_SLICE_ID,
+            "shell_request": bodies[ADMIN_TOOL_REGISTRY_SLICE_ID],
+            "href": _canonical_shell_href(ADMIN_TOOL_REGISTRY_SLICE_ID),
+        }
+    ]
+    for tool in build_admin_tool_registry_entries():
+        row = next((item for item in visible_tool_rows if item["slice_id"] == tool.slice_id), None)
+        if row is None:
             continue
-        surf_entries.append(
+        utility_entries.append(
             {
-                "label": entry.label,
-                "meta": entry.slice_id,
-                "active": entry.slice_id == nav_active_slice_id,
-                "shell_request": bodies[entry.slice_id],
+                "label": tool.label,
+                "meta": tool.entrypoint_id,
+                "active": tool.slice_id == nav_active_slice_id,
+                "shell_request": bodies.get(tool.slice_id),
+                "href": _canonical_shell_href(tool.slice_id),
             }
         )
-    tool_entries: list[dict[str, Any]] = []
-    for tool in build_admin_tool_registry_entries():
-        if tool.slice_id not in visible_tool_rows:
-            continue
-        shell_request = bodies.get(tool.slice_id)
-        entry: dict[str, Any] = {
-            "label": tool.label,
-            "meta": tool.entrypoint_id,
-            "active": tool.slice_id == nav_active_slice_id,
-            "shell_request": shell_request,
-        }
-        if not tool.launchable:
-            entry["gated"] = True
-        tool_entries.append(entry)
     return {
         "schema": ADMIN_SHELL_REGION_CONTROL_PANEL_SCHEMA,
         "sections": [
-            {"title": "Admin surfaces", "entries": surf_entries},
-            {"title": "Shell-registered tools", "entries": tool_entries},
-            {
-                "title": "Datum",
-                "entries": [
-                    {
-                        "label": "Resource workbench",
-                        "meta": DATUM_RESOURCE_WORKBENCH_SLICE_ID,
-                        "active": nav_active_slice_id == DATUM_RESOURCE_WORKBENCH_SLICE_ID,
-                        "shell_request": bodies[DATUM_RESOURCE_WORKBENCH_SLICE_ID],
-                    }
-                ],
-            },
+            {"title": "System", "entries": system_entries},
+            {"title": "Network", "entries": network_entries},
+            {"title": "Utilities", "entries": utility_entries},
         ],
     }
 
@@ -394,8 +500,8 @@ def _workbench_home(*, surface_payload: dict[str, Any] | None) -> dict[str, Any]
     return {
         "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "home_summary",
-        "title": "Admin home",
-        "subtitle": "Band 0 internal shell projection",
+        "title": "System",
+        "subtitle": "Default core root",
         "visible": True,
         "blocks": blocks,
         "notes": notes,
@@ -408,10 +514,24 @@ def _workbench_registry(*, surface_payload: dict[str, Any] | None) -> dict[str, 
     return {
         "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "tool_registry",
-        "title": "Tool registry",
-        "subtitle": "Shell-owned launch descriptors with runtime visibility diagnostics",
+        "title": "Utilities",
+        "subtitle": "Tool launcher and utility surfaces",
         "visible": True,
         "tool_rows": rows,
+    }
+
+
+def _workbench_network(*, surface_payload: dict[str, Any] | None) -> dict[str, Any]:
+    sp = surface_payload or {}
+    notes = sp.get("notes") or []
+    return {
+        "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
+        "kind": "network_root",
+        "title": "Network",
+        "subtitle": "Lightweight hosted and service readiness root",
+        "visible": True,
+        "blocks": list(sp.get("blocks") or []),
+        "notes": list(notes),
     }
 
 
@@ -471,6 +591,18 @@ def _inspector_datum(*, datum_dict: dict[str, Any]) -> dict[str, Any]:
         "readiness_status": datum_dict.get("readiness_status") or {},
         "source_files": datum_dict.get("source_files") or {},
         "warnings": list(datum_dict.get("warnings") or []),
+    }
+
+
+def _inspector_network(*, surface_payload: dict[str, Any] | None) -> dict[str, Any]:
+    sp = surface_payload or {}
+    return {
+        "schema": ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
+        "title": "Network",
+        "kind": "network_summary",
+        "network_state": _as_text(sp.get("network_state")) or "lightweight_placeholder",
+        "summary": dict(sp.get("summary") or {}),
+        "notes": list(sp.get("notes") or []),
     }
 
 
@@ -658,7 +790,7 @@ def _build_regions_and_surface(
             wb: dict[str, Any] = {
                 "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
                 "kind": "tool_registry",
-                "title": "Tool registry",
+                "title": "Utilities",
                 "subtitle": _as_text(selection.reason_message) or "Selection blocked",
                 "visible": True,
                 "tool_rows": surface_fallback.get("tool_entries") or [],
@@ -671,7 +803,13 @@ def _build_regions_and_surface(
             )
         comp_layout_surface = (
             selection.active_surface_id
-            if selection.active_surface_id in {ADMIN_HOME_STATUS_SLICE_ID, ADMIN_TOOL_REGISTRY_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID, MAPS_READ_ONLY_SLICE_ID}
+            if selection.active_surface_id in {
+                ADMIN_HOME_STATUS_SLICE_ID,
+                ADMIN_NETWORK_ROOT_SLICE_ID,
+                ADMIN_TOOL_REGISTRY_SLICE_ID,
+                AWS_CSM_SANDBOX_SLICE_ID,
+                MAPS_READ_ONLY_SLICE_ID,
+            }
             else ADMIN_HOME_STATUS_SLICE_ID
         )
         comp = build_shell_composition_payload(
@@ -706,7 +844,7 @@ def _build_regions_and_surface(
             active_surface_id=active,
             portal_tenant_id=portal_tenant_id,
             page_title="MyCite",
-            page_subtitle="Admin home",
+            page_subtitle="System",
             activity_items=_activity_items(
                 portal_tenant_id=portal_tenant_id,
                 nav_active_slice_id=nav_active_slice_id,
@@ -718,9 +856,31 @@ def _build_regions_and_surface(
                 tool_exposure_policy=tool_exposure_policy,
             ),
             workbench=wb,
-            inspector=_inspector_empty(),
+            inspector=_inspector_empty(title="System"),
         )
-        return sp, comp, "MyCite", "Admin home"
+        return sp, comp, "MyCite", "System"
+
+    if active == ADMIN_NETWORK_ROOT_SLICE_ID:
+        sp = _build_network_root_surface(tool_exposure_policy=tool_exposure_policy)
+        comp = build_shell_composition_payload(
+            active_surface_id=active,
+            portal_tenant_id=portal_tenant_id,
+            page_title="MyCite",
+            page_subtitle="Network",
+            activity_items=_activity_items(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            control_panel=_control_panel_region(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            workbench=_workbench_network(surface_payload=sp),
+            inspector=_inspector_network(surface_payload=sp),
+        )
+        return sp, comp, "MyCite", "Network"
 
     if active == ADMIN_TOOL_REGISTRY_SLICE_ID:
         sp = _build_tool_registry_surface(tool_exposure_policy=tool_exposure_policy)
@@ -728,7 +888,7 @@ def _build_regions_and_surface(
             active_surface_id=active,
             portal_tenant_id=portal_tenant_id,
             page_title="MyCite",
-            page_subtitle="Tool registry",
+            page_subtitle="Utilities",
             activity_items=_activity_items(
                 portal_tenant_id=portal_tenant_id,
                 nav_active_slice_id=nav_active_slice_id,
@@ -740,9 +900,9 @@ def _build_regions_and_surface(
                 tool_exposure_policy=tool_exposure_policy,
             ),
             workbench=_workbench_registry(surface_payload=sp),
-            inspector=_inspector_empty(title="Registry"),
+            inspector=_inspector_empty(title="Utilities"),
         )
-        return sp, comp, "MyCite", "Tool registry"
+        return sp, comp, "MyCite", "Utilities"
 
     if active == DATUM_RESOURCE_WORKBENCH_SLICE_ID:
         if data_dir is None:

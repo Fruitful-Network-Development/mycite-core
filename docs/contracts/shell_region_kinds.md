@@ -32,8 +32,8 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `schema` | yes | Always `mycite.v2.admin.shell.composition.v1` (`ADMIN_SHELL_COMPOSITION_SCHEMA`). |
-| `composition_mode` | yes | `"tool"` or `"system"` from `shell_composition_mode_for_surface(active_surface_id)` (tool for AWS read-only, narrow-write, **AWS-CSM onboarding** (Band 4), **internal AWS-CSM sandbox**, and **Maps read-only** slice IDs; otherwise system). |
-| `active_service` | yes | `"aws"`, `"maps"`, `"datum"`, `"registry"`, or `"system"` from `map_surface_to_active_service`. |
+| `composition_mode` | yes | `"tool"` or `"system"` from `shell_composition_mode_for_surface(active_surface_id)` (tool for AWS family/tool slices and **Maps read-only**; otherwise system). |
+| `active_service` | yes | `"system"`, `"network"`, or `"utilities"` from `map_surface_to_active_service`. This is now a root-service identifier, not a per-tool family label. |
 | `active_surface_id` | yes | Resolved active surface slice id (text). |
 | `active_tool_slice_id` | conditional | Non-null only when `composition_mode == "tool"`; equals the active tool slice id for the current AWS or Maps tool surface. |
 | `foreground_shell_region` | yes | `"interface-panel"` in tool mode; `"center-workbench"` in system mode, unless chrome forces otherwise (see below). |
@@ -74,15 +74,37 @@ Emitted by `build_shell_composition_payload` in `admin_shell.py`, then updated i
 | Field | Required | Notes |
 |-------|----------|--------|
 | `slice_id` | yes | Target slice id. |
-| `label` | yes | Display label. |
+| `label` | yes | Human-readable label (used for accessibility / tooltips, not primary visible text in the icon-only bar). |
+| `aria_label` | yes | Accessibility label for the icon button. |
+| `icon_id` | yes | Shell-owned icon identifier. |
+| `nav_kind` | yes | `root_logo`, `root_service`, or `tool`. |
 | `active` | yes | Boolean: matches `nav_active_slice_id`. |
 | `shell_request` | yes | Full `AdminShellRequest` body for POST (from `build_portal_activity_dispatch_bodies`). |
+| `href` | optional | Canonical deep-link path for the root or tool. |
 | `entrypoint_id` | optional | Present on tool registry entries from catalog. |
 | `read_write_posture` | optional | Present on tool entries (`read-only` or `write`). |
 
-**Client branch:** `renderActivityItems` in `v2_portal_shell.js` — builds links; dispatches `loadShell(item.shell_request)` on click.
+**Client branch:** `renderActivityItems` in `v2_portal_shell.js` — builds icon links; dispatches `loadShell(item.shell_request)` on click.
 
-There is no per-item `kind` discriminant; routing is entirely by the embedded `shell_request`.
+The runtime now emits the fixed root-shell order before visible tools:
+
+1. root logo to `System`
+2. `Network`
+3. `System`
+4. `Utilities`
+5. visible tools in registry order
+
+Canonical page routes aligned to this shell contract are:
+
+- `/portal/system`
+- `/portal/network`
+- `/portal/utilities`
+- `/portal/utilities/<tool_slug>`
+
+Compatibility aliases remain:
+
+- `/portal/system/<tool_slug>`
+- `/portal/system/tools`
 
 ---
 
@@ -101,7 +123,7 @@ There is no per-item `kind` discriminant; routing is entirely by the embedded `s
 
 | Field | Required | Notes |
 |-------|----------|--------|
-| `title` | yes | Section heading (e.g. `"Admin surfaces"`, `"Shell-registered tools"`, `"Datum"`). |
+| `title` | yes | Section heading (currently `"System"`, `"Network"`, or `"Utilities"`). |
 | `entries` | yes | Array of entry objects. |
 
 ### Entry object
@@ -111,7 +133,8 @@ There is no per-item `kind` discriminant; routing is entirely by the embedded `s
 | `label` | yes | Link label. |
 | `meta` | optional | Secondary text (slice id or entrypoint id). |
 | `active` | yes | Boolean. |
-| `shell_request` | optional | Omitted when missing from dispatch bodies; gated tools may still appear with `gated: true`. |
+| `shell_request` | optional | Omitted when missing from dispatch bodies. |
+| `href` | optional | Canonical deep-link path when present. |
 | `gated` | optional | When true, client marks link disabled (`aria-disabled`). |
 
 **Client branch:** `renderControlPanel` — iterates `sections` / `entries`; uses `shell_request` when present.
@@ -126,10 +149,11 @@ Workbench payloads use `schema: mycite.v2.admin.shell.region.workbench.v1` (`ADM
 |--------|-----------------------------|-------------------|---------------------|-----------------------------------|
 | `error` | `schema`, `kind`, `title`, `visible`, `message` | `subtitle` | `_workbench_error`; selection-blocked paths | `kind === "error"` — card + message |
 | `home_summary` | `schema`, `kind`, `title`, `visible`, `blocks` | `subtitle` | `_workbench_home` | Parses `blocks` as label/value cards (`b.label`, `b.value`). Nested block `kind` (e.g. `"metric"`) is informational for authors; JS does not switch on it. |
-| `tool_registry` | `schema`, `kind`, `title`, `visible`, `tool_rows` | `subtitle`, `banner` (`code`, `message`) | `_workbench_registry`; blocked registry path with `banner` | Table from `tool_rows`; optional banner |
+| `tool_registry` | `schema`, `kind`, `title`, `visible`, `tool_rows` | `subtitle`, `banner` (`code`, `message`) | `_workbench_registry`; blocked registry path with `banner` | Utilities launcher table from `tool_rows`; optional banner |
+| `network_root` | `schema`, `kind`, `title`, `visible`, `blocks`, `notes` | `subtitle` | `_workbench_network` | Lightweight hosted/network readiness cards and notes |
 | `datum_workbench` | `schema`, `kind`, `title`, `visible`, `summary`, `warnings`, `documents`, `rows_preview` | `subtitle` | `_workbench_datum` | Summary cards, authoritative document catalog, selected-document diagnostics, preview table columns `datum_address`, `recognized_family`, `diagnostic_states`, `primary_value_token`, and compact reference bindings |
 | `tool_placeholder` | `schema`, `kind`, `title`, `visible` (`false` for AWS primary inspector layout), `subtitle` | — | AWS read-only, narrow-write, **AWS-CSM onboarding**, and **AWS-CSM sandbox** success paths | Treated like hidden body: `visible === false` shows empty/workbench-hidden copy; subtitle as message |
-| `maps_workbench` | `schema`, `kind`, `title`, `visible`, `document_catalog`, `selected_document`, `selected_row`, `map_projection`, `rows`, `diagnostic_summary`, `lens_state`, `request_contract` | `subtitle`, `warnings` | `build_admin_maps_workbench` in `admin_maps_runtime.py`; `run_admin_shell_entry` maps branch | Geographic pane + document chooser + rows/feature cross-selection |
+| `maps_workbench` | `schema`, `kind`, `title`, `visible`, `request_contract` | `subtitle`, `warnings`, `diagnostic_summary`, `lens_state`, `selected_document_id`, `selected_row_address`, `selected_feature_id`, `render_from_surface_payload` | `build_admin_maps_workbench` in `admin_maps_runtime.py`; `run_admin_shell_entry` maps branch | Geographic pane + document chooser + rows/feature cross-selection, with heavy maps state read from the canonical `surface_payload` rather than duplicated shell-region payloads |
 | `tool_collapsed_inspector` | `schema`, `kind`, `title`, `subtitle`, `visible` (`true`) | — | `_apply_shell_chrome_to_composition` only | Dedicated branch — dismissal card |
 
 ### Workbench presentation note
@@ -150,7 +174,8 @@ Inspector payloads use `schema: mycite.v2.admin.shell.region.inspector.v1` (`ADM
 | `aws_tool_error` | `schema`, `kind`, `title`, `error_code`, `error_message`, `warnings` | — | `_inspector_aws_tool_error` | Error card + warnings list |
 | `narrow_write_form` | `schema`, `kind`, `title`, `read_only_context`, `submit_contract` | — | `_inspector_narrow_write_form` | Form + POST to `submit_contract.route` with schema and fixed fields |
 | `csm_onboarding_form` | `schema`, `kind`, `title`, `read_only_context`, `submit_contract`, `onboarding_action_options` | — | `_inspector_csm_onboarding_form` | Select + `profile_id` + POST to `/portal/api/v2/admin/aws/csm-onboarding` using server-issued schema and fixed `tenant_scope` / `focus_subject` |
-| `maps_summary` | `schema`, `kind`, `title`, `selected_document`, `selected_feature`, `selected_row`, `map_projection`, `diagnostic_summary`, `lens_state` | `warnings` | `build_admin_maps_inspector` in `admin_maps_runtime.py` | Selected document / feature / row summary for the maps slice |
+| `maps_summary` | `schema`, `kind`, `title`, `render_from_surface_payload` | `warnings` | `build_admin_maps_inspector` in `admin_maps_runtime.py` | Selected document / feature / row summary for the maps slice, with the client reading the heavy detail from the canonical `surface_payload` |
+| `network_summary` | `schema`, `kind`, `title`, `network_state`, `summary`, `notes` | — | `_inspector_network` | Lightweight hosted/network follow-on summary |
 
 ### `json_document` inspector kind
 

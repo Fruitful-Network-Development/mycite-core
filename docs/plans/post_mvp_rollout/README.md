@@ -38,6 +38,7 @@ Use it after the MVP is proven and before any new client-visible slice is specif
 
 - Current admin-first platform status: post-AWS tool platform stabilized.
 - Completed admin-first slices: `Admin Band 0`, `admin_band1.aws_read_only_surface`, `admin_band2.aws_narrow_write_surface`, `admin_band3.aws_csm_sandbox_surface`, `admin_band4.aws_csm_onboarding_surface`, and `admin_band5.maps_read_only_surface` (FND-first rollout).
+- Current shared admin shell posture: canonical roots are `System`, `Network`, and `Utilities`; the activity bar is icon-only; utility tools launch under `Utilities`; `/portal/system/<tool_slug>` remains a compatibility alias beside the canonical `/portal/utilities/<tool_slug>` routes.
 - Implemented trusted-tenant rollout slices: `band1.portal_home_tenant_status`, `band1.operational_status_surface`, `band1.audit_activity_visibility`, and `band2.profile_basics_write_surface`.
 - Live `/portal` cutover status: V2-native portal host deployed for FND and TFF. The earlier Shape B bridge is retained only as historical cutover evidence; see [../../records/22-v1_retirement_closure.md](../../records/22-v1_retirement_closure.md) for the formal closure statement.
 - Canonical live AWS mapping status: current and active through [post_aws_tool_platform/live_state_authority_and_mapping.md](post_aws_tool_platform/live_state_authority_and_mapping.md).
@@ -46,6 +47,10 @@ Use it after the MVP is proven and before any new client-visible slice is specif
 - Tool follow-on work now also uses the V2.3 audit and packet documents when
   deciding whether a legacy tool becomes a V2 tool, stays isolated, or is
   retired.
+- Current performance posture: root-shell bootstraps should stay light, AWS-CSM
+  family health is cached in-process, and Maps uses summary-first payloads with
+  selected-row detail instead of duplicating full-row state across shell
+  regions.
 
 ## Preferred near-term sequence
 

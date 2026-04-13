@@ -24,6 +24,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND0_NAME,
     ADMIN_ENTRYPOINT_ID,
     ADMIN_HOME_STATUS_SLICE_ID,
+    ADMIN_NETWORK_ROOT_SLICE_ID,
     ADMIN_SHELL_COMPOSITION_SCHEMA,
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
@@ -118,7 +119,10 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             self.assertFalse(audit_storage_file.exists())
 
             available_slice_ids = [entry["slice_id"] for entry in result["surface_payload"]["available_admin_slices"]]
-            self.assertEqual(available_slice_ids, [ADMIN_HOME_STATUS_SLICE_ID, ADMIN_TOOL_REGISTRY_SLICE_ID])
+            self.assertEqual(
+                available_slice_ids,
+                [ADMIN_HOME_STATUS_SLICE_ID, ADMIN_NETWORK_ROOT_SLICE_ID, ADMIN_TOOL_REGISTRY_SLICE_ID],
+            )
 
             available_tool_entries = result["surface_payload"]["available_tool_slices"]
             self.assertEqual(len(available_tool_entries), 2)
@@ -136,12 +140,22 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             )
             comp = result["shell_composition"]
             self.assertEqual(comp["schema"], ADMIN_SHELL_COMPOSITION_SCHEMA)
+            self.assertEqual(comp["active_service"], "system")
             self.assertIn("regions", comp)
             self.assertIn("activity_bar", comp["regions"])
             self.assertIn("control_panel", comp["regions"])
             self.assertIn("workbench", comp["regions"])
             self.assertIn("inspector", comp["regions"])
             self.assertTrue(comp["regions"]["activity_bar"]["items"])
+            activity_items = comp["regions"]["activity_bar"]["items"]
+            self.assertEqual(
+                [item["nav_kind"] for item in activity_items[:4]],
+                ["root_logo", "root_service", "root_service", "root_service"],
+            )
+            self.assertEqual(
+                [item["icon_id"] for item in activity_items[:4]],
+                ["fnd-logo", "network", "system", "utilities"],
+            )
 
     def test_tool_exposure_filters_visible_tools_and_marks_registry_rows(self) -> None:
         result = run_admin_shell_entry(
@@ -174,6 +188,9 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         self.assertNotIn(AWS_CSM_SANDBOX_SLICE_ID, activity_slice_ids)
         self.assertNotIn(AWS_CSM_ONBOARDING_SLICE_ID, activity_slice_ids)
         self.assertNotIn(MAPS_READ_ONLY_SLICE_ID, activity_slice_ids)
+        self.assertIn(ADMIN_HOME_STATUS_SLICE_ID, activity_slice_ids)
+        self.assertIn(ADMIN_NETWORK_ROOT_SLICE_ID, activity_slice_ids)
+        self.assertIn(ADMIN_TOOL_REGISTRY_SLICE_ID, activity_slice_ids)
 
         registry = run_admin_shell_entry(
             {
