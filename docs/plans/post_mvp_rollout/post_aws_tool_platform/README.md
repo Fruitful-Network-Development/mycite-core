@@ -26,9 +26,9 @@ Current live posture:
 - Canonical live AWS profile mapping remains current and must stay aligned with the deployed V2 host.
 - The V1 retirement ledger and Phase 11 gate are closed through [../../../records/22-v1_retirement_closure.md](../../../records/22-v1_retirement_closure.md).
 - Current shell-registered admin-tool entries are `aws`, `aws_narrow_write`,
-  `aws_csm_sandbox`, `aws_csm_onboarding`, and `cts_gis`.
-- Current config-gated live exposure keeps `cts_gis` enabled on FND only while
-  TFF remains hidden and blocked.
+  `aws_csm_sandbox`, `aws_csm_onboarding`, `cts_gis`, and `fnd_ebi`.
+- Current config-gated live exposure keeps `cts_gis` and `fnd_ebi` enabled on
+  FND only while TFF remains hidden and blocked for both.
 
 ## Use order
 

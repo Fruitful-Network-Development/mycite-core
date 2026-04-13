@@ -7,7 +7,7 @@ This contract defines the forward role of `/portal/network`.
 ## Root posture
 
 - `/portal/network` is a shell root, not a tool family surface.
-- It may stay lightweight while contracts land.
+- It now exposes a contract-first read model over hosted/network entities.
 - It must point to hosted/network entity contracts instead of provider
   placeholders.
 
@@ -32,5 +32,6 @@ Current tab ownership:
 ## Immediate implementation rule
 
 - runtime copy and docs may summarize these areas now
+- the read-only network root model is now live from deployed instance state
 - no hosted or host-alias runtime loader lands before the entity contracts
 - `tenant_progeny_profiles` does not reopen as a shortcut around this sequence

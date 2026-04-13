@@ -431,7 +431,7 @@ def build_admin_surface_catalog() -> tuple[AdminSurfaceCatalogEntry, ...]:
             label="Network",
             exposure_status="implemented_internal",
             read_write_posture="read-only",
-            status_summary="lightweight_placeholder_root",
+            status_summary="contract_first_read_model_root",
             surface_kind="network_root",
             launchable=True,
         ),

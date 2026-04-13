@@ -9,6 +9,7 @@ from .aws_csm_newsletter_state import FilesystemAwsCsmNewsletterStateAdapter
 from .fnd_ebi_read_only import FND_EBI_PROFILE_SCHEMA, FilesystemFndEbiReadOnlyAdapter
 from .live_aws_profile import FilesystemLiveAwsProfileAdapter, is_live_aws_profile_file
 from .live_system_datum_store import FilesystemSystemDatumStoreAdapter
+from .network_root_read_model import FilesystemNetworkRootReadModelAdapter
 
 __all__ = [
     "AnalyticsEventPathResolution",
@@ -21,6 +22,7 @@ __all__ = [
     "FilesystemAwsCsmNewsletterStateAdapter",
     "FilesystemFndEbiReadOnlyAdapter",
     "FilesystemLiveAwsProfileAdapter",
+    "FilesystemNetworkRootReadModelAdapter",
     "FilesystemSystemDatumStoreAdapter",
     "is_live_aws_profile_file",
 ]

@@ -238,11 +238,12 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         )
 
         self.assertEqual(result["slice_id"], ADMIN_NETWORK_ROOT_SLICE_ID)
-        self.assertEqual(result["surface_payload"]["summary"]["hosted_root"], "contracts_first")
-        self.assertIn("contracts are approved", " ".join(result["surface_payload"]["notes"]))
+        self.assertEqual(result["surface_payload"]["summary"]["hosted_root"], "contract_first_read_model")
+        self.assertEqual(result["surface_payload"]["network_state"], "contract_first_read_model")
+        self.assertIn("contract-first entity layer", " ".join(result["surface_payload"]["notes"]))
         self.assertEqual(
-            result["surface_payload"]["tab_panels"]["hosted"]["summary"],
-            "Hosted views stay contract-first here; portal instances and host aliases are not runtime-loaded yet.",
+            result["surface_payload"]["summary"]["local_audit_state"],
+            "not_configured",
         )
 
     def test_disabled_tool_request_falls_back_to_registry_with_tool_not_exposed(self) -> None:

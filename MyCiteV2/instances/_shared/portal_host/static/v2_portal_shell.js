@@ -1332,6 +1332,69 @@
       var activeNetworkTab = wb.root_tab || "messages";
       var networkPanels = wb.tab_panels || {};
       var activeNetworkPanel = networkPanels[activeNetworkTab] || {};
+      function renderNetworkSection(section) {
+        if (!section) {
+          return "";
+        }
+        var title = escapeHtml(section.title || "Section");
+        var emptyText = escapeHtml(section.empty_text || "No entries.");
+        var html = '<section class="v2-card" style="margin-top:12px"><h3>' + title + "</h3>";
+        if ((section.facts || []).length) {
+          html +=
+            '<dl class="v2-surface-dl">' +
+            (section.facts || [])
+              .map(function (fact) {
+                return "<dt>" + escapeHtml(fact.label || "") + "</dt><dd>" + escapeHtml(String(fact.value || "—")) + "</dd>";
+              })
+              .join("") +
+            "</dl>";
+        }
+        if ((section.columns || []).length) {
+          var rows = section.rows || [];
+          html +=
+            '<table class="v2-table"><thead><tr>' +
+            (section.columns || [])
+              .map(function (column) {
+                return "<th>" + escapeHtml(column.label || column.key || "") + "</th>";
+              })
+              .join("") +
+            "</tr></thead><tbody>";
+          if (rows.length) {
+            html += rows
+              .map(function (row) {
+                return (
+                  "<tr>" +
+                  (section.columns || [])
+                    .map(function (column) {
+                      var key = column.key || "";
+                      return "<td>" + escapeHtml(String((row && row[key]) || "—")) + "</td>";
+                    })
+                    .join("") +
+                  "</tr>"
+                );
+              })
+              .join("");
+          } else {
+            html += '<tr><td colspan="' + escapeHtml(String((section.columns || []).length || 1)) + '">' + emptyText + "</td></tr>";
+          }
+          html += "</tbody></table>";
+        }
+        if ((section.entries || []).length) {
+          html +=
+            "<ul>" +
+            (section.entries || [])
+              .map(function (entry) {
+                var meta = entry.meta ? " <small>" + escapeHtml(String(entry.meta)) + "</small>" : "";
+                return "<li><strong>" + escapeHtml(entry.label || "—") + "</strong>" + meta + "</li>";
+              })
+              .join("") +
+            "</ul>";
+        } else if (!(section.facts || []).length && !(section.columns || []).length) {
+          html += "<p>" + emptyText + "</p>";
+        }
+        html += "</section>";
+        return html;
+      }
       var networkTabRow =
         networkTabs.length > 0
           ? '<div class="page-tabs">' +
@@ -1364,8 +1427,25 @@
               "</p></article>"
             );
           })
-          .join("") +
+              .join("") +
         "</div>";
+      var panelMetrics = activeNetworkPanel.metrics || [];
+      var networkPanelMetrics =
+        panelMetrics.length > 0
+          ? '<div class="v2-card-grid" style="margin-top:12px">' +
+            panelMetrics
+              .map(function (metric) {
+                return (
+                  '<article class="v2-card"><h3>' +
+                  escapeHtml(metric.label || "Metric") +
+                  "</h3><p>" +
+                  escapeHtml(String(metric.value || "—")) +
+                  "</p></article>"
+                );
+              })
+              .join("") +
+            "</div>"
+          : "";
       var networkList =
         networkNotes.length > 0
           ? '<section class="v2-card" style="margin-top:12px"><h3>Notes</h3><ul>' +
@@ -1380,9 +1460,10 @@
         '<section class="v2-card" style="margin-top:12px"><h3>' +
         escapeHtml(activeNetworkPanel.title || "Network") +
         "</h3><p>" +
-        escapeHtml(activeNetworkPanel.summary || "Lightweight placeholder root.") +
+        escapeHtml(activeNetworkPanel.summary || "Contract-first network root.") +
         "</p></section>";
-      body.innerHTML = networkTabRow + networkCards + networkPanel + networkList;
+      var networkSections = (activeNetworkPanel.sections || []).map(renderNetworkSection).join("");
+      body.innerHTML = networkTabRow + networkCards + networkPanel + networkPanelMetrics + networkSections + networkList;
       Array.prototype.forEach.call(body.querySelectorAll("[data-workbench-network-tab]"), function (node) {
         node.addEventListener("click", function (e) {
           e.preventDefault();
@@ -2074,6 +2155,7 @@
     }
     if (kind === "network_summary") {
       var networkSummary = region.summary || {};
+      var networkInstance = region.portal_instance || {};
       var networkNotes = (region.notes || [])
         .map(function (note) {
           return "<li>" + escapeHtml(String(note)) + "</li>";
@@ -2083,8 +2165,24 @@
         '<dl class="v2-surface-dl">' +
         "<dt>State</dt><dd>" +
         escapeHtml(region.network_state || "—") +
+        "</dd><dt>Active tab</dt><dd>" +
+        escapeHtml(region.active_tab || "—") +
         "</dd><dt>Hosted root</dt><dd>" +
         escapeHtml(networkSummary.hosted_root || "—") +
+        "</dd><dt>Portal instance</dt><dd><code>" +
+        escapeHtml(networkInstance.portal_instance_id || networkSummary.portal_instance_id || "—") +
+        "</code></dd><dt>Domain</dt><dd><code>" +
+        escapeHtml(networkInstance.domain || networkSummary.domain || "—") +
+        "</code></dd><dt>Host aliases</dt><dd>" +
+        escapeHtml(String(networkSummary.host_alias_count != null ? networkSummary.host_alias_count : "0")) +
+        "</dd><dt>Progeny links</dt><dd>" +
+        escapeHtml(String(networkSummary.progeny_link_count != null ? networkSummary.progeny_link_count : "0")) +
+        "</dd><dt>P2P contracts</dt><dd>" +
+        escapeHtml(String(networkSummary.contract_count != null ? networkSummary.contract_count : "0")) +
+        "</dd><dt>Request-log events</dt><dd>" +
+        escapeHtml(String(networkSummary.request_log_event_count != null ? networkSummary.request_log_event_count : "0")) +
+        "</dd><dt>Local audit</dt><dd>" +
+        escapeHtml(networkSummary.local_audit_state || "—") +
         "</dd><dt>Visible utilities</dt><dd>" +
         escapeHtml(String(networkSummary.visible_utility_count != null ? networkSummary.visible_utility_count : "0")) +
         "</dd></dl>" +
