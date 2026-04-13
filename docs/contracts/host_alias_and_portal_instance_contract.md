@@ -82,3 +82,8 @@ Required fields:
 2. map `/portal/network` tabs to these entities
 3. add read-only network summaries
 4. only then consider `host_alias_tool` runtime implementation
+
+Status on April 13, 2026:
+
+- steps `1` through `3` are implemented through the V2 `NETWORK` read model
+- step `4` remains pending by design

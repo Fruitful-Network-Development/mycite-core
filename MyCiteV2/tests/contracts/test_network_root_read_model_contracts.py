@@ -1,0 +1,59 @@
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from MyCiteV2.packages.ports.network_root_read_model import (
+    NetworkRootReadModelRequest,
+    NetworkRootReadModelResult,
+    NetworkRootReadModelSource,
+)
+
+
+class NetworkRootReadModelContractTests(unittest.TestCase):
+    def test_request_normalizes_portal_tenant_and_domain(self) -> None:
+        request = NetworkRootReadModelRequest(
+            portal_tenant_id="FND",
+            portal_domain="FruitfulNetworkDevelopment.com",
+        )
+
+        self.assertEqual(
+            request.to_dict(),
+            {
+                "portal_tenant_id": "fnd",
+                "portal_domain": "fruitfulnetworkdevelopment.com",
+            },
+        )
+
+    def test_request_rejects_invalid_domain(self) -> None:
+        with self.assertRaisesRegex(ValueError, "portal_domain"):
+            NetworkRootReadModelRequest(
+                portal_tenant_id="fnd",
+                portal_domain="../fruitfulnetworkdevelopment.com",
+            )
+
+    def test_source_payload_must_be_non_empty_json(self) -> None:
+        source = NetworkRootReadModelSource(
+            payload={
+                "portal_instance": {
+                    "portal_instance_id": "fnd",
+                    "domain": "fruitfulnetworkdevelopment.com",
+                }
+            }
+        )
+        result = NetworkRootReadModelResult(source=source)
+
+        self.assertTrue(result.found)
+        self.assertEqual(result.to_dict()["source"]["payload"]["portal_instance"]["portal_instance_id"], "fnd")
+
+        with self.assertRaisesRegex(ValueError, "non-empty dict"):
+            NetworkRootReadModelSource(payload={})
+
+
+if __name__ == "__main__":
+    unittest.main()

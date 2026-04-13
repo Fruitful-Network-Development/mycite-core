@@ -64,6 +64,7 @@ shared portal capabilities a shell-owned tool consumes.
 | `aws_csm_sandbox` | `service_tool` | internal sandbox projection |
 | `aws_csm_onboarding` | `service_tool` | bounded onboarding orchestration |
 | `cts_gis` | `general_tool` | spatial read-only utility tool under `Utilities` |
+| `fnd_ebi` | `service_tool` | hosted site visibility family under `Utilities` |
 
 ## Immediate implementation rule
 

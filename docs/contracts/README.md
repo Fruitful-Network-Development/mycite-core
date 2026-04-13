@@ -15,6 +15,8 @@ typing, and network/domain boundaries.
   defines the live CTS-GIS read-only surface contract.
 - [admin_fnd_ebi_read_only_surface.md](admin_fnd_ebi_read_only_surface.md)
   defines the live FND-EBI read-only visibility surface contract.
+- [admin_network_root_read_model.md](admin_network_root_read_model.md)
+  defines the live `NETWORK` root read model.
 - [chronology_mediation_contract.md](chronology_mediation_contract.md)
   defines chronology as mediation, not an active tool packet item.
 - [host_alias_and_portal_instance_contract.md](host_alias_and_portal_instance_contract.md)

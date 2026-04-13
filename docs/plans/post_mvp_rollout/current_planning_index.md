@@ -47,7 +47,7 @@ truth, not through the older slice-registry sequence above.
 The shared admin shell now uses the canonical root model:
 
 - `System` is the default core root
-- `Network` is the lightweight hosted/network root
+- `Network` is the contract-first hosted/network read-model root
 - `Utilities` is the canonical tool-bearing root
 - tools are utility-sandbox surfaces, not peer shell roots
 - the principal activity bar is visibly labeled and fixed to:
@@ -55,6 +55,9 @@ The shared admin shell now uses the canonical root model:
   `AWS-CSM`
 - `CTS-GIS` remains implemented but is reached through `Utilities`, not as a
   peer principal activity item
+- `NETWORK` now renders `portal_instance`, `host_alias`,
+  `external_service_binding`, `progeny_link`, and `p2p_contract` summaries
+  while `host_alias_tool` runtime behavior remains held for a later pass
 
 ## Implemented V2.3 trusted-tenant surfaces
 

@@ -5,9 +5,11 @@ from typing import Any, cast
 
 from MyCiteV2.packages.adapters.filesystem import (
     FilesystemAuditLogAdapter,
+    FilesystemNetworkRootReadModelAdapter,
     FilesystemSystemDatumStoreAdapter,
     is_live_aws_profile_file,
 )
+from MyCiteV2.packages.modules.cross_domain.network_root import NetworkRootReadModelService
 from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
 from MyCiteV2.packages.modules.domains.datum_recognition import DatumWorkbenchService
 from MyCiteV2.packages.state_machine.hanus_shell import (
@@ -452,10 +454,12 @@ def _build_tool_registry_surface(
 def _build_network_root_surface(
     *,
     portal_tenant_id: str,
+    portal_domain: str = "",
+    private_dir: str | Path | None = None,
+    audit_storage_file: str | Path | None = None,
     root_tab: str = "messages",
     tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    tool_summary = _tool_exposure_summary(tool_exposure_policy)
     visible_utility_count = len(
         [
             entry
@@ -463,6 +467,18 @@ def _build_network_root_surface(
             if entry["visibility_status"] in {"principal_activity", "utility_tool"}
         ]
     )
+    network_service = NetworkRootReadModelService(
+        FilesystemNetworkRootReadModelAdapter(
+            private_dir=private_dir,
+            local_audit_file=audit_storage_file,
+        )
+    )
+    network_surface = network_service.read_surface(
+        portal_tenant_id=portal_tenant_id,
+        portal_domain=portal_domain,
+    )
+    summary = dict(network_surface.get("summary") or {})
+    summary["visible_utility_count"] = visible_utility_count
     return {
         "schema": ADMIN_NETWORK_ROOT_SURFACE_SCHEMA,
         "active_surface_id": ADMIN_NETWORK_ROOT_SLICE_ID,
@@ -473,41 +489,12 @@ def _build_network_root_surface(
             active_root_tab=root_tab,
             tab_ids=NETWORK_ROOT_TABS,
         ),
-        "network_state": "lightweight_placeholder",
-        "summary": {
-            "hosted_root": "contracts_first",
-            "tool_visibility_source": tool_summary.get("policy_source") or "runtime_default_allow_all",
-            "visible_utility_count": visible_utility_count,
-        },
-        "blocks": [
-            {"kind": "metric", "label": "Hosted root", "value": "contracts-first"},
-            {"kind": "metric", "label": "Visible utilities", "value": str(visible_utility_count)},
-            {"kind": "metric", "label": "P2P/MSS split", "value": "contract-first"},
-        ],
-        "notes": [
-            "Network is now a first-class shell root and remains intentionally lightweight in this pass.",
-            "No hosted or host-alias runtimes are loaded here until the hosted/network contracts are approved.",
-            "P2P authority, MSS projection, request-log evidence, and local audit stay separated by contract in this phase.",
-            "System remains the default core root; utility tools continue to launch only when explicitly selected.",
-        ],
-        "tab_panels": {
-            "messages": {
-                "title": "Messages",
-                "summary": "Message operations remain lightweight until the hosted/network contract set is implemented.",
-            },
-            "hosted": {
-                "title": "Hosted",
-                "summary": "Hosted views stay contract-first here; portal instances and host aliases are not runtime-loaded yet.",
-            },
-            "profile": {
-                "title": "Profile",
-                "summary": "Alias/profile projection stays distinct from provider truth and runtime ownership.",
-            },
-            "contracts": {
-                "title": "Contracts",
-                "summary": "P2P contracts, progeny links, request evidence, and local audit are sequenced here before implementation.",
-            },
-        },
+        "network_state": _as_text(network_surface.get("network_state")) or "contract_first_read_model",
+        "portal_instance": dict(network_surface.get("portal_instance") or {}),
+        "summary": summary,
+        "blocks": list(network_surface.get("blocks") or []),
+        "notes": list(network_surface.get("notes") or []),
+        "tab_panels": dict(network_surface.get("tab_panels") or {}),
     }
 
 
@@ -516,6 +503,8 @@ def _select_band0_surface_payload(
     active_surface_id: str,
     portal_tenant_id: str,
     audit_storage_file: str | Path | None,
+    portal_domain: str = "",
+    private_dir: str | Path | None = None,
     data_dir: str | Path | None = None,
     root_tab: str = "",
     tool_exposure_policy: dict[str, Any] | None = None,
@@ -523,6 +512,9 @@ def _select_band0_surface_payload(
     if active_surface_id == ADMIN_NETWORK_ROOT_SLICE_ID:
         return _build_network_root_surface(
             portal_tenant_id=portal_tenant_id,
+            portal_domain=portal_domain,
+            private_dir=private_dir,
+            audit_storage_file=audit_storage_file,
             root_tab=_normalize_root_tab(active_surface_id, root_tab),
             tool_exposure_policy=tool_exposure_policy,
         )
@@ -729,6 +721,16 @@ def _control_panel_region(
         }
 
     if nav_active_slice_id == ADMIN_NETWORK_ROOT_SLICE_ID:
+        active_panel = dict((((sp.get("tab_panels") or {}).get(sp.get("root_tab") or "messages")) or {}))
+        metric_entries = [
+            {
+                "label": _as_text(item.get("label")) or "Metric",
+                "meta": _as_text(item.get("value")) or "—",
+                "active": False,
+            }
+            for item in list(active_panel.get("metrics") or [])[:4]
+            if isinstance(item, dict)
+        ]
         return {
             "schema": ADMIN_SHELL_REGION_CONTROL_PANEL_SCHEMA,
             "kind": "network_control_panel",
@@ -741,11 +743,22 @@ def _control_panel_region(
                         {
                             "label": _root_tab_label(sp.get("root_tab") or "messages"),
                             "meta": _as_text((((sp.get("tab_panels") or {}).get(sp.get("root_tab") or "messages")) or {}).get("summary"))
-                            or "Placeholder network surface",
+                            or "Contract-first network read model",
                             "active": True,
                         }
                     ],
-                }
+                },
+                {
+                    "title": "Highlights",
+                    "entries": metric_entries
+                    or [
+                        {
+                            "label": "No highlights yet",
+                            "meta": "The current network tab does not expose summary metrics.",
+                            "active": True,
+                        }
+                    ],
+                },
             ],
         }
 
@@ -968,7 +981,7 @@ def _workbench_network(*, surface_payload: dict[str, Any] | None) -> dict[str, A
         "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "network_root",
         "title": "Network",
-        "subtitle": "Lightweight hosted and service readiness root",
+        "subtitle": "Portal-instance and relationship read model",
         "visible": True,
         "root_tab": _as_text(sp.get("root_tab")) or "messages",
         "root_tabs": list(sp.get("root_tabs") or []),
@@ -1096,11 +1109,14 @@ def _inspector_datum(*, datum_dict: dict[str, Any]) -> dict[str, Any]:
 
 def _inspector_network(*, surface_payload: dict[str, Any] | None) -> dict[str, Any]:
     sp = surface_payload or {}
+    active_tab = _as_text(sp.get("root_tab")) or "messages"
     return {
         "schema": ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
         "title": "Network",
         "kind": "network_summary",
-        "network_state": _as_text(sp.get("network_state")) or "lightweight_placeholder",
+        "network_state": _as_text(sp.get("network_state")) or "contract_first_read_model",
+        "active_tab": active_tab,
+        "portal_instance": dict(sp.get("portal_instance") or {}),
         "summary": dict(sp.get("summary") or {}),
         "notes": list(sp.get("notes") or []),
     }
@@ -1264,6 +1280,8 @@ def _build_regions_and_surface(
                 active_surface_id=selection.active_surface_id,
                 audit_storage_file=audit_storage_file,
                 portal_tenant_id=portal_tenant_id,
+                portal_domain=portal_domain,
+                private_dir=private_dir,
                 root_tab=normalized_request.root_tab,
                 tool_exposure_policy=tool_exposure_policy,
             )
@@ -1357,6 +1375,9 @@ def _build_regions_and_surface(
     if active == ADMIN_NETWORK_ROOT_SLICE_ID:
         sp = _build_network_root_surface(
             portal_tenant_id=portal_tenant_id,
+            portal_domain=portal_domain,
+            private_dir=private_dir,
+            audit_storage_file=audit_storage_file,
             root_tab=_normalize_root_tab(active, normalized_request.root_tab),
             tool_exposure_policy=tool_exposure_policy,
         )
