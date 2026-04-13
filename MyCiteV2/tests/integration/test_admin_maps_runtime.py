@@ -95,6 +95,11 @@ class AdminMapsRuntimeIntegrationTests(unittest.TestCase):
                 "projectable",
             )
             self.assertGreater(result["surface_payload"]["map_projection"]["feature_count"], 0)
+            first_row = (result["surface_payload"]["rows"] or [])[0]
+            self.assertNotIn("raw", first_row)
+            self.assertNotIn("reference_bindings", first_row)
+            self.assertIn("overlay_preview", first_row)
+            self.assertIn("raw", result["surface_payload"]["selected_row"])
 
     def test_maps_read_only_returns_renderable_no_documents_surface(self) -> None:
         with TemporaryDirectory() as temp_dir:

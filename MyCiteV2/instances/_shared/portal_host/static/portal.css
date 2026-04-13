@@ -2910,22 +2910,43 @@ body.is-modal-open {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 0;
   text-decoration: none;
   color: #c8c8c8;
   border: 1px solid transparent;
   border-radius: 6px;
   padding: 8px 6px;
-  font-size: 10px;
+  min-height: 40px;
+  font-size: 0;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   line-height: 1.15;
 }
 
-.ide-activitylink img {
-  width: 16px;
-  height: 16px;
+.ide-activityicon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ide-activityicon svg,
+.ide-activityicon img {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.ide-activitylink--root_logo {
+  margin-bottom: 4px;
+}
+
+.ide-activitylink--root_logo .ide-activityicon {
+  width: 26px;
+  height: 26px;
 }
 
 .ide-activitylink:hover {
@@ -3859,20 +3880,20 @@ body.is-modal-open {
   min-height: 0;
 }
 
-.ide-activitylink img,
+.ide-activityicon img,
 .ide-logo img {
   filter: brightness(0) invert(0.88);
 }
 
-.theme-paper .ide-activitylink img,
+.theme-paper .ide-activityicon img,
 .theme-paper .ide-logo img {
   filter: brightness(0) invert(0.9);
 }
 
-.theme-midnight .ide-activitylink img,
+.theme-midnight .ide-activityicon img,
 .theme-midnight .ide-logo img,
-.theme-ocean .ide-activitylink img,
-.theme-forest .ide-activitylink img {
+.theme-ocean .ide-activityicon img,
+.theme-forest .ide-activityicon img {
   filter: brightness(0) invert(0.98);
 }
 

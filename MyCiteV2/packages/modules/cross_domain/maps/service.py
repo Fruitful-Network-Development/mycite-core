@@ -309,6 +309,31 @@ def _select_row(
     return rows[0] if rows else None
 
 
+def _row_summary(row: dict[str, Any]) -> dict[str, Any]:
+    overlay_preview = [
+        {
+            "overlay_family": _as_text(overlay.get("overlay_family")) or "raw_only",
+            "display_value": _as_text(overlay.get("display_value")) or _as_text(overlay.get("raw_value")),
+            "raw_value": _as_text(overlay.get("raw_value")),
+            "overlay_state": _as_text(overlay.get("overlay_state")) or "raw_only",
+        }
+        for overlay in list(row.get("overlay_values") or [])[:3]
+    ]
+    return {
+        "datum_address": row.get("datum_address"),
+        "labels": list(row.get("labels") or []),
+        "label_text": row.get("label_text"),
+        "recognized_family": row.get("recognized_family"),
+        "recognized_anchor": row.get("recognized_anchor"),
+        "primary_value_token": row.get("primary_value_token"),
+        "diagnostic_states": list(row.get("diagnostic_states") or []),
+        "feature_ids": list(row.get("feature_ids") or []),
+        "overlay_preview": overlay_preview,
+        "selected": bool(row.get("selected")),
+        "selected_feature": bool(row.get("selected_feature")),
+    }
+
+
 class MapsReadOnlyService:
     def __init__(self, datum_store: AuthoritativeDatumDocumentPort | None) -> None:
         self._datum_store = datum_store
@@ -353,19 +378,22 @@ class MapsReadOnlyService:
                     selected_document = document
                     break
         if selected_document is None:
-            feature_ready = [
-                document for document in maps_documents if project(document)["map_projection"]["feature_count"] > 0
-            ]
-            if feature_ready:
-                selected_document = feature_ready[0]
+            first_projectable: DatumRecognitionDocument | None = None
+            first_diagnostic: DatumRecognitionDocument | None = None
+            for document in maps_documents:
+                if first_diagnostic is None and document.diagnostic_row_count > 0:
+                    first_diagnostic = document
+                if project(document)["map_projection"]["feature_count"] > 0:
+                    first_projectable = document
+                    break
+            if first_projectable is not None:
+                selected_document = first_projectable
+            elif first_diagnostic is not None:
+                selected_document = first_diagnostic
+            elif maps_documents:
+                selected_document = maps_documents[0]
             else:
-                diagnostic_ready = [document for document in maps_documents if document.diagnostic_row_count > 0]
-                if diagnostic_ready:
-                    selected_document = diagnostic_ready[0]
-                elif maps_documents:
-                    selected_document = maps_documents[0]
-                else:
-                    selected_document = workbench.selected_document
+                selected_document = workbench.selected_document
 
         selected_projection = project(selected_document) if selected_document is not None else None
         selected_rows = [] if selected_projection is None else list(selected_projection["rows"])
@@ -408,7 +436,12 @@ class MapsReadOnlyService:
 
         document_catalog = []
         for document in maps_documents:
-            summary = dict(project(document)["document_summary"])
+            if selected_document is not None and document.document_id == selected_document.document_id and selected_projection is not None:
+                summary = dict(selected_projection["document_summary"])
+            else:
+                summary = document.to_summary_dict()
+                summary["projectable_feature_count"] = None
+                summary["projection_state"] = "deferred_until_selected"
             summary["selected"] = bool(selected_document and selected_document.document_id == document.document_id)
             document_catalog.append(summary)
 
@@ -437,7 +470,7 @@ class MapsReadOnlyService:
                 "selected_feature": selected_feature,
                 "feature_collection": feature_collection,
             },
-            "rows": selected_rows,
+            "rows": [_row_summary(row) for row in selected_rows],
             "diagnostic_summary": {
                 "document_count": len(maps_documents),
                 "selected_document_id": _as_text((selected_document_summary or {}).get("document_id")),
@@ -454,5 +487,6 @@ class MapsReadOnlyService:
                 "raw_underlay_visible": normalized_raw_underlay,
                 "lens_presentation_only": True,
             },
+            "row_count": len(selected_rows),
             "warnings": warnings,
         }

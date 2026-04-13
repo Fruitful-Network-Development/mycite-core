@@ -13,8 +13,11 @@ post-AWS platform pass.
   `MyCiteV2/packages/state_machine/hanus_shell/admin_shell.py`.
 - Current runtime catalog authority is
   `MyCiteV2/instances/_shared/runtime/runtime_platform.py`.
-- Current live V2 hosts do not yet read `private/config.json` for admin tool
-  visibility.
+- Current live V2 hosts do read `private/config.json.tool_exposure` for admin
+  tool visibility and launch gating.
+- The admin shell now uses a root-shell model:
+  `System`, `Network`, and `Utilities` are canonical shell roots, while tools
+  remain utility-sandbox surfaces launched under `Utilities`.
 
 ## Forward V2.3 contract
 
@@ -69,12 +72,38 @@ This is a `hide-and-block` contract, not a `show-gated` contract.
 
 ## Activity-bar contract
 
-- Activity-bar order comes from the shell registry only.
-- The browser receives only the filtered set of visible tools.
-- The browser must not merge config order, config labels, or legacy route names
-  into the rendered activity bar.
+- Activity bar is icon-only.
+- Activity bar order is shell-owned and fixed as:
+  1. root logo to `System`
+  2. `Network`
+  3. `System`
+  4. `Utilities`
+  5. visible tools in shell-owned registry order
+- Activity items are runtime-issued and must carry:
+  - `icon_id`
+  - `aria_label`
+  - `nav_kind`
+  - `shell_request`
+- `nav_kind` is one of:
+  - `root_logo`
+  - `root_service`
+  - `tool`
+- The browser receives only the filtered set of visible tools after the root
+  items above.
+- The browser must not merge config order, config labels, legacy route names,
+  or client-invented icons into the rendered activity bar.
 - Direct launch requests for a disabled tool must fail closed even if the tool
   exists in the shell registry.
+
+## Canonical admin routes
+
+- `/portal/system` is the default core root.
+- `/portal/network` is the lightweight hosted/network root.
+- `/portal/utilities` is the canonical tool-bearing root.
+- `/portal/utilities/<tool_slug>` is the canonical deep-link pattern for utility
+  tools.
+- `/portal/system/<tool_slug>` and `/portal/system/tools` remain compatibility
+  aliases.
 
 ## Legacy boundary
 
@@ -94,6 +123,8 @@ When this contract is implemented in code:
 
 - host config loading must parse `tool_exposure`
 - admin runtime composition must filter tool visibility by dual gate
+- admin runtime composition must emit root-shell activity items separately from
+  utility tools
 - launch resolution must enforce the same gate
 - admin-shell health or audit surfaces should make the filtered tool set visible
   for debugging

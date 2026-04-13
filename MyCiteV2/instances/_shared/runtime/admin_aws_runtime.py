@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 from typing import Any
 
 from MyCiteV2.packages.adapters.filesystem import (
@@ -72,6 +73,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
 )
 
 ADMIN_AWS_CSM_NEWSLETTER_ENTRYPOINT_ID = "admin.aws.newsletter"
+_AWS_CSM_FAMILY_HEALTH_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
 
 
 def _as_text(value: object) -> str:
@@ -151,6 +153,57 @@ def _newsletter_service(*, private_dir: str | Path, portal_tenant_id: str) -> Aw
     )
 
 
+def _family_health_is_success(payload: dict[str, Any]) -> bool:
+    statuses = [
+        _as_text((payload.get("caller_identity") or {}).get("status")).lower(),
+        _as_text((payload.get("dispatch_queue") or {}).get("status")).lower(),
+        _as_text((payload.get("dispatcher_lambda") or {}).get("status")).lower(),
+        _as_text((payload.get("inbound_processor_lambda") or {}).get("status")).lower(),
+    ]
+    statuses.extend(
+        _as_text((rule or {}).get("status")).lower()
+        for rule in list(payload.get("receipt_rules") or [])
+    )
+    bad_tokens = {
+        "error",
+        "failed",
+        "access_denied",
+        "not_configured",
+        "missing",
+        "unavailable",
+        "invalid",
+    }
+    return not any(status in bad_tokens for status in statuses if status)
+
+
+def cached_aws_csm_family_health(
+    *,
+    service: AwsCsmNewsletterService,
+    portal_tenant_id: str,
+    private_dir: str | Path,
+    domains: list[str],
+    dispatcher_callback_builder: Any,
+    inbound_callback_builder: Any,
+) -> dict[str, Any]:
+    cache_key = (_as_text(portal_tenant_id) or "fnd", str(Path(private_dir)))
+    now = time.time()
+    cached = _AWS_CSM_FAMILY_HEALTH_CACHE.get(cache_key)
+    if cached is not None and float(cached.get("expires_at") or 0.0) > now:
+        return dict(cached.get("payload") or {})
+
+    payload = service.family_health(
+        domains=domains,
+        dispatcher_callback_builder=dispatcher_callback_builder,
+        inbound_callback_builder=inbound_callback_builder,
+    )
+    ttl_seconds = 30.0 if _family_health_is_success(payload) else 10.0
+    _AWS_CSM_FAMILY_HEALTH_CACHE[cache_key] = {
+        "expires_at": now + ttl_seconds,
+        "payload": dict(payload),
+    }
+    return payload
+
+
 def _preferred_family_domain(
     *,
     visibility: dict[str, Any],
@@ -195,11 +248,18 @@ def _build_family_surface_payload(
         )
         for domain in domains
     ] if newsletter_enabled else []
-    family_health = service.family_health(
-        domains=domains if newsletter_enabled else [],
-        dispatcher_callback_builder=_dispatcher_callback_url,
-        inbound_callback_builder=_inbound_callback_url,
-    ) if newsletter_enabled else {"schema": "mycite.v2.admin.aws_csm.family_health.v1", "status": "newsletter_disabled"}
+    family_health = (
+        cached_aws_csm_family_health(
+            service=service,
+            portal_tenant_id=tenant_scope.scope_id,
+            private_dir=private_dir,
+            domains=domains,
+            dispatcher_callback_builder=_dispatcher_callback_url,
+            inbound_callback_builder=_inbound_callback_url,
+        )
+        if newsletter_enabled
+        else {"schema": "mycite.v2.admin.aws_csm.family_health.v1", "status": "newsletter_disabled"}
+    )
     shell_requests = build_portal_activity_dispatch_bodies(portal_tenant_id=tenant_scope.scope_id)
     selected_domain_state = _preferred_family_domain(
         visibility=visibility,

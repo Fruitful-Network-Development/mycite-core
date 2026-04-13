@@ -43,6 +43,13 @@ truth, not through the older slice-registry sequence above.
 | `AWS-CSM` family landing on `admin_band1.aws_read_only_surface` | implemented FND-first admin tool family | [../v2.3-tool_surface_packet/aws_csm.md](../v2.3-tool_surface_packet/aws_csm.md) |
 | `admin_band5.maps_read_only_surface` | implemented FND-first admin tool | [../v2.3-tool_surface_packet/maps.md](../v2.3-tool_surface_packet/maps.md) |
 
+The shared admin shell now uses the canonical root model:
+
+- `System` is the default core root
+- `Network` is the lightweight hosted/network root
+- `Utilities` is the canonical tool-bearing root
+- tools are utility-sandbox surfaces, not peer shell roots
+
 ## Implemented V2.3 trusted-tenant surfaces
 
 These client-facing rollout surfaces are implemented and should no longer be
@@ -122,6 +129,8 @@ tool follow-on work decision-complete before later tool implementation resumes.
 | Surface | Current use | Notes |
 | --- | --- | --- |
 | [../v2.3-tool_exposure_and_admin_activity_bar_alignment.md](../v2.3-tool_exposure_and_admin_activity_bar_alignment.md) | active foundational plan | Defines the proposed V2 `tool_exposure` gate and admin activity-bar contract. |
+| [../../contracts/tool_exposure_and_admin_activity_bar_contract.md](../../contracts/tool_exposure_and_admin_activity_bar_contract.md) | current shell/tool contract truth | Documents the implemented root-shell + utility-tool activity-bar contract. |
+| [../../contracts/shell_region_kinds.md](../../contracts/shell_region_kinds.md) | current shell region truth | Documents `active_service` as `system | network | utilities` and the current region kinds. |
 | [../v2.3-tool_surface_packet/README.md](../v2.3-tool_surface_packet/README.md) | active per-tool planning packet | Index for one plan per current or legacy tool surface. |
 | [../v2.3-tool_surface_packet/aws_csm.md](../v2.3-tool_surface_packet/aws_csm.md) | current implementation truth | Canonical implemented AWS-CSM family root and follow-on slice reference. |
 | [../v2.3-tool_surface_packet/fnd_ebi.md](../v2.3-tool_surface_packet/fnd_ebi.md) | near-term family-root candidate | Narrowed service/site operational visibility family. |

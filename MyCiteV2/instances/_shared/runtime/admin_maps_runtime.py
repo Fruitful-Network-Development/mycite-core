@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import copy
 from pathlib import Path
+import time
 from typing import Any
 
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
@@ -9,6 +11,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND5_MAPS_NAME,
     ADMIN_EXPOSURE_INTERNAL_ONLY,
     ADMIN_HOME_STATUS_SLICE_ID,
+    ADMIN_NETWORK_ROOT_SLICE_ID,
     ADMIN_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
     ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
@@ -18,10 +21,12 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     MAPS_READ_ONLY_SLICE_ID,
     AdminShellChrome,
     AdminTenantScope,
+    activity_icon_id_for_slice,
     build_admin_surface_catalog,
     build_admin_tool_registry_entries,
     build_portal_activity_dispatch_bodies,
     build_shell_composition_payload,
+    map_surface_to_active_service,
     resolve_admin_tool_launch,
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
@@ -33,6 +38,8 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     build_admin_runtime_error,
     build_allow_all_admin_tool_exposure_policy,
 )
+
+_MAPS_SURFACE_CACHE: dict[tuple[str, str, str, str, str, str, bool], dict[str, Any]] = {}
 
 
 def _as_text(value: object) -> str:
@@ -72,6 +79,20 @@ def _runtime_tool_entries(
     return rows
 
 
+def _canonical_shell_href(slice_id: str) -> str:
+    if slice_id == ADMIN_HOME_STATUS_SLICE_ID:
+        return "/portal/system"
+    if slice_id == ADMIN_NETWORK_ROOT_SLICE_ID:
+        return "/portal/network"
+    if slice_id == ADMIN_TOOL_REGISTRY_SLICE_ID:
+        return "/portal/utilities"
+    if slice_id == DATUM_RESOURCE_WORKBENCH_SLICE_ID:
+        return "/portal/system/datum"
+    if slice_id == MAPS_READ_ONLY_SLICE_ID:
+        return "/portal/utilities/maps"
+    return "/portal/system"
+
+
 def _activity_items(
     *,
     portal_tenant_id: str,
@@ -79,23 +100,54 @@ def _activity_items(
     tool_exposure_policy: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     bodies = build_portal_activity_dispatch_bodies(portal_tenant_id=portal_tenant_id)
+    active_service = map_surface_to_active_service(nav_active_slice_id)
     visible_tool_slice_ids = {
         entry["slice_id"]
         for entry in _runtime_tool_entries(tool_exposure_policy=tool_exposure_policy)
         if entry["visible_in_activity_bar"]
     }
-    items: list[dict[str, Any]] = []
-    for entry in build_admin_surface_catalog():
-        if not entry.launchable or entry.slice_id not in bodies:
-            continue
-        items.append(
-            {
-                "slice_id": entry.slice_id,
-                "label": entry.label,
-                "active": entry.slice_id == nav_active_slice_id,
-                "shell_request": bodies[entry.slice_id],
-            }
-        )
+    items: list[dict[str, Any]] = [
+        {
+            "slice_id": ADMIN_HOME_STATUS_SLICE_ID,
+            "label": "FND",
+            "aria_label": "Go to System root",
+            "icon_id": "fnd-logo",
+            "nav_kind": "root_logo",
+            "active": False,
+            "shell_request": bodies[ADMIN_HOME_STATUS_SLICE_ID],
+            "href": _canonical_shell_href(ADMIN_HOME_STATUS_SLICE_ID),
+        },
+        {
+            "slice_id": ADMIN_NETWORK_ROOT_SLICE_ID,
+            "label": "Network",
+            "aria_label": "Open Network root",
+            "icon_id": activity_icon_id_for_slice(ADMIN_NETWORK_ROOT_SLICE_ID),
+            "nav_kind": "root_service",
+            "active": active_service == "network",
+            "shell_request": bodies[ADMIN_NETWORK_ROOT_SLICE_ID],
+            "href": _canonical_shell_href(ADMIN_NETWORK_ROOT_SLICE_ID),
+        },
+        {
+            "slice_id": ADMIN_HOME_STATUS_SLICE_ID,
+            "label": "System",
+            "aria_label": "Open System root",
+            "icon_id": activity_icon_id_for_slice(ADMIN_HOME_STATUS_SLICE_ID),
+            "nav_kind": "root_service",
+            "active": active_service == "system",
+            "shell_request": bodies[ADMIN_HOME_STATUS_SLICE_ID],
+            "href": _canonical_shell_href(ADMIN_HOME_STATUS_SLICE_ID),
+        },
+        {
+            "slice_id": ADMIN_TOOL_REGISTRY_SLICE_ID,
+            "label": "Utilities",
+            "aria_label": "Open Utilities root",
+            "icon_id": activity_icon_id_for_slice(ADMIN_TOOL_REGISTRY_SLICE_ID),
+            "nav_kind": "root_service",
+            "active": active_service == "utilities",
+            "shell_request": bodies[ADMIN_TOOL_REGISTRY_SLICE_ID],
+            "href": _canonical_shell_href(ADMIN_TOOL_REGISTRY_SLICE_ID),
+        },
+    ]
     for tool in build_admin_tool_registry_entries():
         if not tool.launchable or tool.slice_id not in bodies or tool.slice_id not in visible_tool_slice_ids:
             continue
@@ -103,20 +155,16 @@ def _activity_items(
             {
                 "slice_id": tool.slice_id,
                 "label": tool.label,
+                "aria_label": tool.label,
+                "icon_id": activity_icon_id_for_slice(tool.slice_id),
+                "nav_kind": "tool",
                 "active": tool.slice_id == nav_active_slice_id,
                 "shell_request": bodies[tool.slice_id],
+                "href": _canonical_shell_href(tool.slice_id),
                 "entrypoint_id": tool.entrypoint_id,
                 "read_write_posture": tool.read_write_posture,
             }
         )
-    items.append(
-        {
-            "slice_id": DATUM_RESOURCE_WORKBENCH_SLICE_ID,
-            "label": "Resource workbench",
-            "active": DATUM_RESOURCE_WORKBENCH_SLICE_ID == nav_active_slice_id,
-            "shell_request": bodies[DATUM_RESOURCE_WORKBENCH_SLICE_ID],
-        }
-    )
     return items
 
 
@@ -132,45 +180,64 @@ def _control_panel_region(
         for entry in _runtime_tool_entries(tool_exposure_policy=tool_exposure_policy)
         if entry["visible_in_activity_bar"]
     }
-    surface_entries: list[dict[str, Any]] = []
-    for entry in build_admin_surface_catalog():
-        if not entry.launchable:
-            continue
-        surface_entries.append(
-            {
-                "label": entry.label,
-                "meta": entry.slice_id,
-                "active": entry.slice_id == nav_active_slice_id,
-                "shell_request": bodies[entry.slice_id],
-            }
-        )
-    tool_entries: list[dict[str, Any]] = []
+    utility_entries: list[dict[str, Any]] = [
+        {
+            "label": "Tool launcher",
+            "meta": ADMIN_TOOL_REGISTRY_SLICE_ID,
+            "active": nav_active_slice_id == ADMIN_TOOL_REGISTRY_SLICE_ID,
+            "shell_request": bodies[ADMIN_TOOL_REGISTRY_SLICE_ID],
+            "href": _canonical_shell_href(ADMIN_TOOL_REGISTRY_SLICE_ID),
+        }
+    ]
     for tool in build_admin_tool_registry_entries():
         if tool.slice_id not in visible_tool_rows:
             continue
-        tool_entries.append(
+        utility_entries.append(
             {
                 "label": tool.label,
                 "meta": tool.entrypoint_id,
                 "active": tool.slice_id == nav_active_slice_id,
                 "shell_request": bodies.get(tool.slice_id),
+                "href": _canonical_shell_href(tool.slice_id),
             }
         )
     return {
         "schema": ADMIN_SHELL_REGION_CONTROL_PANEL_SCHEMA,
         "sections": [
-            {"title": "Admin surfaces", "entries": surface_entries},
-            {"title": "Shell-registered tools", "entries": tool_entries},
             {
-                "title": "Datum",
+                "title": "System",
                 "entries": [
                     {
-                        "label": "Resource workbench",
+                        "label": "Home and status",
+                        "meta": "default core root",
+                        "active": nav_active_slice_id == ADMIN_HOME_STATUS_SLICE_ID,
+                        "shell_request": bodies[ADMIN_HOME_STATUS_SLICE_ID],
+                        "href": _canonical_shell_href(ADMIN_HOME_STATUS_SLICE_ID),
+                    },
+                    {
+                        "label": "Authoritative datum",
                         "meta": DATUM_RESOURCE_WORKBENCH_SLICE_ID,
                         "active": nav_active_slice_id == DATUM_RESOURCE_WORKBENCH_SLICE_ID,
                         "shell_request": bodies[DATUM_RESOURCE_WORKBENCH_SLICE_ID],
+                        "href": _canonical_shell_href(DATUM_RESOURCE_WORKBENCH_SLICE_ID),
+                    },
+                ],
+            },
+            {
+                "title": "Network",
+                "entries": [
+                    {
+                        "label": "Network overview",
+                        "meta": "hosted and service follow-on root",
+                        "active": nav_active_slice_id == ADMIN_NETWORK_ROOT_SLICE_ID,
+                        "shell_request": bodies[ADMIN_NETWORK_ROOT_SLICE_ID],
+                        "href": _canonical_shell_href(ADMIN_NETWORK_ROOT_SLICE_ID),
                     }
                 ],
+            },
+            {
+                "title": "Utilities",
+                "entries": utility_entries,
             },
         ],
     }
@@ -254,6 +321,20 @@ def build_admin_maps_surface_payload(
     overlay_mode: object = "auto",
     raw_underlay_visible: object = False,
 ) -> dict[str, Any]:
+    cache_key = (
+        str(Path(data_dir)),
+        _as_text(portal_tenant_id) or "fnd",
+        _as_text(selected_document_id),
+        _as_text(selected_row_address),
+        _as_text(selected_feature_id),
+        _as_text(overlay_mode) or "auto",
+        bool(raw_underlay_visible),
+    )
+    now = time.time()
+    cached = _MAPS_SURFACE_CACHE.get(cache_key)
+    if cached is not None and float(cached.get("expires_at") or 0.0) > now:
+        return copy.deepcopy(cached["payload"])
+
     projection = MapsReadOnlyService(FilesystemSystemDatumStoreAdapter(Path(data_dir))).read_surface(
         portal_tenant_id,
         selected_document_id=selected_document_id,
@@ -262,7 +343,7 @@ def build_admin_maps_surface_payload(
         overlay_mode=overlay_mode,
         raw_underlay_visible=raw_underlay_visible,
     )
-    return {
+    payload = {
         "schema": ADMIN_MAPS_READ_ONLY_SURFACE_SCHEMA,
         "active_surface_id": MAPS_READ_ONLY_SLICE_ID,
         "current_admin_band": ADMIN_BAND5_MAPS_NAME,
@@ -273,10 +354,16 @@ def build_admin_maps_surface_payload(
         "selected_row": projection["selected_row"],
         "map_projection": projection["map_projection"],
         "rows": projection["rows"],
+        "row_count": projection.get("row_count", len(projection["rows"])),
         "diagnostic_summary": projection["diagnostic_summary"],
         "lens_state": projection["lens_state"],
         "warnings": projection["warnings"],
     }
+    _MAPS_SURFACE_CACHE[cache_key] = {
+        "expires_at": now + 30.0,
+        "payload": copy.deepcopy(payload),
+    }
+    return payload
 
 
 def build_admin_maps_workbench(
@@ -297,12 +384,16 @@ def build_admin_maps_workbench(
             f" · {_as_text(selected_document.get('document_name')) or 'No document'}"
         ),
         "visible": True,
-        "document_catalog": list(surface_payload.get("document_catalog") or []),
-        "selected_document": selected_document,
-        "selected_row": surface_payload.get("selected_row"),
-        "map_projection": map_projection,
-        "rows": list(surface_payload.get("rows") or []),
-        "diagnostic_summary": diagnostic_summary,
+        "render_from_surface_payload": True,
+        "selected_document_id": _as_text(selected_document.get("document_id")),
+        "selected_row_address": _as_text((surface_payload.get("selected_row") or {}).get("datum_address")),
+        "selected_feature_id": _as_text((map_projection.get("selected_feature") or {}).get("feature_id")),
+        "diagnostic_summary": {
+            "document_count": diagnostic_summary.get("document_count"),
+            "row_count": diagnostic_summary.get("row_count"),
+            "feature_count": diagnostic_summary.get("feature_count"),
+            "projection_state": diagnostic_summary.get("projection_state"),
+        },
         "lens_state": surface_payload.get("lens_state") or {},
         "warnings": list(surface_payload.get("warnings") or []),
         "request_contract": {
@@ -323,12 +414,7 @@ def build_admin_maps_inspector(*, surface_payload: dict[str, Any]) -> dict[str, 
         "schema": ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
         "title": "Maps",
         "kind": "maps_summary",
-        "selected_document": surface_payload.get("selected_document"),
-        "selected_feature": (surface_payload.get("map_projection") or {}).get("selected_feature"),
-        "selected_row": surface_payload.get("selected_row"),
-        "map_projection": surface_payload.get("map_projection") or {},
-        "diagnostic_summary": surface_payload.get("diagnostic_summary") or {},
-        "lens_state": surface_payload.get("lens_state") or {},
+        "render_from_surface_payload": True,
         "warnings": list(surface_payload.get("warnings") or []),
     }
 

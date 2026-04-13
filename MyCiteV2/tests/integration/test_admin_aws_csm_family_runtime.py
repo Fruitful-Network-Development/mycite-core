@@ -178,6 +178,48 @@ class AdminAwsCsmFamilyRuntimeIntegrationTests(unittest.TestCase):
             self.assertEqual(result["error"]["code"], ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE)
             self.assertIsNone(result["surface_payload"])
 
+    @patch("MyCiteV2.packages.adapters.event_transport.aws_csm_newsletter_cloud.AwsEc2RoleNewsletterCloudAdapter.receipt_rule_summary")
+    @patch("MyCiteV2.packages.adapters.event_transport.aws_csm_newsletter_cloud.AwsEc2RoleNewsletterCloudAdapter.lambda_health_summary")
+    @patch("MyCiteV2.packages.adapters.event_transport.aws_csm_newsletter_cloud.AwsEc2RoleNewsletterCloudAdapter.queue_health_summary")
+    @patch("MyCiteV2.packages.adapters.event_transport.aws_csm_newsletter_cloud.AwsEc2RoleNewsletterCloudAdapter.caller_identity_summary")
+    def test_family_health_is_reused_from_cache_for_repeated_family_home_requests(
+        self,
+        caller_identity_summary,
+        queue_health_summary,
+        lambda_health_summary,
+        receipt_rule_summary,
+    ) -> None:
+        caller_identity_summary.return_value = {"status": "ok", "arn": "arn:aws:sts::123456789012:assumed-role/EC2-AWSCMS-Admin/test"}
+        queue_health_summary.return_value = {"status": "ok", "queue_arn": "arn:aws:sqs:us-east-1:123456789012:aws-cms-newsletter-dispatch"}
+        lambda_health_summary.return_value = {"status": "active", "function_arn": "arn:aws:lambda:us-east-1:123456789012:function:newsletter-dispatcher"}
+        receipt_rule_summary.return_value = {"status": "ok", "matching_rules": [{"rule_name": "capture-fnd"}]}
+        with TemporaryDirectory() as temp_dir:
+            private_dir, status_file = _write_private_newsletter_state(Path(temp_dir))
+
+            first = run_admin_aws_csm_family_home(
+                {
+                    "schema": ADMIN_AWS_CSM_FAMILY_HOME_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "fnd", "audience": "trusted-tenant"},
+                },
+                aws_status_file=status_file,
+                private_dir=private_dir,
+                tool_exposure_policy=_tool_exposure_policy(newsletter_enabled=True),
+            )
+            second = run_admin_aws_csm_family_home(
+                {
+                    "schema": ADMIN_AWS_CSM_FAMILY_HOME_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "fnd", "audience": "trusted-tenant"},
+                },
+                aws_status_file=status_file,
+                private_dir=private_dir,
+                tool_exposure_policy=_tool_exposure_policy(newsletter_enabled=True),
+            )
+
+            self.assertIsNone(first["error"])
+            self.assertIsNone(second["error"])
+            self.assertEqual(first["surface_payload"]["family_health"], second["surface_payload"]["family_health"])
+            self.assertEqual(caller_identity_summary.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

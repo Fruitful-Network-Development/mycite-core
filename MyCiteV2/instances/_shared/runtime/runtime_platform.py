@@ -41,6 +41,7 @@ from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
 ADMIN_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.admin.runtime.envelope.v1"
 ADMIN_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA = "mycite.v2.admin.runtime_entrypoint_descriptor.v1"
 ADMIN_HOME_STATUS_SURFACE_SCHEMA = "mycite.v2.admin.home_status.surface.v1"
+ADMIN_NETWORK_ROOT_SURFACE_SCHEMA = "mycite.v2.admin.network_root.surface.v1"
 ADMIN_TOOL_REGISTRY_SURFACE_SCHEMA = "mycite.v2.admin.tool_registry.surface.v1"
 ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE = "tool_not_exposed"
 ADMIN_AWS_CSM_FAMILY_HOME_REQUEST_SCHEMA = "mycite.v2.admin.aws_csm.family_home.request.v1"
@@ -575,6 +576,7 @@ __all__ = [
     "ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA",
     "ADMIN_AWS_READ_ONLY_SURFACE_SCHEMA",
     "ADMIN_HOME_STATUS_SURFACE_SCHEMA",
+    "ADMIN_NETWORK_ROOT_SURFACE_SCHEMA",
     "ADMIN_RUNTIME_ENVELOPE_SCHEMA",
     "ADMIN_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA",
     "ADMIN_RUNTIME_REQUIRED_ENVELOPE_KEYS",

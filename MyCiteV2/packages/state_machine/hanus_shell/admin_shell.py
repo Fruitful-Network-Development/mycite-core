@@ -29,6 +29,7 @@ ADMIN_ENTRYPOINT_ID = "admin.shell_entry"
 
 ADMIN_SHELL_ENTRY_SLICE_ID = "admin_band0.shell_entry"
 ADMIN_HOME_STATUS_SLICE_ID = "admin_band0.home_status"
+ADMIN_NETWORK_ROOT_SLICE_ID = "admin_band0.network_root"
 ADMIN_TOOL_REGISTRY_SLICE_ID = "admin_band0.tool_registry"
 AWS_READ_ONLY_SLICE_ID = "admin_band1.aws_read_only_surface"
 AWS_NARROW_WRITE_SLICE_ID = "admin_band2.aws_narrow_write_surface"
@@ -353,21 +354,30 @@ def build_admin_surface_catalog() -> tuple[AdminSurfaceCatalogEntry, ...]:
     return (
         AdminSurfaceCatalogEntry(
             slice_id=ADMIN_HOME_STATUS_SLICE_ID,
-            label="Admin Home and Status",
+            label="System",
             exposure_status="implemented_internal",
             read_write_posture="read-only",
-            status_summary="default_landing",
-            surface_kind="home_status",
+            status_summary="default_core_root",
+            surface_kind="system_root",
             launchable=True,
             default_surface=True,
         ),
         AdminSurfaceCatalogEntry(
-            slice_id=ADMIN_TOOL_REGISTRY_SLICE_ID,
-            label="Tool Registry and Launcher",
+            slice_id=ADMIN_NETWORK_ROOT_SLICE_ID,
+            label="Network",
             exposure_status="implemented_internal",
             read_write_posture="read-only",
-            status_summary="registry_ready",
-            surface_kind="tool_registry",
+            status_summary="lightweight_placeholder_root",
+            surface_kind="network_root",
+            launchable=True,
+        ),
+        AdminSurfaceCatalogEntry(
+            slice_id=ADMIN_TOOL_REGISTRY_SLICE_ID,
+            label="Utilities",
+            exposure_status="implemented_internal",
+            read_write_posture="read-only",
+            status_summary="tool_launcher_root",
+            surface_kind="utilities_root",
             launchable=True,
         ),
     )
@@ -676,14 +686,19 @@ def resolve_admin_shell_request(request: AdminShellRequest | dict[str, Any] | No
 
 def map_surface_to_active_service(active_surface_id: str) -> str:
     sid = _as_text(active_surface_id)
-    if sid in {AWS_READ_ONLY_SLICE_ID, AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID}:
-        return "aws"
-    if sid == MAPS_READ_ONLY_SLICE_ID:
-        return "maps"
+    if sid == ADMIN_NETWORK_ROOT_SLICE_ID:
+        return "network"
+    if sid in {
+        ADMIN_TOOL_REGISTRY_SLICE_ID,
+        AWS_READ_ONLY_SLICE_ID,
+        AWS_NARROW_WRITE_SLICE_ID,
+        AWS_CSM_SANDBOX_SLICE_ID,
+        AWS_CSM_ONBOARDING_SLICE_ID,
+        MAPS_READ_ONLY_SLICE_ID,
+    }:
+        return "utilities"
     if sid == DATUM_RESOURCE_WORKBENCH_SLICE_ID:
-        return "datum"
-    if sid == ADMIN_TOOL_REGISTRY_SLICE_ID:
-        return "registry"
+        return "system"
     return "system"
 
 
@@ -724,6 +739,11 @@ def build_portal_activity_dispatch_bodies(
             "requested_slice_id": ADMIN_HOME_STATUS_SLICE_ID,
             "tenant_scope": {"scope_id": internal, "audience": "internal"},
         },
+        ADMIN_NETWORK_ROOT_SLICE_ID: {
+            "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+            "requested_slice_id": ADMIN_NETWORK_ROOT_SLICE_ID,
+            "tenant_scope": {"scope_id": internal, "audience": "internal"},
+        },
         ADMIN_TOOL_REGISTRY_SLICE_ID: {
             "schema": ADMIN_SHELL_REQUEST_SCHEMA,
             "requested_slice_id": ADMIN_TOOL_REGISTRY_SLICE_ID,
@@ -752,6 +772,28 @@ def build_portal_activity_dispatch_bodies(
             "tenant_scope": tt_scope,
         }
     return bodies
+
+
+def activity_icon_id_for_slice(slice_id: object) -> str:
+    sid = _as_text(slice_id)
+    if sid == ADMIN_HOME_STATUS_SLICE_ID:
+        return "system"
+    if sid == ADMIN_NETWORK_ROOT_SLICE_ID:
+        return "network"
+    if sid == ADMIN_TOOL_REGISTRY_SLICE_ID:
+        return "utilities"
+    if sid == DATUM_RESOURCE_WORKBENCH_SLICE_ID:
+        return "datum"
+    if sid in {
+        AWS_READ_ONLY_SLICE_ID,
+        AWS_NARROW_WRITE_SLICE_ID,
+        AWS_CSM_SANDBOX_SLICE_ID,
+        AWS_CSM_ONBOARDING_SLICE_ID,
+    }:
+        return "aws"
+    if sid == MAPS_READ_ONLY_SLICE_ID:
+        return "maps"
+    return "generic"
 
 
 def build_shell_composition_payload(
@@ -810,6 +852,7 @@ __all__ = [
     "ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY",
     "ADMIN_EXPOSURE_TRUSTED_TENANT_CSM_ONBOARDING",
     "ADMIN_HOME_STATUS_SLICE_ID",
+    "ADMIN_NETWORK_ROOT_SLICE_ID",
     "ADMIN_SHELL_COMPOSITION_SCHEMA",
     "ADMIN_SHELL_ENTRY_SLICE_ID",
     "ADMIN_SHELL_REGION_ACTIVITY_BAR_SCHEMA",
@@ -846,6 +889,7 @@ __all__ = [
     "AdminToolRegistryEntry",
     "build_admin_surface_catalog",
     "build_admin_tool_registry_entries",
+    "activity_icon_id_for_slice",
     "build_portal_activity_dispatch_bodies",
     "build_shell_composition_payload",
     "foreground_region_for_surface",

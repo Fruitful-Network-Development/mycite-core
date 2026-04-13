@@ -12,6 +12,7 @@
   let lastShellRequest = null;
   let lastComposition = null;
   let lastDirectView = null;
+  let lastEnvelope = null;
 
   function cloneRequestWithoutChrome(req) {
     var next = JSON.parse(JSON.stringify(req || {}));
@@ -84,6 +85,57 @@
     } catch (_) {
       return String(value);
     }
+  }
+
+  function activityIconMarkup(item) {
+    var iconId = (item && item.icon_id) || "generic";
+    if (iconId === "fnd-logo") {
+      return (
+        '<span class="ide-activityicon ide-activityicon--logo" aria-hidden="true">' +
+        '<img src="/portal/static/icons/logos/fnd.svg" alt="" width="22" height="22" />' +
+        "</span>"
+      );
+    }
+    var svg = "";
+    if (iconId === "network") {
+      svg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<circle cx="6" cy="12" r="2.2"></circle><circle cx="18" cy="6" r="2.2"></circle><circle cx="18" cy="18" r="2.2"></circle>' +
+        '<path d="M8 11l7.8-4"></path><path d="M8 13l7.8 4"></path>' +
+        "</svg>";
+    } else if (iconId === "system") {
+      svg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M4 7.5h16v9H4z"></path><path d="M8 16.5h8"></path><path d="M10 4.5h4"></path>' +
+        "</svg>";
+    } else if (iconId === "utilities") {
+      svg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M4 7h16v10H4z"></path><path d="M9 7V5.5h6V7"></path><path d="M12 11v5"></path><path d="M9.5 13.5h5"></path>' +
+        "</svg>";
+    } else if (iconId === "aws") {
+      svg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M7.5 17.5h8a4 4 0 0 0 .7-7.94A5.2 5.2 0 0 0 6.7 8.5 3.6 3.6 0 0 0 7.5 17.5z"></path>' +
+        '<path d="M8 20c2 .9 5 .9 8 0"></path>' +
+        "</svg>";
+    } else if (iconId === "maps") {
+      svg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M12 20s5-4.3 5-9a5 5 0 1 0-10 0c0 4.7 5 9 5 9z"></path><circle cx="12" cy="11" r="1.8"></circle>' +
+        "</svg>";
+    } else if (iconId === "datum") {
+      svg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M12 4l7 4-7 4-7-4 7-4z"></path><path d="M5 12l7 4 7-4"></path><path d="M5 16l7 4 7-4"></path>' +
+        "</svg>";
+    } else {
+      svg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<circle cx="12" cy="12" r="8"></circle>' +
+        "</svg>";
+    }
+    return '<span class="ide-activityicon" aria-hidden="true">' + svg + "</span>";
   }
 
   function renderMapsSvg(mapProjection) {
@@ -225,6 +277,7 @@
 
     var wb = qs(".ide-workbench");
     if (wb) {
+      wb.setAttribute("data-active-service", comp.active_service || "system");
       var tool = comp.composition_mode === "tool" && !(wbRegion && wbRegion.kind === "maps_workbench");
       wb.setAttribute("data-foreground-visible", tool ? "false" : "true");
       wb.setAttribute("aria-hidden", tool ? "true" : "false");
@@ -251,11 +304,14 @@
     nav.innerHTML = "";
     items.forEach(function (item) {
       var a = document.createElement("a");
-      a.className = "ide-activitylink" + (item.active ? " is-active" : "");
-      a.href = "#";
-      a.setAttribute("aria-label", item.label || "");
-      var label = (item.label || "").toUpperCase();
-      a.innerHTML = "<span>" + escapeHtml(label.length > 22 ? label.slice(0, 20) + "…" : label) + "</span>";
+      a.className =
+        "ide-activitylink ide-activitylink--" +
+        escapeHtml((item.nav_kind || "tool").replace(/[^a-z_-]/gi, "").toLowerCase()) +
+        (item.active ? " is-active" : "");
+      a.href = item.href || "#";
+      a.setAttribute("aria-label", item.aria_label || item.label || "");
+      a.setAttribute("title", item.aria_label || item.label || "");
+      a.innerHTML = activityIconMarkup(item);
       a.addEventListener("click", function (e) {
         e.preventDefault();
         if (!item.shell_request) return;
@@ -289,7 +345,7 @@
           var li = document.createElement("li");
           var link = document.createElement("a");
           link.className = "ide-controlpanel__link" + (ent.active ? " is-active" : "");
-          link.href = "#";
+          link.href = ent.href || "#";
           var span = document.createElement("span");
           span.textContent = ent.label || "";
           link.appendChild(span);
@@ -848,16 +904,47 @@
         "</section>";
       return;
     }
+    if (kind === "network_root") {
+      var networkBlocks = wb.blocks || [];
+      var networkNotes = wb.notes || [];
+      var networkCards =
+        '<div class="v2-card-grid">' +
+        networkBlocks
+          .map(function (block) {
+            return (
+              '<article class="v2-card"><h3>' +
+              escapeHtml(block.label || "Metric") +
+              "</h3><p>" +
+              escapeHtml(block.value || "—") +
+              "</p></article>"
+            );
+          })
+          .join("") +
+        "</div>";
+      var networkList =
+        networkNotes.length > 0
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Notes</h3><ul>' +
+            networkNotes
+              .map(function (note) {
+                return "<li>" + escapeHtml(String(note)) + "</li>";
+              })
+              .join("") +
+            "</ul></section>"
+          : "";
+      body.innerHTML = networkCards + networkList;
+      return;
+    }
     if (kind === "maps_workbench") {
-      var mapsWarnings = wb.warnings || [];
-      var mapsDocumentCatalog = wb.document_catalog || [];
-      var mapsSelectedDocument = wb.selected_document || {};
-      var mapsSelectedRow = wb.selected_row || {};
-      var mapsProjection = wb.map_projection || {};
+      var mapsSurface = (lastEnvelope && lastEnvelope.surface_payload) || {};
+      var mapsWarnings = mapsSurface.warnings || wb.warnings || [];
+      var mapsDocumentCatalog = mapsSurface.document_catalog || [];
+      var mapsSelectedDocument = mapsSurface.selected_document || {};
+      var mapsSelectedRow = mapsSurface.selected_row || {};
+      var mapsProjection = mapsSurface.map_projection || {};
       var mapsSelectedFeature = mapsProjection.selected_feature || {};
-      var mapsLens = wb.lens_state || {};
-      var mapsDiagnosticSummary = wb.diagnostic_summary || {};
-      var mapsRows = wb.rows || [];
+      var mapsLens = mapsSurface.lens_state || wb.lens_state || {};
+      var mapsDiagnosticSummary = mapsSurface.diagnostic_summary || wb.diagnostic_summary || {};
+      var mapsRows = mapsSurface.rows || [];
       var mapsRequestContract = wb.request_contract || {};
 
       function mapsRequestBody(patch) {
@@ -880,7 +967,7 @@
       }
 
       function overlayCellHtml(row) {
-        var overlays = row.overlay_values || [];
+        var overlays = row.overlay_preview || [];
         if (!overlays.length) {
           return "<code>" + escapeHtml(row.primary_value_token || "—") + "</code>";
         }
@@ -895,7 +982,7 @@
                 : "";
             return (
               '<div style="margin-bottom:6px"><strong>' +
-              escapeHtml(title) +
+              escapeHtml(String(title).replace(/_/g, " ")) +
               ":</strong> " +
               escapeHtml(display) +
               rawHtml +
@@ -1185,12 +1272,13 @@
       return;
     }
     if (kind === "maps_summary") {
-      var mapSelectedDocument = region.selected_document || {};
-      var mapSelectedFeature = region.selected_feature || {};
-      var mapSelectedRow = region.selected_row || {};
-      var mapDiagnosticSummary = region.diagnostic_summary || {};
-      var mapLensState = region.lens_state || {};
-      var mapWarnings = (region.warnings || [])
+      var mapSurface = (lastEnvelope && lastEnvelope.surface_payload) || {};
+      var mapSelectedDocument = mapSurface.selected_document || {};
+      var mapSelectedFeature = (mapSurface.map_projection || {}).selected_feature || {};
+      var mapSelectedRow = mapSurface.selected_row || {};
+      var mapDiagnosticSummary = mapSurface.diagnostic_summary || {};
+      var mapLensState = mapSurface.lens_state || {};
+      var mapWarnings = ((mapSurface.warnings || region.warnings) || [])
         .map(function (warning) {
           return "<li>" + escapeHtml(String(warning)) + "</li>";
         })
@@ -1225,6 +1313,27 @@
           ? '<section class="v2-card" style="margin-top:12px"><h3>Warnings</h3><ul>' +
             mapWarnings +
             "</ul></section>"
+          : "");
+      return;
+    }
+    if (kind === "network_summary") {
+      var networkSummary = region.summary || {};
+      var networkNotes = (region.notes || [])
+        .map(function (note) {
+          return "<li>" + escapeHtml(String(note)) + "</li>";
+        })
+        .join("");
+      content.innerHTML =
+        '<dl class="v2-surface-dl">' +
+        "<dt>State</dt><dd>" +
+        escapeHtml(region.network_state || "—") +
+        "</dd><dt>Hosted root</dt><dd>" +
+        escapeHtml(networkSummary.hosted_root || "—") +
+        "</dd><dt>Visible utilities</dt><dd>" +
+        escapeHtml(String(networkSummary.visible_utility_count != null ? networkSummary.visible_utility_count : "0")) +
+        "</dd></dl>" +
+        (networkNotes
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Notes</h3><ul>' + networkNotes + "</ul></section>"
           : "");
       return;
     }
@@ -1820,6 +1929,7 @@
     } else if (options && options.clearDirectView) {
       lastDirectView = null;
     }
+    lastEnvelope = env;
     applyChrome(comp);
     lastComposition = comp;
     if (window.PortalShell && typeof window.PortalShell.rebalanceWorkbench === "function") {
