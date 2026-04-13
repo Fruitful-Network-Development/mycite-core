@@ -24,6 +24,8 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_SHELL_ENTRY_SLICE_ID,
     ADMIN_SHELL_REQUEST_SCHEMA,
     ADMIN_TOOL_DESCRIPTOR_SCHEMA,
+    ADMIN_SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
+    ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
     ADMIN_TOOL_KIND_GENERAL,
     ADMIN_TOOL_KIND_SERVICE,
     ADMIN_TOOL_REGISTRY_SLICE_ID,
@@ -43,11 +45,14 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AdminShellRequest,
     AdminTenantScope,
     build_admin_surface_catalog,
-    build_portal_activity_dispatch_bodies,
     build_admin_tool_registry_entries,
+    build_portal_activity_dispatch_bodies,
+    foreground_region_for_surface,
+    inspector_collapsed_for_surface,
     map_surface_to_active_service,
     resolve_admin_tool_launch,
     resolve_admin_shell_request,
+    surface_posture_for_surface,
 )
 
 
@@ -127,6 +132,24 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         self.assertEqual(map_surface_to_active_service(CTS_GIS_READ_ONLY_SLICE_ID), "utilities")
         self.assertEqual(map_surface_to_active_service(FND_EBI_READ_ONLY_SLICE_ID), "utilities")
 
+    def test_surface_posture_and_primary_region_are_posture_aware(self) -> None:
+        self.assertEqual(
+            surface_posture_for_surface(CTS_GIS_READ_ONLY_SLICE_ID),
+            ADMIN_SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
+        )
+        self.assertEqual(
+            surface_posture_for_surface(AWS_READ_ONLY_SLICE_ID),
+            ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
+        )
+        self.assertEqual(
+            surface_posture_for_surface(FND_EBI_READ_ONLY_SLICE_ID),
+            ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
+        )
+        self.assertEqual(foreground_region_for_surface(CTS_GIS_READ_ONLY_SLICE_ID), "interface-panel")
+        self.assertEqual(foreground_region_for_surface(AWS_READ_ONLY_SLICE_ID), "center-workbench")
+        self.assertFalse(inspector_collapsed_for_surface(CTS_GIS_READ_ONLY_SLICE_ID))
+        self.assertTrue(inspector_collapsed_for_surface(AWS_READ_ONLY_SLICE_ID))
+
     def test_dispatch_bodies_include_network_root_and_keep_tool_routes_launchable(self) -> None:
         bodies = build_portal_activity_dispatch_bodies(portal_tenant_id="fnd")
         self.assertIn(ADMIN_NETWORK_ROOT_SLICE_ID, bodies)
@@ -199,6 +222,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "status_summary": "launchable_family_home",
                     "audience": "trusted-tenant-admin",
                     "internal_only_reason": "",
+                    "surface_posture": ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
                     "shared_portal_capabilities": ["external_service_binding"],
                     "audit_required": False,
                     "read_after_write_required": False,
@@ -222,6 +246,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "status_summary": "launchable_narrow_write",
                     "audience": "trusted-tenant-admin",
                     "internal_only_reason": "",
+                    "surface_posture": ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
                     "shared_portal_capabilities": ["external_service_binding"],
                     "audit_required": True,
                     "read_after_write_required": True,
@@ -245,6 +270,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "status_summary": "launchable_sandbox_read_only",
                     "audience": "internal-admin",
                     "internal_only_reason": "",
+                    "surface_posture": ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
                     "shared_portal_capabilities": ["external_service_binding", "sandbox_projection"],
                     "audit_required": False,
                     "read_after_write_required": False,
@@ -268,6 +294,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "status_summary": "launchable_bounded_onboarding",
                     "audience": "trusted-tenant-admin",
                     "internal_only_reason": "",
+                    "surface_posture": ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
                     "shared_portal_capabilities": ["external_service_binding"],
                     "audit_required": True,
                     "read_after_write_required": True,
@@ -291,6 +318,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "status_summary": "launchable_cts_gis_read_only",
                     "audience": "internal-admin",
                     "internal_only_reason": "",
+                    "surface_posture": ADMIN_SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
                     "shared_portal_capabilities": ["datum_recognition", "spatial_projection"],
                     "audit_required": False,
                     "read_after_write_required": False,
@@ -314,6 +342,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "status_summary": "launchable_fnd_ebi_read_only",
                     "audience": "internal-admin",
                     "internal_only_reason": "",
+                    "surface_posture": ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
                     "shared_portal_capabilities": ["external_service_binding", "hosted_site_visibility"],
                     "audit_required": False,
                     "read_after_write_required": False,

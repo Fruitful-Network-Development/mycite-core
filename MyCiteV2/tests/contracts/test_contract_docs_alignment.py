@@ -10,6 +10,21 @@ if str(REPO_ROOT) not in sys.path:
 
 
 class ContractDocsAlignmentTests(unittest.TestCase):
+    def test_admin_shell_region_doc_lists_posture_and_boot_state_tokens(self) -> None:
+        text = (REPO_ROOT / "docs" / "contracts" / "shell_region_kinds.md").read_text(
+            encoding="utf-8"
+        )
+
+        for token in (
+            "tool_collapsed_inspector",
+            "surface_posture",
+            "interface-panel",
+            "data-shell-boot-state",
+            "primary_surface",
+            "layout_mode",
+        ):
+            self.assertIn(token, text)
+
     def test_trusted_tenant_shell_region_doc_lists_current_runtime_kinds(self) -> None:
         text = (
             REPO_ROOT / "docs" / "contracts" / "trusted_tenant_shell_region_kinds.md"

@@ -10,5 +10,8 @@ These ADR-style records settle initial v2 architectural choices.
 - [decision_record_0013_tool_taxonomy_and_network_contract_first.md](decision_record_0013_tool_taxonomy_and_network_contract_first.md)
   is the current ADR for tool taxonomy, CTS-GIS naming, chronology mediation,
   and contracts-first network sequencing.
+- [decision_record_0014_ui_hydration_and_mediation_surface_posture.md](decision_record_0014_ui_hydration_and_mediation_surface_posture.md)
+  is the current ADR for DOM-visible hydration state, split browser shell
+  loading, and mediation-first `surface_posture` behavior.
 
 See [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md).

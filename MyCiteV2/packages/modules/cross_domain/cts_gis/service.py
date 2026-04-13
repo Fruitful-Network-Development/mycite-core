@@ -586,6 +586,10 @@ class CtsGisReadOnlyService:
         self,
         tenant_id: str,
         *,
+        selected_document_id: object = "",
+        selected_row_address: object = "",
+        selected_feature_id: object = "",
+        attention_document_id: object = "",
         overlay_mode: object = "auto",
         raw_underlay_visible: object = False,
     ) -> dict[str, Any]:
@@ -601,9 +605,51 @@ class CtsGisReadOnlyService:
             for document in workbench.documents
             if document.source_kind == "sandbox_source" and document.tool_id in {"maps", "cts_gis"}
         ]
+        requested_document_id = _as_text(attention_document_id) or _as_text(selected_document_id)
+        requested_row_address = _as_text(selected_row_address)
+        requested_feature_id = _as_text(selected_feature_id)
+        project_all_documents = bool((requested_row_address or requested_feature_id) and not requested_document_id)
+        target_document = None
+        if requested_document_id:
+            for document in cts_gis_documents:
+                if _as_text(document.document_id) == requested_document_id:
+                    target_document = document
+                    break
+        if target_document is None and cts_gis_documents:
+            target_document = cts_gis_documents[0]
+
+        document_catalog = []
+        for document in cts_gis_documents:
+            summary = document.to_summary_dict()
+            summary.setdefault("projectable_feature_count", 0)
+            summary.setdefault("projection_state", "pending")
+            summary.setdefault("profile_count", 0)
+            summary.setdefault("default_attention_node_id", "")
+            summary["selected"] = _as_text(summary.get("document_id")) == _as_text(getattr(target_document, "document_id", ""))
+            document_catalog.append(summary)
+
+        target_documents = cts_gis_documents if project_all_documents else ([] if target_document is None else [target_document])
         documents = [
-            _build_document_projection(document, overlay_mode=normalized_overlay_mode) for document in cts_gis_documents
+            _build_document_projection(document, overlay_mode=normalized_overlay_mode) for document in target_documents
         ]
+        projected_summary_map = {
+            _as_text((document_bundle.get("document_summary") or {}).get("document_id")): dict(
+                document_bundle.get("document_summary") or {}
+            )
+            for document_bundle in documents
+        }
+        for summary in document_catalog:
+            projected_summary = projected_summary_map.get(_as_text(summary.get("document_id")))
+            if projected_summary is None:
+                continue
+            summary.update(
+                {
+                    "projectable_feature_count": int(projected_summary.get("projectable_feature_count") or 0),
+                    "projection_state": _as_text(projected_summary.get("projection_state")) or "inspect_only",
+                    "profile_count": int(projected_summary.get("profile_count") or 0),
+                    "default_attention_node_id": _as_text(projected_summary.get("default_attention_node_id")),
+                }
+            )
         fallback_document_summary = None
         if not documents and workbench.selected_document is not None:
             fallback_document_summary = workbench.selected_document.to_summary_dict()
@@ -619,6 +665,7 @@ class CtsGisReadOnlyService:
             "overlay_mode": normalized_overlay_mode,
             "raw_underlay_visible": normalized_raw_underlay,
             "documents": documents,
+            "document_catalog": document_catalog,
             "fallback_document_summary": fallback_document_summary,
             "warnings": warnings,
         }
@@ -719,12 +766,13 @@ class CtsGisReadOnlyService:
 
         if selected_document_bundle is None:
             fallback_document_summary = projection_bundle.get("fallback_document_summary")
+            document_catalog = list(projection_bundle.get("document_catalog") or [])
             warnings = list(projection_bundle.get("warnings") or [])
             if not documents:
                 warnings.append("No authoritative sandbox CTS-GIS documents were available for the current tenant.")
             warnings = list(dict.fromkeys(_as_text(item) for item in warnings if _as_text(item)))
             return {
-                "document_catalog": [],
+                "document_catalog": document_catalog,
                 "selected_document": fallback_document_summary,
                 "attention_profile": None,
                 "lineage": [],
@@ -912,10 +960,15 @@ class CtsGisReadOnlyService:
         warnings = list(dict.fromkeys(_as_text(item) for item in warnings if _as_text(item)))
 
         document_catalog = []
-        for document_bundle in documents:
-            summary = dict(document_bundle.get("document_summary") or {})
+        for summary_in in list(projection_bundle.get("document_catalog") or []):
+            summary = dict(summary_in)
             summary["selected"] = _as_text(summary.get("document_id")) == _as_text(document_summary.get("document_id"))
             document_catalog.append(summary)
+        if not document_catalog:
+            for document_bundle in documents:
+                summary = dict(document_bundle.get("document_summary") or {})
+                summary["selected"] = _as_text(summary.get("document_id")) == _as_text(document_summary.get("document_id"))
+                document_catalog.append(summary)
 
         render_set_summary = {
             "render_mode": (
@@ -956,7 +1009,7 @@ class CtsGisReadOnlyService:
             },
             "rows": [],
             "diagnostic_summary": {
-                "document_count": len(documents),
+                "document_count": len(document_catalog) or len(documents),
                 "selected_document_id": _as_text(document_summary.get("document_id")),
                 "attention_node_id": attention_node_id_text,
                 "intention_token": intention_token_text,

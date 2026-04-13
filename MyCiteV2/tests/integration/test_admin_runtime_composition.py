@@ -489,6 +489,50 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             wb = dismissed["shell_composition"]["regions"]["workbench"]
             self.assertEqual(wb.get("kind"), "aws_csm_family_workbench")
 
+    def test_cts_gis_uses_interface_panel_primary_posture_and_collapsed_fallback(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir) / "data"
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text("{}\n", encoding="utf-8")
+            policy = build_admin_tool_exposure_policy(
+                {"cts_gis": {"enabled": True}},
+                known_tool_ids=["aws", "aws_csm_newsletter", "aws_narrow_write", "aws_csm_sandbox", "aws_csm_onboarding", "cts_gis", "fnd_ebi"],
+            )
+
+            result = run_admin_shell_entry(
+                {
+                    "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+                    "requested_slice_id": CTS_GIS_READ_ONLY_SLICE_ID,
+                    "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+                },
+                portal_tenant_id="fnd",
+                data_dir=data_dir,
+                tool_exposure_policy=policy,
+            )
+            self.assertIsNone(result["error"])
+            self.assertEqual(result["shell_composition"]["composition_mode"], "tool")
+            self.assertEqual(result["shell_composition"]["foreground_shell_region"], "interface-panel")
+            self.assertFalse(result["shell_composition"]["inspector_collapsed"])
+            self.assertTrue(result["shell_composition"]["regions"]["inspector"]["primary_surface"])
+            self.assertEqual(result["shell_composition"]["regions"]["inspector"]["layout_mode"], "dominant")
+            self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "cts_gis_workbench")
+
+            collapsed = run_admin_shell_entry(
+                {
+                    "schema": ADMIN_SHELL_REQUEST_SCHEMA,
+                    "requested_slice_id": CTS_GIS_READ_ONLY_SLICE_ID,
+                    "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+                    "shell_chrome": {"inspector_collapsed": True},
+                },
+                portal_tenant_id="fnd",
+                data_dir=data_dir,
+                tool_exposure_policy=policy,
+            )
+            self.assertEqual(collapsed["shell_composition"]["foreground_shell_region"], "center-workbench")
+            self.assertTrue(collapsed["shell_composition"]["inspector_collapsed"])
+            self.assertEqual(collapsed["shell_composition"]["regions"]["workbench"]["kind"], "tool_collapsed_inspector")
+
 
 if __name__ == "__main__":
     unittest.main()

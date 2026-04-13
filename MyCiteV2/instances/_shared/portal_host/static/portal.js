@@ -79,13 +79,14 @@
   }
 
   function initThemeSelector() {
-    const picker = qs("[data-theme-selector]");
-    if (!picker) {
+    const pickers = qsa("[data-theme-selector]");
+    if (!pickers.length) {
       applyTheme(detectPreferredTheme(PORTAL_THEME_STORAGE_KEY));
       return;
     }
 
-    if (!picker.options.length) {
+    function ensureOptions(picker) {
+      if (picker.options.length) return;
       THEME_STANDARD.themes.forEach(t => {
         const opt = document.createElement("option");
         opt.value = t.id;
@@ -94,21 +95,35 @@
       });
     }
 
-    const scope = picker.getAttribute("data-theme-scope") || "portal";
-    const orgId = picker.getAttribute("data-org-msn-id") || "default";
-    const storageKey = scope === "portal" ? PORTAL_THEME_STORAGE_KEY : `mycite.theme.${scope}.${orgId}`;
-    const initial = detectPreferredTheme(storageKey);
+    function storageKeyForPicker(picker) {
+      const scope = picker.getAttribute("data-theme-scope") || "portal";
+      const orgId = picker.getAttribute("data-org-msn-id") || "default";
+      return scope === "portal" ? PORTAL_THEME_STORAGE_KEY : `mycite.theme.${scope}.${orgId}`;
+    }
 
-    picker.value = initial;
+    function syncThemeSelectors(themeId) {
+      pickers.forEach(picker => {
+        ensureOptions(picker);
+        picker.value = themeId;
+      });
+    }
+
+    pickers.forEach(ensureOptions);
+    const initial = detectPreferredTheme(storageKeyForPicker(pickers[0]));
     const applied = applyTheme(initial);
+    syncThemeSelectors(applied);
     syncThemedIframes(applied);
 
-    picker.addEventListener("change", () => {
-      const next = applyTheme(picker.value);
-      picker.value = next;
-      persistTheme(storageKey, next);
-      persistTheme(PORTAL_THEME_STORAGE_KEY, next);
-      syncThemedIframes(next);
+    pickers.forEach(picker => {
+      if (picker.getAttribute("data-theme-init-bound") === "true") return;
+      picker.setAttribute("data-theme-init-bound", "true");
+      picker.addEventListener("change", () => {
+        const next = applyTheme(picker.value);
+        syncThemeSelectors(next);
+        persistTheme(storageKeyForPicker(picker), next);
+        persistTheme(PORTAL_THEME_STORAGE_KEY, next);
+        syncThemedIframes(next);
+      });
     });
   }
 
@@ -329,11 +344,19 @@
     function setShellComposition(mode) {
       const composition = String(mode || "").trim().toLowerCase() === "tool" ? "tool" : "system";
       shell.setAttribute("data-shell-composition", composition);
-      shell.setAttribute("data-foreground-shell-region", "center-workbench");
-      workbench.setAttribute("data-foreground-visible", "true");
+      if (!shell.getAttribute("data-foreground-shell-region")) {
+        shell.setAttribute("data-foreground-shell-region", "center-workbench");
+      }
+      if (!workbench.getAttribute("data-foreground-visible")) {
+        workbench.setAttribute("data-foreground-visible", "true");
+      }
       workbench.setAttribute("aria-hidden", "false");
-      inspector.setAttribute("data-primary-surface", "false");
-      inspector.setAttribute("data-surface-layout", "sidebar");
+      if (!inspector.getAttribute("data-primary-surface")) {
+        inspector.setAttribute("data-primary-surface", "false");
+      }
+      if (!inspector.getAttribute("data-surface-layout")) {
+        inspector.setAttribute("data-surface-layout", "sidebar");
+      }
       document.dispatchEvent(new CustomEvent("mycite:shell:composition-changed", { detail: { composition } }));
       syncShellToggleButtons();
       rebalanceWorkbench();

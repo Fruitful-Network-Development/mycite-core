@@ -18,6 +18,7 @@ Every shell-owned tool descriptor and tool runtime entrypoint must carry:
 
 - `tool_id`
 - `tool_kind`
+- `surface_posture`
 - `slice_id`
 - `entrypoint_id`
 - `read_write_posture`
@@ -30,6 +31,11 @@ Every shell-owned tool descriptor and tool runtime entrypoint must carry:
 - `host_alias_tool`
 
 `default_tool` is forbidden vocabulary.
+
+`surface_posture` must be one of:
+
+- `workbench_primary`
+- `interface_panel_primary`
 
 ## Meaning Of Each Tool Kind
 
@@ -57,14 +63,14 @@ shared portal capabilities a shell-owned tool consumes.
 
 ## Current Live Mapping
 
-| Tool | Current `tool_kind` | Notes |
-| --- | --- | --- |
-| `aws` | `service_tool` | family landing for AWS-CSM |
-| `aws_narrow_write` | `service_tool` | bounded write subordinate slice |
-| `aws_csm_sandbox` | `service_tool` | internal sandbox projection |
-| `aws_csm_onboarding` | `service_tool` | bounded onboarding orchestration |
-| `cts_gis` | `general_tool` | spatial read-only utility tool under `Utilities` |
-| `fnd_ebi` | `service_tool` | hosted site visibility family under `Utilities` |
+| Tool | Current `tool_kind` | Current `surface_posture` | Notes |
+| --- | --- | --- | --- |
+| `aws` | `service_tool` | `workbench_primary` | family landing for AWS-CSM |
+| `aws_narrow_write` | `service_tool` | `workbench_primary` | bounded write subordinate slice |
+| `aws_csm_sandbox` | `service_tool` | `workbench_primary` | internal sandbox projection |
+| `aws_csm_onboarding` | `service_tool` | `workbench_primary` | bounded onboarding orchestration |
+| `cts_gis` | `general_tool` | `interface_panel_primary` | mediation-first spatial read-only utility tool under `Utilities` |
+| `fnd_ebi` | `service_tool` | `workbench_primary` | hosted site visibility family under `Utilities` |
 
 ## Immediate implementation rule
 

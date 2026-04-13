@@ -55,6 +55,8 @@ ADMIN_TOOL_SURFACE_BOUNDED_WRITE = "bounded-write"
 ADMIN_TOOL_KIND_GENERAL = "general_tool"
 ADMIN_TOOL_KIND_SERVICE = "service_tool"
 ADMIN_TOOL_KIND_HOST_ALIAS = "host_alias_tool"
+ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY = "workbench_primary"
+ADMIN_SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY = "interface_panel_primary"
 
 _ALLOWED_AUDIENCES = frozenset({"internal", "trusted-tenant"})
 _ALLOWED_ADMIN_TOOL_KINDS = frozenset(
@@ -62,6 +64,12 @@ _ALLOWED_ADMIN_TOOL_KINDS = frozenset(
         ADMIN_TOOL_KIND_GENERAL,
         ADMIN_TOOL_KIND_SERVICE,
         ADMIN_TOOL_KIND_HOST_ALIAS,
+    }
+)
+_ALLOWED_SURFACE_POSTURES = frozenset(
+    {
+        ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
+        ADMIN_SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
     }
 )
 
@@ -104,6 +112,18 @@ def _normalize_shared_portal_capabilities(value: object, *, field_name: str) -> 
         normalized.append(capability)
         seen.add(capability)
     return tuple(normalized)
+
+
+def _normalize_surface_posture(value: object, *, field_name: str, required: bool) -> str | None:
+    posture = _as_text(value).lower()
+    if not posture:
+        if required:
+            raise ValueError(f"{field_name} is required")
+        return None
+    if posture not in _ALLOWED_SURFACE_POSTURES:
+        supported = ", ".join(sorted(_ALLOWED_SURFACE_POSTURES))
+        raise ValueError(f"{field_name} must be one of: {supported}")
+    return posture
 
 
 @dataclass(frozen=True)
@@ -260,6 +280,7 @@ class AdminToolRegistryEntry:
     slice_id: str
     entrypoint_id: str
     tool_kind: str
+    surface_posture: str
     admin_band: str
     exposure_status: str
     read_write_posture: str
@@ -290,6 +311,15 @@ class AdminToolRegistryEntry:
             self,
             "tool_kind",
             _normalize_tool_kind(self.tool_kind, field_name="admin_tool_registry.tool_kind", required=True),
+        )
+        object.__setattr__(
+            self,
+            "surface_posture",
+            _normalize_surface_posture(
+                self.surface_posture,
+                field_name="admin_tool_registry.surface_posture",
+                required=True,
+            ),
         )
         if self.read_write_posture not in {"read-only", "write"}:
             raise ValueError("admin_tool_registry.read_write_posture must be read-only or write")
@@ -322,6 +352,7 @@ class AdminToolRegistryEntry:
             "slice_id": self.slice_id,
             "entrypoint_id": self.entrypoint_id,
             "tool_kind": self.tool_kind,
+            "surface_posture": self.surface_posture,
             "admin_band": self.admin_band,
             "exposure_status": self.exposure_status,
             "read_write_posture": self.read_write_posture,
@@ -455,6 +486,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             slice_id=AWS_READ_ONLY_SLICE_ID,
             entrypoint_id=AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID,
             tool_kind=ADMIN_TOOL_KIND_SERVICE,
+            surface_posture=ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
             admin_band=ADMIN_BAND1_AWS_NAME,
             exposure_status="implemented_trusted_tenant_read_only",
             read_write_posture="read-only",
@@ -471,6 +503,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             slice_id=AWS_NARROW_WRITE_SLICE_ID,
             entrypoint_id=AWS_NARROW_WRITE_ENTRYPOINT_ID,
             tool_kind=ADMIN_TOOL_KIND_SERVICE,
+            surface_posture=ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
             admin_band=ADMIN_BAND2_AWS_NAME,
             exposure_status="implemented_trusted_tenant_narrow_write",
             read_write_posture="write",
@@ -490,6 +523,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             slice_id=AWS_CSM_SANDBOX_SLICE_ID,
             entrypoint_id=AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
             tool_kind=ADMIN_TOOL_KIND_SERVICE,
+            surface_posture=ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
             admin_band=ADMIN_BAND3_AWS_SANDBOX_NAME,
             exposure_status="implemented_internal_sandbox_read_only",
             read_write_posture="read-only",
@@ -507,6 +541,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             slice_id=AWS_CSM_ONBOARDING_SLICE_ID,
             entrypoint_id=AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
             tool_kind=ADMIN_TOOL_KIND_SERVICE,
+            surface_posture=ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
             admin_band=ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
             exposure_status="implemented_trusted_tenant_csm_onboarding",
             read_write_posture="write",
@@ -526,6 +561,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             slice_id=CTS_GIS_READ_ONLY_SLICE_ID,
             entrypoint_id=CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
             tool_kind=ADMIN_TOOL_KIND_GENERAL,
+            surface_posture=ADMIN_SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
             admin_band=ADMIN_BAND5_CTS_GIS_NAME,
             exposure_status="implemented_internal_cts_gis_read_only",
             read_write_posture="read-only",
@@ -543,6 +579,7 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             slice_id=FND_EBI_READ_ONLY_SLICE_ID,
             entrypoint_id=FND_EBI_READ_ONLY_ENTRYPOINT_ID,
             tool_kind=ADMIN_TOOL_KIND_SERVICE,
+            surface_posture=ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY,
             admin_band=ADMIN_BAND6_FND_EBI_NAME,
             exposure_status="implemented_internal_fnd_ebi_read_only",
             read_write_posture="read-only",
@@ -809,12 +846,71 @@ def shell_composition_mode_for_surface(active_surface_id: str) -> str:
     return "system"
 
 
+def surface_posture_for_surface(active_surface_id: str) -> str:
+    sid = _as_text(active_surface_id)
+    for entry in build_admin_tool_registry_entries():
+        if entry.slice_id == sid:
+            return entry.surface_posture
+    return ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY
+
+
 def foreground_region_for_surface(active_surface_id: str) -> str:
+    if (
+        shell_composition_mode_for_surface(active_surface_id) == "tool"
+        and surface_posture_for_surface(active_surface_id) == ADMIN_SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY
+    ):
+        return "interface-panel"
     return "center-workbench"
 
 
 def inspector_collapsed_for_surface(active_surface_id: str) -> bool:
+    if (
+        shell_composition_mode_for_surface(active_surface_id) == "tool"
+        and surface_posture_for_surface(active_surface_id) == ADMIN_SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY
+    ):
+        return False
     return True
+
+
+def apply_surface_posture_to_composition(composition: dict[str, Any]) -> None:
+    if not isinstance(composition, dict):
+        return
+    active_surface_id = _as_text(composition.get("active_surface_id"))
+    posture = surface_posture_for_surface(active_surface_id)
+    regions = composition.get("regions")
+    if not isinstance(regions, dict):
+        return
+    inspector = regions.get("inspector")
+    if not isinstance(inspector, dict):
+        return
+    if posture != ADMIN_SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY:
+        inspector.setdefault("primary_surface", False)
+        inspector.setdefault("layout_mode", "sidebar")
+        return
+    if bool(composition.get("inspector_collapsed")):
+        composition["foreground_shell_region"] = "center-workbench"
+        inspector["primary_surface"] = False
+        inspector["layout_mode"] = "dominant"
+        workbench = regions.get("workbench")
+        workbench_title = ""
+        if isinstance(workbench, dict):
+            workbench_title = _as_text(workbench.get("title"))
+        if not workbench_title:
+            workbench_title = _as_text(inspector.get("title")) or "Tool surface"
+        regions["workbench"] = {
+            "schema": ADMIN_SHELL_REGION_WORKBENCH_SCHEMA,
+            "kind": "tool_collapsed_inspector",
+            "title": workbench_title,
+            "subtitle": "Interface panel dismissed",
+            "visible": True,
+            "message": "This tool mediates primarily through the interface panel.",
+            "action_label": "Reopen interface panel",
+            "action_shell_chrome": {"inspector_collapsed": False},
+        }
+        return
+    composition["foreground_shell_region"] = "interface-panel"
+    inspector["primary_surface"] = True
+    inspector["layout_mode"] = "dominant"
 
 
 def build_portal_activity_dispatch_bodies(
@@ -906,6 +1002,23 @@ def build_shell_composition_payload(
     active_tool_slice_id: str | None = None
     if mode == "tool":
         active_tool_slice_id = _as_text(active_surface_id)
+    inspector_region = dict(inspector)
+    inspector_region.setdefault(
+        "primary_surface",
+        bool(
+            mode == "tool"
+            and surface_posture_for_surface(active_surface_id) == ADMIN_SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY
+        ),
+    )
+    inspector_region.setdefault(
+        "layout_mode",
+        "dominant"
+        if (
+            mode == "tool"
+            and surface_posture_for_surface(active_surface_id) == ADMIN_SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY
+        )
+        else "sidebar",
+    )
     return {
         "schema": ADMIN_SHELL_COMPOSITION_SCHEMA,
         "composition_mode": mode,
@@ -926,7 +1039,7 @@ def build_shell_composition_payload(
             },
             "control_panel": dict(control_panel),
             "workbench": dict(workbench),
-            "inspector": dict(inspector),
+            "inspector": inspector_region,
         },
     }
 
@@ -963,6 +1076,8 @@ __all__ = [
     "ADMIN_TOOL_KIND_HOST_ALIAS",
     "ADMIN_TOOL_KIND_SERVICE",
     "ADMIN_TOOL_LAUNCH_CONTRACT",
+    "ADMIN_SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY",
+    "ADMIN_SURFACE_POSTURE_WORKBENCH_PRIMARY",
     "ADMIN_TOOL_REGISTRY_SLICE_ID",
     "ADMIN_TOOL_SURFACE_BOUNDED_WRITE",
     "ADMIN_TOOL_SURFACE_READ_ONLY",
@@ -990,6 +1105,7 @@ __all__ = [
     "build_admin_surface_catalog",
     "build_admin_tool_registry_entries",
     "activity_icon_id_for_slice",
+    "apply_surface_posture_to_composition",
     "build_portal_activity_dispatch_bodies",
     "build_shell_composition_payload",
     "foreground_region_for_surface",
@@ -998,4 +1114,5 @@ __all__ = [
     "resolve_admin_tool_launch",
     "resolve_admin_shell_request",
     "shell_composition_mode_for_surface",
+    "surface_posture_for_surface",
 ]
