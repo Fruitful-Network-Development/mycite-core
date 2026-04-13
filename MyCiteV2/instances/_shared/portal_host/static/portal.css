@@ -2896,8 +2896,8 @@ body.is-modal-open {
 .ide-activitynav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px;
+  gap: 6px;
+  padding: 8px 6px;
 }
 
 .ide-activitydivider {
@@ -2910,19 +2910,20 @@ body.is-modal-open {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 0;
+  justify-content: flex-start;
+  gap: 6px;
   text-decoration: none;
   color: #c8c8c8;
   border: 1px solid transparent;
   border-radius: 6px;
-  padding: 8px 6px;
-  min-height: 40px;
-  font-size: 0;
+  padding: 9px 4px 10px;
+  min-height: 58px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   line-height: 1.15;
+  text-align: center;
 }
 
 .ide-activityicon {
@@ -2944,9 +2945,21 @@ body.is-modal-open {
   margin-bottom: 4px;
 }
 
+.ide-activitylabel {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
 .ide-activitylink--root_logo .ide-activityicon {
   width: 26px;
   height: 26px;
+}
+
+.ide-activitylink--root_logo .ide-activitylabel {
+  font-size: 9px;
 }
 
 .ide-activitylink:hover {
@@ -3007,6 +3020,62 @@ body.is-modal-open {
 .ide-controlpanel__section {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding: 10px 10px 12px;
+}
+
+.ide-controlpanel__module {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.ide-controlpanel__moduleHeader {
+  padding: 12px 10px 0;
+}
+
+.ide-controlpanel__moduleTitle {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #b3bcbd;
+}
+
+.ide-controlpanel__moduleSub {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #96a0a1;
+}
+
+.ide-controlpanel__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 10px 0;
+}
+
+.ide-controlpanel__tab {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  color: #d7d7d7;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.ide-controlpanel__tab:hover {
+  border-color: rgba(120, 205, 175, 0.38);
+  color: #fff;
+}
+
+.ide-controlpanel__tab.is-active {
+  border-color: rgba(120, 205, 175, 0.56);
+  background: rgba(120, 205, 175, 0.14);
+  color: #fff;
 }
 
 .data-tool__systemContext {
@@ -3676,11 +3745,6 @@ body.is-modal-open {
   --ide-inspector-splitter-visible-w: var(--ide-splitter-w);
 }
 
-.ide-shell[data-shell-composition="tool"] {
-  --ide-inspector-visible-w: minmax(0, 1fr);
-  --ide-inspector-splitter-visible-w: 0px;
-}
-
 .ide-menubar {
   flex: 0 0 var(--ide-menu-h);
   min-height: var(--ide-menu-h);
@@ -3750,15 +3814,6 @@ body.is-modal-open {
   align-items: stretch;
 }
 
-.ide-shell[data-shell-composition="tool"] .ide-body {
-  grid-template-columns:
-    var(--ide-activity-w)
-    var(--ide-controlpanel-visible-w)
-    var(--ide-controlpanel-splitter-visible-w)
-    minmax(0, 1fr);
-  grid-template-areas: "activity controlpanel controlpanelsplit inspector";
-}
-
 .ide-splitter {
   appearance: none;
   width: 100%;
@@ -3813,10 +3868,6 @@ body.is-modal-open {
   background: linear-gradient(180deg, rgba(16, 24, 28, 0.12), rgba(16, 24, 28, 0.02));
 }
 
-.ide-shell[data-shell-composition="tool"] .ide-workbench {
-  display: none;
-}
-
 .ide-workbench > * {
   min-width: 0;
   width: 100%;
@@ -3845,27 +3896,11 @@ body.is-modal-open {
   overflow: hidden;
 }
 
-.ide-shell[data-shell-composition="tool"] .ide-inspector {
-  border-left: 1px solid rgba(0, 0, 0, 0.08);
-  background: color-mix(in srgb, var(--paper, #f6f6f0) 92%, #fff 8%);
-  width: 100%;
-  max-width: none;
-  align-self: stretch;
-}
-
-.ide-shell[data-shell-composition="tool"] .ide-inspector__close {
-  display: none;
-}
-
 .ide-shell[data-control-panel-collapsed="true"] .ide-controlpanel,
 .ide-shell[data-control-panel-collapsed="true"] .ide-splitter--controlpanel,
 .ide-body > .ide-inspector.is-collapsed,
 .ide-shell[data-inspector-collapsed="true"] .ide-splitter--inspector {
   display: none;
-}
-
-.ide-shell[data-shell-composition="tool"] .ide-splitter--inspector {
-  display: none !important;
 }
 
 .ide-shell[data-inspector-collapsed="false"] .ide-splitter--inspector {
@@ -3905,24 +3940,6 @@ body.is-modal-open {
   overscroll-behavior: contain;
 }
 
-.ide-shell[data-shell-composition="tool"] .ide-inspector__content {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  padding: 0;
-}
-
-.ide-shell[data-shell-composition="tool"] .ide-inspector__content > * {
-  width: 100%;
-  max-width: none;
-  min-width: 0;
-  align-self: stretch;
-}
-
-.ide-shell[data-shell-composition="tool"] [data-interface-panel-root="transient"] {
-  display: none !important;
-}
 
 .ide-workbench[data-active-service="system"] {
   background: linear-gradient(180deg, rgba(12, 26, 30, 0.38), rgba(10, 16, 20, 0.18));
@@ -5178,11 +5195,6 @@ body.is-modal-open {
     grid-template-areas: "activity workbench";
   }
 
-  .ide-shell[data-shell-composition="tool"] .ide-body {
-    grid-template-columns: var(--ide-activity-w) minmax(0, 1fr);
-    grid-template-areas: "activity inspector";
-  }
-
   .ide-splitter {
     display: none;
   }
@@ -5205,15 +5217,6 @@ body.is-modal-open {
     width: min(var(--ide-inspector-w), 92vw);
     z-index: 92;
     box-shadow: -2px 0 16px rgba(0, 0, 0, 0.35);
-  }
-
-  .ide-shell[data-shell-composition="tool"] .ide-inspector {
-    position: relative;
-    top: auto;
-    right: auto;
-    bottom: auto;
-    width: auto;
-    box-shadow: none;
   }
 
   .workbench-panels--double,
@@ -5908,35 +5911,6 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   width: 100%;
   flex: 1 1 auto;
   align-content: start;
-}
-
-.ide-shell[data-shell-composition="tool"] .system-tool-interface {
-  min-height: 100%;
-  padding: 1rem clamp(1rem, 1.8vw, 1.5rem) 1.25rem;
-  box-sizing: border-box;
-}
-
-.ide-shell[data-shell-composition="tool"] .system-tool-interface__body {
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-}
-
-.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > .card,
-.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > article,
-.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > div {
-  min-width: 0;
-  width: 100%;
-  max-width: none;
-  align-self: stretch;
-}
-
-.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > p,
-.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > section {
-  grid-column: 1 / -1;
-}
-
-.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > .card .card__body,
-.ide-shell[data-shell-composition="tool"] .system-tool-interface__body > article .card__body {
-  min-width: 0;
 }
 
 .aws-csm-domainSection {

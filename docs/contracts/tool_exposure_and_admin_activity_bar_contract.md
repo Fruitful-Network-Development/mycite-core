@@ -72,13 +72,17 @@ This is a `hide-and-block` contract, not a `show-gated` contract.
 
 ## Activity-bar contract
 
-- Activity bar is icon-only.
+- Activity bar is shell-owned and compact, but not anonymous.
+- Each principal item renders a shell-owned glyph plus a visible label.
 - Activity bar order is shell-owned and fixed as:
   1. root logo to `System`
   2. `Network`
   3. `System`
   4. `Utilities`
-  5. visible tools in shell-owned registry order
+  5. promoted tool families in shell-owned registry order
+- Current principal tool-family set is intentionally narrow:
+  - `AWS-CSM` is promoted
+  - `Maps` remains implemented but is launched from `Utilities`, not pinned as a peer principal item
 - Activity items are runtime-issued and must carry:
   - `icon_id`
   - `aria_label`
@@ -88,12 +92,24 @@ This is a `hide-and-block` contract, not a `show-gated` contract.
   - `root_logo`
   - `root_service`
   - `tool`
-- The browser receives only the filtered set of visible tools after the root
-  items above.
+- The browser receives only the filtered set of principal tool items after the
+  root items above.
 - The browser must not merge config order, config labels, legacy route names,
   or client-invented icons into the rendered activity bar.
 - Direct launch requests for a disabled tool must fail closed even if the tool
   exists in the shell registry.
+
+## Four-panel shell invariant
+
+- The admin shell keeps four stable modules:
+  - activity bar
+  - control panel
+  - workbench
+  - interface panel
+- `composition_mode` may remain in the wire contract for semantic compatibility,
+  but it must not hide the workbench or auto-promote the interface panel.
+- The interface panel is secondary and collapsed by default; the workbench
+  remains the primary content surface for both roots and tools.
 
 ## Canonical admin routes
 

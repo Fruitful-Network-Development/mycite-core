@@ -135,8 +135,12 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             )
             self.assertTrue(all(entry["launchable"] for entry in available_tool_entries))
             self.assertEqual(
-                [entry["slice_id"] for entry in result["surface_payload"]["gated_tool_slices"]],
+                [entry["slice_id"] for entry in result["surface_payload"]["family_tool_slices"]],
                 [AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID],
+            )
+            self.assertEqual(
+                [entry["slice_id"] for entry in result["surface_payload"]["gated_tool_slices"]],
+                [],
             )
             comp = result["shell_composition"]
             self.assertEqual(comp["schema"], ADMIN_SHELL_COMPOSITION_SCHEMA)
@@ -175,13 +179,15 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         gated_tool_entries = result["surface_payload"]["gated_tool_slices"]
         self.assertEqual(
             [entry["slice_id"] for entry in gated_tool_entries],
-            [AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID, MAPS_READ_ONLY_SLICE_ID],
+            [AWS_CSM_SANDBOX_SLICE_ID, MAPS_READ_ONLY_SLICE_ID],
         )
         gated_by_slice = {entry["slice_id"]: entry for entry in gated_tool_entries}
-        self.assertEqual(gated_by_slice[AWS_NARROW_WRITE_SLICE_ID]["visibility_status"], "family_subsurface")
-        self.assertEqual(gated_by_slice[AWS_CSM_ONBOARDING_SLICE_ID]["visibility_status"], "family_subsurface")
         self.assertEqual(gated_by_slice[AWS_CSM_SANDBOX_SLICE_ID]["visibility_status"], "config_disabled")
         self.assertEqual(gated_by_slice[MAPS_READ_ONLY_SLICE_ID]["visibility_status"], "config_disabled")
+        self.assertEqual(
+            [entry["slice_id"] for entry in result["surface_payload"]["family_tool_slices"]],
+            [AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID],
+        )
         activity_slice_ids = [
             item["slice_id"] for item in result["shell_composition"]["regions"]["activity_bar"]["items"]
         ]
@@ -247,12 +253,12 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
         )
         self.assertEqual(
             result["surface_payload"]["gated_tool_slice_ids"],
-            [AWS_NARROW_WRITE_SLICE_ID, AWS_CSM_SANDBOX_SLICE_ID, AWS_CSM_ONBOARDING_SLICE_ID],
+            [],
         )
         self.assertEqual(len(result["surface_payload"]["tool_entries"]), 5)
         self.assertNotIn("newsletter-admin", json.dumps(result["surface_payload"], sort_keys=True))
         self.assertEqual(result["shell_composition"]["composition_mode"], "system")
-        self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "tool_registry")
+        self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "utilities_root")
 
     def test_requested_aws_slice_redirects_to_registry_and_does_not_launch_inline(self) -> None:
         result = run_admin_shell_entry(
@@ -348,7 +354,7 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "datum_workbench")
             self.assertEqual(result["shell_composition"]["regions"]["inspector"]["kind"], "datum_summary")
 
-    def test_trusted_tenant_aws_read_only_slice_composes_tool_mode(self) -> None:
+    def test_trusted_tenant_aws_read_only_slice_keeps_workbench_primary(self) -> None:
         with TemporaryDirectory() as temp_dir:
             profile_payload = {
                 "schema": "mycite.service_tool.aws_csm.profile.v1",
@@ -393,13 +399,14 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             self.assertIsNone(result["error"])
             self.assertEqual(result["slice_id"], AWS_READ_ONLY_SLICE_ID)
             self.assertEqual(result["shell_composition"]["composition_mode"], "tool")
-            self.assertEqual(result["shell_composition"]["foreground_shell_region"], "interface-panel")
-            self.assertFalse(result["shell_composition"]["inspector_collapsed"])
+            self.assertEqual(result["shell_composition"]["foreground_shell_region"], "center-workbench")
+            self.assertTrue(result["shell_composition"]["inspector_collapsed"])
+            self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "aws_csm_family_workbench")
             ins = result["shell_composition"]["regions"]["inspector"]
             self.assertEqual(ins["kind"], "aws_csm_family_home")
             self.assertEqual(ins["selected_domain_state"]["domain"], "trappfamilyfarm.com")
 
-    def test_shell_chrome_mediates_inspector_collapse_in_tool_mode(self) -> None:
+    def test_shell_chrome_can_open_interface_panel_without_hiding_workbench(self) -> None:
         with TemporaryDirectory() as temp_dir:
             profile_payload = {
                 "schema": "mycite.service_tool.aws_csm.profile.v1",
@@ -434,7 +441,7 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
                     "schema": ADMIN_SHELL_REQUEST_SCHEMA,
                     "requested_slice_id": AWS_READ_ONLY_SLICE_ID,
                     "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
-                    "shell_chrome": {"inspector_collapsed": True},
+                    "shell_chrome": {"inspector_collapsed": False},
                 },
                 portal_tenant_id="tff",
                 aws_status_file=status_file,
@@ -442,10 +449,10 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
                 private_dir=private_dir,
                 tool_exposure_policy=_aws_csm_rollout_policy(),
             )
-            self.assertTrue(dismissed["shell_composition"]["inspector_collapsed"])
+            self.assertFalse(dismissed["shell_composition"]["inspector_collapsed"])
             self.assertEqual(dismissed["shell_composition"]["foreground_shell_region"], "center-workbench")
             wb = dismissed["shell_composition"]["regions"]["workbench"]
-            self.assertEqual(wb.get("kind"), "tool_collapsed_inspector")
+            self.assertEqual(wb.get("kind"), "aws_csm_family_workbench")
 
 
 if __name__ == "__main__":

@@ -450,16 +450,19 @@ URL_SLUG_TO_SLICE_ID: dict[str, str] = {
 }
 
 
-def _bootstrap_request_for_slug(slug: str, tenant_id: str) -> dict[str, Any]:
+def _bootstrap_request_for_slug(slug: str, tenant_id: str, *, root_tab: str = "") -> dict[str, Any]:
     """Build the correct shell request body for a URL slug, using the same
     dispatch bodies the activity bar and control panel use."""
     slice_id = URL_SLUG_TO_SLICE_ID.get(slug, ADMIN_HOME_STATUS_SLICE_ID)
     bodies = build_portal_activity_dispatch_bodies(portal_tenant_id=tenant_id)
-    return bodies.get(slice_id, {
+    request_body = dict(bodies.get(slice_id, {
         "schema": ADMIN_SHELL_REQUEST_SCHEMA,
         "requested_slice_id": ADMIN_HOME_STATUS_SLICE_ID,
         "tenant_scope": {"scope_id": INTERNAL_ADMIN_SCOPE_ID, "audience": "internal"},
-    })
+    }))
+    if slice_id in {ADMIN_HOME_STATUS_SLICE_ID, ADMIN_NETWORK_ROOT_SLICE_ID, ADMIN_TOOL_REGISTRY_SLICE_ID} and _as_text(root_tab):
+        request_body["root_tab"] = _as_text(root_tab)
+    return request_body
 
 
 def _tenant_portal_bootstrap_request(tenant_id: str) -> dict[str, Any]:
@@ -670,14 +673,14 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         payload = _build_health(host_config)
         return jsonify(payload), 200 if payload["ok"] else 503
 
-    def _portal_shell_page(slug: str = "") -> str:
+    def _portal_shell_page(slug: str = "", *, root_tab: str = "") -> str:
         return render_template(
             "portal.html",
             tenant_id=host_config.tenant_id,
             host_shape=HOST_SHAPE,
             analytics_domain=host_config.analytics_domain,
             portal_build_id=PORTAL_BUILD_ID,
-            bootstrap_shell_request=_bootstrap_request_for_slug(slug, host_config.tenant_id),
+            bootstrap_shell_request=_bootstrap_request_for_slug(slug, host_config.tenant_id, root_tab=root_tab),
             runtime_envelope_schema=ADMIN_RUNTIME_ENVELOPE_SCHEMA,
             shell_endpoint="/portal/api/v2/admin/shell",
             shell_loading_label="Loading admin shell…",
@@ -760,13 +763,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.get("/portal/network")
     def portal_network() -> str:
-        return _portal_shell_page("network")
+        return _portal_shell_page("network", root_tab=_as_text(request.args.get("tab")))
 
     @app.get("/portal/utilities")
     @app.get("/portal/utilities/<path:tool_slug>")
     def portal_utilities(tool_slug: str = "") -> str:
         slug = tool_slug.strip("/") if tool_slug else "utilities"
-        return _portal_shell_page(slug)
+        return _portal_shell_page(slug, root_tab=_as_text(request.args.get("tab")))
 
     @app.get("/portal/system")
     @app.get("/portal/system/<path:tool_slug>")
@@ -775,7 +778,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if not slug:
             legacy_mediate_tool = _as_text(request.args.get("mediate_tool"))
             slug = f"mediate_tool-{legacy_mediate_tool}" if legacy_mediate_tool else "system"
-        return _portal_shell_page(slug)
+        return _portal_shell_page(slug, root_tab=_as_text(request.args.get("tab")))
 
     @app.post("/portal/api/v2/admin/shell")
     def admin_shell() -> tuple[Any, int]:

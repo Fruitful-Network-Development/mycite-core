@@ -993,6 +993,13 @@ class V2NativePortalHostTests(unittest.TestCase):
             finally:
                 system.close()
 
+            system_sources = client.get("/portal/system?tab=sources")
+            try:
+                self.assertEqual(system_sources.status_code, 200)
+                self.assertIn(b'"root_tab": "sources"', system_sources.data)
+            finally:
+                system_sources.close()
+
     def test_url_deep_linking_bootstraps_to_correct_slice(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1012,6 +1019,13 @@ class V2NativePortalHostTests(unittest.TestCase):
                 self.assertIn(ADMIN_TOOL_REGISTRY_SLICE_ID.encode(), utilities_page.data)
             finally:
                 utilities_page.close()
+
+            utilities_config = client.get("/portal/utilities?tab=config")
+            try:
+                self.assertEqual(utilities_config.status_code, 200)
+                self.assertIn(b'"root_tab": "config"', utilities_config.data)
+            finally:
+                utilities_config.close()
 
             tools_page = client.get("/portal/system/tools")
             try:

@@ -281,7 +281,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "launch_contract": "shell-owned-registry",
                     "default_posture": "deny-by-default",
                     "launchable": True,
-                    "activity_bar_visible": True,
+                    "activity_bar_visible": False,
                 },
             ],
         )
