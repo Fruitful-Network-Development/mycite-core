@@ -27,6 +27,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_READ_ONLY_SLICE_ID,
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
     CTS_GIS_READ_ONLY_SLICE_ID,
+    FND_EBI_READ_ONLY_SLICE_ID,
     AdminShellChrome,
     AdminShellRequest,
     activity_icon_id_for_slice,
@@ -51,11 +52,17 @@ from MyCiteV2.instances._shared.runtime.admin_cts_gis_runtime import (
     build_admin_cts_gis_surface_payload,
     build_admin_cts_gis_workbench,
 )
+from MyCiteV2.instances._shared.runtime.admin_fnd_ebi_runtime import (
+    build_admin_fnd_ebi_inspector,
+    build_admin_fnd_ebi_surface_payload,
+    build_admin_fnd_ebi_workbench,
+)
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_AWS_CSM_ONBOARDING_REQUEST_SCHEMA,
     ADMIN_AWS_CSM_FAMILY_HOME_SURFACE_SCHEMA,
     ADMIN_HOME_STATUS_SURFACE_SCHEMA,
     ADMIN_CTS_GIS_READ_ONLY_SURFACE_SCHEMA,
+    ADMIN_FND_EBI_READ_ONLY_SURFACE_SCHEMA,
     ADMIN_NETWORK_ROOT_SURFACE_SCHEMA,
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
     ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
@@ -275,6 +282,8 @@ def _canonical_shell_href(slice_id: str) -> str:
         return "/portal/utilities/aws-csm-sandbox"
     if slice_id == CTS_GIS_READ_ONLY_SLICE_ID:
         return "/portal/utilities/cts-gis"
+    if slice_id == FND_EBI_READ_ONLY_SLICE_ID:
+        return "/portal/utilities/fnd-ebi"
     return "/portal/system"
 
 
@@ -354,7 +363,13 @@ def _build_home_status_surface(
             "tool_registry": "ready",
             "launchable_tool_slice_ids": launchable_tool_slice_ids,
             "gated_tool_slice_ids": gated_tool_slice_ids,
-            "next_tool_slice_id": CTS_GIS_READ_ONLY_SLICE_ID if CTS_GIS_READ_ONLY_SLICE_ID in launchable_tool_slice_ids else AWS_READ_ONLY_SLICE_ID,
+            "next_tool_slice_id": (
+                FND_EBI_READ_ONLY_SLICE_ID
+                if FND_EBI_READ_ONLY_SLICE_ID in launchable_tool_slice_ids
+                else CTS_GIS_READ_ONLY_SLICE_ID
+                if CTS_GIS_READ_ONLY_SLICE_ID in launchable_tool_slice_ids
+                else AWS_READ_ONLY_SLICE_ID
+            ),
         },
         "sources_summary": {
             "document_count": document_count,
@@ -369,6 +384,7 @@ def _build_home_status_surface(
             "warnings": warnings,
         },
         "follow_on_order": [
+            FND_EBI_READ_ONLY_SLICE_ID,
             CTS_GIS_READ_ONLY_SLICE_ID,
             "agro_erp_after_cts_gis",
         ],
@@ -426,6 +442,7 @@ def _build_tool_registry_surface(
             ],
         },
         "follow_on_constraints": {
+            "fnd_ebi": "implemented_read_only",
             "cts_gis": "implemented_read_only",
             "agro_erp": "blocked_until_cts_gis",
         },
@@ -1228,11 +1245,13 @@ def _build_regions_and_surface(
     selection_ok: bool,
     nav_active_slice_id: str,
     portal_tenant_id: str,
+    portal_domain: str,
     audit_storage_file: str | Path | None,
     aws_status_file: str | Path | None,
     aws_csm_sandbox_status_file: str | Path | None,
     data_dir: str | Path | None,
     private_dir: str | Path | None,
+    webapps_root: str | Path | None,
     tool_exposure_policy: dict[str, Any] | None,
     selection: Any,
     normalized_request: AdminShellRequest,
@@ -1252,6 +1271,7 @@ def _build_regions_and_surface(
             ADMIN_HOME_STATUS_SLICE_ID,
             AWS_CSM_SANDBOX_SLICE_ID,
             CTS_GIS_READ_ONLY_SLICE_ID,
+            FND_EBI_READ_ONLY_SLICE_ID,
         }:
             surface_fallback = _select_band0_surface_payload(
                 active_surface_id=selection.active_surface_id,
@@ -1277,6 +1297,7 @@ def _build_regions_and_surface(
                 ADMIN_TOOL_REGISTRY_SLICE_ID,
                 AWS_CSM_SANDBOX_SLICE_ID,
                 CTS_GIS_READ_ONLY_SLICE_ID,
+                FND_EBI_READ_ONLY_SLICE_ID,
             }
             else ADMIN_HOME_STATUS_SLICE_ID
         )
@@ -1684,6 +1705,73 @@ def _build_regions_and_surface(
         )
         return sp, comp, "MyCite", "CTS-GIS"
 
+    if active == FND_EBI_READ_ONLY_SLICE_ID:
+        utilities_surface = _build_tool_registry_surface(
+            portal_tenant_id=portal_tenant_id,
+            root_tab="tools",
+            tool_exposure_policy=tool_exposure_policy,
+        )
+        if private_dir is None or webapps_root is None:
+            sp = {
+                "schema": ADMIN_FND_EBI_READ_ONLY_SURFACE_SCHEMA,
+                "active_surface_id": FND_EBI_READ_ONLY_SLICE_ID,
+                "error": "fnd_ebi_root_not_configured",
+            }
+            wb = _workbench_error(
+                title="FND-EBI",
+                message="Host private/tool roots are not configured for the FND-EBI tool.",
+            )
+            comp = build_shell_composition_payload(
+                active_surface_id=active,
+                portal_tenant_id=portal_tenant_id,
+                page_title="MyCite",
+                page_subtitle="FND-EBI",
+                activity_items=_activity_items(
+                    portal_tenant_id=portal_tenant_id,
+                    nav_active_slice_id=nav_active_slice_id,
+                    tool_exposure_policy=tool_exposure_policy,
+                ),
+                control_panel=_control_panel_region(
+                    portal_tenant_id=portal_tenant_id,
+                    nav_active_slice_id=nav_active_slice_id,
+                    surface_payload=utilities_surface,
+                    tool_exposure_policy=tool_exposure_policy,
+                ),
+                workbench=wb,
+                inspector=_inspector_empty(title="FND-EBI"),
+            )
+            return sp, comp, "MyCite", "FND-EBI"
+
+        sp = build_admin_fnd_ebi_surface_payload(
+            portal_tenant_id=portal_tenant_id,
+            portal_tenant_domain=portal_domain,
+            private_dir=private_dir,
+            webapps_root=webapps_root,
+        )
+        comp = build_shell_composition_payload(
+            active_surface_id=active,
+            portal_tenant_id=portal_tenant_id,
+            page_title="MyCite",
+            page_subtitle="FND-EBI",
+            activity_items=_activity_items(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            control_panel=_control_panel_region(
+                portal_tenant_id=portal_tenant_id,
+                nav_active_slice_id=nav_active_slice_id,
+                surface_payload=utilities_surface,
+                tool_exposure_policy=tool_exposure_policy,
+            ),
+            workbench=build_admin_fnd_ebi_workbench(
+                surface_payload=sp,
+                portal_tenant_id=portal_tenant_id,
+            ),
+            inspector=build_admin_fnd_ebi_inspector(surface_payload=sp),
+        )
+        return sp, comp, "MyCite", "FND-EBI"
+
     sp = _build_home_status_surface(
         audit_storage_file=audit_storage_file,
         portal_tenant_id=portal_tenant_id,
@@ -1718,10 +1806,12 @@ def run_admin_shell_entry(
     *,
     audit_storage_file: str | Path | None = None,
     portal_tenant_id: str = "fnd",
+    portal_domain: str = "",
     aws_status_file: str | Path | None = None,
     aws_csm_sandbox_status_file: str | Path | None = None,
     data_dir: str | Path | None = None,
     private_dir: str | Path | None = None,
+    webapps_root: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_request = _normalize_request(request_payload)
@@ -1745,11 +1835,13 @@ def run_admin_shell_entry(
         selection_ok=selection.allowed,
         nav_active_slice_id=nav_active_slice_id,
         portal_tenant_id=_as_text(portal_tenant_id) or "fnd",
+        portal_domain=_as_text(portal_domain).lower(),
         audit_storage_file=audit_storage_file,
         aws_status_file=aws_status_file,
         aws_csm_sandbox_status_file=aws_csm_sandbox_status_file,
         data_dir=data_dir,
         private_dir=private_dir,
+        webapps_root=webapps_root,
         tool_exposure_policy=tool_exposure_policy,
         selection=selection,
         normalized_request=normalized_request,

@@ -16,6 +16,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     ADMIN_BAND3_AWS_SANDBOX_NAME,
     ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME,
     ADMIN_BAND5_CTS_GIS_NAME,
+    ADMIN_BAND6_FND_EBI_NAME,
     ADMIN_EXPOSURE_TRUSTED_TENANT_NARROW_WRITE,
     ADMIN_EXPOSURE_TRUSTED_TENANT_READ_ONLY,
     ADMIN_HOME_STATUS_SLICE_ID,
@@ -37,6 +38,8 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
     CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
     CTS_GIS_READ_ONLY_SLICE_ID,
+    FND_EBI_READ_ONLY_ENTRYPOINT_ID,
+    FND_EBI_READ_ONLY_SLICE_ID,
     AdminShellRequest,
     AdminTenantScope,
     build_admin_surface_catalog,
@@ -122,6 +125,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         self.assertEqual(map_surface_to_active_service(DATUM_RESOURCE_WORKBENCH_SLICE_ID), "system")
         self.assertEqual(map_surface_to_active_service(AWS_READ_ONLY_SLICE_ID), "utilities")
         self.assertEqual(map_surface_to_active_service(CTS_GIS_READ_ONLY_SLICE_ID), "utilities")
+        self.assertEqual(map_surface_to_active_service(FND_EBI_READ_ONLY_SLICE_ID), "utilities")
 
     def test_dispatch_bodies_include_network_root_and_keep_tool_routes_launchable(self) -> None:
         bodies = build_portal_activity_dispatch_bodies(portal_tenant_id="fnd")
@@ -129,6 +133,7 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
         self.assertEqual(bodies[ADMIN_NETWORK_ROOT_SLICE_ID]["requested_slice_id"], ADMIN_NETWORK_ROOT_SLICE_ID)
         self.assertEqual(bodies[AWS_READ_ONLY_SLICE_ID]["tenant_scope"]["audience"], "trusted-tenant")
         self.assertEqual(bodies[CTS_GIS_READ_ONLY_SLICE_ID]["tenant_scope"]["audience"], "internal")
+        self.assertEqual(bodies[FND_EBI_READ_ONLY_SLICE_ID]["tenant_scope"]["audience"], "internal")
 
     def test_catalog_and_registry_are_serializable_and_shell_owned(self) -> None:
         surface_catalog = [entry.to_dict() for entry in build_admin_surface_catalog()]
@@ -295,6 +300,29 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
                     "launchable": True,
                     "activity_bar_visible": False,
                 },
+                {
+                    "schema": ADMIN_TOOL_DESCRIPTOR_SCHEMA,
+                    "tool_id": "fnd_ebi",
+                    "label": "FND-EBI",
+                    "slice_id": FND_EBI_READ_ONLY_SLICE_ID,
+                    "entrypoint_id": FND_EBI_READ_ONLY_ENTRYPOINT_ID,
+                    "tool_kind": ADMIN_TOOL_KIND_SERVICE,
+                    "admin_band": ADMIN_BAND6_FND_EBI_NAME,
+                    "exposure_status": "implemented_internal_fnd_ebi_read_only",
+                    "read_write_posture": "read-only",
+                    "surface_pattern": "read-only",
+                    "status_summary": "launchable_fnd_ebi_read_only",
+                    "audience": "internal-admin",
+                    "internal_only_reason": "",
+                    "shared_portal_capabilities": ["external_service_binding", "hosted_site_visibility"],
+                    "audit_required": False,
+                    "read_after_write_required": False,
+                    "discovery_mode": "catalog-driven",
+                    "launch_contract": "shell-owned-registry",
+                    "default_posture": "deny-by-default",
+                    "launchable": True,
+                    "activity_bar_visible": False,
+                },
             ],
         )
         self.assertNotIn("newsletter-admin", json.dumps(tool_entries, sort_keys=True))
@@ -351,8 +379,15 @@ class AdminShellStateMachineUnitTests(unittest.TestCase):
             audience="internal",
             expected_entrypoint_id=CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
         )
+        fnd_ebi_allowed = resolve_admin_tool_launch(
+            slice_id=FND_EBI_READ_ONLY_SLICE_ID,
+            audience="internal",
+            expected_entrypoint_id=FND_EBI_READ_ONLY_ENTRYPOINT_ID,
+        )
         self.assertTrue(cts_gis_allowed.allowed)
         self.assertEqual(cts_gis_allowed.entrypoint_id, CTS_GIS_READ_ONLY_ENTRYPOINT_ID)
+        self.assertTrue(fnd_ebi_allowed.allowed)
+        self.assertEqual(fnd_ebi_allowed.entrypoint_id, FND_EBI_READ_ONLY_ENTRYPOINT_ID)
 
     def test_request_contract_rejects_invalid_schema_and_audience(self) -> None:
         with self.assertRaisesRegex(ValueError, "admin_shell_request.schema"):

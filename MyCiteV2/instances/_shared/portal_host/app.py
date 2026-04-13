@@ -21,12 +21,16 @@ from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
 from MyCiteV2.instances._shared.runtime.admin_cts_gis_runtime import (
     run_admin_cts_gis_read_only,
 )
+from MyCiteV2.instances._shared.runtime.admin_fnd_ebi_runtime import (
+    run_admin_fnd_ebi_read_only,
+)
 from MyCiteV2.instances._shared.runtime.admin_runtime import run_admin_shell_entry
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_RUNTIME_ENVELOPE_SCHEMA,
     ADMIN_AWS_CSM_FAMILY_HOME_REQUEST_SCHEMA,
     ADMIN_AWS_CSM_NEWSLETTER_REQUEST_SCHEMA,
     ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
+    ADMIN_FND_EBI_READ_ONLY_REQUEST_SCHEMA,
     ADMIN_TOOL_NOT_EXPOSED_ERROR_CODE,
     BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
     BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
@@ -59,6 +63,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     DATUM_RESOURCE_WORKBENCH_SLICE_ID,
     INTERNAL_ADMIN_SCOPE_ID,
     CTS_GIS_READ_ONLY_SLICE_ID,
+    FND_EBI_READ_ONLY_SLICE_ID,
     build_admin_tool_registry_entries,
     build_portal_activity_dispatch_bodies,
 )
@@ -444,10 +449,13 @@ URL_SLUG_TO_SLICE_ID: dict[str, str] = {
     "aws-csm-sandbox": AWS_CSM_SANDBOX_SLICE_ID,
     "cts-gis": CTS_GIS_READ_ONLY_SLICE_ID,
     "cts_gis": CTS_GIS_READ_ONLY_SLICE_ID,
+    "fnd-ebi": FND_EBI_READ_ONLY_SLICE_ID,
+    "fnd_ebi": FND_EBI_READ_ONLY_SLICE_ID,
     "datum": DATUM_RESOURCE_WORKBENCH_SLICE_ID,
     "mediate_tool-aws_platform_admin": AWS_READ_ONLY_SLICE_ID,
     "mediate_tool-aws_tenant_actions": AWS_CSM_ONBOARDING_SLICE_ID,
     "mediate_tool-cts_gis": CTS_GIS_READ_ONLY_SLICE_ID,
+    "mediate_tool-fnd_ebi": FND_EBI_READ_ONLY_SLICE_ID,
 }
 
 
@@ -525,6 +533,7 @@ def _runtime_status_code(envelope: dict[str, Any]) -> int:
         "publication_source_not_configured",
         "data_root_not_configured",
         "private_state_not_configured",
+        "fnd_ebi_root_not_configured",
     }:
         return 503
     if code == "read_after_write_failed":
@@ -789,10 +798,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     _json_payload(),
                     audit_storage_file=host_config.admin_audit_storage_file,
                     portal_tenant_id=host_config.tenant_id,
+                    portal_domain=host_config.analytics_domain,
                     aws_status_file=host_config.aws_status_file,
                     aws_csm_sandbox_status_file=host_config.aws_csm_sandbox_status_file,
                     data_dir=host_config.data_dir,
                     private_dir=host_config.private_dir,
+                    webapps_root=host_config.analytics_webapps_root,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
@@ -956,6 +967,25 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     else payload,
                     data_dir=host_config.data_dir,
                     portal_tenant_id=host_config.tenant_id,
+                    tool_exposure_policy=host_config.tool_exposure_policy,
+                )
+            )
+        except ValueError as exc:
+            return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": "invalid_request", "message": str(exc)}}), 400
+
+    @app.post("/portal/api/v2/admin/fnd-ebi/read-only")
+    def admin_fnd_ebi_read_only() -> tuple[Any, int]:
+        try:
+            payload = _json_payload()
+            return _runtime_response(
+                run_admin_fnd_ebi_read_only(
+                    {"schema": ADMIN_FND_EBI_READ_ONLY_REQUEST_SCHEMA, **payload}
+                    if "schema" not in payload
+                    else payload,
+                    private_dir=host_config.private_dir,
+                    webapps_root=host_config.analytics_webapps_root,
+                    portal_tenant_id=host_config.tenant_id,
+                    portal_tenant_domain=host_config.analytics_domain,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )

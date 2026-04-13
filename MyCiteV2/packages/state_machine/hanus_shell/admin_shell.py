@@ -19,6 +19,7 @@ ADMIN_BAND2_AWS_NAME = "Admin Band 2 Trusted-Tenant AWS Narrow Write"
 ADMIN_BAND3_AWS_SANDBOX_NAME = "Admin Band 3 Internal AWS-CSM Sandbox"
 ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME = "Admin Band 4 Trusted-Tenant AWS-CSM Onboarding"
 ADMIN_BAND5_CTS_GIS_NAME = "Admin Band 5 Internal CTS-GIS Read-Only"
+ADMIN_BAND6_FND_EBI_NAME = "Admin Band 6 Internal FND-EBI Read-Only"
 
 ADMIN_EXPOSURE_INTERNAL_ONLY = "internal-only"
 ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY = "internal-sandbox-read-only"
@@ -36,12 +37,14 @@ AWS_NARROW_WRITE_SLICE_ID = "admin_band2.aws_narrow_write_surface"
 AWS_CSM_SANDBOX_SLICE_ID = "admin_band3.aws_csm_sandbox_surface"
 AWS_CSM_ONBOARDING_SLICE_ID = "admin_band4.aws_csm_onboarding_surface"
 CTS_GIS_READ_ONLY_SLICE_ID = "admin_band5.cts_gis_read_only_surface"
+FND_EBI_READ_ONLY_SLICE_ID = "admin_band6.fnd_ebi_read_only_surface"
 AWS_CSM_FAMILY_HOME_ENTRYPOINT_ID = "admin.aws.family_home"
 AWS_READ_ONLY_ENTRYPOINT_ID = "admin.aws.read_only"
 AWS_NARROW_WRITE_ENTRYPOINT_ID = "admin.aws.narrow_write"
 AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID = "admin.aws.csm_sandbox_read_only"
 AWS_CSM_ONBOARDING_ENTRYPOINT_ID = "admin.aws.csm_onboarding"
 CTS_GIS_READ_ONLY_ENTRYPOINT_ID = "admin.cts_gis.read_only"
+FND_EBI_READ_ONLY_ENTRYPOINT_ID = "admin.fnd_ebi.read_only"
 
 INTERNAL_ADMIN_SCOPE_ID = "internal-admin"
 ADMIN_TOOL_DEFAULT_POSTURE = "deny-by-default"
@@ -534,6 +537,23 @@ def build_admin_tool_registry_entries() -> tuple[AdminToolRegistryEntry, ...]:
             launchable=True,
             activity_bar_visible=False,
         ),
+        AdminToolRegistryEntry(
+            tool_id="fnd_ebi",
+            label="FND-EBI",
+            slice_id=FND_EBI_READ_ONLY_SLICE_ID,
+            entrypoint_id=FND_EBI_READ_ONLY_ENTRYPOINT_ID,
+            tool_kind=ADMIN_TOOL_KIND_SERVICE,
+            admin_band=ADMIN_BAND6_FND_EBI_NAME,
+            exposure_status="implemented_internal_fnd_ebi_read_only",
+            read_write_posture="read-only",
+            surface_pattern=ADMIN_TOOL_SURFACE_READ_ONLY,
+            status_summary="launchable_fnd_ebi_read_only",
+            audience="internal-admin",
+            internal_only_reason="",
+            shared_portal_capabilities=("external_service_binding", "hosted_site_visibility"),
+            launchable=True,
+            activity_bar_visible=False,
+        ),
     )
 
 
@@ -767,6 +787,7 @@ def map_surface_to_active_service(active_surface_id: str) -> str:
         AWS_CSM_SANDBOX_SLICE_ID,
         AWS_CSM_ONBOARDING_SLICE_ID,
         CTS_GIS_READ_ONLY_SLICE_ID,
+        FND_EBI_READ_ONLY_SLICE_ID,
     }:
         return "utilities"
     if sid == DATUM_RESOURCE_WORKBENCH_SLICE_ID:
@@ -782,6 +803,7 @@ def shell_composition_mode_for_surface(active_surface_id: str) -> str:
         AWS_CSM_SANDBOX_SLICE_ID,
         AWS_CSM_ONBOARDING_SLICE_ID,
         CTS_GIS_READ_ONLY_SLICE_ID,
+        FND_EBI_READ_ONLY_SLICE_ID,
     }:
         return "tool"
     return "system"
@@ -863,6 +885,8 @@ def activity_icon_id_for_slice(slice_id: object) -> str:
         return "aws"
     if sid == CTS_GIS_READ_ONLY_SLICE_ID:
         return "cts_gis"
+    if sid == FND_EBI_READ_ONLY_SLICE_ID:
+        return "fnd_ebi"
     return "generic"
 
 
@@ -915,6 +939,7 @@ __all__ = [
     "ADMIN_BAND3_AWS_SANDBOX_NAME",
     "ADMIN_BAND4_AWS_CSM_ONBOARDING_NAME",
     "ADMIN_BAND5_CTS_GIS_NAME",
+    "ADMIN_BAND6_FND_EBI_NAME",
     "ADMIN_ENTRYPOINT_ID",
     "ADMIN_EXPOSURE_INTERNAL_ONLY",
     "ADMIN_EXPOSURE_INTERNAL_SANDBOX_READ_ONLY",
@@ -948,6 +973,8 @@ __all__ = [
     "AWS_CSM_SANDBOX_SLICE_ID",
     "CTS_GIS_READ_ONLY_ENTRYPOINT_ID",
     "CTS_GIS_READ_ONLY_SLICE_ID",
+    "FND_EBI_READ_ONLY_ENTRYPOINT_ID",
+    "FND_EBI_READ_ONLY_SLICE_ID",
     "AWS_NARROW_WRITE_SLICE_ID",
     "AWS_NARROW_WRITE_ENTRYPOINT_ID",
     "AWS_READ_ONLY_ENTRYPOINT_ID",

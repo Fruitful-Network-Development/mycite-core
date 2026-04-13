@@ -27,6 +27,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
     CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
+    FND_EBI_READ_ONLY_ENTRYPOINT_ID,
     build_admin_tool_registry_entries,
 )
 
@@ -102,6 +103,7 @@ class AdminRuntimePlatformIntegrationTests(unittest.TestCase):
                 AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
                 AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
                 CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
+                FND_EBI_READ_ONLY_ENTRYPOINT_ID,
             ],
         )
         self.assertNotIn("provider-admin", json.dumps(entrypoint_ids, sort_keys=True))

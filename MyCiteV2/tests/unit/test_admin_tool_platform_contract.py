@@ -15,6 +15,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     ADMIN_RUNTIME_REQUIRED_ENVELOPE_KEYS,
     ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT,
     ADMIN_CTS_GIS_READ_ONLY_SURFACE_SCHEMA,
+    ADMIN_FND_EBI_READ_ONLY_SURFACE_SCHEMA,
     build_admin_runtime_entrypoint_catalog,
     build_admin_runtime_envelope,
     build_admin_runtime_error,
@@ -32,6 +33,7 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     AWS_NARROW_WRITE_ENTRYPOINT_ID,
     AWS_READ_ONLY_ENTRYPOINT_ID,
     CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
+    FND_EBI_READ_ONLY_ENTRYPOINT_ID,
     AdminToolRegistryEntry,
     build_admin_tool_registry_entries,
 )
@@ -41,7 +43,7 @@ class AdminToolPlatformContractTests(unittest.TestCase):
     def test_tool_descriptors_have_stable_drop_in_shape(self) -> None:
         entries = [entry.to_dict() for entry in build_admin_tool_registry_entries()]
 
-        self.assertEqual([entry["schema"] for entry in entries], [ADMIN_TOOL_DESCRIPTOR_SCHEMA] * 5)
+        self.assertEqual([entry["schema"] for entry in entries], [ADMIN_TOOL_DESCRIPTOR_SCHEMA] * 6)
         self.assertTrue(all(entry["discovery_mode"] == "catalog-driven" for entry in entries))
         self.assertTrue(all(entry["launch_contract"] == ADMIN_TOOL_LAUNCH_CONTRACT for entry in entries))
         self.assertTrue(all(entry["default_posture"] == "deny-by-default" for entry in entries))
@@ -68,6 +70,13 @@ class AdminToolPlatformContractTests(unittest.TestCase):
         self.assertFalse(entries[4]["audit_required"])
         self.assertFalse(entries[4]["read_after_write_required"])
         self.assertEqual(entries[4]["audience"], "internal-admin")
+        self.assertEqual(entries[5]["surface_pattern"], "read-only")
+        self.assertEqual(entries[5]["tool_kind"], ADMIN_TOOL_KIND_SERVICE)
+        self.assertEqual(entries[5]["tool_id"], "fnd_ebi")
+        self.assertEqual(entries[5]["shared_portal_capabilities"], ["external_service_binding", "hosted_site_visibility"])
+        self.assertFalse(entries[5]["audit_required"])
+        self.assertFalse(entries[5]["read_after_write_required"])
+        self.assertEqual(entries[5]["audience"], "internal-admin")
         self.assertEqual(json.loads(json.dumps(entries, sort_keys=True)), entries)
 
     def test_descriptor_rejects_writable_tool_without_audit_or_read_after_write(self) -> None:
@@ -107,7 +116,7 @@ class AdminToolPlatformContractTests(unittest.TestCase):
     def test_runtime_entrypoint_catalog_is_static_and_serializable(self) -> None:
         descriptors = [entry.to_dict() for entry in build_admin_runtime_entrypoint_catalog()]
 
-        self.assertEqual([entry["schema"] for entry in descriptors], [ADMIN_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA] * 7)
+        self.assertEqual([entry["schema"] for entry in descriptors], [ADMIN_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA] * 8)
         self.assertEqual(
             [entry["entrypoint_id"] for entry in descriptors],
             [
@@ -118,6 +127,7 @@ class AdminToolPlatformContractTests(unittest.TestCase):
                 AWS_CSM_SANDBOX_READ_ONLY_ENTRYPOINT_ID,
                 AWS_CSM_ONBOARDING_ENTRYPOINT_ID,
                 CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
+                FND_EBI_READ_ONLY_ENTRYPOINT_ID,
             ],
         )
         self.assertEqual(descriptors[0]["launch_contract"], ADMIN_SHELL_ENTRY_LAUNCH_CONTRACT)
@@ -141,6 +151,10 @@ class AdminToolPlatformContractTests(unittest.TestCase):
         self.assertEqual(descriptors[6]["tool_kind"], ADMIN_TOOL_KIND_GENERAL)
         self.assertEqual(descriptors[6]["surface_schema"], ADMIN_CTS_GIS_READ_ONLY_SURFACE_SCHEMA)
         self.assertEqual(descriptors[6]["required_configuration"], ["data_dir"])
+        self.assertEqual(descriptors[7]["entrypoint_id"], FND_EBI_READ_ONLY_ENTRYPOINT_ID)
+        self.assertEqual(descriptors[7]["tool_kind"], ADMIN_TOOL_KIND_SERVICE)
+        self.assertEqual(descriptors[7]["surface_schema"], ADMIN_FND_EBI_READ_ONLY_SURFACE_SCHEMA)
+        self.assertEqual(descriptors[7]["required_configuration"], ["private_dir", "analytics_webapps_root"])
         self.assertEqual(json.loads(json.dumps(descriptors, sort_keys=True)), descriptors)
         self.assertIsNone(resolve_admin_runtime_entrypoint("missing.entrypoint"))
         self.assertEqual(
@@ -150,6 +164,10 @@ class AdminToolPlatformContractTests(unittest.TestCase):
         self.assertEqual(
             resolve_admin_runtime_entrypoint(CTS_GIS_READ_ONLY_ENTRYPOINT_ID).entrypoint_id,
             CTS_GIS_READ_ONLY_ENTRYPOINT_ID,
+        )
+        self.assertEqual(
+            resolve_admin_runtime_entrypoint(FND_EBI_READ_ONLY_ENTRYPOINT_ID).entrypoint_id,
+            FND_EBI_READ_ONLY_ENTRYPOINT_ID,
         )
 
     def test_shared_runtime_envelope_shape_is_fixed(self) -> None:

@@ -124,6 +124,12 @@
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M12 20s5-4.3 5-9a5 5 0 1 0-10 0c0 4.7 5 9 5 9z"></path><circle cx="12" cy="11" r="1.8"></circle>' +
         "</svg>";
+    } else if (iconId === "fnd_ebi") {
+      svg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M4.5 6.5h15"></path><path d="M4.5 12h15"></path><path d="M4.5 17.5h9"></path>' +
+        '<path d="M17 16l2.5 2.5"></path><circle cx="14.5" cy="13.5" r="3.5"></circle>' +
+        "</svg>";
     } else if (iconId === "datum") {
       svg =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
@@ -1642,6 +1648,273 @@
       }
       return;
     }
+    if (kind === "fnd_ebi_workbench") {
+      var fndSurface = (lastEnvelope && lastEnvelope.surface_payload) || {};
+      var fndProfileCards = wb.profile_cards || fndSurface.profile_cards || [];
+      var fndOverview = wb.overview || fndSurface.overview || {};
+      var fndTraffic = wb.traffic || fndSurface.traffic || {};
+      var fndEventsSummary = wb.events_summary || fndSurface.events_summary || {};
+      var fndErrorsNoise = wb.errors_noise || fndSurface.errors_noise || {};
+      var fndFiles = wb.files || fndSurface.files || {};
+      var fndSelectedProfile = wb.selected_profile || fndSurface.selected_profile || {};
+      var fndWarnings = wb.warnings || fndSurface.warnings || [];
+      var fndRequestContract = wb.request_contract || {};
+      var fndYearMonth = fndOverview.year_month || "";
+
+      function fndRequestBody(patch) {
+        var fixed = fndRequestContract.fixed_request_fields || {};
+        var bodyOut = {
+          schema: fndRequestContract.request_schema || "mycite.v2.admin.fnd_ebi.read_only.request.v1",
+          selected_domain: fndSurface.selected_domain || fndOverview.domain || "",
+          year_month: fndYearMonth,
+        };
+        Object.keys(fixed || {}).forEach(function (key) {
+          bodyOut[key] = fixed[key];
+        });
+        Object.keys(patch || {}).forEach(function (key) {
+          bodyOut[key] = patch[key];
+        });
+        return bodyOut;
+      }
+
+      function fndMetricCard(title, value, detail) {
+        return (
+          '<article class="v2-card"><h3>' +
+          escapeHtml(title) +
+          "</h3><p>" +
+          escapeHtml(String(value)) +
+          "</p>" +
+          (detail ? '<p class="ide-controlpanel__empty">' + escapeHtml(detail) + "</p>" : "") +
+          "</article>"
+        );
+      }
+
+      function fndTopListHtml(title, rows, emptyLabel) {
+        if (!rows || !rows.length) {
+          return (
+            '<section class="v2-card fnd-ebi-detail"><h3>' +
+            escapeHtml(title) +
+            "</h3><p>" +
+            escapeHtml(emptyLabel) +
+            "</p></section>"
+          );
+        }
+        return (
+          '<section class="v2-card fnd-ebi-detail"><h3>' +
+          escapeHtml(title) +
+          '</h3><ol class="fnd-ebi-list">' +
+          rows
+            .map(function (row) {
+              return (
+                "<li><span><code>" +
+                escapeHtml(row.key || "—") +
+                "</code></span><strong>" +
+                escapeHtml(String(row.count != null ? row.count : 0)) +
+                "</strong></li>"
+              );
+            })
+            .join("") +
+          "</ol></section>"
+        );
+      }
+
+      function fndTrend(series) {
+        if (!series || !series.length) return "—";
+        return series
+          .map(function (value) {
+            var n = Number(value || 0);
+            if (n <= 0) return "·";
+            if (n < 3) return "▁";
+            if (n < 8) return "▃";
+            if (n < 16) return "▅";
+            return "▇";
+          })
+          .join("");
+      }
+
+      var fndWarningBlock =
+        fndWarnings.length > 0
+          ? '<section class="v2-card fnd-ebi-detail"><h3>Warnings</h3><ul class="fnd-ebi-warnings">' +
+            fndWarnings
+              .map(function (warning) {
+                return "<li>" + escapeHtml(String(warning)) + "</li>";
+              })
+              .join("") +
+            "</ul></section>"
+          : "";
+      var fndProfileGallery =
+        fndProfileCards.length > 0
+          ? '<div class="fnd-ebi-gallery">' +
+            fndProfileCards
+              .map(function (card) {
+                return (
+                  '<article class="v2-card fnd-ebi-card" data-fnd-ebi-select-domain="' +
+                  escapeHtml(card.domain || "") +
+                  '" style="' +
+                  (card.selected ? "border-color:#285943;box-shadow:0 0 0 1px rgba(40,89,67,0.22)" : "") +
+                  '">' +
+                  "<h3>" +
+                  escapeHtml(card.domain || "profile") +
+                  "</h3>" +
+                  '<div class="tool-valueGrid">' +
+                  '<div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">health</dt><dd class="tool-valueGrid__value">' +
+                  escapeHtml(card.health_label || "—") +
+                  '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">requests</dt><dd class="tool-valueGrid__value">' +
+                  escapeHtml(String(card.requests_30d != null ? card.requests_30d : 0)) +
+                  '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">events</dt><dd class="tool-valueGrid__value">' +
+                  escapeHtml(String(card.events_30d != null ? card.events_30d : 0)) +
+                  '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">visitors</dt><dd class="tool-valueGrid__value">' +
+                  escapeHtml(String(card.unique_visitors_approx_30d != null ? card.unique_visitors_approx_30d : 0)) +
+                  '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">warnings</dt><dd class="tool-valueGrid__value">' +
+                  escapeHtml(String(card.warning_count != null ? card.warning_count : 0)) +
+                  "</dd></div></div></article>"
+                );
+              })
+              .join("") +
+            "</div>"
+          : "<p>No FND-EBI profiles are available for this instance.</p>";
+      var fndFileRows = [
+        { label: "Profile", key: "profile_file" },
+        { label: "Access log", key: "access_log" },
+        { label: "Error log", key: "error_log" },
+        { label: "Events file", key: "events_file" },
+      ];
+      var fndMetricCards =
+        '<div class="v2-card-grid">' +
+        fndMetricCard("Requests (30d)", fndTraffic.requests_30d != null ? fndTraffic.requests_30d : 0, "page requests " + String(fndTraffic.real_page_requests_30d != null ? fndTraffic.real_page_requests_30d : 0)) +
+        fndMetricCard("Visitors (30d)", fndTraffic.unique_visitors_approx_30d != null ? fndTraffic.unique_visitors_approx_30d : 0, "approximate unique IPs") +
+        fndMetricCard("Events (30d)", fndEventsSummary.events_30d != null ? fndEventsSummary.events_30d : 0, "sessions " + String(fndEventsSummary.session_count_approx != null ? fndEventsSummary.session_count_approx : 0)) +
+        fndMetricCard("Bot share", Math.round(Number(fndTraffic.bot_share || 0) * 1000) / 10 + "%", "probe count " + String(fndTraffic.suspicious_probe_count != null ? fndTraffic.suspicious_probe_count : 0)) +
+        "</div>";
+
+      body.innerHTML =
+        fndWarningBlock +
+        '<section class="v2-card"><h3>Window</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+        '<label style="display:flex;gap:8px;align-items:center">Month <input id="v2-fnd-ebi-year-month" type="month" value="' +
+        escapeHtml(fndYearMonth) +
+        '"></label>' +
+        '<button type="button" class="ide-sessionAction ide-sessionAction--button" id="v2-fnd-ebi-apply-month">Apply</button>' +
+        "</div></section>" +
+        '<section class="v2-card fnd-ebi-detail"><h3>Profiles</h3>' +
+        fndProfileGallery +
+        "</section>" +
+        fndMetricCards +
+        '<section class="v2-card fnd-ebi-detail"><h3>Overview</h3><div class="tool-valueGrid">' +
+        '<div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">domain</dt><dd class="tool-valueGrid__value">' +
+        escapeHtml(fndOverview.domain || "—") +
+        '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">health</dt><dd class="tool-valueGrid__value">' +
+        escapeHtml(fndOverview.health_label || "—") +
+        '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">profile file</dt><dd class="tool-valueGrid__value"><code>' +
+        escapeHtml(fndOverview.profile_file || "—") +
+        '</code></dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">site root</dt><dd class="tool-valueGrid__value"><code>' +
+        escapeHtml(fndOverview.site_root || "—") +
+        '</code></dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">analytics root</dt><dd class="tool-valueGrid__value"><code>' +
+        escapeHtml(fndOverview.analytics_root || "—") +
+        '</code></dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">access seen</dt><dd class="tool-valueGrid__value">' +
+        escapeHtml(fndOverview.access_last_seen_utc || "—") +
+        '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">events seen</dt><dd class="tool-valueGrid__value">' +
+        escapeHtml(fndOverview.events_last_seen_utc || "—") +
+        "</dd></div></div></section>" +
+        '<section class="v2-card fnd-ebi-detail"><h3>Files</h3><table class="fnd-ebi-table"><thead><tr><th>Source</th><th>State</th><th>Records</th><th>Path</th></tr></thead><tbody>' +
+        fndFileRows
+          .map(function (row) {
+            var fileState = fndFiles[row.key] || {};
+            return (
+              "<tr><td>" +
+              escapeHtml(row.label) +
+              "</td><td>" +
+              escapeHtml(fileState.state || "—") +
+              "</td><td>" +
+              escapeHtml(String(fileState.record_count != null ? fileState.record_count : "—")) +
+              "</td><td><code>" +
+              escapeHtml(fileState.path || "—") +
+              "</code></td></tr>"
+            );
+          })
+          .join("") +
+        "</tbody></table></section>" +
+        '<section class="v2-card fnd-ebi-detail"><h3>Traffic</h3><div class="tool-valueGrid">' +
+        '<div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">24h</dt><dd class="tool-valueGrid__value">' +
+        escapeHtml(String(fndTraffic.requests_24h != null ? fndTraffic.requests_24h : 0)) +
+        '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">7d</dt><dd class="tool-valueGrid__value">' +
+        escapeHtml(String(fndTraffic.requests_7d != null ? fndTraffic.requests_7d : 0)) +
+        '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">30d trend</dt><dd class="tool-valueGrid__value fnd-ebi-sparkline">' +
+        escapeHtml(fndTrend(fndTraffic.trend_30d || [])) +
+        '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">2xx / 4xx / 5xx</dt><dd class="tool-valueGrid__value">' +
+        escapeHtml(
+          String(((fndTraffic.response_breakdown || {})["2xx"]) || 0) +
+            " / " +
+            String(((fndTraffic.response_breakdown || {})["4xx"]) || 0) +
+            " / " +
+            String(((fndTraffic.response_breakdown || {})["5xx"]) || 0)
+        ) +
+        "</dd></div></div></section>" +
+        fndTopListHtml("Top pages", fndTraffic.top_pages || [], "No recent non-bot page requests.") +
+        fndTopListHtml("Top requested paths", fndTraffic.top_requested_paths || [], "No recent path data.") +
+        fndTopListHtml("Top referrers", fndTraffic.top_referrers || [], "No recent referrer data.") +
+        '<section class="v2-card fnd-ebi-detail"><h3>Events</h3><div class="tool-valueGrid">' +
+        '<div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">24h</dt><dd class="tool-valueGrid__value">' +
+        escapeHtml(String(fndEventsSummary.events_24h != null ? fndEventsSummary.events_24h : 0)) +
+        '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">7d</dt><dd class="tool-valueGrid__value">' +
+        escapeHtml(String(fndEventsSummary.events_7d != null ? fndEventsSummary.events_7d : 0)) +
+        '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">30d trend</dt><dd class="tool-valueGrid__value fnd-ebi-sparkline">' +
+        escapeHtml(fndTrend(fndEventsSummary.trend_30d || [])) +
+        '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">invalid lines</dt><dd class="tool-valueGrid__value">' +
+        escapeHtml(String(fndEventsSummary.invalid_line_count != null ? fndEventsSummary.invalid_line_count : 0)) +
+        "</dd></div></div></section>" +
+        fndTopListHtml(
+          "Event types",
+          Object.keys(fndEventsSummary.event_type_counts || {}).map(function (key) {
+            return { key: key, count: (fndEventsSummary.event_type_counts || {})[key] };
+          }),
+          "No event types were counted."
+        ) +
+        '<section class="v2-card fnd-ebi-detail"><h3>Errors and noise</h3><div class="tool-valueGrid">' +
+        '<div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">probe routes</dt><dd class="tool-valueGrid__value">' +
+        escapeHtml(String((fndErrorsNoise.top_probe_routes || []).length)) +
+        '</dd></div><div class="tool-valueGrid__row"><dt class="tool-valueGrid__term">error severities</dt><dd class="tool-valueGrid__value">' +
+        escapeHtml(compactJson(fndErrorsNoise.error_severity_counts || {})) +
+        "</dd></div></div></section>" +
+        fndTopListHtml("Top error routes", fndErrorsNoise.top_error_routes || [], "No recent error routes.") +
+        fndTopListHtml("Top probe routes", fndErrorsNoise.top_probe_routes || [], "No suspicious probe routes were counted.");
+
+      Array.prototype.forEach.call(body.querySelectorAll("[data-fnd-ebi-select-domain]"), function (el) {
+        el.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          loadRuntimeView(
+            fndRequestContract.route || "/portal/api/v2/admin/fnd-ebi/read-only",
+            fndRequestBody({
+              selected_domain: el.getAttribute("data-fnd-ebi-select-domain") || "",
+            })
+          );
+        });
+      });
+      var fndMonthInput = document.getElementById("v2-fnd-ebi-year-month");
+      var fndMonthApply = document.getElementById("v2-fnd-ebi-apply-month");
+      function submitFndMonth() {
+        loadRuntimeView(
+          fndRequestContract.route || "/portal/api/v2/admin/fnd-ebi/read-only",
+          fndRequestBody({
+            year_month: (fndMonthInput && fndMonthInput.value) || fndYearMonth,
+          })
+        );
+      }
+      if (fndMonthApply) {
+        fndMonthApply.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          submitFndMonth();
+        });
+      }
+      if (fndMonthInput) {
+        fndMonthInput.addEventListener("keydown", function (ev) {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            submitFndMonth();
+          }
+        });
+      }
+      return;
+    }
     body.innerHTML = '<pre class="v2-json-panel">' + escapeHtml(JSON.stringify(wb, null, 2)) + "</pre>";
   }
 
@@ -1754,6 +2027,47 @@
         (mapWarnings
           ? '<section class="v2-card" style="margin-top:12px"><h3>Warnings</h3><ul>' +
             mapWarnings +
+            "</ul></section>"
+          : "");
+      return;
+    }
+    if (kind === "fnd_ebi_summary") {
+      var fndSummary = region.summary || {};
+      var fndSelectedProfile = region.selected_profile || {};
+      var fndInspectorWarnings = (region.warnings || [])
+        .map(function (warning) {
+          return "<li>" + escapeHtml(String(warning)) + "</li>";
+        })
+        .join("");
+      content.innerHTML =
+        '<dl class="v2-surface-dl">' +
+        "<dt>Domain</dt><dd><code>" +
+        escapeHtml(fndSummary.domain || "—") +
+        "</code></dd>" +
+        "<dt>Health</dt><dd>" +
+        escapeHtml(fndSummary.health_label || "—") +
+        "</dd>" +
+        "<dt>Month</dt><dd>" +
+        escapeHtml(fndSummary.year_month || "—") +
+        "</dd>" +
+        "<dt>Access state</dt><dd>" +
+        escapeHtml(fndSummary.access_state || "—") +
+        "</dd>" +
+        "<dt>Events state</dt><dd>" +
+        escapeHtml(fndSummary.events_state || "—") +
+        "</dd>" +
+        "<dt>Profile file</dt><dd><code>" +
+        escapeHtml(fndSelectedProfile.profile_file || "—") +
+        "</code></dd>" +
+        "<dt>Site root</dt><dd><code>" +
+        escapeHtml(fndSelectedProfile.site_root || "—") +
+        "</code></dd>" +
+        "<dt>Analytics root</dt><dd><code>" +
+        escapeHtml(fndSelectedProfile.analytics_root || "—") +
+        "</code></dd></dl>" +
+        (fndInspectorWarnings
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Warnings</h3><ul>' +
+            fndInspectorWarnings +
             "</ul></section>"
           : "");
       return;
