@@ -2,6 +2,9 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
+Family root: [AWS-CSM](aws_csm.md)\
+Packet role: `implemented slice doc`
+
 Disposition: `current_v2`  
 V2 tool id: `aws_narrow_write`  
 Config gate target: `tool_exposure.aws_narrow_write`  
@@ -43,5 +46,6 @@ Audience: `trusted-tenant-admin`
 
 - Keep this as the only bounded-write AWS tool unless a later slice explicitly
   approves another one.
+- Keep it as a slice of `AWS-CSM`, not as a separate family root.
 - Do not let config widen the field set or bypass audit/read-after-write.
 - Do not merge onboarding workflow semantics into this tool id by convenience.

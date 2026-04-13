@@ -46,6 +46,7 @@ Current live posture:
 12. Read [deployment_bridge_contract.md](deployment_bridge_contract.md) and [cutover_execution_sequence.md](cutover_execution_sequence.md) only as historical cutover design and sequencing evidence.
 13. Use [../slice_registry/admin_band0_v2_deployment_bridge.md](../slice_registry/admin_band0_v2_deployment_bridge.md) only as a record-linked slice history.
 14. Read [../../v2.3-tool_exposure_and_admin_activity_bar_alignment.md](../../v2.3-tool_exposure_and_admin_activity_bar_alignment.md) when the work needs the proposed V2 config-gate layer above the shell-owned registry.
+15. Read [../../v2.3-tool_surface_packet/aws_csm.md](../../v2.3-tool_surface_packet/aws_csm.md), [../../v2.3-tool_surface_packet/fnd_ebi.md](../../v2.3-tool_surface_packet/fnd_ebi.md), and [../../v2.3-tool_surface_packet/maps.md](../../v2.3-tool_surface_packet/maps.md) for the narrowed next-family queue.
 
 ## Non-negotiable rules
 
@@ -61,3 +62,6 @@ Current live posture:
 - Future tool drop-in work may resume only through the reopened slice order in
   [../current_planning_index.md](../current_planning_index.md); bridge-era
   surfaces do not reopen as an alternate track.
+- Family-root packet docs now narrow later tool work into one canonical family
+  plus subordinate slices/crosswalks, rather than reopening fragmented root
+  tool names.

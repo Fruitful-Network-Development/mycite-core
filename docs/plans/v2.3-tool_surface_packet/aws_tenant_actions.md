@@ -2,6 +2,9 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
+Family root: [AWS-CSM](aws_csm.md)\
+Packet role: `legacy crosswalk`
+
 Disposition: `carry_forward`  
 V2 tool id target: `aws_csm_onboarding`  
 Config gate target: `tool_exposure.aws_csm_onboarding`  

@@ -2,6 +2,9 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
+Family root: [AWS-CSM](aws_csm.md)\
+Packet role: `implemented slice doc`
+
 Disposition: `current_v2`  
 V2 tool id: `aws_csm_onboarding`  
 Config gate target: `tool_exposure.aws_csm_onboarding`  
@@ -42,6 +45,7 @@ Audience: `trusted-tenant-admin`
 ## Carry-forward and do-not-carry-forward
 
 - Keep this as the mailbox-onboarding write tool.
+- Keep it as a slice of `AWS-CSM`, not as a separate family root.
 - Do not backslide into V1 `/provision` route shapes or config-driven actions.
 - Do not merge unrelated AWS read-only status fields into onboarding by
   convenience.

@@ -2,15 +2,15 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
-Disposition: `current_v2`  
-V2 tool id target: `maps`  
-Config gate target: `tool_exposure.maps`  
-Audience: `internal-admin` first, later audience review
+Canonical name: `Maps`\
+Packet role: `family_root`\
+Queue posture: `near-term candidate`\
+Current live tool id: `maps`
 
-## Current code, docs, and live presence
+## Current family truth
 
 - Current code: V2 now has a shell-owned `maps` descriptor, runtime entrypoint
-  `admin.maps.read_only`, a direct host route
+  `admin.maps.read_only`, direct host route
   `POST /portal/api/v2/admin/maps/read-only`, and shell render kinds
   `maps_workbench` plus `maps_summary`.
 - Legacy evidence: V1 planning/docs and live FND sandbox source trees still
@@ -21,36 +21,51 @@ Audience: `internal-admin` first, later audience review
   `private/utilities/tools/maps/` and `data/sandbox/maps/sources/`; TFF does
   not have a comparable sandbox.
 
-## Reusable evidence vs legacy baggage
+This family root treats the current admin read-only Maps slice as the first
+implemented slice of one spatial family, not as a standalone root tool.
 
-- Reusable evidence: authoritative sandbox datum documents, non-sequential
-  addresses, source-backed inspection needs, and the pure bounded HOPS
-  coordinate decoding behavior needed for `HOPS-babelette-coordinate`.
-- Legacy baggage: V1 mediation chrome, generalized mediation registries,
-  config-driven mount rules, and tool-owned UI behavior.
+## Core V2.3 position
 
-## Required V2 owner layers and dependencies
+`Maps` remains one spatial family.
 
-- Shell registry: `maps` is now a shell-owned descriptor in the V2 admin tool
-  registry.
-- Runtime entrypoint: `admin.maps.read_only` is now the read-only admin
-  entrypoint.
-- Semantic owner: `packages/modules/cross_domain/maps/` now sits above the
-  datum-recognition seam.
-- Port and adapter: authoritative datum document reads are still reused from
-  `packages/ports/datum_store/` through the current filesystem adapter.
-- State dependency: authoritative reads are limited to `data/system/anthology.json`,
-  `data/sandbox/maps/tool.maps.json`, and `data/sandbox/maps/sources/*.json`.
+It should not fragment into:
 
-## Admin activity-bar behavior
+- admin maps
+- public maps
+- CTS
+- coordinate inspector
+- overlay browser
 
-- Hidden and blocked unless `tool_exposure.maps.enabled=true`.
-- Current live rollout is admin-first and FND-only.
-- Direct launch is also blocked with `tool_not_exposed` when disabled.
+Those belong as later slices or audience views of the same family.
 
-## Carry-forward and do-not-carry-forward
+## Current implemented slice
 
-- Carry forward only the read-only datum-backed inspection and bounded overlay
-  behavior now implemented in V2.
-- Do not recreate V1 tool mediation, config-owned launch rules, or config-owned
-  routing/order semantics.
+The current implemented slice is the admin-first read-only Maps inspection
+surface.
+
+It keeps:
+
+- authoritative datum documents as source truth
+- raw datum visibility
+- server-composed projection and overlays
+- diagnostic handling for unresolved or invalid values
+
+## Next slice under this family
+
+The next family slice is a portal/default-app Maps expansion.
+
+That slice should:
+
+- preserve server-composed projection
+- preserve diagnostics and raw authority underneath overlays
+- remain datum-authority-first
+- avoid inventing a second spatial family or second spatial truth model
+
+## Do not carry forward
+
+Do not carry forward:
+
+- alternate root names like `CTS`
+- browser-owned projection logic
+- silent handling of invalid coordinates
+- config-owned launch rules or routing semantics

@@ -38,24 +38,27 @@ Use it after the MVP is proven and before any new client-visible slice is specif
 
 - Current admin-first platform status: post-AWS tool platform stabilized.
 - Completed admin-first slices: `Admin Band 0`, `admin_band1.aws_read_only_surface`, `admin_band2.aws_narrow_write_surface`, `admin_band3.aws_csm_sandbox_surface`, `admin_band4.aws_csm_onboarding_surface`, and `admin_band5.maps_read_only_surface` (FND-first rollout).
+- Implemented trusted-tenant rollout slices: `band1.portal_home_tenant_status`, `band1.operational_status_surface`, `band1.audit_activity_visibility`, and `band2.profile_basics_write_surface`.
 - Live `/portal` cutover status: V2-native portal host deployed for FND and TFF. The earlier Shape B bridge is retained only as historical cutover evidence; see [../../records/22-v1_retirement_closure.md](../../records/22-v1_retirement_closure.md) for the formal closure statement.
 - Canonical live AWS mapping status: current and active through [post_aws_tool_platform/live_state_authority_and_mapping.md](post_aws_tool_platform/live_state_authority_and_mapping.md).
 - Current expansion posture: follow-on slices may resume from the reopened Band
-  1 sequence documented in [current_planning_index.md](current_planning_index.md).
+  1 sequence documented in [current_planning_index.md](current_planning_index.md), but the narrowed family-root tool queue now treats `AWS-CSM` as the next actual build target, with `FND-EBI` and `Maps` as the other near-term candidates.
 - Tool follow-on work now also uses the V2.3 audit and packet documents when
   deciding whether a legacy tool becomes a V2 tool, stays isolated, or is
   retired.
 
 ## Preferred near-term sequence
 
-1. Start with [band1_portal_home_tenant_status.md](slice_registry/band1_portal_home_tenant_status.md) as the first active client-facing slice after retirement closure.
-2. Continue with [band1_operational_status_surface.md](slice_registry/band1_operational_status_surface.md) as the second read-only slice.
-3. Continue with [band1_audit_activity_visibility.md](slice_registry/band1_audit_activity_visibility.md) as the third read-only slice.
-4. Keep [band2_profile_basics_write_surface.md](slice_registry/band2_profile_basics_write_surface.md) sequenced after the three read-only slices above are stable.
+1. Use [../v2.3-tool_surface_packet/aws_csm.md](../v2.3-tool_surface_packet/aws_csm.md) as the next actual family-root build target.
+2. Keep [../v2.3-tool_surface_packet/fnd_ebi.md](../v2.3-tool_surface_packet/fnd_ebi.md) as the other narrowed near-term candidate.
+3. Keep [../v2.3-tool_surface_packet/maps.md](../v2.3-tool_surface_packet/maps.md) as the remaining near-term candidate, with portal/default-app expansion as the next family slice.
+4. Treat [../v2.3-tool_surface_packet/fnd_dcm.md](../v2.3-tool_surface_packet/fnd_dcm.md), [../v2.3-tool_surface_packet/calendar.md](../v2.3-tool_surface_packet/calendar.md), [../v2.3-tool_surface_packet/paypal_ppm.md](../v2.3-tool_surface_packet/paypal_ppm.md), and [../v2.3-tool_surface_packet/keycloak_sso.md](../v2.3-tool_surface_packet/keycloak_sso.md) as typed family plans, not immediate build targets.
 
-AGRO-ERP, broader sandbox follow-ons, broad workflow parity, and runtime flavor expansion remain outside this sequence.
+`fnd_provisioning`, `tenant_progeny_profiles`, `data_tool`, and `operations`
+remain outside this narrowed near-term set until they receive the same
+family-level clarification.
 
-## Deferred follow-on slices
+## Historical implemented slice specs
 
 - [band1_portal_home_tenant_status.md](slice_registry/band1_portal_home_tenant_status.md)
 - [band1_operational_status_surface.md](slice_registry/band1_operational_status_surface.md)

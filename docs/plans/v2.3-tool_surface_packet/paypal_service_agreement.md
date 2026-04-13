@@ -2,6 +2,9 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
+Family root: [PAYPAL-PPM](paypal_ppm.md)\
+Packet role: `subordinate slice direction`
+
 Disposition: `defer`  
 V2 tool id target: `paypal_service_agreement`  
 Config gate target: `tool_exposure.paypal_service_agreement`  
@@ -36,5 +39,6 @@ Audience: later decision
 
 ## Carry-forward and do-not-carry-forward
 
-- Defer PayPal service-agreement work as a separate later family.
+- Defer PayPal service-agreement work as a future slice under `PAYPAL-PPM`,
+  not as a separate family root.
 - Do not merge it into AWS or recreate the V1 PayPal route surface.

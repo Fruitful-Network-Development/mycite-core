@@ -2,6 +2,9 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
+Packet role: `held-out leftover`\
+Queue posture: `outside the narrowed near-term set`
+
 Disposition: `defer`  
 V2 tool id target: `fnd_provisioning`  
 Config gate target: `tool_exposure.fnd_provisioning`  

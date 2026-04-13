@@ -2,6 +2,9 @@
 
 Authority: [../v2-authority_stack.md](../v2-authority_stack.md)
 
+Family root: [PAYPAL-PPM](paypal_ppm.md)\
+Packet role: `retired crosswalk`
+
 Disposition: `legacy_isolation`  
 V2 tool id target: `paypal_demo`  
 Config gate target: `tool_exposure.paypal_demo`  
