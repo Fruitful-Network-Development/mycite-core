@@ -15,6 +15,8 @@ authoritative V2 documentation tree.
 - one portal shell
 - one runtime envelope family
 - root surfaces: `SYSTEM`, `NETWORK`, `UTILITIES`
+- `SYSTEM` owns the core datum-file workbench for the system sandbox
+- fresh `SYSTEM` entry focuses the anchor file `anthology.json`
 - canonical shell endpoint: `POST /portal/api/v2/shell`
 - canonical tool work pages: `/portal/system/tools/<tool_slug>`
 - utilities/configuration pages: `/portal/utilities/*`

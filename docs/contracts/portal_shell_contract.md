@@ -43,9 +43,13 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 
 ## SYSTEM Workspace
 
-`SYSTEM` is a sandbox-navigation and datum-management workspace.
+`SYSTEM` is the core datum-file workbench for the system sandbox.
 
-- It is not a generic dashboard.
+- It is not a generic dashboard or home page.
+- Its default active file is the system sandbox anchor file, `anthology.json`.
+- The anchor file is rendered as a layered datum table grouped by `layer` and `value_group`.
+- Datum rows carry structural coordinates: `layer`, `value_group`, and `iteration`.
+- Selecting a datum opens a read-only inspector lens inside the same workbench.
 - `activity` and `profile_basics` are workspace file modes under `/portal/system`, not first-class pages.
 - The control panel is a stacked focus panel:
   - sandbox
@@ -63,5 +67,6 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - Every tool composition defaults to `regions.workbench.visible=false`.
 - Secondary-evidence workbench content is explicit opt-in per tool runtime.
 - A service tool may remain visible while `operational=false` when an external integration or required capability is missing.
+- Service-tool posture comes from peripheral and integration availability, not from portal identity or portal "types".
 
 This is an interface-panel-led tool model, not a generic workbench page model.

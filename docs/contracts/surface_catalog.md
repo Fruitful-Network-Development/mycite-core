@@ -17,12 +17,14 @@ First-class surfaces:
 
 Workspace file modes under `system.root`:
 
-- `anthology`
+- `anthology` - the canonical system anchor file and default SYSTEM datum-file workbench
 - `activity`
 - `profile_basics`
 - authoritative sandbox/source documents by file key
 
 `activity` and `profile_basics` are not first-class surfaces anymore.
+
+`anthology` is rendered as a layered datum table grouped by `layer` and `value_group`, with datum selection opening an inspector lens inside `system.root`.
 
 ## NETWORK
 
@@ -40,3 +42,4 @@ Workspace file modes under `system.root`:
 - Tool registry defaults are interface-panel-led.
 - Tool workbench visibility defaults to `false`.
 - Tool configuration and exposure remain owned by `UTILITIES`.
+- Service-tool posture is determined by configured capabilities and available peripherals or integrations, not by portal identity.

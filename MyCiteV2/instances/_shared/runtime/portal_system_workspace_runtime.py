@@ -218,20 +218,150 @@ def _row_diagnostics(row: Any) -> str:
     return ", ".join(diagnostics) if diagnostics else "ok"
 
 
+def _datum_coordinates(datum_id: object) -> dict[str, int] | None:
+    token = _as_text(datum_id)
+    parts = token.split("-")
+    if len(parts) != 3 or any(not part.isdigit() for part in parts):
+        return None
+    return {
+        "layer": int(parts[0]),
+        "value_group": int(parts[1]),
+        "iteration": int(parts[2]),
+    }
+
+
+def _row_reference_bindings(row: Any) -> list[dict[str, Any]]:
+    bindings: list[dict[str, Any]] = []
+    for binding in list(getattr(row, "reference_bindings", ()) or ()):
+        bindings.append(
+            {
+                "label": _as_text(getattr(binding, "anchor_label", "")) or _as_text(getattr(binding, "anchor_address", "")),
+                "object_id": _as_text(getattr(binding, "anchor_address", "")) or _as_text(getattr(binding, "normalized_reference_form", "")),
+                "reference_form": _as_text(getattr(binding, "reference_form", "")),
+                "resolution_state": _as_text(getattr(binding, "resolution_state", "")),
+                "value_token": _as_text(getattr(binding, "value_token", "")),
+            }
+        )
+    return bindings
+
+
+def _row_item(row: Any, *, selected_datum_id: str) -> dict[str, Any]:
+    datum_id = _as_text(getattr(row, "datum_address", ""))
+    diagnostics = list(getattr(row, "diagnostic_states", ()) or ())
+    return {
+        "datum_id": datum_id,
+        "label": _row_label(row),
+        "detail": _row_diagnostics(row),
+        "diagnostics": diagnostics,
+        "selected": datum_id == selected_datum_id,
+        "coordinates": _datum_coordinates(datum_id),
+        "primary_value_token": _as_text(getattr(row, "primary_value_token", "")),
+        "recognized_family": _as_text(getattr(row, "recognized_family", "")),
+        "recognized_anchor": _as_text(getattr(row, "recognized_anchor", "")),
+    }
+
+
+def _selected_datum_payload(row: Any | None) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    datum_id = _as_text(getattr(row, "datum_address", ""))
+    return {
+        "datum_id": datum_id,
+        "label": _row_label(row),
+        "labels": list(getattr(row, "labels", ()) or ()),
+        "coordinates": _datum_coordinates(datum_id),
+        "diagnostic_states": list(getattr(row, "diagnostic_states", ()) or ()),
+        "primary_value_token": _as_text(getattr(row, "primary_value_token", "")),
+        "recognized_family": _as_text(getattr(row, "recognized_family", "")),
+        "recognized_anchor": _as_text(getattr(row, "recognized_anchor", "")),
+        "reference_bindings": _row_reference_bindings(row),
+        "raw": getattr(row, "raw", None),
+        "render_hints": dict(getattr(row, "render_hints", {}) or {}),
+    }
+
+
+def _anthology_layer_groups(document: Any, *, selected_datum_id: str) -> list[dict[str, Any]]:
+    grouped: dict[tuple[object, object], list[dict[str, Any]]] = {}
+    layer_meta: dict[object, dict[str, Any]] = {}
+    value_group_meta: dict[tuple[object, object], dict[str, Any]] = {}
+
+    for row in list(getattr(document, "rows", ()) or ()):
+        item = _row_item(row, selected_datum_id=selected_datum_id)
+        datum_id = item["datum_id"]
+        if not datum_id:
+            continue
+        coordinates = item.get("coordinates") or {}
+        layer = coordinates.get("layer")
+        value_group = coordinates.get("value_group")
+        layer_key: object = layer if layer is not None else "unstructured"
+        value_group_key: object = value_group if value_group is not None else "unstructured"
+        grouped.setdefault((layer_key, value_group_key), []).append(item)
+        if layer_key not in layer_meta:
+            layer_meta[layer_key] = {
+                "layer": layer,
+                "label": f"Layer {layer}" if layer is not None else "Unstructured",
+            }
+        if (layer_key, value_group_key) not in value_group_meta:
+            value_group_meta[(layer_key, value_group_key)] = {
+                "value_group": value_group,
+                "label": f"Value Group {value_group}" if value_group is not None else "Unstructured",
+            }
+
+    def _sort_key(token: object) -> tuple[int, object]:
+        return (0, token) if isinstance(token, int) else (1, str(token))
+
+    layer_groups: list[dict[str, Any]] = []
+    layer_keys = sorted({layer_key for layer_key, _ in grouped.keys()}, key=_sort_key)
+    for layer_key in layer_keys:
+        group_pairs = sorted(
+            [pair for pair in grouped.keys() if pair[0] == layer_key],
+            key=lambda pair: _sort_key(pair[1]),
+        )
+        value_groups: list[dict[str, Any]] = []
+        layer_row_count = 0
+        layer_selected = False
+        for pair in group_pairs:
+            rows = sorted(
+                grouped[pair],
+                key=lambda item: (
+                    (item.get("coordinates") or {}).get("iteration")
+                    if isinstance((item.get("coordinates") or {}).get("iteration"), int)
+                    else 10**9,
+                    item.get("datum_id") or "",
+                ),
+            )
+            row_count = len(rows)
+            selected = any(bool(item.get("selected")) for item in rows)
+            layer_row_count += row_count
+            layer_selected = layer_selected or selected
+            value_groups.append(
+                {
+                    "value_group": value_group_meta[pair]["value_group"],
+                    "label": value_group_meta[pair]["label"],
+                    "row_count": row_count,
+                    "selected": selected,
+                    "rows": rows,
+                }
+            )
+        layer_groups.append(
+            {
+                "layer": layer_meta[layer_key]["layer"],
+                "label": layer_meta[layer_key]["label"],
+                "row_count": layer_row_count,
+                "selected": layer_selected,
+                "value_groups": value_groups,
+            }
+        )
+    return layer_groups
+
+
 def _document_row_items(document: Any, *, selected_datum_id: str) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for row in list(getattr(document, "rows", ()) or ())[:80]:
         datum_id = _as_text(getattr(row, "datum_address", ""))
         if not datum_id:
             continue
-        items.append(
-            {
-                "datum_id": datum_id,
-                "label": _row_label(row),
-                "detail": _row_diagnostics(row),
-                "selected": datum_id == selected_datum_id,
-            }
-        )
+        items.append(_row_item(row, selected_datum_id=selected_datum_id))
     return items
 
 
@@ -647,36 +777,32 @@ def build_system_workspace_bundle(
             },
         }
     elif active_document is not None:
-        workspace["document"] = {
+        document_payload = {
             "document_id": _as_text(getattr(active_document, "document_id", "")),
             "label": _document_label(active_document),
             "detail": _document_detail(active_document),
             "diagnostic_totals": dict(getattr(active_document, "diagnostic_totals", {}) or {}),
             "rows": _document_row_items(active_document, selected_datum_id=selected_datum_id),
-            "selected_datum": None
-            if selected_datum is None
-            else {
-                "datum_id": _as_text(getattr(selected_datum, "datum_address", "")),
-                "label": _row_label(selected_datum),
-                "diagnostic_states": list(getattr(selected_datum, "diagnostic_states", ()) or ()),
-                "reference_bindings": [
-                    {
-                        "label": _as_text(getattr(binding, "anchor_label", "")) or _as_text(getattr(binding, "anchor_address", "")),
-                        "object_id": _as_text(getattr(binding, "anchor_address", "")) or _as_text(getattr(binding, "normalized_reference_form", "")),
-                        "resolution_state": _as_text(getattr(binding, "resolution_state", "")),
-                        "value_token": _as_text(getattr(binding, "value_token", "")),
-                    }
-                    for binding in list(getattr(selected_datum, "reference_bindings", ()) or ())
-                ],
-            },
+            "selected_datum": _selected_datum_payload(selected_datum),
             "selected_object": selected_object,
         }
+        if _as_text(getattr(active_document, "document_id", "")) == "system:anthology":
+            document_payload["presentation"] = "anthology_layered_table"
+            document_payload["summary"] = "Canonical system anchor file rendered as a layered datum table."
+            document_payload["inspector_hint"] = (
+                "Select a datum row to inspect its structural coordinates, bindings, and raw payload."
+            )
+            document_payload["layer_groups"] = _anthology_layer_groups(
+                active_document,
+                selected_datum_id=selected_datum_id,
+            )
+        workspace["document"] = document_payload
 
     surface_payload = {
         "schema": SYSTEM_ROOT_SURFACE_SCHEMA,
         "kind": "system_workspace",
         "title": "System",
-        "subtitle": "Sandbox navigation and datum management surface.",
+        "subtitle": "Datum-file workbench for the system sandbox.",
         "workspace": workspace,
     }
     control_panel = {
@@ -725,13 +851,13 @@ def build_system_workspace_bundle(
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "system_workspace",
         "title": "System",
-        "subtitle": "Sandbox navigation and datum management surface.",
+        "subtitle": "Datum-file workbench for the system sandbox.",
         "visible": True,
         "surface_payload": surface_payload,
     }
     return {
         "page_title": "System",
-        "page_subtitle": "Sandbox navigation and datum management surface.",
+        "page_subtitle": "Datum-file workbench for the system sandbox.",
         "surface_payload": surface_payload,
         "control_panel": control_panel,
         "workbench": workbench,
