@@ -10,10 +10,18 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
+    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
     BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
+    TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
+    TRUSTED_TENANT_CANONICAL_LANDING_PAGE_ROUTE,
+    TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
     TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA,
+    TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
     TrustedTenantPortalRequest,
     build_trusted_tenant_portal_dispatch_bodies,
+    build_trusted_tenant_portal_route_catalog,
     build_trusted_tenant_portal_surface_catalog,
     resolve_trusted_tenant_portal_request,
 )
@@ -67,25 +75,37 @@ class TrustedTenantPortalStateMachineTests(unittest.TestCase):
         self.assertEqual(selection.selection_status, "audience_denied")
         self.assertEqual(selection.reason_code, "audience_not_allowed")
 
-    def test_catalog_and_dispatch_bodies_are_serializable(self) -> None:
+    def test_catalog_routes_and_dispatch_bodies_are_serializable(self) -> None:
         catalog = [entry.to_dict() for entry in build_trusted_tenant_portal_surface_catalog()]
+        routes = list(build_trusted_tenant_portal_route_catalog())
         bodies = build_trusted_tenant_portal_dispatch_bodies(portal_tenant_id="tff")
 
         self.assertEqual(json.loads(json.dumps(catalog, sort_keys=True)), catalog)
+        self.assertEqual(json.loads(json.dumps(routes, sort_keys=True)), routes)
         self.assertEqual(json.loads(json.dumps(bodies, sort_keys=True)), bodies)
         self.assertEqual(
-            catalog,
+            [entry["slice_id"] for entry in catalog],
             [
-                {
-                    "slice_id": BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
-                    "label": "Portal Home and Tenant Status",
-                    "exposure_status": "implemented_trusted_tenant_read_only",
-                    "read_write_posture": "read-only",
-                    "status_summary": "default_landing",
-                    "surface_kind": "tenant_home_status",
-                    "launchable": True,
-                    "default_surface": True,
-                }
+                BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+                BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+                BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
+            ],
+        )
+        self.assertEqual(catalog[0]["page_route"], TRUSTED_TENANT_CANONICAL_LANDING_PAGE_ROUTE)
+        self.assertEqual(catalog[0]["control_panel_kind"], "tenant_home_control_panel")
+        self.assertEqual(catalog[1]["control_panel_kind"], "tenant_operational_status_control_panel")
+        self.assertEqual(catalog[2]["control_panel_kind"], "tenant_audit_activity_control_panel")
+        self.assertEqual(catalog[3]["control_panel_kind"], "tenant_profile_basics_control_panel")
+        self.assertEqual(catalog[0]["surface_posture"], "pending_audit")
+        self.assertEqual(routes[0]["page_route"], TRUSTED_TENANT_CANONICAL_LANDING_PAGE_ROUTE)
+        self.assertEqual(
+            [route["request_schema"] for route in routes],
+            [
+                TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA,
+                TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+                TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
+                TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
             ],
         )
         self.assertEqual(
@@ -93,6 +113,27 @@ class TrustedTenantPortalStateMachineTests(unittest.TestCase):
             {
                 "schema": TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA,
                 "requested_slice_id": BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+                "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+            },
+        )
+        self.assertEqual(
+            bodies[BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID],
+            {
+                "schema": TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+                "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+            },
+        )
+        self.assertEqual(
+            bodies[BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID],
+            {
+                "schema": TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
+                "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
+            },
+        )
+        self.assertEqual(
+            bodies[BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID],
+            {
+                "schema": TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
                 "tenant_scope": {"scope_id": "tff", "audience": "trusted-tenant"},
             },
         )

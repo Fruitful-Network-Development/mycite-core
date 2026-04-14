@@ -77,7 +77,7 @@ else:  # pragma: no cover
     HOST_SHAPE = "v2_native"
     TRUSTED_TENANT_ROUTE_CATALOG = (
         {
-            "page_route": "/portal/home",
+            "page_route": "/portal",
             "api_route": "/portal/api/v2/tenant/home",
             "request_schema": "mycite.v2.portal.tenant_home.request.v1",
             "slice_id": "band1.portal_home_tenant_status",
@@ -725,11 +725,13 @@ class V2NativePortalHostTests(unittest.TestCase):
             _write_publication_home_data(config)
             client = create_app(config).test_client()
 
-            portal = client.get("/portal/home")
+            portal = client.get("/portal")
             self.assertEqual(portal.status_code, 200)
+            self.assertEqual(client.get("/portal/home").status_code, 200)
             body = portal.get_data(as_text=True)
             self.assertIn('data-shell-endpoint="/portal/api/v2/tenant/home"', body)
             self.assertIn('data-runtime-envelope-schema="mycite.v2.portal.runtime.envelope.v1"', body)
+            self.assertIn('class="ide-logo" href="/portal"', body)
 
             home = client.post(
                 "/portal/api/v2/tenant/home",
@@ -760,6 +762,14 @@ class V2NativePortalHostTests(unittest.TestCase):
                     BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
                 ],
             )
+            self.assertEqual(
+                [entry["href"] for entry in payload["shell_composition"]["regions"]["activity_bar"]["items"]],
+                ["/portal", "/portal/status", "/portal/activity", "/portal/profile-basics"],
+            )
+            self.assertEqual(
+                payload["shell_composition"]["regions"]["control_panel"]["kind"],
+                "tenant_home_control_panel",
+            )
 
     def test_portal_status_bootstraps_operational_status_runtime_and_api_returns_band1_surface(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -788,6 +798,7 @@ class V2NativePortalHostTests(unittest.TestCase):
             body = portal.get_data(as_text=True)
             self.assertIn('data-shell-endpoint="/portal/api/v2/tenant/operational-status"', body)
             self.assertIn('data-runtime-envelope-schema="mycite.v2.portal.runtime.envelope.v1"', body)
+            self.assertIn('class="ide-logo" href="/portal"', body)
 
             status = client.post(
                 "/portal/api/v2/tenant/operational-status",
@@ -816,6 +827,10 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertEqual(
                 payload["shell_composition"]["regions"]["workbench"]["kind"],
                 "operational_status",
+            )
+            self.assertEqual(
+                payload["shell_composition"]["regions"]["control_panel"]["kind"],
+                "tenant_operational_status_control_panel",
             )
 
             config.aws_audit_storage_file.write_text(
@@ -879,6 +894,7 @@ class V2NativePortalHostTests(unittest.TestCase):
             body = portal.get_data(as_text=True)
             self.assertIn('data-shell-endpoint="/portal/api/v2/tenant/audit-activity"', body)
             self.assertIn('data-runtime-envelope-schema="mycite.v2.portal.runtime.envelope.v1"', body)
+            self.assertIn('class="ide-logo" href="/portal"', body)
 
             activity = client.post(
                 "/portal/api/v2/tenant/audit-activity",
@@ -904,6 +920,10 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertEqual(
                 payload["shell_composition"]["regions"]["workbench"]["kind"],
                 "audit_activity",
+            )
+            self.assertEqual(
+                payload["shell_composition"]["regions"]["control_panel"]["kind"],
+                "tenant_audit_activity_control_panel",
             )
             self.assertNotIn("external_events", payload["surface_payload"])
 
@@ -988,6 +1008,7 @@ class V2NativePortalHostTests(unittest.TestCase):
             body = portal.get_data(as_text=True)
             self.assertIn('data-shell-endpoint="/portal/api/v2/tenant/profile-basics"', body)
             self.assertIn('data-runtime-envelope-schema="mycite.v2.portal.runtime.envelope.v1"', body)
+            self.assertIn('class="ide-logo" href="/portal"', body)
 
             bootstrap = client.post(
                 "/portal/api/v2/tenant/profile-basics",
@@ -1004,6 +1025,10 @@ class V2NativePortalHostTests(unittest.TestCase):
             self.assertEqual(
                 payload["surface_payload"]["confirmed_profile_basics"]["profile_summary"],
                 "Read-only summary for the trusted-tenant landing surface.",
+            )
+            self.assertEqual(
+                payload["shell_composition"]["regions"]["control_panel"]["kind"],
+                "tenant_profile_basics_control_panel",
             )
 
             update = client.post(

@@ -32,11 +32,12 @@ if str(REPO_ROOT) not in sys.path:
 
 if HAS_FLASK:
     from MyCiteV2.instances._shared.portal_host import V2PortalHostConfig, create_app
-    from MyCiteV2.tests.integration.test_v2_native_portal_host import _write_maps_data
+    from MyCiteV2.tests.integration.test_v2_native_portal_host import _write_maps_data, _write_publication_home_data
 else:  # pragma: no cover
     V2PortalHostConfig = object  # type: ignore[assignment]
     create_app = None  # type: ignore[assignment]
     _write_maps_data = None  # type: ignore[assignment]
+    _write_publication_home_data = None  # type: ignore[assignment]
 
 
 def _build_config(temp_root: Path, *, tenant_id: str = "fnd", cts_gis_enabled: bool = False) -> V2PortalHostConfig:
@@ -165,6 +166,36 @@ class V2PortalBrowserSmokeTests(unittest.TestCase):
                         )
                         self.assertGreater(page.locator("#v2-activity-nav a").count(), 0)
                         self.assertIsNone(page.locator("body").get_attribute("data-shell-fatal-class"))
+                    finally:
+                        browser.close()
+
+    def test_trusted_tenant_activity_bar_keeps_canonical_navigation(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            config = _build_config(Path(temp_dir), tenant_id="tff")
+            _write_publication_home_data(config)
+            app = create_app(config)
+            with _serve_app(app) as base_url:
+                with sync_playwright() as playwright:
+                    browser = playwright.chromium.launch()
+                    page = browser.new_page()
+                    try:
+                        page.goto(base_url + "/portal", wait_until="networkidle")
+                        page.wait_for_function("document.body.getAttribute('data-shell-boot-state') === 'hydrated'")
+                        self.assertEqual(page.locator("#v2-activity-nav a").count(), 4)
+                        hrefs = page.locator("#v2-activity-nav a").evaluate_all(
+                            "(nodes) => nodes.map((node) => node.getAttribute('href'))"
+                        )
+                        self.assertEqual(
+                            hrefs,
+                            ["/portal", "/portal/status", "/portal/activity", "/portal/profile-basics"],
+                        )
+                        page.locator("#v2-activity-nav a").nth(1).click()
+                        page.wait_for_url("**/portal/status")
+                        page.wait_for_function("document.body.getAttribute('data-shell-boot-state') === 'hydrated'")
+                        self.assertEqual(
+                            page.locator(".ide-logo").get_attribute("href"),
+                            "/portal",
+                        )
                     finally:
                         browser.close()
 

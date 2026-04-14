@@ -53,6 +53,26 @@
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M12 4l7 4-7 4-7-4 7-4z"></path><path d="M5 12l7 4 7-4"></path><path d="M5 16l7 4 7-4"></path>' +
         "</svg>";
+    } else if (iconId === "tenant_home") {
+      svg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M4.5 11.5L12 5l7.5 6.5"></path><path d="M6.5 10.5v8h11v-8"></path><path d="M10 18.5v-4h4v4"></path>' +
+        "</svg>";
+    } else if (iconId === "tenant_status") {
+      svg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M5 18.5h14"></path><path d="M7.5 16V11"></path><path d="M12 16V8"></path><path d="M16.5 16v-5"></path>' +
+        "</svg>";
+    } else if (iconId === "tenant_activity") {
+      svg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M4.5 12h3l2-4 3 8 2-4h5"></path><path d="M12 4.5v2"></path><path d="M12 17.5v2"></path>' +
+        "</svg>";
+    } else if (iconId === "tenant_profile") {
+      svg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<circle cx="12" cy="8" r="3"></circle><path d="M6.5 18.5c1.6-2.8 3.6-4.2 5.5-4.2s3.9 1.4 5.5 4.2"></path>' +
+        "</svg>";
     } else {
       svg =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
@@ -96,6 +116,23 @@
         '<ul class="ide-controlpanel__list">' +
         entries
           .map(function (ent, entryIndex) {
+            var isActionable = Boolean(ent && (ent.href || ent.shell_request || ent.dispatch_route));
+            var body =
+              "<span>" +
+              escapeHtml(ent.label || "") +
+              "</span>" +
+              (ent.meta ? "<small>" + escapeHtml(ent.meta) + "</small>" : "");
+            if (!isActionable) {
+              return (
+                "<li>" +
+                '<div class="ide-controlpanel__entry' +
+                (ent.active ? " is-active" : "") +
+                (ent.gated ? " is-gated" : "") +
+                '">' +
+                body +
+                "</div></li>"
+              );
+            }
             return (
               "<li>" +
               '<a class="ide-controlpanel__link' +
@@ -108,12 +145,11 @@
               '" data-controlpanel-entry-index="' +
               escapeHtml(String(entryIndex)) +
               '"' +
+              (ent.nav_group ? ' data-controlpanel-nav-group="' + escapeHtml(ent.nav_group) + '"' : "") +
+              (ent.nav_behavior ? ' data-controlpanel-nav-behavior="' + escapeHtml(ent.nav_behavior) + '"' : "") +
               (ent.gated ? ' aria-disabled="true"' : "") +
               ">" +
-              "<span>" +
-              escapeHtml(ent.label || "") +
-              "</span>" +
-              (ent.meta ? "<small>" + escapeHtml(ent.meta) + "</small>" : "") +
+              body +
               "</a></li>"
             );
           })
@@ -148,10 +184,34 @@
     );
   }
 
+  function shouldUseCanonicalNav(entry) {
+    return Boolean(
+      entry &&
+        entry.href &&
+        entry.href !== "#" &&
+        (entry.nav_behavior === "canonical" || (!entry.shell_request && !entry.dispatch_route))
+    );
+  }
+
+  function dispatchShellNavigation(entry, event, loadShell, loadRuntimeView) {
+    if (shouldUseCanonicalNav(entry)) {
+      return;
+    }
+    event.preventDefault();
+    if (entry && entry.dispatch_route && entry.shell_request) {
+      loadRuntimeView(entry.dispatch_route, entry.shell_request);
+      return;
+    }
+    if (entry && entry.shell_request) {
+      loadShell(entry.shell_request);
+    }
+  }
+
   api.renderActivityBar = function (ctx) {
     var region = ctx.region || {};
     var escapeHtml = ctx.escapeHtml;
     var loadShell = ctx.loadShell;
+    var loadRuntimeView = ctx.loadRuntimeView;
     var nav = document.getElementById("v2-activity-nav");
     var items = region.items || [];
     if (!nav) return;
@@ -170,15 +230,19 @@
       link.href = item.href || "#";
       link.setAttribute("aria-label", item.aria_label || item.label || "");
       link.setAttribute("title", item.aria_label || item.label || "");
+      if (item.nav_group) {
+        link.setAttribute("data-nav-group", item.nav_group);
+      }
+      if (item.nav_behavior) {
+        link.setAttribute("data-nav-behavior", item.nav_behavior);
+      }
       link.innerHTML =
         activityIconMarkup(item, escapeHtml) +
         '<span class="ide-activitylabel">' +
         escapeHtml(item.label || "") +
         "</span>";
       link.addEventListener("click", function (event) {
-        event.preventDefault();
-        if (!item.shell_request) return;
-        loadShell(item.shell_request);
+        dispatchShellNavigation(item, event, loadShell, loadRuntimeView);
       });
       nav.appendChild(link);
     });
@@ -220,6 +284,8 @@
         region,
         escapeHtml
       );
+    } else if (kind && region.title) {
+      root.innerHTML = renderModule(region.title, region.subtitle || "", region, escapeHtml);
     } else if ((region.sections || []).length) {
       root.innerHTML = (region.sections || [])
         .map(function (section, index) {
@@ -233,25 +299,20 @@
 
     Array.prototype.forEach.call(root.querySelectorAll("[data-controlpanel-tab-id], .ide-controlpanel__link"), function (node) {
       node.addEventListener("click", function (event) {
-        event.preventDefault();
-        var shellRequest = null;
         if (node.hasAttribute("data-controlpanel-tab-id")) {
           var tabId = node.getAttribute("data-controlpanel-tab-id") || "";
           var tabs = region.tabs || [];
           var tabMatch = tabs.filter(function (tab) {
             return String(tab.tab_id || "") === tabId;
           })[0];
-          shellRequest = tabMatch && tabMatch.shell_request;
-        } else {
-          var secIndex = Number(node.getAttribute("data-controlpanel-section-index") || "-1");
-          var entryIndex = Number(node.getAttribute("data-controlpanel-entry-index") || "-1");
-          var section = ((region.sections || [])[secIndex] || {});
-          var entry = ((section.entries || [])[entryIndex] || {});
-          shellRequest = entry && entry.shell_request;
+          dispatchShellNavigation(tabMatch || {}, event, loadShell, ctx.loadRuntimeView);
+          return;
         }
-        if (shellRequest) {
-          loadShell(shellRequest);
-        }
+        var secIndex = Number(node.getAttribute("data-controlpanel-section-index") || "-1");
+        var entryIndex = Number(node.getAttribute("data-controlpanel-entry-index") || "-1");
+        var section = ((region.sections || [])[secIndex] || {});
+        var entry = ((section.entries || [])[entryIndex] || {});
+        dispatchShellNavigation(entry || {}, event, loadShell, ctx.loadRuntimeView);
       });
     });
   };

@@ -35,6 +35,8 @@ from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
     TRUSTED_TENANT_PORTAL_STATE_SCHEMA,
     TrustedTenantPortalChrome,
     TrustedTenantPortalScope,
+    build_trusted_tenant_activity_items,
+    build_trusted_tenant_control_panel_region,
     build_trusted_tenant_portal_composition_payload,
 )
 
@@ -171,15 +173,6 @@ def _selection_state(
     }
 
 
-def _profile_basics_shell_request(*, portal_tenant_id: str) -> dict[str, Any]:
-    return TrustedTenantProfileBasicsWriteRequest(
-        tenant_scope=TrustedTenantPortalScope(
-            scope_id=_as_text(portal_tenant_id) or "fnd",
-            audience="trusted-tenant",
-        )
-    ).to_dict()
-
-
 def _apply_shell_chrome_to_composition(
     composition: dict[str, Any],
     chrome: TrustedTenantPortalChrome,
@@ -201,14 +194,10 @@ def _derive_read_write_posture(available_slices: list[dict[str, Any]]) -> str:
 
 
 def _activity_items(*, portal_tenant_id: str) -> list[dict[str, Any]]:
-    return [
-        {
-            "slice_id": BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
-            "label": "Profile Basics",
-            "active": True,
-            "shell_request": _profile_basics_shell_request(portal_tenant_id=portal_tenant_id),
-        }
-    ]
+    return build_trusted_tenant_activity_items(
+        portal_tenant_id=portal_tenant_id,
+        active_surface_id=BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
+    )
 
 
 def _control_panel_region(
@@ -218,50 +207,30 @@ def _control_panel_region(
     read_write_posture: str,
     write_status: str,
 ) -> dict[str, Any]:
-    slice_entries: list[dict[str, Any]] = []
-    for entry in available_slices:
-        slice_id = _as_text(entry.get("slice_id"))
-        slice_entries.append(
-            {
-                "label": _as_text(entry.get("label")),
-                "meta": _as_text(entry.get("status_summary")),
-                "active": slice_id == BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
-                "shell_request": (
-                    _profile_basics_shell_request(portal_tenant_id=portal_tenant_id)
-                    if slice_id == BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID
-                    else None
-                ),
-            }
-        )
-    posture_entries = [
-        {
-            "label": "Rollout band",
-            "meta": BAND2_TRUSTED_TENANT_WRITABLE_NAME,
-            "active": False,
-        },
-        {
-            "label": "Exposure posture",
-            "meta": TRUSTED_TENANT_WRITABLE_EXPOSURE_STATUS,
-            "active": False,
-        },
-        {
-            "label": "Read/write posture",
-            "meta": read_write_posture,
-            "active": False,
-        },
+    attention_entries = [
         {
             "label": "Write status",
             "meta": write_status,
             "active": False,
-        },
+        }
     ]
-    return {
-        "schema": TRUSTED_TENANT_PORTAL_REGION_CONTROL_PANEL_SCHEMA,
-        "sections": [
-            {"title": "Available in this band", "entries": slice_entries},
-            {"title": "Write posture", "entries": posture_entries},
+    return build_trusted_tenant_control_panel_region(
+        portal_tenant_id=portal_tenant_id,
+        active_surface_id=BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
+        title="Profile basics",
+        subtitle="Bounded-write context and approved tenant surfaces.",
+        current_rollout_band=BAND2_TRUSTED_TENANT_WRITABLE_NAME,
+        exposure_status=TRUSTED_TENANT_WRITABLE_EXPOSURE_STATUS,
+        read_write_posture=read_write_posture,
+        attention_entries=attention_entries,
+        context_entries=[
+            {
+                "label": "Recovery reference",
+                "meta": PROFILE_BASICS_WRITE_RECOVERY_REFERENCE,
+                "active": False,
+            }
         ],
-    }
+    )
 
 
 def _workbench_error(*, message: str) -> dict[str, Any]:
