@@ -68,8 +68,13 @@ from MyCiteV2.packages.state_machine.hanus_shell import (
     build_portal_activity_dispatch_bodies,
 )
 from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
+    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
     BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
+    TRUSTED_TENANT_CANONICAL_LANDING_PAGE_ROUTE,
     TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA,
+    build_trusted_tenant_portal_route_catalog,
     build_trusted_tenant_portal_dispatch_bodies,
 )
 from MyCiteV2.packages.adapters.filesystem import (
@@ -93,36 +98,7 @@ TENANT_DOMAINS = {
 }
 
 TRUSTED_TENANT_SURFACE_CONTRACT_SCHEMA = "mycite.v2.portal.surface_contract.v1"
-TRUSTED_TENANT_ROUTE_CATALOG: tuple[dict[str, str], ...] = (
-    {
-        "page_route": "/portal/home",
-        "api_route": "/portal/api/v2/tenant/home",
-        "request_schema": TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA,
-        "slice_id": BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
-        "workbench_kind": "tenant_home_status",
-    },
-    {
-        "page_route": "/portal/status",
-        "api_route": "/portal/api/v2/tenant/operational-status",
-        "request_schema": TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
-        "slice_id": BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
-        "workbench_kind": "operational_status",
-    },
-    {
-        "page_route": "/portal/activity",
-        "api_route": "/portal/api/v2/tenant/audit-activity",
-        "request_schema": TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
-        "slice_id": BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
-        "workbench_kind": "audit_activity",
-    },
-    {
-        "page_route": "/portal/profile-basics",
-        "api_route": "/portal/api/v2/tenant/profile-basics",
-        "request_schema": TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
-        "slice_id": BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
-        "workbench_kind": "profile_basics_write",
-    },
-)
+TRUSTED_TENANT_ROUTE_CATALOG: tuple[dict[str, str], ...] = build_trusted_tenant_portal_route_catalog()
 TRUSTED_TENANT_STATIC_BUNDLE_PATH = "/portal/static/v2_portal_shell.js"
 TRUSTED_TENANT_STATIC_RENDER_MARKERS: tuple[str, ...] = (
     "__MYCITE_V2_SHELL_CANONICAL_ASSET",
@@ -485,25 +461,40 @@ def _tenant_portal_bootstrap_request(tenant_id: str) -> dict[str, Any]:
     )
 
 
-def _tenant_operational_status_bootstrap_request(tenant_id: str) -> dict[str, Any]:
-    return {
-        "schema": TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
-        "tenant_scope": {"scope_id": tenant_id, "audience": "trusted-tenant"},
+def _tenant_bootstrap_request(tenant_id: str, slice_id: str) -> dict[str, Any]:
+    bodies = build_trusted_tenant_portal_dispatch_bodies(portal_tenant_id=tenant_id)
+    fallback_bodies = {
+        BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID: {
+            "schema": TRUSTED_TENANT_PORTAL_REQUEST_SCHEMA,
+            "requested_slice_id": BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+            "tenant_scope": {"scope_id": tenant_id, "audience": "trusted-tenant"},
+        },
+        BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID: {
+            "schema": TRUSTED_TENANT_OPERATIONAL_STATUS_REQUEST_SCHEMA,
+            "tenant_scope": {"scope_id": tenant_id, "audience": "trusted-tenant"},
+        },
+        BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID: {
+            "schema": TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
+            "tenant_scope": {"scope_id": tenant_id, "audience": "trusted-tenant"},
+        },
+        BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID: {
+            "schema": TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
+            "tenant_scope": {"scope_id": tenant_id, "audience": "trusted-tenant"},
+        },
     }
+    return dict(bodies.get(slice_id) or fallback_bodies.get(slice_id) or fallback_bodies[BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID])
+
+
+def _tenant_operational_status_bootstrap_request(tenant_id: str) -> dict[str, Any]:
+    return _tenant_bootstrap_request(tenant_id, BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID)
 
 
 def _tenant_audit_activity_bootstrap_request(tenant_id: str) -> dict[str, Any]:
-    return {
-        "schema": TRUSTED_TENANT_AUDIT_ACTIVITY_REQUEST_SCHEMA,
-        "tenant_scope": {"scope_id": tenant_id, "audience": "trusted-tenant"},
-    }
+    return _tenant_bootstrap_request(tenant_id, BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID)
 
 
 def _tenant_profile_basics_bootstrap_request(tenant_id: str) -> dict[str, Any]:
-    return {
-        "schema": TRUSTED_TENANT_PROFILE_BASICS_WRITE_REQUEST_SCHEMA,
-        "tenant_scope": {"scope_id": tenant_id, "audience": "trusted-tenant"},
-    }
+    return _tenant_bootstrap_request(tenant_id, BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID)
 
 
 def _json_payload() -> dict[str, Any]:
@@ -729,7 +720,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             runtime_envelope_schema=TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
             shell_endpoint="/portal/api/v2/tenant/home",
             shell_loading_label="Loading portal home…",
-            logo_href="/portal/home",
+            logo_href=TRUSTED_TENANT_CANONICAL_LANDING_PAGE_ROUTE,
         )
 
     def _tenant_operational_status_page() -> str:
@@ -743,7 +734,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             runtime_envelope_schema=TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
             shell_endpoint="/portal/api/v2/tenant/operational-status",
             shell_loading_label="Loading operational status…",
-            logo_href="/portal/status",
+            logo_href=TRUSTED_TENANT_CANONICAL_LANDING_PAGE_ROUTE,
         )
 
     def _tenant_audit_activity_page() -> str:
@@ -757,7 +748,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             runtime_envelope_schema=TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
             shell_endpoint="/portal/api/v2/tenant/audit-activity",
             shell_loading_label="Loading recent activity…",
-            logo_href="/portal/activity",
+            logo_href=TRUSTED_TENANT_CANONICAL_LANDING_PAGE_ROUTE,
         )
 
     def _tenant_profile_basics_page() -> str:
@@ -771,7 +762,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             runtime_envelope_schema=TRUSTED_TENANT_RUNTIME_ENVELOPE_SCHEMA,
             shell_endpoint="/portal/api/v2/tenant/profile-basics",
             shell_loading_label="Loading profile basics…",
-            logo_href="/portal/profile-basics",
+            logo_href=TRUSTED_TENANT_CANONICAL_LANDING_PAGE_ROUTE,
         )
 
     @app.get("/portal")

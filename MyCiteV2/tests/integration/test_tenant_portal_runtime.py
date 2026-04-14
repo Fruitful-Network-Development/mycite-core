@@ -121,6 +121,43 @@ class TenantPortalRuntimeIntegrationTests(unittest.TestCase):
                     BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
                 ],
             )
+            activity_items = result["shell_composition"]["regions"]["activity_bar"]["items"]
+            self.assertEqual(
+                [entry["slice_id"] for entry in activity_items],
+                [
+                    BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+                    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+                    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
+                ],
+            )
+            self.assertEqual(activity_items[0]["href"], "/portal")
+            self.assertEqual(activity_items[1]["href"], "/portal/status")
+            self.assertEqual(activity_items[2]["href"], "/portal/activity")
+            self.assertEqual(activity_items[3]["href"], "/portal/profile-basics")
+            self.assertTrue(activity_items[0]["active"])
+            self.assertEqual(activity_items[0]["nav_behavior"], "canonical")
+            self.assertEqual(activity_items[0]["icon_id"], "tenant_home")
+            self.assertEqual(activity_items[1]["icon_id"], "tenant_status")
+            self.assertEqual(activity_items[2]["icon_id"], "tenant_activity")
+            self.assertEqual(activity_items[3]["icon_id"], "tenant_profile")
+            control_panel = result["shell_composition"]["regions"]["control_panel"]
+            self.assertEqual(control_panel["kind"], "tenant_home_control_panel")
+            self.assertEqual(control_panel["title"], "Portal home")
+            self.assertEqual(
+                [section["title"] for section in control_panel["sections"]],
+                ["Attention", "Context", "Approved tenant surfaces"],
+            )
+            self.assertEqual(
+                [entry["label"] for entry in control_panel["sections"][2]["entries"]],
+                [
+                    "Portal Home and Tenant Status",
+                    "Operational Status",
+                    "Recent Activity",
+                    "Profile Basics",
+                ],
+            )
+            self.assertEqual(control_panel["sections"][2]["entries"][0]["href"], "/portal")
 
     def test_runtime_falls_back_safely_when_publication_summary_cannot_be_resolved(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -202,6 +239,19 @@ class TenantPortalRuntimeIntegrationTests(unittest.TestCase):
                 result["shell_composition"]["regions"]["workbench"]["kind"],
                 "operational_status",
             )
+            self.assertEqual(
+                [entry["slice_id"] for entry in result["shell_composition"]["regions"]["activity_bar"]["items"]],
+                [
+                    BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+                    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+                    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
+                ],
+            )
+            control_panel = result["shell_composition"]["regions"]["control_panel"]
+            self.assertEqual(control_panel["kind"], "tenant_operational_status_control_panel")
+            self.assertEqual(control_panel["sections"][2]["entries"][1]["href"], "/portal/status")
+            self.assertTrue(control_panel["sections"][2]["entries"][1]["active"])
             self.assertEqual(
                 [entry["slice_id"] for entry in result["surface_payload"]["available_slices"]],
                 [
@@ -390,6 +440,10 @@ class TenantPortalRuntimeIntegrationTests(unittest.TestCase):
                     BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
                 ],
             )
+            self.assertEqual(
+                result["shell_composition"]["regions"]["control_panel"]["kind"],
+                "tenant_audit_activity_control_panel",
+            )
 
     def test_audit_activity_runtime_reports_unavailable_for_unreadable_storage(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -492,6 +546,19 @@ class TenantPortalRuntimeIntegrationTests(unittest.TestCase):
                 result["shell_composition"]["regions"]["inspector"]["kind"],
                 "profile_basics_write_form",
             )
+            self.assertEqual(
+                [entry["slice_id"] for entry in result["shell_composition"]["regions"]["activity_bar"]["items"]],
+                [
+                    BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
+                    BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
+                    BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
+                    BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
+                ],
+            )
+            control_panel = result["shell_composition"]["regions"]["control_panel"]
+            self.assertEqual(control_panel["kind"], "tenant_profile_basics_control_panel")
+            self.assertEqual(control_panel["sections"][2]["entries"][0]["href"], "/portal")
+            self.assertTrue(control_panel["sections"][2]["entries"][3]["active"])
 
     def test_profile_basics_runtime_applies_write_and_emits_local_audit(self) -> None:
         with TemporaryDirectory() as temp_dir:

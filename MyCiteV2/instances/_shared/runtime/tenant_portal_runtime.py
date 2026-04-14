@@ -18,8 +18,9 @@ from MyCiteV2.packages.state_machine.trusted_tenant_portal import (
     TRUSTED_TENANT_PORTAL_REGION_WORKBENCH_SCHEMA,
     TrustedTenantPortalChrome,
     TrustedTenantPortalRequest,
+    build_trusted_tenant_activity_items,
+    build_trusted_tenant_control_panel_region,
     build_trusted_tenant_portal_composition_payload,
-    build_trusted_tenant_portal_dispatch_bodies,
     build_trusted_tenant_portal_surface_catalog,
     resolve_trusted_tenant_portal_request,
 )
@@ -49,48 +50,7 @@ def _normalize_request(payload: dict[str, Any] | None) -> TrustedTenantPortalReq
 
 
 def build_trusted_tenant_visible_slice_catalog() -> tuple[dict[str, Any], ...]:
-    return (
-        {
-            "slice_id": BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID,
-            "label": "Portal Home and Tenant Status",
-            "exposure_status": "implemented_trusted_tenant_read_only",
-            "read_write_posture": "read-only",
-            "status_summary": "default_landing",
-            "surface_kind": "tenant_home_status",
-            "launchable": True,
-            "default_surface": True,
-        },
-        {
-            "slice_id": BAND1_OPERATIONAL_STATUS_SURFACE_SLICE_ID,
-            "label": "Operational Status",
-            "exposure_status": "implemented_trusted_tenant_read_only",
-            "read_write_posture": "read-only",
-            "status_summary": "read_only_status_surface",
-            "surface_kind": "operational_status",
-            "launchable": True,
-            "default_surface": False,
-        },
-        {
-            "slice_id": BAND1_AUDIT_ACTIVITY_VISIBILITY_SLICE_ID,
-            "label": "Recent Activity",
-            "exposure_status": "implemented_trusted_tenant_read_only",
-            "read_write_posture": "read-only",
-            "status_summary": "recent_local_audit_window",
-            "surface_kind": "audit_activity",
-            "launchable": True,
-            "default_surface": False,
-        },
-        {
-            "slice_id": BAND2_PROFILE_BASICS_WRITE_SURFACE_SLICE_ID,
-            "label": "Profile Basics",
-            "exposure_status": "implemented_trusted_tenant_writable",
-            "read_write_posture": "write",
-            "status_summary": "bounded_profile_basics_write",
-            "surface_kind": "profile_basics_write",
-            "launchable": True,
-            "default_surface": False,
-        },
-    )
+    return tuple(entry.to_dict() for entry in build_trusted_tenant_portal_surface_catalog())
 
 
 def _derive_read_write_posture(available_slices: list[dict[str, Any]]) -> str:
@@ -101,66 +61,45 @@ def _derive_read_write_posture(available_slices: list[dict[str, Any]]) -> str:
 
 
 def _activity_items(*, portal_tenant_id: str, nav_active_slice_id: str) -> list[dict[str, Any]]:
-    bodies = build_trusted_tenant_portal_dispatch_bodies(portal_tenant_id=portal_tenant_id)
-    items: list[dict[str, Any]] = []
-    for entry in build_trusted_tenant_portal_surface_catalog():
-        if not entry.launchable:
-            continue
-        items.append(
-            {
-                "slice_id": entry.slice_id,
-                "label": entry.label,
-                "active": entry.slice_id == nav_active_slice_id,
-                "shell_request": bodies.get(entry.slice_id),
-            }
-        )
-    return items
+    return build_trusted_tenant_activity_items(
+        portal_tenant_id=portal_tenant_id,
+        active_surface_id=nav_active_slice_id,
+    )
 
 
 def _control_panel_region(*, portal_tenant_id: str, nav_active_slice_id: str) -> dict[str, Any]:
-    bodies = build_trusted_tenant_portal_dispatch_bodies(portal_tenant_id=portal_tenant_id)
     available_slices = [dict(entry) for entry in build_trusted_tenant_visible_slice_catalog()]
     read_write_posture = _derive_read_write_posture(available_slices)
-    slice_entries: list[dict[str, Any]] = []
-    for entry in available_slices:
-        slice_id = _as_text(entry.get("slice_id"))
-        slice_entries.append(
+    home_entry = next(
+        (entry for entry in available_slices if _as_text(entry.get("slice_id")) == BAND1_PORTAL_HOME_TENANT_STATUS_SLICE_ID),
+        {},
+    )
+    attention_entries: list[dict[str, Any]] = []
+    if _as_text(home_entry.get("status_summary")):
+        attention_entries.append(
             {
-                "label": _as_text(entry.get("label")),
-                "meta": _as_text(entry.get("status_summary")),
-                "active": slice_id == nav_active_slice_id,
-                "shell_request": bodies.get(slice_id),
+                "label": "Landing contract",
+                "meta": _as_text(home_entry.get("status_summary")).replace("_", " "),
+                "active": False,
             }
         )
-    posture_entries = [
-        {
-            "label": "Rollout band",
-            "meta": BAND1_TRUSTED_TENANT_READ_ONLY_NAME,
-            "active": False,
-        },
-        {
-            "label": "Exposure posture",
-            "meta": TRUSTED_TENANT_PORTAL_EXPOSURE_STATUS,
-            "active": False,
-        },
-        {
-            "label": "Read/write posture",
-            "meta": read_write_posture,
-            "active": False,
-        },
-        {
-            "label": "Tenant scope",
-            "meta": portal_tenant_id,
-            "active": False,
-        },
-    ]
-    return {
-        "schema": TRUSTED_TENANT_PORTAL_REGION_CONTROL_PANEL_SCHEMA,
-        "sections": [
-            {"title": "Available in this band", "entries": slice_entries},
-            {"title": "Portal posture", "entries": posture_entries},
+    return build_trusted_tenant_control_panel_region(
+        portal_tenant_id=portal_tenant_id,
+        active_surface_id=nav_active_slice_id,
+        title="Portal home",
+        subtitle="Trusted-tenant attention and approved tenant surfaces.",
+        current_rollout_band=BAND1_TRUSTED_TENANT_READ_ONLY_NAME,
+        exposure_status=TRUSTED_TENANT_PORTAL_EXPOSURE_STATUS,
+        read_write_posture=read_write_posture,
+        attention_entries=attention_entries,
+        context_entries=[
+            {
+                "label": "Publication posture",
+                "meta": "publication-backed landing summary",
+                "active": False,
+            }
         ],
-    }
+    )
 
 
 def _workbench_error(*, message: str) -> dict[str, Any]:
