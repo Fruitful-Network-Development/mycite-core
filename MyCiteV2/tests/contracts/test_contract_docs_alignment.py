@@ -14,14 +14,18 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         route_model = (REPO_ROOT / "docs" / "contracts" / "route_model.md").read_text(encoding="utf-8")
         self.assertIn("/portal/api/v2/shell", route_model)
         self.assertIn("/portal/system/tools/<tool_slug>", route_model)
+        self.assertIn("/portal/system/operational-status", route_model)
+        self.assertNotIn("/portal/system/activity", route_model)
+        self.assertNotIn("/portal/system/profile-basics", route_model)
         self.assertNotIn("/portal/api/v2/" + "tenant", route_model)
         self.assertNotIn("/portal/api/v2/" + "admin" + "/shell", route_model)
 
-    def test_contract_docs_use_one_shell_terminology(self) -> None:
+    def test_contract_docs_describe_behavioral_shell_model(self) -> None:
         shell_contract = (REPO_ROOT / "docs" / "contracts" / "portal_shell_contract.md").read_text(encoding="utf-8")
-        self.assertIn("SYSTEM", shell_contract)
-        self.assertIn("NETWORK", shell_contract)
-        self.assertIn("UTILITIES", shell_contract)
+        self.assertIn("ordered focus stack", shell_contract.lower())
+        self.assertIn("anthology", shell_contract)
+        self.assertIn("back_out", shell_contract)
+        self.assertIn("interface-panel-led", shell_contract)
         self.assertNotIn("trusted" + "_tenant", shell_contract)
         self.assertNotIn("admin" + " shell", shell_contract.lower())
 

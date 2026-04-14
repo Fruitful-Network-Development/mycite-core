@@ -1,5 +1,5 @@
 /**
- * Generic inspector renderer for the one-shell portal.
+ * Interface-panel renderer for the one-shell portal.
  */
 (function () {
   function escapeHtml(value) {
@@ -12,7 +12,7 @@
 
   function renderRows(rows) {
     if (!rows || !rows.length) {
-      return '<p class="ide-controlpanel__empty">No inspector details.</p>';
+      return '<p class="ide-controlpanel__empty">No interface panel details.</p>';
     }
     return (
       '<dl class="v2-surface-dl">' +
@@ -39,8 +39,22 @@
       var region = ctx.region || {};
       var sections = region.sections || [];
       if (!target) return;
+      if (region.visible === false) {
+        target.innerHTML = "";
+        return;
+      }
       target.innerHTML =
         '<div class="v2-inspector-stack">' +
+        (region.subject
+          ? '<section class="v2-card"><h3>Subject</h3>' +
+            renderRows([
+              {
+                label: region.subject.level || "level",
+                value: region.subject.id || "—",
+              },
+            ]) +
+            "</section>"
+          : "") +
         sections
           .map(function (section) {
             return (

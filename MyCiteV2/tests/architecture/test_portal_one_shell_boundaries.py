@@ -32,8 +32,19 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("/portal/utilities", shell_source)
         self.assertNotIn("/portal/api/v2/" + "tenant", app_source)
         self.assertNotIn("/portal/api/v2/" + "admin" + "/shell", app_source)
+        self.assertNotIn("/portal/system/activity", app_source)
+        self.assertNotIn("/portal/system/profile-basics", app_source)
         self.assertNotIn("trusted" + "_tenant", runtime_source)
         self.assertNotIn("admin" + " shell", shell_source.lower())
+
+    def test_shell_contracts_enforce_workspace_and_tool_behavior(self) -> None:
+        shell_source = (REPO_ROOT / "MyCiteV2" / "packages" / "state_machine" / "portal_shell" / "shell.py").read_text(encoding="utf-8")
+        self.assertIn('SYSTEM_ANCHOR_FILE_KEY = "anthology"', shell_source)
+        self.assertIn("TRANSITION_BACK_OUT", shell_source)
+        self.assertIn("SYSTEM_SANDBOX_QUERY_FILE_TOKEN", shell_source)
+        self.assertIn("default_workbench_visible: bool = False", shell_source)
+        self.assertNotIn("system.activity", shell_source)
+        self.assertNotIn("system.profile_basics", shell_source)
 
 
 if __name__ == "__main__":

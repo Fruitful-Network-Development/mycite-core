@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import build_tool_control_panel
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     FND_EBI_TOOL_REQUEST_SCHEMA,
     FND_EBI_TOOL_SURFACE_SCHEMA,
@@ -12,17 +13,15 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
 )
 from MyCiteV2.packages.state_machine.portal_shell import (
     FND_EBI_TOOL_ENTRYPOINT_ID,
+    FND_EBI_TOOL_ROUTE,
     FND_EBI_TOOL_SURFACE_ID,
-    NETWORK_ROOT_SURFACE_ID,
-    PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PortalScope,
-    SYSTEM_ROOT_SURFACE_ID,
-    UTILITIES_ROOT_SURFACE_ID,
-    build_portal_activity_dispatch_bodies,
-    build_portal_surface_catalog,
-    build_shell_composition_payload,
+    PortalShellState,
+    build_canonical_url,
+    canonical_query_for_shell_state,
+    canonicalize_portal_shell_state,
     resolve_portal_tool_registry_entry,
 )
 
@@ -33,14 +32,20 @@ def _as_text(value: object) -> str:
     return str(value).strip()
 
 
-def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, dict[str, Any]]:
+def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, PortalShellState, dict[str, Any]]:
     normalized_payload = payload if isinstance(payload, dict) else {}
     if normalized_payload.get("schema") in {None, ""}:
         normalized_payload = {"schema": FND_EBI_TOOL_REQUEST_SCHEMA, **normalized_payload}
     if _as_text(normalized_payload.get("schema")) != FND_EBI_TOOL_REQUEST_SCHEMA:
         raise ValueError(f"request.schema must be {FND_EBI_TOOL_REQUEST_SCHEMA}")
     portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
-    return portal_scope, normalized_payload
+    shell_state = canonicalize_portal_shell_state(
+        normalized_payload.get("shell_state"),
+        active_surface_id=FND_EBI_TOOL_SURFACE_ID,
+        portal_scope=portal_scope,
+        seed_anchor_file=normalized_payload.get("shell_state") is None,
+    )
+    return portal_scope, shell_state, normalized_payload
 
 
 def _webapps_summary(webapps_root: str | Path | None) -> dict[str, Any]:
@@ -62,8 +67,10 @@ def _webapps_summary(webapps_root: str | Path | None) -> dict[str, Any]:
 def build_portal_fnd_ebi_surface_bundle(
     *,
     portal_scope: PortalScope,
+    shell_state: PortalShellState,
     webapps_root: str | Path | None,
     tool_exposure_policy: dict[str, Any] | None = None,
+    tool_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     tool_entry = resolve_portal_tool_registry_entry(surface_id=FND_EBI_TOOL_SURFACE_ID)
     if tool_entry is None:
@@ -78,7 +85,7 @@ def build_portal_fnd_ebi_surface_bundle(
     operational = bool(configured and enabled and not missing_integrations and not missing_capabilities)
     surface_payload = {
         "schema": FND_EBI_TOOL_SURFACE_SCHEMA,
-        "kind": "tool_status_surface",
+        "kind": "tool_mediation_surface",
         "tool_id": tool_entry.tool_id,
         "surface_id": FND_EBI_TOOL_SURFACE_ID,
         "entrypoint_id": FND_EBI_TOOL_ENTRYPOINT_ID,
@@ -96,37 +103,55 @@ def build_portal_fnd_ebi_surface_bundle(
             "missing_capabilities": missing_capabilities,
         },
         "webapps_summary": webapps_summary,
+        "focus_subject": dict(shell_state.focus_subject or {}),
+        "mediation_subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),
         "request_contract": {
             "schema": FND_EBI_TOOL_REQUEST_SCHEMA,
-            "route": "/portal/api/v2/system/tools/fnd-ebi",
+            "route": FND_EBI_TOOL_ROUTE,
             "surface_id": FND_EBI_TOOL_SURFACE_ID,
         },
     }
+    control_panel = build_tool_control_panel(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        data_dir=None,
+        public_dir=None,
+        active_document=None,
+        selected_datum=None,
+        selected_object=None,
+        tool_rows=list(tool_rows or []),
+        title="FND-EBI Context",
+    )
     workbench = {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-        "kind": "tool_status_surface",
-        "title": "FND-EBI",
-        "subtitle": "Hosted visibility surface routed through shared infrastructure.",
-        "visible": True,
-        "surface_payload": surface_payload,
+        "kind": "tool_secondary_evidence",
+        "title": "FND-EBI Evidence",
+        "subtitle": "Workbench remains hidden until the runtime requests supporting evidence.",
+        "visible": False,
+        "surface_payload": {
+            "kind": "tool_secondary_evidence",
+            "surface_id": FND_EBI_TOOL_SURFACE_ID,
+            "webapps_summary": webapps_summary,
+        },
     }
     inspector = {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
-        "kind": "summary_panel",
+        "kind": "tool_mediation_panel",
         "title": "FND-EBI",
         "summary": "Shared hosted visibility posture.",
+        "subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),
         "sections": [
             {
                 "title": "Prerequisites",
                 "rows": [
                     {
                         "label": "webapps_root",
-                        "status": "present" if webapps_summary.get("present") else "missing",
+                        "value": "present" if webapps_summary.get("present") else "missing",
                         "detail": "Hosted site metadata is read from the shared webapps root.",
                     },
                     {
                         "label": "fnd_peripheral_routing",
-                        "status": "available" if "fnd_peripheral_routing" in portal_scope.capabilities else "missing",
+                        "value": "available" if "fnd_peripheral_routing" in portal_scope.capabilities else "missing",
                         "detail": "FND routing capability is required for operational task handoff.",
                     },
                 ],
@@ -139,35 +164,12 @@ def build_portal_fnd_ebi_surface_bundle(
         "page_title": "FND-EBI",
         "page_subtitle": "Hosted visibility surface routed through shared infrastructure.",
         "surface_payload": surface_payload,
+        "control_panel": control_panel,
         "workbench": workbench,
         "inspector": inspector,
+        "shell_state": shell_state,
+        "route": FND_EBI_TOOL_ROUTE,
     }
-
-
-def _tool_activity_items(portal_instance_id: str) -> list[dict[str, Any]]:
-    dispatch_bodies = build_portal_activity_dispatch_bodies(portal_instance_id=portal_instance_id)
-    items: list[dict[str, Any]] = []
-    for entry in build_portal_surface_catalog():
-        if entry.surface_id not in {
-            SYSTEM_ROOT_SURFACE_ID,
-            NETWORK_ROOT_SURFACE_ID,
-            UTILITIES_ROOT_SURFACE_ID,
-            FND_EBI_TOOL_SURFACE_ID,
-        }:
-            continue
-        items.append(
-            {
-                "item_id": entry.surface_id,
-                "label": entry.label,
-                "icon_id": "fnd_ebi" if entry.surface_id == FND_EBI_TOOL_SURFACE_ID else entry.root_surface_id.split(".", 1)[0],
-                "href": entry.route,
-                "active": entry.surface_id == FND_EBI_TOOL_SURFACE_ID,
-                "nav_kind": "surface",
-                "nav_behavior": "dispatch",
-                "shell_request": dispatch_bodies.get(entry.surface_id),
-            }
-        )
-    return items
 
 
 def run_portal_fnd_ebi(
@@ -176,44 +178,27 @@ def run_portal_fnd_ebi(
     webapps_root: str | Path | None,
     tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    portal_scope, _ = _normalize_request(request_payload)
+    portal_scope, shell_state, _ = _normalize_request(request_payload)
     bundle = build_portal_fnd_ebi_surface_bundle(
         portal_scope=portal_scope,
+        shell_state=shell_state,
         webapps_root=webapps_root,
         tool_exposure_policy=tool_exposure_policy,
     )
-    composition = build_shell_composition_payload(
-        active_surface_id=FND_EBI_TOOL_SURFACE_ID,
-        portal_instance_id=portal_scope.scope_id,
-        page_title=bundle["page_title"],
-        page_subtitle=bundle["page_subtitle"],
-        activity_items=_tool_activity_items(portal_scope.scope_id),
-        control_panel={
-            "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-            "kind": "system_control_panel",
-            "title": "System Surfaces",
-            "sections": [],
-        },
-        workbench=bundle["workbench"],
-        inspector=bundle["inspector"],
-    )
+    canonical_query = canonical_query_for_shell_state(shell_state, surface_id=FND_EBI_TOOL_SURFACE_ID)
     return build_portal_runtime_envelope(
         portal_scope=portal_scope.to_dict(),
         requested_surface_id=FND_EBI_TOOL_SURFACE_ID,
         surface_id=FND_EBI_TOOL_SURFACE_ID,
         entrypoint_id=bundle["entrypoint_id"],
         read_write_posture=bundle["read_write_posture"],
-        shell_state={
-            "schema": "mycite.v2.portal.shell.state.v1",
-            "requested_surface_id": FND_EBI_TOOL_SURFACE_ID,
-            "active_surface_id": FND_EBI_TOOL_SURFACE_ID,
-            "selection_status": "available",
-            "allowed": True,
-            "reason_code": "",
-            "reason_message": "",
-        },
+        reducer_owned=True,
+        canonical_route=bundle["route"],
+        canonical_query=canonical_query,
+        canonical_url=build_canonical_url(surface_id=FND_EBI_TOOL_SURFACE_ID, query=canonical_query),
+        shell_state=shell_state.to_dict(),
         surface_payload=bundle["surface_payload"],
-        shell_composition=composition,
+        shell_composition={},
         warnings=[],
         error=None,
     )

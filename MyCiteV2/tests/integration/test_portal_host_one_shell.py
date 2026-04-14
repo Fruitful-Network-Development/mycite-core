@@ -40,9 +40,11 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             client = app.test_client()
 
             self.assertEqual(client.get("/portal/system").status_code, 200)
+            self.assertEqual(client.get("/portal/system/operational-status").status_code, 200)
             self.assertEqual(client.get("/portal/network").status_code, 200)
             self.assertEqual(client.get("/portal/utilities").status_code, 200)
-            self.assertEqual(client.get("/portal").status_code, 404)
+            self.assertEqual(client.get("/portal/system/activity").status_code, 404)
+            self.assertEqual(client.get("/portal/system/profile-basics").status_code, 404)
 
             shell_response = client.post(
                 "/portal/api/v2/shell",
@@ -56,6 +58,8 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             payload = shell_response.get_json()
             self.assertEqual(payload["schema"], "mycite.v2.portal.runtime.envelope.v1")
             self.assertEqual(payload["surface_id"], "system.root")
+            self.assertEqual(payload["canonical_route"], "/portal/system")
+            self.assertEqual(payload["canonical_query"]["file"], "anthology")
 
             tool_response = client.post(
                 "/portal/api/v2/system/tools/aws",
@@ -64,6 +68,20 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(tool_response.status_code, 200)
             tool_payload = tool_response.get_json()
             self.assertEqual(tool_payload["surface_id"], "system.tools.aws")
+
+            profile_action = client.post(
+                "/portal/api/v2/system/workspace/profile-basics",
+                json={
+                    "schema": "mycite.v2.portal.system.workspace.profile_basics.action.request.v1",
+                    "profile_title": "Example profile",
+                    "profile_summary": "Workspace-owned profile summary.",
+                    "contact_email": "ops@example.com",
+                    "public_website_url": "https://example.com",
+                },
+            )
+            self.assertEqual(profile_action.status_code, 200)
+            profile_payload = profile_action.get_json()
+            self.assertEqual(profile_payload["surface_id"], "system.root")
 
 
 if __name__ == "__main__":

@@ -45,16 +45,6 @@
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M5 18.5h14"></path><path d="M7.5 16V11"></path><path d="M12 16V8"></path><path d="M16.5 16v-5"></path>' +
         "</svg>";
-    } else if (id === "system_activity") {
-      svg =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-        '<path d="M4.5 12h3l2-4 3 8 2-4h5"></path><path d="M12 4.5v2"></path><path d="M12 17.5v2"></path>' +
-        "</svg>";
-    } else if (id === "system_profile") {
-      svg =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-        '<circle cx="12" cy="8" r="3"></circle><path d="M6.5 18.5c1.6-2.8 3.6-4.2 5.5-4.2s3.9 1.4 5.5 4.2"></path>' +
-        "</svg>";
     } else {
       svg =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
@@ -64,10 +54,14 @@
     return '<span class="ide-activityicon" aria-hidden="true">' + svg + "</span>";
   }
 
-  function dispatchShellNavigation(entry, event, loadShell) {
-    if (!entry || !entry.shell_request) return;
-    event.preventDefault();
-    loadShell(entry.shell_request);
+  function bindSurfaceNavigation(node, entry, ctx) {
+    if (!node || !entry) return;
+    node.addEventListener("click", function (event) {
+      if (entry.shell_request) {
+        event.preventDefault();
+        ctx.loadShell(entry.shell_request);
+      }
+    });
   }
 
   api.renderActivityBar = function (ctx) {
@@ -91,9 +85,7 @@
         '<span class="ide-activitylabel">' +
         ctx.escapeHtml(item.label || "") +
         "</span>";
-      link.addEventListener("click", function (event) {
-        dispatchShellNavigation(item, event, ctx.loadShell);
-      });
+      bindSurfaceNavigation(link, item, ctx);
       nav.appendChild(link);
     });
   };
@@ -114,6 +106,27 @@
     );
   }
 
+  function renderFacts(facts, escapeHtml) {
+    if (!facts || !facts.length) return "";
+    return (
+      '<dl class="v2-surface-dl">' +
+      facts
+        .map(function (fact) {
+          return (
+            "<dt>" +
+            escapeHtml(fact.label || "") +
+            "</dt><dd><strong>" +
+            escapeHtml(fact.value || "—") +
+            "</strong>" +
+            (fact.detail ? "<br />" + escapeHtml(fact.detail) : "") +
+            "</dd>"
+          );
+        })
+        .join("") +
+      "</dl>"
+    );
+  }
+
   api.renderControlPanel = function (ctx) {
     var region = ctx.region || {};
     var root = ctx.target || document.getElementById("portalControlPanel");
@@ -127,10 +140,13 @@
       sections
         .map(function (section) {
           return (
-            '<div class="ide-controlpanel__module">' +
+            '<div class="ide-controlpanel__module' +
+            (section.compressed ? " is-compressed" : "") +
+            '">' +
             '<div class="ide-controlpanel__moduleHeader"><div class="ide-controlpanel__moduleTitle">' +
             ctx.escapeHtml(section.title || "Section") +
             "</div></div>" +
+            renderFacts(section.facts || [], ctx.escapeHtml) +
             '<ul class="ide-controlpanel__list">' +
             (section.entries || [])
               .map(function (entry) {
@@ -149,10 +165,7 @@
           flatEntries.push(entry);
         });
       });
-      var entry = flatEntries[index];
-      link.addEventListener("click", function (event) {
-        dispatchShellNavigation(entry, event, ctx.loadShell);
-      });
+      bindSurfaceNavigation(link, flatEntries[index], ctx);
     });
   };
 })();

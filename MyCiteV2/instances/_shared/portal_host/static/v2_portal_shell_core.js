@@ -1,7 +1,7 @@
 /**
  * One-shell portal core.
- * Owns shell bootstrap, runtime POSTs, envelope validation, and dispatch into
- * dedicated region/workbench/inspector renderers.
+ * Owns runtime POSTs, reducer transitions, envelope validation, and runtime-
+ * owned history synchronization.
  */
 (function () {
   var BODY_DATA = document.body || document.documentElement;
@@ -12,7 +12,6 @@
 
   var lastShellRequest = null;
   var lastEnvelope = null;
-  var lastDirectView = null;
 
   function qs(sel, root) {
     return (root || document).querySelector(sel);
@@ -94,6 +93,16 @@
     }
   }
 
+  function canonicalShellRequestFromEnvelope(envelope) {
+    if (!envelope || !envelope.reducer_owned || !envelope.shell_state) return null;
+    return {
+      schema: "mycite.v2.portal.shell.request.v1",
+      requested_surface_id: envelope.surface_id || "system.root",
+      portal_scope: cloneRequest(envelope.portal_scope || {}),
+      shell_state: cloneRequest(envelope.shell_state || {}),
+    };
+  }
+
   function applyChrome(composition) {
     var shell = qs(".ide-shell");
     var workbench = qs(".ide-workbench");
@@ -105,13 +114,15 @@
     var pageheadSub = qs("#v2-workbench-subtitle");
     var inspectorRegion = (composition.regions && composition.regions.inspector) || {};
     var workbenchRegion = (composition.regions && composition.regions.workbench) || {};
+    var workbenchVisible = workbenchRegion.visible !== false;
+    var inspectorVisible = inspectorRegion.visible !== false && !composition.inspector_collapsed;
     if (!shell) return;
 
     shell.setAttribute("data-active-service", composition.active_service || "system");
     shell.setAttribute("data-shell-composition", composition.composition_mode || "system");
     shell.setAttribute("data-foreground-shell-region", composition.foreground_shell_region || "center-workbench");
     shell.setAttribute("data-control-panel-collapsed", composition.control_panel_collapsed ? "true" : "false");
-    shell.setAttribute("data-inspector-collapsed", composition.inspector_collapsed ? "true" : "false");
+    shell.setAttribute("data-inspector-collapsed", inspectorVisible ? "false" : "true");
 
     if (menubarTitle && composition.page_title) menubarTitle.textContent = composition.page_title;
     if (menubarSub) {
@@ -125,21 +136,20 @@
           .filter(Boolean)
           .join(" · ");
     }
-    if (pageheadTitle && workbenchRegion.title) pageheadTitle.textContent = workbenchRegion.title;
+    if (pageheadTitle) pageheadTitle.textContent = workbenchRegion.title || composition.page_title || "Portal";
     if (pageheadSub) pageheadSub.textContent = workbenchRegion.subtitle || composition.page_subtitle || "";
 
     if (workbench) {
       workbench.setAttribute("data-active-service", composition.active_service || "system");
-      workbench.setAttribute(
-        "data-foreground-visible",
-        composition.foreground_shell_region === "center-workbench" ? "true" : "false"
-      );
-      workbench.setAttribute("aria-hidden", composition.foreground_shell_region === "center-workbench" ? "false" : "true");
+      workbench.setAttribute("data-foreground-visible", workbenchVisible ? "true" : "false");
+      workbench.setAttribute("aria-hidden", workbenchVisible ? "false" : "true");
+      workbench.style.display = workbenchVisible ? "" : "none";
     }
     if (inspector) {
       inspector.setAttribute("data-primary-surface", inspectorRegion.primary_surface ? "true" : "false");
       inspector.setAttribute("data-surface-layout", inspectorRegion.layout_mode || "sidebar");
-      inspector.setAttribute("aria-hidden", composition.inspector_collapsed ? "true" : "false");
+      inspector.setAttribute("aria-hidden", inspectorVisible ? "false" : "true");
+      inspector.style.display = inspectorVisible ? "" : "none";
     }
     if (inspectorContent) {
       inspectorContent.setAttribute(
@@ -157,10 +167,15 @@
       compactJson: compactJson,
       loadShell: loadShell,
       loadRuntimeView: loadRuntimeView,
+      dispatchTransition: dispatchTransition,
       postJson: postJson,
       cloneRequest: cloneRequest,
-      getEnvelope: function () { return lastEnvelope; },
-      getLastShellRequest: function () { return lastShellRequest; },
+      getEnvelope: function () {
+        return lastEnvelope;
+      },
+      getLastShellRequest: function () {
+        return lastShellRequest;
+      },
     };
   }
 
@@ -186,6 +201,17 @@
     inspectorRenderer.render(buildRendererContext(composition.regions.inspector, qs("#v2-inspector-dynamic")));
   }
 
+  function syncHistory(envelope, historyPayload, options) {
+    if (!envelope || !envelope.canonical_url) return;
+    var state = cloneRequest(historyPayload || {});
+    var replace = options && options.replaceHistory;
+    if (replace) {
+      window.history.replaceState(state, "", envelope.canonical_url);
+      return;
+    }
+    window.history.pushState(state, "", envelope.canonical_url);
+  }
+
   function applyEnvelope(envelope, options) {
     if (!envelope || envelope.schema !== RUNTIME_ENVELOPE_SCHEMA) {
       showFatal("Invalid runtime envelope schema from shell route.", "render_dispatch_failed");
@@ -199,20 +225,16 @@
       console.warn("Portal runtime warning:", envelope.error.message);
     }
     lastEnvelope = envelope;
-    if (options && options.trackDirectView) {
-      lastDirectView = {
-        url: options.url,
-        requestBody: cloneRequest(options.requestBody),
-      };
-    } else {
-      lastDirectView = null;
-    }
+    lastShellRequest = canonicalShellRequestFromEnvelope(envelope) || lastShellRequest;
     applyChrome(envelope.shell_composition);
     renderRegions(envelope.shell_composition);
+    if (!(options && options.updateHistory === false)) {
+      syncHistory(envelope, options && options.historyPayload, options || {});
+    }
     setBootState("hydrated");
   }
 
-  function loadShell(shellRequest) {
+  function loadShell(shellRequest, options) {
     var requestBody = cloneRequest(shellRequest);
     lastShellRequest = requestBody;
     return postJson(SHELL_URL, requestBody).then(function (result) {
@@ -223,11 +245,15 @@
         );
         return;
       }
-      applyEnvelope(result.json, { trackDirectView: false });
+      applyEnvelope(result.json, {
+        historyPayload: { kind: "shell", requestBody: canonicalShellRequestFromEnvelope(result.json) || requestBody },
+        updateHistory: !(options && options.updateHistory === false),
+        replaceHistory: options && options.replaceHistory,
+      });
     });
   }
 
-  function loadRuntimeView(url, requestBody) {
+  function loadRuntimeView(url, requestBody, options) {
     var body = cloneRequest(requestBody);
     return postJson(url, body).then(function (result) {
       if (!result.ok || !result.json) {
@@ -237,25 +263,86 @@
         );
         return;
       }
-      applyEnvelope(result.json, { trackDirectView: true, url: url, requestBody: body });
+      applyEnvelope(result.json, {
+        historyPayload: {
+          kind: result.json && result.json.reducer_owned ? "shell" : "direct",
+          requestBody: canonicalShellRequestFromEnvelope(result.json) || body,
+          url: url,
+        },
+        updateHistory: !(options && options.updateHistory === false),
+        replaceHistory: !!(options && options.replaceHistory),
+      });
     });
   }
 
-  window.PortalShell = {
+  function dispatchTransition(transition, requestedSurfaceId) {
+    var envelope = lastEnvelope;
+    if (!envelope || !envelope.reducer_owned) return Promise.resolve();
+    var requestBody = {
+      schema: "mycite.v2.portal.shell.request.v1",
+      requested_surface_id: requestedSurfaceId || envelope.surface_id || "system.root",
+      portal_scope: cloneRequest(envelope.portal_scope || {}),
+      shell_state: cloneRequest(envelope.shell_state || {}),
+      transition: cloneRequest(transition || {}),
+    };
+    return loadShell(requestBody);
+  }
+
+  function onPopState(event) {
+    var state = event && event.state;
+    if (!state) return;
+    if (state.kind === "shell" && state.requestBody) {
+      loadShell(state.requestBody, { updateHistory: false, replaceHistory: true });
+      return;
+    }
+    if (state.kind === "direct" && state.url) {
+      window.location.href = state.url;
+    }
+  }
+
+  function bindShellChromeEvents() {
+    document.addEventListener("mycite:v2:inspector-toggle-request", function () {
+      var envelope = lastEnvelope;
+      if (!envelope || !envelope.reducer_owned) return;
+      var isOpen = envelope.shell_state && envelope.shell_state.chrome && envelope.shell_state.chrome.interface_panel_open;
+      dispatchTransition({ kind: isOpen ? "close_interface_panel" : "open_interface_panel" });
+    });
+    document.addEventListener("mycite:v2:inspector-dismiss-request", function () {
+      var envelope = lastEnvelope;
+      if (!envelope || !envelope.reducer_owned) return;
+      dispatchTransition({ kind: "close_interface_panel" });
+    });
+    document.addEventListener("mycite:v2:control-panel-toggle-request", function () {
+      var shell = qs(".ide-shell");
+      var controlPanel = qs("#portalControlPanel");
+      if (!shell || !controlPanel) return;
+      var collapsed = shell.getAttribute("data-control-panel-collapsed") === "true";
+      shell.setAttribute("data-control-panel-collapsed", collapsed ? "false" : "true");
+      controlPanel.classList.toggle("is-collapsed", !collapsed);
+      controlPanel.setAttribute("aria-hidden", collapsed ? "false" : "true");
+    });
+  }
+
+  window.PortalShellCore = {
     loadShell: loadShell,
     loadRuntimeView: loadRuntimeView,
-    syncFromDom: function () {},
+    dispatchTransition: dispatchTransition,
+    getEnvelope: function () {
+      return lastEnvelope;
+    },
   };
-  window.__MYCITE_V2_SHELL_CORE_LOADED = true;
+
   setBootState("core_loaded");
+  bindShellChromeEvents();
+  window.addEventListener("popstate", onPopState);
 
   var bootstrapRequest = readBootstrapRequest();
   if (!bootstrapRequest) {
-    showFatal("Bootstrap shell request is missing or invalid.", "bootstrap_invalid");
+    showFatal("Bootstrap shell request was not embedded into the page.", "bootstrap_missing");
     return;
   }
 
-  loadShell(bootstrapRequest).catch(function (err) {
-    showFatal(err && err.message ? err.message : "Shell bootstrap failed.", "shell_bootstrap_failed");
+  loadShell(bootstrapRequest, { replaceHistory: true }).catch(function (err) {
+    showFatal(err && err.message ? err.message : "The shell request failed before the runtime returned.", "shell_post_failed");
   });
 })();

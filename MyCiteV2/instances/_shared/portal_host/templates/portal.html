@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MyCite Portal Shell</title>
+  <title>MyCite Portal Workspace</title>
   <style id="v2-shell-layout-fallback">
     html { height: 100%; }
     body.v2-native-portal { margin: 0; min-height: 100%; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #202124; background: #f6f7f9; }
@@ -40,7 +40,7 @@
   <script type="application/json" id="v2-bootstrap-shell-request">{{ bootstrap_shell_request | tojson }}</script>
   <noscript>
     <p style="margin:12px;padding:12px;background:#fff3cd;border:1px solid #ffc107;font-family:sans-serif">
-      This portal shell requires JavaScript. The shell loads composition from <code>POST {{ shell_endpoint }}</code>.
+      This portal workspace requires JavaScript. The host loads composition from <code>POST {{ shell_endpoint }}</code>.
     </p>
   </noscript>
   <div
@@ -97,7 +97,7 @@
         <section class="ide-controlpanel__section">
           <header class="ide-controlpanel__title">Context</header>
           <p id="v2-control-panel-placeholder" class="ide-controlpanel__empty" style="margin:0;font-size:13px;line-height:1.45">
-            Loading shell regions from the runtime… If this text stays visible, the shell POST failed or JavaScript is blocked.
+            Loading runtime-owned workspace regions… If this text stays visible, the shell POST failed or JavaScript is blocked.
             Build <code>{{ portal_build_id }}</code>.
           </p>
         </section>
@@ -114,7 +114,7 @@
       >
         <div class="pagehead pagehead--withTools">
           <div class="pagehead__meta">
-            <div class="pagehead__title" id="v2-workbench-title">Portal Shell</div>
+            <div class="pagehead__title" id="v2-workbench-title">Portal Workspace</div>
             <div class="pagehead__sub" id="v2-workbench-subtitle">{{ shell_loading_label }}</div>
           </div>
           <label class="themebar pagehead__theme" aria-label="Portal theme selector">
