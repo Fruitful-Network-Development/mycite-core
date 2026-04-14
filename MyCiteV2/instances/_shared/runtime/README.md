@@ -8,6 +8,7 @@ Implemented in shared runtime:
 
 - one shared portal runtime descriptor catalog and envelope helper
 - one shell entrypoint for SYSTEM, NETWORK, and UTILITIES root surfaces
+- one SYSTEM datum-file workbench rooted in the system sandbox anchor file
 - one shell entrypoint family for SYSTEM child surfaces
 - one tool runtime family for SYSTEM tool work pages
 - one utility surface family for tool exposure and integration state

@@ -190,7 +190,6 @@ def _activity_items(
 ) -> list[dict[str, Any]]:
     dispatch_bodies = build_portal_activity_dispatch_bodies(portal_scope=portal_scope, shell_state=shell_state)
     visible_surface_ids = [
-        SYSTEM_ROOT_SURFACE_ID,
         SYSTEM_OPERATIONAL_STATUS_SURFACE_ID,
         AWS_TOOL_SURFACE_ID,
         AWS_NARROW_WRITE_TOOL_SURFACE_ID,

@@ -27,6 +27,17 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             webapps_root = root / "webapps"
             for path in (public_dir, private_dir, data_dir, webapps_root):
                 path.mkdir(parents=True, exist_ok=True)
+            (data_dir / "system").mkdir(parents=True, exist_ok=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                '{\n'
+                '  "1-0-1": [["1-0-1", "~", "fruitfulnetworkdevelopment.com", "", "tenant-profile-1"], ["fruitfulnetworkdevelopment.com"]]\n'
+                '}\n',
+                encoding="utf-8",
+            )
+            (public_dir / "tenant-profile-1.json").write_text(
+                '{"title":"Example Profile","summary":"Public summary"}\n',
+                encoding="utf-8",
+            )
 
             config = V2PortalHostConfig(
                 portal_instance_id="fnd",
@@ -60,6 +71,18 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(payload["surface_id"], "system.root")
             self.assertEqual(payload["canonical_route"], "/portal/system")
             self.assertEqual(payload["canonical_query"]["file"], "anthology")
+            activity_items = payload["shell_composition"]["regions"]["activity_bar"]["items"]
+            self.assertNotIn("system.root", [item["item_id"] for item in activity_items])
+            operational_payload = client.post(
+                "/portal/api/v2/shell",
+                json={
+                    "schema": "mycite.v2.portal.shell.request.v1",
+                    "requested_surface_id": "system.operational_status",
+                    "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                },
+            ).get_json()
+            control_panel_roots = operational_payload["shell_composition"]["regions"]["control_panel"]["sections"][0]["entries"]
+            self.assertIn("System", [entry["label"] for entry in control_panel_roots])
 
             tool_response = client.post(
                 "/portal/api/v2/system/tools/aws",
@@ -73,7 +96,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 "/portal/api/v2/system/workspace/profile-basics",
                 json={
                     "schema": "mycite.v2.portal.system.workspace.profile_basics.action.request.v1",
-                    "profile_title": "Example profile",
+                    "profile_title": "Example Profile",
                     "profile_summary": "Workspace-owned profile summary.",
                     "contact_email": "ops@example.com",
                     "public_website_url": "https://example.com",
