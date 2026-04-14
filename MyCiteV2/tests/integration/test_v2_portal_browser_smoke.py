@@ -32,9 +32,11 @@ if str(REPO_ROOT) not in sys.path:
 
 if HAS_FLASK:
     from MyCiteV2.instances._shared.portal_host import V2PortalHostConfig, create_app
+    from MyCiteV2.tests.integration.test_v2_native_portal_host import _write_maps_data
 else:  # pragma: no cover
     V2PortalHostConfig = object  # type: ignore[assignment]
     create_app = None  # type: ignore[assignment]
+    _write_maps_data = None  # type: ignore[assignment]
 
 
 def _build_config(temp_root: Path, *, tenant_id: str = "fnd", cts_gis_enabled: bool = False) -> V2PortalHostConfig:
@@ -123,8 +125,21 @@ def _serve_app(app: Flask):
         thread.join(timeout=5)
 
 
-@unittest.skipUnless(HAS_FLASK and HAS_PLAYWRIGHT, "browser smoke tests require Flask and Playwright")
 class V2PortalBrowserSmokeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        missing: list[str] = []
+        if not HAS_FLASK:
+            missing.append("Flask")
+        if not HAS_PLAYWRIGHT:
+            missing.append("Playwright")
+        if missing:
+            raise RuntimeError(
+                "browser smoke tests require "
+                + ", ".join(missing)
+                + " in /srv/venvs/fnd_portal; missing dependencies are a repo-completeness failure."
+            )
+
     def test_system_page_hydrates_and_syncs_theme_selectors(self) -> None:
         with TemporaryDirectory() as temp_dir:
             app = create_app(_build_config(Path(temp_dir)))
@@ -149,12 +164,15 @@ class V2PortalBrowserSmokeTests(unittest.TestCase):
                             page.locator("#portalControlPanel").inner_text(),
                         )
                         self.assertGreater(page.locator("#v2-activity-nav a").count(), 0)
+                        self.assertIsNone(page.locator("body").get_attribute("data-shell-fatal-class"))
                     finally:
                         browser.close()
 
     def test_cts_gis_route_opens_interface_panel_primary(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            app = create_app(_build_config(Path(temp_dir), cts_gis_enabled=True))
+            config = _build_config(Path(temp_dir), cts_gis_enabled=True)
+            _write_maps_data(config)
+            app = create_app(config)
             with _serve_app(app) as base_url:
                 with sync_playwright() as playwright:
                     browser = playwright.chromium.launch()
@@ -203,7 +221,11 @@ class V2PortalBrowserSmokeTests(unittest.TestCase):
                     try:
                         page.goto(base_url + "/portal/system", wait_until="domcontentloaded")
                         page.wait_for_function("document.body.getAttribute('data-shell-boot-state') === 'fatal'")
-                        self.assertIn("shell failed", page.locator("#portalControlPanel").inner_text().lower())
+                        self.assertEqual(
+                            page.locator("body").get_attribute("data-shell-fatal-class"),
+                            "shell_post_failed",
+                        )
+                        self.assertIn("shell post failed", page.locator("#portalControlPanel").inner_text().lower())
                     finally:
                         browser.close()
 
@@ -221,7 +243,41 @@ class V2PortalBrowserSmokeTests(unittest.TestCase):
                     try:
                         page.goto(base_url + "/portal/system", wait_until="domcontentloaded")
                         page.wait_for_function("document.body.getAttribute('data-shell-boot-state') === 'fatal'")
+                        self.assertEqual(
+                            page.locator("body").get_attribute("data-shell-fatal-class"),
+                            "bundle_not_loaded",
+                        )
                         self.assertIn("did not load", page.locator("#portalControlPanel").inner_text().lower())
+                    finally:
+                        browser.close()
+
+    def test_render_dispatch_failure_enters_fatal_state(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            app = create_app(_build_config(Path(temp_dir)))
+            with _serve_app(app) as base_url:
+                with sync_playwright() as playwright:
+                    browser = playwright.chromium.launch()
+                    page = browser.new_page()
+
+                    def break_renderer(route) -> None:
+                        upstream = route.fetch()
+                        payload = json.loads(upstream.text())
+                        payload["shell_composition"]["regions"]["workbench"]["kind"] = "missing_render_kind"
+                        route.fulfill(
+                            status=200,
+                            headers={"content-type": "application/json"},
+                            body=json.dumps(payload),
+                        )
+
+                    page.route("**/portal/api/v2/admin/shell", break_renderer)
+                    try:
+                        page.goto(base_url + "/portal/system", wait_until="domcontentloaded")
+                        page.wait_for_function("document.body.getAttribute('data-shell-boot-state') === 'fatal'")
+                        self.assertEqual(
+                            page.locator("body").get_attribute("data-shell-fatal-class"),
+                            "render_dispatch_failed",
+                        )
+                        self.assertIn("render dispatch failed", page.locator("#v2-workbench-body").inner_text().lower())
                     finally:
                         browser.close()
 
