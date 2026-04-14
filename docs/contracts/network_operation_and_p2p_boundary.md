@@ -8,6 +8,7 @@ This contract defines the forward role of `/portal/network`.
 
 - `/portal/network` is a shell root, not a tool family surface.
 - It now exposes a contract-first read model over hosted/network entities.
+- It is not the old V1 `NETWORK` contract-editor or profile-write surface.
 - It must point to hosted/network entity contracts instead of provider
   placeholders.
 

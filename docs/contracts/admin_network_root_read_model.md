@@ -5,6 +5,9 @@ Authority: [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md)
 This contract defines the current V2 `NETWORK` root as a contract-first,
 read-only entity model.
 
+V1 crosswalk audit:
+[../audits/v2_network_v1_to_v2_crosswalk_audit_2026-04-14.md](../audits/v2_network_v1_to_v2_crosswalk_audit_2026-04-14.md)
+
 ## Live surface
 
 - route: `/portal/network`
@@ -46,6 +49,8 @@ These appear through the root tabs:
 ## Boundary rules
 
 - This surface is read-only.
+- This surface is not the old V1 `NETWORK` contract-editor or profile-write
+  surface.
 - It does not launch `host_alias_tool` runtime behavior.
 - It does not treat provider configuration as relationship authority.
 - It does not collapse request-log evidence and local audit into one source of

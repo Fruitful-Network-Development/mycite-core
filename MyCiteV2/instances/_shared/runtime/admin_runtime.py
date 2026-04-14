@@ -45,6 +45,7 @@ from MyCiteV2.instances._shared.runtime.admin_aws_runtime import (
     ADMIN_AWS_CSM_FAMILY_HOME_REQUEST_SCHEMA,
     ADMIN_AWS_NARROW_WRITE_REQUEST_SCHEMA,
     ADMIN_AWS_READ_ONLY_REQUEST_SCHEMA,
+    describe_aws_csm_onboarding_guidance,
     run_admin_aws_csm_family_home,
     run_admin_aws_csm_newsletter,
     run_admin_aws_csm_sandbox_read_only,
@@ -1013,6 +1014,8 @@ def _workbench_aws_csm_family(*, surface_payload: dict[str, Any] | None) -> dict
         "domain_states": domain_states,
         "subsurface_navigation": selected_navigation,
         "gated_subsurfaces": dict(sp.get("gated_subsurfaces") or {}),
+        "readiness_summary": dict(sp.get("readiness_summary") or {}),
+        "recovery_summary": dict(sp.get("recovery_summary") or {}),
     }
 
 
@@ -1024,6 +1027,8 @@ def _workbench_aws_subsurface(
     read_only_document: dict[str, Any] | None,
     help_text: str,
     submit_route: str,
+    readiness_summary: dict[str, Any] | None = None,
+    recovery_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     preview = read_only_document or {}
     profile = dict(preview.get("canonical_newsletter_operational_profile") or {})
@@ -1048,6 +1053,8 @@ def _workbench_aws_subsurface(
             "delivery_mode": _as_text(profile.get("delivery_mode")),
         },
         "compatibility_warnings": list(preview.get("compatibility_warnings") or []),
+        "readiness_summary": dict(readiness_summary or {}),
+        "recovery_summary": dict(recovery_summary or {}),
     }
 
 
@@ -1163,6 +1170,8 @@ def _inspector_aws_csm_family_home(*, surface: dict[str, Any]) -> dict[str, Any]
         "newsletter_enabled": bool(surface.get("newsletter_enabled")),
         "subsurface_navigation": surface.get("subsurface_navigation") or {},
         "gated_subsurfaces": surface.get("gated_subsurfaces") or {},
+        "readiness_summary": surface.get("readiness_summary") or {},
+        "recovery_summary": surface.get("recovery_summary") or {},
     }
 
 
@@ -1191,6 +1200,8 @@ def _inspector_csm_onboarding_form(
     *,
     portal_tenant_id: str,
     read_only_document: dict[str, Any] | None,
+    readiness_summary: dict[str, Any] | None = None,
+    recovery_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     sp = read_only_document or {}
     profile = sp.get("canonical_newsletter_operational_profile") or {}
@@ -1203,6 +1214,8 @@ def _inspector_csm_onboarding_form(
         "title": "AWS-CSM onboarding",
         "kind": "csm_onboarding_form",
         "read_only_context": sp,
+        "readiness_summary": dict(readiness_summary or {}),
+        "recovery_summary": dict(recovery_summary or {}),
         "submit_contract": {
             "route": "/portal/api/v2/admin/aws/csm-onboarding",
             "method": "POST",
@@ -1581,6 +1594,12 @@ def _build_regions_and_surface(
         }
         aws_env = run_admin_aws_read_only(ro_payload, aws_status_file=aws_path)
         ro_surface = aws_env.get("surface_payload") if not aws_env.get("error") else None
+        guidance = describe_aws_csm_onboarding_guidance(
+            tenant_scope_id=portal_tenant_id,
+            read_only_surface=ro_surface if isinstance(ro_surface, dict) else None,
+            aws_status_file=aws_path,
+            private_dir=private_dir,
+        )
         wb = _workbench_aws_subsurface(
             title="AWS-CSM Mailbox Onboarding",
             subtitle="Bounded orchestration projection",
@@ -1588,15 +1607,22 @@ def _build_regions_and_surface(
             read_only_document=ro_surface if isinstance(ro_surface, dict) else None,
             help_text="Open the interface panel when you want to advance onboarding steps.",
             submit_route="/portal/api/v2/admin/aws/csm-onboarding",
+            readiness_summary=guidance["readiness_summary"],
+            recovery_summary=guidance["recovery_summary"],
         )
         ins = _inspector_csm_onboarding_form(
             portal_tenant_id=portal_tenant_id,
             read_only_document=ro_surface if isinstance(ro_surface, dict) else None,
+            readiness_summary=guidance["readiness_summary"],
+            recovery_summary=guidance["recovery_summary"],
         )
         sp_wrap = {
             "schema": "mycite.v2.admin.aws.csm_onboarding.panel_surface.v1",
             "read_only_preview_error": aws_env.get("error"),
             "read_only_surface": ro_surface,
+            "cloud_readiness": guidance["cloud_readiness"],
+            "readiness_summary": guidance["readiness_summary"],
+            "recovery_summary": guidance["recovery_summary"],
         }
         comp = build_shell_composition_payload(
             active_surface_id=active,

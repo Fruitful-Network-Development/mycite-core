@@ -58,6 +58,8 @@ The shared admin shell now uses the canonical root model:
 - `NETWORK` now renders `portal_instance`, `host_alias`,
   `external_service_binding`, `progeny_link`, and `p2p_contract` summaries
   while `host_alias_tool` runtime behavior remains held for a later pass
+- `NETWORK` is read-only and contract-first; it is not the old V1
+  contract-editor or profile-write surface
 
 ## Implemented V2.3 trusted-tenant surfaces
 
@@ -146,6 +148,7 @@ tool follow-on work decision-complete before later tool implementation resumes.
 | [../v2.3-tool_surface_packet/cts_gis.md](../v2.3-tool_surface_packet/cts_gis.md) | current implementation truth | Documents the implemented admin CTS-GIS read-only slice and its FND-first rollout. |
 | [../../contracts/tool_kind_and_portal_attachment_contract.md](../../contracts/tool_kind_and_portal_attachment_contract.md) | taxonomy truth | Documents `tool_kind`, root services, and shared portal capability declarations. |
 | [../../contracts/network_operation_and_p2p_boundary.md](../../contracts/network_operation_and_p2p_boundary.md) | network sequencing truth | Documents the contracts-first hosted/network path. |
+| [../../audits/v2_network_v1_to_v2_crosswalk_audit_2026-04-14.md](../../audits/v2_network_v1_to_v2_crosswalk_audit_2026-04-14.md) | network crosswalk audit | Maps V1 `NETWORK` ideas to the current V2 read-only root and records live runtime proof. |
 | [../../audits/v2_tool_surface_and_legacy_tool_audit_2026-04-12.md](../../audits/v2_tool_surface_and_legacy_tool_audit_2026-04-12.md) | supporting audit | Reconciles repo truth, live admin-shell truth, and legacy evidence. |
 
 ## Reading order for new work

@@ -5,6 +5,35 @@
 (function () {
   var renderers = window.PortalShellInspectorRenderers || (window.PortalShellInspectorRenderers = {});
 
+  function guidanceSectionHtml(escapeHtml, summary, title) {
+    var items = (summary && summary.items) || [];
+    var recommended = (summary && summary.recommended_action) || "";
+    if (!items.length) return "";
+    return (
+      '<section class="v2-card" style="margin-top:12px"><h3>' +
+      escapeHtml(title || "Guidance") +
+      "</h3>" +
+      (recommended
+        ? '<p class="ide-controlpanel__empty">Recommended action: <code>' + escapeHtml(recommended) + "</code></p>"
+        : "") +
+      "<dl class=\"v2-surface-dl\">" +
+      items
+        .map(function (item) {
+          return (
+            "<dt>" +
+            escapeHtml(item.label || item.id || "item") +
+            "</dt><dd><strong>" +
+            escapeHtml((item.status || "unknown").replace(/_/g, " ")) +
+            "</strong><br />" +
+            escapeHtml(item.detail || "") +
+            "</dd>"
+          );
+        })
+        .join("") +
+      "</dl></section>"
+    );
+  }
+
   renderers.cts_gis_summary = function (ctx) {
     var region = ctx.region || {};
     var titleEl = ctx.titleEl;
@@ -124,6 +153,8 @@
     var newsletterFixed = newsletterContract.fixed_request_fields || {};
     var navigation = region.subsurface_navigation || {};
     var gatedSubsurfaces = region.gated_subsurfaces || {};
+    var readinessSummary = region.readiness_summary || {};
+    var recoverySummary = region.recovery_summary || {};
     var callerIdentity = familyHealth.caller_identity || {};
     var queueHealth = familyHealth.dispatch_queue || {};
     var dispatcherHealth = familyHealth.dispatcher_lambda || {};
@@ -258,6 +289,8 @@
       escapeHtml(inboundHealth.status || "—") +
       "</dd>" +
       "</dl></section>" +
+      guidanceSectionHtml(escapeHtml, readinessSummary, "Readiness summary") +
+      guidanceSectionHtml(escapeHtml, recoverySummary, "Recovery guidance") +
       '<section class="v2-card" style="margin-top:12px"><h3>Family navigation</h3><div style="display:flex;gap:8px;flex-wrap:wrap">' +
       '<button type="button" class="ide-sessionAction ide-sessionAction--button" id="v2-aws-csm-open-read-only" style="border-radius:6px">Open read-only overview</button>' +
       '<button type="button" class="ide-sessionAction ide-sessionAction--button" id="v2-aws-csm-open-write" style="border-radius:6px">Open sender selection</button>' +
@@ -481,6 +514,8 @@
     var initial = contract.initial_values || {};
     var fixed = contract.fixed_request_fields || {};
     var options = contract.onboarding_action_options || [];
+    var readinessSummary = region.readiness_summary || {};
+    var recoverySummary = region.recovery_summary || {};
     var optHtml = options
       .map(function (a) {
         return (
@@ -510,6 +545,8 @@
       '" style="width:100%;box-sizing:border-box;margin-bottom:12px;padding:6px 8px" />' +
       '<button type="submit" class="ide-sessionAction ide-sessionAction--button" style="border-radius:6px">Apply onboarding step</button>' +
       "</form>" +
+      guidanceSectionHtml(escapeHtml, readinessSummary, "Readiness summary") +
+      guidanceSectionHtml(escapeHtml, recoverySummary, "Recovery guidance") +
       '<pre id="v2-csm-onboarding-result" class="v2-json-panel" style="margin-top:12px" hidden></pre>';
     if (titleEl) titleEl.textContent = region.title || "AWS-CSM onboarding";
     content.innerHTML = html;

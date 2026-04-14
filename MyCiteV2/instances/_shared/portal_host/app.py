@@ -935,6 +935,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     _json_payload(),
                     aws_status_file=_required_live_aws_status_file(host_config),
                     audit_storage_file=host_config.aws_audit_storage_file,
+                    private_dir=host_config.private_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )

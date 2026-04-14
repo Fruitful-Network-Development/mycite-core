@@ -57,6 +57,45 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         ):
             self.assertIn(token, text)
 
+    def test_network_docs_keep_read_only_contract_first_v2_language(self) -> None:
+        current_text = "\n".join(
+            (
+                (REPO_ROOT / "docs" / "contracts" / "admin_network_root_read_model.md").read_text(encoding="utf-8"),
+                (REPO_ROOT / "docs" / "contracts" / "network_operation_and_p2p_boundary.md").read_text(encoding="utf-8"),
+                (REPO_ROOT / "docs" / "plans" / "post_mvp_rollout" / "current_planning_index.md").read_text(encoding="utf-8"),
+                (REPO_ROOT / "docs" / "audits" / "v2_network_v1_to_v2_crosswalk_audit_2026-04-14.md").read_text(encoding="utf-8"),
+            )
+        )
+
+        for token in (
+            "read-only",
+            "contract-first",
+            "host_alias_tool",
+            "tenant_progeny_profiles",
+            "active_service=network",
+            "workbench_kind=network_root",
+            "contract_first_read_model",
+        ):
+            self.assertIn(token, current_text)
+
+        for legacy_phrase in (
+            "NETWORK > Contracts is the canonical contract editor",
+            "profile editing, and contract context",
+            "/portal/api/data/write/field_contracts",
+        ):
+            self.assertNotIn(legacy_phrase, current_text)
+
+    def test_tool_taxonomy_docs_keep_default_tool_forbidden(self) -> None:
+        text = "\n".join(
+            (
+                (REPO_ROOT / "docs" / "contracts" / "tool_kind_and_portal_attachment_contract.md").read_text(encoding="utf-8"),
+                (REPO_ROOT / "docs" / "contracts" / "tool_exposure_and_admin_activity_bar_contract.md").read_text(encoding="utf-8"),
+            )
+        )
+
+        self.assertIn("default_tool", text)
+        self.assertIn("forbidden", text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -437,6 +437,7 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             self.assertEqual(result["shell_composition"]["foreground_shell_region"], "center-workbench")
             self.assertTrue(result["shell_composition"]["inspector_collapsed"])
             self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "aws_csm_family_workbench")
+            self.assertTrue(result["shell_composition"]["regions"]["workbench"]["readiness_summary"]["items"])
             ins = result["shell_composition"]["regions"]["inspector"]
             self.assertEqual(ins["kind"], "aws_csm_family_home")
             self.assertEqual(ins["selected_domain_state"]["domain"], "trappfamilyfarm.com")
