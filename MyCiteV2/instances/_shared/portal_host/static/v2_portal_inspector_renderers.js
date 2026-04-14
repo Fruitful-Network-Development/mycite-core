@@ -34,62 +34,221 @@
     );
   }
 
-  renderers.cts_gis_summary = function (ctx) {
+  renderers.cts_gis_interface_panel = function (ctx) {
     var region = ctx.region || {};
     var titleEl = ctx.titleEl;
     var content = ctx.target;
     var escapeHtml = ctx.escapeHtml;
+    var renderCtsGisSvg = ctx.renderCtsGisSvg;
+    var loadRuntimeView = ctx.loadRuntimeView;
     var envelope = (ctx.getEnvelope && ctx.getEnvelope()) || {};
     var mapSurface = envelope.surface_payload || {};
     var mapAttentionProfile = mapSurface.attention_profile || {};
     var mapMediationState = mapSurface.mediation_state || {};
+    var mapAvailableIntentions = mapMediationState.available_intentions || [];
     var mapRenderSetSummary = mapSurface.render_set_summary || {};
     var mapSelectedDocument = mapSurface.selected_document || {};
+    var mapLineage = mapSurface.lineage || [];
+    var mapChildren = mapSurface.children || [];
+    var mapRelatedProfiles = mapSurface.related_profiles || [];
     var mapSelectedFeature = (mapSurface.map_projection || {}).selected_feature || {};
     var mapSelectedRow = mapSurface.selected_row || {};
     var mapDiagnosticSummary = mapSurface.diagnostic_summary || {};
     var mapLensState = mapSurface.lens_state || {};
+    var mapSelectionSummary = mapMediationState.selection_summary || {};
     var mapWarnings = ((mapSurface.warnings || region.warnings) || [])
       .map(function (warning) {
         return "<li>" + escapeHtml(String(warning)) + "</li>";
       })
       .join("");
-    if (titleEl) titleEl.textContent = region.title || "CTS-GIS";
-    content.innerHTML =
-      '<dl class="v2-surface-dl">' +
+    var requestContract = region.request_contract || {};
+    var ctsGisHelpers = window.PortalShellCtsGisHelpers || {};
+
+    function profileButton(profile, isActive) {
+      if (typeof ctsGisHelpers.profileButtonHtml === "function") {
+        return ctsGisHelpers.profileButtonHtml({
+          profile: profile,
+          escapeHtml: escapeHtml,
+          attrName: "data-cts-gis-node-id",
+          isActive: isActive,
+        });
+      }
+      return "";
+    }
+
+    function bindInteractions() {
+      if (typeof ctsGisHelpers.bindInteractions !== "function") return;
+      ctsGisHelpers.bindInteractions({
+        body: content,
+        loadRuntimeView: loadRuntimeView,
+        requestContract: requestContract,
+        selectedDocument: mapSelectedDocument,
+        mediationState: mapMediationState,
+        selectionSummary: mapSelectionSummary,
+        selectedRow: mapSelectedRow,
+        selectedFeature: mapSelectedFeature,
+        lensState: mapLensState,
+      });
+    }
+
+    var panelCards =
+      '<div class="v2-card-grid">' +
+      '<article class="v2-card"><h3>Document</h3><p>' +
+      escapeHtml(mapSelectedDocument.document_name || mapSelectedDocument.document_id || "—") +
+      "</p></article>" +
+      '<article class="v2-card"><h3>Attention</h3><p>' +
+      escapeHtml(mapAttentionProfile.profile_label || mapAttentionProfile.node_id || "—") +
+      "</p></article>" +
+      '<article class="v2-card"><h3>Intention</h3><p>' +
+      escapeHtml(String(mapRenderSetSummary.render_mode || mapMediationState.intention_token || "—").replace(/_/g, " ")) +
+      "</p></article>" +
+      '<article class="v2-card"><h3>Features</h3><p>' +
+      escapeHtml(String(mapDiagnosticSummary.render_feature_count != null ? mapDiagnosticSummary.render_feature_count : mapDiagnosticSummary.feature_count != null ? mapDiagnosticSummary.feature_count : "0")) +
+      "</p></article>" +
+      "</div>";
+    var attentionShellHtml =
+      mapLineage.length > 0
+        ? '<section class="v2-card" style="margin-top:12px"><h3>Attention shell</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+          mapLineage
+            .map(function (profile) {
+              return profileButton(
+                profile,
+                !!profile.selected || String(profile.node_id || "") === String(mapMediationState.attention_node_id || "")
+              );
+            })
+            .join('<span aria-hidden="true">/</span>') +
+          "</div></section>"
+        : "";
+    var intentionHtml =
+      '<section class="v2-card" style="margin-top:12px"><h3>Intention controls</h3>' +
+      (mapAvailableIntentions.length > 0
+        ? '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          mapAvailableIntentions
+            .map(function (option) {
+              return (
+                '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-cts-gis-intention-token="' +
+                escapeHtml(option.token || "") +
+                '" style="border-radius:6px' +
+                (option.active ? ";font-weight:700" : "") +
+                '">' +
+                escapeHtml(option.label || option.token || "intention") +
+                " (" +
+                escapeHtml(String(option.feature_count != null ? option.feature_count : 0)) +
+                ")</button>"
+              );
+            })
+            .join("") +
+          "</div>"
+        : "<p>No intention controls are available for the current attention state.</p>") +
+      "</section>";
+    var lensHtml =
+      '<section class="v2-card" style="margin-top:12px"><h3>Lens</h3>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+      '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-cts-gis-overlay-mode="auto" style="border-radius:6px' +
+      ((mapLensState.overlay_mode || "auto") === "auto" ? ";font-weight:700" : "") +
+      '">Auto overlay</button>' +
+      '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-cts-gis-overlay-mode="raw_only" style="border-radius:6px' +
+      ((mapLensState.overlay_mode || "auto") === "raw_only" ? ";font-weight:700" : "") +
+      '">Raw only</button>' +
+      '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="v2-cts-gis-raw-underlay-toggle"' +
+      (mapLensState.raw_underlay_visible ? " checked" : "") +
+      "> show raw values</label></div></section>";
+    var operatorSummaryHtml =
+      '<section class="v2-card" style="margin-top:12px"><h3>Operator focus</h3><dl class="v2-surface-dl">' +
       "<dt>Document</dt><dd><code>" +
       escapeHtml(mapSelectedDocument.document_name || "—") +
-      "</code></dd>" +
-      "<dt>Relative path</dt><dd><code>" +
+      "</code></dd><dt>Relative path</dt><dd><code>" +
       escapeHtml(mapSelectedDocument.relative_path || "—") +
-      "</code></dd>" +
-      "<dt>Attention</dt><dd>" +
-      escapeHtml(mapAttentionProfile.profile_label || mapAttentionProfile.node_id || "—") +
-      "</dd>" +
-      "<dt>Intention</dt><dd>" +
-      escapeHtml(String(mapRenderSetSummary.render_mode || mapMediationState.intention_token || "—").replace(/_/g, " ")) +
-      "</dd>" +
-      "<dt>Feature count</dt><dd>" +
-      escapeHtml(String(mapDiagnosticSummary.render_feature_count != null ? mapDiagnosticSummary.render_feature_count : mapDiagnosticSummary.feature_count != null ? mapDiagnosticSummary.feature_count : "0")) +
-      "</dd>" +
-      "<dt>Selected feature</dt><dd><code>" +
+      "</code></dd><dt>Attention node</dt><dd><code>" +
+      escapeHtml(mapAttentionProfile.node_id || "—") +
+      "</code></dd><dt>Selected feature</dt><dd><code>" +
       escapeHtml(mapSelectedFeature.feature_id || "—") +
-      "</code></dd>" +
-      "<dt>Selected row</dt><dd><code>" +
+      "</code></dd><dt>Selected row</dt><dd><code>" +
       escapeHtml(mapSelectedRow.datum_address || "—") +
-      "</code></dd>" +
-      "<dt>Overlay mode</dt><dd>" +
+      "</code></dd><dt>Overlay mode</dt><dd>" +
       escapeHtml(mapLensState.overlay_mode || "—") +
-      "</dd></dl>" +
-      '<section class="v2-card" style="margin-top:12px"><h3>Selected row</h3><pre class="v2-json-panel">' +
-      escapeHtml(JSON.stringify(mapSelectedRow.raw || mapSelectedRow || {}, null, 2)) +
-      "</pre></section>" +
+      "</dd></dl></section>";
+    var attentionProfileHtml =
+      mapAttentionProfile && (mapAttentionProfile.node_id || mapAttentionProfile.profile_label)
+        ? '<section class="v2-card" style="margin-top:12px"><h3>Attention profile</h3><dl class="v2-surface-dl">' +
+          "<dt>Profile</dt><dd>" +
+          escapeHtml(mapAttentionProfile.profile_label || "—") +
+          "</dd><dt>Node</dt><dd><code>" +
+          escapeHtml(mapAttentionProfile.node_id || "—") +
+          "</code></dd><dt>Row</dt><dd><code>" +
+          escapeHtml(mapAttentionProfile.row_address || "—") +
+          "</code></dd><dt>Children</dt><dd>" +
+          escapeHtml(String(mapAttentionProfile.child_count != null ? mapAttentionProfile.child_count : "0")) +
+          "</dd><dt>Features</dt><dd>" +
+          escapeHtml(String(mapAttentionProfile.feature_count != null ? mapAttentionProfile.feature_count : "0")) +
+          "</dd></dl></section>"
+        : "";
+    var selectedFeatureHtml =
+      mapSelectedFeature && mapSelectedFeature.feature_id
+        ? '<section class="v2-card" style="margin-top:12px"><h3>Selected feature</h3><dl class="v2-surface-dl">' +
+          "<dt>Feature</dt><dd><code>" +
+          escapeHtml(mapSelectedFeature.feature_id || "") +
+          "</code></dd><dt>Geometry</dt><dd>" +
+          escapeHtml(mapSelectedFeature.geometry_type || "—") +
+          "</dd><dt>Row</dt><dd><code>" +
+          escapeHtml(mapSelectedFeature.row_address || "—") +
+          "</code></dd><dt>Label</dt><dd>" +
+          escapeHtml(mapSelectedFeature.profile_label || mapSelectedFeature.label_text || "—") +
+          "</dd><dt>Node</dt><dd><code>" +
+          escapeHtml(mapSelectedFeature.samras_node_id || "—") +
+          "</code></dd></dl></section>"
+        : "";
+    var childrenHtml =
+      '<section class="v2-card" style="margin-top:12px"><h3>Children</h3>' +
+      (mapChildren.length > 0
+        ? '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          mapChildren
+            .map(function (profile) {
+              return profileButton(profile, false);
+            })
+            .join("") +
+          "</div>"
+        : "<p>No direct child profiles are available for the current attention node.</p>") +
+      "</section>";
+    var relatedHtml =
+      mapRelatedProfiles.length > 0
+        ? '<section class="v2-card" style="margin-top:12px"><h3>Related profiles</h3><ul>' +
+          mapRelatedProfiles
+            .map(function (profile) {
+              return (
+                "<li><strong>" +
+                escapeHtml(profile.profile_label || profile.node_id || "profile") +
+                "</strong> <small>" +
+                escapeHtml(profile.relation || "related") +
+                "</small></li>"
+              );
+            })
+            .join("") +
+          "</ul></section>"
+        : "";
+    if (titleEl) titleEl.textContent = region.title || "CTS-GIS";
+    content.innerHTML =
+      '<div data-cts-gis-interface-panel="true">' +
+      panelCards +
+      renderCtsGisSvg(mapSurface.map_projection || {}) +
+      attentionShellHtml +
+      intentionHtml +
+      lensHtml +
+      operatorSummaryHtml +
+      attentionProfileHtml +
+      selectedFeatureHtml +
+      childrenHtml +
+      relatedHtml +
       (mapWarnings
         ? '<section class="v2-card" style="margin-top:12px"><h3>Warnings</h3><ul>' +
           mapWarnings +
           "</ul></section>"
-        : "");
+        : "") +
+      "</div>";
+    bindInteractions();
   };
+
+  renderers.cts_gis_summary = renderers.cts_gis_interface_panel;
 
   renderers.fnd_ebi_summary = function (ctx) {
     var region = ctx.region || {};

@@ -423,6 +423,7 @@ def build_admin_cts_gis_workbench(
     surface_payload: dict[str, Any],
     portal_tenant_id: str,
 ) -> dict[str, Any]:
+    request_contract = _build_admin_cts_gis_request_contract(portal_tenant_id)
     selected_document = surface_payload.get("selected_document") or {}
     map_projection = surface_payload.get("map_projection") or {}
     diagnostic_summary = surface_payload.get("diagnostic_summary") or {}
@@ -452,26 +453,35 @@ def build_admin_cts_gis_workbench(
         "mediation_state": mediation_state,
         "lens_state": surface_payload.get("lens_state") or {},
         "warnings": list(surface_payload.get("warnings") or []),
-        "request_contract": {
-            "route": "/portal/api/v2/admin/cts-gis/read-only",
-            "method": "POST",
-            "request_schema": ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
-            "fixed_request_fields": {
-                "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
-            },
-            "overlay_mode_options": ["auto", "raw_only"],
-            "portal_tenant_id": portal_tenant_id,
-            "supports_mediation_state": True,
-        },
+        "request_contract": request_contract,
     }
 
 
-def build_admin_cts_gis_inspector(*, surface_payload: dict[str, Any]) -> dict[str, Any]:
+def _build_admin_cts_gis_request_contract(portal_tenant_id: str) -> dict[str, Any]:
+    return {
+        "route": "/portal/api/v2/admin/cts-gis/read-only",
+        "method": "POST",
+        "request_schema": ADMIN_CTS_GIS_READ_ONLY_REQUEST_SCHEMA,
+        "fixed_request_fields": {
+            "tenant_scope": {"scope_id": "internal-admin", "audience": "internal"},
+        },
+        "overlay_mode_options": ["auto", "raw_only"],
+        "portal_tenant_id": portal_tenant_id,
+        "supports_mediation_state": True,
+    }
+
+
+def build_admin_cts_gis_inspector(
+    *,
+    surface_payload: dict[str, Any],
+    portal_tenant_id: str,
+) -> dict[str, Any]:
     return {
         "schema": ADMIN_SHELL_REGION_INSPECTOR_SCHEMA,
         "title": "CTS-GIS",
-        "kind": "cts_gis_summary",
+        "kind": "cts_gis_interface_panel",
         "render_from_surface_payload": True,
+        "request_contract": _build_admin_cts_gis_request_contract(portal_tenant_id),
         "warnings": list(surface_payload.get("warnings") or []),
     }
 
@@ -570,7 +580,10 @@ def run_admin_cts_gis_read_only(
             surface_payload=surface_payload,
             portal_tenant_id=_as_text(portal_tenant_id) or "fnd",
         ),
-        inspector=build_admin_cts_gis_inspector(surface_payload=surface_payload),
+        inspector=build_admin_cts_gis_inspector(
+            surface_payload=surface_payload,
+            portal_tenant_id=_as_text(portal_tenant_id) or "fnd",
+        ),
     )
     _apply_shell_chrome_to_composition(shell_composition, shell_chrome)
     apply_surface_posture_to_composition(shell_composition)

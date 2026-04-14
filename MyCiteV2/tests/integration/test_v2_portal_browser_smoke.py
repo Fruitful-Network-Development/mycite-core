@@ -170,6 +170,22 @@ class V2PortalBrowserSmokeTests(unittest.TestCase):
                             page.locator("#portalInspector").get_attribute("data-primary-surface"),
                             "true",
                         )
+                        self.assertEqual(
+                            page.locator("#portalInspector [data-cts-gis-interface-panel='true']").count(),
+                            1,
+                        )
+                        self.assertGreater(
+                            page.locator("#portalInspector [data-cts-gis-geojson-lens='true'] svg").count(),
+                            0,
+                        )
+                        self.assertEqual(
+                            page.locator("[data-shell-region='center-workbench'] [data-cts-gis-evidence-workbench='true']").count(),
+                            1,
+                        )
+                        self.assertIn(
+                            "Raw datum underlay",
+                            page.locator("[data-shell-region='center-workbench']").inner_text(),
+                        )
                     finally:
                         browser.close()
 

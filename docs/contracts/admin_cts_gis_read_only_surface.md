@@ -27,7 +27,7 @@ read-only mediation surface.
 - request schema: `mycite.v2.admin.cts_gis.read_only.request.v1`
 - surface schema: `mycite.v2.admin.cts_gis.read_only.surface.v1`
 - workbench kind: `cts_gis_workbench`
-- inspector kind: `cts_gis_summary`
+- inspector kind: `cts_gis_interface_panel`
 - config gate: `tool_exposure.cts_gis.enabled`
 
 ## Compatibility Boundary
@@ -115,12 +115,22 @@ The surface payload contains:
 - `inspect_only`
 - `no_authoritative_cts_gis_documents`
 
+Both shell regions render from the same canonical `surface_payload`.
+The interface panel owns operator mediation and the GeoJSON lens.
+The workbench owns evidence, diagnostics, document switching, and expanded raw
+inspection.
+
 ## Mediation And Projection Rules
 
 - SAMRAS governs node/profile traversal and attention state
 - HOPS governs coordinate decoding and derived spatial projection
 - intra-document datum-address links may bridge profile rows to geometry rows
 - the client must render only server-issued `available_intentions`
+- the dominant interface panel renders the GeoJSON lens, attention shell,
+  intention controls, lens toggles, and concise operator focus using the
+  canonical `surface_payload`
+- the background workbench renders document catalog, projected-feature tables,
+  diagnostics, warnings, and raw datum evidence from that same payload
 - CTS-GIS remains under `Utilities`; it is not promoted into a root service
 - CTS-GIS uses the unified shell surface; it does not define a tool-owned shell
   model

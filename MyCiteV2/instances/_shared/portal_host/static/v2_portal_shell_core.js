@@ -162,7 +162,7 @@
     var features = featureCollection.features || [];
     if (!features.length) {
       return (
-        '<div class="v2-card" style="margin-top:12px"><h3>Geographic pane</h3><p>No projectable features are available for this document.</p></div>'
+        '<div class="v2-card" data-cts-gis-geojson-lens="true" style="margin-top:12px"><h3>Geographic pane</h3><p>No projectable features are available for this document.</p></div>'
       );
     }
     var bounds = featureCollection.bounds || [-180, -90, 180, 90];
@@ -259,7 +259,7 @@
       })
       .join("");
     return (
-      '<div class="v2-card" style="margin-top:12px"><h3>Geographic pane</h3><svg viewBox="0 0 ' +
+      '<div class="v2-card" data-cts-gis-geojson-lens="true" style="margin-top:12px"><h3>Geographic pane</h3><svg viewBox="0 0 ' +
       width +
       " " +
       height +
@@ -2376,7 +2376,7 @@
           : "");
       return;
     }
-    if (kind === "cts_gis_summary") {
+    if (kind === "cts_gis_interface_panel" || kind === "cts_gis_summary") {
       var mapSurface = (lastEnvelope && lastEnvelope.surface_payload) || {};
       var mapAttentionProfile = mapSurface.attention_profile || {};
       var mapMediationState = mapSurface.mediation_state || {};

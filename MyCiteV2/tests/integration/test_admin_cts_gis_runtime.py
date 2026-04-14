@@ -119,9 +119,13 @@ class AdminCtsGisRuntimeIntegrationTests(unittest.TestCase):
             self.assertEqual(result["shell_composition"]["foreground_shell_region"], "interface-panel")
             self.assertFalse(result["shell_composition"]["inspector_collapsed"])
             self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "cts_gis_workbench")
-            self.assertEqual(result["shell_composition"]["regions"]["inspector"]["kind"], "cts_gis_summary")
+            self.assertEqual(result["shell_composition"]["regions"]["inspector"]["kind"], "cts_gis_interface_panel")
             self.assertTrue(result["shell_composition"]["regions"]["inspector"]["primary_surface"])
             self.assertEqual(result["shell_composition"]["regions"]["inspector"]["layout_mode"], "dominant")
+            self.assertEqual(
+                result["shell_composition"]["regions"]["inspector"]["request_contract"]["route"],
+                "/portal/api/v2/admin/cts-gis/read-only",
+            )
             self.assertEqual(
                 result["surface_payload"]["map_projection"]["projection_state"],
                 "projectable",
