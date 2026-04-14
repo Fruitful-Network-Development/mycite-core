@@ -305,7 +305,7 @@ class AwsCsmNewsletterService:
             "inbound_capture_status": _as_text(profile.get("last_inbound_status")) or "not_processed",
         }
         return {
-            "schema": "mycite.v2.admin.aws_csm.newsletter_domain_state.v1",
+            "schema": "mycite.v2.portal.system.tools.aws_csm.newsletter_domain_state.v1",
             "domain": token,
             "profile": dict(profile),
             "selected_author": dict(selected_author),
@@ -373,7 +373,7 @@ class AwsCsmNewsletterService:
                     )
                 )
         return {
-            "schema": "mycite.v2.admin.aws_csm.family_health.v1",
+            "schema": "mycite.v2.portal.system.tools.aws_csm.family_health.v1",
             "caller_identity": caller_identity,
             "dispatch_queue": queue_summary,
             "dispatcher_lambda": dispatcher_summary,

@@ -21,7 +21,7 @@ class AwsCsmOnboardingUnconfiguredCloudPort:
     def describe_profile_readiness(self, profile: dict[str, Any]) -> dict[str, Any]:
         _ = profile
         return {
-            "schema": "mycite.v2.admin.aws_csm.cloud_readiness.v1",
+            "schema": "mycite.v2.portal.system.tools.aws_csm.cloud_readiness.v1",
             "checked_at": "",
             "smtp": {
                 "status": "action_required",

@@ -1,16 +1,16 @@
 # State Machine
 
-Authority: [../../../docs/plans/v2-authority_stack.md](../../../docs/plans/v2-authority_stack.md)
+Authority: [../../../docs/contracts/portal_shell_contract.md](../../../docs/contracts/portal_shell_contract.md)
 
-`packages/state_machine/` owns shell legality, AITAS vocabulary, NIMM directives, Hanus shell behavior, and mediation surface behavior.
+`packages/state_machine/` owns portal-shell legality, AITAS vocabulary, NIMM directives, and the SYSTEM/tool surface state model.
 
-Retained Hanus/AITAS/NIMM concept sources are summarized in [../../../docs/ontology/retained_cross_version_concepts.md](../../../docs/ontology/retained_cross_version_concepts.md).
+The retained shell model is summarized in [../../../docs/contracts/portal_shell_contract.md](../../../docs/contracts/portal_shell_contract.md).
 
 Implemented for the MVP so far:
 
 - minimal `aitas` attention and intention contracts
 - minimal `nimm` directive normalization
-- minimal `hanus_shell` action, state, reducer, and result contracts
+- canonical portal shell request, selection, surface catalog, and tool registry contracts
 
 Deferred in this phase:
 

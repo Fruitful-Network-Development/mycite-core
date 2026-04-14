@@ -3,10 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MyCite Portal</title>
-  {# url_for keeps static URLs correct behind SCRIPT_NAME / proxies; matches V1 /portal/static layout #}
+  <title>MyCite Portal Shell</title>
   <style id="v2-shell-layout-fallback">
-    /* If portal.css fails to load, keep IDE-like regions readable until fixed (nginx upstream, deploy). */
     html { height: 100%; }
     body.v2-native-portal { margin: 0; min-height: 100%; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #202124; background: #f6f7f9; }
     .ide-shell { display: flex; flex-direction: column; min-height: 100vh; }
@@ -20,36 +18,29 @@
     .ide-logo { display: flex; justify-content: center; padding: 10px 0; }
     .ide-logo img { width: 28px; height: auto; filter: brightness(0) invert(1); opacity: 0.9; }
     .ide-activitynav { display: flex; flex-direction: column; gap: 2px; padding: 6px 4px; flex: 1; }
-    .ide-activitylink { color: inherit; text-decoration: none; padding: 8px 4px; font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-align: center; border-radius: 6px; line-height: 1.2; }
-    .ide-activitylink:hover { background: rgba(255,255,255,0.08); }
-    .ide-activitylink.is-active { background: rgba(255,255,255,0.14); outline: 1px solid rgba(255,255,255,0.25); }
-    .ide-activityfooter { font-size: 10px; padding: 8px 6px; border-top: 1px solid #1f2428; opacity: 0.85; }
-    .ide-sessionAction { color: #8ab4ff; text-decoration: none; display: block; margin-top: 6px; font-size: 10px; }
     .ide-workbench { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #fff; border-left: 1px solid #d8dee4; }
     .pagehead { display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 18px; border-bottom: 1px solid #d8dee4; gap: 12px; }
     .pagehead__title { font-size: 18px; font-weight: 600; margin: 0; }
     .pagehead__sub { font-size: 13px; opacity: 0.75; margin-top: 4px; }
     .viewport { flex: 1; overflow: auto; }
   </style>
-  {# Absolute path avoids SCRIPT_NAME mismatches behind some reverse proxies; must match Flask static_url_path. #}
   <link rel="stylesheet" href="/portal/static/portal.css" />
 </head>
 <body
   class="v2-native-portal"
   data-portal-shell-driver="v2-composition"
-  data-tenant-id="{{ tenant_id }}"
+  data-portal-instance-id="{{ portal_instance_id }}"
   data-host-shape="{{ host_shape }}"
-  data-analytics-domain="{{ analytics_domain }}"
+  data-portal-domain="{{ portal_domain }}"
   data-shell-endpoint="{{ shell_endpoint }}"
   data-runtime-envelope-schema="{{ runtime_envelope_schema }}"
   data-shell-boot-state="template"
   data-shell-watchdog-timeout-ms="1800"
 >
-  <!-- shell-template: v2-composition build={{ portal_build_id }} -->
   <script type="application/json" id="v2-bootstrap-shell-request">{{ bootstrap_shell_request | tojson }}</script>
   <noscript>
     <p style="margin:12px;padding:12px;background:#fff3cd;border:1px solid #ffc107;font-family:sans-serif">
-      This portal requires JavaScript. The shell loads composition from <code>POST {{ shell_endpoint }}</code>.
+      This portal shell requires JavaScript. The shell loads composition from <code>POST {{ shell_endpoint }}</code>.
     </p>
   </noscript>
   <div
@@ -73,7 +64,7 @@
       </nav>
       <div class="ide-menubar__center" aria-label="Page label">
         <span class="ide-menubar__pageTitle">MyCite</span>
-        <span class="ide-menubar__pageSub">{{ host_shape }} · tenant {{ tenant_id }} · {{ analytics_domain }}</span>
+        <span class="ide-menubar__pageSub">{{ host_shape }} · portal {{ portal_instance_id }} · {{ portal_domain }}</span>
       </div>
       <div class="ide-menubar__right">
         <div class="ide-menubar__shellActions" aria-label="Shell layout controls">
@@ -94,13 +85,11 @@
         </a>
         <nav id="v2-activity-nav" class="ide-activitynav" aria-label="Primary navigation"></nav>
         <div class="ide-activityfooter">
-          <div class="ide-sessionLine">Portal: {{ host_shape }}</div>
-          <div class="ide-sessionLine ide-sessionLine--dim">tenant: {{ tenant_id }}</div>
-          <div class="ide-sessionLine ide-sessionLine--dim">msn_id: (unset)</div>
-          <div class="ide-sessionLine ide-sessionLine--dim">signed in: (unknown)</div>
+          <div class="ide-sessionLine">Portal: {{ portal_instance_id }}</div>
+          <div class="ide-sessionLine ide-sessionLine--dim">domain: {{ portal_domain }}</div>
           <div class="ide-sessionLine ide-sessionLine--dim">build: {{ portal_build_id }}</div>
-          <a class="ide-sessionAction" href="/oauth2/sign_in?rd=%2Fportal%2Fsystem">Switch Active Portal</a>
-          <a class="ide-sessionAction" href="/oauth2/sign_out?rd=%2Foauth2%2Fsign_in%3Frd%3D%252Fportal%252Fsystem">Sign Out</a>
+          <a class="ide-sessionAction" href="/oauth2/sign_in?rd=%2Fportal%2Fsystem">Sign In</a>
+          <a class="ide-sessionAction" href="/oauth2/sign_out?rd=%2Fportal%2Fsystem">Sign Out</a>
         </div>
       </aside>
 
@@ -125,7 +114,7 @@
       >
         <div class="pagehead pagehead--withTools">
           <div class="pagehead__meta">
-            <div class="pagehead__title" id="v2-workbench-title">Home</div>
+            <div class="pagehead__title" id="v2-workbench-title">Portal Shell</div>
             <div class="pagehead__sub" id="v2-workbench-subtitle">{{ shell_loading_label }}</div>
           </div>
           <label class="themebar pagehead__theme" aria-label="Portal theme selector">
