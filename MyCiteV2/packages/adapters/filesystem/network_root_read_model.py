@@ -276,7 +276,7 @@ class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
             payload = {
                 "portal_instance": {
                     "portal_instance_id": request.portal_tenant_id,
-                    "audience": "trusted_tenant_plus_internal_admin",
+                    "surface_model": "one_shell_portal",
                     "runtime_flavor": "v2_native",
                     "domain": request.portal_domain,
                     "deployment_state": "runtime_only",
@@ -464,7 +464,7 @@ class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
         payload = {
             "portal_instance": {
                 "portal_instance_id": request.portal_tenant_id,
-                "audience": "trusted_tenant_plus_internal_admin",
+                "surface_model": "one_shell_portal",
                 "runtime_flavor": "v2_native",
                 "domain": request.portal_domain,
                 "deployment_state": "live_state_present" if private_dir.exists() else "not_configured",

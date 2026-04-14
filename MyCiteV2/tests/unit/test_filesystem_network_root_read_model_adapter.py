@@ -97,13 +97,13 @@ class FilesystemNetworkRootReadModelAdapterTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            admin_audit = private_dir / "local_audit" / "v2_admin_native.ndjson"
-            admin_audit.parent.mkdir(parents=True, exist_ok=True)
-            admin_audit.write_text('{"event":"admin.network.viewed"}\n', encoding="utf-8")
+            portal_audit = private_dir / "local_audit" / "v2_portal_native.ndjson"
+            portal_audit.parent.mkdir(parents=True, exist_ok=True)
+            portal_audit.write_text('{"event":"portal.network.viewed"}\n', encoding="utf-8")
 
             result = FilesystemNetworkRootReadModelAdapter(
                 private_dir=private_dir,
-                local_audit_file=admin_audit,
+                local_audit_file=portal_audit,
             ).read_network_root_model(
                 NetworkRootReadModelRequest(
                     portal_tenant_id="fnd",

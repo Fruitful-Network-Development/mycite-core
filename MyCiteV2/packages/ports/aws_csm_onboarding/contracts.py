@@ -1,4 +1,4 @@
-"""Ports for trusted-tenant AWS-CSM mailbox onboarding (shell Band 4)."""
+"""Ports for portal-shell AWS-CSM mailbox onboarding."""
 
 from __future__ import annotations
 

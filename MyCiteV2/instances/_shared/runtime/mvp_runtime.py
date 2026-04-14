@@ -5,7 +5,7 @@ from typing import Any
 
 from MyCiteV2.packages.adapters.filesystem import FilesystemAuditLogAdapter
 from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
-from MyCiteV2.packages.state_machine.hanus_shell import ShellAction, ShellState, reduce_shell_action
+from MyCiteV2.packages.state_machine.portal_shell import PortalShellRequest, resolve_portal_shell_request
 
 
 def run_shell_action_to_local_audit(
@@ -13,18 +13,22 @@ def run_shell_action_to_local_audit(
     *,
     storage_file: str | Path,
 ) -> dict[str, Any]:
-    action = ShellAction.from_dict(shell_action_payload)
-    shell_result = reduce_shell_action(ShellState(), action)
+    normalized_request = PortalShellRequest.from_dict(shell_action_payload)
+    shell_result = resolve_portal_shell_request(normalized_request)
 
     audit_log_adapter = FilesystemAuditLogAdapter(storage_file)
     local_audit_service = LocalAuditService(audit_log_adapter)
 
     append_receipt = local_audit_service.append_record(
         {
-            "event_type": "shell.transition.accepted",
-            "focus_subject": shell_result.focus_subject,
-            "shell_verb": shell_result.shell_verb,
-            "details": {},
+            "event_type": "portal.shell.request.accepted",
+            "requested_surface_id": shell_result.requested_surface_id,
+            "active_surface_id": shell_result.active_surface_id,
+            "details": {
+                "allowed": shell_result.allowed,
+                "selection_status": shell_result.selection_status,
+                "reason_code": shell_result.reason_code,
+            },
         }
     )
     stored_record = local_audit_service.read_record(append_receipt.record_id)
@@ -32,9 +36,9 @@ def run_shell_action_to_local_audit(
         raise RuntimeError("runtime read-back failed for appended local audit record")
 
     return {
-        "normalized_subject": shell_result.focus_subject,
-        "normalized_shell_verb": shell_result.shell_verb,
-        "normalized_shell_state": shell_result.shell_state.to_dict(),
+        "normalized_requested_surface_id": shell_result.requested_surface_id,
+        "normalized_active_surface_id": shell_result.active_surface_id,
+        "normalized_shell_state": shell_result.to_dict(),
         "persisted_audit_identifier": stored_record.record_id,
         "persisted_audit_timestamp": stored_record.recorded_at_unix_ms,
     }

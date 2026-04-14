@@ -199,7 +199,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             confirmation_status = "blocked"
 
         return {
-            "schema": "mycite.v2.admin.aws_csm.cloud_readiness.v1",
+            "schema": "mycite.v2.portal.system.tools.aws_csm.cloud_readiness.v1",
             "checked_at": checked_at,
             "profile_id": _as_text(identity.get("profile_id")),
             "domain": domain,

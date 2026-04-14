@@ -27,7 +27,7 @@ class PublicationTenantSummaryContractTests(unittest.TestCase):
             tenant_domain=request.tenant_domain,
             profile_id="3-2-3-17-77-2-6-3-1-6",
             public_profile={"title": "trapp_family_farm"},
-            tenant_profile={"summary": "Trusted-tenant summary"},
+            tenant_profile={"summary": "Portal summary"},
         )
         result = PublicationTenantSummaryResult(
             source=source,

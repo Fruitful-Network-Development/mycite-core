@@ -47,7 +47,7 @@ class PublicationTenantSummaryTests(unittest.TestCase):
                 },
                 tenant_profile={
                     "title": "trapp_family_farm",
-                    "summary": "Read-only publication summary for trusted tenants.",
+                    "summary": "Read-only publication summary for portal surfaces.",
                     "links": [{"href": "https://trappfamilyfarm.com"}],
                 },
             ),
@@ -58,7 +58,7 @@ class PublicationTenantSummaryTests(unittest.TestCase):
         self.assertEqual(payload["tenant_id"], "tff")
         self.assertEqual(payload["tenant_domain"], "trappfamilyfarm.com")
         self.assertEqual(payload["profile_title"], "Trapp Family Farm")
-        self.assertEqual(payload["profile_summary"], "Read-only publication summary for trusted tenants.")
+        self.assertEqual(payload["profile_summary"], "Read-only publication summary for portal surfaces.")
         self.assertEqual(payload["entity_type"], "legal_entity")
         self.assertEqual(payload["contact_email"], "hello@trappfamilyfarm.com")
         self.assertEqual(payload["public_website_url"], "https://trappfamilyfarm.com")
