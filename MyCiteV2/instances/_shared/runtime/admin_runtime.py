@@ -1751,7 +1751,10 @@ def _build_regions_and_surface(
                 surface_payload=sp,
                 portal_tenant_id=portal_tenant_id,
             ),
-            inspector=build_admin_cts_gis_inspector(surface_payload=sp),
+            inspector=build_admin_cts_gis_inspector(
+                surface_payload=sp,
+                portal_tenant_id=portal_tenant_id,
+            ),
         )
         return sp, comp, "MyCite", "CTS-GIS"
 

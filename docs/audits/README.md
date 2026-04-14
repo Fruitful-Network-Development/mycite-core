@@ -18,5 +18,9 @@ This directory stores evidence, notes, and historical inspection output.
   records the hydration hardening, ordered shell-script split, and restored
   mediation-first CTS-GIS posture that supersede the intermediate
   workbench-first shell realignment.
+- [v3_4_3_cts_gis_hanus_lens_completion_audit_2026-04-14.md](v3_4_3_cts_gis_hanus_lens_completion_audit_2026-04-14.md)
+  records the completion pass that moved the live CTS-GIS GeoJSON lens and
+  operator mediation into the dominant interface panel while preserving the
+  shared server-owned `surface_payload`.
 
 Authority remains in [../plans/v2-authority_stack.md](../plans/v2-authority_stack.md).

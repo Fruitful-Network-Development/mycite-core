@@ -85,6 +85,26 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         ):
             self.assertNotIn(legacy_phrase, current_text)
 
+    def test_cts_gis_docs_keep_interface_panel_lens_language(self) -> None:
+        text = "\n".join(
+            (
+                (REPO_ROOT / "docs" / "contracts" / "admin_cts_gis_read_only_surface.md").read_text(encoding="utf-8"),
+                (REPO_ROOT / "docs" / "contracts" / "cts_gis_hops_projection_lens_contract.md").read_text(encoding="utf-8"),
+                (REPO_ROOT / "docs" / "contracts" / "shell_region_kinds.md").read_text(encoding="utf-8"),
+                (REPO_ROOT / "docs" / "plans" / "v2.3-tool_surface_packet" / "cts_gis.md").read_text(encoding="utf-8"),
+                (REPO_ROOT / "docs" / "plans" / "post_mvp_rollout" / "current_planning_index.md").read_text(encoding="utf-8"),
+            )
+        )
+
+        for token in (
+            "cts_gis_interface_panel",
+            "dominant interface panel",
+            "GeoJSON",
+            "branch:<node_id>",
+            "FND-first",
+        ):
+            self.assertIn(token, text)
+
     def test_tool_taxonomy_docs_keep_default_tool_forbidden(self) -> None:
         text = "\n".join(
             (

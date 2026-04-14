@@ -41,7 +41,7 @@ truth, not through the older slice-registry sequence above.
 | Surface | Current use | Implementation truth |
 | --- | --- | --- |
 | `AWS-CSM` family landing on `admin_band1.aws_read_only_surface` | implemented FND-first admin tool family | [../v2.3-tool_surface_packet/aws_csm.md](../v2.3-tool_surface_packet/aws_csm.md) |
-| `admin_band5.cts_gis_read_only_surface` | implemented FND-first admin tool | [../v2.3-tool_surface_packet/cts_gis.md](../v2.3-tool_surface_packet/cts_gis.md) |
+| `admin_band5.cts_gis_read_only_surface` | finished FND-first admin tool deployment | [../v2.3-tool_surface_packet/cts_gis.md](../v2.3-tool_surface_packet/cts_gis.md) |
 | `admin_band6.fnd_ebi_read_only_surface` | implemented FND-first admin tool | [../v2.3-tool_surface_packet/fnd_ebi.md](../v2.3-tool_surface_packet/fnd_ebi.md) |
 
 The shared admin shell now uses the canonical root model:
@@ -55,6 +55,9 @@ The shared admin shell now uses the canonical root model:
   `AWS-CSM`
 - `CTS-GIS` remains implemented but is reached through `Utilities`, not as a
   peer principal activity item
+- `CTS-GIS` now uses the dominant interface panel as its Hanus lens surface,
+  while the workbench stays mounted as secondary evidence and raw-inspection
+  context
 - `NETWORK` now renders `portal_instance`, `host_alias`,
   `external_service_binding`, `progeny_link`, and `p2p_contract` summaries
   while `host_alias_tool` runtime behavior remains held for a later pass
@@ -104,7 +107,7 @@ canonical V2 closure and the implemented client/admin slices above.
 | Surface | Queue posture | Why it is active now |
 | --- | --- | --- |
 | [../v2.3-tool_surface_packet/fnd_ebi.md](../v2.3-tool_surface_packet/fnd_ebi.md) | `implemented family root` | Canonical service/site operational visibility family with its first read-only admin slice now live. |
-| [../v2.3-tool_surface_packet/cts_gis.md](../v2.3-tool_surface_packet/cts_gis.md) | `implemented family root` | Current admin CTS-GIS slice is implemented; later spatial expansion stays under this family, but it is not the next immediate build target. |
+| [../v2.3-tool_surface_packet/cts_gis.md](../v2.3-tool_surface_packet/cts_gis.md) | `implemented family root` | Current admin CTS-GIS slice is a finished FND-first Hanus lens deployment; later spatial expansion stays under this family, but it is not the next immediate build target. |
 | [../v2.3-tool_surface_packet/aws_csm.md](../v2.3-tool_surface_packet/aws_csm.md) | `implemented family root; next slice pending` | Current implementation truth for the live AWS-CSM family landing, newsletter operations, and subordinate AWS family surfaces. |
 
 ## Typed family plans not in the immediate build queue
@@ -145,7 +148,7 @@ tool follow-on work decision-complete before later tool implementation resumes.
 | [../v2.3-tool_surface_packet/README.md](../v2.3-tool_surface_packet/README.md) | active per-tool planning packet | Index for one plan per current or legacy tool surface. |
 | [../v2.3-tool_surface_packet/aws_csm.md](../v2.3-tool_surface_packet/aws_csm.md) | current implementation truth | Canonical implemented AWS-CSM family root and follow-on slice reference. |
 | [../v2.3-tool_surface_packet/fnd_ebi.md](../v2.3-tool_surface_packet/fnd_ebi.md) | current implementation truth | Narrowed service/site operational visibility family with the first read-only slice implemented. |
-| [../v2.3-tool_surface_packet/cts_gis.md](../v2.3-tool_surface_packet/cts_gis.md) | current implementation truth | Documents the implemented admin CTS-GIS read-only slice and its FND-first rollout. |
+| [../v2.3-tool_surface_packet/cts_gis.md](../v2.3-tool_surface_packet/cts_gis.md) | current implementation truth | Documents the finished FND-first admin CTS-GIS Hanus lens deployment and its rollout gate. |
 | [../../contracts/tool_kind_and_portal_attachment_contract.md](../../contracts/tool_kind_and_portal_attachment_contract.md) | taxonomy truth | Documents `tool_kind`, root services, and shared portal capability declarations. |
 | [../../contracts/network_operation_and_p2p_boundary.md](../../contracts/network_operation_and_p2p_boundary.md) | network sequencing truth | Documents the contracts-first hosted/network path. |
 | [../../audits/v2_network_v1_to_v2_crosswalk_audit_2026-04-14.md](../../audits/v2_network_v1_to_v2_crosswalk_audit_2026-04-14.md) | network crosswalk audit | Maps V1 `NETWORK` ideas to the current V2 read-only root and records live runtime proof. |

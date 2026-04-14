@@ -518,6 +518,7 @@ class AdminRuntimeCompositionTests(unittest.TestCase):
             self.assertTrue(result["shell_composition"]["regions"]["inspector"]["primary_surface"])
             self.assertEqual(result["shell_composition"]["regions"]["inspector"]["layout_mode"], "dominant")
             self.assertEqual(result["shell_composition"]["regions"]["workbench"]["kind"], "cts_gis_workbench")
+            self.assertEqual(result["shell_composition"]["regions"]["inspector"]["kind"], "cts_gis_interface_panel")
 
             collapsed = run_admin_shell_entry(
                 {

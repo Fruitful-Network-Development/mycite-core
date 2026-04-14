@@ -1222,6 +1222,10 @@ class V2NativePortalHostTests(unittest.TestCase):
             shell_payload = shell.get_json() or {}
             self.assertEqual(shell_payload["slice_id"], CTS_GIS_READ_ONLY_SLICE_ID)
             self.assertEqual(shell_payload["shell_composition"]["regions"]["workbench"]["kind"], "cts_gis_workbench")
+            self.assertEqual(
+                shell_payload["shell_composition"]["regions"]["inspector"]["kind"],
+                "cts_gis_interface_panel",
+            )
             self.assertEqual(shell_payload["shell_composition"]["foreground_shell_region"], "interface-panel")
             self.assertFalse(shell_payload["shell_composition"]["inspector_collapsed"])
             self.assertTrue(shell_payload["shell_composition"]["regions"]["inspector"]["primary_surface"])
