@@ -59,17 +59,42 @@ def _live_profile_tenant_a(*, initiated: bool = False) -> dict[str, object]:
 
 
 class _FakeOnboardingCloud(AwsCsmOnboardingCloudPort):
-    def __init__(self, *, evidence_ok: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        evidence_ok: bool = False,
+        smtp_ready: bool = False,
+        provider_ready: bool = False,
+        inbound_status: str = "action_required",
+    ) -> None:
         self._evidence_ok = evidence_ok
+        self._smtp_ready = smtp_ready
+        self._provider_ready = provider_ready
+        self._inbound_status = inbound_status
 
     def supplemental_profile_patch(self, action: str, profile: dict[str, object]) -> dict[str, object]:
         _ = profile
         if action == "stage_smtp_credentials":
             return {
                 "smtp": {
-                    "handoff_ready": True,
-                    "credentials_secret_state": "configured",
-                    "staging_state": "material_ready",
+                    "handoff_ready": self._smtp_ready,
+                    "credentials_secret_state": "configured" if self._smtp_ready else "missing",
+                    "staging_state": "material_ready" if self._smtp_ready else "operator_attention_required",
+                }
+            }
+        if action == "refresh_provider_status":
+            return {
+                "provider": {
+                    "aws_ses_identity_status": "verified" if self._provider_ready else "pending",
+                }
+            }
+        if action in {"enable_inbound_capture", "refresh_inbound_status"}:
+            return {
+                "inbound": {
+                    "receive_state": "receive_configured" if self._inbound_status in {"captured", "ready", "listening"} else "receive_unconfigured",
+                    "portal_native_display_ready": self._inbound_status in {"captured", "ready"},
+                    "latest_message_has_verification_link": self._evidence_ok,
+                    "latest_message_s3_uri": "s3://ses-bucket/inbound/test-message" if self._inbound_status in {"captured", "ready"} else "",
                 }
             }
         return {}
@@ -77,6 +102,55 @@ class _FakeOnboardingCloud(AwsCsmOnboardingCloudPort):
     def gmail_confirmation_evidence_satisfied(self, profile: dict[str, object]) -> bool:
         _ = profile
         return self._evidence_ok
+
+    def describe_profile_readiness(self, profile: dict[str, object]) -> dict[str, object]:
+        _ = profile
+        return {
+            "schema": "mycite.v2.admin.aws_csm.cloud_readiness.v1",
+            "checked_at": "2026-04-14T00:00:00+00:00",
+            "smtp": {
+                "status": "ready" if self._smtp_ready else "action_required",
+                "credentials_secret_state": "configured" if self._smtp_ready else "missing",
+                "secret_name": "aws-cms/smtp/tenant-a.newsletter",
+                "username": "SMTPUSER" if self._smtp_ready else "",
+                "smtp_host": "email-smtp.us-east-1.amazonaws.com",
+                "smtp_port": "587",
+                "handoff_ready": self._smtp_ready,
+                "message": "SMTP ready" if self._smtp_ready else "SMTP waiting",
+            },
+            "provider": {
+                "status": "ready" if self._provider_ready else "action_required",
+                "aws_ses_identity_status": "verified" if self._provider_ready else "pending",
+                "last_checked_at": "2026-04-14T00:00:00+00:00",
+                "message": "SES ready" if self._provider_ready else "SES pending",
+            },
+            "inbound": {
+                "status": self._inbound_status,
+                "expected_recipient": "news@example.com",
+                "expected_lambda_name": "newsletter-inbound-capture",
+                "receipt_rule": {"status": "ok" if self._inbound_status in {"captured", "ready", "listening"} else "not_ready"},
+                "inbound_lambda": {"status": "active" if self._inbound_status in {"captured", "ready", "listening"} else "not_ready"},
+                "latest_capture": {
+                    "s3_uri": "s3://ses-bucket/inbound/test-message" if self._inbound_status in {"captured", "ready"} else "",
+                    "message_id": "test-message" if self._inbound_status in {"captured", "ready"} else "",
+                    "subject": "Gmail Confirmation" if self._inbound_status in {"captured", "ready"} else "",
+                    "captured_at": "2026-04-14T00:00:00+00:00" if self._inbound_status in {"captured", "ready"} else "",
+                    "has_verification_link": self._evidence_ok,
+                    "accessible": self._inbound_status in {"captured", "ready"},
+                    "access_error": "",
+                    "portal_native_evidence_present": self._evidence_ok,
+                },
+                "portal_native_evidence_present": self._evidence_ok,
+                "message": "Inbound capture ready" if self._inbound_status in {"captured", "ready"} else "Inbound capture pending",
+            },
+            "confirmation": {
+                "status": "action_required" if self._evidence_ok else ("manual" if self._smtp_ready else "blocked"),
+                "already_verified": False,
+                "can_confirm_verified": self._evidence_ok,
+                "portal_native_evidence_present": self._evidence_ok,
+                "message": "Portal-native evidence ready" if self._evidence_ok else "Portal-native evidence required",
+            },
+        }
 
 
 class AdminAwsCsmOnboardingRuntimeIntegrationTests(unittest.TestCase):
@@ -139,6 +213,8 @@ class AdminAwsCsmOnboardingRuntimeIntegrationTests(unittest.TestCase):
             self.assertIn("workflow", result["surface_payload"]["updated_sections"])
             self.assertEqual(result["surface_payload"]["write_status"], "applied")
             self.assertTrue(result["surface_payload"]["audit"]["record_id"])
+            self.assertEqual(result["surface_payload"]["readiness_summary"]["surface_kind"], "onboarding")
+            self.assertTrue(result["surface_payload"]["recovery_summary"]["items"])
 
             reloaded = json.loads(profile_file.read_text(encoding="utf-8"))
             self.assertTrue(reloaded["workflow"]["initiated"])
@@ -214,6 +290,39 @@ class AdminAwsCsmOnboardingRuntimeIntegrationTests(unittest.TestCase):
             self.assertIsNone(result.get("error"))
             sp = result["surface_payload"]["confirmed_read_only_surface"]
             self.assertEqual(sp["gmail_state"], "gmail_verified")
+            action = [item for item in result["surface_payload"]["recovery_summary"]["items"] if item["id"] == "confirm_verified"][0]
+            self.assertEqual(action["status"], "done")
+
+    def test_stage_smtp_credentials_surfaces_server_issued_readiness_and_recovery(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            profile_file = Path(temp_dir) / "aws_live.json"
+            audit_file = Path(temp_dir) / "audit.ndjson"
+            profile_file.write_text(json.dumps(_live_profile_tenant_a(initiated=True)) + "\n", encoding="utf-8")
+
+            result = run_admin_aws_csm_onboarding(
+                {
+                    "schema": ADMIN_AWS_CSM_ONBOARDING_REQUEST_SCHEMA,
+                    "tenant_scope": {"scope_id": "tenant-a", "audience": "trusted-tenant"},
+                    "focus_subject": FOCUS_SUBJECT,
+                    "profile_id": "newsletter.example.com",
+                    "onboarding_action": "stage_smtp_credentials",
+                },
+                aws_status_file=profile_file,
+                audit_storage_file=audit_file,
+                onboarding_cloud_port=_FakeOnboardingCloud(
+                    smtp_ready=True,
+                    provider_ready=True,
+                    inbound_status="listening",
+                ),
+            )
+
+            self.assertIsNone(result.get("error"))
+            surface = result["surface_payload"]
+            self.assertEqual(surface["confirmed_read_only_surface"]["smtp_state"], "smtp_ready")
+            smtp_step = [item for item in surface["readiness_summary"]["items"] if item["id"] == "smtp_handoff"][0]
+            self.assertEqual(smtp_step["status"], "ready")
+            stage_action = [item for item in surface["recovery_summary"]["items"] if item["id"] == "stage_smtp_credentials"][0]
+            self.assertEqual(stage_action["status"], "done")
 
 
 if __name__ == "__main__":

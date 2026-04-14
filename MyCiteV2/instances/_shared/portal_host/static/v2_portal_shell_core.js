@@ -743,6 +743,8 @@
       var selectedDomain = wb.selected_domain_state || {};
       var selectedAuthor = wb.selected_author || {};
       var subnav = wb.subsurface_navigation || {};
+      var readinessSummary = wb.readiness_summary || {};
+      var recoverySummary = wb.recovery_summary || {};
       var familyCards =
         '<div class="v2-card-grid">' +
         '<article class="v2-card"><h3>Mailbox readiness</h3><p>' +
@@ -815,7 +817,13 @@
               })
               .join("")
           : '<section class="v2-card" style="margin-top:12px"><h3>Domain groups</h3><p>No AWS-CSM domain groups are currently configured for this instance.</p></section>';
-      body.innerHTML = familyCards + familyHealthBlock + navButtons + domainCards;
+      body.innerHTML =
+        familyCards +
+        familyHealthBlock +
+        guidanceSectionHtml(readinessSummary, "Readiness summary") +
+        guidanceSectionHtml(recoverySummary, "Recovery guidance") +
+        navButtons +
+        domainCards;
       Array.prototype.forEach.call(body.querySelectorAll("[data-aws-shell-request-key]"), function (node) {
         node.addEventListener("click", function () {
           var key = node.getAttribute("data-aws-shell-request-key") || "";
@@ -827,6 +835,8 @@
     if (kind === "aws_csm_subsurface_workbench") {
       var profileSummary = wb.profile_summary || {};
       var awsWarnings = wb.compatibility_warnings || [];
+      var readinessSummary = wb.readiness_summary || {};
+      var recoverySummary = wb.recovery_summary || {};
       var openPanelButton =
         wb.submit_route
           ? '<button type="button" class="ide-sessionAction ide-sessionAction--button" id="v2-open-aws-interface-panel">Open interface panel</button>'
@@ -853,6 +863,8 @@
         "</p>" +
         openPanelButton +
         "</section>" +
+        guidanceSectionHtml(readinessSummary, "Readiness summary") +
+        guidanceSectionHtml(recoverySummary, "Recovery guidance") +
         (awsWarnings.length
           ? '<section class="v2-card" style="margin-top:12px"><h3>Warnings</h3><ul>' +
             awsWarnings
@@ -2248,6 +2260,37 @@
     body.innerHTML = '<pre class="v2-json-panel">' + escapeHtml(JSON.stringify(wb, null, 2)) + "</pre>";
   }
 
+  function guidanceSectionHtml(summary, title) {
+    var items = (summary && summary.items) || [];
+    var recommended = (summary && summary.recommended_action) || "";
+    if (!items.length) {
+      return "";
+    }
+    return (
+      '<section class="v2-card" style="margin-top:12px"><h3>' +
+      escapeHtml(title || "Guidance") +
+      "</h3>" +
+      (recommended
+        ? '<p class="ide-controlpanel__empty">Recommended action: <code>' + escapeHtml(recommended) + "</code></p>"
+        : "") +
+      "<dl class=\"v2-surface-dl\">" +
+      items
+        .map(function (item) {
+          return (
+            "<dt>" +
+            escapeHtml(item.label || item.id || "item") +
+            "</dt><dd><strong>" +
+            escapeHtml(String(item.status || "unknown").replace(/_/g, " ")) +
+            "</strong><br />" +
+            escapeHtml(item.detail || "") +
+            "</dd>"
+          );
+        })
+        .join("") +
+      "</dl></section>"
+    );
+  }
+
   function renderInspector(region) {
     var titleEl = document.getElementById("portalInspectorTitle");
     var content = document.getElementById("v2-inspector-dynamic");
@@ -2471,6 +2514,8 @@
       var newsletterFixed = newsletterContract.fixed_request_fields || {};
       var navigation = region.subsurface_navigation || {};
       var gatedSubsurfaces = region.gated_subsurfaces || {};
+      var readinessSummary = region.readiness_summary || {};
+      var recoverySummary = region.recovery_summary || {};
       var callerIdentity = familyHealth.caller_identity || {};
       var queueHealth = familyHealth.dispatch_queue || {};
       var dispatcherHealth = familyHealth.dispatcher_lambda || {};
@@ -2604,6 +2649,8 @@
         escapeHtml(inboundHealth.status || "—") +
         "</dd>" +
         "</dl></section>" +
+        guidanceSectionHtml(readinessSummary, "Readiness summary") +
+        guidanceSectionHtml(recoverySummary, "Recovery guidance") +
         '<section class="v2-card" style="margin-top:12px"><h3>Family navigation</h3><div style="display:flex;gap:8px;flex-wrap:wrap">' +
         '<button type="button" class="ide-sessionAction ide-sessionAction--button" id="v2-aws-csm-open-read-only" style="border-radius:6px">Open read-only overview</button>' +
         '<button type="button" class="ide-sessionAction ide-sessionAction--button" id="v2-aws-csm-open-write" style="border-radius:6px">Open sender selection</button>' +
@@ -2966,6 +3013,8 @@
       var initial = contract.initial_values || {};
       var fixed = contract.fixed_request_fields || {};
       var options = contract.onboarding_action_options || [];
+      var readinessSummary = region.readiness_summary || {};
+      var recoverySummary = region.recovery_summary || {};
       var optHtml = options
         .map(function (a) {
           return (
@@ -2995,6 +3044,8 @@
         '" style="width:100%;box-sizing:border-box;margin-bottom:12px;padding:6px 8px" />' +
         '<button type="submit" class="ide-sessionAction ide-sessionAction--button" style="border-radius:6px">Apply onboarding step</button>' +
         "</form>" +
+        guidanceSectionHtml(readinessSummary, "Readiness summary") +
+        guidanceSectionHtml(recoverySummary, "Recovery guidance") +
         '<pre id="v2-csm-onboarding-result" class="v2-json-panel" style="margin-top:12px" hidden></pre>';
       content.innerHTML = html;
       var form = document.getElementById("v2-csm-onboarding-form");

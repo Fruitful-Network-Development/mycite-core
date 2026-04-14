@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import time
 from typing import Any
@@ -14,6 +15,7 @@ from MyCiteV2.packages.adapters.filesystem import (
     is_live_aws_profile_file,
 )
 from MyCiteV2.packages.adapters.event_transport import AwsEc2RoleNewsletterCloudAdapter
+from MyCiteV2.packages.adapters.event_transport import AwsEc2RoleOnboardingCloudAdapter
 from MyCiteV2.packages.modules.cross_domain.aws_csm_onboarding import (
     AwsCsmOnboardingService,
     AwsCsmOnboardingUnconfiguredCloudPort,
@@ -204,6 +206,306 @@ def cached_aws_csm_family_health(
     return payload
 
 
+def _load_live_aws_profile(aws_status_file: str | Path | None) -> dict[str, Any]:
+    if aws_status_file is None or not is_live_aws_profile_file(aws_status_file):
+        return {}
+    try:
+        payload = json.loads(Path(aws_status_file).read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _guidance_item(*, item_id: str, label: str, status: str, detail: str) -> dict[str, str]:
+    return {
+        "id": item_id,
+        "label": label,
+        "status": status,
+        "detail": detail,
+    }
+
+
+def _guidance_status(items: list[dict[str, Any]]) -> str:
+    statuses = [_as_text(item.get("status")).lower() for item in items]
+    for token in ("blocked", "action_required", "manual", "gated"):
+        if token in statuses:
+            return token
+    return "ready"
+
+
+def _build_family_readiness_summary(
+    *,
+    primary_read_only: dict[str, Any],
+    selected_domain_state: dict[str, Any],
+    newsletter_enabled: bool,
+) -> dict[str, Any]:
+    selected_author = dict(selected_domain_state.get("selected_author") or {})
+    selected_domain_readiness = dict(selected_domain_state.get("readiness") or {})
+    inbound_capture = dict(primary_read_only.get("inbound_capture") or {})
+    smtp_ready = _as_text(primary_read_only.get("smtp_state")).lower() == "smtp_ready"
+    gmail_ready = _as_text(primary_read_only.get("gmail_state")).lower() == "gmail_verified"
+    inbound_ready = _as_text(inbound_capture.get("status")).lower() == "ready"
+    newsletter_ready = newsletter_enabled and bool(selected_author) and bool(selected_domain_readiness.get("dispatch_configured"))
+    items = [
+        _guidance_item(
+            item_id="smtp_handoff",
+            label="SMTP handoff",
+            status="ready" if smtp_ready else "action_required",
+            detail=(
+                "Secret-backed SMTP handoff is ready for the selected mailbox."
+                if smtp_ready
+                else "Use AWS-CSM onboarding to stage or confirm SMTP credentials before Gmail handoff."
+            ),
+        ),
+        _guidance_item(
+            item_id="gmail_confirmation",
+            label="Gmail confirmation",
+            status="ready" if gmail_ready else ("manual" if smtp_ready else "blocked"),
+            detail=(
+                "Gmail send-as has already been verified."
+                if gmail_ready
+                else (
+                    "Operator confirmation in Gmail is still required before the mailbox is fully verified."
+                    if smtp_ready
+                    else "SMTP readiness must land before Gmail confirmation can proceed."
+                )
+            ),
+        ),
+        _guidance_item(
+            item_id="inbound_capture",
+            label="Inbound capture",
+            status="ready" if inbound_ready else "action_required",
+            detail=(
+                "Portal-native inbound capture is ready."
+                if inbound_ready
+                else "Refresh or enable inbound capture from AWS-CSM onboarding until verification messages are visible."
+            ),
+        ),
+        _guidance_item(
+            item_id="newsletter_domain",
+            label="Newsletter domain ops",
+            status=(
+                "gated"
+                if not newsletter_enabled
+                else ("ready" if newsletter_ready else "action_required")
+            ),
+            detail=(
+                "Newsletter operations are gated for this instance."
+                if not newsletter_enabled
+                else (
+                    "Selected domain has an author and dispatch configuration."
+                    if newsletter_ready
+                    else "Select a verified author and confirm dispatch configuration on the family home."
+                )
+            ),
+        ),
+    ]
+    return {
+        "schema": "mycite.v2.admin.aws_csm.readiness_summary.v1",
+        "surface_kind": "family_home",
+        "overall_status": _guidance_status(items),
+        "items": items,
+    }
+
+
+def _build_family_recovery_summary(
+    *,
+    readiness_summary: dict[str, Any],
+    newsletter_enabled: bool,
+) -> dict[str, Any]:
+    items = [
+        _guidance_item(
+            item_id="open_onboarding",
+            label="Open onboarding",
+            status="available",
+            detail="Use the onboarding surface for SMTP staging, provider refresh, and inbound recovery.",
+        ),
+        _guidance_item(
+            item_id="review_newsletter_domain",
+            label="Review newsletter domain",
+            status="available" if newsletter_enabled else "gated",
+            detail=(
+                "Inspect selected-domain newsletter configuration from the AWS-CSM family home."
+                if newsletter_enabled
+                else "Newsletter operations remain gated for this instance."
+            ),
+        ),
+    ]
+    return {
+        "schema": "mycite.v2.admin.aws_csm.recovery_summary.v1",
+        "surface_kind": "family_home",
+        "recommended_action": "open_onboarding",
+        "overall_status": _as_text(readiness_summary.get("overall_status")) or "action_required",
+        "items": items,
+    }
+
+
+def _build_onboarding_readiness_summary(
+    *,
+    read_only_surface: dict[str, Any] | None,
+    cloud_readiness: dict[str, Any] | None,
+) -> dict[str, Any]:
+    ro = read_only_surface or {}
+    cloud = cloud_readiness or {}
+    smtp = dict(cloud.get("smtp") or {})
+    provider = dict(cloud.get("provider") or {})
+    inbound = dict(cloud.get("inbound") or {})
+    confirmation = dict(cloud.get("confirmation") or {})
+    items = [
+        _guidance_item(
+            item_id="smtp_handoff",
+            label="SMTP handoff",
+            status=_as_text(smtp.get("status")) or "action_required",
+            detail=_as_text(smtp.get("message")) or "SMTP readiness is waiting on AWS-backed secret material.",
+        ),
+        _guidance_item(
+            item_id="provider_support",
+            label="SES identity",
+            status=_as_text(provider.get("status")) or "action_required",
+            detail=_as_text(provider.get("message")) or "Refresh provider status for AWS-owned identity evidence.",
+        ),
+        _guidance_item(
+            item_id="gmail_confirmation",
+            label="Gmail confirmation",
+            status=(
+                "ready"
+                if _as_text(ro.get("gmail_state")).lower() == "gmail_verified"
+                else (_as_text(confirmation.get("status")) or "blocked")
+            ),
+            detail=_as_text(confirmation.get("message"))
+            or (
+                "Gmail send-as has already been verified."
+                if _as_text(ro.get("gmail_state")).lower() == "gmail_verified"
+                else "Confirm Gmail send-as only after portal-native verification evidence is present."
+            ),
+        ),
+        _guidance_item(
+            item_id="inbound_capture",
+            label="Inbound capture",
+            status=(
+                "ready"
+                if _as_text((ro.get("inbound_capture") or {}).get("status")).lower() == "ready"
+                else (_as_text(inbound.get("status")) or "action_required")
+            ),
+            detail=_as_text(inbound.get("message")) or "Inbound capture is waiting for AWS-backed evidence.",
+        ),
+    ]
+    return {
+        "schema": "mycite.v2.admin.aws_csm.readiness_summary.v1",
+        "surface_kind": "onboarding",
+        "overall_status": _guidance_status(items),
+        "items": items,
+    }
+
+
+def _build_onboarding_recovery_summary(
+    *,
+    read_only_surface: dict[str, Any] | None,
+    cloud_readiness: dict[str, Any] | None,
+) -> dict[str, Any]:
+    ro = read_only_surface or {}
+    cloud = cloud_readiness or {}
+    smtp = dict(cloud.get("smtp") or {})
+    inbound = dict(cloud.get("inbound") or {})
+    confirmation = dict(cloud.get("confirmation") or {})
+    items = [
+        _guidance_item(
+            item_id="stage_smtp_credentials",
+            label="Stage SMTP credentials",
+            status=(
+                "done"
+                if _as_text(smtp.get("status")).lower() == "ready"
+                else ("blocked" if _as_text(smtp.get("status")).lower() == "blocked" else "available")
+            ),
+            detail=_as_text(smtp.get("message")) or "Materialize or confirm AWS-backed SMTP secret readiness.",
+        ),
+        _guidance_item(
+            item_id="refresh_provider_status",
+            label="Refresh provider status",
+            status="available",
+            detail="Refresh AWS-owned SES identity state without inferring Gmail confirmation.",
+        ),
+        _guidance_item(
+            item_id="enable_inbound_capture",
+            label="Enable inbound capture",
+            status=(
+                "done"
+                if _as_text(inbound.get("status")).lower() in {"ready", "captured", "listening"}
+                else ("blocked" if _as_text(inbound.get("status")).lower() == "blocked" else "available")
+            ),
+            detail="Verify SES receipt rules and inbound Lambda wiring for portal-native capture.",
+        ),
+        _guidance_item(
+            item_id="refresh_inbound_status",
+            label="Refresh inbound status",
+            status="available",
+            detail="Re-check AWS receipt rules, inbound Lambda, and the latest captured verification message.",
+        ),
+        _guidance_item(
+            item_id="confirm_verified",
+            label="Confirm verified",
+            status=(
+                "done"
+                if _as_text(ro.get("gmail_state")).lower() == "gmail_verified"
+                else ("available" if bool(confirmation.get("can_confirm_verified")) else "blocked")
+            ),
+            detail=_as_text(confirmation.get("message"))
+            or "confirm_verified stays fail-closed until AWS-backed portal-native evidence is present.",
+        ),
+        _guidance_item(
+            item_id="replay_verification_forward",
+            label="Replay verification forward",
+            status="blocked",
+            detail="Legacy forwarder replay remains intentionally disabled in V2.",
+        ),
+    ]
+    recommended_action = "refresh_provider_status"
+    for token in ("stage_smtp_credentials", "enable_inbound_capture", "confirm_verified"):
+        match = next((item for item in items if _as_text(item.get("id")) == token), None)
+        if match and _as_text(match.get("status")).lower() == "available":
+            recommended_action = token
+            break
+    return {
+        "schema": "mycite.v2.admin.aws_csm.recovery_summary.v1",
+        "surface_kind": "onboarding",
+        "recommended_action": recommended_action,
+        "overall_status": _guidance_status(items),
+        "items": items,
+    }
+
+
+def describe_aws_csm_onboarding_guidance(
+    *,
+    tenant_scope_id: str,
+    read_only_surface: dict[str, Any] | None = None,
+    aws_status_file: str | Path | None = None,
+    private_dir: str | Path | None = None,
+    profile: dict[str, Any] | None = None,
+    onboarding_cloud_port: AwsCsmOnboardingCloudPort | None = None,
+) -> dict[str, Any]:
+    if onboarding_cloud_port is not None:
+        cloud = onboarding_cloud_port
+    elif private_dir is not None:
+        cloud = AwsEc2RoleOnboardingCloudAdapter(private_dir=private_dir, tenant_id=tenant_scope_id)
+    else:
+        cloud = AwsCsmOnboardingUnconfiguredCloudPort()
+    raw_profile = profile if isinstance(profile, dict) and profile else _load_live_aws_profile(aws_status_file)
+    cloud_readiness = cloud.describe_profile_readiness(raw_profile) if raw_profile else cloud.describe_profile_readiness({})
+    readiness_summary = _build_onboarding_readiness_summary(
+        read_only_surface=read_only_surface,
+        cloud_readiness=cloud_readiness,
+    )
+    recovery_summary = _build_onboarding_recovery_summary(
+        read_only_surface=read_only_surface,
+        cloud_readiness=cloud_readiness,
+    )
+    return {
+        "cloud_readiness": cloud_readiness,
+        "readiness_summary": readiness_summary,
+        "recovery_summary": recovery_summary,
+    }
+
+
 def _preferred_family_domain(
     *,
     visibility: dict[str, Any],
@@ -265,6 +567,15 @@ def _build_family_surface_payload(
         visibility=visibility,
         domain_states=domain_states,
     )
+    readiness_summary = _build_family_readiness_summary(
+        primary_read_only=visibility,
+        selected_domain_state=selected_domain_state,
+        newsletter_enabled=newsletter_enabled,
+    )
+    recovery_summary = _build_family_recovery_summary(
+        readiness_summary=readiness_summary,
+        newsletter_enabled=newsletter_enabled,
+    )
     return {
         "schema": ADMIN_AWS_CSM_FAMILY_HOME_SURFACE_SCHEMA,
         "active_surface_id": AWS_READ_ONLY_SLICE_ID,
@@ -297,6 +608,8 @@ def _build_family_surface_payload(
             "newsletter": not newsletter_enabled,
             "sandbox": not admin_tool_exposure_config_enabled(tool_exposure_policy, tool_id="aws_csm_sandbox"),
         },
+        "readiness_summary": readiness_summary,
+        "recovery_summary": recovery_summary,
     }
 
 
@@ -1070,6 +1383,7 @@ def run_admin_aws_csm_onboarding(
     *,
     aws_status_file: str | Path | None = None,
     audit_storage_file: str | Path | None = None,
+    private_dir: str | Path | None = None,
     onboarding_profile_store: AwsCsmOnboardingProfileStorePort | None = None,
     onboarding_cloud_port: AwsCsmOnboardingCloudPort | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
@@ -1145,7 +1459,14 @@ def run_admin_aws_csm_onboarding(
         )
 
     profile_store = onboarding_profile_store or FilesystemAwsCsmOnboardingProfileStore(aws_status_file)
-    cloud = onboarding_cloud_port or AwsCsmOnboardingUnconfiguredCloudPort()
+    cloud = (
+        onboarding_cloud_port
+        or (
+            AwsEc2RoleOnboardingCloudAdapter(private_dir=private_dir, tenant_id=tenant_scope.scope_id)
+            if private_dir is not None
+            else AwsCsmOnboardingUnconfiguredCloudPort()
+        )
+    )
     service = AwsCsmOnboardingService(profile_store=profile_store, cloud=cloud)
 
     try:
@@ -1223,12 +1544,22 @@ def run_admin_aws_csm_onboarding(
         visibility=surface.to_dict(),
         active_surface_id=AWS_CSM_ONBOARDING_SLICE_ID,
     )
+    guidance = describe_aws_csm_onboarding_guidance(
+        tenant_scope_id=tenant_scope.scope_id,
+        read_only_surface=confirmed_read_only_surface,
+        private_dir=private_dir,
+        profile=outcome.saved_profile,
+        onboarding_cloud_port=cloud,
+    )
     surface_payload = {
         "schema": ADMIN_AWS_CSM_ONBOARDING_SURFACE_SCHEMA,
         "active_surface_id": AWS_CSM_ONBOARDING_SLICE_ID,
         "onboarding_action": outcome.command.onboarding_action,
         "updated_sections": list(outcome.updated_sections),
         "confirmed_read_only_surface": confirmed_read_only_surface,
+        "cloud_readiness": guidance["cloud_readiness"],
+        "readiness_summary": guidance["readiness_summary"],
+        "recovery_summary": guidance["recovery_summary"],
         "audit": audit_receipt.to_dict(),
         "rollback_reference": AWS_CSM_ONBOARDING_RECOVERY_REFERENCE,
         "write_status": "applied",

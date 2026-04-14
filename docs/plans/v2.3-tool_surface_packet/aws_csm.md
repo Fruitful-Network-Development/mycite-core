@@ -65,9 +65,14 @@ The family landing surface is now implemented. The next AWS-CSM follow-on work
 should stay inside the same family root and focus on higher-trust operator
 polish such as:
 
-- deeper provider-backed onboarding execution readiness
+- secret-backed SMTP handoff readiness on the onboarding cloud seam
+- AWS-owned SES identity refresh without over-claiming Gmail verification
+- SES receipt-rule and inbound-capture/Lambda evidence for onboarding recovery
+- fail-closed `confirm_verified` behavior until portal-native AWS-backed
+  evidence exists
+- family-home and onboarding recovery/readiness summaries without adding new
+  root tool ids
 - sandbox rollout only if a real staged profile path is approved
-- family-home polish and recovery behavior without adding new root tool ids
 
 Those follow-ons must keep shell legality and launch rules where they already
 live and must keep existing `tool_exposure` semantics unchanged.

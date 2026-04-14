@@ -30,6 +30,10 @@ class AwsCsmOnboardingCloudPort(Protocol):
         """V1 ``confirm_verified`` parity: fail-closed unless evidence exists."""
         ...
 
+    def describe_profile_readiness(self, profile: dict[str, Any]) -> dict[str, Any]:
+        """AWS-backed readiness/evidence summary used for operator-facing surfaces."""
+        ...
+
 
 _ALLOWED_ACTIONS = frozenset(
     {

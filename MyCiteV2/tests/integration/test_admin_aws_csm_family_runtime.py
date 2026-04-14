@@ -159,6 +159,8 @@ class AdminAwsCsmFamilyRuntimeIntegrationTests(unittest.TestCase):
             self.assertEqual(surface["selected_domain_state"]["domain"], "fruitfulnetworkdevelopment.com")
             self.assertEqual(surface["selected_domain_state"]["selected_author"]["profile_id"], "aws-csm.fnd.dylan")
             self.assertEqual(surface["subsurface_navigation"]["newsletter_route"], "/portal/api/v2/admin/aws/newsletter")
+            self.assertEqual(surface["readiness_summary"]["surface_kind"], "family_home")
+            self.assertTrue(surface["recovery_summary"]["items"])
 
     def test_newsletter_subsurface_is_config_gated(self) -> None:
         with TemporaryDirectory() as temp_dir:

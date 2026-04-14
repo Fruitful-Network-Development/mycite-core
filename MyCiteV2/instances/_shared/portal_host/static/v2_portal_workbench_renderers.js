@@ -6,6 +6,35 @@
 (function () {
   var renderers = window.PortalShellWorkbenchRenderers || (window.PortalShellWorkbenchRenderers = {});
 
+  function guidanceSectionHtml(escapeHtml, summary, title) {
+    var items = (summary && summary.items) || [];
+    var recommended = (summary && summary.recommended_action) || "";
+    if (!items.length) return "";
+    return (
+      '<section class="v2-card" style="margin-top:12px"><h3>' +
+      escapeHtml(title || "Guidance") +
+      "</h3>" +
+      (recommended
+        ? '<p class="ide-controlpanel__empty">Recommended action: <code>' + escapeHtml(recommended) + "</code></p>"
+        : "") +
+      "<dl class=\"v2-surface-dl\">" +
+      items
+        .map(function (item) {
+          return (
+            "<dt>" +
+            escapeHtml(item.label || item.id || "item") +
+            "</dt><dd><strong>" +
+            escapeHtml((item.status || "unknown").replace(/_/g, " ")) +
+            "</strong><br />" +
+            escapeHtml(item.detail || "") +
+            "</dd>"
+          );
+        })
+        .join("") +
+      "</dl></section>"
+    );
+  }
+
   renderers.aws_csm_family_workbench = function (ctx) {
     var wb = ctx.region || {};
     var body = ctx.target;
@@ -15,6 +44,8 @@
     var domainStates = wb.domain_states || [];
     var selectedAuthor = wb.selected_author || {};
     var subnav = wb.subsurface_navigation || {};
+    var readinessSummary = wb.readiness_summary || {};
+    var recoverySummary = wb.recovery_summary || {};
     var familyCards =
       '<div class="v2-card-grid">' +
       '<article class="v2-card"><h3>Mailbox readiness</h3><p>' +
@@ -87,7 +118,13 @@
             })
             .join("")
         : '<section class="v2-card" style="margin-top:12px"><h3>Domain groups</h3><p>No AWS-CSM domain groups are currently configured for this instance.</p></section>';
-    body.innerHTML = familyCards + familyHealthBlock + navButtons + domainCards;
+    body.innerHTML =
+      familyCards +
+      familyHealthBlock +
+      guidanceSectionHtml(escapeHtml, readinessSummary, "Readiness summary") +
+      guidanceSectionHtml(escapeHtml, recoverySummary, "Recovery guidance") +
+      navButtons +
+      domainCards;
     Array.prototype.forEach.call(body.querySelectorAll("[data-aws-shell-request-key]"), function (node) {
       node.addEventListener("click", function () {
         var key = node.getAttribute("data-aws-shell-request-key") || "";
@@ -103,6 +140,8 @@
     var postShellChrome = ctx.postShellChrome;
     var profileSummary = wb.profile_summary || {};
     var awsWarnings = wb.compatibility_warnings || [];
+    var readinessSummary = wb.readiness_summary || {};
+    var recoverySummary = wb.recovery_summary || {};
     var openPanelButton =
       wb.submit_route
         ? '<button type="button" class="ide-sessionAction ide-sessionAction--button" id="v2-open-aws-interface-panel">Open interface panel</button>'
@@ -129,6 +168,8 @@
       "</p>" +
       openPanelButton +
       "</section>" +
+      guidanceSectionHtml(escapeHtml, readinessSummary, "Readiness summary") +
+      guidanceSectionHtml(escapeHtml, recoverySummary, "Recovery guidance") +
       (awsWarnings.length
         ? '<section class="v2-card" style="margin-top:12px"><h3>Warnings</h3><ul>' +
           awsWarnings
