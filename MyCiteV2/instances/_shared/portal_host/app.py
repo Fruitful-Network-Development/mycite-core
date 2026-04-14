@@ -125,10 +125,9 @@ TRUSTED_TENANT_ROUTE_CATALOG: tuple[dict[str, str], ...] = (
 )
 TRUSTED_TENANT_STATIC_BUNDLE_PATH = "/portal/static/v2_portal_shell.js"
 TRUSTED_TENANT_STATIC_RENDER_MARKERS: tuple[str, ...] = (
-    "tenant_home_status",
-    "operational_status",
-    "audit_activity",
-    "profile_basics_write",
+    "__MYCITE_V2_SHELL_CANONICAL_ASSET",
+    "__MYCITE_V2_SHELL_ENTRY_LOADED",
+    "__MYCITE_V2_SHELL_INTERNALS_READY",
 )
 
 
@@ -585,7 +584,8 @@ def _portal_package_static_dir() -> Path:
 def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
     static_dir = _portal_package_static_dir()
     portal_css = static_dir / "portal.css"
-    portal_js = static_dir / "v2_portal_shell.js"
+    portal_shell_entry_js = static_dir / "v2_portal_shell.js"
+    portal_region_renderers_js = static_dir / "v2_portal_shell_region_renderers.js"
     portal_shell_core_js = static_dir / "v2_portal_shell_core.js"
     portal_workbench_renderers_js = static_dir / "v2_portal_workbench_renderers.js"
     portal_inspector_renderers_js = static_dir / "v2_portal_inspector_renderers.js"
@@ -637,7 +637,8 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
     datum_ok = datum_catalog.readiness_status.get("anthology_status") == "loaded"
     static_ok = (
         portal_css.is_file()
-        and portal_js.is_file()
+        and portal_shell_entry_js.is_file()
+        and portal_region_renderers_js.is_file()
         and portal_shell_core_js.is_file()
         and portal_workbench_renderers_js.is_file()
         and portal_inspector_renderers_js.is_file()
@@ -655,11 +656,16 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
             "package_static_dir": str(static_dir),
             "portal_css_present": portal_css.is_file(),
             "portal_css_size_bytes": portal_css.stat().st_size if portal_css.is_file() else 0,
-            "v2_portal_shell_js_present": portal_js.is_file(),
-            "v2_portal_shell_core_js_present": portal_shell_core_js.is_file(),
-            "v2_portal_workbench_renderers_js_present": portal_workbench_renderers_js.is_file(),
-            "v2_portal_inspector_renderers_js_present": portal_inspector_renderers_js.is_file(),
-            "v2_portal_shell_watchdog_js_present": portal_shell_watchdog_js.is_file(),
+            "canonical_shell_asset_path": TRUSTED_TENANT_STATIC_BUNDLE_PATH,
+            "canonical_shell_asset_present": portal_shell_entry_js.is_file(),
+            "v2_portal_shell_js_present": portal_shell_entry_js.is_file(),
+            "support_assets": {
+                "v2_portal_shell_region_renderers_js_present": portal_region_renderers_js.is_file(),
+                "v2_portal_shell_core_js_present": portal_shell_core_js.is_file(),
+                "v2_portal_workbench_renderers_js_present": portal_workbench_renderers_js.is_file(),
+                "v2_portal_inspector_renderers_js_present": portal_inspector_renderers_js.is_file(),
+                "v2_portal_shell_watchdog_js_present": portal_shell_watchdog_js.is_file(),
+            },
             "static_url_path": "/portal/static",
             "static_ok": static_ok,
         },

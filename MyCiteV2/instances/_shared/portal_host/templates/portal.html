@@ -89,6 +89,9 @@
 
     <div class="ide-body">
       <aside class="ide-activitybar" aria-label="Activity bar">
+        <a class="ide-logo" href="{{ logo_href or '/portal/system' }}" aria-label="Go to SYSTEM">
+          <img src="/portal/static/icons/logos/fnd.svg" alt="Portal logo" />
+        </a>
         <nav id="v2-activity-nav" class="ide-activitynav" aria-label="Primary navigation"></nav>
         <div class="ide-activityfooter">
           <div class="ide-sessionLine">Portal: {{ host_shape }}</div>
@@ -154,18 +157,26 @@
           </div>
           <button type="button" class="ide-inspector__close" data-inspector-close>Close Panel</button>
         </header>
-        <section id="portalInspectorContent" class="ide-inspector__content" data-interface-panel-scroll-root="true">
+        <section
+          id="portalInspectorContent"
+          class="ide-inspector__content"
+          data-interface-panel-scroll-root="true"
+          data-interface-panel-active-root="system"
+        >
           <div id="v2-inspector-dynamic"></div>
+          <div
+            id="portalInspectorTransientMount"
+            class="ide-inspector__transient"
+            data-interface-panel-root="transient"
+            hidden
+            aria-hidden="true"
+          ></div>
         </section>
       </aside>
     </div>
   </div>
 
   <script src="/portal/static/portal.js" defer></script>
-  <script src="/portal/static/v2_portal_workbench_renderers.js" defer></script>
-  <script src="/portal/static/v2_portal_inspector_renderers.js" defer></script>
-  <script src="/portal/static/v2_portal_shell_core.js" defer></script>
   <script src="/portal/static/v2_portal_shell.js" defer></script>
-  <script src="/portal/static/v2_portal_shell_watchdog.js" defer></script>
 </body>
 </html>

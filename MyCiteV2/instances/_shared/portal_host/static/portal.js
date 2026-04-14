@@ -341,6 +341,17 @@
       rebalanceWorkbench();
     }
 
+    function applyShellPostureFromDom() {
+      const controlPanelOpen = shell.getAttribute("data-control-panel-collapsed") !== "true";
+      const inspectorOpen = shell.getAttribute("data-inspector-collapsed") !== "true";
+      controlPanel.classList.toggle("is-collapsed", !controlPanelOpen);
+      controlPanel.setAttribute("aria-hidden", controlPanelOpen ? "false" : "true");
+      inspector.classList.toggle("is-collapsed", !inspectorOpen);
+      inspector.setAttribute("aria-hidden", inspectorOpen ? "false" : "true");
+      syncShellToggleButtons();
+      rebalanceWorkbench();
+    }
+
     function setShellComposition(mode) {
       const composition = String(mode || "").trim().toLowerCase() === "tool" ? "tool" : "system";
       shell.setAttribute("data-shell-composition", composition);
@@ -370,12 +381,16 @@
 
     setControlPanelWidth(storedControlPanel || initialPolicy.defaultControlPanelWidth, false);
     setInspectorWidth(storedInspector || initialPolicy.defaultInspectorWidth, false);
-    setControlPanelOpen(storedControlPanelOpen !== "0", false);
-    let inspectorShouldOpen = false;
-    if (storedInspectorOpen === "1") inspectorShouldOpen = true;
-    else if (storedInspectorOpen === "0") inspectorShouldOpen = false;
-    else inspectorShouldOpen = !!window.__PORTAL_SHELL_INSPECTOR_DEFAULT_OPEN;
-    setInspectorOpen(inspectorShouldOpen, false);
+    if (shellDriverV2) {
+      applyShellPostureFromDom();
+    } else {
+      setControlPanelOpen(storedControlPanelOpen !== "0", false);
+      let inspectorShouldOpen = false;
+      if (storedInspectorOpen === "1") inspectorShouldOpen = true;
+      else if (storedInspectorOpen === "0") inspectorShouldOpen = false;
+      else inspectorShouldOpen = !!window.__PORTAL_SHELL_INSPECTOR_DEFAULT_OPEN;
+      setInspectorOpen(inspectorShouldOpen, false);
+    }
     setShellComposition(currentShellComposition());
     rebalanceWorkbench();
 
@@ -414,6 +429,16 @@
     qsa("[data-shell-toggle]", shell).forEach(button => {
       button.addEventListener("click", () => {
         const target = button.getAttribute("data-shell-toggle") || "";
+        if (shellDriverV2) {
+          document.dispatchEvent(
+            new CustomEvent(
+              target === "control-panel"
+                ? "mycite:v2:control-panel-toggle-request"
+                : "mycite:v2:inspector-toggle-request"
+            )
+          );
+          return;
+        }
         if (target === "control-panel") {
           setControlPanelOpen(shell.getAttribute("data-control-panel-collapsed") === "true", true);
           return;
@@ -429,6 +454,7 @@
       setInspectorOpen,
       setInspectorWidth,
       setShellComposition,
+      syncFromDom: applyShellPostureFromDom,
       rebalanceWorkbench,
     };
   }
@@ -638,6 +664,7 @@
         setInspectorOpen: (open, persist) => layoutApi.setInspectorOpen(!!open, persist !== false),
         setControlPanelOpen: (open, persist) => layoutApi.setControlPanelOpen(!!open, persist !== false),
         setShellComposition: (mode) => layoutApi.setShellComposition(mode),
+        syncFromDom: () => layoutApi.syncFromDom && layoutApi.syncFromDom(),
         rebalanceWorkbench: () => layoutApi.rebalanceWorkbench && layoutApi.rebalanceWorkbench(),
       }
     : null;

@@ -34,12 +34,131 @@
     );
   }
 
+  function renderCtsGisSvg(mapProjection, escapeHtml) {
+    var featureCollection = (mapProjection && mapProjection.feature_collection) || {};
+    var features = featureCollection.features || [];
+    if (!features.length) {
+      return (
+        '<div class="v2-card" data-cts-gis-geojson-lens="true" style="margin-top:12px"><h3>Geographic pane</h3><p>No projectable features are available for this document.</p></div>'
+      );
+    }
+    var bounds = featureCollection.bounds || [-180, -90, 180, 90];
+    var minLon = Number(bounds[0]);
+    var minLat = Number(bounds[1]);
+    var maxLon = Number(bounds[2]);
+    var maxLat = Number(bounds[3]);
+    if (!isFinite(minLon) || !isFinite(minLat) || !isFinite(maxLon) || !isFinite(maxLat)) {
+      minLon = -180;
+      minLat = -90;
+      maxLon = 180;
+      maxLat = 90;
+    }
+    if (minLon === maxLon) {
+      minLon -= 1;
+      maxLon += 1;
+    }
+    if (minLat === maxLat) {
+      minLat -= 1;
+      maxLat += 1;
+    }
+    var width = 680;
+    var height = 360;
+    var pad = 18;
+    function project(coord) {
+      var lon = Number((coord || [0, 0])[0]);
+      var lat = Number((coord || [0, 0])[1]);
+      var x = pad + ((lon - minLon) / (maxLon - minLon)) * (width - pad * 2);
+      var y = height - pad - ((lat - minLat) / (maxLat - minLat)) * (height - pad * 2);
+      return [x.toFixed(2), y.toFixed(2)];
+    }
+    var shapes = features
+      .map(function (feature) {
+        var geometry = feature.geometry || {};
+        var props = feature.properties || {};
+        var featureId = feature.id || "";
+        var selected = !!feature.selected;
+        var attentionMember = !!props.attention_member;
+        var stroke = selected ? "#0b57d0" : attentionMember ? "#9a5b00" : "#285943";
+        var fill = selected
+          ? "rgba(11,87,208,0.28)"
+          : attentionMember
+          ? "rgba(154,91,0,0.22)"
+          : "rgba(40,89,67,0.18)";
+        var title = escapeHtml(props.profile_label || props.label_text || featureId || "feature");
+        if (geometry.type === "Point") {
+          var point = project(geometry.coordinates || [0, 0]);
+          return (
+            '<g class="v2-map-feature" data-cts-gis-feature-id="' +
+            escapeHtml(featureId) +
+            '">' +
+            "<title>" +
+            title +
+            "</title>" +
+            '<circle cx="' +
+            point[0] +
+            '" cy="' +
+            point[1] +
+            '" r="' +
+            (selected ? "7" : "5") +
+            '" fill="' +
+            fill +
+            '" stroke="' +
+            stroke +
+            '" stroke-width="2"></circle></g>'
+          );
+        }
+        if (geometry.type === "Polygon") {
+          var ring = ((geometry.coordinates || [])[0] || []).map(project);
+          var points = ring
+            .map(function (point) {
+              return point[0] + "," + point[1];
+            })
+            .join(" ");
+          return (
+            '<g class="v2-map-feature" data-cts-gis-feature-id="' +
+            escapeHtml(featureId) +
+            '">' +
+            "<title>" +
+            title +
+            "</title>" +
+            '<polygon points="' +
+            points +
+            '" fill="' +
+            fill +
+            '" stroke="' +
+            stroke +
+            '" stroke-width="' +
+            (selected ? "2.8" : "1.6") +
+            '"></polygon></g>'
+          );
+        }
+        return "";
+      })
+      .join("");
+    return (
+      '<div class="v2-card" data-cts-gis-geojson-lens="true" style="margin-top:12px"><h3>Geographic pane</h3><svg viewBox="0 0 ' +
+      width +
+      " " +
+      height +
+      '" style="width:100%;height:auto;border:1px solid #d3d9df;background:linear-gradient(180deg,#f7fbf9,#eef4f1)">' +
+      '<rect x="0" y="0" width="' +
+      width +
+      '" height="' +
+      height +
+      '" fill="transparent"></rect>' +
+      shapes +
+      "</svg></div>"
+    );
+  }
+
   renderers.cts_gis_interface_panel = function (ctx) {
     var region = ctx.region || {};
     var titleEl = ctx.titleEl;
     var content = ctx.target;
     var escapeHtml = ctx.escapeHtml;
-    var renderCtsGisSvg = ctx.renderCtsGisSvg;
+    var renderMap = ctx.renderCtsGisSvg || function (projection) {
+      return renderCtsGisSvg(projection, escapeHtml);
+    };
     var loadRuntimeView = ctx.loadRuntimeView;
     var envelope = (ctx.getEnvelope && ctx.getEnvelope()) || {};
     var mapSurface = envelope.surface_payload || {};
@@ -230,7 +349,7 @@
     content.innerHTML =
       '<div data-cts-gis-interface-panel="true">' +
       panelCards +
-      renderCtsGisSvg(mapSurface.map_projection || {}) +
+      renderMap(mapSurface.map_projection || {}) +
       attentionShellHtml +
       intentionHtml +
       lensHtml +
@@ -731,5 +850,279 @@
         });
       });
     }
+  };
+
+  renderers.empty = function (ctx) {
+    var region = ctx.region || {};
+    if (ctx.titleEl) ctx.titleEl.textContent = region.title || "Interface panel";
+    ctx.target.innerHTML = '<p class="ide-inspector__empty">' + ctx.escapeHtml(region.body_text || "") + "</p>";
+  };
+
+  renderers.json_document = function (ctx) {
+    if (ctx.titleEl) ctx.titleEl.textContent = (ctx.region || {}).title || "Interface panel";
+    ctx.target.innerHTML =
+      '<pre class="v2-json-panel">' +
+      ctx.escapeHtml(JSON.stringify(((ctx.region || {}).document) || {}, null, 2)) +
+      "</pre>";
+  };
+
+  renderers.datum_summary = function (ctx) {
+    var region = ctx.region || {};
+    var selectedDocument = region.selected_document || {};
+    var escapeHtml = ctx.escapeHtml;
+    var datumWarnings = (region.warnings || [])
+      .map(function (warning) {
+        return "<li>" + escapeHtml(String(warning)) + "</li>";
+      })
+      .join("");
+    var totals = selectedDocument.diagnostic_totals || {};
+    var totalItems = Object.keys(totals)
+      .filter(function (key) {
+        return Number(totals[key] || 0) > 0;
+      })
+      .map(function (key) {
+        return "<li><code>" + escapeHtml(String(key)) + "</code>: " + escapeHtml(String(totals[key])) + "</li>";
+      })
+      .join("");
+    if (ctx.titleEl) ctx.titleEl.textContent = region.title || "Datum summary";
+    ctx.target.innerHTML =
+      '<dl class="v2-surface-dl">' +
+      "<dt>Document</dt><dd><code>" +
+      escapeHtml(selectedDocument.document_name || "—") +
+      "</code></dd><dt>Relative path</dt><dd><code>" +
+      escapeHtml(selectedDocument.relative_path || "—") +
+      "</code></dd><dt>Source kind</dt><dd>" +
+      escapeHtml(selectedDocument.source_kind || "—") +
+      "</dd><dt>Anchor file</dt><dd><code>" +
+      escapeHtml(selectedDocument.anchor_document_name || "—") +
+      "</code></dd><dt>Anchor resolution</dt><dd>" +
+      escapeHtml(selectedDocument.anchor_resolution || "—") +
+      "</dd><dt>Rows</dt><dd>" +
+      escapeHtml(String(selectedDocument.row_count != null ? selectedDocument.row_count : "—")) +
+      "</dd></dl>" +
+      (totalItems
+        ? '<section class="v2-card" style="margin-top:12px"><h3>Diagnostic totals</h3><ul>' + totalItems + "</ul></section>"
+        : "") +
+      (datumWarnings
+        ? '<section class="v2-card" style="margin-top:12px"><h3>Warnings</h3><ul>' + datumWarnings + "</ul></section>"
+        : "");
+  };
+
+  renderers.network_summary = function (ctx) {
+    var region = ctx.region || {};
+    var escapeHtml = ctx.escapeHtml;
+    var networkSummary = region.summary || {};
+    var networkInstance = region.portal_instance || {};
+    var notes = (region.notes || [])
+      .map(function (note) {
+        return "<li>" + escapeHtml(String(note)) + "</li>";
+      })
+      .join("");
+    if (ctx.titleEl) ctx.titleEl.textContent = region.title || "Network summary";
+    ctx.target.innerHTML =
+      '<dl class="v2-surface-dl">' +
+      "<dt>State</dt><dd>" +
+      escapeHtml(region.network_state || "—") +
+      "</dd><dt>Active tab</dt><dd>" +
+      escapeHtml(region.active_tab || "—") +
+      "</dd><dt>Hosted root</dt><dd>" +
+      escapeHtml(networkSummary.hosted_root || "—") +
+      "</dd><dt>Portal instance</dt><dd><code>" +
+      escapeHtml(networkInstance.portal_instance_id || networkSummary.portal_instance_id || "—") +
+      "</code></dd><dt>Domain</dt><dd><code>" +
+      escapeHtml(networkInstance.domain || networkSummary.domain || "—") +
+      "</code></dd><dt>Host aliases</dt><dd>" +
+      escapeHtml(String(networkSummary.host_alias_count != null ? networkSummary.host_alias_count : "0")) +
+      "</dd><dt>Progeny links</dt><dd>" +
+      escapeHtml(String(networkSummary.progeny_link_count != null ? networkSummary.progeny_link_count : "0")) +
+      "</dd><dt>P2P contracts</dt><dd>" +
+      escapeHtml(String(networkSummary.contract_count != null ? networkSummary.contract_count : "0")) +
+      "</dd><dt>Request-log events</dt><dd>" +
+      escapeHtml(String(networkSummary.request_log_event_count != null ? networkSummary.request_log_event_count : "0")) +
+      "</dd><dt>Local audit</dt><dd>" +
+      escapeHtml(networkSummary.local_audit_state || "—") +
+      "</dd><dt>Visible utilities</dt><dd>" +
+      escapeHtml(String(networkSummary.visible_utility_count != null ? networkSummary.visible_utility_count : "0")) +
+      "</dd></dl>" +
+      (notes
+        ? '<section class="v2-card" style="margin-top:12px"><h3>Notes</h3><ul>' + notes + "</ul></section>"
+        : "");
+  };
+
+  renderers.tenant_profile_summary = function (ctx) {
+    var region = ctx.region || {};
+    var summary = region.summary || {};
+    if (ctx.titleEl) ctx.titleEl.textContent = region.title || "Tenant profile";
+    ctx.target.innerHTML =
+      '<dl class="v2-surface-dl">' +
+      "<dt>Profile title</dt><dd>" +
+      ctx.escapeHtml(summary.profile_title || "—") +
+      "</dd><dt>Tenant</dt><dd>" +
+      ctx.escapeHtml(summary.tenant_id || "—") +
+      "</dd><dt>Domain</dt><dd>" +
+      ctx.escapeHtml(summary.tenant_domain || "—") +
+      "</dd><dt>Entity type</dt><dd>" +
+      ctx.escapeHtml(summary.entity_type || "—") +
+      "</dd><dt>Profile summary</dt><dd>" +
+      ctx.escapeHtml(summary.profile_summary || "—") +
+      "</dd><dt>Contact email</dt><dd>" +
+      ctx.escapeHtml(summary.contact_email || "—") +
+      "</dd><dt>Public website</dt><dd>" +
+      ctx.escapeHtml(summary.public_website_url || "—") +
+      "</dd><dt>Available documents</dt><dd>" +
+      ctx.escapeHtml((summary.available_documents || []).join(", ") || "—") +
+      "</dd></dl>";
+  };
+
+  renderers.operational_status_summary = function (ctx) {
+    var region = ctx.region || {};
+    var operational = region.audit_persistence || {};
+    if (ctx.titleEl) ctx.titleEl.textContent = region.title || "Operational status";
+    ctx.target.innerHTML =
+      '<dl class="v2-surface-dl">' +
+      "<dt>Rollout band</dt><dd>" +
+      ctx.escapeHtml(region.current_rollout_band || "—") +
+      "</dd><dt>Exposure</dt><dd>" +
+      ctx.escapeHtml(region.exposure_status || "—") +
+      "</dd><dt>Read/write posture</dt><dd>" +
+      ctx.escapeHtml(region.read_write_posture || "—") +
+      "</dd><dt>Audit health</dt><dd>" +
+      ctx.escapeHtml(String(operational.health_state || "—").replace(/_/g, " ")) +
+      "</dd><dt>Storage state</dt><dd>" +
+      ctx.escapeHtml(String(operational.storage_state || "—").replace(/_/g, " ")) +
+      "</dd><dt>Recent records</dt><dd>" +
+      ctx.escapeHtml(String(operational.recent_record_count != null ? operational.recent_record_count : "—")) +
+      "</dd><dt>Latest persisted at</dt><dd>" +
+      ctx.escapeHtml(
+        String(
+          operational.latest_recorded_at_unix_ms != null
+            ? operational.latest_recorded_at_unix_ms
+            : "—"
+        )
+      ) +
+      "</dd></dl>";
+  };
+
+  renderers.audit_activity_summary = function (ctx) {
+    var region = ctx.region || {};
+    var activity = region.recent_activity || {};
+    var previewRecords = activity.records || [];
+    var previewHtml =
+      previewRecords.length > 0
+        ? '<section class="v2-card" style="margin-top:12px"><h3>Latest records</h3><ul>' +
+          previewRecords
+            .slice(0, 5)
+            .map(function (record) {
+              return (
+                "<li><strong>" +
+                ctx.escapeHtml(record.event_type || "event") +
+                "</strong> · " +
+                ctx.escapeHtml(String(record.recorded_at_unix_ms != null ? record.recorded_at_unix_ms : "—")) +
+                " · <code>" +
+                ctx.escapeHtml(record.focus_subject || "") +
+                "</code></li>"
+              );
+            })
+            .join("") +
+          "</ul></section>"
+        : "";
+    if (ctx.titleEl) ctx.titleEl.textContent = region.title || "Audit activity";
+    ctx.target.innerHTML =
+      '<dl class="v2-surface-dl">' +
+      "<dt>Rollout band</dt><dd>" +
+      ctx.escapeHtml(region.current_rollout_band || "—") +
+      "</dd><dt>Exposure</dt><dd>" +
+      ctx.escapeHtml(region.exposure_status || "—") +
+      "</dd><dt>Read/write posture</dt><dd>" +
+      ctx.escapeHtml(region.read_write_posture || "—") +
+      "</dd><dt>Activity state</dt><dd>" +
+      ctx.escapeHtml(String(activity.activity_state || "—").replace(/_/g, " ")) +
+      "</dd><dt>Recent records</dt><dd>" +
+      ctx.escapeHtml(String(activity.recent_record_count != null ? activity.recent_record_count : "—")) +
+      "</dd><dt>Latest recorded at</dt><dd>" +
+      ctx.escapeHtml(
+        String(
+          activity.latest_recorded_at_unix_ms != null
+            ? activity.latest_recorded_at_unix_ms
+            : "—"
+        )
+      ) +
+      "</dd></dl>" +
+      previewHtml;
+  };
+
+  renderers.profile_basics_write_form = function (ctx) {
+    var region = ctx.region || {};
+    var contract = region.submit_contract || {};
+    var initial = contract.initial_values || {};
+    var fixed = contract.fixed_request_fields || {};
+    var html =
+      '<form id="v2-profile-basics-form" class="v2-card" style="max-width:620px">' +
+      "<h3>Profile basics</h3>" +
+      '<p class="ide-controlpanel__empty" style="margin:0 0 10px">Request schema: <code>' +
+      ctx.escapeHtml(contract.request_schema || "") +
+      "</code></p>" +
+      '<label class="ide-controlpanel__empty" style="display:block;margin-bottom:4px">profile_title</label>' +
+      '<input name="profile_title" value="' +
+      ctx.escapeHtml(initial.profile_title || "") +
+      '" style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:6px 8px" />' +
+      '<label class="ide-controlpanel__empty" style="display:block;margin-bottom:4px">profile_summary</label>' +
+      '<textarea name="profile_summary" style="width:100%;min-height:96px;box-sizing:border-box;margin-bottom:10px;padding:6px 8px">' +
+      ctx.escapeHtml(initial.profile_summary || "") +
+      "</textarea>" +
+      '<label class="ide-controlpanel__empty" style="display:block;margin-bottom:4px">contact_email</label>' +
+      '<input name="contact_email" value="' +
+      ctx.escapeHtml(initial.contact_email || "") +
+      '" style="width:100%;box-sizing:border-box;margin-bottom:10px;padding:6px 8px" />' +
+      '<label class="ide-controlpanel__empty" style="display:block;margin-bottom:4px">public_website_url</label>' +
+      '<input name="public_website_url" value="' +
+      ctx.escapeHtml(initial.public_website_url || "") +
+      '" style="width:100%;box-sizing:border-box;margin-bottom:12px;padding:6px 8px" />' +
+      '<button type="submit" class="ide-sessionAction ide-sessionAction--button" style="border-radius:6px">Apply profile update</button>' +
+      "</form>" +
+      '<pre id="v2-profile-basics-result" class="v2-json-panel" style="margin-top:12px" hidden></pre>';
+    if (ctx.titleEl) ctx.titleEl.textContent = region.title || "Profile basics";
+    ctx.target.innerHTML = html;
+    var form = document.getElementById("v2-profile-basics-form");
+    var out = document.getElementById("v2-profile-basics-result");
+    if (form && out) {
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var fd = new FormData(form);
+        var body = {
+          schema: contract.request_schema,
+          profile_title: (fd.get("profile_title") || "").toString().trim(),
+          profile_summary: (fd.get("profile_summary") || "").toString().trim(),
+          contact_email: (fd.get("contact_email") || "").toString().trim(),
+          public_website_url: (fd.get("public_website_url") || "").toString().trim(),
+        };
+        Object.keys(fixed || {}).forEach(function (key) {
+          body[key] = fixed[key];
+        });
+        out.hidden = false;
+        out.textContent = "…";
+        ctx.postJson(contract.route || "/portal/api/v2/tenant/profile-basics", body).then(function (res) {
+          out.textContent = JSON.stringify(res.json, null, 2);
+          var lastShellRequest = ctx.getLastShellRequest && ctx.getLastShellRequest();
+          if (lastShellRequest) ctx.loadShell(ctx.cloneRequestWithoutChrome(lastShellRequest));
+        });
+      });
+    }
+  };
+
+  renderers.__fallback = function (ctx) {
+    ctx.target.innerHTML = '<pre class="v2-json-panel">' + ctx.escapeHtml(JSON.stringify(ctx.region || {}, null, 2)) + "</pre>";
+  };
+
+  window.PortalShellInspectorRenderer = {
+    render: function (ctx) {
+      var region = ctx.region || {};
+      var kind = region.kind || "empty";
+      var renderer = renderers[kind];
+      if (typeof renderer !== "function") {
+        throw new Error("No inspector renderer for kind: " + kind);
+      }
+      renderer(ctx);
+    },
   };
 })();

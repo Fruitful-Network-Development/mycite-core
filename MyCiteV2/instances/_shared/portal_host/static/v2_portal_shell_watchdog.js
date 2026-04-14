@@ -1,40 +1,25 @@
 /**
- * Detects missing or non-executing shell bundles and surfaces a visible fatal
- * state in the template instead of leaving the bootstrap placeholder stranded.
+ * Detects incomplete canonical-shell hydration and reports a distinct fatal
+ * taxonomy for bundle-delivery vs shell POST failure.
  */
 (function () {
-  function patchFatalState(message) {
-    var body = document.body || document.documentElement;
-    if (body) {
-      body.setAttribute("data-shell-boot-state", "fatal");
-    }
-    var placeholder = document.getElementById("v2-control-panel-placeholder");
-    if (placeholder) {
-      placeholder.textContent = message;
-    }
-    var workbenchBody = document.getElementById("v2-workbench-body");
-    if (workbenchBody) {
-      workbenchBody.innerHTML =
-        '<section class="v2-card" style="max-width:720px"><h3>Shell hydration failed</h3><p>' +
-        String(message)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;") +
-        "</p></section>";
-    }
-    window.__MYCITE_V2_SHELL_FATAL_SHOWN = true;
-  }
-
-  function showFatal(message) {
+  function showFatal(message, fatalClass) {
     if (window.__MYCITE_V2_SHELL_FATAL_SHOWN) {
       return;
     }
     if (typeof window.__MYCITE_V2_SHOW_FATAL === "function") {
-      window.__MYCITE_V2_SHOW_FATAL(message);
+      window.__MYCITE_V2_SHOW_FATAL(message, fatalClass);
       return;
     }
-    patchFatalState(message);
+    if (typeof window.__MYCITE_V2_PATCH_FATAL_STATE === "function") {
+      window.__MYCITE_V2_PATCH_FATAL_STATE(message, fatalClass);
+      return;
+    }
+    var body = document.body || document.documentElement;
+    if (body) {
+      body.setAttribute("data-shell-boot-state", "fatal");
+      body.setAttribute("data-shell-fatal-class", fatalClass || "shell_post_failed");
+    }
   }
 
   function startWatchdog() {
@@ -47,11 +32,11 @@
       if (window.__MYCITE_V2_SHELL_HYDRATED || window.__MYCITE_V2_SHELL_FATAL_SHOWN) {
         return;
       }
-      if (!window.__MYCITE_V2_SHELL_CORE_LOADED) {
-        showFatal("The portal shell bundle did not load or did not execute.");
+      if (!window.__MYCITE_V2_SHELL_ENTRY_LOADED || !window.__MYCITE_V2_SHELL_INTERNALS_READY || !window.__MYCITE_V2_SHELL_CORE_LOADED) {
+        showFatal("The portal shell bundle did not load or did not execute.", "bundle_not_loaded");
         return;
       }
-      showFatal("The portal shell did not finish hydrating. The shell POST may have failed.");
+      showFatal("The portal shell did not finish hydrating. The shell POST may have failed.", "shell_post_failed");
     }, timeoutMs);
   }
 
