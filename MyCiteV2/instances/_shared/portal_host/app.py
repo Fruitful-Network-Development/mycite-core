@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 try:
     from flask import Flask, abort, jsonify, render_template, request
@@ -44,7 +44,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     CTS_GIS_TOOL_REQUEST_SCHEMA,
     FND_EBI_TOOL_REQUEST_SCHEMA,
     PORTAL_RUNTIME_ENVELOPE_SCHEMA,
-    SYSTEM_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
+    SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
     build_tool_exposure_policy,
 )
 from MyCiteV2.packages.state_machine.portal_shell import (
@@ -55,14 +55,15 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
     FND_EBI_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
-    SYSTEM_ACTIVITY_SURFACE_ID,
     SYSTEM_OPERATIONAL_STATUS_SURFACE_ID,
-    SYSTEM_PROFILE_BASICS_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
     UTILITIES_INTEGRATIONS_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
     UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+    PortalScope,
+    build_portal_shell_state_from_query,
     build_portal_tool_registry_entries,
+    requires_shell_state_machine,
 )
 
 V2_PORTAL_HEALTH_SCHEMA = "mycite.v2.portal.health.v1"
@@ -125,15 +126,25 @@ def _default_capabilities(portal_instance_id: str) -> list[str]:
     return capabilities
 
 
-def _bootstrap_request(surface_id: str, *, portal_instance_id: str) -> dict[str, Any]:
-    return {
+def _bootstrap_request(surface_id: str, *, portal_instance_id: str, query_params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    portal_scope = PortalScope(
+        scope_id=portal_instance_id,
+        capabilities=_default_capabilities(portal_instance_id),
+    )
+    payload: dict[str, Any] = {
         "schema": "mycite.v2.portal.shell.request.v1",
         "requested_surface_id": surface_id,
-        "portal_scope": {
-            "scope_id": portal_instance_id,
-            "capabilities": _default_capabilities(portal_instance_id),
-        },
+        "portal_scope": portal_scope.to_dict(),
     }
+    if requires_shell_state_machine(surface_id):
+        shell_state = build_portal_shell_state_from_query(
+            surface_id=surface_id,
+            portal_scope=portal_scope,
+            query=query_params,
+        )
+        if shell_state is not None:
+            payload["shell_state"] = shell_state.to_dict()
+    return payload
 
 
 @dataclass(frozen=True)
@@ -270,7 +281,11 @@ def _render_surface(surface_id: str, host_config: V2PortalHostConfig) -> str:
         host_shape=HOST_SHAPE,
         portal_domain=host_config.portal_domain,
         portal_build_id=PORTAL_BUILD_ID,
-        bootstrap_shell_request=_bootstrap_request(surface_id, portal_instance_id=host_config.portal_instance_id),
+        bootstrap_shell_request=_bootstrap_request(
+            surface_id,
+            portal_instance_id=host_config.portal_instance_id,
+            query_params=request.args,
+        ),
         runtime_envelope_schema=PORTAL_RUNTIME_ENVELOPE_SCHEMA,
         shell_endpoint="/portal/api/v2/shell",
         shell_loading_label="Loading portal shell…",
@@ -286,6 +301,7 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         "v2_portal_shell.js",
         "v2_portal_shell_core.js",
         "v2_portal_shell_region_renderers.js",
+        "v2_portal_system_workspace.js",
         "v2_portal_workbench_renderers.js",
         "v2_portal_inspector_renderers.js",
     ]
@@ -334,14 +350,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     def portal_system_operational_status() -> str:
         return _render_surface(SYSTEM_OPERATIONAL_STATUS_SURFACE_ID, host_config)
 
-    @app.get("/portal/system/activity")
-    def portal_system_activity() -> str:
-        return _render_surface(SYSTEM_ACTIVITY_SURFACE_ID, host_config)
-
-    @app.get("/portal/system/profile-basics")
-    def portal_system_profile_basics() -> str:
-        return _render_surface(SYSTEM_PROFILE_BASICS_SURFACE_ID, host_config)
-
     @app.get("/portal/system/tools/<tool_slug>")
     def portal_system_tool(tool_slug: str) -> str:
         surface_id = TOOL_SLUG_TO_SURFACE_ID.get(tool_slug)
@@ -386,12 +394,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
 
-    @app.post("/portal/api/v2/system/profile-basics")
+    @app.post("/portal/api/v2/system/workspace/profile-basics")
     def portal_profile_basics_action() -> tuple[Any, int]:
         try:
             payload = _json_payload()
             if "schema" not in payload:
-                payload["schema"] = SYSTEM_PROFILE_BASICS_ACTION_REQUEST_SCHEMA
+                payload["schema"] = SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA
             return _runtime_response(
                 run_system_profile_basics_action(
                     payload,
@@ -415,6 +423,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 run_portal_aws_read_only(
                     payload,
                     aws_status_file=host_config.aws_status_file,
+                    data_dir=host_config.data_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
@@ -432,6 +441,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     payload,
                     aws_status_file=host_config.aws_status_file,
                     audit_storage_file=host_config.aws_audit_storage_file,
+                    data_dir=host_config.data_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
@@ -448,6 +458,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 run_portal_aws_csm_sandbox(
                     payload,
                     aws_sandbox_status_file=host_config.aws_csm_sandbox_status_file,
+                    data_dir=host_config.data_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
@@ -466,6 +477,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     aws_status_file=host_config.aws_status_file,
                     audit_storage_file=host_config.aws_audit_storage_file,
                     private_dir=host_config.private_dir,
+                    data_dir=host_config.data_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )

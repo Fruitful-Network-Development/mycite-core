@@ -1,5 +1,5 @@
 /**
- * Generic workbench renderer for the one-shell portal.
+ * Workbench renderer for the one-shell portal.
  */
 (function () {
   function escapeHtml(value) {
@@ -130,77 +130,41 @@
     );
   }
 
-  function renderProfileForm(surfacePayload) {
-    var form = surfacePayload.form || {};
-    var fields = form.fields || [];
-    if (!fields.length) return "";
-    return (
-      '<section class="v2-card" style="margin-top:12px"><h3>' +
-      escapeHtml(form.title || "Edit") +
-      "</h3>" +
-      (form.status ? '<p class="ide-controlpanel__empty">Status: <strong>' + escapeHtml(form.status) + "</strong></p>" : "") +
-      '<form id="v2-profile-basics-form" data-action-route="' +
-      escapeHtml(form.action_route || "") +
-      '" data-action-schema="' +
-      escapeHtml(form.schema || "") +
-      '">' +
-      fields
-        .map(function (field) {
-          if (field.type === "textarea") {
-            return (
-              '<label class="v2-formField"><span>' +
-              escapeHtml(field.label || field.field_id || "") +
-              '</span><textarea name="' +
-              escapeHtml(field.field_id || "") +
-              '" rows="4">' +
-              escapeHtml(field.value || "") +
-              "</textarea></label>"
-            );
-          }
-          return (
-            '<label class="v2-formField"><span>' +
-            escapeHtml(field.label || field.field_id || "") +
-            '</span><input type="' +
-            escapeHtml(field.type || "text") +
-            '" name="' +
-            escapeHtml(field.field_id || "") +
-            '" value="' +
-            escapeHtml(field.value || "") +
-            '" /></label>'
-          );
-        })
-        .join("") +
-      '<div style="margin-top:12px"><button type="submit" class="ide-sessionAction ide-sessionAction--button">' +
-      escapeHtml(form.action_label || "Save") +
-      "</button></div></form></section>"
-    );
-  }
-
-  function bindProfileForm(ctx, target) {
-    var form = target.querySelector("#v2-profile-basics-form");
-    if (!form) return;
-    form.addEventListener("submit", function (event) {
-      event.preventDefault();
-      var body = { schema: form.getAttribute("data-action-schema") || "" };
-      Array.prototype.forEach.call(form.querySelectorAll("input, textarea"), function (field) {
-        body[field.name] = field.value;
-      });
-      ctx.loadRuntimeView(form.getAttribute("data-action-route"), body);
-    });
+  function renderGenericSurface(target, surfacePayload) {
+    target.innerHTML =
+      renderCards(surfacePayload.cards || []) +
+      renderSections(surfacePayload.sections || []) +
+      renderNotes(surfacePayload.notes || []);
   }
 
   window.PortalShellWorkbenchRenderer = {
     render: function (ctx) {
       var target = ctx.target;
       var region = ctx.region || {};
-      if (!target) return;
       var surfacePayload = region.surface_payload || {};
-      target.innerHTML =
-        renderCards(surfacePayload.cards || []) +
-        renderSections(surfacePayload.sections || []) +
-        renderNotes(surfacePayload.notes || []) +
-        renderProfileForm(surfacePayload);
-      bindProfileForm(ctx, target);
+      if (!target) return;
+      if (region.visible === false) {
+        target.innerHTML = "";
+        return;
+      }
+      if (
+        window.PortalSystemWorkspaceRenderer &&
+        typeof window.PortalSystemWorkspaceRenderer.render === "function" &&
+        surfacePayload.kind === "system_workspace"
+      ) {
+        window.PortalSystemWorkspaceRenderer.render(ctx, target, surfacePayload);
+        return;
+      }
+      if (surfacePayload.kind === "tool_secondary_evidence") {
+        target.innerHTML =
+          '<section class="v2-card"><h3>' +
+          escapeHtml(region.title || "Supporting Evidence") +
+          "</h3><p>" +
+          escapeHtml(region.subtitle || "This tool is currently leading through the interface panel.") +
+          "</p></section>";
+        return;
+      }
+      renderGenericSurface(target, surfacePayload);
     },
   };
 })();

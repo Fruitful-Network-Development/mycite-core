@@ -28,12 +28,8 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     PORTAL_SHELL_ENTRYPOINT_ID,
     PORTAL_SHELL_REQUEST_SCHEMA,
     PORTAL_SHELL_STATE_SCHEMA,
-    SYSTEM_ACTIVITY_ROUTE,
-    SYSTEM_ACTIVITY_SURFACE_ID,
     SYSTEM_OPERATIONAL_STATUS_ROUTE,
     SYSTEM_OPERATIONAL_STATUS_SURFACE_ID,
-    SYSTEM_PROFILE_BASICS_ROUTE,
-    SYSTEM_PROFILE_BASICS_SURFACE_ID,
     SYSTEM_ROOT_ROUTE,
     SYSTEM_ROOT_SURFACE_ID,
     UTILITIES_INTEGRATIONS_ROUTE,
@@ -48,10 +44,8 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 PORTAL_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.portal.runtime.envelope.v1"
 PORTAL_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA = "mycite.v2.portal.runtime_entrypoint_descriptor.v1"
 
-SYSTEM_ROOT_SURFACE_SCHEMA = "mycite.v2.portal.system.surface.v1"
+SYSTEM_ROOT_SURFACE_SCHEMA = "mycite.v2.portal.system.workspace.surface.v1"
 SYSTEM_OPERATIONAL_STATUS_SURFACE_SCHEMA = "mycite.v2.portal.system.operational_status.surface.v1"
-SYSTEM_ACTIVITY_SURFACE_SCHEMA = "mycite.v2.portal.system.activity.surface.v1"
-SYSTEM_PROFILE_BASICS_SURFACE_SCHEMA = "mycite.v2.portal.system.profile_basics.surface.v1"
 NETWORK_ROOT_SURFACE_SCHEMA = "mycite.v2.portal.network.surface.v1"
 UTILITIES_ROOT_SURFACE_SCHEMA = "mycite.v2.portal.utilities.surface.v1"
 UTILITIES_TOOL_EXPOSURE_SURFACE_SCHEMA = "mycite.v2.portal.utilities.tool_exposure.surface.v1"
@@ -69,7 +63,7 @@ AWS_CSM_SANDBOX_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm_san
 AWS_CSM_ONBOARDING_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm_onboarding.request.v1"
 CTS_GIS_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.request.v1"
 FND_EBI_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_ebi.request.v1"
-SYSTEM_PROFILE_BASICS_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.profile_basics.action.request.v1"
+SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.workspace.profile_basics.action.request.v1"
 
 PORTAL_RUNTIME_REQUIRED_ENVELOPE_KEYS = (
     "schema",
@@ -78,6 +72,10 @@ PORTAL_RUNTIME_REQUIRED_ENVELOPE_KEYS = (
     "surface_id",
     "entrypoint_id",
     "read_write_posture",
+    "reducer_owned",
+    "canonical_route",
+    "canonical_query",
+    "canonical_url",
     "shell_state",
     "surface_payload",
     "shell_composition",
@@ -351,8 +349,6 @@ def surface_schema_for_surface(surface_id: str) -> str:
     mapping = {
         SYSTEM_ROOT_SURFACE_ID: SYSTEM_ROOT_SURFACE_SCHEMA,
         SYSTEM_OPERATIONAL_STATUS_SURFACE_ID: SYSTEM_OPERATIONAL_STATUS_SURFACE_SCHEMA,
-        SYSTEM_ACTIVITY_SURFACE_ID: SYSTEM_ACTIVITY_SURFACE_SCHEMA,
-        SYSTEM_PROFILE_BASICS_SURFACE_ID: SYSTEM_PROFILE_BASICS_SURFACE_SCHEMA,
         NETWORK_ROOT_SURFACE_ID: NETWORK_ROOT_SURFACE_SCHEMA,
         UTILITIES_ROOT_SURFACE_ID: UTILITIES_ROOT_SURFACE_SCHEMA,
         UTILITIES_TOOL_EXPOSURE_SURFACE_ID: UTILITIES_TOOL_EXPOSURE_SURFACE_SCHEMA,
@@ -371,8 +367,6 @@ def route_for_surface(surface_id: str) -> str:
     mapping = {
         SYSTEM_ROOT_SURFACE_ID: SYSTEM_ROOT_ROUTE,
         SYSTEM_OPERATIONAL_STATUS_SURFACE_ID: SYSTEM_OPERATIONAL_STATUS_ROUTE,
-        SYSTEM_ACTIVITY_SURFACE_ID: SYSTEM_ACTIVITY_ROUTE,
-        SYSTEM_PROFILE_BASICS_SURFACE_ID: SYSTEM_PROFILE_BASICS_ROUTE,
         NETWORK_ROOT_SURFACE_ID: NETWORK_ROOT_ROUTE,
         UTILITIES_ROOT_SURFACE_ID: UTILITIES_ROOT_ROUTE,
         UTILITIES_TOOL_EXPOSURE_SURFACE_ID: UTILITIES_TOOL_EXPOSURE_ROUTE,
@@ -401,6 +395,10 @@ def build_portal_runtime_envelope(
     surface_id: str,
     entrypoint_id: str,
     read_write_posture: str,
+    reducer_owned: bool,
+    canonical_route: str,
+    canonical_query: dict[str, Any] | None,
+    canonical_url: str,
     shell_state: dict[str, Any] | None,
     surface_payload: dict[str, Any] | None,
     shell_composition: dict[str, Any] | None,
@@ -414,7 +412,11 @@ def build_portal_runtime_envelope(
         "surface_id": _as_text(surface_id) or SYSTEM_ROOT_SURFACE_ID,
         "entrypoint_id": _as_text(entrypoint_id) or PORTAL_SHELL_ENTRYPOINT_ID,
         "read_write_posture": _as_text(read_write_posture) or "read-only",
-        "shell_state": dict(shell_state or {"schema": PORTAL_SHELL_STATE_SCHEMA, "allowed": True}),
+        "reducer_owned": bool(reducer_owned),
+        "canonical_route": _as_text(canonical_route) or route_for_surface(surface_id),
+        "canonical_query": dict(canonical_query or {}),
+        "canonical_url": _as_text(canonical_url) or route_for_surface(surface_id),
+        "shell_state": dict(shell_state or {"schema": PORTAL_SHELL_STATE_SCHEMA}),
         "surface_payload": dict(surface_payload or {"schema": surface_schema_for_surface(surface_id)}),
         "shell_composition": dict(shell_composition or {}),
         "warnings": list(warnings or []),
@@ -449,11 +451,9 @@ __all__ = [
     "PORTAL_RUNTIME_ENVELOPE_SCHEMA",
     "PORTAL_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA",
     "PORTAL_RUNTIME_REQUIRED_ENVELOPE_KEYS",
-    "SYSTEM_ACTIVITY_SURFACE_SCHEMA",
     "SYSTEM_OPERATIONAL_STATUS_SURFACE_SCHEMA",
-    "SYSTEM_PROFILE_BASICS_ACTION_REQUEST_SCHEMA",
-    "SYSTEM_PROFILE_BASICS_SURFACE_SCHEMA",
     "SYSTEM_ROOT_SURFACE_SCHEMA",
+    "SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA",
     "UTILITIES_INTEGRATIONS_SURFACE_SCHEMA",
     "UTILITIES_ROOT_SURFACE_SCHEMA",
     "UTILITIES_TOOL_EXPOSURE_SURFACE_SCHEMA",
