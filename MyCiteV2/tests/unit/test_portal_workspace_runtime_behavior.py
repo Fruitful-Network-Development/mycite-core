@@ -31,6 +31,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     TRANSITION_FOCUS_FILE,
     TRANSITION_FOCUS_OBJECT,
     TRANSITION_SET_VERB,
+    UTILITIES_ROOT_SURFACE_ID,
     VERB_MEDIATE,
     VERB_NAVIGATE,
     initial_portal_shell_state,
@@ -220,7 +221,36 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 envelope["shell_composition"]["regions"]["inspector"]["kind"],
                 "network_system_log_inspector",
             )
-            self.assertFalse(envelope["shell_composition"]["inspector_collapsed"])
+            self.assertTrue(envelope["shell_composition"]["inspector_collapsed"])
+            self.assertFalse(envelope["shell_composition"]["regions"]["inspector"]["visible"])
+
+            record_id = envelope["surface_payload"]["workspace"]["records"][0]["datum_address"]
+            focused_envelope = run_portal_shell_entry(
+                {
+                    "schema": "mycite.v2.portal.shell.request.v1",
+                    "requested_surface_id": NETWORK_ROOT_SURFACE_ID,
+                    "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                    "surface_query": {"view": "system_logs", "record": record_id},
+                },
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+                data_dir=data_dir,
+                public_dir=public_dir,
+                private_dir=private_dir,
+                audit_storage_file=None,
+                webapps_root=None,
+                tool_exposure_policy=None,
+            )
+            self.assertEqual(
+                focused_envelope["canonical_query"],
+                {"view": "system_logs", "record": record_id},
+            )
+            self.assertFalse(focused_envelope["shell_composition"]["inspector_collapsed"])
+            self.assertTrue(focused_envelope["shell_composition"]["regions"]["inspector"]["visible"])
+            self.assertEqual(
+                focused_envelope["shell_composition"]["regions"]["inspector"]["subject"],
+                {"level": "record", "id": record_id},
+            )
 
     def test_system_root_shell_composition_uses_logo_as_the_only_system_activity_entry(self) -> None:
         envelope = run_portal_shell_entry(
@@ -258,6 +288,44 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         control_panel = operational_envelope["shell_composition"]["regions"]["control_panel"]
         self.assertEqual(control_panel["kind"], "focus_selection_panel")
         self.assertEqual(control_panel["surface_label"], "SYSTEM")
+        self.assertTrue(envelope["shell_composition"]["inspector_collapsed"])
+        self.assertFalse(envelope["shell_composition"]["regions"]["inspector"]["visible"])
+
+    def test_utilities_root_uses_minimal_section_led_control_panel_and_collapsed_interface_panel(self) -> None:
+        envelope = run_portal_shell_entry(
+            {
+                "schema": "mycite.v2.portal.shell.request.v1",
+                "requested_surface_id": UTILITIES_ROOT_SURFACE_ID,
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+            },
+            portal_instance_id="fnd",
+            portal_domain="fruitfulnetworkdevelopment.com",
+            data_dir=None,
+            public_dir=None,
+            private_dir=None,
+            audit_storage_file=None,
+            webapps_root=None,
+            tool_exposure_policy=None,
+        )
+        control_panel = envelope["shell_composition"]["regions"]["control_panel"]
+        self.assertEqual(control_panel["kind"], "focus_selection_panel")
+        self.assertEqual(control_panel["title"], "Control Panel")
+        self.assertEqual(control_panel["surface_label"], "UTILITIES")
+        self.assertEqual(
+            control_panel["context_items"],
+            [
+                {"label": "Root", "value": "UTILITIES"},
+                {"label": "Section", "value": "Overview"},
+            ],
+        )
+        self.assertEqual(control_panel["verb_tabs"], [])
+        self.assertEqual([group["title"] for group in control_panel["groups"]], ["Sections"])
+        self.assertEqual(
+            [entry["label"] for entry in control_panel["groups"][0]["entries"]],
+            ["Tool Exposure", "Integrations"],
+        )
+        self.assertTrue(envelope["shell_composition"]["inspector_collapsed"])
+        self.assertFalse(envelope["shell_composition"]["regions"]["inspector"]["visible"])
 
     def test_system_workspace_bundle_projects_anthology_as_layered_datum_table(self) -> None:
         with TemporaryDirectory() as tmp:

@@ -44,6 +44,8 @@
       BODY_DATA.setAttribute("data-shell-boot-state", "fatal");
       BODY_DATA.setAttribute("data-shell-fatal-class", fatalClass || "render_dispatch_failed");
     }
+    window.__MYCITE_V2_SHELL_FATAL_SHOWN = true;
+    window.__MYCITE_V2_SHELL_HYDRATED = false;
     var placeholder = qs("#v2-control-panel-placeholder");
     if (placeholder) placeholder.textContent = message;
     var workbenchBody = qs("#v2-workbench-body");
@@ -110,8 +112,6 @@
     var inspectorContent = qs("#portalInspectorContent");
     var menubarTitle = qs(".ide-menubar__pageTitle");
     var menubarSub = qs(".ide-menubar__pageSub");
-    var pageheadTitle = qs("#v2-workbench-title");
-    var pageheadSub = qs("#v2-workbench-subtitle");
     var inspectorRegion = (composition.regions && composition.regions.inspector) || {};
     var workbenchRegion = (composition.regions && composition.regions.workbench) || {};
     var workbenchVisible = workbenchRegion.visible !== false;
@@ -136,8 +136,7 @@
           .filter(Boolean)
           .join(" · ");
     }
-    if (pageheadTitle) pageheadTitle.textContent = workbenchRegion.title || composition.page_title || "Portal";
-    if (pageheadSub) pageheadSub.textContent = workbenchRegion.subtitle || composition.page_subtitle || "";
+    document.title = composition.page_title ? composition.page_title + " | MyCite Portal Workspace" : "MyCite Portal Workspace";
 
     if (workbench) {
       workbench.setAttribute("data-active-service", composition.active_service || "system");
@@ -231,6 +230,7 @@
     if (!(options && options.updateHistory === false)) {
       syncHistory(envelope, options && options.historyPayload, options || {});
     }
+    window.__MYCITE_V2_SHELL_HYDRATED = true;
     setBootState("hydrated");
   }
 
@@ -301,15 +301,42 @@
   }
 
   function bindShellChromeEvents() {
+    function setInspectorOpenLocal(isOpen) {
+      var shell = qs(".ide-shell");
+      var inspector = qs("#portalInspector");
+      if (!shell || !inspector) return;
+      shell.setAttribute("data-inspector-collapsed", isOpen ? "false" : "true");
+      inspector.classList.toggle("is-collapsed", !isOpen);
+      inspector.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      inspector.style.display = isOpen ? "" : "none";
+    }
+
     document.addEventListener("mycite:v2:inspector-toggle-request", function () {
       var envelope = lastEnvelope;
-      if (!envelope || !envelope.reducer_owned) return;
+      if (!envelope || !envelope.reducer_owned) {
+        var workbenchRegion = envelope && envelope.shell_composition && envelope.shell_composition.regions
+          ? envelope.shell_composition.regions.workbench || {}
+          : {};
+        if (workbenchRegion.visible === false) return;
+        var shell = qs(".ide-shell");
+        if (!shell) return;
+        var isOpenLocal = shell.getAttribute("data-inspector-collapsed") !== "true";
+        setInspectorOpenLocal(!isOpenLocal);
+        return;
+      }
       var isOpen = envelope.shell_state && envelope.shell_state.chrome && envelope.shell_state.chrome.interface_panel_open;
       dispatchTransition({ kind: isOpen ? "close_interface_panel" : "open_interface_panel" });
     });
     document.addEventListener("mycite:v2:inspector-dismiss-request", function () {
       var envelope = lastEnvelope;
-      if (!envelope || !envelope.reducer_owned) return;
+      if (!envelope || !envelope.reducer_owned) {
+        var workbenchRegion = envelope && envelope.shell_composition && envelope.shell_composition.regions
+          ? envelope.shell_composition.regions.workbench || {}
+          : {};
+        if (workbenchRegion.visible === false) return;
+        setInspectorOpenLocal(false);
+        return;
+      }
       dispatchTransition({ kind: "close_interface_panel" });
     });
     document.addEventListener("mycite:v2:control-panel-toggle-request", function () {
@@ -331,6 +358,8 @@
       return lastEnvelope;
     },
   };
+  window.__MYCITE_V2_SHOW_FATAL = showFatal;
+  window.__MYCITE_V2_SHELL_CORE_LOADED = true;
 
   setBootState("core_loaded");
   bindShellChromeEvents();

@@ -8,6 +8,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from MyCiteV2.instances._shared.portal_host.app import PORTAL_SHELL_ASSET_MANIFEST_SCHEMA, PORTAL_SHELL_MODULE_FILES, build_shell_asset_manifest
+
 
 class PortalOneShellBoundaryTests(unittest.TestCase):
     def test_retired_split_artifacts_are_absent(self) -> None:
@@ -50,6 +52,23 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("default_workbench_visible: bool = False", shell_source)
         self.assertNotIn("system.activity", shell_source)
         self.assertNotIn("system.profile_basics", shell_source)
+
+    def test_shell_asset_manifest_is_canonical_and_loader_reads_it_dynamically(self) -> None:
+        manifest = build_shell_asset_manifest(build_id="build-123")
+        loader_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_shell.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertEqual(manifest["schema"], PORTAL_SHELL_ASSET_MANIFEST_SCHEMA)
+        self.assertEqual(
+            [entry["file"] for entry in manifest["scripts"]["shell_modules"]],
+            list(PORTAL_SHELL_MODULE_FILES),
+        )
+        self.assertIn('document.getElementById("v2-shell-asset-manifest")', loader_source)
+        self.assertIn("scripts.shell_modules", loader_source)
+        self.assertIn("window.__MYCITE_V2_SHELL_ASSET_MANIFEST = assetManifest", loader_source)
+        for filename in PORTAL_SHELL_MODULE_FILES:
+            self.assertNotIn(f'"{filename}"', loader_source)
 
     def test_active_repo_text_does_not_reference_retired_split_routes(self) -> None:
         forbidden_tokens = (

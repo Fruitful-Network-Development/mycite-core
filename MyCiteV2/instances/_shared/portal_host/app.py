@@ -66,6 +66,84 @@ def _as_text(value: object) -> str:
 
 
 PORTAL_BUILD_ID = _as_text(os.environ.get("MYCITE_V2_PORTAL_BUILD_ID")) or "not-set"
+PORTAL_SHELL_ASSET_MANIFEST_SCHEMA = "mycite.v2.portal.shell.asset_manifest.v1"
+PORTAL_SHELL_MODULE_FILES = (
+    "v2_portal_shell_region_renderers.js",
+    "v2_portal_aws_workspace.js",
+    "v2_portal_system_workspace.js",
+    "v2_portal_network_workspace.js",
+    "v2_portal_workbench_renderers.js",
+    "v2_portal_inspector_renderers.js",
+    "v2_portal_shell_core.js",
+    "v2_portal_shell_watchdog.js",
+)
+
+
+def _static_asset_descriptor(filename: str, *, build_id: str, asset_id: str) -> dict[str, str]:
+    path = f"/portal/static/{filename}"
+    suffix = f"?v={build_id}" if build_id else ""
+    return {
+        "asset_id": asset_id,
+        "file": filename,
+        "path": path,
+        "url": f"{path}{suffix}",
+    }
+
+
+def build_shell_asset_manifest(build_id: str = PORTAL_BUILD_ID) -> dict[str, Any]:
+    safe_build_id = _as_text(build_id)
+    return {
+        "schema": PORTAL_SHELL_ASSET_MANIFEST_SCHEMA,
+        "build_id": safe_build_id,
+        "styles": {
+            "portal_css": _static_asset_descriptor(
+                "portal.css",
+                build_id=safe_build_id,
+                asset_id="portal_css",
+            ),
+        },
+        "scripts": {
+            "portal_js": _static_asset_descriptor(
+                "portal.js",
+                build_id=safe_build_id,
+                asset_id="portal_js",
+            ),
+            "shell_entry": _static_asset_descriptor(
+                "v2_portal_shell.js",
+                build_id=safe_build_id,
+                asset_id="shell_entry",
+            ),
+            "shell_modules": [
+                _static_asset_descriptor(
+                    filename,
+                    build_id=safe_build_id,
+                    asset_id=filename.rsplit(".", 1)[0],
+                )
+                for filename in PORTAL_SHELL_MODULE_FILES
+            ],
+        },
+    }
+
+
+def _shell_asset_files_from_manifest(manifest: Mapping[str, Any]) -> list[str]:
+    files: list[str] = []
+    styles = manifest.get("styles") if isinstance(manifest, Mapping) else {}
+    scripts = manifest.get("scripts") if isinstance(manifest, Mapping) else {}
+    for asset in list(styles.values()) + [
+        scripts.get("portal_js"),
+        scripts.get("shell_entry"),
+    ]:
+        if isinstance(asset, Mapping):
+            filename = _as_text(asset.get("file"))
+            if filename:
+                files.append(filename)
+    for asset in list(scripts.get("shell_modules") or []):
+        if not isinstance(asset, Mapping):
+            continue
+        filename = _as_text(asset.get("file"))
+        if filename:
+            files.append(filename)
+    return files
 
 
 def _required_env_text(name: str) -> str:
@@ -251,6 +329,7 @@ def _error_response(code: str, message: str, *, status_code: int = 400) -> tuple
 
 
 def _render_surface(surface_id: str, host_config: V2PortalHostConfig) -> str:
+    shell_asset_manifest = build_shell_asset_manifest(PORTAL_BUILD_ID)
     return render_template(
         "portal.html",
         portal_instance_id=host_config.portal_instance_id,
@@ -265,29 +344,22 @@ def _render_surface(surface_id: str, host_config: V2PortalHostConfig) -> str:
         runtime_envelope_schema=PORTAL_RUNTIME_ENVELOPE_SCHEMA,
         shell_endpoint="/portal/api/v2/shell",
         shell_loading_label="Loading portal shell…",
+        shell_asset_manifest=shell_asset_manifest,
         logo_href="/portal/system",
     )
 
 
 def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
     static_dir = Path(__file__).resolve().parent / "static"
-    static_files = [
-        "portal.css",
-        "portal.js",
-        "v2_portal_shell.js",
-        "v2_portal_shell_core.js",
-        "v2_portal_shell_region_renderers.js",
-        "v2_portal_aws_workspace.js",
-        "v2_portal_system_workspace.js",
-        "v2_portal_workbench_renderers.js",
-        "v2_portal_inspector_renderers.js",
-    ]
+    shell_asset_manifest = build_shell_asset_manifest(PORTAL_BUILD_ID)
+    static_files = _shell_asset_files_from_manifest(shell_asset_manifest)
     return {
         "schema": V2_PORTAL_HEALTH_SCHEMA,
         "ok": all((static_dir / name).is_file() for name in static_files),
         "host_shape": HOST_SHAPE,
         "portal_build_id": PORTAL_BUILD_ID,
         "portal_instance_id": config.portal_instance_id,
+        "shell_asset_manifest": shell_asset_manifest,
         "root_routes": [
             "/portal",
             "/portal/system",
@@ -446,6 +518,8 @@ __all__ = [
     "HOST_SHAPE",
     "V2_PORTAL_ERROR_SCHEMA",
     "V2_PORTAL_HEALTH_SCHEMA",
+    "PORTAL_SHELL_ASSET_MANIFEST_SCHEMA",
     "V2PortalHostConfig",
+    "build_shell_asset_manifest",
     "create_app",
 ]

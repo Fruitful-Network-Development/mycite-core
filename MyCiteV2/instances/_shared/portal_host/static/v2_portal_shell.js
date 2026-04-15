@@ -5,16 +5,6 @@
  */
 (function () {
   var body = document.body || document.documentElement;
-  var internalScripts = [
-    "/portal/static/v2_portal_shell_region_renderers.js",
-    "/portal/static/v2_portal_aws_workspace.js",
-    "/portal/static/v2_portal_system_workspace.js",
-    "/portal/static/v2_portal_network_workspace.js",
-    "/portal/static/v2_portal_workbench_renderers.js",
-    "/portal/static/v2_portal_inspector_renderers.js",
-    "/portal/static/v2_portal_shell_core.js",
-    "/portal/static/v2_portal_shell_watchdog.js",
-  ];
 
   function setBootState(state) {
     if (!body) return;
@@ -48,6 +38,16 @@
     window.__MYCITE_V2_SHELL_FATAL_SHOWN = true;
   }
 
+  function readAssetManifest() {
+    var el = document.getElementById("v2-shell-asset-manifest");
+    if (!el || !el.textContent) return null;
+    try {
+      return JSON.parse(el.textContent);
+    } catch (_) {
+      return null;
+    }
+  }
+
   function loadScript(src) {
     return new Promise(function (resolve, reject) {
       var script = document.createElement("script");
@@ -65,6 +65,21 @@
   window.__MYCITE_V2_SHELL_ENTRY_LOADED = true;
   window.__MYCITE_V2_PATCH_FATAL_STATE = patchFatalState;
   setBootState("entry_loaded");
+
+  var assetManifest = readAssetManifest();
+  var scripts = assetManifest && assetManifest.scripts ? assetManifest.scripts : {};
+  var internalScripts = Array.isArray(scripts.shell_modules)
+    ? scripts.shell_modules
+        .map(function (entry) {
+          return entry && entry.url ? String(entry.url) : "";
+        })
+        .filter(Boolean)
+    : [];
+  if (!assetManifest || !internalScripts.length) {
+    patchFatalState("The portal shell asset manifest was not embedded into the page.", "asset_manifest_missing");
+    return;
+  }
+  window.__MYCITE_V2_SHELL_ASSET_MANIFEST = assetManifest;
 
   internalScripts
     .reduce(function (chain, src) {

@@ -1058,6 +1058,7 @@ def build_system_workspace_bundle(
         "kind": "mediation_panel" if shell_state.verb == VERB_MEDIATE else "summary_panel",
         "title": "Mediation" if shell_state.verb == VERB_MEDIATE else "Interface Panel",
         "summary": "Mediation is bound to the current focus subject." if shell_state.verb == VERB_MEDIATE else "The interface panel stays collapsed during ordinary navigation.",
+        "visible": shell_state.verb == VERB_MEDIATE,
         "subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),
         "sections": [
             {

@@ -2850,6 +2850,22 @@ body.is-modal-open {
   white-space: nowrap;
 }
 
+.ide-sessionAction--icon {
+  min-width: 28px;
+  padding: 4px;
+}
+
+.ide-sessionAction__icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+
+.ide-sessionAction__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
 .ide-menubar__theme {
   padding: 0;
   flex-wrap: nowrap;
@@ -2990,6 +3006,18 @@ body.is-modal-open {
 .ide-controlpanel__section {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding: 10px 10px 12px;
+}
+
+.u-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .ide-controlpanel__module {
@@ -4004,10 +4032,15 @@ body.is-modal-open {
   width: 100%;
 }
 
-.pagehead,
-.page-tabs,
-.viewport {
+.page-tabs {
   flex: 0 0 auto;
+  width: 100%;
+  align-self: stretch;
+}
+
+.viewport {
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100%;
   align-self: stretch;
 }
@@ -6719,7 +6752,7 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 
 /* V2 native portal shell helpers */
 .v2-workbench-body {
-  padding: 0 1rem 1.5rem;
+  padding: 1rem 1rem 1.5rem;
 }
 .v2-json-panel {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
