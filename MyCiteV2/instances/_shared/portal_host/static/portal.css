@@ -2764,7 +2764,7 @@ body.is-modal-open {
 /* Locked IDE shell */
 :root {
   --ide-menu-h: 38px;
-  --ide-activity-w: 96px;
+  --ide-activity-w: 60px;
   --ide-controlpanel-w: 260px;
   --ide-inspector-w: 360px;
 }
@@ -2896,7 +2896,7 @@ body.is-modal-open {
 .ide-activitynav {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   padding: 8px 6px;
 }
 
@@ -2908,22 +2908,14 @@ body.is-modal-open {
 
 .ide-activitylink {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  gap: 6px;
+  justify-content: center;
   text-decoration: none;
   color: #c8c8c8;
   border: 1px solid transparent;
   border-radius: 6px;
-  padding: 9px 4px 10px;
-  min-height: 58px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  line-height: 1.15;
-  text-align: center;
+  padding: 10px 0;
+  min-height: 42px;
 }
 
 .ide-activityicon {
@@ -2945,23 +2937,6 @@ body.is-modal-open {
   margin-bottom: 4px;
 }
 
-.ide-activitylabel {
-  display: block;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
-  word-break: break-word;
-}
-
-.ide-activitylink--root_logo .ide-activityicon {
-  width: 26px;
-  height: 26px;
-}
-
-.ide-activitylink--root_logo .ide-activitylabel {
-  font-size: 9px;
-}
-
 .ide-activitylink:hover {
   background: rgba(255, 255, 255, 0.07);
   color: #fff;
@@ -2974,12 +2949,7 @@ body.is-modal-open {
 }
 
 .ide-activityfooter {
-  margin-top: auto;
-  padding: 10px 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: none;
 }
 
 .ide-sessionLine {
@@ -3234,6 +3204,163 @@ body.is-modal-open {
   text-transform: uppercase;
   color: #a8a8a8;
   margin-bottom: 8px;
+}
+
+.ide-controlpanel__selectionPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ide-controlpanel__selectionHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.22);
+  padding-bottom: 8px;
+}
+
+.ide-controlpanel__surfaceLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #d8d8d8;
+}
+
+.ide-controlpanel__contextRows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ide-controlpanel__contextRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.ide-controlpanel__contextKey {
+  color: #b3bcbd;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ide-controlpanel__contextValue {
+  color: #f1f1f1;
+  overflow-wrap: anywhere;
+}
+
+.ide-controlpanel__verbTabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+.ide-controlpanel__verbTab {
+  appearance: none;
+  border: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.28);
+  background: transparent;
+  color: #d9d9d9;
+  padding: 8px 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.ide-controlpanel__verbTab:last-child {
+  border-right: 0;
+}
+
+.ide-controlpanel__verbTab:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.ide-controlpanel__verbTab.is-active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.ide-controlpanel__selectionGroup {
+  border-top: 1px dashed rgba(255, 255, 255, 0.22);
+  padding-top: 14px;
+}
+
+.ide-controlpanel__selectionGroupTitle {
+  margin-bottom: 10px;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  color: #d8d8d8;
+  overflow-wrap: anywhere;
+}
+
+.ide-controlpanel__selectionList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ide-controlpanel__selectionEntry {
+  display: block;
+  text-decoration: none;
+  color: #d7d7d7;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.ide-controlpanel__selectionEntry:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.ide-controlpanel__selectionEntry.is-active {
+  border-color: rgba(30, 108, 147, 0.85);
+  background: rgba(30, 108, 147, 0.26);
+  color: #fff;
+}
+
+.ide-controlpanel__selectionEntry.is-static {
+  cursor: default;
+}
+
+.ide-controlpanel__entryBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ide-controlpanel__entryPrefix {
+  font-size: 11px;
+  color: #a7a7a7;
+}
+
+.ide-controlpanel__entryLabel {
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.ide-controlpanel__selectionEntry small {
+  display: block;
+  font-size: 10px;
+  color: #9e9e9e;
+}
+
+.ide-controlpanel__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .ide-controlpanel__list {

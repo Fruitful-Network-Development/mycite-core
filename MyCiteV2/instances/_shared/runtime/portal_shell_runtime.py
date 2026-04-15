@@ -40,7 +40,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     PortalShellRequest,
     PortalShellState,
     SYSTEM_ANCHOR_FILE_KEY,
-    SYSTEM_OPERATIONAL_STATUS_SURFACE_ID,
     SYSTEM_PROFILE_BASICS_FILE_KEY,
     SYSTEM_ROOT_SURFACE_ID,
     TRANSITION_FOCUS_FILE,
@@ -190,7 +189,6 @@ def _activity_items(
 ) -> list[dict[str, Any]]:
     dispatch_bodies = build_portal_activity_dispatch_bodies(portal_scope=portal_scope, shell_state=shell_state)
     visible_surface_ids = [
-        SYSTEM_OPERATIONAL_STATUS_SURFACE_ID,
         AWS_TOOL_SURFACE_ID,
         AWS_NARROW_WRITE_TOOL_SURFACE_ID,
         AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
@@ -285,45 +283,6 @@ def _rows_for_tool_table(tool_rows: list[dict[str, Any]]) -> list[dict[str, Any]
     return rows
 
 
-def _surface_payload_for_operational_status(
-    *,
-    tool_rows: list[dict[str, Any]],
-    audit_storage_file: str | Path | None,
-    integration_flags: dict[str, bool],
-) -> dict[str, Any]:
-    operational_status = LocalAuditService(
-        None if audit_storage_file is None else FilesystemAuditLogAdapter(Path(audit_storage_file))
-    ).read_operational_status_summary()
-    return {
-        "schema": surface_schema_for_surface(SYSTEM_OPERATIONAL_STATUS_SURFACE_ID),
-        "kind": "operational_status",
-        "title": "Operational Status",
-        "subtitle": "Plain read-model status view outside reducer ownership.",
-        "cards": [
-            _metric_card("audit health", operational_status.health_state),
-            _metric_card("audit storage", operational_status.storage_state),
-            _metric_card("recent records", operational_status.recent_record_count),
-            _metric_card(
-                "live integrations",
-                sum(1 for value in integration_flags.values() if value),
-                meta=f"{len(integration_flags)} tracked",
-            ),
-        ],
-        "sections": [
-            {
-                "title": "Tool posture",
-                "columns": [
-                    {"key": "tool", "label": "Tool"},
-                    {"key": "configured", "label": "Configured"},
-                    {"key": "enabled", "label": "Enabled"},
-                    {"key": "operational", "label": "Operational"},
-                ],
-                "items": _rows_for_tool_table(tool_rows),
-            }
-        ],
-    }
-
-
 def _surface_payload_for_network(
     *,
     portal_instance_id: str,
@@ -381,12 +340,6 @@ def _network_control_panel(
     active_filters = dict(workspace.get("active_filters") or {})
     event_type_filters = list(workspace.get("event_type_filters") or [])
     contract_filters = list(workspace.get("contract_filters") or [])
-    system_request = build_portal_shell_request_payload(
-        requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        transition={"kind": TRANSITION_FOCUS_FILE, "file_key": SYSTEM_ANCHOR_FILE_KEY},
-    )
     system_log_request = build_portal_shell_request_payload(
         requested_surface_id=NETWORK_ROOT_SURFACE_ID,
         portal_scope=portal_scope,
@@ -429,30 +382,17 @@ def _network_control_panel(
         )
     return {
         "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-        "kind": "network_navigation",
-        "title": "Network",
-        "sections": [
-            {
-                "title": "Roots",
-                "entries": [
-                    {
-                        "label": "System",
-                        "href": "/portal/system",
-                        "active": active_surface_id == SYSTEM_ROOT_SURFACE_ID,
-                        "shell_request": system_request,
-                    },
-                    {
-                        "label": "Network",
-                        "href": "/portal/network",
-                        "active": active_surface_id == NETWORK_ROOT_SURFACE_ID,
-                    },
-                    {
-                        "label": "Utilities",
-                        "href": "/portal/utilities",
-                        "active": active_surface_id == UTILITIES_ROOT_SURFACE_ID,
-                    },
-                ],
-            },
+        "kind": "focus_selection_panel",
+        "title": "Control Panel",
+        "surface_label": "NETWORK",
+        "context_items": [
+            {"label": "Root", "value": "NETWORK"},
+            {"label": "View", "value": "system_logs"},
+            {"label": "Contract", "value": _as_text(active_filters.get("contract_id")) or "all"},
+            {"label": "Type", "value": _as_text(active_filters.get("event_type_id")) or "all"},
+        ],
+        "verb_tabs": [],
+        "groups": [
             {
                 "title": "Views",
                 "entries": [
@@ -473,14 +413,8 @@ def _network_control_panel(
                 "title": "Event Types",
                 "entries": event_entries,
             },
-            {
-                "title": "Adjacent roots",
-                "entries": [
-                    _network_entry(label="Operational Status", href="/portal/system/operational-status"),
-                    _network_entry(label="Tool Exposure", href="/portal/utilities/tool-exposure"),
-                ],
-            },
         ],
+        "actions": [],
     }
 
 
@@ -610,6 +544,7 @@ def _tool_bundle_for_surface(
     portal_scope: PortalScope,
     shell_state: PortalShellState,
     data_dir: str | Path | None,
+    private_dir: str | Path | None,
     aws_status_file: str | Path | None,
     aws_csm_sandbox_status_file: str | Path | None,
     webapps_root: str | Path | None,
@@ -629,6 +564,7 @@ def _tool_bundle_for_surface(
             aws_status_file=aws_status_file,
             aws_csm_sandbox_status_file=aws_csm_sandbox_status_file,
             data_dir=data_dir,
+            private_dir=private_dir,
             tool_exposure_policy=tool_exposure_policy,
             tool_rows=tool_rows,
         )
@@ -637,6 +573,7 @@ def _tool_bundle_for_surface(
             portal_scope=portal_scope,
             shell_state=shell_state,
             data_dir=data_dir,
+            private_dir=private_dir,
             tool_exposure_policy=tool_exposure_policy,
             tool_rows=tool_rows,
         )
@@ -645,6 +582,7 @@ def _tool_bundle_for_surface(
             portal_scope=portal_scope,
             shell_state=shell_state,
             webapps_root=webapps_root,
+            private_dir=private_dir,
             tool_exposure_policy=tool_exposure_policy,
             tool_rows=tool_rows,
         )
@@ -717,6 +655,7 @@ def _bundle_for_surface(
             portal_scope=portal_scope,
             shell_state=canonical_state,
             data_dir=data_dir,
+            private_dir=private_dir,
             aws_status_file=aws_status_file,
             aws_csm_sandbox_status_file=aws_csm_sandbox_status_file,
             webapps_root=webapps_root,
@@ -725,41 +664,6 @@ def _bundle_for_surface(
         )
         bundle["tool_rows"] = tool_rows
         return bundle
-    if selection_surface_id == SYSTEM_OPERATIONAL_STATUS_SURFACE_ID:
-        surface_payload = _surface_payload_for_operational_status(
-            tool_rows=tool_rows,
-            audit_storage_file=audit_storage_file,
-            integration_flags=integration_flags,
-        )
-        return {
-            "entrypoint_id": PORTAL_SHELL_ENTRYPOINT_ID,
-            "read_write_posture": "read-only",
-            "page_title": "Operational Status",
-            "page_subtitle": "Plain read-model status view outside reducer ownership.",
-            "surface_payload": surface_payload,
-            "control_panel": _plain_control_panel(
-                portal_scope=portal_scope,
-                shell_state=shell_state,
-                active_surface_id=selection_surface_id,
-                title="System Views",
-                surface_group_title="System",
-                surface_entries=[
-                    {
-                        "label": "System Workspace",
-                        "href": "/portal/system",
-                        "shell_request": build_portal_shell_request_payload(
-                            requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
-                            portal_scope=portal_scope,
-                            shell_state=shell_state,
-                            transition={"kind": TRANSITION_FOCUS_FILE, "file_key": SYSTEM_ANCHOR_FILE_KEY},
-                        ),
-                    }
-                ],
-            ),
-            "workbench": _generic_workbench(surface_payload),
-            "inspector": _generic_inspector(surface_payload),
-            "tool_rows": tool_rows,
-        }
     if selection_surface_id == NETWORK_ROOT_SURFACE_ID:
         surface_payload = _surface_payload_for_network(
             portal_instance_id=portal_scope.scope_id,

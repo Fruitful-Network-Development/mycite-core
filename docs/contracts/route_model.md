@@ -3,7 +3,6 @@
 Canonical visible routes:
 
 - `/portal/system`
-- `/portal/system/operational-status`
 - `/portal/system/tools/<tool_slug>`
 - `/portal/network`
 - `/portal/utilities`

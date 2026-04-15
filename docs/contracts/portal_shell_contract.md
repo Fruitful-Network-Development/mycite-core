@@ -15,7 +15,7 @@ The shell state is reducer-owned only for:
 - `system.root`
 - `system.tools.*`
 
-`/portal/system/operational-status`, `/portal/network`, and `/portal/utilities*` stay in the same host shell, but they do not participate in focus-path reduction.
+`/portal/network` and `/portal/utilities*` stay in the same host shell, but they do not participate in focus-path reduction.
 
 Non-reducer roots may still project canonical query state when the host needs a stable read-only workbench lens. `NETWORK` uses raw `surface_query` projection keys for this purpose, while runtime remains the source of truth.
 
@@ -53,11 +53,18 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - Datum rows carry structural coordinates: `layer`, `value_group`, and `iteration`.
 - Selecting a datum opens a read-only inspector lens inside the same workbench.
 - `activity` and `profile_basics` are workspace file modes under `/portal/system`, not first-class pages.
-- The control panel is a stacked focus panel:
+- The control panel projects current context first, then the selectable options below the current focus.
+- Canonical context rows are file-backed and may include:
   - sandbox
   - file
-  - datum/object
-  - current intention
+  - datum
+  - object
+  - mediation subject
+- Canonical lower-focus selections may include:
+  - files when the user is at sandbox level
+  - datums when the user is at file level
+  - datum aspects or objects when the user is at datum level
+- Verb switching remains a compact tab row inside the same control panel.
 - The interface panel is mediation-owned.
 - On `system.root`, `verb=mediate` opens the interface panel and binds it to the current mediation subject.
 
@@ -81,6 +88,12 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
   - `type`
   - `record`
 - `NETWORK` has no canonical Messages/Hosted/Profile/Contracts tab set in V2.
+
+## Shell Chrome
+
+- The activity bar is icon-only.
+- Surface labels are exposed through hover titles and accessibility labels, not persistent bar text.
+- The control panel is the canonical textual navigation surface for current context and lower-focus selections.
 
 ## Tool Contract
 

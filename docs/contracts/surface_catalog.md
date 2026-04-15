@@ -7,7 +7,6 @@ The surface catalog is rooted only in `SYSTEM`, `NETWORK`, and `UTILITIES`.
 First-class surfaces:
 
 - `system.root`
-- `system.operational_status`
 - `system.tools.aws`
 - `system.tools.aws_narrow_write`
 - `system.tools.aws_csm_sandbox`
@@ -26,6 +25,12 @@ Workspace file modes under `system.root`:
 
 `anthology` is rendered as a layered datum table grouped by `layer` and `value_group`, with datum selection opening an inspector lens inside `system.root`.
 
+`SYSTEM` control-panel behavior is canonicalized as:
+
+- current context rows first
+- verb tabs in a compact navigation strip
+- file, datum, or object selections below the current focus level
+
 ## NETWORK
 
 - `network.root`
@@ -38,6 +43,8 @@ Workspace file modes under `system.root`:
 - Event-type filtering is projected through the same root workbench.
 - Selected log rows open a read-only inspector with linked contract detail when applicable.
 - `NETWORK` has no canonical Messages/Hosted/Profile/Contracts peer-tab model in V2.
+
+The host shell activity bar remains icon-only across all root and tool entries. Labels belong to hover titles and accessibility metadata, not to persistent bar text.
 
 ## UTILITIES
 

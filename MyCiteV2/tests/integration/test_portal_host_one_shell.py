@@ -117,7 +117,6 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             client = app.test_client()
 
             self.assertEqual(client.get("/portal/system").status_code, 200)
-            self.assertEqual(client.get("/portal/system/operational-status").status_code, 200)
             self.assertEqual(client.get("/portal/network").status_code, 200)
             self.assertEqual(client.get("/portal/utilities").status_code, 200)
             self.assertEqual(client.get("/portal/system/activity").status_code, 404)
@@ -137,18 +136,19 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(payload["surface_id"], "system.root")
             self.assertEqual(payload["canonical_route"], "/portal/system")
             self.assertEqual(payload["canonical_query"]["file"], "anthology")
+            self.assertEqual(payload["shell_composition"]["regions"]["control_panel"]["kind"], "focus_selection_panel")
             activity_items = payload["shell_composition"]["regions"]["activity_bar"]["items"]
             self.assertNotIn("system.root", [item["item_id"] for item in activity_items])
             operational_payload = client.post(
                 "/portal/api/v2/shell",
                 json={
                     "schema": "mycite.v2.portal.shell.request.v1",
-                    "requested_surface_id": "system.operational_status",
+                    "requested_surface_id": "system.legacy_removed_surface",
                     "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
                 },
             ).get_json()
-            control_panel_roots = operational_payload["shell_composition"]["regions"]["control_panel"]["sections"][0]["entries"]
-            self.assertIn("System", [entry["label"] for entry in control_panel_roots])
+            self.assertEqual(operational_payload["surface_id"], "system.root")
+            self.assertEqual(operational_payload["error"]["code"], "surface_unknown")
             network_payload = client.post(
                 "/portal/api/v2/shell",
                 json={
@@ -162,6 +162,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertFalse(network_payload["reducer_owned"])
             self.assertEqual(network_payload["canonical_query"], {"view": "system_logs"})
             self.assertEqual(network_payload["surface_payload"]["kind"], "network_system_log_workspace")
+            self.assertEqual(network_payload["shell_composition"]["regions"]["control_panel"]["kind"], "focus_selection_panel")
 
             tool_response = client.post(
                 "/portal/api/v2/system/tools/aws",
@@ -170,6 +171,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(tool_response.status_code, 200)
             tool_payload = tool_response.get_json()
             self.assertEqual(tool_payload["surface_id"], "system.tools.aws")
+            self.assertEqual(tool_payload["shell_composition"]["regions"]["control_panel"]["kind"], "focus_selection_panel")
 
             profile_action = client.post(
                 "/portal/api/v2/system/workspace/profile-basics",

@@ -15,7 +15,6 @@ PORTAL_SURFACE_CATALOG_ENTRY_SCHEMA = "mycite.v2.portal.surface_catalog.entry.v1
 PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA = "mycite.v2.portal.tool_registry.entry.v1"
 
 SYSTEM_ROOT_SURFACE_ID = "system.root"
-SYSTEM_OPERATIONAL_STATUS_SURFACE_ID = "system.operational_status"
 NETWORK_ROOT_SURFACE_ID = "network.root"
 UTILITIES_ROOT_SURFACE_ID = "utilities.root"
 UTILITIES_TOOL_EXPOSURE_SURFACE_ID = "utilities.tool_exposure"
@@ -37,7 +36,6 @@ CTS_GIS_TOOL_ENTRYPOINT_ID = "portal.system.tools.cts_gis"
 FND_EBI_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_ebi"
 
 SYSTEM_ROOT_ROUTE = "/portal/system"
-SYSTEM_OPERATIONAL_STATUS_ROUTE = "/portal/system/operational-status"
 NETWORK_ROOT_ROUTE = "/portal/network"
 UTILITIES_ROOT_ROUTE = "/portal/utilities"
 UTILITIES_TOOL_EXPOSURE_ROUTE = "/portal/utilities/tool-exposure"
@@ -121,7 +119,7 @@ TOOL_SURFACE_IDS = frozenset(
         FND_EBI_TOOL_SURFACE_ID,
     }
 )
-SYSTEM_SURFACE_IDS = frozenset({SYSTEM_ROOT_SURFACE_ID, SYSTEM_OPERATIONAL_STATUS_SURFACE_ID, *TOOL_SURFACE_IDS})
+SYSTEM_SURFACE_IDS = frozenset({SYSTEM_ROOT_SURFACE_ID, *TOOL_SURFACE_IDS})
 NETWORK_SURFACE_IDS = frozenset({NETWORK_ROOT_SURFACE_ID})
 UTILITIES_SURFACE_IDS = frozenset(
     {
@@ -645,14 +643,6 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
             surface_kind="system_workspace",
             page_owner="system",
             default_surface=True,
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=SYSTEM_OPERATIONAL_STATUS_SURFACE_ID,
-            label="Operational Status",
-            route=SYSTEM_OPERATIONAL_STATUS_ROUTE,
-            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            surface_kind="system_operational_status",
-            page_owner="system",
         ),
         PortalSurfaceCatalogEntry(
             surface_id=NETWORK_ROOT_SURFACE_ID,
@@ -1372,8 +1362,6 @@ def activity_icon_id_for_surface(surface_id: object) -> str:
     normalized_surface_id = _as_text(surface_id)
     if normalized_surface_id == SYSTEM_ROOT_SURFACE_ID:
         return "system"
-    if normalized_surface_id == SYSTEM_OPERATIONAL_STATUS_SURFACE_ID:
-        return "system_status"
     if normalized_surface_id == NETWORK_ROOT_SURFACE_ID:
         return "network"
     if normalized_surface_id in {UTILITIES_ROOT_SURFACE_ID, UTILITIES_TOOL_EXPOSURE_SURFACE_ID, UTILITIES_INTEGRATIONS_SURFACE_ID}:
@@ -1560,8 +1548,6 @@ __all__ = [
     "SURFACE_POSTURE_WORKBENCH_PRIMARY",
     "SYSTEM_ACTIVITY_FILE_KEY",
     "SYSTEM_ANCHOR_FILE_KEY",
-    "SYSTEM_OPERATIONAL_STATUS_ROUTE",
-    "SYSTEM_OPERATIONAL_STATUS_SURFACE_ID",
     "SYSTEM_PROFILE_BASICS_FILE_KEY",
     "SYSTEM_ROOT_ROUTE",
     "SYSTEM_ROOT_SURFACE_ID",

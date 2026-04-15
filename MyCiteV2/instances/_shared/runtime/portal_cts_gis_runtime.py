@@ -84,6 +84,7 @@ def build_portal_cts_gis_surface_bundle(
     portal_scope: PortalScope,
     shell_state: PortalShellState,
     data_dir: str | Path | None,
+    private_dir: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
     tool_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -131,11 +132,13 @@ def build_portal_cts_gis_surface_bundle(
         shell_state=shell_state,
         data_dir=data_dir,
         public_dir=None,
+        private_dir=private_dir,
+        surface_id=CTS_GIS_TOOL_SURFACE_ID,
         active_document=None,
         selected_datum=None,
         selected_object=None,
         tool_rows=list(tool_rows or []),
-        title="CTS-GIS Context",
+        title="CTS-GIS",
     )
     workbench = {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,

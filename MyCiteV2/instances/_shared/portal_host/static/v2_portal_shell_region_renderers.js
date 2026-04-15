@@ -40,11 +40,6 @@
         '<path d="M4.5 6.5h15"></path><path d="M4.5 12h15"></path><path d="M4.5 17.5h9"></path>' +
         '<path d="M17 16l2.5 2.5"></path><circle cx="14.5" cy="13.5" r="3.5"></circle>' +
         "</svg>";
-    } else if (id === "system_status") {
-      svg =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-        '<path d="M5 18.5h14"></path><path d="M7.5 16V11"></path><path d="M12 16V8"></path><path d="M16.5 16v-5"></path>' +
-        "</svg>";
     } else {
       svg =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
@@ -80,11 +75,7 @@
       link.href = item.href || "#";
       link.setAttribute("aria-label", item.label || "");
       link.setAttribute("title", item.label || "");
-      link.innerHTML =
-        activityIconMarkup(item.icon_id) +
-        '<span class="ide-activitylabel">' +
-        ctx.escapeHtml(item.label || "") +
-        "</span>";
+      link.innerHTML = activityIconMarkup(item.icon_id);
       bindSurfaceNavigation(link, item, ctx);
       nav.appendChild(link);
     });
@@ -127,10 +118,150 @@
     );
   }
 
+  function renderSelectionEntry(entry, escapeHtml) {
+    var meta = entry.meta ? '<small>' + escapeHtml(entry.meta) + "</small>" : "";
+    var prefix = entry.prefix ? '<span class="ide-controlpanel__entryPrefix">' + escapeHtml(entry.prefix) + "</span>" : "";
+    var body =
+      '<span class="ide-controlpanel__entryBody">' +
+      prefix +
+      '<span class="ide-controlpanel__entryLabel">' +
+      escapeHtml(entry.label || "") +
+      "</span>" +
+      meta +
+      "</span>";
+    if (entry.shell_request || entry.href) {
+      return (
+        '<a class="ide-controlpanel__selectionEntry' +
+        (entry.active ? " is-active" : "") +
+        '" href="' +
+        escapeHtml(entry.href || "#") +
+        '">' +
+        body +
+        "</a>"
+      );
+    }
+    return (
+      '<div class="ide-controlpanel__selectionEntry is-static' +
+      (entry.active ? " is-active" : "") +
+      '">' +
+      body +
+      "</div>"
+    );
+  }
+
+  function renderFocusSelectionPanel(ctx, root, region) {
+    var contextItems = region.context_items || [];
+    var verbTabs = region.verb_tabs || [];
+    var groups = region.groups || [];
+    var actions = region.actions || [];
+    root.innerHTML =
+      '<section class="ide-controlpanel__selectionPanel">' +
+      '<header class="ide-controlpanel__selectionHeader">' +
+      '<div class="ide-controlpanel__title">' +
+      ctx.escapeHtml(region.title || "Control Panel") +
+      '</div><div class="ide-controlpanel__surfaceLabel">' +
+      ctx.escapeHtml(region.surface_label || "") +
+      "</div></header>" +
+      '<div class="ide-controlpanel__contextRows">' +
+      contextItems
+        .map(function (item) {
+          return (
+            '<div class="ide-controlpanel__contextRow">' +
+            '<span class="ide-controlpanel__contextKey">' +
+            ctx.escapeHtml(item.label || "") +
+            ':</span><span class="ide-controlpanel__contextValue">' +
+            ctx.escapeHtml(item.value || "—") +
+            "</span></div>"
+          );
+        })
+        .join("") +
+      "</div>" +
+      (verbTabs.length
+        ? '<div class="ide-controlpanel__verbTabs">' +
+          verbTabs
+            .map(function (tab, index) {
+              return (
+                '<button type="button" class="ide-controlpanel__verbTab' +
+                (tab.active ? " is-active" : "") +
+                '" data-control-verb-index="' +
+                String(index) +
+                '">' +
+                ctx.escapeHtml(tab.label || "") +
+                "</button>"
+              );
+            })
+            .join("") +
+          "</div>"
+        : "") +
+      groups
+        .map(function (group) {
+          return (
+            '<section class="ide-controlpanel__selectionGroup">' +
+            (group.title
+              ? '<header class="ide-controlpanel__selectionGroupTitle">' + ctx.escapeHtml(group.title) + "</header>"
+              : "") +
+            '<div class="ide-controlpanel__selectionList">' +
+            (group.entries || [])
+              .map(function (entry) {
+                return renderSelectionEntry(entry, ctx.escapeHtml);
+              })
+              .join("") +
+            "</div></section>"
+          );
+        })
+        .join("") +
+      (actions.length
+        ? '<div class="ide-controlpanel__actions">' +
+          actions
+            .map(function (action, index) {
+              return (
+                '<button type="button" class="ide-controlpanel__action ide-controlpanel__action--full" data-control-action-index="' +
+                String(index) +
+                '">' +
+                ctx.escapeHtml(action.label || "") +
+                "</button>"
+              );
+            })
+            .join("") +
+          "</div>"
+        : "") +
+      "</section>";
+
+    Array.prototype.forEach.call(root.querySelectorAll("[data-control-verb-index]"), function (node) {
+      var index = Number(node.getAttribute("data-control-verb-index"));
+      var entry = verbTabs[index];
+      bindSurfaceNavigation(node, entry, ctx);
+    });
+    var flatEntries = [];
+    groups.forEach(function (group) {
+      (group.entries || []).forEach(function (entry) {
+        flatEntries.push(entry);
+      });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll(".ide-controlpanel__selectionEntry"), function (node, index) {
+      bindSurfaceNavigation(node, flatEntries[index], ctx);
+    });
+    Array.prototype.forEach.call(root.querySelectorAll("[data-control-action-index]"), function (node) {
+      node.addEventListener("click", function () {
+        var index = Number(node.getAttribute("data-control-action-index"));
+        var action = actions[index] || {};
+        if (action.action_kind === "copy_text" && action.value) {
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            navigator.clipboard.writeText(String(action.value)).catch(function () {});
+          }
+        }
+      });
+    });
+  }
+
   api.renderControlPanel = function (ctx) {
     var region = ctx.region || {};
     var root = ctx.target || document.getElementById("portalControlPanel");
     if (!root) return;
+    if (region.kind === "focus_selection_panel") {
+      renderFocusSelectionPanel(ctx, root, region);
+      return;
+    }
     var sections = region.sections || [];
     root.innerHTML =
       '<section class="ide-controlpanel__section">' +

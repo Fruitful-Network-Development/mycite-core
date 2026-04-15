@@ -13,7 +13,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     NETWORK_ROOT_SURFACE_ID,
     SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
     SYSTEM_ANCHOR_FILE_KEY,
-    SYSTEM_OPERATIONAL_STATUS_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
     TRANSITION_BACK_OUT,
     TRANSITION_FOCUS_DATUM,
@@ -42,8 +41,8 @@ class PortalShellContractTests(unittest.TestCase):
             surface_ids[:3],
             [
                 SYSTEM_ROOT_SURFACE_ID,
-                SYSTEM_OPERATIONAL_STATUS_SURFACE_ID,
                 NETWORK_ROOT_SURFACE_ID,
+                UTILITIES_ROOT_SURFACE_ID,
             ],
         )
         self.assertNotIn("system.activity", surface_ids)
@@ -55,7 +54,6 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertEqual(canonical_route_for_surface(AWS_TOOL_SURFACE_ID), "/portal/system/tools/aws")
         self.assertTrue(requires_shell_state_machine(SYSTEM_ROOT_SURFACE_ID))
         self.assertTrue(requires_shell_state_machine(AWS_TOOL_SURFACE_ID))
-        self.assertFalse(requires_shell_state_machine(SYSTEM_OPERATIONAL_STATUS_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(NETWORK_ROOT_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(UTILITIES_ROOT_SURFACE_ID))
 
@@ -167,7 +165,7 @@ class PortalShellContractTests(unittest.TestCase):
                 "requested_surface_id": NETWORK_ROOT_SURFACE_ID,
                 "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
                 "surface_query": {
-                    "view": "messages",
+                    "view": "system_logs",
                     "contract": "contract-fnd-001",
                     "type": "4-2-1",
                     "record": "7-3-1",
@@ -187,6 +185,21 @@ class PortalShellContractTests(unittest.TestCase):
                 "record": "7-3-1",
             },
         )
+
+    def test_unknown_removed_surface_resolves_as_unknown_and_falls_back_to_system(self) -> None:
+        selection = resolve_portal_shell_request(
+            {
+                "schema": "mycite.v2.portal.shell.request.v1",
+                "requested_surface_id": "system.legacy_removed_surface",
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+            }
+        )
+        self.assertFalse(selection.allowed)
+        self.assertTrue(selection.reducer_owned)
+        self.assertEqual(selection.active_surface_id, SYSTEM_ROOT_SURFACE_ID)
+        self.assertEqual(selection.reason_code, "surface_unknown")
+        self.assertEqual(selection.canonical_route, "/portal/system")
+        self.assertEqual(selection.canonical_query["file"], "anthology")
 
 
 if __name__ == "__main__":

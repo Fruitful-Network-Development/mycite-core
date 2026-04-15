@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -16,10 +17,15 @@ from MyCiteV2.packages.modules.domains.publication import (
     PublicationTenantSummaryService,
 )
 from MyCiteV2.packages.state_machine.portal_shell import (
+    AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
+    AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
+    AWS_NARROW_WRITE_TOOL_SURFACE_ID,
+    AWS_TOOL_SURFACE_ID,
+    CTS_GIS_TOOL_SURFACE_ID,
     FOCUS_LEVEL_DATUM,
     FOCUS_LEVEL_FILE,
     FOCUS_LEVEL_OBJECT,
-    FOCUS_LEVEL_SANDBOX,
+    FND_EBI_TOOL_SURFACE_ID,
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
@@ -27,11 +33,9 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     PortalShellState,
     SYSTEM_ACTIVITY_FILE_KEY,
     SYSTEM_ANCHOR_FILE_KEY,
-    SYSTEM_OPERATIONAL_STATUS_SURFACE_ID,
     SYSTEM_PROFILE_BASICS_FILE_KEY,
     SYSTEM_ROOT_SURFACE_ID,
     SYSTEM_ROOT_ROUTE,
-    TRANSITION_BACK_OUT,
     TRANSITION_FOCUS_DATUM,
     TRANSITION_FOCUS_FILE,
     TRANSITION_FOCUS_OBJECT,
@@ -412,23 +416,6 @@ def _selected_object(row: Any | None, *, object_id: str) -> dict[str, Any] | Non
     return None
 
 
-def _focus_section(
-    *,
-    title: str,
-    level: str,
-    compressed: bool,
-    entries: list[dict[str, Any]] | None = None,
-    facts: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    return {
-        "title": title,
-        "level": level,
-        "compressed": bool(compressed),
-        "entries": list(entries or []),
-        "facts": list(facts or []),
-    }
-
-
 def _entry_shell_request(
     *,
     portal_scope: PortalScope,
@@ -444,7 +431,395 @@ def _entry_shell_request(
     )
 
 
-def build_focus_stack_sections(
+def _panel_entry(
+    *,
+    label: str,
+    meta: object = "",
+    active: bool = False,
+    href: str = "",
+    shell_request: dict[str, Any] | None = None,
+    prefix: str = "",
+) -> dict[str, Any]:
+    entry = {
+        "label": _as_text(label),
+        "active": bool(active),
+        "prefix": _as_text(prefix),
+    }
+    meta_text = _as_text(meta)
+    if meta_text:
+        entry["meta"] = meta_text
+    href_text = _as_text(href)
+    if href_text:
+        entry["href"] = href_text
+    if shell_request is not None:
+        entry["shell_request"] = shell_request
+    return entry
+
+
+def _panel_action(*, label: str, action_kind: str, value: object = "") -> dict[str, Any]:
+    return {
+        "label": _as_text(label),
+        "action_kind": _as_text(action_kind),
+        "value": _as_text(value),
+    }
+
+
+def _verb_tab_entries(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    requested_surface_id: str,
+) -> list[dict[str, Any]]:
+    labels = {
+        VERB_NAVIGATE: "NAV",
+        VERB_INVESTIGATE: "INV",
+        VERB_MEDIATE: "MED",
+        VERB_MANIPULATE: "MAN",
+    }
+    return [
+        {
+            "label": labels[verb],
+            "active": shell_state.verb == verb,
+            "shell_request": _entry_shell_request(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                transition={"kind": TRANSITION_SET_VERB, "verb": verb},
+                requested_surface_id=requested_surface_id,
+            ),
+        }
+        for verb in (VERB_NAVIGATE, VERB_INVESTIGATE, VERB_MEDIATE, VERB_MANIPULATE)
+    ]
+
+
+def _file_value_for_panel(*, active_file_key: str, active_document: Any | None) -> str:
+    if active_document is not None:
+        relative_path = _as_text(getattr(active_document, "relative_path", ""))
+        if relative_path:
+            return Path(relative_path).name
+        document_name = _document_label(active_document)
+        if document_name:
+            return document_name
+    if active_file_key == SYSTEM_ANCHOR_FILE_KEY:
+        return "anthology.json"
+    if active_file_key == SYSTEM_ACTIVITY_FILE_KEY:
+        return "activity"
+    if active_file_key == SYSTEM_PROFILE_BASICS_FILE_KEY:
+        return "profile_basics"
+    return active_file_key or "system"
+
+
+def _system_context_items(
+    *,
+    shell_state: PortalShellState,
+    active_document: Any | None,
+    selected_datum: Any | None,
+    selected_object: dict[str, Any] | None,
+) -> list[dict[str, str]]:
+    active_file_key = segment_id_for_level(shell_state, level=FOCUS_LEVEL_FILE)
+    items = [
+        {"label": "Sandbox", "value": "SYSTEM"},
+        {"label": "File", "value": _file_value_for_panel(active_file_key=active_file_key, active_document=active_document)},
+    ]
+    if selected_datum is not None:
+        items.append(
+            {
+                "label": "Datum",
+                "value": _row_label(selected_datum) or _as_text(getattr(selected_datum, "datum_address", "")),
+            }
+        )
+    if selected_object is not None:
+        items.append({"label": "Object", "value": _as_text(selected_object.get("label")) or _as_text(selected_object.get("object_id"))})
+    elif shell_state.verb == VERB_MEDIATE:
+        subject = _as_text((shell_state.mediation_subject or {}).get("id"))
+        if subject:
+            items.append({"label": "Mediation", "value": subject})
+    return items
+
+
+def _system_file_groups(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    file_entries: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    entries = [
+        _panel_entry(
+            label=_as_text(entry.get("label")) or _as_text(entry.get("file_key")),
+            meta=_as_text(entry.get("detail")),
+            active=bool(entry.get("active")),
+            href=SYSTEM_ROOT_ROUTE,
+            shell_request=_entry_shell_request(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                transition={"kind": TRANSITION_FOCUS_FILE, "file_key": _as_text(entry.get("file_key"))},
+                requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
+            ),
+        )
+        for entry in file_entries
+    ]
+    return [{"title": "Files", "entries": entries}] if entries else []
+
+
+def _row_meta_from_item(item: dict[str, Any]) -> str:
+    coordinates = item.get("coordinates") if isinstance(item.get("coordinates"), dict) else {}
+    bits: list[str] = []
+    if isinstance(coordinates.get("value_group"), int):
+        bits.append(f"VG {coordinates['value_group']}")
+    if isinstance(coordinates.get("iteration"), int):
+        bits.append(f"I {coordinates['iteration']}")
+    diagnostics = ", ".join([_as_text(token) for token in list(item.get("diagnostics") or []) if _as_text(token)])
+    if diagnostics:
+        bits.append(diagnostics)
+    return " | ".join(bits)
+
+
+def _system_document_groups(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    active_file_key: str,
+    active_document: Any,
+    selected_datum_id: str,
+) -> list[dict[str, Any]]:
+    if _as_text(getattr(active_document, "document_id", "")) == "system:anthology":
+        groups: list[dict[str, Any]] = []
+        for layer_group in _anthology_layer_groups(active_document, selected_datum_id=selected_datum_id):
+            entries = []
+            for value_group in list(layer_group.get("value_groups") or []):
+                for item in list(value_group.get("rows") or []):
+                    entries.append(
+                        _panel_entry(
+                            label=_as_text(item.get("label")) or _as_text(item.get("datum_id")) or "Datum",
+                            meta=_row_meta_from_item(item),
+                            active=bool(item.get("selected")),
+                            href=SYSTEM_ROOT_ROUTE,
+                            shell_request=_entry_shell_request(
+                                portal_scope=portal_scope,
+                                shell_state=shell_state,
+                                transition={
+                                    "kind": TRANSITION_FOCUS_DATUM,
+                                    "file_key": active_file_key,
+                                    "datum_id": _as_text(item.get("datum_id")),
+                                },
+                                requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
+                            ),
+                        )
+                    )
+            if entries:
+                groups.append({"title": _as_text(layer_group.get("label")) or "Layer", "entries": entries})
+        return groups
+
+    rows = _document_row_items(active_document, selected_datum_id=selected_datum_id)
+    entries = [
+        _panel_entry(
+            label=_as_text(item.get("label")) or _as_text(item.get("datum_id")) or "Datum",
+            meta=_row_meta_from_item(item) or _as_text(item.get("detail")),
+            active=bool(item.get("selected")),
+            href=SYSTEM_ROOT_ROUTE,
+            shell_request=_entry_shell_request(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                transition={
+                    "kind": TRANSITION_FOCUS_DATUM,
+                    "file_key": active_file_key,
+                    "datum_id": _as_text(item.get("datum_id")),
+                },
+                requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
+            ),
+        )
+        for item in rows
+    ]
+    return [{"title": "Datums", "entries": entries}] if entries else []
+
+
+def _system_activity_groups(activity_projection: Any) -> list[dict[str, Any]]:
+    entries = [
+        _panel_entry(
+            label=_as_text(getattr(record, "event_type", "")) or "activity",
+            meta=_as_text(getattr(record, "recorded_at_unix_ms", "")),
+        )
+        for record in list(getattr(activity_projection, "records", ()) or ())[:12]
+    ]
+    return [{"title": "Activity Records", "entries": entries}] if entries else []
+
+
+def _system_profile_groups(profile_summary: PublicationTenantSummary) -> list[dict[str, Any]]:
+    fields = [
+        ("Domain", profile_summary.tenant_domain),
+        ("Title", profile_summary.profile_title),
+        ("Contact", profile_summary.contact_email),
+        ("Website", profile_summary.public_website_url),
+    ]
+    entries = [
+        _panel_entry(label=label, meta=value or "unset")
+        for label, value in fields
+        if _as_text(label)
+    ]
+    return [{"title": "Profile Fields", "entries": entries}] if entries else []
+
+
+def _system_selection_groups(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    file_entries: list[dict[str, Any]],
+    active_document: Any | None,
+    active_file_key: str,
+    selected_datum: Any | None,
+    selected_object: dict[str, Any] | None,
+    activity_projection: Any,
+    profile_summary: PublicationTenantSummary,
+) -> list[dict[str, Any]]:
+    if not active_file_key:
+        return _system_file_groups(portal_scope=portal_scope, shell_state=shell_state, file_entries=file_entries)
+    if active_file_key == SYSTEM_ACTIVITY_FILE_KEY:
+        return _system_activity_groups(activity_projection)
+    if active_file_key == SYSTEM_PROFILE_BASICS_FILE_KEY:
+        return _system_profile_groups(profile_summary)
+    if active_document is not None and selected_datum is None:
+        return _system_document_groups(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            active_file_key=active_file_key,
+            active_document=active_document,
+            selected_datum_id="",
+        )
+    if selected_datum is not None:
+        entries = []
+        for item in _object_items(selected_datum, selected_object_id=_as_text((selected_object or {}).get("object_id"))):
+            entries.append(
+                _panel_entry(
+                    label=_as_text(item.get("label")) or _as_text(item.get("object_id")) or "Aspect",
+                    meta=_as_text(item.get("detail")),
+                    active=bool(item.get("selected")),
+                    href=SYSTEM_ROOT_ROUTE,
+                    shell_request=_entry_shell_request(
+                        portal_scope=portal_scope,
+                        shell_state=shell_state,
+                        transition={
+                            "kind": TRANSITION_FOCUS_OBJECT,
+                            "file_key": active_file_key,
+                            "datum_id": _as_text(getattr(selected_datum, "datum_address", "")),
+                            "object_id": _as_text(item.get("object_id")),
+                        },
+                        requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
+                    ),
+                )
+            )
+        return [{"title": "Below Focus", "entries": entries}] if entries else []
+    return []
+
+
+def _tool_root_slug_for_surface(surface_id: str) -> str:
+    if surface_id in {
+        AWS_TOOL_SURFACE_ID,
+        AWS_NARROW_WRITE_TOOL_SURFACE_ID,
+        AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
+        AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
+    }:
+        return "aws-csm"
+    if surface_id == FND_EBI_TOOL_SURFACE_ID:
+        return "fnd-ebi"
+    if surface_id == CTS_GIS_TOOL_SURFACE_ID:
+        return "maps"
+    return ""
+
+
+def _safe_json_object(path: Path | None) -> dict[str, Any]:
+    if path is None or not path.exists() or not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _tool_collection_payload(tool_root: Path, *, tool_slug: str) -> tuple[str, list[str]]:
+    collection_path = ""
+    member_files: list[str] = []
+    for candidate in sorted(tool_root.glob(f"tool.*.{tool_slug}.json")):
+        payload = _safe_json_object(candidate)
+        raw_members = payload.get("member_files")
+        if isinstance(raw_members, list):
+            member_files = [_as_text(item) for item in raw_members if _as_text(item)]
+        collection_path = candidate.name
+        break
+    if not member_files:
+        member_files = [
+            path.name
+            for path in sorted(tool_root.glob("*.json"))
+            if path.name != collection_path
+        ]
+    return collection_path, member_files
+
+
+def _aws_csm_domain_groups(tool_root: Path) -> list[dict[str, Any]]:
+    groups: list[dict[str, Any]] = []
+    newsletter_root = tool_root / "newsletter"
+    if not newsletter_root.exists():
+        return groups
+    for profile_path in sorted(newsletter_root.glob("newsletter.*.profile.json")):
+        profile = _safe_json_object(profile_path)
+        domain = _as_text(profile.get("domain")) or profile_path.name
+        entries: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for candidate in (
+            profile.get("selected_author_address"),
+            profile.get("list_address"),
+            profile.get("sender_address"),
+        ):
+            token = _as_text(candidate).lower()
+            if token and token not in seen:
+                seen.add(token)
+                entries.append(_panel_entry(label=token, prefix="->"))
+        contacts_path = newsletter_root / profile_path.name.replace(".profile.json", ".contacts.json")
+        contacts = _safe_json_object(contacts_path)
+        for contact in list(contacts.get("contacts") or []):
+            if not isinstance(contact, dict):
+                continue
+            token = _as_text(contact.get("email")).lower()
+            if token and token not in seen:
+                seen.add(token)
+                entries.append(_panel_entry(label=token, prefix="->"))
+            if len(entries) >= 4:
+                break
+        if entries:
+            groups.append({"title": domain, "entries": entries})
+    return groups
+
+
+def _fnd_ebi_groups(tool_root: Path) -> list[dict[str, Any]]:
+    entries = []
+    for path in sorted(tool_root.glob("fnd-ebi.*.json")):
+        payload = _safe_json_object(path)
+        domain = _as_text(payload.get("domain"))
+        if not domain:
+            continue
+        entries.append(_panel_entry(label=domain, meta=_as_text(payload.get("site_root"))))
+    return [{"title": "Profiles", "entries": entries}] if entries else []
+
+
+def _tool_groups(tool_root: Path, *, surface_id: str, tool_slug: str, member_files: list[str], active_member: str) -> list[dict[str, Any]]:
+    groups: list[dict[str, Any]] = []
+    if member_files:
+        groups.append(
+            {
+                "title": "Files",
+                "entries": [
+                    _panel_entry(label=file_name, active=file_name == active_member)
+                    for file_name in member_files
+                ],
+            }
+        )
+    if tool_slug == "aws-csm":
+        groups.extend(_aws_csm_domain_groups(tool_root))
+    elif surface_id == FND_EBI_TOOL_SURFACE_ID:
+        groups.extend(_fnd_ebi_groups(tool_root))
+    return groups
+
+
+def build_system_control_panel(
     *,
     portal_scope: PortalScope,
     shell_state: PortalShellState,
@@ -452,176 +827,49 @@ def build_focus_stack_sections(
     active_document: Any | None,
     selected_datum: Any | None,
     selected_object: dict[str, Any] | None,
-    tool_rows: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    focus_level = focus_level_for_shell_state(shell_state)
+    activity_projection: Any,
+    profile_summary: PublicationTenantSummary,
+) -> dict[str, Any]:
     active_file_key = segment_id_for_level(shell_state, level=FOCUS_LEVEL_FILE)
-    selected_datum_id = segment_id_for_level(shell_state, level=FOCUS_LEVEL_DATUM)
-    selected_object_id = segment_id_for_level(shell_state, level=FOCUS_LEVEL_OBJECT)
-
-    sandbox_entries: list[dict[str, Any]] = [
-        {
-            "label": entry["label"],
-            "meta": entry["detail"],
-            "active": entry["active"],
-            "href": SYSTEM_ROOT_ROUTE,
-            "shell_request": _entry_shell_request(
-                portal_scope=portal_scope,
-                shell_state=shell_state,
-                transition={"kind": TRANSITION_FOCUS_FILE, "file_key": entry["file_key"]},
-                requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            ),
-        }
-        for entry in file_entries
-    ]
-    sandbox_entries.insert(
-        0,
-        {
-            "label": "Sandbox overview",
-            "meta": "return to sandbox management",
-            "active": not active_file_key,
-            "href": SYSTEM_ROOT_ROUTE,
-            "shell_request": _entry_shell_request(
-                portal_scope=portal_scope,
-                shell_state=shell_state,
-                transition={"kind": TRANSITION_FOCUS_FILE, "file_key": "sandbox"},
-                requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            ),
-        },
-    )
-    sections = [
-        _focus_section(
-            title="Sandbox",
-            level=FOCUS_LEVEL_SANDBOX,
-            compressed=focus_level != FOCUS_LEVEL_SANDBOX,
-            entries=sandbox_entries,
-            facts=[
-                {"label": "focus", "value": focus_level},
-                {"label": "visible tools", "value": str(len(tool_rows))},
-            ],
-        )
-    ]
-
-    if active_file_key:
-        file_entries_for_section: list[dict[str, Any]] = []
-        if active_document is not None:
-            for item in _document_row_items(active_document, selected_datum_id=selected_datum_id):
-                file_entries_for_section.append(
-                    {
-                        "label": item["label"],
-                        "meta": item["detail"],
-                        "active": item["selected"],
-                        "href": SYSTEM_ROOT_ROUTE,
-                        "shell_request": _entry_shell_request(
-                            portal_scope=portal_scope,
-                            shell_state=shell_state,
-                            transition={
-                                "kind": TRANSITION_FOCUS_DATUM,
-                                "file_key": active_file_key,
-                                "datum_id": item["datum_id"],
-                            },
-                            requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
-                        ),
-                    }
-                )
-        file_facts = [
-            {"label": "file", "value": active_file_key},
-        ]
-        if active_document is not None:
-            file_facts.append({"label": "rows", "value": str(len(list(getattr(active_document, "rows", ()) or ())))})
-        sections.append(
-            _focus_section(
-                title="File",
-                level=FOCUS_LEVEL_FILE,
-                compressed=focus_level in {FOCUS_LEVEL_DATUM, FOCUS_LEVEL_OBJECT},
-                entries=file_entries_for_section,
-                facts=file_facts,
+    selected_datum_payload = _selected_datum_payload(selected_datum)
+    actions: list[dict[str, Any]] = []
+    if isinstance(selected_datum_payload, dict) and _as_text(selected_datum_payload.get("primary_value_token")):
+        actions.append(
+            _panel_action(
+                label="Copy Hyphae Value",
+                action_kind="copy_text",
+                value=selected_datum_payload.get("primary_value_token"),
             )
         )
-
-    if selected_datum is not None:
-        datum_entries = []
-        for object_item in _object_items(selected_datum, selected_object_id=selected_object_id):
-            datum_entries.append(
-                {
-                    "label": object_item["label"],
-                    "meta": object_item["detail"],
-                    "active": object_item["selected"],
-                    "href": SYSTEM_ROOT_ROUTE,
-                    "shell_request": _entry_shell_request(
-                        portal_scope=portal_scope,
-                        shell_state=shell_state,
-                        transition={
-                            "kind": TRANSITION_FOCUS_OBJECT,
-                            "file_key": active_file_key,
-                            "datum_id": _as_text(getattr(selected_datum, "datum_address", "")),
-                            "object_id": object_item["object_id"],
-                        },
-                        requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
-                    ),
-                }
-            )
-        sections.append(
-            _focus_section(
-                title="Datum",
-                level=FOCUS_LEVEL_DATUM,
-                compressed=focus_level == FOCUS_LEVEL_OBJECT,
-                entries=datum_entries,
-                facts=[
-                    {"label": "datum", "value": _as_text(getattr(selected_datum, "datum_address", ""))},
-                    {"label": "diagnostics", "value": _row_diagnostics(selected_datum)},
-                ],
-            )
-        )
-
-    if selected_object is not None:
-        sections.append(
-            _focus_section(
-                title="Object",
-                level=FOCUS_LEVEL_OBJECT,
-                compressed=False,
-                entries=[],
-                facts=[
-                    {"label": "object", "value": selected_object["label"]},
-                    {"label": "detail", "value": selected_object["detail"]},
-                ],
-            )
-        )
-
-    active_subject_label = (
-        _as_text(getattr(selected_datum, "datum_address", ""))
-        or _as_text(selected_object.get("label") if isinstance(selected_object, dict) else "")
-        or active_file_key
-        or portal_scope.scope_id
-    )
-    sections.append(
-        _focus_section(
-            title="Current Intention",
-            level="verb",
-            compressed=False,
-            entries=[
-                {
-                    "label": verb.title(),
-                    "meta": "active" if shell_state.verb == verb else "switch",
-                    "active": shell_state.verb == verb,
-                    "href": SYSTEM_ROOT_ROUTE,
-                    "shell_request": _entry_shell_request(
-                        portal_scope=portal_scope,
-                        shell_state=shell_state,
-                        transition={"kind": TRANSITION_SET_VERB, "verb": verb},
-                        requested_surface_id=shell_state.active_surface_id,
-                    ),
-                }
-                for verb in (VERB_NAVIGATE, VERB_INVESTIGATE, VERB_MEDIATE, VERB_MANIPULATE)
-            ],
-            facts=[
-                {"label": "subject", "value": active_subject_label},
-                {"label": "panel", "value": "open" if shell_state.chrome.interface_panel_open else "closed"},
-                {"label": "back out", "value": "object→datum→file→sandbox"},
-            ],
-        )
-    )
-    return sections
+    return {
+        "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
+        "kind": "focus_selection_panel",
+        "title": "Control Panel",
+        "surface_label": "SYSTEM",
+        "context_items": _system_context_items(
+            shell_state=shell_state,
+            active_document=active_document,
+            selected_datum=selected_datum,
+            selected_object=selected_object,
+        ),
+        "verb_tabs": _verb_tab_entries(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
+        ),
+        "groups": _system_selection_groups(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            file_entries=file_entries,
+            active_document=active_document,
+            active_file_key=active_file_key,
+            selected_datum=selected_datum,
+            selected_object=selected_object,
+            activity_projection=activity_projection,
+            profile_summary=profile_summary,
+        ),
+        "actions": actions,
+    }
 
 
 def build_tool_control_panel(
@@ -630,50 +878,48 @@ def build_tool_control_panel(
     shell_state: PortalShellState,
     data_dir: str | Path | None,
     public_dir: str | Path | None,
+    private_dir: str | Path | None,
+    surface_id: str,
     active_document: Any | None,
     selected_datum: Any | None,
     selected_object: dict[str, Any] | None,
     tool_rows: list[dict[str, Any]],
     title: str,
 ) -> dict[str, Any]:
-    projection = read_system_workbench_projection(portal_scope=portal_scope, data_dir=data_dir, public_dir=public_dir)
-    file_entries = build_workspace_file_entries(
-        projection=projection,
-        shell_state=shell_state,
-        portal_scope=portal_scope,
-    )
-    active_file_key = segment_id_for_level(shell_state, level=FOCUS_LEVEL_FILE)
-    resolved_document = active_document
-    if resolved_document is None and active_file_key not in {"", SYSTEM_ACTIVITY_FILE_KEY, SYSTEM_PROFILE_BASICS_FILE_KEY}:
-        resolved_document = _selected_document(projection, file_key=active_file_key)
-    resolved_datum = selected_datum
-    if resolved_datum is None:
-        resolved_datum = _selected_datum(
-            resolved_document,
-            datum_id=segment_id_for_level(shell_state, level=FOCUS_LEVEL_DATUM),
-        )
-    resolved_object = selected_object
-    if resolved_object is None:
-        resolved_object = _selected_object(
-            resolved_datum,
-            object_id=segment_id_for_level(shell_state, level=FOCUS_LEVEL_OBJECT),
-        )
+    del data_dir, public_dir, active_document, selected_datum, selected_object, tool_rows
+    root = _path_or_none(private_dir)
+    tool_slug = _tool_root_slug_for_surface(surface_id)
+    tool_root = None if root is None or not tool_slug else root / "utilities" / "tools" / tool_slug
+    collection_file = ""
+    member_files: list[str] = []
+    if tool_root is not None and tool_root.exists():
+        collection_file, member_files = _tool_collection_payload(tool_root, tool_slug=tool_slug)
+    active_member = "spec.json" if "spec.json" in member_files else (member_files[0] if member_files else "")
+    context_items = [{"label": "Sandbox", "value": title.upper()}]
+    if collection_file:
+        context_items.append({"label": "File", "value": collection_file})
+    if active_member:
+        context_items.append({"label": "Mediation", "value": active_member})
     return {
         "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-        "kind": "stacked_focus_panel",
-        "title": title,
-        "sections": build_focus_stack_sections(
+        "kind": "focus_selection_panel",
+        "title": "Control Panel",
+        "surface_label": title.upper(),
+        "context_items": context_items,
+        "verb_tabs": _verb_tab_entries(
             portal_scope=portal_scope,
             shell_state=shell_state,
-            file_entries=file_entries,
-            active_document=resolved_document,
-            selected_datum=resolved_datum,
-            selected_object=resolved_object,
-            tool_rows=tool_rows,
+            requested_surface_id=surface_id,
         ),
+        "groups": _tool_groups(
+            tool_root or Path("/nonexistent"),
+            surface_id=surface_id,
+            tool_slug=tool_slug,
+            member_files=member_files,
+            active_member=active_member,
+        ) if tool_slug else [],
+        "actions": [],
     }
-
-
 def build_system_workspace_bundle(
     *,
     portal_scope: PortalScope,
@@ -805,20 +1051,16 @@ def build_system_workspace_bundle(
         "subtitle": "Datum-file workbench for the system sandbox.",
         "workspace": workspace,
     }
-    control_panel = {
-        "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-        "kind": "stacked_focus_panel",
-        "title": "System Context",
-        "sections": build_focus_stack_sections(
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            file_entries=file_entries,
-            active_document=active_document,
-            selected_datum=selected_datum,
-            selected_object=selected_object,
-            tool_rows=tool_rows,
-        ),
-    }
+    control_panel = build_system_control_panel(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        file_entries=file_entries,
+        active_document=active_document,
+        selected_datum=selected_datum,
+        selected_object=selected_object,
+        activity_projection=activity_projection,
+        profile_summary=profile_summary,
+    )
     inspector = {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
         "kind": "mediation_panel" if shell_state.verb == VERB_MEDIATE else "summary_panel",
@@ -870,7 +1112,6 @@ def build_system_workspace_bundle(
 
 
 __all__ = [
-    "build_focus_stack_sections",
     "build_system_workspace_bundle",
     "build_tool_control_panel",
     "build_workspace_file_entries",
