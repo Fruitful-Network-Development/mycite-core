@@ -361,10 +361,16 @@
     }
 
     function handleInterfacePanelToggle() {
+      var shell = qs(".ide-shell");
+      if (!shell) return;
+      var isToolComposition = shell.getAttribute("data-shell-composition") === "tool";
+      if (isToolComposition) {
+        var isOpenOnTool = shell.getAttribute("data-interface-panel-collapsed") !== "true";
+        setInterfacePanelOpenLocal(!isOpenOnTool);
+        return;
+      }
       var envelope = lastEnvelope;
       if (!envelope || !envelope.reducer_owned) {
-        var shell = qs(".ide-shell");
-        if (!shell) return;
         var isOpenLocal = shell.getAttribute("data-interface-panel-collapsed") !== "true";
         setInterfacePanelOpenLocal(!isOpenLocal);
         return;
@@ -374,6 +380,12 @@
     }
 
     function handleInterfacePanelDismiss() {
+      var shell = qs(".ide-shell");
+      if (!shell) return;
+      if (shell.getAttribute("data-shell-composition") === "tool") {
+        setInterfacePanelOpenLocal(false);
+        return;
+      }
       var envelope = lastEnvelope;
       if (!envelope || !envelope.reducer_owned) {
         setInterfacePanelOpenLocal(false);

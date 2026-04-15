@@ -13,3 +13,4 @@ This repository now describes one portal shell only.
 - The top menubar is the only shell header; `ide-body` is the peer-region window for the `Activity Bar`, `Control Panel`, `Workbench`, and `Interface Panel`
 - Shell static assets are versioned through one embedded shell asset manifest
 - CTS-GIS keeps the shared shell contract unchanged while projecting a CTS-GIS-local Interface Panel body with `Diktataograph` and `Garland`
+- Canonical term mapping and compatibility aliases are documented in `docs/contracts/portal_vocabulary_glossary.md`

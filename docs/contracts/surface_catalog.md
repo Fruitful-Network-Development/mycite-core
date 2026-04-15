@@ -113,6 +113,9 @@ The top menubar is the only shell header.
 - Tool work pages stay under `SYSTEM`.
 - Tool registry defaults are interface-panel-led.
 - Tool workbench visibility defaults to `false`.
-- Tool surfaces may still project secondary workbench content explicitly without forcing the Interface Panel closed.
+- Tool surfaces use mutually exclusive single-click behavior between `Workbench` and `Interface Panel` by default.
+- Double-clicking either tool toggle enables route-scoped lock mode that allows both panels to remain visible together.
+- Tool lock is non-persistent and clears when leaving the current tool route or composition.
+- Tool surfaces may still project secondary workbench content explicitly when lock mode is enabled.
 - Tool configuration and exposure remain owned by `UTILITIES`.
 - Service-tool posture is determined by configured capabilities and available peripherals or integrations, not by portal identity.

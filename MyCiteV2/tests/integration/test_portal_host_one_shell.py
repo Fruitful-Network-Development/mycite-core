@@ -220,6 +220,10 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertIn("Toggle Control Panel", system_html)
             self.assertIn("Toggle Workbench", system_html)
             self.assertIn("Toggle Interface Panel", system_html)
+            self.assertNotIn(">Control Panel</button>", system_html)
+            self.assertNotIn(">Workbench</button>", system_html)
+            self.assertIn('data-tool-panel-lock="false"', system_html)
+            self.assertIn('data-shell-lockable="tool-panel"', system_html)
             self.assertIn('data-workbench-collapsed="false"', system_html)
             self.assertIn('id="v2-shell-asset-manifest"', system_html)
             for asset in (

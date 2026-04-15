@@ -88,6 +88,7 @@ CTS-GIS runtime/body rules:
 - CTS-GIS is the `system.tools.cts_gis` tool_mediation_surface under `SYSTEM`
 - its default posture is interface-panel-led
 - the dominant Interface Panel mounts one CTS-GIS-local body with `Diktataograph` and `Garland`
+- tool menubar toggles are single-click exclusive by default (`Workbench` or `Interface Panel`), with a route-scoped double-click lock that allows both
 - `Diktataograph` updates CTS-GIS-local structural navigation
 - `Garland` updates the correlated profile projection for that navigation root
 - these are CTS-GIS-local projections of one mediation posture, not two separate shell mediations

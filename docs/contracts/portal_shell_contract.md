@@ -120,6 +120,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - The right rail is the `Interface Panel`.
 - The only persistent theme selector lives in the menubar.
 - Surface labels are exposed through hover titles and accessibility labels, not persistent bar text.
+- Menubar shell layout controls are an icon-toggle trio in one row: `Control Panel`, `Workbench`, `Interface Panel`.
 - The control panel is the canonical textual navigation surface for current context and lower-focus selections.
 - Shell static assets are versioned by `portal_build_id` through one embedded shell asset manifest.
 
@@ -130,6 +131,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - `shell_composition.workbench_collapsed` reports whether the workbench is currently hidden.
 - `shell_composition.regions.inspector` remains valid during the compatibility phase.
 - `shell_composition.regions.interface_panel` mirrors `regions.inspector`.
+- Client chrome publishes route-scoped tool lock state through `data-tool-panel-lock` on `ide-shell`.
 
 ## Tool Contract
 
@@ -152,7 +154,10 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - Every tool registry entry defaults to `interface_panel_primary`.
 - Every tool composition defaults to `regions.workbench.visible=false`.
 - Secondary-evidence workbench content is explicit opt-in per tool runtime.
-- Tool surfaces may project both the `Workbench` and the `Interface Panel` at the same time when secondary evidence is explicitly shown; enabling the workbench does not automatically close the Interface Panel.
+- Tool surfaces use mutually exclusive single-click behavior between `Workbench` and `Interface Panel` by default.
+- Tool surfaces may lock co-visible behavior by double-clicking either `Workbench` or `Interface Panel` toggle.
+- Tool lock is route-scoped and non-persistent; leaving the tool route or switching composition clears the lock.
+- In tool lock mode, both the `Workbench` and the `Interface Panel` may stay visible when secondary evidence is explicitly shown.
 - A service tool may remain visible while `operational=false` when an external integration or required capability is missing.
 - Service-tool posture comes from peripheral and integration availability, not from portal identity or portal "types".
 - All tools attach to the same interface surface. Service-tool behavior is distinguished by whether the tool can employ the portal's authenticated peripheral package, not by a separate class of portal.

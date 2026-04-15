@@ -86,9 +86,11 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
 
         self.assertIn('data-shell-toggle="workbench"', template_source)
         self.assertIn('data-workbench-collapsed="false"', template_source)
+        self.assertIn('data-tool-panel-lock="false"', template_source)
         self.assertIn('data-shell-title="Control Panel"', template_source)
         self.assertIn('data-shell-toggle="interface-panel"', template_source)
         self.assertIn('data-shell-title="Interface Panel"', template_source)
+        self.assertIn('data-shell-lockable="tool-panel"', template_source)
 
         self.assertIn("mycite.layout.workbench.open", portal_js)
         self.assertIn("mycite.layout.interface_panel.width", portal_js)
@@ -97,10 +99,14 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("mycite.layout.inspector.open", portal_js)
         self.assertIn("mycite:v2:workbench-toggle-request", portal_js)
         self.assertIn("mycite:v2:interface-panel-toggle-request", portal_js)
+        self.assertIn("data-tool-panel-lock", portal_js)
+        self.assertIn("data-tool-panel-lock-route", portal_js)
+        self.assertIn("dblclick", portal_js)
 
         self.assertIn("data-workbench-collapsed", shell_core)
         self.assertIn("data-interface-panel-collapsed", shell_core)
         self.assertIn("regions.interface_panel", shell_core)
+        self.assertIn('data-shell-composition") === "tool"', shell_core)
 
         self.assertIn('data-workbench-collapsed="true"', portal_css)
         self.assertIn("minmax(0, 1fr)", portal_css)

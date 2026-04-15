@@ -10,9 +10,15 @@
     .ide-shell { display: flex; flex-direction: column; min-height: 100vh; }
     .ide-menubar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; background: #fff; border-bottom: 1px solid #d8dee4; }
     .ide-menubar__menu { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; opacity: 0.85; }
-    .ide-menubar__center { display: flex; flex-direction: column; gap: 2px; text-align: center; flex: 1 1 200px; }
-    .ide-menubar__pageTitle { font-weight: 600; font-size: 15px; }
-    .ide-menubar__pageSub { font-size: 12px; opacity: 0.75; }
+    .ide-menubar__center { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; text-align: left; flex: 1 1 200px; min-width: 0; }
+    .ide-menubar__pageTitle { font-weight: 600; font-size: 15px; white-space: nowrap; }
+    .ide-menubar__pageSub { font-size: 12px; opacity: 0.75; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ide-menubar__right { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .ide-menubar__shellActions { display: inline-flex; align-items: center; gap: 6px; }
+    .ide-sessionAction--icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 1px solid #d8dee4; background: #fff; border-radius: 6px; }
+    .ide-sessionAction__icon { display: inline-flex; width: 16px; height: 16px; }
+    .ide-sessionAction__icon svg { width: 100%; height: 100%; }
+    .u-visually-hidden { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     .ide-body { display: flex; flex: 1; min-height: 0; background: #f6f7f9; }
     .ide-activitybar { width: 56px; flex-shrink: 0; display: flex; flex-direction: column; background: #2d333b; color: #e6edf3; border-right: 1px solid #1f2428; }
     .ide-logo { display: flex; justify-content: center; padding: 10px 0; }
@@ -50,6 +56,7 @@
     data-active-service="system"
     data-shell-composition="system"
     data-foreground-shell-region="center-workbench"
+    data-tool-panel-lock="false"
     data-control-panel-collapsed="false"
     data-workbench-collapsed="false"
     data-inspector-collapsed="true"
@@ -74,41 +81,59 @@
         <div class="ide-menubar__shellActions" aria-label="Shell layout controls">
           <button
             type="button"
-            class="ide-sessionAction ide-sessionAction--button"
+            class="ide-sessionAction ide-sessionAction--icon"
             data-shell-toggle="control-panel"
             data-shell-title="Control Panel"
             aria-label="Toggle Control Panel"
             title="Control Panel"
-          >Control Panel</button>
+          >
+            <span class="ide-sessionAction__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="5" width="16" height="14" rx="2"></rect>
+                <path d="M9 5v14"></path>
+              </svg>
+            </span>
+            <span class="u-visually-hidden">Control Panel</span>
+          </button>
           <button
             type="button"
-            class="ide-sessionAction ide-sessionAction--button"
+            class="ide-sessionAction ide-sessionAction--icon"
             data-shell-toggle="workbench"
             data-shell-title="Workbench"
+            data-shell-lockable="tool-panel"
             aria-label="Toggle Workbench"
             title="Workbench"
-          >Workbench</button>
+          >
+            <span class="ide-sessionAction__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="5" width="16" height="14" rx="2"></rect>
+                <path d="M4 11h16"></path>
+              </svg>
+            </span>
+            <span class="u-visually-hidden">Workbench</span>
+          </button>
+          <button
+            type="button"
+            class="ide-sessionAction ide-sessionAction--icon"
+            data-shell-toggle="interface-panel"
+            data-shell-title="Interface Panel"
+            data-shell-lockable="tool-panel"
+            aria-label="Toggle Interface Panel"
+            title="Interface Panel"
+          >
+            <span class="ide-sessionAction__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="5" width="16" height="14" rx="2"></rect>
+                <path d="M10 5v14"></path>
+              </svg>
+            </span>
+            <span class="u-visually-hidden">Interface Panel</span>
+          </button>
         </div>
         <label class="themebar ide-menubar__theme" aria-label="Portal theme selector">
           <span class="themebar__label">Theme</span>
           <select class="themebar__select" data-theme-selector data-theme-scope="portal"></select>
         </label>
-        <button
-          type="button"
-          class="ide-sessionAction ide-sessionAction--button ide-sessionAction--icon"
-          data-shell-toggle="interface-panel"
-          data-shell-title="Interface Panel"
-          aria-label="Toggle Interface Panel"
-          title="Interface Panel"
-        >
-          <span class="ide-sessionAction__icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="4" y="5" width="16" height="14" rx="2"></rect>
-              <path d="M10 5v14"></path>
-            </svg>
-          </span>
-          <span class="u-visually-hidden">Interface Panel</span>
-        </button>
       </div>
     </header>
 
