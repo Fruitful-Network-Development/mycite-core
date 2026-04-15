@@ -217,6 +217,7 @@ def _tool_bundle(
     requested_payload: dict[str, Any],
     tool_rows: list[dict[str, Any]],
     data_dir: str | Path | None = None,
+    private_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     tool_entry = resolve_portal_tool_registry_entry(surface_id=surface_id)
     if tool_entry is None:
@@ -265,11 +266,13 @@ def _tool_bundle(
         shell_state=shell_state,
         data_dir=data_dir,
         public_dir=None,
+        private_dir=private_dir,
+        surface_id=surface_id,
         active_document=None,
         selected_datum=None,
         selected_object=None,
         tool_rows=tool_rows,
-        title=f"{title} Context",
+        title=title,
     )
     workbench = {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
@@ -348,6 +351,7 @@ def build_portal_aws_surface_bundle(
     aws_status_file: str | Path | None,
     aws_csm_sandbox_status_file: str | Path | None = None,
     data_dir: str | Path | None = None,
+    private_dir: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
     tool_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -373,6 +377,7 @@ def build_portal_aws_surface_bundle(
             requested_payload={},
             tool_rows=rows,
             data_dir=data_dir,
+            private_dir=private_dir,
         )
     if surface_id == AWS_NARROW_WRITE_TOOL_SURFACE_ID:
         return _tool_bundle(
@@ -393,6 +398,7 @@ def build_portal_aws_surface_bundle(
             requested_payload={},
             tool_rows=rows,
             data_dir=data_dir,
+            private_dir=private_dir,
         )
     if surface_id == AWS_CSM_SANDBOX_TOOL_SURFACE_ID:
         return _tool_bundle(
@@ -413,6 +419,7 @@ def build_portal_aws_surface_bundle(
             requested_payload={},
             tool_rows=rows,
             data_dir=data_dir,
+            private_dir=private_dir,
         )
     if surface_id == AWS_CSM_ONBOARDING_TOOL_SURFACE_ID:
         return _tool_bundle(
@@ -433,6 +440,7 @@ def build_portal_aws_surface_bundle(
             requested_payload={},
             tool_rows=rows,
             data_dir=data_dir,
+            private_dir=private_dir,
         )
     raise ValueError(f"Unsupported AWS surface: {surface_id}")
 

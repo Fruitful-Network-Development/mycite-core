@@ -80,17 +80,10 @@
 
     <div class="ide-body">
       <aside class="ide-activitybar" aria-label="Activity bar">
-        <a class="ide-logo" href="{{ logo_href or '/portal/system' }}" aria-label="Go to SYSTEM">
+        <a class="ide-logo" href="{{ logo_href or '/portal/system' }}" aria-label="Go to SYSTEM" title="System">
           <img src="/portal/static/icons/logos/fnd.svg" alt="Portal logo" />
         </a>
         <nav id="v2-activity-nav" class="ide-activitynav" aria-label="Primary navigation"></nav>
-        <div class="ide-activityfooter">
-          <div class="ide-sessionLine">Portal: {{ portal_instance_id }}</div>
-          <div class="ide-sessionLine ide-sessionLine--dim">domain: {{ portal_domain }}</div>
-          <div class="ide-sessionLine ide-sessionLine--dim">build: {{ portal_build_id }}</div>
-          <a class="ide-sessionAction" href="/oauth2/sign_in?rd=%2Fportal%2Fsystem">Sign In</a>
-          <a class="ide-sessionAction" href="/oauth2/sign_out?rd=%2Fportal%2Fsystem">Sign Out</a>
-        </div>
       </aside>
 
       <aside id="portalControlPanel" class="ide-controlpanel" data-shell-region="control-panel" aria-label="Control panel" aria-hidden="false">

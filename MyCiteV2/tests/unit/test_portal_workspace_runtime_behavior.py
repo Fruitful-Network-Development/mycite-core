@@ -5,7 +5,6 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from types import SimpleNamespace
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
@@ -17,7 +16,6 @@ from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
 )
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
-    build_focus_stack_sections,
     build_system_workspace_bundle,
     read_system_workbench_projection,
 )
@@ -112,69 +110,6 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertFalse(backed_out.chrome.interface_panel_open)
         self.assertIsNone(backed_out.mediation_subject)
 
-    def test_focus_stack_sections_preserve_order_and_compression(self) -> None:
-        shell_state = reduce_portal_shell_state(
-            active_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            portal_scope={"scope_id": "fnd", "capabilities": []},
-            current_state=reduce_portal_shell_state(
-                active_surface_id=SYSTEM_ROOT_SURFACE_ID,
-                portal_scope={"scope_id": "fnd", "capabilities": []},
-                current_state=initial_portal_shell_state(
-                    surface_id=SYSTEM_ROOT_SURFACE_ID,
-                    portal_scope={"scope_id": "fnd", "capabilities": []},
-                ),
-                transition={"kind": TRANSITION_FOCUS_DATUM, "file_key": "anthology", "datum_id": "datum-1"},
-                seed_anchor_file=False,
-            ),
-            transition={"kind": TRANSITION_FOCUS_OBJECT, "file_key": "anthology", "datum_id": "datum-1", "object_id": "object-1"},
-            seed_anchor_file=False,
-        )
-        portal_scope = PortalScope(scope_id="fnd", capabilities=())
-        binding = SimpleNamespace(
-            anchor_address="object-1",
-            normalized_reference_form="object-1",
-            anchor_label="Object 1",
-            resolution_state="resolved",
-            value_token="value-1",
-        )
-        row = SimpleNamespace(
-            datum_address="datum-1",
-            labels=("Datum 1",),
-            diagnostic_states=("ok",),
-            reference_bindings=(binding,),
-            primary_value_token="value-1",
-        )
-        document = SimpleNamespace(
-            rows=(row,),
-            diagnostic_totals={},
-            document_id="system:anthology",
-            document_name="Anthology",
-            tool_id="",
-            source_kind="authoritative",
-            relative_path="anthology.json",
-        )
-        sections = build_focus_stack_sections(
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            file_entries=[
-                {"file_key": "anthology", "label": "Anthology", "detail": "anchor", "active": True},
-                {"file_key": "activity", "label": "Activity", "detail": "history", "active": False},
-            ],
-            active_document=document,
-            selected_datum=row,
-            selected_object={"label": "Object 1", "detail": "resolved"},
-            tool_rows=[],
-        )
-        self.assertEqual(
-            [section["title"] for section in sections],
-            ["Sandbox", "File", "Datum", "Object", "Current Intention"],
-        )
-        self.assertTrue(sections[0]["compressed"])
-        self.assertTrue(sections[1]["compressed"])
-        self.assertTrue(sections[2]["compressed"])
-        self.assertFalse(sections[3]["compressed"])
-        self.assertEqual(sections[0]["facts"][0]["value"], FOCUS_LEVEL_OBJECT)
-
     def test_tool_runtime_hides_workbench_by_default_and_returns_canonical_url(self) -> None:
         bundle = build_portal_cts_gis_surface_bundle(
             portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
@@ -199,11 +134,11 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertEqual(envelope["canonical_query"]["verb"], "mediate")
         self.assertEqual(envelope["canonical_url"], "/portal/system/tools/cts-gis?file=anthology&verb=mediate")
 
-    def test_operational_status_is_outside_reducer_ownership(self) -> None:
+    def test_unknown_removed_surface_falls_back_to_system_workspace(self) -> None:
         envelope = run_portal_shell_entry(
             {
                 "schema": "mycite.v2.portal.shell.request.v1",
-                "requested_surface_id": "system.operational_status",
+                "requested_surface_id": "system.legacy_removed_surface",
                 "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
             },
             portal_instance_id="fnd",
@@ -217,10 +152,11 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             webapps_root=None,
             tool_exposure_policy=None,
         )
-        self.assertFalse(envelope["reducer_owned"])
-        self.assertEqual(envelope["surface_id"], "system.operational_status")
-        self.assertEqual(envelope["canonical_route"], "/portal/system/operational-status")
-        self.assertEqual(envelope["canonical_query"], {})
+        self.assertTrue(envelope["reducer_owned"])
+        self.assertEqual(envelope["surface_id"], SYSTEM_ROOT_SURFACE_ID)
+        self.assertEqual(envelope["canonical_route"], "/portal/system")
+        self.assertEqual(envelope["canonical_query"]["file"], "anthology")
+        self.assertEqual(envelope["error"]["code"], "surface_unknown")
 
     def test_network_root_projects_system_log_workbench_without_reducer_ownership(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -313,7 +249,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         operational_envelope = run_portal_shell_entry(
             {
                 "schema": "mycite.v2.portal.shell.request.v1",
-                "requested_surface_id": "system.operational_status",
+                "requested_surface_id": "system.legacy_removed_surface",
                 "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
             },
             portal_instance_id="fnd",
@@ -327,8 +263,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             webapps_root=None,
             tool_exposure_policy=None,
         )
-        roots = operational_envelope["shell_composition"]["regions"]["control_panel"]["sections"][0]["entries"]
-        self.assertIn("System", [entry["label"] for entry in roots])
+        control_panel = operational_envelope["shell_composition"]["regions"]["control_panel"]
+        self.assertEqual(control_panel["kind"], "focus_selection_panel")
+        self.assertEqual(control_panel["surface_label"], "SYSTEM")
 
     def test_system_workspace_bundle_projects_anthology_as_layered_datum_table(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -362,11 +299,22 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
             workspace = bundle["surface_payload"]["workspace"]
             document = workspace["document"]
+            control_panel = bundle["control_panel"]
             self.assertEqual(document["presentation"], "anthology_layered_table")
             self.assertEqual(document["layer_groups"][0]["layer"], 1)
             self.assertEqual(document["layer_groups"][0]["value_groups"][0]["value_group"], 0)
             self.assertEqual(document["layer_groups"][0]["value_groups"][1]["rows"][1]["coordinates"]["iteration"], 2)
             self.assertIsNone(document["selected_datum"])
+            self.assertEqual(control_panel["kind"], "focus_selection_panel")
+            self.assertEqual(control_panel["surface_label"], "SYSTEM")
+            self.assertEqual(
+                control_panel["context_items"][:2],
+                [
+                    {"label": "Sandbox", "value": "SYSTEM"},
+                    {"label": "File", "value": "anthology.json"},
+                ],
+            )
+            self.assertIn("Layer 1", [group["title"] for group in control_panel["groups"]])
 
             datum_state = reduce_portal_shell_state(
                 active_surface_id=SYSTEM_ROOT_SURFACE_ID,
@@ -391,6 +339,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertEqual(selected_datum["coordinates"]["iteration"], 2)
             self.assertIn("reference_bindings", selected_datum)
             self.assertIn("raw", selected_datum)
+            selected_panel = selected_bundle["control_panel"]
+            self.assertEqual(selected_panel["context_items"][2]["label"], "Datum")
+            self.assertEqual(selected_panel["groups"][0]["title"], "Below Focus")
 
     def test_non_anthology_documents_keep_generic_workspace_rendering(self) -> None:
         with TemporaryDirectory() as tmp:

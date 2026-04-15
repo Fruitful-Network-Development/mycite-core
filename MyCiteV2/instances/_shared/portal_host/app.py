@@ -55,7 +55,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
     FND_EBI_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
-    SYSTEM_OPERATIONAL_STATUS_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
     UTILITIES_INTEGRATIONS_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
@@ -351,10 +350,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     @app.get("/portal/system")
     def portal_system_root() -> str:
         return _render_surface(SYSTEM_ROOT_SURFACE_ID, host_config)
-
-    @app.get("/portal/system/operational-status")
-    def portal_system_operational_status() -> str:
-        return _render_surface(SYSTEM_OPERATIONAL_STATUS_SURFACE_ID, host_config)
 
     @app.get("/portal/system/tools/<tool_slug>")
     def portal_system_tool(tool_slug: str) -> str:

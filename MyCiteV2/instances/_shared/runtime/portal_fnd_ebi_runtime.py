@@ -69,6 +69,7 @@ def build_portal_fnd_ebi_surface_bundle(
     portal_scope: PortalScope,
     shell_state: PortalShellState,
     webapps_root: str | Path | None,
+    private_dir: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
     tool_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -116,11 +117,13 @@ def build_portal_fnd_ebi_surface_bundle(
         shell_state=shell_state,
         data_dir=None,
         public_dir=None,
+        private_dir=private_dir,
+        surface_id=FND_EBI_TOOL_SURFACE_ID,
         active_document=None,
         selected_datum=None,
         selected_object=None,
         tool_rows=list(tool_rows or []),
-        title="FND-EBI Context",
+        title="FND-EBI",
     )
     workbench = {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,

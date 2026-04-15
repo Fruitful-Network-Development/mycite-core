@@ -13,11 +13,13 @@ Observed repository state after alignment:
 - one runtime envelope model
 - one reducer-owned `SYSTEM` workspace state model
 - reducer ownership limited to `system.root` and `system.tools.*`
-- `/portal/system/operational-status` kept as a plain read-model route under `SYSTEM`
+- no dedicated system-status route or surface remains
 - `activity` and `profile_basics` folded into `/portal/system` workspace file modes
 - ordered focus stack implemented as `sandbox -> file -> datum -> object`
 - explicit `back_out` contraction rules implemented
 - interface panel made mediation-owned on `SYSTEM`
+- control panel simplified to current context plus lower-focus selections
+- activity bar made icon-only
 - tool pages made interface-panel-led by default with `regions.workbench.visible=false`
 - runtime-owned canonical route/query projection returned for reducer-owned surfaces
 
