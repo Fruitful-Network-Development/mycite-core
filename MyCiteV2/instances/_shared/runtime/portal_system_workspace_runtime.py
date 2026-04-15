@@ -17,10 +17,7 @@ from MyCiteV2.packages.modules.domains.publication import (
     PublicationTenantSummaryService,
 )
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
-    AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-    AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-    AWS_TOOL_SURFACE_ID,
+    AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
     FOCUS_LEVEL_DATUM,
     FOCUS_LEVEL_FILE,
@@ -711,12 +708,7 @@ def _system_selection_groups(
 
 
 def _tool_root_slug_for_surface(surface_id: str) -> str:
-    if surface_id in {
-        AWS_TOOL_SURFACE_ID,
-        AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-        AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-        AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
-    }:
+    if surface_id == AWS_CSM_TOOL_SURFACE_ID:
         return "aws-csm"
     if surface_id == FND_EBI_TOOL_SURFACE_ID:
         return "fnd-ebi"

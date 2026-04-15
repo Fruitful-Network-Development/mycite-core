@@ -2,48 +2,29 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
-from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import build_tool_control_panel
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
-    AWS_CSM_ONBOARDING_TOOL_REQUEST_SCHEMA,
-    AWS_CSM_ONBOARDING_TOOL_SURFACE_SCHEMA,
-    AWS_CSM_SANDBOX_TOOL_REQUEST_SCHEMA,
-    AWS_CSM_SANDBOX_TOOL_SURFACE_SCHEMA,
-    AWS_NARROW_WRITE_TOOL_REQUEST_SCHEMA,
-    AWS_NARROW_WRITE_TOOL_SURFACE_SCHEMA,
-    AWS_TOOL_REQUEST_SCHEMA,
-    AWS_TOOL_SURFACE_SCHEMA,
+    AWS_CSM_TOOL_REQUEST_SCHEMA,
+    AWS_CSM_TOOL_SURFACE_SCHEMA,
     build_portal_runtime_envelope,
     tool_exposure_configured,
     tool_exposure_enabled,
 )
-from MyCiteV2.packages.adapters.filesystem import is_live_aws_profile_file
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_ONBOARDING_TOOL_ENTRYPOINT_ID,
-    AWS_CSM_ONBOARDING_TOOL_ROUTE,
-    AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
-    AWS_CSM_SANDBOX_TOOL_ENTRYPOINT_ID,
-    AWS_CSM_SANDBOX_TOOL_ROUTE,
-    AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-    AWS_NARROW_WRITE_TOOL_ENTRYPOINT_ID,
-    AWS_NARROW_WRITE_TOOL_ROUTE,
-    AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-    AWS_TOOL_ENTRYPOINT_ID,
-    AWS_TOOL_ROUTE,
-    AWS_TOOL_SURFACE_ID,
+    AWS_CSM_TOOL_ENTRYPOINT_ID,
+    AWS_CSM_TOOL_ROUTE,
+    AWS_CSM_TOOL_SURFACE_ID,
+    PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
+    PORTAL_SHELL_REQUEST_SCHEMA,
     PortalScope,
-    PortalShellState,
     build_canonical_url,
-    canonical_query_for_shell_state,
-    canonicalize_portal_shell_state,
     resolve_portal_tool_registry_entry,
 )
 
-AWS_CSM_FAMILY_HEALTH_SCHEMA = "mycite.v2.portal.system.tools.aws.family_health.v1"
-AWS_TOOL_STATUS_SCHEMA = "mycite.v2.portal.system.tools.aws.status.v1"
+AWS_TOOL_STATUS_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.status.v1"
 
 
 def _as_text(value: object) -> str:
@@ -52,294 +33,460 @@ def _as_text(value: object) -> str:
     return str(value).strip()
 
 
-def _load_json_object(path: str | Path | None) -> dict[str, Any]:
-    if path is None:
-        return {}
-    resolved = Path(path)
-    if not resolved.exists() or not resolved.is_file():
+def _safe_json_object(path: Path | None) -> dict[str, Any]:
+    if path is None or not path.exists() or not path.is_file():
         return {}
     try:
-        payload = json.loads(resolved.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
         return {}
     return payload if isinstance(payload, dict) else {}
 
 
-def _normalize_request(
-    payload: dict[str, Any] | None,
-    *,
-    expected_schema: str,
-    surface_id: str,
-) -> tuple[PortalScope, PortalShellState, dict[str, Any]]:
+def _shell_request(portal_scope: PortalScope, query: Mapping[str, str]) -> dict[str, Any]:
+    return {
+        "schema": PORTAL_SHELL_REQUEST_SCHEMA,
+        "requested_surface_id": AWS_CSM_TOOL_SURFACE_ID,
+        "portal_scope": portal_scope.to_dict(),
+        "surface_query": dict(query),
+    }
+
+
+def _href_for_query(query: Mapping[str, str]) -> str:
+    return build_canonical_url(surface_id=AWS_CSM_TOOL_SURFACE_ID, query=query)
+
+
+def _normalize_surface_query(raw_query: Mapping[str, Any] | None) -> dict[str, str]:
+    raw = dict(raw_query or {})
+    query: dict[str, str] = {"view": "domains"}
+    domain = _as_text(raw.get("domain")).lower()
+    profile = _as_text(raw.get("profile"))
+    section = _as_text(raw.get("section")).lower()
+    if domain:
+        query["domain"] = domain
+    if profile:
+        query["profile"] = profile
+    if section in {"users", "onboarding", "newsletter"}:
+        query["section"] = section
+    return query
+
+
+def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, dict[str, str]]:
     normalized_payload = payload if isinstance(payload, dict) else {}
-    if normalized_payload.get("schema") in {None, ""}:
-        normalized_payload = {"schema": expected_schema, **normalized_payload}
-    schema = _as_text(normalized_payload.get("schema"))
-    if schema != expected_schema:
-        raise ValueError(f"request.schema must be {expected_schema}")
+    schema = _as_text(normalized_payload.get("schema")) or AWS_CSM_TOOL_REQUEST_SCHEMA
+    if schema != AWS_CSM_TOOL_REQUEST_SCHEMA:
+        raise ValueError(f"request.schema must be {AWS_CSM_TOOL_REQUEST_SCHEMA}")
     portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
-    shell_state = canonicalize_portal_shell_state(
-        normalized_payload.get("shell_state"),
-        active_surface_id=surface_id,
-        portal_scope=portal_scope,
-        seed_anchor_file=normalized_payload.get("shell_state") is None,
-    )
-    return portal_scope, shell_state, normalized_payload
+    surface_query = normalized_payload.get("surface_query")
+    if not isinstance(surface_query, Mapping):
+        surface_query = {
+            key: normalized_payload.get(key)
+            for key in ("view", "domain", "profile", "section")
+            if _as_text(normalized_payload.get(key))
+        }
+    return portal_scope, _normalize_surface_query(surface_query)
 
 
-def _tool_state(
+def _tool_root(private_dir: str | Path | None) -> Path | None:
+    if private_dir is None:
+        return None
+    root = Path(private_dir) / "utilities" / "tools" / "aws-csm"
+    return root if root.exists() and root.is_dir() else None
+
+
+def _tool_files(tool_root: Path | None) -> tuple[str, str]:
+    if tool_root is None:
+        return "", ""
+    collection = ""
+    for candidate in sorted(tool_root.glob("tool.*.aws-csm.json")):
+        collection = candidate.name
+        break
+    mediation = "spec.json" if (tool_root / "spec.json").is_file() else ""
+    return collection, mediation
+
+
+def _mailbox_profiles(tool_root: Path | None) -> list[dict[str, Any]]:
+    if tool_root is None:
+        return []
+    rows: list[dict[str, Any]] = []
+    for path in sorted(tool_root.glob("aws-csm.*.json")):
+        payload = _safe_json_object(path)
+        identity = dict(payload.get("identity") or {})
+        if not identity:
+            continue
+        profile_id = _as_text(identity.get("profile_id")) or path.stem
+        domain = _as_text(identity.get("domain")).lower()
+        if not domain:
+            continue
+        send_as_email = _as_text(identity.get("send_as_email")).lower()
+        user_email = _as_text(identity.get("single_user_email")).lower()
+        mailbox_local_part = _as_text(identity.get("mailbox_local_part"))
+        workflow = dict(payload.get("workflow") or {})
+        verification = dict(payload.get("verification") or {})
+        provider = dict(payload.get("provider") or {})
+        smtp = dict(payload.get("smtp") or {})
+        inbound = dict(payload.get("inbound") or {})
+        rows.append(
+            {
+                "profile_id": profile_id,
+                "domain": domain,
+                "title": send_as_email or user_email or profile_id,
+                "mailbox_local_part": mailbox_local_part or send_as_email.split("@", 1)[0] if "@" in send_as_email else mailbox_local_part,
+                "send_as_email": send_as_email,
+                "user_email": user_email,
+                "role": _as_text(identity.get("role")) or _as_text(identity.get("profile_kind")) or "mailbox",
+                "workflow_state": _as_text(workflow.get("lifecycle_state")) or "unknown",
+                "verification_state": _as_text(verification.get("portal_state") or verification.get("status")) or "unknown",
+                "provider_state": _as_text(provider.get("gmail_send_as_status") or provider.get("aws_ses_identity_status")) or "unknown",
+                "inbound_state": _as_text(inbound.get("receive_state")) or "unknown",
+                "forward_target": _as_text(smtp.get("forward_to_email") or identity.get("operator_inbox_target")),
+                "raw": payload,
+            }
+        )
+    return rows
+
+
+def _newsletter_domains(tool_root: Path | None) -> list[dict[str, Any]]:
+    if tool_root is None:
+        return []
+    newsletter_root = tool_root / "newsletter"
+    if not newsletter_root.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    for profile_path in sorted(newsletter_root.glob("newsletter.*.profile.json")):
+        profile = _safe_json_object(profile_path)
+        domain = _as_text(profile.get("domain")).lower()
+        if not domain:
+            continue
+        contacts_payload = _safe_json_object(
+            newsletter_root / profile_path.name.replace(".profile.json", ".contacts.json")
+        )
+        contacts = [item for item in list(contacts_payload.get("contacts") or []) if isinstance(item, dict)]
+        dispatches = [item for item in list(contacts_payload.get("dispatches") or []) if isinstance(item, dict)]
+        subscribed_count = sum(1 for item in contacts if item.get("subscribed") is True)
+        unsubscribed_count = sum(1 for item in contacts if item.get("subscribed") is False)
+        rows.append(
+            {
+                "domain": domain,
+                "list_address": _as_text(profile.get("list_address")).lower(),
+                "sender_address": _as_text(profile.get("sender_address")).lower(),
+                "author_profile_id": _as_text(profile.get("selected_author_profile_id")),
+                "author_address": _as_text(profile.get("selected_author_address")).lower(),
+                "delivery_mode": _as_text(profile.get("delivery_mode")) or "unknown",
+                "contact_count": len(contacts),
+                "subscribed_count": subscribed_count,
+                "unsubscribed_count": unsubscribed_count,
+                "dispatch_count": len(dispatches),
+                "last_dispatch_id": _as_text(profile.get("last_dispatch_id")),
+                "last_inbound_status": _as_text(profile.get("last_inbound_status")),
+                "last_inbound_subject": _as_text(profile.get("last_inbound_subject")),
+                "contacts_raw": contacts_payload,
+                "raw": profile,
+            }
+        )
+    return rows
+
+
+def _tool_status(
     *,
-    tool_id: str,
-    required_capabilities: tuple[str, ...],
     portal_scope: PortalScope,
     tool_exposure_policy: dict[str, Any] | None,
-    integration_ready: bool,
-    integration_name: str,
+    tool_root: Path | None,
 ) -> dict[str, Any]:
-    configured = tool_exposure_configured(tool_exposure_policy, tool_id=tool_id)
-    enabled = tool_exposure_enabled(tool_exposure_policy, tool_id=tool_id)
-    missing_capabilities = [cap for cap in required_capabilities if cap not in portal_scope.capabilities]
-    missing_integrations = [] if integration_ready else [integration_name]
-    operational = bool(configured and enabled and not missing_integrations and not missing_capabilities)
+    tool_entry = resolve_portal_tool_registry_entry(surface_id=AWS_CSM_TOOL_SURFACE_ID)
+    if tool_entry is None:
+        raise ValueError("AWS-CSM tool registry entry is missing")
+    configured = tool_exposure_configured(tool_exposure_policy, tool_id=tool_entry.tool_id)
+    enabled = tool_exposure_enabled(tool_exposure_policy, tool_id=tool_entry.tool_id)
+    missing_capabilities = [cap for cap in tool_entry.required_capabilities if cap not in portal_scope.capabilities]
+    missing_integrations: list[str] = []
+    if tool_root is None:
+        missing_integrations.append("aws_csm_state_root")
+    operational = bool(configured and enabled and not missing_capabilities and not missing_integrations)
     return {
         "schema": AWS_TOOL_STATUS_SCHEMA,
         "configured": configured,
         "enabled": enabled,
         "operational": operational,
         "missing_integrations": missing_integrations,
-        "required_capabilities": list(required_capabilities),
+        "required_capabilities": list(tool_entry.required_capabilities),
         "missing_capabilities": missing_capabilities,
-    }
-
-
-def cached_aws_csm_family_health(
-    *,
-    service: object | None = None,
-    portal_instance_id: str = "",
-    private_dir: str | Path | None = None,
-    domains: list[str] | None = None,
-    dispatcher_callback_builder: object | None = None,
-    inbound_callback_builder: object | None = None,
-) -> dict[str, Any]:
-    configured_domains = [domain for domain in list(domains or []) if _as_text(domain)]
-    policy_snapshot = _load_json_object(None if private_dir is None else Path(private_dir) / "config.json")
-    exposure = policy_snapshot.get("tool_exposure") if isinstance(policy_snapshot, dict) else {}
-    configured = True
-    enabled = True
-    if isinstance(exposure, dict):
-        raw_entry = exposure.get("aws_csm_onboarding")
-        if isinstance(raw_entry, dict):
-            configured = raw_entry.get("configured", True) is True
-            enabled = raw_entry.get("enabled", configured) is True
-        elif isinstance(raw_entry, bool):
-            configured = True
-            enabled = raw_entry
-    return {
-        "schema": AWS_CSM_FAMILY_HEALTH_SCHEMA,
-        "status": "operational" if configured and enabled else "limited",
-        "configured": configured,
-        "enabled": enabled,
-        "portal_instance_id": _as_text(portal_instance_id),
-        "domain_count": len(configured_domains),
-        "ready_domain_count": len(configured_domains) if configured and enabled else 0,
-        "domains": configured_domains,
-        "dispatcher_available": callable(dispatcher_callback_builder),
-        "inbound_capture_available": callable(inbound_callback_builder),
-    }
-
-
-def describe_aws_csm_onboarding_guidance(tool_status: dict[str, Any]) -> dict[str, Any]:
-    items: list[dict[str, Any]] = []
-    for integration_name in list(tool_status.get("missing_integrations") or []):
-        items.append(
-            {
-                "id": integration_name,
-                "label": integration_name.replace("_", " "),
-                "status": "missing_integration",
-                "detail": "The portal does not currently have the external integration required for this surface.",
-            }
-        )
-    for capability in list(tool_status.get("missing_capabilities") or []):
-        items.append(
-            {
-                "id": capability,
-                "label": capability.replace("_", " "),
-                "status": "missing_capability",
-                "detail": "This portal instance does not advertise the required routing capability.",
-            }
-        )
-    if not items:
-        items.append(
-            {
-                "id": "ready",
-                "label": "ready",
-                "status": "operational",
-                "detail": "The surface is enabled and its prerequisites are satisfied.",
-            }
-        )
-    return {
-        "recommended_action": "open_workflow" if tool_status.get("operational") else "configure_dependencies",
-        "items": items,
-    }
-
-
-def _profile_summary(path: str | Path | None) -> dict[str, Any]:
-    if path is None:
-        return {"configured": False, "live_profile_mapping": False, "path": ""}
-    resolved = Path(path)
-    payload = _load_json_object(resolved)
-    return {
-        "configured": True,
-        "live_profile_mapping": is_live_aws_profile_file(resolved),
-        "path": str(resolved),
-        "schema": _as_text(payload.get("schema")),
-        "profile_name": _as_text(payload.get("profile_name") or payload.get("profile") or payload.get("name")),
-        "status": _as_text(payload.get("status") or payload.get("operational_status")),
-    }
-
-
-def _tool_bundle(
-    *,
-    surface_id: str,
-    surface_schema: str,
-    entrypoint_id: str,
-    request_schema: str,
-    route: str,
-    title: str,
-    subtitle: str,
-    portal_scope: PortalScope,
-    shell_state: PortalShellState,
-    tool_exposure_policy: dict[str, Any] | None,
-    integration_ready: bool,
-    integration_name: str,
-    profile_summary: dict[str, Any],
-    guidance_title: str,
-    requested_payload: dict[str, Any],
-    tool_rows: list[dict[str, Any]],
-    data_dir: str | Path | None = None,
-    private_dir: str | Path | None = None,
-) -> dict[str, Any]:
-    tool_entry = resolve_portal_tool_registry_entry(surface_id=surface_id)
-    if tool_entry is None:
-        raise ValueError(f"Unknown tool surface: {surface_id}")
-    tool_status = _tool_state(
-        tool_id=tool_entry.tool_id,
-        required_capabilities=tool_entry.required_capabilities,
-        portal_scope=portal_scope,
-        tool_exposure_policy=tool_exposure_policy,
-        integration_ready=integration_ready,
-        integration_name=integration_name,
-    )
-    guidance = describe_aws_csm_onboarding_guidance(tool_status)
-    surface_payload = {
-        "schema": surface_schema,
-        "kind": "tool_mediation_surface",
         "tool_id": tool_entry.tool_id,
-        "surface_id": surface_id,
-        "entrypoint_id": entrypoint_id,
-        "title": title,
-        "subtitle": subtitle,
-        "tool": {
-            "tool_id": tool_entry.tool_id,
-            "label": tool_entry.label,
-            "summary": tool_entry.summary,
-            **tool_status,
-        },
-        "profile_summary": profile_summary,
-        "guidance": guidance,
-        "focus_subject": dict(shell_state.focus_subject or {}),
-        "mediation_subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),
-        "request_contract": {
-            "schema": request_schema,
-            "route": route,
-            "surface_id": surface_id,
-        },
+        "label": tool_entry.label,
+        "summary": tool_entry.summary,
     }
-    if _as_text(requested_payload.get("sender_address")):
-        surface_payload["last_requested_sender"] = _as_text(requested_payload.get("sender_address"))
-    if _as_text(requested_payload.get("mailbox") or requested_payload.get("target_mailbox")):
-        surface_payload["requested_mailbox"] = _as_text(
-            requested_payload.get("mailbox") or requested_payload.get("target_mailbox")
+
+
+def _workspace(
+    *,
+    portal_scope: PortalScope,
+    query: dict[str, str],
+    tool_root: Path | None,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    collection_file, mediation_file = _tool_files(tool_root)
+    mailbox_profiles = _mailbox_profiles(tool_root)
+    newsletter_domains = _newsletter_domains(tool_root)
+
+    newsletter_by_domain = {item["domain"]: item for item in newsletter_domains}
+    profiles_by_id = {item["profile_id"]: item for item in mailbox_profiles}
+    domain_map: dict[str, dict[str, Any]] = {}
+    for profile in mailbox_profiles:
+        domain_row = domain_map.setdefault(
+            profile["domain"],
+            {"domain": profile["domain"], "mailboxes": [], "newsletter": newsletter_by_domain.get(profile["domain"])},
         )
-    control_panel = build_tool_control_panel(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        data_dir=data_dir,
-        public_dir=None,
-        private_dir=private_dir,
-        surface_id=surface_id,
-        active_document=None,
-        selected_datum=None,
-        selected_object=None,
-        tool_rows=tool_rows,
-        title=title,
+        domain_row["mailboxes"].append(profile)
+    for newsletter in newsletter_domains:
+        domain_row = domain_map.setdefault(
+            newsletter["domain"],
+            {"domain": newsletter["domain"], "mailboxes": [], "newsletter": newsletter},
+        )
+        domain_row["newsletter"] = newsletter
+
+    requested_profile = profiles_by_id.get(_as_text(query.get("profile")))
+    selected_domain = _as_text(query.get("domain")).lower()
+    if not selected_domain and requested_profile is not None:
+        selected_domain = requested_profile["domain"]
+    if selected_domain not in domain_map:
+        selected_domain = ""
+
+    selected_profile = None
+    if requested_profile is not None and requested_profile["domain"] == selected_domain:
+        selected_profile = requested_profile
+
+    selected_section = _as_text(query.get("section")).lower()
+    if selected_section not in {"users", "onboarding", "newsletter"}:
+        selected_section = ""
+
+    resolved_query: dict[str, str] = {"view": "domains"}
+    if selected_domain:
+        resolved_query["domain"] = selected_domain
+    if selected_profile is not None:
+        resolved_query["profile"] = selected_profile["profile_id"]
+    if selected_section:
+        resolved_query["section"] = selected_section
+
+    domain_rows: list[dict[str, Any]] = []
+    total_contact_count = 0
+    for domain in sorted(domain_map.keys()):
+        mailbox_count = len(domain_map[domain]["mailboxes"])
+        newsletter = domain_map[domain].get("newsletter")
+        contact_count = int(newsletter.get("contact_count") or 0) if isinstance(newsletter, dict) else 0
+        total_contact_count += contact_count
+        query_for_domain = {"view": "domains", "domain": domain}
+        domain_rows.append(
+            {
+                "domain": domain,
+                "label": domain,
+                "profile_count": mailbox_count,
+                "newsletter_configured": newsletter is not None,
+                "contact_count": contact_count,
+                "dispatch_count": int(newsletter.get("dispatch_count") or 0) if isinstance(newsletter, dict) else 0,
+                "active": domain == selected_domain,
+                "href": _href_for_query(query_for_domain),
+                "shell_request": _shell_request(portal_scope, query_for_domain),
+            }
+        )
+
+    selected_domain_row = domain_map.get(selected_domain) if selected_domain else None
+    selected_mailboxes = sorted(
+        list((selected_domain_row or {}).get("mailboxes") or []),
+        key=lambda item: (item.get("title") or "", item.get("profile_id") or ""),
     )
-    workbench = {
-        "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-        "kind": "tool_secondary_evidence",
-        "title": f"{title} Evidence",
-        "subtitle": "Workbench stays hidden until the tool asks for supporting evidence.",
-        "visible": False,
-        "surface_payload": {
-            "kind": "tool_secondary_evidence",
-            "surface_id": surface_id,
-            "tool_status": tool_status,
+    selected_newsletter = dict((selected_domain_row or {}).get("newsletter") or {}) if selected_domain_row else None
+
+    mailbox_rows: list[dict[str, Any]] = []
+    for profile in selected_mailboxes:
+        query_for_profile = {"view": "domains", "domain": selected_domain, "profile": profile["profile_id"]}
+        mailbox_rows.append(
+            {
+                **profile,
+                "active": selected_profile is not None and profile["profile_id"] == selected_profile["profile_id"],
+                "href": _href_for_query(query_for_profile),
+                "shell_request": _shell_request(portal_scope, query_for_profile),
+            }
+        )
+
+    section_rows = []
+    if selected_domain:
+        for token, label in (
+            ("users", "Users"),
+            ("onboarding", "Onboarding"),
+            ("newsletter", "Newsletter"),
+        ):
+            query_for_section = {"view": "domains", "domain": selected_domain, "section": token}
+            if token != "newsletter" and selected_profile is not None:
+                query_for_section["profile"] = selected_profile["profile_id"]
+            section_rows.append(
+                {
+                    "label": label,
+                    "active": selected_section == token,
+                    "href": _href_for_query(query_for_section),
+                    "shell_request": _shell_request(portal_scope, query_for_section),
+                }
+            )
+
+    workspace = {
+        "active_filters": {
+            "view": "domains",
+            "domain": selected_domain,
+            "profile_id": selected_profile["profile_id"] if isinstance(selected_profile, dict) else "",
+            "section": selected_section,
         },
+        "collection_file": collection_file,
+        "mediation_file": mediation_file,
+        "domain_rows": domain_rows,
+        "mailbox_rows": mailbox_rows,
+        "section_rows": section_rows,
+        "selected_domain": selected_domain,
+        "selected_profile": selected_profile,
+        "selected_newsletter": selected_newsletter,
+        "domain_count": len(domain_rows),
+        "profile_count": len(mailbox_profiles),
+        "newsletter_domain_count": len(newsletter_domains),
+        "contact_count": total_contact_count,
     }
-    inspector = {
-        "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
-        "kind": "tool_mediation_panel",
-        "title": title,
-        "summary": subtitle,
-        "subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),
-        "sections": [
+    return workspace, resolved_query
+
+
+def _facts_rows(pairs: list[tuple[str, object]]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for label, value in pairs:
+        text = _as_text(value)
+        if text:
+            rows.append({"label": label, "value": text})
+    return rows
+
+
+def _build_control_panel(
+    *,
+    portal_scope: PortalScope,
+    workspace: dict[str, Any],
+) -> dict[str, Any]:
+    collection_file = _as_text(workspace.get("collection_file"))
+    mediation_file = _as_text(workspace.get("mediation_file"))
+    groups = [
+        {
+            "title": "Domains",
+            "entries": [
+                {
+                    "label": _as_text(row.get("label")) or _as_text(row.get("domain")),
+                    "meta": (
+                        f"{int(row.get('profile_count') or 0)} mailbox"
+                        + ("" if int(row.get("profile_count") or 0) == 1 else "es")
+                        + (" · newsletter" if row.get("newsletter_configured") else "")
+                    ),
+                    "active": bool(row.get("active")),
+                    "href": _as_text(row.get("href")),
+                    "shell_request": row.get("shell_request"),
+                }
+                for row in list(workspace.get("domain_rows") or [])
+            ],
+        }
+    ]
+    mailbox_rows = list(workspace.get("mailbox_rows") or [])
+    if mailbox_rows:
+        groups.append(
             {
-                "title": "Tool posture",
-                "rows": [
-                    {"label": "configured", "value": "yes" if tool_status["configured"] else "no"},
-                    {"label": "enabled", "value": "yes" if tool_status["enabled"] else "no"},
-                    {"label": "operational", "value": "yes" if tool_status["operational"] else "no"},
-                ],
-            },
-            {
-                "title": guidance_title,
-                "rows": [
+                "title": "User Emails",
+                "entries": [
                     {
-                        "label": item["label"],
-                        "value": item["status"],
-                        "detail": item["detail"],
+                        "label": _as_text(row.get("title")) or _as_text(row.get("profile_id")),
+                        "meta": " · ".join(
+                            [token for token in (_as_text(row.get("role")), _as_text(row.get("workflow_state"))) if token]
+                        ),
+                        "active": bool(row.get("active")),
+                        "href": _as_text(row.get("href")),
+                        "shell_request": row.get("shell_request"),
                     }
-                    for item in guidance.get("items") or []
+                    for row in mailbox_rows
                 ],
-            },
-            {
-                "title": "Mediation subject",
-                "rows": [
-                    {
-                        "label": "focus",
-                        "value": _as_text((shell_state.focus_subject or {}).get("id")) or portal_scope.scope_id,
-                    },
-                    {
-                        "label": "subject",
-                        "value": _as_text((shell_state.mediation_subject or shell_state.focus_subject or {}).get("id"))
-                        or portal_scope.scope_id,
-                    },
-                ],
-            },
-        ],
-    }
+            }
+        )
+    section_rows = list(workspace.get("section_rows") or [])
+    if section_rows:
+        groups.append({"title": "Sections", "entries": section_rows})
     return {
-        "entrypoint_id": entrypoint_id,
-        "read_write_posture": tool_entry.read_write_posture,
-        "page_title": title,
-        "page_subtitle": subtitle,
+        "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
+        "kind": "focus_selection_panel",
+        "title": "Control Panel",
+        "surface_label": "AWS-CSM",
+        "context_items": [
+            {"label": "Sandbox", "value": "AWS-CSM"},
+            {"label": "File", "value": collection_file or "tool.aws-csm.json"},
+            {"label": "Mediation", "value": mediation_file or "spec.json"},
+        ],
+        "verb_tabs": [],
+        "groups": groups,
+        "actions": [],
+    }
+
+
+def _build_inspector(
+    *,
+    tool_status: dict[str, Any],
+    workspace: dict[str, Any],
+    surface_payload: dict[str, Any],
+) -> dict[str, Any]:
+    selected_profile = workspace.get("selected_profile")
+    selected_newsletter = workspace.get("selected_newsletter")
+    subject = None
+    sections: list[dict[str, Any]] = [
+        {
+            "title": "Tool Posture",
+            "rows": _facts_rows(
+                [
+                    ("configured", "yes" if tool_status.get("configured") else "no"),
+                    ("enabled", "yes" if tool_status.get("enabled") else "no"),
+                    ("operational", "yes" if tool_status.get("operational") else "no"),
+                    ("required capability", ", ".join(list(tool_status.get("required_capabilities") or []))),
+                    ("missing capability", ", ".join(list(tool_status.get("missing_capabilities") or []))),
+                ]
+            ),
+        }
+    ]
+    if isinstance(selected_profile, dict):
+        raw = dict(selected_profile.get("raw") or {})
+        identity = dict(raw.get("identity") or {})
+        workflow = dict(raw.get("workflow") or {})
+        verification = dict(raw.get("verification") or {})
+        provider = dict(raw.get("provider") or {})
+        smtp = dict(raw.get("smtp") or {})
+        inbound = dict(raw.get("inbound") or {})
+        subject = {"level": "profile", "id": _as_text(selected_profile.get("profile_id"))}
+        sections.extend(
+            [
+                {"title": "Profile", "rows": _facts_rows([("domain", identity.get("domain")), ("send-as", identity.get("send_as_email")), ("user", identity.get("single_user_email")), ("role", identity.get("role"))])},
+                {"title": "Onboarding", "rows": _facts_rows([("workflow", workflow.get("lifecycle_state")), ("handoff", workflow.get("handoff_status")), ("verification", verification.get("portal_state") or verification.get("status")), ("provider", provider.get("gmail_send_as_status") or provider.get("aws_ses_identity_status")), ("inbound", inbound.get("receive_state"))])},
+                {"title": "SMTP and Inbound", "rows": _facts_rows([("forward target", smtp.get("forward_to_email")), ("credentials", smtp.get("credentials_secret_state")), ("receive verified", inbound.get("receive_verified")), ("capture source", inbound.get("capture_source_kind"))])},
+            ]
+        )
+    elif isinstance(selected_newsletter, dict):
+        subject = {"level": "domain", "id": _as_text(selected_newsletter.get("domain"))}
+        sections.append(
+            {
+                "title": "Newsletter",
+                "rows": _facts_rows(
+                    [
+                        ("domain", selected_newsletter.get("domain")),
+                        ("list", selected_newsletter.get("list_address")),
+                        ("author", selected_newsletter.get("author_address")),
+                        ("delivery mode", selected_newsletter.get("delivery_mode")),
+                        ("contacts", selected_newsletter.get("contact_count")),
+                        ("dispatches", selected_newsletter.get("dispatch_count")),
+                    ]
+                ),
+            }
+        )
+    return {
+        "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+        "kind": "aws_csm_inspector",
+        "title": "AWS-CSM",
+        "summary": "Unified service-tool posture and selected domain detail.",
+        "visible": True,
+        "subject": subject,
+        "sections": sections,
         "surface_payload": surface_payload,
-        "control_panel": control_panel,
-        "workbench": workbench,
-        "inspector": inspector,
-        "shell_state": shell_state,
-        "tool_rows": tool_rows,
-        "route": route,
     }
 
 
@@ -347,283 +494,122 @@ def build_portal_aws_surface_bundle(
     *,
     surface_id: str,
     portal_scope: PortalScope,
-    shell_state: PortalShellState,
-    aws_status_file: str | Path | None,
-    aws_csm_sandbox_status_file: str | Path | None = None,
-    data_dir: str | Path | None = None,
+    shell_state: object | None,
+    surface_query: Mapping[str, Any] | None,
     private_dir: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
-    tool_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    aws_profile = _profile_summary(aws_status_file)
-    sandbox_profile = _profile_summary(aws_csm_sandbox_status_file)
-    rows = list(tool_rows or [])
-    if surface_id == AWS_TOOL_SURFACE_ID:
-        return _tool_bundle(
-            surface_id=surface_id,
-            surface_schema=AWS_TOOL_SURFACE_SCHEMA,
-            entrypoint_id=AWS_TOOL_ENTRYPOINT_ID,
-            request_schema=AWS_TOOL_REQUEST_SCHEMA,
-            route=AWS_TOOL_ROUTE,
-            title="AWS-CSM",
-            subtitle="Service visibility and integration readiness.",
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            tool_exposure_policy=tool_exposure_policy,
-            integration_ready=bool(aws_profile.get("live_profile_mapping")),
-            integration_name="aws_status_file",
-            profile_summary=aws_profile,
-            guidance_title="AWS prerequisites",
-            requested_payload={},
-            tool_rows=rows,
-            data_dir=data_dir,
-            private_dir=private_dir,
-        )
-    if surface_id == AWS_NARROW_WRITE_TOOL_SURFACE_ID:
-        return _tool_bundle(
-            surface_id=surface_id,
-            surface_schema=AWS_NARROW_WRITE_TOOL_SURFACE_SCHEMA,
-            entrypoint_id=AWS_NARROW_WRITE_TOOL_ENTRYPOINT_ID,
-            request_schema=AWS_NARROW_WRITE_TOOL_REQUEST_SCHEMA,
-            route=AWS_NARROW_WRITE_TOOL_ROUTE,
-            title="AWS Narrow Write",
-            subtitle="Bounded sender selection with interface-led mediation posture.",
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            tool_exposure_policy=tool_exposure_policy,
-            integration_ready=bool(aws_profile.get("live_profile_mapping")),
-            integration_name="aws_status_file",
-            profile_summary=aws_profile,
-            guidance_title="Write-path prerequisites",
-            requested_payload={},
-            tool_rows=rows,
-            data_dir=data_dir,
-            private_dir=private_dir,
-        )
-    if surface_id == AWS_CSM_SANDBOX_TOOL_SURFACE_ID:
-        return _tool_bundle(
-            surface_id=surface_id,
-            surface_schema=AWS_CSM_SANDBOX_TOOL_SURFACE_SCHEMA,
-            entrypoint_id=AWS_CSM_SANDBOX_TOOL_ENTRYPOINT_ID,
-            request_schema=AWS_CSM_SANDBOX_TOOL_REQUEST_SCHEMA,
-            route=AWS_CSM_SANDBOX_TOOL_ROUTE,
-            title="AWS Sandbox",
-            subtitle="Non-production visibility for sandbox projection inputs.",
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            tool_exposure_policy=tool_exposure_policy,
-            integration_ready=bool(sandbox_profile.get("live_profile_mapping")),
-            integration_name="aws_csm_sandbox_status_file",
-            profile_summary=sandbox_profile,
-            guidance_title="Sandbox prerequisites",
-            requested_payload={},
-            tool_rows=rows,
-            data_dir=data_dir,
-            private_dir=private_dir,
-        )
-    if surface_id == AWS_CSM_ONBOARDING_TOOL_SURFACE_ID:
-        return _tool_bundle(
-            surface_id=surface_id,
-            surface_schema=AWS_CSM_ONBOARDING_TOOL_SURFACE_SCHEMA,
-            entrypoint_id=AWS_CSM_ONBOARDING_TOOL_ENTRYPOINT_ID,
-            request_schema=AWS_CSM_ONBOARDING_TOOL_REQUEST_SCHEMA,
-            route=AWS_CSM_ONBOARDING_TOOL_ROUTE,
-            title="AWS Onboarding",
-            subtitle="FND-routed onboarding workflow exposed by capability and configuration.",
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            tool_exposure_policy=tool_exposure_policy,
-            integration_ready=bool(aws_profile.get("live_profile_mapping")),
-            integration_name="aws_status_file",
-            profile_summary=aws_profile,
-            guidance_title="Routing prerequisites",
-            requested_payload={},
-            tool_rows=rows,
-            data_dir=data_dir,
-            private_dir=private_dir,
-        )
-    raise ValueError(f"Unsupported AWS surface: {surface_id}")
+    del shell_state
+    if surface_id != AWS_CSM_TOOL_SURFACE_ID:
+        raise ValueError(f"Unsupported AWS surface: {surface_id}")
+    tool_root = _tool_root(private_dir)
+    tool_status = _tool_status(
+        portal_scope=portal_scope,
+        tool_exposure_policy=tool_exposure_policy,
+        tool_root=tool_root,
+    )
+    workspace, canonical_query = _workspace(
+        portal_scope=portal_scope,
+        query=_normalize_surface_query(surface_query),
+        tool_root=tool_root,
+    )
+    surface_payload = {
+        "schema": AWS_CSM_TOOL_SURFACE_SCHEMA,
+        "kind": "aws_csm_workspace",
+        "title": "AWS-CSM",
+        "subtitle": "Unified domain gallery with mailbox onboarding and newsletter state.",
+        "tool": tool_status,
+        "cards": [
+            {"label": "Domains", "value": str(workspace["domain_count"])},
+            {"label": "User Emails", "value": str(workspace["profile_count"])},
+            {"label": "Newsletter Domains", "value": str(workspace["newsletter_domain_count"])},
+            {"label": "Operational", "value": "yes" if tool_status["operational"] else "no"},
+        ],
+        "notes": [
+            "AWS-CSM is one service tool surface under SYSTEM.",
+            "Operational AWS employment requires FND peripheral routing and only works on the FND portal instance.",
+        ],
+        "workspace": workspace,
+    }
+    inspector = _build_inspector(tool_status=tool_status, workspace=workspace, surface_payload=surface_payload)
+    return {
+        "entrypoint_id": AWS_CSM_TOOL_ENTRYPOINT_ID,
+        "read_write_posture": "read-only",
+        "page_title": "AWS-CSM",
+        "page_subtitle": "Unified domain gallery and FND-routed service-tool posture.",
+        "surface_payload": surface_payload,
+        "control_panel": _build_control_panel(portal_scope=portal_scope, workspace=workspace),
+        "workbench": {
+            "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
+            "kind": "aws_csm_workbench",
+            "title": "AWS-CSM",
+            "subtitle": "Domain gallery, user email gallery, onboarding, and newsletter state.",
+            "visible": True,
+            "surface_payload": surface_payload,
+        },
+        "inspector": inspector,
+        "canonical_route": AWS_CSM_TOOL_ROUTE,
+        "canonical_query": canonical_query,
+        "canonical_url": build_canonical_url(surface_id=AWS_CSM_TOOL_SURFACE_ID, query=canonical_query),
+    }
 
 
-def _bundle_to_envelope(
+def run_portal_aws_csm(
+    request_payload: dict[str, Any] | None,
     *,
-    bundle: dict[str, Any],
-    portal_scope: PortalScope,
-    surface_id: str,
+    private_dir: str | Path | None = None,
+    tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    shell_state = bundle["shell_state"]
-    canonical_query = canonical_query_for_shell_state(shell_state, surface_id=surface_id)
+    portal_scope, query = _normalize_request(request_payload)
+    tool_root = _tool_root(private_dir)
+    tool_status = _tool_status(
+        portal_scope=portal_scope,
+        tool_exposure_policy=tool_exposure_policy,
+        tool_root=tool_root,
+    )
+    workspace, canonical_query = _workspace(
+        portal_scope=portal_scope,
+        query=query,
+        tool_root=tool_root,
+    )
+    surface_payload = {
+        "schema": AWS_CSM_TOOL_SURFACE_SCHEMA,
+        "kind": "aws_csm_workspace",
+        "title": "AWS-CSM",
+        "subtitle": "Unified domain gallery with mailbox onboarding and newsletter state.",
+        "tool": tool_status,
+        "cards": [
+            {"label": "Domains", "value": str(workspace["domain_count"])},
+            {"label": "User Emails", "value": str(workspace["profile_count"])},
+            {"label": "Newsletter Domains", "value": str(workspace["newsletter_domain_count"])},
+            {"label": "Operational", "value": "yes" if tool_status["operational"] else "no"},
+        ],
+        "notes": [
+            "AWS-CSM is one service tool surface under SYSTEM.",
+            "Operational AWS employment requires FND peripheral routing and only works on the FND portal instance.",
+        ],
+        "workspace": workspace,
+    }
     return build_portal_runtime_envelope(
         portal_scope=portal_scope.to_dict(),
-        requested_surface_id=surface_id,
-        surface_id=surface_id,
-        entrypoint_id=bundle["entrypoint_id"],
-        read_write_posture=bundle["read_write_posture"],
-        reducer_owned=True,
-        canonical_route=bundle["route"],
+        requested_surface_id=AWS_CSM_TOOL_SURFACE_ID,
+        surface_id=AWS_CSM_TOOL_SURFACE_ID,
+        entrypoint_id=AWS_CSM_TOOL_ENTRYPOINT_ID,
+        read_write_posture="read-only",
+        reducer_owned=False,
+        canonical_route=AWS_CSM_TOOL_ROUTE,
         canonical_query=canonical_query,
-        canonical_url=build_canonical_url(surface_id=surface_id, query=canonical_query),
-        shell_state=shell_state.to_dict(),
-        surface_payload=bundle["surface_payload"],
+        canonical_url=build_canonical_url(surface_id=AWS_CSM_TOOL_SURFACE_ID, query=canonical_query),
+        shell_state=None,
+        surface_payload=surface_payload,
         shell_composition={},
         warnings=[],
         error=None,
     )
 
 
-def run_portal_aws_read_only(
-    request_payload: dict[str, Any] | None,
-    *,
-    aws_status_file: str | Path | None,
-    data_dir: str | Path | None = None,
-    tool_exposure_policy: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    portal_scope, shell_state, _ = _normalize_request(
-        request_payload,
-        expected_schema=AWS_TOOL_REQUEST_SCHEMA,
-        surface_id=AWS_TOOL_SURFACE_ID,
-    )
-    bundle = build_portal_aws_surface_bundle(
-        surface_id=AWS_TOOL_SURFACE_ID,
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        aws_status_file=aws_status_file,
-        data_dir=data_dir,
-        tool_exposure_policy=tool_exposure_policy,
-    )
-    return _bundle_to_envelope(bundle=bundle, portal_scope=portal_scope, surface_id=AWS_TOOL_SURFACE_ID)
-
-
-def run_portal_aws_csm_family_home(
-    request_payload: dict[str, Any] | None,
-    *,
-    aws_status_file: str | Path | None,
-    private_dir: str | Path | None = None,
-    tool_exposure_policy: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    return run_portal_aws_read_only(
-        request_payload,
-        aws_status_file=aws_status_file,
-        tool_exposure_policy=tool_exposure_policy,
-    )
-
-
-def run_portal_aws_csm_newsletter(
-    request_payload: dict[str, Any] | None,
-    *,
-    private_dir: str | Path | None = None,
-    tool_exposure_policy: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    portal_scope = PortalScope()
-    shell_state = canonicalize_portal_shell_state(
-        None,
-        active_surface_id=AWS_TOOL_SURFACE_ID,
-        portal_scope=portal_scope,
-        seed_anchor_file=True,
-    )
-    bundle = build_portal_aws_surface_bundle(
-        surface_id=AWS_TOOL_SURFACE_ID,
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        aws_status_file=None,
-        tool_exposure_policy=tool_exposure_policy,
-    )
-    bundle["surface_payload"]["newsletter_state"] = {
-        "configured": private_dir is not None,
-        "operational": private_dir is not None,
-        "private_dir": str(private_dir) if private_dir is not None else "",
-    }
-    return _bundle_to_envelope(bundle=bundle, portal_scope=portal_scope, surface_id=AWS_TOOL_SURFACE_ID)
-
-
-def run_portal_aws_csm_sandbox(
-    request_payload: dict[str, Any] | None,
-    *,
-    aws_sandbox_status_file: str | Path | None,
-    data_dir: str | Path | None = None,
-    tool_exposure_policy: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    portal_scope, shell_state, _ = _normalize_request(
-        request_payload,
-        expected_schema=AWS_CSM_SANDBOX_TOOL_REQUEST_SCHEMA,
-        surface_id=AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-    )
-    bundle = build_portal_aws_surface_bundle(
-        surface_id=AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        aws_status_file=None,
-        aws_csm_sandbox_status_file=aws_sandbox_status_file,
-        data_dir=data_dir,
-        tool_exposure_policy=tool_exposure_policy,
-    )
-    return _bundle_to_envelope(bundle=bundle, portal_scope=portal_scope, surface_id=AWS_CSM_SANDBOX_TOOL_SURFACE_ID)
-
-
-def run_portal_aws_narrow_write(
-    request_payload: dict[str, Any] | None,
-    *,
-    aws_status_file: str | Path | None,
-    audit_storage_file: str | Path | None = None,
-    data_dir: str | Path | None = None,
-    tool_exposure_policy: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    portal_scope, shell_state, payload = _normalize_request(
-        request_payload,
-        expected_schema=AWS_NARROW_WRITE_TOOL_REQUEST_SCHEMA,
-        surface_id=AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-    )
-    bundle = build_portal_aws_surface_bundle(
-        surface_id=AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        aws_status_file=aws_status_file,
-        data_dir=data_dir,
-        tool_exposure_policy=tool_exposure_policy,
-    )
-    bundle["surface_payload"]["last_requested_sender"] = _as_text(payload.get("sender_address"))
-    bundle["surface_payload"]["audit_storage_configured"] = audit_storage_file is not None
-    return _bundle_to_envelope(bundle=bundle, portal_scope=portal_scope, surface_id=AWS_NARROW_WRITE_TOOL_SURFACE_ID)
-
-
-def run_portal_aws_csm_onboarding(
-    request_payload: dict[str, Any] | None,
-    *,
-    aws_status_file: str | Path | None,
-    audit_storage_file: str | Path | None = None,
-    private_dir: str | Path | None = None,
-    data_dir: str | Path | None = None,
-    tool_exposure_policy: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    portal_scope, shell_state, payload = _normalize_request(
-        request_payload,
-        expected_schema=AWS_CSM_ONBOARDING_TOOL_REQUEST_SCHEMA,
-        surface_id=AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
-    )
-    bundle = build_portal_aws_surface_bundle(
-        surface_id=AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        aws_status_file=aws_status_file,
-        data_dir=data_dir,
-        tool_exposure_policy=tool_exposure_policy,
-    )
-    bundle["surface_payload"]["requested_mailbox"] = _as_text(payload.get("mailbox") or payload.get("target_mailbox"))
-    bundle["surface_payload"]["audit_storage_configured"] = audit_storage_file is not None
-    bundle["surface_payload"]["private_dir_configured"] = private_dir is not None
-    return _bundle_to_envelope(bundle=bundle, portal_scope=portal_scope, surface_id=AWS_CSM_ONBOARDING_TOOL_SURFACE_ID)
-
-
 __all__ = [
-    "AWS_CSM_FAMILY_HEALTH_SCHEMA",
     "AWS_TOOL_STATUS_SCHEMA",
     "build_portal_aws_surface_bundle",
-    "cached_aws_csm_family_health",
-    "describe_aws_csm_onboarding_guidance",
-    "run_portal_aws_csm_family_home",
-    "run_portal_aws_csm_newsletter",
-    "run_portal_aws_csm_onboarding",
-    "run_portal_aws_csm_sandbox",
-    "run_portal_aws_narrow_write",
-    "run_portal_aws_read_only",
+    "run_portal_aws_csm",
 ]

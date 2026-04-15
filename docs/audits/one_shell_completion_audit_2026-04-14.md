@@ -13,7 +13,8 @@ Observed repository state after alignment:
 - one runtime envelope model
 - one canonical public entry at `/portal`, redirecting to `/portal/system`
 - one reducer-owned `SYSTEM` workspace state model
-- reducer ownership limited to `system.root` and `system.tools.*`
+- reducer ownership limited to `system.root` and the reducer-owned `SYSTEM` child tool surfaces
+- `AWS-CSM` aligned as a runtime-owned `SYSTEM` child service tool with its own domain-driven query model
 - no dedicated system-status route or surface remains
 - `activity` and `profile_basics` folded into `/portal/system` workspace file modes
 - ordered focus stack implemented as `sandbox -> file -> datum -> object`

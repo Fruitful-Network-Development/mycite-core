@@ -14,9 +14,14 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         route_model = (REPO_ROOT / "docs" / "contracts" / "route_model.md").read_text(encoding="utf-8")
         self.assertIn("/portal/api/v2/shell", route_model)
         self.assertIn("/portal/system/tools/<tool_slug>", route_model)
+        self.assertIn("/portal/api/v2/system/tools/aws-csm", route_model)
         self.assertIn("/portal/system", route_model)
         self.assertNotIn("/portal/system/activity", route_model)
         self.assertNotIn("/portal/system/profile-basics", route_model)
+        self.assertNotIn("POST /portal/api/v2/system/tools/aws\n", route_model)
+        self.assertNotIn("/portal/api/v2/system/tools/aws-narrow-write", route_model)
+        self.assertNotIn("/portal/api/v2/system/tools/aws-csm-sandbox", route_model)
+        self.assertNotIn("/portal/api/v2/system/tools/aws-csm-onboarding", route_model)
         self.assertNotIn("/portal/api/v2/" + "tenant", route_model)
         self.assertNotIn("/portal/api/v2/" + "admin" + "/shell", route_model)
 
@@ -34,6 +39,8 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("current context", shell_contract.lower())
         self.assertIn("below the current focus", shell_contract.lower())
         self.assertIn("interface-panel-led", shell_contract)
+        self.assertIn("AWS-CSM", shell_contract)
+        self.assertIn("authenticated peripheral package", shell_contract.lower())
         self.assertNotIn("stacked focus panel", shell_contract.lower())
         self.assertNotIn("trusted" + "_tenant", shell_contract)
         self.assertNotIn("admin" + " shell", shell_contract.lower())
@@ -61,6 +68,21 @@ class ContractDocsAlignmentTests(unittest.TestCase):
 
         self.assertIn("portal-instance system-log workbench", readme)
         self.assertIn("system_log.json", readme)
+
+    def test_surface_catalog_describes_one_aws_csm_tool(self) -> None:
+        route_model = (REPO_ROOT / "docs" / "contracts" / "route_model.md").read_text(encoding="utf-8")
+        surface_catalog = (REPO_ROOT / "docs" / "contracts" / "surface_catalog.md").read_text(encoding="utf-8")
+        docs_readme = (REPO_ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("system.tools.aws_csm", surface_catalog)
+        self.assertNotIn("system.tools.aws_narrow_write", surface_catalog)
+        self.assertNotIn("system.tools.aws_csm_sandbox", surface_catalog)
+        self.assertNotIn("system.tools.aws_csm_onboarding", surface_catalog)
+        self.assertIn("/portal/system/tools/aws-csm", route_model)
+        self.assertNotIn("/portal/system/tools/aws-narrow-write", route_model)
+        self.assertNotIn("/portal/system/tools/aws-csm-sandbox", route_model)
+        self.assertNotIn("/portal/system/tools/aws-csm-onboarding", route_model)
+        self.assertIn("/portal/system/tools/aws-csm", docs_readme)
 
 
 if __name__ == "__main__":

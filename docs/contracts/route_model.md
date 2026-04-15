@@ -25,10 +25,7 @@ Canonical shell API:
 Direct APIs:
 
 - `POST /portal/api/v2/system/workspace/profile-basics`
-- `POST /portal/api/v2/system/tools/aws`
-- `POST /portal/api/v2/system/tools/aws-narrow-write`
-- `POST /portal/api/v2/system/tools/aws-csm-sandbox`
-- `POST /portal/api/v2/system/tools/aws-csm-onboarding`
+- `POST /portal/api/v2/system/tools/aws-csm`
 - `POST /portal/api/v2/system/tools/cts-gis`
 - `POST /portal/api/v2/system/tools/fnd-ebi`
 
@@ -43,11 +40,27 @@ Reducer-owned canonical query rules:
 
 - fresh `SYSTEM` entry projects `file=anthology&verb=navigate`
 - sandbox-management view projects `file=sandbox&verb=navigate`
-- tool pages reuse the same query keys, but runtime remains the source of truth
+- reducer-owned tool pages reuse the same query keys, but runtime remains the source of truth
 
 Within `file=anthology`, the workbench may render layered datum-table groupings and a selected-datum inspector lens, but those are projections of the same reducer-owned SYSTEM state.
 
 Runtime returns the canonical route and canonical query projection in every reducer-owned envelope. The browser updates history only from that runtime-returned canonical URL.
+
+AWS-CSM tool query projection keys:
+
+- `view`
+- `domain`
+- `profile`
+- `section`
+
+AWS-CSM canonical query rules:
+
+- fresh `AWS-CSM` entry projects `view=domains`
+- `domain=<domain>` focuses one domain gallery row
+- `profile=<profile_id>` focuses one mailbox profile inside the selected domain
+- `section=<users|onboarding|newsletter>` narrows the selected domain to one section
+
+`AWS-CSM` is one `SYSTEM` child service tool surface, not four separate tool pages. The canonical public route is `/portal/system/tools/aws-csm`.
 
 NETWORK root query projection keys:
 

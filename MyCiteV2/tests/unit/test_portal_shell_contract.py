@@ -9,7 +9,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_TOOL_SURFACE_ID,
+    AWS_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
     SYSTEM_ANCHOR_FILE_KEY,
@@ -24,6 +24,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     build_portal_surface_catalog,
     build_portal_tool_registry_entries,
     canonical_query_for_shell_state,
+    canonical_query_for_surface_query,
     canonical_route_for_surface,
     initial_portal_shell_state,
     reduce_portal_shell_state,
@@ -51,9 +52,9 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertNotIn("/portal/system/profile-basics", routes)
 
     def test_state_machine_is_limited_to_system_workspace_and_tool_surfaces(self) -> None:
-        self.assertEqual(canonical_route_for_surface(AWS_TOOL_SURFACE_ID), "/portal/system/tools/aws")
+        self.assertEqual(canonical_route_for_surface(AWS_CSM_TOOL_SURFACE_ID), "/portal/system/tools/aws-csm")
         self.assertTrue(requires_shell_state_machine(SYSTEM_ROOT_SURFACE_ID))
-        self.assertTrue(requires_shell_state_machine(AWS_TOOL_SURFACE_ID))
+        self.assertFalse(requires_shell_state_machine(AWS_CSM_TOOL_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(NETWORK_ROOT_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(UTILITIES_ROOT_SURFACE_ID))
 
@@ -137,12 +138,9 @@ class PortalShellContractTests(unittest.TestCase):
             shell_state=state,
         )
         self.assertIn(SYSTEM_ROOT_SURFACE_ID, dispatch)
-        self.assertIn(AWS_TOOL_SURFACE_ID, dispatch)
+        self.assertNotIn(AWS_CSM_TOOL_SURFACE_ID, dispatch)
         self.assertNotIn(NETWORK_ROOT_SURFACE_ID, dispatch)
-        self.assertEqual(
-            dispatch[AWS_TOOL_SURFACE_ID]["portal_scope"]["capabilities"],
-            ["fnd_peripheral_routing", "datum_recognition"],
-        )
+        self.assertEqual(dispatch[SYSTEM_ROOT_SURFACE_ID]["portal_scope"]["capabilities"], ["fnd_peripheral_routing", "datum_recognition"])
 
     def test_shell_request_resolution_returns_canonical_query_for_reducer_surfaces(self) -> None:
         selection = resolve_portal_shell_request(
@@ -184,6 +182,41 @@ class PortalShellContractTests(unittest.TestCase):
                 "type": "4-2-1",
                 "record": "7-3-1",
             },
+        )
+
+    def test_aws_csm_surface_query_is_runtime_owned_and_domain_driven(self) -> None:
+        selection = resolve_portal_shell_request(
+            {
+                "schema": "mycite.v2.portal.shell.request.v1",
+                "requested_surface_id": AWS_CSM_TOOL_SURFACE_ID,
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                "surface_query": {
+                    "view": "domains",
+                    "domain": "FruitfulNetworkDevelopment.com",
+                    "profile": "aws-csm.fnd.dylan",
+                    "section": "newsletter",
+                    "ignored": "yes",
+                },
+            }
+        )
+        self.assertTrue(selection.allowed)
+        self.assertFalse(selection.reducer_owned)
+        self.assertEqual(selection.active_surface_id, AWS_CSM_TOOL_SURFACE_ID)
+        self.assertEqual(
+            selection.canonical_query,
+            {
+                "view": "domains",
+                "domain": "fruitfulnetworkdevelopment.com",
+                "profile": "aws-csm.fnd.dylan",
+                "section": "newsletter",
+            },
+        )
+        self.assertEqual(
+            canonical_query_for_surface_query(
+                {"domain": "Example.com", "profile": "p1", "section": "users"},
+                surface_id=AWS_CSM_TOOL_SURFACE_ID,
+            ),
+            {"view": "domains", "domain": "example.com", "profile": "p1", "section": "users"},
         )
 
     def test_unknown_removed_surface_resolves_as_unknown_and_falls_back_to_system(self) -> None:

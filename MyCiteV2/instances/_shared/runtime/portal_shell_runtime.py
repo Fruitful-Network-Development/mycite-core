@@ -19,16 +19,12 @@ from MyCiteV2.packages.adapters.filesystem import (
     FilesystemAuditLogAdapter,
     FilesystemNetworkRootReadModelAdapter,
     FilesystemSystemDatumStoreAdapter,
-    is_live_aws_profile_file,
 )
 from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
 from MyCiteV2.packages.modules.cross_domain.network_root import NetworkRootReadModelService
 from MyCiteV2.packages.modules.domains.publication import PublicationProfileBasicsService
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
-    AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-    AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-    AWS_TOOL_SURFACE_ID,
+    AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
     FND_EBI_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
@@ -48,6 +44,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
     VERB_NAVIGATE,
     activity_icon_id_for_surface,
+    build_canonical_url,
     build_portal_activity_dispatch_bodies,
     build_portal_shell_request_payload,
     build_portal_surface_catalog,
@@ -113,16 +110,10 @@ def _resolved_tool_exposure_policy(tool_exposure_policy: dict[str, Any] | None) 
 
 def _integration_flags(
     *,
-    aws_status_file: str | Path | None,
-    aws_csm_sandbox_status_file: str | Path | None,
     data_dir: str | Path | None,
     webapps_root: str | Path | None,
 ) -> dict[str, bool]:
     return {
-        "aws_status_file": bool(aws_status_file and is_live_aws_profile_file(aws_status_file)),
-        "aws_csm_sandbox_status_file": bool(
-            aws_csm_sandbox_status_file and is_live_aws_profile_file(aws_csm_sandbox_status_file)
-        ),
         "data_dir": bool(data_dir and Path(data_dir).exists()),
         "webapps_root": bool(webapps_root and Path(webapps_root).exists()),
     }
@@ -150,10 +141,6 @@ def _tool_posture_rows(
             else entry.default_enabled
         )
         integration_name = {
-            "aws": "aws_status_file",
-            "aws_narrow_write": "aws_status_file",
-            "aws_csm_onboarding": "aws_status_file",
-            "aws_csm_sandbox": "aws_csm_sandbox_status_file",
             "cts_gis": "data_dir",
             "fnd_ebi": "webapps_root",
         }.get(entry.tool_id, "")
@@ -189,10 +176,7 @@ def _activity_items(
 ) -> list[dict[str, Any]]:
     dispatch_bodies = build_portal_activity_dispatch_bodies(portal_scope=portal_scope, shell_state=shell_state)
     visible_surface_ids = [
-        AWS_TOOL_SURFACE_ID,
-        AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-        AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-        AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
+        AWS_CSM_TOOL_SURFACE_ID,
         CTS_GIS_TOOL_SURFACE_ID,
         FND_EBI_TOOL_SURFACE_ID,
         NETWORK_ROOT_SURFACE_ID,
@@ -542,31 +526,22 @@ def _tool_bundle_for_surface(
     *,
     surface_id: str,
     portal_scope: PortalScope,
-    shell_state: PortalShellState,
+    shell_state: PortalShellState | None,
+    surface_query: dict[str, str] | None,
     data_dir: str | Path | None,
     private_dir: str | Path | None,
-    aws_status_file: str | Path | None,
-    aws_csm_sandbox_status_file: str | Path | None,
     webapps_root: str | Path | None,
     tool_exposure_policy: dict[str, Any] | None,
     tool_rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    if surface_id in {
-        AWS_TOOL_SURFACE_ID,
-        AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-        AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-        AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
-    }:
+    if surface_id == AWS_CSM_TOOL_SURFACE_ID:
         return build_portal_aws_surface_bundle(
             surface_id=surface_id,
             portal_scope=portal_scope,
             shell_state=shell_state,
-            aws_status_file=aws_status_file,
-            aws_csm_sandbox_status_file=aws_csm_sandbox_status_file,
-            data_dir=data_dir,
+            surface_query=surface_query,
             private_dir=private_dir,
             tool_exposure_policy=tool_exposure_policy,
-            tool_rows=tool_rows,
         )
     if surface_id == CTS_GIS_TOOL_SURFACE_ID:
         return build_portal_cts_gis_surface_bundle(
@@ -600,14 +575,10 @@ def _bundle_for_surface(
     public_dir: str | Path | None,
     private_dir: str | Path | None,
     audit_storage_file: str | Path | None,
-    aws_status_file: str | Path | None,
-    aws_csm_sandbox_status_file: str | Path | None,
     webapps_root: str | Path | None,
     tool_exposure_policy: dict[str, Any] | None,
 ) -> dict[str, Any]:
     integration_flags = _integration_flags(
-        aws_status_file=aws_status_file,
-        aws_csm_sandbox_status_file=aws_csm_sandbox_status_file,
         data_dir=data_dir,
         webapps_root=webapps_root,
     )
@@ -637,27 +608,27 @@ def _bundle_for_surface(
         workspace_bundle["tool_rows"] = tool_rows
         return workspace_bundle
     if selection_surface_id in {
-        AWS_TOOL_SURFACE_ID,
-        AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-        AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-        AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
+        AWS_CSM_TOOL_SURFACE_ID,
         CTS_GIS_TOOL_SURFACE_ID,
         FND_EBI_TOOL_SURFACE_ID,
     }:
-        canonical_state = canonicalize_portal_shell_state(
-            shell_state,
-            active_surface_id=selection_surface_id,
-            portal_scope=portal_scope,
-            seed_anchor_file=shell_state is None,
+        canonical_state = (
+            None
+            if selection_surface_id == AWS_CSM_TOOL_SURFACE_ID
+            else canonicalize_portal_shell_state(
+                shell_state,
+                active_surface_id=selection_surface_id,
+                portal_scope=portal_scope,
+                seed_anchor_file=shell_state is None,
+            )
         )
         bundle = _tool_bundle_for_surface(
             surface_id=selection_surface_id,
             portal_scope=portal_scope,
             shell_state=canonical_state,
+            surface_query=surface_query,
             data_dir=data_dir,
             private_dir=private_dir,
-            aws_status_file=aws_status_file,
-            aws_csm_sandbox_status_file=aws_csm_sandbox_status_file,
             webapps_root=webapps_root,
             tool_exposure_policy=tool_exposure_policy,
             tool_rows=tool_rows,
@@ -748,8 +719,6 @@ def run_portal_shell_entry(
     public_dir: str | Path | None = None,
     private_dir: str | Path | None = None,
     audit_storage_file: str | Path | None = None,
-    aws_status_file: str | Path | None = None,
-    aws_csm_sandbox_status_file: str | Path | None = None,
     webapps_root: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -766,10 +735,14 @@ def run_portal_shell_entry(
         public_dir=public_dir,
         private_dir=private_dir,
         audit_storage_file=audit_storage_file,
-        aws_status_file=aws_status_file,
-        aws_csm_sandbox_status_file=aws_csm_sandbox_status_file,
         webapps_root=webapps_root,
         tool_exposure_policy=tool_exposure_policy,
+    )
+    canonical_route = _as_text(bundle.get("canonical_route")) or selection.canonical_route
+    canonical_query = dict(bundle.get("canonical_query") or selection.canonical_query)
+    canonical_url = _as_text(bundle.get("canonical_url")) or build_canonical_url(
+        surface_id=selection.active_surface_id,
+        query=canonical_query,
     )
     composition = build_shell_composition_payload(
         active_surface_id=selection.active_surface_id,
@@ -802,9 +775,9 @@ def run_portal_shell_entry(
         entrypoint_id=bundle["entrypoint_id"],
         read_write_posture=bundle["read_write_posture"],
         reducer_owned=selection.reducer_owned,
-        canonical_route=selection.canonical_route,
-        canonical_query=selection.canonical_query,
-        canonical_url=selection.canonical_url,
+        canonical_route=canonical_route,
+        canonical_query=canonical_query,
+        canonical_url=canonical_url,
         shell_state=None if selection.shell_state is None else selection.shell_state.to_dict(),
         surface_payload=bundle["surface_payload"],
         shell_composition=composition,
@@ -873,8 +846,6 @@ def run_system_profile_basics_action(
         }
     )
     integration_flags = _integration_flags(
-        aws_status_file=None,
-        aws_csm_sandbox_status_file=None,
         data_dir=data_dir,
         webapps_root=None,
     )

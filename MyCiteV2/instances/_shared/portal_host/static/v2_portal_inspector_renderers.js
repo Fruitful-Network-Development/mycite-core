@@ -45,6 +45,14 @@
         return;
       }
       if (
+        window.PortalAwsCsmInspectorRenderer &&
+        typeof window.PortalAwsCsmInspectorRenderer.render === "function" &&
+        region.kind === "aws_csm_inspector"
+      ) {
+        window.PortalAwsCsmInspectorRenderer.render(ctx, target, surfacePayload);
+        return;
+      }
+      if (
         window.PortalNetworkInspectorRenderer &&
         typeof window.PortalNetworkInspectorRenderer.render === "function" &&
         region.kind === "network_system_log_inspector"

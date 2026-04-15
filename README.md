@@ -22,6 +22,9 @@ documentation tree.
 - `NETWORK` is not a tool and not a sandbox; contract correspondence is a filter over the same workbench
 - canonical shell endpoint: `POST /portal/api/v2/shell`
 - canonical tool work pages: `/portal/system/tools/<tool_slug>`
+- canonical AWS service tool: `/portal/system/tools/aws-csm`
+- `AWS-CSM` is one `SYSTEM` child service tool with a unified domain gallery, user-email gallery, onboarding section, and newsletter section
+- service-tool posture comes from required capabilities and peripheral employment, not from portal identity or portal types
 - utilities/configuration pages: `/portal/utilities/*`
 
 ## Key Entry Points
