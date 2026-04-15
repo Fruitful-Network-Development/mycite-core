@@ -70,6 +70,41 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         for filename in PORTAL_SHELL_MODULE_FILES:
             self.assertNotIn(f'"{filename}"', loader_source)
 
+    def test_shell_static_sources_expose_workbench_toggle_and_interface_panel_aliases(self) -> None:
+        template_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "templates" / "portal.html"
+        ).read_text(encoding="utf-8")
+        portal_js = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "portal.js"
+        ).read_text(encoding="utf-8")
+        shell_core = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_shell_core.js"
+        ).read_text(encoding="utf-8")
+        portal_css = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "portal.css"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('data-shell-toggle="workbench"', template_source)
+        self.assertIn('data-workbench-collapsed="false"', template_source)
+        self.assertIn('data-shell-title="Control Panel"', template_source)
+        self.assertIn('data-shell-toggle="interface-panel"', template_source)
+        self.assertIn('data-shell-title="Interface Panel"', template_source)
+
+        self.assertIn("mycite.layout.workbench.open", portal_js)
+        self.assertIn("mycite.layout.interface_panel.width", portal_js)
+        self.assertIn("mycite.layout.interface_panel.open", portal_js)
+        self.assertIn("mycite.layout.inspector.width", portal_js)
+        self.assertIn("mycite.layout.inspector.open", portal_js)
+        self.assertIn("mycite:v2:workbench-toggle-request", portal_js)
+        self.assertIn("mycite:v2:interface-panel-toggle-request", portal_js)
+
+        self.assertIn("data-workbench-collapsed", shell_core)
+        self.assertIn("data-interface-panel-collapsed", shell_core)
+        self.assertIn("regions.interface_panel", shell_core)
+
+        self.assertIn('data-workbench-collapsed="true"', portal_css)
+        self.assertIn("minmax(0, 1fr)", portal_css)
+
     def test_active_repo_text_does_not_reference_retired_split_routes(self) -> None:
         forbidden_tokens = (
             "MyCite" + "V" + "1",

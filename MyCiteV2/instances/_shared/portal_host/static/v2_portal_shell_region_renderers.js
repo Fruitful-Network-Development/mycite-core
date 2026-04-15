@@ -266,7 +266,7 @@
     root.innerHTML =
       '<section class="ide-controlpanel__section">' +
       '<header class="ide-controlpanel__title">' +
-      ctx.escapeHtml(region.title || "Context") +
+      ctx.escapeHtml(region.title || "Control Panel") +
       "</header>" +
       sections
         .map(function (section) {

@@ -14,6 +14,7 @@ from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
     build_portal_cts_gis_surface_bundle,
     run_portal_cts_gis,
 )
+from MyCiteV2.instances._shared.runtime.portal_aws_runtime import build_portal_aws_surface_bundle
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
     build_system_workspace_bundle,
@@ -135,6 +136,36 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertEqual(envelope["canonical_query"]["verb"], "mediate")
         self.assertEqual(envelope["canonical_url"], "/portal/system/tools/cts-gis?file=anthology&verb=mediate")
 
+    def test_aws_tool_runtime_matches_shared_interface_panel_led_posture(self) -> None:
+        bundle = build_portal_aws_surface_bundle(
+            surface_id="system.tools.aws_csm",
+            portal_scope=PortalScope(scope_id="fnd", capabilities=("fnd_peripheral_routing",)),
+            shell_state=None,
+            surface_query=None,
+            private_dir=None,
+        )
+        self.assertFalse(bundle["workbench"]["visible"])
+
+        envelope = run_portal_shell_entry(
+            {
+                "schema": "mycite.v2.portal.shell.request.v1",
+                "requested_surface_id": "system.tools.aws_csm",
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+            },
+            portal_instance_id="fnd",
+            portal_domain="fruitfulnetworkdevelopment.com",
+            data_dir=None,
+            public_dir=None,
+            private_dir=None,
+            audit_storage_file=None,
+            webapps_root=None,
+            tool_exposure_policy=None,
+        )
+        composition = envelope["shell_composition"]
+        self.assertTrue(composition["workbench_collapsed"])
+        self.assertFalse(composition["interface_panel_collapsed"])
+        self.assertEqual(composition["regions"]["interface_panel"], composition["regions"]["inspector"])
+
     def test_unknown_removed_surface_falls_back_to_system_workspace(self) -> None:
         envelope = run_portal_shell_entry(
             {
@@ -222,7 +253,13 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 "network_system_log_inspector",
             )
             self.assertTrue(envelope["shell_composition"]["inspector_collapsed"])
+            self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
+            self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
             self.assertFalse(envelope["shell_composition"]["regions"]["inspector"]["visible"])
+            self.assertEqual(
+                envelope["shell_composition"]["regions"]["interface_panel"],
+                envelope["shell_composition"]["regions"]["inspector"],
+            )
 
             record_id = envelope["surface_payload"]["workspace"]["records"][0]["datum_address"]
             focused_envelope = run_portal_shell_entry(
@@ -246,10 +283,16 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 {"view": "system_logs", "record": record_id},
             )
             self.assertFalse(focused_envelope["shell_composition"]["inspector_collapsed"])
+            self.assertFalse(focused_envelope["shell_composition"]["interface_panel_collapsed"])
+            self.assertFalse(focused_envelope["shell_composition"]["workbench_collapsed"])
             self.assertTrue(focused_envelope["shell_composition"]["regions"]["inspector"]["visible"])
             self.assertEqual(
                 focused_envelope["shell_composition"]["regions"]["inspector"]["subject"],
                 {"level": "record", "id": record_id},
+            )
+            self.assertEqual(
+                focused_envelope["shell_composition"]["regions"]["interface_panel"],
+                focused_envelope["shell_composition"]["regions"]["inspector"],
             )
 
     def test_system_root_shell_composition_uses_logo_as_the_only_system_activity_entry(self) -> None:
@@ -289,7 +332,13 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertEqual(control_panel["kind"], "focus_selection_panel")
         self.assertEqual(control_panel["surface_label"], "SYSTEM")
         self.assertTrue(envelope["shell_composition"]["inspector_collapsed"])
+        self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
+        self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
         self.assertFalse(envelope["shell_composition"]["regions"]["inspector"]["visible"])
+        self.assertEqual(
+            envelope["shell_composition"]["regions"]["interface_panel"],
+            envelope["shell_composition"]["regions"]["inspector"],
+        )
 
     def test_utilities_root_uses_minimal_section_led_control_panel_and_collapsed_interface_panel(self) -> None:
         envelope = run_portal_shell_entry(
@@ -325,7 +374,13 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             ["Tool Exposure", "Integrations"],
         )
         self.assertTrue(envelope["shell_composition"]["inspector_collapsed"])
+        self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
+        self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
         self.assertFalse(envelope["shell_composition"]["regions"]["inspector"]["visible"])
+        self.assertEqual(
+            envelope["shell_composition"]["regions"]["interface_panel"],
+            envelope["shell_composition"]["regions"]["inspector"],
+        )
 
     def test_system_workspace_bundle_projects_anthology_as_layered_datum_table(self) -> None:
         with TemporaryDirectory() as tmp:

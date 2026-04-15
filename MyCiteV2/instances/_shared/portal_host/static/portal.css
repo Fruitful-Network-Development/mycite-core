@@ -2996,6 +2996,12 @@ body.is-modal-open {
   background: rgba(255, 255, 255, 0.14);
 }
 
+.ide-sessionAction:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .ide-controlpanel {
   background: #252525;
   color: #ebebeb;
@@ -3871,7 +3877,7 @@ body.is-modal-open {
   border-left: 1px solid var(--line);
 }
 
-/* Portal shell overrides: workbench splitters + network/utilities refresh */
+/* Portal shell peer-region overrides */
 :root {
   --ide-splitter-w: 8px;
 }
@@ -3900,7 +3906,7 @@ body.is-modal-open {
   --ide-inspector-splitter-visible-w: var(--ide-splitter-w);
 }
 
-.ide-shell[data-foreground-shell-region="interface-panel"][data-inspector-collapsed="false"] {
+.ide-shell[data-foreground-shell-region="interface-panel"][data-inspector-collapsed="false"][data-workbench-collapsed="true"] {
   --ide-inspector-w: min(680px, 48vw);
 }
 
@@ -3973,6 +3979,16 @@ body.is-modal-open {
   align-items: stretch;
 }
 
+.ide-shell[data-workbench-collapsed="true"] .ide-body {
+  grid-template-columns:
+    var(--ide-activity-w)
+    var(--ide-controlpanel-visible-w)
+    var(--ide-controlpanel-splitter-visible-w)
+    0px
+    var(--ide-inspector-splitter-visible-w)
+    minmax(0, 1fr);
+}
+
 .ide-splitter {
   appearance: none;
   width: 100%;
@@ -4027,6 +4043,11 @@ body.is-modal-open {
   background: linear-gradient(180deg, rgba(16, 24, 28, 0.12), rgba(16, 24, 28, 0.02));
 }
 
+.ide-shell[data-workbench-collapsed="true"] .ide-workbench,
+.ide-workbench[data-foreground-visible="false"] {
+  display: none;
+}
+
 .ide-workbench > * {
   min-width: 0;
   width: 100%;
@@ -4060,7 +4081,7 @@ body.is-modal-open {
   overflow: hidden;
 }
 
-.ide-shell[data-foreground-shell-region="interface-panel"][data-inspector-collapsed="false"] .ide-workbench {
+.ide-shell[data-foreground-shell-region="interface-panel"][data-inspector-collapsed="false"][data-workbench-collapsed="true"] .ide-workbench {
   opacity: 0.94;
   filter: saturate(0.92);
 }

@@ -9,5 +9,5 @@ This repository now describes one portal shell only.
 - Canonical AWS service tool: `/portal/system/tools/aws-csm`
 - `NETWORK` is the read-only portal-instance system-log workbench over `data/system/system_log.json`
 - `UTILITIES` owns configuration, exposure, integrations, and control surfaces
-- The top menubar is the only shell header; the left rail is the `Control Panel` and the right rail is the `Interface Panel`
+- The top menubar is the only shell header; `ide-body` is the peer-region window for the `Activity Bar`, `Control Panel`, `Workbench`, and `Interface Panel`
 - Shell static assets are versioned through one embedded shell asset manifest

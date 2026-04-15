@@ -20,7 +20,7 @@ Workspace file modes under `system.root`:
 
 `activity` and `profile_basics` are not first-class surfaces anymore.
 
-`anthology` is rendered as a layered datum table grouped by `layer` and `value_group`, with datum selection opening an inspector lens inside `system.root`.
+`anthology` is rendered as a layered datum table grouped by `layer` and `value_group`, with datum selection opening a detail lens inside `system.root`.
 
 `SYSTEM` control-panel behavior is canonicalized as:
 
@@ -40,13 +40,15 @@ Workspace file modes under `system.root`:
   - `Sandbox: AWS-CSM`
   - `File: tool.<msn>.aws-csm.json`
   - `Mediation: spec.json`
-- Its workbench is runtime-owned and read-only.
+- Its default posture is interface-panel-led.
+- Its workbench is runtime-owned, read-only, and hidden by default until secondary evidence is explicitly projected.
 - Its canonical query keys are:
   - `view`
   - `domain`
   - `profile`
   - `section`
-- Its default workbench is a domain gallery.
+- Its default Interface Panel is the primary tool surface.
+- Its domain gallery is secondary workbench content revealed when the workbench is explicitly shown.
 - A selected domain may project:
   - a user email gallery
   - an onboarding section
@@ -64,7 +66,7 @@ Workspace file modes under `system.root`:
 - Its canonical operational document is `data/system/system_log.json`.
 - Contract correspondence is a filter/lens over the same system-log workbench.
 - Event-type filtering is projected through the same root workbench.
-- Selected log rows open a read-only inspector with linked contract detail when applicable.
+- Selected log rows open a read-only Interface Panel detail view with linked contract detail when applicable.
 - The interface panel is collapsed by default until selected-record focus exists.
 - `NETWORK` has no canonical Messages/Hosted/Profile/Contracts peer-tab model in V2.
 
@@ -89,5 +91,6 @@ The top menubar is the only shell header.
 - Tool work pages stay under `SYSTEM`.
 - Tool registry defaults are interface-panel-led.
 - Tool workbench visibility defaults to `false`.
+- Tool surfaces may still project secondary workbench content explicitly without forcing the Interface Panel closed.
 - Tool configuration and exposure remain owned by `UTILITIES`.
 - Service-tool posture is determined by configured capabilities and available peripherals or integrations, not by portal identity.

@@ -6,7 +6,7 @@ This follow-up audit records the shell hardening pass that corrected the last un
 
 - The hydration flash was caused by the watchdog checking `__MYCITE_V2_SHELL_CORE_LOADED` and `__MYCITE_V2_SHELL_HYDRATED` before the core ever set those canonical globals.
 - The shell template rendered two header regions: the top menubar and a second workbench pagehead with a duplicate theme selector.
-- `inspector_collapsed` could report `false` even when runtime surfaces never explicitly opened the interface panel, because omitted `regions.inspector.visible` values were treated as visible by default.
+- The legacy `inspector_collapsed` field could report `false` even when runtime surfaces never explicitly opened the Interface Panel, because omitted `regions.inspector.visible` values were treated as visible by default.
 - `focus_selection_panel` bypassed the standard control-panel section wrapper, which removed the expected padding around selection-panel content.
 - Static shell assets were versioned inconsistently because the template, the loader, and the health report did not share one canonical asset manifest.
 
@@ -15,7 +15,7 @@ This follow-up audit records the shell hardening pass that corrected the last un
 - The shell core now owns canonical boot globals for `core_loaded`, `hydrated`, and fatal state, and the watchdog only reports bundle-delivery failures.
 - The top menubar is now the only shell header. The duplicate workbench pagehead and duplicate theme selector were removed.
 - The left shell control is canonically `Control Panel` and the right shell rail is the `Interface Panel`.
-- `inspector_collapsed` now defaults to `true` unless runtime explicitly projects `regions.inspector.visible=true` or the surface is tool-primary.
+- The legacy `inspector_collapsed` field now defaults to `true` unless runtime explicitly projects `regions.inspector.visible=true` or the surface is tool-primary.
 - `NETWORK` now keeps the interface panel collapsed until selected-record focus exists.
 - `UTILITIES` now uses the same modular selection-panel shell shape without inventing sandbox/file/datum/object depth that the surface does not actually have.
 - `focus_selection_panel` now renders inside the standard `.ide-controlpanel__section` wrapper so spacing is uniform with the rest of the shell.
