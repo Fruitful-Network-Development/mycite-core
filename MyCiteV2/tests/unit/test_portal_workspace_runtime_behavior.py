@@ -147,8 +147,6 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             public_dir=None,
             private_dir=None,
             audit_storage_file=None,
-            aws_status_file=None,
-            aws_csm_sandbox_status_file=None,
             webapps_root=None,
             tool_exposure_policy=None,
         )
@@ -204,8 +202,6 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 public_dir=public_dir,
                 private_dir=private_dir,
                 audit_storage_file=None,
-                aws_status_file=None,
-                aws_csm_sandbox_status_file=None,
                 webapps_root=None,
                 tool_exposure_policy=None,
             )
@@ -239,8 +235,6 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             public_dir=None,
             private_dir=None,
             audit_storage_file=None,
-            aws_status_file=None,
-            aws_csm_sandbox_status_file=None,
             webapps_root=None,
             tool_exposure_policy=None,
         )
@@ -258,8 +252,6 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             public_dir=None,
             private_dir=None,
             audit_storage_file=None,
-            aws_status_file=None,
-            aws_csm_sandbox_status_file=None,
             webapps_root=None,
             tool_exposure_policy=None,
         )

@@ -4,18 +4,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_ONBOARDING_TOOL_ENTRYPOINT_ID,
-    AWS_CSM_ONBOARDING_TOOL_ROUTE,
-    AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
-    AWS_CSM_SANDBOX_TOOL_ENTRYPOINT_ID,
-    AWS_CSM_SANDBOX_TOOL_ROUTE,
-    AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-    AWS_NARROW_WRITE_TOOL_ENTRYPOINT_ID,
-    AWS_NARROW_WRITE_TOOL_ROUTE,
-    AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-    AWS_TOOL_ENTRYPOINT_ID,
-    AWS_TOOL_ROUTE,
-    AWS_TOOL_SURFACE_ID,
+    AWS_CSM_TOOL_ENTRYPOINT_ID,
+    AWS_CSM_TOOL_ROUTE,
+    AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_ENTRYPOINT_ID,
     CTS_GIS_TOOL_ROUTE,
     CTS_GIS_TOOL_SURFACE_ID,
@@ -47,17 +38,11 @@ NETWORK_ROOT_SURFACE_SCHEMA = "mycite.v2.portal.network.surface.v1"
 UTILITIES_ROOT_SURFACE_SCHEMA = "mycite.v2.portal.utilities.surface.v1"
 UTILITIES_TOOL_EXPOSURE_SURFACE_SCHEMA = "mycite.v2.portal.utilities.tool_exposure.surface.v1"
 UTILITIES_INTEGRATIONS_SURFACE_SCHEMA = "mycite.v2.portal.utilities.integrations.surface.v1"
-AWS_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.aws.surface.v1"
-AWS_NARROW_WRITE_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.aws_narrow_write.surface.v1"
-AWS_CSM_SANDBOX_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.aws_csm_sandbox.surface.v1"
-AWS_CSM_ONBOARDING_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.aws_csm_onboarding.surface.v1"
+AWS_CSM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.surface.v1"
 CTS_GIS_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.surface.v1"
 FND_EBI_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.fnd_ebi.surface.v1"
 
-AWS_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws.request.v1"
-AWS_NARROW_WRITE_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_narrow_write.request.v1"
-AWS_CSM_SANDBOX_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm_sandbox.request.v1"
-AWS_CSM_ONBOARDING_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm_onboarding.request.v1"
+AWS_CSM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.request.v1"
 CTS_GIS_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.request.v1"
 FND_EBI_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_ebi.request.v1"
 SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.workspace.profile_basics.action.request.v1"
@@ -97,6 +82,15 @@ def _normalize_known_tool_ids(known_tool_ids: list[str] | tuple[str, ...]) -> li
         normalized.append(tool_id)
         seen.add(tool_id)
     return normalized
+
+
+def _canonical_tool_id(raw_tool_id: object, *, known_tool_ids: set[str]) -> str:
+    tool_id = _as_text(raw_tool_id)
+    if not tool_id:
+        return ""
+    if tool_id in known_tool_ids:
+        return tool_id
+    return tool_id
 
 
 def _bool_or_default(value: object, *, default: bool) -> bool:
@@ -156,23 +150,25 @@ def build_tool_exposure_policy(
         raw_policy = {}
 
     for raw_tool_id, raw_entry in raw_policy.items():
-        tool_id = _as_text(raw_tool_id)
+        tool_id = _canonical_tool_id(raw_tool_id, known_tool_ids=known_set)
         if not tool_id:
             continue
         if tool_id not in known_set:
             unknown_tool_ids.append(tool_id)
             continue
         if isinstance(raw_entry, bool):
-            configured_tools[tool_id] = True
-            enabled_tools[tool_id] = raw_entry
+            configured_tools[tool_id] = configured_tools.get(tool_id, False) or True
+            enabled_tools[tool_id] = enabled_tools.get(tool_id, False) or raw_entry
             continue
         if not isinstance(raw_entry, dict):
             invalid_tool_ids.append(tool_id)
             continue
         configured_value = raw_entry.get("configured")
         enabled_value = raw_entry.get("enabled")
-        configured_tools[tool_id] = _bool_or_default(configured_value, default=True)
-        enabled_tools[tool_id] = _bool_or_default(enabled_value, default=configured_tools[tool_id])
+        next_configured = _bool_or_default(configured_value, default=True)
+        next_enabled = _bool_or_default(enabled_value, default=next_configured)
+        configured_tools[tool_id] = configured_tools.get(tool_id, False) or next_configured
+        enabled_tools[tool_id] = enabled_tools.get(tool_id, False) or next_enabled
 
     configured_tool_ids = [tool_id for tool_id in normalized_known if configured_tools.get(tool_id) is True]
     enabled_tool_ids = [tool_id for tool_id in normalized_known if enabled_tools.get(tool_id) is True]
@@ -272,44 +268,14 @@ def build_portal_runtime_entrypoint_catalog() -> tuple[PortalRuntimeEntrypointDe
             read_write_posture="read-only",
         ),
         PortalRuntimeEntrypointDescriptor(
-            entrypoint_id=AWS_TOOL_ENTRYPOINT_ID,
-            callable_path="MyCiteV2.instances._shared.runtime.portal_aws_runtime.run_portal_aws_read_only",
-            surface_id=AWS_TOOL_SURFACE_ID,
-            route="/portal/api/v2/system/tools/aws",
-            request_schema=AWS_TOOL_REQUEST_SCHEMA,
-            surface_schema=AWS_TOOL_SURFACE_SCHEMA,
+            entrypoint_id=AWS_CSM_TOOL_ENTRYPOINT_ID,
+            callable_path="MyCiteV2.instances._shared.runtime.portal_aws_runtime.run_portal_aws_csm",
+            surface_id=AWS_CSM_TOOL_SURFACE_ID,
+            route="/portal/api/v2/system/tools/aws-csm",
+            request_schema=AWS_CSM_TOOL_REQUEST_SCHEMA,
+            surface_schema=AWS_CSM_TOOL_SURFACE_SCHEMA,
             read_write_posture="read-only",
-            required_configuration=("aws_status_file",),
-        ),
-        PortalRuntimeEntrypointDescriptor(
-            entrypoint_id=AWS_NARROW_WRITE_TOOL_ENTRYPOINT_ID,
-            callable_path="MyCiteV2.instances._shared.runtime.portal_aws_runtime.run_portal_aws_narrow_write",
-            surface_id=AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-            route="/portal/api/v2/system/tools/aws-narrow-write",
-            request_schema=AWS_NARROW_WRITE_TOOL_REQUEST_SCHEMA,
-            surface_schema=AWS_NARROW_WRITE_TOOL_SURFACE_SCHEMA,
-            read_write_posture="write",
-            required_configuration=("aws_status_file", "aws_audit_storage_file"),
-        ),
-        PortalRuntimeEntrypointDescriptor(
-            entrypoint_id=AWS_CSM_SANDBOX_TOOL_ENTRYPOINT_ID,
-            callable_path="MyCiteV2.instances._shared.runtime.portal_aws_runtime.run_portal_aws_csm_sandbox",
-            surface_id=AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-            route="/portal/api/v2/system/tools/aws-csm-sandbox",
-            request_schema=AWS_CSM_SANDBOX_TOOL_REQUEST_SCHEMA,
-            surface_schema=AWS_CSM_SANDBOX_TOOL_SURFACE_SCHEMA,
-            read_write_posture="read-only",
-            required_configuration=("aws_csm_sandbox_status_file",),
-        ),
-        PortalRuntimeEntrypointDescriptor(
-            entrypoint_id=AWS_CSM_ONBOARDING_TOOL_ENTRYPOINT_ID,
-            callable_path="MyCiteV2.instances._shared.runtime.portal_aws_runtime.run_portal_aws_csm_onboarding",
-            surface_id=AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
-            route="/portal/api/v2/system/tools/aws-csm-onboarding",
-            request_schema=AWS_CSM_ONBOARDING_TOOL_REQUEST_SCHEMA,
-            surface_schema=AWS_CSM_ONBOARDING_TOOL_SURFACE_SCHEMA,
-            read_write_posture="write",
-            required_configuration=("aws_status_file", "aws_audit_storage_file"),
+            required_configuration=(),
         ),
         PortalRuntimeEntrypointDescriptor(
             entrypoint_id=CTS_GIS_TOOL_ENTRYPOINT_ID,
@@ -349,10 +315,7 @@ def surface_schema_for_surface(surface_id: str) -> str:
         UTILITIES_ROOT_SURFACE_ID: UTILITIES_ROOT_SURFACE_SCHEMA,
         UTILITIES_TOOL_EXPOSURE_SURFACE_ID: UTILITIES_TOOL_EXPOSURE_SURFACE_SCHEMA,
         UTILITIES_INTEGRATIONS_SURFACE_ID: UTILITIES_INTEGRATIONS_SURFACE_SCHEMA,
-        AWS_TOOL_SURFACE_ID: AWS_TOOL_SURFACE_SCHEMA,
-        AWS_NARROW_WRITE_TOOL_SURFACE_ID: AWS_NARROW_WRITE_TOOL_SURFACE_SCHEMA,
-        AWS_CSM_SANDBOX_TOOL_SURFACE_ID: AWS_CSM_SANDBOX_TOOL_SURFACE_SCHEMA,
-        AWS_CSM_ONBOARDING_TOOL_SURFACE_ID: AWS_CSM_ONBOARDING_TOOL_SURFACE_SCHEMA,
+        AWS_CSM_TOOL_SURFACE_ID: AWS_CSM_TOOL_SURFACE_SCHEMA,
         CTS_GIS_TOOL_SURFACE_ID: CTS_GIS_TOOL_SURFACE_SCHEMA,
         FND_EBI_TOOL_SURFACE_ID: FND_EBI_TOOL_SURFACE_SCHEMA,
     }
@@ -366,10 +329,7 @@ def route_for_surface(surface_id: str) -> str:
         UTILITIES_ROOT_SURFACE_ID: UTILITIES_ROOT_ROUTE,
         UTILITIES_TOOL_EXPOSURE_SURFACE_ID: UTILITIES_TOOL_EXPOSURE_ROUTE,
         UTILITIES_INTEGRATIONS_SURFACE_ID: UTILITIES_INTEGRATIONS_ROUTE,
-        AWS_TOOL_SURFACE_ID: AWS_TOOL_ROUTE,
-        AWS_NARROW_WRITE_TOOL_SURFACE_ID: AWS_NARROW_WRITE_TOOL_ROUTE,
-        AWS_CSM_SANDBOX_TOOL_SURFACE_ID: AWS_CSM_SANDBOX_TOOL_ROUTE,
-        AWS_CSM_ONBOARDING_TOOL_SURFACE_ID: AWS_CSM_ONBOARDING_TOOL_ROUTE,
+        AWS_CSM_TOOL_SURFACE_ID: AWS_CSM_TOOL_ROUTE,
         CTS_GIS_TOOL_SURFACE_ID: CTS_GIS_TOOL_ROUTE,
         FND_EBI_TOOL_SURFACE_ID: FND_EBI_TOOL_ROUTE,
     }
@@ -430,14 +390,8 @@ def build_runtime_catalog_public_summary() -> list[dict[str, Any]]:
 
 
 __all__ = [
-    "AWS_CSM_ONBOARDING_TOOL_REQUEST_SCHEMA",
-    "AWS_CSM_ONBOARDING_TOOL_SURFACE_SCHEMA",
-    "AWS_CSM_SANDBOX_TOOL_REQUEST_SCHEMA",
-    "AWS_CSM_SANDBOX_TOOL_SURFACE_SCHEMA",
-    "AWS_NARROW_WRITE_TOOL_REQUEST_SCHEMA",
-    "AWS_NARROW_WRITE_TOOL_SURFACE_SCHEMA",
-    "AWS_TOOL_REQUEST_SCHEMA",
-    "AWS_TOOL_SURFACE_SCHEMA",
+    "AWS_CSM_TOOL_REQUEST_SCHEMA",
+    "AWS_CSM_TOOL_SURFACE_SCHEMA",
     "CTS_GIS_TOOL_REQUEST_SCHEMA",
     "CTS_GIS_TOOL_SURFACE_SCHEMA",
     "FND_EBI_TOOL_REQUEST_SCHEMA",

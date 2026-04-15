@@ -1,8 +1,10 @@
-# AWS Narrow Write
+# AWS-CSM Selected Sender Write Engine
 
 Authority: [../../../../../docs/plans/v2-authority_stack.md](../../../../../docs/plans/v2-authority_stack.md)
 
-`packages/modules/cross_domain/aws_narrow_write/` owns the semantic policy for the first AWS operational write slice.
+`packages/modules/cross_domain/aws_narrow_write/` owns one bounded internal write slice used by the unified `AWS-CSM` service tool.
+
+This module is not a public portal surface.
 
 Implemented in this slice:
 

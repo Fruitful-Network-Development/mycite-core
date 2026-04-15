@@ -15,7 +15,9 @@ Canonical public entry: `/portal` -> `/portal/system`
 The shell state is reducer-owned only for:
 
 - `system.root`
-- `system.tools.*`
+- reducer-owned `SYSTEM` child tool surfaces such as `system.tools.cts_gis` and `system.tools.fnd_ebi`
+
+`AWS-CSM` is a `SYSTEM` child tool surface, but it is runtime-owned and query-driven rather than reducer-owned.
 
 `/portal/network` and `/portal/utilities*` stay in the same host shell, but they do not participate in focus-path reduction.
 
@@ -100,11 +102,19 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 ## Tool Contract
 
 - Tool work pages are `SYSTEM` child surfaces.
+- `AWS-CSM` is the canonical AWS service tool surface under `SYSTEM`.
+- `AWS-CSM` has one public route: `/portal/system/tools/aws-csm`.
+- `AWS-CSM` uses runtime-owned query keys: `view`, `domain`, `profile`, `section`.
+- `AWS-CSM` control-panel context is file-backed and projects:
+  - `Sandbox: AWS-CSM`
+  - `File: tool.<msn>.aws-csm.json`
+  - `Mediation: spec.json`
 - Tool configuration, enabling, exposure, integration state, vault, peripherals, and control surfaces belong under `UTILITIES`.
 - Every tool registry entry defaults to `interface_panel_primary`.
 - Every tool composition defaults to `regions.workbench.visible=false`.
 - Secondary-evidence workbench content is explicit opt-in per tool runtime.
 - A service tool may remain visible while `operational=false` when an external integration or required capability is missing.
 - Service-tool posture comes from peripheral and integration availability, not from portal identity or portal "types".
+- All tools attach to the same interface surface. Service-tool behavior is distinguished by whether the tool can employ the portal's authenticated peripheral package, not by a separate class of portal.
 
 This is an interface-panel-led tool model, not a generic workbench page model.

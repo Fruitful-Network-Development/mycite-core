@@ -24,12 +24,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - exercised in dependency
 
     request = _MissingRequest()
 
-from MyCiteV2.instances._shared.runtime.portal_aws_runtime import (
-    run_portal_aws_csm_onboarding,
-    run_portal_aws_csm_sandbox,
-    run_portal_aws_narrow_write,
-    run_portal_aws_read_only,
-)
+from MyCiteV2.instances._shared.runtime.portal_aws_runtime import run_portal_aws_csm
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis
 from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import run_portal_fnd_ebi
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import (
@@ -37,10 +32,7 @@ from MyCiteV2.instances._shared.runtime.portal_shell_runtime import (
     run_system_profile_basics_action,
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
-    AWS_CSM_ONBOARDING_TOOL_REQUEST_SCHEMA,
-    AWS_CSM_SANDBOX_TOOL_REQUEST_SCHEMA,
-    AWS_NARROW_WRITE_TOOL_REQUEST_SCHEMA,
-    AWS_TOOL_REQUEST_SCHEMA,
+    AWS_CSM_TOOL_REQUEST_SCHEMA,
     CTS_GIS_TOOL_REQUEST_SCHEMA,
     FND_EBI_TOOL_REQUEST_SCHEMA,
     PORTAL_RUNTIME_ENVELOPE_SCHEMA,
@@ -48,10 +40,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     build_tool_exposure_policy,
 )
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
-    AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-    AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-    AWS_TOOL_SURFACE_ID,
+    AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
     FND_EBI_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
@@ -160,9 +149,6 @@ class V2PortalHostConfig:
     data_dir: Path
     portal_domain: str
     webapps_root: Path
-    aws_status_file: Path | None = None
-    aws_csm_sandbox_status_file: Path | None = None
-    aws_audit_storage_file: Path | None = None
     portal_audit_storage_file: Path | None = None
     tool_exposure_policy: dict[str, Any] | None = None
 
@@ -179,9 +165,6 @@ class V2PortalHostConfig:
         object.__setattr__(self, "private_dir", _validate_existing_dir(Path(self.private_dir), env_name="PRIVATE_DIR"))
         object.__setattr__(self, "data_dir", _validate_existing_dir(Path(self.data_dir), env_name="DATA_DIR"))
         object.__setattr__(self, "webapps_root", _validate_existing_dir(Path(self.webapps_root), env_name="MYCITE_WEBAPPS_ROOT"))
-        object.__setattr__(self, "aws_status_file", _validate_optional_path(self.aws_status_file))
-        object.__setattr__(self, "aws_csm_sandbox_status_file", _validate_optional_path(self.aws_csm_sandbox_status_file))
-        object.__setattr__(self, "aws_audit_storage_file", _validate_optional_path(self.aws_audit_storage_file))
         object.__setattr__(self, "portal_audit_storage_file", _validate_optional_path(self.portal_audit_storage_file))
         policy = self.tool_exposure_policy
         if policy is None:
@@ -205,15 +188,6 @@ class V2PortalHostConfig:
             data_dir=Path(_required_env_text("DATA_DIR")),
             portal_domain=_required_env_text("MYCITE_ANALYTICS_DOMAIN"),
             webapps_root=Path(_required_env_text("MYCITE_WEBAPPS_ROOT")),
-            aws_status_file=Path(_required_env_text("MYCITE_V2_AWS_STATUS_FILE"))
-            if _as_text(os.environ.get("MYCITE_V2_AWS_STATUS_FILE"))
-            else None,
-            aws_csm_sandbox_status_file=Path(_required_env_text("MYCITE_V2_AWS_CSM_SANDBOX_STATUS_FILE"))
-            if _as_text(os.environ.get("MYCITE_V2_AWS_CSM_SANDBOX_STATUS_FILE"))
-            else None,
-            aws_audit_storage_file=Path(_required_env_text("MYCITE_V2_AWS_AUDIT_FILE"))
-            if _as_text(os.environ.get("MYCITE_V2_AWS_AUDIT_FILE"))
-            else None,
             portal_audit_storage_file=Path(_required_env_text("MYCITE_V2_PORTAL_AUDIT_FILE"))
             if _as_text(os.environ.get("MYCITE_V2_PORTAL_AUDIT_FILE"))
             else None,
@@ -231,10 +205,7 @@ class V2PortalHostConfig:
 
 
 TOOL_SLUG_TO_SURFACE_ID = {
-    "aws": AWS_TOOL_SURFACE_ID,
-    "aws-narrow-write": AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-    "aws-csm-sandbox": AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-    "aws-csm-onboarding": AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
+    "aws-csm": AWS_CSM_TOOL_SURFACE_ID,
     "cts-gis": CTS_GIS_TOOL_SURFACE_ID,
     "fnd-ebi": FND_EBI_TOOL_SURFACE_ID,
 }
@@ -306,6 +277,7 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         "v2_portal_shell.js",
         "v2_portal_shell_core.js",
         "v2_portal_shell_region_renderers.js",
+        "v2_portal_aws_workspace.js",
         "v2_portal_system_workspace.js",
         "v2_portal_workbench_renderers.js",
         "v2_portal_inspector_renderers.js",
@@ -358,6 +330,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.get("/portal/system/tools/<tool_slug>")
     def portal_system_tool(tool_slug: str) -> str:
+        if tool_slug in {"aws", "aws-narrow-write", "aws-csm-sandbox", "aws-csm-onboarding"}:
+            return redirect("/portal/system/tools/aws-csm", code=302)
         surface_id = TOOL_SLUG_TO_SURFACE_ID.get(tool_slug)
         if surface_id is None:
             abort(404)
@@ -391,8 +365,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     public_dir=host_config.public_dir,
                     private_dir=host_config.private_dir,
                     audit_storage_file=host_config.portal_audit_storage_file,
-                    aws_status_file=host_config.aws_status_file,
-                    aws_csm_sandbox_status_file=host_config.aws_csm_sandbox_status_file,
                     webapps_root=host_config.webapps_root,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
@@ -419,71 +391,16 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
 
-    @app.post("/portal/api/v2/system/tools/aws")
-    def portal_aws() -> tuple[Any, int]:
+    @app.post("/portal/api/v2/system/tools/aws-csm")
+    def portal_aws_csm() -> tuple[Any, int]:
         try:
             payload = _json_payload()
             if "schema" not in payload:
-                payload["schema"] = AWS_TOOL_REQUEST_SCHEMA
+                payload["schema"] = AWS_CSM_TOOL_REQUEST_SCHEMA
             return _runtime_response(
-                run_portal_aws_read_only(
+                run_portal_aws_csm(
                     payload,
-                    aws_status_file=host_config.aws_status_file,
-                    data_dir=host_config.data_dir,
-                    tool_exposure_policy=host_config.tool_exposure_policy,
-                )
-            )
-        except ValueError as exc:
-            return _error_response("invalid_request", str(exc))
-
-    @app.post("/portal/api/v2/system/tools/aws-narrow-write")
-    def portal_aws_narrow_write() -> tuple[Any, int]:
-        try:
-            payload = _json_payload()
-            if "schema" not in payload:
-                payload["schema"] = AWS_NARROW_WRITE_TOOL_REQUEST_SCHEMA
-            return _runtime_response(
-                run_portal_aws_narrow_write(
-                    payload,
-                    aws_status_file=host_config.aws_status_file,
-                    audit_storage_file=host_config.aws_audit_storage_file,
-                    data_dir=host_config.data_dir,
-                    tool_exposure_policy=host_config.tool_exposure_policy,
-                )
-            )
-        except ValueError as exc:
-            return _error_response("invalid_request", str(exc))
-
-    @app.post("/portal/api/v2/system/tools/aws-csm-sandbox")
-    def portal_aws_csm_sandbox() -> tuple[Any, int]:
-        try:
-            payload = _json_payload()
-            if "schema" not in payload:
-                payload["schema"] = AWS_CSM_SANDBOX_TOOL_REQUEST_SCHEMA
-            return _runtime_response(
-                run_portal_aws_csm_sandbox(
-                    payload,
-                    aws_sandbox_status_file=host_config.aws_csm_sandbox_status_file,
-                    data_dir=host_config.data_dir,
-                    tool_exposure_policy=host_config.tool_exposure_policy,
-                )
-            )
-        except ValueError as exc:
-            return _error_response("invalid_request", str(exc))
-
-    @app.post("/portal/api/v2/system/tools/aws-csm-onboarding")
-    def portal_aws_csm_onboarding() -> tuple[Any, int]:
-        try:
-            payload = _json_payload()
-            if "schema" not in payload:
-                payload["schema"] = AWS_CSM_ONBOARDING_TOOL_REQUEST_SCHEMA
-            return _runtime_response(
-                run_portal_aws_csm_onboarding(
-                    payload,
-                    aws_status_file=host_config.aws_status_file,
-                    audit_storage_file=host_config.aws_audit_storage_file,
                     private_dir=host_config.private_dir,
-                    data_dir=host_config.data_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )

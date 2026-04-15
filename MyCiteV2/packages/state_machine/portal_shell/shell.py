@@ -20,18 +20,12 @@ UTILITIES_ROOT_SURFACE_ID = "utilities.root"
 UTILITIES_TOOL_EXPOSURE_SURFACE_ID = "utilities.tool_exposure"
 UTILITIES_INTEGRATIONS_SURFACE_ID = "utilities.integrations"
 
-AWS_TOOL_SURFACE_ID = "system.tools.aws"
-AWS_NARROW_WRITE_TOOL_SURFACE_ID = "system.tools.aws_narrow_write"
-AWS_CSM_SANDBOX_TOOL_SURFACE_ID = "system.tools.aws_csm_sandbox"
-AWS_CSM_ONBOARDING_TOOL_SURFACE_ID = "system.tools.aws_csm_onboarding"
+AWS_CSM_TOOL_SURFACE_ID = "system.tools.aws_csm"
 CTS_GIS_TOOL_SURFACE_ID = "system.tools.cts_gis"
 FND_EBI_TOOL_SURFACE_ID = "system.tools.fnd_ebi"
 
 PORTAL_SHELL_ENTRYPOINT_ID = "portal.shell"
-AWS_TOOL_ENTRYPOINT_ID = "portal.system.tools.aws"
-AWS_NARROW_WRITE_TOOL_ENTRYPOINT_ID = "portal.system.tools.aws_narrow_write"
-AWS_CSM_SANDBOX_TOOL_ENTRYPOINT_ID = "portal.system.tools.aws_csm_sandbox"
-AWS_CSM_ONBOARDING_TOOL_ENTRYPOINT_ID = "portal.system.tools.aws_csm_onboarding"
+AWS_CSM_TOOL_ENTRYPOINT_ID = "portal.system.tools.aws_csm"
 CTS_GIS_TOOL_ENTRYPOINT_ID = "portal.system.tools.cts_gis"
 FND_EBI_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_ebi"
 
@@ -41,10 +35,7 @@ UTILITIES_ROOT_ROUTE = "/portal/utilities"
 UTILITIES_TOOL_EXPOSURE_ROUTE = "/portal/utilities/tool-exposure"
 UTILITIES_INTEGRATIONS_ROUTE = "/portal/utilities/integrations"
 
-AWS_TOOL_ROUTE = "/portal/system/tools/aws"
-AWS_NARROW_WRITE_TOOL_ROUTE = "/portal/system/tools/aws-narrow-write"
-AWS_CSM_SANDBOX_TOOL_ROUTE = "/portal/system/tools/aws-csm-sandbox"
-AWS_CSM_ONBOARDING_TOOL_ROUTE = "/portal/system/tools/aws-csm-onboarding"
+AWS_CSM_TOOL_ROUTE = "/portal/system/tools/aws-csm"
 CTS_GIS_TOOL_ROUTE = "/portal/system/tools/cts-gis"
 FND_EBI_TOOL_ROUTE = "/portal/system/tools/fnd-ebi"
 
@@ -111,10 +102,7 @@ ROOT_SURFACE_IDS = frozenset(
 )
 TOOL_SURFACE_IDS = frozenset(
     {
-        AWS_TOOL_SURFACE_ID,
-        AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-        AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-        AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
+        AWS_CSM_TOOL_SURFACE_ID,
         CTS_GIS_TOOL_SURFACE_ID,
         FND_EBI_TOOL_SURFACE_ID,
     }
@@ -128,7 +116,13 @@ UTILITIES_SURFACE_IDS = frozenset(
         UTILITIES_INTEGRATIONS_SURFACE_ID,
     }
 )
-REDUCER_OWNED_SURFACE_IDS = frozenset({SYSTEM_ROOT_SURFACE_ID, *TOOL_SURFACE_IDS})
+REDUCER_OWNED_SURFACE_IDS = frozenset(
+    {
+        SYSTEM_ROOT_SURFACE_ID,
+        CTS_GIS_TOOL_SURFACE_ID,
+        FND_EBI_TOOL_SURFACE_ID,
+    }
+)
 
 
 def _as_text(value: object) -> str:
@@ -677,42 +671,13 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
             page_owner="utilities",
         ),
         PortalSurfaceCatalogEntry(
-            surface_id=AWS_TOOL_SURFACE_ID,
+            surface_id=AWS_CSM_TOOL_SURFACE_ID,
             label="AWS-CSM",
-            route=AWS_TOOL_ROUTE,
+            route=AWS_CSM_TOOL_ROUTE,
             root_surface_id=SYSTEM_ROOT_SURFACE_ID,
             surface_kind="tool_surface",
             page_owner="system",
-            tool_id="aws",
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-            label="AWS Narrow Write",
-            route=AWS_NARROW_WRITE_TOOL_ROUTE,
-            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            surface_kind="tool_surface",
-            page_owner="system",
-            tool_id="aws_narrow_write",
-            read_write_posture="write",
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-            label="AWS Sandbox",
-            route=AWS_CSM_SANDBOX_TOOL_ROUTE,
-            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            surface_kind="tool_surface",
-            page_owner="system",
-            tool_id="aws_csm_sandbox",
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
-            label="AWS Onboarding",
-            route=AWS_CSM_ONBOARDING_TOOL_ROUTE,
-            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            surface_kind="tool_surface",
-            page_owner="system",
-            tool_id="aws_csm_onboarding",
-            read_write_posture="write",
+            tool_id="aws_csm",
         ),
         PortalSurfaceCatalogEntry(
             surface_id=CTS_GIS_TOOL_SURFACE_ID,
@@ -738,53 +703,16 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
 def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
     return (
         PortalToolRegistryEntry(
-            tool_id="aws",
+            tool_id="aws_csm",
             label="AWS-CSM",
-            surface_id=AWS_TOOL_SURFACE_ID,
-            entrypoint_id=AWS_TOOL_ENTRYPOINT_ID,
-            route=AWS_TOOL_ROUTE,
+            surface_id=AWS_CSM_TOOL_SURFACE_ID,
+            entrypoint_id=AWS_CSM_TOOL_ENTRYPOINT_ID,
+            route=AWS_CSM_TOOL_ROUTE,
             tool_kind=TOOL_KIND_SERVICE,
             surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
             read_write_posture="read-only",
-            required_capabilities=(),
-            summary="Operational visibility for AWS-CSM.",
-        ),
-        PortalToolRegistryEntry(
-            tool_id="aws_narrow_write",
-            label="AWS Narrow Write",
-            surface_id=AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-            entrypoint_id=AWS_NARROW_WRITE_TOOL_ENTRYPOINT_ID,
-            route=AWS_NARROW_WRITE_TOOL_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-            read_write_posture="write",
-            required_capabilities=(),
-            summary="Bounded sender selection.",
-        ),
-        PortalToolRegistryEntry(
-            tool_id="aws_csm_sandbox",
-            label="AWS Sandbox",
-            surface_id=AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-            entrypoint_id=AWS_CSM_SANDBOX_TOOL_ENTRYPOINT_ID,
-            route=AWS_CSM_SANDBOX_TOOL_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-            read_write_posture="read-only",
-            required_capabilities=("sandbox_projection",),
-            default_enabled=False,
-            summary="Sandbox projection surface.",
-        ),
-        PortalToolRegistryEntry(
-            tool_id="aws_csm_onboarding",
-            label="AWS Onboarding",
-            surface_id=AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
-            entrypoint_id=AWS_CSM_ONBOARDING_TOOL_ENTRYPOINT_ID,
-            route=AWS_CSM_ONBOARDING_TOOL_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-            read_write_posture="write",
             required_capabilities=("fnd_peripheral_routing",),
-            summary="Mailbox onboarding workflow.",
+            summary="Unified domain gallery with mailbox onboarding and newsletter state.",
         ),
         PortalToolRegistryEntry(
             tool_id="cts_gis",
@@ -1175,20 +1103,30 @@ def canonical_query_for_surface_query(
     *,
     surface_id: str,
 ) -> dict[str, str]:
-    if surface_id != NETWORK_ROOT_SURFACE_ID:
-        return {}
     normalized = _normalize_surface_query(
         surface_query,
         field_name="portal_shell_request.surface_query",
     )
-    query: dict[str, str] = {"view": "system_logs"}
-    if _as_text(normalized.get("contract")):
-        query["contract"] = _as_text(normalized.get("contract"))
-    if _as_text(normalized.get("type")):
-        query["type"] = _as_text(normalized.get("type"))
-    if _as_text(normalized.get("record")):
-        query["record"] = _as_text(normalized.get("record"))
-    return query
+    if surface_id == NETWORK_ROOT_SURFACE_ID:
+        query: dict[str, str] = {"view": "system_logs"}
+        if _as_text(normalized.get("contract")):
+            query["contract"] = _as_text(normalized.get("contract"))
+        if _as_text(normalized.get("type")):
+            query["type"] = _as_text(normalized.get("type"))
+        if _as_text(normalized.get("record")):
+            query["record"] = _as_text(normalized.get("record"))
+        return query
+    if surface_id == AWS_CSM_TOOL_SURFACE_ID:
+        query = {"view": "domains"}
+        if _as_text(normalized.get("domain")):
+            query["domain"] = _as_text(normalized.get("domain")).lower()
+        if _as_text(normalized.get("profile")):
+            query["profile"] = _as_text(normalized.get("profile"))
+        section = _as_text(normalized.get("section")).lower()
+        if section in {"users", "onboarding", "newsletter"}:
+            query["section"] = section
+        return query
+    return {}
 
 
 def build_canonical_url(*, surface_id: str, query: Mapping[str, str] | None = None) -> str:
@@ -1316,11 +1254,7 @@ def resolve_portal_shell_request(request: PortalShellRequest | dict[str, Any] | 
         )
         canonical_query = canonical_query_for_shell_state(shell_state, surface_id=surface_entry.surface_id)
     else:
-        shell_state = (
-            normalized_request.shell_state
-            if isinstance(normalized_request.shell_state, PortalShellState)
-            else initial_portal_shell_state(surface_id=SYSTEM_ROOT_SURFACE_ID, portal_scope=normalized_request.portal_scope)
-        )
+        shell_state = normalized_request.shell_state if isinstance(normalized_request.shell_state, PortalShellState) else None
         canonical_query = canonical_query_for_surface_query(
             normalized_request.surface_query,
             surface_id=surface_entry.surface_id,
@@ -1367,10 +1301,7 @@ def activity_icon_id_for_surface(surface_id: object) -> str:
     if normalized_surface_id in {UTILITIES_ROOT_SURFACE_ID, UTILITIES_TOOL_EXPOSURE_SURFACE_ID, UTILITIES_INTEGRATIONS_SURFACE_ID}:
         return "utilities"
     if normalized_surface_id in {
-        AWS_TOOL_SURFACE_ID,
-        AWS_NARROW_WRITE_TOOL_SURFACE_ID,
-        AWS_CSM_SANDBOX_TOOL_SURFACE_ID,
-        AWS_CSM_ONBOARDING_TOOL_SURFACE_ID,
+        AWS_CSM_TOOL_SURFACE_ID,
     }:
         return "aws"
     if normalized_surface_id == CTS_GIS_TOOL_SURFACE_ID:
@@ -1500,18 +1431,9 @@ def build_shell_composition_payload(
 
 
 __all__ = [
-    "AWS_CSM_ONBOARDING_TOOL_ENTRYPOINT_ID",
-    "AWS_CSM_ONBOARDING_TOOL_ROUTE",
-    "AWS_CSM_ONBOARDING_TOOL_SURFACE_ID",
-    "AWS_CSM_SANDBOX_TOOL_ENTRYPOINT_ID",
-    "AWS_CSM_SANDBOX_TOOL_ROUTE",
-    "AWS_CSM_SANDBOX_TOOL_SURFACE_ID",
-    "AWS_NARROW_WRITE_TOOL_ENTRYPOINT_ID",
-    "AWS_NARROW_WRITE_TOOL_ROUTE",
-    "AWS_NARROW_WRITE_TOOL_SURFACE_ID",
-    "AWS_TOOL_ENTRYPOINT_ID",
-    "AWS_TOOL_ROUTE",
-    "AWS_TOOL_SURFACE_ID",
+    "AWS_CSM_TOOL_ENTRYPOINT_ID",
+    "AWS_CSM_TOOL_ROUTE",
+    "AWS_CSM_TOOL_SURFACE_ID",
     "CTS_GIS_TOOL_ENTRYPOINT_ID",
     "CTS_GIS_TOOL_ROUTE",
     "CTS_GIS_TOOL_SURFACE_ID",
@@ -1583,6 +1505,7 @@ __all__ = [
     "build_portal_surface_catalog",
     "build_portal_tool_registry_entries",
     "build_shell_composition_payload",
+    "canonical_query_for_surface_query",
     "canonical_query_for_shell_state",
     "canonical_route_for_surface",
     "canonicalize_portal_shell_state",

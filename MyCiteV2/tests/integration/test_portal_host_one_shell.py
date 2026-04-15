@@ -50,6 +50,72 @@ def _write_network_chronology_authority(data_dir: Path) -> None:
     )
 
 
+def _write_aws_csm_state(private_dir: Path) -> None:
+    tool_root = private_dir / "utilities" / "tools" / "aws-csm"
+    tool_root.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        tool_root / "spec.json",
+        {
+            "schema": "mycite.portal.tool_mediation.v1",
+            "tool_id": "aws_csm",
+            "label": "AWS-CSM",
+        },
+    )
+    _write_json(
+        tool_root / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json",
+        {
+            "schema": "mycite.portal.tool_collection.v1",
+            "tool_id": "aws_csm",
+            "member_files": [
+                "spec.json",
+                "aws-csm.fnd.dylan.json",
+                "newsletter/newsletter.fruitfulnetworkdevelopment.com.profile.json",
+            ],
+        },
+    )
+    _write_json(
+        tool_root / "aws-csm.fnd.dylan.json",
+        {
+            "identity": {
+                "profile_id": "aws-csm.fnd.dylan",
+                "domain": "fruitfulnetworkdevelopment.com",
+                "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
+                "single_user_email": "dylan@fruitfulnetworkdevelopment.com",
+                "role": "operator",
+                "mailbox_local_part": "dylan",
+            },
+            "workflow": {"lifecycle_state": "ready", "handoff_status": "accepted"},
+            "verification": {"portal_state": "verified"},
+            "provider": {"aws_ses_identity_status": "verified"},
+            "smtp": {"forward_to_email": "dylan@fruitfulnetworkdevelopment.com"},
+            "inbound": {"receive_state": "configured", "receive_verified": "yes"},
+        },
+    )
+    newsletter_root = tool_root / "newsletter"
+    _write_json(
+        newsletter_root / "newsletter.fruitfulnetworkdevelopment.com.profile.json",
+        {
+            "domain": "fruitfulnetworkdevelopment.com",
+            "list_address": "news@fruitfulnetworkdevelopment.com",
+            "sender_address": "news@fruitfulnetworkdevelopment.com",
+            "selected_author_profile_id": "aws-csm.fnd.dylan",
+            "selected_author_address": "dylan@fruitfulnetworkdevelopment.com",
+            "delivery_mode": "manual",
+            "last_dispatch_id": "dispatch-001",
+        },
+    )
+    _write_json(
+        newsletter_root / "newsletter.fruitfulnetworkdevelopment.com.contacts.json",
+        {
+            "contacts": [
+                {"email": "reader@example.com", "subscribed": True},
+                {"email": "former@example.com", "subscribed": False},
+            ],
+            "dispatches": [{"dispatch_id": "dispatch-001"}],
+        },
+    )
+
+
 @unittest.skipUnless(FLASK_AVAILABLE, "flask is not installed")
 class PortalHostOneShellIntegrationTests(unittest.TestCase):
     def test_host_serves_canonical_routes_and_shell_endpoint(self) -> None:
@@ -99,7 +165,11 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                     preserved_event_types={"general_event": "general_event"},
                 ),
             )
-            _write_json(private_dir / "config.json", {"msn_id": "3-2-3-17-77-1-6-4-1-4"})
+            _write_aws_csm_state(private_dir)
+            _write_json(
+                private_dir / "config.json",
+                {"msn_id": "3-2-3-17-77-1-6-4-1-4", "tool_exposure": {"aws_csm": {"enabled": True}}},
+            )
             (public_dir / "tenant-profile-1.json").write_text(
                 '{"title":"Example Profile","summary":"Public summary"}\n',
                 encoding="utf-8",
@@ -125,6 +195,12 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(client.get("/portal/system").status_code, 200)
             self.assertEqual(client.get("/portal/network").status_code, 200)
             self.assertEqual(client.get("/portal/utilities").status_code, 200)
+            self.assertEqual(client.get("/portal/system/tools/aws-csm").status_code, 200)
+            self.assertEqual(client.get("/portal/system/tools/aws", follow_redirects=False).status_code, 302)
+            self.assertEqual(
+                client.get("/portal/system/tools/aws", follow_redirects=False).headers["Location"],
+                "/portal/system/tools/aws-csm",
+            )
             self.assertEqual(client.get(retired_home_route).status_code, 404)
             self.assertEqual(client.get(retired_fnd_route).status_code, 404)
             self.assertEqual(client.get(retired_tff_route).status_code, 404)
@@ -148,6 +224,10 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(payload["shell_composition"]["regions"]["control_panel"]["kind"], "focus_selection_panel")
             activity_items = payload["shell_composition"]["regions"]["activity_bar"]["items"]
             self.assertNotIn("system.root", [item["item_id"] for item in activity_items])
+            aws_items = [item for item in activity_items if item["item_id"] == "system.tools.aws_csm"]
+            self.assertEqual(len(aws_items), 1)
+            self.assertEqual(aws_items[0]["label"], "AWS-CSM")
+            self.assertEqual(aws_items[0]["href"], "/portal/system/tools/aws-csm")
             operational_payload = client.post(
                 "/portal/api/v2/shell",
                 json={
@@ -173,14 +253,36 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(network_payload["surface_payload"]["kind"], "network_system_log_workspace")
             self.assertEqual(network_payload["shell_composition"]["regions"]["control_panel"]["kind"], "focus_selection_panel")
 
+            aws_shell_payload = client.post(
+                "/portal/api/v2/shell",
+                json={
+                    "schema": "mycite.v2.portal.shell.request.v1",
+                    "requested_surface_id": "system.tools.aws_csm",
+                    "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                },
+            ).get_json()
+            self.assertEqual(aws_shell_payload["surface_id"], "system.tools.aws_csm")
+            self.assertFalse(aws_shell_payload["reducer_owned"])
+            self.assertEqual(aws_shell_payload["canonical_query"], {"view": "domains"})
+            self.assertEqual(aws_shell_payload["shell_composition"]["regions"]["workbench"]["kind"], "aws_csm_workbench")
+            self.assertEqual(
+                aws_shell_payload["shell_composition"]["regions"]["control_panel"]["context_items"],
+                [
+                    {"label": "Sandbox", "value": "AWS-CSM"},
+                    {"label": "File", "value": "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"},
+                    {"label": "Mediation", "value": "spec.json"},
+                ],
+            )
+
             tool_response = client.post(
-                "/portal/api/v2/system/tools/aws",
-                json={"schema": "mycite.v2.portal.system.tools.aws.request.v1"},
+                "/portal/api/v2/system/tools/aws-csm",
+                json={"schema": "mycite.v2.portal.system.tools.aws_csm.request.v1"},
             )
             self.assertEqual(tool_response.status_code, 200)
             tool_payload = tool_response.get_json()
-            self.assertEqual(tool_payload["surface_id"], "system.tools.aws")
-            self.assertEqual(tool_payload["shell_composition"]["regions"]["control_panel"]["kind"], "focus_selection_panel")
+            self.assertEqual(tool_payload["surface_id"], "system.tools.aws_csm")
+            self.assertEqual(tool_payload["canonical_query"], {"view": "domains"})
+            self.assertEqual(tool_payload["surface_payload"]["kind"], "aws_csm_workspace")
 
             profile_action = client.post(
                 "/portal/api/v2/system/workspace/profile-basics",

@@ -148,6 +148,14 @@
         return;
       }
       if (
+        window.PortalAwsCsmWorkspaceRenderer &&
+        typeof window.PortalAwsCsmWorkspaceRenderer.render === "function" &&
+        surfacePayload.kind === "aws_csm_workspace"
+      ) {
+        window.PortalAwsCsmWorkspaceRenderer.render(ctx, target, surfacePayload);
+        return;
+      }
+      if (
         window.PortalSystemWorkspaceRenderer &&
         typeof window.PortalSystemWorkspaceRenderer.render === "function" &&
         surfacePayload.kind === "system_workspace"

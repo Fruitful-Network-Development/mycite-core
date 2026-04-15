@@ -1,8 +1,10 @@
-# AWS Narrow Write Port
+# AWS-CSM Selected Sender Write Port
 
 Authority: [../../../../docs/plans/v2-authority_stack.md](../../../../docs/plans/v2-authority_stack.md)
 
-`packages/ports/aws_narrow_write/` defines the explicit bounded write seam for the first AWS operational write slice.
+`packages/ports/aws_narrow_write/` defines one bounded internal write seam used by the unified `AWS-CSM` service tool.
+
+This port is not a public portal tool contract.
 
 Implemented in this slice:
 

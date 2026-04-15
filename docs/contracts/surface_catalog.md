@@ -7,10 +7,7 @@ The surface catalog is rooted only in `SYSTEM`, `NETWORK`, and `UTILITIES`.
 First-class surfaces:
 
 - `system.root`
-- `system.tools.aws`
-- `system.tools.aws_narrow_write`
-- `system.tools.aws_csm_sandbox`
-- `system.tools.aws_csm_onboarding`
+- `system.tools.aws_csm`
 - `system.tools.cts_gis`
 - `system.tools.fnd_ebi`
 
@@ -30,6 +27,32 @@ Workspace file modes under `system.root`:
 - current context rows first
 - verb tabs in a compact navigation strip
 - file, datum, or object selections below the current focus level
+
+## AWS-CSM
+
+- `system.tools.aws_csm`
+
+`AWS-CSM` is one `SYSTEM` child service tool surface.
+
+- It is not four separate public tools.
+- Its canonical route is `/portal/system/tools/aws-csm`.
+- Its control-panel context rows are:
+  - `Sandbox: AWS-CSM`
+  - `File: tool.<msn>.aws-csm.json`
+  - `Mediation: spec.json`
+- Its workbench is runtime-owned and read-only.
+- Its canonical query keys are:
+  - `view`
+  - `domain`
+  - `profile`
+  - `section`
+- Its default workbench is a domain gallery.
+- A selected domain may project:
+  - a user email gallery
+  - an onboarding section
+  - a newsletter section
+- Service-tool posture is determined by required capabilities and available peripheral employment, not by a separate portal type model.
+- `AWS-CSM` is operational only when the active portal can employ the authenticated peripheral package. In the live topology that means FND alone can route those external operations.
 
 ## NETWORK
 
