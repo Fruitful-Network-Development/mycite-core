@@ -17,6 +17,8 @@ The shell state is reducer-owned only for:
 
 `/portal/system/operational-status`, `/portal/network`, and `/portal/utilities*` stay in the same host shell, but they do not participate in focus-path reduction.
 
+Non-reducer roots may still project canonical query state when the host needs a stable read-only workbench lens. `NETWORK` uses raw `surface_query` projection keys for this purpose, while runtime remains the source of truth.
+
 ## Ordered Focus Stack
 
 The canonical shell state carries an ordered focus stack, not a bag of optional ids.
@@ -58,6 +60,27 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
   - current intention
 - The interface panel is mediation-owned.
 - On `system.root`, `verb=mediate` opens the interface panel and binds it to the current mediation subject.
+
+## NETWORK Workspace
+
+`NETWORK` is the portal-instance system-log workbench.
+
+- It is not a tool and not a sandbox.
+- It is read-only and non-reducer-owned.
+- Its canonical operational document is `data/system/system_log.json`.
+- Contract correspondence is a filter over the same canonical system-log document, not a peer tab or child surface.
+- The control panel projects:
+  - one base view: `system_logs`
+  - contract filters
+  - event-type filters
+- The workbench projects a chronological log table sorted by canonical HOPS timestamps.
+- The inspector projects the selected log record and any linked contract summary.
+- Canonical query keys for the root are:
+  - `view`
+  - `contract`
+  - `type`
+  - `record`
+- `NETWORK` has no canonical Messages/Hosted/Profile/Contracts tab set in V2.
 
 ## Tool Contract
 

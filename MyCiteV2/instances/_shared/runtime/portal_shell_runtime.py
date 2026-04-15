@@ -328,11 +328,14 @@ def _surface_payload_for_network(
     *,
     portal_instance_id: str,
     portal_domain: str,
+    data_dir: str | Path | None,
     private_dir: str | Path | None,
     audit_storage_file: str | Path | None,
+    surface_query: dict[str, str] | None,
 ) -> dict[str, Any]:
     service = NetworkRootReadModelService(
         FilesystemNetworkRootReadModelAdapter(
+            data_dir=data_dir,
             private_dir=private_dir,
             local_audit_file=audit_storage_file,
         )
@@ -340,23 +343,172 @@ def _surface_payload_for_network(
     projection = service.read_surface(
         portal_tenant_id=portal_instance_id,
         portal_domain=portal_domain,
+        surface_query=surface_query,
     )
+    projection["schema"] = surface_schema_for_surface(NETWORK_ROOT_SURFACE_ID)
+    return projection
+
+
+def _network_entry(
+    *,
+    label: str,
+    href: str,
+    active: bool = False,
+    meta: object = "",
+    shell_request: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "label": label,
+        "href": href,
+        "active": active,
+    }
+    meta_text = _as_text(meta)
+    if meta_text:
+        entry["meta"] = meta_text
+    if shell_request is not None:
+        entry["shell_request"] = shell_request
+    return entry
+
+
+def _network_control_panel(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState | None,
+    active_surface_id: str,
+    surface_payload: dict[str, Any],
+) -> dict[str, Any]:
+    workspace = dict(surface_payload.get("workspace") or {})
+    active_filters = dict(workspace.get("active_filters") or {})
+    event_type_filters = list(workspace.get("event_type_filters") or [])
+    contract_filters = list(workspace.get("contract_filters") or [])
+    system_request = build_portal_shell_request_payload(
+        requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        transition={"kind": TRANSITION_FOCUS_FILE, "file_key": SYSTEM_ANCHOR_FILE_KEY},
+    )
+    system_log_request = build_portal_shell_request_payload(
+        requested_surface_id=NETWORK_ROOT_SURFACE_ID,
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        surface_query={"view": "system_logs"},
+    )
+    event_entries = []
+    for row in event_type_filters:
+        event_type_id = _as_text(row.get("event_type_id"))
+        event_entries.append(
+            _network_entry(
+                label=_as_text(row.get("label") or event_type_id) or "Event Type",
+                href=f"/portal/network?view=system_logs&type={event_type_id}",
+                active=bool(row.get("active")),
+                meta=f"{int(row.get('count') or 0)} row(s)",
+                shell_request=build_portal_shell_request_payload(
+                    requested_surface_id=NETWORK_ROOT_SURFACE_ID,
+                    portal_scope=portal_scope,
+                    shell_state=shell_state,
+                    surface_query={"view": "system_logs", "type": event_type_id},
+                ),
+            )
+        )
+    contract_entries = []
+    for row in contract_filters:
+        contract_id = _as_text(row.get("contract_id"))
+        contract_entries.append(
+            _network_entry(
+                label=contract_id or "Contract",
+                href=f"/portal/network?view=system_logs&contract={contract_id}",
+                active=bool(row.get("active")),
+                meta=f"{_as_text(row.get('relationship_kind')) or 'contract'} · {int(row.get('count') or 0)} row(s)",
+                shell_request=build_portal_shell_request_payload(
+                    requested_surface_id=NETWORK_ROOT_SURFACE_ID,
+                    portal_scope=portal_scope,
+                    shell_state=shell_state,
+                    surface_query={"view": "system_logs", "contract": contract_id},
+                ),
+            )
+        )
     return {
-        "schema": surface_schema_for_surface(NETWORK_ROOT_SURFACE_ID),
-        "kind": "network_overview",
+        "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
+        "kind": "network_navigation",
         "title": "Network",
-        "subtitle": "Hosted, contract, alias, and relationship surfaces remain under NETWORK.",
-        "cards": list(projection.get("blocks") or []),
-        "notes": list(projection.get("notes") or []),
         "sections": [
             {
-                "title": panel.get("title") or "Panel",
-                "summary": panel.get("summary") or "",
-                "metrics": list(panel.get("metrics") or []),
-                "subsections": list(panel.get("sections") or []),
-            }
-            for panel in dict(projection.get("tab_panels") or {}).values()
+                "title": "Roots",
+                "entries": [
+                    {
+                        "label": "System",
+                        "href": "/portal/system",
+                        "active": active_surface_id == SYSTEM_ROOT_SURFACE_ID,
+                        "shell_request": system_request,
+                    },
+                    {
+                        "label": "Network",
+                        "href": "/portal/network",
+                        "active": active_surface_id == NETWORK_ROOT_SURFACE_ID,
+                    },
+                    {
+                        "label": "Utilities",
+                        "href": "/portal/utilities",
+                        "active": active_surface_id == UTILITIES_ROOT_SURFACE_ID,
+                    },
+                ],
+            },
+            {
+                "title": "Views",
+                "entries": [
+                    _network_entry(
+                        label="System Logs",
+                        href="/portal/network?view=system_logs",
+                        active=not _as_text(active_filters.get("contract_id")) and not _as_text(active_filters.get("event_type_id")),
+                        meta="canonical workbench",
+                        shell_request=system_log_request,
+                    )
+                ],
+            },
+            {
+                "title": "Contracts",
+                "entries": contract_entries,
+            },
+            {
+                "title": "Event Types",
+                "entries": event_entries,
+            },
+            {
+                "title": "Adjacent roots",
+                "entries": [
+                    _network_entry(label="Operational Status", href="/portal/system/operational-status"),
+                    _network_entry(label="Tool Exposure", href="/portal/utilities/tool-exposure"),
+                ],
+            },
         ],
+    }
+
+
+def _network_workbench(surface_payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
+        "kind": "network_system_log_workbench",
+        "title": _as_text(surface_payload.get("title")) or "Network",
+        "subtitle": _as_text(surface_payload.get("subtitle")),
+        "visible": True,
+        "surface_payload": surface_payload,
+    }
+
+
+def _network_inspector(surface_payload: dict[str, Any]) -> dict[str, Any]:
+    workspace = dict(surface_payload.get("workspace") or {})
+    selected_record = workspace.get("selected_record")
+    subject = None
+    if isinstance(selected_record, dict) and _as_text(selected_record.get("datum_address")):
+        subject = {"level": "record", "id": _as_text(selected_record.get("datum_address"))}
+    return {
+        "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+        "kind": "network_system_log_inspector",
+        "title": "Log Record",
+        "summary": "Read-only log-record inspector.",
+        "visible": True,
+        "subject": subject,
+        "surface_payload": surface_payload,
     }
 
 
@@ -504,6 +656,7 @@ def _bundle_for_surface(
     selection_surface_id: str,
     portal_scope: PortalScope,
     shell_state: PortalShellState | None,
+    surface_query: dict[str, str] | None,
     portal_domain: str,
     data_dir: str | Path | None,
     public_dir: str | Path | None,
@@ -611,28 +764,25 @@ def _bundle_for_surface(
         surface_payload = _surface_payload_for_network(
             portal_instance_id=portal_scope.scope_id,
             portal_domain=portal_domain,
+            data_dir=data_dir,
             private_dir=private_dir,
             audit_storage_file=audit_storage_file,
+            surface_query=surface_query,
         )
         return {
             "entrypoint_id": PORTAL_SHELL_ENTRYPOINT_ID,
             "read_write_posture": "read-only",
             "page_title": "Network",
-            "page_subtitle": "Hosted, contract, alias, and relationship surfaces.",
+            "page_subtitle": "Portal-instance system-log workbench.",
             "surface_payload": surface_payload,
-            "control_panel": _plain_control_panel(
+            "control_panel": _network_control_panel(
                 portal_scope=portal_scope,
                 shell_state=shell_state,
                 active_surface_id=selection_surface_id,
-                title="Network",
-                surface_group_title="Adjacent roots",
-                surface_entries=[
-                    {"label": "Operational Status", "href": "/portal/system/operational-status"},
-                    {"label": "Tool Exposure", "href": "/portal/utilities/tool-exposure"},
-                ],
+                surface_payload=surface_payload,
             ),
-            "workbench": _generic_workbench(surface_payload),
-            "inspector": _generic_inspector(surface_payload),
+            "workbench": _network_workbench(surface_payload),
+            "inspector": _network_inspector(surface_payload),
             "tool_rows": tool_rows,
         }
     if selection_surface_id == UTILITIES_ROOT_SURFACE_ID:
@@ -706,6 +856,7 @@ def run_portal_shell_entry(
         selection_surface_id=selection.active_surface_id,
         portal_scope=portal_scope,
         shell_state=selection.shell_state,
+        surface_query=normalized_request.surface_query,
         portal_domain=portal_domain,
         data_dir=data_dir,
         public_dir=public_dir,

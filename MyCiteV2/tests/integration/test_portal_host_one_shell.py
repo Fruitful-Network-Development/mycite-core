@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -14,6 +15,39 @@ FLASK_AVAILABLE = importlib.util.find_spec("flask") is not None
 
 if FLASK_AVAILABLE:
     from MyCiteV2.instances._shared.portal_host.app import V2PortalHostConfig, create_app
+    from MyCiteV2.packages.adapters.filesystem.network_root_read_model import build_system_log_document
+
+
+def _write_json(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_network_chronology_authority(data_dir: Path) -> None:
+    (data_dir / "system").mkdir(parents=True, exist_ok=True)
+    _write_json(
+        data_dir / "system" / "anthology.json",
+        {
+            "1-1-1": [
+                [
+                    "1-1-1",
+                    "0-0-1",
+                    "00000010000110000000110011010101111000011011001100011101111001111101000111110100011111010001011011010111000111100111100",
+                ],
+                ["HOPS-chronological"],
+            ]
+        },
+    )
+    _write_json(
+        data_dir / "system" / "sources" / "sc.fnd.quadrennium_cycle.json",
+        {
+            "datum_addressing_abstraction_space": {
+                "1-1-1": [["1-1-1", "rf.0-0-1", "00000100011100000101100100011011111101110110110101110001111001111001111101000"], ["HOPS-quadrennium_cycle"]],
+                "2-0-1": [["2-0-1", "~", "1-1-1"], ["HOPS-space-quadrennium"]],
+                "3-1-1": [["3-1-1", "2-0-1", "0"], ["HOPS-babelette-quadrennium_cycle"]],
+            }
+        },
+    )
 
 
 @unittest.skipUnless(FLASK_AVAILABLE, "flask is not installed")
@@ -28,12 +62,44 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             for path in (public_dir, private_dir, data_dir, webapps_root):
                 path.mkdir(parents=True, exist_ok=True)
             (data_dir / "system").mkdir(parents=True, exist_ok=True)
-            (data_dir / "system" / "anthology.json").write_text(
-                '{\n'
-                '  "1-0-1": [["1-0-1", "~", "fruitfulnetworkdevelopment.com", "", "tenant-profile-1"], ["fruitfulnetworkdevelopment.com"]]\n'
-                '}\n',
-                encoding="utf-8",
+            _write_network_chronology_authority(data_dir)
+            _write_json(
+                data_dir / "system" / "anthology.json",
+                {
+                    "1-1-1": [
+                        [
+                            "1-1-1",
+                            "0-0-1",
+                            "00000010000110000000110011010101111000011011001100011101111001111101000111110100011111010001011011010111000111100111100",
+                        ],
+                        ["HOPS-chronological"],
+                    ],
+                    "1-0-1": [["1-0-1", "~", "fruitfulnetworkdevelopment.com", "", "tenant-profile-1"], ["fruitfulnetworkdevelopment.com"]],
+                },
             )
+            _write_json(
+                data_dir / "system" / "system_log.json",
+                build_system_log_document(
+                    records=[
+                        {
+                            "source_key": "canonical-general",
+                            "source_kind": "canonical_seed",
+                            "source_timestamp": "2026-07-04T00:00:00Z",
+                            "title": "americas_250th_anniversary_2026_07_04",
+                            "label": "americas_250th_anniversary_2026_07_04",
+                            "event_type_slug": "general_event",
+                            "event_type_label": "general_event",
+                            "status": "scheduled",
+                            "counterparty": "",
+                            "contract_id": "",
+                            "hops_timestamp": "0-0-0-507-916-0-0-0",
+                            "raw": {"kind": "calendar"},
+                        }
+                    ],
+                    preserved_event_types={"general_event": "general_event"},
+                ),
+            )
+            _write_json(private_dir / "config.json", {"msn_id": "3-2-3-17-77-1-6-4-1-4"})
             (public_dir / "tenant-profile-1.json").write_text(
                 '{"title":"Example Profile","summary":"Public summary"}\n',
                 encoding="utf-8",
@@ -83,6 +149,19 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             ).get_json()
             control_panel_roots = operational_payload["shell_composition"]["regions"]["control_panel"]["sections"][0]["entries"]
             self.assertIn("System", [entry["label"] for entry in control_panel_roots])
+            network_payload = client.post(
+                "/portal/api/v2/shell",
+                json={
+                    "schema": "mycite.v2.portal.shell.request.v1",
+                    "requested_surface_id": "network.root",
+                    "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                    "surface_query": {"view": "system_logs"},
+                },
+            ).get_json()
+            self.assertEqual(network_payload["surface_id"], "network.root")
+            self.assertFalse(network_payload["reducer_owned"])
+            self.assertEqual(network_payload["canonical_query"], {"view": "system_logs"})
+            self.assertEqual(network_payload["surface_payload"]["kind"], "network_system_log_workspace")
 
             tool_response = client.post(
                 "/portal/api/v2/system/tools/aws",

@@ -51,6 +51,7 @@ def _normalize_optional_domain(value: object, *, field_name: str) -> str:
 class NetworkRootReadModelRequest:
     portal_tenant_id: str
     portal_domain: str = ""
+    surface_query: dict[str, str] | None = None
 
     def __post_init__(self) -> None:
         portal_tenant_id = _as_text(self.portal_tenant_id).lower()
@@ -65,12 +66,28 @@ class NetworkRootReadModelRequest:
                 field_name="network_root_read_model_request.portal_domain",
             ),
         )
+        query = self.surface_query
+        if query is None:
+            normalized_query: dict[str, str] = {}
+        elif isinstance(query, dict):
+            normalized_query = {}
+            for key, value in query.items():
+                token = _as_text(key)
+                if not token:
+                    raise ValueError("network_root_read_model_request.surface_query keys must be non-empty")
+                normalized_query[token] = _as_text(value)
+        else:
+            raise ValueError("network_root_read_model_request.surface_query must be a dict when provided")
+        object.__setattr__(self, "surface_query", normalized_query)
 
-    def to_dict(self) -> dict[str, str]:
-        return {
+    def to_dict(self) -> dict[str, JsonValue]:
+        payload: dict[str, Any] = {
             "portal_tenant_id": self.portal_tenant_id,
             "portal_domain": self.portal_domain,
         }
+        if self.surface_query:
+            payload["surface_query"] = dict(self.surface_query)
+        return payload
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "NetworkRootReadModelRequest":
@@ -79,6 +96,7 @@ class NetworkRootReadModelRequest:
         return cls(
             portal_tenant_id=payload.get("portal_tenant_id"),
             portal_domain=payload.get("portal_domain") or "",
+            surface_query=payload.get("surface_query") if isinstance(payload.get("surface_query"), dict) else None,
         )
 
 
@@ -137,4 +155,4 @@ class NetworkRootReadModelResult:
 @runtime_checkable
 class NetworkRootReadModelPort(Protocol):
     def read_network_root_model(self, request: NetworkRootReadModelRequest) -> NetworkRootReadModelResult:
-        """Read the hosted/network entity model behind the V2 Network root."""
+        """Read the canonical system-log workbench model behind the V2 NETWORK root."""

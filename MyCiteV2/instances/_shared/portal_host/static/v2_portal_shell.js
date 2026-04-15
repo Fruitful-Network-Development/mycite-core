@@ -8,6 +8,7 @@
   var internalScripts = [
     "/portal/static/v2_portal_shell_region_renderers.js",
     "/portal/static/v2_portal_system_workspace.js",
+    "/portal/static/v2_portal_network_workspace.js",
     "/portal/static/v2_portal_workbench_renderers.js",
     "/portal/static/v2_portal_inspector_renderers.js",
     "/portal/static/v2_portal_shell_core.js",

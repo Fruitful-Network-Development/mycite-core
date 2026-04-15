@@ -6349,6 +6349,36 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   mask-image: url("/portal/static/icons/ui/chronological.svg");
 }
 
+.v2-networkTable__row.is-selected {
+  background: rgba(46, 116, 181, 0.12);
+}
+
+.v2-networkTable__action {
+  border: 1px solid rgba(32, 56, 77, 0.18);
+  background: #f7fafc;
+  color: #20384d;
+  border-radius: 8px;
+  padding: 0.35rem 0.65rem;
+  cursor: pointer;
+}
+
+.v2-networkTable__action:hover {
+  background: #e8f1f8;
+}
+
+.v2-networkInspector__json {
+  margin: 0;
+  padding: 0.85rem;
+  border-radius: 12px;
+  background: #111827;
+  color: #e5eef6;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .agro-scaffold__ordering {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 160px;

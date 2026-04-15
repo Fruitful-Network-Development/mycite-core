@@ -14,7 +14,7 @@ from MyCiteV2.packages.ports.network_root_read_model import NetworkRootReadModel
 
 class NetworkRootReadModelTests(unittest.TestCase):
     def test_default_projection_uses_one_shell_surface_model(self) -> None:
-        adapter = FilesystemNetworkRootReadModelAdapter(private_dir=None)
+        adapter = FilesystemNetworkRootReadModelAdapter(data_dir=None, private_dir=None)
         result = adapter.read_network_root_model(
             NetworkRootReadModelRequest(portal_tenant_id="fnd", portal_domain="fruitfulnetworkdevelopment.com")
         )
@@ -22,6 +22,9 @@ class NetworkRootReadModelTests(unittest.TestCase):
         portal_instance = dict(payload["portal_instance"])
         self.assertEqual(portal_instance["surface_model"], "one_shell_portal")
         self.assertNotIn("audience", portal_instance)
+        workbench = dict(payload["system_log_workbench"])
+        self.assertEqual(workbench["active_filters"]["view"], "system_logs")
+        self.assertEqual(workbench["state"], "not_configured")
 
 
 if __name__ == "__main__":

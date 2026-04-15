@@ -155,6 +155,14 @@
         window.PortalSystemWorkspaceRenderer.render(ctx, target, surfacePayload);
         return;
       }
+      if (
+        window.PortalNetworkWorkspaceRenderer &&
+        typeof window.PortalNetworkWorkspaceRenderer.render === "function" &&
+        surfacePayload.kind === "network_system_log_workspace"
+      ) {
+        window.PortalNetworkWorkspaceRenderer.render(ctx, target, surfacePayload);
+        return;
+      }
       if (surfacePayload.kind === "tool_secondary_evidence") {
         target.innerHTML =
           '<section class="v2-card"><h3>' +
