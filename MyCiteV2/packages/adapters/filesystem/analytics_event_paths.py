@@ -36,7 +36,6 @@ class AnalyticsEventPathResolution:
     year_month: str
     analytics_root: Path
     events_file: Path
-    legacy_events_file: Path
     warnings: tuple[str, ...]
 
     def to_dict(self) -> dict[str, object]:
@@ -45,7 +44,6 @@ class AnalyticsEventPathResolution:
             "year_month": self.year_month,
             "analytics_root": str(self.analytics_root),
             "events_file": str(self.events_file),
-            "legacy_events_file": str(self.legacy_events_file),
             "warnings": list(self.warnings),
         }
 
@@ -59,21 +57,13 @@ class AnalyticsEventPathResolver:
         normalized_year_month = _normalize_year_month(year_month)
         analytics_root = self._webapps_root / "clients" / normalized_domain / "analytics"
         events_file = analytics_root / "events" / f"{normalized_year_month}.ndjson"
-        legacy_events_file = self._webapps_root / normalized_domain / "analytics" / "events" / f"{normalized_year_month}.ndjson"
-
-        warnings: list[str] = []
-        if legacy_events_file.exists():
-            warnings.append("Legacy root analytics file exists and must not receive V2 events.")
-        if str(events_file).startswith(str(self._webapps_root / normalized_domain)):
-            warnings.append("Resolved analytics path points at the legacy root layout.")
 
         return AnalyticsEventPathResolution(
             domain=normalized_domain,
             year_month=normalized_year_month,
             analytics_root=analytics_root,
             events_file=events_file,
-            legacy_events_file=legacy_events_file,
-            warnings=tuple(warnings),
+            warnings=(),
         )
 
     def append_payload(

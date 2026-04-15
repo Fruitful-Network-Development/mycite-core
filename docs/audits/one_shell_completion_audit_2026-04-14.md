@@ -11,6 +11,7 @@ Observed repository state after alignment:
 
 - one shell request/state/composition family
 - one runtime envelope model
+- one canonical public entry at `/portal`, redirecting to `/portal/system`
 - one reducer-owned `SYSTEM` workspace state model
 - reducer ownership limited to `system.root` and `system.tools.*`
 - no dedicated system-status route or surface remains

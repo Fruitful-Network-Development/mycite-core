@@ -75,7 +75,7 @@ class FilesystemFndEbiReadOnlyAdapterTests(unittest.TestCase):
             self.assertEqual(profile["traffic"]["requests_30d"], 1)
             self.assertEqual(profile["events_summary"]["events_30d"], 1)
 
-    def test_uses_legacy_evnts_path_when_canonical_month_file_is_missing(self) -> None:
+    def test_reports_missing_events_when_canonical_month_file_is_absent(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             private_dir = root / "private"
@@ -84,15 +84,10 @@ class FilesystemFndEbiReadOnlyAdapterTests(unittest.TestCase):
             site_root = client_root / "site"
             analytics_root = client_root / "analytics"
             (analytics_root / "nginx").mkdir(parents=True, exist_ok=True)
-            (analytics_root / "evnts").mkdir(parents=True, exist_ok=True)
             site_root.mkdir(parents=True, exist_ok=True)
             _write_profile(private_dir, domain="fruitfulnetworkdevelopment.com", site_root=site_root)
             (analytics_root / "nginx" / "access.log").write_text("", encoding="utf-8")
             (analytics_root / "nginx" / "error.log").write_text("", encoding="utf-8")
-            (analytics_root / "evnts" / "2026-04.ndjson").write_text(
-                json.dumps({"event_type": "page_view", "timestamp": "2026-04-12T10:00:00+00:00", "session_id": "sess-1"}) + "\n",
-                encoding="utf-8",
-            )
 
             result = FilesystemFndEbiReadOnlyAdapter(
                 private_dir,
@@ -106,8 +101,9 @@ class FilesystemFndEbiReadOnlyAdapterTests(unittest.TestCase):
             )
 
             profile = (result.source.payload.get("profiles") or [])[0]
-            self.assertIn("using legacy events path", " ".join(profile["warnings"]))
-            self.assertTrue(str(profile["events_file"]["path"]).endswith("/analytics/evnts/2026-04.ndjson"))
+            self.assertIn("events file is missing", " ".join(profile["warnings"]))
+            self.assertTrue(str(profile["events_file"]["path"]).endswith("/analytics/events/2026-04.ndjson"))
+            self.assertEqual(profile["events_file"]["state"], "missing")
 
 
 if __name__ == "__main__":

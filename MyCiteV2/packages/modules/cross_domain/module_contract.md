@@ -2,4 +2,4 @@
 
 - Owns: narrow cross-domain semantics such as event and audit substrates.
 - Does not own: arbitrary helpers, runtime composition, or domain-specific business logic.
-- Consult: `../../../../docs/plans/phases/05_domain_and_cross_domain_modules.md`, `../../../../docs/plans/version-migration/v1_drift_ledger.md`.
+- Consult: `../../../../docs/README.md`, `../../../../docs/contracts/portal_shell_contract.md`, `../../../../docs/contracts/surface_catalog.md`.

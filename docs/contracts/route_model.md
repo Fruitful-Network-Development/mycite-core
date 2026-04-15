@@ -2,12 +2,15 @@
 
 Canonical visible routes:
 
+- `/portal`
 - `/portal/system`
 - `/portal/system/tools/<tool_slug>`
 - `/portal/network`
 - `/portal/utilities`
 - `/portal/utilities/tool-exposure`
 - `/portal/utilities/integrations`
+
+`/portal` is the canonical public entry and redirects to `/portal/system`.
 
 `/portal/system` opens the SYSTEM datum-file workbench. Its fresh reducer-owned entry projects the system sandbox anchor file, `anthology.json`.
 

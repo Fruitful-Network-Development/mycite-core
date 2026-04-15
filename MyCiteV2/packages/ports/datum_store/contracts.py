@@ -685,7 +685,7 @@ class PublicationProfileBasicsWriteResult:
 @runtime_checkable
 class SystemDatumStorePort(Protocol):
     def read_system_resource_workbench(self, request: SystemDatumStoreRequest) -> SystemDatumWorkbenchResult:
-        """Read the canonical system datum workbench surface without legacy fallbacks."""
+        """Read the canonical system datum workbench surface."""
 
 
 @runtime_checkable
@@ -694,7 +694,7 @@ class AuthoritativeDatumDocumentPort(Protocol):
         self,
         request: AuthoritativeDatumDocumentRequest,
     ) -> AuthoritativeDatumDocumentCatalogResult:
-        """Read authoritative datum documents without falling back to derived cache or legacy roots."""
+        """Read authoritative datum documents from canonical system and sandbox sources."""
 
 
 @runtime_checkable

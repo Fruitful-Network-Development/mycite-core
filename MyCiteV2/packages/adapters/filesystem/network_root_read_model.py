@@ -413,7 +413,7 @@ def _load_chronology_authority(
     return authority, schema_payload, quadrennium_path
 
 
-def _legacy_request_log_records(
+def _request_log_import_records(
     *,
     private_dir: Path | None,
     local_msn_id: str,
@@ -638,7 +638,7 @@ def rebuild_network_system_log_document(
     ) if data_root else {}
     preserved_event_types = _preserved_event_types(current_payload)
     records = _dedupe_records(
-        _legacy_request_log_records(
+        _request_log_import_records(
             private_dir=private_root,
             local_msn_id=local_msn_id,
             authority=authority,
@@ -757,7 +757,7 @@ class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
             schema_payload=schema_payload,
         )
         transition_records = _dedupe_records(
-            _legacy_request_log_records(
+            _request_log_import_records(
                 private_dir=private_dir,
                 local_msn_id=local_msn_id,
                 authority=authority,

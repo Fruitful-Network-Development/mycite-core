@@ -1,4 +1,4 @@
-"""Shell-owned AWS-CSM onboarding semantics (V1 provision-class mapping, no V1 imports)."""
+"""Shell-owned AWS-CSM onboarding semantics."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ class AwsCsmOnboardingService:
         if command.onboarding_action == "replay_verification_forward":
             raise AwsCsmOnboardingPolicyError(
                 "replay_verification_forward_not_enabled",
-                "Legacy Lambda forwarder replay is omitted from the default V2 shell; use portal-native capture.",
+                "Forwarder replay is omitted from the canonical shell; use portal-native capture.",
             )
 
         profile = self._profile_store.load_profile(

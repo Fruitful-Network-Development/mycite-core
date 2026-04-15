@@ -32,7 +32,7 @@ class _MemoryStatePort:
                 }
             ]
         }
-        self._legacy_seeds = {
+        self._runtime_seeds = {
             "signing_secret": "signing-seed",
             "dispatch_secret": "dispatch-seed",
             "inbound_secret": "inbound-seed",
@@ -110,8 +110,8 @@ class _MemoryStatePort:
         self._contact_logs[domain] = deepcopy(payload)
         return deepcopy(payload)
 
-    def legacy_runtime_secret_seed(self, *, secret_kind: str) -> str:
-        return self._legacy_seeds.get(secret_kind, "")
+    def runtime_secret_seed(self, *, secret_kind: str) -> str:
+        return self._runtime_seeds.get(secret_kind, "")
 
 
 class _MemoryCloudPort:

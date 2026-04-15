@@ -575,7 +575,6 @@ class FilesystemFndEbiReadOnlyAdapter(FndEbiReadOnlyPort):
                 "access_log": None,
                 "error_log": None,
                 "events_file": None,
-                "events_file_legacy": None,
             }, warnings
 
         site_root_path = Path(site_root_token).resolve()
@@ -593,7 +592,6 @@ class FilesystemFndEbiReadOnlyAdapter(FndEbiReadOnlyPort):
                 "access_log": None,
                 "error_log": None,
                 "events_file": None,
-                "events_file_legacy": None,
             }, warnings
 
         analytics_root = client_root / "analytics"
@@ -603,7 +601,6 @@ class FilesystemFndEbiReadOnlyAdapter(FndEbiReadOnlyPort):
             "access_log": analytics_root / "nginx" / "access.log",
             "error_log": analytics_root / "nginx" / "error.log",
             "events_file": analytics_root / "events" / f"{year_month}.ndjson",
-            "events_file_legacy": analytics_root / "evnts" / f"{year_month}.ndjson",
         }, warnings
 
     def _source_state(
@@ -650,12 +647,7 @@ class FilesystemFndEbiReadOnlyAdapter(FndEbiReadOnlyPort):
         access_path = derived.get("access_log")
         error_path = derived.get("error_log")
         events_path = derived.get("events_file")
-        legacy_events_path = derived.get("events_file_legacy")
-
         selected_events_path = events_path
-        if events_path is not None and (not events_path.exists()) and legacy_events_path is not None and legacy_events_path.exists():
-            selected_events_path = legacy_events_path
-            warnings.append("using legacy events path because the canonical current-month file is absent")
 
         access_exists, access_lines, access_warnings = self._safe_text_lines(access_path) if access_path is not None else (False, [], ["source path unavailable"])
         error_exists, error_lines, error_warnings = self._safe_text_lines(error_path) if error_path is not None else (False, [], ["source path unavailable"])
