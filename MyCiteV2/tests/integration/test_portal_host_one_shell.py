@@ -14,7 +14,7 @@ if str(REPO_ROOT) not in sys.path:
 FLASK_AVAILABLE = importlib.util.find_spec("flask") is not None
 
 if FLASK_AVAILABLE:
-    from MyCiteV2.instances._shared.portal_host.app import V2PortalHostConfig, create_app
+    from MyCiteV2.instances._shared.portal_host.app import V2PortalHostConfig, build_shell_asset_manifest, create_app
     from MyCiteV2.packages.adapters.filesystem.network_root_read_model import build_system_log_document
 
 
@@ -192,7 +192,8 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             root_response = client.get("/portal", follow_redirects=False)
             self.assertEqual(root_response.status_code, 302)
             self.assertEqual(root_response.headers["Location"], "/portal/system")
-            self.assertEqual(client.get("/portal/system").status_code, 200)
+            system_response = client.get("/portal/system")
+            self.assertEqual(system_response.status_code, 200)
             self.assertEqual(client.get("/portal/network").status_code, 200)
             self.assertEqual(client.get("/portal/utilities").status_code, 200)
             self.assertEqual(client.get("/portal/system/tools/aws-csm").status_code, 200)
@@ -206,6 +207,27 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(client.get(retired_tff_route).status_code, 404)
             self.assertEqual(client.get("/portal/system/activity").status_code, 404)
             self.assertEqual(client.get("/portal/system/profile-basics").status_code, 404)
+            health_response = client.get("/portal/healthz")
+            self.assertEqual(health_response.status_code, 200)
+            health_payload = health_response.get_json()
+            self.assertTrue(all(health_payload["static_files_present"].values()))
+            self.assertEqual(health_payload["shell_asset_manifest"], build_shell_asset_manifest())
+
+            system_html = system_response.get_data(as_text=True)
+            self.assertEqual(system_html.count("data-theme-selector"), 1)
+            self.assertNotIn("pagehead--withTools", system_html)
+            self.assertIn("Toggle Control Panel", system_html)
+            self.assertIn("Toggle Interface Panel", system_html)
+            self.assertIn('id="v2-shell-asset-manifest"', system_html)
+            for asset in (
+                [health_payload["shell_asset_manifest"]["styles"]["portal_css"]]
+                + [
+                    health_payload["shell_asset_manifest"]["scripts"]["portal_js"],
+                    health_payload["shell_asset_manifest"]["scripts"]["shell_entry"],
+                ]
+                + health_payload["shell_asset_manifest"]["scripts"]["shell_modules"]
+            ):
+                self.assertIn(asset["url"], system_html)
 
             shell_response = client.post(
                 "/portal/api/v2/shell",
@@ -222,6 +244,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(payload["canonical_route"], "/portal/system")
             self.assertEqual(payload["canonical_query"]["file"], "anthology")
             self.assertEqual(payload["shell_composition"]["regions"]["control_panel"]["kind"], "focus_selection_panel")
+            self.assertTrue(payload["shell_composition"]["inspector_collapsed"])
             activity_items = payload["shell_composition"]["regions"]["activity_bar"]["items"]
             self.assertNotIn("system.root", [item["item_id"] for item in activity_items])
             aws_items = [item for item in activity_items if item["item_id"] == "system.tools.aws_csm"]
@@ -252,6 +275,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(network_payload["canonical_query"], {"view": "system_logs"})
             self.assertEqual(network_payload["surface_payload"]["kind"], "network_system_log_workspace")
             self.assertEqual(network_payload["shell_composition"]["regions"]["control_panel"]["kind"], "focus_selection_panel")
+            self.assertTrue(network_payload["shell_composition"]["inspector_collapsed"])
 
             aws_shell_payload = client.post(
                 "/portal/api/v2/shell",

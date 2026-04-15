@@ -40,10 +40,6 @@
       var sections = region.sections || [];
       var surfacePayload = region.surface_payload || {};
       if (!target) return;
-      if (region.visible === false) {
-        target.innerHTML = "";
-        return;
-      }
       if (
         window.PortalAwsCsmInspectorRenderer &&
         typeof window.PortalAwsCsmInspectorRenderer.render === "function" &&
@@ -71,6 +67,11 @@
               },
             ]) +
             "</section>"
+          : "") +
+        (!region.subject && !sections.length
+          ? '<section class="v2-card"><h3>Interface Panel</h3><p>' +
+            escapeHtml(region.summary || "Select an item to load interface panel content.") +
+            "</p></section>"
           : "") +
         sections
           .map(function (section) {

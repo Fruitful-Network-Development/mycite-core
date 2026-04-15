@@ -65,15 +65,24 @@ Workspace file modes under `system.root`:
 - Contract correspondence is a filter/lens over the same system-log workbench.
 - Event-type filtering is projected through the same root workbench.
 - Selected log rows open a read-only inspector with linked contract detail when applicable.
+- The interface panel is collapsed by default until selected-record focus exists.
 - `NETWORK` has no canonical Messages/Hosted/Profile/Contracts peer-tab model in V2.
 
 The host shell activity bar remains icon-only across all root and tool entries. Labels belong to hover titles and accessibility metadata, not to persistent bar text.
+The top menubar is the only shell header.
 
 ## UTILITIES
 
 - `utilities.root`
 - `utilities.tool_exposure`
 - `utilities.integrations`
+
+`UTILITIES` is section-led rather than focus-depth-led.
+
+- Its control panel projects `Root` and `Section` context rows.
+- Its grouped selections live under `Sections`.
+- Its interface panel is collapsed by default until a utilities section explicitly projects detail there.
+- It does not simulate sandbox/file/datum/object depth when that context does not exist.
 
 ## Tool Posture
 

@@ -1389,15 +1389,19 @@ def build_shell_composition_payload(
     workbench_region.setdefault("visible", True)
     inspector_region = dict(inspector or {})
     inspector_region.setdefault("schema", PORTAL_SHELL_REGION_INSPECTOR_SCHEMA)
-    requested_inspector_visible = inspector_region.get("visible") is not False
+    requested_inspector_visible = inspector_region.get("visible") is True
     interface_open = False
     if is_tool_surface(active_surface_id):
         interface_open = True
     elif state is not None:
         interface_open = state.chrome.interface_panel_open and state.verb == VERB_MEDIATE
-    inspector_region.setdefault("visible", interface_open)
-    inspector_region.setdefault("primary_surface", interface_open)
-    inspector_region.setdefault("layout_mode", "dominant" if interface_open else "sidebar")
+    inspector_region["visible"] = bool(interface_open or requested_inspector_visible)
+    inspector_region["primary_surface"] = bool(interface_open or inspector_region.get("primary_surface") is True)
+    inspector_region["layout_mode"] = (
+        "dominant"
+        if interface_open
+        else (_as_text(inspector_region.get("layout_mode")) or "sidebar")
+    )
     composition = {
         "schema": PORTAL_SHELL_COMPOSITION_SCHEMA,
         "composition_mode": shell_composition_mode_for_surface(active_surface_id),
@@ -1410,7 +1414,7 @@ def build_shell_composition_payload(
             workbench_visible=workbench_region.get("visible", True) is not False,
         ),
         "control_panel_collapsed": bool(control_panel_collapsed),
-        "inspector_collapsed": not (interface_open or requested_inspector_visible),
+        "inspector_collapsed": not bool(inspector_region["visible"]),
         "portal_instance_id": _as_text(portal_instance_id) or PORTAL_SCOPE_DEFAULT_ID,
         "page_title": _as_text(page_title) or "MyCite",
         "page_subtitle": _as_text(page_subtitle),

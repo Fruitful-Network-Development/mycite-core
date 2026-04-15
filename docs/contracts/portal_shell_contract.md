@@ -86,6 +86,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
   - event-type filters
 - The workbench projects a chronological log table sorted by canonical HOPS timestamps.
 - The inspector projects the selected log record and any linked contract summary.
+- The interface panel stays collapsed until selected-record focus exists.
 - Canonical query keys for the root are:
   - `view`
   - `contract`
@@ -93,11 +94,28 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
   - `record`
 - `NETWORK` has no canonical Messages/Hosted/Profile/Contracts tab set in V2.
 
+## UTILITIES Workspace
+
+`UTILITIES` is the section-led configuration surface for shared portal controls.
+
+- It is section-led rather than focus-depth-led.
+- It is not a fake sandbox/file/datum/object stack.
+- Its control panel uses the same modular selection-panel shell shape as the other roots.
+- Its canonical context rows are `Root: UTILITIES` and `Section: <active section>`.
+- Its selectable material is grouped under `Sections`.
+- Its interface panel stays collapsed until a utilities surface explicitly projects detail there.
+
 ## Shell Chrome
 
+- The top menubar is the only shell header.
+- There is no second workbench pagehead.
 - The activity bar is icon-only.
+- The left rail is the `Control Panel`.
+- The right rail is the `Interface Panel`.
+- The only persistent theme selector lives in the menubar.
 - Surface labels are exposed through hover titles and accessibility labels, not persistent bar text.
 - The control panel is the canonical textual navigation surface for current context and lower-focus selections.
+- Shell static assets are versioned by `portal_build_id` through one embedded shell asset manifest.
 
 ## Tool Contract
 

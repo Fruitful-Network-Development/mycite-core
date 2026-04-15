@@ -245,6 +245,53 @@ def _plain_control_panel(
     }
 
 
+def _utilities_surface_label(surface_id: str) -> str:
+    if surface_id == UTILITIES_TOOL_EXPOSURE_SURFACE_ID:
+        return "Tool Exposure"
+    if surface_id == UTILITIES_INTEGRATIONS_SURFACE_ID:
+        return "Integrations"
+    return "Overview"
+
+
+def _utilities_control_panel(
+    *,
+    active_surface_id: str,
+) -> dict[str, Any]:
+    entries = [
+        {
+            "label": "Tool Exposure",
+            "href": "/portal/utilities/tool-exposure",
+            "active": active_surface_id == UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+        },
+        {
+            "label": "Integrations",
+            "href": "/portal/utilities/integrations",
+            "active": active_surface_id == UTILITIES_INTEGRATIONS_SURFACE_ID,
+        },
+    ]
+    if active_surface_id == UTILITIES_ROOT_SURFACE_ID:
+        entries[0]["active"] = False
+        entries[1]["active"] = False
+    return {
+        "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
+        "kind": "focus_selection_panel",
+        "title": "Control Panel",
+        "surface_label": "UTILITIES",
+        "context_items": [
+            {"label": "Root", "value": "UTILITIES"},
+            {"label": "Section", "value": _utilities_surface_label(active_surface_id)},
+        ],
+        "verb_tabs": [],
+        "groups": [
+            {
+                "title": "Sections",
+                "entries": entries,
+            }
+        ],
+        "actions": [],
+    }
+
+
 def _metric_card(label: str, value: object, *, meta: object = "") -> dict[str, str]:
     return {
         "label": _as_text(label),
@@ -424,7 +471,7 @@ def _network_inspector(surface_payload: dict[str, Any]) -> dict[str, Any]:
         "kind": "network_system_log_inspector",
         "title": "Log Record",
         "summary": "Read-only log-record inspector.",
-        "visible": True,
+        "visible": subject is not None,
         "subject": subject,
         "surface_payload": surface_payload,
     }
@@ -668,16 +715,8 @@ def _bundle_for_surface(
             "page_title": "Utilities",
             "page_subtitle": "Configuration and control surfaces.",
             "surface_payload": surface_payload,
-            "control_panel": _plain_control_panel(
-                portal_scope=portal_scope,
-                shell_state=shell_state,
+            "control_panel": _utilities_control_panel(
                 active_surface_id=selection_surface_id,
-                title="Utilities",
-                surface_group_title="Utilities children",
-                surface_entries=[
-                    {"label": "Tool Exposure", "href": "/portal/utilities/tool-exposure"},
-                    {"label": "Integrations", "href": "/portal/utilities/integrations"},
-                ],
             ),
             "workbench": _generic_workbench(surface_payload),
             "inspector": _generic_inspector(surface_payload),
@@ -693,16 +732,8 @@ def _bundle_for_surface(
         "page_title": _as_text(surface_payload.get("title")) or "Utilities",
         "page_subtitle": _as_text(surface_payload.get("subtitle")),
         "surface_payload": surface_payload,
-        "control_panel": _plain_control_panel(
-            portal_scope=portal_scope,
-            shell_state=shell_state,
+        "control_panel": _utilities_control_panel(
             active_surface_id=selection_surface_id,
-            title="Utilities",
-            surface_group_title="Utilities children",
-            surface_entries=[
-                {"label": "Tool Exposure", "href": "/portal/utilities/tool-exposure", "active": selection_surface_id == UTILITIES_TOOL_EXPOSURE_SURFACE_ID},
-                {"label": "Integrations", "href": "/portal/utilities/integrations", "active": selection_surface_id == UTILITIES_INTEGRATIONS_SURFACE_ID},
-            ],
         ),
         "workbench": _generic_workbench(surface_payload),
         "inspector": _generic_inspector(surface_payload),

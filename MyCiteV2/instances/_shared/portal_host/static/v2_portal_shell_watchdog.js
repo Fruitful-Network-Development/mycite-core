@@ -34,9 +34,7 @@
       }
       if (!window.__MYCITE_V2_SHELL_ENTRY_LOADED || !window.__MYCITE_V2_SHELL_INTERNALS_READY || !window.__MYCITE_V2_SHELL_CORE_LOADED) {
         showFatal("The portal shell bundle did not load or did not execute.", "bundle_not_loaded");
-        return;
       }
-      showFatal("The portal shell did not finish hydrating. The shell POST may have failed.", "shell_post_failed");
     }, timeoutMs);
   }
 

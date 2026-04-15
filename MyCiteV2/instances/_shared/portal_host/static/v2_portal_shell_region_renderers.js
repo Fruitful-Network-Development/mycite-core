@@ -155,7 +155,7 @@
     var groups = region.groups || [];
     var actions = region.actions || [];
     root.innerHTML =
-      '<section class="ide-controlpanel__selectionPanel">' +
+      '<section class="ide-controlpanel__section"><div class="ide-controlpanel__selectionPanel">' +
       '<header class="ide-controlpanel__selectionHeader">' +
       '<div class="ide-controlpanel__title">' +
       ctx.escapeHtml(region.title || "Control Panel") +
@@ -225,7 +225,7 @@
             .join("") +
           "</div>"
         : "") +
-      "</section>";
+      "</div></section>";
 
     Array.prototype.forEach.call(root.querySelectorAll("[data-control-verb-index]"), function (node) {
       var index = Number(node.getAttribute("data-control-verb-index"));
