@@ -38,9 +38,18 @@
       var target = ctx.target;
       var region = ctx.region || {};
       var sections = region.sections || [];
+      var surfacePayload = region.surface_payload || {};
       if (!target) return;
       if (region.visible === false) {
         target.innerHTML = "";
+        return;
+      }
+      if (
+        window.PortalNetworkInspectorRenderer &&
+        typeof window.PortalNetworkInspectorRenderer.render === "function" &&
+        region.kind === "network_system_log_inspector"
+      ) {
+        window.PortalNetworkInspectorRenderer.render(ctx, target, surfacePayload);
         return;
       }
       target.innerHTML =

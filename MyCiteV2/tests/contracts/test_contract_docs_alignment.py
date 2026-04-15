@@ -25,12 +25,39 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("ordered focus stack", shell_contract.lower())
         self.assertIn("anthology", shell_contract)
         self.assertIn("datum-file workbench", shell_contract)
+        self.assertIn("system-log workbench", shell_contract)
+        self.assertIn("system_log.json", shell_contract)
         self.assertIn("layered datum table", shell_contract)
         self.assertIn("activity` and `profile_basics` are workspace file modes", shell_contract)
+        self.assertIn("not a tool and not a sandbox", shell_contract)
         self.assertIn("back_out", shell_contract)
         self.assertIn("interface-panel-led", shell_contract)
         self.assertNotIn("trusted" + "_tenant", shell_contract)
         self.assertNotIn("admin" + " shell", shell_contract.lower())
+
+    def test_surface_catalog_and_routes_describe_network_as_single_workbench(self) -> None:
+        route_model = (REPO_ROOT / "docs" / "contracts" / "route_model.md").read_text(encoding="utf-8")
+        surface_catalog = (REPO_ROOT / "docs" / "contracts" / "surface_catalog.md").read_text(encoding="utf-8")
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("/portal/network", route_model)
+        self.assertIn("system_log.json", route_model)
+        self.assertIn("view", route_model)
+        self.assertIn("contract", route_model)
+        self.assertIn("type", route_model)
+        self.assertIn("record", route_model)
+        self.assertNotIn("/portal/network/messages", route_model.lower())
+        self.assertNotIn("/portal/network/hosted", route_model.lower())
+        self.assertNotIn("/portal/network/profile", route_model.lower())
+        self.assertNotIn("/portal/network/contracts", route_model.lower())
+
+        self.assertIn("portal-instance system-log workbench", surface_catalog)
+        self.assertIn("not a tool and not a sandbox", surface_catalog)
+        self.assertIn("Contract correspondence", surface_catalog)
+        self.assertIn("no canonical Messages/Hosted/Profile/Contracts peer-tab model", surface_catalog)
+
+        self.assertIn("portal-instance system-log workbench", readme)
+        self.assertIn("system_log.json", readme)
 
 
 if __name__ == "__main__":

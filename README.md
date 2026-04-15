@@ -17,6 +17,8 @@ authoritative V2 documentation tree.
 - root surfaces: `SYSTEM`, `NETWORK`, `UTILITIES`
 - `SYSTEM` owns the core datum-file workbench for the system sandbox
 - fresh `SYSTEM` entry focuses the anchor file `anthology.json`
+- `NETWORK` owns the read-only portal-instance system-log workbench backed by `data/system/system_log.json`
+- `NETWORK` is not a tool and not a sandbox; contract correspondence is a filter over the same workbench
 - canonical shell endpoint: `POST /portal/api/v2/shell`
 - canonical tool work pages: `/portal/system/tools/<tool_slug>`
 - utilities/configuration pages: `/portal/utilities/*`

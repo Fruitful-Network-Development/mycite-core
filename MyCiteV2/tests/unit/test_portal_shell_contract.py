@@ -160,6 +160,34 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertEqual(selection.canonical_query["file"], "anthology")
         self.assertEqual(selection.canonical_query["verb"], "navigate")
 
+    def test_shell_request_resolution_projects_surface_query_for_network(self) -> None:
+        selection = resolve_portal_shell_request(
+            {
+                "schema": "mycite.v2.portal.shell.request.v1",
+                "requested_surface_id": NETWORK_ROOT_SURFACE_ID,
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                "surface_query": {
+                    "view": "messages",
+                    "contract": "contract-fnd-001",
+                    "type": "4-2-1",
+                    "record": "7-3-1",
+                    "ignored": "yes",
+                },
+            }
+        )
+        self.assertTrue(selection.allowed)
+        self.assertFalse(selection.reducer_owned)
+        self.assertEqual(selection.active_surface_id, NETWORK_ROOT_SURFACE_ID)
+        self.assertEqual(
+            selection.canonical_query,
+            {
+                "view": "system_logs",
+                "contract": "contract-fnd-001",
+                "type": "4-2-1",
+                "record": "7-3-1",
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

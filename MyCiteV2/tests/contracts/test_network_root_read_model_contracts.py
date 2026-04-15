@@ -37,6 +37,26 @@ class NetworkRootReadModelContractTests(unittest.TestCase):
                 portal_domain="../fruitfulnetworkdevelopment.com",
             )
 
+    def test_request_normalizes_surface_query(self) -> None:
+        request = NetworkRootReadModelRequest(
+            portal_tenant_id="FND",
+            portal_domain="FruitfulNetworkDevelopment.com",
+            surface_query={" view ": " system_logs ", "contract": " contract-1 ", "record": 7},
+        )
+
+        self.assertEqual(
+            request.to_dict(),
+            {
+                "portal_tenant_id": "fnd",
+                "portal_domain": "fruitfulnetworkdevelopment.com",
+                "surface_query": {
+                    "view": "system_logs",
+                    "contract": "contract-1",
+                    "record": "7",
+                },
+            },
+        )
+
     def test_source_payload_must_be_non_empty_json(self) -> None:
         source = NetworkRootReadModelSource(
             payload={

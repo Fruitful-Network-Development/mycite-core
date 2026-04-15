@@ -144,6 +144,12 @@ def _bootstrap_request(surface_id: str, *, portal_instance_id: str, query_params
         )
         if shell_state is not None:
             payload["shell_state"] = shell_state.to_dict()
+    elif query_params:
+        payload["surface_query"] = {
+            str(key): str(value)
+            for key, value in dict(query_params or {}).items()
+            if str(key).strip() and str(value).strip()
+        }
     return payload
 
 

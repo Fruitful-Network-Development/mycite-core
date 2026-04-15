@@ -1,8 +1,34 @@
-"""Pure HOPS coordinate decoding helpers for V2 CTS-GIS surfaces."""
+"""Pure HOPS coordinate and chronology helpers for V2 surfaces."""
 
 from __future__ import annotations
 
 from typing import Any
+
+from .chronology import (
+    ChronologyAuthority,
+    build_chronology_authority,
+    encode_unix_ms_as_hops,
+    encode_utc_datetime_as_hops,
+)
+from .time_address import (
+    ParsedTimeAddress,
+    compare_time_addresses,
+    contains_address,
+    default_time_scope_for_schema,
+    infer_specificity,
+    normalize_range,
+    normalize_time_address,
+    normalize_time_address_for_schema,
+    parse_time_address,
+    projection_year_month_day,
+)
+from .time_address_schema import (
+    TimeAddressSchema,
+    anchor_path_for_tool,
+    decode_mixed_radix_magnitude,
+    schema_from_anchor_payload,
+    validate_address_with_schema,
+)
 
 _DEFAULT_HOPS_RADICES = (8, 81, 100, 100, 100, 100)
 
@@ -118,6 +144,25 @@ def decode_hops_coordinate_token(
 
 
 __all__ = [
+    "ChronologyAuthority",
+    "ParsedTimeAddress",
+    "TimeAddressSchema",
+    "anchor_path_for_tool",
+    "build_chronology_authority",
     "classify_hops_coordinate_token",
+    "compare_time_addresses",
+    "contains_address",
+    "decode_mixed_radix_magnitude",
     "decode_hops_coordinate_token",
+    "default_time_scope_for_schema",
+    "encode_unix_ms_as_hops",
+    "encode_utc_datetime_as_hops",
+    "infer_specificity",
+    "normalize_range",
+    "normalize_time_address",
+    "normalize_time_address_for_schema",
+    "parse_time_address",
+    "projection_year_month_day",
+    "schema_from_anchor_payload",
+    "validate_address_with_schema",
 ]

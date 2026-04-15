@@ -30,6 +30,15 @@ Workspace file modes under `system.root`:
 
 - `network.root`
 
+`network.root` is the read-only portal-instance system-log workbench.
+
+- It is not a tool and not a sandbox.
+- Its canonical operational document is `data/system/system_log.json`.
+- Contract correspondence is a filter/lens over the same system-log workbench.
+- Event-type filtering is projected through the same root workbench.
+- Selected log rows open a read-only inspector with linked contract detail when applicable.
+- `NETWORK` has no canonical Messages/Hosted/Profile/Contracts peer-tab model in V2.
+
 ## UTILITIES
 
 - `utilities.root`

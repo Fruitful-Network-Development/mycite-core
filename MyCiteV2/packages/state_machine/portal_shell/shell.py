@@ -149,6 +149,22 @@ def _require_schema(payload: dict[str, Any], *, expected: str, field_name: str) 
         raise ValueError(f"{field_name} must be {expected}")
 
 
+def _normalize_surface_query(value: object, *, field_name: str) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{field_name} must be a mapping or null")
+    out: dict[str, str] = {}
+    for raw_key, raw_value in value.items():
+        key = _as_text(raw_key)
+        if not key:
+            raise ValueError(f"{field_name} keys must be non-empty")
+        token = _as_text(raw_value)
+        if token:
+            out[key] = token
+    return out
+
+
 def _normalize_capabilities(value: object, *, field_name: str) -> tuple[str, ...]:
     if value is None:
         return ()
@@ -443,6 +459,7 @@ class PortalShellRequest:
     portal_scope: PortalScope = field(default_factory=PortalScope)
     shell_state: PortalShellState | None = None
     transition: PortalShellTransition | None = None
+    surface_query: dict[str, str] = field(default_factory=dict)
     schema: str = field(default=PORTAL_SHELL_REQUEST_SCHEMA, init=False)
 
     def __post_init__(self) -> None:
@@ -458,10 +475,15 @@ class PortalShellRequest:
             if isinstance(self.transition, PortalShellTransition) or self.transition is None
             else PortalShellTransition.from_value(self.transition)
         )
+        surface_query = _normalize_surface_query(
+            self.surface_query,
+            field_name="portal_shell_request.surface_query",
+        )
         object.__setattr__(self, "requested_surface_id", requested_surface_id)
         object.__setattr__(self, "portal_scope", portal_scope)
         object.__setattr__(self, "shell_state", shell_state)
         object.__setattr__(self, "transition", transition)
+        object.__setattr__(self, "surface_query", surface_query)
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -473,6 +495,8 @@ class PortalShellRequest:
             payload["shell_state"] = self.shell_state.to_dict()
         if self.transition is not None:
             payload["transition"] = self.transition.to_dict()
+        if self.surface_query:
+            payload["surface_query"] = dict(self.surface_query)
         return payload
 
     @classmethod
@@ -495,6 +519,10 @@ class PortalShellRequest:
             if payload.get("shell_state") is not None
             else None,
             transition=PortalShellTransition.from_value(payload.get("transition")),
+            surface_query=_normalize_surface_query(
+                payload.get("surface_query"),
+                field_name="portal_shell_request.surface_query",
+            ),
         )
 
 
@@ -1152,6 +1180,27 @@ def canonical_query_for_shell_state(
     return query
 
 
+def canonical_query_for_surface_query(
+    surface_query: Mapping[str, Any] | None,
+    *,
+    surface_id: str,
+) -> dict[str, str]:
+    if surface_id != NETWORK_ROOT_SURFACE_ID:
+        return {}
+    normalized = _normalize_surface_query(
+        surface_query,
+        field_name="portal_shell_request.surface_query",
+    )
+    query: dict[str, str] = {"view": "system_logs"}
+    if _as_text(normalized.get("contract")):
+        query["contract"] = _as_text(normalized.get("contract"))
+    if _as_text(normalized.get("type")):
+        query["type"] = _as_text(normalized.get("type"))
+    if _as_text(normalized.get("record")):
+        query["record"] = _as_text(normalized.get("record"))
+    return query
+
+
 def build_canonical_url(*, surface_id: str, query: Mapping[str, str] | None = None) -> str:
     route = canonical_route_for_surface(surface_id)
     filtered = {key: value for key, value in dict(query or {}).items() if _as_text(value)}
@@ -1219,6 +1268,7 @@ def build_portal_shell_request_payload(
     portal_scope: PortalScope | dict[str, Any] | None,
     shell_state: PortalShellState | dict[str, Any] | None = None,
     transition: PortalShellTransition | dict[str, Any] | None = None,
+    surface_query: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     scope = portal_scope if isinstance(portal_scope, PortalScope) else PortalScope.from_value(portal_scope)
     state = (
@@ -1236,6 +1286,10 @@ def build_portal_shell_request_payload(
         portal_scope=scope,
         shell_state=state,
         transition=normalized_transition,
+        surface_query=_normalize_surface_query(
+            surface_query,
+            field_name="portal_shell_request.surface_query",
+        ),
     ).to_dict()
 
 
@@ -1277,7 +1331,10 @@ def resolve_portal_shell_request(request: PortalShellRequest | dict[str, Any] | 
             if isinstance(normalized_request.shell_state, PortalShellState)
             else initial_portal_shell_state(surface_id=SYSTEM_ROOT_SURFACE_ID, portal_scope=normalized_request.portal_scope)
         )
-        canonical_query = {}
+        canonical_query = canonical_query_for_surface_query(
+            normalized_request.surface_query,
+            surface_id=surface_entry.surface_id,
+        )
     canonical_route = canonical_route_for_surface(surface_entry.surface_id)
     return PortalShellResolution(
         requested_surface_id=requested_surface_id,
@@ -1413,6 +1470,7 @@ def build_shell_composition_payload(
     workbench_region.setdefault("visible", True)
     inspector_region = dict(inspector or {})
     inspector_region.setdefault("schema", PORTAL_SHELL_REGION_INSPECTOR_SCHEMA)
+    requested_inspector_visible = inspector_region.get("visible") is not False
     interface_open = False
     if is_tool_surface(active_surface_id):
         interface_open = True
@@ -1433,7 +1491,7 @@ def build_shell_composition_payload(
             workbench_visible=workbench_region.get("visible", True) is not False,
         ),
         "control_panel_collapsed": bool(control_panel_collapsed),
-        "inspector_collapsed": not interface_open,
+        "inspector_collapsed": not (interface_open or requested_inspector_visible),
         "portal_instance_id": _as_text(portal_instance_id) or PORTAL_SCOPE_DEFAULT_ID,
         "page_title": _as_text(page_title) or "MyCite",
         "page_subtitle": _as_text(page_subtitle),
