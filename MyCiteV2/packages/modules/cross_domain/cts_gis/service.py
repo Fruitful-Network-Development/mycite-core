@@ -14,9 +14,14 @@ from MyCiteV2.packages.modules.domains.datum_recognition import (
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentPort
 
 _VALID_OVERLAY_MODES = frozenset({"auto", "raw_only"})
-_DEFAULT_INTENTION_TOKEN = "0"
+_DEFAULT_ATTENTION_NODE_ID = "3-2-3-17-77"
+_DEFAULT_SUPPORTING_DOCUMENT_NAME = "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"
+_DEFAULT_INTENTION_TOKEN = "descendants_depth_1_or_2"
+_LEGACY_SELF_INTENTION_TOKEN = "0"
 _CHILDREN_INTENTION_TOKEN = "1-0"
 _BRANCH_INTENTION_PREFIX = "branch:"
+_CANONICAL_TOOL_ID = "cts_gis"
+_LEGACY_TOOL_ID = "maps"
 
 
 def _as_text(value: object) -> str:
@@ -60,6 +65,35 @@ def _sorted_addresses(values: set[str] | list[str] | tuple[str, ...]) -> list[st
         (_as_text(value) for value in values if _as_text(value)),
         key=lambda item: (_address_tuple(item) or (10**9,), item),
     )
+
+
+def _document_id_aliases(value: object) -> tuple[str, ...]:
+    token = _as_text(value)
+    if not token:
+        return ()
+    if token.startswith("sandbox:cts_gis:"):
+        return (token, "sandbox:maps:" + token[len("sandbox:cts_gis:") :])
+    if token.startswith("sandbox:maps:"):
+        return ("sandbox:cts_gis:" + token[len("sandbox:maps:") :], token)
+    return (token,)
+
+
+def _matches_document_id(candidate: object, requested: object) -> bool:
+    candidate_token = _as_text(candidate)
+    if not candidate_token:
+        return False
+    return candidate_token in _document_id_aliases(requested)
+
+
+def _address_is_descendant(node_id: str, *, root_node_id: str, min_extra_segments: int, max_extra_segments: int) -> bool:
+    node_parts = _address_tuple(node_id)
+    root_parts = _address_tuple(root_node_id)
+    if not node_parts or not root_parts or len(node_parts) <= len(root_parts):
+        return False
+    if tuple(node_parts[: len(root_parts)]) != tuple(root_parts):
+        return False
+    extra_segments = len(node_parts) - len(root_parts)
+    return min_extra_segments <= extra_segments <= max_extra_segments
 
 
 def _binding_family(anchor_label: object) -> str:
@@ -360,6 +394,29 @@ def _profile_sort_key(profile: dict[str, Any]) -> tuple[int, int, int, str]:
     )
 
 
+def _descendant_profiles(
+    document_bundle: dict[str, Any],
+    *,
+    attention_node_id: str,
+    min_extra_segments: int,
+    max_extra_segments: int,
+) -> list[dict[str, Any]]:
+    profiles = list((document_bundle.get("profile_index") or {}).values())
+    return sorted(
+        [
+            profile
+            for profile in profiles
+            if _address_is_descendant(
+                _as_text(profile.get("node_id")),
+                root_node_id=attention_node_id,
+                min_extra_segments=min_extra_segments,
+                max_extra_segments=max_extra_segments,
+            )
+        ],
+        key=_profile_sort_key,
+    )
+
+
 def _profile_public_summary(profile: dict[str, Any], *, relation: str = "", selected: bool = False) -> dict[str, Any]:
     return {
         "node_id": _as_text(profile.get("node_id")),
@@ -477,9 +534,12 @@ def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mo
     document_summary["profile_count"] = len(profiles_by_node)
     default_attention_node_id = ""
     sorted_profiles = sorted(profiles_by_node.values(), key=_profile_sort_key)
-    if sorted_profiles:
+    if _DEFAULT_ATTENTION_NODE_ID in profiles_by_node:
+        default_attention_node_id = _DEFAULT_ATTENTION_NODE_ID
+    elif sorted_profiles:
         default_attention_node_id = _as_text(sorted_profiles[0]["node_id"])
     document_summary["default_attention_node_id"] = default_attention_node_id
+    document_summary["samras_seed_status"] = "ready" if _DEFAULT_ATTENTION_NODE_ID in profiles_by_node else "missing"
 
     return {
         "document": document,
@@ -499,15 +559,27 @@ def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mo
 def _normalize_intention_token(document_bundle: dict[str, Any], attention_node_id: str, requested: object) -> str:
     token = _as_text(requested) or _DEFAULT_INTENTION_TOKEN
     children = list((document_bundle.get("children_by_parent") or {}).get(attention_node_id, []))
-    if token == _DEFAULT_INTENTION_TOKEN:
+    descendants_depth_1_or_2 = _descendant_profiles(
+        document_bundle,
+        attention_node_id=attention_node_id,
+        min_extra_segments=1,
+        max_extra_segments=2,
+    )
+    if token == _LEGACY_SELF_INTENTION_TOKEN:
         return token
+    if token == _DEFAULT_INTENTION_TOKEN:
+        return token if descendants_depth_1_or_2 else _LEGACY_SELF_INTENTION_TOKEN
+    if token == "self":
+        return _LEGACY_SELF_INTENTION_TOKEN
+    if token == "children":
+        return _CHILDREN_INTENTION_TOKEN if children else _LEGACY_SELF_INTENTION_TOKEN
     if token == _CHILDREN_INTENTION_TOKEN:
-        return token if children else _DEFAULT_INTENTION_TOKEN
+        return token if children else _LEGACY_SELF_INTENTION_TOKEN
     if token.startswith(_BRANCH_INTENTION_PREFIX):
         branch_node_id = _as_text(token[len(_BRANCH_INTENTION_PREFIX) :])
         if branch_node_id in children:
             return token
-    return _DEFAULT_INTENTION_TOKEN
+    return _DEFAULT_INTENTION_TOKEN if descendants_depth_1_or_2 else _LEGACY_SELF_INTENTION_TOKEN
 
 
 def _available_intentions(document_bundle: dict[str, Any], attention_node_id: str) -> list[dict[str, Any]]:
@@ -518,9 +590,15 @@ def _available_intentions(document_bundle: dict[str, Any], attention_node_id: st
         for node_id in list((document_bundle.get("children_by_parent") or {}).get(attention_node_id, []))
         if node_id in profile_index
     ]
+    descendants_depth_1_or_2 = _descendant_profiles(
+        document_bundle,
+        attention_node_id=attention_node_id,
+        min_extra_segments=1,
+        max_extra_segments=2,
+    )
     out = [
         {
-            "token": _DEFAULT_INTENTION_TOKEN,
+            "token": _LEGACY_SELF_INTENTION_TOKEN,
             "kind": "self",
             "label": "Self",
             "target_node_id": attention_node_id,
@@ -529,6 +607,19 @@ def _available_intentions(document_bundle: dict[str, Any], attention_node_id: st
             "profile_count": 1 if attention_profile is not None else 0,
         }
     ]
+    if descendants_depth_1_or_2:
+        out.insert(
+            0,
+            {
+                "token": _DEFAULT_INTENTION_TOKEN,
+                "kind": "descendants_depth_1_or_2",
+                "label": "Descendants depth 1 or 2",
+                "target_node_id": attention_node_id,
+                "row_count": sum(len(profile.get("row_addresses") or []) for profile in descendants_depth_1_or_2),
+                "feature_count": sum(int(profile.get("feature_count") or 0) for profile in descendants_depth_1_or_2),
+                "profile_count": len(descendants_depth_1_or_2),
+            },
+        )
     if children:
         out.append(
             {
@@ -603,7 +694,7 @@ class CtsGisReadOnlyService:
         cts_gis_documents = [
             document
             for document in workbench.documents
-            if document.source_kind == "sandbox_source" and document.tool_id in {"maps", "cts_gis"}
+            if document.source_kind == "sandbox_source" and document.tool_id in {_LEGACY_TOOL_ID, _CANONICAL_TOOL_ID}
         ]
         requested_document_id = _as_text(attention_document_id) or _as_text(selected_document_id)
         requested_row_address = _as_text(selected_row_address)
@@ -612,7 +703,12 @@ class CtsGisReadOnlyService:
         target_document = None
         if requested_document_id:
             for document in cts_gis_documents:
-                if _as_text(document.document_id) == requested_document_id:
+                if _matches_document_id(document.document_id, requested_document_id):
+                    target_document = document
+                    break
+        if target_document is None and cts_gis_documents:
+            for document in cts_gis_documents:
+                if _as_text(document.document_name) == _DEFAULT_SUPPORTING_DOCUMENT_NAME:
                     target_document = document
                     break
         if target_document is None and cts_gis_documents:
@@ -691,12 +787,18 @@ class CtsGisReadOnlyService:
         selected_document_bundle = None
         if requested_attention_document_id:
             for document_bundle in documents:
-                if _as_text((document_bundle.get("document_summary") or {}).get("document_id")) == requested_attention_document_id:
+                if _matches_document_id(
+                    (document_bundle.get("document_summary") or {}).get("document_id"),
+                    requested_attention_document_id,
+                ):
                     selected_document_bundle = document_bundle
                     break
         if selected_document_bundle is None and requested_document_id:
             for document_bundle in documents:
-                if _as_text((document_bundle.get("document_summary") or {}).get("document_id")) == requested_document_id:
+                if _matches_document_id(
+                    (document_bundle.get("document_summary") or {}).get("document_id"),
+                    requested_document_id,
+                ):
                     selected_document_bundle = document_bundle
                     break
         if selected_document_bundle is None and requested_feature_id:
@@ -760,7 +862,10 @@ class CtsGisReadOnlyService:
         raw_underlay_visible = bool(projection_bundle.get("raw_underlay_visible"))
         selected_document_bundle = None
         for document_bundle in documents:
-            if _as_text((document_bundle.get("document_summary") or {}).get("document_id")) == _as_text(attention_document_id):
+            if _matches_document_id(
+                (document_bundle.get("document_summary") or {}).get("document_id"),
+                attention_document_id,
+            ):
                 selected_document_bundle = document_bundle
                 break
 
@@ -839,6 +944,13 @@ class CtsGisReadOnlyService:
         render_profiles: list[dict[str, Any]] = []
         if attention_profile is not None:
             if intention_token_text == _DEFAULT_INTENTION_TOKEN:
+                render_profiles = _descendant_profiles(
+                    selected_document_bundle,
+                    attention_node_id=attention_node_id_text,
+                    min_extra_segments=1,
+                    max_extra_segments=2,
+                )
+            elif intention_token_text == _LEGACY_SELF_INTENTION_TOKEN:
                 render_profiles = [attention_profile]
             elif intention_token_text == _CHILDREN_INTENTION_TOKEN:
                 render_profiles = [
@@ -972,8 +1084,10 @@ class CtsGisReadOnlyService:
 
         render_set_summary = {
             "render_mode": (
-                "self"
+                "descendants_depth_1_or_2"
                 if intention_token_text == _DEFAULT_INTENTION_TOKEN
+                else "self"
+                if intention_token_text == _LEGACY_SELF_INTENTION_TOKEN
                 else "children"
                 if intention_token_text == _CHILDREN_INTENTION_TOKEN
                 else "branch"
@@ -995,6 +1109,14 @@ class CtsGisReadOnlyService:
             else _profile_public_summary(attention_profile, selected=True),
             "lineage": lineage,
             "children": children,
+            "render_profiles": [
+                _profile_public_summary(
+                    profile,
+                    relation="render_profile",
+                    selected=_as_text(profile.get("node_id")) == attention_node_id_text,
+                )
+                for profile in render_profiles
+            ],
             "related_profiles": related_profiles,
             "render_set_summary": render_set_summary,
             "map_projection": {
@@ -1148,6 +1270,7 @@ class CtsGisReadOnlyService:
             ),
             "lineage": list(mediation_surface.get("lineage") or []),
             "children": list(mediation_surface.get("children") or []),
+            "render_profiles": list(mediation_surface.get("render_profiles") or []),
             "related_profiles": list(mediation_surface.get("related_profiles") or []),
             "render_set_summary": dict(mediation_surface.get("render_set_summary") or {}),
             "selected_row": selected_row,
@@ -1192,6 +1315,10 @@ class CtsGisReadOnlyService:
     ) -> dict[str, Any]:
         projection_bundle = self.read_projection_bundle(
             tenant_id,
+            selected_document_id=selected_document_id,
+            selected_row_address=selected_row_address,
+            selected_feature_id=selected_feature_id,
+            attention_document_id=(mediation_state or {}).get("attention_document_id") if isinstance(mediation_state, dict) else "",
             overlay_mode=overlay_mode,
             raw_underlay_visible=raw_underlay_visible,
         )

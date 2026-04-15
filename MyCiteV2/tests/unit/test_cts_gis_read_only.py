@@ -136,21 +136,29 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
 
         self.assertEqual(surface["map_projection"]["projection_state"], "projectable")
         self.assertEqual(surface["map_projection"]["feature_count"], 1)
-        self.assertEqual(surface["map_projection"]["selected_feature"]["geometry_type"], "Polygon")
+        self.assertEqual(surface["map_projection"]["selected_feature"]["geometry_type"], "Point")
         self.assertEqual(surface["attention_profile"]["node_id"], "3-2-3-17-77-1")
-        self.assertEqual(surface["selected_row"]["datum_address"], "7-3-1")
+        self.assertEqual(surface["selected_row"]["datum_address"], "4-2-2")
         self.assertEqual(surface["mediation_state"]["attention_node_id"], "3-2-3-17-77-1")
-        self.assertEqual(surface["mediation_state"]["intention_token"], "0")
+        self.assertEqual(surface["mediation_state"]["intention_token"], "descendants_depth_1_or_2")
         self.assertIn("1-0", [item["token"] for item in surface["mediation_state"]["available_intentions"]])
+        self.assertIn(
+            "descendants_depth_1_or_2",
+            [item["token"] for item in surface["mediation_state"]["available_intentions"]],
+        )
         feature_types = [feature["geometry"]["type"] for feature in surface["map_projection"]["feature_collection"]["features"]]
-        self.assertEqual(feature_types, ["Polygon"])
+        self.assertEqual(feature_types, ["Point"])
         first_feature_props = surface["map_projection"]["feature_collection"]["features"][0]["properties"]
-        self.assertEqual(first_feature_props["samras_node_id"], "3-2-3-17-77-1")
-        self.assertEqual(first_feature_props["profile_label"], "summit")
+        self.assertEqual(first_feature_props["samras_node_id"], "3-2-3-17-77-1-1")
+        self.assertEqual(first_feature_props["profile_label"], "fairlawn")
+        self.assertEqual(
+            [item["node_id"] for item in surface["render_profiles"]],
+            ["3-2-3-17-77-1-1", "3-2-3-17-77-1-2"],
+        )
 
-        named_row = [row for row in surface["rows"] if row["datum_address"] == "7-3-1"][0]
+        named_row = [row for row in surface["rows"] if row["datum_address"] == "7-3-2"][0]
         title_overlay = [entry for entry in named_row["overlay_preview"] if entry["overlay_family"] == "title_babelette"][0]
-        self.assertEqual(title_overlay["display_value"], "summit")
+        self.assertEqual(title_overlay["display_value"], "fairlawn")
 
         bad_row_surface = CtsGisReadOnlyService(store).read_surface(
             "fnd",

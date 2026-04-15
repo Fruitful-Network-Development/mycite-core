@@ -62,6 +62,51 @@ AWS-CSM canonical query rules:
 
 `AWS-CSM` is one `SYSTEM` child service tool surface, not four separate tool pages. The canonical public route is `/portal/system/tools/aws-csm`.
 
+`CTS-GIS` is one `SYSTEM` child mediation tool surface. The canonical public route is `/portal/system/tools/cts-gis`.
+
+CTS-GIS request body contract:
+
+- shared shell query stays unchanged
+- tool-local state is carried in `tool_state`
+- CTS-GIS canonical `tool_state` keys are:
+  - `tool_state.nimm_directive`
+  - `tool_state.aitas.attention_node_id`
+  - `tool_state.aitas.intention_rule_id`
+  - `tool_state.aitas.time_directive`
+  - `tool_state.aitas.archetype_family_id`
+  - `tool_state.source.attention_document_id`
+  - `tool_state.selection.selected_row_address`
+  - `tool_state.selection.selected_feature_id`
+- compatibility aliases remain accepted during the transition:
+  - `mediation_state.attention_node_id`
+  - `mediation_state.intention_token`
+  - `selected_row_address`
+  - `selected_feature_id`
+
+CTS-GIS runtime/body rules:
+
+- CTS-GIS is the `system.tools.cts_gis` tool_mediation_surface under `SYSTEM`
+- its default posture is interface-panel-led
+- the dominant Interface Panel mounts one CTS-GIS-local body with `Diktataograph` and `Garland`
+- `Diktataograph` updates CTS-GIS-local structural navigation
+- `Garland` updates the correlated profile projection for that navigation root
+- these are CTS-GIS-local projections of one mediation posture, not two separate shell mediations
+- CTS-GIS supporting evidence precedence is:
+  - `private/utilities/tools/cts-gis/spec.json`
+  - `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
+  - registrar payload / payload cache
+  - administrative payload cache through the ASCII lens
+  - GeoJSON lens or equivalent runtime cache for spatial projection
+- legacy `maps` storage and request identifiers remain compatibility-only
+
+CTS-GIS canonical defaults:
+
+- `attention_node_id=3-2-3-17-77`
+- `intention_rule_id=descendants_depth_1_or_2`
+- `time_directive=""`
+- `archetype_family_id=samras_nominal`
+- default supporting source document: `sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json`
+
 NETWORK root query projection keys:
 
 - `view`

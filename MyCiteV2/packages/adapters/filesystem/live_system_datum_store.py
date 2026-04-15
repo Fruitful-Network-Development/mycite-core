@@ -78,8 +78,32 @@ def _load_anchor_document(path: Path | None) -> tuple[str, str, dict[str, Any], 
     return path.name, str(path), metadata, rows, warnings
 
 
+def _canonical_tool_public_id(tool_dir_name: str) -> str:
+    token = _as_text(tool_dir_name).lower()
+    if token in {"maps", "cts-gis", "cts_gis"}:
+        return "cts_gis"
+    return token
+
+
 def _find_tool_anchor_file(tool_dir: Path) -> Path | None:
-    candidates = sorted(tool_dir.glob("tool*.json"))
+    preferred_patterns = (
+        "tool.*.cts-gis.json",
+        "tool.*.cts_gis.json",
+        "tool.*.maps.json",
+        "tool*.json",
+    )
+    candidates: list[Path] = []
+    for pattern in preferred_patterns:
+        candidates.extend(sorted(tool_dir.glob(pattern)))
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(candidate)
+    candidates = deduped
     return candidates[0] if candidates else None
 
 
@@ -169,6 +193,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                 warnings.append("Canonical system anthology must be a JSON object.")
 
         sandbox_source_files: list[Path] = []
+        seen_sandbox_document_ids: set[str] = set()
         sandbox_root = self._data_dir / "sandbox"
         if sandbox_root.exists() and sandbox_root.is_dir():
             for tool_dir in sorted(path for path in sandbox_root.iterdir() if path.is_dir()):
@@ -176,7 +201,16 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                 if not source_dir.exists() or not source_dir.is_dir():
                     continue
                 anchor_file = _find_tool_anchor_file(tool_dir)
+                public_tool_id = _canonical_tool_public_id(tool_dir.name)
                 for source_path in sorted(source_dir.glob("*.json")):
+                    document_id = _document_id_for_path(
+                        source_kind="sandbox_source",
+                        tool_id=public_tool_id,
+                        path=source_path,
+                    )
+                    if document_id in seen_sandbox_document_ids:
+                        continue
+                    seen_sandbox_document_ids.add(document_id)
                     sandbox_source_files.append(source_path)
                     source_warnings: list[str] = []
                     try:
@@ -201,15 +235,11 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
 
                     documents.append(
                         AuthoritativeDatumDocument(
-                            document_id=_document_id_for_path(
-                                source_kind="sandbox_source",
-                                tool_id=tool_dir.name,
-                                path=source_path,
-                            ),
+                            document_id=document_id,
                             source_kind="sandbox_source",
                             document_name=source_path.name,
                             relative_path=str(source_path.relative_to(self._data_dir)),
-                            tool_id=tool_dir.name,
+                            tool_id=public_tool_id,
                             document_metadata=metadata,
                             anchor_document_name=anchor_document_name,
                             anchor_document_path=anchor_document_path,

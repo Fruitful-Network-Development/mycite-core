@@ -197,6 +197,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(client.get("/portal/network").status_code, 200)
             self.assertEqual(client.get("/portal/utilities").status_code, 200)
             self.assertEqual(client.get("/portal/system/tools/aws-csm").status_code, 200)
+            self.assertEqual(client.get("/portal/system/tools/cts-gis").status_code, 200)
             self.assertEqual(client.get("/portal/system/tools/aws", follow_redirects=False).status_code, 302)
             self.assertEqual(
                 client.get("/portal/system/tools/aws", follow_redirects=False).headers["Location"],

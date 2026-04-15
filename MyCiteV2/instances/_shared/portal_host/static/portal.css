@@ -6114,6 +6114,110 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   align-content: start;
 }
 
+.cts-gis-interface {
+  min-height: 0;
+}
+
+.cts-gis-contextStrip {
+  margin: 0;
+}
+
+.cts-gis-interface__body {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+.cts-gis-pane {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.cts-gis-pane__header,
+.cts-gis-pane__section {
+  min-width: 0;
+}
+
+.cts-gis-pane__header p {
+  margin: 0.35rem 0 0;
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-pane__section {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.cts-gis-pane__section h4 {
+  margin: 0;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-entryList,
+.cts-gis-profileSummaryList {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.cts-gis-entryButton {
+  display: grid;
+  gap: 0.18rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 92%, white 8%);
+  color: var(--ink, #243026);
+  cursor: pointer;
+}
+
+.cts-gis-entryButton:hover,
+.cts-gis-entryButton:focus-visible {
+  border-color: color-mix(in srgb, var(--accent, #0b6b46) 45%, var(--line, #c8cec8) 55%);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.06);
+  outline: none;
+}
+
+.cts-gis-entryButton.is-active {
+  border-color: color-mix(in srgb, var(--accent, #0b6b46) 55%, var(--line, #c8cec8) 45%);
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 78%, #fff 22%);
+}
+
+.cts-gis-entryButton__title {
+  font-weight: 700;
+}
+
+.cts-gis-entryButton__meta,
+.cts-gis-profileSummary__meta {
+  font-size: 0.76rem;
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-profileSummary {
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.65rem 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 45%, transparent);
+}
+
+.cts-gis-warningList {
+  margin: 0;
+  padding-left: 1rem;
+  color: var(--ink2, #667068);
+}
+
+@media (max-width: 960px) {
+  .cts-gis-interface__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .aws-csm-domainSection {
   display: flex;
   flex-direction: column;

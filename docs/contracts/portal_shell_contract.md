@@ -135,11 +135,18 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 
 - Tool work pages are `SYSTEM` child surfaces.
 - `AWS-CSM` is the canonical AWS service tool surface under `SYSTEM`.
+- `CTS-GIS` is the canonical structural/spatial mediation tool surface under `SYSTEM`.
 - `AWS-CSM` has one public route: `/portal/system/tools/aws-csm`.
+- `CTS-GIS` has one public route: `/portal/system/tools/cts-gis`.
 - `AWS-CSM` uses runtime-owned query keys: `view`, `domain`, `profile`, `section`.
+- `CTS-GIS` does not widen shell query. Its tool-local navigation and projection state is body-carried in the tool request/runtime payload.
 - `AWS-CSM` control-panel context is file-backed and projects:
   - `Sandbox: AWS-CSM`
   - `File: tool.<msn>.aws-csm.json`
+  - `Mediation: spec.json`
+- `CTS-GIS` control-panel context is file-backed and projects:
+  - `Sandbox: CTS-GIS`
+  - `File: tool.<msn>.cts-gis.json` when the canonical anchor exists, otherwise the active compatibility anchor file
   - `Mediation: spec.json`
 - Tool configuration, enabling, exposure, integration state, vault, peripherals, and control surfaces belong under `UTILITIES`.
 - Every tool registry entry defaults to `interface_panel_primary`.
@@ -151,3 +158,57 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - All tools attach to the same interface surface. Service-tool behavior is distinguished by whether the tool can employ the portal's authenticated peripheral package, not by a separate class of portal.
 
 This is an interface-panel-led tool model, not a generic workbench page model.
+
+### CTS-GIS Tool-Local State
+
+- `CTS-GIS` remains reducer-owned only at the shell level. The shared shell focus stack stays:
+  - `sandbox`
+  - `file`
+  - `datum`
+  - `object`
+- CTS-GIS-local structural navigation does not add a new shell depth below `object`.
+- The canonical CTS-GIS request body may carry `tool_state`:
+  - `tool_state.nimm_directive`
+  - `tool_state.aitas.attention_node_id`
+  - `tool_state.aitas.intention_rule_id`
+  - `tool_state.aitas.time_directive`
+  - `tool_state.aitas.archetype_family_id`
+  - `tool_state.source.attention_document_id`
+  - `tool_state.selection.selected_row_address`
+  - `tool_state.selection.selected_feature_id`
+- Legacy compatibility inputs remain accepted during the compatibility phase:
+  - `mediation_state.attention_node_id`
+  - `mediation_state.intention_token`
+  - top-level `selected_row_address`
+  - top-level `selected_feature_id`
+
+### CTS-GIS NIMM/AITAS Crosswalk
+
+- Shared shell AITAS stays minimal and unchanged.
+- CTS-GIS adds a richer tool-local AITAS layer without widening the shared shell validator.
+- CTS-GIS tool-local labels are:
+  - `Attention` = current tool-local navigation root
+  - `Intention` = current tool-local projection rule
+  - `Time` = tool-local temporal directive
+  - `Archetype` = tool-local structure-family directive
+- CTS-GIS uses `nimm_directive` as a tool-local directive label inside the request/runtime payload. This is additive tool runtime state, not a widened shared shell directive contract.
+
+### CTS-GIS Interface Body
+
+- The dominant `tool_mediation_panel` mounts one CTS-GIS-local interface body.
+- The CTS-GIS-local section titles are:
+  - `Diktataograph`
+  - `Garland`
+- `Diktataograph` is the structural navigation section. It projects the current SAMRAS-defined address space and may overlay correlated names through the ASCII lens.
+- `Garland` is the correlated profile section. It projects the current node’s profile and spatial evidence with respect to the supporting source file, preferably through the GeoJSON lens or equivalent runtime cache.
+- These are not separate mediation operations. They are two CTS-GIS-local projections of one active mediation posture.
+- In narrow posture, the same CTS-GIS-local sections fall back to a vertical stack with a compact CTS-GIS context strip above them.
+
+### CTS-GIS Evidence Precedence
+
+- Tool governance file: `private/utilities/tools/cts-gis/spec.json`
+- Tool anchor file: `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
+- Structural seed: registrar payload or payload cache
+- Label evidence: supporting administrative payload cache through the ASCII lens
+- Spatial evidence: GeoJSON lens or equivalent cache derived from payload/payload-cache material
+- Legacy `maps` paths remain loadable as compatibility aliases, but `CTS-GIS` / `cts_gis` / `cts-gis` are the canonical public forms.

@@ -489,6 +489,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 run_portal_cts_gis(
                     payload,
                     data_dir=host_config.data_dir,
+                    private_dir=host_config.private_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )

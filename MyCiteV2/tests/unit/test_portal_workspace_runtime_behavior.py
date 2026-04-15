@@ -122,6 +122,17 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             data_dir=None,
         )
         self.assertFalse(bundle["workbench"]["visible"])
+        self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["attention_node_id"], "3-2-3-17-77")
+        self.assertEqual(
+            bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"],
+            "descendants_depth_1_or_2",
+        )
+        self.assertEqual(bundle["surface_payload"]["source_evidence"]["readiness"]["state"], "no_authoritative_cts_gis_documents")
+        self.assertEqual(bundle["inspector"]["interface_body"]["kind"], "cts_gis_interface_body")
+        self.assertEqual(
+            [group["title"] for group in bundle["control_panel"]["groups"][:3]],
+            ["Directive", "AITAS", "Attention"],
+        )
 
         envelope = run_portal_cts_gis(
             {
@@ -135,6 +146,10 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertEqual(envelope["canonical_query"]["file"], "anthology")
         self.assertEqual(envelope["canonical_query"]["verb"], "mediate")
         self.assertEqual(envelope["canonical_url"], "/portal/system/tools/cts-gis?file=anthology&verb=mediate")
+        self.assertEqual(
+            envelope["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"],
+            "descendants_depth_1_or_2",
+        )
 
     def test_aws_tool_runtime_matches_shared_interface_panel_led_posture(self) -> None:
         bundle = build_portal_aws_surface_bundle(
@@ -165,6 +180,113 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertTrue(composition["workbench_collapsed"])
         self.assertFalse(composition["interface_panel_collapsed"])
         self.assertEqual(composition["regions"]["interface_panel"], composition["regions"]["inspector"])
+
+    def test_cts_gis_runtime_normalizes_legacy_mediation_keys_into_tool_state_and_mounts_interface_body(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            (data_dir / "system").mkdir(parents=True, exist_ok=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True, exist_ok=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True, exist_ok=True)
+            (private_dir / "utilities" / "tools" / "cts-gis").mkdir(parents=True, exist_ok=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                '{\n  "1-0-1": [["1-0-1", "~", "0-0-0"], ["anchor-root"]]\n}\n',
+                encoding="utf-8",
+            )
+            (private_dir / "utilities" / "tools" / "cts-gis" / "spec.json").write_text(
+                '{\n  "schema": "mycite.portal.tool_spec.v1",\n  "tool_id": "cts_gis"\n}\n',
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json").write_text(
+                '{\n'
+                '  "datum_addressing_abstraction_space": {\n'
+                '    "0-0-11": [["0-0-11", "~", "0-0-0"], ["json-file-unit"]],\n'
+                '    "1-0-1": [["1-0-1", "~", "0-0-11"], ["sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"]],\n'
+                '    "1-1-2": [["1-1-2", "0-0-5", "123"], ["msn-SAMRAS"]],\n'
+                '    "2-0-2": [["2-0-2", "~", "1-1-2"], ["SAMRAS-space-msn"]],\n'
+                '    "2-1-1": [["2-1-1", "1-1-3", "64"], ["niu-baciloid-256-64"]],\n'
+                '    "3-1-2": [["3-1-2", "2-0-2", "0"], ["SAMRAS-babelette-msn_id"]],\n'
+                '    "3-1-3": [["3-1-3", "2-1-1", "0"], ["title-babelette"]]\n'
+                '  }\n'
+                '}\n',
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json").write_text(
+                '{\n'
+                '  "datum_addressing_abstraction_space": {\n'
+                '    "4-2-1": [["4-2-1", "rf.3-1-2", "3-2-3-17-77", "rf.3-1-3", "01010011011101010110110101101101011010010111010000000000"], ["summit_county"]],\n'
+                '    "4-2-2": [["4-2-2", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", "011000010110101101110010011011110110111000000000"], ["city_of_akron"]]\n'
+                '  }\n'
+                '}\n',
+                encoding="utf-8",
+            )
+            (data_dir / "payloads" / "cache" / "sc.3-2-3-17-77-1-6-4-1-4.registrar.json").write_text(
+                '{\n  "payload_id": "sc.3-2-3-17-77-1-6-4-1-4.registrar",\n  "target_mss_anchor_datum": "5-0-1"\n}\n',
+                encoding="utf-8",
+            )
+            (data_dir / "payloads" / "cache" / "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json").write_text(
+                '{\n  "payload_id": "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative"\n}\n',
+                encoding="utf-8",
+            )
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={
+                    "mediation_state": {
+                        "attention_document_id": "sandbox:maps:sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json",
+                        "attention_node_id": "3-2-3-17-77",
+                        "intention_token": "descendants_depth_1_or_2",
+                    }
+                },
+            )
+
+            self.assertEqual(bundle["surface_payload"]["tool_state"]["source"]["attention_document_id"], "sandbox:cts_gis:sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json")
+            self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["attention_node_id"], "3-2-3-17-77")
+            self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"], "descendants_depth_1_or_2")
+            self.assertEqual(bundle["surface_payload"]["source_evidence"]["readiness"]["state"], "ready")
+            self.assertEqual(bundle["inspector"]["interface_body"]["kind"], "cts_gis_interface_body")
+            self.assertEqual(bundle["inspector"]["interface_body"]["layout"], "dual_section")
+            self.assertEqual(bundle["inspector"]["interface_body"]["narrow_layout"], "context_diktataograph_garland_stack")
+            self.assertIn("Source Evidence", [group["title"] for group in bundle["control_panel"]["groups"]])
+
+            envelope = run_portal_shell_entry(
+                {
+                    "schema": "mycite.v2.portal.shell.request.v1",
+                    "requested_surface_id": "system.tools.cts_gis",
+                    "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                    "tool_state": {
+                        "aitas": {
+                            "attention_node_id": "3-2-3-17-77",
+                            "intention_rule_id": "descendants_depth_1_or_2",
+                        }
+                    },
+                },
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+                data_dir=data_dir,
+                public_dir=None,
+                private_dir=private_dir,
+                audit_storage_file=None,
+                webapps_root=None,
+                tool_exposure_policy=None,
+            )
+            self.assertEqual(
+                envelope["surface_payload"]["tool_state"]["aitas"]["attention_node_id"],
+                "3-2-3-17-77",
+            )
+            self.assertEqual(
+                envelope["shell_composition"]["regions"]["inspector"]["interface_body"]["kind"],
+                "cts_gis_interface_body",
+            )
+            self.assertTrue(envelope["shell_composition"]["workbench_collapsed"])
+            self.assertFalse(envelope["shell_composition"]["interface_panel_collapsed"])
 
     def test_unknown_removed_surface_falls_back_to_system_workspace(self) -> None:
         envelope = run_portal_shell_entry(

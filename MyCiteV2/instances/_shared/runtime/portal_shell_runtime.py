@@ -574,6 +574,7 @@ def _tool_bundle_for_surface(
     surface_id: str,
     portal_scope: PortalScope,
     shell_state: PortalShellState | None,
+    request_payload: dict[str, Any] | None,
     surface_query: dict[str, str] | None,
     data_dir: str | Path | None,
     private_dir: str | Path | None,
@@ -598,6 +599,7 @@ def _tool_bundle_for_surface(
             private_dir=private_dir,
             tool_exposure_policy=tool_exposure_policy,
             tool_rows=tool_rows,
+            request_payload=request_payload,
         )
     if surface_id == FND_EBI_TOOL_SURFACE_ID:
         return build_portal_fnd_ebi_surface_bundle(
@@ -616,6 +618,7 @@ def _bundle_for_surface(
     selection_surface_id: str,
     portal_scope: PortalScope,
     shell_state: PortalShellState | None,
+    request_payload: dict[str, Any] | None,
     surface_query: dict[str, str] | None,
     portal_domain: str,
     data_dir: str | Path | None,
@@ -673,6 +676,7 @@ def _bundle_for_surface(
             surface_id=selection_surface_id,
             portal_scope=portal_scope,
             shell_state=canonical_state,
+            request_payload=request_payload,
             surface_query=surface_query,
             data_dir=data_dir,
             private_dir=private_dir,
@@ -760,6 +764,7 @@ def run_portal_shell_entry(
         selection_surface_id=selection.active_surface_id,
         portal_scope=portal_scope,
         shell_state=selection.shell_state,
+        request_payload=request_payload,
         surface_query=normalized_request.surface_query,
         portal_domain=portal_domain,
         data_dir=data_dir,

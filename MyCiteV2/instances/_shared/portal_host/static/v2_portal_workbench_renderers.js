@@ -172,6 +172,35 @@
         return;
       }
       if (surfacePayload.kind === "tool_secondary_evidence") {
+        if (surfacePayload.tool_id === "cts_gis") {
+          var sourceEvidence = surfacePayload.source_evidence || {};
+          var readiness = sourceEvidence.readiness || {};
+          target.innerHTML =
+            '<section class="v2-card"><h3>' +
+            escapeHtml(region.title || "CTS-GIS Evidence") +
+            "</h3><p>" +
+            escapeHtml(region.subtitle || "Secondary evidence remains workbench-only.") +
+            '</p><dl class="v2-surface-dl">' +
+            "<dt>Readiness</dt><dd><strong>" +
+            escapeHtml(readiness.state || "pending") +
+            "</strong><br />" +
+            escapeHtml(readiness.message || "") +
+            "</dd>" +
+            "<dt>Tool spec</dt><dd><strong>" +
+            escapeHtml((sourceEvidence.tool_spec && sourceEvidence.tool_spec.file) || "spec.json") +
+            "</strong></dd>" +
+            "<dt>Tool anchor</dt><dd><strong>" +
+            escapeHtml((sourceEvidence.tool_anchor && sourceEvidence.tool_anchor.file) || "tool.<msn>.cts-gis.json") +
+            "</strong></dd>" +
+            "<dt>Registrar payload</dt><dd><strong>" +
+            escapeHtml((sourceEvidence.registrar_payload && sourceEvidence.registrar_payload.file) || "registrar.json") +
+            "</strong></dd>" +
+            "<dt>Administrative source</dt><dd><strong>" +
+            escapeHtml((sourceEvidence.administrative_source && sourceEvidence.administrative_source.document_name) || "—") +
+            "</strong></dd>" +
+            "</dl></section>";
+          return;
+        }
         target.innerHTML =
           '<section class="v2-card"><h3>' +
           escapeHtml(region.title || "Supporting Evidence") +

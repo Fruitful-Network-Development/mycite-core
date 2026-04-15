@@ -713,7 +713,7 @@ def _tool_root_slug_for_surface(surface_id: str) -> str:
     if surface_id == FND_EBI_TOOL_SURFACE_ID:
         return "fnd-ebi"
     if surface_id == CTS_GIS_TOOL_SURFACE_ID:
-        return "maps"
+        return "cts-gis"
     return ""
 
 
@@ -881,7 +881,17 @@ def build_tool_control_panel(
     del data_dir, public_dir, active_document, selected_datum, selected_object, tool_rows
     root = _path_or_none(private_dir)
     tool_slug = _tool_root_slug_for_surface(surface_id)
-    tool_root = None if root is None or not tool_slug else root / "utilities" / "tools" / tool_slug
+    tool_root = None
+    if root is not None and tool_slug:
+        candidate_roots = [root / "utilities" / "tools" / tool_slug]
+        if surface_id == CTS_GIS_TOOL_SURFACE_ID:
+            candidate_roots.append(root / "utilities" / "tools" / "maps")
+        for candidate in candidate_roots:
+            if candidate.exists():
+                tool_root = candidate
+                break
+        if tool_root is None:
+            tool_root = candidate_roots[0]
     collection_file = ""
     member_files: list[str] = []
     if tool_root is not None and tool_root.exists():
