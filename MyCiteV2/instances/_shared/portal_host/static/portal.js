@@ -212,6 +212,38 @@
       return (shell.getAttribute("data-shell-composition") || "").trim().toLowerCase() === "tool" ? "tool" : "system";
     }
 
+    function currentRouteKey() {
+      return `${window.location.pathname || ""}${window.location.search || ""}`;
+    }
+
+    function toolPanelLockIsEnabled() {
+      return shell.getAttribute("data-tool-panel-lock") === "true";
+    }
+
+    function setToolPanelLock(enabled, options) {
+      const opts = options || {};
+      const next = currentShellComposition() === "tool" && enabled === true;
+      shell.setAttribute("data-tool-panel-lock", next ? "true" : "false");
+      if (next) {
+        shell.setAttribute("data-tool-panel-lock-route", opts.routeKey || currentRouteKey());
+      } else {
+        shell.removeAttribute("data-tool-panel-lock-route");
+      }
+      shell.classList.toggle("ide-shell--tool-panel-lock", next);
+    }
+
+    function syncToolPanelLockScope() {
+      if (!toolPanelLockIsEnabled()) return;
+      if (currentShellComposition() !== "tool") {
+        setToolPanelLock(false);
+        return;
+      }
+      const lockRoute = shell.getAttribute("data-tool-panel-lock-route") || "";
+      if (lockRoute && lockRoute !== currentRouteKey()) {
+        setToolPanelLock(false);
+      }
+    }
+
     function currentLayoutPolicy() {
       if (hasSystemWorkbench()) {
         return {
@@ -345,26 +377,36 @@
     }
 
     function syncShellToggleButtons() {
+      syncToolPanelLockScope();
+      const composition = currentShellComposition();
+      const toolLock = composition === "tool" && toolPanelLockIsEnabled();
       qsa("[data-shell-toggle]", shell).forEach(button => {
         const target = button.getAttribute("data-shell-toggle") || "";
         const baseTitle = button.getAttribute("data-shell-title") || button.getAttribute("aria-label") || "";
         let isOpen = false;
-        let disabled = false;
         let title = baseTitle;
         if (target === "control-panel") {
           isOpen = shell.getAttribute("data-control-panel-collapsed") !== "true";
         } else if (target === "workbench") {
           isOpen = workbenchIsOpen();
-          disabled = isOpen && !canHideWorkbench();
-          if (disabled) title = "Workbench stays open until Interface Panel detail is available.";
+          if (composition === "tool") {
+            title = toolLock
+              ? "Workbench. Tool lock enabled: Workbench and Interface Panel can stay visible together. Double-click to unlock."
+              : "Workbench. Tool default: single-click switches to Workbench-only. Double-click to lock co-visible mode.";
+          }
         } else if (target === "interface-panel" || target === "inspector") {
           isOpen = interfacePanelIsOpen();
-          disabled = isOpen && !canHideInterfacePanel();
-          if (disabled) title = "Interface Panel stays open while Workbench is hidden.";
+          if (composition === "tool") {
+            title = toolLock
+              ? "Interface Panel. Tool lock enabled: Workbench and Interface Panel can stay visible together. Double-click to unlock."
+              : "Interface Panel. Tool default: single-click switches to Interface Panel-only. Double-click to lock co-visible mode.";
+          }
         }
+        const lockable = button.getAttribute("data-shell-lockable") === "tool-panel";
         button.classList.toggle("is-active", isOpen);
+        button.classList.toggle("is-locked", lockable && toolLock);
         button.setAttribute("aria-pressed", isOpen ? "true" : "false");
-        button.disabled = !!disabled;
+        button.disabled = false;
         if (title) button.setAttribute("title", title);
         else button.removeAttribute("title");
       });
@@ -398,6 +440,23 @@
 
     function setWorkbenchOpen(open, persist) {
       let isOpen = !!open;
+      const toolExclusiveMode = currentShellComposition() === "tool" && !toolPanelLockIsEnabled();
+      if (toolExclusiveMode) {
+        if (isOpen) {
+          applyWorkbenchVisibility(true);
+          applyInterfacePanelVisibility(false);
+        } else {
+          applyWorkbenchVisibility(false);
+          applyInterfacePanelVisibility(true);
+        }
+        syncShellToggleButtons();
+        if (persist) {
+          try { window.localStorage.setItem(WORKBENCH_OPEN_KEY, isOpen ? "1" : "0"); } catch (_) {}
+          try { window.localStorage.setItem(INTERFACE_PANEL_OPEN_KEY, isOpen ? "0" : "1"); } catch (_) {}
+        }
+        rebalanceWorkbench();
+        return isOpen;
+      }
       if (!isOpen && !canHideWorkbench()) {
         isOpen = true;
       }
@@ -412,6 +471,23 @@
 
     function setInterfacePanelOpen(open, persist) {
       let isOpen = !!open;
+      const toolExclusiveMode = currentShellComposition() === "tool" && !toolPanelLockIsEnabled();
+      if (toolExclusiveMode) {
+        if (isOpen) {
+          applyInterfacePanelVisibility(true);
+          applyWorkbenchVisibility(false);
+        } else {
+          applyInterfacePanelVisibility(false);
+          applyWorkbenchVisibility(true);
+        }
+        syncShellToggleButtons();
+        if (persist) {
+          try { window.localStorage.setItem(INTERFACE_PANEL_OPEN_KEY, isOpen ? "1" : "0"); } catch (_) {}
+          try { window.localStorage.setItem(WORKBENCH_OPEN_KEY, isOpen ? "0" : "1"); } catch (_) {}
+        }
+        rebalanceWorkbench();
+        return isOpen;
+      }
       if (!isOpen && !canHideInterfacePanel()) {
         isOpen = true;
       }
@@ -426,10 +502,11 @@
 
     function applyShellPostureFromDom(options) {
       const opts = options || {};
+      const composition = currentShellComposition();
       const controlPanelOpen = shell.getAttribute("data-control-panel-collapsed") !== "true";
       let workbenchOpen = shell.getAttribute("data-workbench-collapsed") !== "true";
       let interfacePanelOpen = interfacePanelIsOpen();
-      if (opts.useStoredWorkbenchPreference !== false) {
+      if (opts.useStoredWorkbenchPreference !== false && composition !== "tool") {
         const storedWorkbenchOpen = getStoredValue(WORKBENCH_OPEN_KEY);
         if (storedWorkbenchOpen === "1") {
           workbenchOpen = true;
@@ -443,6 +520,11 @@
       applyControlPanelVisibility(controlPanelOpen);
       applyWorkbenchVisibility(workbenchOpen);
       applyInterfacePanelVisibility(interfacePanelOpen);
+      if (currentShellComposition() !== "tool") {
+        setToolPanelLock(false);
+      } else if (!shell.getAttribute("data-tool-panel-lock")) {
+        setToolPanelLock(false, { routeKey: currentRouteKey() });
+      }
       syncShellToggleButtons();
       rebalanceWorkbench();
     }
@@ -450,6 +532,11 @@
     function setShellComposition(mode) {
       const composition = String(mode || "").trim().toLowerCase() === "tool" ? "tool" : "system";
       shell.setAttribute("data-shell-composition", composition);
+      if (composition !== "tool") {
+        setToolPanelLock(false);
+      } else {
+        syncToolPanelLockScope();
+      }
       if (!shell.getAttribute("data-foreground-shell-region")) {
         shell.setAttribute("data-foreground-shell-region", "center-workbench");
       }
@@ -530,28 +617,72 @@
       });
     });
 
+    function dispatchShellToggleRequest(target) {
+      if (target === "control-panel") {
+        document.dispatchEvent(new CustomEvent("mycite:v2:control-panel-toggle-request"));
+        return;
+      }
+      if (target === "workbench") {
+        document.dispatchEvent(new CustomEvent("mycite:v2:workbench-toggle-request"));
+        return;
+      }
+      document.dispatchEvent(new CustomEvent("mycite:v2:interface-panel-toggle-request"));
+    }
+
+    function toggleShellRegionLocally(target) {
+      if (target === "control-panel") {
+        setControlPanelOpen(shell.getAttribute("data-control-panel-collapsed") === "true", true);
+        return;
+      }
+      if (target === "workbench") {
+        setWorkbenchOpen(shell.getAttribute("data-workbench-collapsed") === "true", true);
+        return;
+      }
+      setInterfacePanelOpen(!interfacePanelIsOpen(), true);
+    }
+
     qsa("[data-shell-toggle]", shell).forEach(button => {
+      const target = button.getAttribute("data-shell-toggle") || "";
       button.addEventListener("click", () => {
-        const target = button.getAttribute("data-shell-toggle") || "";
+        const toolLockable = target === "workbench" || target === "interface-panel" || target === "inspector";
+        if (currentShellComposition() === "tool" && toolLockable) {
+          if (button.__myciteToggleTimer) {
+            clearTimeout(button.__myciteToggleTimer);
+          }
+          button.__myciteToggleTimer = window.setTimeout(() => {
+            button.__myciteToggleTimer = 0;
+            if (shellDriverV2) {
+              dispatchShellToggleRequest(target);
+              return;
+            }
+            toggleShellRegionLocally(target);
+          }, 220);
+          return;
+        }
         if (shellDriverV2) {
-          let eventName = "";
-          if (target === "control-panel") eventName = "mycite:v2:control-panel-toggle-request";
-          else if (target === "workbench") eventName = "mycite:v2:workbench-toggle-request";
-          else eventName = "mycite:v2:interface-panel-toggle-request";
-          document.dispatchEvent(
-            new CustomEvent(eventName)
-          );
+          dispatchShellToggleRequest(target);
           return;
         }
-        if (target === "control-panel") {
-          setControlPanelOpen(shell.getAttribute("data-control-panel-collapsed") === "true", true);
-          return;
+        toggleShellRegionLocally(target);
+      });
+
+      button.addEventListener("dblclick", event => {
+        const lockable = target === "workbench" || target === "interface-panel" || target === "inspector";
+        if (currentShellComposition() !== "tool" || !lockable) return;
+        event.preventDefault();
+        if (button.__myciteToggleTimer) {
+          clearTimeout(button.__myciteToggleTimer);
+          button.__myciteToggleTimer = 0;
         }
-        if (target === "workbench") {
-          setWorkbenchOpen(shell.getAttribute("data-workbench-collapsed") === "true", true);
-          return;
+        const lockEnabled = !toolPanelLockIsEnabled();
+        setToolPanelLock(lockEnabled, { routeKey: currentRouteKey() });
+        if (!lockEnabled) {
+          if (target === "workbench") setWorkbenchOpen(true, true);
+          else setInterfacePanelOpen(true, true);
+        } else {
+          syncShellToggleButtons();
+          rebalanceWorkbench();
         }
-        setInterfacePanelOpen(!interfacePanelIsOpen(), true);
       });
     });
 

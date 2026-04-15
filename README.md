@@ -42,4 +42,5 @@ documentation tree.
 - [`docs/contracts/portal_shell_contract.md`](docs/contracts/portal_shell_contract.md)
 - [`docs/contracts/route_model.md`](docs/contracts/route_model.md)
 - [`docs/contracts/surface_catalog.md`](docs/contracts/surface_catalog.md)
+- [`docs/contracts/portal_vocabulary_glossary.md`](docs/contracts/portal_vocabulary_glossary.md)
 - [`docs/plans/one_shell_portal_refactor.md`](docs/plans/one_shell_portal_refactor.md)
