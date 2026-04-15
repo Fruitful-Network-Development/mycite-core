@@ -42,7 +42,7 @@ Reducer-owned canonical query rules:
 - sandbox-management view projects `file=sandbox&verb=navigate`
 - reducer-owned tool pages reuse the same query keys, but runtime remains the source of truth
 
-Within `file=anthology`, the workbench may render layered datum-table groupings and a selected-datum inspector lens, but those are projections of the same reducer-owned SYSTEM state.
+Within `file=anthology`, the workbench may render layered datum-table groupings and a selected-datum detail lens, but those are projections of the same reducer-owned SYSTEM state.
 
 Runtime returns the canonical route and canonical query projection in every reducer-owned envelope. The browser updates history only from that runtime-returned canonical URL.
 
@@ -74,6 +74,6 @@ NETWORK root canonical query rules:
 - fresh `NETWORK` entry projects `view=system_logs`
 - `contract=<contract_id>` narrows the same workbench to contract correspondence
 - `type=<event_type_id>` narrows the same workbench to one event type
-- `record=<datum_address>` focuses one log row in the read-only inspector
+- `record=<datum_address>` focuses one log row in the read-only Interface Panel detail view
 
 `NETWORK` is not a tool and not a sandbox. It has no canonical Messages, Hosted, Profile, or Contracts child-tab route model in V2.

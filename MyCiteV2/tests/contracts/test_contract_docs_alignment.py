@@ -42,11 +42,21 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("top menubar is the only shell header", shell_contract.lower())
         self.assertIn("control panel", shell_contract.lower())
         self.assertIn("interface panel", shell_contract.lower())
+        self.assertIn("ide-shell", shell_contract)
+        self.assertIn("ide-menubar", shell_contract)
+        self.assertIn("ide-body", shell_contract)
+        self.assertIn("activity bar", shell_contract.lower())
+        self.assertIn("workbench", shell_contract.lower())
         self.assertIn("shell asset manifest", shell_contract.lower())
         self.assertIn("selected-record focus", shell_contract.lower())
         self.assertIn("section-led", shell_contract.lower())
         self.assertIn("AWS-CSM", shell_contract)
         self.assertIn("authenticated peripheral package", shell_contract.lower())
+        self.assertIn("interface_panel_collapsed", shell_contract)
+        self.assertIn("workbench_collapsed", shell_contract)
+        self.assertIn("regions.interface_panel", shell_contract)
+        self.assertIn("compatibility alias", shell_contract.lower())
+        self.assertNotIn("inspector lens", shell_contract.lower())
         self.assertNotIn("stacked focus panel", shell_contract.lower())
         self.assertNotIn("trusted" + "_tenant", shell_contract)
         self.assertNotIn("admin" + " shell", shell_contract.lower())
@@ -74,9 +84,13 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("section-led", surface_catalog.lower())
         self.assertIn("control panel", surface_catalog.lower())
         self.assertIn("collapsed by default", surface_catalog.lower())
+        self.assertIn("detail view", surface_catalog.lower())
+        self.assertNotIn("read-only inspector", surface_catalog.lower())
 
         self.assertIn("portal-instance system-log workbench", readme)
         self.assertIn("system_log.json", readme)
+        self.assertIn("activity bar", readme.lower())
+        self.assertIn("interface panel", readme.lower())
 
     def test_surface_catalog_describes_one_aws_csm_tool(self) -> None:
         route_model = (REPO_ROOT / "docs" / "contracts" / "route_model.md").read_text(encoding="utf-8")
@@ -92,6 +106,15 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertNotIn("/portal/system/tools/aws-csm-sandbox", route_model)
         self.assertNotIn("/portal/system/tools/aws-csm-onboarding", route_model)
         self.assertIn("/portal/system/tools/aws-csm", docs_readme)
+        self.assertIn("interface-panel-led", surface_catalog)
+        self.assertIn("hidden by default", surface_catalog)
+        self.assertIn("secondary workbench content", surface_catalog.lower())
+
+    def test_route_model_uses_detail_lens_and_interface_panel_terms(self) -> None:
+        route_model = (REPO_ROOT / "docs" / "contracts" / "route_model.md").read_text(encoding="utf-8")
+        self.assertIn("detail lens", route_model.lower())
+        self.assertIn("Interface Panel detail view", route_model)
+        self.assertNotIn("inspector lens", route_model.lower())
 
 
 if __name__ == "__main__":

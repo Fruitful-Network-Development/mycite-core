@@ -1402,6 +1402,12 @@ def build_shell_composition_payload(
         if interface_open
         else (_as_text(inspector_region.get("layout_mode")) or "sidebar")
     )
+    workbench_visible = workbench_region.get("visible", True) is not False
+    inspector_collapsed = not bool(inspector_region["visible"])
+    workbench_collapsed = not bool(workbench_visible)
+    # `inspector` remains the legacy compatibility alias for the public
+    # Interface Panel contract during this normalization pass.
+    interface_panel_region = dict(inspector_region)
     composition = {
         "schema": PORTAL_SHELL_COMPOSITION_SCHEMA,
         "composition_mode": shell_composition_mode_for_surface(active_surface_id),
@@ -1411,10 +1417,12 @@ def build_shell_composition_payload(
         "foreground_shell_region": foreground_region_for_surface(
             active_surface_id,
             shell_state=state,
-            workbench_visible=workbench_region.get("visible", True) is not False,
+            workbench_visible=workbench_visible,
         ),
         "control_panel_collapsed": bool(control_panel_collapsed),
-        "inspector_collapsed": not bool(inspector_region["visible"]),
+        "inspector_collapsed": inspector_collapsed,
+        "interface_panel_collapsed": inspector_collapsed,
+        "workbench_collapsed": workbench_collapsed,
         "portal_instance_id": _as_text(portal_instance_id) or PORTAL_SCOPE_DEFAULT_ID,
         "page_title": _as_text(page_title) or "MyCite",
         "page_subtitle": _as_text(page_subtitle),
@@ -1428,6 +1436,7 @@ def build_shell_composition_payload(
             "control_panel": dict(control_panel or {}),
             "workbench": workbench_region,
             "inspector": inspector_region,
+            "interface_panel": interface_panel_region,
         },
     }
     apply_surface_posture_to_composition(composition)

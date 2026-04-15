@@ -21,7 +21,7 @@ The shell state is reducer-owned only for:
 
 `/portal/network` and `/portal/utilities*` stay in the same host shell, but they do not participate in focus-path reduction.
 
-Non-reducer roots may still project canonical query state when the host needs a stable read-only workbench lens. `NETWORK` uses raw `surface_query` projection keys for this purpose, while runtime remains the source of truth.
+Non-reducer roots may still project canonical query state when the host needs a stable read-only detail lens inside the workbench. `NETWORK` uses raw `surface_query` projection keys for this purpose, while runtime remains the source of truth.
 
 ## Ordered Focus Stack
 
@@ -55,7 +55,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - Its default active file is the system sandbox anchor file, `anthology.json`.
 - The anchor file is rendered as a layered datum table grouped by `layer` and `value_group`.
 - Datum rows carry structural coordinates: `layer`, `value_group`, and `iteration`.
-- Selecting a datum opens a read-only inspector lens inside the same workbench.
+- Selecting a datum opens a read-only detail lens inside the same workbench.
 - `activity` and `profile_basics` are workspace file modes under `/portal/system`, not first-class pages.
 - The control panel projects current context first, then the selectable options below the current focus.
 - Canonical context rows are file-backed and may include:
@@ -85,7 +85,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
   - contract filters
   - event-type filters
 - The workbench projects a chronological log table sorted by canonical HOPS timestamps.
-- The inspector projects the selected log record and any linked contract summary.
+- The Interface Panel projects the selected log record and any linked contract summary.
 - The interface panel stays collapsed until selected-record focus exists.
 - Canonical query keys for the root are:
   - `view`
@@ -107,15 +107,29 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 
 ## Shell Chrome
 
+- The top-level shell is `ide-shell`.
+- `ide-shell` is divided into `ide-menubar` and `ide-body`.
 - The top menubar is the only shell header.
 - There is no second workbench pagehead.
+- `ide-body` is the peer-region window for shell chrome.
+- The peer shell regions inside `ide-body` are the `Activity Bar`, `Control Panel`, `Workbench`, and `Interface Panel`.
+- Only the `Control Panel` and `Interface Panel` have explicit splitters and persisted width state.
 - The activity bar is icon-only.
 - The left rail is the `Control Panel`.
+- The center region is the `Workbench`.
 - The right rail is the `Interface Panel`.
 - The only persistent theme selector lives in the menubar.
 - Surface labels are exposed through hover titles and accessibility labels, not persistent bar text.
 - The control panel is the canonical textual navigation surface for current context and lower-focus selections.
 - Shell static assets are versioned by `portal_build_id` through one embedded shell asset manifest.
+
+### Shell Composition Compatibility
+
+- `shell_composition.inspector_collapsed` remains valid as the compatibility alias for the public `Interface Panel`.
+- `shell_composition.interface_panel_collapsed` mirrors `inspector_collapsed`.
+- `shell_composition.workbench_collapsed` reports whether the workbench is currently hidden.
+- `shell_composition.regions.inspector` remains valid during the compatibility phase.
+- `shell_composition.regions.interface_panel` mirrors `regions.inspector`.
 
 ## Tool Contract
 
@@ -131,6 +145,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - Every tool registry entry defaults to `interface_panel_primary`.
 - Every tool composition defaults to `regions.workbench.visible=false`.
 - Secondary-evidence workbench content is explicit opt-in per tool runtime.
+- Tool surfaces may project both the `Workbench` and the `Interface Panel` at the same time when secondary evidence is explicitly shown; enabling the workbench does not automatically close the Interface Panel.
 - A service tool may remain visible while `operational=false` when an external integration or required capability is missing.
 - Service-tool posture comes from peripheral and integration availability, not from portal identity or portal "types".
 - All tools attach to the same interface surface. Service-tool behavior is distinguished by whether the tool can employ the portal's authenticated peripheral package, not by a separate class of portal.

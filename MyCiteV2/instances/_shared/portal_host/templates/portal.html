@@ -51,7 +51,9 @@
     data-shell-composition="system"
     data-foreground-shell-region="center-workbench"
     data-control-panel-collapsed="false"
+    data-workbench-collapsed="false"
     data-inspector-collapsed="true"
+    data-interface-panel-collapsed="true"
   >
     <header class="ide-menubar" aria-label="Menu bar">
       <nav class="ide-menubar__menu" aria-label="Application menu">
@@ -74,9 +76,18 @@
             type="button"
             class="ide-sessionAction ide-sessionAction--button"
             data-shell-toggle="control-panel"
+            data-shell-title="Control Panel"
             aria-label="Toggle Control Panel"
             title="Control Panel"
           >Control Panel</button>
+          <button
+            type="button"
+            class="ide-sessionAction ide-sessionAction--button"
+            data-shell-toggle="workbench"
+            data-shell-title="Workbench"
+            aria-label="Toggle Workbench"
+            title="Workbench"
+          >Workbench</button>
         </div>
         <label class="themebar ide-menubar__theme" aria-label="Portal theme selector">
           <span class="themebar__label">Theme</span>
@@ -85,7 +96,8 @@
         <button
           type="button"
           class="ide-sessionAction ide-sessionAction--button ide-sessionAction--icon"
-          data-shell-toggle="inspector"
+          data-shell-toggle="interface-panel"
+          data-shell-title="Interface Panel"
           aria-label="Toggle Interface Panel"
           title="Interface Panel"
         >
@@ -123,6 +135,7 @@
       <main
         class="ide-workbench"
         data-shell-region="center-workbench"
+        data-shell-region-alias="workbench"
         data-active-service="system"
         data-foreground-visible="true"
         aria-hidden="false"

@@ -25,6 +25,7 @@ documentation tree.
 - canonical AWS service tool: `/portal/system/tools/aws-csm`
 - `AWS-CSM` is one `SYSTEM` child service tool with a unified domain gallery, user-email gallery, onboarding section, and newsletter section
 - service-tool posture comes from required capabilities and peripheral employment, not from portal identity or portal types
+- shell chrome is one `ide-shell` split into `ide-menubar` and `ide-body`, with `Activity Bar`, `Control Panel`, `Workbench`, and `Interface Panel` as peer regions
 - utilities/configuration pages: `/portal/utilities/*`
 
 ## Key Entry Points

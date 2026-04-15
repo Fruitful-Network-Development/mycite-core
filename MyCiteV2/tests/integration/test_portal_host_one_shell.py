@@ -217,7 +217,9 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(system_html.count("data-theme-selector"), 1)
             self.assertNotIn("pagehead--withTools", system_html)
             self.assertIn("Toggle Control Panel", system_html)
+            self.assertIn("Toggle Workbench", system_html)
             self.assertIn("Toggle Interface Panel", system_html)
+            self.assertIn('data-workbench-collapsed="false"', system_html)
             self.assertIn('id="v2-shell-asset-manifest"', system_html)
             for asset in (
                 [health_payload["shell_asset_manifest"]["styles"]["portal_css"]]
@@ -245,6 +247,12 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(payload["canonical_query"]["file"], "anthology")
             self.assertEqual(payload["shell_composition"]["regions"]["control_panel"]["kind"], "focus_selection_panel")
             self.assertTrue(payload["shell_composition"]["inspector_collapsed"])
+            self.assertTrue(payload["shell_composition"]["interface_panel_collapsed"])
+            self.assertFalse(payload["shell_composition"]["workbench_collapsed"])
+            self.assertEqual(
+                payload["shell_composition"]["regions"]["interface_panel"],
+                payload["shell_composition"]["regions"]["inspector"],
+            )
             activity_items = payload["shell_composition"]["regions"]["activity_bar"]["items"]
             self.assertNotIn("system.root", [item["item_id"] for item in activity_items])
             aws_items = [item for item in activity_items if item["item_id"] == "system.tools.aws_csm"]
@@ -276,6 +284,8 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(network_payload["surface_payload"]["kind"], "network_system_log_workspace")
             self.assertEqual(network_payload["shell_composition"]["regions"]["control_panel"]["kind"], "focus_selection_panel")
             self.assertTrue(network_payload["shell_composition"]["inspector_collapsed"])
+            self.assertTrue(network_payload["shell_composition"]["interface_panel_collapsed"])
+            self.assertFalse(network_payload["shell_composition"]["workbench_collapsed"])
 
             aws_shell_payload = client.post(
                 "/portal/api/v2/shell",
@@ -296,6 +306,12 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                     {"label": "File", "value": "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"},
                     {"label": "Mediation", "value": "spec.json"},
                 ],
+            )
+            self.assertTrue(aws_shell_payload["shell_composition"]["workbench_collapsed"])
+            self.assertFalse(aws_shell_payload["shell_composition"]["interface_panel_collapsed"])
+            self.assertEqual(
+                aws_shell_payload["shell_composition"]["regions"]["interface_panel"],
+                aws_shell_payload["shell_composition"]["regions"]["inspector"],
             )
 
             tool_response = client.post(

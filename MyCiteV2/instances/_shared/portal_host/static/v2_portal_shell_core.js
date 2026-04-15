@@ -112,17 +112,24 @@
     var inspectorContent = qs("#portalInspectorContent");
     var menubarTitle = qs(".ide-menubar__pageTitle");
     var menubarSub = qs(".ide-menubar__pageSub");
-    var inspectorRegion = (composition.regions && composition.regions.inspector) || {};
+    var inspectorRegion =
+      ((composition.regions && composition.regions.interface_panel) ||
+        (composition.regions && composition.regions.inspector)) ||
+      {};
     var workbenchRegion = (composition.regions && composition.regions.workbench) || {};
-    var workbenchVisible = workbenchRegion.visible !== false;
-    var inspectorVisible = inspectorRegion.visible !== false && !composition.inspector_collapsed;
+    var workbenchVisible = !(composition.workbench_collapsed === true || workbenchRegion.visible === false);
+    var inspectorVisible =
+      inspectorRegion.visible !== false &&
+      !(composition.interface_panel_collapsed === true || composition.inspector_collapsed === true);
     if (!shell) return;
 
     shell.setAttribute("data-active-service", composition.active_service || "system");
     shell.setAttribute("data-shell-composition", composition.composition_mode || "system");
     shell.setAttribute("data-foreground-shell-region", composition.foreground_shell_region || "center-workbench");
     shell.setAttribute("data-control-panel-collapsed", composition.control_panel_collapsed ? "true" : "false");
+    shell.setAttribute("data-workbench-collapsed", workbenchVisible ? "false" : "true");
     shell.setAttribute("data-inspector-collapsed", inspectorVisible ? "false" : "true");
+    shell.setAttribute("data-interface-panel-collapsed", inspectorVisible ? "false" : "true");
 
     if (menubarTitle && composition.page_title) menubarTitle.textContent = composition.page_title;
     if (menubarSub) {
@@ -156,6 +163,12 @@
         (composition.composition_mode || "system") === "tool" ? "tool" : "system"
       );
     }
+    if (window.PortalShell && typeof window.PortalShell.setShellComposition === "function") {
+      window.PortalShell.setShellComposition(composition.composition_mode || "system");
+    }
+    if (window.PortalShell && typeof window.PortalShell.syncFromDom === "function") {
+      window.PortalShell.syncFromDom();
+    }
   }
 
   function buildRendererContext(region, target) {
@@ -182,6 +195,10 @@
     var chromeRenderers = window.PortalShellRegionRenderers || {};
     var workbenchRenderer = window.PortalShellWorkbenchRenderer;
     var inspectorRenderer = window.PortalShellInspectorRenderer;
+    var interfacePanelRegion =
+      ((composition.regions && composition.regions.interface_panel) ||
+        (composition.regions && composition.regions.inspector)) ||
+      {};
     if (typeof chromeRenderers.renderActivityBar !== "function") {
       throw new Error("Activity-bar renderer unavailable.");
     }
@@ -197,7 +214,7 @@
     chromeRenderers.renderActivityBar(buildRendererContext(composition.regions.activity_bar, qs("#v2-activity-nav")));
     chromeRenderers.renderControlPanel(buildRendererContext(composition.regions.control_panel, qs("#portalControlPanel")));
     workbenchRenderer.render(buildRendererContext(composition.regions.workbench, qs("#v2-workbench-body")));
-    inspectorRenderer.render(buildRendererContext(composition.regions.inspector, qs("#v2-inspector-dynamic")));
+    inspectorRenderer.render(buildRendererContext(interfacePanelRegion, qs("#v2-inspector-dynamic")));
   }
 
   function syncHistory(envelope, historyPayload, options) {
@@ -301,52 +318,87 @@
   }
 
   function bindShellChromeEvents() {
-    function setInspectorOpenLocal(isOpen) {
+    function setWorkbenchOpenLocal(isOpen) {
+      if (window.PortalShell && typeof window.PortalShell.setWorkbenchOpen === "function") {
+        window.PortalShell.setWorkbenchOpen(!!isOpen, true);
+        return;
+      }
+      var shell = qs(".ide-shell");
+      var workbench = qs(".ide-workbench");
+      if (!shell || !workbench) return;
+      shell.setAttribute("data-workbench-collapsed", isOpen ? "false" : "true");
+      workbench.setAttribute("data-foreground-visible", isOpen ? "true" : "false");
+      workbench.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      workbench.style.display = isOpen ? "" : "none";
+    }
+
+    function setInterfacePanelOpenLocal(isOpen) {
+      if (window.PortalShell && typeof window.PortalShell.setInterfacePanelOpen === "function") {
+        window.PortalShell.setInterfacePanelOpen(!!isOpen, true);
+        return;
+      }
       var shell = qs(".ide-shell");
       var inspector = qs("#portalInspector");
       if (!shell || !inspector) return;
+      shell.setAttribute("data-interface-panel-collapsed", isOpen ? "false" : "true");
       shell.setAttribute("data-inspector-collapsed", isOpen ? "false" : "true");
       inspector.classList.toggle("is-collapsed", !isOpen);
       inspector.setAttribute("aria-hidden", isOpen ? "false" : "true");
       inspector.style.display = isOpen ? "" : "none";
     }
 
-    document.addEventListener("mycite:v2:inspector-toggle-request", function () {
+    function setControlPanelOpenLocal(isOpen) {
+      if (window.PortalShell && typeof window.PortalShell.setControlPanelOpen === "function") {
+        window.PortalShell.setControlPanelOpen(!!isOpen, true);
+        return;
+      }
+      var shell = qs(".ide-shell");
+      var controlPanel = qs("#portalControlPanel");
+      if (!shell || !controlPanel) return;
+      shell.setAttribute("data-control-panel-collapsed", isOpen ? "false" : "true");
+      controlPanel.classList.toggle("is-collapsed", !isOpen);
+      controlPanel.setAttribute("aria-hidden", isOpen ? "false" : "true");
+    }
+
+    function handleInterfacePanelToggle() {
       var envelope = lastEnvelope;
       if (!envelope || !envelope.reducer_owned) {
-        var workbenchRegion = envelope && envelope.shell_composition && envelope.shell_composition.regions
-          ? envelope.shell_composition.regions.workbench || {}
-          : {};
-        if (workbenchRegion.visible === false) return;
         var shell = qs(".ide-shell");
         if (!shell) return;
-        var isOpenLocal = shell.getAttribute("data-inspector-collapsed") !== "true";
-        setInspectorOpenLocal(!isOpenLocal);
+        var isOpenLocal = shell.getAttribute("data-interface-panel-collapsed") !== "true";
+        setInterfacePanelOpenLocal(!isOpenLocal);
         return;
       }
       var isOpen = envelope.shell_state && envelope.shell_state.chrome && envelope.shell_state.chrome.interface_panel_open;
       dispatchTransition({ kind: isOpen ? "close_interface_panel" : "open_interface_panel" });
-    });
-    document.addEventListener("mycite:v2:inspector-dismiss-request", function () {
+    }
+
+    function handleInterfacePanelDismiss() {
       var envelope = lastEnvelope;
       if (!envelope || !envelope.reducer_owned) {
-        var workbenchRegion = envelope && envelope.shell_composition && envelope.shell_composition.regions
-          ? envelope.shell_composition.regions.workbench || {}
-          : {};
-        if (workbenchRegion.visible === false) return;
-        setInspectorOpenLocal(false);
+        setInterfacePanelOpenLocal(false);
         return;
       }
       dispatchTransition({ kind: "close_interface_panel" });
+    }
+
+    ["mycite:v2:interface-panel-toggle-request", "mycite:v2:inspector-toggle-request"].forEach(function (eventName) {
+      document.addEventListener(eventName, handleInterfacePanelToggle);
+    });
+    ["mycite:v2:interface-panel-dismiss-request", "mycite:v2:inspector-dismiss-request"].forEach(function (eventName) {
+      document.addEventListener(eventName, handleInterfacePanelDismiss);
+    });
+    document.addEventListener("mycite:v2:workbench-toggle-request", function () {
+      var shell = qs(".ide-shell");
+      if (!shell) return;
+      var isOpenLocal = shell.getAttribute("data-workbench-collapsed") !== "true";
+      setWorkbenchOpenLocal(!isOpenLocal);
     });
     document.addEventListener("mycite:v2:control-panel-toggle-request", function () {
       var shell = qs(".ide-shell");
-      var controlPanel = qs("#portalControlPanel");
-      if (!shell || !controlPanel) return;
+      if (!shell) return;
       var collapsed = shell.getAttribute("data-control-panel-collapsed") === "true";
-      shell.setAttribute("data-control-panel-collapsed", collapsed ? "false" : "true");
-      controlPanel.classList.toggle("is-collapsed", !collapsed);
-      controlPanel.setAttribute("aria-hidden", collapsed ? "false" : "true");
+      setControlPanelOpenLocal(collapsed);
     });
   }
 
