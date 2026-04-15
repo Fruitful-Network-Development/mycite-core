@@ -225,7 +225,7 @@ class AwsCsmNewsletterService:
         self._inbound_callback_secret_name = f"aws-cms/newsletter/inbound-capture/{self._tenant_id}"
 
     def _ensure_secret_value(self, *, secret_name: str, secret_kind: str) -> str:
-        seed = self._state_port.legacy_runtime_secret_seed(secret_kind=secret_kind) or secrets.token_urlsafe(32)
+        seed = self._state_port.runtime_secret_seed(secret_kind=secret_kind) or secrets.token_urlsafe(32)
         return self._cloud_port.get_or_create_secret_value(secret_name=secret_name, initial_value=seed)
 
     def _known_domains(self) -> list[str]:

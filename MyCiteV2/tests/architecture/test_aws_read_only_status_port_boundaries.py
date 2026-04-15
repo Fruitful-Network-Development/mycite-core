@@ -26,7 +26,6 @@ FORBIDDEN_TEXT_TOKENS = (
     "update_",
     "manual_send",
     "provision_",
-    "newsletter-admin",
     "shell_state",
 )
 

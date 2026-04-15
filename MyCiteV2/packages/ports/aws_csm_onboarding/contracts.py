@@ -27,7 +27,7 @@ class AwsCsmOnboardingCloudPort(Protocol):
         ...
 
     def gmail_confirmation_evidence_satisfied(self, profile: dict[str, Any]) -> bool:
-        """V1 ``confirm_verified`` parity: fail-closed unless evidence exists."""
+        """Fail closed unless confirmation evidence exists."""
         ...
 
     def describe_profile_readiness(self, profile: dict[str, Any]) -> dict[str, Any]:

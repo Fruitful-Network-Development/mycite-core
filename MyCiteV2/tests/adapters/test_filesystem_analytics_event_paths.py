@@ -31,13 +31,9 @@ class AnalyticsEventPathResolverTests(unittest.TestCase):
             )
             self.assertEqual(resolution.warnings, ())
 
-    def test_warns_when_legacy_root_file_exists_but_stays_canonical(self) -> None:
+    def test_returns_canonical_resolution_without_legacy_metadata(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            legacy = root / "fruitfulnetworkdevelopment.com" / "analytics" / "events"
-            legacy.mkdir(parents=True)
-            (legacy / "2026-04.ndjson").write_text("{}\n", encoding="utf-8")
-
             resolution = AnalyticsEventPathResolver(root).resolve_events_file(
                 domain="fruitfulnetworkdevelopment.com",
                 year_month="2026-04",
@@ -47,7 +43,8 @@ class AnalyticsEventPathResolverTests(unittest.TestCase):
                 resolution.events_file,
                 root / "clients" / "fruitfulnetworkdevelopment.com" / "analytics" / "events" / "2026-04.ndjson",
             )
-            self.assertIn("Legacy root analytics file exists", " ".join(resolution.warnings))
+            self.assertEqual(resolution.warnings, ())
+            self.assertNotIn("legacy_" + "events_file", resolution.to_dict())
 
     def test_appends_payload_only_to_clients_path(self) -> None:
         with TemporaryDirectory() as temp_dir:

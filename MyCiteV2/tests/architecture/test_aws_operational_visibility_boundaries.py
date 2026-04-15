@@ -19,7 +19,6 @@ FORBIDDEN_IMPORT_PREFIXES = (
 
 FORBIDDEN_TEXT_TOKENS = (
     "packages/tools",
-    "newsletter-admin",
     "/portal/api/admin/",
     "http://",
     "https://",

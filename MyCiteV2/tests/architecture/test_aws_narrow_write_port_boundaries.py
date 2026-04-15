@@ -23,7 +23,6 @@ FORBIDDEN_TEXT_TOKENS = (
     "os.path",
     "pathlib",
     "manual_send",
-    "newsletter-admin",
     "secret_access_key",
 )
 

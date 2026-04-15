@@ -115,10 +115,19 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             )
             app = create_app(config)
             client = app.test_client()
+            retired_home_route = "/portal/" + "home"
+            retired_fnd_route = "/portal/" + "fnd"
+            retired_tff_route = "/portal/" + "tff"
 
+            root_response = client.get("/portal", follow_redirects=False)
+            self.assertEqual(root_response.status_code, 302)
+            self.assertEqual(root_response.headers["Location"], "/portal/system")
             self.assertEqual(client.get("/portal/system").status_code, 200)
             self.assertEqual(client.get("/portal/network").status_code, 200)
             self.assertEqual(client.get("/portal/utilities").status_code, 200)
+            self.assertEqual(client.get(retired_home_route).status_code, 404)
+            self.assertEqual(client.get(retired_fnd_route).status_code, 404)
+            self.assertEqual(client.get(retired_tff_route).status_code, 404)
             self.assertEqual(client.get("/portal/system/activity").status_code, 404)
             self.assertEqual(client.get("/portal/system/profile-basics").status_code, 404)
 

@@ -1,18 +1,19 @@
 # mycite-core
 
-Canonical source for MyCiteV1 history, MyCiteV2 implementation, and the
-authoritative V2 documentation tree.
+Canonical source for the live MyCite portal shell and its authoritative
+documentation tree.
 
 ## Runtime Boundaries
 
-- V1 repo code lives under `/srv/repo/mycite-core/MyCiteV1`
 - V2 repo code lives under `/srv/repo/mycite-core/MyCiteV2`
+- preserved deployment snapshots live under `/srv/repo/mycite-core/deployed`
 - Live instance state lives under `/srv/mycite-state/instances/<instance_id>/`
 - Portal runtime is file-backed; there is no application database in the portal core
 
 ## Portal Architecture
 
 - one portal shell
+- canonical public entry: `/portal` -> `/portal/system`
 - one runtime envelope family
 - root surfaces: `SYSTEM`, `NETWORK`, `UTILITIES`
 - `SYSTEM` owns the core datum-file workbench for the system sandbox
@@ -29,6 +30,7 @@ authoritative V2 documentation tree.
 - V2 runtime catalog: `MyCiteV2/instances/_shared/runtime/runtime_platform.py`
 - V2 shell runtime: `MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py`
 - V2 shell contract: `MyCiteV2/packages/state_machine/portal_shell/shell.py`
+- archived snapshot material: `deployed/README.md`
 
 ## Canonical Docs
 

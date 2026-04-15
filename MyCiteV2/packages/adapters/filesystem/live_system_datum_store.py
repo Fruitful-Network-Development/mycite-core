@@ -20,13 +20,6 @@ from MyCiteV2.packages.ports.datum_store import (
     SystemDatumWorkbenchResult,
 )
 
-LEGACY_ROOT_DATUM_FILENAMES = (
-    "anthology.json",
-    "samras-msn.json",
-    "samras-txa.json",
-)
-
-
 def _as_text(value: object) -> str:
     if value is None:
         return ""
@@ -143,8 +136,6 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
         anthology_file = self._data_dir / "system" / "anthology.json"
         system_source_files = sorted((self._data_dir / "system" / "sources").glob("*.json"))
         payload_cache_files = sorted((self._data_dir / "payloads" / "cache").glob("*.json"))
-        legacy_root_files = [self._data_dir / filename for filename in LEGACY_ROOT_DATUM_FILENAMES]
-        present_legacy_root_files = [path for path in legacy_root_files if path.exists()]
 
         documents: list[AuthoritativeDatumDocument] = []
         warnings: list[str] = []
@@ -233,8 +224,6 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
             warnings.append("No canonical system source JSON files were found under data/system/sources.")
         if not payload_cache_files:
             warnings.append("No derived payload cache JSON files were found under data/payloads/cache.")
-        if present_legacy_root_files:
-            warnings.append("Legacy root datum files exist but were ignored by the V2 native datum adapter.")
 
         derived_materialization = "present"
         if not system_source_files and not payload_cache_files:
@@ -252,8 +241,6 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                 "sandbox_source_documents": [str(path) for path in sandbox_source_files],
                 "system_sources": [str(path) for path in system_source_files],
                 "payload_cache": [str(path) for path in payload_cache_files],
-                "legacy_root_candidates": [str(path) for path in legacy_root_files],
-                "ignored_legacy_root_files": [str(path) for path in present_legacy_root_files],
             },
             readiness_status={
                 "authoritative_catalog": authoritative_catalog,
@@ -262,8 +249,6 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                 "system_source_count": len(system_source_files),
                 "payload_cache_count": len(payload_cache_files),
                 "derived_materialization": derived_materialization,
-                "legacy_root_fallback": "blocked",
-                "legacy_root_conflict_count": len(present_legacy_root_files),
             },
             warnings=tuple(warnings),
         )
@@ -295,10 +280,8 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                 "authoritative_catalog": catalog.readiness_status.get("authoritative_catalog"),
                 "sandbox_source_document_count": catalog.readiness_status.get("sandbox_source_document_count"),
                 "derived_materialization": catalog.readiness_status.get("derived_materialization"),
-                "legacy_root_fallback": catalog.readiness_status.get("legacy_root_fallback"),
                 "system_source_count": catalog.readiness_status.get("system_source_count"),
                 "payload_cache_count": catalog.readiness_status.get("payload_cache_count"),
-                "legacy_root_conflict_count": catalog.readiness_status.get("legacy_root_conflict_count"),
             },
             warnings=tuple(catalog.warnings),
         )

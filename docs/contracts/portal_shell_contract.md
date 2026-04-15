@@ -2,6 +2,8 @@
 
 The repository owns one neutral portal shell contract.
 
+Canonical public entry: `/portal` -> `/portal/system`
+
 ## Behavioral Model
 
 - One request schema: `mycite.v2.portal.shell.request.v1`

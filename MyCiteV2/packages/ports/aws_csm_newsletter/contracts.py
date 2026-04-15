@@ -39,7 +39,7 @@ class AwsCsmNewsletterStatePort(Protocol):
     def save_contact_log(self, *, domain: str, payload: dict[str, Any]) -> dict[str, Any]:
         ...
 
-    def legacy_runtime_secret_seed(self, *, secret_kind: str) -> str:
+    def runtime_secret_seed(self, *, secret_kind: str) -> str:
         ...
 
 

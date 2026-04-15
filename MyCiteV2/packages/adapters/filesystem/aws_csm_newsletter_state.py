@@ -54,20 +54,13 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
         self._private_dir = Path(private_dir)
         self._aws_root = self._private_dir / "utilities" / "tools" / "aws-csm"
         self._newsletter_root = self._aws_root / "newsletter"
-        self._legacy_newsletter_root = self._private_dir / "utilities" / "tools" / "newsletter-admin"
+        self._runtime_secrets_path = self._newsletter_root / "runtime_secrets.json"
 
     def list_newsletter_domains(self) -> list[str]:
         domains: set[str] = set()
         if self._newsletter_root.exists():
             for path in sorted(self._newsletter_root.glob("newsletter.*.profile.json")):
                 token = path.name.removeprefix("newsletter.").removesuffix(".profile.json").strip().lower()
-                if token:
-                    domains.add(token)
-        if self._legacy_newsletter_root.exists():
-            for path in sorted(self._legacy_newsletter_root.glob("newsletter-admin.*.json")):
-                if path.name == "runtime_secrets.json":
-                    continue
-                token = path.name.removeprefix("newsletter-admin.").removesuffix(".json").strip().lower()
                 if token:
                     domains.add(token)
         for profile in self._verified_profiles():
@@ -171,12 +164,14 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
         _write_json(self._contacts_path(token), body)
         return body
 
-    def legacy_runtime_secret_seed(self, *, secret_kind: str) -> str:
-        payload = _read_json(self._legacy_newsletter_root / "runtime_secrets.json")
+    def runtime_secret_seed(self, *, secret_kind: str) -> str:
+        payload = _read_json(self._runtime_secrets_path)
         if secret_kind == "signing_secret":
             return _as_text(payload.get("signing_secret"))
         if secret_kind == "dispatch_secret":
             return _as_text(payload.get("dispatch_secret"))
+        if secret_kind == "inbound_secret":
+            return _as_text(payload.get("inbound_secret"))
         return ""
 
     def _profile_path(self, domain: str) -> Path:
@@ -186,29 +181,6 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
     def _contacts_path(self, domain: str) -> Path:
         token = _normalized_domain(domain)
         return self._newsletter_root / f"newsletter.{token}.contacts.json"
-
-    def _legacy_profile_path(self, domain: str) -> Path:
-        token = _normalized_domain(domain)
-        return self._legacy_newsletter_root / f"newsletter-admin.{token}.json"
-
-    def _legacy_contact_paths(self, domain: str) -> list[Path]:
-        token = _normalized_domain(domain)
-        candidates: list[Path] = []
-        legacy_profile = _read_json(self._legacy_profile_path(token))
-        configured = _as_text(legacy_profile.get("contact_log_path"))
-        if configured:
-            candidates.append(Path(configured))
-        candidates.append(Path(f"/srv/webapps/clients/{token}/contacts/{token}-contact_log.json"))
-        candidates.append(Path(f"/srv/webapps/{token}/contact/{token}-contact_log.json"))
-        ordered: list[Path] = []
-        seen: set[str] = set()
-        for candidate in candidates:
-            token_path = str(candidate)
-            if token_path in seen:
-                continue
-            seen.add(token_path)
-            ordered.append(candidate)
-        return ordered
 
     def _bootstrap_profile(
         self,
@@ -222,15 +194,9 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
         inbound_processor_lambda_name: str,
     ) -> dict[str, Any]:
         token = _normalized_domain(domain)
-        legacy = _read_json(self._legacy_profile_path(token))
         verified = self.list_verified_author_profiles(domain=token)
         selected = next(
-            (
-                item
-                for item in verified
-                if _as_text(item.get("profile_id"))
-                == _as_text(legacy.get("selected_author_profile_id") or legacy.get("selected_sender_profile_id"))
-            ),
+            (item for item in verified if _as_text(item.get("profile_id"))),
             None,
         )
         if selected is None and verified:
@@ -242,73 +208,42 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
             "sender_address": f"news@{token}",
             "selected_author_profile_id": _as_text(
                 (selected or {}).get("profile_id")
-                or legacy.get("selected_author_profile_id")
-                or legacy.get("selected_sender_profile_id")
             ),
             "selected_author_address": _optional_email(
                 (selected or {}).get("send_as_email")
-                or legacy.get("selected_author_address")
-                or legacy.get("selected_sender_address")
             ),
             "delivery_mode": "inbound-mail-workflow",
-            "aws_region": _as_text(legacy.get("aws_region")) or "us-east-1",
-            "dispatch_queue_url": _as_text(legacy.get("dispatch_queue_url")),
-            "dispatch_queue_arn": _as_text(legacy.get("dispatch_queue_arn")),
-            "dispatcher_lambda_name": _as_text(legacy.get("dispatcher_lambda_name")) or "newsletter-dispatcher",
-            "inbound_processor_lambda_name": _as_text(legacy.get("inbound_processor_lambda_name")) or inbound_processor_lambda_name,
+            "aws_region": "us-east-1",
+            "dispatch_queue_url": "",
+            "dispatch_queue_arn": "",
+            "dispatcher_lambda_name": "newsletter-dispatcher",
+            "inbound_processor_lambda_name": inbound_processor_lambda_name,
             "callback_url": dispatcher_callback_url,
             "inbound_callback_url": inbound_callback_url,
             "unsubscribe_secret_name": unsubscribe_secret_name,
             "dispatch_callback_secret_name": dispatch_callback_secret_name,
             "inbound_callback_secret_name": inbound_callback_secret_name,
-            "last_inbound_message_id": _as_text(legacy.get("last_inbound_message_id")),
-            "last_inbound_status": _as_text(legacy.get("last_inbound_status")),
-            "last_inbound_checked_at": _as_text(legacy.get("last_inbound_checked_at")),
-            "last_inbound_processed_at": _as_text(legacy.get("last_inbound_processed_at")),
-            "last_inbound_subject": _as_text(legacy.get("last_inbound_subject")),
-            "last_inbound_sender": _as_text(legacy.get("last_inbound_sender")),
-            "last_inbound_recipient": _as_text(legacy.get("last_inbound_recipient")),
-            "last_inbound_error": _as_text(legacy.get("last_inbound_error")),
-            "last_inbound_s3_uri": _as_text(legacy.get("last_inbound_s3_uri")),
-            "last_dispatch_id": _as_text(legacy.get("last_dispatch_id")),
-            "updated_at": _as_text(legacy.get("updated_at")),
+            "last_inbound_message_id": "",
+            "last_inbound_status": "",
+            "last_inbound_checked_at": "",
+            "last_inbound_processed_at": "",
+            "last_inbound_subject": "",
+            "last_inbound_sender": "",
+            "last_inbound_recipient": "",
+            "last_inbound_error": "",
+            "last_inbound_s3_uri": "",
+            "last_dispatch_id": "",
+            "updated_at": "",
         }
 
     def _bootstrap_contact_log(self, *, domain: str) -> dict[str, Any]:
         token = _normalized_domain(domain)
-        payload = {}
-        for candidate in self._legacy_contact_paths(token):
-            payload = _read_json(candidate)
-            if payload:
-                break
-        contacts_by_email: dict[str, dict[str, Any]] = {}
-        for raw in list(payload.get("contacts") or []):
-            if not isinstance(raw, dict):
-                continue
-            email = _optional_email(raw.get("email"))
-            if not email:
-                continue
-            contacts_by_email[email] = {
-                "email": email,
-                "name": _as_text(raw.get("name")),
-                "zip": _as_text(raw.get("zip")),
-                "source": _as_text(raw.get("source")) or "unknown",
-                "subscribed": bool(raw.get("subscribed", True)),
-                "created_at": _as_text(raw.get("created_at")),
-                "subscribed_at": _as_text(raw.get("subscribed_at")),
-                "unsubscribed_at": _as_text(raw.get("unsubscribed_at")),
-                "updated_at": _as_text(raw.get("updated_at")),
-                "last_newsletter_sent_at": _as_text(raw.get("last_newsletter_sent_at")),
-                "send_count": int(raw.get("send_count") or 0),
-                "notes": _as_text(raw.get("notes")),
-            }
-        dispatches = [dict(item) for item in list(payload.get("dispatches") or []) if isinstance(item, dict)]
         return {
             "schema": AWS_CSM_NEWSLETTER_CONTACT_LOG_SCHEMA,
             "domain": token,
-            "contacts": [contacts_by_email[key] for key in sorted(contacts_by_email.keys())],
-            "dispatches": dispatches[-20:],
-            "updated_at": _as_text(payload.get("updated_at")),
+            "contacts": [],
+            "dispatches": [],
+            "updated_at": "",
         }
 
     def _verified_profiles(self) -> list[dict[str, Any]]:

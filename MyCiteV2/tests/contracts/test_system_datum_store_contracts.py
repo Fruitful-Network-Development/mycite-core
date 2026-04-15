@@ -39,7 +39,7 @@ class SystemDatumStoreContractTests(unittest.TestCase):
             tenant_id=request.tenant_id,
             rows=(row,),
             source_files={"anthology": "/tmp/data/system/anthology.json"},
-            materialization_status={"canonical_source": "loaded", "legacy_root_fallback": "blocked"},
+            materialization_status={"canonical_source": "loaded"},
         )
 
         self.assertEqual(request.tenant_id, "fnd")

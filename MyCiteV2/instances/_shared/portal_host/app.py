@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 try:
-    from flask import Flask, abort, jsonify, render_template, request
+    from flask import Flask, abort, jsonify, redirect, render_template, request
     _FLASK_IMPORT_ERROR: ModuleNotFoundError | None = None
 except ModuleNotFoundError as exc:  # pragma: no cover - exercised in dependency-light test environments
     Flask = Any  # type: ignore[misc,assignment]
@@ -16,7 +16,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - exercised in dependency
     def _raise_flask_import_error(*_args: Any, **_kwargs: Any) -> Any:
         raise ModuleNotFoundError("flask is required to run the portal host") from _FLASK_IMPORT_ERROR
 
-    abort = jsonify = render_template = _raise_flask_import_error
+    abort = jsonify = redirect = render_template = _raise_flask_import_error
 
     class _MissingRequest:
         def get_json(self, *args: Any, **kwargs: Any) -> Any:
@@ -317,6 +317,7 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         "portal_build_id": PORTAL_BUILD_ID,
         "portal_instance_id": config.portal_instance_id,
         "root_routes": [
+            "/portal",
             "/portal/system",
             "/portal/network",
             "/portal/utilities",
@@ -346,6 +347,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     def healthz() -> tuple[Any, int]:
         payload = _build_health(host_config)
         return jsonify(payload), 200 if payload["ok"] else 503
+
+    @app.get("/portal")
+    def portal_root() -> Any:
+        return redirect("/portal/system", code=302)
 
     @app.get("/portal/system")
     def portal_system_root() -> str:

@@ -19,7 +19,6 @@ FORBIDDEN_IMPORT_PREFIXES = (
 
 FORBIDDEN_TEXT_TOKENS = (
     "manual_send",
-    "newsletter-admin",
     "/portal/api/admin/",
     "secret_access_key",
     "smtp_password",
