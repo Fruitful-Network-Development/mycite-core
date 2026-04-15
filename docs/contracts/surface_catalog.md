@@ -56,6 +56,28 @@ Workspace file modes under `system.root`:
 - Service-tool posture is determined by required capabilities and available peripheral employment, not by a separate portal type model.
 - `AWS-CSM` is operational only when the active portal can employ the authenticated peripheral package. In the live topology that means FND alone can route those external operations.
 
+## CTS-GIS
+
+- `system.tools.cts_gis`
+
+`CTS-GIS` is one `SYSTEM` child mediation tool surface.
+
+- Its canonical route is `/portal/system/tools/cts-gis`.
+- Its default posture is interface-panel-led.
+- Its workbench is `tool_secondary_evidence` and stays hidden by default until secondary evidence is explicitly shown.
+- Its dominant `Interface Panel` mounts one CTS-GIS-local interface body with two sections:
+  - `Diktataograph`
+  - `Garland`
+- `Diktataograph` is the CTS-GIS structural navigation section.
+- `Garland` is the CTS-GIS correlated profile and spatial projection section.
+- In narrow posture, the CTS-GIS-local body may fall back to a vertical stack with a compact context strip above both sections.
+- CTS-GIS mediates on the selected anchor-file datum and projects correlated source-file evidence into the Interface Panel.
+- CTS-GIS tool-local navigation does not widen the shared shell focus stack. The shell focus remains `sandbox -> file -> datum -> object`.
+- Tool-local state is body-carried through CTS-GIS `tool_state`, not projected through new query keys.
+- The `Control Panel` holds CTS-GIS-local directive, AITAS, and source-evidence controls.
+- The workbench remains diagnostic or raw supporting evidence rather than a duplicate of Garland.
+- Legacy `maps` data remains compatibility-only; `CTS-GIS` is the canonical public name.
+
 ## NETWORK
 
 - `network.root`

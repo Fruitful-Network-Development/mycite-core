@@ -51,6 +51,12 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("selected-record focus", shell_contract.lower())
         self.assertIn("section-led", shell_contract.lower())
         self.assertIn("AWS-CSM", shell_contract)
+        self.assertIn("CTS-GIS", shell_contract)
+        self.assertIn("tool_state", shell_contract)
+        self.assertIn("nimm_directive", shell_contract)
+        self.assertIn("Diktataograph", shell_contract)
+        self.assertIn("Garland", shell_contract)
+        self.assertIn("cts-gis", shell_contract.lower())
         self.assertIn("authenticated peripheral package", shell_contract.lower())
         self.assertIn("interface_panel_collapsed", shell_contract)
         self.assertIn("workbench_collapsed", shell_contract)
@@ -109,12 +115,21 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("interface-panel-led", surface_catalog)
         self.assertIn("hidden by default", surface_catalog)
         self.assertIn("secondary workbench content", surface_catalog.lower())
+        self.assertIn("system.tools.cts_gis", surface_catalog)
+        self.assertIn("/portal/system/tools/cts-gis", route_model)
+        self.assertIn("Diktataograph", surface_catalog)
+        self.assertIn("Garland", surface_catalog)
+        self.assertIn("tool-local state is body-carried", surface_catalog.lower())
 
     def test_route_model_uses_detail_lens_and_interface_panel_terms(self) -> None:
         route_model = (REPO_ROOT / "docs" / "contracts" / "route_model.md").read_text(encoding="utf-8")
         self.assertIn("detail lens", route_model.lower())
         self.assertIn("Interface Panel detail view", route_model)
         self.assertNotIn("inspector lens", route_model.lower())
+        self.assertIn("tool_state", route_model)
+        self.assertIn("nimm_directive", route_model)
+        self.assertIn("Diktataograph", route_model)
+        self.assertIn("Garland", route_model)
 
 
 if __name__ == "__main__":

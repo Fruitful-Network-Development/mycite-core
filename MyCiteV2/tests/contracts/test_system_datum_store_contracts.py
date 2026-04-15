@@ -80,13 +80,13 @@ class SystemDatumStoreContractTests(unittest.TestCase):
             raw=[["4-2-118", "rf.3-1-3", "HERE"], ["summit_county_cities"]],
         )
         document = AuthoritativeDatumDocument(
-            document_id="sandbox:maps:sc.example.json",
+            document_id="sandbox:cts_gis:sc.example.json",
             source_kind="sandbox_source",
             document_name="sc.example.json",
-            relative_path="sandbox/maps/sources/sc.example.json",
-            tool_id="maps",
-            anchor_document_name="tool.maps.json",
-            anchor_document_path="sandbox/maps/tool.maps.json",
+            relative_path="sandbox/cts-gis/sources/sc.example.json",
+            tool_id="cts_gis",
+            anchor_document_name="tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+            anchor_document_path="sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
             anchor_rows=(
                 AuthoritativeDatumDocumentRow(
                     datum_address="3-1-3",
@@ -98,7 +98,7 @@ class SystemDatumStoreContractTests(unittest.TestCase):
         result = AuthoritativeDatumDocumentCatalogResult(
             tenant_id=request.tenant_id,
             documents=(document,),
-            source_files={"sandbox_source_documents": ["/tmp/data/sandbox/maps/sources/sc.example.json"]},
+            source_files={"sandbox_source_documents": ["/tmp/data/sandbox/cts-gis/sources/sc.example.json"]},
             readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
         )
 

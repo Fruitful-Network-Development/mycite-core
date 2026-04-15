@@ -119,7 +119,7 @@ class FilesystemSystemDatumStoreAdapterTests(unittest.TestCase):
             )
             self.assertTrue(payload["ok"])
             self.assertEqual(payload["document_count"], 2)
-            self.assertEqual(sandbox_document["tool_id"], "maps")
+            self.assertEqual(sandbox_document["tool_id"], "cts_gis")
             self.assertEqual(sandbox_document["anchor_document_name"], "tool.maps.json")
             self.assertEqual(sandbox_document["anchor_rows"][1]["datum_address"], "3-1-3")
             self.assertEqual(sandbox_document["rows"][0]["raw"][0][4], "HERE")

@@ -7,7 +7,9 @@ This repository now describes one portal shell only.
 - Canonical shell endpoint: `/portal/api/v2/shell`
 - Canonical tool work pages: `/portal/system/tools/<tool_slug>`
 - Canonical AWS service tool: `/portal/system/tools/aws-csm`
+- Canonical CTS-GIS tool: `/portal/system/tools/cts-gis`
 - `NETWORK` is the read-only portal-instance system-log workbench over `data/system/system_log.json`
 - `UTILITIES` owns configuration, exposure, integrations, and control surfaces
 - The top menubar is the only shell header; `ide-body` is the peer-region window for the `Activity Bar`, `Control Panel`, `Workbench`, and `Interface Panel`
 - Shell static assets are versioned through one embedded shell asset manifest
+- CTS-GIS keeps the shared shell contract unchanged while projecting a CTS-GIS-local Interface Panel body with `Diktataograph` and `Garland`

@@ -13,3 +13,5 @@ Deferred in this phase:
 - `investigate`
 - `mediate`
 - `manipulate`
+
+CTS-GIS uses `nimm_directive` as an additive tool-local runtime label during the compatibility phase. That does not widen the shared shell directive contract; it remains CTS-GIS-local request/runtime state.

@@ -104,6 +104,16 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
 
         self.assertIn('data-workbench-collapsed="true"', portal_css)
         self.assertIn("minmax(0, 1fr)", portal_css)
+        self.assertIn("cts_gis_interface_body", (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8"))
+        self.assertIn("Diktataograph", (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8"))
+        self.assertIn("Garland", (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8"))
+        self.assertIn(".cts-gis-interface__body", portal_css)
 
     def test_active_repo_text_does_not_reference_retired_split_routes(self) -> None:
         forbidden_tokens = (
