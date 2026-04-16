@@ -130,40 +130,344 @@
     );
   }
 
-  function renderNavigationLanes(entries) {
-    if (!entries || !entries.length) {
-      return '<p class="ide-controlpanel__empty">No structure addresses are available.</p>';
-    }
-    var grouped = {};
-    entries.forEach(function (entry) {
-      var depth = Number(entry.depth || 0);
-      var lane = Number.isFinite(depth) && depth > 0 ? depth : 0;
-      if (!grouped[lane]) grouped[lane] = [];
-      grouped[lane].push(entry);
+  function nodeParts(nodeId) {
+    var token = String(nodeId || "");
+    if (!token) return [];
+    return token.split("-").filter(function (part) {
+      return part !== "";
     });
-    var lanes = Object.keys(grouped)
-      .map(function (key) {
-        return Number(key);
-      })
-      .sort(function (a, b) {
-        return a - b;
-      });
+  }
+
+  function sortNodeEntries(entries) {
+    return (entries || []).slice().sort(function (left, right) {
+      var leftDepth = Number(left.depth || nodeParts(left.node_id).length || 0);
+      var rightDepth = Number(right.depth || nodeParts(right.node_id).length || 0);
+      if (leftDepth !== rightDepth) return leftDepth - rightDepth;
+      return String(left.node_id || "").localeCompare(String(right.node_id || ""));
+    });
+  }
+
+  function renderCanvasNodeButton(entry, kind, className) {
+    var buttonClass = className || "cts-gis-entryButton";
     return (
-      '<div class="cts-gis-navField__lanes">' +
-      lanes
-        .map(function (depth) {
+      '<button type="button" class="' +
+      escapeHtml(buttonClass) +
+      (entry.selected ? " is-active" : "") +
+      '" data-cts-gis-entry-kind="' +
+      escapeHtml(kind) +
+      '" data-cts-gis-entry-index="' +
+      String(Number(entry._renderIndex || 0)) +
+      '">' +
+      '<span class="cts-gis-entryButton__title">' +
+      escapeHtml(entry.label || entry.node_id || "Node") +
+      "</span>" +
+      (entry.node_id
+        ? '<span class="cts-gis-entryButton__meta">' + escapeHtml(entry.node_id) + "</span>"
+        : "") +
+      (entry.detail
+        ? '<span class="cts-gis-entryButton__meta">' + escapeHtml(entry.detail) + "</span>"
+        : "") +
+      "</button>"
+    );
+  }
+
+  function groupNavigationByBranch(entries, activeNodeId) {
+    var rootParts = nodeParts(activeNodeId);
+    var rootDepth = rootParts.length;
+    var grouped = {};
+    sortNodeEntries(entries).forEach(function (entry) {
+      var parts = nodeParts(entry.node_id);
+      var branchKey = parts.slice(0, Math.min(parts.length, rootDepth + 1)).join("-");
+      if (!branchKey) branchKey = String(entry.node_id || "");
+      if (!grouped[branchKey]) {
+        grouped[branchKey] = {
+          branchKey: branchKey,
+          entries: [],
+        };
+      }
+      grouped[branchKey].entries.push(entry);
+    });
+    return Object.keys(grouped)
+      .sort(function (left, right) {
+        return left.localeCompare(right);
+      })
+      .map(function (key) {
+        var entriesForKey = sortNodeEntries(grouped[key].entries);
+        var lead = entriesForKey.find(function (entry) {
+          return nodeParts(entry.node_id).length === rootDepth + 1;
+        }) || entriesForKey[0] || {};
+        return {
+          branchKey: key,
+          lead: lead,
+          entries: entriesForKey.filter(function (entry) {
+            return String(entry.node_id || "") !== String((lead || {}).node_id || "");
+          }),
+        };
+      });
+  }
+
+  function renderStructureCanvas(anchoredPathEntries, structureEntries, activeNodeId) {
+    var pathEntries = anchoredPathEntries || [];
+    var nodeEntries = structureEntries || [];
+    var branches = groupNavigationByBranch(nodeEntries, activeNodeId);
+    var activePathEntry =
+      pathEntries.find(function (entry) {
+        return entry.selected;
+      }) ||
+      pathEntries[pathEntries.length - 1] ||
+      nodeEntries.find(function (entry) {
+        return entry.selected;
+      }) || {
+        label: activeNodeId || "Structure root",
+        node_id: activeNodeId || "",
+        detail: "",
+      };
+
+    return (
+      '<div class="cts-gis-structureCanvas">' +
+      '<div class="cts-gis-structureCanvas__pathway">' +
+      (pathEntries.length
+        ? pathEntries
+            .map(function (entry, index) {
+              return (
+                '<div class="cts-gis-canvasColumnWrap">' +
+                '<span class="cts-gis-canvasColumnWrap__step">Layer ' +
+                escapeHtml(String(index + 1)) +
+                "</span>" +
+                '<button type="button" class="cts-gis-canvasColumn' +
+                (entry.selected ? " is-active" : "") +
+                '" style="--cts-gis-column-step:' +
+                escapeHtml(String(index + 1)) +
+                '" data-cts-gis-entry-kind="path" data-cts-gis-entry-index="' +
+                String(Number(entry._renderIndex || 0)) +
+                '">' +
+                '<span class="cts-gis-canvasColumn__label">' +
+                escapeHtml(entry.label || entry.node_id || "Path") +
+                "</span>" +
+                '<span class="cts-gis-canvasColumn__meta">' +
+                escapeHtml(entry.node_id || "") +
+                "</span>" +
+                "</button></div>"
+              );
+            })
+            .join("")
+        : '<p class="ide-controlpanel__empty">No anchored path yet.</p>') +
+      "</div>" +
+      '<section class="cts-gis-structureCanvas__focusCard">' +
+      '<span class="cts-gis-structureCanvas__eyebrow">Navigation Root</span>' +
+      "<strong>" +
+      escapeHtml(activePathEntry.label || activePathEntry.node_id || "Structure root") +
+      "</strong>" +
+      '<span class="cts-gis-structureCanvas__meta">' +
+      escapeHtml(activePathEntry.node_id || "") +
+      "</span>" +
+      (activePathEntry.detail
+        ? '<span class="cts-gis-structureCanvas__meta">' + escapeHtml(activePathEntry.detail) + "</span>"
+        : "") +
+      "</section>" +
+      '<div class="cts-gis-structureCanvas__branches">' +
+      (branches.length
+        ? branches
+            .map(function (branch) {
+              return (
+                '<section class="cts-gis-branchCluster" data-cts-gis-node-group="' +
+                escapeHtml(branch.branchKey) +
+                '">' +
+                '<div class="cts-gis-branchCluster__lead">' +
+                renderCanvasNodeButton(
+                  branch.lead,
+                  "node",
+                  "cts-gis-entryButton cts-gis-entryButton--node cts-gis-entryButton--branchLead"
+                ) +
+                "</div>" +
+                '<div class="cts-gis-branchCluster__entries">' +
+                (branch.entries.length
+                  ? branch.entries
+                      .map(function (entry) {
+                        return renderCanvasNodeButton(
+                          entry,
+                          "node",
+                          "cts-gis-entryButton cts-gis-entryButton--node cts-gis-entryButton--branchLeaf"
+                        );
+                      })
+                      .join("")
+                  : '<p class="ide-controlpanel__empty">No deeper nodes.</p>') +
+                "</div>" +
+                "</section>"
+              );
+            })
+            .join("")
+        : '<p class="ide-controlpanel__empty">No structure addresses are available for this navigation root.</p>') +
+      "</div>" +
+      "</div>"
+    );
+  }
+
+  function collectGeometryPoints(geometry) {
+    var geo = geometry || {};
+    if (geo.type === "Point") {
+      return [geo.coordinates || []];
+    }
+    if (geo.type === "Polygon") {
+      return (geo.coordinates || []).reduce(function (all, ring) {
+        return all.concat(ring || []);
+      }, []);
+    }
+    if (geo.type === "MultiPolygon") {
+      return (geo.coordinates || []).reduce(function (all, polygon) {
+        return all.concat(
+          (polygon || []).reduce(function (memo, ring) {
+            return memo.concat(ring || []);
+          }, [])
+        );
+      }, []);
+    }
+    return [];
+  }
+
+  function normalizeFeatureBounds(bounds, features) {
+    if (bounds && bounds.length === 4) return bounds;
+    var points = [];
+    (features || []).forEach(function (feature) {
+      points = points.concat(collectGeometryPoints((feature || {}).geometry));
+    });
+    if (!points.length) return [-1, -1, 1, 1];
+    var xs = points.map(function (point) {
+      return Number(point[0] || 0);
+    });
+    var ys = points.map(function (point) {
+      return Number(point[1] || 0);
+    });
+    return [
+      Math.min.apply(Math, xs),
+      Math.min.apply(Math, ys),
+      Math.max.apply(Math, xs),
+      Math.max.apply(Math, ys),
+    ];
+  }
+
+  function projectPoint(point, bounds, width, height, pad) {
+    var minX = Number(bounds[0] || 0);
+    var minY = Number(bounds[1] || 0);
+    var maxX = Number(bounds[2] || minX + 1);
+    var maxY = Number(bounds[3] || minY + 1);
+    var safeWidth = Math.max(0.0001, maxX - minX);
+    var safeHeight = Math.max(0.0001, maxY - minY);
+    var usableWidth = width - pad * 2;
+    var usableHeight = height - pad * 2;
+    var x = pad + ((Number(point[0] || 0) - minX) / safeWidth) * usableWidth;
+    var y = height - pad - ((Number(point[1] || 0) - minY) / safeHeight) * usableHeight;
+    return [x, y];
+  }
+
+  function renderFeatureShape(feature, bounds, width, height, pad) {
+    var geometry = (feature || {}).geometry || {};
+    var featureId = escapeHtml(feature.feature_id || "");
+    var className = "cts-gis-mapStage__shape" + (feature.selected ? " is-selected" : "");
+    if (geometry.type === "Point") {
+      var point = projectPoint(geometry.coordinates || [], bounds, width, height, pad);
+      return (
+        '<circle class="' +
+        className +
+        '" data-feature-id="' +
+        featureId +
+        '" cx="' +
+        String(point[0]) +
+        '" cy="' +
+        String(point[1]) +
+        '" r="' +
+        String(feature.selected ? 8 : 5.5) +
+        '"></circle>'
+      );
+    }
+    if (geometry.type === "Polygon") {
+      var ring = ((geometry.coordinates || [])[0] || []).map(function (point) {
+        var projected = projectPoint(point, bounds, width, height, pad);
+        return String(projected[0]) + "," + String(projected[1]);
+      });
+      if (!ring.length) return "";
+      return (
+        '<polygon class="' +
+        className +
+        '" data-feature-id="' +
+        featureId +
+        '" points="' +
+        escapeHtml(ring.join(" ")) +
+        '"></polygon>'
+      );
+    }
+    return "";
+  }
+
+  function renderGeospatialStage(geospatialProjection) {
+    var collection = (geospatialProjection || {}).feature_collection || {};
+    var features = collection.features || [];
+    if (!features.length) {
+      return (
+        '<div class="cts-gis-mapStage cts-gis-mapStage--empty">' +
+        '<p class="ide-controlpanel__empty">' +
+        escapeHtml((geospatialProjection || {}).empty_message || "No projected geometry is available for the current navigation root.") +
+        "</p></div>"
+      );
+    }
+    var width = 560;
+    var height = 360;
+    var pad = 24;
+    var bounds = normalizeFeatureBounds((geospatialProjection || {}).collection_bounds || collection.bounds || [], features);
+    var selectedFeature = features.find(function (feature) {
+      return feature.selected;
+    }) || features[0] || {};
+    return (
+      '<div class="cts-gis-mapStage">' +
+      '<div class="cts-gis-mapStage__frame">' +
+      '<svg class="cts-gis-mapStage__svg" viewBox="0 0 ' +
+      String(width) +
+      " " +
+      String(height) +
+      '" role="img" aria-label="CTS-GIS geospatial projection">' +
+      '<rect class="cts-gis-mapStage__backdrop" x="0" y="0" width="' +
+      String(width) +
+      '" height="' +
+      String(height) +
+      '"></rect>' +
+      features
+        .map(function (feature) {
+          return renderFeatureShape(feature, bounds, width, height, pad);
+        })
+        .join("") +
+      "</svg></div>" +
+      '<div class="cts-gis-mapStage__caption">' +
+      '<span class="cts-gis-mapStage__eyebrow">Projection Focus</span>' +
+      "<strong>" +
+      escapeHtml(selectedFeature.label || selectedFeature.node_id || "Projected feature") +
+      "</strong>" +
+      '<span class="cts-gis-mapStage__meta">' +
+      escapeHtml(selectedFeature.node_id || "") +
+      "</span>" +
+      "</div></div>"
+    );
+  }
+
+  function renderProfileHierarchy(entries) {
+    if (!entries || !entries.length) {
+      return '<p class="ide-controlpanel__empty">No hierarchy is available.</p>';
+    }
+    return (
+      '<div class="cts-gis-profileHierarchy">' +
+      entries
+        .map(function (entry) {
           return (
-            '<section class="cts-gis-navLane" data-cts-gis-lane="' +
-            String(depth) +
+            '<button type="button" class="cts-gis-profileHierarchy__item' +
+            (entry.selected ? " is-active" : "") +
+            '" data-cts-gis-entry-kind="path" data-cts-gis-entry-index="' +
+            String(Number(entry._renderIndex || 0)) +
             '">' +
-            '<h5 class="cts-gis-navLane__title">Depth ' +
-            String(depth) +
-            "</h5>" +
-            renderRequestButtons(grouped[depth] || [], "node", {
-              listClass: "cts-gis-navLane__entries",
-              buttonClass: "cts-gis-entryButton cts-gis-entryButton--node",
-            }) +
-            "</section>"
+            '<span class="cts-gis-profileHierarchy__label">' +
+            escapeHtml(entry.label || entry.node_id || "Node") +
+            "</span>" +
+            '<span class="cts-gis-profileHierarchy__meta">' +
+            escapeHtml(entry.node_id || "") +
+            "</span></button>"
           );
         })
         .join("") +
@@ -211,15 +515,29 @@
           feature_count: 0,
           render_feature_count: 0,
           render_row_count: 0,
+          supporting_document_name: "",
+          projection_document_name: "",
           selected_feature_id: "",
           selected_feature_geometry_type: "",
           selected_feature_bounds: [],
           collection_bounds: [],
           empty_message: "No projected geometry is available for the current navigation root.",
+          feature_collection: {
+            type: "FeatureCollection",
+            features: [],
+            bounds: [],
+          },
           features: [],
         },
         profile_projection: {
           title: "Profile Projection",
+          active_profile: {
+            label: "",
+            node_id: "",
+            feature_count: 0,
+            child_count: 0,
+          },
+          hierarchy: diktataograph.lineage || [],
           summary_rows: garland.summary_rows || [],
           projected_rows: garland.row_entries || [],
           correlated_profiles: garland.related_profiles || [],
@@ -245,7 +563,7 @@
 
   function bindNavigationCanvasEnhancement(target, enabled) {
     if (!enabled) return;
-    Array.prototype.forEach.call(target.querySelectorAll(".cts-gis-navLane__entries"), function (lane) {
+    Array.prototype.forEach.call(target.querySelectorAll(".cts-gis-branchCluster__entries"), function (lane) {
       var buttons = Array.prototype.slice.call(lane.querySelectorAll(".cts-gis-entryButton--node"));
       if (!buttons.length) return;
 
@@ -280,6 +598,21 @@
     var garlandSplit = interfaceBody.garland_split_projection || {};
     var geospatialProjection = garlandSplit.geospatial_projection || {};
     var profileProjection = garlandSplit.profile_projection || {};
+    (anchoredPath.entries || []).forEach(function (entry, index) {
+      entry._renderIndex = index;
+    });
+    (structureField.entries || []).forEach(function (entry, index) {
+      entry._renderIndex = index;
+    });
+    (projectionRuleField.entries || []).forEach(function (entry, index) {
+      entry._renderIndex = index;
+    });
+    (profileProjection.projected_rows || []).forEach(function (entry, index) {
+      entry._renderIndex = index;
+    });
+    (geospatialProjection.features || []).forEach(function (entry, index) {
+      entry._renderIndex = index;
+    });
     var entriesByKind = {
       path: anchoredPath.entries || [],
       node: structureField.entries || [],
@@ -311,20 +644,7 @@
       escapeHtml(navigationCanvas.summary || "") +
       "</p></header>" +
       '<section class="cts-gis-navCanvas" data-cts-gis-nav-canvas="structure">' +
-      '<section class="cts-gis-navField cts-gis-navField--anchoredPath"><h4>' +
-      escapeHtml(anchoredPath.title || "Anchored Path") +
-      "</h4>" +
-      renderRequestButtons(anchoredPath.entries || [], "path", {
-        listClass: "cts-gis-navField__pathEntries",
-        buttonClass: "cts-gis-entryButton cts-gis-entryButton--path",
-        emptyMessage: "No anchored path yet.",
-      }) +
-      "</section>" +
-      '<section class="cts-gis-navField cts-gis-navField--structureField"><h4>' +
-      escapeHtml(structureField.title || "Structure Field") +
-      "</h4>" +
-      renderNavigationLanes(structureField.entries || []) +
-      "</section>" +
+      renderStructureCanvas(anchoredPath.entries || [], structureField.entries || [], navigationCanvas.active_node_id || "") +
       '<section class="cts-gis-navField cts-gis-navField--projectionRules"><h4>' +
       escapeHtml(projectionRuleField.title || "Projection Rule") +
       "</h4>" +
@@ -358,6 +678,7 @@
       escapeHtml(String(geospatialProjection.render_row_count || 0)) +
       "</span>" +
       "</div>" +
+      renderGeospatialStage(geospatialProjection) +
       ((geospatialProjection.collection_bounds || []).length
         ? '<p class="cts-gis-mapCanvas__meta">collection bounds: ' +
           escapeHtml((geospatialProjection.collection_bounds || []).join(", ")) +
@@ -388,6 +709,26 @@
       '<section class="cts-gis-garlandSplit__profile"><h4>' +
       escapeHtml(profileProjection.title || "Profile Projection") +
       "</h4>" +
+      '<section class="cts-gis-garlandSplit__profileBlock"><h5>Hierarchy</h5>' +
+      renderProfileHierarchy(profileProjection.hierarchy || []) +
+      "</section>" +
+      '<section class="cts-gis-garlandSplit__profileBlock"><h5>Current Profile</h5>' +
+      '<article class="cts-gis-profileSummary cts-gis-profileSummary--active">' +
+      "<strong>" +
+      escapeHtml((profileProjection.active_profile || {}).label || "Active profile") +
+      "</strong>" +
+      '<span class="cts-gis-profileSummary__meta">' +
+      escapeHtml((profileProjection.active_profile || {}).node_id || "") +
+      "</span>" +
+      '<span class="cts-gis-profileSummary__meta">' +
+      escapeHtml(
+        String((profileProjection.active_profile || {}).feature_count || 0) +
+          " features · " +
+          String((profileProjection.active_profile || {}).child_count || 0) +
+          " children"
+      ) +
+      "</span>" +
+      "</article></section>" +
       renderRows(profileProjection.summary_rows || []) +
       '<section class="cts-gis-garlandSplit__profileBlock"><h5>Projected Rows</h5>' +
       renderRequestButtons(profileProjection.projected_rows || [], "row", {

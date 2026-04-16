@@ -17,7 +17,9 @@ _VALID_OVERLAY_MODES = frozenset({"auto", "raw_only"})
 _CTS_GIS_CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
 _CTS_GIS_CANONICAL_DOCUMENT_PREFIX = "sandbox:cts_gis:"
 _DEFAULT_ATTENTION_NODE_ID = "3-2-3-17-77"
+_DEFAULT_ATTENTION_PROFILE_LABEL = "summit_county"
 _DEFAULT_SUPPORTING_DOCUMENT_NAME = "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"
+_DEFAULT_PROJECTION_DOCUMENT_SUFFIX = f".{_DEFAULT_ATTENTION_NODE_ID}.json"
 _DEFAULT_INTENTION_TOKEN = "descendants_depth_1_or_2"
 _LEGACY_SELF_INTENTION_TOKEN = "0"
 _CHILDREN_INTENTION_TOKEN = "1-0"
@@ -430,10 +432,10 @@ def _profile_public_summary(profile: dict[str, Any], *, relation: str = "", sele
     }
 
 
-def _placeholder_profile_summary(node_id: str, *, relation: str = "") -> dict[str, Any]:
+def _placeholder_profile_summary(node_id: str, *, relation: str = "", profile_label: str = "") -> dict[str, Any]:
     return {
         "node_id": _as_text(node_id),
-        "profile_label": _as_text(node_id) or "profile",
+        "profile_label": _as_text(profile_label) or _as_text(node_id) or "profile",
         "title_display": "",
         "row_address": "",
         "parent_node_id": _parent_node_id(node_id),
@@ -448,6 +450,23 @@ def _placeholder_profile_summary(node_id: str, *, relation: str = "") -> dict[st
         "selected": False,
         "placeholder": True,
     }
+
+
+def _canonical_placeholder_profile_summary(node_id: str, *, relation: str = "") -> dict[str, Any]:
+    return _placeholder_profile_summary(
+        node_id,
+        relation=relation,
+        profile_label=_DEFAULT_ATTENTION_PROFILE_LABEL if _as_text(node_id) == _DEFAULT_ATTENTION_NODE_ID else "",
+    )
+
+
+def _preferred_default_projection_document(
+    documents: list[DatumRecognitionDocument],
+) -> DatumRecognitionDocument | None:
+    for document in documents:
+        if _as_text(document.document_name).endswith(_DEFAULT_PROJECTION_DOCUMENT_SUFFIX):
+            return document
+    return None
 
 
 def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mode: str) -> dict[str, Any]:
@@ -705,6 +724,8 @@ class CtsGisReadOnlyService:
                     target_document = document
                     break
         if target_document is None and cts_gis_documents:
+            target_document = _preferred_default_projection_document(cts_gis_documents)
+        if target_document is None and cts_gis_documents:
             for document in cts_gis_documents:
                 if _as_text(document.document_name) == _DEFAULT_SUPPORTING_DOCUMENT_NAME:
                     target_document = document
@@ -940,27 +961,26 @@ class CtsGisReadOnlyService:
             intention_token_text = _DEFAULT_INTENTION_TOKEN
 
         render_profiles: list[dict[str, Any]] = []
-        if attention_profile is not None:
-            if intention_token_text == _DEFAULT_INTENTION_TOKEN:
-                render_profiles = _descendant_profiles(
-                    selected_document_bundle,
-                    attention_node_id=attention_node_id_text,
-                    min_extra_segments=1,
-                    max_extra_segments=2,
-                )
-            elif intention_token_text == _LEGACY_SELF_INTENTION_TOKEN:
-                render_profiles = [attention_profile]
-            elif intention_token_text == _CHILDREN_INTENTION_TOKEN:
-                render_profiles = [
-                    profile_index[node_id]
-                    for node_id in list((selected_document_bundle.get("children_by_parent") or {}).get(attention_node_id_text, []))
-                    if node_id in profile_index
-                ]
-            elif intention_token_text.startswith(_BRANCH_INTENTION_PREFIX):
-                target_node_id = _as_text(intention_token_text[len(_BRANCH_INTENTION_PREFIX) :])
-                target_profile = profile_index.get(target_node_id)
-                if target_profile is not None:
-                    render_profiles = [target_profile]
+        if intention_token_text == _DEFAULT_INTENTION_TOKEN:
+            render_profiles = _descendant_profiles(
+                selected_document_bundle,
+                attention_node_id=attention_node_id_text,
+                min_extra_segments=1,
+                max_extra_segments=2,
+            )
+        elif intention_token_text == _LEGACY_SELF_INTENTION_TOKEN:
+            render_profiles = [] if attention_profile is None else [attention_profile]
+        elif intention_token_text == _CHILDREN_INTENTION_TOKEN:
+            render_profiles = [
+                profile_index[node_id]
+                for node_id in list((selected_document_bundle.get("children_by_parent") or {}).get(attention_node_id_text, []))
+                if node_id in profile_index
+            ]
+        elif intention_token_text.startswith(_BRANCH_INTENTION_PREFIX):
+            target_node_id = _as_text(intention_token_text[len(_BRANCH_INTENTION_PREFIX) :])
+            target_profile = profile_index.get(target_node_id)
+            if target_profile is not None:
+                render_profiles = [target_profile]
         render_row_addresses: set[str] = set()
         render_feature_ids: list[str] = []
         for profile in render_profiles:
@@ -978,12 +998,20 @@ class CtsGisReadOnlyService:
         feature_index = selected_document_bundle.get("feature_index") or {}
         render_features = [feature_index[feature_id] for feature_id in render_feature_ids if feature_id in feature_index]
 
+        attention_profile_display = attention_profile
+        if attention_profile_display is None and attention_node_id_text:
+            has_descendants = bool(render_profiles) or bool(
+                list((selected_document_bundle.get("children_by_parent") or {}).get(attention_node_id_text, []))
+            )
+            if has_descendants:
+                attention_profile_display = _canonical_placeholder_profile_summary(attention_node_id_text)
+
         lineage: list[dict[str, Any]] = []
         for depth in range(1, _node_depth(attention_node_id_text) + 1):
             node_id = "-".join(attention_node_id_text.split("-")[:depth])
             profile = profile_index.get(node_id)
             if profile is None:
-                lineage.append(_placeholder_profile_summary(node_id))
+                lineage.append(_canonical_placeholder_profile_summary(node_id))
             else:
                 lineage.append(
                     _profile_public_summary(profile, selected=node_id == attention_node_id_text)
@@ -1002,7 +1030,7 @@ class CtsGisReadOnlyService:
             related_seen.add(bound_node_id)
             profile = profile_index.get(bound_node_id)
             if profile is None:
-                related_profiles.append(_placeholder_profile_summary(bound_node_id, relation="bound_profile"))
+                related_profiles.append(_canonical_placeholder_profile_summary(bound_node_id, relation="bound_profile"))
             else:
                 related_profiles.append(_profile_public_summary(profile, relation="bound_profile"))
         parent_node_id = _as_text((attention_profile or {}).get("parent_node_id"))
@@ -1103,8 +1131,12 @@ class CtsGisReadOnlyService:
             "document_catalog": document_catalog,
             "selected_document": document_summary,
             "attention_profile": None
-            if attention_profile is None
-            else _profile_public_summary(attention_profile, selected=True),
+            if attention_profile_display is None
+            else (
+                _profile_public_summary(attention_profile_display, selected=True)
+                if attention_profile is not None
+                else {**dict(attention_profile_display), "selected": True}
+            ),
             "lineage": lineage,
             "children": children,
             "render_profiles": [
