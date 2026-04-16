@@ -22,7 +22,6 @@ FORBIDDEN_TEXT_TOKENS = (
     "manual_send",
     "smtp_password",
     "secret_access_key",
-    "maps",
     "agro",
 )
 

@@ -14,6 +14,18 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
 from MyCiteV2.packages.modules.cross_domain.cts_gis import CtsGisReadOnlyService
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
+from MyCiteV2.packages.ports.datum_store.cts_gis_legacy_compat import (
+    CTS_GIS_CANONICAL_TOOL_PUBLIC_ID,
+    CTS_GIS_LEGACY_WARNING_CODE,
+    canonicalize_cts_gis_sandbox_document_id,
+    canonicalize_cts_gis_tool_public_id,
+    cts_gis_anchor_patterns_phase_a,
+    cts_gis_tool_slug_candidates_phase_a,
+    is_cts_gis_legacy_anchor_filename,
+    is_cts_gis_legacy_sandbox_document_id,
+    is_cts_gis_legacy_tool_public_id,
+    is_cts_gis_legacy_tool_slug,
+)
 from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_ENTRYPOINT_ID,
     CTS_GIS_TOOL_ROUTE,
@@ -35,8 +47,7 @@ _DEFAULT_TIME_DIRECTIVE = ""
 _DEFAULT_ARCHETYPE_FAMILY_ID = "samras_nominal"
 _DEFAULT_NIMM_DIRECTIVE = "mediate"
 _DEFAULT_SUPPORTING_DOCUMENT_NAME = "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"
-_CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
-_LEGACY_TOOL_PUBLIC_ID = "maps"
+_CANONICAL_TOOL_PUBLIC_ID = CTS_GIS_CANONICAL_TOOL_PUBLIC_ID
 _SERVICE_SELF_TOKEN = "0"
 _SERVICE_CHILDREN_TOKEN = "1-0"
 _SERVICE_BRANCH_PREFIX = "branch:"
@@ -123,7 +134,7 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
             "archetype_family_id": _as_text(raw_aitas.get("archetype_family_id")) or _DEFAULT_ARCHETYPE_FAMILY_ID,
         },
         "source": {
-            "attention_document_id": _as_text(
+            "attention_document_id": canonicalize_cts_gis_sandbox_document_id(
                 raw_source.get("attention_document_id")
                 or mediation_state.get("attention_document_id")
                 or normalized_payload.get("selected_document_id")
@@ -139,6 +150,36 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
             ),
         },
     }
+
+
+def _request_legacy_maps_consumed(payload: dict[str, Any] | None) -> bool:
+    normalized_payload = payload if isinstance(payload, dict) else {}
+    mediation_state = normalized_payload.get("mediation_state")
+    mediation_state = mediation_state if isinstance(mediation_state, dict) else {}
+    tool_state = normalized_payload.get("tool_state")
+    tool_state = tool_state if isinstance(tool_state, dict) else {}
+    source_state = tool_state.get("source")
+    source_state = source_state if isinstance(source_state, dict) else {}
+    candidates = (
+        normalized_payload.get("selected_document_id"),
+        normalized_payload.get("attention_document_id"),
+        mediation_state.get("attention_document_id"),
+        source_state.get("attention_document_id"),
+    )
+    return any(is_cts_gis_legacy_sandbox_document_id(item) for item in candidates)
+
+
+def _dedupe_warnings(*groups: list[str] | tuple[str, ...]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        for item in group:
+            token = _as_text(item)
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            out.append(token)
+    return out
 
 
 def _normalize_request(
@@ -193,8 +234,8 @@ def _cts_gis_private_tool_root(private_dir: str | Path | None) -> Path | None:
     if root is None:
         return None
     candidates = [
-        root / "utilities" / "tools" / "cts-gis",
-        root / "utilities" / "tools" / "maps",
+        root / "utilities" / "tools" / slug
+        for slug in cts_gis_tool_slug_candidates_phase_a()
     ]
     for candidate in candidates:
         if candidate.exists() and candidate.is_dir():
@@ -207,8 +248,8 @@ def _cts_gis_data_tool_root(data_dir: str | Path | None) -> Path | None:
     if root is None:
         return None
     candidates = [
-        root / "sandbox" / "cts-gis",
-        root / "sandbox" / "maps",
+        root / "sandbox" / slug
+        for slug in cts_gis_tool_slug_candidates_phase_a()
     ]
     for candidate in candidates:
         if candidate.exists() and candidate.is_dir():
@@ -226,11 +267,7 @@ def _cts_gis_tool_anchor_path(data_dir: str | Path | None) -> Path | None:
     tool_root = _cts_gis_data_tool_root(data_dir)
     if tool_root is None:
         return None
-    patterns = (
-        "tool.*.cts-gis.json",
-        "tool.*.maps.json",
-        "tool*.json",
-    )
+    patterns = cts_gis_anchor_patterns_phase_a()
     candidates: list[Path] = []
     for pattern in patterns:
         candidates.extend(sorted(tool_root.glob(pattern)))
@@ -273,19 +310,30 @@ def _cts_gis_corpus_prefix(document_name: str) -> str:
     return token
 
 
+def _path_uses_legacy_maps(path: Path | None) -> bool:
+    if path is None:
+        return False
+    return any(is_cts_gis_legacy_tool_slug(part) for part in path.parts)
+
+
 def _evidence_path_payload(path: Path | None, *, canonical_tool_id: str = "") -> dict[str, Any]:
     payload = _safe_json_object(path)
-    tool_id = _as_text(payload.get("tool_id"))
-    if tool_id in {"maps", "cts-gis", "cts_gis"}:
-        tool_id = _CANONICAL_TOOL_PUBLIC_ID
+    raw_tool_id = _as_text(payload.get("tool_id"))
+    tool_id = canonicalize_cts_gis_tool_public_id(raw_tool_id)
     if canonical_tool_id and not tool_id:
         tool_id = canonical_tool_id
+    legacy_maps_alias_consumed = (
+        is_cts_gis_legacy_tool_public_id(raw_tool_id)
+        or _path_uses_legacy_maps(path)
+        or is_cts_gis_legacy_anchor_filename("" if path is None else path.name)
+    )
     out = {
         "path": "" if path is None else str(path),
         "exists": bool(path is not None and path.exists()),
         "file": "" if path is None else path.name,
         "tool_id": tool_id,
         "payload": payload,
+        "legacy_maps_alias_consumed": legacy_maps_alias_consumed,
     }
     if "schema" in payload:
         out["schema"] = payload.get("schema")
@@ -328,6 +376,20 @@ def _build_source_evidence(
     if administrative_payload_cache["payload"]:
         administrative_payload_cache["payload_id"] = _as_text(administrative_payload_cache["payload"].get("payload_id"))
 
+    legacy_maps_alias_consumed = any(
+        bool(entry.get("legacy_maps_alias_consumed"))
+        for entry in (
+            tool_spec,
+            tool_anchor,
+            administrative_source,
+            registrar_payload,
+            administrative_payload_cache,
+        )
+    ) or is_cts_gis_legacy_sandbox_document_id(selected_document.get("document_id"))
+    source_warnings: list[str] = []
+    if legacy_maps_alias_consumed:
+        source_warnings.append(CTS_GIS_LEGACY_WARNING_CODE)
+
     samras_seed_status = _as_text(selected_document.get("samras_seed_status"))
     readiness_state = "ready"
     readiness_message = "CTS-GIS evidence is ready."
@@ -350,6 +412,8 @@ def _build_source_evidence(
             "corpus_prefix": corpus_prefix,
             "member_file_count": len(member_files),
         },
+        "legacy_maps_alias_consumed": legacy_maps_alias_consumed,
+        "warnings": source_warnings,
         "readiness": {
             "state": readiness_state,
             "message": readiness_message,
@@ -379,9 +443,11 @@ def _resolved_tool_state(
             or _DEFAULT_ARCHETYPE_FAMILY_ID,
         },
         "source": {
-            "attention_document_id": _as_text(mediation_state.get("attention_document_id"))
-            or _as_text((service_surface.get("selected_document") or {}).get("document_id"))
-            or _as_text(requested_tool_state.get("source", {}).get("attention_document_id")),
+            "attention_document_id": canonicalize_cts_gis_sandbox_document_id(
+                mediation_state.get("attention_document_id")
+                or _as_text((service_surface.get("selected_document") or {}).get("document_id"))
+                or requested_tool_state.get("source", {}).get("attention_document_id")
+            ),
         },
         "selection": {
             "selected_row_address": _as_text(diagnostic_summary.get("selected_row_address"))
@@ -802,6 +868,26 @@ def build_portal_cts_gis_surface_bundle(
         private_dir=private_dir,
         service_surface=service_surface,
     )
+    legacy_maps_alias_consumed = bool(source_evidence.get("legacy_maps_alias_consumed")) or _request_legacy_maps_consumed(
+        request_payload
+    )
+    source_warning_group = list(source_evidence.get("warnings") or [])
+    if legacy_maps_alias_consumed:
+        source_warning_group.append(CTS_GIS_LEGACY_WARNING_CODE)
+    source_warnings = _dedupe_warnings(source_warning_group)
+    source_evidence = {
+        **source_evidence,
+        "legacy_maps_alias_consumed": legacy_maps_alias_consumed,
+        "warnings": source_warnings,
+    }
+    service_warnings = _dedupe_warnings(
+        list(service_surface.get("warnings") or []),
+        source_warnings,
+    )
+    service_surface = {
+        **service_surface,
+        "warnings": service_warnings,
+    }
     operational = bool(
         configured
         and enabled
@@ -852,6 +938,7 @@ def build_portal_cts_gis_surface_bundle(
         },
         "tool_state": resolved_tool_state,
         "source_evidence": source_evidence,
+        "warnings": service_warnings,
         "readiness": dict(source_evidence.get("readiness") or {}),
         "service_surface": service_surface,
     }
@@ -957,7 +1044,7 @@ def run_portal_cts_gis(
         shell_state=shell_state.to_dict(),
         surface_payload=bundle["surface_payload"],
         shell_composition={},
-        warnings=[],
+        warnings=list(bundle["surface_payload"].get("warnings") or []),
         error=None,
     )
 

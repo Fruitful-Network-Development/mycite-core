@@ -216,4 +216,9 @@ This is an interface-panel-led tool model, not a generic workbench page model.
 - Structural seed: registrar payload or payload cache
 - Label evidence: supporting administrative payload cache through the ASCII lens
 - Spatial evidence: GeoJSON lens or equivalent cache derived from payload/payload-cache material
-- Legacy `maps` paths remain loadable as compatibility aliases, but `CTS-GIS` / `cts_gis` / `cts-gis` are the canonical public forms.
+- Phase-A (v2.5.3.x) compatibility keeps legacy `maps` inbound aliases loadable through one CTS-GIS compat shim:
+  - `maps` tool id
+  - `sandbox:maps:*` document ids
+  - `tool.*.maps.json` anchors and legacy tool roots
+- When phase-A aliases are consumed, runtime surfaces emit `cts_gis.legacy_maps_alias_consumed`.
+- Phase-B (v2.5.4) removes legacy alias acceptance and deprecation warning paths.

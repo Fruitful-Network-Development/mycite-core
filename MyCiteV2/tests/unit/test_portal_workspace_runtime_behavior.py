@@ -240,7 +240,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 private_dir=private_dir,
                 request_payload={
                     "mediation_state": {
-                        "attention_document_id": "sandbox:maps:sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json",
+                        "attention_document_id": "sandbox:cts_gis:sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json",
                         "attention_node_id": "3-2-3-17-77",
                         "intention_token": "descendants_depth_1_or_2",
                     }
@@ -586,17 +586,17 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             data_dir = root / "data"
             public_dir = root / "public"
             (data_dir / "system").mkdir(parents=True, exist_ok=True)
-            (data_dir / "sandbox" / "maps" / "sources").mkdir(parents=True, exist_ok=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True, exist_ok=True)
             public_dir.mkdir(parents=True, exist_ok=True)
             (data_dir / "system" / "anthology.json").write_text(
                 '{\n  "1-0-1": [["1-0-1", "rf.3-1-1", "0"], ["anchor-root"]]\n}\n',
                 encoding="utf-8",
             )
-            (data_dir / "sandbox" / "maps" / "tool.maps.json").write_text(
-                '{\n  "datum_addressing_abstraction_space": {\n    "3-1-1": [["3-1-1", "2-1-1", "0"], ["maps-anchor"]]\n  }\n}\n',
+            (data_dir / "sandbox" / "cts-gis" / "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json").write_text(
+                '{\n  "datum_addressing_abstraction_space": {\n    "3-1-1": [["3-1-1", "2-1-1", "0"], ["cts-gis-anchor"]]\n  }\n}\n',
                 encoding="utf-8",
             )
-            (data_dir / "sandbox" / "maps" / "sources" / "sc.example.json").write_text(
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.example.json").write_text(
                 '{\n  "4-2-118": [["4-2-118", "rf.3-1-1", "HERE"], ["summit_county_cities"]]\n}\n',
                 encoding="utf-8",
             )

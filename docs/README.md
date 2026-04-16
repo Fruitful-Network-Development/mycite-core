@@ -8,6 +8,8 @@ This repository now describes one portal shell only.
 - Canonical tool work pages: `/portal/system/tools/<tool_slug>`
 - Canonical AWS service tool: `/portal/system/tools/aws-csm`
 - Canonical CTS-GIS tool: `/portal/system/tools/cts-gis`
+- Canonical CTS-GIS storage contract: `private/utilities/tools/cts-gis/spec.json` + `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
+- Legacy `maps` CTS-GIS aliases remain phase-A compatibility only in v2.5.3.x and are targeted for removal in v2.5.4
 - `NETWORK` is the read-only portal-instance system-log workbench over `data/system/system_log.json`
 - `UTILITIES` owns configuration, exposure, integrations, and control surfaces
 - The top menubar is the only shell header; `ide-body` is the peer-region window for the `Activity Bar`, `Control Panel`, `Workbench`, and `Interface Panel`

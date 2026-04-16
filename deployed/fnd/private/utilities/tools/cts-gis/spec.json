@@ -1,6 +1,6 @@
 {
   "schema": "mycite.portal.tool_spec.v1",
-  "tool_id": "maps",
+  "tool_id": "cts_gis",
   "inherited_inputs": [],
   "outputs": [],
   "mediation": {
