@@ -680,7 +680,48 @@ def _cts_gis_interface_body(
     attention_profile = dict(service_surface.get("attention_profile") or {})
     selected_document = dict(service_surface.get("selected_document") or {})
     selected_row = dict(service_surface.get("selected_row") or {})
-    selected_feature = dict((service_surface.get("map_projection") or {}).get("selected_feature") or {})
+    map_projection = dict(service_surface.get("map_projection") or {})
+    selected_feature = dict(map_projection.get("selected_feature") or {})
+    feature_collection = dict(map_projection.get("feature_collection") or {})
+    render_set_summary = dict(service_surface.get("render_set_summary") or {})
+    projection_state = _as_text(map_projection.get("projection_state")) or "inspect_only"
+    selected_row_address = _as_text(selected_row.get("datum_address"))
+    feature_rows = list(feature_collection.get("features") or [])
+    feature_entries = [
+        {
+            "feature_id": _as_text(feature.get("id")),
+            "label": _as_text((feature.get("properties") or {}).get("profile_label"))
+            or _as_text((feature.get("properties") or {}).get("samras_node_id"))
+            or _as_text(feature.get("id"))
+            or "feature",
+            "node_id": _as_text((feature.get("properties") or {}).get("samras_node_id")),
+            "geometry_type": _as_text((feature.get("geometry") or {}).get("type")) or "unknown",
+            "selected": bool(feature.get("selected")),
+            "shell_request": _selection_shell_request(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                tool_state=resolved_tool_state,
+                selected_row_address=selected_row_address,
+                selected_feature_id=_as_text(feature.get("id")),
+            ),
+        }
+        for feature in feature_rows[:16]
+        if _as_text(feature.get("id"))
+    ]
+    feature_collection_bounds = feature_collection.get("bounds")
+    feature_collection_bounds = (
+        list(feature_collection_bounds)
+        if isinstance(feature_collection_bounds, list)
+        else []
+    )
+    selected_feature_bounds = list(selected_feature.get("bounds") or [])
+    selected_feature_geometry_type = _as_text(selected_feature.get("geometry_type"))
+    if projection_state == "no_authoritative_cts_gis_documents":
+        geospatial_empty_message = "No authoritative CTS-GIS documents are available for this portal scope."
+    elif int(map_projection.get("feature_count") or 0) <= 0:
+        geospatial_empty_message = "No projected geometry is available for the current navigation root."
+    else:
+        geospatial_empty_message = "Projection ready."
     context_items = [
         {
             "label": "Attention",
@@ -700,12 +741,14 @@ def _cts_gis_interface_body(
             "value": _as_text(resolved_tool_state["aitas"]["archetype_family_id"]) or _DEFAULT_ARCHETYPE_FAMILY_ID,
         },
     ]
-    navigation_entries = [
+    navigation_nodes = [
         {
             "node_id": _as_text(item.get("node_id")),
             "label": _as_text(item.get("profile_label")) or _as_text(item.get("node_id")),
             "title_display": _as_text(item.get("title_display")),
             "detail": f"{int(item.get('feature_count') or 0)} features · {int(item.get('child_count') or 0)} children",
+            "depth": len(_as_text(item.get("node_id")).split("-")),
+            "parent_node_id": "-".join(_as_text(item.get("node_id")).split("-")[:-1]),
             "selected": bool(item.get("selected")),
             "shell_request": _node_shell_request(
                 portal_scope=portal_scope,
@@ -717,7 +760,7 @@ def _cts_gis_interface_body(
         for item in list(service_surface.get("render_profiles") or [])
         if _as_text(item.get("node_id"))
     ]
-    lineage_entries = [
+    anchored_path_entries = [
         {
             "node_id": _as_text(item.get("node_id")),
             "label": _as_text(item.get("profile_label")) or _as_text(item.get("node_id")),
@@ -732,7 +775,7 @@ def _cts_gis_interface_body(
         for item in list(service_surface.get("lineage") or [])
         if _as_text(item.get("node_id"))
     ]
-    intention_entries = [
+    projection_rule_entries = [
         {
             "token": _as_text(option.get("token")),
             "label": _as_text(option.get("label")) or _as_text(option.get("token")) or "Rule",
@@ -747,7 +790,7 @@ def _cts_gis_interface_body(
         }
         for option in list((service_surface.get("mediation_state") or {}).get("available_intentions") or [])
     ]
-    row_entries = [
+    projected_rows = [
         {
             "datum_address": _as_text(row.get("datum_address")),
             "label": _as_text(row.get("profile_label")) or _as_text(row.get("label_text")) or _as_text(row.get("datum_address")),
@@ -763,16 +806,17 @@ def _cts_gis_interface_body(
         }
         for row in list(service_surface.get("rows") or [])[:12]
     ]
-    garland_summary_rows = [
+    profile_projection_rows = [
         {"label": "Supporting document", "value": _as_text(selected_document.get("document_name")) or _DEFAULT_SUPPORTING_DOCUMENT_NAME},
-        {"label": "Projection state", "value": _as_text((service_surface.get("map_projection") or {}).get("projection_state")) or "inspect_only"},
-        {"label": "Rendered features", "value": str(int((service_surface.get("render_set_summary") or {}).get("render_feature_count") or 0))},
-        {"label": "Selected row", "value": _as_text(selected_row.get("datum_address")) or "—"},
+        {"label": "Projection state", "value": projection_state},
+        {"label": "Rendered features", "value": str(int(render_set_summary.get("render_feature_count") or 0))},
+        {"label": "Rendered rows", "value": str(int(render_set_summary.get("render_row_count") or 0))},
+        {"label": "Selected row", "value": selected_row_address or "—"},
         {"label": "Selected feature", "value": _as_text(selected_feature.get("feature_id")) or "—"},
         {"label": "GeoJSON cache", "value": "ready" if (source_evidence.get("administrative_payload_cache") or {}).get("exists") else "pending"},
     ]
     if selected_feature.get("bounds"):
-        garland_summary_rows.append(
+        profile_projection_rows.append(
             {
                 "label": "Feature bounds",
                 "value": ", ".join(str(item) for item in list(selected_feature.get("bounds") or [])),
@@ -782,24 +826,56 @@ def _cts_gis_interface_body(
         "kind": "cts_gis_interface_body",
         "layout": "dual_section",
         "narrow_layout": "context_diktataograph_garland_stack",
+        "feature_flags": {
+            "hover_attention_redistribution": False,
+        },
         "context_strip": {
             "title": "CTS-GIS Context",
+            "compact": True,
             "items": context_items,
         },
-        "diktataograph": {
+        "navigation_canvas": {
+            "kind": "diktataograph_navigation_canvas",
             "title": "Diktataograph",
-            "summary": "Structural navigation for the active SAMRAS-defined address space, with correlated ASCII labels from the supporting source document.",
-            "lineage": lineage_entries,
-            "navigation_entries": navigation_entries,
-            "intention_entries": intention_entries,
+            "summary": "Structural navigation canvas for the active SAMRAS-defined address space, with correlated ASCII labels from the supporting source document.",
+            "active_node_id": _as_text(resolved_tool_state["aitas"]["attention_node_id"]),
+            "anchored_path": {
+                "title": "Anchored Path",
+                "entries": anchored_path_entries,
+            },
+            "structure_field": {
+                "title": "Structure Field",
+                "entries": navigation_nodes,
+            },
+            "projection_rule_field": {
+                "title": "Projection Rule",
+                "entries": projection_rule_entries,
+            },
         },
-        "garland": {
+        "garland_split_projection": {
+            "kind": "garland_split_projection",
             "title": "Garland",
-            "summary": "Correlated profile and spatial projection for the currently navigated address node with respect to the supporting source file.",
-            "summary_rows": garland_summary_rows,
-            "row_entries": row_entries,
-            "related_profiles": list(service_surface.get("related_profiles") or []),
-            "warnings": list(service_surface.get("warnings") or []),
+            "summary": "Correlated projection surface for the currently navigated address node with respect to the supporting source file.",
+            "geospatial_projection": {
+                "title": "Geospatial Projection",
+                "projection_state": projection_state,
+                "feature_count": int(map_projection.get("feature_count") or 0),
+                "render_feature_count": int(render_set_summary.get("render_feature_count") or 0),
+                "render_row_count": int(render_set_summary.get("render_row_count") or 0),
+                "selected_feature_id": _as_text(selected_feature.get("feature_id")),
+                "selected_feature_geometry_type": selected_feature_geometry_type,
+                "selected_feature_bounds": selected_feature_bounds,
+                "collection_bounds": feature_collection_bounds,
+                "empty_message": geospatial_empty_message,
+                "features": feature_entries,
+            },
+            "profile_projection": {
+                "title": "Profile Projection",
+                "summary_rows": profile_projection_rows,
+                "projected_rows": projected_rows,
+                "correlated_profiles": list(service_surface.get("related_profiles") or []),
+                "warnings": list(service_surface.get("warnings") or []),
+            },
         },
     }
 

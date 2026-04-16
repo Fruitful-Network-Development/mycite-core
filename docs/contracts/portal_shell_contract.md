@@ -201,11 +201,15 @@ This is an interface-panel-led tool model, not a generic workbench page model.
 ### CTS-GIS Interface Body
 
 - The dominant `tool_mediation_panel` mounts one CTS-GIS-local interface body.
-- The CTS-GIS-local section titles are:
-  - `Diktataograph`
-  - `Garland`
-- `Diktataograph` is the structural navigation section. It projects the current SAMRAS-defined address space and may overlay correlated names through the ASCII lens.
-- `Garland` is the correlated profile section. It projects the current node’s profile and spatial evidence with respect to the supporting source file, preferably through the GeoJSON lens or equivalent runtime cache.
+- The CTS-GIS interface body is role-shaped, not generic card-grid shaped.
+- The CTS-GIS-local section titles are `Diktataograph` and `Garland`.
+- `Diktataograph` materializes as a structural navigation canvas through `navigation_canvas`.
+  It projects anchored-path structural navigation for the current SAMRAS-defined address space and may overlay correlated names through the ASCII lens.
+- `Garland` materializes as a correlated projection surface through `garland_split_projection`.
+  It holds two internal subsections:
+  - dominant `geospatial_projection`
+  - secondary `profile_projection`
+- `CTS-GIS Context` is a compact orientation strip above the dual-section body so visual weight remains on `Diktataograph` and `Garland`.
 - These are not separate mediation operations. They are two CTS-GIS-local projections of one active mediation posture.
 - In narrow posture, the same CTS-GIS-local sections fall back to a vertical stack with a compact CTS-GIS context strip above them.
 

@@ -119,6 +119,13 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("Garland", (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
         ).read_text(encoding="utf-8"))
+        self.assertIn("navigation_canvas", (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8"))
+        self.assertIn("garland_split_projection", (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8"))
+        self.assertIn("cts-gis-garlandSplit__geospatial", portal_css)
         self.assertIn(".cts-gis-interface__body", portal_css)
 
     def test_active_repo_text_does_not_reference_retired_split_routes(self) -> None:
