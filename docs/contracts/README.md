@@ -14,4 +14,4 @@ CTS-GIS canonical storage contract in v2.5.3.x is:
 - `private/utilities/tools/cts-gis/spec.json`
 - `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
 
-Legacy `maps` aliases remain phase-A compatibility only and are targeted for removal in v2.5.4.
+v2.5.4 phase-B is canonical-only. Legacy CTS-GIS aliases are not part of active contracts.

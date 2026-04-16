@@ -12,16 +12,10 @@ from MyCiteV2.packages.modules.domains.datum_recognition import (
     DatumWorkbenchService,
 )
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentPort
-from MyCiteV2.packages.ports.datum_store.cts_gis_legacy_compat import (
-    CTS_GIS_CANONICAL_TOOL_PUBLIC_ID,
-    CTS_GIS_LEGACY_WARNING_CODE,
-    canonicalize_cts_gis_sandbox_document_id,
-    canonicalize_cts_gis_tool_public_id,
-    is_cts_gis_legacy_sandbox_document_id,
-    matches_cts_gis_sandbox_document_id,
-)
 
 _VALID_OVERLAY_MODES = frozenset({"auto", "raw_only"})
+_CTS_GIS_CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
+_CTS_GIS_CANONICAL_DOCUMENT_PREFIX = "sandbox:cts_gis:"
 _DEFAULT_ATTENTION_NODE_ID = "3-2-3-17-77"
 _DEFAULT_SUPPORTING_DOCUMENT_NAME = "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"
 _DEFAULT_INTENTION_TOKEN = "descendants_depth_1_or_2"
@@ -38,6 +32,18 @@ def _as_text(value: object) -> str:
 
 def _as_lower(value: object) -> str:
     return _as_text(value).lower()
+
+
+def _is_cts_gis_document_id(value: object) -> bool:
+    return _as_text(value).startswith(_CTS_GIS_CANONICAL_DOCUMENT_PREFIX)
+
+
+def _matches_cts_gis_document_id(candidate: object, requested: object) -> bool:
+    candidate_token = _as_text(candidate)
+    requested_token = _as_text(requested)
+    if not candidate_token or not requested_token:
+        return False
+    return candidate_token == requested_token
 
 
 def _address_tuple(value: object) -> tuple[int, ...]:
@@ -684,18 +690,18 @@ class CtsGisReadOnlyService:
             for document in workbench.documents
             if (
                 document.source_kind == "sandbox_source"
-                and canonicalize_cts_gis_tool_public_id(document.tool_id) == CTS_GIS_CANONICAL_TOOL_PUBLIC_ID
+                and _as_lower(document.tool_id) == _CTS_GIS_CANONICAL_TOOL_PUBLIC_ID
             )
         ]
         requested_document_id_raw = _as_text(attention_document_id) or _as_text(selected_document_id)
-        requested_document_id = canonicalize_cts_gis_sandbox_document_id(requested_document_id_raw)
+        requested_document_id = requested_document_id_raw
         requested_row_address = _as_text(selected_row_address)
         requested_feature_id = _as_text(selected_feature_id)
         project_all_documents = bool((requested_row_address or requested_feature_id) and not requested_document_id)
         target_document = None
-        if requested_document_id:
+        if requested_document_id and _is_cts_gis_document_id(requested_document_id):
             for document in cts_gis_documents:
-                if matches_cts_gis_sandbox_document_id(document.document_id, requested_document_id):
+                if _matches_cts_gis_document_id(document.document_id, requested_document_id):
                     target_document = document
                     break
         if target_document is None and cts_gis_documents:
@@ -747,10 +753,6 @@ class CtsGisReadOnlyService:
             document = document_bundle.get("document")
             if document is not None:
                 warnings.extend(list(document.warnings))
-        if is_cts_gis_legacy_sandbox_document_id(requested_document_id_raw):
-            warnings.append(CTS_GIS_LEGACY_WARNING_CODE)
-        if any(is_cts_gis_legacy_sandbox_document_id(document.document_id) for document in cts_gis_documents):
-            warnings.append(CTS_GIS_LEGACY_WARNING_CODE)
         warnings = list(dict.fromkeys(_as_text(item) for item in warnings if _as_text(item)))
         return {
             "tenant_id": _as_text(tenant_id) or "fnd",
@@ -772,20 +774,18 @@ class CtsGisReadOnlyService:
         mediation_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         documents = list(projection_bundle.get("documents") or [])
-        requested_document_id = canonicalize_cts_gis_sandbox_document_id(selected_document_id)
+        requested_document_id = _as_text(selected_document_id)
         requested_row_address = _as_text(selected_row_address)
         requested_feature_id = _as_text(selected_feature_id)
         mediation_state = mediation_state if isinstance(mediation_state, dict) else {}
-        requested_attention_document_id = canonicalize_cts_gis_sandbox_document_id(
-            mediation_state.get("attention_document_id")
-        )
+        requested_attention_document_id = _as_text(mediation_state.get("attention_document_id"))
         requested_attention_node_id = _as_text(mediation_state.get("attention_node_id"))
         requested_intention_token = _as_text(mediation_state.get("intention_token"))
 
         selected_document_bundle = None
         if requested_attention_document_id:
             for document_bundle in documents:
-                if matches_cts_gis_sandbox_document_id(
+                if _matches_cts_gis_document_id(
                     (document_bundle.get("document_summary") or {}).get("document_id"),
                     requested_attention_document_id,
                 ):
@@ -793,7 +793,7 @@ class CtsGisReadOnlyService:
                     break
         if selected_document_bundle is None and requested_document_id:
             for document_bundle in documents:
-                if matches_cts_gis_sandbox_document_id(
+                if _matches_cts_gis_document_id(
                     (document_bundle.get("document_summary") or {}).get("document_id"),
                     requested_document_id,
                 ):
@@ -860,7 +860,7 @@ class CtsGisReadOnlyService:
         raw_underlay_visible = bool(projection_bundle.get("raw_underlay_visible"))
         selected_document_bundle = None
         for document_bundle in documents:
-            if matches_cts_gis_sandbox_document_id(
+            if _matches_cts_gis_document_id(
                 (document_bundle.get("document_summary") or {}).get("document_id"),
                 attention_document_id,
             ):

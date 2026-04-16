@@ -19,13 +19,10 @@ from MyCiteV2.packages.ports.datum_store import (
     SystemDatumStoreRequest,
     SystemDatumWorkbenchResult,
 )
-from MyCiteV2.packages.ports.datum_store.cts_gis_legacy_compat import (
-    CTS_GIS_LEGACY_WARNING_CODE,
-    canonicalize_cts_gis_tool_public_id,
-    cts_gis_anchor_patterns_phase_a,
-    is_cts_gis_legacy_anchor_filename,
-    is_cts_gis_legacy_tool_slug,
-)
+
+_CTS_GIS_CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
+_CTS_GIS_CANONICAL_TOOL_SLUG = "cts-gis"
+_CTS_GIS_CANONICAL_ANCHOR_PATTERN = "tool.*.cts-gis.json"
 
 def _as_text(value: object) -> str:
     if value is None:
@@ -85,8 +82,19 @@ def _load_anchor_document(path: Path | None) -> tuple[str, str, dict[str, Any], 
     return path.name, str(path), metadata, rows, warnings
 
 
+def _canonical_tool_public_id(value: object) -> str:
+    token = _as_text(value).lower()
+    if token in {_CTS_GIS_CANONICAL_TOOL_PUBLIC_ID, _CTS_GIS_CANONICAL_TOOL_SLUG}:
+        return _CTS_GIS_CANONICAL_TOOL_PUBLIC_ID
+    return token
+
+
 def _find_tool_anchor_file(tool_dir: Path) -> Path | None:
-    preferred_patterns = cts_gis_anchor_patterns_phase_a()
+    tool_slug = _as_text(tool_dir.name).lower()
+    if tool_slug == _CTS_GIS_CANONICAL_TOOL_SLUG:
+        preferred_patterns = (_CTS_GIS_CANONICAL_ANCHOR_PATTERN,)
+    else:
+        preferred_patterns = ("tool*.json",)
     candidates: list[Path] = []
     for pattern in preferred_patterns:
         candidates.extend(sorted(tool_dir.glob(pattern)))
@@ -159,7 +167,6 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
         documents: list[AuthoritativeDatumDocument] = []
         warnings: list[str] = []
         anthology_status = "missing"
-        legacy_maps_consumed = False
 
         if not anthology_file.exists() or not anthology_file.is_file():
             warnings.append("Canonical system anthology is missing at data/system/anthology.json.")
@@ -197,11 +204,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                 if not source_dir.exists() or not source_dir.is_dir():
                     continue
                 anchor_file = _find_tool_anchor_file(tool_dir)
-                public_tool_id = canonicalize_cts_gis_tool_public_id(tool_dir.name)
-                if is_cts_gis_legacy_tool_slug(tool_dir.name):
-                    legacy_maps_consumed = True
-                if anchor_file is not None and is_cts_gis_legacy_anchor_filename(anchor_file.name):
-                    legacy_maps_consumed = True
+                public_tool_id = _canonical_tool_public_id(tool_dir.name)
                 for source_path in sorted(source_dir.glob("*.json")):
                     document_id = _document_id_for_path(
                         source_kind="sandbox_source",
@@ -262,8 +265,6 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
             derived_materialization = "partial"
 
         authoritative_catalog = "loaded" if documents else "missing"
-        if legacy_maps_consumed and CTS_GIS_LEGACY_WARNING_CODE not in warnings:
-            warnings.append(CTS_GIS_LEGACY_WARNING_CODE)
 
         return AuthoritativeDatumDocumentCatalogResult(
             tenant_id=normalized_request.tenant_id,

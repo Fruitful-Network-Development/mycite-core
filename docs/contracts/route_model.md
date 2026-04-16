@@ -98,8 +98,8 @@ CTS-GIS runtime/body rules:
   - registrar payload / payload cache
   - administrative payload cache through the ASCII lens
   - GeoJSON lens or equivalent runtime cache for spatial projection
-- phase-A compatibility keeps legacy `maps` storage/request identifiers loadable through one CTS-GIS compat shim and emits `cts_gis.legacy_maps_alias_consumed`
-- phase-B target (v2.5.4): remove legacy `maps` alias acceptance
+- v2.5.4 phase-B is canonical-only; CTS-GIS accepts only `cts_gis` / `cts-gis` / `sandbox:cts_gis:*` and `tool.<msn>.cts-gis.json`
+- legacy CTS-GIS aliases are rejected at the CTS-GIS tool endpoint with `400 legacy_maps_alias_unsupported`
 
 CTS-GIS canonical defaults:
 
