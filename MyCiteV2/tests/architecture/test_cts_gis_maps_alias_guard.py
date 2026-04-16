@@ -8,11 +8,14 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-SCAN_ROOT = REPO_ROOT / "MyCiteV2"
-ALLOWED_PATHS = {
-    "packages/ports/datum_store/cts_gis_legacy_compat.py",
-    "tests/adapters/test_filesystem_system_datum_store_adapter.py",
-}
+SCAN_ROOTS = (
+    REPO_ROOT / "MyCiteV2",
+    REPO_ROOT / "docs",
+)
+ALLOWED_PATH_PREFIXES = (
+    "docs/audits/",
+    "docs/personal_notes/",
+)
 LEGACY_SEGMENT = "map" + "s"
 SCATTERED_LEGACY_TOKENS = (
     f"sandbox:{LEGACY_SEGMENT}:",
@@ -25,21 +28,21 @@ SCATTERED_LEGACY_TOKENS = (
 
 
 class CtsGisMapsAliasGuardTests(unittest.TestCase):
-    def test_legacy_maps_alias_usage_is_centralized(self) -> None:
+    def test_legacy_maps_alias_tokens_are_removed_from_active_code_and_contract_docs(self) -> None:
         violations: list[str] = []
-        for path in sorted(SCAN_ROOT.rglob("*")):
-            if not path.is_file():
-                continue
-            if "__pycache__" in path.parts:
-                continue
-            relative = path.relative_to(SCAN_ROOT).as_posix()
-            text = path.read_text(encoding="utf-8", errors="ignore")
-            for token in SCATTERED_LEGACY_TOKENS:
-                if token not in text:
+        for scan_root in SCAN_ROOTS:
+            for path in sorted(scan_root.rglob("*")):
+                if not path.is_file():
                     continue
-                if relative in ALLOWED_PATHS:
+                if "__pycache__" in path.parts:
                     continue
-                violations.append(f"{relative} -> {token}")
+                relative = path.relative_to(REPO_ROOT).as_posix()
+                if any(relative.startswith(prefix) for prefix in ALLOWED_PATH_PREFIXES):
+                    continue
+                text = path.read_text(encoding="utf-8", errors="ignore")
+                for token in SCATTERED_LEGACY_TOKENS:
+                    if token in text:
+                        violations.append(f"{relative} -> {token}")
         self.assertEqual(violations, [])
 
 

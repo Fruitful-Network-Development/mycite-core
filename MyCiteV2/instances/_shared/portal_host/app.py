@@ -25,7 +25,10 @@ except ModuleNotFoundError as exc:  # pragma: no cover - exercised in dependency
     request = _MissingRequest()
 
 from MyCiteV2.instances._shared.runtime.portal_aws_runtime import run_portal_aws_csm
-from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis
+from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+    LegacyMapsAliasUnsupportedError,
+    run_portal_cts_gis,
+)
 from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import run_portal_fnd_ebi
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import (
     run_portal_shell_entry,
@@ -441,6 +444,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
+        except LegacyMapsAliasUnsupportedError as exc:
+            return _error_response(exc.code, str(exc), status_code=400)
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
 
@@ -493,6 +498,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
+        except LegacyMapsAliasUnsupportedError as exc:
+            return _error_response(exc.code, str(exc), status_code=400)
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
 

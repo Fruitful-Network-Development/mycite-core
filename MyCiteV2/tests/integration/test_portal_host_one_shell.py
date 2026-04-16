@@ -329,6 +329,24 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(tool_payload["canonical_query"], {"view": "domains"})
             self.assertEqual(tool_payload["surface_payload"]["kind"], "aws_csm_workspace")
 
+            cts_gis_ok = client.post(
+                "/portal/api/v2/system/tools/cts-gis",
+                json={"schema": "mycite.v2.portal.system.tools.cts_gis.request.v1"},
+            )
+            self.assertEqual(cts_gis_ok.status_code, 200)
+            self.assertEqual(cts_gis_ok.get_json()["surface_id"], "system.tools.cts_gis")
+
+            cts_gis_legacy = client.post(
+                "/portal/api/v2/system/tools/cts-gis",
+                json={
+                    "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
+                    "selected_document_id": "sandbox:" + ("map" + "s") + ":sc.legacy.json",
+                },
+            )
+            self.assertEqual(cts_gis_legacy.status_code, 400)
+            legacy_error = cts_gis_legacy.get_json()
+            self.assertEqual(legacy_error["error"]["code"], "legacy_maps_alias_unsupported")
+
             profile_action = client.post(
                 "/portal/api/v2/system/workspace/profile-basics",
                 json={
