@@ -129,6 +129,21 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         )
         self.assertEqual(bundle["surface_payload"]["source_evidence"]["readiness"]["state"], "no_authoritative_cts_gis_documents")
         self.assertEqual(bundle["inspector"]["interface_body"]["kind"], "cts_gis_interface_body")
+        self.assertIn("navigation_canvas", bundle["inspector"]["interface_body"])
+        self.assertIn("garland_split_projection", bundle["inspector"]["interface_body"])
+        self.assertTrue(bundle["inspector"]["interface_body"]["context_strip"]["compact"])
+        self.assertIn(
+            "geospatial_projection",
+            bundle["inspector"]["interface_body"]["garland_split_projection"],
+        )
+        self.assertIn(
+            "profile_projection",
+            bundle["inspector"]["interface_body"]["garland_split_projection"],
+        )
+        self.assertIn(
+            "empty_message",
+            bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"],
+        )
         self.assertEqual(
             [group["title"] for group in bundle["control_panel"]["groups"][:3]],
             ["Directive", "AITAS", "Attention"],
@@ -254,7 +269,33 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertEqual(bundle["inspector"]["interface_body"]["kind"], "cts_gis_interface_body")
             self.assertEqual(bundle["inspector"]["interface_body"]["layout"], "dual_section")
             self.assertEqual(bundle["inspector"]["interface_body"]["narrow_layout"], "context_diktataograph_garland_stack")
+            self.assertIn("navigation_canvas", bundle["inspector"]["interface_body"])
+            self.assertIn("garland_split_projection", bundle["inspector"]["interface_body"])
+            self.assertIn(
+                "anchored_path",
+                bundle["inspector"]["interface_body"]["navigation_canvas"],
+            )
+            self.assertIn(
+                "structure_field",
+                bundle["inspector"]["interface_body"]["navigation_canvas"],
+            )
+            self.assertIn(
+                "projection_rule_field",
+                bundle["inspector"]["interface_body"]["navigation_canvas"],
+            )
+            self.assertIn(
+                "geospatial_projection",
+                bundle["inspector"]["interface_body"]["garland_split_projection"],
+            )
+            self.assertIn(
+                "profile_projection",
+                bundle["inspector"]["interface_body"]["garland_split_projection"],
+            )
             self.assertIn("Source Evidence", [group["title"] for group in bundle["control_panel"]["groups"]])
+            geo = bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            self.assertIn("empty_message", geo)
+            self.assertIn("features", geo)
+            self.assertIn("projection_state", geo)
 
             envelope = run_portal_shell_entry(
                 {

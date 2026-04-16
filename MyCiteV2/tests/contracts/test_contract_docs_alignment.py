@@ -56,6 +56,10 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("nimm_directive", shell_contract)
         self.assertIn("Diktataograph", shell_contract)
         self.assertIn("Garland", shell_contract)
+        self.assertIn("navigation_canvas", shell_contract)
+        self.assertIn("garland_split_projection", shell_contract)
+        self.assertIn("geospatial_projection", shell_contract)
+        self.assertIn("profile_projection", shell_contract)
         self.assertIn("cts-gis", shell_contract.lower())
         self.assertIn("authenticated peripheral package", shell_contract.lower())
         self.assertIn("interface_panel_collapsed", shell_contract)
@@ -119,6 +123,10 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("/portal/system/tools/cts-gis", route_model)
         self.assertIn("Diktataograph", surface_catalog)
         self.assertIn("Garland", surface_catalog)
+        self.assertIn("navigation_canvas", surface_catalog)
+        self.assertIn("garland_split_projection", surface_catalog)
+        self.assertIn("geospatial_projection", surface_catalog)
+        self.assertIn("profile_projection", surface_catalog)
         self.assertIn("tool-local state is body-carried", surface_catalog.lower())
 
     def test_route_model_uses_detail_lens_and_interface_panel_terms(self) -> None:
@@ -130,6 +138,8 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("nimm_directive", route_model)
         self.assertIn("Diktataograph", route_model)
         self.assertIn("Garland", route_model)
+        self.assertIn("navigation_canvas", route_model)
+        self.assertIn("garland_split_projection", route_model)
 
 
 if __name__ == "__main__":

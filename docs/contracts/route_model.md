@@ -87,11 +87,12 @@ CTS-GIS runtime/body rules:
 
 - CTS-GIS is the `system.tools.cts_gis` tool_mediation_surface under `SYSTEM`
 - its default posture is interface-panel-led
-- the dominant Interface Panel mounts one CTS-GIS-local body with `Diktataograph` and `Garland`
+- the dominant Interface Panel mounts one CTS-GIS-local dual-section body with `Diktataograph` and `Garland`
 - tool menubar toggles are single-click exclusive by default (`Workbench` or `Interface Panel`), with a route-scoped double-click lock that allows both
-- `Diktataograph` updates CTS-GIS-local structural navigation
-- `Garland` updates the correlated profile projection for that navigation root
+- `Diktataograph` is projected through `navigation_canvas` and updates CTS-GIS-local structural navigation
+- `Garland` is projected through `garland_split_projection`, where dominant `geospatial_projection` and secondary `profile_projection` update for that navigation root
 - these are CTS-GIS-local projections of one mediation posture, not two separate shell mediations
+- `CTS-GIS Context` remains a compact orientation strip and does not become a primary visual section
 - CTS-GIS supporting evidence precedence is:
   - `private/utilities/tools/cts-gis/spec.json`
   - `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`

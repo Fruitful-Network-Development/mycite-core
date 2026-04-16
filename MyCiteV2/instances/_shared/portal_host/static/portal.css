@@ -6150,35 +6150,93 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 
 .cts-gis-contextStrip {
   margin: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.cts-gis-contextStrip h3 {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-contextStrip__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+  gap: 0.5rem;
+}
+
+.cts-gis-contextChip {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+  padding: 0.5rem 0.58rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 84%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 72%, #fff 28%);
+}
+
+.cts-gis-contextChip__label {
+  font-size: 0.67rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-contextChip__value {
+  font-weight: 700;
+  font-size: 0.9rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cts-gis-contextChip__detail {
+  font-size: 0.72rem;
+  color: var(--ink2, #667068);
+  overflow-wrap: anywhere;
 }
 
 .cts-gis-interface__body {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: start;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 0;
 }
 
 .cts-gis-pane {
   display: grid;
-  gap: 0.85rem;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.75rem;
   min-width: 0;
+  min-height: 0;
 }
 
-.cts-gis-pane__header,
-.cts-gis-pane__section {
+.cts-gis-pane__header {
   min-width: 0;
 }
 
 .cts-gis-pane__header p {
   margin: 0.35rem 0 0;
   color: var(--ink2, #667068);
+  line-height: 1.4;
 }
 
-.cts-gis-pane__section {
+.cts-gis-navCanvas {
   display: grid;
-  gap: 0.55rem;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  min-height: 0;
 }
 
-.cts-gis-pane__section h4 {
+.cts-gis-navField {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.cts-gis-navField h4,
+.cts-gis-garlandSplit h4 {
   margin: 0;
   font-size: 0.82rem;
   letter-spacing: 0.08em;
@@ -6186,8 +6244,44 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   color: var(--ink2, #667068);
 }
 
+.cts-gis-navField__pathEntries,
+.cts-gis-navField__ruleEntries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.cts-gis-navField__lanes {
+  display: grid;
+  gap: 0.6rem;
+  max-height: clamp(240px, 54vh, 620px);
+  min-height: 0;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.cts-gis-navLane {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.cts-gis-navLane__title {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-navLane__entries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
 .cts-gis-entryList,
-.cts-gis-profileSummaryList {
+.cts-gis-profileSummaryList,
+.cts-gis-mapCanvas__featureEntries {
   display: grid;
   gap: 0.55rem;
 }
@@ -6196,6 +6290,7 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   display: grid;
   gap: 0.18rem;
   width: 100%;
+  min-width: 0;
   text-align: left;
   padding: 0.72rem 0.8rem;
   border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
@@ -6217,14 +6312,33 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   background: color-mix(in srgb, var(--paper2, #eef1e8) 78%, #fff 22%);
 }
 
+.cts-gis-entryButton--path {
+  flex: 1 1 8.7rem;
+}
+
+.cts-gis-entryButton--rule {
+  flex: 1 1 11rem;
+}
+
+.cts-gis-entryButton--node {
+  flex: var(--cts-gis-nav-weight, 1) 1 10.6rem;
+  transition: flex-grow 140ms ease;
+}
+
+.cts-gis-entryButton--feature {
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 64%, #fff 36%);
+}
+
 .cts-gis-entryButton__title {
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .cts-gis-entryButton__meta,
 .cts-gis-profileSummary__meta {
   font-size: 0.76rem;
   color: var(--ink2, #667068);
+  overflow-wrap: anywhere;
 }
 
 .cts-gis-profileSummary {
@@ -6236,6 +6350,79 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   background: color-mix(in srgb, var(--paper2, #eef1e8) 45%, transparent);
 }
 
+.cts-gis-garlandSplit {
+  display: grid;
+  grid-template-rows: minmax(260px, 2.3fr) minmax(0, 1fr);
+  gap: 0.7rem;
+  min-height: 0;
+}
+
+.cts-gis-garlandSplit__geospatial,
+.cts-gis-garlandSplit__profile {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+  min-height: 0;
+}
+
+.cts-gis-mapCanvas {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 0.5rem;
+  min-height: 0;
+  padding: 0.8rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 84%, transparent);
+  border-radius: 12px;
+  background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--paper2, #eef1e8) 62%, #fff 38%) 0%,
+      color-mix(in srgb, var(--paper, #f7f8f3) 86%, #fff 14%) 100%
+    );
+}
+
+.cts-gis-mapCanvas__state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.cts-gis-mapCanvas__status {
+  font-size: 0.71rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink2, #667068);
+  padding: 0.2rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 88%, #fff 12%);
+}
+
+.cts-gis-mapCanvas__meta {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--ink2, #667068);
+  overflow-wrap: anywhere;
+}
+
+.cts-gis-mapCanvas__featureList {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 0.1rem;
+}
+
+.cts-gis-garlandSplit__profileBlock {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.cts-gis-garlandSplit__profileBlock h5 {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink2, #667068);
+}
+
 .cts-gis-warningList {
   margin: 0;
   padding-left: 1rem;
@@ -6245,6 +6432,26 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 @media (max-width: 960px) {
   .cts-gis-interface__body {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cts-gis-navField__lanes {
+    max-height: clamp(220px, 42vh, 440px);
+  }
+
+  .cts-gis-garlandSplit {
+    grid-template-rows: minmax(220px, 1.8fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .cts-gis-contextStrip__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cts-gis-entryButton--path,
+  .cts-gis-entryButton--rule,
+  .cts-gis-entryButton--node {
+    flex-basis: 100%;
   }
 }
 

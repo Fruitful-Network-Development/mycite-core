@@ -65,11 +65,10 @@ Workspace file modes under `system.root`:
 - Its canonical route is `/portal/system/tools/cts-gis`.
 - Its default posture is interface-panel-led.
 - Its workbench is `tool_secondary_evidence` and stays hidden by default until secondary evidence is explicitly shown.
-- Its dominant `Interface Panel` mounts one CTS-GIS-local interface body with two sections:
-  - `Diktataograph`
-  - `Garland`
-- `Diktataograph` is the CTS-GIS structural navigation section.
-- `Garland` is the CTS-GIS correlated profile and spatial projection section.
+- Its dominant `Interface Panel` mounts one CTS-GIS-local dual-section interface body.
+- `Diktataograph` is the CTS-GIS structural navigation canvas (`navigation_canvas`).
+- `Garland` is the CTS-GIS correlated projection surface (`garland_split_projection`) with dominant `geospatial_projection` and secondary `profile_projection`.
+- `CTS-GIS Context` is compact orientation-only context above the dual section.
 - In narrow posture, the CTS-GIS-local body may fall back to a vertical stack with a compact context strip above both sections.
 - CTS-GIS mediates on the selected anchor-file datum and projects correlated source-file evidence into the Interface Panel.
 - CTS-GIS tool-local navigation does not widen the shared shell focus stack. The shell focus remains `sandbox -> file -> datum -> object`.
