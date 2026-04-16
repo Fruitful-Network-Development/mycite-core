@@ -16,6 +16,7 @@ from MyCiteV2.packages.modules.domains.publication import (
     PublicationTenantSummary,
     PublicationTenantSummaryService,
 )
+from MyCiteV2.packages.ports.datum_store.cts_gis_legacy_compat import cts_gis_tool_slug_candidates_phase_a
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
@@ -883,9 +884,13 @@ def build_tool_control_panel(
     tool_slug = _tool_root_slug_for_surface(surface_id)
     tool_root = None
     if root is not None and tool_slug:
-        candidate_roots = [root / "utilities" / "tools" / tool_slug]
         if surface_id == CTS_GIS_TOOL_SURFACE_ID:
-            candidate_roots.append(root / "utilities" / "tools" / "maps")
+            candidate_roots = [
+                root / "utilities" / "tools" / slug
+                for slug in cts_gis_tool_slug_candidates_phase_a()
+            ]
+        else:
+            candidate_roots = [root / "utilities" / "tools" / tool_slug]
         for candidate in candidate_roots:
             if candidate.exists():
                 tool_root = candidate

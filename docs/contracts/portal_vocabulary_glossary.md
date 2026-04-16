@@ -11,6 +11,7 @@ Canonical vocabulary for v2.5.3 shell/docs/runtime alignment.
 | `mycite:v2:inspector-toggle-request` / `mycite:v2:inspector-dismiss-request` | `mycite:v2:interface-panel-toggle-request` / `mycite:v2:interface-panel-dismiss-request` | Legacy event names still accepted | Remove legacy event aliases after compatibility window |
 | Header text buttons for `Control Panel` / `Workbench` | Menubar icon-toggle trio: `Control Panel`, `Workbench`, `Interface Panel` | Canonical | N/A |
 | Tool free-form panel coexistence wording | Tool default single-click exclusivity + double-click route lock mode | Canonical | N/A |
+| `maps` / `sandbox:maps:*` / `tool.maps.json` / `private/utilities/tools/maps` | `CTS-GIS` / `cts_gis` / `sandbox:cts_gis:*` / `tool.<msn>.cts-gis.json` / `private/utilities/tools/cts-gis` | Phase-A compatibility-only alias path through one CTS-GIS compat shim with warning code `cts_gis.legacy_maps_alias_consumed` | Remove in v2.5.4 |
 | `stacked_focus_panel` | `focus_selection_panel` | Legacy removed; canonical contract retained | Removed |
 | `operational-status` surface language | Unified shell/tool posture language | Legacy removed; canonical contract retained | Removed |
 

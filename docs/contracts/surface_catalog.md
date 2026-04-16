@@ -76,7 +76,8 @@ Workspace file modes under `system.root`:
 - Tool-local state is body-carried through CTS-GIS `tool_state`, not projected through new query keys.
 - The `Control Panel` holds CTS-GIS-local directive, AITAS, and source-evidence controls.
 - The workbench remains diagnostic or raw supporting evidence rather than a duplicate of Garland.
-- Legacy `maps` data remains compatibility-only; `CTS-GIS` is the canonical public name.
+- Phase-A compatibility keeps legacy `maps` inbound aliases loadable through one CTS-GIS compat shim and emits `cts_gis.legacy_maps_alias_consumed`.
+- Phase-B target (v2.5.4): remove legacy `maps` alias acceptance.
 
 ## NETWORK
 

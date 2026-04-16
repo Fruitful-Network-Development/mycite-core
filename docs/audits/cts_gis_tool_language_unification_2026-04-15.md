@@ -56,4 +56,4 @@ Date: 2026-04-15
 
 - Shared shell `AitasContext` remains unchanged.
 - CTS-GIS uses richer NIMM/AITAS labels only inside tool-local request/runtime payloads.
-- Legacy `maps` data, identifiers, and file names are still loadable until a later deliberate storage migration.
+- Follow-up in `cts_gis_legacy_maps_phase_a_alignment_2026-04-16.md` moved deployed/live CTS-GIS storage to canonical paths and constrained legacy `maps` handling to phase-A compat shims plus one explicit legacy fixture.

@@ -43,13 +43,13 @@ def _cts_gis_document() -> AuthoritativeDatumDocument:
         "011101110110111000000000"
     )
     return AuthoritativeDatumDocument(
-        document_id="sandbox:maps:sc.example.json",
+        document_id="sandbox:cts_gis:sc.example.json",
         source_kind="sandbox_source",
         document_name="sc.example.json",
-        relative_path="sandbox/maps/sources/sc.example.json",
-        tool_id="maps",
-        anchor_document_name="tool.maps.json",
-        anchor_document_path="sandbox/maps/tool.maps.json",
+        relative_path="sandbox/cts-gis/sources/sc.example.json",
+        tool_id="cts_gis",
+        anchor_document_name="tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        anchor_document_path="sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
         anchor_rows=(
             _anchor_row("3-1-1", "HOPS-babelette-coordinate"),
             _anchor_row("3-1-2", "SAMRAS-babelette-msn_id"),

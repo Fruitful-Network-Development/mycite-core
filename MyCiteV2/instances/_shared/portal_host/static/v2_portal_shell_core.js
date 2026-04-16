@@ -147,15 +147,10 @@
 
     if (workbench) {
       workbench.setAttribute("data-active-service", composition.active_service || "system");
-      workbench.setAttribute("data-foreground-visible", workbenchVisible ? "true" : "false");
-      workbench.setAttribute("aria-hidden", workbenchVisible ? "false" : "true");
-      workbench.style.display = workbenchVisible ? "" : "none";
     }
     if (inspector) {
       inspector.setAttribute("data-primary-surface", inspectorRegion.primary_surface ? "true" : "false");
       inspector.setAttribute("data-surface-layout", inspectorRegion.layout_mode || "sidebar");
-      inspector.setAttribute("aria-hidden", inspectorVisible ? "false" : "true");
-      inspector.style.display = inspectorVisible ? "" : "none";
     }
     if (inspectorContent) {
       inspectorContent.setAttribute(
@@ -318,46 +313,34 @@
   }
 
   function bindShellChromeEvents() {
+    function withPortalShell(action) {
+      if (!window.PortalShell) return false;
+      action(window.PortalShell);
+      return true;
+    }
+
     function setWorkbenchOpenLocal(isOpen) {
-      if (window.PortalShell && typeof window.PortalShell.setWorkbenchOpen === "function") {
-        window.PortalShell.setWorkbenchOpen(!!isOpen, true);
-        return;
-      }
-      var shell = qs(".ide-shell");
-      var workbench = qs(".ide-workbench");
-      if (!shell || !workbench) return;
-      shell.setAttribute("data-workbench-collapsed", isOpen ? "false" : "true");
-      workbench.setAttribute("data-foreground-visible", isOpen ? "true" : "false");
-      workbench.setAttribute("aria-hidden", isOpen ? "false" : "true");
-      workbench.style.display = isOpen ? "" : "none";
+      withPortalShell(function (portalShell) {
+        if (typeof portalShell.setWorkbenchOpen === "function") {
+          portalShell.setWorkbenchOpen(!!isOpen, true);
+        }
+      });
     }
 
     function setInterfacePanelOpenLocal(isOpen) {
-      if (window.PortalShell && typeof window.PortalShell.setInterfacePanelOpen === "function") {
-        window.PortalShell.setInterfacePanelOpen(!!isOpen, true);
-        return;
-      }
-      var shell = qs(".ide-shell");
-      var inspector = qs("#portalInspector");
-      if (!shell || !inspector) return;
-      shell.setAttribute("data-interface-panel-collapsed", isOpen ? "false" : "true");
-      shell.setAttribute("data-inspector-collapsed", isOpen ? "false" : "true");
-      inspector.classList.toggle("is-collapsed", !isOpen);
-      inspector.setAttribute("aria-hidden", isOpen ? "false" : "true");
-      inspector.style.display = isOpen ? "" : "none";
+      withPortalShell(function (portalShell) {
+        if (typeof portalShell.setInterfacePanelOpen === "function") {
+          portalShell.setInterfacePanelOpen(!!isOpen, true);
+        }
+      });
     }
 
     function setControlPanelOpenLocal(isOpen) {
-      if (window.PortalShell && typeof window.PortalShell.setControlPanelOpen === "function") {
-        window.PortalShell.setControlPanelOpen(!!isOpen, true);
-        return;
-      }
-      var shell = qs(".ide-shell");
-      var controlPanel = qs("#portalControlPanel");
-      if (!shell || !controlPanel) return;
-      shell.setAttribute("data-control-panel-collapsed", isOpen ? "false" : "true");
-      controlPanel.classList.toggle("is-collapsed", !isOpen);
-      controlPanel.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      withPortalShell(function (portalShell) {
+        if (typeof portalShell.setControlPanelOpen === "function") {
+          portalShell.setControlPanelOpen(!!isOpen, true);
+        }
+      });
     }
 
     function handleInterfacePanelToggle() {

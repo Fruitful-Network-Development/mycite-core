@@ -17,6 +17,7 @@ from MyCiteV2.packages.ports.datum_store import (
     SystemDatumStorePort,
     SystemDatumStoreRequest,
 )
+from MyCiteV2.packages.ports.datum_store.cts_gis_legacy_compat import CTS_GIS_LEGACY_WARNING_CODE
 
 
 class FilesystemSystemDatumStoreAdapterTests(unittest.TestCase):
@@ -75,13 +76,13 @@ class FilesystemSystemDatumStoreAdapterTests(unittest.TestCase):
             data_dir = Path(temp_dir)
             (data_dir / "system" / "sources").mkdir(parents=True)
             (data_dir / "payloads" / "cache").mkdir(parents=True)
-            (data_dir / "sandbox" / "maps" / "sources").mkdir(parents=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True)
             (data_dir / "system" / "anthology.json").write_text(
                 json.dumps({"0-0-1": [["0-0-1", "~", "0-0-0"], ["time-ordinal-position"]]}) + "\n",
                 encoding="utf-8",
             )
             (data_dir / "system" / "sources" / "sc.example.json").write_text("{}\n", encoding="utf-8")
-            (data_dir / "sandbox" / "maps" / "tool.maps.json").write_text(
+            (data_dir / "sandbox" / "cts-gis" / "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json").write_text(
                 json.dumps(
                     {
                         "3-1-2": [["3-1-2", "2-0-2", "0"], ["SAMRAS-babelette-msn_id"]],
@@ -91,7 +92,7 @@ class FilesystemSystemDatumStoreAdapterTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            (data_dir / "sandbox" / "maps" / "sources" / "sc.example.json").write_text(
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.example.json").write_text(
                 json.dumps(
                     {
                         "anchor_file_version": "<hash here>",
@@ -120,10 +121,78 @@ class FilesystemSystemDatumStoreAdapterTests(unittest.TestCase):
             self.assertTrue(payload["ok"])
             self.assertEqual(payload["document_count"], 2)
             self.assertEqual(sandbox_document["tool_id"], "cts_gis")
-            self.assertEqual(sandbox_document["anchor_document_name"], "tool.maps.json")
+            self.assertEqual(sandbox_document["anchor_document_name"], "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json")
             self.assertEqual(sandbox_document["anchor_rows"][1]["datum_address"], "3-1-3")
             self.assertEqual(sandbox_document["rows"][0]["raw"][0][4], "HERE")
             self.assertEqual(payload["readiness_status"]["derived_materialization"], "partial")
+            self.assertNotIn(CTS_GIS_LEGACY_WARNING_CODE, payload["warnings"])
+
+    def test_phase_a_legacy_maps_fixture_still_loads_and_emits_warning(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "sandbox" / "maps" / "sources").mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps({"0-0-1": [["0-0-1", "~", "0-0-0"], ["time-ordinal-position"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "maps" / "tool.maps.json").write_text(
+                json.dumps({"3-1-3": [["3-1-3", "2-1-1", "0"], ["title-babelette"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "maps" / "sources" / "sc.legacy.json").write_text(
+                json.dumps({"4-2-1": [["4-2-1", "rf.3-1-3", "HERE"], ["legacy_row"]]}) + "\n",
+                encoding="utf-8",
+            )
+
+            payload = FilesystemSystemDatumStoreAdapter(data_dir).read_authoritative_datum_documents(
+                AuthoritativeDatumDocumentRequest(tenant_id="fnd")
+            ).to_dict()
+            sandbox_document = next(
+                document
+                for document in payload["documents"]
+                if document["source_kind"] == "sandbox_source"
+            )
+            self.assertEqual(sandbox_document["tool_id"], "cts_gis")
+            self.assertEqual(sandbox_document["anchor_document_name"], "tool.maps.json")
+            self.assertIn(CTS_GIS_LEGACY_WARNING_CODE, payload["warnings"])
+
+    def test_anchor_precedence_prefers_canonical_anchor_when_legacy_file_is_present(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps({"0-0-1": [["0-0-1", "~", "0-0-0"], ["time-ordinal-position"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json").write_text(
+                json.dumps({"3-1-3": [["3-1-3", "2-1-1", "0"], ["canonical-anchor"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "tool.maps.json").write_text(
+                json.dumps({"3-1-3": [["3-1-3", "2-1-1", "0"], ["legacy-anchor"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.example.json").write_text(
+                json.dumps({"4-2-1": [["4-2-1", "rf.3-1-3", "HERE"], ["row"]]}) + "\n",
+                encoding="utf-8",
+            )
+
+            payload = FilesystemSystemDatumStoreAdapter(data_dir).read_authoritative_datum_documents(
+                AuthoritativeDatumDocumentRequest(tenant_id="fnd")
+            ).to_dict()
+            sandbox_document = next(
+                document
+                for document in payload["documents"]
+                if document["source_kind"] == "sandbox_source"
+            )
+            self.assertEqual(
+                sandbox_document["anchor_document_name"],
+                "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+            )
 
 
 if __name__ == "__main__":

@@ -36,13 +36,13 @@ def _anchor_row(address: str, label: str) -> AuthoritativeDatumDocumentRow:
 class DatumRecognitionUnitTests(unittest.TestCase):
     def test_preserves_here_and_distinguishes_reference_legality_from_family_mismatch(self) -> None:
         document = AuthoritativeDatumDocument(
-            document_id="sandbox:maps:sc.example.json",
+            document_id="sandbox:cts_gis:sc.example.json",
             source_kind="sandbox_source",
             document_name="sc.example.json",
-            relative_path="sandbox/maps/sources/sc.example.json",
-            tool_id="maps",
-            anchor_document_name="tool.maps.json",
-            anchor_document_path="sandbox/maps/tool.maps.json",
+            relative_path="sandbox/cts-gis/sources/sc.example.json",
+            tool_id="cts_gis",
+            anchor_document_name="tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+            anchor_document_path="sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
             anchor_rows=(
                 _anchor_row("3-1-2", "SAMRAS-babelette-msn_id"),
                 _anchor_row("3-1-3", "title-babelette"),
@@ -81,11 +81,11 @@ class DatumRecognitionUnitTests(unittest.TestCase):
 
     def test_reports_unresolved_anchor_and_missing_reference_without_rewriting_row(self) -> None:
         document = AuthoritativeDatumDocument(
-            document_id="sandbox:maps:sc.bad.json",
+            document_id="sandbox:cts_gis:sc.bad.json",
             source_kind="sandbox_source",
             document_name="sc.bad.json",
-            relative_path="sandbox/maps/sources/sc.bad.json",
-            tool_id="maps",
+            relative_path="sandbox/cts-gis/sources/sc.bad.json",
+            tool_id="cts_gis",
             rows=(
                 AuthoritativeDatumDocumentRow(
                     datum_address="4-2-1",
@@ -117,11 +117,11 @@ class DatumRecognitionUnitTests(unittest.TestCase):
 
     def test_flags_address_irregularity_without_resequencing_addresses(self) -> None:
         document = AuthoritativeDatumDocument(
-            document_id="sandbox:maps:sc.gap.json",
+            document_id="sandbox:cts_gis:sc.gap.json",
             source_kind="sandbox_source",
             document_name="sc.gap.json",
-            relative_path="sandbox/maps/sources/sc.gap.json",
-            tool_id="maps",
+            relative_path="sandbox/cts-gis/sources/sc.gap.json",
+            tool_id="cts_gis",
             rows=(
                 AuthoritativeDatumDocumentRow(
                     datum_address="4-2-118",
@@ -148,11 +148,11 @@ class DatumRecognitionUnitTests(unittest.TestCase):
 
     def test_flags_unrecognized_family_when_anchor_exists_but_family_is_unknown(self) -> None:
         document = AuthoritativeDatumDocument(
-            document_id="sandbox:maps:sc.unknown.json",
+            document_id="sandbox:cts_gis:sc.unknown.json",
             source_kind="sandbox_source",
             document_name="sc.unknown.json",
-            relative_path="sandbox/maps/sources/sc.unknown.json",
-            tool_id="maps",
+            relative_path="sandbox/cts-gis/sources/sc.unknown.json",
+            tool_id="cts_gis",
             anchor_rows=(_anchor_row("3-1-7", "custom-anchor-shape"),),
             rows=(
                 AuthoritativeDatumDocumentRow(

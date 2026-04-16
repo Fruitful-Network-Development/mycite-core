@@ -2801,6 +2801,10 @@ body.is-modal-open {
   justify-self: center;
 }
 
+.ide-menubar__center > * {
+  min-width: 0;
+}
+
 .ide-menubar__pageTitle {
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -2816,6 +2820,7 @@ body.is-modal-open {
   color: rgba(235, 240, 246, 0.64);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   min-width: 0;
   flex: 0 1 auto;
 }
@@ -3922,10 +3927,6 @@ body.is-modal-open {
   --ide-inspector-splitter-visible-w: var(--ide-splitter-w);
 }
 
-.ide-shell[data-foreground-shell-region="interface-panel"][data-inspector-collapsed="false"][data-workbench-collapsed="true"] {
-  --ide-inspector-w: min(680px, 48vw);
-}
-
 .ide-menubar {
   flex: 0 0 var(--ide-menu-h);
   min-height: var(--ide-menu-h);
@@ -4007,6 +4008,13 @@ body.is-modal-open {
 }
 
 .ide-shell[data-workbench-collapsed="true"] .ide-inspector {
+  width: 100%;
+  max-width: none;
+}
+
+#v2-inspector-dynamic,
+#v2-inspector-dynamic > * {
+  min-width: 0;
   width: 100%;
   max-width: none;
 }
