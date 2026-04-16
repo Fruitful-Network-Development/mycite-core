@@ -296,6 +296,15 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertIn("empty_message", geo)
             self.assertIn("features", geo)
             self.assertIn("projection_state", geo)
+            self.assertIn("feature_collection", geo)
+            self.assertIn(
+                "active_profile",
+                bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"],
+            )
+            self.assertIn(
+                "hierarchy",
+                bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"],
+            )
 
             envelope = run_portal_shell_entry(
                 {
@@ -328,6 +337,101 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
             self.assertTrue(envelope["shell_composition"]["workbench_collapsed"])
             self.assertFalse(envelope["shell_composition"]["interface_panel_collapsed"])
+
+    def test_cts_gis_default_runtime_uses_county_root_projection_with_administrative_supporting_document(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            (data_dir / "system").mkdir(parents=True, exist_ok=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True, exist_ok=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True, exist_ok=True)
+            (private_dir / "utilities" / "tools" / "cts-gis").mkdir(parents=True, exist_ok=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                '{\n  "1-0-1": [["1-0-1", "~", "0-0-0"], ["anchor-root"]]\n}\n',
+                encoding="utf-8",
+            )
+            (private_dir / "utilities" / "tools" / "cts-gis" / "spec.json").write_text(
+                '{\n  "schema": "mycite.portal.tool_spec.v1",\n  "tool_id": "cts_gis"\n}\n',
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json").write_text(
+                '{\n'
+                '  "datum_addressing_abstraction_space": {\n'
+                '    "0-0-11": [["0-0-11", "~", "0-0-0"], ["json-file-unit"]],\n'
+                '    "1-0-1": [["1-0-1", "~", "0-0-11"], ["sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"]],\n'
+                '    "1-0-2": [["1-0-2", "~", "0-0-11"], ["sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"]],\n'
+                '    "1-1-2": [["1-1-2", "0-0-5", "123"], ["msn-SAMRAS"]],\n'
+                '    "2-0-2": [["2-0-2", "~", "1-1-2"], ["SAMRAS-space-msn"]],\n'
+                '    "2-1-1": [["2-1-1", "1-1-3", "64"], ["niu-baciloid-256-64"]],\n'
+                '    "3-1-1": [["3-1-1", "2-0-2", "0"], ["HOPS-babelette-coordinate"]],\n'
+                '    "3-1-2": [["3-1-2", "2-0-2", "0"], ["SAMRAS-babelette-msn_id"]],\n'
+                '    "3-1-3": [["3-1-3", "2-1-1", "0"], ["title-babelette"]]\n'
+                '  }\n'
+                '}\n',
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json").write_text(
+                '{\n'
+                '  "datum_addressing_abstraction_space": {\n'
+                '    "4-2-1": [["4-2-1", "rf.3-1-2", "3-2-3-17-77", "rf.3-1-3", "01010011011101010110110101101101011010010111010000000000"], ["summit_county"]],\n'
+                '    "4-2-2": [["4-2-2", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", "011000010110101101110010011011110110111000000000"], ["city_of_akron"]]\n'
+                '  }\n'
+                '}\n',
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json").write_text(
+                '{\n'
+                '  "datum_addressing_abstraction_space": {\n'
+                '    "4-2-1": [["4-2-1", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"], ["polygon_1"]],\n'
+                '    "4-2-2": [["4-2-2", "rf.3-1-1", "3-76-11-40-92-20-21-92-81-29-56-60-79-56-3-4-39"], ["point_alpha"]],\n'
+                '    "5-0-1": [["5-0-1", "~", "4-2-1"], ["summit_boundary"]],\n'
+                '    "6-0-1": [["6-0-1", "~", "4-2-2"], ["fairlawn_boundary_collection"]],\n'
+                '    "7-3-1": [["7-3-1", "rf.3-1-2", "3-2-3-17-77", "rf.3-1-3", "01010011011101010110110101101101011010010111010000000000", "5-0-1", "1"], ["summit_county"]],\n'
+                '    "7-3-2": [["7-3-2", "rf.3-1-2", "3-2-3-17-77-1-1", "rf.3-1-3", "011001100110000101101001011100100110110001100001011101110110111000000000", "6-0-1", "1"], ["fairlawn_city"]]\n'
+                '  }\n'
+                '}\n',
+                encoding="utf-8",
+            )
+            (data_dir / "payloads" / "cache" / "sc.3-2-3-17-77-1-6-4-1-4.registrar.json").write_text(
+                '{\n  "payload_id": "sc.3-2-3-17-77-1-6-4-1-4.registrar",\n  "target_mss_anchor_datum": "5-0-1"\n}\n',
+                encoding="utf-8",
+            )
+            (data_dir / "payloads" / "cache" / "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json").write_text(
+                '{\n  "payload_id": "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative"\n}\n',
+                encoding="utf-8",
+            )
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+            )
+
+            self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["attention_node_id"], "3-2-3-17-77")
+            interface_body = bundle["inspector"]["interface_body"]
+            navigation_canvas = interface_body["navigation_canvas"]
+            garland = interface_body["garland_split_projection"]
+            self.assertTrue(navigation_canvas["structure_field"]["entries"])
+            self.assertEqual(garland["profile_projection"]["active_profile"]["node_id"], "3-2-3-17-77")
+            self.assertTrue(garland["geospatial_projection"]["feature_collection"]["features"])
+            self.assertGreater(garland["geospatial_projection"]["feature_count"], 0)
+            summary_by_label = {
+                row["label"]: row["value"]
+                for row in garland["profile_projection"]["summary_rows"]
+            }
+            self.assertEqual(
+                summary_by_label["Supporting document"],
+                "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json",
+            )
+            self.assertEqual(
+                summary_by_label["Projection document"],
+                "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
+            )
 
     def test_unknown_removed_surface_falls_back_to_system_workspace(self) -> None:
         envelope = run_portal_shell_entry(

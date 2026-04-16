@@ -60,6 +60,8 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("garland_split_projection", shell_contract)
         self.assertIn("geospatial_projection", shell_contract)
         self.assertIn("profile_projection", shell_contract)
+        self.assertIn("section titles exist only as empty panels", shell_contract)
+        self.assertIn("cts-gis-specific canvas/projection roles", shell_contract.lower())
         self.assertIn("cts-gis", shell_contract.lower())
         self.assertIn("authenticated peripheral package", shell_contract.lower())
         self.assertIn("interface_panel_collapsed", shell_contract)

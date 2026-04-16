@@ -352,6 +352,18 @@ def _evidence_path_payload(path: Path | None, *, canonical_tool_id: str = "") ->
     return out
 
 
+def _supporting_document_summary(service_surface: dict[str, Any]) -> dict[str, Any]:
+    document_catalog = [
+        dict(item)
+        for item in list(service_surface.get("document_catalog") or [])
+        if isinstance(item, dict)
+    ]
+    for item in document_catalog:
+        if _as_text(item.get("document_name")) == _DEFAULT_SUPPORTING_DOCUMENT_NAME:
+            return item
+    return dict(service_surface.get("selected_document") or {})
+
+
 def _build_source_evidence(
     *,
     data_dir: str | Path | None,
@@ -359,15 +371,16 @@ def _build_source_evidence(
     service_surface: dict[str, Any],
 ) -> dict[str, Any]:
     selected_document = dict(service_surface.get("selected_document") or {})
-    selected_document_name = _as_text(selected_document.get("document_name")) or _DEFAULT_SUPPORTING_DOCUMENT_NAME
-    corpus_prefix = _cts_gis_corpus_prefix(selected_document_name)
+    supporting_document = _supporting_document_summary(service_surface)
+    supporting_document_name = _as_text(supporting_document.get("document_name")) or _DEFAULT_SUPPORTING_DOCUMENT_NAME
+    corpus_prefix = _cts_gis_corpus_prefix(supporting_document_name)
     private_tool_root = _cts_gis_private_tool_root(private_dir)
     data_tool_root = _cts_gis_data_tool_root(data_dir)
     spec_path = None if private_tool_root is None else private_tool_root / "spec.json"
     tool_anchor_path = _cts_gis_tool_anchor_path(data_dir)
     tool_anchor_payload = _safe_json_object(tool_anchor_path)
     member_files = _anchor_member_files(tool_anchor_payload)
-    source_path = None if data_tool_root is None else data_tool_root / "sources" / selected_document_name
+    source_path = None if data_tool_root is None else data_tool_root / "sources" / supporting_document_name
     payload_cache_root = None if data_dir is None else Path(data_dir) / "payloads" / "cache"
     registrar_path = None if payload_cache_root is None or not corpus_prefix else payload_cache_root / f"{corpus_prefix}.registrar.json"
     administrative_cache_path = (
@@ -378,8 +391,8 @@ def _build_source_evidence(
     tool_anchor = _evidence_path_payload(tool_anchor_path)
     tool_anchor["member_files"] = member_files
     administrative_source = _evidence_path_payload(source_path)
-    administrative_source["document_id"] = _as_text(selected_document.get("document_id"))
-    administrative_source["document_name"] = selected_document_name
+    administrative_source["document_id"] = _as_text(supporting_document.get("document_id"))
+    administrative_source["document_name"] = supporting_document_name
     registrar_payload = _evidence_path_payload(registrar_path)
     if registrar_payload["payload"]:
         registrar_payload["payload_id"] = _as_text(registrar_payload["payload"].get("payload_id"))
@@ -679,6 +692,7 @@ def _cts_gis_interface_body(
 ) -> dict[str, Any]:
     attention_profile = dict(service_surface.get("attention_profile") or {})
     selected_document = dict(service_surface.get("selected_document") or {})
+    supporting_document = dict(source_evidence.get("administrative_source") or {})
     selected_row = dict(service_surface.get("selected_row") or {})
     map_projection = dict(service_surface.get("map_projection") or {})
     selected_feature = dict(map_projection.get("selected_feature") or {})
@@ -716,6 +730,8 @@ def _cts_gis_interface_body(
     )
     selected_feature_bounds = list(selected_feature.get("bounds") or [])
     selected_feature_geometry_type = _as_text(selected_feature.get("geometry_type"))
+    supporting_document_name = _as_text(supporting_document.get("document_name")) or _DEFAULT_SUPPORTING_DOCUMENT_NAME
+    projection_document_name = _as_text(selected_document.get("document_name"))
     if projection_state == "no_authoritative_cts_gis_documents":
         geospatial_empty_message = "No authoritative CTS-GIS documents are available for this portal scope."
     elif int(map_projection.get("feature_count") or 0) <= 0:
@@ -741,6 +757,13 @@ def _cts_gis_interface_body(
             "value": _as_text(resolved_tool_state["aitas"]["archetype_family_id"]) or _DEFAULT_ARCHETYPE_FAMILY_ID,
         },
     ]
+    active_profile_card = {
+        "label": _as_text(attention_profile.get("profile_label")) or _as_text(resolved_tool_state["aitas"]["attention_node_id"]),
+        "node_id": _as_text(attention_profile.get("node_id")) or _as_text(resolved_tool_state["aitas"]["attention_node_id"]),
+        "feature_count": int(attention_profile.get("feature_count") or 0),
+        "child_count": int(attention_profile.get("child_count") or 0),
+        "document_id": _as_text(attention_profile.get("document_id")),
+    }
     navigation_nodes = [
         {
             "node_id": _as_text(item.get("node_id")),
@@ -806,8 +829,24 @@ def _cts_gis_interface_body(
         }
         for row in list(service_surface.get("rows") or [])[:12]
     ]
+    feature_geometry_entries = [
+        {
+            "feature_id": _as_text(feature.get("id")),
+            "label": _as_text((feature.get("properties") or {}).get("profile_label"))
+            or _as_text((feature.get("properties") or {}).get("samras_node_id"))
+            or _as_text(feature.get("id"))
+            or "feature",
+            "node_id": _as_text((feature.get("properties") or {}).get("samras_node_id")),
+            "geometry": dict(feature.get("geometry") or {}),
+            "selected": bool(feature.get("selected")),
+        }
+        for feature in feature_rows[:48]
+        if _as_text(feature.get("id"))
+    ]
     profile_projection_rows = [
-        {"label": "Supporting document", "value": _as_text(selected_document.get("document_name")) or _DEFAULT_SUPPORTING_DOCUMENT_NAME},
+        {"label": "Supporting document", "value": supporting_document_name},
+        {"label": "Projection document", "value": projection_document_name or "—"},
+        {"label": "Attention node", "value": _as_text(resolved_tool_state["aitas"]["attention_node_id"]) or "—"},
         {"label": "Projection state", "value": projection_state},
         {"label": "Rendered features", "value": str(int(render_set_summary.get("render_feature_count") or 0))},
         {"label": "Rendered rows", "value": str(int(render_set_summary.get("render_row_count") or 0))},
@@ -862,15 +901,24 @@ def _cts_gis_interface_body(
                 "feature_count": int(map_projection.get("feature_count") or 0),
                 "render_feature_count": int(render_set_summary.get("render_feature_count") or 0),
                 "render_row_count": int(render_set_summary.get("render_row_count") or 0),
+                "supporting_document_name": supporting_document_name,
+                "projection_document_name": projection_document_name,
                 "selected_feature_id": _as_text(selected_feature.get("feature_id")),
                 "selected_feature_geometry_type": selected_feature_geometry_type,
                 "selected_feature_bounds": selected_feature_bounds,
                 "collection_bounds": feature_collection_bounds,
                 "empty_message": geospatial_empty_message,
+                "feature_collection": {
+                    "type": _as_text(feature_collection.get("type")) or "FeatureCollection",
+                    "features": feature_geometry_entries,
+                    "bounds": feature_collection_bounds,
+                },
                 "features": feature_entries,
             },
             "profile_projection": {
                 "title": "Profile Projection",
+                "active_profile": active_profile_card,
+                "hierarchy": anchored_path_entries,
                 "summary_rows": profile_projection_rows,
                 "projected_rows": projected_rows,
                 "correlated_profiles": list(service_surface.get("related_profiles") or []),

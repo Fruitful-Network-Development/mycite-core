@@ -203,6 +203,8 @@ This is an interface-panel-led tool model, not a generic workbench page model.
 - The dominant `tool_mediation_panel` mounts one CTS-GIS-local interface body.
 - The CTS-GIS interface body is role-shaped, not generic card-grid shaped.
 - The CTS-GIS-local section titles are `Diktataograph` and `Garland`.
+- CTS-GIS is not contract-complete when those section titles exist only as empty panels, generic lists, or card scaffolds.
+  The contract is satisfied only when `Diktataograph` and `Garland` materialize in their CTS-GIS-specific canvas/projection roles.
 - `Diktataograph` materializes as a structural navigation canvas through `navigation_canvas`.
   It projects anchored-path structural navigation for the current SAMRAS-defined address space and may overlay correlated names through the ASCII lens.
 - `Garland` materializes as a correlated projection surface through `garland_split_projection`.
