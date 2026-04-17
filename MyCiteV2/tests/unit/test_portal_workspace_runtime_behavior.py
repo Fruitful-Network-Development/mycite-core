@@ -21,6 +21,7 @@ from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
     read_system_workbench_projection,
 )
 from MyCiteV2.packages.adapters.filesystem.network_root_read_model import build_system_log_document
+from MyCiteV2.packages.core.structures.samras import encode_canonical_structure_from_addresses
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
     FOCUS_LEVEL_OBJECT,
@@ -45,6 +46,214 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _ascii_bits(text: str) -> str:
+    return "".join(format(value, "08b") for value in text.encode("ascii"))
+
+
+def _cts_gis_valid_addresses() -> list[str]:
+    addresses = [str(index) for index in range(1, 9)]
+    addresses.extend(f"3-{index}" for index in range(1, 32))
+    addresses.extend(f"4-{index}" for index in range(1, 7))
+    addresses.extend(f"3-2-{index}" for index in range(1, 4))
+    addresses.extend(f"3-2-3-{index}" for index in range(1, 18))
+    addresses.extend(f"3-2-3-17-{index}" for index in range(1, 78))
+    addresses.append("3-2-3-17-77-1")
+    return addresses
+
+
+def _cts_gis_node_titles() -> dict[str, str]:
+    titles = {
+        "1": "neg",
+        "2": "neh",
+        "3": "nwh",
+        "4": "nwg",
+        "5": "seg",
+        "6": "seh",
+        "7": "swh",
+        "8": "swg",
+        "3-1": "united_kingdom",
+        "3-2": "united_states_of_america",
+        "3-3": "cuba",
+        "3-4": "dominican_republic",
+        "3-5": "el_salvador",
+        "3-6": "haiti",
+        "3-7": "nicaragua",
+        "3-8": "costa_rica",
+        "3-9": "liberia",
+        "3-10": "colombia",
+        "3-11": "canada",
+        "3-12": "panama",
+        "3-13": "venezuela",
+        "3-14": "honduras",
+        "3-15": "iceland",
+        "3-16": "ireland",
+        "3-17": "portugal",
+        "3-18": "spain",
+        "3-19": "morocco",
+        "3-20": "ghana",
+        "3-21": "mali",
+        "3-22": "senegal",
+        "3-23": "sierra_leone",
+        "3-24": "mauritania",
+        "3-25": "jamaica",
+        "3-26": "trinidad_and_tobago",
+        "3-27": "the_gambia",
+        "3-28": "guyana",
+        "3-29": "bahamas",
+        "3-30": "grenada",
+        "3-31": "guinea_bissau",
+        "4-1": "suriname",
+        "4-2": "dominica",
+        "4-3": "saint_lucia",
+        "4-4": "saint_vincent_grenadines",
+        "4-5": "belize",
+        "4-6": "saint_kitts_nevis",
+        "3-2-1": "free_associate",
+        "3-2-2": "insular_area",
+        "3-2-3": "states",
+        "3-2-3-17": "ohio",
+        "3-2-3-17-77": "summit_county",
+    }
+    for index in range(1, 17):
+        titles[f"3-2-3-{index}"] = f"state_{index}"
+    for index in range(1, 77):
+        titles[f"3-2-3-17-{index}"] = f"county_{index}"
+    return titles
+
+
+def _cts_gis_navigation_row(
+    row_index: int,
+    *,
+    node_id: str,
+    title_bits: str,
+    label: str,
+) -> tuple[str, list[object]]:
+    return (
+        f"4-2-{row_index}",
+        [
+            [f"4-1-{row_index}", "rf.3-1-2", node_id, "rf.3-1-3", title_bits],
+            [label],
+        ],
+    )
+
+
+def _write_cts_gis_fixture(
+    data_dir: Path,
+    private_dir: Path,
+    *,
+    selected_node_projection: str = "3-2-3-17-77",
+    duplicate_node_ids: tuple[str, ...] = (),
+    outside_node_ids: tuple[str, ...] = (),
+    invalid_title_node_ids: tuple[str, ...] = ("3-2-3-17-77-1",),
+    magnitude_bitstream: str | None = None,
+) -> None:
+    (data_dir / "system").mkdir(parents=True, exist_ok=True)
+    (data_dir / "payloads" / "cache").mkdir(parents=True, exist_ok=True)
+    (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True, exist_ok=True)
+    (private_dir / "utilities" / "tools" / "cts-gis").mkdir(parents=True, exist_ok=True)
+    _write_json(data_dir / "system" / "anthology.json", {"1-0-1": [["1-0-1", "~", "0-0-0"], ["anchor-root"]]})
+    _write_json(
+        private_dir / "utilities" / "tools" / "cts-gis" / "spec.json",
+        {"schema": "mycite.portal.tool_spec.v1", "tool_id": "cts_gis"},
+    )
+
+    addresses = _cts_gis_valid_addresses()
+    magnitude = magnitude_bitstream or encode_canonical_structure_from_addresses(addresses).bitstream
+    _write_json(
+        data_dir / "payloads" / "cache" / "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json",
+        {
+            "schema": "mycite.datum_payload.v1",
+            "payload_id": "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative",
+            "datum_addressing_abstraction_space": {
+                "0-0-5": [["0-0-5", "~", "0-0-0"], ["nominal-ordinal-position"]],
+                "1-1-1": [["1-1-1", "0-0-5", magnitude], ["msn-SAMRAS"]],
+            },
+        },
+    )
+    _write_json(
+        data_dir / "payloads" / "cache" / "sc.3-2-3-17-77-1-6-4-1-4.registrar.json",
+        {
+            "payload_id": "sc.3-2-3-17-77-1-6-4-1-4.registrar",
+            "target_mss_anchor_datum": "5-0-1",
+        },
+    )
+    _write_json(
+        data_dir / "sandbox" / "cts-gis" / "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        {
+            "datum_addressing_abstraction_space": {
+                "0-0-11": [["0-0-11", "~", "0-0-0"], ["json-file-unit"]],
+                "1-0-1": [["1-0-1", "~", "0-0-11"], ["sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"]],
+                "1-1-2": [["1-1-2", "0-0-5", magnitude], ["msn-SAMRAS"]],
+                "2-0-2": [["2-0-2", "~", "1-1-2"], ["SAMRAS-space-msn"]],
+                "2-1-1": [["2-1-1", "1-1-3", "64"], ["niu-baciloid-256-64"]],
+                "3-1-1": [["3-1-1", "2-0-2", "0"], ["HOPS-babelette-coordinate"]],
+                "3-1-2": [["3-1-2", "2-0-2", "0"], ["SAMRAS-babelette-msn_id"]],
+                "3-1-3": [["3-1-3", "2-1-1", "0"], ["title-babelette"]],
+            },
+        },
+    )
+
+    titles = _cts_gis_node_titles()
+    row_entries: dict[str, list[object]] = {}
+    row_index = 1
+    for node_id in addresses:
+        if node_id in invalid_title_node_ids:
+            title_bits = "HERE"
+        else:
+            title_bits = _ascii_bits(titles.get(node_id, ""))
+        row_key, row_value = _cts_gis_navigation_row(
+            row_index,
+            node_id=node_id,
+            title_bits=title_bits,
+            label=titles.get(node_id, node_id),
+        )
+        row_entries[row_key] = row_value
+        row_index += 1
+    for node_id in duplicate_node_ids:
+        row_key, row_value = _cts_gis_navigation_row(
+            row_index,
+            node_id=node_id,
+            title_bits=_ascii_bits(f"duplicate_{node_id.replace('-', '_')}"),
+            label=f"duplicate_{node_id.replace('-', '_')}",
+        )
+        row_entries[row_key] = row_value
+        row_index += 1
+    for node_id in outside_node_ids:
+        row_key, row_value = _cts_gis_navigation_row(
+            row_index,
+            node_id=node_id,
+            title_bits=_ascii_bits(f"outside_{node_id.replace('-', '_')}"),
+            label=f"outside_{node_id.replace('-', '_')}",
+        )
+        row_entries[row_key] = row_value
+        row_index += 1
+    _write_json(
+        data_dir / "sandbox" / "cts-gis" / "sources" / "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json",
+        {"datum_addressing_abstraction_space": row_entries},
+    )
+    _write_json(
+        data_dir / "sandbox" / "cts-gis" / "sources" / "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
+        {
+            "datum_addressing_abstraction_space": {
+                "4-2-1": [["4-2-1", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"], ["polygon_1"]],
+                "5-0-1": [["5-0-1", "~", "4-2-1"], ["summit_boundary"]],
+                "7-3-1": [
+                    [
+                        "7-3-1",
+                        "rf.3-1-2",
+                        selected_node_projection,
+                        "rf.3-1-3",
+                        _ascii_bits("summit_county"),
+                        "5-0-1",
+                        "1",
+                    ],
+                    ["summit_county"],
+                ],
+            }
+        },
+    )
 
 
 def _write_network_chronology_authority(data_dir: Path) -> None:
@@ -136,8 +345,6 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         interface_body = bundle["inspector"]["interface_body"]
         self.assertIn("navigation_canvas", interface_body)
         self.assertIn("garland_split_projection", interface_body)
-        self.assertTrue(interface_body["context_strip"]["compact"])
-        self.assertEqual(interface_body["context_strip"]["title"], "CTS-GIS Context")
         self.assertEqual(interface_body["navigation_canvas"]["title"], "Diktataograph")
         self.assertEqual(
             interface_body["garland_split_projection"]["geospatial_projection"]["title"],
@@ -147,12 +354,14 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             interface_body["garland_split_projection"]["profile_projection"]["title"],
             "Profile Projection",
         )
-        self.assertEqual(interface_body["navigation_canvas"]["mode"], "staged_diktataograph")
-        self.assertEqual(len(interface_body["navigation_canvas"]["staged_blocks"]), 1)
-        self.assertEqual(
-            interface_body["wiring_sequence"][0],
-            "staged_root_opening",
-        )
+        self.assertEqual(interface_body["layout"], "diktataograph_garland_split")
+        self.assertEqual(interface_body["narrow_layout"], "diktataograph_garland_stack")
+        self.assertEqual(interface_body["navigation_canvas"]["mode"], "directory_dropdowns")
+        self.assertEqual(interface_body["navigation_canvas"]["decode_state"], "blocked_invalid_magnitude")
+        self.assertEqual(interface_body["navigation_canvas"]["source_authority"], "samras_magnitude")
+        self.assertEqual(interface_body["navigation_canvas"]["dropdowns"], [])
+        self.assertEqual(interface_body["navigation_canvas"]["active_path"], [])
+        self.assertNotIn("context_strip", interface_body)
         self.assertEqual(
             interface_body["garland_split_projection"]["geospatial_projection"]["data_source"],
             "",
@@ -300,50 +509,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             root = Path(tmp)
             data_dir = root / "data"
             private_dir = root / "private"
-            (data_dir / "system").mkdir(parents=True, exist_ok=True)
-            (data_dir / "payloads" / "cache").mkdir(parents=True, exist_ok=True)
-            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True, exist_ok=True)
-            (private_dir / "utilities" / "tools" / "cts-gis").mkdir(parents=True, exist_ok=True)
-            (data_dir / "system" / "anthology.json").write_text(
-                '{\n  "1-0-1": [["1-0-1", "~", "0-0-0"], ["anchor-root"]]\n}\n',
-                encoding="utf-8",
-            )
-            (private_dir / "utilities" / "tools" / "cts-gis" / "spec.json").write_text(
-                '{\n  "schema": "mycite.portal.tool_spec.v1",\n  "tool_id": "cts_gis"\n}\n',
-                encoding="utf-8",
-            )
-            (data_dir / "sandbox" / "cts-gis" / "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json").write_text(
-                '{\n'
-                '  "datum_addressing_abstraction_space": {\n'
-                '    "0-0-11": [["0-0-11", "~", "0-0-0"], ["json-file-unit"]],\n'
-                '    "1-0-1": [["1-0-1", "~", "0-0-11"], ["sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"]],\n'
-                '    "1-1-2": [["1-1-2", "0-0-5", "123"], ["msn-SAMRAS"]],\n'
-                '    "2-0-2": [["2-0-2", "~", "1-1-2"], ["SAMRAS-space-msn"]],\n'
-                '    "2-1-1": [["2-1-1", "1-1-3", "64"], ["niu-baciloid-256-64"]],\n'
-                '    "3-1-2": [["3-1-2", "2-0-2", "0"], ["SAMRAS-babelette-msn_id"]],\n'
-                '    "3-1-3": [["3-1-3", "2-1-1", "0"], ["title-babelette"]]\n'
-                '  }\n'
-                '}\n',
-                encoding="utf-8",
-            )
-            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json").write_text(
-                '{\n'
-                '  "datum_addressing_abstraction_space": {\n'
-                '    "4-2-1": [["4-2-1", "rf.3-1-2", "3-2-3-17-77", "rf.3-1-3", "01010011011101010110110101101101011010010111010000000000"], ["summit_county"]],\n'
-                '    "4-2-2": [["4-2-2", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", "011000010110101101110010011011110110111000000000"], ["city_of_akron"]],\n'
-                '    "4-2-3": [["4-2-3", "rf.3-1-2", "3-2-3-17-77-9", "rf.3-1-3", "not_binary"], ["invalid_title_node"]]\n'
-                '  }\n'
-                '}\n',
-                encoding="utf-8",
-            )
-            (data_dir / "payloads" / "cache" / "sc.3-2-3-17-77-1-6-4-1-4.registrar.json").write_text(
-                '{\n  "payload_id": "sc.3-2-3-17-77-1-6-4-1-4.registrar",\n  "target_mss_anchor_datum": "5-0-1"\n}\n',
-                encoding="utf-8",
-            )
-            (data_dir / "payloads" / "cache" / "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json").write_text(
-                '{\n  "payload_id": "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative"\n}\n',
-                encoding="utf-8",
-            )
+            _write_cts_gis_fixture(data_dir, private_dir)
 
             bundle = build_portal_cts_gis_surface_bundle(
                 portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
@@ -371,29 +537,25 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"], "descendants_depth_1_or_2")
             self.assertEqual(bundle["surface_payload"]["source_evidence"]["readiness"]["state"], "ready")
             self.assertEqual(bundle["inspector"]["interface_body"]["kind"], "cts_gis_interface_body")
-            self.assertEqual(bundle["inspector"]["interface_body"]["layout"], "dual_section")
-            self.assertEqual(bundle["inspector"]["interface_body"]["narrow_layout"], "context_diktataograph_garland_stack")
+            self.assertEqual(bundle["inspector"]["interface_body"]["layout"], "diktataograph_garland_split")
+            self.assertEqual(bundle["inspector"]["interface_body"]["narrow_layout"], "diktataograph_garland_stack")
             self.assertIn("navigation_canvas", bundle["inspector"]["interface_body"])
             self.assertIn("garland_split_projection", bundle["inspector"]["interface_body"])
             self.assertEqual(
                 bundle["inspector"]["interface_body"]["navigation_canvas"]["mode"],
-                "staged_diktataograph",
+                "directory_dropdowns",
             )
-            self.assertIn(
-                "staged_blocks",
-                bundle["inspector"]["interface_body"]["navigation_canvas"],
+            self.assertEqual(
+                bundle["inspector"]["interface_body"]["navigation_canvas"]["decode_state"],
+                "ready",
             )
-            self.assertIn(
-                "anchored_path",
-                bundle["inspector"]["interface_body"]["navigation_canvas"],
+            self.assertEqual(
+                len(bundle["inspector"]["interface_body"]["navigation_canvas"]["dropdowns"]),
+                6,
             )
-            self.assertIn(
-                "structure_field",
-                bundle["inspector"]["interface_body"]["navigation_canvas"],
-            )
-            self.assertIn(
-                "projection_rule_field",
-                bundle["inspector"]["interface_body"]["navigation_canvas"],
+            self.assertEqual(
+                [entry["node_id"] for entry in bundle["inspector"]["interface_body"]["navigation_canvas"]["active_path"]],
+                ["3", "3-2", "3-2-3", "3-2-3-17", "3-2-3-17-77"],
             )
             self.assertIn(
                 "geospatial_projection",
@@ -417,9 +579,10 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 "hierarchy",
                 bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"],
             )
+            self.assertNotIn("context_strip", bundle["inspector"]["interface_body"])
             self.assertEqual(
-                bundle["inspector"]["interface_body"]["wiring_sequence"][0],
-                "staged_root_opening",
+                bundle["inspector"]["interface_body"]["navigation_canvas"]["dropdowns"][0]["options"][0]["display_label"],
+                "1 NEG",
             )
 
             envelope = run_portal_shell_entry(
@@ -459,65 +622,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             root = Path(tmp)
             data_dir = root / "data"
             private_dir = root / "private"
-            (data_dir / "system").mkdir(parents=True, exist_ok=True)
-            (data_dir / "payloads" / "cache").mkdir(parents=True, exist_ok=True)
-            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True, exist_ok=True)
-            (private_dir / "utilities" / "tools" / "cts-gis").mkdir(parents=True, exist_ok=True)
-            (data_dir / "system" / "anthology.json").write_text(
-                '{\n  "1-0-1": [["1-0-1", "~", "0-0-0"], ["anchor-root"]]\n}\n',
-                encoding="utf-8",
-            )
-            (private_dir / "utilities" / "tools" / "cts-gis" / "spec.json").write_text(
-                '{\n  "schema": "mycite.portal.tool_spec.v1",\n  "tool_id": "cts_gis"\n}\n',
-                encoding="utf-8",
-            )
-            (data_dir / "sandbox" / "cts-gis" / "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json").write_text(
-                '{\n'
-                '  "datum_addressing_abstraction_space": {\n'
-                '    "0-0-11": [["0-0-11", "~", "0-0-0"], ["json-file-unit"]],\n'
-                '    "1-0-1": [["1-0-1", "~", "0-0-11"], ["sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"]],\n'
-                '    "1-0-2": [["1-0-2", "~", "0-0-11"], ["sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"]],\n'
-                '    "1-1-2": [["1-1-2", "0-0-5", "123"], ["msn-SAMRAS"]],\n'
-                '    "2-0-2": [["2-0-2", "~", "1-1-2"], ["SAMRAS-space-msn"]],\n'
-                '    "2-1-1": [["2-1-1", "1-1-3", "64"], ["niu-baciloid-256-64"]],\n'
-                '    "3-1-1": [["3-1-1", "2-0-2", "0"], ["HOPS-babelette-coordinate"]],\n'
-                '    "3-1-2": [["3-1-2", "2-0-2", "0"], ["SAMRAS-babelette-msn_id"]],\n'
-                '    "3-1-3": [["3-1-3", "2-1-1", "0"], ["title-babelette"]]\n'
-                '  }\n'
-                '}\n',
-                encoding="utf-8",
-            )
-            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json").write_text(
-                '{\n'
-                '  "datum_addressing_abstraction_space": {\n'
-                '    "4-2-1": [["4-2-1", "rf.3-1-2", "3-2-3-17-77", "rf.3-1-3", "01010011011101010110110101101101011010010111010000000000"], ["summit_county"]],\n'
-                '    "4-2-2": [["4-2-2", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", "011000010110101101110010011011110110111000000000"], ["city_of_akron"]],\n'
-                '    "4-2-3": [["4-2-3", "rf.3-1-2", "3-2-3-17-77-9", "rf.3-1-3", "not_binary"], ["invalid_title_node"]]\n'
-                '  }\n'
-                '}\n',
-                encoding="utf-8",
-            )
-            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json").write_text(
-                '{\n'
-                '  "datum_addressing_abstraction_space": {\n'
-                '    "4-2-1": [["4-2-1", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"], ["polygon_1"]],\n'
-                '    "4-2-2": [["4-2-2", "rf.3-1-1", "3-76-11-40-92-20-21-92-81-29-56-60-79-56-3-4-39"], ["point_alpha"]],\n'
-                '    "5-0-1": [["5-0-1", "~", "4-2-1"], ["summit_boundary"]],\n'
-                '    "6-0-1": [["6-0-1", "~", "4-2-2"], ["fairlawn_boundary_collection"]],\n'
-                '    "7-3-1": [["7-3-1", "rf.3-1-2", "3-2-3-17-77", "rf.3-1-3", "01010011011101010110110101101101011010010111010000000000", "5-0-1", "1"], ["summit_county"]],\n'
-                '    "7-3-2": [["7-3-2", "rf.3-1-2", "3-2-3-17-77-1-1", "rf.3-1-3", "011001100110000101101001011100100110110001100001011101110110111000000000", "6-0-1", "1"], ["fairlawn_city"]]\n'
-                '  }\n'
-                '}\n',
-                encoding="utf-8",
-            )
-            (data_dir / "payloads" / "cache" / "sc.3-2-3-17-77-1-6-4-1-4.registrar.json").write_text(
-                '{\n  "payload_id": "sc.3-2-3-17-77-1-6-4-1-4.registrar",\n  "target_mss_anchor_datum": "5-0-1"\n}\n',
-                encoding="utf-8",
-            )
-            (data_dir / "payloads" / "cache" / "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json").write_text(
-                '{\n  "payload_id": "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative"\n}\n',
-                encoding="utf-8",
-            )
+            _write_cts_gis_fixture(data_dir, private_dir)
 
             bundle = build_portal_cts_gis_surface_bundle(
                 portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
@@ -545,9 +650,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             interface_body = bundle["inspector"]["interface_body"]
             navigation_canvas = interface_body["navigation_canvas"]
             garland = interface_body["garland_split_projection"]
-            self.assertEqual(navigation_canvas["mode"], "staged_diktataograph")
-            self.assertIn("staged_blocks", navigation_canvas)
-            self.assertTrue(navigation_canvas["structure_field"]["entries"])
+            self.assertEqual(navigation_canvas["mode"], "directory_dropdowns")
+            self.assertEqual(navigation_canvas["decode_state"], "ready")
+            self.assertEqual(len(navigation_canvas["dropdowns"]), 6)
             self.assertEqual(garland["profile_projection"]["active_profile"]["node_id"], "3-2-3-17-77")
             self.assertTrue(garland["geospatial_projection"]["feature_collection"]["features"])
             self.assertGreater(garland["geospatial_projection"]["feature_count"], 0)
@@ -555,21 +660,18 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 garland["geospatial_projection"]["data_source"],
                 "real_hops_polygon_projection",
             )
-            self.assertEqual(
-                interface_body["wiring_sequence"],
-                ["staged_root_opening", "real_garland_projection", "real_diktataograph_projection"],
-            )
-            ordered_path_ids = [entry["node_id"] for entry in navigation_canvas["anchored_path"]["entries"]]
+            ordered_path_ids = [entry["node_id"] for entry in navigation_canvas["active_path"]]
             self.assertEqual(
                 ordered_path_ids[:5],
                 ["3", "3-2", "3-2-3", "3-2-3-17", "3-2-3-17-77"],
             )
-            invalid_title_entry = next(
+            blank_child_dropdown = navigation_canvas["dropdowns"][-1]
+            blank_child_entry = next(
                 entry
-                for entry in navigation_canvas["structure_field"]["entries"]
-                if entry["node_id"] == "3-2-3-17-77-9"
+                for entry in blank_child_dropdown["options"]
+                if entry["node_id"] == "3-2-3-17-77-1"
             )
-            self.assertEqual(invalid_title_entry["title"], "")
+            self.assertEqual(blank_child_entry["title"], "")
             summary_by_label = {
                 row["label"]: row["value"]
                 for row in garland["profile_projection"]["summary_rows"]
@@ -583,6 +685,114 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
             )
             self.assertEqual(summary_by_label["Title fallback"], "blank_only_ascii")
+
+    def test_cts_gis_valid_magnitude_renders_single_root_dropdown_on_initial_load(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(data_dir, private_dir)
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+            )
+
+            navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
+            self.assertEqual(navigation_canvas["decode_state"], "ready")
+            self.assertEqual(len(navigation_canvas["dropdowns"]), 1)
+            self.assertEqual(navigation_canvas["active_path"], [])
+            self.assertEqual(
+                [option["display_label"] for option in navigation_canvas["dropdowns"][0]["options"][:4]],
+                ["1 NEG", "2 NEH", "3 NWH", "4 NWG"],
+            )
+
+    def test_cts_gis_duplicate_node_rows_block_directory_navigation(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(data_dir, private_dir, duplicate_node_ids=("3-2-3-17",))
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={"tool_state": {"aitas": {"attention_node_id": "3-2-3-17-77"}}},
+            )
+
+            navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
+            self.assertEqual(navigation_canvas["decode_state"], "blocked_duplicate_node_row")
+            self.assertEqual(navigation_canvas["dropdowns"], [])
+            diagnostic_codes = [item["code"] for item in navigation_canvas["diagnostics"]]
+            self.assertIn("duplicate_node_row", diagnostic_codes)
+
+    def test_cts_gis_nodes_outside_magnitude_block_directory_navigation(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(data_dir, private_dir, outside_node_ids=("9",))
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+            )
+
+            navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
+            self.assertEqual(navigation_canvas["decode_state"], "blocked_node_outside_magnitude")
+            self.assertEqual(navigation_canvas["dropdowns"], [])
+            outside_diagnostic = next(
+                item for item in navigation_canvas["diagnostics"] if item["code"] == "node_outside_magnitude"
+            )
+            self.assertEqual(outside_diagnostic["node_ids"], ["9"])
+
+    def test_cts_gis_invalid_magnitude_blocks_without_fabricated_dropdown_tree(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(
+                data_dir,
+                private_dir,
+                magnitude_bitstream=(
+                    "00000000001000000000011001101110000000010000000001010000001001000000111100000100010000010010000001001100000101110000011000000001101100000111000000011110000010000100001000100000100011000010010000001001"
+                ),
+            )
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={"tool_state": {"aitas": {"attention_node_id": "3-2-3-17-77"}}},
+            )
+
+            navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
+            self.assertEqual(navigation_canvas["decode_state"], "blocked_invalid_magnitude")
+            self.assertEqual(navigation_canvas["dropdowns"], [])
+            self.assertEqual(navigation_canvas["active_path"], [])
+            invalid_diagnostic = next(
+                item for item in navigation_canvas["diagnostics"] if item["code"] == "invalid_magnitude"
+            )
+            self.assertIn("could not decode", invalid_diagnostic["message"].lower())
 
     def test_unknown_removed_surface_falls_back_to_system_workspace(self) -> None:
         envelope = run_portal_shell_entry(

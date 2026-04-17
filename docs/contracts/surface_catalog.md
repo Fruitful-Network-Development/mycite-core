@@ -65,23 +65,20 @@ Workspace file modes under `system.root`:
 - Its canonical route is `/portal/system/tools/cts-gis`.
 - Its default posture is interface-panel-led.
 - Its workbench is `tool_secondary_evidence` and stays hidden by default until secondary evidence is explicitly shown.
-- Its dominant `Interface Panel` mounts one CTS-GIS-local scaffold body with four always-visible regions:
-  - `CTS-GIS Context`
+- Its dominant `Interface Panel` mounts one CTS-GIS-local body with:
   - `Diktataograph`
   - `Garland` geospatial pane
   - `Garland` profile pane
 - `Diktataograph` is the CTS-GIS structural navigation canvas (`navigation_canvas`).
-- `navigation_canvas.mode` defaults to `staged_diktataograph`; `legacy_branch_canvas` remains available as legacy renderer mode.
-- `navigation_canvas.staged_blocks` carries the staged lineage-block payload (`block_id`, `depth`, `anchor_node_id`, `anchor_title`, `entries`, `selected_node_id`, `spawn_from_node_id`).
-- `navigation_canvas.ordered_hierarchy` remains available only as legacy compatibility payload.
-- Legacy `anchored_path`, `structure_field`, and `projection_rule_field` remain present for compatibility mode consumers.
+- `navigation_canvas.mode` defaults to `directory_dropdowns`.
+- `navigation_canvas.source_authority` is `samras_magnitude`.
+- `navigation_canvas.decode_state` blocks when magnitude decode or node bindings are invalid.
+- `navigation_canvas.dropdowns` carries one dropdown per resolved structural depth.
+- `navigation_canvas.active_path` carries the resolved lineage.
 - `Garland` is the CTS-GIS correlated projection surface (`garland_split_projection`) with dominant `geospatial_projection` and secondary `profile_projection`.
-- CTS-GIS rebuild flow is scaffold-first:
-  - staged root opening
-  - real Garland projection swap
-  - real staged Diktataograph projection swap
-- Staged Diktataograph title fallback is blank-only when ASCII title decode is unavailable.
-- In narrow posture, the CTS-GIS-local body may fall back to a vertical stack while preserving all four regions.
+- Garland remains visible, but it populates only when the selected node resolves valid profile and HOPS evidence.
+- Title fallback is blank-only when ASCII title decode is unavailable.
+- In narrow posture, the CTS-GIS-local body may fall back to a vertical stack while preserving the same contract.
 - CTS-GIS mediates on the selected anchor-file datum and projects correlated source-file evidence into the Interface Panel.
 - CTS-GIS tool-local navigation does not widen the shared shell focus stack. The shell focus remains `sandbox -> file -> datum -> object`.
 - Tool-local state is body-carried through CTS-GIS `tool_state`, not projected through new query keys.

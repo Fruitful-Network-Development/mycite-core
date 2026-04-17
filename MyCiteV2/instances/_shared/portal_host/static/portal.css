@@ -6224,14 +6224,14 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 
 .cts-gis-navCanvas {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 0.8rem;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0.65rem;
   min-height: 0;
 }
 
 .cts-gis-navCanvas__mode {
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .cts-gis-navField {
@@ -6254,6 +6254,120 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
+}
+
+.cts-gis-directoryCanvas {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0.7rem;
+  min-height: 0;
+  height: 100%;
+}
+
+.cts-gis-directoryCanvas__state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.cts-gis-directoryCanvas__status {
+  font-size: 0.71rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink2, #667068);
+  padding: 0.2rem 0.42rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 90%, #fff 10%);
+}
+
+.cts-gis-directoryCanvas__path {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--ink2, #667068);
+  overflow-wrap: anywhere;
+}
+
+.cts-gis-directoryDropdownStack {
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
+  min-height: 0;
+  max-height: clamp(260px, 54vh, 620px);
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.cts-gis-directoryDropdown {
+  display: grid;
+  gap: 0.26rem;
+  padding: 0.7rem 0.78rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 86%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 92%, #fff 8%);
+}
+
+.cts-gis-directoryDropdown__label {
+  font-size: 0.69rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-directoryDropdown__meta,
+.cts-gis-directoryDiagnostic__meta {
+  font-size: 0.74rem;
+  color: var(--ink2, #667068);
+  overflow-wrap: anywhere;
+}
+
+.cts-gis-directorySelect {
+  width: 100%;
+  min-width: 0;
+  padding: 0.72rem 0.78rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 52%, #fff 48%);
+  color: var(--ink, #243026);
+  font-size: 0.92rem;
+}
+
+.cts-gis-directorySelect:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent, #0b6b46) 52%, var(--line, #c8cec8) 48%);
+  box-shadow: 0 0 0 3px rgba(11, 107, 70, 0.08);
+}
+
+.cts-gis-directoryDiagnostics {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.cts-gis-directoryDiagnostic {
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.62rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 92%, #fff 8%);
+}
+
+.cts-gis-directoryDiagnostic p {
+  margin: 0;
+  color: var(--ink2, #667068);
+  line-height: 1.4;
+}
+
+.cts-gis-directoryDiagnostic--warning {
+  background: color-mix(in srgb, #f2edd4 72%, #fff 28%);
+}
+
+.cts-gis-directoryDiagnostic--error {
+  background: color-mix(in srgb, #f2dfdb 78%, #fff 22%);
+}
+
+.cts-gis-directoryCanvas__empty {
+  min-height: clamp(180px, 36vh, 280px);
 }
 
 .cts-gis-structureCanvas {

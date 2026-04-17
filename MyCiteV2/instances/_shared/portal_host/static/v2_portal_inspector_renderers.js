@@ -37,33 +37,6 @@
     return window.PortalToolSurfaceAdapter || {};
   }
 
-  function renderCompactContextStrip(items) {
-    if (!items || !items.length) {
-      return '<p class="ide-controlpanel__empty">No context.</p>';
-    }
-    return (
-      '<div class="cts-gis-contextStrip__row">' +
-      items
-        .map(function (item) {
-          return (
-            '<div class="cts-gis-contextChip">' +
-            '<span class="cts-gis-contextChip__label">' +
-            escapeHtml(item.label || "Context") +
-            "</span>" +
-            '<span class="cts-gis-contextChip__value">' +
-            escapeHtml(item.value || "—") +
-            "</span>" +
-            (item.detail
-              ? '<span class="cts-gis-contextChip__detail">' + escapeHtml(item.detail) + "</span>"
-              : "") +
-            "</div>"
-          );
-        })
-        .join("") +
-      "</div>"
-    );
-  }
-
   function renderRequestButtons(entries, kind, options) {
     var opts = options || {};
     var listClass = opts.listClass || "cts-gis-entryList";
@@ -130,6 +103,116 @@
           );
         })
         .join("") +
+      "</div>"
+    );
+  }
+
+  function renderDirectoryDiagnostics(diagnostics) {
+    if (!diagnostics || !diagnostics.length) return "";
+    return (
+      '<section class="cts-gis-directoryDiagnostics">' +
+      diagnostics
+        .map(function (diagnostic) {
+          var meta = [];
+          if (diagnostic.source_kind) meta.push(diagnostic.source_kind);
+          if (diagnostic.node_ids && diagnostic.node_ids.length) {
+            meta.push("nodes: " + diagnostic.node_ids.join(", "));
+          }
+          return (
+            '<article class="cts-gis-directoryDiagnostic cts-gis-directoryDiagnostic--' +
+            escapeHtml(diagnostic.severity || "error") +
+            '">' +
+            '<strong>' +
+            escapeHtml(diagnostic.code || "diagnostic") +
+            "</strong>" +
+            "<p>" +
+            escapeHtml(diagnostic.message || "") +
+            "</p>" +
+            (meta.length
+              ? '<span class="cts-gis-directoryDiagnostic__meta">' + escapeHtml(meta.join(" · ")) + "</span>"
+              : "") +
+            "</article>"
+          );
+        })
+        .join("") +
+      "</section>"
+    );
+  }
+
+  function renderDirectoryDropdownCanvas(navigationCanvas) {
+    var dropdowns = navigationCanvas.dropdowns || [];
+    var diagnostics = navigationCanvas.diagnostics || [];
+    var activePath = navigationCanvas.active_path || [];
+    var decodeState = navigationCanvas.decode_state || "blocked_invalid_magnitude";
+    var magnitudeSourceKind = navigationCanvas.magnitude_source_kind || navigationCanvas.source_authority || "";
+    return (
+      '<div class="cts-gis-directoryCanvas">' +
+      '<div class="cts-gis-directoryCanvas__state">' +
+      '<span class="cts-gis-directoryCanvas__status">state: ' +
+      escapeHtml(decodeState) +
+      "</span>" +
+      (magnitudeSourceKind
+        ? '<span class="cts-gis-directoryCanvas__status">source: ' + escapeHtml(magnitudeSourceKind) + "</span>"
+        : "") +
+      "</div>" +
+      (activePath.length
+        ? '<p class="cts-gis-directoryCanvas__path">active path: ' +
+          escapeHtml(
+            activePath
+              .map(function (entry) {
+                return entry.display_label || entry.node_id || "";
+              })
+              .filter(Boolean)
+              .join(" / ")
+          ) +
+          "</p>"
+        : "") +
+      renderDirectoryDiagnostics(diagnostics) +
+      (dropdowns.length
+        ? '<div class="cts-gis-directoryDropdownStack">' +
+          dropdowns
+            .map(function (dropdown, dropdownIndex) {
+              var parentNodeId = dropdown.parent_node_id || "";
+              var selectedNodeId = dropdown.selected_node_id || "";
+              return (
+                '<label class="cts-gis-directoryDropdown">' +
+                '<span class="cts-gis-directoryDropdown__label">Depth ' +
+                escapeHtml(String(dropdown.depth || dropdownIndex + 1)) +
+                "</span>" +
+                '<span class="cts-gis-directoryDropdown__meta">' +
+                escapeHtml(parentNodeId ? "parent " + parentNodeId : "root") +
+                "</span>" +
+                '<select class="cts-gis-directorySelect" data-cts-gis-dropdown-index="' +
+                escapeHtml(String(dropdownIndex)) +
+                '">' +
+                '<option value="">' +
+                escapeHtml(dropdown.depth === 1 ? "Select address node" : "Select child node") +
+                "</option>" +
+                (dropdown.options || [])
+                  .map(function (option, optionIndex) {
+                    return (
+                      '<option value="' +
+                      escapeHtml(String(optionIndex)) +
+                      '"' +
+                      (selectedNodeId && option.node_id === selectedNodeId ? " selected" : "") +
+                      ">" +
+                      escapeHtml(option.display_label || option.node_id || "Node") +
+                      "</option>"
+                    );
+                  })
+                  .join("") +
+                "</select>" +
+                "</label>"
+              );
+            })
+            .join("") +
+          "</div>"
+        : renderProjectionPlaceholder(
+            decodeState === "ready"
+              ? "No SAMRAS address options are available."
+              : "CTS-GIS navigation is blocked until the active SAMRAS magnitude and node bindings are repaired.",
+            "cts-gis-directoryCanvas__empty"
+          )) +
       "</div>"
     );
   }
@@ -628,7 +711,7 @@
             String(Number(entry._renderIndex || 0)) +
             '">' +
             '<span class="cts-gis-profileHierarchy__label">' +
-            escapeHtml(entry.label || entry.node_id || "Node") +
+            escapeHtml(entry.display_label || entry.title || entry.node_id || "Node") +
             "</span>" +
             '<span class="cts-gis-profileHierarchy__meta">' +
             escapeHtml(entry.node_id || "") +
@@ -654,68 +737,34 @@
     var body = interfaceBody || {};
     if (body.navigation_canvas && body.garland_split_projection) {
       var navCanvas = body.navigation_canvas || {};
-      var anchoredEntries = ((navCanvas.anchored_path || {}).entries || []);
       body.navigation_canvas = Object.assign({}, navCanvas, {
-        mode: navCanvas.mode || "staged_diktataograph",
-        available_modes: navCanvas.available_modes || ["staged_diktataograph", "legacy_branch_canvas"],
-        staged_blocks: navCanvas.staged_blocks || [{ block_id: "root", depth: 0, anchor_node_id: "", anchor_title: "root", selected_node_id: "", spawn_from_node_id: "", entries: [] }],
-        ordered_hierarchy: Object.assign(
-          {
-            title: "Ordered Hierarchy",
-            columns: [],
-            active_path: anchoredEntries,
-            selected_node_id: navCanvas.active_node_id || "",
-            interaction: {},
-          },
-          navCanvas.ordered_hierarchy || {}
-        ),
+        mode: navCanvas.mode || "directory_dropdowns",
+        source_authority: navCanvas.source_authority || "samras_magnitude",
+        decode_state: navCanvas.decode_state || "blocked_invalid_magnitude",
+        diagnostics: navCanvas.diagnostics || [],
+        dropdowns: navCanvas.dropdowns || [],
+        active_path: navCanvas.active_path || [],
+        active_node_id: navCanvas.active_node_id || "",
       });
       return body;
     }
-    var diktataograph = body.diktataograph || {};
     var garland = body.garland || {};
     return {
       kind: body.kind || "cts_gis_interface_body",
-      layout: body.layout || "dual_section",
-      narrow_layout: body.narrow_layout || "context_diktataograph_garland_stack",
-        feature_flags: body.feature_flags || {},
-        context_strip: body.context_strip || { title: "CTS-GIS Context", compact: true, items: [] },
-        navigation_canvas: {
+      layout: body.layout || "diktataograph_garland_split",
+      narrow_layout: body.narrow_layout || "diktataograph_garland_stack",
+      feature_flags: body.feature_flags || {},
+      navigation_canvas: {
         kind: "diktataograph_navigation_canvas",
-        title: diktataograph.title || "Diktataograph",
-        summary: diktataograph.summary || "",
-        mode: "staged_diktataograph",
-        available_modes: ["staged_diktataograph", "legacy_branch_canvas"],
-        anchored_path: {
-          title: "Anchored Path",
-          entries: diktataograph.lineage || [],
-        },
-        structure_field: {
-          title: "Structure Field",
-          entries: diktataograph.navigation_entries || [],
-        },
-        staged_blocks: [
-          {
-            block_id: "root",
-            depth: 0,
-            anchor_node_id: "",
-            anchor_title: "root",
-            selected_node_id: "",
-            spawn_from_node_id: "",
-            entries: diktataograph.navigation_entries || diktataograph.lineage || [],
-          },
-        ],
-        ordered_hierarchy: {
-          title: "Ordered Hierarchy",
-          columns: [],
-          active_path: diktataograph.lineage || [],
-          selected_node_id: "",
-          interaction: {},
-        },
-        projection_rule_field: {
-          title: "Projection Rule",
-          entries: diktataograph.intention_entries || [],
-        },
+        title: "Diktataograph",
+        summary: "",
+        mode: "directory_dropdowns",
+        source_authority: "samras_magnitude",
+        decode_state: "blocked_invalid_magnitude",
+        diagnostics: [],
+        dropdowns: [],
+        active_path: [],
+        active_node_id: "",
       },
       garland_split_projection: {
         kind: "garland_split_projection",
@@ -750,7 +799,7 @@
             feature_count: 0,
             child_count: 0,
           },
-          hierarchy: diktataograph.lineage || [],
+          hierarchy: [],
           summary_rows: garland.summary_rows || [],
           projected_rows: garland.row_entries || [],
           correlated_profiles: garland.related_profiles || [],
@@ -771,6 +820,21 @@
         var entry = entries[index] || {};
         if (entry.shell_request) {
           ctx.loadShell(entry.shell_request);
+        }
+      });
+    });
+  }
+
+  function bindDirectoryDropdowns(target, ctx, dropdowns) {
+    Array.prototype.forEach.call(target.querySelectorAll("[data-cts-gis-dropdown-index]"), function (node) {
+      node.addEventListener("change", function () {
+        var dropdownIndex = Number(node.getAttribute("data-cts-gis-dropdown-index"));
+        var optionIndex = Number(node.value);
+        if (!Number.isFinite(dropdownIndex) || !Number.isFinite(optionIndex)) return;
+        var dropdown = (dropdowns || [])[dropdownIndex] || {};
+        var option = (dropdown.options || [])[optionIndex] || {};
+        if (option.shell_request) {
+          ctx.loadShell(option.shell_request);
         }
       });
     });
@@ -981,27 +1045,13 @@
 
   function renderCtsGisInspector(ctx, target, region) {
     var interfaceBody = normalizeCtsGisInterfaceBody(region.interface_body || {});
-    var contextStrip = interfaceBody.context_strip || {};
     var navigationCanvas = interfaceBody.navigation_canvas || {};
-    var navMode = navigationCanvas.mode || "staged_diktataograph";
-    var anchoredPath = navigationCanvas.anchored_path || {};
-    var structureField = navigationCanvas.structure_field || {};
-    var stagedBlocks = navigationCanvas.staged_blocks || [];
-    var orderedHierarchy = navigationCanvas.ordered_hierarchy || {};
-    var projectionRuleField = navigationCanvas.projection_rule_field || {};
+    var navMode = navigationCanvas.mode || "directory_dropdowns";
     var garlandSplit = interfaceBody.garland_split_projection || {};
     var geospatialProjection = garlandSplit.geospatial_projection || {};
     var profileProjection = garlandSplit.profile_projection || {};
-    var orderedPathEntries = orderedHierarchy.active_path || [];
-    var orderedNodeEntries = [];
-    var stagedRowEntries = [];
-    (anchoredPath.entries || []).forEach(function (entry, index) {
-      entry._renderIndex = index;
-    });
-    (structureField.entries || []).forEach(function (entry, index) {
-      entry._renderIndex = index;
-    });
-    (projectionRuleField.entries || []).forEach(function (entry, index) {
+    var activePathEntries = navigationCanvas.active_path || [];
+    activePathEntries.forEach(function (entry, index) {
       entry._renderIndex = index;
     });
     (profileProjection.projected_rows || []).forEach(function (entry, index) {
@@ -1010,39 +1060,14 @@
     (geospatialProjection.features || []).forEach(function (entry, index) {
       entry._renderIndex = index;
     });
-    orderedPathEntries.forEach(function (entry, index) {
-      entry._renderIndex = index;
-    });
-    stagedBlocks.forEach(function (block) {
-      (block.entries || []).forEach(function (entry) {
-        entry._renderIndex = stagedRowEntries.length;
-        stagedRowEntries.push(entry);
-      });
-    });
-    (orderedHierarchy.columns || []).forEach(function (column) {
-      (column.entries || []).forEach(function (entry) {
-        entry._renderIndex = orderedNodeEntries.length;
-        orderedNodeEntries.push(entry);
-      });
-    });
     var navigationCanvasMarkup =
-      navMode === "legacy_branch_canvas"
-        ? renderStructureCanvas(anchoredPath.entries || [], structureField.entries || [], navigationCanvas.active_node_id || "")
-        : navMode === "ordered_hierarchy"
-        ? renderOrderedHierarchyCanvas(orderedHierarchy, navigationCanvas.active_node_id || "")
-        : renderStagedDiktataographCanvas(stagedBlocks);
+      navMode === "directory_dropdowns"
+        ? renderDirectoryDropdownCanvas(navigationCanvas)
+        : renderProjectionPlaceholder("This CTS-GIS navigation mode is no longer supported.", "cts-gis-directoryCanvas__empty");
     var entriesByKind = {
-      path: anchoredPath.entries || [],
-      node: structureField.entries || [],
-      staged_row: stagedRowEntries,
-      ordered_path: orderedPathEntries,
-      ordered_node: orderedNodeEntries,
-      rule: projectionRuleField.entries || [],
+      path: activePathEntries,
       row: profileProjection.projected_rows || [],
       feature: geospatialProjection.features || [],
-      lineage: anchoredPath.entries || [],
-      navigation: structureField.entries || [],
-      intention: projectionRuleField.entries || [],
     };
     var hasRealGeospatialProjection = !!geospatialProjection.has_real_projection;
     var hasRealProfileProjection = !!profileProjection.has_real_projection;
@@ -1140,16 +1165,10 @@
 
     target.innerHTML =
       '<div class="system-tool-interface cts-gis-interface">' +
-      '<section class="cts-gis-contextStrip cts-gis-contextStrip--compact">' +
-      '<h3>' +
-      escapeHtml((contextStrip && contextStrip.title) || "CTS-GIS Context") +
-      "</h3>" +
-      renderCompactContextStrip((contextStrip && contextStrip.items) || []) +
-      "</section>" +
       '<div class="system-tool-interface__body cts-gis-interface__body" data-cts-gis-layout="' +
-      escapeHtml(interfaceBody.layout || "dual_section") +
+      escapeHtml(interfaceBody.layout || "diktataograph_garland_split") +
       '" data-cts-gis-narrow-layout="' +
-      escapeHtml(interfaceBody.narrow_layout || "context_diktataograph_garland_stack") +
+      escapeHtml(interfaceBody.narrow_layout || "diktataograph_garland_stack") +
       '">' +
       '<section class="v2-card cts-gis-pane cts-gis-pane--diktataograph">' +
       '<header class="cts-gis-pane__header"><h3>' +
@@ -1163,15 +1182,6 @@
       '">' +
       navigationCanvasMarkup +
       "</div>" +
-      '<section class="cts-gis-navField cts-gis-navField--projectionRules"><h4>' +
-      escapeHtml(projectionRuleField.title || "Projection Rule") +
-      "</h4>" +
-      renderRequestButtons(projectionRuleField.entries || [], "rule", {
-        listClass: "cts-gis-navField__ruleEntries",
-        buttonClass: "cts-gis-entryButton cts-gis-entryButton--rule",
-        emptyMessage: "No projection rules are available.",
-      }) +
-      "</section>" +
       "</section>" +
       "</section>" +
       '<section class="v2-card cts-gis-pane cts-gis-pane--garland">' +
@@ -1196,13 +1206,7 @@
       "</div>" +
       "</div>";
     bindShellRequestEntries(target, ctx, entriesByKind);
-    if (navMode === "legacy_branch_canvas") {
-      bindNavigationCanvasEnhancement(target, !!((interfaceBody.feature_flags || {}).hover_attention_redistribution));
-    } else if (navMode === "ordered_hierarchy") {
-      bindOrderedHierarchyEnhancement(target);
-    } else {
-      bindStagedDiktataographEnhancement(target);
-    }
+    bindDirectoryDropdowns(target, ctx, navigationCanvas.dropdowns || []);
   }
 
   window.PortalShellInspectorRenderer = {
