@@ -6,12 +6,37 @@ from .codec import (
     encode_canonical_structure_from_addresses,
     encode_canonical_structure_from_values,
 )
+from .mutation import (
+    SamrasMutationResult,
+    add_child,
+    add_root,
+    move_branch,
+    rebuild_structure_from_addresses,
+    remove_branch,
+    set_child_count,
+)
 from .structure import SamrasStructure, address_depth, address_sort_key, as_text, format_address, parent_address
 from .validation import InvalidSamrasStructure, child_counts_from_addresses, derive_addresses_from_child_counts, validate_structure
+from .workspace_adapter import (
+    SamrasStructureAuthority,
+    SamrasWorkspaceNode,
+    SamrasWorkspaceResource,
+    find_structure_authorities,
+    load_workspace_from_compact_payload,
+    reconstruct_addresses_from_rows,
+    reconstruct_structure_from_rows,
+    select_preferred_structure_authority,
+)
 
 __all__ = [
     "InvalidSamrasStructure",
+    "SamrasMutationResult",
     "SamrasStructure",
+    "SamrasStructureAuthority",
+    "SamrasWorkspaceNode",
+    "SamrasWorkspaceResource",
+    "add_child",
+    "add_root",
     "address_depth",
     "address_sort_key",
     "as_text",
@@ -23,7 +48,16 @@ __all__ = [
     "derive_addresses_from_child_counts",
     "encode_canonical_structure_from_addresses",
     "encode_canonical_structure_from_values",
+    "find_structure_authorities",
     "format_address",
+    "load_workspace_from_compact_payload",
+    "move_branch",
     "parent_address",
+    "rebuild_structure_from_addresses",
+    "reconstruct_addresses_from_rows",
+    "reconstruct_structure_from_rows",
+    "remove_branch",
+    "select_preferred_structure_authority",
+    "set_child_count",
     "validate_structure",
 ]

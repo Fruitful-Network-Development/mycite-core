@@ -12,7 +12,12 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     tool_exposure_enabled,
 )
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
-from MyCiteV2.packages.core.structures.samras import InvalidSamrasStructure, decode_structure
+from MyCiteV2.packages.core.structures.samras import (
+    InvalidSamrasStructure,
+    find_structure_authorities,
+    reconstruct_structure_from_rows,
+    select_preferred_structure_authority,
+)
 from MyCiteV2.packages.modules.cross_domain.cts_gis import CtsGisReadOnlyService
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
@@ -827,47 +832,29 @@ def _row_label_tokens(raw_row: object) -> list[str]:
     return [_as_text(item) for item in raw_row[1] if _as_text(item)]
 
 
-def _magnitude_authority_from_payload(
-    payload: dict[str, Any],
-    *,
-    source_kind: str,
-    source_path: str,
-) -> dict[str, Any]:
-    row_source = _split_row_source(payload)
-    for datum_address in sorted(row_source.keys(), key=_node_sort_key):
-        raw_row = row_source.get(datum_address)
-        labels = _row_label_tokens(raw_row)
-        if _as_text(labels[0] if labels else "").lower() != "msn-samras":
-            continue
-        data_tokens = _row_data_tokens(raw_row)
-        magnitude = _as_text(data_tokens[2] if len(data_tokens) > 2 else "")
-        return {
-            "source_kind": source_kind,
-            "source_path": source_path,
-            "datum_address": _as_text(datum_address),
-            "label": "msn-SAMRAS",
-            "magnitude": magnitude,
-        }
-    return {}
-
-
-def _preferred_samras_magnitude_authority(source_evidence: dict[str, Any]) -> dict[str, Any]:
+def _samras_structure_authorities(source_evidence: dict[str, Any]) -> list[Any]:
+    authorities: list[Any] = []
     cache_payload = dict((source_evidence.get("administrative_payload_cache") or {}).get("payload") or {})
     cache_path = _as_text((source_evidence.get("administrative_payload_cache") or {}).get("path"))
-    cache_authority = _magnitude_authority_from_payload(
-        cache_payload,
-        source_kind="administrative_payload_cache",
-        source_path=cache_path,
+    authorities.extend(
+        find_structure_authorities(
+            cache_payload,
+            source_kind="administrative_payload_cache",
+            source_path=cache_path,
+            root_ref="0-0-5",
+        )
     )
-    if cache_authority:
-        return cache_authority
     anchor_payload = dict((source_evidence.get("tool_anchor") or {}).get("payload") or {})
     anchor_path = _as_text((source_evidence.get("tool_anchor") or {}).get("path"))
-    return _magnitude_authority_from_payload(
-        anchor_payload,
-        source_kind="tool_anchor",
-        source_path=anchor_path,
+    authorities.extend(
+        find_structure_authorities(
+            anchor_payload,
+            source_kind="tool_anchor",
+            source_path=anchor_path,
+            root_ref="0-0-5",
+        )
     )
+    return authorities
 
 
 def _collect_administrative_node_bindings(source_payload: dict[str, Any]) -> dict[str, Any]:
@@ -976,10 +963,20 @@ def _build_directory_dropdown_navigation(
     resolved_tool_state: dict[str, Any],
     source_evidence: dict[str, Any],
 ) -> dict[str, Any]:
-    authority = _preferred_samras_magnitude_authority(source_evidence)
+    authorities = _samras_structure_authorities(source_evidence)
     source_payload = dict((source_evidence.get("administrative_source") or {}).get("payload") or {})
     bindings = _collect_administrative_node_bindings(source_payload)
     diagnostics: list[dict[str, Any]] = []
+    preferred_authority = authorities[0] if authorities else None
+    try:
+        decodable_authority = (
+            select_preferred_structure_authority(authorities, require_decodable=True)
+            if authorities
+            else None
+        )
+    except InvalidSamrasStructure:
+        decodable_authority = None
+
     duplicate_nodes = list(bindings.get("duplicates") or [])
     if duplicate_nodes:
         duplicate_rows = [
@@ -992,6 +989,7 @@ def _build_directory_dropdown_navigation(
             _navigation_diagnostic(
                 "duplicate_node_row",
                 "Administrative node rows bind the same SAMRAS address more than once.",
+                severity="warning",
                 source_kind="administrative_source",
                 source_path=_as_text((source_evidence.get("administrative_source") or {}).get("path")),
                 node_ids=duplicate_nodes,
@@ -1014,32 +1012,70 @@ def _build_directory_dropdown_navigation(
 
     structure = None
     decode_state = "ready"
-    if not _as_text(authority.get("magnitude")):
+    for authority in authorities:
+        if not _as_text(getattr(authority, "magnitude", "")) or bool(getattr(authority, "decodable", False)):
+            continue
+        diagnostics.append(
+            _navigation_diagnostic(
+                "invalid_magnitude_candidate",
+                f"CTS-GIS found an msn-SAMRAS candidate that could not decode: {_as_text(getattr(authority, 'error', '')) or 'unknown decode failure'}",
+                severity="warning",
+                source_kind=_as_text(getattr(authority, "source_kind", "")),
+                source_path=_as_text(getattr(authority, "source_path", "")),
+                datum_addresses=[_as_text(getattr(authority, "datum_address", ""))],
+            )
+        )
+    if decodable_authority is not None:
+        structure = getattr(decodable_authority, "structure", None)
+    if structure is None and authorities:
+        try:
+            structure = reconstruct_structure_from_rows(
+                source_payload,
+                root_ref="0-0-5",
+                warnings=("canonical SAMRAS structure was reconstructed from staged address rows",),
+            )
+            decodable_authority = {
+                "source_kind": "administrative_source_reconstructed",
+                "source_path": _as_text((source_evidence.get("administrative_source") or {}).get("path")),
+                "datum_address": "",
+                "label": "reconstructed",
+                "magnitude": structure.bitstream,
+            }
+            diagnostics.append(
+                _navigation_diagnostic(
+                    "reconstructed_magnitude",
+                    "CTS-GIS reconstructed a canonical SAMRAS tree from staged address rows because no decodable structure row was available.",
+                    severity="warning",
+                    source_kind="administrative_source_reconstructed",
+                    source_path=_as_text((source_evidence.get("administrative_source") or {}).get("path")),
+                )
+            )
+        except InvalidSamrasStructure:
+            structure = None
+    if structure is None and not _as_text(getattr(preferred_authority, "magnitude", "")):
         decode_state = "blocked_invalid_magnitude"
         diagnostics.insert(
             0,
             _navigation_diagnostic(
                 "invalid_magnitude",
                 "CTS-GIS could not locate an msn-SAMRAS magnitude for the active corpus authority.",
-                source_kind=_as_text(authority.get("source_kind")) or "missing",
-                source_path=_as_text(authority.get("source_path")),
+                source_kind=_as_text(getattr(preferred_authority, "source_kind", "")) or "missing",
+                source_path=_as_text(getattr(preferred_authority, "source_path", "")),
             ),
         )
-    else:
-        try:
-            structure = decode_structure(_as_text(authority.get("magnitude")), root_ref="0-0-5")
-        except InvalidSamrasStructure as exc:
-            decode_state = "blocked_invalid_magnitude"
-            diagnostics.insert(
-                0,
-                _navigation_diagnostic(
-                    "invalid_magnitude",
-                    f"CTS-GIS could not decode the active SAMRAS magnitude: {exc}",
-                    source_kind=_as_text(authority.get("source_kind")),
-                    source_path=_as_text(authority.get("source_path")),
-                    datum_addresses=[_as_text(authority.get("datum_address"))],
-                ),
-            )
+    elif structure is None:
+        decode_state = "blocked_invalid_magnitude"
+        message = _as_text(getattr(preferred_authority, "error", "")) or "unknown decode failure"
+        diagnostics.insert(
+            0,
+            _navigation_diagnostic(
+                "invalid_magnitude",
+                f"CTS-GIS could not decode the active SAMRAS magnitude: {message}",
+                source_kind=_as_text(getattr(preferred_authority, "source_kind", "")) or "missing",
+                source_path=_as_text(getattr(preferred_authority, "source_path", "")),
+                datum_addresses=[_as_text(getattr(preferred_authority, "datum_address", ""))],
+            ),
+        )
 
     ordered_nodes = list(structure.addresses) if structure is not None else []
     available_nodes = set(ordered_nodes)
@@ -1056,6 +1092,7 @@ def _build_directory_dropdown_navigation(
             _navigation_diagnostic(
                 "node_outside_magnitude",
                 "Administrative node rows reference addresses that are not present in the decoded SAMRAS namespace.",
+                severity="warning",
                 source_kind="administrative_source",
                 source_path=_as_text((source_evidence.get("administrative_source") or {}).get("path")),
                 node_ids=outside_nodes,
@@ -1065,11 +1102,6 @@ def _build_directory_dropdown_navigation(
                 ],
             )
         )
-
-    if decode_state == "ready" and duplicate_nodes:
-        decode_state = "blocked_duplicate_node_row"
-    if decode_state == "ready" and outside_nodes:
-        decode_state = "blocked_node_outside_magnitude"
 
     dropdowns: list[dict[str, Any]] = []
     active_path_entries: list[dict[str, Any]] = []
@@ -1152,7 +1184,12 @@ def _build_directory_dropdown_navigation(
         "summary": "Magnitude-derived directory navigation for CTS-GIS.",
         "mode": _CTS_GIS_NAV_MODE_DIRECTORY,
         "source_authority": "samras_magnitude",
-        "magnitude_source_kind": _as_text(authority.get("source_kind")),
+        "magnitude_source_kind": _as_text(
+            decodable_authority.get("source_kind") if isinstance(decodable_authority, dict) else getattr(decodable_authority, "source_kind", "")
+        ),
+        "magnitude_datum_address": _as_text(
+            decodable_authority.get("datum_address") if isinstance(decodable_authority, dict) else getattr(decodable_authority, "datum_address", "")
+        ),
         "decode_state": decode_state,
         "diagnostics": diagnostics,
         "dropdowns": dropdowns,
