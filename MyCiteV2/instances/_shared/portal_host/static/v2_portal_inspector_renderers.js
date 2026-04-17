@@ -303,6 +303,96 @@
     );
   }
 
+  function renderOrderedHierarchyCanvas(orderedHierarchy, activeNodeId) {
+    var hierarchy = orderedHierarchy || {};
+    var columns = hierarchy.columns || [];
+    var activePath = hierarchy.active_path || [];
+    var selectedNodeId = hierarchy.selected_node_id || activeNodeId || "";
+    return (
+      '<div class="cts-gis-orderedHierarchy">' +
+      '<section class="cts-gis-orderedHierarchy__spine">' +
+      '<h4>Lineage Spine</h4>' +
+      '<div class="cts-gis-orderedHierarchy__path">' +
+      (activePath.length
+        ? activePath
+            .map(function (entry) {
+              var titleText = entry.title || "";
+              return (
+                '<button type="button" class="cts-gis-orderedPathNode' +
+                (entry.selected ? " is-active" : "") +
+                '" data-cts-gis-entry-kind="ordered_path" data-cts-gis-entry-index="' +
+                String(Number(entry._renderIndex || 0)) +
+                '">' +
+                '<span class="cts-gis-orderedPathNode__msn">' +
+                escapeHtml(entry.msn_id || entry.node_id || "—") +
+                "</span>" +
+                '<span class="cts-gis-orderedPathNode__title">' +
+                escapeHtml(titleText) +
+                "</span>" +
+                "</button>"
+              );
+            })
+            .join("")
+        : '<p class="ide-controlpanel__empty">No lineage path is available.</p>') +
+      "</div>" +
+      "</section>" +
+      '<section class="cts-gis-orderedHierarchy__columns">' +
+      (columns.length
+        ? columns
+            .map(function (column) {
+              var anchorNodeId = column.anchor_msn_id || column.anchor_node_id || "";
+              var anchorTitle = column.anchor_title || "";
+              return (
+                '<article class="cts-gis-orderedColumn" data-cts-gis-column-depth="' +
+                escapeHtml(String(column.depth || 0)) +
+                '">' +
+                '<header class="cts-gis-orderedColumn__header">' +
+                '<span class="cts-gis-orderedColumn__eyebrow">Depth ' +
+                escapeHtml(String(column.depth || 0)) +
+                "</span>" +
+                '<span class="cts-gis-orderedColumn__anchor">' +
+                escapeHtml(anchorNodeId || "root") +
+                (anchorTitle ? " · " + escapeHtml(anchorTitle) : "") +
+                "</span>" +
+                "</header>" +
+                '<div class="cts-gis-orderedColumn__rows">' +
+                ((column.entries || []).length
+                  ? (column.entries || [])
+                      .map(function (entry) {
+                        return (
+                          '<button type="button" class="cts-gis-orderedNode' +
+                          (entry.selected ? " is-active" : "") +
+                          (entry.in_active_path ? " is-in-path" : "") +
+                          '" style="--cts-gis-ordered-step:' +
+                          escapeHtml(String(column.depth || 1)) +
+                          '" data-cts-gis-entry-kind="ordered_node" data-cts-gis-entry-index="' +
+                          String(Number(entry._renderIndex || 0)) +
+                          '">' +
+                          '<span class="cts-gis-orderedNode__msn">' +
+                          escapeHtml(entry.msn_id || entry.node_id || "") +
+                          "</span>" +
+                          '<span class="cts-gis-orderedNode__title">' +
+                          escapeHtml(entry.title || "") +
+                          "</span>" +
+                          "</button>"
+                        );
+                      })
+                      .join("")
+                  : '<p class="ide-controlpanel__empty">No nodes at this depth.</p>') +
+                "</div>" +
+                "</article>"
+              );
+            })
+            .join("")
+        : '<p class="ide-controlpanel__empty">No hierarchy columns are available.</p>') +
+      "</section>" +
+      '<p class="cts-gis-orderedHierarchy__selected">selected: ' +
+      escapeHtml(selectedNodeId || "—") +
+      "</p>" +
+      "</div>"
+    );
+  }
+
   function collectGeometryPoints(geometry) {
     var geo = geometry || {};
     if (geo.type === "Point") {
@@ -478,6 +568,22 @@
   function normalizeCtsGisInterfaceBody(interfaceBody) {
     var body = interfaceBody || {};
     if (body.navigation_canvas && body.garland_split_projection) {
+      var navCanvas = body.navigation_canvas || {};
+      var anchoredEntries = ((navCanvas.anchored_path || {}).entries || []);
+      body.navigation_canvas = Object.assign({}, navCanvas, {
+        mode: navCanvas.mode || "ordered_hierarchy",
+        available_modes: navCanvas.available_modes || ["ordered_hierarchy", "legacy_branch_canvas"],
+        ordered_hierarchy: Object.assign(
+          {
+            title: "Ordered Hierarchy",
+            columns: [],
+            active_path: anchoredEntries,
+            selected_node_id: navCanvas.active_node_id || "",
+            interaction: {},
+          },
+          navCanvas.ordered_hierarchy || {}
+        ),
+      });
       return body;
     }
     var diktataograph = body.diktataograph || {};
@@ -492,6 +598,8 @@
         kind: "diktataograph_navigation_canvas",
         title: diktataograph.title || "Diktataograph",
         summary: diktataograph.summary || "",
+        mode: "ordered_hierarchy",
+        available_modes: ["ordered_hierarchy", "legacy_branch_canvas"],
         anchored_path: {
           title: "Anchored Path",
           entries: diktataograph.lineage || [],
@@ -499,6 +607,13 @@
         structure_field: {
           title: "Structure Field",
           entries: diktataograph.navigation_entries || [],
+        },
+        ordered_hierarchy: {
+          title: "Ordered Hierarchy",
+          columns: [],
+          active_path: diktataograph.lineage || [],
+          selected_node_id: "",
+          interaction: {},
         },
         projection_rule_field: {
           title: "Projection Rule",
@@ -588,16 +703,46 @@
     });
   }
 
+  function bindOrderedHierarchyEnhancement(target) {
+    Array.prototype.forEach.call(target.querySelectorAll(".cts-gis-orderedColumn__rows"), function (lane) {
+      var buttons = Array.prototype.slice.call(lane.querySelectorAll(".cts-gis-orderedNode"));
+      if (!buttons.length) return;
+
+      function applyWeights(activeIndex) {
+        buttons.forEach(function (button, index) {
+          var delta = activeIndex < 0 ? 999 : Math.abs(index - activeIndex);
+          var weight = activeIndex < 0 ? 1 : Math.max(1, 5 - delta);
+          button.style.setProperty("--cts-gis-ordered-weight", String(weight));
+        });
+      }
+
+      applyWeights(-1);
+      lane.addEventListener("mousemove", function (event) {
+        var hit = event.target && event.target.closest ? event.target.closest(".cts-gis-orderedNode") : null;
+        if (!hit) return;
+        var idx = buttons.indexOf(hit);
+        if (idx >= 0) applyWeights(idx);
+      });
+      lane.addEventListener("mouseleave", function () {
+        applyWeights(-1);
+      });
+    });
+  }
+
   function renderCtsGisInspector(ctx, target, region) {
     var interfaceBody = normalizeCtsGisInterfaceBody(region.interface_body || {});
     var contextStrip = interfaceBody.context_strip || {};
     var navigationCanvas = interfaceBody.navigation_canvas || {};
+    var navMode = navigationCanvas.mode || "ordered_hierarchy";
     var anchoredPath = navigationCanvas.anchored_path || {};
     var structureField = navigationCanvas.structure_field || {};
+    var orderedHierarchy = navigationCanvas.ordered_hierarchy || {};
     var projectionRuleField = navigationCanvas.projection_rule_field || {};
     var garlandSplit = interfaceBody.garland_split_projection || {};
     var geospatialProjection = garlandSplit.geospatial_projection || {};
     var profileProjection = garlandSplit.profile_projection || {};
+    var orderedPathEntries = orderedHierarchy.active_path || [];
+    var orderedNodeEntries = [];
     (anchoredPath.entries || []).forEach(function (entry, index) {
       entry._renderIndex = index;
     });
@@ -613,9 +758,24 @@
     (geospatialProjection.features || []).forEach(function (entry, index) {
       entry._renderIndex = index;
     });
+    orderedPathEntries.forEach(function (entry, index) {
+      entry._renderIndex = index;
+    });
+    (orderedHierarchy.columns || []).forEach(function (column) {
+      (column.entries || []).forEach(function (entry) {
+        entry._renderIndex = orderedNodeEntries.length;
+        orderedNodeEntries.push(entry);
+      });
+    });
+    var navigationCanvasMarkup =
+      navMode === "legacy_branch_canvas"
+        ? renderStructureCanvas(anchoredPath.entries || [], structureField.entries || [], navigationCanvas.active_node_id || "")
+        : renderOrderedHierarchyCanvas(orderedHierarchy, navigationCanvas.active_node_id || "");
     var entriesByKind = {
       path: anchoredPath.entries || [],
       node: structureField.entries || [],
+      ordered_path: orderedPathEntries,
+      ordered_node: orderedNodeEntries,
       rule: projectionRuleField.entries || [],
       row: profileProjection.projected_rows || [],
       feature: geospatialProjection.features || [],
@@ -644,7 +804,11 @@
       escapeHtml(navigationCanvas.summary || "") +
       "</p></header>" +
       '<section class="cts-gis-navCanvas" data-cts-gis-nav-canvas="structure">' +
-      renderStructureCanvas(anchoredPath.entries || [], structureField.entries || [], navigationCanvas.active_node_id || "") +
+      '<div class="cts-gis-navCanvas__mode" data-cts-gis-nav-mode="' +
+      escapeHtml(navMode) +
+      '">' +
+      navigationCanvasMarkup +
+      "</div>" +
       '<section class="cts-gis-navField cts-gis-navField--projectionRules"><h4>' +
       escapeHtml(projectionRuleField.title || "Projection Rule") +
       "</h4>" +
@@ -753,7 +917,11 @@
       "</div>" +
       "</div>";
     bindShellRequestEntries(target, ctx, entriesByKind);
-    bindNavigationCanvasEnhancement(target, !!((interfaceBody.feature_flags || {}).hover_attention_redistribution));
+    if (navMode === "legacy_branch_canvas") {
+      bindNavigationCanvasEnhancement(target, !!((interfaceBody.feature_flags || {}).hover_attention_redistribution));
+    } else {
+      bindOrderedHierarchyEnhancement(target);
+    }
   }
 
   window.PortalShellInspectorRenderer = {

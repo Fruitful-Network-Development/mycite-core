@@ -60,8 +60,13 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("garland_split_projection", shell_contract)
         self.assertIn("geospatial_projection", shell_contract)
         self.assertIn("profile_projection", shell_contract)
-        self.assertIn("section titles exist only as empty panels", shell_contract)
-        self.assertIn("cts-gis-specific canvas/projection roles", shell_contract.lower())
+        self.assertIn("four visible regions", shell_contract.lower())
+        self.assertIn("ordered_hierarchy", shell_contract)
+        self.assertIn("legacy_branch_canvas", shell_contract)
+        self.assertIn("synthetic_baseline", shell_contract)
+        self.assertIn("real_garland_geometry", shell_contract)
+        self.assertIn("real_ordered_hierarchy", shell_contract)
+        self.assertIn("blank", shell_contract.lower())
         self.assertIn("cts-gis", shell_contract.lower())
         self.assertIn("authenticated peripheral package", shell_contract.lower())
         self.assertIn("interface_panel_collapsed", shell_contract)
@@ -142,6 +147,10 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("Garland", route_model)
         self.assertIn("navigation_canvas", route_model)
         self.assertIn("garland_split_projection", route_model)
+        self.assertIn("ordered_hierarchy", route_model)
+        self.assertIn("legacy_branch_canvas", route_model)
+        self.assertIn("real_garland_geometry", route_model)
+        self.assertIn("real_ordered_hierarchy", route_model)
 
 
 if __name__ == "__main__":

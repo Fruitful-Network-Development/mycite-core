@@ -65,11 +65,22 @@ Workspace file modes under `system.root`:
 - Its canonical route is `/portal/system/tools/cts-gis`.
 - Its default posture is interface-panel-led.
 - Its workbench is `tool_secondary_evidence` and stays hidden by default until secondary evidence is explicitly shown.
-- Its dominant `Interface Panel` mounts one CTS-GIS-local dual-section interface body.
+- Its dominant `Interface Panel` mounts one CTS-GIS-local scaffold body with four always-visible regions:
+  - `CTS-GIS Context`
+  - `Diktataograph`
+  - `Garland` geospatial pane
+  - `Garland` profile pane
 - `Diktataograph` is the CTS-GIS structural navigation canvas (`navigation_canvas`).
+- `navigation_canvas.mode` defaults to `ordered_hierarchy`; `legacy_branch_canvas` remains available as legacy renderer mode.
+- `navigation_canvas.ordered_hierarchy` carries the ordered-hierarchy payload (`columns`, `active_path`, `selected_node_id`, interaction metadata).
+- Legacy `anchored_path`, `structure_field`, and `projection_rule_field` remain present for compatibility mode consumers.
 - `Garland` is the CTS-GIS correlated projection surface (`garland_split_projection`) with dominant `geospatial_projection` and secondary `profile_projection`.
-- `CTS-GIS Context` is compact orientation-only context above the dual section.
-- In narrow posture, the CTS-GIS-local body may fall back to a vertical stack with a compact context strip above both sections.
+- CTS-GIS rebuild flow is scaffold-first:
+  - synthetic deterministic baseline
+  - real Garland HOPS polygon swap
+  - real ordered hierarchy swap
+- Ordered hierarchy title column fallback is blank-only when ASCII title decode is unavailable.
+- In narrow posture, the CTS-GIS-local body may fall back to a vertical stack while preserving all four regions.
 - CTS-GIS mediates on the selected anchor-file datum and projects correlated source-file evidence into the Interface Panel.
 - CTS-GIS tool-local navigation does not widen the shared shell focus stack. The shell focus remains `sandbox -> file -> datum -> object`.
 - Tool-local state is body-carried through CTS-GIS `tool_state`, not projected through new query keys.

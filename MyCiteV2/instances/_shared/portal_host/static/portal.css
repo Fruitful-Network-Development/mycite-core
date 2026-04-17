@@ -6229,6 +6229,10 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   min-height: 0;
 }
 
+.cts-gis-navCanvas__mode {
+  min-height: 0;
+}
+
 .cts-gis-navField {
   display: grid;
   gap: 0.45rem;
@@ -6257,6 +6261,166 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   gap: 0.8rem;
   min-height: 0;
   align-items: stretch;
+}
+
+.cts-gis-orderedHierarchy {
+  display: grid;
+  gap: 0.72rem;
+  min-height: 0;
+}
+
+.cts-gis-orderedHierarchy__spine {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.cts-gis-orderedHierarchy__spine h4 {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-orderedHierarchy__path {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.42rem;
+}
+
+.cts-gis-orderedPathNode {
+  display: grid;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.58rem 0.64rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 92%, #fff 8%);
+  color: var(--ink, #243026);
+  cursor: pointer;
+}
+
+.cts-gis-orderedPathNode.is-active {
+  border-color: color-mix(in srgb, var(--accent, #0b6b46) 56%, var(--line, #c8cec8) 44%);
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 72%, #fff 28%);
+}
+
+.cts-gis-orderedPathNode__msn {
+  font-weight: 700;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.cts-gis-orderedPathNode__title {
+  min-height: 1.05rem;
+  font-size: 0.74rem;
+  color: var(--ink2, #667068);
+  overflow-wrap: anywhere;
+}
+
+.cts-gis-orderedHierarchy__columns {
+  display: grid;
+  gap: 0.56rem;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  min-height: 0;
+}
+
+.cts-gis-orderedColumn {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.44rem;
+  min-height: 0;
+  padding: 0.64rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 86%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 91%, #fff 9%);
+}
+
+.cts-gis-orderedColumn__header {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.cts-gis-orderedColumn__eyebrow {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-orderedColumn__anchor {
+  font-size: 0.74rem;
+  color: var(--ink2, #667068);
+  overflow-wrap: anywhere;
+}
+
+.cts-gis-orderedColumn__rows {
+  display: grid;
+  gap: 0.36rem;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 0.1rem;
+}
+
+.cts-gis-orderedNode {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  text-align: left;
+  padding: calc(0.48rem + (var(--cts-gis-ordered-weight, 1) * 0.04rem)) 0.58rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 30%, #fff 70%);
+  color: var(--ink, #243026);
+  cursor: pointer;
+  opacity: calc(0.62 + (var(--cts-gis-ordered-weight, 1) * 0.08));
+  transform: scale(calc(0.985 + (var(--cts-gis-ordered-weight, 1) * 0.005)));
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.cts-gis-orderedNode:hover,
+.cts-gis-orderedNode:focus-visible {
+  border-color: color-mix(in srgb, var(--accent, #0b6b46) 48%, var(--line, #c8cec8) 52%);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
+  outline: none;
+}
+
+.cts-gis-orderedNode.is-in-path {
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 55%, #fff 45%);
+}
+
+.cts-gis-orderedNode.is-active {
+  border-color: color-mix(in srgb, var(--accent, #0b6b46) 58%, var(--line, #c8cec8) 42%);
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 74%, #fff 26%);
+  opacity: 1;
+}
+
+.cts-gis-orderedNode__msn {
+  font-weight: 700;
+  font-size: 0.79rem;
+  overflow-wrap: anywhere;
+}
+
+.cts-gis-orderedNode__title {
+  min-height: 1.1rem;
+  font-size: 0.73rem;
+  color: var(--ink2, #667068);
+  overflow-wrap: anywhere;
+  border-left: 1px solid color-mix(in srgb, var(--line, #c8cec8) 84%, transparent);
+  padding-left: 0.42rem;
+}
+
+.cts-gis-orderedHierarchy__selected {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--ink2, #667068);
 }
 
 .cts-gis-structureCanvas__pathway {
@@ -6653,6 +6817,14 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .cts-gis-orderedHierarchy__columns {
+    grid-template-columns: repeat(auto-fit, minmax(9.8rem, 1fr));
+  }
+
+  .cts-gis-orderedNode {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .cts-gis-navField__lanes {
     max-height: clamp(220px, 42vh, 440px);
   }
@@ -6668,6 +6840,11 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   }
 
   .cts-gis-structureCanvas__branches {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cts-gis-orderedHierarchy__path,
+  .cts-gis-orderedHierarchy__columns {
     grid-template-columns: minmax(0, 1fr);
   }
 

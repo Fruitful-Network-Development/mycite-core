@@ -129,20 +129,40 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         )
         self.assertEqual(bundle["surface_payload"]["source_evidence"]["readiness"]["state"], "no_authoritative_cts_gis_documents")
         self.assertEqual(bundle["inspector"]["interface_body"]["kind"], "cts_gis_interface_body")
-        self.assertIn("navigation_canvas", bundle["inspector"]["interface_body"])
-        self.assertIn("garland_split_projection", bundle["inspector"]["interface_body"])
-        self.assertTrue(bundle["inspector"]["interface_body"]["context_strip"]["compact"])
+        interface_body = bundle["inspector"]["interface_body"]
+        self.assertIn("navigation_canvas", interface_body)
+        self.assertIn("garland_split_projection", interface_body)
+        self.assertTrue(interface_body["context_strip"]["compact"])
+        self.assertEqual(interface_body["context_strip"]["title"], "CTS-GIS Context")
+        self.assertEqual(interface_body["navigation_canvas"]["title"], "Diktataograph")
+        self.assertEqual(
+            interface_body["garland_split_projection"]["geospatial_projection"]["title"],
+            "Geospatial Projection",
+        )
+        self.assertEqual(
+            interface_body["garland_split_projection"]["profile_projection"]["title"],
+            "Profile Projection",
+        )
+        self.assertEqual(interface_body["navigation_canvas"]["mode"], "ordered_hierarchy")
+        self.assertEqual(
+            interface_body["wiring_sequence"][0],
+            "synthetic_baseline",
+        )
+        self.assertEqual(
+            interface_body["garland_split_projection"]["geospatial_projection"]["data_source"],
+            "synthetic",
+        )
         self.assertIn(
             "geospatial_projection",
-            bundle["inspector"]["interface_body"]["garland_split_projection"],
+            interface_body["garland_split_projection"],
         )
         self.assertIn(
             "profile_projection",
-            bundle["inspector"]["interface_body"]["garland_split_projection"],
+            interface_body["garland_split_projection"],
         )
         self.assertIn(
             "empty_message",
-            bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"],
+            interface_body["garland_split_projection"]["geospatial_projection"],
         )
         self.assertEqual(
             [group["title"] for group in bundle["control_panel"]["groups"][:3]],
@@ -231,7 +251,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 '{\n'
                 '  "datum_addressing_abstraction_space": {\n'
                 '    "4-2-1": [["4-2-1", "rf.3-1-2", "3-2-3-17-77", "rf.3-1-3", "01010011011101010110110101101101011010010111010000000000"], ["summit_county"]],\n'
-                '    "4-2-2": [["4-2-2", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", "011000010110101101110010011011110110111000000000"], ["city_of_akron"]]\n'
+                '    "4-2-2": [["4-2-2", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", "011000010110101101110010011011110110111000000000"], ["city_of_akron"]],\n'
+                '    "4-2-3": [["4-2-3", "rf.3-1-2", "3-2-3-17-77-9", "rf.3-1-3", "not_binary"], ["invalid_title_node"]]\n'
                 '  }\n'
                 '}\n',
                 encoding="utf-8",
@@ -271,6 +292,14 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertEqual(bundle["inspector"]["interface_body"]["narrow_layout"], "context_diktataograph_garland_stack")
             self.assertIn("navigation_canvas", bundle["inspector"]["interface_body"])
             self.assertIn("garland_split_projection", bundle["inspector"]["interface_body"])
+            self.assertEqual(
+                bundle["inspector"]["interface_body"]["navigation_canvas"]["mode"],
+                "ordered_hierarchy",
+            )
+            self.assertIn(
+                "ordered_hierarchy",
+                bundle["inspector"]["interface_body"]["navigation_canvas"],
+            )
             self.assertIn(
                 "anchored_path",
                 bundle["inspector"]["interface_body"]["navigation_canvas"],
@@ -304,6 +333,10 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertIn(
                 "hierarchy",
                 bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"],
+            )
+            self.assertEqual(
+                bundle["inspector"]["interface_body"]["wiring_sequence"][0],
+                "synthetic_baseline",
             )
 
             envelope = run_portal_shell_entry(
@@ -375,7 +408,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 '{\n'
                 '  "datum_addressing_abstraction_space": {\n'
                 '    "4-2-1": [["4-2-1", "rf.3-1-2", "3-2-3-17-77", "rf.3-1-3", "01010011011101010110110101101101011010010111010000000000"], ["summit_county"]],\n'
-                '    "4-2-2": [["4-2-2", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", "011000010110101101110010011011110110111000000000"], ["city_of_akron"]]\n'
+                '    "4-2-2": [["4-2-2", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", "011000010110101101110010011011110110111000000000"], ["city_of_akron"]],\n'
+                '    "4-2-3": [["4-2-3", "rf.3-1-2", "3-2-3-17-77-9", "rf.3-1-3", "not_binary"], ["invalid_title_node"]]\n'
                 '  }\n'
                 '}\n',
                 encoding="utf-8",
@@ -410,16 +444,48 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 ),
                 data_dir=data_dir,
                 private_dir=private_dir,
+                request_payload={
+                    "tool_state": {
+                        "aitas": {
+                            "attention_node_id": "3-2-3-17-77",
+                            "intention_rule_id": "self",
+                        }
+                    }
+                },
             )
 
             self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["attention_node_id"], "3-2-3-17-77")
             interface_body = bundle["inspector"]["interface_body"]
             navigation_canvas = interface_body["navigation_canvas"]
             garland = interface_body["garland_split_projection"]
+            self.assertEqual(navigation_canvas["mode"], "ordered_hierarchy")
+            self.assertIn("ordered_hierarchy", navigation_canvas)
             self.assertTrue(navigation_canvas["structure_field"]["entries"])
             self.assertEqual(garland["profile_projection"]["active_profile"]["node_id"], "3-2-3-17-77")
             self.assertTrue(garland["geospatial_projection"]["feature_collection"]["features"])
             self.assertGreater(garland["geospatial_projection"]["feature_count"], 0)
+            self.assertEqual(
+                garland["geospatial_projection"]["data_source"],
+                "real_hops_polygon_projection",
+            )
+            self.assertEqual(
+                interface_body["wiring_sequence"],
+                ["synthetic_baseline", "real_garland_geometry", "real_ordered_hierarchy"],
+            )
+            ordered_path_ids = [
+                entry["node_id"]
+                for entry in navigation_canvas["ordered_hierarchy"]["active_path"]
+            ]
+            self.assertEqual(
+                ordered_path_ids[:5],
+                ["3", "3-2", "3-2-3", "3-2-3-17", "3-2-3-17-77"],
+            )
+            invalid_title_entry = next(
+                entry
+                for entry in navigation_canvas["structure_field"]["entries"]
+                if entry["node_id"] == "3-2-3-17-77-9"
+            )
+            self.assertEqual(invalid_title_entry["title"], "")
             summary_by_label = {
                 row["label"]: row["value"]
                 for row in garland["profile_projection"]["summary_rows"]
@@ -432,6 +498,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 summary_by_label["Projection document"],
                 "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
             )
+            self.assertEqual(summary_by_label["Title fallback"], "blank_only_ascii")
 
     def test_unknown_removed_surface_falls_back_to_system_workspace(self) -> None:
         envelope = run_portal_shell_entry(
