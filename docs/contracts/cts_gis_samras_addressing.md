@@ -14,8 +14,10 @@ Administrative node rows are label overlays only. They do not define structure, 
 
 CTS-GIS resolves SAMRAS structure in this order:
 
-1. `data/payloads/cache/<corpus>.msn-administrative.json`
-2. `data/sandbox/cts-gis/tool.<msn>.cts-gis.json` as fallback only when the same `msn-SAMRAS` datum is present there
+1. scan `data/payloads/cache/<corpus>.msn-administrative.json` for decodable `msn-SAMRAS` candidates
+2. scan `data/sandbox/cts-gis/tool.<msn>.cts-gis.json` for decodable `msn-SAMRAS` candidates
+3. use the highest-ranked decodable candidate
+4. if no structure row decodes, attempt legacy reconstruction from `data/sandbox/cts-gis/sources/<corpus>.msn-administrative.json`
 
 CTS-GIS resolves ASCII node titles from:
 
@@ -36,7 +38,7 @@ The SAMRAS magnitude is decoded procedurally:
 
 The governing reference for the structure datum is `0-0-5`.
 
-The derived namespace is fail-closed. CTS-GIS does not synthesize or repair missing addresses at runtime.
+The derived namespace is fail-closed only when no valid structure authority or reconstructible row set exists. Overlay rows do not become the governing source of parentage.
 
 ## Address Denotation
 
@@ -85,8 +87,6 @@ CTS-GIS projects structural navigation through `navigation_canvas`:
 
 - `ready`
 - `blocked_invalid_magnitude`
-- `blocked_duplicate_node_row`
-- `blocked_node_outside_magnitude`
 
 Each dropdown carries:
 
@@ -109,12 +109,14 @@ Display rules:
 - deeper labels render as `<node_id> <ascii_title>`
 - when `title=""`, the visible label falls back to the bare `node_id`
 
-## Blocking Diagnostics
+## Diagnostics
 
-CTS-GIS blocks navigation instead of fabricating a tree when:
+CTS-GIS blocks navigation only when no valid SAMRAS structure can be recovered.
 
-- the SAMRAS magnitude is missing or undecodable
-- more than one administrative row binds the same node id
-- an administrative row references a node id outside the decoded namespace
+Secondary overlay problems remain visible as diagnostics without blocking bare node-id navigation:
+
+- duplicate node-row bindings
+- node rows outside the resolved namespace
+- undecodable ASCII title payloads
 
 When blocked, CTS-GIS renders diagnostics and leaves Garland empty until a valid structural selection becomes possible.

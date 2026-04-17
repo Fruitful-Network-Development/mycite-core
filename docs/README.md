@@ -10,6 +10,7 @@ This repository now describes one portal shell only.
 - Canonical CTS-GIS tool: `/portal/system/tools/cts-gis`
 - Canonical CTS-GIS storage contract: `private/utilities/tools/cts-gis/spec.json` + `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
 - Canonical CTS-GIS SAMRAS addressing contract: `docs/contracts/cts_gis_samras_addressing.md`
+- Canonical SAMRAS structural docs: `docs/contracts/samras_structural_model.md`, `docs/contracts/samras_validity_and_mutation.md`, `docs/contracts/samras_engine_ui_boundary.md`
 - CTS-GIS phase-B (v2.5.4) is canonical-only: legacy CTS-GIS aliases are no longer accepted
 - Operator migration note: remove or ignore stale pre-v2.5.4 CTS-GIS legacy roots before or during rollout
 - `NETWORK` is the read-only portal-instance system-log workbench over `data/system/system_log.json`

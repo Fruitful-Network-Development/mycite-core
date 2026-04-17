@@ -114,7 +114,7 @@ CTS-GIS runtime/body rules:
 - `Diktataograph` is projected through `navigation_canvas`
 - `navigation_canvas.mode` defaults to `directory_dropdowns`
 - `navigation_canvas.source_authority=samras_magnitude`
-- `navigation_canvas.decode_state` is fail-closed for invalid magnitude or conflicting node rows
+- `navigation_canvas.decode_state` is fail-closed when CTS-GIS cannot recover a valid SAMRAS structure from authority rows or legacy row reconstruction
 - `navigation_canvas.dropdowns` carries one dropdown per resolved structural depth
 - `navigation_canvas.active_path` carries the resolved lineage
 - `Garland` is projected through `garland_split_projection`, where dominant `geospatial_projection` and secondary `profile_projection` update for that navigation root
@@ -123,7 +123,7 @@ CTS-GIS runtime/body rules:
 - CTS-GIS supporting evidence precedence is:
   - `private/utilities/tools/cts-gis/spec.json`
   - `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
-  - `data/payloads/cache/<corpus>.msn-administrative.json` for preferred `msn-SAMRAS` authority
+  - `data/payloads/cache/<corpus>.msn-administrative.json` for first-pass `msn-SAMRAS` authority candidates
   - `data/sandbox/cts-gis/sources/<corpus>.msn-administrative.json` for ASCII title overlays
   - GeoJSON lens or equivalent runtime cache for spatial projection
 - v2.5.4 phase-B is canonical-only; CTS-GIS accepts only `cts_gis` / `cts-gis` / `sandbox:cts_gis:*` and `tool.<msn>.cts-gis.json`
