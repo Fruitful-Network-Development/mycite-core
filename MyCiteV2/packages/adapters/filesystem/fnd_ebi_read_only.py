@@ -6,11 +6,13 @@ from pathlib import Path
 import re
 from typing import Any
 
-from MyCiteV2.packages.ports.fnd_ebi_read_only import (
+from ...ports.fnd_ebi_read_only import (
     FndEbiReadOnlyPort,
     FndEbiReadOnlyRequest,
     FndEbiReadOnlyResult,
     FndEbiReadOnlySource,
+    NDJSON_KIND_COUNTS_KEY,
+    classify_ndjson_log_kind,
 )
 
 FND_EBI_PROFILE_SCHEMA = "mycite.service_tool.fnd_ebi.profile.v1"
@@ -184,17 +186,6 @@ def _parse_any_timestamp(value: object) -> datetime | None:
         return parsed.astimezone(timezone.utc)
     except Exception:
         return _parse_nginx_timestamp(token)
-
-
-def _event_type(payload: dict[str, Any]) -> str:
-    for key in ("event_type", "event", "type", "name", "action"):
-        token = _as_text(payload.get(key)).lower()
-        if token:
-            return token
-    schema = _as_text(payload.get("schema")).lower()
-    if schema.endswith(".web_event.v1"):
-        return "web_event"
-    return "unknown"
 
 
 def _event_timestamp(payload: dict[str, Any]) -> datetime | None:
@@ -389,7 +380,7 @@ def _summarize_nginx_error(lines: list[str]) -> dict[str, Any]:
 
 
 def _summarize_ndjson_events(lines: list[str], *, now_utc: datetime) -> dict[str, Any]:
-    event_type_counts: dict[str, int] = {}
+    kind_counts: dict[str, int] = {}
     session_ids: set[str] = set()
     invalid_line_count = 0
     last_seen: datetime | None = None
@@ -406,8 +397,8 @@ def _summarize_ndjson_events(lines: list[str], *, now_utc: datetime) -> dict[str
         if not isinstance(payload, dict):
             invalid_line_count += 1
             continue
-        event_kind = _event_type(payload)
-        event_type_counts[event_kind] = int(event_type_counts.get(event_kind) or 0) + 1
+        event_kind = classify_ndjson_log_kind(payload)
+        kind_counts[event_kind] = int(kind_counts.get(event_kind) or 0) + 1
         sid = _event_session_id(payload)
         if sid:
             session_ids.add(sid)
@@ -427,7 +418,7 @@ def _summarize_ndjson_events(lines: list[str], *, now_utc: datetime) -> dict[str
 
     return {
         "line_count": len(lines),
-        "event_type_counts": event_type_counts,
+        NDJSON_KIND_COUNTS_KEY: kind_counts,
         "session_count_approx": int(len(session_ids)),
         "invalid_line_count": int(invalid_line_count),
         "last_seen_utc": last_seen.isoformat() if last_seen else "",
@@ -737,7 +728,7 @@ class FilesystemFndEbiReadOnlyAdapter(FndEbiReadOnlyPort):
                 "events_7d": int(events_summary.get("events_7d") or 0),
                 "events_30d": int(events_summary.get("events_30d") or 0),
                 "session_count_approx": int(events_summary.get("session_count_approx") or 0),
-                "event_type_counts": dict(events_summary.get("event_type_counts") or {}),
+                NDJSON_KIND_COUNTS_KEY: dict(events_summary.get(NDJSON_KIND_COUNTS_KEY) or {}),
                 "invalid_line_count": int(events_summary.get("invalid_line_count") or 0),
                 "trend_7d": list(events_summary.get("trend_7d") or []),
                 "trend_30d": list(events_summary.get("trend_30d") or []),

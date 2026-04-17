@@ -15,8 +15,10 @@ from MyCiteV2.packages.adapters.filesystem.network_root_read_model import (  # n
     build_system_log_document,
     rebuild_network_system_log_document,
 )
-from MyCiteV2.packages.core.structures.hops.time_address_schema import validate_address_with_schema  # noqa: E402
-from MyCiteV2.packages.ports.network_root_read_model import NetworkRootReadModelRequest  # noqa: E402
+from MyCiteV2.packages.ports.network_root_read_model import (  # noqa: E402
+    NetworkRootReadModelRequest,
+    validate_network_hops_address,
+)
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
@@ -74,7 +76,7 @@ class FilesystemNetworkRootReadModelAdapterTests(unittest.TestCase):
                         "raw": {"kind": "calendar"},
                     }
                 ],
-                preserved_event_types={"general_event": "general_event"},
+                preserved_kind_labels={"general_event": "general_event"},
             )
             _write_json(data_dir / "system" / "system_log.json", canonical_doc)
             _write_json(
@@ -140,7 +142,7 @@ class FilesystemNetworkRootReadModelAdapterTests(unittest.TestCase):
             )
             schema_payload = {"ok": True, "schema": dict(workspace["chronology"]["schema"])}
             self.assertTrue(
-                bool(validate_address_with_schema(workspace["records"][0]["hops_timestamp"], schema_payload).get("ok"))
+                bool(validate_network_hops_address(workspace["records"][0]["hops_timestamp"], schema_payload).get("ok"))
             )
 
             contract_event_type_id = next(
@@ -176,6 +178,19 @@ class FilesystemNetworkRootReadModelAdapterTests(unittest.TestCase):
             ).source.payload["system_log_workbench"]
             self.assertEqual(selected["selected_record"]["datum_address"], record_id)
             self.assertEqual(selected["selected_contract"]["contract_id"], "contract-fnd-tff-member-001")
+
+            warned = adapter.read_network_root_model(
+                NetworkRootReadModelRequest(
+                    portal_tenant_id="fnd",
+                    portal_domain="fruitfulnetworkdevelopment.com",
+                    surface_query={
+                        "view": "system_logs",
+                        "contract": "contract-fnd-tff-member-001",
+                        "unused_key": "ignored",
+                    },
+                )
+            ).source.payload["system_log_workbench"]
+            self.assertTrue(any("unsupported NETWORK surface_query" in warning for warning in warned["warnings"]))
 
     def test_invalid_canonical_rows_are_excluded_from_workbench(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -273,7 +288,7 @@ class FilesystemNetworkRootReadModelAdapterTests(unittest.TestCase):
             self.assertEqual(len(event_rows), 2)
             self.assertTrue(all(row[0][4] != "4-447-751-507-916" for row in event_rows))
             self.assertTrue(
-                all(bool(validate_address_with_schema(row[0][4], rebuilt["schema_payload"]).get("ok")) for row in event_rows)
+                all(bool(validate_network_hops_address(row[0][4], rebuilt["schema_payload"]).get("ok")) for row in event_rows)
             )
 
 

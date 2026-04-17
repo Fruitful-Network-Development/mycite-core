@@ -19,27 +19,22 @@
     }
   }
 
+  function toolSurfaceAdapter() {
+    return window.PortalToolSurfaceAdapter || {};
+  }
+
   function buildSurfaceRequest(ctx, workspace, overrides) {
-    var envelope = (ctx && ctx.getEnvelope && ctx.getEnvelope()) || {};
-    var active = (workspace && workspace.active_filters) || {};
-    var query = { view: "domains" };
-    if (active.domain) query.domain = active.domain;
-    if (active.profile_id) query.profile = active.profile_id;
-    if (active.section) query.section = active.section;
-    Object.keys(overrides || {}).forEach(function (key) {
-      var value = overrides[key];
-      if (value == null || value === "") {
-        delete query[key];
-      } else {
-        query[key] = String(value);
-      }
+    return toolSurfaceAdapter().buildDirectSurfaceRequest(ctx, {
+      defaultSurfaceId: "system.tools.aws_csm",
+      baseQuery: { view: "domains" },
+      activeFilters: (workspace && workspace.active_filters) || {},
+      filterMap: {
+        domain: "domain",
+        profile_id: "profile",
+        section: "section",
+      },
+      overrides: overrides,
     });
-    return {
-      schema: "mycite.v2.portal.shell.request.v1",
-      requested_surface_id: (envelope && envelope.surface_id) || "system.tools.aws_csm",
-      portal_scope: (envelope && envelope.portal_scope) || { scope_id: "fnd", capabilities: [] },
-      surface_query: query,
-    };
   }
 
   function renderCards(cards) {
@@ -81,38 +76,11 @@
   }
 
   function profileFactRows(profile) {
-    if (!profile) return [];
-    var raw = profile.raw || {};
-    var identity = raw.identity || {};
-    var workflow = raw.workflow || {};
-    var verification = raw.verification || {};
-    var provider = raw.provider || {};
-    var smtp = raw.smtp || {};
-    var inbound = raw.inbound || {};
-    return [
-      { label: "Send-as", value: identity.send_as_email || profile.send_as_email || "—" },
-      { label: "User", value: identity.single_user_email || profile.user_email || "—" },
-      { label: "Role", value: identity.role || profile.role || "—" },
-      { label: "Workflow", value: workflow.lifecycle_state || profile.workflow_state || "—" },
-      { label: "Verification", value: verification.portal_state || verification.status || profile.verification_state || "—" },
-      { label: "Provider", value: provider.gmail_send_as_status || provider.aws_ses_identity_status || profile.provider_state || "—" },
-      { label: "Forward Target", value: smtp.forward_to_email || profile.forward_target || "—" },
-      { label: "Inbound", value: inbound.receive_state || profile.inbound_state || "—" },
-    ];
+    return toolSurfaceAdapter().buildAwsProfileRows(profile || {});
   }
 
   function newsletterRows(newsletter) {
-    if (!newsletter) return [];
-    return [
-      { label: "List", value: newsletter.list_address || "—" },
-      { label: "Author", value: newsletter.author_address || "—" },
-      { label: "Delivery", value: newsletter.delivery_mode || "—" },
-      { label: "Contacts", value: String(newsletter.contact_count || 0) },
-      { label: "Subscribed", value: String(newsletter.subscribed_count || 0) },
-      { label: "Dispatches", value: String(newsletter.dispatch_count || 0) },
-      { label: "Last Dispatch", value: newsletter.last_dispatch_id || "—" },
-      { label: "Last Inbound", value: newsletter.last_inbound_status || "—" },
-    ];
+    return toolSurfaceAdapter().buildAwsNewsletterRows(newsletter || {});
   }
 
   function renderDomainGallery(workspace) {
@@ -302,12 +270,21 @@
   window.PortalAwsCsmWorkspaceRenderer = {
     render: function (ctx, target, surfacePayload) {
       var workspace = (surfacePayload && surfacePayload.workspace) || {};
+      var adapter = toolSurfaceAdapter();
       if (!target) return;
-      target.innerHTML =
+      adapter.renderWrappedSurface(
+        target,
+        adapter.resolveSurfaceState({
+          region: ctx.region,
+          surfacePayload: surfacePayload,
+          title: "AWS-CSM",
+          hasContent: true,
+        }),
         renderCards(surfacePayload.cards || []) +
-        renderDomainGallery(workspace) +
-        renderSelectedDomain(workspace) +
-        renderNotes(surfacePayload.notes || []);
+          renderDomainGallery(workspace) +
+          renderSelectedDomain(workspace) +
+          renderNotes(surfacePayload.notes || [])
+      );
 
       Array.prototype.forEach.call(target.querySelectorAll("[data-aws-domain]"), function (button) {
         button.addEventListener("click", function () {
@@ -347,8 +324,16 @@
       var tool = (surfacePayload && surfacePayload.tool) || {};
       var profile = workspace.selected_profile || null;
       var newsletter = workspace.selected_newsletter || null;
+      var adapter = toolSurfaceAdapter();
       if (!target) return;
-      target.innerHTML =
+      adapter.renderWrappedSurface(
+        target,
+        adapter.resolveSurfaceState({
+          region: ctx.region,
+          surfacePayload: surfacePayload,
+          title: "AWS-CSM Interface Panel",
+          hasContent: true,
+        }),
         '<div class="v2-inspector-stack"><section class="v2-card"><h3>Tool Posture</h3>' +
         renderInfoRows([
           { label: "Configured", value: tool.configured ? "yes" : "no" },
@@ -371,7 +356,8 @@
             escapeHtml(compactJson((profile && profile.raw) || (newsletter && newsletter.raw) || {})) +
             "</pre></section>"
           : "") +
-        "</div>";
+        "</div>"
+      );
     },
   };
 })();

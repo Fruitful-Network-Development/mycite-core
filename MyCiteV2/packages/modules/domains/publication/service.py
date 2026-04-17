@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from MyCiteV2.packages.core.identities import is_plain_domain, require_plain_domain
 from MyCiteV2.packages.ports.datum_store import (
     PublicationProfileBasicsWritePort,
     PublicationProfileBasicsWriteRequest,
@@ -55,8 +56,7 @@ def _looks_like_public_website(value: object) -> bool:
 
 
 def _looks_like_domain(value: object) -> bool:
-    token = _as_lower(value)
-    return bool(token and "." in token)
+    return is_plain_domain(value)
 
 
 def _normalize_optional_email(value: object, *, field_name: str) -> str:
@@ -194,14 +194,11 @@ class PublicationTenantSummary:
 
     def __post_init__(self) -> None:
         tenant_id = _as_lower(self.tenant_id)
-        tenant_domain = _as_lower(self.tenant_domain)
         profile_title = _as_text(self.profile_title)
         profile_resolution = _as_text(self.profile_resolution).lower()
         publication_mode = _as_text(self.publication_mode).lower()
         if not tenant_id:
             raise ValueError("publication_tenant_summary.tenant_id is required")
-        if not tenant_domain or "." not in tenant_domain:
-            raise ValueError("publication_tenant_summary.tenant_domain must be a domain-like value")
         if not profile_title:
             raise ValueError("publication_tenant_summary.profile_title is required")
         if profile_resolution not in {
@@ -214,7 +211,14 @@ class PublicationTenantSummary:
         if publication_mode != "publication-only":
             raise ValueError("publication_tenant_summary.publication_mode must be publication-only")
         object.__setattr__(self, "tenant_id", tenant_id)
-        object.__setattr__(self, "tenant_domain", tenant_domain)
+        object.__setattr__(
+            self,
+            "tenant_domain",
+            require_plain_domain(
+                self.tenant_domain,
+                field_name="publication_tenant_summary.tenant_domain",
+            ),
+        )
         object.__setattr__(self, "profile_title", profile_title)
         object.__setattr__(self, "profile_summary", _as_text(self.profile_summary))
         object.__setattr__(self, "entity_type", _as_text(self.entity_type))
@@ -348,16 +352,20 @@ class PublicationProfileBasicsCommand:
 
     def __post_init__(self) -> None:
         tenant_id = _as_lower(self.tenant_id)
-        tenant_domain = _as_lower(self.tenant_domain)
         profile_title = _as_text(self.profile_title)
         if not tenant_id:
             raise ValueError("publication_profile_basics.tenant_id is required")
-        if not _looks_like_domain(tenant_domain):
-            raise ValueError("publication_profile_basics.tenant_domain must be a domain-like value")
         if not profile_title:
             raise ValueError("publication_profile_basics.profile_title is required")
         object.__setattr__(self, "tenant_id", tenant_id)
-        object.__setattr__(self, "tenant_domain", tenant_domain)
+        object.__setattr__(
+            self,
+            "tenant_domain",
+            require_plain_domain(
+                self.tenant_domain,
+                field_name="publication_profile_basics.tenant_domain",
+            ),
+        )
         object.__setattr__(self, "profile_title", profile_title)
         object.__setattr__(self, "profile_summary", _as_text(self.profile_summary))
         object.__setattr__(

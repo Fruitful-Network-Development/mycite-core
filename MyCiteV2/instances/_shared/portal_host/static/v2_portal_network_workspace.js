@@ -19,28 +19,23 @@
     }
   }
 
+  function toolSurfaceAdapter() {
+    return window.PortalToolSurfaceAdapter || {};
+  }
+
   function buildSurfaceRequest(ctx, surfacePayload, overrides) {
-    var envelope = (ctx && ctx.getEnvelope && ctx.getEnvelope()) || {};
     var workspace = (surfacePayload && surfacePayload.workspace) || {};
-    var active = workspace.active_filters || {};
-    var query = { view: "system_logs" };
-    if (active.contract_id) query.contract = active.contract_id;
-    if (active.event_type_id) query.type = active.event_type_id;
-    if (active.record_id) query.record = active.record_id;
-    Object.keys(overrides || {}).forEach(function (key) {
-      var value = overrides[key];
-      if (value == null || value === "") {
-        delete query[key];
-        return;
-      }
-      query[key] = String(value);
+    return toolSurfaceAdapter().buildDirectSurfaceRequest(ctx, {
+      defaultSurfaceId: "network.root",
+      baseQuery: { view: "system_logs" },
+      activeFilters: workspace.active_filters || {},
+      filterMap: {
+        contract_id: "contract",
+        event_type_id: "type",
+        record_id: "record",
+      },
+      overrides: overrides,
     });
-    return {
-      schema: "mycite.v2.portal.shell.request.v1",
-      requested_surface_id: (envelope && envelope.surface_id) || "network.root",
-      portal_scope: (envelope && envelope.portal_scope) || { scope_id: "fnd", capabilities: [] },
-      surface_query: query,
-    };
   }
 
   function renderCards(cards) {
@@ -136,12 +131,21 @@
   window.PortalNetworkWorkspaceRenderer = {
     render: function (ctx, target, surfacePayload) {
       var workspace = (surfacePayload && surfacePayload.workspace) || {};
+      var adapter = toolSurfaceAdapter();
       if (!target) return;
-      target.innerHTML =
+      adapter.renderWrappedSurface(
+        target,
+        adapter.resolveSurfaceState({
+          region: ctx.region,
+          surfacePayload: surfacePayload,
+          title: "NETWORK",
+          hasContent: true,
+        }),
         renderCards(surfacePayload.cards || []) +
-        renderFilterSummary(workspace) +
-        renderRecordTable(workspace) +
-        renderNotes(surfacePayload.notes || []);
+          renderFilterSummary(workspace) +
+          renderRecordTable(workspace) +
+          renderNotes(surfacePayload.notes || [])
+      );
       Array.prototype.forEach.call(target.querySelectorAll("[data-record-focus]"), function (button) {
         button.addEventListener("click", function () {
           var recordId = button.getAttribute("data-record-focus") || "";
@@ -164,13 +168,30 @@
       var workspace = (surfacePayload && surfacePayload.workspace) || {};
       var record = workspace.selected_record || null;
       var contract = workspace.selected_contract || null;
+      var adapter = toolSurfaceAdapter();
       if (!target) return;
       if (!record) {
-        target.innerHTML =
-          '<div class="v2-inspector-stack"><section class="v2-card"><h3>Log Record</h3><p>Select a system-log row to inspect its canonical payload and any linked contract summary.</p></section></div>';
+        adapter.renderWrappedSurface(
+          target,
+          adapter.resolveSurfaceState({
+            region: ctx.region,
+            surfacePayload: surfacePayload,
+            title: "Log Record",
+            hasContent: false,
+            message: "Select a system-log row to inspect its canonical payload and any linked contract summary.",
+          }),
+          '<div class="v2-inspector-stack"><section class="v2-card"><h3>Log Record</h3><p>Select a system-log row to inspect its canonical payload and any linked contract summary.</p></section></div>'
+        );
         return;
       }
-      target.innerHTML =
+      adapter.renderWrappedSurface(
+        target,
+        adapter.resolveSurfaceState({
+          region: ctx.region,
+          surfacePayload: surfacePayload,
+          title: "NETWORK Detail",
+          hasContent: true,
+        }),
         '<div class="v2-inspector-stack">' +
         '<section class="v2-card"><h3>Record Summary</h3>' +
         '<dl class="v2-surface-dl">' +
@@ -189,7 +210,8 @@
           : "") +
         '<section class="v2-card" style="margin-top:12px"><h3>Raw Payload</h3><pre class="v2-networkInspector__json">' +
         escapeHtml(prettyJson(record.raw || {})) +
-        "</pre></section></div>";
+        "</pre></section></div>"
+      );
     },
   };
 })();

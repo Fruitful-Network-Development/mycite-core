@@ -46,7 +46,7 @@ class PublicationTenantSummaryContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "tenant_id is required"):
             PublicationTenantSummaryRequest.from_dict({"tenant_id": "", "tenant_domain": "example.com"})
 
-        with self.assertRaisesRegex(ValueError, "tenant_domain must be a domain-like value"):
+        with self.assertRaisesRegex(ValueError, "tenant_domain.*domain-like value"):
             PublicationTenantSummaryRequest.from_dict({"tenant_id": "tff", "tenant_domain": ""})
 
         with self.assertRaisesRegex(ValueError, "profile_id is required"):

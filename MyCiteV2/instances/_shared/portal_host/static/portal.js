@@ -500,13 +500,23 @@
       return isOpen;
     }
 
+    let firstV2ShellCompositionApplied = false;
+
     function applyShellPostureFromDom(options) {
       const opts = options || {};
       const composition = currentShellComposition();
+      const fromShellComposition = opts.fromShellComposition === true;
       const controlPanelOpen = shell.getAttribute("data-control-panel-collapsed") !== "true";
       let workbenchOpen = shell.getAttribute("data-workbench-collapsed") !== "true";
       let interfacePanelOpen = interfacePanelIsOpen();
-      if (opts.useStoredWorkbenchPreference !== false && composition !== "tool") {
+      let useStoredWorkbenchPreference = opts.useStoredWorkbenchPreference === true;
+      if (opts.useStoredWorkbenchPreference == null) {
+        useStoredWorkbenchPreference = !fromShellComposition || firstV2ShellCompositionApplied;
+      }
+      if (!firstV2ShellCompositionApplied && fromShellComposition) {
+        useStoredWorkbenchPreference = false;
+      }
+      if (useStoredWorkbenchPreference && composition !== "tool") {
         const storedWorkbenchOpen = getStoredValue(WORKBENCH_OPEN_KEY);
         if (storedWorkbenchOpen === "1") {
           workbenchOpen = true;
@@ -527,6 +537,9 @@
       }
       syncShellToggleButtons();
       rebalanceWorkbench();
+      if (fromShellComposition) {
+        firstV2ShellCompositionApplied = true;
+      }
     }
 
     function setShellComposition(mode) {
@@ -570,7 +583,7 @@
     setControlPanelWidth(storedControlPanel || initialPolicy.defaultControlPanelWidth, false);
     setInterfacePanelWidth(storedInterfacePanel || initialPolicy.defaultInspectorWidth, false);
     if (shellDriverV2) {
-      applyShellPostureFromDom({ useStoredWorkbenchPreference: true });
+      applyShellPostureFromDom({ useStoredWorkbenchPreference: false });
     } else {
       setControlPanelOpen(storedControlPanelOpen !== "0", false);
       let interfacePanelShouldOpen = false;

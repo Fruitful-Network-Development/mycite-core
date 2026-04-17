@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
+from MyCiteV2.packages.core.identities import normalize_optional_plain_domain
+
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
@@ -38,15 +40,6 @@ def _normalize_payload(value: object, *, field_name: str) -> dict[str, JsonValue
     return normalized
 
 
-def _normalize_optional_domain(value: object, *, field_name: str) -> str:
-    token = _as_text(value).lower()
-    if not token:
-        return ""
-    if "." not in token or "/" in token or "\\" in token or ".." in token:
-        raise ValueError(f"{field_name} must be a plain domain-like value")
-    return token
-
-
 @dataclass(frozen=True)
 class NetworkRootReadModelRequest:
     portal_tenant_id: str
@@ -61,7 +54,7 @@ class NetworkRootReadModelRequest:
         object.__setattr__(
             self,
             "portal_domain",
-            _normalize_optional_domain(
+            normalize_optional_plain_domain(
                 self.portal_domain,
                 field_name="network_root_read_model_request.portal_domain",
             ),
@@ -96,7 +89,7 @@ class NetworkRootReadModelRequest:
         return cls(
             portal_tenant_id=payload.get("portal_tenant_id"),
             portal_domain=payload.get("portal_domain") or "",
-            surface_query=payload.get("surface_query") if isinstance(payload.get("surface_query"), dict) else None,
+            surface_query=payload.get("surface_query") if "surface_query" in payload else None,
         )
 
 

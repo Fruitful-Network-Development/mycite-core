@@ -67,6 +67,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn('document.getElementById("v2-shell-asset-manifest")', loader_source)
         self.assertIn("scripts.shell_modules", loader_source)
         self.assertIn("window.__MYCITE_V2_SHELL_ASSET_MANIFEST = assetManifest", loader_source)
+        self.assertIn("v2_portal_tool_surface_adapter.js", PORTAL_SHELL_MODULE_FILES)
         for filename in PORTAL_SHELL_MODULE_FILES:
             self.assertNotIn(f'"{filename}"', loader_source)
 
@@ -102,6 +103,28 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("data-tool-panel-lock", portal_js)
         self.assertIn("data-tool-panel-lock-route", portal_js)
         self.assertIn("dblclick", portal_js)
+        self.assertIn("firstV2ShellCompositionApplied", portal_js)
+        self.assertIn("useStoredWorkbenchPreference: false", portal_js)
+        self.assertIn("fromShellComposition: true", shell_core)
+        tool_adapter = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_tool_surface_adapter.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn("loading", tool_adapter)
+        self.assertIn("error", tool_adapter)
+        self.assertIn("empty", tool_adapter)
+        self.assertIn("unsupported", tool_adapter)
+        self.assertIn("buildDirectSurfaceRequest", tool_adapter)
+        self.assertIn("buildAwsProfileRows", tool_adapter)
+        self.assertIn("buildAwsNewsletterRows", tool_adapter)
+        self.assertIn("PortalToolSurfaceAdapter", (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_workbench_renderers.js"
+        ).read_text(encoding="utf-8"))
+        self.assertIn("PortalToolSurfaceAdapter", (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8"))
+        self.assertNotIn("PortalFndEbi", (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_workbench_renderers.js"
+        ).read_text(encoding="utf-8"))
 
         self.assertIn("data-workbench-collapsed", shell_core)
         self.assertIn("data-interface-panel-collapsed", shell_core)

@@ -12,7 +12,10 @@ from MyCiteV2.packages.modules.domains.publication import (
     PublicationProfileBasicsService,
     normalize_publication_profile_basics_command,
 )
-from MyCiteV2.packages.ports.datum_store import PublicationProfileBasicsWriteResult
+from MyCiteV2.packages.ports.datum_store import (
+    PUBLICATION_PROFILE_BASICS_WRITE_RESULT_SCHEMA,
+    PublicationProfileBasicsWriteResult,
+)
 
 
 class _FakePublicationProfileBasicsPort:
@@ -126,6 +129,7 @@ class PublicationProfileBasicsUnitTests(unittest.TestCase):
         self.assertEqual(port.requests[0].tenant_domain, "trappfamilyfarm.com")
         self.assertEqual(outcome.profile_id, "3-2-3-17-77-2-6-3-1-6")
         self.assertEqual(outcome.confirmed_summary.profile_title, "Trapp Family Farm")
+        self.assertEqual(port.result.to_dict()["schema"], PUBLICATION_PROFILE_BASICS_WRITE_RESULT_SCHEMA)
         self.assertEqual(
             outcome.to_local_audit_payload(),
             {
@@ -181,6 +185,15 @@ class PublicationProfileBasicsUnitTests(unittest.TestCase):
                     "profile_summary": "Updated summary",
                     "contact_email": "hello@trappfamilyfarm.com",
                     "public_website_url": "https://trappfamilyfarm.com",
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "tenant_domain"):
+            normalize_publication_profile_basics_command(
+                {
+                    "tenant_id": "tff",
+                    "tenant_domain": "../trappfamilyfarm.com",
+                    "profile_title": "Trapp Family Farm",
                 }
             )
 

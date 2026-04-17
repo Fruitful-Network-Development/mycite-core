@@ -162,7 +162,7 @@
       window.PortalShell.setShellComposition(composition.composition_mode || "system");
     }
     if (window.PortalShell && typeof window.PortalShell.syncFromDom === "function") {
-      window.PortalShell.syncFromDom();
+      window.PortalShell.syncFromDom({ fromShellComposition: true });
     }
   }
 

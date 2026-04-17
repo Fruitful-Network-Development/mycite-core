@@ -26,6 +26,20 @@ class NetworkRootReadModelTests(unittest.TestCase):
         self.assertEqual(workbench["active_filters"]["view"], "system_logs")
         self.assertEqual(workbench["state"], "not_configured")
 
+    def test_unknown_surface_query_keys_are_ignored_with_warnings(self) -> None:
+        adapter = FilesystemNetworkRootReadModelAdapter(data_dir=None, private_dir=None)
+        result = adapter.read_network_root_model(
+            NetworkRootReadModelRequest(
+                portal_tenant_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+                surface_query={"view": "system_logs", "unexpected": "value"},
+            )
+        )
+
+        payload = dict(result.source.payload)
+        warnings = list(payload["warnings"])
+        self.assertTrue(any("unsupported NETWORK surface_query" in warning for warning in warnings))
+
 
 if __name__ == "__main__":
     unittest.main()

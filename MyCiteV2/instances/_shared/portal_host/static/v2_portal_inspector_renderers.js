@@ -33,6 +33,10 @@
     );
   }
 
+  function toolSurfaceAdapter() {
+    return window.PortalToolSurfaceAdapter || {};
+  }
+
   function renderCompactContextStrip(items) {
     if (!items || !items.length) {
       return '<p class="ide-controlpanel__empty">No context.</p>';
@@ -930,13 +934,31 @@
       var region = ctx.region || {};
       var sections = region.sections || [];
       var surfacePayload = region.surface_payload || {};
+      var adapter = toolSurfaceAdapter();
       if (!target) return;
+      if (region.visible === false) {
+        target.innerHTML = "";
+        return;
+      }
       if (
         window.PortalAwsCsmInspectorRenderer &&
         typeof window.PortalAwsCsmInspectorRenderer.render === "function" &&
         region.kind === "aws_csm_inspector"
       ) {
         window.PortalAwsCsmInspectorRenderer.render(ctx, target, surfacePayload);
+        return;
+      } else if (region.kind === "aws_csm_inspector") {
+        adapter.renderWrappedSurface(
+          target,
+          adapter.resolveSurfaceState({
+            region: region,
+            surfacePayload: surfacePayload,
+            title: "AWS-CSM Interface Panel",
+            unsupported: true,
+            message: "The AWS-CSM interface renderer is unavailable.",
+          }),
+          ""
+        );
         return;
       }
       if (
@@ -946,12 +968,46 @@
       ) {
         window.PortalNetworkInspectorRenderer.render(ctx, target, surfacePayload);
         return;
+      } else if (region.kind === "network_system_log_inspector") {
+        adapter.renderWrappedSurface(
+          target,
+          adapter.resolveSurfaceState({
+            region: region,
+            surfacePayload: surfacePayload,
+            title: "NETWORK Detail",
+            unsupported: true,
+            message: "The NETWORK detail renderer is unavailable.",
+          }),
+          ""
+        );
+        return;
       }
       if (region.kind === "tool_mediation_panel" && region.interface_body && region.interface_body.kind === "cts_gis_interface_body") {
         renderCtsGisInspector(ctx, target, region);
         return;
+      } else if (region.kind === "tool_mediation_panel" && region.interface_body) {
+        adapter.renderWrappedSurface(
+          target,
+          adapter.resolveSurfaceState({
+            region: region,
+            surfacePayload: surfacePayload,
+            title: region.title || "Tool Interface Panel",
+            unsupported: true,
+            message: "This tool interface is not supported by the current renderer set.",
+          }),
+          ""
+        );
+        return;
       }
-      target.innerHTML =
+      adapter.renderWrappedSurface(
+        target,
+        adapter.resolveSurfaceState({
+          region: region,
+          surfacePayload: surfacePayload,
+          title: region.title || "Interface Panel",
+          hasContent: !!region.subject || !!sections.length,
+          message: region.summary || "Select an item to load interface panel content.",
+        }),
         '<div class="v2-inspector-stack">' +
         (region.subject
           ? '<section class="v2-card"><h3>Subject</h3>' +
@@ -979,7 +1035,8 @@
             );
           })
           .join("") +
-        "</div>";
+        "</div>"
+      );
     },
   };
 })();
