@@ -3,6 +3,9 @@ from __future__ import annotations
 import base64
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from email import policy
+from email.parser import BytesParser
+from email.utils import getaddresses
 import fcntl
 import hashlib
 import hmac
@@ -16,6 +19,10 @@ from MyCiteV2.packages.adapters.event_transport.aws_csm_newsletter_cloud import 
 )
 from MyCiteV2.packages.adapters.filesystem.aws_csm_newsletter_state import (
     FilesystemAwsCsmNewsletterStateAdapter,
+)
+from MyCiteV2.packages.modules.cross_domain.aws_csm_forwarder_filter import (
+    AwsCsmVerificationForwardFilter,
+    extract_links_from_raw_email,
 )
 from MyCiteV2.packages.ports.aws_csm_onboarding import AwsCsmOnboardingCloudPort
 
@@ -68,6 +75,11 @@ def _local_part(email: object) -> str:
     return token.split("@", 1)[0] if token else ""
 
 
+def _email_domain(email: object) -> str:
+    token = _normalized_email(email)
+    return token.split("@", 1)[1] if token else ""
+
+
 def _status_is_ready(value: object) -> bool:
     return _as_text(value).lower() in {"ok", "active", "ready", "successful"}
 
@@ -98,6 +110,45 @@ def _aws_smtp_password(secret_access_key: str, *, region: str) -> str:
     signature = _sign(signature, _AWS_SMTP_TERMINAL)
     signature = _sign(signature, _AWS_SMTP_MESSAGE)
     return base64.b64encode(_AWS_SMTP_VERSION + signature).decode("utf-8")
+
+
+def _raw_message_summary(raw_bytes: bytes) -> dict[str, Any]:
+    try:
+        message = BytesParser(policy=policy.default).parsebytes(raw_bytes)
+    except Exception:  # noqa: BLE001
+        return {
+            "sender": "",
+            "recipient": "",
+            "subject": "",
+            "links": [],
+        }
+    sender = next(
+        (
+            _normalized_email(address)
+            for _, address in getaddresses(message.get_all("From", []))
+            if _normalized_email(address)
+        ),
+        "",
+    )
+    recipient = next(
+        (
+            _normalized_email(address)
+            for _, address in getaddresses(
+                message.get_all("Delivered-To", [])
+                + message.get_all("X-Original-To", [])
+                + message.get_all("To", [])
+            )
+            if _normalized_email(address)
+        ),
+        "",
+    )
+    links = extract_links_from_raw_email(raw_bytes)
+    return {
+        "sender": sender,
+        "recipient": recipient,
+        "subject": _as_text(message.get("Subject")),
+        "links": links,
+    }
 
 
 class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmOnboardingCloudPort):
@@ -171,7 +222,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             if expected_lambda_name
             else {"status": "not_configured", "message": "Inbound capture Lambda is not configured."}
         )
-        capture = self._capture_summary(profile, region=region)
+        capture = self._capture_summary(profile, region=region, receipt_rule=receipt_rule)
         capture_evidence = bool(capture.get("portal_native_evidence_present"))
         already_verified = (
             _as_text(verification.get("status")).lower() == "verified"
@@ -408,7 +459,10 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 "capture_source_kind": "s3_object" if _as_text(capture.get("s3_uri")) else _as_text(inbound.get("capture_source_kind")),
                 "capture_source_reference": _as_text(capture.get("s3_uri") or inbound.get("capture_source_reference")),
                 "latest_message_s3_uri": _as_text(capture.get("s3_uri") or inbound.get("latest_message_s3_uri")),
+                "latest_message_s3_key": _as_text(capture.get("s3_key") or inbound.get("latest_message_s3_key")),
                 "latest_message_id": _as_text(capture.get("message_id") or inbound.get("latest_message_id")),
+                "latest_message_sender": _as_text(capture.get("sender") or inbound.get("latest_message_sender")),
+                "latest_message_recipient": _as_text(capture.get("recipient") or inbound.get("latest_message_recipient")),
                 "latest_message_subject": _as_text(capture.get("subject") or inbound.get("latest_message_subject")),
                 "latest_message_captured_at": _as_text(capture.get("captured_at") or inbound.get("latest_message_captured_at")),
                 "latest_message_has_verification_link": bool(
@@ -433,10 +487,16 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             "portal_state": "capture_received",
             "latest_message_reference": s3_uri,
             "email_received_at": _as_text(capture.get("captured_at") or verification.get("email_received_at")),
-            "link": _as_text(verification.get("link")),
+            "link": _as_text(capture.get("link") or verification.get("link")),
         }
 
-    def _capture_summary(self, profile: dict[str, Any], *, region: str) -> dict[str, Any]:
+    def _capture_summary(
+        self,
+        profile: dict[str, Any],
+        *,
+        region: str,
+        receipt_rule: dict[str, Any],
+    ) -> dict[str, Any]:
         inbound = _as_dict(profile.get("inbound"))
         verification = _as_dict(profile.get("verification"))
         s3_uri = _as_text(
@@ -444,30 +504,154 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             or inbound.get("capture_source_reference")
             or verification.get("latest_message_reference")
         )
-        accessible = False
-        access_error = ""
-        if s3_uri:
-            try:
-                accessible = bool(self.read_s3_bytes(s3_uri=s3_uri, region=region))
-            except Exception as exc:  # noqa: BLE001
-                access_error = _as_text(exc)
-        subject = _as_text(inbound.get("latest_message_subject"))
-        has_verification_link = bool(inbound.get("latest_message_has_verification_link")) or bool(_as_text(verification.get("link")))
-        portal_native_evidence_present = accessible and (
-            has_verification_link
-            or bool(_as_text(verification.get("latest_message_reference")))
-            or "confirmation" in subject.lower()
+        expected_recipient = self._send_as_email(profile)
+        existing = self._capture_from_s3_uri(
+            s3_uri=s3_uri,
+            region=region,
+            expected_recipient=expected_recipient,
+            fallback_subject=_as_text(inbound.get("latest_message_subject")),
+            fallback_captured_at=_as_text(inbound.get("latest_message_captured_at")),
+            fallback_message_id=_as_text(inbound.get("latest_message_id")),
         )
+        if existing.get("portal_native_evidence_present"):
+            return existing
+
+        discovered = self._discover_latest_capture(
+            profile,
+            region=region,
+            receipt_rule=receipt_rule,
+        )
+        if discovered.get("portal_native_evidence_present"):
+            return discovered
+        if _as_text(existing.get("s3_uri")):
+            return existing
+        if _as_text(discovered.get("s3_uri")):
+            return discovered
         return {
-            "s3_uri": s3_uri,
-            "message_id": _as_text(inbound.get("latest_message_id")),
-            "subject": subject,
+            "s3_uri": "",
+            "message_id": "",
+            "subject": _as_text(inbound.get("latest_message_subject")),
             "captured_at": _as_text(inbound.get("latest_message_captured_at")),
-            "has_verification_link": has_verification_link,
-            "accessible": accessible,
-            "access_error": access_error,
-            "portal_native_evidence_present": portal_native_evidence_present,
+            "has_verification_link": bool(inbound.get("latest_message_has_verification_link")) or bool(_as_text(verification.get("link"))),
+            "accessible": False,
+            "access_error": "",
+            "portal_native_evidence_present": False,
+            "sender": _as_text(inbound.get("latest_message_sender")),
+            "recipient": _as_text(inbound.get("latest_message_recipient")),
+            "link": _as_text(verification.get("link")),
+            "s3_key": _as_text(inbound.get("latest_message_s3_key")),
         }
+
+    def _capture_from_s3_uri(
+        self,
+        *,
+        s3_uri: str,
+        region: str,
+        expected_recipient: str,
+        fallback_subject: str = "",
+        fallback_captured_at: str = "",
+        fallback_message_id: str = "",
+    ) -> dict[str, Any]:
+        s3_uri_token = _as_text(s3_uri)
+        summary = {
+            "s3_uri": s3_uri_token,
+            "message_id": _as_text(fallback_message_id),
+            "subject": _as_text(fallback_subject),
+            "captured_at": _as_text(fallback_captured_at),
+            "has_verification_link": False,
+            "accessible": False,
+            "access_error": "",
+            "portal_native_evidence_present": False,
+            "sender": "",
+            "recipient": expected_recipient,
+            "link": "",
+            "s3_key": s3_uri_token.split("/", 3)[3] if s3_uri_token.startswith("s3://") and s3_uri_token.count("/") >= 3 else "",
+        }
+        if not s3_uri_token:
+            return summary
+        try:
+            raw_bytes = self.read_s3_bytes(s3_uri=s3_uri_token, region=region)
+        except Exception as exc:  # noqa: BLE001
+            summary["access_error"] = _as_text(exc)
+            return summary
+        summary["accessible"] = bool(raw_bytes)
+        raw_message = _raw_message_summary(raw_bytes)
+        sender = _as_text(raw_message.get("sender"))
+        recipient = _as_text(raw_message.get("recipient") or expected_recipient)
+        subject = _as_text(raw_message.get("subject") or fallback_subject)
+        links = list(raw_message.get("links") or [])
+        decision = AwsCsmVerificationForwardFilter().decide(
+            tracked_recipients={expected_recipient} if expected_recipient else set(),
+            sender=sender,
+            recipient=recipient,
+            subject=subject,
+            raw_bytes=raw_bytes,
+        )
+        summary.update(
+            {
+                "message_id": _as_text(fallback_message_id) or summary["s3_key"].split("/")[-1],
+                "subject": subject,
+                "captured_at": _as_text(fallback_captured_at),
+                "has_verification_link": bool(links),
+                "portal_native_evidence_present": decision.should_forward,
+                "sender": sender,
+                "recipient": recipient,
+                "link": links[0] if links else "",
+            }
+        )
+        return summary
+
+    def _discover_latest_capture(
+        self,
+        profile: dict[str, Any],
+        *,
+        region: str,
+        receipt_rule: dict[str, Any],
+    ) -> dict[str, Any]:
+        identity = _as_dict(profile.get("identity"))
+        expected_recipient = self._send_as_email(profile)
+        domain = _normalized_domain(identity.get("domain"))
+        fallback_prefixes = [f"inbound/{domain}/"] if domain else []
+        if domain == "fruitfulnetworkdevelopment.com":
+            fallback_prefixes.append("inbound/")
+        candidates: list[dict[str, str]] = []
+        seen: set[str] = set()
+        matching_rules = list(_as_dict(receipt_rule).get("matching_rules") or [])
+        for rule in matching_rules:
+            if not isinstance(rule, dict):
+                continue
+            bucket = _as_text(rule.get("s3_bucket"))
+            prefix = _as_text(rule.get("s3_prefix"))
+            if bucket and prefix:
+                key = f"{bucket}/{prefix}"
+                if key not in seen:
+                    seen.add(key)
+                    try:
+                        candidates.extend(self.list_s3_objects(bucket=bucket, prefix=prefix, region=region, max_keys=20))
+                    except Exception:  # noqa: BLE001
+                        continue
+        if matching_rules:
+            default_bucket = _as_text(_as_dict(matching_rules[0]).get("s3_bucket"))
+            for prefix in fallback_prefixes:
+                key = f"{default_bucket}/{prefix}"
+                if default_bucket and key not in seen:
+                    seen.add(key)
+                    try:
+                        candidates.extend(self.list_s3_objects(bucket=default_bucket, prefix=prefix, region=region, max_keys=20))
+                    except Exception:  # noqa: BLE001
+                        continue
+        candidates.sort(key=lambda item: item.get("last_modified") or "", reverse=True)
+        for candidate in candidates[:40]:
+            summary = self._capture_from_s3_uri(
+                s3_uri=_as_text(candidate.get("s3_uri")),
+                region=region,
+                expected_recipient=expected_recipient,
+                fallback_captured_at=_as_text(candidate.get("last_modified")),
+                fallback_message_id=_as_text(candidate.get("key")).split("/")[-1],
+            )
+            if summary.get("portal_native_evidence_present"):
+                return summary
+        return {}
 
     def _region_for_profile(self, profile: dict[str, Any]) -> str:
         identity = _as_dict(profile.get("identity"))

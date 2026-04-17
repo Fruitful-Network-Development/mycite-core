@@ -34,7 +34,7 @@ def _normalized_email(value: object) -> str:
     return token
 
 
-def _extract_links(raw_bytes: bytes) -> list[str]:
+def extract_links_from_raw_email(raw_bytes: bytes) -> list[str]:
     message = BytesParser(policy=policy.default).parsebytes(raw_bytes)
     text_parts: list[str] = []
     if hasattr(message, "walk"):
@@ -155,7 +155,7 @@ class AwsCsmVerificationForwardFilter:
                 recipient=normalized_recipient,
                 subject=normalized_subject,
             )
-        links = _extract_links(raw_bytes)
+        links = extract_links_from_raw_email(raw_bytes)
         if not links:
             return AwsCsmForwardDecision(
                 should_forward=False,
@@ -179,4 +179,5 @@ class AwsCsmVerificationForwardFilter:
 __all__ = [
     "AwsCsmForwardDecision",
     "AwsCsmVerificationForwardFilter",
+    "extract_links_from_raw_email",
 ]

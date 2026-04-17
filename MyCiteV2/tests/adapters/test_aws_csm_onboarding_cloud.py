@@ -186,7 +186,13 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
             ), patch.object(
                 adapter,
                 "read_s3_bytes",
-                return_value=b"Subject: Gmail Confirmation\r\n\r\nbody",
+                return_value=(
+                    "From: gmail-noreply@google.com\r\n"
+                    "To: mark@trappfamilyfarm.com\r\n"
+                    "Subject: Gmail Confirmation - Send Mail as mark@trappfamilyfarm.com\r\n"
+                    "\r\n"
+                    "Click https://mail.google.com/mail/u/0/?ui=2&ik=verify to confirm.\r\n"
+                ).encode("utf-8"),
             ):
                 readiness = adapter.describe_profile_readiness(profile)
 
@@ -258,6 +264,83 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
         self.assertEqual(revealed["username"], "SMTPUSER")
         self.assertEqual(revealed["password"], "SMTPPASS")
         self.assertEqual(revealed["secret_name"], "aws-cms/smtp/tff.mark")
+
+    def test_describe_profile_readiness_discovers_capture_from_receipt_rule_backed_s3(self) -> None:
+        adapter = AwsEc2RoleOnboardingCloudAdapter(tenant_id="tff")
+        profile = _profile()
+        profile["smtp"]["credentials_secret_state"] = "configured"
+        raw_confirmation = (
+            "From: gmail-noreply@google.com\r\n"
+            "To: mark@trappfamilyfarm.com\r\n"
+            "Subject: Gmail Confirmation - Send Mail as mark@trappfamilyfarm.com\r\n"
+            "\r\n"
+            "Click https://mail.google.com/mail/u/0/?ui=2&ik=verify to confirm.\r\n"
+        ).encode("utf-8")
+
+        with patch.object(
+            adapter,
+            "_smtp_secret_material",
+            return_value={
+                "state": "configured",
+                "secret_name": "aws-cms/smtp/tff.mark",
+                "username": "SMTPUSER",
+                "persisted_username": "SMTPUSER",
+                "password": "SMTPPASS",
+                "smtp_host": "email-smtp.us-east-1.amazonaws.com",
+                "smtp_port": "587",
+                "message": "",
+            },
+        ), patch.object(
+            adapter,
+            "_ses_identity_summary",
+            return_value={"aws_ses_identity_status": "verified", "message": ""},
+        ), patch.object(
+            adapter,
+            "receipt_rule_summary",
+            return_value={
+                "status": "ok",
+                "matching_rules": [
+                    {
+                        "rule_name": "portal-capture-trappfamilyfarm-com",
+                        "recipient_match": True,
+                        "recipient_match_kind": "domain_recipient",
+                        "matched_recipient": "trappfamilyfarm.com",
+                        "s3_action_present": True,
+                        "lambda_action_present": True,
+                        "s3_bucket": "ses-inbound-fnd-mail",
+                        "s3_prefix": "inbound/trappfamilyfarm.com/",
+                    }
+                ],
+            },
+        ), patch.object(
+            adapter,
+            "lambda_health_summary",
+            return_value={"status": "active"},
+        ), patch.object(
+            adapter,
+            "list_s3_objects",
+            return_value=[
+                {
+                    "bucket": "ses-inbound-fnd-mail",
+                    "key": "inbound/trappfamilyfarm.com/msg-1",
+                    "s3_uri": "s3://ses-inbound-fnd-mail/inbound/trappfamilyfarm.com/msg-1",
+                    "last_modified": "2026-04-17T06:00:00+00:00",
+                }
+            ],
+        ), patch.object(
+            adapter,
+            "read_s3_bytes",
+            return_value=raw_confirmation,
+        ):
+            readiness = adapter.describe_profile_readiness(profile)
+
+        capture = readiness["inbound"]["latest_capture"]
+        self.assertEqual(readiness["inbound"]["status"], "captured")
+        self.assertTrue(readiness["confirmation"]["can_confirm_verified"])
+        self.assertEqual(capture["s3_uri"], "s3://ses-inbound-fnd-mail/inbound/trappfamilyfarm.com/msg-1")
+        self.assertEqual(capture["recipient"], "mark@trappfamilyfarm.com")
+        self.assertTrue(capture["has_verification_link"])
+        self.assertIn("https://mail.google.com/mail/u/0/?ui=2&ik=verify", capture["link"])
 
     def test_send_handoff_email_omits_password_from_message_body(self) -> None:
         with TemporaryDirectory() as temp_dir:

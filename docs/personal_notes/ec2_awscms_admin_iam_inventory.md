@@ -211,6 +211,86 @@ Create, update, and pass mail/newsletter Lambda execution roles.
 }
 ```
 
+### 5a) `AllowManageLegacyInboundReplacementServiceRole`
+
+**Purpose**
+
+Add explicit access to the currently live legacy service-role path used by the
+inbound replacement cutover for `ses-forwarder-role-l0ypgdpr`.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowManageLegacyInboundReplacementServiceRole",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:PassRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:GetRolePolicy",
+        "iam:UpdateAssumeRolePolicy"
+      ],
+      "Resource": "arn:aws:iam::065948377733:role/service-role/ses-forwarder-role-l0ypgdpr"
+    }
+  ]
+}
+```
+
+### 5b) `AllowManageAwsCmsServiceRoleForwarders`
+
+**Purpose**
+
+Future-proof role-management coverage for replacement Lambda execution roles
+that live under the IAM `/service-role/` path instead of the top-level
+`aws-cms-*`, `newsletter-*`, or `ses-forwarder*` role names.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowManageAwsCmsServiceRoleForwarders",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:PassRole",
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:GetRolePolicy",
+        "iam:UpdateAssumeRolePolicy"
+      ],
+      "Resource": [
+        "arn:aws:iam::065948377733:role/service-role/ses-forwarder*",
+        "arn:aws:iam::065948377733:role/service-role/aws-cms-*",
+        "arn:aws:iam::065948377733:role/service-role/newsletter-*"
+      ]
+    }
+  ]
+}
+```
+
+Operational note:
+
+- these two policies close the gap between the existing top-level role patterns
+  and the live SES/Lambda service-role naming used by the current inbound
+  forwarder path
+- they are specifically needed for pass 3, where the repo-owned inbound
+  replacement updates or replaces active Lambda execution-role wiring without
+  falling back to broad ad hoc IAM grants
+
 ### 6.) `AWSCMSNewsletterQueueManagement`
 
 **Purpose**
@@ -346,6 +426,9 @@ Tracked role name patterns currently covered by inline policy:
 - `aws-cms-*`
 - `newsletter-*`
 - `ses-forwarder*`
+- `service-role/ses-forwarder*`
+- `service-role/aws-cms-*`
+- `service-role/newsletter-*`
 
 ## Effective permission coverage by concern
 
@@ -375,6 +458,8 @@ Covered by:
 Covered by:
 
 - `AWSCMSLambdaExecutionRoleManagement`
+- `AllowManageLegacyInboundReplacementServiceRole`
+- `AllowManageAwsCmsServiceRoleForwarders`
 - `AWSLambda_FullAccess`
 
 ### Secrets storage
@@ -421,6 +506,8 @@ Covered by:
 - `AWSCMSDiagnosticsLogsReadOnly`
 - `AWSCMSMailboxUsersPathManagement`
 - `AWSCMSLambdaExecutionRoleManagement`
+- `AllowManageLegacyInboundReplacementServiceRole`
+- `AllowManageAwsCmsServiceRoleForwarders`
 
 ## Tracked cleanup target
 
