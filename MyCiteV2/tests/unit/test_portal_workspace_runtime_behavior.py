@@ -148,6 +148,8 @@ def _write_cts_gis_fixture(
     outside_node_ids: tuple[str, ...] = (),
     invalid_title_node_ids: tuple[str, ...] = ("3-2-3-17-77-1",),
     magnitude_bitstream: str | None = None,
+    cache_magnitude_bitstream: str | None = None,
+    anchor_magnitude_bitstream: str | None = None,
 ) -> None:
     (data_dir / "system").mkdir(parents=True, exist_ok=True)
     (data_dir / "payloads" / "cache").mkdir(parents=True, exist_ok=True)
@@ -161,6 +163,8 @@ def _write_cts_gis_fixture(
 
     addresses = _cts_gis_valid_addresses()
     magnitude = magnitude_bitstream or encode_canonical_structure_from_addresses(addresses).bitstream
+    cache_magnitude = cache_magnitude_bitstream or magnitude
+    anchor_magnitude = anchor_magnitude_bitstream or magnitude
     _write_json(
         data_dir / "payloads" / "cache" / "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json",
         {
@@ -168,7 +172,7 @@ def _write_cts_gis_fixture(
             "payload_id": "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative",
             "datum_addressing_abstraction_space": {
                 "0-0-5": [["0-0-5", "~", "0-0-0"], ["nominal-ordinal-position"]],
-                "1-1-1": [["1-1-1", "0-0-5", magnitude], ["msn-SAMRAS"]],
+                "1-1-1": [["1-1-1", "0-0-5", cache_magnitude], ["msn-SAMRAS"]],
             },
         },
     )
@@ -185,7 +189,7 @@ def _write_cts_gis_fixture(
             "datum_addressing_abstraction_space": {
                 "0-0-11": [["0-0-11", "~", "0-0-0"], ["json-file-unit"]],
                 "1-0-1": [["1-0-1", "~", "0-0-11"], ["sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"]],
-                "1-1-2": [["1-1-2", "0-0-5", magnitude], ["msn-SAMRAS"]],
+                "1-1-2": [["1-1-2", "0-0-5", anchor_magnitude], ["msn-SAMRAS"]],
                 "2-0-2": [["2-0-2", "~", "1-1-2"], ["SAMRAS-space-msn"]],
                 "2-1-1": [["2-1-1", "1-1-3", "64"], ["niu-baciloid-256-64"]],
                 "3-1-1": [["3-1-1", "2-0-2", "0"], ["HOPS-babelette-coordinate"]],
@@ -712,7 +716,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 ["1 NEG", "2 NEH", "3 NWH", "4 NWG"],
             )
 
-    def test_cts_gis_duplicate_node_rows_block_directory_navigation(self) -> None:
+    def test_cts_gis_duplicate_node_rows_do_not_block_directory_navigation(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             data_dir = root / "data"
@@ -731,12 +735,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
 
             navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
-            self.assertEqual(navigation_canvas["decode_state"], "blocked_duplicate_node_row")
-            self.assertEqual(navigation_canvas["dropdowns"], [])
+            self.assertEqual(navigation_canvas["decode_state"], "ready")
+            self.assertEqual(len(navigation_canvas["dropdowns"]), 6)
             diagnostic_codes = [item["code"] for item in navigation_canvas["diagnostics"]]
             self.assertIn("duplicate_node_row", diagnostic_codes)
 
-    def test_cts_gis_nodes_outside_magnitude_block_directory_navigation(self) -> None:
+    def test_cts_gis_nodes_outside_magnitude_do_not_block_directory_navigation(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             data_dir = root / "data"
@@ -754,12 +758,43 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
 
             navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
-            self.assertEqual(navigation_canvas["decode_state"], "blocked_node_outside_magnitude")
-            self.assertEqual(navigation_canvas["dropdowns"], [])
+            self.assertEqual(navigation_canvas["decode_state"], "ready")
+            self.assertEqual(len(navigation_canvas["dropdowns"]), 1)
             outside_diagnostic = next(
                 item for item in navigation_canvas["diagnostics"] if item["code"] == "node_outside_magnitude"
             )
             self.assertEqual(outside_diagnostic["node_ids"], ["9"])
+
+    def test_cts_gis_invalid_cache_magnitude_falls_back_to_valid_tool_anchor(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(
+                data_dir,
+                private_dir,
+                cache_magnitude_bitstream=(
+                    "00000000001000000000011001101110000000010000000001010000001001000000111100000100010000010010000001001100000101110000011000000001101100000111000000011110000010000100001000100000100011000010010000001001"
+                ),
+            )
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+            )
+
+            navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
+            self.assertEqual(navigation_canvas["decode_state"], "ready")
+            self.assertEqual(navigation_canvas["magnitude_source_kind"], "tool_anchor")
+            self.assertEqual(navigation_canvas["magnitude_datum_address"], "1-1-2")
+            self.assertEqual(len(navigation_canvas["dropdowns"]), 1)
+            diagnostic_codes = [item["code"] for item in navigation_canvas["diagnostics"]]
+            self.assertIn("invalid_magnitude_candidate", diagnostic_codes)
 
     def test_cts_gis_invalid_magnitude_blocks_without_fabricated_dropdown_tree(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -769,9 +804,16 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             _write_cts_gis_fixture(
                 data_dir,
                 private_dir,
-                magnitude_bitstream=(
+                cache_magnitude_bitstream=(
                     "00000000001000000000011001101110000000010000000001010000001001000000111100000100010000010010000001001100000101110000011000000001101100000111000000011110000010000100001000100000100011000010010000001001"
                 ),
+                anchor_magnitude_bitstream=(
+                    "00000000001000000000011001101110000000010000000001010000001001000000111100000100010000010010000001001100000101110000011000000001101100000111000000011110000010000100001000100000100011000010010000001001"
+                ),
+            )
+            _write_json(
+                data_dir / "sandbox" / "cts-gis" / "sources" / "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json",
+                {"datum_addressing_abstraction_space": {}},
             )
 
             bundle = build_portal_cts_gis_surface_bundle(
