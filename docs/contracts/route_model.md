@@ -114,17 +114,18 @@ CTS-GIS runtime/body rules:
   - `Garland` profile pane
 - tool menubar toggles are single-click exclusive by default (`Workbench` or `Interface Panel`), with a route-scoped double-click lock that allows both
 - `Diktataograph` is projected through `navigation_canvas`
-- `navigation_canvas.mode` defaults to `ordered_hierarchy`; `legacy_branch_canvas` remains available for compatibility
-- `navigation_canvas.ordered_hierarchy` carries ordered lineage/child-field payload with `columns`, `active_path`, and `selected_node_id`
+- `navigation_canvas.mode` defaults to `staged_diktataograph`; `legacy_branch_canvas` remains available for compatibility
+- `navigation_canvas.staged_blocks` carries staged lineage-block payload with `block_id`, `depth`, `anchor_node_id`, `anchor_title`, `entries`, `selected_node_id`, and `spawn_from_node_id`
+- legacy `navigation_canvas.ordered_hierarchy` remains available for compatibility payload consumers
 - legacy `anchored_path`, `structure_field`, and `projection_rule_field` remain for compatibility
 - `Garland` is projected through `garland_split_projection`, where dominant `geospatial_projection` and secondary `profile_projection` update for that navigation root
 - these are CTS-GIS-local projections of one mediation posture, not two separate shell mediations
 - `CTS-GIS Context` remains a compact orientation strip and does not become a primary visual section
 - CTS-GIS runtime wiring sequence is deterministic:
-  - `synthetic_baseline`
-  - `real_garland_geometry`
-  - `real_ordered_hierarchy`
-- ordered-hierarchy title column fallback is blank-only when ASCII decoding is unavailable
+  - `staged_root_opening`
+  - `real_garland_projection`
+  - `real_diktataograph_projection`
+- staged Diktataograph title fallback is blank-only when ASCII decoding is unavailable
 - CTS-GIS supporting evidence precedence is:
   - `private/utilities/tools/cts-gis/spec.json`
   - `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
@@ -136,7 +137,9 @@ CTS-GIS runtime/body rules:
 
 CTS-GIS canonical defaults:
 
-- `attention_node_id=3-2-3-17-77`
+- `active_path=[]`
+- `selected_node_id=""`
+- `attention_node_id=""`
 - `intention_rule_id=descendants_depth_1_or_2`
 - `time_directive=""`
 - `archetype_family_id=samras_nominal`

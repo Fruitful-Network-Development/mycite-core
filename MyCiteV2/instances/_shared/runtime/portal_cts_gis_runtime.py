@@ -42,11 +42,12 @@ _LEGACY_DOCUMENT_PREFIX = "sandbox:" + ("map" + "s") + ":"
 _SERVICE_SELF_TOKEN = "0"
 _SERVICE_CHILDREN_TOKEN = "1-0"
 _SERVICE_BRANCH_PREFIX = "branch:"
+_CTS_GIS_NAV_MODE_STAGED = "staged_diktataograph"
 _CTS_GIS_NAV_MODE_ORDERED = "ordered_hierarchy"
 _CTS_GIS_NAV_MODE_LEGACY = "legacy_branch_canvas"
-_CTS_GIS_WIRING_STAGE_SYNTHETIC = "synthetic_baseline"
-_CTS_GIS_WIRING_STAGE_GARLAND = "real_garland_geometry"
-_CTS_GIS_WIRING_STAGE_HIERARCHY = "real_ordered_hierarchy"
+_CTS_GIS_WIRING_STAGE_OPENING = "staged_root_opening"
+_CTS_GIS_WIRING_STAGE_GARLAND = "real_garland_projection"
+_CTS_GIS_WIRING_STAGE_HIERARCHY = "real_diktataograph_projection"
 
 
 class LegacyMapsAliasUnsupportedError(ValueError):
@@ -88,6 +89,8 @@ def _safe_json_object(path: Path | None) -> dict[str, Any]:
 def _tool_state_clone(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "nimm_directive": _as_text(payload.get("nimm_directive")),
+        "active_path": [_as_text(item) for item in list(payload.get("active_path") or []) if _as_text(item)],
+        "selected_node_id": _as_text(payload.get("selected_node_id")),
         "aitas": dict(payload.get("aitas") or {}),
         "source": dict(payload.get("source") or {}),
         "selection": dict(payload.get("selection") or {}),
@@ -160,6 +163,47 @@ def _service_intention_token(rule_id: object) -> str:
     return token or _DEFAULT_INTENTION_RULE_ID
 
 
+def _active_path_from_node_id(node_id: object) -> list[str]:
+    token = _as_text(node_id)
+    if not token:
+        return []
+    parts = [part for part in token.split("-") if part]
+    if not parts or not all(part.isdigit() for part in parts):
+        return []
+    return ["-".join(parts[:depth]) for depth in range(1, len(parts) + 1)]
+
+
+def _normalize_requested_active_path(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for item in value:
+        node_id = _as_text(item)
+        if not node_id:
+            continue
+        if "-" in node_id and _parent_node_id(node_id) != (out[-1] if out else ""):
+            break
+        if not _looks_like_msn_node_id(node_id):
+            break
+        if not out and _node_depth(node_id) != 1:
+            break
+        out.append(node_id)
+    return out
+
+
+def _canonical_staged_selection_state(
+    *,
+    active_path: object,
+    selected_node_id: object,
+    attention_node_id: object,
+) -> tuple[list[str], str]:
+    normalized_active_path = _normalize_requested_active_path(active_path)
+    fallback_node_id = _as_text(selected_node_id) or _as_text(attention_node_id)
+    if not normalized_active_path and fallback_node_id:
+        normalized_active_path = _active_path_from_node_id(fallback_node_id)
+    return normalized_active_path, normalized_active_path[-1] if normalized_active_path else ""
+
+
 def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
     normalized_payload = payload if isinstance(payload, dict) else {}
     raw_tool_state = normalized_payload.get("tool_state") if isinstance(normalized_payload.get("tool_state"), dict) else {}
@@ -169,16 +213,22 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
     mediation_state = (
         normalized_payload.get("mediation_state") if isinstance(normalized_payload.get("mediation_state"), dict) else {}
     )
+    active_path, selected_node_id = _canonical_staged_selection_state(
+        active_path=raw_tool_state.get("active_path"),
+        selected_node_id=raw_tool_state.get("selected_node_id"),
+        attention_node_id=(
+            raw_aitas.get("attention_node_id")
+            or mediation_state.get("attention_node_id")
+            or normalized_payload.get("attention_node_id")
+        ),
+    )
     return {
         "nimm_directive": _as_text(raw_tool_state.get("nimm_directive") or normalized_payload.get("nimm_directive"))
         or _DEFAULT_NIMM_DIRECTIVE,
+        "active_path": active_path,
+        "selected_node_id": selected_node_id,
         "aitas": {
-            "attention_node_id": _as_text(
-                raw_aitas.get("attention_node_id")
-                or mediation_state.get("attention_node_id")
-                or normalized_payload.get("attention_node_id")
-            )
-            or _DEFAULT_ATTENTION_NODE_ID,
+            "attention_node_id": selected_node_id,
             "intention_rule_id": _canonical_intention_rule_id(
                 raw_aitas.get("intention_rule_id")
                 or mediation_state.get("intention_token")
@@ -443,12 +493,27 @@ def _resolved_tool_state(
 ) -> dict[str, Any]:
     mediation_state = dict(service_surface.get("mediation_state") or {})
     diagnostic_summary = dict(service_surface.get("diagnostic_summary") or {})
+    selection_summary = dict(mediation_state.get("selection_summary") or {})
+    requested_selection = dict(requested_tool_state.get("selection") or {})
+    requested_active_path = _normalize_requested_active_path(requested_tool_state.get("active_path"))
+    fallback_selected_node_id = ""
+    if _as_text(requested_selection.get("selected_row_address")) or _as_text(requested_selection.get("selected_feature_id")):
+        fallback_selected_node_id = (
+            _as_text(selection_summary.get("selected_profile_node_id"))
+            or _as_text((service_surface.get("attention_profile") or {}).get("node_id"))
+            or _as_text(mediation_state.get("attention_node_id"))
+        )
+    active_path, selected_node_id = _canonical_staged_selection_state(
+        active_path=requested_active_path,
+        selected_node_id=_as_text(requested_tool_state.get("selected_node_id")) or fallback_selected_node_id,
+        attention_node_id=_as_text(requested_tool_state.get("aitas", {}).get("attention_node_id")) or fallback_selected_node_id,
+    )
     return {
         "nimm_directive": _as_text(requested_tool_state.get("nimm_directive")) or _DEFAULT_NIMM_DIRECTIVE,
+        "active_path": active_path,
+        "selected_node_id": selected_node_id,
         "aitas": {
-            "attention_node_id": _as_text(mediation_state.get("attention_node_id"))
-            or _as_text(requested_tool_state.get("aitas", {}).get("attention_node_id"))
-            or _DEFAULT_ATTENTION_NODE_ID,
+            "attention_node_id": selected_node_id,
             "intention_rule_id": _canonical_intention_rule_id(
                 mediation_state.get("intention_token")
                 or requested_tool_state.get("aitas", {}).get("intention_rule_id")
@@ -488,6 +553,15 @@ def _tool_state_request(
     return request_body
 
 
+def _apply_selected_node_state(next_state: dict[str, Any], node_id: object) -> None:
+    active_path = _active_path_from_node_id(node_id)
+    selected_node_id = active_path[-1] if active_path else ""
+    next_state["active_path"] = active_path
+    next_state["selected_node_id"] = selected_node_id
+    next_state.setdefault("aitas", {})
+    next_state["aitas"]["attention_node_id"] = selected_node_id
+
+
 def _node_shell_request(
     *,
     portal_scope: PortalScope,
@@ -499,7 +573,7 @@ def _node_shell_request(
     selected_feature_id: str = "",
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
-    next_state["aitas"]["attention_node_id"] = _as_text(attention_node_id)
+    _apply_selected_node_state(next_state, attention_node_id)
     next_state["aitas"]["intention_rule_id"] = _canonical_intention_rule_id(intention_rule_id)
     next_state["selection"]["selected_row_address"] = _as_text(selected_row_address)
     next_state["selection"]["selected_feature_id"] = _as_text(selected_feature_id)
@@ -528,6 +602,7 @@ def _document_shell_request(
     attention_document_id: str,
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
+    _apply_selected_node_state(next_state, "")
     next_state["source"]["attention_document_id"] = _as_text(attention_document_id)
     next_state["selection"]["selected_row_address"] = ""
     next_state["selection"]["selected_feature_id"] = ""
@@ -580,7 +655,9 @@ def _cts_gis_control_panel(
         tool_rows=list(tool_rows or []),
         title="CTS-GIS",
     )
-    attention_profile = dict(service_surface.get("attention_profile") or {})
+    staged_selected_node_id = _as_text(resolved_tool_state.get("selected_node_id"))
+    has_staged_selection = bool(staged_selected_node_id)
+    attention_profile = dict(service_surface.get("attention_profile") or {}) if has_staged_selection else {}
     directive_entries = [
         {"label": "NIMM directive", "meta": _as_text(resolved_tool_state["nimm_directive"]), "active": True},
         {"label": "Tool posture", "meta": "interface-panel-led"},
@@ -588,9 +665,9 @@ def _cts_gis_control_panel(
     aitas_entries = [
         {
             "label": "Attention",
-            "meta": _as_text(attention_profile.get("profile_label")) or _as_text(resolved_tool_state["aitas"]["attention_node_id"]),
-            "prefix": _as_text(resolved_tool_state["aitas"]["attention_node_id"]),
-            "active": True,
+            "meta": _as_text(attention_profile.get("profile_label")) or staged_selected_node_id or "unresolved",
+            "prefix": staged_selected_node_id or "root",
+            "active": has_staged_selection,
         },
         {
             "label": "Intention",
@@ -621,7 +698,7 @@ def _cts_gis_control_panel(
         }
         for item in (list(service_surface.get("lineage") or []) + list(service_surface.get("render_profiles") or []))
         if _as_text(item.get("node_id"))
-    ]
+    ] if has_staged_selection else []
     intention_entries = [
         {
             "label": _as_text(option.get("label")) or _as_text(option.get("token")) or "Rule",
@@ -636,7 +713,7 @@ def _cts_gis_control_panel(
             ),
         }
         for option in list((service_surface.get("mediation_state") or {}).get("available_intentions") or [])
-    ]
+    ] if has_staged_selection else []
     source_entries = [
         {
             "label": "Tool spec",
@@ -783,32 +860,11 @@ def _build_ordered_hierarchy_navigation(
     selected_node_id: str,
     node_titles: dict[str, str],
 ) -> dict[str, Any]:
-    title_map = {_as_text(node_id): _as_text(title) for node_id, title in dict(node_titles or {}).items() if _looks_like_msn_node_id(node_id)}
-    nodes: set[str] = set(title_map.keys())
-    target_node_id = _as_text(selected_node_id) or _DEFAULT_ATTENTION_NODE_ID
-    if _looks_like_msn_node_id(target_node_id):
-        nodes.add(target_node_id)
-    expanded_nodes: set[str] = set()
-    for node_id in nodes:
-        parts = [part for part in node_id.split("-") if part]
-        for depth in range(1, len(parts) + 1):
-            expanded_nodes.add("-".join(parts[:depth]))
-    for node_id in expanded_nodes:
-        title_map.setdefault(node_id, "")
-    ordered_nodes = sorted(expanded_nodes, key=_node_sort_key)
-    if not ordered_nodes:
-        ordered_nodes = [_DEFAULT_ATTENTION_NODE_ID]
-        title_map.setdefault(_DEFAULT_ATTENTION_NODE_ID, "")
-        target_node_id = _DEFAULT_ATTENTION_NODE_ID
-    if target_node_id not in ordered_nodes:
-        target_node_id = ordered_nodes[0]
-
-    children_by_parent: dict[str, list[str]] = {}
-    for node_id in ordered_nodes:
-        parent = _parent_node_id(node_id)
-        children_by_parent.setdefault(parent, []).append(node_id)
-    for node_ids in children_by_parent.values():
-        node_ids.sort(key=_node_sort_key)
+    tree = _build_node_tree(node_titles)
+    title_map = dict(tree.get("title_map") or {})
+    ordered_nodes = list(tree.get("ordered_nodes") or [])
+    children_by_parent = dict(tree.get("children_by_parent") or {})
+    target_node_id = _as_text(selected_node_id) if _as_text(selected_node_id) in set(ordered_nodes) else ""
 
     active_path_node_ids = [
         "-".join(target_node_id.split("-")[:depth])
@@ -862,7 +918,7 @@ def _build_ordered_hierarchy_navigation(
                 "anchor_node_id": path_node_id,
                 "anchor_msn_id": path_node_id,
                 "anchor_title": _as_text(title_map.get(path_node_id)),
-                "entries": [_entry_payload(node_id) for node_id in list(children_by_parent.get(path_node_id, []))],
+            "entries": [_entry_payload(node_id) for node_id in list(children_by_parent.get(path_node_id, []))],
             }
         )
 
@@ -891,25 +947,141 @@ def _build_ordered_hierarchy_navigation(
     }
 
 
-def _synthetic_ordered_hierarchy_nodes(active_node_id: str) -> dict[str, str]:
-    selected_node_id = _as_text(active_node_id) or _DEFAULT_ATTENTION_NODE_ID
-    node_titles = {
-        "3": "USA",
-        "3-2": "State",
-        "3-2-3": "Ohio",
-        "3-2-3-17": "Summit",
-        "3-2-3-17-77": "Summit County",
+def _build_node_tree(node_titles: dict[str, str]) -> dict[str, Any]:
+    title_map = {
+        _as_text(node_id): _as_text(title)
+        for node_id, title in dict(node_titles or {}).items()
+        if _looks_like_msn_node_id(node_id)
     }
-    selected_parts = [part for part in selected_node_id.split("-") if part]
-    for depth in range(1, len(selected_parts) + 1):
-        node_titles.setdefault("-".join(selected_parts[:depth]), "")
-    if selected_node_id:
-        node_titles[f"{selected_node_id}-1"] = "Akron"
-        node_titles[f"{selected_node_id}-2"] = "Fairlawn"
-        node_titles[f"{selected_node_id}-3"] = "Cuyahoga Falls"
-    node_titles.setdefault(f"{selected_node_id}-1-1", "Ward North")
-    node_titles.setdefault(f"{selected_node_id}-1-2", "Ward South")
-    return node_titles
+    expanded_nodes: set[str] = set()
+    for node_id in title_map:
+        parts = [part for part in node_id.split("-") if part]
+        for depth in range(1, len(parts) + 1):
+            expanded_nodes.add("-".join(parts[:depth]))
+    for node_id in expanded_nodes:
+        title_map.setdefault(node_id, "")
+    ordered_nodes = sorted(expanded_nodes, key=_node_sort_key)
+    children_by_parent: dict[str, list[str]] = {}
+    for node_id in ordered_nodes:
+        children_by_parent.setdefault(_parent_node_id(node_id), []).append(node_id)
+    for node_ids in children_by_parent.values():
+        node_ids.sort(key=_node_sort_key)
+    return {
+        "title_map": title_map,
+        "ordered_nodes": ordered_nodes,
+        "children_by_parent": children_by_parent,
+    }
+
+
+def _sanitize_active_path(node_ids: list[str], ordered_nodes: list[str]) -> list[str]:
+    if not node_ids or not ordered_nodes:
+        return []
+    available = set(ordered_nodes)
+    sanitized: list[str] = []
+    for node_id in node_ids:
+        token = _as_text(node_id)
+        if token not in available:
+            break
+        if not sanitized and _node_depth(token) != 1:
+            break
+        if sanitized and _parent_node_id(token) != sanitized[-1]:
+            break
+        sanitized.append(token)
+    return sanitized
+
+
+def _build_staged_diktataograph_navigation(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    resolved_tool_state: dict[str, Any],
+    node_titles: dict[str, str],
+) -> dict[str, Any]:
+    tree = _build_node_tree(node_titles)
+    title_map = dict(tree.get("title_map") or {})
+    ordered_nodes = list(tree.get("ordered_nodes") or [])
+    children_by_parent = dict(tree.get("children_by_parent") or {})
+    requested_active_path = list(resolved_tool_state.get("active_path") or [])
+    requested_selected_node_id = _as_text(resolved_tool_state.get("selected_node_id"))
+    active_path_node_ids = _sanitize_active_path(requested_active_path, ordered_nodes)
+    if not active_path_node_ids and requested_selected_node_id:
+        active_path_node_ids = _sanitize_active_path(_active_path_from_node_id(requested_selected_node_id), ordered_nodes)
+    selected_node_id = active_path_node_ids[-1] if active_path_node_ids else ""
+    active_path_set = set(active_path_node_ids)
+
+    def _entry_payload(node_id: str) -> dict[str, Any]:
+        title = _as_text(title_map.get(node_id))
+        child_count = len(children_by_parent.get(node_id, []))
+        return {
+            "node_id": node_id,
+            "msn_id": node_id,
+            "label": title or node_id,
+            "title": title,
+            "detail": f"{child_count} children",
+            "depth": _node_depth(node_id),
+            "parent_node_id": _parent_node_id(node_id),
+            "child_count": child_count,
+            "selected": node_id == selected_node_id,
+            "in_active_path": node_id in active_path_set,
+            "shell_request": _node_shell_request(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                tool_state=resolved_tool_state,
+                attention_node_id=node_id,
+            ),
+        }
+
+    active_path_entries = [_entry_payload(node_id) for node_id in active_path_node_ids]
+    structure_entries = [_entry_payload(node_id) for node_id in ordered_nodes]
+    staged_blocks = [
+        {
+            "block_id": "root",
+            "depth": 0,
+            "anchor_node_id": "",
+            "anchor_title": "root",
+            "entries": [_entry_payload(node_id) for node_id in list(children_by_parent.get("", []))],
+            "selected_node_id": active_path_node_ids[0] if active_path_node_ids else "",
+            "spawn_from_node_id": "",
+        }
+    ]
+    for depth, node_id in enumerate(active_path_node_ids):
+        child_node_ids = list(children_by_parent.get(node_id, []))
+        if not child_node_ids:
+            break
+        staged_blocks.append(
+            {
+                "block_id": f"block_{depth + 1}_{node_id}",
+                "depth": depth + 1,
+                "anchor_node_id": node_id,
+                "anchor_title": _as_text(title_map.get(node_id)) or node_id,
+                "entries": [_entry_payload(child_node_id) for child_node_id in child_node_ids],
+                "selected_node_id": active_path_node_ids[depth + 1] if depth + 1 < len(active_path_node_ids) else "",
+                "spawn_from_node_id": node_id,
+            }
+        )
+
+    return {
+        "active_node_id": selected_node_id,
+        "anchored_path": {
+            "title": "Anchored Path",
+            "entries": active_path_entries,
+        },
+        "structure_field": {
+            "title": "Structure Field",
+            "entries": structure_entries,
+        },
+        "staged_blocks": staged_blocks,
+        "ordered_hierarchy": dict(
+            _build_ordered_hierarchy_navigation(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                resolved_tool_state=resolved_tool_state,
+                selected_node_id=selected_node_id,
+                node_titles=node_titles,
+            ).get("ordered_hierarchy")
+            or {}
+        ),
+    }
 
 
 def _extract_real_ordered_hierarchy_nodes(source_payload: dict[str, Any]) -> dict[str, str]:
@@ -940,68 +1112,28 @@ def _extract_real_ordered_hierarchy_nodes(source_payload: dict[str, Any]) -> dic
     return node_titles
 
 
-def _synthetic_geospatial_projection(
-    *,
-    portal_scope: PortalScope,
-    shell_state: PortalShellState,
-    resolved_tool_state: dict[str, Any],
-    selected_node_id: str,
-) -> dict[str, Any]:
-    polygon_coordinates = [
-        [-81.715, 41.145],
-        [-81.510, 41.145],
-        [-81.510, 41.015],
-        [-81.715, 41.015],
-        [-81.715, 41.145],
-    ]
-    feature_id = "synthetic:garland:polygon:1"
-    feature_geometry = {"type": "Polygon", "coordinates": [polygon_coordinates]}
+def _empty_geospatial_projection() -> dict[str, Any]:
     return {
         "title": "Geospatial Projection",
-        "data_source": "synthetic",
-        "projection_state": "synthetic_baseline",
-        "feature_count": 1,
-        "render_feature_count": 1,
-        "render_row_count": 1,
-        "supporting_document_name": _DEFAULT_SUPPORTING_DOCUMENT_NAME,
-        "projection_document_name": "synthetic_hops_projection",
-        "selected_feature_id": feature_id,
-        "selected_feature_geometry_type": "Polygon",
-        "selected_feature_bounds": _bounds_from_points(polygon_coordinates),
-        "collection_bounds": _bounds_from_points(polygon_coordinates),
-        "empty_message": "Synthetic geospatial scaffold is active.",
+        "data_source": "",
+        "projection_state": "awaiting_real_projection",
+        "feature_count": 0,
+        "render_feature_count": 0,
+        "render_row_count": 0,
+        "supporting_document_name": "",
+        "projection_document_name": "",
+        "selected_feature_id": "",
+        "selected_feature_geometry_type": "",
+        "selected_feature_bounds": [],
+        "collection_bounds": [],
+        "empty_message": "No projected geometry is available until the active path resolves real CTS-GIS evidence.",
+        "has_real_projection": False,
         "feature_collection": {
             "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": feature_id,
-                    "geometry": feature_geometry,
-                    "properties": {
-                        "samras_node_id": _as_text(selected_node_id),
-                        "profile_label": "synthetic_polygon_alpha",
-                        "title_display": "Synthetic Polygon Alpha",
-                    },
-                }
-            ],
-            "bounds": _bounds_from_points(polygon_coordinates),
+            "features": [],
+            "bounds": [],
         },
-        "features": [
-            {
-                "feature_id": feature_id,
-                "label": "synthetic_polygon_alpha",
-                "node_id": _as_text(selected_node_id),
-                "geometry_type": "Polygon",
-                "selected": True,
-                "shell_request": _selection_shell_request(
-                    portal_scope=portal_scope,
-                    shell_state=shell_state,
-                    tool_state=resolved_tool_state,
-                    selected_row_address="synthetic:row:1",
-                    selected_feature_id=feature_id,
-                ),
-            }
-        ],
+        "features": [],
     }
 
 
@@ -1101,6 +1233,7 @@ def _real_geospatial_projection(
             "selected_feature_bounds": selected_feature_bounds,
             "collection_bounds": collection_bounds,
             "empty_message": "Projection ready.",
+            "has_real_projection": True,
             "feature_collection": {
                 "type": "FeatureCollection",
                 "features": feature_collection_features,
@@ -1110,6 +1243,26 @@ def _real_geospatial_projection(
         },
         True,
     )
+
+
+def _empty_profile_projection(*, warnings: list[str] | None = None) -> dict[str, Any]:
+    return {
+        "title": "Profile Projection",
+        "active_profile": {
+            "label": "",
+            "node_id": "",
+            "feature_count": 0,
+            "child_count": 0,
+            "document_id": "",
+        },
+        "hierarchy": [],
+        "summary_rows": [],
+        "projected_rows": [],
+        "correlated_profiles": [],
+        "warnings": list(warnings or []),
+        "empty_message": "No projected profile is available until the active path resolves real CTS-GIS evidence.",
+        "has_real_projection": False,
+    }
 
 
 def _cts_gis_interface_body(
@@ -1123,7 +1276,17 @@ def _cts_gis_interface_body(
     attention_profile = dict(service_surface.get("attention_profile") or {})
     selected_document = dict(service_surface.get("selected_document") or {})
     supporting_document = dict(source_evidence.get("administrative_source") or {})
-    selected_node_id = _as_text(resolved_tool_state["aitas"]["attention_node_id"]) or _DEFAULT_ATTENTION_NODE_ID
+    real_node_titles = _extract_real_ordered_hierarchy_nodes(
+        dict((source_evidence.get("administrative_source") or {}).get("payload") or {})
+    )
+    staged_navigation = _build_staged_diktataograph_navigation(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        resolved_tool_state=resolved_tool_state,
+        node_titles=real_node_titles,
+    )
+    active_path_entries = list((staged_navigation.get("anchored_path") or {}).get("entries") or [])
+    selected_node_id = _as_text(staged_navigation.get("active_node_id"))
     supporting_document_name = _as_text(supporting_document.get("document_name")) or _DEFAULT_SUPPORTING_DOCUMENT_NAME
     projection_document_name = _as_text(selected_document.get("document_name")) or "—"
     projection_rule_entries = [
@@ -1140,12 +1303,13 @@ def _cts_gis_interface_body(
             ),
         }
         for option in list((service_surface.get("mediation_state") or {}).get("available_intentions") or [])
-    ]
+    ] if selected_node_id else []
+    selected_label = _as_text((active_path_entries[-1] if active_path_entries else {}).get("label"))
     context_items = [
         {
             "label": "Attention",
-            "value": _as_text(attention_profile.get("profile_label")) or selected_node_id,
-            "detail": selected_node_id,
+            "value": selected_label or "unresolved",
+            "detail": selected_node_id or "root",
         },
         {
             "label": "Intention",
@@ -1160,81 +1324,29 @@ def _cts_gis_interface_body(
             "value": _as_text(resolved_tool_state["aitas"]["archetype_family_id"]) or _DEFAULT_ARCHETYPE_FAMILY_ID,
         },
     ]
-
-    synthetic_navigation = _build_ordered_hierarchy_navigation(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        resolved_tool_state=resolved_tool_state,
-        selected_node_id=selected_node_id,
-        node_titles=_synthetic_ordered_hierarchy_nodes(selected_node_id),
-    )
     navigation_canvas = {
         "kind": "diktataograph_navigation_canvas",
         "title": "Diktataograph",
-        "summary": "Ordered hierarchy scaffold for deterministic CTS-GIS reconstruction.",
-        "mode": _CTS_GIS_NAV_MODE_ORDERED,
-        "available_modes": [_CTS_GIS_NAV_MODE_ORDERED, _CTS_GIS_NAV_MODE_LEGACY],
-        "active_node_id": _as_text(synthetic_navigation.get("active_node_id")),
-        "ordered_hierarchy": dict(synthetic_navigation.get("ordered_hierarchy") or {}),
-        "anchored_path": dict(synthetic_navigation.get("anchored_path") or {"title": "Anchored Path", "entries": []}),
-        "structure_field": dict(synthetic_navigation.get("structure_field") or {"title": "Structure Field", "entries": []}),
+        "summary": "Staged datum mediation lens with fixed-size lineage blocks and local hover redistribution.",
+        "mode": _CTS_GIS_NAV_MODE_STAGED,
+        "available_modes": [_CTS_GIS_NAV_MODE_STAGED, _CTS_GIS_NAV_MODE_LEGACY],
+        "active_node_id": selected_node_id,
+        "staged_blocks": list(staged_navigation.get("staged_blocks") or []),
+        "ordered_hierarchy": dict(staged_navigation.get("ordered_hierarchy") or {}),
+        "anchored_path": dict(staged_navigation.get("anchored_path") or {"title": "Anchored Path", "entries": []}),
+        "structure_field": dict(staged_navigation.get("structure_field") or {"title": "Structure Field", "entries": []}),
         "projection_rule_field": {
             "title": "Projection Rule",
             "entries": projection_rule_entries,
         },
     }
 
-    geospatial_projection = _synthetic_geospatial_projection(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        resolved_tool_state=resolved_tool_state,
-        selected_node_id=selected_node_id,
-    )
-    active_path_entries = list((navigation_canvas.get("anchored_path") or {}).get("entries") or [])
-    active_path_entry = active_path_entries[-1] if active_path_entries else {}
-    profile_projection = {
-        "title": "Profile Projection",
-        "active_profile": {
-            "label": _as_text(attention_profile.get("profile_label"))
-            or _as_text(active_path_entry.get("label"))
-            or selected_node_id,
-            "node_id": _as_text(attention_profile.get("node_id")) or selected_node_id,
-            "feature_count": int(attention_profile.get("feature_count") or 0),
-            "child_count": int(attention_profile.get("child_count") or 0),
-            "document_id": _as_text(attention_profile.get("document_id")),
-        },
-        "hierarchy": active_path_entries,
-        "summary_rows": [],
-        "projected_rows": [
-            {
-                "datum_address": "synthetic:row:1",
-                "label": "synthetic_profile_summary",
-                "detail": "Deterministic scaffold row",
-                "selected": True,
-                "shell_request": _selection_shell_request(
-                    portal_scope=portal_scope,
-                    shell_state=shell_state,
-                    tool_state=resolved_tool_state,
-                    selected_row_address="synthetic:row:1",
-                    selected_feature_id="synthetic:garland:polygon:1",
-                ),
-            }
-        ],
-        "correlated_profiles": [
-            {
-                "profile_label": "synthetic_related_profile",
-                "node_id": f"{selected_node_id}-1",
-                "relation": "synthetic_baseline",
-            }
-        ],
-        "warnings": list(service_surface.get("warnings") or []),
-    }
-
-    wiring_sequence = [_CTS_GIS_WIRING_STAGE_SYNTHETIC]
-    geometry_state = "synthetic"
-    hierarchy_state = "synthetic"
-    hierarchy_source = "synthetic_ordered_hierarchy"
-
+    geospatial_projection = _empty_geospatial_projection()
+    profile_projection = _empty_profile_projection(warnings=list(service_surface.get("warnings") or []))
+    wiring_sequence = [_CTS_GIS_WIRING_STAGE_OPENING]
+    geometry_state = "empty"
+    hierarchy_state = "applied"
+    hierarchy_source = "staged_root_opening"
     real_geospatial_projection, garland_swapped = _real_geospatial_projection(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -1242,68 +1354,89 @@ def _cts_gis_interface_body(
         service_surface=service_surface,
         source_evidence=source_evidence,
     )
-    if garland_swapped:
+    has_real_profile = bool(selected_node_id) and bool(attention_profile) and not bool(attention_profile.get("placeholder"))
+    if selected_node_id and garland_swapped:
         geospatial_projection = real_geospatial_projection
         geometry_state = "applied"
         wiring_sequence.append(_CTS_GIS_WIRING_STAGE_GARLAND)
-    elif bool((source_evidence.get("administrative_source") or {}).get("exists")):
+    elif selected_node_id and bool((source_evidence.get("administrative_source") or {}).get("exists")):
         geometry_state = "blocked"
 
-    real_node_titles = _extract_real_ordered_hierarchy_nodes(
-        dict((source_evidence.get("administrative_source") or {}).get("payload") or {})
-    )
-    if garland_swapped and real_node_titles:
-        real_navigation = _build_ordered_hierarchy_navigation(
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            resolved_tool_state=resolved_tool_state,
-            selected_node_id=selected_node_id,
-            node_titles=real_node_titles,
-        )
-        navigation_canvas["active_node_id"] = _as_text(real_navigation.get("active_node_id")) or selected_node_id
-        navigation_canvas["ordered_hierarchy"] = dict(real_navigation.get("ordered_hierarchy") or {})
-        navigation_canvas["anchored_path"] = dict(real_navigation.get("anchored_path") or {"title": "Anchored Path", "entries": []})
-        navigation_canvas["structure_field"] = dict(real_navigation.get("structure_field") or {"title": "Structure Field", "entries": []})
-        profile_projection["hierarchy"] = list((navigation_canvas.get("anchored_path") or {}).get("entries") or [])
-        latest_path_entry = (profile_projection.get("hierarchy") or [{}])[-1]
-        profile_projection["active_profile"] = {
-            **dict(profile_projection.get("active_profile") or {}),
-            "label": _as_text(latest_path_entry.get("title"))
-            or _as_text(latest_path_entry.get("msn_id"))
-            or selected_node_id,
-            "node_id": _as_text(latest_path_entry.get("node_id")) or selected_node_id,
+    if selected_node_id and has_real_profile:
+        selected_feature_id = _as_text((service_surface.get("diagnostic_summary") or {}).get("selected_feature_id"))
+        profile_projection = {
+            "title": "Profile Projection",
+            "active_profile": {
+                "label": _as_text(attention_profile.get("profile_label")) or selected_label or selected_node_id,
+                "node_id": _as_text(attention_profile.get("node_id")) or selected_node_id,
+                "feature_count": int(attention_profile.get("feature_count") or 0),
+                "child_count": int(attention_profile.get("child_count") or 0),
+                "document_id": _as_text(attention_profile.get("document_id")),
+            },
+            "hierarchy": active_path_entries,
+            "summary_rows": [
+                {"label": "Supporting document", "value": supporting_document_name},
+                {"label": "Projection document", "value": projection_document_name},
+                {"label": "Attention node", "value": selected_node_id},
+                {"label": "Rendered rows", "value": str(len(list(service_surface.get("rows") or [])))},
+                {"label": "Rendered features", "value": str(int((geospatial_projection or {}).get("feature_count") or 0))},
+                {"label": "Title fallback", "value": "blank_only_ascii"},
+            ],
+            "projected_rows": [
+                {
+                    "datum_address": _as_text(row.get("datum_address")),
+                    "label": _as_text(row.get("title_display"))
+                    or _as_text(row.get("profile_label"))
+                    or _as_text(row.get("samras_node_id"))
+                    or _as_text(row.get("datum_address")),
+                    "detail": _as_text(row.get("datum_address")),
+                    "selected": bool(row.get("selected")),
+                    "shell_request": _selection_shell_request(
+                        portal_scope=portal_scope,
+                        shell_state=shell_state,
+                        tool_state=resolved_tool_state,
+                        selected_row_address=_as_text(row.get("datum_address")),
+                        selected_feature_id=(
+                            selected_feature_id
+                            if bool(row.get("selected_feature"))
+                            else _as_text((list(row.get("feature_ids") or [""]) or [""])[0])
+                        ),
+                    ),
+                }
+                for row in list(service_surface.get("rows") or [])
+            ],
+            "correlated_profiles": [
+                {
+                    "profile_label": _as_text(item.get("profile_label")) or _as_text(item.get("node_id")),
+                    "node_id": _as_text(item.get("node_id")),
+                    "relation": _as_text(item.get("relation")),
+                }
+                for item in list(service_surface.get("related_profiles") or [])
+            ],
+            "warnings": list(service_surface.get("warnings") or []),
+            "empty_message": "",
+            "has_real_projection": True,
         }
+
+    if real_node_titles:
         hierarchy_state = "applied"
-        hierarchy_source = "real_samras_namespace"
-        wiring_sequence.append(_CTS_GIS_WIRING_STAGE_HIERARCHY)
-    elif real_node_titles and not garland_swapped:
-        hierarchy_state = "blocked"
-        hierarchy_source = "blocked_waiting_for_real_geometry_swap"
+        if selected_node_id:
+            hierarchy_source = "real_samras_namespace"
+            wiring_sequence.append(_CTS_GIS_WIRING_STAGE_HIERARCHY)
     elif bool((source_evidence.get("administrative_source") or {}).get("exists")):
         hierarchy_state = "blocked"
         hierarchy_source = "blocked_no_parseable_samras_rows"
-
-    profile_projection["summary_rows"] = [
-        {"label": "Supporting document", "value": supporting_document_name},
-        {"label": "Projection document", "value": projection_document_name},
-        {"label": "Attention node", "value": selected_node_id},
-        {"label": "Geometry source", "value": _as_text(geospatial_projection.get("data_source")) or "synthetic"},
-        {"label": "Hierarchy source", "value": hierarchy_source},
-        {"label": "Wiring sequence", "value": " -> ".join(wiring_sequence)},
-        {"label": "Title fallback", "value": "blank_only_ascii"},
-        {"label": "Rendered features", "value": str(int(geospatial_projection.get("feature_count") or 0))},
-    ]
 
     return {
         "kind": "cts_gis_interface_body",
         "layout": "dual_section",
         "narrow_layout": "context_diktataograph_garland_stack",
         "feature_flags": {
-            "hover_attention_redistribution": False,
+            "hover_attention_redistribution": True,
         },
         "wiring_sequence": wiring_sequence,
         "wiring_status": {
-            _CTS_GIS_WIRING_STAGE_SYNTHETIC: "applied",
+            _CTS_GIS_WIRING_STAGE_OPENING: "applied",
             _CTS_GIS_WIRING_STAGE_GARLAND: geometry_state,
             _CTS_GIS_WIRING_STAGE_HIERARCHY: hierarchy_state,
         },
@@ -1316,7 +1449,7 @@ def _cts_gis_interface_body(
         "garland_split_projection": {
             "kind": "garland_split_projection",
             "title": "Garland",
-            "summary": "Scaffold-first CTS-GIS projection surface with staged deterministic-to-real wiring.",
+            "summary": "Downstream projection surface that stays empty until the active path resolves real CTS-GIS evidence.",
             "geospatial_projection": geospatial_projection,
             "profile_projection": profile_projection,
         },
@@ -1374,7 +1507,7 @@ def build_portal_cts_gis_surface_bundle(
         "lens_state": {"overlay_mode": "auto", "raw_underlay_visible": False},
         "mediation_state": {
             "attention_document_id": "",
-            "attention_node_id": _DEFAULT_ATTENTION_NODE_ID,
+            "attention_node_id": "",
             "intention_token": _DEFAULT_INTENTION_RULE_ID,
             "available_intentions": [],
         },

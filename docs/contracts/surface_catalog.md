@@ -71,15 +71,16 @@ Workspace file modes under `system.root`:
   - `Garland` geospatial pane
   - `Garland` profile pane
 - `Diktataograph` is the CTS-GIS structural navigation canvas (`navigation_canvas`).
-- `navigation_canvas.mode` defaults to `ordered_hierarchy`; `legacy_branch_canvas` remains available as legacy renderer mode.
-- `navigation_canvas.ordered_hierarchy` carries the ordered-hierarchy payload (`columns`, `active_path`, `selected_node_id`, interaction metadata).
+- `navigation_canvas.mode` defaults to `staged_diktataograph`; `legacy_branch_canvas` remains available as legacy renderer mode.
+- `navigation_canvas.staged_blocks` carries the staged lineage-block payload (`block_id`, `depth`, `anchor_node_id`, `anchor_title`, `entries`, `selected_node_id`, `spawn_from_node_id`).
+- `navigation_canvas.ordered_hierarchy` remains available only as legacy compatibility payload.
 - Legacy `anchored_path`, `structure_field`, and `projection_rule_field` remain present for compatibility mode consumers.
 - `Garland` is the CTS-GIS correlated projection surface (`garland_split_projection`) with dominant `geospatial_projection` and secondary `profile_projection`.
 - CTS-GIS rebuild flow is scaffold-first:
-  - synthetic deterministic baseline
-  - real Garland HOPS polygon swap
-  - real ordered hierarchy swap
-- Ordered hierarchy title column fallback is blank-only when ASCII title decode is unavailable.
+  - staged root opening
+  - real Garland projection swap
+  - real staged Diktataograph projection swap
+- Staged Diktataograph title fallback is blank-only when ASCII title decode is unavailable.
 - In narrow posture, the CTS-GIS-local body may fall back to a vertical stack while preserving all four regions.
 - CTS-GIS mediates on the selected anchor-file datum and projects correlated source-file evidence into the Interface Panel.
 - CTS-GIS tool-local navigation does not widen the shared shell focus stack. The shell focus remains `sandbox -> file -> datum -> object`.

@@ -307,6 +307,77 @@
     );
   }
 
+  function renderStagedDiktataographCanvas(stagedBlocks) {
+    var blocks = stagedBlocks || [];
+    return (
+      '<div class="cts-gis-stagedDiktataograph">' +
+      (blocks.length
+        ? blocks
+            .map(function (block, blockIndex) {
+              var entries = block.entries || [];
+              var rowHeight = entries.length ? 100 / entries.length : 100;
+              return (
+                '<section class="cts-gis-lineageBlockWrap" data-cts-gis-lineage-wrap data-block-index="' +
+                escapeHtml(String(blockIndex)) +
+                '" data-block-id="' +
+                escapeHtml(block.block_id || ("block_" + String(blockIndex))) +
+                '" data-spawn-from-node-id="' +
+                escapeHtml(block.spawn_from_node_id || "") +
+                '">' +
+                '<article class="cts-gis-lineageBlock" data-cts-gis-lineage-block data-block-id="' +
+                escapeHtml(block.block_id || ("block_" + String(blockIndex))) +
+                '" data-selected-node-id="' +
+                escapeHtml(block.selected_node_id || "") +
+                '">' +
+                '<header class="cts-gis-lineageBlock__header">' +
+                '<span class="cts-gis-lineageBlock__eyebrow">Depth ' +
+                escapeHtml(String(block.depth || 0)) +
+                "</span>" +
+                '<span class="cts-gis-lineageBlock__anchor">' +
+                escapeHtml(block.anchor_title || block.anchor_node_id || "root") +
+                "</span>" +
+                "</header>" +
+                '<div class="cts-gis-lineageBlock__rows">' +
+                (entries.length
+                  ? entries
+                      .map(function (entry, entryIndex) {
+                        return (
+                          '<button type="button" class="cts-gis-lineageRow' +
+                          (entry.selected ? " is-active" : "") +
+                          (entry.in_active_path ? " is-in-path" : "") +
+                          '" data-cts-gis-entry-kind="staged_row" data-cts-gis-entry-index="' +
+                          String(Number(entry._renderIndex || 0)) +
+                          '" data-row-index="' +
+                          escapeHtml(String(entryIndex)) +
+                          '" data-row-node-id="' +
+                          escapeHtml(entry.node_id || "") +
+                          '" style="--row-top:' +
+                          escapeHtml(String(entryIndex * rowHeight)) +
+                          '%; --row-height:' +
+                          escapeHtml(String(rowHeight)) +
+                          '%; --row-font-size:0.78rem; --row-opacity:1; --row-label-opacity:1;">' +
+                          '<span class="cts-gis-lineageRow__label">' +
+                          escapeHtml(entry.label || entry.title || entry.node_id || "Node") +
+                          "</span>" +
+                          '<span class="cts-gis-lineageRow__meta">' +
+                          escapeHtml(entry.msn_id || entry.node_id || "") +
+                          "</span>" +
+                          "</button>"
+                        );
+                      })
+                      .join("")
+                  : '<div class="cts-gis-lineageBlock__empty"><p class="ide-controlpanel__empty">No staged rows available.</p></div>') +
+                "</div>" +
+                "</article>" +
+                "</section>"
+              );
+            })
+            .join("")
+        : '<p class="ide-controlpanel__empty">No staged lineage blocks are available.</p>') +
+      "</div>"
+    );
+  }
+
   function renderOrderedHierarchyCanvas(orderedHierarchy, activeNodeId) {
     var hierarchy = orderedHierarchy || {};
     var columns = hierarchy.columns || [];
@@ -569,14 +640,25 @@
     );
   }
 
+  function renderProjectionPlaceholder(message, className) {
+    return (
+      '<div class="' +
+      escapeHtml(className || "cts-gis-projectionPlaceholder") +
+      '"><p class="ide-controlpanel__empty">' +
+      escapeHtml(message || "No projection available.") +
+      "</p></div>"
+    );
+  }
+
   function normalizeCtsGisInterfaceBody(interfaceBody) {
     var body = interfaceBody || {};
     if (body.navigation_canvas && body.garland_split_projection) {
       var navCanvas = body.navigation_canvas || {};
       var anchoredEntries = ((navCanvas.anchored_path || {}).entries || []);
       body.navigation_canvas = Object.assign({}, navCanvas, {
-        mode: navCanvas.mode || "ordered_hierarchy",
-        available_modes: navCanvas.available_modes || ["ordered_hierarchy", "legacy_branch_canvas"],
+        mode: navCanvas.mode || "staged_diktataograph",
+        available_modes: navCanvas.available_modes || ["staged_diktataograph", "legacy_branch_canvas"],
+        staged_blocks: navCanvas.staged_blocks || [{ block_id: "root", depth: 0, anchor_node_id: "", anchor_title: "root", selected_node_id: "", spawn_from_node_id: "", entries: [] }],
         ordered_hierarchy: Object.assign(
           {
             title: "Ordered Hierarchy",
@@ -596,14 +678,14 @@
       kind: body.kind || "cts_gis_interface_body",
       layout: body.layout || "dual_section",
       narrow_layout: body.narrow_layout || "context_diktataograph_garland_stack",
-      feature_flags: body.feature_flags || {},
-      context_strip: body.context_strip || { title: "CTS-GIS Context", compact: true, items: [] },
-      navigation_canvas: {
+        feature_flags: body.feature_flags || {},
+        context_strip: body.context_strip || { title: "CTS-GIS Context", compact: true, items: [] },
+        navigation_canvas: {
         kind: "diktataograph_navigation_canvas",
         title: diktataograph.title || "Diktataograph",
         summary: diktataograph.summary || "",
-        mode: "ordered_hierarchy",
-        available_modes: ["ordered_hierarchy", "legacy_branch_canvas"],
+        mode: "staged_diktataograph",
+        available_modes: ["staged_diktataograph", "legacy_branch_canvas"],
         anchored_path: {
           title: "Anchored Path",
           entries: diktataograph.lineage || [],
@@ -612,6 +694,17 @@
           title: "Structure Field",
           entries: diktataograph.navigation_entries || [],
         },
+        staged_blocks: [
+          {
+            block_id: "root",
+            depth: 0,
+            anchor_node_id: "",
+            anchor_title: "root",
+            selected_node_id: "",
+            spawn_from_node_id: "",
+            entries: diktataograph.navigation_entries || diktataograph.lineage || [],
+          },
+        ],
         ordered_hierarchy: {
           title: "Ordered Hierarchy",
           columns: [],
@@ -647,6 +740,7 @@
             bounds: [],
           },
           features: [],
+          has_real_projection: false,
         },
         profile_projection: {
           title: "Profile Projection",
@@ -661,6 +755,8 @@
           projected_rows: garland.row_entries || [],
           correlated_profiles: garland.related_profiles || [],
           warnings: garland.warnings || [],
+          empty_message: "No projected profile is available until the active path resolves real CTS-GIS evidence.",
+          has_real_projection: false,
         },
       },
     };
@@ -733,13 +829,164 @@
     });
   }
 
+  function bindStagedDiktataographEnhancement(target) {
+    var stage = target.querySelector(".cts-gis-stagedDiktataograph");
+    var wraps = Array.prototype.slice.call(target.querySelectorAll("[data-cts-gis-lineage-wrap]"));
+    if (!stage || !wraps.length) return;
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    wraps.forEach(function (wrap, wrapIndex) {
+      var block = wrap.querySelector("[data-cts-gis-lineage-block]");
+      var rowsContainer = wrap.querySelector(".cts-gis-lineageBlock__rows");
+      var rows = Array.prototype.slice.call(wrap.querySelectorAll(".cts-gis-lineageRow"));
+      if (!block || !rowsContainer || !rows.length) return;
+
+      var selectedNodeId = block.getAttribute("data-selected-node-id") || "";
+      var selectedIndex = rows.findIndex(function (row) {
+        return (row.getAttribute("data-row-node-id") || "") === selectedNodeId;
+      });
+      var focusIndex = selectedIndex >= 0 ? selectedIndex : (rows.length - 1) / 2;
+      var targetFocusIndex = focusIndex;
+      var lastY = rowsContainer.clientHeight / 2;
+      var lastMoveTime = performance.now();
+      var speedBoost = 0;
+      var hovering = false;
+
+      var MIN_H = 2;
+      var MAX_H = 64;
+      var BASE_SPREAD = 3.2;
+      var EXTRA_SPREAD = 22;
+      var SPEED_SMOOTHING = 0.16;
+      var FOCUS_SMOOTHING = 0.2;
+      var LABEL_THRESHOLD = 10;
+
+      function defaultHeights(height) {
+        var total = rows.length || 1;
+        var perRow = height / total;
+        return rows.map(function (_, index) {
+          return {
+            top: perRow * index,
+            height: perRow,
+            fontSize: 12,
+            opacity: 1,
+            labelOpacity: 1,
+          };
+        });
+      }
+
+      function applyLayout(layoutRows) {
+        var selectedRowTop = 0;
+        rows.forEach(function (row, index) {
+          var metrics = layoutRows[index] || { top: 0, height: 0, fontSize: 12, opacity: 1, labelOpacity: 1 };
+          row.style.setProperty("--row-top", String(metrics.top) + "px");
+          row.style.setProperty("--row-height", String(metrics.height) + "px");
+          row.style.setProperty("--row-font-size", String(metrics.fontSize) + "px");
+          row.style.setProperty("--row-opacity", String(metrics.opacity));
+          row.style.setProperty("--row-label-opacity", String(metrics.labelOpacity));
+          if (index === selectedIndex) selectedRowTop = metrics.top;
+        });
+        wrap.style.setProperty("--cts-gis-selected-top", String(selectedRowTop) + "px");
+        if (wrapIndex > 0) {
+          var parentWrap = wraps[wrapIndex - 1];
+          wrap.style.setProperty("--cts-gis-attach-offset", parentWrap.style.getPropertyValue("--cts-gis-selected-top") || "0px");
+        } else {
+          wrap.style.setProperty("--cts-gis-attach-offset", "0px");
+        }
+      }
+
+      function layout() {
+        var blockHeight = rowsContainer.clientHeight;
+        if (!blockHeight) {
+          requestAnimationFrame(layout);
+          return;
+        }
+        if (!hovering && selectedIndex < 0) {
+          applyLayout(defaultHeights(blockHeight));
+          requestAnimationFrame(layout);
+          return;
+        }
+
+        focusIndex += (targetFocusIndex - focusIndex) * FOCUS_SMOOTHING;
+        speedBoost += (0 - speedBoost) * SPEED_SMOOTHING;
+
+        var spread = BASE_SPREAD + speedBoost * EXTRA_SPREAD;
+        var heights = new Array(rows.length);
+        var sum = 0;
+
+        rows.forEach(function (_, index) {
+          var distance = Math.abs(index - focusIndex);
+          var weight = 1 / (1 + Math.log1p(distance) / spread);
+          var height = MIN_H + (MAX_H - MIN_H) * Math.pow(weight, 3.2);
+          heights[index] = height;
+          sum += height;
+        });
+
+        var scale = blockHeight / Math.max(sum, 1);
+        var top = 0;
+        var layoutRows = heights.map(function (height, index) {
+          var computedHeight = height * scale;
+          var distance = Math.abs(index - focusIndex);
+          var emphasis = Math.max(0, 1 - distance / (spread * 1.35 + 2));
+          var metrics = {
+            top: top,
+            height: computedHeight,
+            fontSize: 8 + emphasis * 20,
+            opacity: computedHeight < 5 ? 0.62 : 1,
+            labelOpacity: computedHeight < LABEL_THRESHOLD ? 0 : 1,
+          };
+          top += computedHeight;
+          return metrics;
+        });
+
+        applyLayout(layoutRows);
+        requestAnimationFrame(layout);
+      }
+
+      rowsContainer.addEventListener("mousemove", function (event) {
+        hovering = true;
+        var rect = rowsContainer.getBoundingClientRect();
+        var y = clamp(event.clientY - rect.top, 0, rect.height);
+        var now = performance.now();
+        var dt = Math.max(8, now - lastMoveTime);
+        var dy = Math.abs(y - lastY);
+        var pxPerMs = dy / dt;
+
+        targetFocusIndex = (y / Math.max(rect.height, 1)) * (rows.length - 1);
+        speedBoost = clamp(pxPerMs * 2.6, 0, 1);
+        lastY = y;
+        lastMoveTime = now;
+      });
+
+      rowsContainer.addEventListener("mouseenter", function (event) {
+        var rect = rowsContainer.getBoundingClientRect();
+        var y = clamp(event.clientY - rect.top, 0, rect.height);
+        hovering = true;
+        targetFocusIndex = (y / Math.max(rect.height, 1)) * (rows.length - 1);
+        lastY = y;
+        lastMoveTime = performance.now();
+      });
+
+      rowsContainer.addEventListener("mouseleave", function () {
+        hovering = false;
+        targetFocusIndex = selectedIndex >= 0 ? selectedIndex : focusIndex;
+        speedBoost = 0;
+      });
+
+      requestAnimationFrame(layout);
+    });
+  }
+
   function renderCtsGisInspector(ctx, target, region) {
     var interfaceBody = normalizeCtsGisInterfaceBody(region.interface_body || {});
     var contextStrip = interfaceBody.context_strip || {};
     var navigationCanvas = interfaceBody.navigation_canvas || {};
-    var navMode = navigationCanvas.mode || "ordered_hierarchy";
+    var navMode = navigationCanvas.mode || "staged_diktataograph";
     var anchoredPath = navigationCanvas.anchored_path || {};
     var structureField = navigationCanvas.structure_field || {};
+    var stagedBlocks = navigationCanvas.staged_blocks || [];
     var orderedHierarchy = navigationCanvas.ordered_hierarchy || {};
     var projectionRuleField = navigationCanvas.projection_rule_field || {};
     var garlandSplit = interfaceBody.garland_split_projection || {};
@@ -747,6 +994,7 @@
     var profileProjection = garlandSplit.profile_projection || {};
     var orderedPathEntries = orderedHierarchy.active_path || [];
     var orderedNodeEntries = [];
+    var stagedRowEntries = [];
     (anchoredPath.entries || []).forEach(function (entry, index) {
       entry._renderIndex = index;
     });
@@ -765,6 +1013,12 @@
     orderedPathEntries.forEach(function (entry, index) {
       entry._renderIndex = index;
     });
+    stagedBlocks.forEach(function (block) {
+      (block.entries || []).forEach(function (entry) {
+        entry._renderIndex = stagedRowEntries.length;
+        stagedRowEntries.push(entry);
+      });
+    });
     (orderedHierarchy.columns || []).forEach(function (column) {
       (column.entries || []).forEach(function (entry) {
         entry._renderIndex = orderedNodeEntries.length;
@@ -774,10 +1028,13 @@
     var navigationCanvasMarkup =
       navMode === "legacy_branch_canvas"
         ? renderStructureCanvas(anchoredPath.entries || [], structureField.entries || [], navigationCanvas.active_node_id || "")
-        : renderOrderedHierarchyCanvas(orderedHierarchy, navigationCanvas.active_node_id || "");
+        : navMode === "ordered_hierarchy"
+        ? renderOrderedHierarchyCanvas(orderedHierarchy, navigationCanvas.active_node_id || "")
+        : renderStagedDiktataographCanvas(stagedBlocks);
     var entriesByKind = {
       path: anchoredPath.entries || [],
       node: structureField.entries || [],
+      staged_row: stagedRowEntries,
       ordered_path: orderedPathEntries,
       ordered_node: orderedNodeEntries,
       rule: projectionRuleField.entries || [],
@@ -787,6 +1044,99 @@
       navigation: structureField.entries || [],
       intention: projectionRuleField.entries || [],
     };
+    var hasRealGeospatialProjection = !!geospatialProjection.has_real_projection;
+    var hasRealProfileProjection = !!profileProjection.has_real_projection;
+    var geospatialMarkup = hasRealGeospatialProjection
+      ? '<div class="cts-gis-mapCanvas">' +
+        '<div class="cts-gis-mapCanvas__state">' +
+        '<span class="cts-gis-mapCanvas__status">state: ' +
+        escapeHtml(geospatialProjection.projection_state || "inspect_only") +
+        "</span>" +
+        '<span class="cts-gis-mapCanvas__status">features: ' +
+        escapeHtml(String(geospatialProjection.feature_count || 0)) +
+        "</span>" +
+        '<span class="cts-gis-mapCanvas__status">rows: ' +
+        escapeHtml(String(geospatialProjection.render_row_count || 0)) +
+        "</span>" +
+        "</div>" +
+        renderGeospatialStage(geospatialProjection) +
+        ((geospatialProjection.collection_bounds || []).length
+          ? '<p class="cts-gis-mapCanvas__meta">collection bounds: ' +
+            escapeHtml((geospatialProjection.collection_bounds || []).join(", ")) +
+            "</p>"
+          : "") +
+        ((geospatialProjection.selected_feature_id || "")
+          ? '<p class="cts-gis-mapCanvas__meta">selected feature: ' +
+            escapeHtml(geospatialProjection.selected_feature_id || "") +
+            (geospatialProjection.selected_feature_geometry_type
+              ? " (" + escapeHtml(geospatialProjection.selected_feature_geometry_type || "") + ")"
+              : "") +
+            "</p>"
+          : "") +
+        ((geospatialProjection.selected_feature_bounds || []).length
+          ? '<p class="cts-gis-mapCanvas__meta">selected bounds: ' +
+            escapeHtml((geospatialProjection.selected_feature_bounds || []).join(", ")) +
+            "</p>"
+          : "") +
+        '<div class="cts-gis-mapCanvas__featureList">' +
+        renderRequestButtons(geospatialProjection.features || [], "feature", {
+          listClass: "cts-gis-mapCanvas__featureEntries",
+          buttonClass: "cts-gis-entryButton cts-gis-entryButton--feature",
+          emptyMessage: geospatialProjection.empty_message || "No projected geometry is available for the current navigation root.",
+        }) +
+        "</div>" +
+        "</div>"
+      : '<div class="cts-gis-mapCanvas cts-gis-mapCanvas--empty">' +
+        renderProjectionPlaceholder(
+          geospatialProjection.empty_message || "No projected geometry is available until the active path resolves real CTS-GIS evidence.",
+          "cts-gis-mapCanvas__empty"
+        ) +
+        "</div>";
+    var profileMarkup = hasRealProfileProjection
+      ? '<section class="cts-gis-garlandSplit__profileBody">' +
+        '<section class="cts-gis-garlandSplit__profileBlock"><h5>Hierarchy</h5>' +
+        renderProfileHierarchy(profileProjection.hierarchy || []) +
+        "</section>" +
+        '<section class="cts-gis-garlandSplit__profileBlock"><h5>Current Profile</h5>' +
+        '<article class="cts-gis-profileSummary cts-gis-profileSummary--active">' +
+        "<strong>" +
+        escapeHtml((profileProjection.active_profile || {}).label || "Active profile") +
+        "</strong>" +
+        '<span class="cts-gis-profileSummary__meta">' +
+        escapeHtml((profileProjection.active_profile || {}).node_id || "") +
+        "</span>" +
+        '<span class="cts-gis-profileSummary__meta">' +
+        escapeHtml(
+          String((profileProjection.active_profile || {}).feature_count || 0) +
+            " features · " +
+            String((profileProjection.active_profile || {}).child_count || 0) +
+            " children"
+        ) +
+        "</span>" +
+        "</article></section>" +
+        renderRows(profileProjection.summary_rows || []) +
+        '<section class="cts-gis-garlandSplit__profileBlock"><h5>Projected Rows</h5>' +
+        renderRequestButtons(profileProjection.projected_rows || [], "row", {
+          emptyMessage: "No projected rows available.",
+        }) +
+        "</section>" +
+        '<section class="cts-gis-garlandSplit__profileBlock"><h5>Correlated Profiles</h5>' +
+        renderProfileSummaries(profileProjection.correlated_profiles || []) +
+        "</section>" +
+        ((profileProjection.warnings || []).length
+          ? '<section class="cts-gis-garlandSplit__profileBlock"><h5>Warnings</h5><ul class="cts-gis-warningList">' +
+            (profileProjection.warnings || [])
+              .map(function (warning) {
+                return "<li>" + escapeHtml(warning) + "</li>";
+              })
+              .join("") +
+            "</ul></section>"
+          : "") +
+        "</section>"
+      : renderProjectionPlaceholder(
+          profileProjection.empty_message || "No projected profile is available until the active path resolves real CTS-GIS evidence.",
+          "cts-gis-profileProjection cts-gis-profileProjection--empty"
+        );
 
     target.innerHTML =
       '<div class="system-tool-interface cts-gis-interface">' +
@@ -834,87 +1184,12 @@
       '<section class="cts-gis-garlandSplit__geospatial"><h4>' +
       escapeHtml(geospatialProjection.title || "Geospatial Projection") +
       "</h4>" +
-      '<div class="cts-gis-mapCanvas">' +
-      '<div class="cts-gis-mapCanvas__state">' +
-      '<span class="cts-gis-mapCanvas__status">state: ' +
-      escapeHtml(geospatialProjection.projection_state || "inspect_only") +
-      "</span>" +
-      '<span class="cts-gis-mapCanvas__status">features: ' +
-      escapeHtml(String(geospatialProjection.feature_count || 0)) +
-      "</span>" +
-      '<span class="cts-gis-mapCanvas__status">rows: ' +
-      escapeHtml(String(geospatialProjection.render_row_count || 0)) +
-      "</span>" +
-      "</div>" +
-      renderGeospatialStage(geospatialProjection) +
-      ((geospatialProjection.collection_bounds || []).length
-        ? '<p class="cts-gis-mapCanvas__meta">collection bounds: ' +
-          escapeHtml((geospatialProjection.collection_bounds || []).join(", ")) +
-          "</p>"
-        : "") +
-      ((geospatialProjection.selected_feature_id || "")
-        ? '<p class="cts-gis-mapCanvas__meta">selected feature: ' +
-          escapeHtml(geospatialProjection.selected_feature_id || "") +
-          (geospatialProjection.selected_feature_geometry_type
-            ? " (" + escapeHtml(geospatialProjection.selected_feature_geometry_type || "") + ")"
-            : "") +
-          "</p>"
-        : "") +
-      ((geospatialProjection.selected_feature_bounds || []).length
-        ? '<p class="cts-gis-mapCanvas__meta">selected bounds: ' +
-          escapeHtml((geospatialProjection.selected_feature_bounds || []).join(", ")) +
-          "</p>"
-        : "") +
-      '<div class="cts-gis-mapCanvas__featureList">' +
-      renderRequestButtons(geospatialProjection.features || [], "feature", {
-        listClass: "cts-gis-mapCanvas__featureEntries",
-        buttonClass: "cts-gis-entryButton cts-gis-entryButton--feature",
-        emptyMessage: geospatialProjection.empty_message || "No projected geometry is available for the current navigation root.",
-      }) +
-      "</div>" +
-      "</div>" +
+      geospatialMarkup +
       "</section>" +
       '<section class="cts-gis-garlandSplit__profile"><h4>' +
       escapeHtml(profileProjection.title || "Profile Projection") +
       "</h4>" +
-      '<section class="cts-gis-garlandSplit__profileBlock"><h5>Hierarchy</h5>' +
-      renderProfileHierarchy(profileProjection.hierarchy || []) +
-      "</section>" +
-      '<section class="cts-gis-garlandSplit__profileBlock"><h5>Current Profile</h5>' +
-      '<article class="cts-gis-profileSummary cts-gis-profileSummary--active">' +
-      "<strong>" +
-      escapeHtml((profileProjection.active_profile || {}).label || "Active profile") +
-      "</strong>" +
-      '<span class="cts-gis-profileSummary__meta">' +
-      escapeHtml((profileProjection.active_profile || {}).node_id || "") +
-      "</span>" +
-      '<span class="cts-gis-profileSummary__meta">' +
-      escapeHtml(
-        String((profileProjection.active_profile || {}).feature_count || 0) +
-          " features · " +
-          String((profileProjection.active_profile || {}).child_count || 0) +
-          " children"
-      ) +
-      "</span>" +
-      "</article></section>" +
-      renderRows(profileProjection.summary_rows || []) +
-      '<section class="cts-gis-garlandSplit__profileBlock"><h5>Projected Rows</h5>' +
-      renderRequestButtons(profileProjection.projected_rows || [], "row", {
-        emptyMessage: "No projected rows available.",
-      }) +
-      "</section>" +
-      '<section class="cts-gis-garlandSplit__profileBlock"><h5>Correlated Profiles</h5>' +
-      renderProfileSummaries(profileProjection.correlated_profiles || []) +
-      "</section>" +
-      ((profileProjection.warnings || []).length
-        ? '<section class="cts-gis-garlandSplit__profileBlock"><h5>Warnings</h5><ul class="cts-gis-warningList">' +
-          (profileProjection.warnings || [])
-            .map(function (warning) {
-              return "<li>" + escapeHtml(warning) + "</li>";
-            })
-            .join("") +
-          "</ul></section>"
-        : "") +
+      profileMarkup +
       "</section>" +
       "</div>" +
       "</section>" +
@@ -923,8 +1198,10 @@
     bindShellRequestEntries(target, ctx, entriesByKind);
     if (navMode === "legacy_branch_canvas") {
       bindNavigationCanvasEnhancement(target, !!((interfaceBody.feature_flags || {}).hover_attention_redistribution));
-    } else {
+    } else if (navMode === "ordered_hierarchy") {
       bindOrderedHierarchyEnhancement(target);
+    } else {
+      bindStagedDiktataographEnhancement(target);
     }
   }
 

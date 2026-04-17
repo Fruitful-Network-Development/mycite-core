@@ -6231,6 +6231,7 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 
 .cts-gis-navCanvas__mode {
   min-height: 0;
+  overflow: auto;
 }
 
 .cts-gis-navField {
@@ -6261,6 +6262,149 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   gap: 0.8rem;
   min-height: 0;
   align-items: stretch;
+}
+
+.cts-gis-stagedDiktataograph {
+  display: flex;
+  gap: 0.72rem;
+  align-items: flex-start;
+  min-height: clamp(24rem, 62vh, 34rem);
+  height: clamp(24rem, 62vh, 34rem);
+  overflow: auto;
+  padding: 0.2rem 0.2rem 0.8rem 0.1rem;
+}
+
+.cts-gis-lineageBlockWrap {
+  flex: 0 0 auto;
+  width: 13.4rem;
+  height: clamp(22rem, 58vh, 31rem);
+  margin-top: var(--cts-gis-attach-offset, 0px);
+  transition: margin-top 90ms linear;
+}
+
+.cts-gis-lineageBlock {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.42rem;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0.64rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 86%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 92%, #fff 8%);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+}
+
+.cts-gis-lineageBlock__header {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.cts-gis-lineageBlock__eyebrow,
+.cts-gis-lineageBlock__anchor {
+  overflow-wrap: anywhere;
+}
+
+.cts-gis-lineageBlock__eyebrow {
+  font-size: 0.67rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-lineageBlock__anchor {
+  font-size: 0.75rem;
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-lineageBlock__rows {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 86%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 45%, #fff 55%);
+}
+
+.cts-gis-lineageRow {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  top: var(--row-top);
+  height: var(--row-height);
+  display: grid;
+  align-content: center;
+  gap: 0.08rem;
+  padding: 0 0.58rem;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 92%, #fff 8%);
+  color: var(--ink, #243026);
+  text-align: left;
+  cursor: pointer;
+  opacity: var(--row-opacity, 1);
+  overflow: hidden;
+  transition:
+    top 70ms linear,
+    height 70ms linear,
+    font-size 70ms linear,
+    opacity 70ms linear,
+    background-color 70ms linear,
+    color 70ms linear;
+}
+
+.cts-gis-lineageRow:first-child {
+  border-top: 0;
+}
+
+.cts-gis-lineageRow:hover,
+.cts-gis-lineageRow:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 62%, #fff 38%);
+}
+
+.cts-gis-lineageRow.is-in-path {
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 58%, #fff 42%);
+}
+
+.cts-gis-lineageRow.is-active {
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 78%, #fff 22%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent, #0b6b46) 44%, transparent);
+}
+
+.cts-gis-lineageRow__label,
+.cts-gis-lineageRow__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cts-gis-lineageRow__label {
+  font-size: var(--row-font-size, 0.78rem);
+  line-height: 1.05;
+  font-weight: 700;
+  opacity: var(--row-label-opacity, 1);
+}
+
+.cts-gis-lineageRow__meta {
+  font-size: calc(var(--row-font-size, 12px) * 0.62);
+  line-height: 1;
+  color: var(--ink2, #667068);
+  opacity: calc(var(--row-label-opacity, 1) * 0.84);
+}
+
+.cts-gis-lineageBlock__empty,
+.cts-gis-projectionPlaceholder,
+.cts-gis-mapCanvas__empty,
+.cts-gis-profileProjection--empty {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  padding: 1rem;
+  border: 1px dashed color-mix(in srgb, var(--line, #c8cec8) 84%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 94%, #fff 6%);
 }
 
 .cts-gis-orderedHierarchy {
@@ -6759,6 +6903,11 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   gap: 0.45rem;
 }
 
+.cts-gis-garlandSplit__profileBody {
+  display: grid;
+  gap: 0.55rem;
+}
+
 .cts-gis-garlandSplit__profileBlock h5 {
   margin: 0;
   font-size: 0.72rem;
@@ -6817,6 +6966,10 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .cts-gis-lineageBlockWrap {
+    height: clamp(20rem, 54vh, 28rem);
+  }
+
   .cts-gis-orderedHierarchy__columns {
     grid-template-columns: repeat(auto-fit, minmax(9.8rem, 1fr));
   }
@@ -6841,6 +6994,10 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 
   .cts-gis-structureCanvas__branches {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cts-gis-lineageBlockWrap {
+    width: 12.2rem;
   }
 
   .cts-gis-orderedHierarchy__path,
