@@ -252,6 +252,76 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             },
         }
 
+    def send_handoff_email(self, profile: dict[str, Any]) -> dict[str, Any]:
+        send_as_email = self._send_as_email(profile)
+        if not send_as_email:
+            raise ValueError("AWS-CSM send-as email is not configured for this profile.")
+        destination = self._handoff_destination(profile)
+        if not destination:
+            raise ValueError("AWS-CSM operator inbox target is not configured for this profile.")
+        material = self.read_handoff_secret(profile)
+        username = _as_text(material.get("username"))
+        smtp_host = _as_text(material.get("smtp_host"))
+        smtp_port = _as_text(material.get("smtp_port"))
+        region = self._region_for_profile(profile)
+        response = self._client("sesv2", region=region).send_email(
+            FromEmailAddress=send_as_email,
+            Destination={"ToAddresses": [destination]},
+            Content={
+                "Simple": {
+                    "Subject": {"Data": f"AWS-CSM Gmail send-as handoff for {send_as_email}"},
+                    "Body": {
+                        "Text": {
+                            "Data": "\n".join(
+                                [
+                                    f"Set up Gmail Send mail as for {send_as_email}.",
+                                    "",
+                                    f"SMTP host: {smtp_host}",
+                                    f"SMTP port: {smtp_port}",
+                                    f"SMTP username: {username}",
+                                    "",
+                                    "Use the separately revealed SMTP password when Gmail asks for it.",
+                                    "After saving the Send mail as entry, wait for the Gmail confirmation email to arrive.",
+                                    "Open the confirmation link to finish verification.",
+                                ]
+                            )
+                        }
+                    },
+                }
+            },
+        )
+        return {
+            "message_id": _as_text(response.get("MessageId")),
+            "sent_to": destination,
+            "send_as_email": send_as_email,
+            "username": username,
+            "smtp_host": smtp_host,
+            "smtp_port": smtp_port,
+            "state": _as_text(material.get("state")),
+        }
+
+    def read_handoff_secret(self, profile: dict[str, Any]) -> dict[str, Any]:
+        send_as_email = self._send_as_email(profile)
+        secret_name = self._smtp_secret_name(profile)
+        if not secret_name:
+            raise ValueError("AWS-CSM SMTP secret name is not configured for this profile.")
+        region = self._region_for_profile(profile)
+        material = self._smtp_secret_material(secret_name=secret_name, region=region)
+        state = _as_text(material.get("state")).lower()
+        username = _as_text(material.get("persisted_username") or material.get("username"))
+        secret_value = _as_text(material.get("password"))
+        if state != "configured" or not username or not secret_value:
+            raise ValueError("SMTP credentials must be staged before the password can be revealed.")
+        return {
+            "send_as_email": send_as_email,
+            "secret_name": _as_text(material.get("secret_name") or secret_name),
+            "state": state,
+            "username": username,
+            "password": secret_value,
+            "smtp_host": _as_text(material.get("smtp_host")) or f"email-smtp.{region}.amazonaws.com",
+            "smtp_port": _as_text(material.get("smtp_port")) or "587",
+        }
+
     def _stage_smtp_patch(self, profile: dict[str, Any]) -> dict[str, Any]:
         identity = _as_dict(profile.get("identity"))
         smtp = _as_dict(profile.get("smtp"))
@@ -414,6 +484,11 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         identity = _as_dict(profile.get("identity"))
         smtp = _as_dict(profile.get("smtp"))
         return _normalized_email(identity.get("send_as_email") or smtp.get("send_as_email"))
+
+    def _handoff_destination(self, profile: dict[str, Any]) -> str:
+        identity = _as_dict(profile.get("identity"))
+        smtp = _as_dict(profile.get("smtp"))
+        return _normalized_email(smtp.get("forward_to_email") or identity.get("operator_inbox_target"))
 
     def _smtp_secret_name(self, profile: dict[str, Any]) -> str:
         identity = _as_dict(profile.get("identity"))

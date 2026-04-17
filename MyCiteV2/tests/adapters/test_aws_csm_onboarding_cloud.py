@@ -26,6 +26,7 @@ def _profile() -> dict[str, object]:
             "region": "us-east-1",
             "mailbox_local_part": "mark",
             "send_as_email": "mark@trappfamilyfarm.com",
+            "operator_inbox_target": "mark@trappfamilyfarm.com",
         },
         "smtp": {
             "credentials_secret_name": "aws-cms/smtp/tff.mark",
@@ -81,12 +82,31 @@ class _FakeIamClient:
 
 
 class _FakeSesV2Client:
+    def __init__(self) -> None:
+        self.sent_messages: list[dict[str, object]] = []
+
     def get_email_identity(self, *, EmailIdentity: str) -> dict[str, object]:
         _ = EmailIdentity
         return {
             "VerificationStatus": "SUCCESS",
             "VerifiedForSendingStatus": True,
         }
+
+    def send_email(
+        self,
+        *,
+        FromEmailAddress: str,
+        Destination: dict[str, object],
+        Content: dict[str, object],
+    ) -> dict[str, object]:
+        self.sent_messages.append(
+            {
+                "from": FromEmailAddress,
+                "destination": Destination,
+                "content": Content,
+            }
+        )
+        return {"MessageId": "ses-message-001"}
 
 
 class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
@@ -215,6 +235,62 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
             side_effect=ValueError("missing object"),
         ):
             self.assertFalse(adapter.gmail_confirmation_evidence_satisfied(profile))
+
+    def test_read_handoff_secret_returns_ephemeral_material_without_persistence(self) -> None:
+        adapter = AwsEc2RoleOnboardingCloudAdapter(tenant_id="tff")
+        with patch.object(
+            adapter,
+            "_smtp_secret_material",
+            return_value={
+                "state": "configured",
+                "secret_name": "aws-cms/smtp/tff.mark",
+                "username": "SMTPUSER",
+                "persisted_username": "SMTPUSER",
+                "password": "SMTPPASS",
+                "smtp_host": "email-smtp.us-east-1.amazonaws.com",
+                "smtp_port": "587",
+                "message": "",
+            },
+        ):
+            revealed = adapter.read_handoff_secret(_profile())
+
+        self.assertEqual(revealed["send_as_email"], "mark@trappfamilyfarm.com")
+        self.assertEqual(revealed["username"], "SMTPUSER")
+        self.assertEqual(revealed["password"], "SMTPPASS")
+        self.assertEqual(revealed["secret_name"], "aws-cms/smtp/tff.mark")
+
+    def test_send_handoff_email_omits_password_from_message_body(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            sesv2 = _FakeSesV2Client()
+            adapter = AwsEc2RoleOnboardingCloudAdapter(private_dir=temp_dir, tenant_id="tff")
+
+            def fake_client(service_name: str, *, region: str | None = None) -> object:
+                _ = region
+                if service_name == "sesv2":
+                    return sesv2
+                raise AssertionError(f"unexpected service {service_name}")
+
+            with patch.object(
+                adapter,
+                "_smtp_secret_material",
+                return_value={
+                    "state": "configured",
+                    "secret_name": "aws-cms/smtp/tff.mark",
+                    "username": "SMTPUSER",
+                    "persisted_username": "SMTPUSER",
+                    "password": "SMTPPASS",
+                    "smtp_host": "email-smtp.us-east-1.amazonaws.com",
+                    "smtp_port": "587",
+                    "message": "",
+                },
+            ), patch.object(adapter, "_client", side_effect=fake_client):
+                result = adapter.send_handoff_email(_profile())
+
+        self.assertEqual(result["sent_to"], "mark@trappfamilyfarm.com")
+        self.assertEqual(result["message_id"], "ses-message-001")
+        body = sesv2.sent_messages[0]["content"]["Simple"]["Body"]["Text"]["Data"]
+        self.assertIn("SMTP username: SMTPUSER", body)
+        self.assertNotIn("SMTPPASS", body)
 
 
 if __name__ == "__main__":

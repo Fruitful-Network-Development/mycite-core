@@ -1,0 +1,289 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+import re
+from typing import Any
+
+from MyCiteV2.packages.ports.aws_csm_profile_registry import AwsCsmProfileRegistryPort
+
+LIVE_AWS_PROFILE_SCHEMA = "mycite.service_tool.aws_csm.profile.v1"
+_MAILBOX_LOCAL_PART_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._+-]{0,62}[a-z0-9])?$")
+
+
+def _as_text(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _normalized_domain(value: object, *, field_name: str) -> str:
+    token = _as_text(value).lower()
+    if token.startswith("www."):
+        token = token[4:]
+    if not token or "." not in token or any(ch.isspace() for ch in token):
+        raise ValueError(f"{field_name} must be a domain-like value")
+    return token
+
+
+def _normalized_email(value: object, *, field_name: str) -> str:
+    token = _as_text(value).lower()
+    if token.count("@") != 1 or any(ch.isspace() for ch in token):
+        raise ValueError(f"{field_name} must be an email-like value")
+    local_part, domain_part = token.split("@", 1)
+    if not local_part or not domain_part or "." not in domain_part:
+        raise ValueError(f"{field_name} must be an email-like value")
+    return token
+
+
+def _normalized_mailbox_local_part(value: object) -> str:
+    token = _as_text(value).lower()
+    if not _MAILBOX_LOCAL_PART_PATTERN.match(token):
+        raise ValueError(
+            "aws_csm_profile_registry.mailbox_local_part must use lowercase mailbox characters"
+        )
+    return token
+
+
+def _normalized_role(value: object) -> str:
+    token = _as_text(value).lower() or "operator"
+    if not token:
+        return "operator"
+    return token
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+@dataclass(frozen=True)
+class AwsCsmCreateProfileCommand:
+    domain: str
+    mailbox_local_part: str
+    single_user_email: str
+    operator_inbox_target: str = ""
+    role: str = "operator"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "domain",
+            _normalized_domain(self.domain, field_name="aws_csm_profile_registry.domain"),
+        )
+        object.__setattr__(
+            self,
+            "mailbox_local_part",
+            _normalized_mailbox_local_part(self.mailbox_local_part),
+        )
+        object.__setattr__(
+            self,
+            "single_user_email",
+            _normalized_email(
+                self.single_user_email,
+                field_name="aws_csm_profile_registry.single_user_email",
+            ),
+        )
+        inbox_target = self.operator_inbox_target or self.single_user_email
+        object.__setattr__(
+            self,
+            "operator_inbox_target",
+            _normalized_email(
+                inbox_target,
+                field_name="aws_csm_profile_registry.operator_inbox_target",
+            ),
+        )
+        object.__setattr__(self, "role", _normalized_role(self.role))
+
+    @property
+    def send_as_email(self) -> str:
+        return f"{self.mailbox_local_part}@{self.domain}"
+
+    @property
+    def profile_id(self) -> str:
+        return ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "domain": self.domain,
+            "mailbox_local_part": self.mailbox_local_part,
+            "single_user_email": self.single_user_email,
+            "operator_inbox_target": self.operator_inbox_target,
+            "role": self.role,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "AwsCsmCreateProfileCommand":
+        if not isinstance(payload, dict):
+            raise ValueError("aws_csm_profile_registry.create_profile must be a dict")
+        return cls(
+            domain=payload.get("domain"),
+            mailbox_local_part=payload.get("mailbox_local_part"),
+            single_user_email=payload.get("single_user_email"),
+            operator_inbox_target=payload.get("operator_inbox_target") or "",
+            role=payload.get("role") or "operator",
+        )
+
+
+@dataclass(frozen=True)
+class AwsCsmCreateProfileOutcome:
+    profile_id: str
+    domain: str
+    tenant_id: str
+    created_profile: dict[str, Any]
+
+    @property
+    def send_as_email(self) -> str:
+        identity = _as_dict(self.created_profile.get("identity"))
+        return _as_text(identity.get("send_as_email")).lower()
+
+    @property
+    def single_user_email(self) -> str:
+        identity = _as_dict(self.created_profile.get("identity"))
+        return _as_text(identity.get("single_user_email")).lower()
+
+    @property
+    def operator_inbox_target(self) -> str:
+        identity = _as_dict(self.created_profile.get("identity"))
+        return _as_text(identity.get("operator_inbox_target")).lower()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "profile_id": self.profile_id,
+            "domain": self.domain,
+            "tenant_id": self.tenant_id,
+            "send_as_email": self.send_as_email,
+            "single_user_email": self.single_user_email,
+            "operator_inbox_target": self.operator_inbox_target,
+            "created_profile": dict(self.created_profile),
+        }
+
+
+class AwsCsmProfileRegistryService:
+    def __init__(self, registry_port: AwsCsmProfileRegistryPort) -> None:
+        self._registry_port = registry_port
+
+    def create_profile(
+        self,
+        payload: AwsCsmCreateProfileCommand | dict[str, Any],
+    ) -> AwsCsmCreateProfileOutcome:
+        command = (
+            payload
+            if isinstance(payload, AwsCsmCreateProfileCommand)
+            else AwsCsmCreateProfileCommand.from_dict(payload)
+        )
+        seed = self._registry_port.resolve_domain_seed(domain=command.domain)
+        if not isinstance(seed, dict):
+            raise ValueError(
+                f"AWS-CSM cannot add a user for {command.domain} because no seed tenant metadata exists."
+            )
+        tenant_id = _as_text(seed.get("tenant_id")).lower()
+        if not tenant_id:
+            raise ValueError(
+                f"AWS-CSM cannot add a user for {command.domain} because the seed tenant_id is missing."
+            )
+        region = _as_text(seed.get("region")) or "us-east-1"
+        profile_id = f"aws-csm.{tenant_id}.{command.mailbox_local_part}"
+        send_as_email = command.send_as_email
+        existing_profiles = list(self._registry_port.list_profiles())
+        existing_profile_ids = set()
+        existing_send_as = set()
+        existing_user_emails = set()
+        for profile in existing_profiles:
+            identity = _as_dict(profile.get("identity"))
+            existing_profile_ids.add(_as_text(identity.get("profile_id")).lower())
+            existing_send_as.add(_as_text(identity.get("send_as_email")).lower())
+            existing_user_emails.add(_as_text(identity.get("single_user_email")).lower())
+        if profile_id.lower() in existing_profile_ids:
+            raise ValueError(f"AWS-CSM profile_id already exists: {profile_id}")
+        if send_as_email.lower() in existing_send_as:
+            raise ValueError(f"AWS-CSM send-as email already exists: {send_as_email}")
+        if command.single_user_email.lower() in existing_user_emails:
+            raise ValueError(
+                f"AWS-CSM single_user_email already exists: {command.single_user_email}"
+            )
+        seeded_provider = _as_dict(seed.get("provider"))
+        aws_identity_status = _as_text(seeded_provider.get("aws_ses_identity_status"))
+        provider_last_checked_at = _as_text(seeded_provider.get("last_checked_at"))
+        created_profile = self._registry_port.create_profile(
+            profile_id=profile_id,
+            payload={
+                "schema": LIVE_AWS_PROFILE_SCHEMA,
+                "identity": {
+                    "profile_id": profile_id,
+                    "tenant_id": tenant_id,
+                    "domain": command.domain,
+                    "region": region,
+                    "mailbox_local_part": command.mailbox_local_part,
+                    "role": command.role,
+                    "profile_kind": "mailbox",
+                    "single_user_msn_id": "",
+                    "single_user_email": command.single_user_email,
+                    "operator_inbox_target": command.operator_inbox_target,
+                    "send_as_email": send_as_email,
+                },
+                "smtp": {
+                    "host": f"email-smtp.{region}.amazonaws.com",
+                    "port": "587",
+                    "username": "",
+                    "credentials_source": "operator_managed",
+                    "credentials_secret_name": f"aws-cms/smtp/{tenant_id}.{command.mailbox_local_part}",
+                    "credentials_secret_state": "missing",
+                    "send_as_email": send_as_email,
+                    "local_part": command.mailbox_local_part,
+                    "forward_to_email": command.operator_inbox_target,
+                    "forwarding_status": "not_configured",
+                    "handoff_ready": False,
+                },
+                "verification": {
+                    "status": "not_started",
+                    "code": "",
+                    "link": "",
+                    "email_received_at": "",
+                    "verified_at": "",
+                    "portal_state": "not_started",
+                },
+                "provider": {
+                    "gmail_send_as_status": "not_started",
+                    "aws_ses_identity_status": aws_identity_status,
+                    "last_checked_at": provider_last_checked_at,
+                },
+                "workflow": {
+                    "schema": "mycite.service_tool.aws_csm.onboarding.v1",
+                    "flow": "mailbox_send_as",
+                    "initiated": True,
+                    "initiated_at": _utc_now_iso(),
+                    "lifecycle_state": "draft",
+                    "handoff_status": "not_started",
+                    "is_ready_for_user_handoff": False,
+                },
+                "inbound": {
+                    "receive_routing_target": command.operator_inbox_target,
+                    "receive_state": "receive_unconfigured",
+                    "receive_verified": False,
+                    "portal_native_display_ready": False,
+                    "legacy_forwarder_dependency": False,
+                    "latest_message_sender": "",
+                    "latest_message_subject": "",
+                    "latest_message_captured_at": "",
+                    "latest_message_s3_key": "",
+                    "latest_message_s3_uri": "",
+                },
+            },
+        )
+        return AwsCsmCreateProfileOutcome(
+            profile_id=profile_id,
+            domain=command.domain,
+            tenant_id=tenant_id,
+            created_profile=created_profile,
+        )
+
+
+__all__ = [
+    "AwsCsmCreateProfileCommand",
+    "AwsCsmCreateProfileOutcome",
+    "AwsCsmProfileRegistryService",
+]

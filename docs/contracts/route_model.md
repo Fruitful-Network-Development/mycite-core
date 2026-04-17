@@ -26,6 +26,7 @@ Direct APIs:
 
 - `POST /portal/api/v2/system/workspace/profile-basics`
 - `POST /portal/api/v2/system/tools/aws-csm`
+- `POST /portal/api/v2/system/tools/aws-csm/actions`
 - `POST /portal/api/v2/system/tools/cts-gis`
 - `POST /portal/api/v2/system/tools/fnd-ebi`
 
@@ -59,6 +60,25 @@ AWS-CSM canonical query rules:
 - `domain=<domain>` focuses one domain gallery row
 - `profile=<profile_id>` focuses one mailbox profile inside the selected domain
 - `section=<users|onboarding|newsletter>` narrows the selected domain to one section
+
+AWS-CSM internal action route:
+
+- `POST /portal/api/v2/system/tools/aws-csm/actions`
+- request schema: `mycite.v2.portal.system.tools.aws_csm.action.request.v1`
+- body fields:
+  - `portal_scope`
+  - `surface_query`
+  - optional `shell_state`
+  - `action_kind`
+  - `action_payload`
+- cataloged action kinds:
+  - `create_profile`
+  - `stage_smtp_credentials`
+  - `send_handoff_email`
+  - `reveal_smtp_password`
+  - `refresh_provider_status`
+  - `capture_verification`
+  - `confirm_verified`
 
 `AWS-CSM` is one `SYSTEM` child service tool surface, not four separate tool pages. The canonical public route is `/portal/system/tools/aws-csm`.
 

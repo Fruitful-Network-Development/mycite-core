@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
@@ -76,18 +77,28 @@ def _write_aws_csm_state(private_dir: Path) -> None:
     _write_json(
         tool_root / "aws-csm.fnd.dylan.json",
         {
+            "schema": "mycite.service_tool.aws_csm.profile.v1",
             "identity": {
                 "profile_id": "aws-csm.fnd.dylan",
+                "tenant_id": "fnd",
                 "domain": "fruitfulnetworkdevelopment.com",
+                "region": "us-east-1",
                 "send_as_email": "dylan@fruitfulnetworkdevelopment.com",
                 "single_user_email": "dylan@fruitfulnetworkdevelopment.com",
                 "role": "operator",
                 "mailbox_local_part": "dylan",
             },
             "workflow": {"lifecycle_state": "ready", "handoff_status": "accepted"},
-            "verification": {"portal_state": "verified"},
-            "provider": {"aws_ses_identity_status": "verified"},
-            "smtp": {"forward_to_email": "dylan@fruitfulnetworkdevelopment.com"},
+            "verification": {"status": "verified", "portal_state": "verified"},
+            "provider": {"gmail_send_as_status": "verified", "aws_ses_identity_status": "verified"},
+            "smtp": {
+                "host": "email-smtp.us-east-1.amazonaws.com",
+                "port": "587",
+                "username": "DYLANSMTP",
+                "credentials_secret_name": "aws-cms/smtp/fnd.dylan",
+                "credentials_secret_state": "configured",
+                "forward_to_email": "dylan@fruitfulnetworkdevelopment.com",
+            },
             "inbound": {"receive_state": "configured", "receive_verified": "yes"},
         },
     )
@@ -114,6 +125,118 @@ def _write_aws_csm_state(private_dir: Path) -> None:
             "dispatches": [{"dispatch_id": "dispatch-001"}],
         },
     )
+
+
+class _FakeAwsCsmActionCloud:
+    def __init__(self) -> None:
+        self.sent_messages: list[dict[str, object]] = []
+
+    def supplemental_profile_patch(self, action: str, profile: dict[str, object]) -> dict[str, object]:
+        identity = dict(profile.get("identity") or {})
+        send_as_email = str(identity.get("send_as_email") or "").strip().lower()
+        if action == "stage_smtp_credentials":
+            return {
+                "smtp": {
+                    "host": "email-smtp.us-east-1.amazonaws.com",
+                    "port": "587",
+                    "username": "SMTPUSER",
+                    "credentials_secret_state": "configured",
+                    "credentials_secret_name": "aws-cms/smtp/fnd.alex",
+                    "handoff_ready": True,
+                    "forward_to_email": "ops@example.com",
+                },
+                "workflow": {"handoff_status": "ready_for_gmail_handoff", "is_ready_for_user_handoff": True},
+                "provider": {"aws_ses_identity_status": "verified"},
+            }
+        if action == "refresh_provider_status":
+            return {"provider": {"aws_ses_identity_status": "verified"}}
+        if action == "capture_verification":
+            return {
+                "verification": {
+                    "portal_state": "capture_ready",
+                    "status": "pending",
+                    "link": "https://mail.google.com/verify/example",
+                    "latest_message_reference": "s3://ses-bucket/inbound/message-1",
+                },
+                "inbound": {
+                    "receive_state": "receive_pending",
+                    "portal_native_display_ready": True,
+                    "latest_message_subject": "Gmail Confirmation - Send Mail as " + send_as_email,
+                    "latest_message_has_verification_link": True,
+                    "latest_message_s3_uri": "s3://ses-bucket/inbound/message-1",
+                },
+            }
+        return {}
+
+    def gmail_confirmation_evidence_satisfied(self, profile: dict[str, object]) -> bool:
+        verification = dict(profile.get("verification") or {})
+        inbound = dict(profile.get("inbound") or {})
+        return bool(verification.get("link")) or bool(inbound.get("latest_message_has_verification_link"))
+
+    def describe_profile_readiness(self, profile: dict[str, object]) -> dict[str, object]:
+        identity = dict(profile.get("identity") or {})
+        smtp = dict(profile.get("smtp") or {})
+        return {
+            "schema": "mycite.v2.portal.system.tools.aws_csm.cloud_readiness.v1",
+            "checked_at": "2026-04-17T00:00:00+00:00",
+            "profile_id": identity.get("profile_id"),
+            "smtp": {
+                "status": "ready" if smtp.get("credentials_secret_state") == "configured" else "action_required",
+                "credentials_secret_state": smtp.get("credentials_secret_state") or "missing",
+                "secret_name": smtp.get("credentials_secret_name") or "",
+                "username": smtp.get("username") or "",
+                "smtp_host": smtp.get("host") or "",
+                "smtp_port": smtp.get("port") or "",
+                "handoff_ready": smtp.get("credentials_secret_state") == "configured",
+                "message": "",
+            },
+            "provider": {"status": "ready", "aws_ses_identity_status": "verified", "last_checked_at": "2026-04-17T00:00:00+00:00", "message": ""},
+            "inbound": {
+                "status": "captured",
+                "expected_recipient": identity.get("send_as_email") or "",
+                "expected_lambda_name": "newsletter-inbound-capture",
+                "receipt_rule": {"status": "ok"},
+                "inbound_lambda": {"status": "active"},
+                "latest_capture": {"s3_uri": "s3://ses-bucket/inbound/message-1", "portal_native_evidence_present": True},
+                "portal_native_evidence_present": True,
+                "message": "",
+            },
+            "confirmation": {
+                "status": "ready",
+                "already_verified": False,
+                "can_confirm_verified": True,
+                "portal_native_evidence_present": True,
+                "message": "",
+            },
+        }
+
+    def send_handoff_email(self, profile: dict[str, object]) -> dict[str, object]:
+        identity = dict(profile.get("identity") or {})
+        smtp = dict(profile.get("smtp") or {})
+        payload = {
+            "message_id": "ses-message-001",
+            "sent_to": smtp.get("forward_to_email") or identity.get("operator_inbox_target") or "",
+            "send_as_email": identity.get("send_as_email") or "",
+            "username": smtp.get("username") or "SMTPUSER",
+            "smtp_host": smtp.get("host") or "email-smtp.us-east-1.amazonaws.com",
+            "smtp_port": smtp.get("port") or "587",
+            "state": "configured",
+        }
+        self.sent_messages.append(payload)
+        return payload
+
+    def read_handoff_secret(self, profile: dict[str, object]) -> dict[str, object]:
+        identity = dict(profile.get("identity") or {})
+        smtp = dict(profile.get("smtp") or {})
+        return {
+            "send_as_email": identity.get("send_as_email") or "",
+            "secret_name": smtp.get("credentials_secret_name") or "aws-cms/smtp/fnd.alex",
+            "state": "configured",
+            "username": smtp.get("username") or "SMTPUSER",
+            "password": "SMTPPASS",
+            "smtp_host": smtp.get("host") or "email-smtp.us-east-1.amazonaws.com",
+            "smtp_port": smtp.get("port") or "587",
+        }
 
 
 @unittest.skipUnless(FLASK_AVAILABLE, "flask is not installed")
@@ -364,6 +487,123 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(profile_action.status_code, 200)
             profile_payload = profile_action.get_json()
             self.assertEqual(profile_payload["surface_id"], "system.root")
+
+    def test_aws_csm_action_route_runs_add_user_flow_inside_same_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            public_dir = root / "public"
+            private_dir = root / "private"
+            data_dir = root / "data"
+            webapps_root = root / "webapps"
+            audit_file = root / "portal_audit.jsonl"
+            for path in (public_dir, private_dir, data_dir, webapps_root):
+                path.mkdir(parents=True, exist_ok=True)
+            audit_file.write_text("", encoding="utf-8")
+            _write_network_chronology_authority(data_dir)
+            _write_aws_csm_state(private_dir)
+            _write_json(
+                private_dir / "config.json",
+                {"msn_id": "3-2-3-17-77-1-6-4-1-4", "tool_exposure": {"aws_csm": {"enabled": True}}},
+            )
+
+            config = V2PortalHostConfig(
+                portal_instance_id="fnd",
+                public_dir=public_dir,
+                private_dir=private_dir,
+                data_dir=data_dir,
+                portal_domain="fruitfulnetworkdevelopment.com",
+                webapps_root=webapps_root,
+                portal_audit_storage_file=audit_file,
+            )
+            app = create_app(config)
+            client = app.test_client()
+            fake_cloud = _FakeAwsCsmActionCloud()
+
+            def action_request(surface_query: dict[str, object], action_kind: str, action_payload: dict[str, object]) -> dict[str, object]:
+                return {
+                    "schema": "mycite.v2.portal.system.tools.aws_csm.action.request.v1",
+                    "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                    "surface_query": surface_query,
+                    "action_kind": action_kind,
+                    "action_payload": action_payload,
+                }
+
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime.AwsEc2RoleOnboardingCloudAdapter",
+                return_value=fake_cloud,
+            ):
+                create_response = client.post(
+                    "/portal/api/v2/system/tools/aws-csm/actions",
+                    json=action_request(
+                        {"view": "domains", "domain": "fruitfulnetworkdevelopment.com", "section": "users"},
+                        "create_profile",
+                        {
+                            "domain": "fruitfulnetworkdevelopment.com",
+                            "mailbox_local_part": "alex",
+                            "single_user_email": "alex@example.com",
+                            "operator_inbox_target": "ops@example.com",
+                        },
+                    ),
+                )
+                self.assertEqual(create_response.status_code, 200)
+                create_payload = create_response.get_json()
+                create_result = create_payload["surface_payload"]["action_result"]
+                self.assertEqual(create_result["status"], "accepted")
+                self.assertEqual(create_result["created_profile"]["profile_id"], "aws-csm.fnd.alex")
+                self.assertEqual(
+                    create_payload["canonical_query"],
+                    {"view": "domains", "domain": "fruitfulnetworkdevelopment.com", "profile": "aws-csm.fnd.alex", "section": "onboarding"},
+                )
+                self.assertEqual(
+                    create_payload["shell_composition"]["regions"]["workbench"]["kind"],
+                    "aws_csm_workbench",
+                )
+
+                created_profile_path = (
+                    private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.fnd.alex.json"
+                )
+                self.assertTrue(created_profile_path.is_file())
+                collection_payload = json.loads(
+                    (
+                        private_dir
+                        / "utilities"
+                        / "tools"
+                        / "aws-csm"
+                        / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"
+                    ).read_text(encoding="utf-8")
+                )
+                self.assertIn("aws-csm.fnd.alex.json", collection_payload["member_files"])
+
+                active_query = create_payload["canonical_query"]
+                for action_kind in (
+                    "stage_smtp_credentials",
+                    "send_handoff_email",
+                    "reveal_smtp_password",
+                    "capture_verification",
+                    "confirm_verified",
+                ):
+                    action_response = client.post(
+                        "/portal/api/v2/system/tools/aws-csm/actions",
+                        json=action_request(active_query, action_kind, {"profile_id": "aws-csm.fnd.alex"}),
+                    )
+                    self.assertEqual(action_response.status_code, 200)
+                    action_payload = action_response.get_json()
+                    self.assertEqual(action_payload["surface_payload"]["action_result"]["status"], "accepted")
+                    active_query = action_payload["canonical_query"]
+
+                    if action_kind == "send_handoff_email":
+                        dispatch = action_payload["surface_payload"]["action_result"]["handoff_dispatch"]
+                        self.assertEqual(dispatch["sent_to"], "ops@example.com")
+                    if action_kind == "reveal_smtp_password":
+                        secret = action_payload["surface_payload"]["action_result"]["ephemeral_secret"]
+                        self.assertEqual(secret["password"], "SMTPPASS")
+
+                stored_profile = json.loads(created_profile_path.read_text(encoding="utf-8"))
+                self.assertEqual(stored_profile["smtp"]["username"], "SMTPUSER")
+                self.assertEqual(stored_profile["verification"]["status"], "verified")
+                self.assertEqual(stored_profile["provider"]["gmail_send_as_status"], "verified")
+                self.assertNotIn("SMTPPASS", created_profile_path.read_text(encoding="utf-8"))
+                self.assertNotIn("SMTPPASS", audit_file.read_text(encoding="utf-8"))
 
     def test_client_boot_prefers_server_shell_posture_on_first_v2_hydration(self) -> None:
         portal_js = (

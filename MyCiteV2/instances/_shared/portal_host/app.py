@@ -24,7 +24,10 @@ except ModuleNotFoundError as exc:  # pragma: no cover - exercised in dependency
 
     request = _MissingRequest()
 
-from MyCiteV2.instances._shared.runtime.portal_aws_runtime import run_portal_aws_csm
+from MyCiteV2.instances._shared.runtime.portal_aws_runtime import (
+    run_portal_aws_csm,
+    run_portal_aws_csm_action,
+)
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
     LegacyMapsAliasUnsupportedError,
     run_portal_cts_gis,
@@ -35,6 +38,7 @@ from MyCiteV2.instances._shared.runtime.portal_shell_runtime import (
     run_system_profile_basics_action,
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA,
     AWS_CSM_TOOL_REQUEST_SCHEMA,
     CTS_GIS_TOOL_REQUEST_SCHEMA,
     FND_EBI_TOOL_REQUEST_SCHEMA,
@@ -480,6 +484,23 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     payload,
                     private_dir=host_config.private_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
+                )
+            )
+        except ValueError as exc:
+            return _error_response("invalid_request", str(exc))
+
+    @app.post("/portal/api/v2/system/tools/aws-csm/actions")
+    def portal_aws_csm_actions() -> tuple[Any, int]:
+        try:
+            payload = _json_payload()
+            if "schema" not in payload:
+                payload["schema"] = AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA
+            return _runtime_response(
+                run_portal_aws_csm_action(
+                    payload,
+                    private_dir=host_config.private_dir,
+                    tool_exposure_policy=host_config.tool_exposure_policy,
+                    audit_storage_file=host_config.portal_audit_storage_file,
                 )
             )
         except ValueError as exc:
