@@ -124,7 +124,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             data_dir=None,
         )
         self.assertFalse(bundle["workbench"]["visible"])
-        self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["attention_node_id"], "3-2-3-17-77")
+        self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["attention_node_id"], "")
+        self.assertEqual(bundle["surface_payload"]["tool_state"]["active_path"], [])
+        self.assertEqual(bundle["surface_payload"]["tool_state"]["selected_node_id"], "")
         self.assertEqual(
             bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"],
             "descendants_depth_1_or_2",
@@ -145,15 +147,18 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             interface_body["garland_split_projection"]["profile_projection"]["title"],
             "Profile Projection",
         )
-        self.assertEqual(interface_body["navigation_canvas"]["mode"], "ordered_hierarchy")
+        self.assertEqual(interface_body["navigation_canvas"]["mode"], "staged_diktataograph")
+        self.assertEqual(len(interface_body["navigation_canvas"]["staged_blocks"]), 1)
         self.assertEqual(
             interface_body["wiring_sequence"][0],
-            "synthetic_baseline",
+            "staged_root_opening",
         )
         self.assertEqual(
             interface_body["garland_split_projection"]["geospatial_projection"]["data_source"],
-            "synthetic",
+            "",
         )
+        self.assertFalse(interface_body["garland_split_projection"]["geospatial_projection"]["has_real_projection"])
+        self.assertFalse(interface_body["garland_split_projection"]["profile_projection"]["has_real_projection"])
         self.assertIn(
             "geospatial_projection",
             interface_body["garland_split_projection"],
@@ -359,6 +364,10 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
 
             self.assertEqual(bundle["surface_payload"]["tool_state"]["source"]["attention_document_id"], "sandbox:cts_gis:sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json")
             self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["attention_node_id"], "3-2-3-17-77")
+            self.assertEqual(
+                bundle["surface_payload"]["tool_state"]["active_path"],
+                ["3", "3-2", "3-2-3", "3-2-3-17", "3-2-3-17-77"],
+            )
             self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"], "descendants_depth_1_or_2")
             self.assertEqual(bundle["surface_payload"]["source_evidence"]["readiness"]["state"], "ready")
             self.assertEqual(bundle["inspector"]["interface_body"]["kind"], "cts_gis_interface_body")
@@ -368,10 +377,10 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertIn("garland_split_projection", bundle["inspector"]["interface_body"])
             self.assertEqual(
                 bundle["inspector"]["interface_body"]["navigation_canvas"]["mode"],
-                "ordered_hierarchy",
+                "staged_diktataograph",
             )
             self.assertIn(
-                "ordered_hierarchy",
+                "staged_blocks",
                 bundle["inspector"]["interface_body"]["navigation_canvas"],
             )
             self.assertIn(
@@ -410,7 +419,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
             self.assertEqual(
                 bundle["inspector"]["interface_body"]["wiring_sequence"][0],
-                "synthetic_baseline",
+                "staged_root_opening",
             )
 
             envelope = run_portal_shell_entry(
@@ -529,11 +538,15 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
 
             self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["attention_node_id"], "3-2-3-17-77")
+            self.assertEqual(
+                bundle["surface_payload"]["tool_state"]["active_path"],
+                ["3", "3-2", "3-2-3", "3-2-3-17", "3-2-3-17-77"],
+            )
             interface_body = bundle["inspector"]["interface_body"]
             navigation_canvas = interface_body["navigation_canvas"]
             garland = interface_body["garland_split_projection"]
-            self.assertEqual(navigation_canvas["mode"], "ordered_hierarchy")
-            self.assertIn("ordered_hierarchy", navigation_canvas)
+            self.assertEqual(navigation_canvas["mode"], "staged_diktataograph")
+            self.assertIn("staged_blocks", navigation_canvas)
             self.assertTrue(navigation_canvas["structure_field"]["entries"])
             self.assertEqual(garland["profile_projection"]["active_profile"]["node_id"], "3-2-3-17-77")
             self.assertTrue(garland["geospatial_projection"]["feature_collection"]["features"])
@@ -544,12 +557,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
             self.assertEqual(
                 interface_body["wiring_sequence"],
-                ["synthetic_baseline", "real_garland_geometry", "real_ordered_hierarchy"],
+                ["staged_root_opening", "real_garland_projection", "real_diktataograph_projection"],
             )
-            ordered_path_ids = [
-                entry["node_id"]
-                for entry in navigation_canvas["ordered_hierarchy"]["active_path"]
-            ]
+            ordered_path_ids = [entry["node_id"] for entry in navigation_canvas["anchored_path"]["entries"]]
             self.assertEqual(
                 ordered_path_ids[:5],
                 ["3", "3-2", "3-2-3", "3-2-3-17", "3-2-3-17-77"],

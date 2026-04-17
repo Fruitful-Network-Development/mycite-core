@@ -212,9 +212,17 @@ This is an interface-panel-led tool model, not a generic workbench page model.
   - `Garland` profile pane (`profile_projection`)
 - Section visibility is not allowed to collapse based on projection/document readiness.
 - `Diktataograph` is emitted through `navigation_canvas`.
-- `navigation_canvas.mode` is explicit and defaults to `ordered_hierarchy`.
+- `navigation_canvas.mode` is explicit and defaults to `staged_diktataograph`.
 - `navigation_canvas.mode=legacy_branch_canvas` remains available for compatibility with the legacy branch-card renderer.
-- `navigation_canvas.ordered_hierarchy` carries the ordered navigation payload:
+- `navigation_canvas.staged_blocks` carries the staged navigation payload:
+  - `block_id`
+  - `depth`
+  - `anchor_node_id`
+  - `anchor_title`
+  - `entries`
+  - `selected_node_id`
+  - `spawn_from_node_id`
+- legacy `navigation_canvas.ordered_hierarchy` remains available only as compatibility payload:
   - `columns`
   - `active_path`
   - `selected_node_id`
@@ -224,10 +232,10 @@ This is an interface-panel-led tool model, not a generic workbench page model.
   - dominant `geospatial_projection`
   - secondary `profile_projection`
 - CTS-GIS wiring order is explicit and deterministic:
-  - `synthetic_baseline` scaffold first
-  - `real_garland_geometry` swap next
-  - `real_ordered_hierarchy` swap last
-- Title rendering in ordered hierarchy is strict: if a title is not ASCII-decodable from administrative source evidence, title cell output is blank.
+  - `staged_root_opening` scaffold first
+  - `real_garland_projection` swap next
+  - `real_diktataograph_projection` swap last
+- Title rendering in staged Diktataograph rows is strict: if a title is not ASCII-decodable from administrative source evidence, title output is blank.
 - In narrow posture, the same regions may stack vertically while preserving all four regions and stable titles.
 
 ### CTS-GIS Evidence Precedence

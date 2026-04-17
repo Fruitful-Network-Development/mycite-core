@@ -61,11 +61,12 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("geospatial_projection", shell_contract)
         self.assertIn("profile_projection", shell_contract)
         self.assertIn("four visible regions", shell_contract.lower())
-        self.assertIn("ordered_hierarchy", shell_contract)
+        self.assertIn("staged_diktataograph", shell_contract)
+        self.assertIn("staged_blocks", shell_contract)
         self.assertIn("legacy_branch_canvas", shell_contract)
-        self.assertIn("synthetic_baseline", shell_contract)
-        self.assertIn("real_garland_geometry", shell_contract)
-        self.assertIn("real_ordered_hierarchy", shell_contract)
+        self.assertIn("staged_root_opening", shell_contract)
+        self.assertIn("real_garland_projection", shell_contract)
+        self.assertIn("real_diktataograph_projection", shell_contract)
         self.assertIn("blank", shell_contract.lower())
         self.assertIn("cts-gis", shell_contract.lower())
         self.assertIn("authenticated peripheral package", shell_contract.lower())
@@ -134,6 +135,7 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("garland_split_projection", surface_catalog)
         self.assertIn("geospatial_projection", surface_catalog)
         self.assertIn("profile_projection", surface_catalog)
+        self.assertIn("staged_blocks", surface_catalog)
         self.assertIn("tool-local state is body-carried", surface_catalog.lower())
 
     def test_route_model_uses_detail_lens_and_interface_panel_terms(self) -> None:
@@ -147,10 +149,11 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("Garland", route_model)
         self.assertIn("navigation_canvas", route_model)
         self.assertIn("garland_split_projection", route_model)
-        self.assertIn("ordered_hierarchy", route_model)
+        self.assertIn("staged_diktataograph", route_model)
+        self.assertIn("staged_blocks", route_model)
         self.assertIn("legacy_branch_canvas", route_model)
-        self.assertIn("real_garland_geometry", route_model)
-        self.assertIn("real_ordered_hierarchy", route_model)
+        self.assertIn("real_garland_projection", route_model)
+        self.assertIn("real_diktataograph_projection", route_model)
 
 
 if __name__ == "__main__":

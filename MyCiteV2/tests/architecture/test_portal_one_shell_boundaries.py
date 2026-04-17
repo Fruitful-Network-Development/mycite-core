@@ -151,10 +151,13 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("renderStructureCanvas", (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
         ).read_text(encoding="utf-8"))
+        self.assertIn("renderStagedDiktataographCanvas", (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8"))
         self.assertIn("renderOrderedHierarchyCanvas", (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
         ).read_text(encoding="utf-8"))
-        self.assertIn('"ordered_hierarchy"', (
+        self.assertIn('"staged_diktataograph"', (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn('"legacy_branch_canvas"', (
@@ -165,6 +168,9 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         ).read_text(encoding="utf-8"))
         self.assertIn("cts-gis-garlandSplit__geospatial", portal_css)
         self.assertIn("cts-gis-structureCanvas", portal_css)
+        self.assertIn("cts-gis-stagedDiktataograph", portal_css)
+        self.assertIn("cts-gis-lineageBlock", portal_css)
+        self.assertIn("cts-gis-lineageRow__meta", portal_css)
         self.assertIn("cts-gis-orderedHierarchy", portal_css)
         self.assertIn("cts-gis-orderedNode__msn", portal_css)
         self.assertIn("cts-gis-mapStage__svg", portal_css)
