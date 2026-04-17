@@ -214,11 +214,9 @@ This is an interface-panel-led tool model, not a generic workbench page model.
 - `Diktataograph` is emitted through `navigation_canvas`.
 - `navigation_canvas.mode` is explicit and defaults to `directory_dropdowns`.
 - `navigation_canvas.source_authority` is `samras_magnitude`.
-- `navigation_canvas.decode_state` is fail-closed and may be:
+- `navigation_canvas.decode_state` is fail-closed only when no valid structure can be recovered, and may be:
   - `ready`
   - `blocked_invalid_magnitude`
-  - `blocked_duplicate_node_row`
-  - `blocked_node_outside_magnitude`
 - `navigation_canvas.dropdowns` carries the directory payload:
   - `depth`
   - `parent_node_id`
@@ -233,6 +231,7 @@ This is an interface-panel-led tool model, not a generic workbench page model.
 - `navigation_canvas.active_path` carries the currently resolved structural lineage.
 - Root display labels render `1 NEG` through `8 SWG`.
 - Deeper display labels render `<node_id> <ascii_title>`, and title output is blank when ASCII decoding fails.
+- duplicate node rows and out-of-range overlay rows remain diagnostics but do not block bare node-id navigation when the structure itself is valid.
 - `Garland` materializes as `garland_split_projection` with:
   - dominant `geospatial_projection`
   - secondary `profile_projection`
