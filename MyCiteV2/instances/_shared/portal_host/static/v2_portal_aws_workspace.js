@@ -19,6 +19,26 @@
     }
   }
 
+  function asObject(value) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  }
+
+  function asList(value) {
+    return Array.isArray(value) ? value.slice() : [];
+  }
+
+  function asText(value) {
+    return String(value == null ? "" : value).trim();
+  }
+
+  function prettifyKey(value) {
+    return asText(value)
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, function (match) {
+        return match.toUpperCase();
+      });
+  }
+
   function toolSurfaceAdapter() {
     return window.PortalToolSurfaceAdapter || {};
   }
@@ -34,6 +54,29 @@
         section: "section",
       },
       overrides: overrides,
+    });
+  }
+
+  function buildActionRequest(ctx, workspace, surfacePayload, actionKind, actionPayload) {
+    var envelope = (ctx && ctx.getEnvelope && ctx.getEnvelope()) || {};
+    var contract = asObject(surfacePayload && surfacePayload.action_contract);
+    var directRequest = buildSurfaceRequest(ctx, workspace, {});
+    return {
+      schema: asText(contract.request_schema),
+      portal_scope: envelope.portal_scope || directRequest.portal_scope || { scope_id: "fnd", capabilities: [] },
+      shell_state: envelope.shell_state || undefined,
+      surface_query: directRequest.surface_query || { view: "domains" },
+      action_kind: actionKind,
+      action_payload: actionPayload || {},
+    };
+  }
+
+  function submitAction(ctx, workspace, surfacePayload, actionKind, actionPayload) {
+    var contract = asObject(surfacePayload && surfacePayload.action_contract);
+    var route = asText(contract.route);
+    if (!route) return;
+    ctx.loadRuntimeView(route, buildActionRequest(ctx, workspace, surfacePayload, actionKind, actionPayload), {
+      replaceHistory: true,
     });
   }
 
@@ -73,6 +116,25 @@
         .join("") +
       "</dl>"
     );
+  }
+
+  function renderKeyValueRows(obj, preferredOrder) {
+    var payload = asObject(obj);
+    var seen = {};
+    var rows = [];
+    (preferredOrder || []).forEach(function (key) {
+      var value = asText(payload[key]);
+      if (!value) return;
+      rows.push({ label: prettifyKey(key), value: value });
+      seen[key] = true;
+    });
+    Object.keys(payload).forEach(function (key) {
+      if (seen[key]) return;
+      var value = asText(payload[key]);
+      if (!value) return;
+      rows.push({ label: prettifyKey(key), value: value });
+    });
+    return rows;
   }
 
   function profileFactRows(profile) {
@@ -145,7 +207,9 @@
 
   function renderMailboxGallery(workspace) {
     var rows = workspace.mailbox_rows || [];
-    if (!rows.length) return "";
+    if (!rows.length) {
+      return '<section class="v2-card" style="margin-top:12px"><h3>User Email Gallery</h3><p>No AWS-CSM user emails are configured for this domain yet.</p></section>';
+    }
     return (
       '<section class="v2-card" style="margin-top:12px"><h3>User Email Gallery</h3><div class="aws-csm-profileGrid">' +
       rows
@@ -177,9 +241,146 @@
     );
   }
 
+  function renderCreateProfileCard(workspace) {
+    var createProfile = asObject(workspace.selected_domain_create_profile);
+    var domain = asText(createProfile.domain);
+    if (!domain) return "";
+    if (!createProfile.enabled) {
+      return (
+        '<section class="v2-card" style="margin-top:12px"><h3>Add User</h3><p>' +
+        escapeHtml(createProfile.disabled_reason || "This domain is not ready for add-user yet.") +
+        "</p>" +
+        renderInfoRows(
+          renderKeyValueRows(createProfile, ["domain", "tenant_id", "region"])
+        ) +
+        "</section>"
+      );
+    }
+    return (
+      '<section class="v2-card" style="margin-top:12px"><h3>Add User</h3><p>Create a draft AWS-CSM profile and continue directly into the same onboarding workflow.</p>' +
+      renderInfoRows(
+        renderKeyValueRows(createProfile, ["domain", "tenant_id", "region", "default_role"])
+      ) +
+      '<form data-aws-create-profile-form style="margin-top:12px">' +
+      '<input type="hidden" name="domain" value="' +
+      escapeHtml(domain) +
+      '" />' +
+      '<input type="hidden" name="role" value="' +
+      escapeHtml(createProfile.default_role || "operator") +
+      '" />' +
+      '<label class="v2-formField"><span>Mailbox Local Part</span><input type="text" name="mailbox_local_part" placeholder="alex" required /></label>' +
+      '<label class="v2-formField"><span>Single User Email</span><input type="email" name="single_user_email" placeholder="alex@example.com" required /></label>' +
+      '<label class="v2-formField"><span>Forwarded Operator Inbox</span><input type="email" name="operator_inbox_target" placeholder="leave blank to use the single user email" /></label>' +
+      '<div style="margin-top:12px"><button type="submit" class="ide-sessionAction ide-sessionAction--button">Create Draft User</button></div>' +
+      "</form></section>"
+    );
+  }
+
+  function renderOnboardingActions(onboarding) {
+    var actions = asList(onboarding && onboarding.actions);
+    if (!actions.length) return "";
+    return (
+      '<div class="aws-csm-flowForm__actions">' +
+      actions
+        .map(function (action) {
+          var disabled = action.enabled === false;
+          return (
+            '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-action-kind="' +
+            escapeHtml(action.kind || "") +
+            '"' +
+            (disabled ? ' disabled="disabled"' : "") +
+            (action.disabled_reason ? ' title="' + escapeHtml(action.disabled_reason) + '"' : "") +
+            ">" +
+            escapeHtml(action.label || action.kind || "Run") +
+            "</button>"
+          );
+        })
+        .join("") +
+      "</div>"
+    );
+  }
+
+  function renderHandoffCard(onboarding) {
+    var handoff = asObject(onboarding && onboarding.handoff);
+    if (!asText(handoff.send_as_email)) return "";
+    return (
+      '<section class="v2-card" style="margin-top:12px"><h3>Handoff</h3><p>Split-secret Gmail handoff keeps the SMTP password out of stored profile state and instruction emails.</p>' +
+      renderInfoRows(
+        renderKeyValueRows(handoff, [
+          "send_as_email",
+          "single_user_email",
+          "operator_inbox_target",
+          "forward_target",
+          "smtp_host",
+          "smtp_port",
+          "smtp_username",
+          "secret_name",
+          "secret_state",
+        ])
+      ) +
+      "</section>"
+    );
+  }
+
+  function renderActionResult(surfacePayload) {
+    var result = asObject(surfacePayload && surfacePayload.action_result);
+    if (!asText(result.action_kind) && !asText(result.message)) return "";
+    var detailRows = renderKeyValueRows(result.details, [
+      "profile_id",
+      "tenant_id",
+      "tenant_scope_id",
+      "domain",
+      "send_as_email",
+      "single_user_email",
+      "operator_inbox_target",
+      "sent_to",
+      "message_id",
+      "secret_name",
+      "state",
+    ]);
+    var handoffDispatchRows = renderKeyValueRows(result.handoff_dispatch, [
+      "sent_to",
+      "send_as_email",
+      "username",
+      "smtp_host",
+      "smtp_port",
+      "message_id",
+      "state",
+    ]);
+    var secretRows = renderKeyValueRows(result.ephemeral_secret, [
+      "send_as_email",
+      "username",
+      "password",
+      "smtp_host",
+      "smtp_port",
+      "secret_name",
+      "state",
+    ]);
+    return (
+      '<section class="v2-card" style="margin-top:12px"><h3>Latest Action</h3><p><strong>' +
+      escapeHtml(prettifyKey(result.status || "accepted")) +
+      "</strong> · " +
+      escapeHtml(prettifyKey(result.action_kind || "action")) +
+      "</p><p>" +
+      escapeHtml(result.message || "") +
+      "</p>" +
+      (detailRows.length ? renderInfoRows(detailRows) : "") +
+      (handoffDispatchRows.length
+        ? '<div style="margin-top:12px"><h4>Handoff Dispatch</h4>' + renderInfoRows(handoffDispatchRows) + "</div>"
+        : "") +
+      (secretRows.length
+        ? '<div style="margin-top:12px"><h4>Ephemeral SMTP Secret</h4><p>This password is shown only in this response and is not persisted to profile JSON.</p>' +
+          renderInfoRows(secretRows) +
+          "</div>"
+        : "") +
+      "</section>"
+    );
+  }
+
   function renderOnboardingSection(workspace) {
     var selected = workspace.selected_profile || null;
     var rows = workspace.mailbox_rows || [];
+    var onboarding = asObject(workspace.selected_profile_onboarding);
     if (!selected && !rows.length) return "";
     if (selected) {
       return (
@@ -187,7 +388,18 @@
         escapeHtml(selected.title || selected.profile_id || "") +
         "</p>" +
         renderInfoRows(profileFactRows(selected)) +
-        "</section>"
+        renderInfoRows(
+          renderKeyValueRows(onboarding, [
+            "workflow_state",
+            "handoff_status",
+            "verification_state",
+            "provider_state",
+            "inbound_state",
+          ])
+        ) +
+        renderOnboardingActions(onboarding) +
+        "</section>" +
+        renderHandoffCard(onboarding)
       );
     }
     return (
@@ -234,7 +446,7 @@
     );
   }
 
-  function renderSelectedDomain(workspace) {
+  function renderSelectedDomain(workspace, surfacePayload) {
     var domain = workspace.selected_domain || "";
     if (!domain) return "";
     var section = (workspace.active_filters && workspace.active_filters.section) || "";
@@ -248,7 +460,8 @@
       renderSectionButtons(workspace) +
       '<div class="aws-csm-flowForm__actions"><button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-domain-clear>Back to Domain Gallery</button></div>' +
       "</section>" +
-      (showUsers ? renderMailboxGallery(workspace) : "") +
+      renderActionResult(surfacePayload) +
+      (showUsers ? renderCreateProfileCard(workspace) + renderMailboxGallery(workspace) : "") +
       (showOnboarding ? renderOnboardingSection(workspace) : "") +
       (showNewsletter ? renderNewsletterSection(workspace) : "")
     );
@@ -267,6 +480,35 @@
     );
   }
 
+  function bindCreateProfileForm(target, ctx, workspace, surfacePayload) {
+    var form = target.querySelector("[data-aws-create-profile-form]");
+    if (!form) return;
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var payload = {};
+      Array.prototype.forEach.call(form.querySelectorAll("input, textarea, select"), function (field) {
+        if (!field.name) return;
+        var value = field.value;
+        if (value == null || value === "") return;
+        payload[field.name] = value;
+      });
+      submitAction(ctx, workspace, surfacePayload, "create_profile", payload);
+    });
+  }
+
+  function bindOnboardingActions(target, ctx, workspace, surfacePayload) {
+    Array.prototype.forEach.call(target.querySelectorAll("[data-aws-action-kind]"), function (button) {
+      if (button.disabled) return;
+      button.addEventListener("click", function () {
+        var kind = button.getAttribute("data-aws-action-kind") || "";
+        var selected = asObject(workspace.selected_profile);
+        submitAction(ctx, workspace, surfacePayload, kind, {
+          profile_id: selected.profile_id || "",
+        });
+      });
+    });
+  }
+
   window.PortalAwsCsmWorkspaceRenderer = {
     render: function (ctx, target, surfacePayload) {
       var workspace = (surfacePayload && surfacePayload.workspace) || {};
@@ -282,9 +524,12 @@
         }),
         renderCards(surfacePayload.cards || []) +
           renderDomainGallery(workspace) +
-          renderSelectedDomain(workspace) +
+          renderSelectedDomain(workspace, surfacePayload) +
           renderNotes(surfacePayload.notes || [])
       );
+
+      bindCreateProfileForm(target, ctx, workspace, surfacePayload);
+      bindOnboardingActions(target, ctx, workspace, surfacePayload);
 
       Array.prototype.forEach.call(target.querySelectorAll("[data-aws-domain]"), function (button) {
         button.addEventListener("click", function () {
@@ -295,7 +540,7 @@
       Array.prototype.forEach.call(target.querySelectorAll("[data-aws-profile]"), function (button) {
         button.addEventListener("click", function () {
           var profile = button.getAttribute("data-aws-profile") || "";
-          ctx.loadShell(buildSurfaceRequest(ctx, workspace, { profile: profile }));
+          ctx.loadShell(buildSurfaceRequest(ctx, workspace, { profile: profile, section: null }));
         });
       });
       Array.prototype.forEach.call(target.querySelectorAll("[data-aws-section]"), function (button) {
@@ -324,6 +569,7 @@
       var tool = (surfacePayload && surfacePayload.tool) || {};
       var profile = workspace.selected_profile || null;
       var newsletter = workspace.selected_newsletter || null;
+      var actionResult = asObject(surfacePayload && surfacePayload.action_result);
       var adapter = toolSurfaceAdapter();
       if (!target) return;
       adapter.renderWrappedSurface(
@@ -351,6 +597,20 @@
               renderInfoRows(newsletterRows(newsletter)) +
               "</section>"
             : '<section class="v2-card" style="margin-top:12px"><h3>Selection</h3><p>Select a domain or user email to inspect AWS-CSM state without leaving the unified tool surface.</p></section>') +
+        (asText(actionResult.message)
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Latest Action</h3>' +
+            renderInfoRows(
+              renderKeyValueRows(
+                {
+                  action_kind: actionResult.action_kind,
+                  status: actionResult.status,
+                  message: actionResult.message,
+                },
+                ["action_kind", "status", "message"]
+              )
+            ) +
+            "</section>"
+          : "") +
         ((profile && profile.raw) || (newsletter && newsletter.raw)
           ? '<section class="v2-card" style="margin-top:12px"><h3>Raw Payload</h3><pre class="v2-networkInspector__json">' +
             escapeHtml(compactJson((profile && profile.raw) || (newsletter && newsletter.raw) || {})) +

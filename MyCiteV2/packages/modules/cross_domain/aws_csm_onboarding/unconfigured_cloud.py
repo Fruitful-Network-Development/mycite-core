@@ -67,5 +67,13 @@ class AwsCsmOnboardingUnconfiguredCloudPort:
             },
         }
 
+    def send_handoff_email(self, profile: dict[str, Any]) -> dict[str, Any]:
+        _ = profile
+        raise ValueError("AWS-backed onboarding handoff is not configured in this runtime.")
+
+    def read_handoff_secret(self, profile: dict[str, Any]) -> dict[str, Any]:
+        _ = profile
+        raise ValueError("AWS-backed onboarding handoff is not configured in this runtime.")
+
 
 __all__ = ["AwsCsmOnboardingUnconfiguredCloudPort"]

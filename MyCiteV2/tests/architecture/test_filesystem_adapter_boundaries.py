@@ -39,6 +39,7 @@ def _is_allowed_absolute_import(module_name: str) -> bool:
         module_name.startswith("MyCiteV2.packages.ports.audit_log")
         or module_name.startswith("MyCiteV2.packages.ports.aws_csm_newsletter")
         or module_name.startswith("MyCiteV2.packages.ports.aws_csm_onboarding")
+        or module_name.startswith("MyCiteV2.packages.ports.aws_csm_profile_registry")
         or module_name.startswith("MyCiteV2.packages.ports.aws_read_only_status")
         or module_name.startswith("MyCiteV2.packages.ports.aws_narrow_write")
         or module_name.startswith("MyCiteV2.packages.ports.datum_store")

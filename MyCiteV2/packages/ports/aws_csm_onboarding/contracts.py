@@ -34,6 +34,14 @@ class AwsCsmOnboardingCloudPort(Protocol):
         """AWS-backed readiness/evidence summary used for operator-facing surfaces."""
         ...
 
+    def send_handoff_email(self, profile: dict[str, Any]) -> dict[str, Any]:
+        """Send the non-secret SMTP handoff instructions to the operator inbox target."""
+        ...
+
+    def read_handoff_secret(self, profile: dict[str, Any]) -> dict[str, Any]:
+        """Return ephemeral SMTP material for operator-only handoff without persisting it."""
+        ...
+
 
 _ALLOWED_ACTIONS = frozenset(
     {
