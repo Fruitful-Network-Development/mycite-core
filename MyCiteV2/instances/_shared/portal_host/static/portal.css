@@ -6200,6 +6200,9 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 
 .cts-gis-interface__body {
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  grid-template-areas:
+    "diktataograph garland-geospatial"
+    "diktataograph garland-profile";
   align-items: stretch;
   min-height: 0;
 }
@@ -6212,6 +6215,18 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   min-height: 0;
 }
 
+.cts-gis-pane--diktataograph {
+  grid-area: diktataograph;
+}
+
+.cts-gis-pane--garlandGeospatial {
+  grid-area: garland-geospatial;
+}
+
+.cts-gis-pane--garlandProfile {
+  grid-area: garland-profile;
+}
+
 .cts-gis-pane__header {
   min-width: 0;
 }
@@ -6220,6 +6235,35 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   margin: 0.35rem 0 0;
   color: var(--ink2, #667068);
   line-height: 1.4;
+}
+
+.cts-gis-pane__body--scaffold {
+  padding: 0.85rem;
+  border: 1px dashed color-mix(in srgb, var(--line, #c8cec8) 82%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 42%, #fff 58%);
+}
+
+.cts-gis-scaffoldPlaceholder {
+  padding: 0.7rem 0.8rem;
+  border: 1px dashed color-mix(in srgb, var(--line, #c8cec8) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 92%, #fff 8%);
+}
+
+.cts-gis-scaffoldPlaceholder__title {
+  margin: 0 0 0.22rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-scaffoldPlaceholder__body {
+  margin: 0;
+  color: var(--ink2, #667068);
+  line-height: 1.45;
 }
 
 .cts-gis-navCanvas {
@@ -6647,6 +6691,10 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 @media (max-width: 960px) {
   .cts-gis-interface__body {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "diktataograph"
+      "garland-geospatial"
+      "garland-profile";
   }
 
   .cts-gis-structureCanvas {

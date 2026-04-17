@@ -592,37 +592,27 @@
     var interfaceBody = normalizeCtsGisInterfaceBody(region.interface_body || {});
     var contextStrip = interfaceBody.context_strip || {};
     var navigationCanvas = interfaceBody.navigation_canvas || {};
-    var anchoredPath = navigationCanvas.anchored_path || {};
-    var structureField = navigationCanvas.structure_field || {};
-    var projectionRuleField = navigationCanvas.projection_rule_field || {};
     var garlandSplit = interfaceBody.garland_split_projection || {};
     var geospatialProjection = garlandSplit.geospatial_projection || {};
     var profileProjection = garlandSplit.profile_projection || {};
-    (anchoredPath.entries || []).forEach(function (entry, index) {
-      entry._renderIndex = index;
-    });
-    (structureField.entries || []).forEach(function (entry, index) {
-      entry._renderIndex = index;
-    });
-    (projectionRuleField.entries || []).forEach(function (entry, index) {
-      entry._renderIndex = index;
-    });
-    (profileProjection.projected_rows || []).forEach(function (entry, index) {
-      entry._renderIndex = index;
-    });
-    (geospatialProjection.features || []).forEach(function (entry, index) {
-      entry._renderIndex = index;
-    });
     var entriesByKind = {
-      path: anchoredPath.entries || [],
-      node: structureField.entries || [],
-      rule: projectionRuleField.entries || [],
-      row: profileProjection.projected_rows || [],
-      feature: geospatialProjection.features || [],
-      lineage: anchoredPath.entries || [],
-      navigation: structureField.entries || [],
-      intention: projectionRuleField.entries || [],
+      path: [],
+      node: [],
+      rule: [],
+      row: [],
+      feature: [],
+      lineage: [],
+      navigation: [],
+      intention: [],
     };
+    var contextItems = (contextStrip && contextStrip.items) || [];
+    var diktataographEntries =
+      ((navigationCanvas.anchored_path || {}).entries || []).length +
+      ((navigationCanvas.structure_field || {}).entries || []).length +
+      ((navigationCanvas.projection_rule_field || {}).entries || []).length;
+    var geospatialFeatures = (geospatialProjection.features || []).length;
+    var projectedRows = (profileProjection.projected_rows || []).length;
+    var correlatedProfiles = (profileProjection.correlated_profiles || []).length;
 
     target.innerHTML =
       '<div class="system-tool-interface cts-gis-interface">' +
@@ -630,7 +620,14 @@
       '<h3>' +
       escapeHtml((contextStrip && contextStrip.title) || "CTS-GIS Context") +
       "</h3>" +
-      renderCompactContextStrip((contextStrip && contextStrip.items) || []) +
+      '<div class="cts-gis-scaffoldPlaceholder">' +
+      '<p class="cts-gis-scaffoldPlaceholder__title">Context Strip</p>' +
+      '<p class="cts-gis-scaffoldPlaceholder__body">' +
+      (contextItems.length
+        ? escapeHtml(String(contextItems.length) + " context markers available.")
+        : "No context markers loaded yet. Region remains visible by design.") +
+      "</p>" +
+      "</div>" +
       "</section>" +
       '<div class="system-tool-interface__body cts-gis-interface__body" data-cts-gis-layout="' +
       escapeHtml(interfaceBody.layout || "dual_section") +
@@ -643,112 +640,43 @@
       "</h3><p>" +
       escapeHtml(navigationCanvas.summary || "") +
       "</p></header>" +
-      '<section class="cts-gis-navCanvas" data-cts-gis-nav-canvas="structure">' +
-      renderStructureCanvas(anchoredPath.entries || [], structureField.entries || [], navigationCanvas.active_node_id || "") +
-      '<section class="cts-gis-navField cts-gis-navField--projectionRules"><h4>' +
-      escapeHtml(projectionRuleField.title || "Projection Rule") +
-      "</h4>" +
-      renderRequestButtons(projectionRuleField.entries || [], "rule", {
-        listClass: "cts-gis-navField__ruleEntries",
-        buttonClass: "cts-gis-entryButton cts-gis-entryButton--rule",
-        emptyMessage: "No projection rules are available.",
-      }) +
+      '<section class="cts-gis-pane__body cts-gis-pane__body--scaffold">' +
+      '<p class="cts-gis-scaffoldPlaceholder__title">Diktataograph Pane</p>' +
+      '<p class="cts-gis-scaffoldPlaceholder__body">' +
+      (diktataographEntries
+        ? escapeHtml(String(diktataographEntries) + " navigation artifacts present; scaffold mode hides mediation renderer.")
+        : "No navigation artifacts loaded yet. Pane remains visible by design.") +
       "</section>" +
       "</section>" +
-      "</section>" +
-      '<section class="v2-card cts-gis-pane cts-gis-pane--garland">' +
+      '<section class="v2-card cts-gis-pane cts-gis-pane--garlandGeospatial">' +
       '<header class="cts-gis-pane__header"><h3>' +
-      escapeHtml(garlandSplit.title || "Garland") +
+      escapeHtml(geospatialProjection.title || "Garland Geospatial") +
       "</h3><p>" +
-      escapeHtml(garlandSplit.summary || "") +
+      "Persistent geospatial region scaffold." +
       "</p></header>" +
-      '<div class="cts-gis-garlandSplit">' +
-      '<section class="cts-gis-garlandSplit__geospatial"><h4>' +
-      escapeHtml(geospatialProjection.title || "Geospatial Projection") +
-      "</h4>" +
-      '<div class="cts-gis-mapCanvas">' +
-      '<div class="cts-gis-mapCanvas__state">' +
-      '<span class="cts-gis-mapCanvas__status">state: ' +
-      escapeHtml(geospatialProjection.projection_state || "inspect_only") +
-      "</span>" +
-      '<span class="cts-gis-mapCanvas__status">features: ' +
-      escapeHtml(String(geospatialProjection.feature_count || 0)) +
-      "</span>" +
-      '<span class="cts-gis-mapCanvas__status">rows: ' +
-      escapeHtml(String(geospatialProjection.render_row_count || 0)) +
-      "</span>" +
-      "</div>" +
-      renderGeospatialStage(geospatialProjection) +
-      ((geospatialProjection.collection_bounds || []).length
-        ? '<p class="cts-gis-mapCanvas__meta">collection bounds: ' +
-          escapeHtml((geospatialProjection.collection_bounds || []).join(", ")) +
-          "</p>"
-        : "") +
-      ((geospatialProjection.selected_feature_id || "")
-        ? '<p class="cts-gis-mapCanvas__meta">selected feature: ' +
-          escapeHtml(geospatialProjection.selected_feature_id || "") +
-          (geospatialProjection.selected_feature_geometry_type
-            ? " (" + escapeHtml(geospatialProjection.selected_feature_geometry_type || "") + ")"
-            : "") +
-          "</p>"
-        : "") +
-      ((geospatialProjection.selected_feature_bounds || []).length
-        ? '<p class="cts-gis-mapCanvas__meta">selected bounds: ' +
-          escapeHtml((geospatialProjection.selected_feature_bounds || []).join(", ")) +
-          "</p>"
-        : "") +
-      '<div class="cts-gis-mapCanvas__featureList">' +
-      renderRequestButtons(geospatialProjection.features || [], "feature", {
-        listClass: "cts-gis-mapCanvas__featureEntries",
-        buttonClass: "cts-gis-entryButton cts-gis-entryButton--feature",
-        emptyMessage: geospatialProjection.empty_message || "No projected geometry is available for the current navigation root.",
-      }) +
-      "</div>" +
-      "</div>" +
+      '<section class="cts-gis-pane__body cts-gis-pane__body--scaffold">' +
+      '<p class="cts-gis-scaffoldPlaceholder__title">Garland Geospatial Pane</p>' +
+      '<p class="cts-gis-scaffoldPlaceholder__body">' +
+      (geospatialFeatures
+        ? escapeHtml(String(geospatialFeatures) + " projected features available; scaffold mode keeps placeholder body.")
+        : "No projected geometry loaded yet. Pane remains visible by design.") +
       "</section>" +
-      '<section class="cts-gis-garlandSplit__profile"><h4>' +
+      "</section>" +
+      '<section class="v2-card cts-gis-pane cts-gis-pane--garlandProfile">' +
+      '<header class="cts-gis-pane__header"><h3>' +
       escapeHtml(profileProjection.title || "Profile Projection") +
-      "</h4>" +
-      '<section class="cts-gis-garlandSplit__profileBlock"><h5>Hierarchy</h5>' +
-      renderProfileHierarchy(profileProjection.hierarchy || []) +
-      "</section>" +
-      '<section class="cts-gis-garlandSplit__profileBlock"><h5>Current Profile</h5>' +
-      '<article class="cts-gis-profileSummary cts-gis-profileSummary--active">' +
-      "<strong>" +
-      escapeHtml((profileProjection.active_profile || {}).label || "Active profile") +
-      "</strong>" +
-      '<span class="cts-gis-profileSummary__meta">' +
-      escapeHtml((profileProjection.active_profile || {}).node_id || "") +
-      "</span>" +
-      '<span class="cts-gis-profileSummary__meta">' +
+      "</h3><p>Persistent profile region scaffold.</p></header>" +
+      '<section class="cts-gis-pane__body cts-gis-pane__body--scaffold">' +
+      '<p class="cts-gis-scaffoldPlaceholder__title">Garland Profile Pane</p>' +
+      '<p class="cts-gis-scaffoldPlaceholder__body">' +
       escapeHtml(
-        String((profileProjection.active_profile || {}).feature_count || 0) +
-          " features · " +
-          String((profileProjection.active_profile || {}).child_count || 0) +
-          " children"
+        String(projectedRows) +
+          " projected rows · " +
+          String(correlatedProfiles) +
+          " correlated profiles. Scaffold mode keeps placeholder body."
       ) +
-      "</span>" +
-      "</article></section>" +
-      renderRows(profileProjection.summary_rows || []) +
-      '<section class="cts-gis-garlandSplit__profileBlock"><h5>Projected Rows</h5>' +
-      renderRequestButtons(profileProjection.projected_rows || [], "row", {
-        emptyMessage: "No projected rows available.",
-      }) +
+      "</p>" +
       "</section>" +
-      '<section class="cts-gis-garlandSplit__profileBlock"><h5>Correlated Profiles</h5>' +
-      renderProfileSummaries(profileProjection.correlated_profiles || []) +
-      "</section>" +
-      ((profileProjection.warnings || []).length
-        ? '<section class="cts-gis-garlandSplit__profileBlock"><h5>Warnings</h5><ul class="cts-gis-warningList">' +
-          (profileProjection.warnings || [])
-            .map(function (warning) {
-              return "<li>" + escapeHtml(warning) + "</li>";
-            })
-            .join("") +
-          "</ul></section>"
-        : "") +
-      "</section>" +
-      "</div>" +
       "</section>" +
       "</div>" +
       "</div>";
