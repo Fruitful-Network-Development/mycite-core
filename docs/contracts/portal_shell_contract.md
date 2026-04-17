@@ -176,6 +176,8 @@ This is an interface-panel-led tool model, not a generic workbench page model.
   - `object`
 - CTS-GIS-local structural navigation does not add a new shell depth below `object`.
 - The canonical CTS-GIS request body may carry `tool_state`:
+  - `tool_state.active_path`
+  - `tool_state.selected_node_id`
   - `tool_state.nimm_directive`
   - `tool_state.aitas.attention_node_id`
   - `tool_state.aitas.intention_rule_id`
@@ -204,46 +206,46 @@ This is an interface-panel-led tool model, not a generic workbench page model.
 ### CTS-GIS Interface Body
 
 - The dominant `tool_mediation_panel` mounts one CTS-GIS-local interface body.
-- The CTS-GIS interface body is scaffold-first and role-shaped.
-- The frame always renders four visible regions regardless of evidence/readiness state:
-  - `CTS-GIS Context` strip
+- The CTS-GIS interface body is magnitude-first and role-shaped.
+- The frame always renders:
   - `Diktataograph` pane
   - `Garland` geospatial pane (`geospatial_projection`)
   - `Garland` profile pane (`profile_projection`)
-- Section visibility is not allowed to collapse based on projection/document readiness.
 - `Diktataograph` is emitted through `navigation_canvas`.
-- `navigation_canvas.mode` is explicit and defaults to `staged_diktataograph`.
-- `navigation_canvas.mode=legacy_branch_canvas` remains available for compatibility with the legacy branch-card renderer.
-- `navigation_canvas.staged_blocks` carries the staged navigation payload:
-  - `block_id`
+- `navigation_canvas.mode` is explicit and defaults to `directory_dropdowns`.
+- `navigation_canvas.source_authority` is `samras_magnitude`.
+- `navigation_canvas.decode_state` is fail-closed and may be:
+  - `ready`
+  - `blocked_invalid_magnitude`
+  - `blocked_duplicate_node_row`
+  - `blocked_node_outside_magnitude`
+- `navigation_canvas.dropdowns` carries the directory payload:
   - `depth`
-  - `anchor_node_id`
-  - `anchor_title`
-  - `entries`
+  - `parent_node_id`
   - `selected_node_id`
-  - `spawn_from_node_id`
-- legacy `navigation_canvas.ordered_hierarchy` remains available only as compatibility payload:
-  - `columns`
-  - `active_path`
-  - `selected_node_id`
-  - interaction metadata
-- Legacy fields (`anchored_path`, `structure_field`, `projection_rule_field`) remain present for compatibility.
+  - `options`
+- every dropdown option carries:
+  - `node_id`
+  - `title`
+  - `display_label`
+  - `selected`
+  - `shell_request`
+- `navigation_canvas.active_path` carries the currently resolved structural lineage.
+- Root display labels render `1 NEG` through `8 SWG`.
+- Deeper display labels render `<node_id> <ascii_title>`, and title output is blank when ASCII decoding fails.
 - `Garland` materializes as `garland_split_projection` with:
   - dominant `geospatial_projection`
   - secondary `profile_projection`
-- CTS-GIS wiring order is explicit and deterministic:
-  - `staged_root_opening` scaffold first
-  - `real_garland_projection` swap next
-  - `real_diktataograph_projection` swap last
-- Title rendering in staged Diktataograph rows is strict: if a title is not ASCII-decodable from administrative source evidence, title output is blank.
-- In narrow posture, the same regions may stack vertically while preserving all four regions and stable titles.
+- Garland populates only when the selected SAMRAS node resolves a valid profile and HOPS projection.
+- In narrow posture, the same regions may stack vertically while preserving the same contract.
 
 ### CTS-GIS Evidence Precedence
 
 - Tool governance file: `private/utilities/tools/cts-gis/spec.json`
 - Tool anchor file: `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
-- Structural seed: registrar payload or payload cache
-- Label evidence: supporting administrative payload cache through the ASCII lens
+- Structural authority: `data/payloads/cache/<corpus>.msn-administrative.json`
+- Tool-anchor fallback: `tool.<msn>.cts-gis.json` only when the same `msn-SAMRAS` datum is available there
+- Label evidence: `data/sandbox/cts-gis/sources/<corpus>.msn-administrative.json`
 - Spatial evidence: GeoJSON lens or equivalent cache derived from payload/payload-cache material
 - v2.5.4 phase-B is canonical-only:
   - tool id: `cts_gis`

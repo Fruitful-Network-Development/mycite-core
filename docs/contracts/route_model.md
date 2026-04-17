@@ -89,6 +89,8 @@ CTS-GIS request body contract:
 - shared shell query stays unchanged
 - tool-local state is carried in `tool_state`
 - CTS-GIS canonical `tool_state` keys are:
+  - `tool_state.active_path`
+  - `tool_state.selected_node_id`
   - `tool_state.nimm_directive`
   - `tool_state.aitas.attention_node_id`
   - `tool_state.aitas.intention_rule_id`
@@ -107,30 +109,22 @@ CTS-GIS runtime/body rules:
 
 - CTS-GIS is the `system.tools.cts_gis` tool_mediation_surface under `SYSTEM`
 - its default posture is interface-panel-led
-- the dominant Interface Panel mounts one CTS-GIS-local scaffold body with four always-rendered regions
-  - `CTS-GIS Context`
-  - `Diktataograph`
-  - `Garland` geospatial pane
-  - `Garland` profile pane
+- the dominant Interface Panel mounts one CTS-GIS-local body with `Diktataograph` and `Garland`
 - tool menubar toggles are single-click exclusive by default (`Workbench` or `Interface Panel`), with a route-scoped double-click lock that allows both
 - `Diktataograph` is projected through `navigation_canvas`
-- `navigation_canvas.mode` defaults to `staged_diktataograph`; `legacy_branch_canvas` remains available for compatibility
-- `navigation_canvas.staged_blocks` carries staged lineage-block payload with `block_id`, `depth`, `anchor_node_id`, `anchor_title`, `entries`, `selected_node_id`, and `spawn_from_node_id`
-- legacy `navigation_canvas.ordered_hierarchy` remains available for compatibility payload consumers
-- legacy `anchored_path`, `structure_field`, and `projection_rule_field` remain for compatibility
+- `navigation_canvas.mode` defaults to `directory_dropdowns`
+- `navigation_canvas.source_authority=samras_magnitude`
+- `navigation_canvas.decode_state` is fail-closed for invalid magnitude or conflicting node rows
+- `navigation_canvas.dropdowns` carries one dropdown per resolved structural depth
+- `navigation_canvas.active_path` carries the resolved lineage
 - `Garland` is projected through `garland_split_projection`, where dominant `geospatial_projection` and secondary `profile_projection` update for that navigation root
 - these are CTS-GIS-local projections of one mediation posture, not two separate shell mediations
-- `CTS-GIS Context` remains a compact orientation strip and does not become a primary visual section
-- CTS-GIS runtime wiring sequence is deterministic:
-  - `staged_root_opening`
-  - `real_garland_projection`
-  - `real_diktataograph_projection`
-- staged Diktataograph title fallback is blank-only when ASCII decoding is unavailable
+- title fallback is blank-only when ASCII decoding is unavailable
 - CTS-GIS supporting evidence precedence is:
   - `private/utilities/tools/cts-gis/spec.json`
   - `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
-  - registrar payload / payload cache
-  - administrative payload cache through the ASCII lens
+  - `data/payloads/cache/<corpus>.msn-administrative.json` for preferred `msn-SAMRAS` authority
+  - `data/sandbox/cts-gis/sources/<corpus>.msn-administrative.json` for ASCII title overlays
   - GeoJSON lens or equivalent runtime cache for spatial projection
 - v2.5.4 phase-B is canonical-only; CTS-GIS accepts only `cts_gis` / `cts-gis` / `sandbox:cts_gis:*` and `tool.<msn>.cts-gis.json`
 - legacy CTS-GIS aliases are rejected at the CTS-GIS tool endpoint with `400 legacy_maps_alias_unsupported`

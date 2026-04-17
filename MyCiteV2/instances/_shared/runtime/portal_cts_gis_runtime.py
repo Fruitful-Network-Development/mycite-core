@@ -12,6 +12,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     tool_exposure_enabled,
 )
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
+from MyCiteV2.packages.core.structures.samras import InvalidSamrasStructure, decode_structure
 from MyCiteV2.packages.modules.cross_domain.cts_gis import CtsGisReadOnlyService
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
@@ -42,12 +43,10 @@ _LEGACY_DOCUMENT_PREFIX = "sandbox:" + ("map" + "s") + ":"
 _SERVICE_SELF_TOKEN = "0"
 _SERVICE_CHILDREN_TOKEN = "1-0"
 _SERVICE_BRANCH_PREFIX = "branch:"
+_CTS_GIS_NAV_MODE_DIRECTORY = "directory_dropdowns"
 _CTS_GIS_NAV_MODE_STAGED = "staged_diktataograph"
 _CTS_GIS_NAV_MODE_ORDERED = "ordered_hierarchy"
 _CTS_GIS_NAV_MODE_LEGACY = "legacy_branch_canvas"
-_CTS_GIS_WIRING_STAGE_OPENING = "staged_root_opening"
-_CTS_GIS_WIRING_STAGE_GARLAND = "real_garland_projection"
-_CTS_GIS_WIRING_STAGE_HIERARCHY = "real_diktataograph_projection"
 
 
 class LegacyMapsAliasUnsupportedError(ValueError):
@@ -815,6 +814,371 @@ def _decode_ascii_title_babelette(value: object) -> str:
     return decoded.strip()
 
 
+def _row_data_tokens(raw_row: object) -> list[Any]:
+    if not isinstance(raw_row, list) or not raw_row:
+        return []
+    data_tokens = raw_row[0] if isinstance(raw_row[0], list) else raw_row
+    return list(data_tokens) if isinstance(data_tokens, list) else []
+
+
+def _row_label_tokens(raw_row: object) -> list[str]:
+    if not isinstance(raw_row, list) or len(raw_row) < 2 or not isinstance(raw_row[1], list):
+        return []
+    return [_as_text(item) for item in raw_row[1] if _as_text(item)]
+
+
+def _magnitude_authority_from_payload(
+    payload: dict[str, Any],
+    *,
+    source_kind: str,
+    source_path: str,
+) -> dict[str, Any]:
+    row_source = _split_row_source(payload)
+    for datum_address in sorted(row_source.keys(), key=_node_sort_key):
+        raw_row = row_source.get(datum_address)
+        labels = _row_label_tokens(raw_row)
+        if _as_text(labels[0] if labels else "").lower() != "msn-samras":
+            continue
+        data_tokens = _row_data_tokens(raw_row)
+        magnitude = _as_text(data_tokens[2] if len(data_tokens) > 2 else "")
+        return {
+            "source_kind": source_kind,
+            "source_path": source_path,
+            "datum_address": _as_text(datum_address),
+            "label": "msn-SAMRAS",
+            "magnitude": magnitude,
+        }
+    return {}
+
+
+def _preferred_samras_magnitude_authority(source_evidence: dict[str, Any]) -> dict[str, Any]:
+    cache_payload = dict((source_evidence.get("administrative_payload_cache") or {}).get("payload") or {})
+    cache_path = _as_text((source_evidence.get("administrative_payload_cache") or {}).get("path"))
+    cache_authority = _magnitude_authority_from_payload(
+        cache_payload,
+        source_kind="administrative_payload_cache",
+        source_path=cache_path,
+    )
+    if cache_authority:
+        return cache_authority
+    anchor_payload = dict((source_evidence.get("tool_anchor") or {}).get("payload") or {})
+    anchor_path = _as_text((source_evidence.get("tool_anchor") or {}).get("path"))
+    return _magnitude_authority_from_payload(
+        anchor_payload,
+        source_kind="tool_anchor",
+        source_path=anchor_path,
+    )
+
+
+def _collect_administrative_node_bindings(source_payload: dict[str, Any]) -> dict[str, Any]:
+    row_source = _split_row_source(source_payload)
+    bindings_by_node: dict[str, list[dict[str, Any]]] = {}
+    blank_title_nodes: set[str] = set()
+    for datum_address in sorted(row_source.keys(), key=_node_sort_key):
+        raw_row = row_source.get(datum_address)
+        data_tokens = _row_data_tokens(raw_row)
+        if not data_tokens:
+            continue
+        node_id = ""
+        title_bits = ""
+        for index, token in enumerate(data_tokens):
+            marker = _as_text(token)
+            if marker == "rf.3-1-2" and index + 1 < len(data_tokens):
+                node_id = _as_text(data_tokens[index + 1])
+            if marker == "rf.3-1-3" and index + 1 < len(data_tokens):
+                title_bits = _as_text(data_tokens[index + 1])
+        if not _looks_like_msn_node_id(node_id):
+            continue
+        decoded_title = _decode_ascii_title_babelette(title_bits)
+        if title_bits and not decoded_title:
+            blank_title_nodes.add(node_id)
+        bindings_by_node.setdefault(node_id, []).append(
+            {
+                "node_id": node_id,
+                "datum_address": _as_text(datum_address),
+                "title_bits": title_bits,
+                "title": decoded_title,
+            }
+        )
+    duplicates = sorted(
+        (node_id for node_id, bindings in bindings_by_node.items() if len(bindings) > 1),
+        key=_node_sort_key,
+    )
+    unique_bindings = {
+        node_id: bindings[0]
+        for node_id, bindings in bindings_by_node.items()
+        if len(bindings) == 1
+    }
+    return {
+        "bindings_by_node": bindings_by_node,
+        "unique_bindings": unique_bindings,
+        "duplicates": duplicates,
+        "blank_title_nodes": sorted(blank_title_nodes, key=_node_sort_key),
+    }
+
+
+def _navigation_diagnostic(
+    code: str,
+    message: str,
+    *,
+    severity: str = "error",
+    source_kind: str = "",
+    source_path: str = "",
+    node_ids: list[str] | None = None,
+    datum_addresses: list[str] | None = None,
+) -> dict[str, Any]:
+    diagnostic = {
+        "code": _as_text(code),
+        "severity": _as_text(severity) or "error",
+        "message": _as_text(message),
+    }
+    if _as_text(source_kind):
+        diagnostic["source_kind"] = _as_text(source_kind)
+    if _as_text(source_path):
+        diagnostic["source_path"] = _as_text(source_path)
+    if node_ids:
+        diagnostic["node_ids"] = [_as_text(item) for item in node_ids if _as_text(item)]
+    if datum_addresses:
+        diagnostic["datum_addresses"] = [_as_text(item) for item in datum_addresses if _as_text(item)]
+    return diagnostic
+
+
+def _directory_option_payload(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    resolved_tool_state: dict[str, Any],
+    node_id: str,
+    title_map: dict[str, str],
+    selected_node_id: str,
+) -> dict[str, Any]:
+    title = _as_text(title_map.get(node_id))
+    display_title = title.upper() if _node_depth(node_id) == 1 and title else title
+    display_label = f"{node_id} {display_title}".strip() if display_title else node_id
+    return {
+        "node_id": node_id,
+        "title": title,
+        "display_label": display_label,
+        "selected": node_id == selected_node_id,
+        "shell_request": _node_shell_request(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            tool_state=resolved_tool_state,
+            attention_node_id=node_id,
+        ),
+    }
+
+
+def _build_directory_dropdown_navigation(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    resolved_tool_state: dict[str, Any],
+    source_evidence: dict[str, Any],
+) -> dict[str, Any]:
+    authority = _preferred_samras_magnitude_authority(source_evidence)
+    source_payload = dict((source_evidence.get("administrative_source") or {}).get("payload") or {})
+    bindings = _collect_administrative_node_bindings(source_payload)
+    diagnostics: list[dict[str, Any]] = []
+    duplicate_nodes = list(bindings.get("duplicates") or [])
+    if duplicate_nodes:
+        duplicate_rows = [
+            _as_text(binding.get("datum_address"))
+            for node_id in duplicate_nodes
+            for binding in list((bindings.get("bindings_by_node") or {}).get(node_id) or [])
+            if _as_text(binding.get("datum_address"))
+        ]
+        diagnostics.append(
+            _navigation_diagnostic(
+                "duplicate_node_row",
+                "Administrative node rows bind the same SAMRAS address more than once.",
+                source_kind="administrative_source",
+                source_path=_as_text((source_evidence.get("administrative_source") or {}).get("path")),
+                node_ids=duplicate_nodes,
+                datum_addresses=duplicate_rows,
+            )
+        )
+
+    blank_title_nodes = list(bindings.get("blank_title_nodes") or [])
+    if blank_title_nodes:
+        diagnostics.append(
+            _navigation_diagnostic(
+                "blank_ascii_title",
+                "Some administrative node rows do not carry decodable ASCII title overlays; those nodes will render without titles.",
+                severity="warning",
+                source_kind="administrative_source",
+                source_path=_as_text((source_evidence.get("administrative_source") or {}).get("path")),
+                node_ids=blank_title_nodes[:25],
+            )
+        )
+
+    structure = None
+    decode_state = "ready"
+    if not _as_text(authority.get("magnitude")):
+        decode_state = "blocked_invalid_magnitude"
+        diagnostics.insert(
+            0,
+            _navigation_diagnostic(
+                "invalid_magnitude",
+                "CTS-GIS could not locate an msn-SAMRAS magnitude for the active corpus authority.",
+                source_kind=_as_text(authority.get("source_kind")) or "missing",
+                source_path=_as_text(authority.get("source_path")),
+            ),
+        )
+    else:
+        try:
+            structure = decode_structure(_as_text(authority.get("magnitude")), root_ref="0-0-5")
+        except InvalidSamrasStructure as exc:
+            decode_state = "blocked_invalid_magnitude"
+            diagnostics.insert(
+                0,
+                _navigation_diagnostic(
+                    "invalid_magnitude",
+                    f"CTS-GIS could not decode the active SAMRAS magnitude: {exc}",
+                    source_kind=_as_text(authority.get("source_kind")),
+                    source_path=_as_text(authority.get("source_path")),
+                    datum_addresses=[_as_text(authority.get("datum_address"))],
+                ),
+            )
+
+    ordered_nodes = list(structure.addresses) if structure is not None else []
+    available_nodes = set(ordered_nodes)
+    outside_nodes = sorted(
+        (
+            node_id
+            for node_id in list((bindings.get("unique_bindings") or {}).keys())
+            if node_id not in available_nodes
+        ),
+        key=_node_sort_key,
+    ) if available_nodes else []
+    if outside_nodes:
+        diagnostics.append(
+            _navigation_diagnostic(
+                "node_outside_magnitude",
+                "Administrative node rows reference addresses that are not present in the decoded SAMRAS namespace.",
+                source_kind="administrative_source",
+                source_path=_as_text((source_evidence.get("administrative_source") or {}).get("path")),
+                node_ids=outside_nodes,
+                datum_addresses=[
+                    _as_text((bindings.get("unique_bindings") or {}).get(node_id, {}).get("datum_address"))
+                    for node_id in outside_nodes
+                ],
+            )
+        )
+
+    if decode_state == "ready" and duplicate_nodes:
+        decode_state = "blocked_duplicate_node_row"
+    if decode_state == "ready" and outside_nodes:
+        decode_state = "blocked_node_outside_magnitude"
+
+    dropdowns: list[dict[str, Any]] = []
+    active_path_entries: list[dict[str, Any]] = []
+    active_node_id = ""
+    if decode_state == "ready" and ordered_nodes:
+        children_by_parent: dict[str, list[str]] = {}
+        for node_id in ordered_nodes:
+            children_by_parent.setdefault(_parent_node_id(node_id), []).append(node_id)
+        for node_ids in children_by_parent.values():
+            node_ids.sort(key=_node_sort_key)
+        title_map = {
+            node_id: _as_text((bindings.get("unique_bindings") or {}).get(node_id, {}).get("title"))
+            for node_id in ordered_nodes
+        }
+        requested_active_path = _sanitize_active_path(list(resolved_tool_state.get("active_path") or []), ordered_nodes)
+        requested_selected_node_id = _as_text(resolved_tool_state.get("selected_node_id"))
+        if not requested_active_path and requested_selected_node_id in available_nodes:
+            requested_active_path = _sanitize_active_path(_active_path_from_node_id(requested_selected_node_id), ordered_nodes)
+        active_node_id = requested_active_path[-1] if requested_active_path else ""
+        active_path_entries = [
+            {
+                **_directory_option_payload(
+                    portal_scope=portal_scope,
+                    shell_state=shell_state,
+                    resolved_tool_state=resolved_tool_state,
+                    node_id=node_id,
+                    title_map=title_map,
+                    selected_node_id=active_node_id,
+                ),
+                "depth": _node_depth(node_id),
+                "parent_node_id": _parent_node_id(node_id),
+            }
+            for node_id in requested_active_path
+        ]
+        dropdowns.append(
+            {
+                "depth": 1,
+                "parent_node_id": "",
+                "selected_node_id": requested_active_path[0] if requested_active_path else "",
+                "options": [
+                    _directory_option_payload(
+                        portal_scope=portal_scope,
+                        shell_state=shell_state,
+                        resolved_tool_state=resolved_tool_state,
+                        node_id=node_id,
+                        title_map=title_map,
+                        selected_node_id=requested_active_path[0] if requested_active_path else "",
+                    )
+                    for node_id in list(children_by_parent.get("", []))
+                ],
+            }
+        )
+        for depth, parent_node_id in enumerate(requested_active_path):
+            child_node_ids = list(children_by_parent.get(parent_node_id, []))
+            if not child_node_ids:
+                break
+            selected_child_id = requested_active_path[depth + 1] if depth + 1 < len(requested_active_path) else ""
+            dropdowns.append(
+                {
+                    "depth": depth + 2,
+                    "parent_node_id": parent_node_id,
+                    "selected_node_id": selected_child_id,
+                    "options": [
+                        _directory_option_payload(
+                            portal_scope=portal_scope,
+                            shell_state=shell_state,
+                            resolved_tool_state=resolved_tool_state,
+                            node_id=node_id,
+                            title_map=title_map,
+                            selected_node_id=selected_child_id,
+                        )
+                        for node_id in child_node_ids
+                    ],
+                }
+            )
+
+    return {
+        "kind": "diktataograph_navigation_canvas",
+        "title": "Diktataograph",
+        "summary": "Magnitude-derived directory navigation for CTS-GIS.",
+        "mode": _CTS_GIS_NAV_MODE_DIRECTORY,
+        "source_authority": "samras_magnitude",
+        "magnitude_source_kind": _as_text(authority.get("source_kind")),
+        "decode_state": decode_state,
+        "diagnostics": diagnostics,
+        "dropdowns": dropdowns,
+        "active_path": active_path_entries,
+        "active_node_id": active_node_id,
+    }
+
+
+def _tool_state_for_navigation(
+    tool_state: dict[str, Any],
+    navigation_canvas: dict[str, Any],
+) -> dict[str, Any]:
+    next_state = _tool_state_clone(tool_state)
+    active_path = [
+        _as_text(entry.get("node_id"))
+        for entry in list(navigation_canvas.get("active_path") or [])
+        if _as_text(entry.get("node_id"))
+    ]
+    selected_node_id = _as_text(navigation_canvas.get("active_node_id"))
+    next_state["active_path"] = active_path
+    next_state["selected_node_id"] = selected_node_id
+    next_state.setdefault("aitas", {})
+    next_state["aitas"]["attention_node_id"] = selected_node_id
+    return next_state
+
+
 def _geometry_points(geometry: dict[str, Any]) -> list[list[float]]:
     geometry_type = _as_text(geometry.get("type"))
     coordinates = geometry.get("coordinates")
@@ -1270,83 +1634,21 @@ def _cts_gis_interface_body(
     portal_scope: PortalScope,
     shell_state: PortalShellState,
     resolved_tool_state: dict[str, Any],
+    navigation_canvas: dict[str, Any],
     source_evidence: dict[str, Any],
     service_surface: dict[str, Any],
 ) -> dict[str, Any]:
     attention_profile = dict(service_surface.get("attention_profile") or {})
     selected_document = dict(service_surface.get("selected_document") or {})
     supporting_document = dict(source_evidence.get("administrative_source") or {})
-    real_node_titles = _extract_real_ordered_hierarchy_nodes(
-        dict((source_evidence.get("administrative_source") or {}).get("payload") or {})
-    )
-    staged_navigation = _build_staged_diktataograph_navigation(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        resolved_tool_state=resolved_tool_state,
-        node_titles=real_node_titles,
-    )
-    active_path_entries = list((staged_navigation.get("anchored_path") or {}).get("entries") or [])
-    selected_node_id = _as_text(staged_navigation.get("active_node_id"))
+    active_path_entries = list(navigation_canvas.get("active_path") or [])
+    selected_node_id = _as_text(navigation_canvas.get("active_node_id"))
     supporting_document_name = _as_text(supporting_document.get("document_name")) or _DEFAULT_SUPPORTING_DOCUMENT_NAME
     projection_document_name = _as_text(selected_document.get("document_name")) or "—"
-    projection_rule_entries = [
-        {
-            "token": _as_text(option.get("token")),
-            "label": _as_text(option.get("label")) or _as_text(option.get("token")) or "Rule",
-            "detail": f"{int(option.get('profile_count') or 0)} profiles · {int(option.get('feature_count') or 0)} features",
-            "selected": bool(option.get("active")),
-            "shell_request": _intention_shell_request(
-                portal_scope=portal_scope,
-                shell_state=shell_state,
-                tool_state=resolved_tool_state,
-                intention_rule_id=_as_text(option.get("token")),
-            ),
-        }
-        for option in list((service_surface.get("mediation_state") or {}).get("available_intentions") or [])
-    ] if selected_node_id else []
-    selected_label = _as_text((active_path_entries[-1] if active_path_entries else {}).get("label"))
-    context_items = [
-        {
-            "label": "Attention",
-            "value": selected_label or "unresolved",
-            "detail": selected_node_id or "root",
-        },
-        {
-            "label": "Intention",
-            "value": _as_text(resolved_tool_state["aitas"]["intention_rule_id"]) or _DEFAULT_INTENTION_RULE_ID,
-        },
-        {
-            "label": "Time",
-            "value": _as_text(resolved_tool_state["aitas"]["time_directive"]) or "inactive",
-        },
-        {
-            "label": "Archetype",
-            "value": _as_text(resolved_tool_state["aitas"]["archetype_family_id"]) or _DEFAULT_ARCHETYPE_FAMILY_ID,
-        },
-    ]
-    navigation_canvas = {
-        "kind": "diktataograph_navigation_canvas",
-        "title": "Diktataograph",
-        "summary": "Staged datum mediation lens with fixed-size lineage blocks and local hover redistribution.",
-        "mode": _CTS_GIS_NAV_MODE_STAGED,
-        "available_modes": [_CTS_GIS_NAV_MODE_STAGED, _CTS_GIS_NAV_MODE_LEGACY],
-        "active_node_id": selected_node_id,
-        "staged_blocks": list(staged_navigation.get("staged_blocks") or []),
-        "ordered_hierarchy": dict(staged_navigation.get("ordered_hierarchy") or {}),
-        "anchored_path": dict(staged_navigation.get("anchored_path") or {"title": "Anchored Path", "entries": []}),
-        "structure_field": dict(staged_navigation.get("structure_field") or {"title": "Structure Field", "entries": []}),
-        "projection_rule_field": {
-            "title": "Projection Rule",
-            "entries": projection_rule_entries,
-        },
-    }
+    selected_label = _as_text((active_path_entries[-1] if active_path_entries else {}).get("title")) or selected_node_id
 
     geospatial_projection = _empty_geospatial_projection()
     profile_projection = _empty_profile_projection(warnings=list(service_surface.get("warnings") or []))
-    wiring_sequence = [_CTS_GIS_WIRING_STAGE_OPENING]
-    geometry_state = "empty"
-    hierarchy_state = "applied"
-    hierarchy_source = "staged_root_opening"
     real_geospatial_projection, garland_swapped = _real_geospatial_projection(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -1354,15 +1656,23 @@ def _cts_gis_interface_body(
         service_surface=service_surface,
         source_evidence=source_evidence,
     )
-    has_real_profile = bool(selected_node_id) and bool(attention_profile) and not bool(attention_profile.get("placeholder"))
-    if selected_node_id and garland_swapped:
+    decode_ready = _as_text(navigation_canvas.get("decode_state")) == "ready"
+    has_real_profile = (
+        decode_ready
+        and bool(selected_node_id)
+        and bool(attention_profile)
+        and not bool(attention_profile.get("placeholder"))
+    )
+    if decode_ready and selected_node_id and garland_swapped:
         geospatial_projection = real_geospatial_projection
-        geometry_state = "applied"
-        wiring_sequence.append(_CTS_GIS_WIRING_STAGE_GARLAND)
-    elif selected_node_id and bool((source_evidence.get("administrative_source") or {}).get("exists")):
-        geometry_state = "blocked"
+    elif decode_ready and selected_node_id and bool((source_evidence.get("administrative_source") or {}).get("exists")):
+        geospatial_projection = {
+            **geospatial_projection,
+            "projection_state": "awaiting_real_projection",
+            "empty_message": "The selected node resolves structurally, but no HOPS projection is available for it yet.",
+        }
 
-    if selected_node_id and has_real_profile:
+    if has_real_profile:
         selected_feature_id = _as_text((service_surface.get("diagnostic_summary") or {}).get("selected_feature_id"))
         profile_projection = {
             "title": "Profile Projection",
@@ -1417,39 +1727,21 @@ def _cts_gis_interface_body(
             "empty_message": "",
             "has_real_projection": True,
         }
-
-    if real_node_titles:
-        hierarchy_state = "applied"
-        if selected_node_id:
-            hierarchy_source = "real_samras_namespace"
-            wiring_sequence.append(_CTS_GIS_WIRING_STAGE_HIERARCHY)
-    elif bool((source_evidence.get("administrative_source") or {}).get("exists")):
-        hierarchy_state = "blocked"
-        hierarchy_source = "blocked_no_parseable_samras_rows"
+    elif decode_ready and selected_node_id:
+        profile_projection = {
+            **profile_projection,
+            "empty_message": "The selected node resolves structurally, but no profile projection is available for it yet.",
+        }
 
     return {
         "kind": "cts_gis_interface_body",
-        "layout": "dual_section",
-        "narrow_layout": "context_diktataograph_garland_stack",
-        "feature_flags": {
-            "hover_attention_redistribution": True,
-        },
-        "wiring_sequence": wiring_sequence,
-        "wiring_status": {
-            _CTS_GIS_WIRING_STAGE_OPENING: "applied",
-            _CTS_GIS_WIRING_STAGE_GARLAND: geometry_state,
-            _CTS_GIS_WIRING_STAGE_HIERARCHY: hierarchy_state,
-        },
-        "context_strip": {
-            "title": "CTS-GIS Context",
-            "compact": True,
-            "items": context_items,
-        },
+        "layout": "diktataograph_garland_split",
+        "narrow_layout": "diktataograph_garland_stack",
         "navigation_canvas": navigation_canvas,
         "garland_split_projection": {
             "kind": "garland_split_projection",
             "title": "Garland",
-            "summary": "Downstream projection surface that stays empty until the active path resolves real CTS-GIS evidence.",
+            "summary": "Correlated projection surface that populates only when the selected SAMRAS node resolves real CTS-GIS evidence.",
             "geospatial_projection": geospatial_projection,
             "profile_projection": profile_projection,
         },
@@ -1529,6 +1821,13 @@ def build_portal_cts_gis_surface_bundle(
         **service_surface,
         "warnings": service_warnings,
     }
+    navigation_canvas = _build_directory_dropdown_navigation(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        resolved_tool_state=resolved_tool_state,
+        source_evidence=source_evidence,
+    )
+    resolved_tool_state = _tool_state_for_navigation(resolved_tool_state, navigation_canvas)
     operational = bool(
         configured
         and enabled
@@ -1540,6 +1839,7 @@ def build_portal_cts_gis_surface_bundle(
         portal_scope=portal_scope,
         shell_state=shell_state,
         resolved_tool_state=resolved_tool_state,
+        navigation_canvas=navigation_canvas,
         source_evidence=source_evidence,
         service_surface=service_surface,
     )
