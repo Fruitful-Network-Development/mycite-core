@@ -201,19 +201,31 @@ This is an interface-panel-led tool model, not a generic workbench page model.
 ### CTS-GIS Interface Body
 
 - The dominant `tool_mediation_panel` mounts one CTS-GIS-local interface body.
-- The CTS-GIS interface body is role-shaped, not generic card-grid shaped.
-- The CTS-GIS-local section titles are `Diktataograph` and `Garland`.
-- CTS-GIS is not contract-complete when those section titles exist only as empty panels, generic lists, or card scaffolds.
-  The contract is satisfied only when `Diktataograph` and `Garland` materialize in their CTS-GIS-specific canvas/projection roles.
-- `Diktataograph` materializes as a structural navigation canvas through `navigation_canvas`.
-  It projects anchored-path structural navigation for the current SAMRAS-defined address space and may overlay correlated names through the ASCII lens.
-- `Garland` materializes as a correlated projection surface through `garland_split_projection`.
-  It holds two internal subsections:
+- The CTS-GIS interface body is scaffold-first and role-shaped.
+- The frame always renders four visible regions regardless of evidence/readiness state:
+  - `CTS-GIS Context` strip
+  - `Diktataograph` pane
+  - `Garland` geospatial pane (`geospatial_projection`)
+  - `Garland` profile pane (`profile_projection`)
+- Section visibility is not allowed to collapse based on projection/document readiness.
+- `Diktataograph` is emitted through `navigation_canvas`.
+- `navigation_canvas.mode` is explicit and defaults to `ordered_hierarchy`.
+- `navigation_canvas.mode=legacy_branch_canvas` remains available for compatibility with the legacy branch-card renderer.
+- `navigation_canvas.ordered_hierarchy` carries the ordered navigation payload:
+  - `columns`
+  - `active_path`
+  - `selected_node_id`
+  - interaction metadata
+- Legacy fields (`anchored_path`, `structure_field`, `projection_rule_field`) remain present for compatibility.
+- `Garland` materializes as `garland_split_projection` with:
   - dominant `geospatial_projection`
   - secondary `profile_projection`
-- `CTS-GIS Context` is a compact orientation strip above the dual-section body so visual weight remains on `Diktataograph` and `Garland`.
-- These are not separate mediation operations. They are two CTS-GIS-local projections of one active mediation posture.
-- In narrow posture, the same CTS-GIS-local sections fall back to a vertical stack with a compact CTS-GIS context strip above them.
+- CTS-GIS wiring order is explicit and deterministic:
+  - `synthetic_baseline` scaffold first
+  - `real_garland_geometry` swap next
+  - `real_ordered_hierarchy` swap last
+- Title rendering in ordered hierarchy is strict: if a title is not ASCII-decodable from administrative source evidence, title cell output is blank.
+- In narrow posture, the same regions may stack vertically while preserving all four regions and stable titles.
 
 ### CTS-GIS Evidence Precedence
 

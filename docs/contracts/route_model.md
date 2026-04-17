@@ -87,12 +87,24 @@ CTS-GIS runtime/body rules:
 
 - CTS-GIS is the `system.tools.cts_gis` tool_mediation_surface under `SYSTEM`
 - its default posture is interface-panel-led
-- the dominant Interface Panel mounts one CTS-GIS-local dual-section body with `Diktataograph` and `Garland`
+- the dominant Interface Panel mounts one CTS-GIS-local scaffold body with four always-rendered regions
+  - `CTS-GIS Context`
+  - `Diktataograph`
+  - `Garland` geospatial pane
+  - `Garland` profile pane
 - tool menubar toggles are single-click exclusive by default (`Workbench` or `Interface Panel`), with a route-scoped double-click lock that allows both
-- `Diktataograph` is projected through `navigation_canvas` and updates CTS-GIS-local structural navigation
+- `Diktataograph` is projected through `navigation_canvas`
+- `navigation_canvas.mode` defaults to `ordered_hierarchy`; `legacy_branch_canvas` remains available for compatibility
+- `navigation_canvas.ordered_hierarchy` carries ordered lineage/child-field payload with `columns`, `active_path`, and `selected_node_id`
+- legacy `anchored_path`, `structure_field`, and `projection_rule_field` remain for compatibility
 - `Garland` is projected through `garland_split_projection`, where dominant `geospatial_projection` and secondary `profile_projection` update for that navigation root
 - these are CTS-GIS-local projections of one mediation posture, not two separate shell mediations
 - `CTS-GIS Context` remains a compact orientation strip and does not become a primary visual section
+- CTS-GIS runtime wiring sequence is deterministic:
+  - `synthetic_baseline`
+  - `real_garland_geometry`
+  - `real_ordered_hierarchy`
+- ordered-hierarchy title column fallback is blank-only when ASCII decoding is unavailable
 - CTS-GIS supporting evidence precedence is:
   - `private/utilities/tools/cts-gis/spec.json`
   - `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`

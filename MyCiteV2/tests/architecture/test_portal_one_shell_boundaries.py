@@ -128,11 +128,22 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("renderStructureCanvas", (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
         ).read_text(encoding="utf-8"))
+        self.assertIn("renderOrderedHierarchyCanvas", (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8"))
+        self.assertIn('"ordered_hierarchy"', (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8"))
+        self.assertIn('"legacy_branch_canvas"', (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8"))
         self.assertIn("renderGeospatialStage", (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn("cts-gis-garlandSplit__geospatial", portal_css)
         self.assertIn("cts-gis-structureCanvas", portal_css)
+        self.assertIn("cts-gis-orderedHierarchy", portal_css)
+        self.assertIn("cts-gis-orderedNode__msn", portal_css)
         self.assertIn("cts-gis-mapStage__svg", portal_css)
         self.assertIn("cts-gis-profileHierarchy__item", portal_css)
         self.assertIn(".cts-gis-interface__body", portal_css)
