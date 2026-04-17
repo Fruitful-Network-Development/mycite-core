@@ -22,6 +22,7 @@ from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
 )
 from MyCiteV2.packages.adapters.filesystem.network_root_read_model import build_system_log_document
 from MyCiteV2.packages.state_machine.portal_shell import (
+    AWS_CSM_TOOL_SURFACE_ID,
     FOCUS_LEVEL_OBJECT,
     FOCUS_LEVEL_SANDBOX,
     NETWORK_ROOT_SURFACE_ID,
@@ -32,6 +33,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     TRANSITION_FOCUS_FILE,
     TRANSITION_FOCUS_OBJECT,
     TRANSITION_SET_VERB,
+    build_shell_composition_payload,
     UTILITIES_ROOT_SURFACE_ID,
     VERB_MEDIATE,
     VERB_NAVIGATE,
@@ -215,6 +217,78 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertTrue(composition["workbench_collapsed"])
         self.assertFalse(composition["interface_panel_collapsed"])
         self.assertEqual(composition["regions"]["interface_panel"], composition["regions"]["inspector"])
+
+    def test_shell_composition_builder_owns_root_and_tool_visibility_defaults(self) -> None:
+        root_composition = build_shell_composition_payload(
+            active_surface_id=SYSTEM_ROOT_SURFACE_ID,
+            portal_instance_id="fnd",
+            page_title="System",
+            page_subtitle="",
+            activity_items=[],
+            control_panel={},
+            workbench={},
+            inspector={},
+            shell_state=initial_portal_shell_state(
+                surface_id=SYSTEM_ROOT_SURFACE_ID,
+                portal_scope={"scope_id": "fnd", "capabilities": []},
+            ),
+        )
+        self.assertFalse(root_composition["workbench_collapsed"])
+        self.assertTrue(root_composition["interface_panel_collapsed"])
+        self.assertEqual(root_composition["regions"]["interface_panel"], root_composition["regions"]["inspector"])
+
+        tool_composition = build_shell_composition_payload(
+            active_surface_id=AWS_CSM_TOOL_SURFACE_ID,
+            portal_instance_id="fnd",
+            page_title="AWS-CSM",
+            page_subtitle="",
+            activity_items=[],
+            control_panel={},
+            workbench={},
+            inspector={},
+            shell_state=None,
+        )
+        self.assertTrue(tool_composition["workbench_collapsed"])
+        self.assertFalse(tool_composition["interface_panel_collapsed"])
+        self.assertEqual(tool_composition["regions"]["interface_panel"], tool_composition["regions"]["inspector"])
+
+        evidence_composition = build_shell_composition_payload(
+            active_surface_id=AWS_CSM_TOOL_SURFACE_ID,
+            portal_instance_id="fnd",
+            page_title="AWS-CSM",
+            page_subtitle="",
+            activity_items=[],
+            control_panel={},
+            workbench={"visible": True},
+            inspector={},
+            shell_state=None,
+        )
+        self.assertFalse(evidence_composition["workbench_collapsed"])
+        self.assertEqual(evidence_composition["foreground_shell_region"], "interface-panel")
+
+    def test_cts_gis_query_widening_is_ignored_at_shell_entry(self) -> None:
+        envelope = run_portal_shell_entry(
+            {
+                "schema": "mycite.v2.portal.shell.request.v1",
+                "requested_surface_id": "system.tools.cts_gis",
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                "surface_query": {"record": "7-3-1", "view": "system_logs", "type": "unexpected"},
+            },
+            portal_instance_id="fnd",
+            portal_domain="fruitfulnetworkdevelopment.com",
+            data_dir=None,
+            public_dir=None,
+            private_dir=None,
+            audit_storage_file=None,
+            webapps_root=None,
+            tool_exposure_policy=None,
+        )
+        self.assertEqual(envelope["surface_id"], "system.tools.cts_gis")
+        self.assertEqual(envelope["canonical_query"]["file"], "anthology")
+        self.assertEqual(envelope["canonical_query"]["verb"], "mediate")
+        self.assertNotIn("record", envelope["canonical_query"])
+        self.assertNotIn("type", envelope["canonical_query"])
+        self.assertNotIn("view", envelope["canonical_query"])
 
     def test_cts_gis_runtime_normalizes_legacy_mediation_keys_into_tool_state_and_mounts_interface_body(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -550,7 +624,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                             "raw": {"kind": "calendar"},
                         }
                     ],
-                    preserved_event_types={"general_event": "general_event"},
+                    preserved_kind_labels={"general_event": "general_event"},
                 ),
             )
             _write_json(private_dir / "config.json", {"msn_id": "3-2-3-17-77-1-6-4-1-4"})

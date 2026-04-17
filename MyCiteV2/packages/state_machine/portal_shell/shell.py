@@ -1368,6 +1368,12 @@ def apply_surface_posture_to_composition(composition: dict[str, Any]) -> None:
     )
 
 
+def _region_visible(value: object, *, default: bool) -> bool:
+    if value is None:
+        return default
+    return value is not False
+
+
 def build_shell_composition_payload(
     *,
     active_surface_id: str,
@@ -1384,27 +1390,32 @@ def build_shell_composition_payload(
     state = shell_state if isinstance(shell_state, PortalShellState) else (
         PortalShellState.from_value(shell_state) if isinstance(shell_state, dict) else None
     )
+    tool_surface = is_tool_surface(active_surface_id)
     workbench_region = dict(workbench or {})
     workbench_region.setdefault("schema", PORTAL_SHELL_REGION_WORKBENCH_SCHEMA)
-    workbench_region.setdefault("visible", True)
     inspector_region = dict(inspector or {})
     inspector_region.setdefault("schema", PORTAL_SHELL_REGION_INSPECTOR_SCHEMA)
-    requested_inspector_visible = inspector_region.get("visible") is True
-    interface_open = False
-    if is_tool_surface(active_surface_id):
-        interface_open = True
-    elif state is not None:
+    workbench_visible = _region_visible(
+        workbench_region.get("visible"),
+        default=not tool_surface,
+    )
+    interface_open = bool(tool_surface)
+    if not interface_open and state is not None:
         interface_open = state.chrome.interface_panel_open and state.verb == VERB_MEDIATE
-    inspector_region["visible"] = bool(interface_open or requested_inspector_visible)
+    requested_inspector_visible = inspector_region.get("visible") is True
+    inspector_visible = bool(interface_open or requested_inspector_visible)
+    workbench_region["visible"] = workbench_visible
+    inspector_region["visible"] = inspector_visible
     inspector_region["primary_surface"] = bool(interface_open or inspector_region.get("primary_surface") is True)
     inspector_region["layout_mode"] = (
         "dominant"
         if interface_open
         else (_as_text(inspector_region.get("layout_mode")) or "sidebar")
     )
-    workbench_visible = workbench_region.get("visible", True) is not False
-    inspector_collapsed = not bool(inspector_region["visible"])
+    inspector_collapsed = not inspector_visible
     workbench_collapsed = not bool(workbench_visible)
+    workbench_region["collapsed"] = workbench_collapsed
+    inspector_region["collapsed"] = inspector_collapsed
     # `inspector` remains the legacy compatibility alias for the public
     # Interface Panel contract during this normalization pass.
     interface_panel_region = dict(inspector_region)

@@ -162,7 +162,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                             "raw": {"kind": "calendar"},
                         }
                     ],
-                    preserved_event_types={"general_event": "general_event"},
+                    preserved_kind_labels={"general_event": "general_event"},
                 ),
             )
             _write_aws_csm_state(private_dir)
@@ -213,6 +213,10 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             health_payload = health_response.get_json()
             self.assertTrue(all(health_payload["static_files_present"].values()))
             self.assertEqual(health_payload["shell_asset_manifest"], build_shell_asset_manifest())
+            self.assertIn(
+                "v2_portal_tool_surface_adapter.js",
+                [entry["file"] for entry in health_payload["shell_asset_manifest"]["scripts"]["shell_modules"]],
+            )
 
             system_html = system_response.get_data(as_text=True)
             self.assertEqual(system_html.count("data-theme-selector"), 1)
@@ -360,6 +364,18 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(profile_action.status_code, 200)
             profile_payload = profile_action.get_json()
             self.assertEqual(profile_payload["surface_id"], "system.root")
+
+    def test_client_boot_prefers_server_shell_posture_on_first_v2_hydration(self) -> None:
+        portal_js = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "portal.js"
+        ).read_text(encoding="utf-8")
+        shell_core = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_shell_core.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("firstV2ShellCompositionApplied", portal_js)
+        self.assertIn("applyShellPostureFromDom({ useStoredWorkbenchPreference: false })", portal_js)
+        self.assertIn("fromShellComposition: true", shell_core)
 
 
 if __name__ == "__main__":

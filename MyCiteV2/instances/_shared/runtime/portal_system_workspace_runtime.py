@@ -10,7 +10,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
 )
 from MyCiteV2.packages.adapters.filesystem import FilesystemAuditLogAdapter, FilesystemSystemDatumStoreAdapter
 from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
-from MyCiteV2.packages.modules.domains.datum_recognition.service import DatumWorkbenchProjection, DatumWorkbenchService
+from MyCiteV2.packages.modules.domains.datum_recognition import DatumWorkbenchProjection, DatumWorkbenchService
 from MyCiteV2.packages.modules.domains.publication import (
     PublicationProfileBasicsService,
     PublicationTenantSummary,

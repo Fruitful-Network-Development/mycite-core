@@ -10,6 +10,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.ports.datum_store import (
+    PUBLICATION_PROFILE_BASICS_WRITE_RESULT_SCHEMA,
     PublicationProfileBasicsWriteRequest,
     PublicationProfileBasicsWriteResult,
 )
@@ -51,6 +52,7 @@ class PublicationProfileBasicsContractTests(unittest.TestCase):
         self.assertEqual(request.tenant_id, "tff")
         self.assertEqual(request.tenant_domain, "trappfamilyfarm.com")
         payload = result.to_dict()
+        self.assertEqual(payload["schema"], PUBLICATION_PROFILE_BASICS_WRITE_RESULT_SCHEMA)
         self.assertEqual(payload["source"]["tenant_profile"]["contact_email"], "hello@trappfamilyfarm.com")
         self.assertEqual(json.loads(json.dumps(payload, sort_keys=True)), payload)
 

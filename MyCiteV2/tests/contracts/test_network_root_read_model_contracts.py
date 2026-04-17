@@ -57,6 +57,16 @@ class NetworkRootReadModelContractTests(unittest.TestCase):
             },
         )
 
+    def test_request_rejects_non_mapping_surface_query_when_field_is_present(self) -> None:
+        with self.assertRaisesRegex(ValueError, "surface_query must be a dict"):
+            NetworkRootReadModelRequest.from_dict(
+                {
+                    "portal_tenant_id": "fnd",
+                    "portal_domain": "fruitfulnetworkdevelopment.com",
+                    "surface_query": "contract=abc",
+                }
+            )
+
     def test_source_payload_must_be_non_empty_json(self) -> None:
         source = NetworkRootReadModelSource(
             payload={

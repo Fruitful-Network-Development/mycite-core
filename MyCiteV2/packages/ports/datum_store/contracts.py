@@ -3,11 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
+from MyCiteV2.packages.core.identities import require_plain_domain
+
 SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA = "mycite.v2.data.system_resource_workbench.surface.v1"
 AUTHORITATIVE_DATUM_DOCUMENT_ROW_SCHEMA = "mycite.v2.data.authoritative_document_row.v1"
 AUTHORITATIVE_DATUM_DOCUMENT_SCHEMA = "mycite.v2.data.authoritative_document.v1"
 AUTHORITATIVE_DATUM_DOCUMENT_CATALOG_SCHEMA = "mycite.v2.data.authoritative_document_catalog.v1"
 PUBLICATION_TENANT_SUMMARY_SOURCE_SCHEMA = "mycite.v2.data.publication_tenant_summary.source.v1"
+PUBLICATION_PROFILE_BASICS_WRITE_RESULT_SCHEMA = "mycite.v2.data.publication_profile_basics.write_result.v1"
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
@@ -435,13 +438,17 @@ class PublicationTenantSummaryRequest:
 
     def __post_init__(self) -> None:
         tenant_id = _as_text(self.tenant_id).lower()
-        tenant_domain = _as_text(self.tenant_domain).lower()
         if not tenant_id:
             raise ValueError("publication_tenant_summary_request.tenant_id is required")
-        if not tenant_domain or "." not in tenant_domain:
-            raise ValueError("publication_tenant_summary_request.tenant_domain must be a domain-like value")
         object.__setattr__(self, "tenant_id", tenant_id)
-        object.__setattr__(self, "tenant_domain", tenant_domain)
+        object.__setattr__(
+            self,
+            "tenant_domain",
+            require_plain_domain(
+                self.tenant_domain,
+                field_name="publication_tenant_summary_request.tenant_domain",
+            ),
+        )
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -481,16 +488,20 @@ class PublicationTenantSummarySource:
 
     def __post_init__(self) -> None:
         tenant_id = _as_text(self.tenant_id).lower()
-        tenant_domain = _as_text(self.tenant_domain).lower()
         profile_id = _as_text(self.profile_id)
         if not tenant_id:
             raise ValueError("publication_tenant_summary_source.tenant_id is required")
-        if not tenant_domain or "." not in tenant_domain:
-            raise ValueError("publication_tenant_summary_source.tenant_domain must be a domain-like value")
         if not profile_id:
             raise ValueError("publication_tenant_summary_source.profile_id is required")
         object.__setattr__(self, "tenant_id", tenant_id)
-        object.__setattr__(self, "tenant_domain", tenant_domain)
+        object.__setattr__(
+            self,
+            "tenant_domain",
+            require_plain_domain(
+                self.tenant_domain,
+                field_name="publication_tenant_summary_source.tenant_domain",
+            ),
+        )
         object.__setattr__(self, "profile_id", profile_id)
         object.__setattr__(
             self,
@@ -597,18 +608,20 @@ class PublicationProfileBasicsWriteRequest:
 
     def __post_init__(self) -> None:
         tenant_id = _as_text(self.tenant_id).lower()
-        tenant_domain = _as_text(self.tenant_domain).lower()
         profile_title = _as_text(self.profile_title)
         if not tenant_id:
             raise ValueError("publication_profile_basics_write_request.tenant_id is required")
-        if not tenant_domain or "." not in tenant_domain:
-            raise ValueError(
-                "publication_profile_basics_write_request.tenant_domain must be a domain-like value"
-            )
         if not profile_title:
             raise ValueError("publication_profile_basics_write_request.profile_title is required")
         object.__setattr__(self, "tenant_id", tenant_id)
-        object.__setattr__(self, "tenant_domain", tenant_domain)
+        object.__setattr__(
+            self,
+            "tenant_domain",
+            require_plain_domain(
+                self.tenant_domain,
+                field_name="publication_profile_basics_write_request.tenant_domain",
+            ),
+        )
         object.__setattr__(self, "profile_title", profile_title)
         object.__setattr__(self, "profile_summary", _as_text(self.profile_summary))
         object.__setattr__(self, "contact_email", _as_text(self.contact_email).lower())
@@ -643,6 +656,7 @@ class PublicationProfileBasicsWriteResult:
     source: PublicationTenantSummarySource | dict[str, Any]
     resolution_status: dict[str, JsonValue]
     warnings: tuple[str, ...] = ()
+    schema: str = PUBLICATION_PROFILE_BASICS_WRITE_RESULT_SCHEMA
 
     def __post_init__(self) -> None:
         normalized_source = (
@@ -651,6 +665,13 @@ class PublicationProfileBasicsWriteResult:
             else PublicationTenantSummarySource.from_dict(self.source)
         )
         object.__setattr__(self, "source", normalized_source)
+        schema = _as_text(self.schema) or PUBLICATION_PROFILE_BASICS_WRITE_RESULT_SCHEMA
+        if schema != PUBLICATION_PROFILE_BASICS_WRITE_RESULT_SCHEMA:
+            raise ValueError(
+                "publication_profile_basics_write_result.schema must be "
+                + PUBLICATION_PROFILE_BASICS_WRITE_RESULT_SCHEMA
+            )
+        object.__setattr__(self, "schema", schema)
         object.__setattr__(
             self,
             "resolution_status",
@@ -663,6 +684,7 @@ class PublicationProfileBasicsWriteResult:
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
+            "schema": self.schema,
             "source": self.source.to_dict(),
             "resolution_status": self.resolution_status,
             "warnings": list(self.warnings),
@@ -679,6 +701,7 @@ class PublicationProfileBasicsWriteResult:
             source=payload.get("source"),
             resolution_status=payload.get("resolution_status") or {},
             warnings=tuple(str(item) for item in warnings),
+            schema=payload.get("schema") or PUBLICATION_PROFILE_BASICS_WRITE_RESULT_SCHEMA,
         )
 
 

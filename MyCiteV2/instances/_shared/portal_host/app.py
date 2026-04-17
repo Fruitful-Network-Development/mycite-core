@@ -72,6 +72,7 @@ PORTAL_BUILD_ID = _as_text(os.environ.get("MYCITE_V2_PORTAL_BUILD_ID")) or "not-
 PORTAL_SHELL_ASSET_MANIFEST_SCHEMA = "mycite.v2.portal.shell.asset_manifest.v1"
 PORTAL_SHELL_MODULE_FILES = (
     "v2_portal_shell_region_renderers.js",
+    "v2_portal_tool_surface_adapter.js",
     "v2_portal_aws_workspace.js",
     "v2_portal_system_workspace.js",
     "v2_portal_network_workspace.js",

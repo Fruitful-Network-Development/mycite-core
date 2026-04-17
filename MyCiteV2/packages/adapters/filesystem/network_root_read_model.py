@@ -7,21 +7,28 @@ import json
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.core.structures.hops.chronology import (
+from ...ports.network_root_read_model import (
     ChronologyAuthority,
-    build_chronology_authority,
-    encode_utc_datetime_as_hops,
-)
-from MyCiteV2.packages.core.structures.hops.time_address import compare_time_addresses
-from MyCiteV2.packages.core.structures.hops.time_address_schema import (
-    schema_from_anchor_payload,
-    validate_address_with_schema,
-)
-from MyCiteV2.packages.ports.network_root_read_model import (
+    LOCAL_LOG_KIND_ID_KEY,
+    LOG_KIND_BABELETTE_LABEL,
+    LOG_KIND_COLLECTION_LABEL,
+    LOG_KIND_COUNT_KEY,
+    LOG_KIND_FILTERS_KEY,
+    LOG_KIND_ID_KEY,
+    LOG_KIND_LABEL_KEY,
+    LOG_KIND_SLUG_KEY,
     NetworkRootReadModelPort,
     NetworkRootReadModelRequest,
     NetworkRootReadModelResult,
     NetworkRootReadModelSource,
+    build_log_kind_entry,
+    build_log_kind_filter,
+    build_network_chronology_authority,
+    classify_network_log_kind,
+    compare_network_hops_addresses,
+    encode_network_datetime_as_hops,
+    network_hops_schema_from_anchor_payload,
+    validate_network_hops_address,
 )
 
 
@@ -134,8 +141,14 @@ def _line_count(path: Path) -> int:
         return 0
 
 
-def _normalize_surface_query(query: dict[str, str] | None) -> dict[str, str]:
+def _normalize_surface_query(query: dict[str, str] | None, *, warnings: list[str]) -> dict[str, str]:
     normalized = {key: _as_text(value) for key, value in dict(query or {}).items() if _as_text(key)}
+    supported_keys = {"view", "contract", "type", "record"}
+    unknown_keys = sorted(key for key in normalized if key not in supported_keys)
+    if unknown_keys:
+        warnings.append(
+            "Ignored unsupported NETWORK surface_query key(s): " + ", ".join(unknown_keys)
+        )
     view = normalized.get("view") or "system_logs"
     if view != "system_logs":
         view = "system_logs"
@@ -166,7 +179,7 @@ def _encode_name_bits(value: object) -> str:
     return "".join(f"{byte:08b}" for byte in text.encode("utf-8"))
 
 
-def _event_title(event_type: str, payload: dict[str, Any]) -> str:
+def _log_title(kind_slug: str, payload: dict[str, Any]) -> str:
     for key in ("title", "label", "name"):
         token = _as_text(payload.get(key))
         if token:
@@ -186,7 +199,7 @@ def _event_title(event_type: str, payload: dict[str, Any]) -> str:
     contract_id = _derive_contract_id(payload)
     if contract_id:
         return contract_id
-    return event_type or "system_log_event"
+    return kind_slug or "system_log_event"
 
 
 def _request_log_counterparty(payload: dict[str, Any], *, local_msn_id: str) -> str:
@@ -257,7 +270,7 @@ def _read_contract_catalog(private_dir: Path | None, *, warnings: list[str]) -> 
     return contracts
 
 
-def _preserved_event_types(payload: dict[str, Any]) -> dict[str, str]:
+def _preserved_kind_labels(payload: dict[str, Any]) -> dict[str, str]:
     out: dict[str, str] = {}
     for datum_address, raw in _datum_space(payload).items():
         if not str(datum_address).startswith("4-2-"):
@@ -271,7 +284,7 @@ def _preserved_event_types(payload: dict[str, Any]) -> dict[str, str]:
     return out
 
 
-def _parse_event_types(payload: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+def _parse_kind_catalog(payload: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     by_id: dict[str, dict[str, Any]] = {}
     by_local_id: dict[str, dict[str, Any]] = {}
     for datum_address, raw in _datum_space(payload).items():
@@ -280,18 +293,18 @@ def _parse_event_types(payload: dict[str, Any]) -> tuple[dict[str, dict[str, Any
         header = raw[0] if isinstance(raw, list) and raw and isinstance(raw[0], list) else []
         labels = raw[1] if isinstance(raw, list) and len(raw) > 1 and isinstance(raw[1], list) else []
         metadata = raw[2] if isinstance(raw, list) and len(raw) > 2 and isinstance(raw[2], dict) else {}
-        local_event_type_id = _as_text(metadata.get("local_event_type_id") or (header[2] if len(header) > 2 else ""))
+        local_kind_id = _as_text(metadata.get(LOCAL_LOG_KIND_ID_KEY) or (header[2] if len(header) > 2 else ""))
         label = _as_text(metadata.get("label") or (labels[0] if labels else datum_address))
         slug = _as_text(metadata.get("slug") or label or datum_address)
-        entry = {
-            "event_type_id": _as_text(metadata.get("event_type_id") or datum_address),
-            "local_event_type_id": local_event_type_id,
-            "label": label or slug,
-            "slug": slug or label or datum_address,
-        }
-        by_id[entry["event_type_id"]] = entry
-        if local_event_type_id:
-            by_local_id[local_event_type_id] = entry
+        entry = build_log_kind_entry(
+            kind_id=_as_text(metadata.get(LOG_KIND_ID_KEY) or datum_address),
+            local_kind_id=local_kind_id,
+            slug=slug or label or datum_address,
+            label=label or slug,
+        )
+        by_id[entry[LOG_KIND_ID_KEY]] = entry
+        if local_kind_id:
+            by_local_id[local_kind_id] = entry
     return by_id, by_local_id
 
 
@@ -300,7 +313,7 @@ def _parse_canonical_records(
     payload: dict[str, Any],
     schema_payload: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
-    event_types_by_id, event_types_by_local = _parse_event_types(payload)
+    kinds_by_id, kinds_by_local = _parse_kind_catalog(payload)
     records: list[dict[str, Any]] = []
     for datum_address, raw in _datum_space(payload).items():
         if not str(datum_address).startswith("7-3-"):
@@ -308,11 +321,11 @@ def _parse_canonical_records(
         header = raw[0] if isinstance(raw, list) and raw and isinstance(raw[0], list) else []
         labels = raw[1] if isinstance(raw, list) and len(raw) > 1 and isinstance(raw[1], list) else []
         metadata = raw[2] if isinstance(raw, list) and len(raw) > 2 and isinstance(raw[2], dict) else {}
-        event_type = event_types_by_id.get(_as_text(metadata.get("event_type_id") or (header[1] if len(header) > 1 else "")))
-        if event_type is None and len(header) > 2:
-            event_type = event_types_by_local.get(_as_text(header[2]))
+        log_kind = kinds_by_id.get(_as_text(metadata.get(LOG_KIND_ID_KEY) or (header[1] if len(header) > 1 else "")))
+        if log_kind is None and len(header) > 2:
+            log_kind = kinds_by_local.get(_as_text(header[2]))
         hops_timestamp = _as_text(metadata.get("hops_timestamp") or (header[4] if len(header) > 4 else ""))
-        validation = validate_address_with_schema(hops_timestamp, schema_payload) if hops_timestamp else {"ok": False}
+        validation = validate_network_hops_address(hops_timestamp, schema_payload) if hops_timestamp else {"ok": False}
         chronology_state = "valid" if bool(validation.get("ok")) else "invalid"
         contract_id = _as_text(metadata.get("contract_id"))
         records.append(
@@ -323,9 +336,9 @@ def _parse_canonical_records(
                 "source_timestamp": _as_text(metadata.get("source_timestamp")),
                 "title": _as_text(metadata.get("title") or (labels[0] if labels else datum_address)),
                 "label": _as_text(metadata.get("label") or (labels[0] if labels else datum_address)),
-                "event_type_id": _as_text(event_type["event_type_id"] if event_type else metadata.get("event_type_id")),
-                "event_type_label": _as_text(event_type["label"] if event_type else metadata.get("event_type_label")),
-                "event_type_slug": _as_text(event_type["slug"] if event_type else metadata.get("event_type_slug")),
+                LOG_KIND_ID_KEY: _as_text(log_kind[LOG_KIND_ID_KEY] if log_kind else metadata.get(LOG_KIND_ID_KEY)),
+                LOG_KIND_LABEL_KEY: _as_text(log_kind["label"] if log_kind else metadata.get(LOG_KIND_LABEL_KEY)),
+                LOG_KIND_SLUG_KEY: _as_text(log_kind["slug"] if log_kind else metadata.get(LOG_KIND_SLUG_KEY)),
                 "status": _as_text(metadata.get("status")),
                 "counterparty": _as_text(metadata.get("counterparty")),
                 "contract_id": contract_id,
@@ -334,7 +347,7 @@ def _parse_canonical_records(
                 "raw": metadata.get("raw") if isinstance(metadata.get("raw"), dict) else metadata,
             }
         )
-    preserved_types = _preserved_event_types(payload)
+    preserved_types = _preserved_kind_labels(payload)
     return records, preserved_types
 
 
@@ -343,7 +356,7 @@ def _sort_records_desc(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         hops_left = _as_text(left.get("hops_timestamp"))
         hops_right = _as_text(right.get("hops_timestamp"))
         if hops_left and hops_right:
-            timestamp_cmp = compare_time_addresses(hops_left, hops_right)
+            timestamp_cmp = compare_network_hops_addresses(hops_left, hops_right)
             if timestamp_cmp != 0:
                 return -timestamp_cmp
         title_left = _as_text(left.get("title"))
@@ -368,7 +381,7 @@ def _dedupe_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for record in records:
         key = _as_text(record.get("source_key")) or _make_source_key(
             record.get("hops_timestamp"),
-            record.get("event_type_slug"),
+            record.get(LOG_KIND_SLUG_KEY),
             record.get("contract_id"),
             record.get("title"),
         )
@@ -388,7 +401,7 @@ def _load_chronology_authority(
         return None, {"ok": False, "error": "data_dir not configured", "schema": {}}, ""
     anthology_path = data_dir / "system" / "anthology.json"
     anthology_payload = _safe_read_json(anthology_path, warnings=warnings, label="data/system/anthology.json")
-    schema_payload = schema_from_anchor_payload(_datum_space(anthology_payload))
+    schema_payload = network_hops_schema_from_anchor_payload(_datum_space(anthology_payload))
     if not bool(schema_payload.get("ok")):
         warnings.append(f"Chronology authority is unavailable: {schema_payload.get('error') or 'missing 1-1-1'}")
     sources_dir = data_dir / "system" / "sources"
@@ -403,7 +416,7 @@ def _load_chronology_authority(
         warnings.append("Quadrennium chronology source is unavailable under data/system/sources.")
         return None, schema_payload, quadrennium_path
     try:
-        authority = build_chronology_authority(
+        authority = build_network_chronology_authority(
             schema_payload=schema_payload,
             quadrennium_payload=_datum_space(quadrennium_payload),
         )
@@ -439,7 +452,7 @@ def _request_log_import_records(
                 continue
             if not isinstance(payload, dict):
                 continue
-            event_type_slug = _as_text(payload.get("type") or payload.get("event_type") or payload.get("schema")) or "unknown"
+            kind_slug = classify_network_log_kind(payload)
             timestamp = (
                 _parse_any_timestamp(payload.get("hops_timestamp"))
                 or _parse_any_timestamp(payload.get("ts_unix_ms"))
@@ -455,11 +468,11 @@ def _request_log_import_records(
                 warnings.append(f"Skipping request-log entry without chronology authority in {path.name}:{line_number}")
                 continue
             existing_hops = _as_text(payload.get("hops_timestamp"))
-            if existing_hops and bool(validate_address_with_schema(existing_hops, authority.schema_payload).get("ok")):
+            if existing_hops and bool(validate_network_hops_address(existing_hops, authority.schema_payload).get("ok")):
                 hops_timestamp = existing_hops
             else:
-                hops_timestamp = encode_utc_datetime_as_hops(timestamp, authority=authority)
-            title = _event_title(event_type_slug, payload)
+                hops_timestamp = encode_network_datetime_as_hops(timestamp, authority=authority)
+            title = _log_title(kind_slug, payload)
             out.append(
                 {
                     "source_key": _make_source_key(path.name, line_number, payload),
@@ -467,7 +480,7 @@ def _request_log_import_records(
                     "source_timestamp": _format_timestamp(timestamp),
                     "title": title,
                     "label": title,
-                    "event_type_slug": event_type_slug,
+                    LOG_KIND_SLUG_KEY: kind_slug,
                     "status": _as_text(payload.get("status")),
                     "counterparty": _request_log_counterparty(payload, local_msn_id=local_msn_id),
                     "contract_id": _derive_contract_id(payload),
@@ -504,11 +517,11 @@ def _contract_history_records(
                     "source_timestamp": _format_timestamp(timestamp),
                     "title": contract_id,
                     "label": contract_id,
-                    "event_type_slug": f"contract_record.{phase}",
+                    LOG_KIND_SLUG_KEY: f"contract_record.{phase}",
                     "status": _as_text(summary.get("enforcement_state")),
                     "counterparty": _as_text(summary.get("counterparty_msn_id")),
                     "contract_id": contract_id,
-                    "hops_timestamp": encode_utc_datetime_as_hops(timestamp, authority=authority),
+                    "hops_timestamp": encode_network_datetime_as_hops(timestamp, authority=authority),
                     "chronology_state": "valid",
                     "raw": raw,
                 }
@@ -519,45 +532,45 @@ def _contract_history_records(
 def build_system_log_document(
     *,
     records: list[dict[str, Any]],
-    preserved_event_types: dict[str, str] | None = None,
+    preserved_kind_labels: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    preserved = dict(preserved_event_types or {})
+    preserved = dict(preserved_kind_labels or {})
     for record in records:
-        slug = _as_text(record.get("event_type_slug"))
+        slug = _as_text(record.get(LOG_KIND_SLUG_KEY))
         if slug and slug not in preserved:
-            preserved[slug] = _as_text(record.get("event_type_label") or slug)
-    event_type_entries: list[dict[str, str]] = []
+            preserved[slug] = _as_text(record.get(LOG_KIND_LABEL_KEY) or slug)
+    kind_entries: list[dict[str, str]] = []
     for index, slug in enumerate(sorted(preserved), start=1):
-        event_type_entries.append(
-            {
-                "event_type_id": f"4-2-{index}",
-                "local_event_type_id": str(index),
-                "slug": slug,
-                "label": preserved[slug],
-            }
+        kind_entries.append(
+            build_log_kind_entry(
+                kind_id=f"4-2-{index}",
+                local_kind_id=str(index),
+                slug=slug,
+                label=preserved[slug],
+            )
         )
-    type_by_slug = {entry["slug"]: entry for entry in event_type_entries}
+    type_by_slug = {entry["slug"]: entry for entry in kind_entries}
     space: dict[str, Any] = {}
-    for entry in event_type_entries:
-        space[entry["event_type_id"]] = [
+    for entry in kind_entries:
+        space[entry[LOG_KIND_ID_KEY]] = [
             [
-                entry["event_type_id"],
+                entry[LOG_KIND_ID_KEY],
                 "ref.2-1-10",
-                entry["local_event_type_id"],
+                entry[LOCAL_LOG_KIND_ID_KEY],
                 "ref.3-1-4",
                 _encode_name_bits(entry["slug"]),
             ],
             [entry["label"]],
             dict(entry),
         ]
-    collection_members = ["5-0-1", "~", *[entry["event_type_id"] for entry in event_type_entries]]
-    space["5-0-1"] = [collection_members, ["event_type_collection"]]
-    space["6-1-1"] = [["6-1-1", "5-0-1", "0"], ["event_type_babelette"]]
+    collection_members = ["5-0-1", "~", *[entry[LOG_KIND_ID_KEY] for entry in kind_entries]]
+    space["5-0-1"] = [collection_members, [LOG_KIND_COLLECTION_LABEL]]
+    space["6-1-1"] = [["6-1-1", "5-0-1", "0"], [LOG_KIND_BABELETTE_LABEL]]
     ordered_records = sorted(
         records,
         key=cmp_to_key(
             lambda left, right: (
-                compare_time_addresses(_as_text(left.get("hops_timestamp")), _as_text(right.get("hops_timestamp")))
+                compare_network_hops_addresses(_as_text(left.get("hops_timestamp")), _as_text(right.get("hops_timestamp")))
                 if _as_text(left.get("hops_timestamp")) and _as_text(right.get("hops_timestamp"))
                 else (
                     -1
@@ -578,7 +591,7 @@ def build_system_log_document(
         ),
     )
     for index, record in enumerate(ordered_records, start=1):
-        type_entry = type_by_slug[_as_text(record.get("event_type_slug"))]
+        type_entry = type_by_slug[_as_text(record.get(LOG_KIND_SLUG_KEY))]
         datum_address = f"7-3-{index}"
         title = _as_text(record.get("title") or record.get("label") or datum_address)
         metadata = {
@@ -587,9 +600,9 @@ def build_system_log_document(
             "source_timestamp": _as_text(record.get("source_timestamp")),
             "title": title,
             "label": _as_text(record.get("label") or title),
-            "event_type_id": type_entry["event_type_id"],
-            "event_type_label": type_entry["label"],
-            "event_type_slug": type_entry["slug"],
+            LOG_KIND_ID_KEY: type_entry[LOG_KIND_ID_KEY],
+            LOG_KIND_LABEL_KEY: type_entry["label"],
+            LOG_KIND_SLUG_KEY: type_entry["slug"],
             "status": _as_text(record.get("status")),
             "counterparty": _as_text(record.get("counterparty")),
             "contract_id": _as_text(record.get("contract_id")),
@@ -599,8 +612,8 @@ def build_system_log_document(
         space[datum_address] = [
             [
                 datum_address,
-                type_entry["event_type_id"],
-                type_entry["local_event_type_id"],
+                type_entry[LOG_KIND_ID_KEY],
+                type_entry[LOCAL_LOG_KIND_ID_KEY],
                 "ref.3-1-1",
                 metadata["hops_timestamp"],
                 "ref.3-1-4",
@@ -636,7 +649,7 @@ def rebuild_network_system_log_document(
         warnings=warnings,
         label="data/system/system_log.json",
     ) if data_root else {}
-    preserved_event_types = _preserved_event_types(current_payload)
+    preserved_kind_labels = _preserved_kind_labels(current_payload)
     records = _dedupe_records(
         _request_log_import_records(
             private_dir=private_root,
@@ -650,7 +663,7 @@ def rebuild_network_system_log_document(
             warnings=warnings,
         )
     )
-    document = build_system_log_document(records=records, preserved_event_types=preserved_event_types)
+    document = build_system_log_document(records=records, preserved_kind_labels=preserved_kind_labels)
     return {
         "portal_instance": {
             "portal_instance_id": portal_tenant_id,
@@ -676,16 +689,16 @@ def _merge_records(
 
 
 def _record_counts(records: list[dict[str, Any]]) -> tuple[dict[str, int], dict[str, int]]:
-    event_type_counts: dict[str, int] = {}
+    kind_counts: dict[str, int] = {}
     contract_counts: dict[str, int] = {}
     for record in records:
-        event_type_id = _as_text(record.get("event_type_id"))
-        if event_type_id:
-            event_type_counts[event_type_id] = int(event_type_counts.get(event_type_id) or 0) + 1
+        kind_id = _as_text(record.get(LOG_KIND_ID_KEY))
+        if kind_id:
+            kind_counts[kind_id] = int(kind_counts.get(kind_id) or 0) + 1
         contract_id = _as_text(record.get("contract_id"))
         if contract_id:
             contract_counts[contract_id] = int(contract_counts.get(contract_id) or 0) + 1
-    return event_type_counts, contract_counts
+    return kind_counts, contract_counts
 
 
 class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
@@ -704,8 +717,10 @@ class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
         warnings: list[str] = []
         data_dir = self._data_dir
         private_dir = self._private_dir
-        surface_query = _normalize_surface_query(request.surface_query)
+        surface_query = _normalize_surface_query(request.surface_query, warnings=warnings)
         if data_dir is None:
+            not_configured_warning = "data_dir was not configured for the network root read model."
+            normalized_warnings = list(dict.fromkeys([*warnings, not_configured_warning]))
             payload = {
                 "portal_instance": {
                     "portal_instance_id": request.portal_tenant_id,
@@ -721,25 +736,25 @@ class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
                     "active_filters": {
                         "view": "system_logs",
                         "contract_id": "",
-                        "event_type_id": "",
+                        LOG_KIND_ID_KEY: "",
                         "record_id": "",
                     },
                     "summary": {
                         "record_count": 0,
-                        "event_type_count": 0,
+                        LOG_KIND_COUNT_KEY: 0,
                         "contract_count": 0,
                         "latest_hops_timestamp": "",
                     },
-                    "event_type_filters": [],
+                    LOG_KIND_FILTERS_KEY: [],
                     "contract_filters": [],
                     "records": [],
                     "selected_record": None,
                     "selected_contract": None,
                     "chronology": {"state": "unavailable", "schema": {}, "quadrennium_path": ""},
                     "audit_summary": {"path": "", "state": "not_configured", "line_count": 0},
-                    "warnings": ["data_dir was not configured for the network root read model."],
+                    "warnings": normalized_warnings,
                 },
-                "warnings": ["data_dir was not configured for the network root read model."],
+                "warnings": normalized_warnings,
             }
             return NetworkRootReadModelResult(source=NetworkRootReadModelSource(payload=payload))
 
@@ -752,7 +767,7 @@ class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
             warnings=warnings,
             label="data/system/system_log.json",
         )
-        canonical_records, preserved_event_types = _parse_canonical_records(
+        canonical_records, preserved_kind_labels = _parse_canonical_records(
             payload=canonical_payload,
             schema_payload=schema_payload,
         )
@@ -773,18 +788,18 @@ class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
             canonical_records=canonical_records,
             transition_records=transition_records,
         )
-        rebuilt_document = build_system_log_document(records=merged_records, preserved_event_types=preserved_event_types)
+        rebuilt_document = build_system_log_document(records=merged_records, preserved_kind_labels=preserved_kind_labels)
         rebuilt_records, _ = _parse_canonical_records(payload=rebuilt_document, schema_payload=schema_payload)
         records = _sort_records_desc(rebuilt_records)
 
         contract_id_filter = _as_text(surface_query.get("contract"))
-        event_type_id_filter = _as_text(surface_query.get("type"))
+        kind_id_filter = _as_text(surface_query.get("type"))
         record_id_filter = _as_text(surface_query.get("record"))
         filtered_records = [
             record
             for record in records
             if (not contract_id_filter or _as_text(record.get("contract_id")) == contract_id_filter)
-            and (not event_type_id_filter or _as_text(record.get("event_type_id")) == event_type_id_filter)
+            and (not kind_id_filter or _as_text(record.get(LOG_KIND_ID_KEY)) == kind_id_filter)
         ]
         selected_record = None
         for record in filtered_records:
@@ -796,18 +811,17 @@ class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
             if contract_id and contract_id in contracts_by_id:
                 selected_record["linked_contract"] = contracts_by_id[contract_id]
 
-        event_type_counts, contract_counts = _record_counts(records)
-        event_types_by_id, _ = _parse_event_types(rebuilt_document)
-        event_type_filters = [
-            {
-                "event_type_id": event_type_id,
-                "label": _as_text(entry.get("label") or entry.get("slug") or event_type_id),
-                "slug": _as_text(entry.get("slug")),
-                "count": int(event_type_counts.get(event_type_id) or 0),
-                "active": event_type_id == event_type_id_filter,
-            }
-            for event_type_id, entry in sorted(
-                event_types_by_id.items(),
+        kind_counts, contract_counts = _record_counts(records)
+        kinds_by_id, _ = _parse_kind_catalog(rebuilt_document)
+        kind_filters = [
+            build_log_kind_filter(
+                kind_id=kind_id,
+                entry=entry,
+                count=int(kind_counts.get(kind_id) or 0),
+                active=kind_id == kind_id_filter,
+            )
+            for kind_id, entry in sorted(
+                kinds_by_id.items(),
                 key=lambda item: (_as_text(item[1].get("label")), _as_text(item[0])),
             )
         ]
@@ -848,16 +862,16 @@ class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
                 "active_filters": {
                     "view": "system_logs",
                     "contract_id": contract_id_filter,
-                    "event_type_id": event_type_id_filter,
+                    LOG_KIND_ID_KEY: kind_id_filter,
                     "record_id": record_id_filter,
                 },
                 "summary": {
                     "record_count": len(records),
-                    "event_type_count": len(event_types_by_id),
+                    LOG_KIND_COUNT_KEY: len(kinds_by_id),
                     "contract_count": len(contracts_by_id),
                     "latest_hops_timestamp": latest_hops_timestamp,
                 },
-                "event_type_filters": event_type_filters,
+                LOG_KIND_FILTERS_KEY: kind_filters,
                 "contract_filters": contract_filters,
                 "records": filtered_records,
                 "selected_record": selected_record,

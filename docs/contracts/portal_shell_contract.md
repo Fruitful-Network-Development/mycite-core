@@ -131,6 +131,8 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - `shell_composition.workbench_collapsed` reports whether the workbench is currently hidden.
 - `shell_composition.regions.inspector` remains valid during the compatibility phase.
 - `shell_composition.regions.interface_panel` mirrors `regions.inspector`.
+- Composition building, not upstream region defaults, owns the final root-vs-tool visibility posture for `Workbench` and `Interface Panel`.
+- On the first V2 shell hydration, server composition wins over any stored workbench-open preference; stored layout state only resumes after hydration and user interaction.
 - Client chrome publishes route-scoped tool lock state through `data-tool-panel-lock` on `ide-shell`.
 
 ## Tool Contract
@@ -158,6 +160,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - Tool surfaces may lock co-visible behavior by double-clicking either `Workbench` or `Interface Panel` toggle.
 - Tool lock is route-scoped and non-persistent; leaving the tool route or switching composition clears the lock.
 - In tool lock mode, both the `Workbench` and the `Interface Panel` may stay visible when secondary evidence is explicitly shown.
+- Shared tool rendering now normalizes direct-query request building plus wrapper states for `loading`, `error`, `empty`, and `unsupported` through one shell-side adapter before specialized or generic renderers run.
 - A service tool may remain visible while `operational=false` when an external integration or required capability is missing.
 - Service-tool posture comes from peripheral and integration availability, not from portal identity or portal "types".
 - All tools attach to the same interface surface. Service-tool behavior is distinguished by whether the tool can employ the portal's authenticated peripheral package, not by a separate class of portal.

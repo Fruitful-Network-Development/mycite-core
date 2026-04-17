@@ -130,11 +130,24 @@
     );
   }
 
-  function renderGenericSurface(target, surfacePayload) {
-    target.innerHTML =
+  function toolSurfaceAdapter() {
+    return window.PortalToolSurfaceAdapter || {};
+  }
+
+  function renderGenericSurface(ctx, target, region, surfacePayload) {
+    var adapter = toolSurfaceAdapter();
+    return adapter.renderWrappedSurface(
+      target,
+      adapter.resolveSurfaceState({
+        region: region,
+        surfacePayload: surfacePayload,
+        title: region.title || "Workbench",
+        hasContent: adapter.hasGenericContent(surfacePayload),
+      }),
       renderCards(surfacePayload.cards || []) +
-      renderSections(surfacePayload.sections || []) +
-      renderNotes(surfacePayload.notes || []);
+        renderSections(surfacePayload.sections || []) +
+        renderNotes(surfacePayload.notes || [])
+    );
   }
 
   window.PortalShellWorkbenchRenderer = {
@@ -142,6 +155,7 @@
       var target = ctx.target;
       var region = ctx.region || {};
       var surfacePayload = region.surface_payload || {};
+      var adapter = toolSurfaceAdapter();
       if (!target) return;
       if (region.visible === false) {
         target.innerHTML = "";
@@ -154,6 +168,19 @@
       ) {
         window.PortalAwsCsmWorkspaceRenderer.render(ctx, target, surfacePayload);
         return;
+      } else if (surfacePayload.kind === "aws_csm_workspace") {
+        adapter.renderWrappedSurface(
+          target,
+          adapter.resolveSurfaceState({
+            region: region,
+            surfacePayload: surfacePayload,
+            title: "AWS-CSM",
+            unsupported: true,
+            message: "The AWS-CSM workspace renderer is unavailable.",
+          }),
+          ""
+        );
+        return;
       }
       if (
         window.PortalSystemWorkspaceRenderer &&
@@ -161,6 +188,19 @@
         surfacePayload.kind === "system_workspace"
       ) {
         window.PortalSystemWorkspaceRenderer.render(ctx, target, surfacePayload);
+        return;
+      } else if (surfacePayload.kind === "system_workspace") {
+        adapter.renderWrappedSurface(
+          target,
+          adapter.resolveSurfaceState({
+            region: region,
+            surfacePayload: surfacePayload,
+            title: "System",
+            unsupported: true,
+            message: "The system workspace renderer is unavailable.",
+          }),
+          ""
+        );
         return;
       }
       if (
@@ -170,12 +210,26 @@
       ) {
         window.PortalNetworkWorkspaceRenderer.render(ctx, target, surfacePayload);
         return;
+      } else if (surfacePayload.kind === "network_system_log_workspace") {
+        adapter.renderWrappedSurface(
+          target,
+          adapter.resolveSurfaceState({
+            region: region,
+            surfacePayload: surfacePayload,
+            title: "NETWORK",
+            unsupported: true,
+            message: "The NETWORK workspace renderer is unavailable.",
+          }),
+          ""
+        );
+        return;
       }
       if (surfacePayload.kind === "tool_secondary_evidence") {
+        var secondaryHtml = "";
         if (surfacePayload.tool_id === "cts_gis") {
           var sourceEvidence = surfacePayload.source_evidence || {};
           var readiness = sourceEvidence.readiness || {};
-          target.innerHTML =
+          secondaryHtml =
             '<section class="v2-card"><h3>' +
             escapeHtml(region.title || "CTS-GIS Evidence") +
             "</h3><p>" +
@@ -199,17 +253,27 @@
             escapeHtml((sourceEvidence.administrative_source && sourceEvidence.administrative_source.document_name) || "—") +
             "</strong></dd>" +
             "</dl></section>";
-          return;
+        } else {
+          secondaryHtml =
+            '<section class="v2-card"><h3>' +
+            escapeHtml(region.title || "Supporting Evidence") +
+            "</h3><p>" +
+            escapeHtml(region.subtitle || "This tool is currently leading through the interface panel.") +
+            "</p></section>";
         }
-        target.innerHTML =
-          '<section class="v2-card"><h3>' +
-          escapeHtml(region.title || "Supporting Evidence") +
-          "</h3><p>" +
-          escapeHtml(region.subtitle || "This tool is currently leading through the interface panel.") +
-          "</p></section>";
+        adapter.renderWrappedSurface(
+          target,
+          adapter.resolveSurfaceState({
+            region: region,
+            surfacePayload: surfacePayload,
+            title: region.title || "Supporting Evidence",
+            hasContent: true,
+          }),
+          secondaryHtml
+        );
         return;
       }
-      renderGenericSurface(target, surfacePayload);
+      renderGenericSurface(ctx, target, region, surfacePayload);
     },
   };
 })();
