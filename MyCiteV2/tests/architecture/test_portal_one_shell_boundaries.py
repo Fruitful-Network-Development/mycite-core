@@ -9,6 +9,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.portal_host.app import PORTAL_SHELL_ASSET_MANIFEST_SCHEMA, PORTAL_SHELL_MODULE_FILES, build_shell_asset_manifest
+from MyCiteV2.packages.state_machine.portal_shell import (
+    SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
+    build_portal_tool_registry_entries,
+)
 
 
 class PortalOneShellBoundaryTests(unittest.TestCase):
@@ -52,6 +56,11 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("default_workbench_visible: bool = False", shell_source)
         self.assertNotIn("system.activity", shell_source)
         self.assertNotIn("system.profile_basics", shell_source)
+
+    def test_tool_registry_keeps_shared_interface_panel_defaults(self) -> None:
+        for entry in build_portal_tool_registry_entries():
+            self.assertEqual(entry.surface_posture, SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
+            self.assertFalse(entry.default_workbench_visible)
 
     def test_shell_asset_manifest_is_canonical_and_loader_reads_it_dynamically(self) -> None:
         manifest = build_shell_asset_manifest(build_id="build-123")
@@ -159,9 +168,9 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         ).read_text(encoding="utf-8"))
         self.assertIn("cts-gis-garlandSplit__geospatial", portal_css)
         self.assertIn("cts-gis-directoryCanvas", portal_css)
-        self.assertIn("cts-gis-directoryDropdownStack", portal_css)
-        self.assertIn("cts-gis-directorySelect", portal_css)
-        self.assertIn("cts-gis-directoryDiagnostic", portal_css)
+        self.assertIn("cts-gis-stageSelector", portal_css)
+        self.assertIn("cts-gis-stageColumn__frame", portal_css)
+        self.assertIn("cts-gis-navDiagnostics", portal_css)
         self.assertIn("cts-gis-mapStage__svg", portal_css)
         self.assertIn("cts-gis-profileHierarchy__item", portal_css)
         self.assertIn(".cts-gis-interface__body", portal_css)

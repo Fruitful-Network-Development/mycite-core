@@ -11,7 +11,6 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
-    SURFACE_POSTURE_WORKBENCH_PRIMARY,
     SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
     SYSTEM_ANCHOR_FILE_KEY,
     SYSTEM_ROOT_SURFACE_ID,
@@ -22,6 +21,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     UTILITIES_ROOT_SURFACE_ID,
     VERB_NAVIGATE,
     build_portal_activity_dispatch_bodies,
+    build_shell_composition_payload,
     build_portal_surface_catalog,
     build_portal_tool_registry_entries,
     canonical_query_for_shell_state,
@@ -127,12 +127,30 @@ class PortalShellContractTests(unittest.TestCase):
             entry["tool_id"]: entry
             for entry in (entry.to_dict() for entry in build_portal_tool_registry_entries())
         }
-        self.assertEqual(registry_entries["aws_csm"]["surface_posture"], SURFACE_POSTURE_WORKBENCH_PRIMARY)
-        self.assertTrue(registry_entries["aws_csm"]["default_workbench_visible"])
+        self.assertEqual(registry_entries["aws_csm"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
+        self.assertFalse(registry_entries["aws_csm"]["default_workbench_visible"])
         self.assertEqual(registry_entries["cts_gis"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
         self.assertFalse(registry_entries["cts_gis"]["default_workbench_visible"])
         self.assertEqual(registry_entries["fnd_ebi"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
         self.assertFalse(registry_entries["fnd_ebi"]["default_workbench_visible"])
+
+    def test_tool_composition_hides_workbench_even_when_runtime_projects_it_visible(self) -> None:
+        composition = build_shell_composition_payload(
+            active_surface_id=AWS_CSM_TOOL_SURFACE_ID,
+            portal_instance_id="fnd",
+            page_title="AWS-CSM",
+            page_subtitle="",
+            activity_items=[],
+            control_panel={},
+            workbench={"visible": True},
+            inspector={},
+            shell_state=None,
+        )
+        self.assertTrue(composition["workbench_collapsed"])
+        self.assertFalse(composition["interface_panel_collapsed"])
+        self.assertEqual(composition["foreground_shell_region"], "interface-panel")
+        self.assertFalse(composition["regions"]["workbench"]["visible"])
+        self.assertTrue(composition["regions"]["interface_panel"]["visible"])
 
     def test_dispatch_bodies_preserve_portal_capabilities(self) -> None:
         state = initial_portal_shell_state(

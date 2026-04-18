@@ -587,6 +587,10 @@ class PortalToolRegistryEntry:
             raise ValueError("tool_registry.surface_posture is invalid")
         if self.read_write_posture not in {"read-only", "write"}:
             raise ValueError("tool_registry.read_write_posture must be read-only or write")
+        if self.surface_posture != SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY:
+            raise ValueError("tool_registry.surface_posture must remain interface_panel_primary for tool surfaces")
+        if bool(self.default_workbench_visible):
+            raise ValueError("tool_registry.default_workbench_visible must remain false for tool surfaces")
         object.__setattr__(
             self,
             "required_capabilities",
@@ -709,10 +713,9 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             entrypoint_id=AWS_CSM_TOOL_ENTRYPOINT_ID,
             route=AWS_CSM_TOOL_ROUTE,
             tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_WORKBENCH_PRIMARY,
+            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
             read_write_posture="read-only",
             required_capabilities=("fnd_peripheral_routing",),
-            default_workbench_visible=True,
             summary="Unified domain gallery with mailbox onboarding and newsletter state.",
         ),
         PortalToolRegistryEntry(
@@ -1328,15 +1331,15 @@ def shell_composition_mode_for_surface(active_surface_id: str) -> str:
 
 
 def surface_posture_for_surface(active_surface_id: str) -> str:
-    tool_entry = resolve_portal_tool_registry_entry(surface_id=active_surface_id)
-    return tool_entry.surface_posture if tool_entry is not None else SURFACE_POSTURE_WORKBENCH_PRIMARY
+    if is_tool_surface(active_surface_id):
+        return SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY
+    return SURFACE_POSTURE_WORKBENCH_PRIMARY
 
 
 def default_workbench_visible_for_surface(active_surface_id: str) -> bool:
-    tool_entry = resolve_portal_tool_registry_entry(surface_id=active_surface_id)
-    if tool_entry is not None:
-        return tool_entry.default_workbench_visible
-    return not is_tool_surface(active_surface_id)
+    if is_tool_surface(active_surface_id):
+        return False
+    return True
 
 
 def foreground_region_for_surface(
@@ -1414,7 +1417,14 @@ def build_shell_composition_payload(
     if not interface_open and state is not None:
         interface_open = state.chrome.interface_panel_open and state.verb == VERB_MEDIATE
     requested_inspector_visible = inspector_region.get("visible") is True
-    inspector_visible = bool(interface_open or requested_inspector_visible)
+    if tool_surface:
+        # Tool posture is shell-owned: the first server composition always opens
+        # the Interface Panel and keeps the Workbench hidden until the client
+        # explicitly reveals secondary evidence locally.
+        workbench_visible = False
+        inspector_visible = True
+    else:
+        inspector_visible = bool(interface_open or requested_inspector_visible)
     workbench_region["visible"] = workbench_visible
     inspector_region["visible"] = inspector_visible
     inspector_region["primary_surface"] = bool(

@@ -504,7 +504,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             "descendants_depth_1_or_2",
         )
 
-    def test_aws_tool_runtime_lets_shell_own_workbench_default_visibility(self) -> None:
+    def test_aws_tool_runtime_keeps_workbench_hidden_on_first_shell_composition(self) -> None:
         bundle = build_portal_aws_surface_bundle(
             surface_id="system.tools.aws_csm",
             portal_scope=PortalScope(scope_id="fnd", capabilities=("fnd_peripheral_routing",)),
@@ -512,7 +512,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             surface_query=None,
             private_dir=None,
         )
-        self.assertNotIn("visible", bundle["workbench"])
+        self.assertFalse(bundle["workbench"]["visible"])
 
         envelope = run_portal_shell_entry(
             {
@@ -530,9 +530,10 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             tool_exposure_policy=None,
         )
         composition = envelope["shell_composition"]
-        self.assertFalse(composition["workbench_collapsed"])
+        self.assertTrue(composition["workbench_collapsed"])
         self.assertFalse(composition["interface_panel_collapsed"])
-        self.assertEqual(composition["foreground_shell_region"], "center-workbench")
+        self.assertEqual(composition["foreground_shell_region"], "interface-panel")
+        self.assertFalse(composition["regions"]["workbench"]["visible"])
         self.assertEqual(composition["regions"]["interface_panel"], composition["regions"]["inspector"])
 
     def test_aws_csm_domain_readiness_projects_identity_missing(self) -> None:
@@ -605,11 +606,11 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             inspector={},
             shell_state=None,
         )
-        self.assertFalse(aws_tool_composition["workbench_collapsed"])
+        self.assertTrue(aws_tool_composition["workbench_collapsed"])
         self.assertFalse(aws_tool_composition["interface_panel_collapsed"])
-        self.assertEqual(aws_tool_composition["foreground_shell_region"], "center-workbench")
-        self.assertFalse(aws_tool_composition["regions"]["inspector"]["primary_surface"])
-        self.assertEqual(aws_tool_composition["regions"]["inspector"]["layout_mode"], "sidebar")
+        self.assertEqual(aws_tool_composition["foreground_shell_region"], "interface-panel")
+        self.assertTrue(aws_tool_composition["regions"]["inspector"]["primary_surface"])
+        self.assertEqual(aws_tool_composition["regions"]["inspector"]["layout_mode"], "dominant")
         self.assertEqual(
             aws_tool_composition["regions"]["interface_panel"],
             aws_tool_composition["regions"]["inspector"],
@@ -626,8 +627,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             inspector={},
             shell_state=None,
         )
-        self.assertFalse(evidence_composition["workbench_collapsed"])
-        self.assertEqual(evidence_composition["foreground_shell_region"], "center-workbench")
+        self.assertTrue(evidence_composition["workbench_collapsed"])
+        self.assertEqual(evidence_composition["foreground_shell_region"], "interface-panel")
 
     def test_cts_gis_query_widening_is_ignored_at_shell_entry(self) -> None:
         envelope = run_portal_shell_entry(
