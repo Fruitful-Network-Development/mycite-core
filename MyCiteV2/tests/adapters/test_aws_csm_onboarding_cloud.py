@@ -40,6 +40,44 @@ def _profile() -> dict[str, object]:
     }
 
 
+def _domain_record() -> dict[str, object]:
+    return {
+        "schema": "mycite.service_tool.aws_csm.domain.v1",
+        "identity": {
+            "tenant_id": "cvccboard",
+            "domain": "cvccboard.org",
+            "region": "us-east-1",
+            "hosted_zone_id": "Z05968042395KDRPX4PLG",
+        },
+        "dns": {
+            "hosted_zone_present": True,
+            "nameserver_match": True,
+            "registrar_nameservers": [],
+            "hosted_zone_nameservers": [],
+            "mx_record_present": False,
+            "mx_record_values": [],
+            "dkim_records_present": False,
+            "dkim_record_values": [],
+        },
+        "ses": {
+            "identity_exists": False,
+            "identity_status": "not_started",
+            "verified_for_sending_status": False,
+            "dkim_status": "not_started",
+            "dkim_tokens": [],
+        },
+        "receipt": {
+            "status": "not_ready",
+            "rule_name": "portal-capture-cvccboard-org",
+            "expected_recipient": "cvccboard.org",
+            "expected_lambda_name": "newsletter-inbound-capture",
+            "bucket": "ses-inbound-fnd-mail",
+            "prefix": "inbound/cvccboard.org/",
+        },
+        "observation": {},
+    }
+
+
 class _FakeSecretsManagerClient:
     class exceptions:
         class ResourceNotFoundException(Exception):
@@ -107,6 +145,32 @@ class _FakeSesV2Client:
             }
         )
         return {"MessageId": "ses-message-001"}
+
+
+class _FakeRoute53Client:
+    def __init__(self) -> None:
+        self.change_calls: list[dict[str, object]] = []
+
+    def change_resource_record_sets(self, **kwargs: object) -> dict[str, object]:
+        self.change_calls.append(kwargs)
+        return {"ChangeInfo": {"Status": "PENDING"}}
+
+
+class _FakeSesReceiptClient:
+    def __init__(self) -> None:
+        self.created_rules: list[dict[str, object]] = []
+        self.updated_rules: list[dict[str, object]] = []
+
+    def describe_active_receipt_rule_set(self) -> dict[str, object]:
+        return {"Metadata": {"Name": "primary-rule-set"}, "Rules": []}
+
+    def create_receipt_rule(self, **kwargs: object) -> dict[str, object]:
+        self.created_rules.append(kwargs)
+        return {}
+
+    def update_receipt_rule(self, **kwargs: object) -> dict[str, object]:
+        self.updated_rules.append(kwargs)
+        return {}
 
 
 class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
@@ -374,6 +438,61 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
         body = sesv2.sent_messages[0]["content"]["Simple"]["Body"]["Text"]["Data"]
         self.assertIn("SMTP username: SMTPUSER", body)
         self.assertNotIn("SMTPPASS", body)
+
+    def test_sync_domain_dns_refuses_when_nameservers_do_not_match(self) -> None:
+        adapter = AwsEc2RoleOnboardingCloudAdapter(tenant_id="cvccboard")
+        with patch.object(
+            adapter,
+            "describe_domain_status",
+            return_value={
+                "dns": {
+                    "hosted_zone_present": True,
+                    "nameserver_match": False,
+                    "mx_record_present": False,
+                    "mx_record_values": [],
+                    "dkim_records_present": False,
+                    "dkim_record_values": [],
+                },
+                "ses": {
+                    "identity_exists": True,
+                    "identity_status": "pending",
+                    "verified_for_sending_status": False,
+                    "dkim_status": "pending",
+                    "dkim_tokens": ["token-1", "token-2", "token-3"],
+                },
+            },
+        ), patch.object(adapter, "_client") as client_mock:
+            with self.assertRaisesRegex(ValueError, "nameservers do not match"):
+                adapter.sync_domain_dns(_domain_record())
+
+        client_mock.assert_not_called()
+
+    def test_ensure_domain_receipt_rule_uses_bare_domain_recipient(self) -> None:
+        adapter = AwsEc2RoleOnboardingCloudAdapter(tenant_id="cvccboard")
+        ses = _FakeSesReceiptClient()
+
+        def fake_client(service_name: str, *, region: str | None = None) -> object:
+            _ = region
+            if service_name == "ses":
+                return ses
+            raise AssertionError(f"unexpected service {service_name}")
+
+        with patch.object(adapter, "_client", side_effect=fake_client), patch.object(
+            adapter,
+            "lambda_health_summary",
+            return_value={
+                "status": "active",
+                "function_arn": "arn:aws:lambda:us-east-1:123456789012:function:newsletter-inbound-capture",
+            },
+        ):
+            adapter.ensure_domain_receipt_rule(_domain_record())
+
+        self.assertEqual(len(ses.created_rules), 1)
+        rule = ses.created_rules[0]["Rule"]
+        self.assertEqual(rule["Name"], "portal-capture-cvccboard-org")
+        self.assertEqual(rule["Recipients"], ["cvccboard.org"])
+        self.assertEqual(rule["Actions"][0]["S3Action"]["BucketName"], "ses-inbound-fnd-mail")
+        self.assertEqual(rule["Actions"][0]["S3Action"]["ObjectKeyPrefix"], "inbound/cvccboard.org/")
 
 
 if __name__ == "__main__":

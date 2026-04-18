@@ -2,6 +2,7 @@
   "schema": "mycite.portal.tool_collection.v1",
   "member_files": [
     "spec.json",
+    "aws-csm-domain.cvccboard.json",
     "aws-csm.fnd.dylan.json",
     "aws-csm.tff.technicalContact.json",
     "aws-csm.tff.mark.json",

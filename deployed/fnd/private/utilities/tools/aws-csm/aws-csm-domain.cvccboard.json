@@ -1,0 +1,63 @@
+{
+  "schema": "mycite.service_tool.aws_csm.domain.v1",
+  "identity": {
+    "tenant_id": "cvccboard",
+    "domain": "cvccboard.org",
+    "region": "us-east-1",
+    "hosted_zone_id": "Z05968042395KDRPX4PLG"
+  },
+  "dns": {
+    "hosted_zone_present": true,
+    "nameserver_match": true,
+    "registrar_nameservers": [
+      "ns-1225.awsdns-25.org",
+      "ns-148.awsdns-18.com",
+      "ns-1765.awsdns-28.co.uk",
+      "ns-947.awsdns-54.net"
+    ],
+    "hosted_zone_nameservers": [
+      "ns-1225.awsdns-25.org",
+      "ns-148.awsdns-18.com",
+      "ns-1765.awsdns-28.co.uk",
+      "ns-947.awsdns-54.net"
+    ],
+    "mx_expected_value": "10 inbound-smtp.us-east-1.amazonaws.com",
+    "mx_record_present": true,
+    "mx_record_values": [
+      "10 inbound-smtp.us-east-1.amazonaws.com"
+    ],
+    "dkim_records_present": false,
+    "dkim_record_values": []
+  },
+  "ses": {
+    "identity_exists": false,
+    "identity_status": "not_started",
+    "verified_for_sending_status": false,
+    "dkim_status": "not_started",
+    "dkim_tokens": []
+  },
+  "receipt": {
+    "status": "not_ready",
+    "rule_name": "portal-capture-cvccboard-org",
+    "expected_recipient": "cvccboard.org",
+    "expected_lambda_name": "newsletter-inbound-capture",
+    "bucket": "ses-inbound-fnd-mail",
+    "prefix": "inbound/cvccboard.org/",
+    "matching_rules": []
+  },
+  "observation": {
+    "last_checked_at": "2026-04-18T00:00:00+00:00",
+    "account": "065948377733",
+    "role_arn": "arn:aws:iam::065948377733:role/EC2-AWSCMS-Admin"
+  },
+  "readiness": {
+    "schema": "mycite.service_tool.aws_csm.domain_readiness.v1",
+    "state": "identity_missing",
+    "summary": "Create the SES domain identity to obtain DKIM tokens.",
+    "blockers": [
+      "SES domain identity has not been created yet."
+    ],
+    "last_checked_at": "2026-04-18T00:00:00+00:00",
+    "domain": "cvccboard.org"
+  }
+}

@@ -14,7 +14,10 @@ from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
     build_portal_cts_gis_surface_bundle,
     run_portal_cts_gis,
 )
-from MyCiteV2.instances._shared.runtime.portal_aws_runtime import build_portal_aws_surface_bundle
+from MyCiteV2.instances._shared.runtime.portal_aws_runtime import (
+    _project_domain_readiness,
+    build_portal_aws_surface_bundle,
+)
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
     build_system_workspace_bundle,
@@ -46,6 +49,48 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _domain_readiness_payload() -> dict[str, object]:
+    return {
+        "schema": "mycite.service_tool.aws_csm.domain.v1",
+        "identity": {
+            "tenant_id": "cvccboard",
+            "domain": "cvccboard.org",
+            "region": "us-east-1",
+            "hosted_zone_id": "Z05968042395KDRPX4PLG",
+        },
+        "dns": {
+            "hosted_zone_present": True,
+            "nameserver_match": True,
+            "registrar_nameservers": ["ns-1.example.com"],
+            "hosted_zone_nameservers": ["ns-1.example.com"],
+            "mx_record_present": True,
+            "mx_record_values": ["10 inbound-smtp.us-east-1.amazonaws.com"],
+            "dkim_records_present": True,
+            "dkim_record_values": [
+                "token-1.dkim.amazonses.com",
+                "token-2.dkim.amazonses.com",
+                "token-3.dkim.amazonses.com",
+            ],
+        },
+        "ses": {
+            "identity_exists": True,
+            "identity_status": "verified",
+            "verified_for_sending_status": True,
+            "dkim_status": "verified",
+            "dkim_tokens": ["token-1", "token-2", "token-3"],
+        },
+        "receipt": {
+            "status": "ok",
+            "rule_name": "portal-capture-cvccboard-org",
+            "expected_recipient": "cvccboard.org",
+            "expected_lambda_name": "newsletter-inbound-capture",
+            "bucket": "ses-inbound-fnd-mail",
+            "prefix": "inbound/cvccboard.org/",
+        },
+        "observation": {"last_checked_at": "2026-04-18T00:00:00+00:00"},
+    }
 
 
 def _ascii_bits(text: str) -> str:
@@ -479,6 +524,46 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertTrue(composition["workbench_collapsed"])
         self.assertFalse(composition["interface_panel_collapsed"])
         self.assertEqual(composition["regions"]["interface_panel"], composition["regions"]["inspector"])
+
+    def test_aws_csm_domain_readiness_projects_identity_missing(self) -> None:
+        payload = _domain_readiness_payload()
+        payload["ses"]["identity_exists"] = False
+        payload["ses"]["identity_status"] = "not_started"
+        payload["ses"]["dkim_status"] = "not_started"
+        payload["dns"]["mx_record_present"] = True
+        payload["dns"]["dkim_records_present"] = False
+
+        readiness = _project_domain_readiness(payload)
+
+        self.assertEqual(readiness["state"], "identity_missing")
+        self.assertIn("SES domain identity has not been created yet.", readiness["blockers"])
+
+    def test_aws_csm_domain_readiness_projects_dns_pending(self) -> None:
+        payload = _domain_readiness_payload()
+        payload["dns"]["dkim_records_present"] = False
+        payload["dns"]["dkim_record_values"] = []
+        payload["ses"]["identity_status"] = "pending"
+        payload["ses"]["dkim_status"] = "pending"
+
+        readiness = _project_domain_readiness(payload)
+
+        self.assertEqual(readiness["state"], "dns_pending")
+        self.assertIn("The SES DKIM CNAME records are incomplete in Route 53.", readiness["blockers"])
+
+    def test_aws_csm_domain_readiness_projects_receipt_pending(self) -> None:
+        payload = _domain_readiness_payload()
+        payload["receipt"]["status"] = "not_ready"
+
+        readiness = _project_domain_readiness(payload)
+
+        self.assertEqual(readiness["state"], "receipt_pending")
+        self.assertIn("The bare-domain receipt rule is not configured yet.", readiness["blockers"])
+
+    def test_aws_csm_domain_readiness_projects_ready_for_mailboxes(self) -> None:
+        readiness = _project_domain_readiness(_domain_readiness_payload())
+
+        self.assertEqual(readiness["state"], "ready_for_mailboxes")
+        self.assertEqual(readiness["blockers"], [])
 
     def test_shell_composition_builder_owns_root_and_tool_visibility_defaults(self) -> None:
         root_composition = build_shell_composition_payload(
