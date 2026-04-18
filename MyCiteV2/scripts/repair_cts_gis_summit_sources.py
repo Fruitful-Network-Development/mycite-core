@@ -2,19 +2,63 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import sys
 from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_NOTES_DIR = REPO_ROOT / "docs" / "personal_notes" / "CTS-GIS-prototype-mockup"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from MyCiteV2.packages.modules.cross_domain.cts_gis import CtsGisReadOnlyService
+from MyCiteV2.packages.ports.datum_store import (
+    AuthoritativeDatumDocument,
+    AuthoritativeDatumDocumentCatalogResult,
+    AuthoritativeDatumDocumentRequest,
+    AuthoritativeDatumDocumentRow,
+)
+
 DEFAULT_DATA_ROOTS = [
     REPO_ROOT / "deployed" / "fnd" / "data",
     Path("/srv/mycite-state/instances/fnd/data"),
 ]
-COUNTY_NODE_ID = "3-2-3-17-77"
-COUNTY_ROOT_PREFIX = f"{COUNTY_NODE_ID}-"
 ANCHOR_NAME = "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json"
-ADMIN_NAME = "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"
+PROJECTION_GLOB = "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77*.json"
+SWAPPED_SUFFIXES = frozenset(("3-2-3-17-77-3-8", "3-2-3-17-77-3-9"))
+REFERENCE_KEYS = (
+    "reference_geojson",
+    "reference_geojson_source",
+    "reference_geojson_node_id",
+)
+REF_PATTERN = re.compile(r"^[4567]-\d+-\d+$")
+
+
+class _SingleDocumentStore:
+    def __init__(self, document: AuthoritativeDatumDocument) -> None:
+        self._document = document
+
+    def read_authoritative_datum_documents(
+        self,
+        request: AuthoritativeDatumDocumentRequest | dict[str, Any],
+    ) -> AuthoritativeDatumDocumentCatalogResult:
+        normalized_request = (
+            request
+            if isinstance(request, AuthoritativeDatumDocumentRequest)
+            else AuthoritativeDatumDocumentRequest.from_dict(request)
+        )
+        return AuthoritativeDatumDocumentCatalogResult(
+            tenant_id=normalized_request.tenant_id,
+            documents=(self._document,),
+            source_files={},
+            readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+        )
+
+
+def _as_text(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -30,426 +74,490 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def _address_sort_key(token: str) -> tuple[tuple[int, ...], str]:
     parts = str(token or "").split("-")
-    if all(part.isdigit() for part in parts):
+    if parts and all(part.isdigit() for part in parts):
         return tuple(int(part) for part in parts), str(token)
     return (10**9,), str(token)
 
 
-def _text_bits(value: str) -> str:
-    return "".join(f"{byte:08b}" for byte in value.encode("utf-8"))
-
-
-def _decode_text_bits(value: str) -> str:
-    token = str(value or "").strip()
-    if not token or any(ch not in {"0", "1"} for ch in token) or (len(token) % 8) != 0:
+def _node_suffix_from_path(path: Path) -> str:
+    name = _as_text(path.name)
+    if ".fnd." not in name or not name.endswith(".json"):
         return ""
-    data = bytearray(int(token[index : index + 8], 2) for index in range(0, len(token), 8))
-    while data and data[-1] == 0:
-        data.pop()
-    if not data:
-        return ""
-    try:
-        return bytes(data).decode("utf-8").strip()
-    except UnicodeDecodeError:
-        return ""
+    return name.split(".fnd.", 1)[1][:-5]
 
 
-def _normalize_name(value: str) -> str:
-    lowered = value.lower().replace("_", " ").replace("-", " ")
-    cleaned = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in lowered)
-    tokens = [token for token in cleaned.split() if token]
-    stopwords = {"city", "village", "township", "county", "of"}
-    return " ".join(token for token in tokens if token not in stopwords)
+def _datum_space(payload: dict[str, Any]) -> dict[str, Any]:
+    space = payload.get("datum_addressing_abstraction_space")
+    return dict(space) if isinstance(space, dict) else {}
 
 
-def _primary_samras_node_id(space: dict[str, Any]) -> str:
-    row = space.get("7-3-1")
-    if not isinstance(row, list) or not row or not isinstance(row[0], list):
-        return ""
-    head = row[0]
-    for index, token in enumerate(head[:-1]):
-        if token == "rf.3-1-2":
-            value = str(head[index + 1] or "").strip()
-            if value:
-                return value
+def _row_tokens(space: dict[str, Any], row_address: str) -> list[Any]:
+    row = space.get(row_address)
+    if not isinstance(row, list) or not row:
+        return []
+    if isinstance(row[0], list):
+        return list(row[0])
+    return list(row)
+
+
+def _first_primary_node_id(tokens: list[Any]) -> str:
+    for index, token in enumerate(tokens[:-1]):
+        if _as_text(token) == "rf.3-1-2":
+            return _as_text(tokens[index + 1])
     return ""
 
 
-def _primary_label(space: dict[str, Any]) -> str:
-    row = space.get("7-3-1")
-    if not isinstance(row, list) or len(row) < 2 or not isinstance(row[1], list):
-        return ""
-    return str(row[1][0] or "").strip() if row[1] else ""
+def _hops_token_count(tokens: list[Any]) -> int:
+    out = 0
+    for index, token in enumerate(tokens[:-1]):
+        if _as_text(token) == "rf.3-1-1" and _as_text(tokens[index + 1]):
+            out += 1
+    return out
 
 
-def _reference_geojson_lookup(notes_dir: Path) -> tuple[dict[str, dict[str, Any]], list[str]]:
-    lookup: dict[str, dict[str, Any]] = {}
-    warnings: list[str] = []
+def _contract_violations(path: Path, payload: dict[str, Any]) -> list[str]:
+    violations: list[str] = []
+    suffix = _node_suffix_from_path(path)
+    space = _datum_space(payload)
 
-    county_path = notes_dir / "3-2-3-17-77.geojson"
-    if county_path.exists():
-        lookup[f"{_normalize_name('summit')}:county"] = {
-            "node_id": COUNTY_NODE_ID,
-            "path": county_path,
-            "payload": _read_json(county_path),
-        }
+    row7 = _row_tokens(space, "7-3-1")
+    if not row7:
+        violations.append("missing 7-3-1 row")
     else:
-        warnings.append(f"Missing county reference GeoJSON: {county_path}")
+        primary_node_id = _first_primary_node_id(row7)
+        if not primary_node_id:
+            violations.append("7-3-1 missing primary rf.3-1-2 binding")
+        elif suffix and primary_node_id != suffix:
+            violations.append(f"suffix/7-3-1 primary mismatch ({suffix} != {primary_node_id})")
 
-    state_path = notes_dir / "3-2-3-17.geojson"
-    if state_path.exists():
-        warnings.append(
-            "Reference GeoJSON 3-2-3-17.geojson is present, but no matching CTS-GIS source document exists under sandbox/cts-gis/sources."
-        )
+    ref_node_id = _as_text(payload.get("reference_geojson_node_id"))
+    if ref_node_id and suffix and ref_node_id != suffix:
+        violations.append(f"suffix/reference_geojson_node_id mismatch ({suffix} != {ref_node_id})")
 
-    community_dir = notes_dir / "Summit-County-Communities"
-    if not community_dir.exists():
-        warnings.append(f"Missing community reference directory: {community_dir}")
-        return lookup, warnings
-
-    for path in sorted(community_dir.glob("*.geojson")):
-        payload = _read_json(path)
-        feature = next(iter(payload.get("features") or []), {})
-        properties = dict(feature.get("properties") or {})
-        community_type = str(properties.get("community_type") or "").strip().lower()
-        name_candidates = [
-            str(properties.get("source_query_name") or "").strip(),
-            str(properties.get("municipality") or "").strip(),
-            str(properties.get("twp_name") or "").strip(),
-            str(properties.get("community_name") or "").strip(),
-            path.stem,
-        ]
-        base_name = next((_normalize_name(candidate) for candidate in name_candidates if _normalize_name(candidate)), "")
-        if not base_name or not community_type:
-            warnings.append(f"Could not infer reference key for {path}")
+    for row_address in sorted(space.keys(), key=_address_sort_key):
+        tokens = _row_tokens(space, row_address)
+        if not tokens:
             continue
-        lookup[f"{base_name}:{community_type}"] = {
-            "node_id": "",
-            "path": path,
-            "payload": payload,
-        }
-    return lookup, warnings
-
-
-def _reference_key_for_source(node_id: str, label: str) -> str:
-    if node_id == COUNTY_NODE_ID:
-        return f"{_normalize_name('summit')}:county"
-    normalized_label = _normalize_name(label)
-    if label.endswith("_city"):
-        return f"{normalized_label}:city"
-    if label.endswith("_township"):
-        return f"{normalized_label}:township"
-    if label.endswith("_village"):
-        return f"{normalized_label}:village"
-    return ""
-
-
-def _rebuild_anchor_source_rows(anchor_payload: dict[str, Any], source_dir: Path) -> dict[str, Any]:
-    source_files = sorted(path.name for path in source_dir.glob("*.json"))
-    rebuilt: dict[str, Any] = {}
-    for address, row in sorted(anchor_payload.items(), key=lambda item: _address_sort_key(item[0])):
-        if not address.startswith("1-0-"):
-            rebuilt[address] = row
-    for index, source_name in enumerate(source_files, start=1):
-        rebuilt[f"1-0-{index}"] = [[f"1-0-{index}", "~", "0-0-11"], [source_name]]
-    return dict(sorted(rebuilt.items(), key=lambda item: _address_sort_key(item[0])))
-
-
-def _replace_title_here_tokens(space: dict[str, Any]) -> int:
-    replacements = 0
-    for row in space.values():
-        if not isinstance(row, list) or len(row) < 2 or not isinstance(row[0], list) or not isinstance(row[1], list):
+        parts = row_address.split("-")
+        if len(parts) != 3 or not all(piece.isdigit() for piece in parts):
             continue
-        head = row[0]
-        labels = row[1]
-        title_bits = _text_bits(str(labels[0] or "").strip()) if labels else ""
-        if not title_bits:
+
+        family = parts[0]
+        if family == "4":
+            declared = int(parts[1])
+            observed = _hops_token_count(tokens)
+            if declared != observed:
+                violations.append(f"{row_address} declares {declared} HOPS tokens but carries {observed}")
             continue
-        for index, token in enumerate(head[:-1]):
-            if token == "rf.3-1-3" and str(head[index + 1]).strip() == "HERE":
-                head[index + 1] = title_bits
-                replacements += 1
-    return replacements
 
+        if family in {"5", "6"}:
+            references = [
+                _as_text(token)
+                for token in tokens[2:]
+                if _as_text(token) and REF_PATTERN.match(_as_text(token))
+            ]
+            if len(references) != len(set(references)):
+                violations.append(f"{row_address} has duplicate references")
+            expected_prefix = "4-" if family == "5" else "5-"
+            for ref in references:
+                if not ref.startswith(expected_prefix):
+                    violations.append(f"{row_address} references wrong family ({ref})")
+                if ref not in space:
+                    violations.append(f"{row_address} references missing row ({ref})")
 
-def _replace_first_samras_binding(row: list[Any], node_id: str) -> bool:
-    if not isinstance(row, list) or not row or not isinstance(row[0], list):
-        return False
-    head = row[0]
-    for index, token in enumerate(head[:-1]):
-        if token == "rf.3-1-2":
-            head[index + 1] = node_id
-            return True
-    return False
-
-
-def _repair_admin_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, int]]:
-    space = dict(payload.get("datum_addressing_abstraction_space") or {})
-    stats = {
-        "title_placeholders_repaired": 0,
-        "summit_admin_rows_regenerated": 0,
-        "reminderville_rebound": 0,
-        "boston_heights_renamed": 0,
-        "adm2_typo_fixed": 0,
-        "adm3_collection_fixed": 0,
-        "collection_chain_fixed": 0,
-    }
-
-    boston_renames = {
-        "4-2-213": "boston_heights_village",
-        "4-2-216": "village_of_boston_heights",
-    }
-    for address, label in boston_renames.items():
-        row = space.get(address)
-        if isinstance(row, list) and len(row) >= 2 and isinstance(row[1], list):
-            if not row[1] or row[1][0] != label:
-                row[1] = [label]
-                stats["boston_heights_renamed"] += 1
-
-    reminderville_bindings = {
-        "4-2-245": "3-2-3-17-77-3-9",
-        "4-2-246": "3-2-3-17-77-3-9-1",
-        "4-2-247": "3-2-3-17-77-3-9-1-1",
-        "4-2-248": "3-2-3-17-77-3-9-1-1-1",
-    }
-    for address, node_id in reminderville_bindings.items():
-        row = space.get(address)
-        if row is not None and _replace_first_samras_binding(row, node_id):
-            stats["reminderville_rebound"] += 1
-
-    ohio_adm2 = space.get("5-0-3")
-    if isinstance(ohio_adm2, list) and ohio_adm2 and isinstance(ohio_adm2[0], list):
-        head = ohio_adm2[0]
-        changed = False
-        for index, token in enumerate(head):
-            if token == "4-2-10":
-                head[index] = "4-2-106"
-                changed = True
-        if changed:
-            stats["adm2_typo_fixed"] += 1
-
-    summit_admin3_rows: list[str] = []
-    for address, row in sorted(space.items(), key=lambda item: _address_sort_key(item[0])):
-        if not address.startswith("4-2-"):
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in violations:
+        if item in seen:
             continue
-        if not isinstance(row, list) or not row or not isinstance(row[0], list):
-            continue
-        head = row[0]
-        first_samras = ""
-        for index, token in enumerate(head[:-1]):
-            if token == "rf.3-1-2":
-                first_samras = str(head[index + 1] or "").strip()
-                break
-        if first_samras.startswith(f"{COUNTY_ROOT_PREFIX}1") or first_samras.startswith(f"{COUNTY_ROOT_PREFIX}2") or first_samras.startswith(f"{COUNTY_ROOT_PREFIX}3"):
-            summit_admin3_rows.append(address)
-    if summit_admin3_rows:
-        space["5-0-4"] = [["5-0-4", "~", *summit_admin3_rows], ["ohio_summit_county_adm3"]]
-        stats["summit_admin_rows_regenerated"] = len(summit_admin3_rows)
-        stats["adm3_collection_fixed"] = 1
-
-    admin_collection = space.get("6-0-1")
-    if isinstance(admin_collection, list) and admin_collection and isinstance(admin_collection[0], list):
-        head = [token for token in admin_collection[0] if token not in {"5-0-1", "5-0-2", "5-0-3", "5-0-4"}]
-        admin_collection[0] = [head[0], head[1], "5-0-1", "5-0-2", "5-0-3", "5-0-4"]
-        stats["collection_chain_fixed"] = 1
-
-    stats["title_placeholders_repaired"] = _replace_title_here_tokens(space)
-
-    repaired = dict(payload)
-    repaired["datum_addressing_abstraction_space"] = space
-    return repaired, stats
+        seen.add(item)
+        deduped.append(item)
+    return deduped
 
 
-def _audit_admin_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    space = dict(payload.get("datum_addressing_abstraction_space") or {})
-    bindings_by_node: dict[str, list[str]] = {}
-    blank_title_nodes: list[str] = []
-    missing_title_rows: list[str] = []
-    for address, row in sorted(space.items(), key=lambda item: _address_sort_key(item[0])):
-        if not address.startswith("4-2-"):
-            continue
-        if not isinstance(row, list) or len(row) < 2 or not isinstance(row[0], list):
-            continue
-        head = row[0]
-        node_id = ""
-        title_bits = ""
-        for index, token in enumerate(head[:-1]):
-            if token == "rf.3-1-2":
-                node_id = str(head[index + 1] or "").strip()
-            if token == "rf.3-1-3":
-                title_bits = str(head[index + 1] or "").strip()
-        if node_id:
-            bindings_by_node.setdefault(node_id, []).append(address)
-        if title_bits:
-            if not _decode_text_bits(title_bits):
-                blank_title_nodes.append(node_id or address)
-        else:
-            missing_title_rows.append(address)
-    duplicate_node_ids = sorted(
-        [node_id for node_id, addresses in bindings_by_node.items() if len(addresses) > 1],
-        key=_address_sort_key,
-    )
-    return {
-        "duplicate_node_ids": duplicate_node_ids,
-        "blank_title_nodes": sorted(blank_title_nodes, key=_address_sort_key),
-        "missing_title_rows": sorted(missing_title_rows, key=_address_sort_key),
-    }
+def _align_swapped_node_bindings(path: Path, payload: dict[str, Any]) -> list[str]:
+    notes: list[str] = []
+    suffix = _node_suffix_from_path(path)
+    if suffix not in SWAPPED_SUFFIXES:
+        return notes
 
-
-def _audit_source_profile_document(space: dict[str, Any]) -> dict[str, bool]:
+    space = _datum_space(payload)
     row = space.get("7-3-1")
     if not isinstance(row, list) or not row or not isinstance(row[0], list):
-        return {
-            "missing_primary_samras_node": True,
-            "missing_primary_title_binding": True,
-        }
-    head = row[0]
-    has_samras = False
-    has_title = False
-    for index, token in enumerate(head[:-1]):
-        if token == "rf.3-1-2" and str(head[index + 1] or "").strip():
-            has_samras = True
-        if token == "rf.3-1-3" and str(head[index + 1] or "").strip():
-            has_title = True
+        return notes
+
+    head = list(row[0])
+    rf_indexes = [index for index, token in enumerate(head[:-1]) if _as_text(token) == "rf.3-1-2"]
+    if not rf_indexes:
+        return notes
+
+    primary_index = rf_indexes[0]
+    old_primary = _as_text(head[primary_index + 1])
+    if old_primary and old_primary != suffix:
+        head[primary_index + 1] = suffix
+        notes.append(f"7-3-1 primary node id set to {suffix}")
+
+    if len(rf_indexes) > 1:
+        secondary_index = rf_indexes[1]
+        secondary_value = _as_text(head[secondary_index + 1])
+        if old_primary and secondary_value.startswith(old_primary + "-"):
+            head[secondary_index + 1] = suffix + secondary_value[len(old_primary) :]
+            notes.append("7-3-1 secondary node id prefix aligned to suffix")
+
+    row[0] = head
+    space["7-3-1"] = row
+    payload["datum_addressing_abstraction_space"] = space
+
+    ref_node_id = _as_text(payload.get("reference_geojson_node_id"))
+    if ref_node_id != suffix:
+        payload["reference_geojson_node_id"] = suffix
+        notes.append(f"reference_geojson_node_id set to {suffix}")
+
+    return notes
+
+
+def _load_anchor_rows(anchor_path: Path) -> tuple[AuthoritativeDatumDocumentRow, ...]:
+    payload = _read_json(anchor_path)
+    space = payload.get("datum_addressing_abstraction_space")
+    row_source = space if isinstance(space, dict) else payload
+    rows = [
+        AuthoritativeDatumDocumentRow(datum_address=address, raw=raw)
+        for address, raw in sorted(dict(row_source).items(), key=lambda item: _address_sort_key(item[0]))
+    ]
+    return tuple(rows)
+
+
+def _build_document(
+    *,
+    path: Path,
+    payload: dict[str, Any],
+    anchor_rows: tuple[AuthoritativeDatumDocumentRow, ...],
+    drop_reference_metadata: bool,
+) -> AuthoritativeDatumDocument:
+    metadata = {
+        key: value
+        for key, value in payload.items()
+        if key != "datum_addressing_abstraction_space"
+    }
+    if drop_reference_metadata:
+        for key in REFERENCE_KEYS:
+            metadata.pop(key, None)
+
+    space = _datum_space(payload)
+    rows = tuple(
+        AuthoritativeDatumDocumentRow(datum_address=address, raw=raw)
+        for address, raw in sorted(space.items(), key=lambda item: _address_sort_key(item[0]))
+    )
+
+    return AuthoritativeDatumDocument(
+        document_id=f"sandbox:cts_gis:{path.name}",
+        source_kind="sandbox_source",
+        document_name=path.name,
+        relative_path=f"sandbox/cts-gis/sources/{path.name}",
+        tool_id="cts_gis",
+        anchor_document_name=ANCHOR_NAME,
+        anchor_document_path=f"sandbox/cts-gis/{ANCHOR_NAME}",
+        anchor_rows=anchor_rows,
+        document_metadata=metadata,
+        rows=rows,
+    )
+
+
+def _projection_snapshot(
+    *,
+    path: Path,
+    payload: dict[str, Any],
+    anchor_rows: tuple[AuthoritativeDatumDocumentRow, ...],
+    drop_reference_metadata: bool,
+) -> dict[str, Any]:
+    document = _build_document(
+        path=path,
+        payload=payload,
+        anchor_rows=anchor_rows,
+        drop_reference_metadata=drop_reference_metadata,
+    )
+    service = CtsGisReadOnlyService(_SingleDocumentStore(document))
+    node_id = _node_suffix_from_path(path)
+    doc_id = f"sandbox:cts_gis:{path.name}"
+    surface = service.read_surface(
+        "fnd",
+        selected_document_id=doc_id,
+        mediation_state={
+            "attention_document_id": doc_id,
+            "attention_node_id": node_id,
+            "intention_token": "0",
+        },
+    )
+    map_projection = dict(surface.get("map_projection") or {})
+    decode_summary = dict(map_projection.get("decode_summary") or {})
     return {
-        "missing_primary_samras_node": not has_samras,
-        "missing_primary_title_binding": not has_title,
+        "projection_state": _as_text(map_projection.get("projection_state")),
+        "projection_source": _as_text(map_projection.get("projection_source")),
+        "feature_count": int(map_projection.get("feature_count") or 0),
+        "reference_binding_count": int(decode_summary.get("reference_binding_count") or 0),
+        "decoded_coordinate_count": int(decode_summary.get("decoded_coordinate_count") or 0),
+        "failed_token_count": int(decode_summary.get("failed_token_count") or 0),
+        "warnings": list(map_projection.get("warnings") or []),
     }
 
 
-def _repair_source_documents(data_root: Path, notes_dir: Path) -> dict[str, Any]:
+def _is_stage_a_safe(contract_violations: list[str], without_ref: dict[str, Any]) -> bool:
+    if contract_violations:
+        return False
+    if _as_text(without_ref.get("projection_source")) != "hops":
+        return False
+    if _as_text(without_ref.get("projection_state")) not in {"projectable", "projectable_degraded"}:
+        return False
+    if int(without_ref.get("feature_count") or 0) <= 0:
+        return False
+    if int(without_ref.get("failed_token_count") or 0) != 0:
+        return False
+    return True
+
+
+def _strip_reference_metadata(payload: dict[str, Any]) -> bool:
+    changed = False
+    for key in REFERENCE_KEYS:
+        if key in payload:
+            del payload[key]
+            changed = True
+    return changed
+
+
+def _markdown_summary(report: dict[str, Any]) -> str:
+    lines: list[str] = []
+    lines.append("# CTS-GIS HOPS-First Stage-A Audit")
+    lines.append("")
+    lines.append(f"Data root: `{_as_text(report.get('data_root'))}`")
+    lines.append("")
+    lines.append("## Totals")
+    lines.append("")
+    lines.append(f"- Projection documents audited: {int(report.get('document_count') or 0)}")
+    lines.append(f"- Stage-A safe to strip: {int(report.get('safe_to_strip_count') or 0)}")
+    lines.append(f"- Stage-A stripped this run: {int(report.get('stage_a_stripped_count') or 0)}")
+    lines.append(f"- Deterministic fixes applied: {int(report.get('deterministic_fix_count') or 0)}")
+    lines.append("")
+    lines.append("## Stage-A Safe Documents")
+    lines.append("")
+    safe_docs = list(report.get("safe_to_strip_documents") or [])
+    if not safe_docs:
+        lines.append("- None")
+    else:
+        for name in safe_docs:
+            lines.append(f"- `{name}`")
+    lines.append("")
+    lines.append("## Needs Repair / Blocked")
+    lines.append("")
+    rows = list(report.get("documents") or [])
+    blocked = [row for row in rows if not bool(row.get("safe_to_strip"))]
+    if not blocked:
+        lines.append("- None")
+    else:
+        for row in blocked:
+            lines.append(f"- `{_as_text(row.get('document_name'))}`")
+            violations = list(row.get("contract_violations") or [])
+            if violations:
+                for violation in violations:
+                    lines.append(f"  - contract: {violation}")
+            without_ref = dict(row.get("projection_without_reference") or {})
+            lines.append(
+                "  - projection_without_reference: "
+                + f"{_as_text(without_ref.get('projection_state'))}/"
+                + f"{_as_text(without_ref.get('projection_source'))}/"
+                + f"features={int(without_ref.get('feature_count') or 0)}"
+            )
+    lines.append("")
+    lines.append("## Before/After Projection Snapshots")
+    lines.append("")
+    lines.append("| Document | With Reference | Without Reference |")
+    lines.append("| --- | --- | --- |")
+    for row in rows:
+        before = dict(row.get("projection_with_reference") or {})
+        after = dict(row.get("projection_without_reference") or {})
+        before_text = (
+            f"{_as_text(before.get('projection_state'))}/"
+            f"{_as_text(before.get('projection_source'))}/"
+            f"f{int(before.get('feature_count') or 0)}/"
+            f"w{len(before.get('warnings') or [])}"
+        )
+        after_text = (
+            f"{_as_text(after.get('projection_state'))}/"
+            f"{_as_text(after.get('projection_source'))}/"
+            f"f{int(after.get('feature_count') or 0)}/"
+            f"w{len(after.get('warnings') or [])}"
+        )
+        lines.append(
+            f"| `{_as_text(row.get('document_name'))}` | `{before_text}` | `{after_text}` |"
+        )
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def _audit_and_repair_data_root(
+    *,
+    data_root: Path,
+    apply_deterministic_fixes: bool,
+    strip_stage_a: bool,
+) -> dict[str, Any]:
     source_dir = data_root / "sandbox" / "cts-gis" / "sources"
     anchor_path = data_root / "sandbox" / "cts-gis" / ANCHOR_NAME
-    if not source_dir.exists():
-        return {"data_root": str(data_root), "warnings": [f"Missing source directory: {source_dir}"]}
+    if not source_dir.exists() or not source_dir.is_dir():
+        return {
+            "data_root": str(data_root),
+            "document_count": 0,
+            "documents": [],
+            "warnings": [f"Missing source directory: {source_dir}"],
+        }
+    if not anchor_path.exists() or not anchor_path.is_file():
+        return {
+            "data_root": str(data_root),
+            "document_count": 0,
+            "documents": [],
+            "warnings": [f"Missing anchor document: {anchor_path}"],
+        }
 
-    reference_lookup, warnings = _reference_geojson_lookup(notes_dir)
-    patched_sources = 0
-    missing_references: list[str] = []
-    title_repairs = 0
-    patched_documents: list[str] = []
-    source_audit = {
-        "missing_primary_samras_node": [],
-        "missing_primary_title_binding": [],
-    }
+    anchor_rows = _load_anchor_rows(anchor_path)
+    document_rows: list[dict[str, Any]] = []
+    safe_docs: list[str] = []
+    stage_a_stripped: list[str] = []
+    deterministic_fixed: list[str] = []
 
-    for path in sorted(source_dir.glob("*.fnd.*.json")):
+    for path in sorted(source_dir.glob(PROJECTION_GLOB)):
         payload = _read_json(path)
-        space = dict(payload.get("datum_addressing_abstraction_space") or {})
-        node_id = _primary_samras_node_id(space)
-        label = _primary_label(space)
-        ref_key = _reference_key_for_source(node_id, label)
-        metadata_changed = False
-        if ref_key and ref_key in reference_lookup:
-            reference = reference_lookup[ref_key]
-            payload["reference_geojson_node_id"] = node_id
-            try:
-                reference_source = str(reference["path"].relative_to(REPO_ROOT))
-            except ValueError:
-                reference_source = str(reference["path"])
-            payload["reference_geojson_source"] = reference_source
-            payload["reference_geojson"] = reference["payload"]
-            patched_sources += 1
-            metadata_changed = True
-            patched_documents.append(path.name)
-        else:
-            missing_references.append(path.name)
+        deterministic_notes = _align_swapped_node_bindings(path, payload)
+        if deterministic_notes:
+            deterministic_fixed.append(path.name)
 
-        file_title_repairs = _replace_title_here_tokens(space)
-        title_repairs += file_title_repairs
-        profile_audit = _audit_source_profile_document(space)
-        if profile_audit["missing_primary_samras_node"]:
-            source_audit["missing_primary_samras_node"].append(path.name)
-        if profile_audit["missing_primary_title_binding"]:
-            source_audit["missing_primary_title_binding"].append(path.name)
-        payload["datum_addressing_abstraction_space"] = space
-        if metadata_changed or file_title_repairs:
-            ordered_payload = {
-                key: value
-                for key, value in payload.items()
-                if key != "datum_addressing_abstraction_space"
+        violations = _contract_violations(path, payload)
+        with_ref = _projection_snapshot(
+            path=path,
+            payload=payload,
+            anchor_rows=anchor_rows,
+            drop_reference_metadata=False,
+        )
+        without_ref = _projection_snapshot(
+            path=path,
+            payload=payload,
+            anchor_rows=anchor_rows,
+            drop_reference_metadata=True,
+        )
+
+        safe_to_strip = _is_stage_a_safe(violations, without_ref)
+        if safe_to_strip:
+            safe_docs.append(path.name)
+
+        wrote_file = False
+        stripped = False
+        if apply_deterministic_fixes and deterministic_notes:
+            _write_json(path, payload)
+            wrote_file = True
+
+        if strip_stage_a and safe_to_strip:
+            strip_payload = payload if wrote_file else _read_json(path)
+            if _strip_reference_metadata(strip_payload):
+                _write_json(path, strip_payload)
+                stripped = True
+                stage_a_stripped.append(path.name)
+
+        document_rows.append(
+            {
+                "document_name": path.name,
+                "node_suffix": _node_suffix_from_path(path),
+                "deterministic_fix_notes": deterministic_notes,
+                "contract_violations": violations,
+                "safe_to_strip": safe_to_strip,
+                "stage_a_stripped": stripped,
+                "projection_with_reference": with_ref,
+                "projection_without_reference": without_ref,
             }
-            ordered_payload["datum_addressing_abstraction_space"] = space
-            _write_json(path, ordered_payload)
-
-    admin_stats: dict[str, int] = {}
-    admin_audit: dict[str, Any] = {}
-    admin_path = source_dir / ADMIN_NAME
-    if admin_path.exists():
-        repaired_admin, admin_stats = _repair_admin_payload(_read_json(admin_path))
-        admin_audit = _audit_admin_payload(repaired_admin)
-        _write_json(admin_path, repaired_admin)
-
-    anchor_updated = False
-    if anchor_path.exists():
-        anchor_payload = _read_json(anchor_path)
-        rebuilt_anchor = _rebuild_anchor_source_rows(anchor_payload, source_dir)
-        _write_json(anchor_path, rebuilt_anchor)
-        anchor_updated = True
-    else:
-        warnings.append(f"Missing CTS-GIS anchor file: {anchor_path}")
+        )
 
     return {
         "data_root": str(data_root),
-        "patched_sources": patched_sources,
-        "patched_documents": patched_documents,
-        "missing_references": missing_references,
-        "title_repairs": title_repairs,
-        "admin_stats": admin_stats,
-        "admin_audit": admin_audit,
-        "source_audit": source_audit,
-        "anchor_updated": anchor_updated,
-        "warnings": warnings,
+        "document_count": len(document_rows),
+        "safe_to_strip_count": len(safe_docs),
+        "safe_to_strip_documents": sorted(safe_docs),
+        "stage_a_stripped_count": len(stage_a_stripped),
+        "stage_a_stripped_documents": sorted(stage_a_stripped),
+        "deterministic_fix_count": len(deterministic_fixed),
+        "deterministic_fix_documents": sorted(deterministic_fixed),
+        "documents": document_rows,
+        "warnings": [],
     }
 
 
+def _write_report_file(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Repair Summit CTS-GIS sandbox source metadata and catalog rows.")
-    parser.add_argument(
-        "--notes-dir",
-        default=str(DEFAULT_NOTES_DIR),
-        help="Path to the Summit reference GeoJSON notes directory.",
+    parser = argparse.ArgumentParser(
+        description=(
+            "Audit and repair CTS-GIS Summit projection sources with contract checks, "
+            "before/after projection snapshots, and staged reference metadata stripping."
+        )
     )
     parser.add_argument(
         "--data-root",
         action="append",
         default=[],
-        help="One or more authoritative data roots. Defaults to the repo deployed data and the live mycite-state data.",
+        help="One or more authoritative data roots. Defaults to repo deployed data and /srv/mycite-state.",
+    )
+    parser.add_argument(
+        "--apply-deterministic-fixes",
+        action="store_true",
+        help="Apply deterministic internal fixes (currently the 3-8/3-9 node/ref binding alignment).",
+    )
+    parser.add_argument(
+        "--strip-stage-a",
+        action="store_true",
+        help="Strip reference_geojson metadata only from Stage-A safe documents.",
+    )
+    parser.add_argument(
+        "--report-json",
+        default="",
+        help="Write machine-readable report JSON to this path (single data-root runs).",
+    )
+    parser.add_argument(
+        "--report-markdown",
+        default="",
+        help="Write markdown summary to this path (single data-root runs).",
     )
     return parser
 
 
 def main() -> int:
     args = _build_parser().parse_args()
-    notes_dir = Path(args.notes_dir)
     data_roots = [Path(item) for item in (args.data_root or [])] or list(DEFAULT_DATA_ROOTS)
+    reports: list[dict[str, Any]] = []
+
     for data_root in data_roots:
-        result = _repair_source_documents(data_root, notes_dir)
-        print(f"Data root: {result['data_root']}")
-        print(f"  Patched reference-backed source docs: {result.get('patched_sources', 0)}")
-        print(f"  Repaired title placeholders: {result.get('title_repairs', 0)}")
-        print(f"  Anchor updated: {result.get('anchor_updated', False)}")
-        admin_stats = result.get("admin_stats") or {}
-        if admin_stats:
-            print(f"  Summit adm3 rows regenerated: {admin_stats.get('summit_admin_rows_regenerated', 0)}")
-            print(f"  Reminderville rebound rows: {admin_stats.get('reminderville_rebound', 0)}")
-            print(f"  Boston Heights renames: {admin_stats.get('boston_heights_renamed', 0)}")
-        admin_audit = result.get("admin_audit") or {}
-        if admin_audit:
-            print(f"  Duplicate administrative node bindings: {len(admin_audit.get('duplicate_node_ids', []))}")
-            print(f"  Blank administrative ASCII titles: {len(admin_audit.get('blank_title_nodes', []))}")
-            print(f"  Missing administrative title bindings: {len(admin_audit.get('missing_title_rows', []))}")
-        source_audit = result.get("source_audit") or {}
-        if source_audit:
-            print(f"  Source docs missing primary SAMRAS node: {len(source_audit.get('missing_primary_samras_node', []))}")
-            print(f"  Source docs missing primary title binding: {len(source_audit.get('missing_primary_title_binding', []))}")
-        missing_references = result.get("missing_references") or []
-        if missing_references:
-            print(f"  WARNING: Missing reference matches for {len(missing_references)} document(s).")
-            for item in missing_references:
-                print(f"    - {item}")
-        for warning in result.get("warnings") or []:
+        report = _audit_and_repair_data_root(
+            data_root=data_root,
+            apply_deterministic_fixes=bool(args.apply_deterministic_fixes),
+            strip_stage_a=bool(args.strip_stage_a),
+        )
+        reports.append(report)
+        print(f"Data root: {report['data_root']}")
+        print(f"  Projection documents audited: {int(report.get('document_count') or 0)}")
+        print(f"  Stage-A safe to strip: {int(report.get('safe_to_strip_count') or 0)}")
+        print(f"  Stage-A stripped: {int(report.get('stage_a_stripped_count') or 0)}")
+        print(f"  Deterministic fixes applied: {int(report.get('deterministic_fix_count') or 0)}")
+        for warning in list(report.get("warnings") or []):
             print(f"  WARNING: {warning}")
+
+    if len(reports) == 1:
+        report = reports[0]
+        if _as_text(args.report_json):
+            _write_report_file(Path(args.report_json), json.dumps(report, indent=2, sort_keys=False) + "\n")
+            print(f"Wrote JSON report: {args.report_json}")
+        if _as_text(args.report_markdown):
+            _write_report_file(Path(args.report_markdown), _markdown_summary(report))
+            print(f"Wrote markdown report: {args.report_markdown}")
+    elif _as_text(args.report_json) or _as_text(args.report_markdown):
+        print("WARNING: --report-json/--report-markdown are only emitted automatically for single data-root runs.")
+
     return 0
 
 
