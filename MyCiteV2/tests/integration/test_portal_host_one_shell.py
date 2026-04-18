@@ -69,9 +69,71 @@ def _write_aws_csm_state(private_dir: Path) -> None:
             "tool_id": "aws_csm",
             "member_files": [
                 "spec.json",
+                "aws-csm-domain.cvccboard.json",
                 "aws-csm.fnd.dylan.json",
                 "newsletter/newsletter.fruitfulnetworkdevelopment.com.profile.json",
             ],
+        },
+    )
+    _write_json(
+        tool_root / "aws-csm-domain.cvccboard.json",
+        {
+            "schema": "mycite.service_tool.aws_csm.domain.v1",
+            "identity": {
+                "tenant_id": "cvccboard",
+                "domain": "cvccboard.org",
+                "region": "us-east-1",
+                "hosted_zone_id": "Z05968042395KDRPX4PLG",
+            },
+            "dns": {
+                "hosted_zone_present": True,
+                "nameserver_match": True,
+                "registrar_nameservers": [
+                    "ns-1225.awsdns-25.org",
+                    "ns-148.awsdns-18.com",
+                    "ns-1765.awsdns-28.co.uk",
+                    "ns-947.awsdns-54.net",
+                ],
+                "hosted_zone_nameservers": [
+                    "ns-1225.awsdns-25.org",
+                    "ns-148.awsdns-18.com",
+                    "ns-1765.awsdns-28.co.uk",
+                    "ns-947.awsdns-54.net",
+                ],
+                "mx_expected_value": "10 inbound-smtp.us-east-1.amazonaws.com",
+                "mx_record_present": True,
+                "mx_record_values": ["10 inbound-smtp.us-east-1.amazonaws.com"],
+                "dkim_records_present": False,
+                "dkim_record_values": [],
+            },
+            "ses": {
+                "identity_exists": False,
+                "identity_status": "not_started",
+                "verified_for_sending_status": False,
+                "dkim_status": "not_started",
+                "dkim_tokens": [],
+            },
+            "receipt": {
+                "status": "not_ready",
+                "rule_name": "portal-capture-cvccboard-org",
+                "expected_recipient": "cvccboard.org",
+                "expected_lambda_name": "newsletter-inbound-capture",
+                "bucket": "ses-inbound-fnd-mail",
+                "prefix": "inbound/cvccboard.org/",
+            },
+            "observation": {
+                "last_checked_at": "2026-04-18T00:00:00+00:00",
+                "account": "065948377733",
+                "role_arn": "arn:aws:iam::065948377733:role/EC2-AWSCMS-Admin",
+            },
+            "readiness": {
+                "schema": "mycite.service_tool.aws_csm.domain_readiness.v1",
+                "state": "identity_missing",
+                "summary": "Create the SES domain identity to obtain DKIM tokens.",
+                "blockers": ["SES domain identity has not been created yet."],
+                "last_checked_at": "2026-04-18T00:00:00+00:00",
+                "domain": "cvccboard.org",
+            },
         },
     )
     _write_json(
@@ -130,6 +192,123 @@ def _write_aws_csm_state(private_dir: Path) -> None:
 class _FakeAwsCsmActionCloud:
     def __init__(self) -> None:
         self.sent_messages: list[dict[str, object]] = []
+        self.domain_statuses: dict[str, dict[str, object]] = {}
+
+    def _domain_status_patch(self, domain_record: dict[str, object]) -> dict[str, object]:
+        identity = dict(domain_record.get("identity") or {})
+        receipt = dict(domain_record.get("receipt") or {})
+        domain = str(identity.get("domain") or "").strip().lower()
+        region = str(identity.get("region") or "us-east-1").strip() or "us-east-1"
+        base = {
+            "dns": {
+                "hosted_zone_present": True,
+                "nameserver_match": True,
+                "registrar_nameservers": [
+                    "ns-1225.awsdns-25.org",
+                    "ns-148.awsdns-18.com",
+                    "ns-1765.awsdns-28.co.uk",
+                    "ns-947.awsdns-54.net",
+                ],
+                "hosted_zone_nameservers": [
+                    "ns-1225.awsdns-25.org",
+                    "ns-148.awsdns-18.com",
+                    "ns-1765.awsdns-28.co.uk",
+                    "ns-947.awsdns-54.net",
+                ],
+                "mx_expected_value": "10 inbound-smtp." + region + ".amazonaws.com",
+                "mx_record_present": True,
+                "mx_record_values": ["10 inbound-smtp." + region + ".amazonaws.com"],
+                "dkim_records_present": False,
+                "dkim_record_values": [],
+            },
+            "ses": {
+                "identity_exists": False,
+                "identity_status": "not_started",
+                "verified_for_sending_status": False,
+                "dkim_status": "not_started",
+                "dkim_tokens": [],
+            },
+            "receipt": {
+                "status": "not_ready",
+                "rule_name": receipt.get("rule_name") or "portal-capture-" + domain.replace(".", "-"),
+                "expected_recipient": receipt.get("expected_recipient") or domain,
+                "expected_lambda_name": receipt.get("expected_lambda_name") or "newsletter-inbound-capture",
+                "bucket": receipt.get("bucket") or "ses-inbound-fnd-mail",
+                "prefix": receipt.get("prefix") or ("inbound/" + domain + "/"),
+                "matching_rules": [],
+            },
+            "observation": {
+                "last_checked_at": "2026-04-18T00:00:00+00:00",
+                "account": "065948377733",
+                "role_arn": "arn:aws:sts::065948377733:assumed-role/EC2-AWSCMS-Admin/i-0123456789abcdef0",
+            },
+        }
+        overrides = self.domain_statuses.get(domain, {})
+        for section in ("dns", "ses", "receipt", "observation"):
+            if isinstance(overrides.get(section), dict):
+                section_payload = dict(base.get(section) or {})
+                section_payload.update(dict(overrides.get(section) or {}))
+                base[section] = section_payload
+        return base
+
+    def describe_domain_status(self, domain_record: dict[str, object]) -> dict[str, object]:
+        return self._domain_status_patch(domain_record)
+
+    def ensure_domain_identity(self, domain_record: dict[str, object]) -> None:
+        identity = dict(domain_record.get("identity") or {})
+        domain = str(identity.get("domain") or "").strip().lower()
+        self.domain_statuses[domain] = {
+            **self.domain_statuses.get(domain, {}),
+            "ses": {
+                "identity_exists": True,
+                "identity_status": "pending",
+                "verified_for_sending_status": False,
+                "dkim_status": "pending",
+                "dkim_tokens": ["token-1", "token-2", "token-3"],
+            },
+        }
+
+    def sync_domain_dns(self, domain_record: dict[str, object]) -> None:
+        identity = dict(domain_record.get("identity") or {})
+        domain = str(identity.get("domain") or "").strip().lower()
+        self.domain_statuses[domain] = {
+            **self.domain_statuses.get(domain, {}),
+            "dns": {
+                "hosted_zone_present": True,
+                "nameserver_match": True,
+                "mx_record_present": True,
+                "mx_record_values": ["10 inbound-smtp.us-east-1.amazonaws.com"],
+                "dkim_records_present": True,
+                "dkim_record_values": [
+                    "token-1.dkim.amazonses.com",
+                    "token-2.dkim.amazonses.com",
+                    "token-3.dkim.amazonses.com",
+                ],
+            },
+            "ses": {
+                "identity_exists": True,
+                "identity_status": "verified",
+                "verified_for_sending_status": True,
+                "dkim_status": "verified",
+                "dkim_tokens": ["token-1", "token-2", "token-3"],
+            },
+        }
+
+    def ensure_domain_receipt_rule(self, domain_record: dict[str, object]) -> None:
+        identity = dict(domain_record.get("identity") or {})
+        domain = str(identity.get("domain") or "").strip().lower()
+        self.domain_statuses[domain] = {
+            **self.domain_statuses.get(domain, {}),
+            "receipt": {
+                "status": "ok",
+                "rule_name": "portal-capture-" + domain.replace(".", "-"),
+                "expected_recipient": domain,
+                "expected_lambda_name": "newsletter-inbound-capture",
+                "bucket": "ses-inbound-fnd-mail",
+                "prefix": "inbound/" + domain + "/",
+                "matching_rules": [{"rule_name": "portal-capture-" + domain.replace(".", "-")}],
+            },
+        }
 
     def supplemental_profile_patch(self, action: str, profile: dict[str, object]) -> dict[str, object]:
         identity = dict(profile.get("identity") or {})
@@ -441,6 +620,17 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             )
             self.assertTrue(aws_shell_payload["shell_composition"]["workbench_collapsed"])
             self.assertFalse(aws_shell_payload["shell_composition"]["interface_panel_collapsed"])
+            self.assertNotIn(
+                "Sections",
+                [
+                    group["title"]
+                    for group in aws_shell_payload["shell_composition"]["regions"]["control_panel"]["groups"]
+                ],
+            )
+            self.assertEqual(
+                aws_shell_payload["surface_payload"]["workspace"]["create_domain_defaults"]["region"],
+                "us-east-1",
+            )
             self.assertEqual(
                 aws_shell_payload["shell_composition"]["regions"]["interface_panel"],
                 aws_shell_payload["shell_composition"]["regions"]["inspector"],
@@ -487,6 +677,85 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(profile_action.status_code, 200)
             profile_payload = profile_action.get_json()
             self.assertEqual(profile_payload["surface_id"], "system.root")
+
+    def test_aws_csm_action_route_creates_domain_and_redirects_into_domain_onboarding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            public_dir = root / "public"
+            private_dir = root / "private"
+            data_dir = root / "data"
+            webapps_root = root / "webapps"
+            audit_file = root / "portal_audit.jsonl"
+            for path in (public_dir, private_dir, data_dir, webapps_root):
+                path.mkdir(parents=True, exist_ok=True)
+            audit_file.write_text("", encoding="utf-8")
+            _write_network_chronology_authority(data_dir)
+            _write_aws_csm_state(private_dir)
+            _write_json(
+                private_dir / "config.json",
+                {"msn_id": "3-2-3-17-77-1-6-4-1-4", "tool_exposure": {"aws_csm": {"enabled": True}}},
+            )
+
+            config = V2PortalHostConfig(
+                portal_instance_id="fnd",
+                public_dir=public_dir,
+                private_dir=private_dir,
+                data_dir=data_dir,
+                portal_domain="fruitfulnetworkdevelopment.com",
+                webapps_root=webapps_root,
+                portal_audit_storage_file=audit_file,
+            )
+            app = create_app(config)
+            client = app.test_client()
+            fake_cloud = _FakeAwsCsmActionCloud()
+
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime.AwsEc2RoleOnboardingCloudAdapter",
+                return_value=fake_cloud,
+            ):
+                create_response = client.post(
+                    "/portal/api/v2/system/tools/aws-csm/actions",
+                    json={
+                        "schema": "mycite.v2.portal.system.tools.aws_csm.action.request.v1",
+                        "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                        "surface_query": {"view": "domains"},
+                        "action_kind": "create_domain",
+                        "action_payload": {
+                            "tenant_id": "freshboard",
+                            "domain": "freshboard.org",
+                            "hosted_zone_id": "Z1234567890",
+                            "region": "us-east-1",
+                        },
+                    },
+                )
+
+            self.assertEqual(create_response.status_code, 200)
+            create_payload = create_response.get_json()
+            create_result = create_payload["surface_payload"]["action_result"]
+            self.assertEqual(create_result["status"], "accepted")
+            self.assertEqual(create_result["details"]["domain"], "freshboard.org")
+            self.assertEqual(create_result["details"]["readiness_state"], "identity_missing")
+            self.assertEqual(
+                create_payload["canonical_query"],
+                {"view": "domains", "domain": "freshboard.org", "section": "onboarding"},
+            )
+            created_domain_path = (
+                private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm-domain.freshboard.json"
+            )
+            self.assertTrue(created_domain_path.is_file())
+            created_domain = json.loads(created_domain_path.read_text(encoding="utf-8"))
+            self.assertEqual(created_domain["identity"]["domain"], "freshboard.org")
+            self.assertEqual(created_domain["readiness"]["state"], "identity_missing")
+            collection_payload = json.loads(
+                (
+                    private_dir
+                    / "utilities"
+                    / "tools"
+                    / "aws-csm"
+                    / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertIn("aws-csm-domain.freshboard.json", collection_payload["member_files"])
 
     def test_aws_csm_action_route_runs_add_user_flow_inside_same_surface(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -535,10 +804,10 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 create_response = client.post(
                     "/portal/api/v2/system/tools/aws-csm/actions",
                     json=action_request(
-                        {"view": "domains", "domain": "fruitfulnetworkdevelopment.com", "section": "users"},
+                        {"view": "domains", "domain": "cvccboard.org", "section": "users"},
                         "create_profile",
                         {
-                            "domain": "fruitfulnetworkdevelopment.com",
+                            "domain": "cvccboard.org",
                             "mailbox_local_part": "alex",
                             "single_user_email": "alex@example.com",
                             "operator_inbox_target": "ops@example.com",
@@ -549,10 +818,10 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 create_payload = create_response.get_json()
                 create_result = create_payload["surface_payload"]["action_result"]
                 self.assertEqual(create_result["status"], "accepted")
-                self.assertEqual(create_result["created_profile"]["profile_id"], "aws-csm.fnd.alex")
+                self.assertEqual(create_result["created_profile"]["profile_id"], "aws-csm.cvccboard.alex")
                 self.assertEqual(
                     create_payload["canonical_query"],
-                    {"view": "domains", "domain": "fruitfulnetworkdevelopment.com", "profile": "aws-csm.fnd.alex", "section": "onboarding"},
+                    {"view": "domains", "domain": "cvccboard.org", "profile": "aws-csm.cvccboard.alex", "section": "onboarding"},
                 )
                 self.assertEqual(
                     create_payload["shell_composition"]["regions"]["workbench"]["kind"],
@@ -560,7 +829,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 )
 
                 created_profile_path = (
-                    private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.fnd.alex.json"
+                    private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.cvccboard.alex.json"
                 )
                 self.assertTrue(created_profile_path.is_file())
                 collection_payload = json.loads(
@@ -572,7 +841,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                         / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"
                     ).read_text(encoding="utf-8")
                 )
-                self.assertIn("aws-csm.fnd.alex.json", collection_payload["member_files"])
+                self.assertIn("aws-csm.cvccboard.alex.json", collection_payload["member_files"])
 
                 active_query = create_payload["canonical_query"]
                 for action_kind in (
@@ -599,6 +868,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                         self.assertEqual(secret["password"], "SMTPPASS")
 
                 stored_profile = json.loads(created_profile_path.read_text(encoding="utf-8"))
+                self.assertEqual(stored_profile["identity"]["tenant_id"], "cvccboard")
                 self.assertEqual(stored_profile["smtp"]["username"], "SMTPUSER")
                 self.assertEqual(stored_profile["verification"]["status"], "verified")
                 self.assertEqual(stored_profile["provider"]["gmail_send_as_status"], "verified")

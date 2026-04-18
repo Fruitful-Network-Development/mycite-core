@@ -34,6 +34,22 @@ class AwsCsmOnboardingCloudPort(Protocol):
         """AWS-backed readiness/evidence summary used for operator-facing surfaces."""
         ...
 
+    def describe_domain_status(self, domain_record: dict[str, Any]) -> dict[str, Any]:
+        """AWS-backed Route53/SES/receipt-rule summary for domain onboarding."""
+        ...
+
+    def ensure_domain_identity(self, domain_record: dict[str, Any]) -> None:
+        """Create or confirm the SES domain identity backing a domain onboarding record."""
+        ...
+
+    def sync_domain_dns(self, domain_record: dict[str, Any]) -> None:
+        """Upsert Route53 MX and DKIM records for a domain onboarding record."""
+        ...
+
+    def ensure_domain_receipt_rule(self, domain_record: dict[str, Any]) -> None:
+        """Create or update the bare-domain receipt rule used by portal-native capture."""
+        ...
+
     def send_handoff_email(self, profile: dict[str, Any]) -> dict[str, Any]:
         """Send the non-secret SMTP handoff instructions to the operator inbox target."""
         ...

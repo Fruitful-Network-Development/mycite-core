@@ -145,6 +145,29 @@
     return toolSurfaceAdapter().buildAwsNewsletterRows(newsletter || {});
   }
 
+  function renderCreateDomainCard(workspace) {
+    if (asText(workspace.selected_domain)) return "";
+    var defaults = asObject(workspace.create_domain_defaults);
+    return (
+      '<section class="v2-card" style="margin-top:12px"><h3>Onboard Domain</h3><p>Create an explicit AWS-CSM domain onboarding record and open its domain view.</p>' +
+      '<form data-aws-create-domain-form style="margin-top:12px">' +
+      '<label class="v2-formField"><span>Tenant Id</span><input type="text" name="tenant_id" placeholder="cvccboard" value="' +
+      escapeHtml(defaults.tenant_id || "") +
+      '" required /></label>' +
+      '<label class="v2-formField"><span>Domain</span><input type="text" name="domain" placeholder="cvccboard.org" value="' +
+      escapeHtml(defaults.domain || "") +
+      '" required /></label>' +
+      '<label class="v2-formField"><span>Hosted Zone Id</span><input type="text" name="hosted_zone_id" placeholder="Z1234567890" value="' +
+      escapeHtml(defaults.hosted_zone_id || "") +
+      '" required /></label>' +
+      '<label class="v2-formField"><span>Region</span><input type="text" name="region" placeholder="us-east-1" value="' +
+      escapeHtml(defaults.region || "us-east-1") +
+      '" required /></label>' +
+      '<div style="margin-top:12px"><button type="submit" class="ide-sessionAction ide-sessionAction--button">Create Domain Record</button></div>' +
+      "</form></section>"
+    );
+  }
+
   function renderDomainGallery(workspace) {
     var rows = workspace.domain_rows || [];
     if (!rows.length) {
@@ -167,13 +190,18 @@
               String(row.profile_count || 0) +
                 " mailbox" +
                 ((row.profile_count || 0) === 1 ? "" : "es") +
-                (row.newsletter_configured ? " · newsletter" : "")
+                (row.newsletter_configured ? " · newsletter" : "") +
+                (row.onboarding_state && row.onboarding_state !== "legacy_inferred"
+                  ? " · onboarding " + row.onboarding_state
+                  : "")
             ) +
             '</span><span class="aws-csm-profileCard__stats">' +
             "<span>contacts: " +
             escapeHtml(String(row.contact_count || 0)) +
             "</span><span>dispatches: " +
             escapeHtml(String(row.dispatch_count || 0)) +
+            "</span><span>state: " +
+            escapeHtml(row.onboarding_state || "legacy_inferred") +
             "</span></span></button>"
           );
         })
@@ -300,6 +328,83 @@
     );
   }
 
+  function renderDomainActions(onboarding) {
+    var actions = asList(onboarding && onboarding.actions);
+    if (!actions.length) return "";
+    return (
+      '<div class="aws-csm-flowForm__actions">' +
+      actions
+        .map(function (action) {
+          var disabled = action.enabled === false;
+          return (
+            '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-domain-action-kind="' +
+            escapeHtml(action.kind || "") +
+            '"' +
+            (disabled ? ' disabled="disabled"' : "") +
+            (action.disabled_reason ? ' title="' + escapeHtml(action.disabled_reason) + '"' : "") +
+            ">" +
+            escapeHtml(action.label || action.kind || "Run") +
+            "</button>"
+          );
+        })
+        .join("") +
+      "</div>"
+    );
+  }
+
+  function renderDomainOnboardingCard(workspace) {
+    var onboarding = asObject(workspace.selected_domain_onboarding);
+    var domain = asText(workspace.selected_domain);
+    if (!domain) return "";
+    if (!asText(onboarding.domain)) {
+      return (
+        '<section class="v2-card" style="margin-top:12px"><h3>Domain Onboarding</h3><p>No explicit domain onboarding record exists for this domain yet.</p></section>'
+      );
+    }
+    var blockers = asList(onboarding.blockers);
+    return (
+      '<section class="v2-card" style="margin-top:12px"><h3>Domain Onboarding</h3><p>' +
+      escapeHtml(onboarding.readiness_summary || "AWS-backed domain onboarding state.") +
+      "</p>" +
+      renderInfoRows(
+        renderKeyValueRows(onboarding, [
+          "tenant_id",
+          "domain",
+          "region",
+          "hosted_zone_id",
+          "readiness_state",
+          "last_checked_at",
+          "registrar_nameservers",
+          "hosted_zone_nameservers",
+          "nameserver_match",
+          "mx_record_present",
+          "mx_record_values",
+          "ses_identity_exists",
+          "ses_identity_status",
+          "dkim_status",
+          "dkim_token_count",
+          "dkim_records_present",
+          "receipt_rule_status",
+          "receipt_rule_name",
+          "receipt_rule_recipient",
+          "receipt_rule_bucket",
+          "receipt_rule_prefix",
+        ])
+      ) +
+      (blockers.length
+        ? '<div style="margin-top:12px"><h4>Blockers</h4><ul>' +
+          blockers
+            .map(function (blocker) {
+              return "<li>" + escapeHtml(blocker) + "</li>";
+            })
+            .join("") +
+          "</ul></div>"
+        : "") +
+      renderDomainActions(onboarding) +
+      "</section>"
+    );
+  }
+
   function renderHandoffCard(onboarding) {
     var handoff = asObject(onboarding && onboarding.handoff);
     if (!asText(handoff.send_as_email)) return "";
@@ -316,6 +421,8 @@
           "smtp_username",
           "secret_name",
           "secret_state",
+          "email_received_at",
+          "verified_at",
         ])
       ) +
       "</section>"
@@ -330,6 +437,8 @@
       "tenant_id",
       "tenant_scope_id",
       "domain",
+      "hosted_zone_id",
+      "readiness_state",
       "send_as_email",
       "single_user_email",
       "operator_inbox_target",
@@ -381,10 +490,12 @@
     var selected = workspace.selected_profile || null;
     var rows = workspace.mailbox_rows || [];
     var onboarding = asObject(workspace.selected_profile_onboarding);
-    if (!selected && !rows.length) return "";
+    var domainCard = renderDomainOnboardingCard(workspace);
+    if (!selected && !rows.length && !domainCard) return "";
     if (selected) {
       return (
-        '<section class="v2-card" style="margin-top:12px"><h3>Onboarding</h3><p>' +
+        domainCard +
+        '<section class="v2-card" style="margin-top:12px"><h3>Mailbox Onboarding</h3><p>' +
         escapeHtml(selected.title || selected.profile_id || "") +
         "</p>" +
         renderInfoRows(profileFactRows(selected)) +
@@ -393,6 +504,9 @@
             "workflow_state",
             "handoff_status",
             "verification_state",
+            "email_received_at",
+            "verified_at",
+            "latest_message_reference",
             "provider_state",
             "inbound_state",
           ])
@@ -402,8 +516,15 @@
         renderHandoffCard(onboarding)
       );
     }
+    if (!rows.length) {
+      return (
+        domainCard +
+        '<section class="v2-card" style="margin-top:12px"><h3>Mailbox Onboarding</h3><p>No AWS-CSM user emails are configured for this domain yet.</p></section>'
+      );
+    }
     return (
-      '<section class="v2-card" style="margin-top:12px"><h3>Onboarding</h3><div class="aws-csm-profileGrid aws-csm-profileGrid--compact">' +
+      domainCard +
+      '<section class="v2-card" style="margin-top:12px"><h3>Mailbox Onboarding</h3><div class="aws-csm-profileGrid aws-csm-profileGrid--compact">' +
       rows
         .map(function (row) {
           return (
@@ -496,6 +617,22 @@
     });
   }
 
+  function bindCreateDomainForm(target, ctx, workspace, surfacePayload) {
+    var form = target.querySelector("[data-aws-create-domain-form]");
+    if (!form) return;
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var payload = {};
+      Array.prototype.forEach.call(form.querySelectorAll("input, textarea, select"), function (field) {
+        if (!field.name) return;
+        var value = field.value;
+        if (value == null || value === "") return;
+        payload[field.name] = value;
+      });
+      submitAction(ctx, workspace, surfacePayload, "create_domain", payload);
+    });
+  }
+
   function bindOnboardingActions(target, ctx, workspace, surfacePayload) {
     Array.prototype.forEach.call(target.querySelectorAll("[data-aws-action-kind]"), function (button) {
       if (button.disabled) return;
@@ -504,6 +641,18 @@
         var selected = asObject(workspace.selected_profile);
         submitAction(ctx, workspace, surfacePayload, kind, {
           profile_id: selected.profile_id || "",
+        });
+      });
+    });
+  }
+
+  function bindDomainActions(target, ctx, workspace, surfacePayload) {
+    Array.prototype.forEach.call(target.querySelectorAll("[data-aws-domain-action-kind]"), function (button) {
+      if (button.disabled) return;
+      button.addEventListener("click", function () {
+        var kind = button.getAttribute("data-aws-domain-action-kind") || "";
+        submitAction(ctx, workspace, surfacePayload, kind, {
+          domain: workspace.selected_domain || "",
         });
       });
     });
@@ -523,13 +672,16 @@
           hasContent: true,
         }),
         renderCards(surfacePayload.cards || []) +
+          renderCreateDomainCard(workspace) +
           renderDomainGallery(workspace) +
           renderSelectedDomain(workspace, surfacePayload) +
           renderNotes(surfacePayload.notes || [])
       );
 
+      bindCreateDomainForm(target, ctx, workspace, surfacePayload);
       bindCreateProfileForm(target, ctx, workspace, surfacePayload);
       bindOnboardingActions(target, ctx, workspace, surfacePayload);
+      bindDomainActions(target, ctx, workspace, surfacePayload);
 
       Array.prototype.forEach.call(target.querySelectorAll("[data-aws-domain]"), function (button) {
         button.addEventListener("click", function () {
@@ -567,6 +719,7 @@
     render: function (ctx, target, surfacePayload) {
       var workspace = (surfacePayload && surfacePayload.workspace) || {};
       var tool = (surfacePayload && surfacePayload.tool) || {};
+      var domainOnboarding = asObject(workspace.selected_domain_onboarding);
       var profile = workspace.selected_profile || null;
       var newsletter = workspace.selected_newsletter || null;
       var actionResult = asObject(surfacePayload && surfacePayload.action_result);
@@ -592,6 +745,21 @@
           ? '<section class="v2-card" style="margin-top:12px"><h3>Selected User Email</h3>' +
             renderInfoRows(profileFactRows(profile)) +
             "</section>"
+          : asText(domainOnboarding.domain)
+            ? '<section class="v2-card" style="margin-top:12px"><h3>Selected Domain</h3>' +
+              renderInfoRows(
+                renderKeyValueRows(domainOnboarding, [
+                  "tenant_id",
+                  "domain",
+                  "region",
+                  "hosted_zone_id",
+                  "readiness_state",
+                  "ses_identity_status",
+                  "dkim_status",
+                  "receipt_rule_status",
+                ])
+              ) +
+              "</section>"
           : newsletter
             ? '<section class="v2-card" style="margin-top:12px"><h3>Selected Newsletter</h3>' +
               renderInfoRows(newsletterRows(newsletter)) +
@@ -611,9 +779,9 @@
             ) +
             "</section>"
           : "") +
-        ((profile && profile.raw) || (newsletter && newsletter.raw)
+        ((profile && profile.raw) || (newsletter && newsletter.raw) || asObject(workspace.selected_domain_record).raw
           ? '<section class="v2-card" style="margin-top:12px"><h3>Raw Payload</h3><pre class="v2-networkInspector__json">' +
-            escapeHtml(compactJson((profile && profile.raw) || (newsletter && newsletter.raw) || {})) +
+            escapeHtml(compactJson((profile && profile.raw) || asObject(workspace.selected_domain_record).raw || (newsletter && newsletter.raw) || {})) +
             "</pre></section>"
           : "") +
         "</div>"

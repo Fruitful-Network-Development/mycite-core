@@ -67,6 +67,46 @@ class AwsCsmOnboardingUnconfiguredCloudPort:
             },
         }
 
+    def describe_domain_status(self, domain_record: dict[str, Any]) -> dict[str, Any]:
+        _ = domain_record
+        return {
+            "dns": {
+                "hosted_zone_present": False,
+                "nameserver_match": False,
+                "registrar_nameservers": [],
+                "hosted_zone_nameservers": [],
+                "mx_record_present": False,
+                "mx_record_values": [],
+                "dkim_records_present": False,
+                "dkim_record_values": [],
+            },
+            "ses": {
+                "identity_exists": False,
+                "identity_status": "not_started",
+                "verified_for_sending_status": False,
+                "dkim_status": "not_started",
+                "dkim_tokens": [],
+            },
+            "receipt": {"status": "not_ready"},
+            "observation": {
+                "last_checked_at": "",
+                "account": "",
+                "role_arn": "",
+            },
+        }
+
+    def ensure_domain_identity(self, domain_record: dict[str, Any]) -> None:
+        _ = domain_record
+        raise ValueError("AWS-backed domain identity creation is not configured in this runtime.")
+
+    def sync_domain_dns(self, domain_record: dict[str, Any]) -> None:
+        _ = domain_record
+        raise ValueError("AWS-backed domain DNS synchronization is not configured in this runtime.")
+
+    def ensure_domain_receipt_rule(self, domain_record: dict[str, Any]) -> None:
+        _ = domain_record
+        raise ValueError("AWS-backed domain receipt-rule wiring is not configured in this runtime.")
+
     def send_handoff_email(self, profile: dict[str, Any]) -> dict[str, Any]:
         _ = profile
         raise ValueError("AWS-backed onboarding handoff is not configured in this runtime.")

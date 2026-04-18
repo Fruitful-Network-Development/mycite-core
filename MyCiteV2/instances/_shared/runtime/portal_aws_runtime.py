@@ -20,6 +20,9 @@ from MyCiteV2.packages.adapters.filesystem import (
     FilesystemAuditLogAdapter,
     FilesystemAwsCsmToolProfileStore,
 )
+from MyCiteV2.packages.adapters.filesystem.aws_csm_tool_profile_store import (
+    AWS_CSM_DOMAIN_SCHEMA,
+)
 from MyCiteV2.packages.modules.cross_domain.aws_csm_onboarding import (
     AwsCsmOnboardingService,
     AwsCsmOnboardingUnconfiguredCloudPort,
@@ -54,7 +57,11 @@ AWS_TOOL_STATUS_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.status.v1"
 AWS_CSM_ACTION_RESULT_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.action.result.v1"
 AWS_CSM_TOOL_ACTION_ROUTE = "/portal/api/v2/system/tools/aws-csm/actions"
 AWS_CSM_TOOL_ACTION_ENTRYPOINT_ID = "portal.system.tools.aws_csm.actions"
+AWS_CSM_DOMAIN_READINESS_SCHEMA = "mycite.service_tool.aws_csm.domain_readiness.v1"
 _AUDIT_FOCUS_SUFFIX = "4-1-77"
+_DEFAULT_DOMAIN_REGION = "us-east-1"
+_DEFAULT_DOMAIN_INBOUND_LAMBDA = "newsletter-inbound-capture"
+_DEFAULT_DOMAIN_RECEIPT_BUCKET = "ses-inbound-fnd-mail"
 _VISIBLE_ACTIVITY_SURFACE_IDS = (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
@@ -64,6 +71,11 @@ _VISIBLE_ACTIVITY_SURFACE_IDS = (
 )
 _ALLOWED_ACTION_KINDS = frozenset(
     {
+        "create_domain",
+        "refresh_domain_status",
+        "ensure_domain_identity",
+        "sync_domain_dns",
+        "ensure_domain_receipt_rule",
         "create_profile",
         "stage_smtp_credentials",
         "send_handoff_email",
@@ -91,6 +103,25 @@ def _as_text(value: object) -> str:
 
 def _as_dict(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
+
+
+def _as_list(value: Any) -> list[Any]:
+    return list(value) if isinstance(value, list) else []
+
+
+def _as_bool(value: object) -> bool:
+    return bool(value) if isinstance(value, bool) else _as_text(value).lower() == "true"
+
+
+def _normalized_domain(value: object) -> str:
+    token = _as_text(value).lower()
+    if token.startswith("www."):
+        token = token[4:]
+    return token
+
+
+def _slugify_domain(value: object) -> str:
+    return _normalized_domain(value).replace(".", "-")
 
 
 def _safe_json_object(path: Path | None) -> dict[str, Any]:
@@ -293,6 +324,192 @@ def _newsletter_domains(tool_root: Path | None) -> list[dict[str, Any]]:
     return rows
 
 
+def _domain_records(tool_root: Path | None) -> list[dict[str, Any]]:
+    store = _tool_store(tool_root)
+    if store is None:
+        return []
+    rows: list[dict[str, Any]] = []
+    for payload in store.list_domains():
+        identity = _as_dict(payload.get("identity"))
+        domain = _normalized_domain(identity.get("domain"))
+        if not domain:
+            continue
+        readiness = _project_domain_readiness(payload)
+        observation = _as_dict(payload.get("observation"))
+        rows.append(
+            {
+                "tenant_id": _as_text(identity.get("tenant_id")).lower(),
+                "domain": domain,
+                "region": _as_text(identity.get("region")) or _DEFAULT_DOMAIN_REGION,
+                "hosted_zone_id": _as_text(identity.get("hosted_zone_id")),
+                "readiness_state": _as_text(readiness.get("state")) or "unknown",
+                "readiness_summary": _as_text(readiness.get("summary")),
+                "blocker_count": len(_as_list(readiness.get("blockers"))),
+                "last_checked_at": _as_text(observation.get("last_checked_at")),
+                "raw": payload,
+            }
+        )
+    return rows
+
+
+def _join_list(value: object) -> str:
+    return ", ".join(_as_text(item) for item in _as_list(value) if _as_text(item))
+
+
+def _project_domain_readiness(payload: dict[str, Any]) -> dict[str, Any]:
+    identity = _as_dict(payload.get("identity"))
+    dns = _as_dict(payload.get("dns"))
+    ses = _as_dict(payload.get("ses"))
+    receipt = _as_dict(payload.get("receipt"))
+    observation = _as_dict(payload.get("observation"))
+
+    identity_exists = _as_bool(ses.get("identity_exists"))
+    nameserver_match = _as_bool(dns.get("nameserver_match"))
+    hosted_zone_present = _as_bool(dns.get("hosted_zone_present"))
+    mx_record_present = _as_bool(dns.get("mx_record_present"))
+    dkim_records_present = _as_bool(dns.get("dkim_records_present"))
+    identity_status = _as_text(ses.get("identity_status")).lower()
+    dkim_status = _as_text(ses.get("dkim_status")).lower()
+    receipt_status = _as_text(receipt.get("status")).lower()
+
+    blockers: list[str] = []
+    if not hosted_zone_present:
+        blockers.append("The configured Route 53 hosted zone is missing or unreadable.")
+    if not nameserver_match:
+        blockers.append("Registrar nameservers do not match the selected hosted zone.")
+    if not identity_exists:
+        blockers.append("SES domain identity has not been created yet.")
+    if identity_exists and not mx_record_present:
+        blockers.append("The root MX record is missing from the selected hosted zone.")
+    if identity_exists and not dkim_records_present:
+        blockers.append("The SES DKIM CNAME records are incomplete in Route 53.")
+    if identity_exists and identity_status not in {"verified", "success"}:
+        blockers.append("SES domain verification is still pending.")
+    if identity_exists and dkim_status and dkim_status not in {"verified", "success"}:
+        blockers.append("SES DKIM verification is still pending.")
+    if identity_exists and receipt_status != "ok":
+        blockers.append("The bare-domain receipt rule is not configured yet.")
+
+    if not identity_exists:
+        state = "identity_missing"
+        summary = "Create the SES domain identity to obtain DKIM tokens."
+    elif any(
+        (
+            not hosted_zone_present,
+            not nameserver_match,
+            not mx_record_present,
+            not dkim_records_present,
+            identity_status not in {"verified", "success"},
+            dkim_status not in {"", "verified", "success"},
+        )
+    ):
+        state = "dns_pending"
+        summary = "DNS and SES verification still need to settle before mailbox onboarding."
+    elif receipt_status != "ok":
+        state = "receipt_pending"
+        summary = "DNS and SES are ready; finish inbound receipt-rule coverage next."
+    else:
+        state = "ready_for_mailboxes"
+        summary = "Domain onboarding is ready for mailbox creation."
+
+    return {
+        "schema": AWS_CSM_DOMAIN_READINESS_SCHEMA,
+        "state": state,
+        "summary": summary,
+        "blockers": blockers,
+        "last_checked_at": _as_text(observation.get("last_checked_at")),
+        "domain": _normalized_domain(identity.get("domain")),
+    }
+
+
+def _domain_actions(domain_record: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(domain_record, dict):
+        return []
+    dns = _as_dict(domain_record.get("dns"))
+    ses = _as_dict(domain_record.get("ses"))
+
+    nameserver_match = _as_bool(dns.get("nameserver_match"))
+    hosted_zone_present = _as_bool(dns.get("hosted_zone_present"))
+    dkim_tokens = _as_list(ses.get("dkim_tokens"))
+    identity_exists = _as_bool(ses.get("identity_exists"))
+    mx_record_present = _as_bool(dns.get("mx_record_present"))
+
+    sync_dns_enabled = hosted_zone_present and nameserver_match and len(dkim_tokens) >= 3
+    receipt_enabled = nameserver_match and identity_exists and mx_record_present
+    return [
+        {
+            "kind": "refresh_domain_status",
+            "label": "Refresh Domain Status",
+            "enabled": True,
+            "disabled_reason": "",
+        },
+        {
+            "kind": "ensure_domain_identity",
+            "label": "Ensure SES Identity",
+            "enabled": hosted_zone_present,
+            "disabled_reason": "" if hosted_zone_present else "Provide a hosted zone before creating the SES identity.",
+        },
+        {
+            "kind": "sync_domain_dns",
+            "label": "Sync DNS Records",
+            "enabled": sync_dns_enabled,
+            "disabled_reason": (
+                ""
+                if sync_dns_enabled
+                else "Refresh the domain status after SES identity creation and confirm the hosted-zone nameservers match."
+            ),
+        },
+        {
+            "kind": "ensure_domain_receipt_rule",
+            "label": "Ensure Receipt Rule",
+            "enabled": receipt_enabled,
+            "disabled_reason": (
+                ""
+                if receipt_enabled
+                else "Finish SES identity creation and MX/DNS synchronization before enabling receipt-rule coverage."
+            ),
+        },
+    ]
+
+
+def _selected_domain_onboarding(selected_domain_record: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(selected_domain_record, dict):
+        return None
+    raw = _as_dict(selected_domain_record.get("raw"))
+    identity = _as_dict(raw.get("identity"))
+    dns = _as_dict(raw.get("dns"))
+    ses = _as_dict(raw.get("ses"))
+    receipt = _as_dict(raw.get("receipt"))
+    observation = _as_dict(raw.get("observation"))
+    readiness = _project_domain_readiness(raw)
+    return {
+        "tenant_id": _as_text(identity.get("tenant_id")).lower(),
+        "domain": _normalized_domain(identity.get("domain")),
+        "region": _as_text(identity.get("region")) or _DEFAULT_DOMAIN_REGION,
+        "hosted_zone_id": _as_text(identity.get("hosted_zone_id")),
+        "readiness_state": _as_text(readiness.get("state")),
+        "readiness_summary": _as_text(readiness.get("summary")),
+        "blockers": list(readiness.get("blockers") or []),
+        "last_checked_at": _as_text(observation.get("last_checked_at")),
+        "registrar_nameservers": _join_list(dns.get("registrar_nameservers")),
+        "hosted_zone_nameservers": _join_list(dns.get("hosted_zone_nameservers")),
+        "nameserver_match": "yes" if _as_bool(dns.get("nameserver_match")) else "no",
+        "mx_record_present": "yes" if _as_bool(dns.get("mx_record_present")) else "no",
+        "mx_record_values": _join_list(dns.get("mx_record_values")),
+        "ses_identity_exists": "yes" if _as_bool(ses.get("identity_exists")) else "no",
+        "ses_identity_status": _as_text(ses.get("identity_status")) or "not_started",
+        "dkim_status": _as_text(ses.get("dkim_status")) or "not_started",
+        "dkim_token_count": str(len(_as_list(ses.get("dkim_tokens")))),
+        "dkim_records_present": "yes" if _as_bool(dns.get("dkim_records_present")) else "no",
+        "receipt_rule_status": _as_text(receipt.get("status")) or "not_ready",
+        "receipt_rule_name": _as_text(receipt.get("rule_name")) or f"portal-capture-{_slugify_domain(identity.get('domain'))}",
+        "receipt_rule_recipient": _as_text(receipt.get("expected_recipient") or identity.get("domain")),
+        "receipt_rule_bucket": _as_text(receipt.get("bucket")) or _DEFAULT_DOMAIN_RECEIPT_BUCKET,
+        "receipt_rule_prefix": _as_text(receipt.get("prefix")) or f"inbound/{_normalized_domain(identity.get('domain'))}/",
+        "actions": _domain_actions(raw),
+    }
+
+
 def _tool_status(
     *,
     portal_scope: PortalScope,
@@ -330,22 +547,39 @@ def _workspace(
     tool_root: Path | None,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     collection_file, mediation_file = _tool_files(tool_root)
+    domain_records = _domain_records(tool_root)
     mailbox_profiles = _mailbox_profiles(tool_root)
     newsletter_domains = _newsletter_domains(tool_root)
 
     newsletter_by_domain = {item["domain"]: item for item in newsletter_domains}
     profiles_by_id = {item["profile_id"]: item for item in mailbox_profiles}
     domain_map: dict[str, dict[str, Any]] = {}
+    for domain_record in domain_records:
+        domain = _as_text(domain_record.get("domain"))
+        domain_map.setdefault(
+            domain,
+            {
+                "domain": domain,
+                "mailboxes": [],
+                "newsletter": newsletter_by_domain.get(domain),
+                "domain_record": domain_record,
+            },
+        )
     for profile in mailbox_profiles:
         domain_row = domain_map.setdefault(
             profile["domain"],
-            {"domain": profile["domain"], "mailboxes": [], "newsletter": newsletter_by_domain.get(profile["domain"])},
+            {
+                "domain": profile["domain"],
+                "mailboxes": [],
+                "newsletter": newsletter_by_domain.get(profile["domain"]),
+                "domain_record": None,
+            },
         )
         domain_row["mailboxes"].append(profile)
     for newsletter in newsletter_domains:
         domain_row = domain_map.setdefault(
             newsletter["domain"],
-            {"domain": newsletter["domain"], "mailboxes": [], "newsletter": newsletter},
+            {"domain": newsletter["domain"], "mailboxes": [], "newsletter": newsletter, "domain_record": None},
         )
         domain_row["newsletter"] = newsletter
 
@@ -377,6 +611,7 @@ def _workspace(
     for domain in sorted(domain_map.keys()):
         mailbox_count = len(domain_map[domain]["mailboxes"])
         newsletter = domain_map[domain].get("newsletter")
+        domain_record = domain_map[domain].get("domain_record")
         contact_count = int(newsletter.get("contact_count") or 0) if isinstance(newsletter, dict) else 0
         total_contact_count += contact_count
         query_for_domain = {"view": "domains", "domain": domain}
@@ -388,6 +623,10 @@ def _workspace(
                 "newsletter_configured": newsletter is not None,
                 "contact_count": contact_count,
                 "dispatch_count": int(newsletter.get("dispatch_count") or 0) if isinstance(newsletter, dict) else 0,
+                "onboarding_state": _as_text(_as_dict(domain_record).get("readiness_state")) or "legacy_inferred",
+                "onboarding_summary": _as_text(_as_dict(domain_record).get("readiness_summary")),
+                "tenant_id": _as_text(_as_dict(domain_record).get("tenant_id")),
+                "hosted_zone_id": _as_text(_as_dict(domain_record).get("hosted_zone_id")),
                 "active": domain == selected_domain,
                 "href": _href_for_query(query_for_domain),
                 "shell_request": _shell_request(portal_scope, query_for_domain),
@@ -400,6 +639,9 @@ def _workspace(
         key=lambda item: (item.get("title") or "", item.get("profile_id") or ""),
     )
     selected_newsletter = dict((selected_domain_row or {}).get("newsletter") or {}) if selected_domain_row else None
+    selected_domain_record = (
+        dict((selected_domain_row or {}).get("domain_record") or {}) if selected_domain_row else None
+    )
 
     mailbox_rows: list[dict[str, Any]] = []
     for profile in selected_mailboxes:
@@ -441,9 +683,11 @@ def _workspace(
         "mailbox_rows": mailbox_rows,
         "section_rows": section_rows,
         "selected_domain": selected_domain,
+        "selected_domain_record": selected_domain_record,
         "selected_profile": selected_profile,
         "selected_newsletter": selected_newsletter,
         "domain_count": len(domain_rows),
+        "domain_record_count": len(domain_records),
         "profile_count": len(mailbox_profiles),
         "newsletter_domain_count": len(newsletter_domains),
         "contact_count": total_contact_count,
@@ -548,6 +792,13 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
         "handoff_status": _as_text(workflow.get("handoff_status")),
         "verification_state": _as_text(verification.get("portal_state") or verification.get("status"))
         or _as_text(selected_profile.get("verification_state")),
+        "email_received_at": _as_text(verification.get("email_received_at") or inbound.get("latest_message_captured_at")),
+        "verified_at": _as_text(verification.get("verified_at")),
+        "latest_message_reference": _as_text(
+            verification.get("latest_message_reference")
+            or inbound.get("latest_message_s3_uri")
+            or inbound.get("capture_source_reference")
+        ),
         "provider_state": _as_text(provider.get("gmail_send_as_status") or provider.get("aws_ses_identity_status"))
         or _as_text(selected_profile.get("provider_state")),
         "inbound_state": _as_text(inbound.get("receive_state")) or _as_text(selected_profile.get("inbound_state")),
@@ -562,6 +813,8 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
             "secret_name": _as_text(smtp.get("credentials_secret_name")),
             "secret_state": _as_text(smtp.get("credentials_secret_state")),
             "handoff_ready": handoff_ready,
+            "email_received_at": _as_text(verification.get("email_received_at") or inbound.get("latest_message_captured_at")),
+            "verified_at": _as_text(verification.get("verified_at")),
         },
         "actions": actions,
     }
@@ -621,9 +874,6 @@ def _build_control_panel(
                 ],
             }
         )
-    section_rows = list(workspace.get("section_rows") or [])
-    if section_rows:
-        groups.append({"title": "Sections", "entries": section_rows})
     return {
         "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
         "kind": "focus_selection_panel",
@@ -646,6 +896,7 @@ def _build_inspector(
     workspace: dict[str, Any],
     surface_payload: dict[str, Any],
 ) -> dict[str, Any]:
+    selected_domain_record = workspace.get("selected_domain_record")
     selected_profile = workspace.get("selected_profile")
     selected_newsletter = workspace.get("selected_newsletter")
     subject = None
@@ -725,6 +976,29 @@ def _build_inspector(
                         ]
                     ),
                 },
+            ]
+        )
+    elif isinstance(selected_domain_record, dict):
+        raw = dict(selected_domain_record.get("raw") or {})
+        identity = dict(raw.get("identity") or {})
+        readiness = _project_domain_readiness(raw)
+        receipt = dict(raw.get("receipt") or {})
+        subject = {"level": "domain", "id": _as_text(identity.get("domain"))}
+        sections.extend(
+            [
+                {
+                    "title": "Domain Onboarding",
+                    "rows": _facts_rows(
+                        [
+                            ("tenant", identity.get("tenant_id")),
+                            ("domain", identity.get("domain")),
+                            ("region", identity.get("region")),
+                            ("hosted zone", identity.get("hosted_zone_id")),
+                            ("readiness", readiness.get("state")),
+                            ("receipt rule", receipt.get("rule_name")),
+                        ]
+                    ),
+                }
             ]
         )
     elif isinstance(selected_newsletter, dict):
@@ -860,9 +1134,18 @@ def build_portal_aws_surface_bundle(
         tool_root=tool_root,
     )
     enriched_workspace = dict(workspace)
+    enriched_workspace["create_domain_defaults"] = {
+        "tenant_id": "",
+        "domain": "",
+        "hosted_zone_id": "",
+        "region": _DEFAULT_DOMAIN_REGION,
+    }
     enriched_workspace["selected_domain_create_profile"] = _selected_domain_create_profile(
         tool_root,
         selected_domain=_as_text(workspace.get("selected_domain")),
+    )
+    enriched_workspace["selected_domain_onboarding"] = _selected_domain_onboarding(
+        workspace.get("selected_domain_record") if isinstance(workspace.get("selected_domain_record"), dict) else None
     )
     enriched_workspace["selected_profile_onboarding"] = _selected_profile_onboarding(
         workspace.get("selected_profile") if isinstance(workspace.get("selected_profile"), dict) else None
@@ -1012,6 +1295,119 @@ def _selected_profile_row(
     return None
 
 
+def _selected_domain_record(
+    *,
+    tool_root: Path | None,
+    surface_query: Mapping[str, Any],
+    action_payload: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    store = _tool_store(tool_root)
+    if store is None:
+        return None
+    requested_domain = _normalized_domain(action_payload.get("domain") or surface_query.get("domain"))
+    if not requested_domain:
+        return None
+    payload = store.load_domain(domain=requested_domain)
+    if payload is None:
+        return None
+    readiness = _project_domain_readiness(payload)
+    identity = _as_dict(payload.get("identity"))
+    return {
+        "tenant_id": _as_text(identity.get("tenant_id")).lower(),
+        "domain": requested_domain,
+        "readiness_state": _as_text(readiness.get("state")),
+        "raw": payload,
+    }
+
+
+def _domain_rule_name(domain: str) -> str:
+    return f"portal-capture-{_slugify_domain(domain)}"
+
+
+def _domain_seed_payload(action_payload: Mapping[str, Any]) -> dict[str, Any]:
+    tenant_id = _as_text(action_payload.get("tenant_id")).lower()
+    domain = _normalized_domain(action_payload.get("domain"))
+    hosted_zone_id = _as_text(action_payload.get("hosted_zone_id")).upper()
+    region = _as_text(action_payload.get("region")) or _DEFAULT_DOMAIN_REGION
+    if not tenant_id or any(ch.isspace() for ch in tenant_id):
+        raise ValueError("tenant_id must be a non-empty token")
+    if not domain or "." not in domain or any(ch.isspace() for ch in domain):
+        raise ValueError("domain must be a domain-like value")
+    if not hosted_zone_id.startswith("Z"):
+        raise ValueError("hosted_zone_id must look like a Route 53 hosted zone id")
+    payload = {
+        "schema": AWS_CSM_DOMAIN_SCHEMA,
+        "identity": {
+            "tenant_id": tenant_id,
+            "domain": domain,
+            "region": region,
+            "hosted_zone_id": hosted_zone_id,
+        },
+        "dns": {
+            "hosted_zone_present": False,
+            "nameserver_match": False,
+            "registrar_nameservers": [],
+            "hosted_zone_nameservers": [],
+            "mx_expected_value": f"10 inbound-smtp.{region}.amazonaws.com",
+            "mx_record_present": False,
+            "mx_record_values": [],
+            "dkim_records_present": False,
+            "dkim_record_values": [],
+        },
+        "ses": {
+            "identity_exists": False,
+            "identity_status": "not_started",
+            "verified_for_sending_status": False,
+            "dkim_status": "not_started",
+            "dkim_tokens": [],
+        },
+        "receipt": {
+            "status": "not_ready",
+            "rule_name": _domain_rule_name(domain),
+            "expected_recipient": domain,
+            "expected_lambda_name": _DEFAULT_DOMAIN_INBOUND_LAMBDA,
+            "bucket": _DEFAULT_DOMAIN_RECEIPT_BUCKET,
+            "prefix": f"inbound/{domain}/",
+        },
+        "observation": {
+            "last_checked_at": "",
+            "account": "",
+            "role_arn": "",
+        },
+    }
+    payload["readiness"] = _project_domain_readiness(payload)
+    return payload
+
+
+def _merged_domain_payload(base_payload: dict[str, Any], patch: Mapping[str, Any]) -> dict[str, Any]:
+    working = deepcopy(base_payload)
+    for section in ("identity", "dns", "ses", "receipt", "observation"):
+        fragment = _as_dict(patch.get(section))
+        if not fragment:
+            continue
+        merged = _as_dict(working.get(section))
+        merged.update(fragment)
+        working[section] = merged
+    working["readiness"] = _project_domain_readiness(working)
+    return working
+
+
+def _refresh_domain_record(
+    *,
+    store: FilesystemAwsCsmToolProfileStore,
+    domain_record: dict[str, Any],
+    cloud: object,
+) -> dict[str, Any]:
+    if not hasattr(cloud, "describe_domain_status"):
+        raise ValueError("AWS-backed domain status inspection is not configured in this runtime.")
+    observed = getattr(cloud, "describe_domain_status")(domain_record)
+    merged = _merged_domain_payload(domain_record, observed if isinstance(observed, Mapping) else {})
+    return store.save_domain(
+        domain=_normalized_domain(_as_dict(domain_record.get("identity")).get("domain")),
+        payload=merged,
+    )
+
+
 def _onboarding_cloud(*, private_dir: str | Path | None, tenant_id: str) -> object:
     try:
         return AwsEc2RoleOnboardingCloudAdapter(private_dir=private_dir, tenant_id=tenant_id)
@@ -1077,6 +1473,91 @@ def _apply_action(
         )
 
     try:
+        if action_kind == "create_domain":
+            domain_payload = _domain_seed_payload(action_payload)
+            tenant_id = _as_text(_as_dict(domain_payload.get("identity")).get("tenant_id")).lower()
+            created_domain = store.create_domain(tenant_id=tenant_id, payload=domain_payload)
+            cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=tenant_id)
+            refreshed_domain = _refresh_domain_record(store=store, domain_record=created_domain, cloud=cloud)
+            readiness = _project_domain_readiness(refreshed_domain)
+            domain = _normalized_domain(_as_dict(refreshed_domain.get("identity")).get("domain"))
+            next_query = {"view": "domains", "domain": domain, "section": "onboarding"}
+            details = {
+                "tenant_id": tenant_id,
+                "domain": domain,
+                "hosted_zone_id": _as_text(_as_dict(refreshed_domain.get("identity")).get("hosted_zone_id")),
+                "readiness_state": _as_text(readiness.get("state")),
+            }
+            _append_local_audit(
+                audit_storage_file=audit_storage_file,
+                private_dir=private_dir,
+                action_kind=action_kind,
+                details=details,
+            )
+            return next_query, _action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message=f"Created AWS-CSM domain onboarding for {domain}.",
+                details=details,
+            )
+
+        if action_kind in {
+            "refresh_domain_status",
+            "ensure_domain_identity",
+            "sync_domain_dns",
+            "ensure_domain_receipt_rule",
+        }:
+            domain_row = _selected_domain_record(
+                tool_root=tool_root,
+                surface_query=surface_query,
+                action_payload=action_payload,
+            )
+            if domain_row is None:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="domain_required",
+                    message="Select an AWS-CSM domain before running this action.",
+                )
+            tenant_id = _as_text(domain_row.get("tenant_id"))
+            cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=tenant_id)
+            raw_domain = _as_dict(domain_row.get("raw"))
+            if action_kind == "ensure_domain_identity":
+                if not hasattr(cloud, "ensure_domain_identity"):
+                    raise ValueError("AWS-backed domain identity creation is not configured in this runtime.")
+                getattr(cloud, "ensure_domain_identity")(raw_domain)
+            elif action_kind == "sync_domain_dns":
+                if not hasattr(cloud, "sync_domain_dns"):
+                    raise ValueError("AWS-backed domain DNS synchronization is not configured in this runtime.")
+                getattr(cloud, "sync_domain_dns")(raw_domain)
+            elif action_kind == "ensure_domain_receipt_rule":
+                if not hasattr(cloud, "ensure_domain_receipt_rule"):
+                    raise ValueError("AWS-backed domain receipt-rule wiring is not configured in this runtime.")
+                getattr(cloud, "ensure_domain_receipt_rule")(raw_domain)
+            refreshed_domain = _refresh_domain_record(store=store, domain_record=raw_domain, cloud=cloud)
+            readiness = _project_domain_readiness(refreshed_domain)
+            domain = _normalized_domain(_as_dict(refreshed_domain.get("identity")).get("domain"))
+            next_query = {"view": "domains", "domain": domain, "section": "onboarding"}
+            details = {
+                "tenant_id": _as_text(_as_dict(refreshed_domain.get("identity")).get("tenant_id")),
+                "domain": domain,
+                "hosted_zone_id": _as_text(_as_dict(refreshed_domain.get("identity")).get("hosted_zone_id")),
+                "readiness_state": _as_text(readiness.get("state")),
+                "updated_sections": ["dns", "ses", "receipt", "observation", "readiness"],
+            }
+            _append_local_audit(
+                audit_storage_file=audit_storage_file,
+                private_dir=private_dir,
+                action_kind=action_kind,
+                details=details,
+            )
+            return next_query, _action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message=f"AWS-CSM domain action {action_kind} completed for {domain}.",
+                details=details,
+            )
+
         if action_kind == "create_profile":
             outcome = AwsCsmProfileRegistryService(store).create_profile(action_payload)
             next_query = {"view": "domains", "domain": outcome.domain, "profile": outcome.profile_id, "section": "onboarding"}

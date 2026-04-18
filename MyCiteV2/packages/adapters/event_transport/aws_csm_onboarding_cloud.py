@@ -33,6 +33,7 @@ _AWS_SMTP_VERSION = b"\x04"
 _AWS_SMTP_DATE_SEED = "11111111"
 _DEFAULT_REGION = "us-east-1"
 _DEFAULT_INBOUND_LAMBDA = "newsletter-inbound-capture"
+_DEFAULT_DOMAIN_RECEIPT_BUCKET = "ses-inbound-fnd-mail"
 
 
 def _as_text(value: object) -> str:
@@ -43,6 +44,10 @@ def _as_text(value: object) -> str:
 
 def _as_dict(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
+
+
+def _as_list(value: Any) -> list[Any]:
+    return list(value) if isinstance(value, list) else []
 
 
 def _as_bool(value: Any) -> bool:
@@ -302,6 +307,176 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 ),
             },
         }
+
+    def describe_domain_status(self, domain_record: dict[str, Any]) -> dict[str, Any]:
+        identity = _as_dict(domain_record.get("identity"))
+        dns = _as_dict(domain_record.get("dns"))
+        receipt = _as_dict(domain_record.get("receipt"))
+        domain = _normalized_domain(identity.get("domain"))
+        region = _as_text(identity.get("region")) or _DEFAULT_REGION
+        hosted_zone_id = _as_text(identity.get("hosted_zone_id"))
+        caller = self.caller_identity_summary()
+
+        registrar_nameservers = self._registrar_nameservers(domain)
+        hosted_zone_nameservers = self._hosted_zone_nameservers(hosted_zone_id)
+        hosted_zone_present = bool(hosted_zone_nameservers)
+        nameserver_match = bool(registrar_nameservers and hosted_zone_nameservers and registrar_nameservers == hosted_zone_nameservers)
+
+        identity_summary = self._domain_identity_summary(domain=domain, region=region)
+        mx_expected_value = f"10 inbound-smtp.{region}.amazonaws.com"
+        record_summary = self._route53_record_summary(
+            hosted_zone_id=hosted_zone_id,
+            domain=domain,
+            region=region,
+            dkim_tokens=_as_list(identity_summary.get("dkim_tokens")),
+        )
+        receipt_summary = self.receipt_rule_summary(
+            domain=domain,
+            expected_recipient=domain,
+            expected_lambda_name=_as_text(receipt.get("expected_lambda_name")) or _DEFAULT_INBOUND_LAMBDA,
+            region=region,
+        )
+        matching_rules = _as_list(receipt_summary.get("matching_rules"))
+        primary_rule = _as_dict(matching_rules[0]) if matching_rules else {}
+        return {
+            "dns": {
+                "hosted_zone_present": hosted_zone_present,
+                "registrar_nameservers": registrar_nameservers,
+                "hosted_zone_nameservers": hosted_zone_nameservers,
+                "nameserver_match": nameserver_match,
+                "mx_expected_value": mx_expected_value,
+                "mx_record_present": _as_bool(record_summary.get("mx_record_present")),
+                "mx_record_values": _as_list(record_summary.get("mx_record_values")),
+                "dkim_records_present": _as_bool(record_summary.get("dkim_records_present")),
+                "dkim_record_values": _as_list(record_summary.get("dkim_record_values")),
+            },
+            "ses": identity_summary,
+            "receipt": {
+                "status": _as_text(receipt_summary.get("status")) or "not_ready",
+                "rule_name": _as_text(primary_rule.get("rule_name") or receipt.get("rule_name") or self._domain_rule_name(domain)),
+                "expected_recipient": _as_text(receipt_summary.get("expected_recipient") or domain),
+                "expected_lambda_name": _as_text(receipt.get("expected_lambda_name")) or _DEFAULT_INBOUND_LAMBDA,
+                "bucket": _as_text(primary_rule.get("s3_bucket") or receipt.get("bucket") or _DEFAULT_DOMAIN_RECEIPT_BUCKET),
+                "prefix": _as_text(primary_rule.get("s3_prefix") or receipt.get("prefix") or f"inbound/{domain}/"),
+                "matching_rules": matching_rules,
+            },
+            "observation": {
+                "last_checked_at": _utc_now_iso(),
+                "account": _as_text(caller.get("account")),
+                "role_arn": _as_text(caller.get("arn")),
+            },
+        }
+
+    def ensure_domain_identity(self, domain_record: dict[str, Any]) -> None:
+        identity = _as_dict(domain_record.get("identity"))
+        domain = _normalized_domain(identity.get("domain"))
+        region = _as_text(identity.get("region")) or _DEFAULT_REGION
+        if not domain:
+            raise ValueError("AWS-CSM domain onboarding record is missing identity.domain.")
+        client = self._client("sesv2", region=region)
+        try:
+            client.get_email_identity(EmailIdentity=domain)
+            return
+        except Exception as exc:  # noqa: BLE001
+            message = _as_text(exc).lower()
+            if "notfound" not in message and "not found" not in message:
+                raise
+        client.create_email_identity(EmailIdentity=domain)
+
+    def sync_domain_dns(self, domain_record: dict[str, Any]) -> None:
+        status = self.describe_domain_status(domain_record)
+        identity = _as_dict(domain_record.get("identity"))
+        dns = _as_dict(status.get("dns"))
+        ses = _as_dict(status.get("ses"))
+        domain = _normalized_domain(identity.get("domain"))
+        region = _as_text(identity.get("region")) or _DEFAULT_REGION
+        hosted_zone_id = _as_text(identity.get("hosted_zone_id"))
+        if not _as_bool(dns.get("hosted_zone_present")):
+            raise ValueError("The configured Route 53 hosted zone is missing or unreadable.")
+        if not _as_bool(dns.get("nameserver_match")):
+            raise ValueError("Refusing DNS sync because registrar nameservers do not match the selected hosted zone.")
+        dkim_tokens = [token for token in (_as_text(item) for item in _as_list(ses.get("dkim_tokens"))) if token]
+        if len(dkim_tokens) < 3:
+            raise ValueError("Create the SES domain identity first so DKIM tokens exist before syncing DNS.")
+        route53 = self._client("route53")
+        changes: list[dict[str, Any]] = [
+            {
+                "Action": "UPSERT",
+                "ResourceRecordSet": {
+                    "Name": domain,
+                    "Type": "MX",
+                    "TTL": 300,
+                    "ResourceRecords": [{"Value": f"10 inbound-smtp.{region}.amazonaws.com"}],
+                },
+            }
+        ]
+        for token in dkim_tokens[:3]:
+            changes.append(
+                {
+                    "Action": "UPSERT",
+                    "ResourceRecordSet": {
+                        "Name": f"{token}._domainkey.{domain}",
+                        "Type": "CNAME",
+                        "TTL": 1800,
+                        "ResourceRecords": [{"Value": f"{token}.dkim.amazonses.com"}],
+                    },
+                }
+            )
+        route53.change_resource_record_sets(
+            HostedZoneId=hosted_zone_id,
+            ChangeBatch={"Comment": f"Sync AWS-CSM SES records for {domain}", "Changes": changes},
+        )
+
+    def ensure_domain_receipt_rule(self, domain_record: dict[str, Any]) -> None:
+        identity = _as_dict(domain_record.get("identity"))
+        receipt = _as_dict(domain_record.get("receipt"))
+        domain = _normalized_domain(identity.get("domain"))
+        region = _as_text(identity.get("region")) or _DEFAULT_REGION
+        rule_name = _as_text(receipt.get("rule_name")) or self._domain_rule_name(domain)
+        expected_lambda_name = _as_text(receipt.get("expected_lambda_name")) or _DEFAULT_INBOUND_LAMBDA
+        bucket = _as_text(receipt.get("bucket")) or _DEFAULT_DOMAIN_RECEIPT_BUCKET
+        prefix = _as_text(receipt.get("prefix")) or f"inbound/{domain}/"
+        if not domain:
+            raise ValueError("AWS-CSM domain onboarding record is missing identity.domain.")
+        ses = self._client("ses", region=region)
+        active = ses.describe_active_receipt_rule_set()
+        rule_set_name = _as_text(_as_dict(active.get("Metadata")).get("Name"))
+        if not rule_set_name:
+            raise ValueError("No active SES receipt rule set is configured.")
+        rules = [row for row in _as_list(active.get("Rules")) if isinstance(row, dict)]
+        lambda_arn = _as_text(self.lambda_health_summary(function_name=expected_lambda_name, region=region).get("function_arn"))
+        if not lambda_arn:
+            raise ValueError(f"Unable to resolve Lambda ARN for {expected_lambda_name}.")
+        rule_payload = {
+            "Name": rule_name,
+            "Enabled": True,
+            "TlsPolicy": "Optional",
+            "Recipients": [domain],
+            "Actions": [
+                {
+                    "S3Action": {
+                        "BucketName": bucket,
+                        "ObjectKeyPrefix": prefix,
+                    }
+                },
+                {
+                    "LambdaAction": {
+                        "FunctionArn": lambda_arn,
+                        "InvocationType": "Event",
+                    }
+                },
+            ],
+            "ScanEnabled": True,
+        }
+        existing = next((row for row in rules if _as_text(row.get("Name")) == rule_name), None)
+        if existing is not None:
+            ses.update_receipt_rule(RuleSetName=rule_set_name, Rule=rule_payload)
+            return
+        after = _as_text(rules[-1].get("Name")) if rules else ""
+        kwargs: dict[str, Any] = {"RuleSetName": rule_set_name, "Rule": rule_payload}
+        if after:
+            kwargs["After"] = after
+        ses.create_receipt_rule(**kwargs)
 
     def send_handoff_email(self, profile: dict[str, Any]) -> dict[str, Any]:
         send_as_email = self._send_as_email(profile)
@@ -703,6 +878,151 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             return configured
         newsletter_profile = self._newsletter_profile(_normalized_domain(identity.get("domain")))
         return _as_text(newsletter_profile.get("inbound_processor_lambda_name")) or _DEFAULT_INBOUND_LAMBDA
+
+    def _domain_rule_name(self, domain: str) -> str:
+        return f"portal-capture-{domain.replace('.', '-')}"
+
+    def _normalized_record_token(self, value: object) -> str:
+        return _as_text(value).lower().rstrip(".")
+
+    def _registrar_nameservers(self, domain: str) -> list[str]:
+        if not domain:
+            return []
+        try:
+            response = self._client("route53domains", region=_DEFAULT_REGION).get_domain_detail(DomainName=domain)
+        except Exception:  # noqa: BLE001
+            return []
+        nameservers = []
+        for row in _as_list(response.get("Nameservers")):
+            if not isinstance(row, dict):
+                continue
+            token = self._normalized_record_token(row.get("Name"))
+            if token:
+                nameservers.append(token)
+        return sorted(set(nameservers))
+
+    def _hosted_zone_nameservers(self, hosted_zone_id: str) -> list[str]:
+        if not hosted_zone_id:
+            return []
+        try:
+            response = self._client("route53").get_hosted_zone(Id=hosted_zone_id)
+        except Exception:  # noqa: BLE001
+            return []
+        delegation = _as_dict(response.get("DelegationSet"))
+        nameservers = [
+            self._normalized_record_token(item)
+            for item in _as_list(delegation.get("NameServers"))
+            if self._normalized_record_token(item)
+        ]
+        return sorted(set(nameservers))
+
+    def _route53_record_summary(
+        self,
+        *,
+        hosted_zone_id: str,
+        domain: str,
+        region: str,
+        dkim_tokens: list[Any],
+    ) -> dict[str, Any]:
+        if not hosted_zone_id:
+            return {
+                "mx_record_present": False,
+                "mx_record_values": [],
+                "dkim_records_present": False,
+                "dkim_record_values": [],
+            }
+        try:
+            response = self._client("route53").list_resource_record_sets(HostedZoneId=hosted_zone_id)
+        except Exception:  # noqa: BLE001
+            return {
+                "mx_record_present": False,
+                "mx_record_values": [],
+                "dkim_records_present": False,
+                "dkim_record_values": [],
+            }
+        records = [row for row in _as_list(response.get("ResourceRecordSets")) if isinstance(row, dict)]
+        mx_values = [
+            self._normalized_record_token(item.get("Value"))
+            for row in records
+            if self._normalized_record_token(row.get("Name")) == domain and _as_text(row.get("Type")) == "MX"
+            for item in _as_list(row.get("ResourceRecords"))
+            if isinstance(item, dict) and self._normalized_record_token(item.get("Value"))
+        ]
+        dkim_tokens_text = [token for token in (_as_text(item) for item in dkim_tokens) if token]
+        matched_dkim_values: list[str] = []
+        for token in dkim_tokens_text:
+            expected_name = self._normalized_record_token(f"{token}._domainkey.{domain}")
+            expected_value = self._normalized_record_token(f"{token}.dkim.amazonses.com")
+            record = next(
+                (
+                    row
+                    for row in records
+                    if self._normalized_record_token(row.get("Name")) == expected_name and _as_text(row.get("Type")) == "CNAME"
+                ),
+                None,
+            )
+            if not isinstance(record, dict):
+                continue
+            values = [
+                self._normalized_record_token(item.get("Value"))
+                for item in _as_list(record.get("ResourceRecords"))
+                if isinstance(item, dict) and self._normalized_record_token(item.get("Value"))
+            ]
+            if expected_value in values:
+                matched_dkim_values.append(expected_value)
+        expected_mx = self._normalized_record_token(f"10 inbound-smtp.{region}.amazonaws.com")
+        return {
+            "mx_record_present": expected_mx in mx_values,
+            "mx_record_values": mx_values,
+            "dkim_records_present": len(dkim_tokens_text) >= 3 and len(matched_dkim_values) >= 3,
+            "dkim_record_values": matched_dkim_values,
+        }
+
+    def _domain_identity_summary(self, *, domain: str, region: str) -> dict[str, Any]:
+        if not domain:
+            return {
+                "identity_exists": False,
+                "identity_status": "not_started",
+                "verified_for_sending_status": False,
+                "dkim_status": "not_started",
+                "dkim_tokens": [],
+            }
+        client = self._client("sesv2", region=region)
+        try:
+            response = client.get_email_identity(EmailIdentity=domain)
+        except Exception as exc:  # noqa: BLE001
+            message = _as_text(exc).lower()
+            if "notfound" in message or "not found" in message:
+                return {
+                    "identity_exists": False,
+                    "identity_status": "not_started",
+                    "verified_for_sending_status": False,
+                    "dkim_status": "not_started",
+                    "dkim_tokens": [],
+                }
+            return {
+                "identity_exists": False,
+                "identity_status": "error",
+                "verified_for_sending_status": False,
+                "dkim_status": "error",
+                "dkim_tokens": [],
+            }
+        dkim = _as_dict(response.get("DkimAttributes"))
+        verification_status = _as_text(response.get("VerificationStatus")).upper()
+        verified_for_sending = bool(response.get("VerifiedForSendingStatus"))
+        identity_status = "not_started"
+        if verification_status == "SUCCESS" and verified_for_sending:
+            identity_status = "verified"
+        elif verification_status:
+            identity_status = verification_status.lower()
+        dkim_status = _as_text(dkim.get("Status")).lower() or "not_started"
+        return {
+            "identity_exists": True,
+            "identity_status": identity_status,
+            "verified_for_sending_status": verified_for_sending,
+            "dkim_status": dkim_status,
+            "dkim_tokens": [token for token in (_as_text(item) for item in _as_list(dkim.get("Tokens"))) if token],
+        }
 
     def _smtp_secret_material(self, *, secret_name: str, region: str) -> dict[str, Any]:
         client = self._client("secretsmanager", region=_DEFAULT_REGION)
