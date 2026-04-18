@@ -10,6 +10,9 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_ENTRYPOINT_ID,
     CTS_GIS_TOOL_ROUTE,
     CTS_GIS_TOOL_SURFACE_ID,
+    FND_DCM_TOOL_ENTRYPOINT_ID,
+    FND_DCM_TOOL_ROUTE,
+    FND_DCM_TOOL_SURFACE_ID,
     FND_EBI_TOOL_ENTRYPOINT_ID,
     FND_EBI_TOOL_ROUTE,
     FND_EBI_TOOL_SURFACE_ID,
@@ -40,11 +43,13 @@ UTILITIES_TOOL_EXPOSURE_SURFACE_SCHEMA = "mycite.v2.portal.utilities.tool_exposu
 UTILITIES_INTEGRATIONS_SURFACE_SCHEMA = "mycite.v2.portal.utilities.integrations.surface.v1"
 AWS_CSM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.surface.v1"
 CTS_GIS_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.surface.v1"
+FND_DCM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.fnd_dcm.surface.v1"
 FND_EBI_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.fnd_ebi.surface.v1"
 
 AWS_CSM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.request.v1"
 AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.action.request.v1"
 CTS_GIS_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.request.v1"
+FND_DCM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_dcm.request.v1"
 FND_EBI_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_ebi.request.v1"
 SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.workspace.profile_basics.action.request.v1"
 
@@ -299,6 +304,16 @@ def build_portal_runtime_entrypoint_catalog() -> tuple[PortalRuntimeEntrypointDe
             required_configuration=("data_dir",),
         ),
         PortalRuntimeEntrypointDescriptor(
+            entrypoint_id=FND_DCM_TOOL_ENTRYPOINT_ID,
+            callable_path="MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime.run_portal_fnd_dcm",
+            surface_id=FND_DCM_TOOL_SURFACE_ID,
+            route="/portal/api/v2/system/tools/fnd-dcm",
+            request_schema=FND_DCM_TOOL_REQUEST_SCHEMA,
+            surface_schema=FND_DCM_TOOL_SURFACE_SCHEMA,
+            read_write_posture="read-only",
+            required_configuration=("webapps_root",),
+        ),
+        PortalRuntimeEntrypointDescriptor(
             entrypoint_id=FND_EBI_TOOL_ENTRYPOINT_ID,
             callable_path="MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime.run_portal_fnd_ebi",
             surface_id=FND_EBI_TOOL_SURFACE_ID,
@@ -328,6 +343,7 @@ def surface_schema_for_surface(surface_id: str) -> str:
         UTILITIES_INTEGRATIONS_SURFACE_ID: UTILITIES_INTEGRATIONS_SURFACE_SCHEMA,
         AWS_CSM_TOOL_SURFACE_ID: AWS_CSM_TOOL_SURFACE_SCHEMA,
         CTS_GIS_TOOL_SURFACE_ID: CTS_GIS_TOOL_SURFACE_SCHEMA,
+        FND_DCM_TOOL_SURFACE_ID: FND_DCM_TOOL_SURFACE_SCHEMA,
         FND_EBI_TOOL_SURFACE_ID: FND_EBI_TOOL_SURFACE_SCHEMA,
     }
     return mapping.get(_as_text(surface_id), SYSTEM_ROOT_SURFACE_SCHEMA)
@@ -342,6 +358,7 @@ def route_for_surface(surface_id: str) -> str:
         UTILITIES_INTEGRATIONS_SURFACE_ID: UTILITIES_INTEGRATIONS_ROUTE,
         AWS_CSM_TOOL_SURFACE_ID: AWS_CSM_TOOL_ROUTE,
         CTS_GIS_TOOL_SURFACE_ID: CTS_GIS_TOOL_ROUTE,
+        FND_DCM_TOOL_SURFACE_ID: FND_DCM_TOOL_ROUTE,
         FND_EBI_TOOL_SURFACE_ID: FND_EBI_TOOL_ROUTE,
     }
     return mapping.get(_as_text(surface_id), SYSTEM_ROOT_ROUTE)
@@ -406,6 +423,8 @@ __all__ = [
     "AWS_CSM_TOOL_SURFACE_SCHEMA",
     "CTS_GIS_TOOL_REQUEST_SCHEMA",
     "CTS_GIS_TOOL_SURFACE_SCHEMA",
+    "FND_DCM_TOOL_REQUEST_SCHEMA",
+    "FND_DCM_TOOL_SURFACE_SCHEMA",
     "FND_EBI_TOOL_REQUEST_SCHEMA",
     "FND_EBI_TOOL_SURFACE_SCHEMA",
     "NETWORK_ROOT_SURFACE_SCHEMA",

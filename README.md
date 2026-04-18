@@ -23,7 +23,9 @@ documentation tree.
 - canonical shell endpoint: `POST /portal/api/v2/shell`
 - canonical tool work pages: `/portal/system/tools/<tool_slug>`
 - canonical AWS service tool: `/portal/system/tools/aws-csm`
+- canonical FND-DCM service tool: `/portal/system/tools/fnd-dcm`
 - `AWS-CSM` is one `SYSTEM` child service tool with a unified domain gallery, user-email gallery, onboarding section, and newsletter section
+- `FND-DCM` is one `SYSTEM` child service tool for hosted manifest inspection and normalization across profile-led webapps
 - service-tool posture comes from required capabilities and peripheral employment, not from portal identity or portal types
 - shell chrome is one `ide-shell` split into `ide-menubar` and `ide-body`, with `Activity Bar`, `Control Panel`, `Workbench`, and `Interface Panel` as peer regions
 - utilities/configuration pages: `/portal/utilities/*`
@@ -42,5 +44,7 @@ documentation tree.
 - [`docs/contracts/portal_shell_contract.md`](docs/contracts/portal_shell_contract.md)
 - [`docs/contracts/route_model.md`](docs/contracts/route_model.md)
 - [`docs/contracts/surface_catalog.md`](docs/contracts/surface_catalog.md)
+- [`docs/contracts/fnd_dcm_tool_contract.md`](docs/contracts/fnd_dcm_tool_contract.md)
+- [`docs/contracts/fnd_dcm_manifest_conventions.md`](docs/contracts/fnd_dcm_manifest_conventions.md)
 - [`docs/contracts/portal_vocabulary_glossary.md`](docs/contracts/portal_vocabulary_glossary.md)
 - [`docs/plans/one_shell_portal_refactor.md`](docs/plans/one_shell_portal_refactor.md)

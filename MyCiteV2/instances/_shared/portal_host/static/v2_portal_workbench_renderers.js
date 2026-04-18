@@ -93,6 +93,9 @@
           "</h3>" +
           renderRows(subsection.facts || subsection.rows || []) +
           renderTable({ columns: subsection.columns, items: subsection.rows || [] }) +
+          (subsection.preformatted
+            ? '<pre class="lr-workbench__miniPre">' + escapeHtml(subsection.preformatted) + "</pre>"
+            : "") +
           "</div>"
         );
       })
@@ -110,6 +113,7 @@
           (section.summary ? "<p>" + escapeHtml(section.summary) + "</p>" : "") +
           renderRows(section.rows || []) +
           renderTable(section) +
+          (section.preformatted ? '<pre class="lr-workbench__miniPre">' + escapeHtml(section.preformatted) + "</pre>" : "") +
           renderSubsections(section.subsections || []) +
           "</section>"
         );

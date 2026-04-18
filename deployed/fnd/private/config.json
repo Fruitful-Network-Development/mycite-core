@@ -32,6 +32,20 @@
       "status": "enabled"
     }
   ],
+  "tool_exposure": {
+    "aws_csm": {
+      "enabled": true
+    },
+    "cts_gis": {
+      "enabled": true
+    },
+    "fnd_dcm": {
+      "enabled": true
+    },
+    "fnd_ebi": {
+      "enabled": true
+    }
+  },
   "hosted": {
     "hosting_type": "subject_congregation",
     "pages": [

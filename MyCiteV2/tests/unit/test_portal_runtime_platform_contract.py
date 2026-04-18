@@ -10,6 +10,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    FND_DCM_TOOL_REQUEST_SCHEMA,
+    FND_DCM_TOOL_SURFACE_SCHEMA,
     PORTAL_RUNTIME_ENVELOPE_SCHEMA,
     PORTAL_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA,
     PORTAL_RUNTIME_REQUIRED_ENVELOPE_KEYS,
@@ -31,6 +33,8 @@ class PortalRuntimePlatformContractTests(unittest.TestCase):
         )
         self.assertEqual(descriptors[0]["entrypoint_id"], "portal.shell")
         self.assertEqual(descriptors[0]["route"], "/portal/api/v2/shell")
+        self.assertIn("portal.system.tools.fnd_dcm", [entry["entrypoint_id"] for entry in descriptors])
+        self.assertIn("/portal/api/v2/system/tools/fnd-dcm", [entry["route"] for entry in descriptors])
         self.assertEqual(json.loads(json.dumps(descriptors, sort_keys=True)), descriptors)
         self.assertIsNone(resolve_portal_runtime_entrypoint("missing.entrypoint"))
 
@@ -65,6 +69,16 @@ class PortalRuntimePlatformContractTests(unittest.TestCase):
         self.assertEqual(
             SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
             "mycite.v2.portal.system.workspace.profile_basics.action.request.v1",
+        )
+
+    def test_fnd_dcm_request_and_surface_schemas_are_fixed(self) -> None:
+        self.assertEqual(
+            FND_DCM_TOOL_REQUEST_SCHEMA,
+            "mycite.v2.portal.system.tools.fnd_dcm.request.v1",
+        )
+        self.assertEqual(
+            FND_DCM_TOOL_SURFACE_SCHEMA,
+            "mycite.v2.portal.system.tools.fnd_dcm.surface.v1",
         )
 
 

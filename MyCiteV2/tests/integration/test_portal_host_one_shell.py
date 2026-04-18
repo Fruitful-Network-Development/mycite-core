@@ -189,6 +189,101 @@ def _write_aws_csm_state(private_dir: Path) -> None:
     )
 
 
+def _write_fnd_dcm_state(private_dir: Path, webapps_root: Path) -> None:
+    tool_root = private_dir / "utilities" / "tools" / "fnd-dcm"
+    tool_root.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        tool_root / "spec.json",
+        {
+            "schema": "mycite.portal.tool_spec.v1",
+            "tool_id": "fnd-dcm",
+            "mediation": {"mode": "manifest_read_only"},
+        },
+    )
+    _write_json(
+        tool_root / "tool.3-2-3-17-77-1-6-4-1-4.fnd-dcm.json",
+        {
+            "schema": "mycite.portal.tool_collection.v1",
+            "member_files": ["spec.json", "fnd-dcm.cvcc.json", "fnd-dcm.tff.json"],
+        },
+    )
+    _write_json(
+        tool_root / "fnd-dcm.cvcc.json",
+        {
+            "schema": "mycite.service_tool.fnd_dcm.profile.v1",
+            "domain": "cuyahogavalleycountrysideconservancy.org",
+            "label": "CVCC",
+            "manifest_relative_path": "assets/docs/manifest.json",
+            "render_script_relative_path": "scripts/render_manifest.py",
+        },
+    )
+    _write_json(
+        tool_root / "fnd-dcm.tff.json",
+        {
+            "schema": "mycite.service_tool.fnd_dcm.profile.v1",
+            "domain": "trappfamilyfarm.com",
+            "label": "Trapp Family Farm",
+            "manifest_relative_path": "assets/docs/manifest.json",
+            "render_script_relative_path": "scripts/render_manifest.py",
+        },
+    )
+    cvcc_root = webapps_root / "clients" / "cuyahogavalleycountrysideconservancy.org" / "frontend"
+    tff_root = webapps_root / "clients" / "trappfamilyfarm.com" / "frontend"
+    _write_json(
+        cvcc_root / "assets" / "docs" / "manifest.json",
+        {
+            "schema": "webdz.site_content.v2",
+            "site": {"name": "CVCC", "homepage_href": "index.html", "shell": {}},
+            "navigation": [{"id": "home", "label": "Home", "href": "index.html"}],
+            "footer": {"columns": [{"template": "rich_text"}], "copyright": "©"},
+            "collections": {
+                "board_profiles": {"type": "json_file", "source": "assets/docs/board_profiles.json"},
+                "blog_posts": {
+                    "type": "markdown_directory",
+                    "directory": "assets/docs/blogs",
+                    "pattern": "*.md",
+                },
+            },
+            "pages": {
+                "people": {"file": "people.html", "template": "board_directory", "content": {"collection": "board_profiles"}},
+                "newsletter": {"file": "newsletter.html", "template": "article_archive", "content": {"collection": "blog_posts"}},
+            },
+        },
+    )
+    _write_json(
+        cvcc_root / "assets" / "docs" / "board_profiles.json",
+        [{"name": "Jane Example", "bio": ["Jane supports local farming."]}],
+    )
+    (cvcc_root / "assets" / "docs" / "blogs").mkdir(parents=True, exist_ok=True)
+    (cvcc_root / "assets" / "docs" / "blogs" / "spring.md").write_text("# Spring\n", encoding="utf-8")
+    (cvcc_root / "scripts").mkdir(parents=True, exist_ok=True)
+    (cvcc_root / "scripts" / "render_manifest.py").write_text("print('ok')\n", encoding="utf-8")
+    _write_json(
+        tff_root / "assets" / "docs" / "manifest.json",
+        {
+            "schema": "webdz.site_content.v3",
+            "site": {"name": "Trapp Family Farm", "homepage_href": "home.html", "shell": {}},
+            "icons": {"favicon": "/favicon.svg"},
+            "navigation": [{"id": "home", "label": "Home", "href": "home.html"}],
+            "footer": {"columns": [{"template": "contact_lines"}], "copyright": "©"},
+            "collections": {
+                "newsletters": {
+                    "type": "markdown_documents",
+                    "items": [{"source": "assets/docs/newsletters/fall-2024.md"}],
+                }
+            },
+            "pages": {
+                "home": {"file": "home.html", "template": "home_featured"},
+                "newsletter": {"file": "newsletter.html", "template": "article_archive", "content": {"collection": "newsletters"}},
+            },
+        },
+    )
+    (tff_root / "assets" / "docs" / "newsletters").mkdir(parents=True, exist_ok=True)
+    (tff_root / "assets" / "docs" / "newsletters" / "fall-2024.md").write_text("# Fall\n", encoding="utf-8")
+    (tff_root / "scripts").mkdir(parents=True, exist_ok=True)
+    (tff_root / "scripts" / "render_manifest.py").write_text("print('ok')\n", encoding="utf-8")
+
+
 class _FakeAwsCsmActionCloud:
     def __init__(self) -> None:
         self.sent_messages: list[dict[str, object]] = []
@@ -468,9 +563,16 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 ),
             )
             _write_aws_csm_state(private_dir)
+            _write_fnd_dcm_state(private_dir, webapps_root)
             _write_json(
                 private_dir / "config.json",
-                {"msn_id": "3-2-3-17-77-1-6-4-1-4", "tool_exposure": {"aws_csm": {"enabled": True}}},
+                {
+                    "msn_id": "3-2-3-17-77-1-6-4-1-4",
+                    "tool_exposure": {
+                        "aws_csm": {"enabled": True},
+                        "fnd_dcm": {"enabled": True},
+                    },
+                },
             )
             (public_dir / "tenant-profile-1.json").write_text(
                 '{"title":"Example Profile","summary":"Public summary"}\n',
@@ -500,6 +602,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(client.get("/portal/utilities").status_code, 200)
             self.assertEqual(client.get("/portal/system/tools/aws-csm").status_code, 200)
             self.assertEqual(client.get("/portal/system/tools/cts-gis").status_code, 200)
+            self.assertEqual(client.get("/portal/system/tools/fnd-dcm").status_code, 200)
             self.assertEqual(client.get("/portal/system/tools/aws", follow_redirects=False).status_code, 302)
             self.assertEqual(
                 client.get("/portal/system/tools/aws", follow_redirects=False).headers["Location"],
@@ -570,6 +673,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(len(aws_items), 1)
             self.assertEqual(aws_items[0]["label"], "AWS-CSM")
             self.assertEqual(aws_items[0]["href"], "/portal/system/tools/aws-csm")
+            self.assertIn("system.tools.fnd_dcm", [item["item_id"] for item in activity_items])
             operational_payload = client.post(
                 "/portal/api/v2/shell",
                 json={
@@ -648,6 +752,23 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(tool_payload["canonical_query"], {"view": "domains"})
             self.assertEqual(tool_payload["surface_payload"]["kind"], "aws_csm_workspace")
 
+            fnd_dcm_response = client.post(
+                "/portal/api/v2/system/tools/fnd-dcm",
+                json={"schema": "mycite.v2.portal.system.tools.fnd_dcm.request.v1"},
+            )
+            self.assertEqual(fnd_dcm_response.status_code, 200)
+            fnd_dcm_payload = fnd_dcm_response.get_json()
+            self.assertEqual(fnd_dcm_payload["surface_id"], "system.tools.fnd_dcm")
+            self.assertEqual(
+                fnd_dcm_payload["canonical_query"],
+                {"site": "cuyahogavalleycountrysideconservancy.org", "view": "overview"},
+            )
+            self.assertEqual(fnd_dcm_payload["surface_payload"]["tool"]["operational"], True)
+            self.assertEqual(
+                fnd_dcm_payload["shell_composition"]["regions"]["control_panel"]["surface_label"],
+                "FND-DCM",
+            )
+
             cts_gis_ok = client.post(
                 "/portal/api/v2/system/tools/cts-gis",
                 json={"schema": "mycite.v2.portal.system.tools.cts_gis.request.v1"},
@@ -679,6 +800,54 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(profile_action.status_code, 200)
             profile_payload = profile_action.get_json()
             self.assertEqual(profile_payload["surface_id"], "system.root")
+
+    def test_fnd_dcm_route_stays_available_when_webapps_root_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            public_dir = root / "public"
+            private_dir = root / "private"
+            data_dir = root / "data"
+            webapps_root = root / "webapps"
+            for path in (public_dir, private_dir, data_dir, webapps_root):
+                path.mkdir(parents=True, exist_ok=True)
+            _write_network_chronology_authority(data_dir)
+            _write_fnd_dcm_state(private_dir, webapps_root)
+            _write_json(
+                private_dir / "config.json",
+                {
+                    "msn_id": "3-2-3-17-77-1-6-4-1-4",
+                    "tool_exposure": {"fnd_dcm": {"enabled": True}},
+                },
+            )
+
+            config = V2PortalHostConfig(
+                portal_instance_id="fnd",
+                public_dir=public_dir,
+                private_dir=private_dir,
+                data_dir=data_dir,
+                portal_domain="fruitfulnetworkdevelopment.com",
+                webapps_root=webapps_root,
+            )
+            object.__setattr__(config, "webapps_root", root / "missing-webapps")
+            app = create_app(config)
+            client = app.test_client()
+
+            response = client.post(
+                "/portal/api/v2/system/tools/fnd-dcm",
+                json={
+                    "schema": "mycite.v2.portal.system.tools.fnd_dcm.request.v1",
+                    "surface_query": {"view": "collections", "collection": "board_profiles"},
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertEqual(payload["surface_id"], "system.tools.fnd_dcm")
+            self.assertFalse(payload["surface_payload"]["tool"]["operational"])
+            self.assertIn("webapps_root", payload["surface_payload"]["tool"]["missing_integrations"])
+            self.assertEqual(
+                payload["canonical_query"],
+                {"site": "cuyahogavalleycountrysideconservancy.org", "view": "collections"},
+            )
 
     def test_aws_csm_action_route_creates_domain_and_redirects_into_domain_onboarding(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

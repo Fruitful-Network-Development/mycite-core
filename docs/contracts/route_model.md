@@ -28,6 +28,7 @@ Direct APIs:
 - `POST /portal/api/v2/system/tools/aws-csm`
 - `POST /portal/api/v2/system/tools/aws-csm/actions`
 - `POST /portal/api/v2/system/tools/cts-gis`
+- `POST /portal/api/v2/system/tools/fnd-dcm`
 - `POST /portal/api/v2/system/tools/fnd-ebi`
 
 Reducer-owned query projection keys:
@@ -81,6 +82,22 @@ AWS-CSM internal action route:
   - `confirm_verified`
 
 `AWS-CSM` is one `SYSTEM` child service tool surface, not four separate tool pages. The canonical public route is `/portal/system/tools/aws-csm`.
+
+`FND-DCM` is one `SYSTEM` child service tool surface. The canonical public route is `/portal/system/tools/fnd-dcm`.
+
+FND-DCM tool query projection keys:
+
+- `site`
+- `view`
+- `page`
+- `collection`
+
+FND-DCM canonical query rules:
+
+- fresh `FND-DCM` entry projects `site=cuyahogavalleycountrysideconservancy.org&view=overview`
+- `view=pages` may project `page=<page_id>`
+- `view=collections` may project `collection=<collection_id>`
+- runtime clears stale `page` and `collection` selections when `site` or `view` changes
 
 `CTS-GIS` is one `SYSTEM` child mediation tool surface. The canonical public route is `/portal/system/tools/cts-gis`.
 

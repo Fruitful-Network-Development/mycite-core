@@ -9,6 +9,7 @@ First-class surfaces:
 - `system.root`
 - `system.tools.aws_csm`
 - `system.tools.cts_gis`
+- `system.tools.fnd_dcm`
 - `system.tools.fnd_ebi`
 
 Workspace file modes under `system.root`:
@@ -90,6 +91,34 @@ Workspace file modes under `system.root`:
 - The workbench remains diagnostic or raw supporting evidence rather than a duplicate of Garland.
 - v2.5.4 phase-B is canonical-only for CTS-GIS identifiers and storage anchors.
 - Legacy CTS-GIS aliases are rejected at `POST /portal/api/v2/system/tools/cts-gis` with `400 legacy_maps_alias_unsupported`.
+
+## FND-DCM
+
+- `system.tools.fnd_dcm`
+
+`FND-DCM` is one `SYSTEM` child service tool surface.
+
+- Its canonical route is `/portal/system/tools/fnd-dcm`.
+- Its default posture is interface-panel-led.
+- Its workbench is hidden by default and reserved for secondary workbench content only.
+- Its canonical query keys are:
+  - `site`
+  - `view`
+  - `page`
+  - `collection`
+- It normalizes hosted-site manifests into one shared read model with fixed buckets:
+  - `site`
+  - `navigation`
+  - `footer`
+  - `pages`
+  - `collections`
+  - `issues`
+  - `extensions`
+- The `Control Panel` selects site and high-level view.
+- The `Interface Panel` is the primary surface for overview, pages, collections, and issue projections.
+- The workbench remains raw manifest JSON, collection-file metadata, and normalization evidence.
+- `FND-DCM` is read-only in v1.
+- It may remain visible while non-operational when `webapps_root` or required capabilities are missing.
 
 ## NETWORK
 

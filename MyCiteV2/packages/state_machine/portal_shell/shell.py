@@ -22,11 +22,13 @@ UTILITIES_INTEGRATIONS_SURFACE_ID = "utilities.integrations"
 
 AWS_CSM_TOOL_SURFACE_ID = "system.tools.aws_csm"
 CTS_GIS_TOOL_SURFACE_ID = "system.tools.cts_gis"
+FND_DCM_TOOL_SURFACE_ID = "system.tools.fnd_dcm"
 FND_EBI_TOOL_SURFACE_ID = "system.tools.fnd_ebi"
 
 PORTAL_SHELL_ENTRYPOINT_ID = "portal.shell"
 AWS_CSM_TOOL_ENTRYPOINT_ID = "portal.system.tools.aws_csm"
 CTS_GIS_TOOL_ENTRYPOINT_ID = "portal.system.tools.cts_gis"
+FND_DCM_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_dcm"
 FND_EBI_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_ebi"
 
 SYSTEM_ROOT_ROUTE = "/portal/system"
@@ -37,7 +39,9 @@ UTILITIES_INTEGRATIONS_ROUTE = "/portal/utilities/integrations"
 
 AWS_CSM_TOOL_ROUTE = "/portal/system/tools/aws-csm"
 CTS_GIS_TOOL_ROUTE = "/portal/system/tools/cts-gis"
+FND_DCM_TOOL_ROUTE = "/portal/system/tools/fnd-dcm"
 FND_EBI_TOOL_ROUTE = "/portal/system/tools/fnd-ebi"
+FND_DCM_DEFAULT_SITE = "cuyahogavalleycountrysideconservancy.org"
 
 SYSTEM_ANCHOR_FILE_KEY = "anthology"
 SYSTEM_ACTIVITY_FILE_KEY = "activity"
@@ -104,6 +108,7 @@ TOOL_SURFACE_IDS = frozenset(
     {
         AWS_CSM_TOOL_SURFACE_ID,
         CTS_GIS_TOOL_SURFACE_ID,
+        FND_DCM_TOOL_SURFACE_ID,
         FND_EBI_TOOL_SURFACE_ID,
     }
 )
@@ -693,6 +698,15 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
             tool_id="cts_gis",
         ),
         PortalSurfaceCatalogEntry(
+            surface_id=FND_DCM_TOOL_SURFACE_ID,
+            label="FND-DCM",
+            route=FND_DCM_TOOL_ROUTE,
+            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
+            surface_kind="tool_surface",
+            page_owner="system",
+            tool_id="fnd_dcm",
+        ),
+        PortalSurfaceCatalogEntry(
             surface_id=FND_EBI_TOOL_SURFACE_ID,
             label="FND-EBI",
             route=FND_EBI_TOOL_ROUTE,
@@ -729,6 +743,18 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             read_write_posture="read-only",
             required_capabilities=("datum_recognition", "spatial_projection"),
             summary="Spatial mediation and read-only diagnostics.",
+        ),
+        PortalToolRegistryEntry(
+            tool_id="fnd_dcm",
+            label="FND-DCM",
+            surface_id=FND_DCM_TOOL_SURFACE_ID,
+            entrypoint_id=FND_DCM_TOOL_ENTRYPOINT_ID,
+            route=FND_DCM_TOOL_ROUTE,
+            tool_kind=TOOL_KIND_SERVICE,
+            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
+            read_write_posture="read-only",
+            required_capabilities=("hosted_site_manifest_visibility", "fnd_peripheral_routing"),
+            summary="Hosted manifest inspection and collection normalization.",
         ),
         PortalToolRegistryEntry(
             tool_id="fnd_ebi",
@@ -1130,6 +1156,19 @@ def canonical_query_for_surface_query(
         if section in {"users", "onboarding", "newsletter"}:
             query["section"] = section
         return query
+    if surface_id == FND_DCM_TOOL_SURFACE_ID:
+        view = _as_text(normalized.get("view")).lower()
+        if view not in {"overview", "pages", "collections", "issues"}:
+            view = "overview"
+        query = {
+            "site": _as_text(normalized.get("site")).lower() or FND_DCM_DEFAULT_SITE,
+            "view": view,
+        }
+        if view == "pages" and _as_text(normalized.get("page")):
+            query["page"] = _as_text(normalized.get("page"))
+        if view == "collections" and _as_text(normalized.get("collection")):
+            query["collection"] = _as_text(normalized.get("collection"))
+        return query
     return {}
 
 
@@ -1310,6 +1349,8 @@ def activity_icon_id_for_surface(surface_id: object) -> str:
         return "aws"
     if normalized_surface_id == CTS_GIS_TOOL_SURFACE_ID:
         return "cts_gis"
+    if normalized_surface_id == FND_DCM_TOOL_SURFACE_ID:
+        return "fnd_dcm"
     if normalized_surface_id == FND_EBI_TOOL_SURFACE_ID:
         return "fnd_ebi"
     return "generic"
@@ -1485,6 +1526,10 @@ __all__ = [
     "CTS_GIS_TOOL_ENTRYPOINT_ID",
     "CTS_GIS_TOOL_ROUTE",
     "CTS_GIS_TOOL_SURFACE_ID",
+    "FND_DCM_DEFAULT_SITE",
+    "FND_DCM_TOOL_ENTRYPOINT_ID",
+    "FND_DCM_TOOL_ROUTE",
+    "FND_DCM_TOOL_SURFACE_ID",
     "FND_EBI_TOOL_ENTRYPOINT_ID",
     "FND_EBI_TOOL_ROUTE",
     "FND_EBI_TOOL_SURFACE_ID",

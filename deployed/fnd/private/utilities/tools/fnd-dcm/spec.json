@@ -1,0 +1,9 @@
+{
+  "schema": "mycite.portal.tool_spec.v1",
+  "tool_id": "fnd-dcm",
+  "inherited_inputs": [],
+  "outputs": [],
+  "mediation": {
+    "mode": "manifest_read_only"
+  }
+}

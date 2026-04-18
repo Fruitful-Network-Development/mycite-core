@@ -19,6 +19,8 @@ The shell state is reducer-owned only for:
 
 `AWS-CSM` is a `SYSTEM` child tool surface, but it is runtime-owned and query-driven rather than reducer-owned.
 
+`FND-DCM` is also a runtime-owned `SYSTEM` child tool surface. Its canonical query is manifest-driven rather than reducer-driven.
+
 `/portal/network` and `/portal/utilities*` stay in the same host shell, but they do not participate in focus-path reduction.
 
 Non-reducer roots may still project canonical query state when the host needs a stable read-only detail lens inside the workbench. `NETWORK` uses raw `surface_query` projection keys for this purpose, while runtime remains the source of truth.
@@ -140,14 +142,21 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - Tool work pages are `SYSTEM` child surfaces.
 - `AWS-CSM` is the canonical AWS service tool surface under `SYSTEM`.
 - `CTS-GIS` is the canonical structural/spatial mediation tool surface under `SYSTEM`.
+- `FND-DCM` is the canonical hosted-manifest control surface under `SYSTEM`.
 - `AWS-CSM` has one public route: `/portal/system/tools/aws-csm`.
 - `CTS-GIS` has one public route: `/portal/system/tools/cts-gis`.
+- `FND-DCM` has one public route: `/portal/system/tools/fnd-dcm`.
 - `AWS-CSM` uses runtime-owned query keys: `view`, `domain`, `profile`, `section`.
+- `FND-DCM` uses runtime-owned query keys: `site`, `view`, `page`, `collection`.
 - `CTS-GIS` does not widen shell query. Its tool-local navigation and projection state is body-carried in the tool request/runtime payload.
 - `AWS-CSM` control-panel context is file-backed and projects:
   - `Sandbox: AWS-CSM`
   - `File: tool.<msn>.aws-csm.json`
   - `Mediation: spec.json`
+- `FND-DCM` control-panel context is selection-backed and projects:
+  - `Sandbox: FND-DCM`
+  - `Site: <selected site>`
+  - `View: <selected view>`
 - `CTS-GIS` control-panel context is file-backed and projects:
   - `Sandbox: CTS-GIS`
   - `File: tool.<msn>.cts-gis.json` when the canonical anchor exists, otherwise the active compatibility anchor file
@@ -158,6 +167,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - Tool composition building always normalizes tool surfaces to `regions.interface_panel.visible=true` on the first server response.
 - Secondary-evidence workbench content is explicit opt-in per tool runtime.
 - Tool runtimes may project workbench content, but they do not open the workbench on first composition.
+- `FND-DCM` workbench evidence is raw manifest JSON, collection metadata, and normalization evidence rather than a second primary workspace.
 - Tool surfaces use mutually exclusive single-click behavior between `Workbench` and `Interface Panel` by default.
 - Tool surfaces may lock co-visible behavior by double-clicking either `Workbench` or `Interface Panel` toggle.
 - Tool lock is route-scoped and non-persistent; leaving the tool route or switching composition clears the lock.
