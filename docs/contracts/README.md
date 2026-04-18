@@ -6,6 +6,7 @@ The canonical portal contract set is:
 - [route_model.md](route_model.md)
 - [surface_catalog.md](surface_catalog.md)
 - [cts_gis_samras_addressing.md](cts_gis_samras_addressing.md)
+- [cts_gis_hops_profile_sources.md](cts_gis_hops_profile_sources.md)
 - [samras_structural_model.md](samras_structural_model.md)
 - [samras_validity_and_mutation.md](samras_validity_and_mutation.md)
 - [samras_engine_ui_boundary.md](samras_engine_ui_boundary.md)

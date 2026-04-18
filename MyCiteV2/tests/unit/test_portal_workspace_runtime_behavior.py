@@ -139,11 +139,53 @@ def _cts_gis_navigation_row(
     )
 
 
+def _write_cts_gis_profile_source(
+    data_dir: Path,
+    *,
+    node_id: str,
+    document_name: str | None = None,
+    profile_label: str | None = None,
+    coordinate_tokens: tuple[str, ...] = (
+        "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73",
+        "3-76-11-40-92-20-21-92-81-29-56-60-79-56-3-4-39",
+        "3-76-11-40-92-20-21-92-81-25-68-43-68-84-44-22-24",
+    ),
+) -> None:
+    titles = _cts_gis_node_titles()
+    label = profile_label or titles.get(node_id, node_id)
+    file_name = document_name or f"sc.3-2-3-17-77-1-6-4-1-4.fnd.{node_id}.json"
+    coordinate_row = ["4-2-1"]
+    for token in coordinate_tokens:
+        coordinate_row.extend(["rf.3-1-1", token])
+    _write_json(
+        data_dir / "sandbox" / "cts-gis" / "sources" / file_name,
+        {
+            "datum_addressing_abstraction_space": {
+                "4-2-1": [coordinate_row, [f"{label}_polygon"]],
+                "5-0-1": [["5-0-1", "~", "4-2-1"], [f"{label}_boundary"]],
+                "7-3-1": [
+                    [
+                        "7-3-1",
+                        "rf.3-1-2",
+                        node_id,
+                        "rf.3-1-3",
+                        _ascii_bits(label),
+                        "5-0-1",
+                        "1",
+                    ],
+                    [label],
+                ],
+            }
+        },
+    )
+
+
 def _write_cts_gis_fixture(
     data_dir: Path,
     private_dir: Path,
     *,
     selected_node_projection: str = "3-2-3-17-77",
+    extra_projection_nodes: tuple[str, ...] = (),
     duplicate_node_ids: tuple[str, ...] = (),
     outside_node_ids: tuple[str, ...] = (),
     invalid_title_node_ids: tuple[str, ...] = ("3-2-3-17-77-1",),
@@ -258,6 +300,8 @@ def _write_cts_gis_fixture(
             }
         },
     )
+    for node_id in extra_projection_nodes:
+        _write_cts_gis_profile_source(data_dir, node_id=node_id)
 
 
 def _write_network_chronology_authority(data_dir: Path) -> None:
@@ -688,7 +732,10 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 summary_by_label["Projection document"],
                 "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
             )
-            self.assertEqual(summary_by_label["Title fallback"], "blank_only_ascii")
+            self.assertEqual(
+                set(summary_by_label),
+                {"Supporting document", "Projection document"},
+            )
 
     def test_cts_gis_valid_magnitude_renders_single_root_dropdown_on_initial_load(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -714,6 +761,98 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertEqual(
                 [option["display_label"] for option in navigation_canvas["dropdowns"][0]["options"][:4]],
                 ["1 NEG", "2 NEH", "3 NWH", "4 NWG"],
+            )
+
+    def test_cts_gis_structural_selection_keeps_blank_profile_projection_state(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(data_dir, private_dir)
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={"tool_state": {"selected_node_id": "3-2"}},
+            )
+
+            garland = bundle["inspector"]["interface_body"]["garland_split_projection"]
+            self.assertFalse(garland["geospatial_projection"]["has_real_projection"])
+            profile = garland["profile_projection"]
+            self.assertFalse(profile["has_real_projection"])
+            self.assertTrue(profile["has_profile_state"])
+            self.assertEqual(profile["active_profile"]["node_id"], "3-2")
+            self.assertEqual(profile["active_profile"]["label"], "united_states_of_america")
+            self.assertEqual(
+                [entry["node_id"] for entry in profile["hierarchy"]],
+                ["3", "3-2"],
+            )
+            self.assertEqual(profile["projected_rows"], [])
+            self.assertEqual(profile["correlated_profiles"], [])
+            summary_by_label = {
+                row["label"]: row["value"]
+                for row in profile["summary_rows"]
+            }
+            self.assertEqual(
+                summary_by_label["Supporting document"],
+                "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json",
+            )
+            self.assertEqual(summary_by_label["Projection document"], "—")
+            self.assertEqual(
+                bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"],
+                "self",
+            )
+
+    def test_cts_gis_selected_node_with_matching_profile_document_populates_garland_from_that_node(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(
+                data_dir,
+                private_dir,
+                extra_projection_nodes=("3-2-3",),
+            )
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={"tool_state": {"selected_node_id": "3-2-3"}},
+            )
+
+            garland = bundle["inspector"]["interface_body"]["garland_split_projection"]
+            profile = garland["profile_projection"]
+            geo = garland["geospatial_projection"]
+            self.assertTrue(profile["has_real_projection"])
+            self.assertTrue(geo["has_real_projection"])
+            self.assertEqual(profile["active_profile"]["node_id"], "3-2-3")
+            self.assertEqual(profile["active_profile"]["label"], "states")
+            self.assertEqual(
+                {row["label"] for row in profile["projected_rows"]},
+                {"states", "states_boundary", "states_polygon"},
+            )
+            summary_by_label = {row["label"]: row["value"] for row in profile["summary_rows"]}
+            self.assertEqual(
+                summary_by_label["Projection document"],
+                "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3.json",
+            )
+            self.assertEqual(
+                [feature["node_id"] for feature in geo["features"]],
+                ["3-2-3"],
+            )
+            self.assertEqual(
+                bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"],
+                "self",
             )
 
     def test_cts_gis_duplicate_node_rows_do_not_block_directory_navigation(self) -> None:

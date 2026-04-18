@@ -226,6 +226,12 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
             or normalized_payload.get("attention_node_id")
         ),
     )
+    requested_intention = (
+        raw_aitas.get("intention_rule_id")
+        or mediation_state.get("intention_token")
+        or normalized_payload.get("intention_token")
+    )
+    default_intention = "self" if selected_node_id and not _as_text(requested_intention) else _DEFAULT_INTENTION_RULE_ID
     return {
         "nimm_directive": _as_text(raw_tool_state.get("nimm_directive") or normalized_payload.get("nimm_directive"))
         or _DEFAULT_NIMM_DIRECTIVE,
@@ -234,9 +240,7 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
         "aitas": {
             "attention_node_id": selected_node_id,
             "intention_rule_id": _canonical_intention_rule_id(
-                raw_aitas.get("intention_rule_id")
-                or mediation_state.get("intention_token")
-                or normalized_payload.get("intention_token")
+                requested_intention or default_intention
             ),
             "time_directive": _as_text(raw_aitas.get("time_directive")) or _DEFAULT_TIME_DIRECTIVE,
             "archetype_family_id": _as_text(raw_aitas.get("archetype_family_id")) or _DEFAULT_ARCHETYPE_FAMILY_ID,
@@ -572,7 +576,7 @@ def _node_shell_request(
     shell_state: PortalShellState,
     tool_state: dict[str, Any],
     attention_node_id: str,
-    intention_rule_id: str = _DEFAULT_INTENTION_RULE_ID,
+    intention_rule_id: str = "self",
     selected_row_address: str = "",
     selected_feature_id: str = "",
 ) -> dict[str, Any]:
@@ -1662,6 +1666,7 @@ def _empty_profile_projection(*, warnings: list[str] | None = None) -> dict[str,
         "correlated_profiles": [],
         "warnings": list(warnings or []),
         "empty_message": "No projected profile is available until the active path resolves real CTS-GIS evidence.",
+        "has_profile_state": False,
         "has_real_projection": False,
     }
 
@@ -1676,6 +1681,7 @@ def _cts_gis_interface_body(
     service_surface: dict[str, Any],
 ) -> dict[str, Any]:
     attention_profile = dict(service_surface.get("attention_profile") or {})
+    lens_state = dict(service_surface.get("lens_state") or {})
     selected_document = dict(service_surface.get("selected_document") or {})
     supporting_document = dict(source_evidence.get("administrative_source") or {})
     active_path_entries = list(navigation_canvas.get("active_path") or [])
@@ -1683,6 +1689,7 @@ def _cts_gis_interface_body(
     supporting_document_name = _as_text(supporting_document.get("document_name")) or _DEFAULT_SUPPORTING_DOCUMENT_NAME
     projection_document_name = _as_text(selected_document.get("document_name")) or "—"
     selected_label = _as_text((active_path_entries[-1] if active_path_entries else {}).get("title")) or selected_node_id
+    attention_profile_node_id = _as_text(attention_profile.get("node_id"))
 
     geospatial_projection = _empty_geospatial_projection()
     profile_projection = _empty_profile_projection(warnings=list(service_surface.get("warnings") or []))
@@ -1694,17 +1701,23 @@ def _cts_gis_interface_body(
         source_evidence=source_evidence,
     )
     decode_ready = _as_text(navigation_canvas.get("decode_state")) == "ready"
+    attention_matches_selection = bool(selected_node_id) and attention_profile_node_id == selected_node_id
     has_real_profile = (
         decode_ready
         and bool(selected_node_id)
+        and attention_matches_selection
         and bool(attention_profile)
         and not bool(attention_profile.get("placeholder"))
     )
-    if decode_ready and selected_node_id and garland_swapped:
-        geospatial_projection = real_geospatial_projection
+    if decode_ready and selected_node_id and attention_matches_selection and garland_swapped:
+        geospatial_projection = {
+            **real_geospatial_projection,
+            "lens_state": lens_state,
+        }
     elif decode_ready and selected_node_id and bool((source_evidence.get("administrative_source") or {}).get("exists")):
         geospatial_projection = {
             **geospatial_projection,
+            "lens_state": lens_state,
             "projection_state": "awaiting_real_projection",
             "empty_message": "The selected node resolves structurally, but no HOPS projection is available for it yet.",
         }
@@ -1724,10 +1737,6 @@ def _cts_gis_interface_body(
             "summary_rows": [
                 {"label": "Supporting document", "value": supporting_document_name},
                 {"label": "Projection document", "value": projection_document_name},
-                {"label": "Attention node", "value": selected_node_id},
-                {"label": "Rendered rows", "value": str(len(list(service_surface.get("rows") or [])))},
-                {"label": "Rendered features", "value": str(int((geospatial_projection or {}).get("feature_count") or 0))},
-                {"label": "Title fallback", "value": "blank_only_ascii"},
             ],
             "projected_rows": [
                 {
@@ -1762,12 +1771,28 @@ def _cts_gis_interface_body(
             ],
             "warnings": list(service_surface.get("warnings") or []),
             "empty_message": "",
+            "has_profile_state": True,
             "has_real_projection": True,
+            "lens_state": lens_state,
         }
     elif decode_ready and selected_node_id:
         profile_projection = {
             **profile_projection,
+            "active_profile": {
+                "label": selected_label or selected_node_id,
+                "node_id": selected_node_id,
+                "feature_count": 0,
+                "child_count": 0,
+                "document_id": "",
+            },
+            "hierarchy": active_path_entries,
+            "summary_rows": [
+                {"label": "Supporting document", "value": supporting_document_name},
+                {"label": "Projection document", "value": "—"},
+            ],
             "empty_message": "The selected node resolves structurally, but no profile projection is available for it yet.",
+            "has_profile_state": True,
+            "lens_state": lens_state,
         }
 
     return {
@@ -1779,6 +1804,7 @@ def _cts_gis_interface_body(
             "kind": "garland_split_projection",
             "title": "Garland",
             "summary": "Correlated projection surface that populates only when the selected SAMRAS node resolves real CTS-GIS evidence.",
+            "lens_state": lens_state,
             "geospatial_projection": geospatial_projection,
             "profile_projection": profile_projection,
         },
