@@ -709,9 +709,10 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             entrypoint_id=AWS_CSM_TOOL_ENTRYPOINT_ID,
             route=AWS_CSM_TOOL_ROUTE,
             tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
+            surface_posture=SURFACE_POSTURE_WORKBENCH_PRIMARY,
             read_write_posture="read-only",
             required_capabilities=("fnd_peripheral_routing",),
+            default_workbench_visible=True,
             summary="Unified domain gallery with mailbox onboarding and newsletter state.",
         ),
         PortalToolRegistryEntry(
@@ -1331,6 +1332,13 @@ def surface_posture_for_surface(active_surface_id: str) -> str:
     return tool_entry.surface_posture if tool_entry is not None else SURFACE_POSTURE_WORKBENCH_PRIMARY
 
 
+def default_workbench_visible_for_surface(active_surface_id: str) -> bool:
+    tool_entry = resolve_portal_tool_registry_entry(surface_id=active_surface_id)
+    if tool_entry is not None:
+        return tool_entry.default_workbench_visible
+    return not is_tool_surface(active_surface_id)
+
+
 def foreground_region_for_surface(
     active_surface_id: str,
     *,
@@ -1338,6 +1346,8 @@ def foreground_region_for_surface(
     workbench_visible: bool = True,
 ) -> str:
     if is_tool_surface(active_surface_id):
+        if surface_posture_for_surface(active_surface_id) == SURFACE_POSTURE_WORKBENCH_PRIMARY and workbench_visible:
+            return "center-workbench"
         return "interface-panel"
     if active_surface_id == SYSTEM_ROOT_SURFACE_ID and isinstance(shell_state, (PortalShellState, dict)):
         state = shell_state if isinstance(shell_state, PortalShellState) else PortalShellState.from_value(shell_state)
@@ -1391,13 +1401,14 @@ def build_shell_composition_payload(
         PortalShellState.from_value(shell_state) if isinstance(shell_state, dict) else None
     )
     tool_surface = is_tool_surface(active_surface_id)
+    surface_posture = surface_posture_for_surface(active_surface_id)
     workbench_region = dict(workbench or {})
     workbench_region.setdefault("schema", PORTAL_SHELL_REGION_WORKBENCH_SCHEMA)
     inspector_region = dict(inspector or {})
     inspector_region.setdefault("schema", PORTAL_SHELL_REGION_INSPECTOR_SCHEMA)
     workbench_visible = _region_visible(
         workbench_region.get("visible"),
-        default=not tool_surface,
+        default=default_workbench_visible_for_surface(active_surface_id),
     )
     interface_open = bool(tool_surface)
     if not interface_open and state is not None:
@@ -1406,10 +1417,13 @@ def build_shell_composition_payload(
     inspector_visible = bool(interface_open or requested_inspector_visible)
     workbench_region["visible"] = workbench_visible
     inspector_region["visible"] = inspector_visible
-    inspector_region["primary_surface"] = bool(interface_open or inspector_region.get("primary_surface") is True)
+    inspector_region["primary_surface"] = bool(
+        (interface_open and surface_posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
+        or inspector_region.get("primary_surface") is True
+    )
     inspector_region["layout_mode"] = (
         "dominant"
-        if interface_open
+        if interface_open and surface_posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY
         else (_as_text(inspector_region.get("layout_mode")) or "sidebar")
     )
     inspector_collapsed = not inspector_visible
@@ -1534,6 +1548,7 @@ __all__ = [
     "canonical_route_for_surface",
     "canonicalize_portal_shell_state",
     "default_focus_path",
+    "default_workbench_visible_for_surface",
     "focus_level_for_shell_state",
     "foreground_region_for_surface",
     "initial_portal_shell_state",

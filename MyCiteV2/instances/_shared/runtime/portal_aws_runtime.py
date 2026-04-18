@@ -1172,7 +1172,6 @@ def build_portal_aws_surface_bundle(
             "kind": "aws_csm_workbench",
             "title": "AWS-CSM",
             "subtitle": "Domain gallery, user email gallery, onboarding, and newsletter state.",
-            "visible": False,
             "surface_payload": surface_payload,
         },
         "inspector": inspector,
