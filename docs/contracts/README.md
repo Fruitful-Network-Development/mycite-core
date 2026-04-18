@@ -5,6 +5,7 @@ The canonical portal contract set is:
 - [portal_shell_contract.md](portal_shell_contract.md)
 - [route_model.md](route_model.md)
 - [surface_catalog.md](surface_catalog.md)
+- [tool_mediation_surface_archetype.md](tool_mediation_surface_archetype.md)
 - [cts_gis_samras_addressing.md](cts_gis_samras_addressing.md)
 - [cts_gis_hops_profile_sources.md](cts_gis_hops_profile_sources.md)
 - [samras_structural_model.md](samras_structural_model.md)

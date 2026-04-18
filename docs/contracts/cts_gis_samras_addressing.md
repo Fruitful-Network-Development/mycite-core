@@ -109,6 +109,23 @@ Display rules:
 - deeper labels render as `<node_id> <ascii_title>`
 - when `title=""`, the visible label falls back to the bare `node_id`
 
+## Selection Normalization
+
+CTS-GIS keeps SAMRAS navigation tool-local.
+
+- a fresh CTS-GIS entry may still begin from `intention_rule_id=descendants_depth_1_or_2`
+- when the request supplies `selected_node_id` or `tool_state.aitas.attention_node_id` without an explicit tool-local intention, CTS-GIS normalizes intention to `self`
+- this keeps Garland aligned to the currently selected structural node instead of a descendant render set
+
+## Garland Coupling
+
+Garland is driven by the currently selected SAMRAS node from `navigation_canvas.active_path`.
+
+- `profile_projection` may materialize a blank but stateful current-profile view for a structurally valid selected node even when no matching profile source exists yet
+- `geospatial_projection` remains empty until that selected node resolves a matching profile source with projectable HOPS geometry
+- if a node-specific profile source document exists, CTS-GIS may prefer the profile source whose filename suffix matches the selected node id
+- when blocked, CTS-GIS renders diagnostics and leaves Garland empty until a valid structural selection becomes possible
+
 ## Diagnostics
 
 CTS-GIS blocks navigation only when no valid SAMRAS structure can be recovered.
@@ -118,5 +135,3 @@ Secondary overlay problems remain visible as diagnostics without blocking bare n
 - duplicate node-row bindings
 - node rows outside the resolved namespace
 - undecodable ASCII title payloads
-
-When blocked, CTS-GIS renders diagnostics and leaves Garland empty until a valid structural selection becomes possible.

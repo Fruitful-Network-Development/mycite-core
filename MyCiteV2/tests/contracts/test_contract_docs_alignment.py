@@ -165,6 +165,27 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertNotIn("staged_blocks", route_model)
         self.assertNotIn("legacy_branch_canvas", route_model)
 
+    def test_cts_gis_contract_docs_capture_selection_aligned_garland_behavior(self) -> None:
+        shell_contract = (REPO_ROOT / "docs" / "contracts" / "portal_shell_contract.md").read_text(encoding="utf-8")
+        route_model = (REPO_ROOT / "docs" / "contracts" / "route_model.md").read_text(encoding="utf-8")
+        surface_catalog = (REPO_ROOT / "docs" / "contracts" / "surface_catalog.md").read_text(encoding="utf-8")
+        samras_addressing = (REPO_ROOT / "docs" / "contracts" / "cts_gis_samras_addressing.md").read_text(encoding="utf-8")
+        contracts_readme = (REPO_ROOT / "docs" / "contracts" / "README.md").read_text(encoding="utf-8")
+        docs_readme = (REPO_ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("normalizes `tool_state.aitas.intention_rule_id` to `self`", shell_contract)
+        self.assertIn("blank current-profile state", shell_contract)
+        self.assertIn("selection normalization", route_model.lower())
+        self.assertIn("normalizes intention to `self`", route_model)
+        self.assertIn("blank but stateful `profile_projection`", route_model)
+        self.assertIn("Garland remains visible and stateful", surface_catalog)
+        self.assertIn("normalizes `Intention` to `self`", surface_catalog)
+        self.assertIn("Selection Normalization", samras_addressing)
+        self.assertIn("Garland Coupling", samras_addressing)
+        self.assertIn("node-specific profile source document", samras_addressing)
+        self.assertIn("tool_mediation_surface_archetype.md", contracts_readme)
+        self.assertIn("tool_mediation_surface_archetype.md", docs_readme)
+
 
 if __name__ == "__main__":
     unittest.main()

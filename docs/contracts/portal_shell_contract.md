@@ -235,7 +235,10 @@ This is an interface-panel-led tool model, not a generic workbench page model.
 - `Garland` materializes as `garland_split_projection` with:
   - dominant `geospatial_projection`
   - secondary `profile_projection`
-- Garland populates only when the selected SAMRAS node resolves a valid profile and HOPS projection.
+- Garland remains stateful for the selected SAMRAS node once structural navigation resolves.
+- `profile_projection` may materialize a blank current-profile state from the selected node id plus ASCII title overlays even when no matching profile source is available yet.
+- `geospatial_projection` populates only when the selected SAMRAS node resolves a matching profile source with projectable HOPS geometry.
+- when a request supplies `selected_node_id` or tool-local `Attention` without an explicit `Intention`, CTS-GIS normalizes `tool_state.aitas.intention_rule_id` to `self` so Garland reflects the current selected node rather than a descendant render set.
 - In narrow posture, the same regions may stack vertically while preserving the same contract.
 
 ### CTS-GIS Evidence Precedence
