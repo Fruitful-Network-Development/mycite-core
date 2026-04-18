@@ -5,6 +5,7 @@ from typing import Any
 
 from MyCiteV2.instances._shared.runtime.portal_aws_runtime import build_portal_aws_surface_bundle
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import build_portal_cts_gis_surface_bundle
+from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import build_portal_fnd_dcm_surface_bundle
 from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import build_portal_fnd_ebi_surface_bundle
 from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import build_system_workspace_bundle
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
@@ -26,6 +27,7 @@ from MyCiteV2.packages.modules.domains.publication import PublicationProfileBasi
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
+    FND_DCM_TOOL_SURFACE_ID,
     FND_EBI_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     PORTAL_SHELL_ENTRYPOINT_ID,
@@ -72,7 +74,7 @@ def _path_or_none(path: str | Path | None) -> Path | None:
 def _default_capabilities(portal_instance_id: str) -> tuple[str, ...]:
     base = {"datum_recognition", "spatial_projection"}
     if _as_text(portal_instance_id).lower() == "fnd":
-        base.update({"fnd_peripheral_routing", "hosted_site_visibility"})
+        base.update({"fnd_peripheral_routing", "hosted_site_manifest_visibility", "hosted_site_visibility"})
     return tuple(sorted(base))
 
 
@@ -142,6 +144,7 @@ def _tool_posture_rows(
         )
         integration_name = {
             "cts_gis": "data_dir",
+            "fnd_dcm": "webapps_root",
             "fnd_ebi": "webapps_root",
         }.get(entry.tool_id, "")
         missing_integrations = []
@@ -178,6 +181,7 @@ def _activity_items(
     visible_surface_ids = [
         AWS_CSM_TOOL_SURFACE_ID,
         CTS_GIS_TOOL_SURFACE_ID,
+        FND_DCM_TOOL_SURFACE_ID,
         FND_EBI_TOOL_SURFACE_ID,
         NETWORK_ROOT_SURFACE_ID,
         UTILITIES_ROOT_SURFACE_ID,
@@ -601,6 +605,15 @@ def _tool_bundle_for_surface(
             tool_rows=tool_rows,
             request_payload=request_payload,
         )
+    if surface_id == FND_DCM_TOOL_SURFACE_ID:
+        return build_portal_fnd_dcm_surface_bundle(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            surface_query=surface_query,
+            webapps_root=webapps_root,
+            private_dir=private_dir,
+            tool_exposure_policy=tool_exposure_policy,
+        )
     if surface_id == FND_EBI_TOOL_SURFACE_ID:
         return build_portal_fnd_ebi_surface_bundle(
             portal_scope=portal_scope,
@@ -660,11 +673,12 @@ def _bundle_for_surface(
     if selection_surface_id in {
         AWS_CSM_TOOL_SURFACE_ID,
         CTS_GIS_TOOL_SURFACE_ID,
+        FND_DCM_TOOL_SURFACE_ID,
         FND_EBI_TOOL_SURFACE_ID,
     }:
         canonical_state = (
             None
-            if selection_surface_id == AWS_CSM_TOOL_SURFACE_ID
+            if selection_surface_id in {AWS_CSM_TOOL_SURFACE_ID, FND_DCM_TOOL_SURFACE_ID}
             else canonicalize_portal_shell_state(
                 shell_state,
                 active_surface_id=selection_surface_id,

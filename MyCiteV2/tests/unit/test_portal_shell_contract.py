@@ -10,6 +10,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
+    FND_DCM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
     SYSTEM_ANCHOR_FILE_KEY,
@@ -56,6 +57,7 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertEqual(canonical_route_for_surface(AWS_CSM_TOOL_SURFACE_ID), "/portal/system/tools/aws-csm")
         self.assertTrue(requires_shell_state_machine(SYSTEM_ROOT_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(AWS_CSM_TOOL_SURFACE_ID))
+        self.assertFalse(requires_shell_state_machine(FND_DCM_TOOL_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(NETWORK_ROOT_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(UTILITIES_ROOT_SURFACE_ID))
 
@@ -131,6 +133,8 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertFalse(registry_entries["aws_csm"]["default_workbench_visible"])
         self.assertEqual(registry_entries["cts_gis"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
         self.assertFalse(registry_entries["cts_gis"]["default_workbench_visible"])
+        self.assertEqual(registry_entries["fnd_dcm"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
+        self.assertFalse(registry_entries["fnd_dcm"]["default_workbench_visible"])
         self.assertEqual(registry_entries["fnd_ebi"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
         self.assertFalse(registry_entries["fnd_ebi"]["default_workbench_visible"])
 
@@ -241,6 +245,43 @@ class PortalShellContractTests(unittest.TestCase):
                 surface_id=AWS_CSM_TOOL_SURFACE_ID,
             ),
             {"view": "domains", "domain": "example.com", "profile": "p1", "section": "users"},
+        )
+
+    def test_fnd_dcm_surface_query_is_runtime_owned_and_manifest_driven(self) -> None:
+        selection = resolve_portal_shell_request(
+            {
+                "schema": "mycite.v2.portal.shell.request.v1",
+                "requested_surface_id": FND_DCM_TOOL_SURFACE_ID,
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                "surface_query": {
+                    "site": "TrappFamilyFarm.com",
+                    "view": "collections",
+                    "collection": "newsletters",
+                    "page": "ignored",
+                },
+            }
+        )
+        self.assertTrue(selection.allowed)
+        self.assertFalse(selection.reducer_owned)
+        self.assertEqual(selection.active_surface_id, FND_DCM_TOOL_SURFACE_ID)
+        self.assertEqual(
+            selection.canonical_query,
+            {
+                "site": "trappfamilyfarm.com",
+                "view": "collections",
+                "collection": "newsletters",
+            },
+        )
+        self.assertEqual(
+            canonical_query_for_surface_query(
+                {"view": "pages", "page": "people"},
+                surface_id=FND_DCM_TOOL_SURFACE_ID,
+            ),
+            {
+                "site": "cuyahogavalleycountrysideconservancy.org",
+                "view": "pages",
+                "page": "people",
+            },
         )
 
     def test_unknown_removed_surface_resolves_as_unknown_and_falls_back_to_system(self) -> None:

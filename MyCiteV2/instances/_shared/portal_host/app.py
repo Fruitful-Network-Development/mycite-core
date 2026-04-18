@@ -32,6 +32,7 @@ from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
     LegacyMapsAliasUnsupportedError,
     run_portal_cts_gis,
 )
+from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import run_portal_fnd_dcm
 from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import run_portal_fnd_ebi
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import (
     run_portal_shell_entry,
@@ -41,6 +42,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA,
     AWS_CSM_TOOL_REQUEST_SCHEMA,
     CTS_GIS_TOOL_REQUEST_SCHEMA,
+    FND_DCM_TOOL_REQUEST_SCHEMA,
     FND_EBI_TOOL_REQUEST_SCHEMA,
     PORTAL_RUNTIME_ENVELOPE_SCHEMA,
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
@@ -49,6 +51,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
+    FND_DCM_TOOL_SURFACE_ID,
     FND_EBI_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
@@ -196,7 +199,7 @@ def _load_optional_json_object(path: Path) -> dict[str, Any]:
 def _default_capabilities(portal_instance_id: str) -> list[str]:
     capabilities = ["datum_recognition", "spatial_projection"]
     if _as_text(portal_instance_id).lower() == "fnd":
-        capabilities.extend(["fnd_peripheral_routing", "hosted_site_visibility"])
+        capabilities.extend(["fnd_peripheral_routing", "hosted_site_manifest_visibility", "hosted_site_visibility"])
     return capabilities
 
 
@@ -293,6 +296,7 @@ class V2PortalHostConfig:
 TOOL_SLUG_TO_SURFACE_ID = {
     "aws-csm": AWS_CSM_TOOL_SURFACE_ID,
     "cts-gis": CTS_GIS_TOOL_SURFACE_ID,
+    "fnd-dcm": FND_DCM_TOOL_SURFACE_ID,
     "fnd-ebi": FND_EBI_TOOL_SURFACE_ID,
 }
 
@@ -535,6 +539,23 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 run_portal_fnd_ebi(
                     payload,
                     webapps_root=host_config.webapps_root,
+                    tool_exposure_policy=host_config.tool_exposure_policy,
+                )
+            )
+        except ValueError as exc:
+            return _error_response("invalid_request", str(exc))
+
+    @app.post("/portal/api/v2/system/tools/fnd-dcm")
+    def portal_fnd_dcm() -> tuple[Any, int]:
+        try:
+            payload = _json_payload()
+            if "schema" not in payload:
+                payload["schema"] = FND_DCM_TOOL_REQUEST_SCHEMA
+            return _runtime_response(
+                run_portal_fnd_dcm(
+                    payload,
+                    webapps_root=host_config.webapps_root,
+                    private_dir=host_config.private_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )

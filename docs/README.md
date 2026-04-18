@@ -8,7 +8,9 @@ This repository now describes one portal shell only.
 - Canonical tool work pages: `/portal/system/tools/<tool_slug>`
 - Canonical AWS service tool: `/portal/system/tools/aws-csm`
 - Canonical CTS-GIS tool: `/portal/system/tools/cts-gis`
+- Canonical FND-DCM tool: `/portal/system/tools/fnd-dcm`
 - Canonical CTS-GIS storage contract: `private/utilities/tools/cts-gis/spec.json` + `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
+- Canonical FND-DCM docs: `docs/contracts/fnd_dcm_tool_contract.md`, `docs/contracts/fnd_dcm_manifest_conventions.md`
 - Canonical CTS-GIS SAMRAS addressing contract: `docs/contracts/cts_gis_samras_addressing.md`
 - Canonical mediation-tool archetype note: `docs/contracts/tool_mediation_surface_archetype.md`
 - Canonical SAMRAS structural docs: `docs/contracts/samras_structural_model.md`, `docs/contracts/samras_validity_and_mutation.md`, `docs/contracts/samras_engine_ui_boundary.md`
