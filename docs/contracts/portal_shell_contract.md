@@ -153,9 +153,11 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
   - `File: tool.<msn>.cts-gis.json` when the canonical anchor exists, otherwise the active compatibility anchor file
   - `Mediation: spec.json`
 - Tool configuration, enabling, exposure, integration state, vault, peripherals, and control surfaces belong under `UTILITIES`.
-- Every tool registry entry defaults to `interface_panel_primary`.
+- Tool registry posture fields serialize the shared tool default (`interface_panel_primary`) as compatibility metadata; they do not authorize per-tool first-load posture exceptions.
 - Every tool composition defaults to `regions.workbench.visible=false`.
+- Tool composition building always normalizes tool surfaces to `regions.interface_panel.visible=true` on the first server response.
 - Secondary-evidence workbench content is explicit opt-in per tool runtime.
+- Tool runtimes may project workbench content, but they do not open the workbench on first composition.
 - Tool surfaces use mutually exclusive single-click behavior between `Workbench` and `Interface Panel` by default.
 - Tool surfaces may lock co-visible behavior by double-clicking either `Workbench` or `Interface Panel` toggle.
 - Tool lock is route-scoped and non-persistent; leaving the tool route or switching composition clears the lock.

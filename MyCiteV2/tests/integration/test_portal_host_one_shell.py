@@ -618,9 +618,9 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                     {"label": "Mediation", "value": "spec.json"},
                 ],
             )
-            self.assertFalse(aws_shell_payload["shell_composition"]["workbench_collapsed"])
+            self.assertTrue(aws_shell_payload["shell_composition"]["workbench_collapsed"])
             self.assertFalse(aws_shell_payload["shell_composition"]["interface_panel_collapsed"])
-            self.assertEqual(aws_shell_payload["shell_composition"]["foreground_shell_region"], "center-workbench")
+            self.assertEqual(aws_shell_payload["shell_composition"]["foreground_shell_region"], "interface-panel")
             self.assertNotIn(
                 "Sections",
                 [
@@ -628,6 +628,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                     for group in aws_shell_payload["shell_composition"]["regions"]["control_panel"]["groups"]
                 ],
             )
+            self.assertFalse(aws_shell_payload["shell_composition"]["regions"]["workbench"]["visible"])
             self.assertEqual(
                 aws_shell_payload["surface_payload"]["workspace"]["create_domain_defaults"]["region"],
                 "us-east-1",

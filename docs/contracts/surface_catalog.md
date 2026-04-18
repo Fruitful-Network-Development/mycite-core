@@ -42,6 +42,7 @@ Workspace file modes under `system.root`:
   - `Mediation: spec.json`
 - Its default posture is interface-panel-led.
 - Its workbench is runtime-owned, read-only, and hidden by default until secondary evidence is explicitly projected.
+- Its runtime may project workbench content, but the first server composition still keeps that workbench hidden.
 - Its canonical query keys are:
   - `view`
   - `domain`
@@ -124,6 +125,7 @@ The top menubar is the only shell header.
 
 - Tool work pages stay under `SYSTEM`.
 - Tool registry defaults are interface-panel-led.
+- Tool registry posture metadata is descriptive only; shell composition remains authoritative for first-load tool posture.
 - Tool workbench visibility defaults to `false`.
 - Tool surfaces use mutually exclusive single-click behavior between `Workbench` and `Interface Panel` by default.
 - Double-clicking either tool toggle enables route-scoped lock mode that allows both panels to remain visible together.
