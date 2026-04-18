@@ -48,6 +48,17 @@ def _matches_cts_gis_document_id(candidate: object, requested: object) -> bool:
     return candidate_token == requested_token
 
 
+def _matches_attention_profile_document(document: DatumRecognitionDocument, attention_node_id: object) -> bool:
+    node_id = _as_text(attention_node_id)
+    if not node_id:
+        return False
+    document_name = _as_text(getattr(document, "document_name", ""))
+    if document_name.endswith(f".{node_id}.json"):
+        return True
+    document_id = _as_text(getattr(document, "document_id", ""))
+    return document_id.endswith(f".{node_id}.json")
+
+
 def _address_tuple(value: object) -> tuple[int, ...]:
     token = _as_text(value)
     if not token or any(not part.isdigit() for part in token.split("-")):
@@ -694,6 +705,7 @@ class CtsGisReadOnlyService:
         selected_row_address: object = "",
         selected_feature_id: object = "",
         attention_document_id: object = "",
+        attention_node_id: object = "",
         overlay_mode: object = "auto",
         raw_underlay_visible: object = False,
     ) -> dict[str, Any]:
@@ -716,11 +728,17 @@ class CtsGisReadOnlyService:
         requested_document_id = requested_document_id_raw
         requested_row_address = _as_text(selected_row_address)
         requested_feature_id = _as_text(selected_feature_id)
+        requested_attention_node_id = _as_text(attention_node_id)
         project_all_documents = bool((requested_row_address or requested_feature_id) and not requested_document_id)
         target_document = None
         if requested_document_id and _is_cts_gis_document_id(requested_document_id):
             for document in cts_gis_documents:
                 if _matches_cts_gis_document_id(document.document_id, requested_document_id):
+                    target_document = document
+                    break
+        if target_document is None and requested_attention_node_id:
+            for document in cts_gis_documents:
+                if _matches_attention_profile_document(document, requested_attention_node_id):
                     target_document = document
                     break
         if target_document is None and cts_gis_documents:
@@ -838,9 +856,7 @@ class CtsGisReadOnlyService:
         row_profile_index = (selected_document_bundle or {}).get("row_profile_index") or {}
         feature_profile_index = (selected_document_bundle or {}).get("feature_profile_index") or {}
 
-        attention_node_id = ""
-        if requested_attention_node_id and requested_attention_node_id in profile_index:
-            attention_node_id = requested_attention_node_id
+        attention_node_id = requested_attention_node_id
         if not attention_node_id and requested_feature_id:
             candidates = list(feature_profile_index.get(requested_feature_id) or [])
             if candidates:
@@ -1000,11 +1016,7 @@ class CtsGisReadOnlyService:
 
         attention_profile_display = attention_profile
         if attention_profile_display is None and attention_node_id_text:
-            has_descendants = bool(render_profiles) or bool(
-                list((selected_document_bundle.get("children_by_parent") or {}).get(attention_node_id_text, []))
-            )
-            if has_descendants:
-                attention_profile_display = _canonical_placeholder_profile_summary(attention_node_id_text)
+            attention_profile_display = _canonical_placeholder_profile_summary(attention_node_id_text)
 
         lineage: list[dict[str, Any]] = []
         for depth in range(1, _node_depth(attention_node_id_text) + 1):
@@ -1349,6 +1361,7 @@ class CtsGisReadOnlyService:
             selected_row_address=selected_row_address,
             selected_feature_id=selected_feature_id,
             attention_document_id=(mediation_state or {}).get("attention_document_id") if isinstance(mediation_state, dict) else "",
+            attention_node_id=(mediation_state or {}).get("attention_node_id") if isinstance(mediation_state, dict) else "",
             overlay_mode=overlay_mode,
             raw_underlay_visible=raw_underlay_visible,
         )

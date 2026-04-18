@@ -6257,113 +6257,196 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 }
 
 .cts-gis-directoryCanvas {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 0.7rem;
   min-height: 0;
   height: 100%;
 }
 
-.cts-gis-directoryCanvas__state {
+.cts-gis-stageSelector {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.cts-gis-directoryCanvas__status {
-  font-size: 0.71rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink2, #667068);
-  padding: 0.2rem 0.42rem;
-  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--paper, #f7f8f3) 90%, #fff 10%);
-}
-
-.cts-gis-directoryCanvas__path {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--ink2, #667068);
-  overflow-wrap: anywhere;
-}
-
-.cts-gis-directoryDropdownStack {
-  display: grid;
-  align-content: start;
-  gap: 0.55rem;
+  align-items: stretch;
+  gap: 0.18rem;
   min-height: 0;
-  max-height: clamp(260px, 54vh, 620px);
-  overflow: auto;
-  padding-right: 0.15rem;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.25rem;
 }
 
-.cts-gis-directoryDropdown {
-  display: grid;
-  gap: 0.26rem;
-  padding: 0.7rem 0.78rem;
-  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 86%, transparent);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--paper, #f7f8f3) 92%, #fff 8%);
+.cts-gis-stageSelectionBlock {
+  flex: 0 0 clamp(2.8rem, 3.8vw, 4.4rem);
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
 }
 
-.cts-gis-directoryDropdown__label {
-  font-size: 0.69rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink2, #667068);
+.cts-gis-stageColumn {
+  flex: 1 1 auto;
+  display: block;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  appearance: none;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
 }
 
-.cts-gis-directoryDropdown__meta,
-.cts-gis-directoryDiagnostic__meta {
-  font-size: 0.74rem;
-  color: var(--ink2, #667068);
+.cts-gis-stageColumn__frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: clamp(18rem, 48vh, 33rem);
+  padding: 0.9rem 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 92%, transparent);
+  border-radius: 0;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--paper, #f7f8f3) 94%, #fff 6%) 0%,
+      color-mix(in srgb, var(--paper2, #eef1e8) 72%, #fff 28%) 100%
+    );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--paper, #f7f8f3) 88%, transparent);
+  overflow: hidden;
+}
+
+.cts-gis-stageColumn__text {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-align: center;
+}
+
+.cts-gis-stageColumn__nodeId,
+.cts-gis-stageColumn__title {
+  font-size: 0.88rem;
+  line-height: 1.1;
+  color: var(--ink, #243026);
   overflow-wrap: anywhere;
 }
 
-.cts-gis-directorySelect {
-  width: 100%;
-  min-width: 0;
-  padding: 0.72rem 0.78rem;
-  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--paper2, #eef1e8) 52%, #fff 48%);
-  color: var(--ink, #243026);
-  font-size: 0.92rem;
+.cts-gis-stageColumn__nodeId {
+  font-weight: 700;
+  letter-spacing: 0.03em;
 }
 
-.cts-gis-directorySelect:focus-visible {
+.cts-gis-stageColumn__title {
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-stageColumn:hover .cts-gis-stageColumn__frame,
+.cts-gis-stageColumn:focus-visible .cts-gis-stageColumn__frame {
   outline: none;
   border-color: color-mix(in srgb, var(--accent, #0b6b46) 52%, var(--line, #c8cec8) 48%);
   box-shadow: 0 0 0 3px rgba(11, 107, 70, 0.08);
 }
 
-.cts-gis-directoryDiagnostics {
-  display: grid;
-  gap: 0.45rem;
+.cts-gis-stageColumn.is-active .cts-gis-stageColumn__frame {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--paper2, #eef1e8) 68%, #fff 32%) 0%,
+      color-mix(in srgb, var(--accent, #0b6b46) 10%, var(--paper2, #eef1e8) 90%) 100%
+    );
+  border-color: color-mix(in srgb, var(--accent, #0b6b46) 34%, var(--line, #c8cec8) 66%);
 }
 
-.cts-gis-directoryDiagnostic {
-  display: grid;
-  gap: 0.18rem;
-  padding: 0.62rem 0.7rem;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
-  background: color-mix(in srgb, var(--paper, #f7f8f3) 92%, #fff 8%);
+.cts-gis-stageTable {
+  flex: 1 1 24rem;
+  min-width: min(32rem, 100%);
+  max-height: clamp(20rem, 62vh, 36rem);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 92%, transparent);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 96%, #fff 4%);
+  overflow: hidden;
 }
 
-.cts-gis-directoryDiagnostic p {
-  margin: 0;
+.cts-gis-stageTable__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.8rem;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line, #c8cec8) 92%, transparent);
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 44%, #fff 56%);
+}
+
+.cts-gis-stageTable__eyebrow,
+.cts-gis-stageTable__prompt {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cts-gis-stageTable__eyebrow {
   color: var(--ink2, #667068);
-  line-height: 1.4;
 }
 
-.cts-gis-directoryDiagnostic--warning {
-  background: color-mix(in srgb, #f2edd4 72%, #fff 28%);
+.cts-gis-stageTable__prompt {
+  color: color-mix(in srgb, var(--accent, #0b6b46) 58%, var(--ink2, #667068) 42%);
 }
 
-.cts-gis-directoryDiagnostic--error {
-  background: color-mix(in srgb, #f2dfdb 78%, #fff 22%);
+.cts-gis-stageTable__rows {
+  display: grid;
+  overflow: auto;
+}
+
+.cts-gis-stageRow {
+  display: grid;
+  grid-template-columns: minmax(8.2rem, 0.72fr) minmax(13.4rem, 1fr);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  appearance: none;
+  border-top: 1px solid color-mix(in srgb, var(--line, #c8cec8) 92%, transparent);
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 98%, #fff 2%);
+  color: var(--ink, #243026);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cts-gis-stageRow__nodeId,
+.cts-gis-stageRow__title {
+  display: block;
+  min-width: 0;
+  padding: 0.74rem 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.cts-gis-stageRow__nodeId {
+  border-right: 1px solid color-mix(in srgb, var(--line, #c8cec8) 92%, transparent);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.cts-gis-stageRow__title {
+  color: var(--ink, #243026);
+}
+
+.cts-gis-stageRow:hover,
+.cts-gis-stageRow:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 56%, #fff 44%);
+}
+
+.cts-gis-stageRow.is-active {
+  background: color-mix(in srgb, var(--accent, #0b6b46) 12%, var(--paper2, #eef1e8) 88%);
+}
+
+.cts-gis-stageRow.is-active .cts-gis-stageRow__nodeId,
+.cts-gis-stageRow.is-active .cts-gis-stageRow__title {
+  color: color-mix(in srgb, var(--accent, #0b6b46) 74%, var(--ink, #243026) 26%);
+}
+
+.cts-gis-stageTable__empty {
+  min-height: clamp(18rem, 46vh, 32rem);
 }
 
 .cts-gis-directoryCanvas__empty {
@@ -7076,6 +7159,14 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .cts-gis-stageSelectionBlock {
+    flex-basis: 2.55rem;
+  }
+
+  .cts-gis-stageTable {
+    min-width: 24rem;
+  }
+
   .cts-gis-structureCanvas {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -7102,6 +7193,22 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 }
 
 @media (max-width: 700px) {
+  .cts-gis-stageSelectionBlock {
+    flex-basis: 2.2rem;
+  }
+
+  .cts-gis-stageTable {
+    min-width: 18rem;
+  }
+
+  .cts-gis-stageTable__header {
+    padding: 0.62rem 0.72rem;
+  }
+
+  .cts-gis-stageRow {
+    grid-template-columns: minmax(6.6rem, 0.72fr) minmax(10.6rem, 1fr);
+  }
+
   .cts-gis-contextStrip__row {
     grid-template-columns: minmax(0, 1fr);
   }

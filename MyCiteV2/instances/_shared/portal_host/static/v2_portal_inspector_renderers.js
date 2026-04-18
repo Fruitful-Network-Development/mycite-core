@@ -107,105 +107,113 @@
     );
   }
 
-  function renderDirectoryDiagnostics(diagnostics) {
-    if (!diagnostics || !diagnostics.length) return "";
+  function directoryOptionTitle(option, depth) {
+    var title = String((option && option.title) || "");
+    return depth === 1 && title ? title.toUpperCase() : title;
+  }
+
+  function selectedDirectoryOption(dropdown) {
+    var selectedNodeId = String((dropdown && dropdown.selected_node_id) || "");
+    if (!selectedNodeId) return null;
+    var options = (dropdown && dropdown.options) || [];
+    var optionIndex = options.findIndex(function (option) {
+      return String((option && option.node_id) || "") === selectedNodeId;
+    });
+    if (optionIndex < 0) return null;
+    return {
+      option: options[optionIndex] || {},
+      optionIndex: optionIndex,
+    };
+  }
+
+  function renderDirectorySelectionBlocks(dropdowns) {
+    return (dropdowns || [])
+      .map(function (dropdown, dropdownIndex) {
+        var selected = selectedDirectoryOption(dropdown);
+        if (!selected) return "";
+        var option = selected.option || {};
+        var depth = Number(dropdown.depth || dropdownIndex + 1);
+        var title = directoryOptionTitle(option, depth);
+        return (
+          '<section class="cts-gis-stageSelectionBlock">' +
+          '<button type="button" class="cts-gis-stageColumn' +
+          (option.selected ? " is-active" : "") +
+          '" data-cts-gis-dropdown-index="' +
+          escapeHtml(String(dropdownIndex)) +
+          '" data-cts-gis-option-index="' +
+          escapeHtml(String(selected.optionIndex)) +
+          '">' +
+          '<span class="cts-gis-stageColumn__frame">' +
+          '<span class="cts-gis-stageColumn__text">' +
+          '<span class="cts-gis-stageColumn__nodeId">' +
+          escapeHtml(option.node_id || "") +
+          "</span>" +
+          (title
+            ? '<span class="cts-gis-stageColumn__title">' + escapeHtml(title) + "</span>"
+            : "") +
+          "</span>" +
+          "</span>" +
+          "</button>" +
+          "</section>"
+        );
+      })
+      .join("");
+  }
+
+  function renderDirectoryStageTable(dropdown, dropdownIndex) {
+    var depth = Number((dropdown && dropdown.depth) || dropdownIndex + 1);
+    var options = (dropdown && dropdown.options) || [];
+    var prompt = depth === 1 ? "Select address node" : "Select child node";
     return (
-      '<section class="cts-gis-directoryDiagnostics">' +
-      diagnostics
-        .map(function (diagnostic) {
-          var meta = [];
-          if (diagnostic.source_kind) meta.push(diagnostic.source_kind);
-          if (diagnostic.node_ids && diagnostic.node_ids.length) {
-            meta.push("nodes: " + diagnostic.node_ids.join(", "));
-          }
-          return (
-            '<article class="cts-gis-directoryDiagnostic cts-gis-directoryDiagnostic--' +
-            escapeHtml(diagnostic.severity || "error") +
-            '">' +
-            '<strong>' +
-            escapeHtml(diagnostic.code || "diagnostic") +
-            "</strong>" +
-            "<p>" +
-            escapeHtml(diagnostic.message || "") +
-            "</p>" +
-            (meta.length
-              ? '<span class="cts-gis-directoryDiagnostic__meta">' + escapeHtml(meta.join(" · ")) + "</span>"
-              : "") +
-            "</article>"
-          );
-        })
-        .join("") +
+      '<section class="cts-gis-stageTable">' +
+      '<header class="cts-gis-stageTable__header">' +
+      '<span class="cts-gis-stageTable__eyebrow">Depth ' +
+      escapeHtml(String(depth)) +
+      "</span>" +
+      '<span class="cts-gis-stageTable__prompt">' +
+      escapeHtml(prompt) +
+      "</span>" +
+      "</header>" +
+      (options.length
+        ? '<div class="cts-gis-stageTable__rows">' +
+          options
+            .map(function (option, optionIndex) {
+              var title = directoryOptionTitle(option, depth);
+              return (
+                '<button type="button" class="cts-gis-stageRow' +
+                (option.selected ? " is-active" : "") +
+                '" data-cts-gis-dropdown-index="' +
+                escapeHtml(String(dropdownIndex)) +
+                '" data-cts-gis-option-index="' +
+                escapeHtml(String(optionIndex)) +
+                '">' +
+                '<span class="cts-gis-stageRow__nodeId">' +
+                escapeHtml(option.node_id || "") +
+                "</span>" +
+                '<span class="cts-gis-stageRow__title">' +
+                escapeHtml(title || "") +
+                "</span>" +
+                "</button>"
+              );
+            })
+            .join("") +
+          "</div>"
+        : renderProjectionPlaceholder("No SAMRAS address options are available.", "cts-gis-stageTable__empty")) +
       "</section>"
     );
   }
 
   function renderDirectoryDropdownCanvas(navigationCanvas) {
     var dropdowns = navigationCanvas.dropdowns || [];
-    var diagnostics = navigationCanvas.diagnostics || [];
-    var activePath = navigationCanvas.active_path || [];
     var decodeState = navigationCanvas.decode_state || "blocked_invalid_magnitude";
-    var magnitudeSourceKind = navigationCanvas.magnitude_source_kind || navigationCanvas.source_authority || "";
+    var currentDropdown = dropdowns.length ? dropdowns[dropdowns.length - 1] : null;
+    var ancestorDropdowns = dropdowns.slice(0, Math.max(dropdowns.length - 1, 0));
     return (
       '<div class="cts-gis-directoryCanvas">' +
-      '<div class="cts-gis-directoryCanvas__state">' +
-      '<span class="cts-gis-directoryCanvas__status">state: ' +
-      escapeHtml(decodeState) +
-      "</span>" +
-      (magnitudeSourceKind
-        ? '<span class="cts-gis-directoryCanvas__status">source: ' + escapeHtml(magnitudeSourceKind) + "</span>"
-        : "") +
-      "</div>" +
-      (activePath.length
-        ? '<p class="cts-gis-directoryCanvas__path">active path: ' +
-          escapeHtml(
-            activePath
-              .map(function (entry) {
-                return entry.display_label || entry.node_id || "";
-              })
-              .filter(Boolean)
-              .join(" / ")
-          ) +
-          "</p>"
-        : "") +
-      renderDirectoryDiagnostics(diagnostics) +
-      (dropdowns.length
-        ? '<div class="cts-gis-directoryDropdownStack">' +
-          dropdowns
-            .map(function (dropdown, dropdownIndex) {
-              var parentNodeId = dropdown.parent_node_id || "";
-              var selectedNodeId = dropdown.selected_node_id || "";
-              return (
-                '<label class="cts-gis-directoryDropdown">' +
-                '<span class="cts-gis-directoryDropdown__label">Depth ' +
-                escapeHtml(String(dropdown.depth || dropdownIndex + 1)) +
-                "</span>" +
-                '<span class="cts-gis-directoryDropdown__meta">' +
-                escapeHtml(parentNodeId ? "parent " + parentNodeId : "root") +
-                "</span>" +
-                '<select class="cts-gis-directorySelect" data-cts-gis-dropdown-index="' +
-                escapeHtml(String(dropdownIndex)) +
-                '">' +
-                '<option value="">' +
-                escapeHtml(dropdown.depth === 1 ? "Select address node" : "Select child node") +
-                "</option>" +
-                (dropdown.options || [])
-                  .map(function (option, optionIndex) {
-                    return (
-                      '<option value="' +
-                      escapeHtml(String(optionIndex)) +
-                      '"' +
-                      (selectedNodeId && option.node_id === selectedNodeId ? " selected" : "") +
-                      ">" +
-                      escapeHtml(option.display_label || option.node_id || "Node") +
-                      "</option>"
-                    );
-                  })
-                  .join("") +
-                "</select>" +
-                "</label>"
-              );
-            })
-            .join("") +
+      (currentDropdown
+        ? '<div class="cts-gis-stageSelector">' +
+          renderDirectorySelectionBlocks(ancestorDropdowns) +
+          renderDirectoryStageTable(currentDropdown, dropdowns.length - 1) +
           "</div>"
         : renderProjectionPlaceholder(
             decodeState === "ready"
@@ -746,6 +754,12 @@
         active_path: navCanvas.active_path || [],
         active_node_id: navCanvas.active_node_id || "",
       });
+      body.garland_split_projection.profile_projection = Object.assign(
+        {
+          has_profile_state: false,
+        },
+        body.garland_split_projection.profile_projection || {}
+      );
       return body;
     }
     var garland = body.garland || {};
@@ -805,6 +819,7 @@
           correlated_profiles: garland.related_profiles || [],
           warnings: garland.warnings || [],
           empty_message: "No projected profile is available until the active path resolves real CTS-GIS evidence.",
+          has_profile_state: false,
           has_real_projection: false,
         },
       },
@@ -826,16 +841,27 @@
   }
 
   function bindDirectoryDropdowns(target, ctx, dropdowns) {
+    function loadSelection(dropdownIndex, optionIndex) {
+      if (!Number.isFinite(dropdownIndex) || !Number.isFinite(optionIndex)) return;
+      var dropdown = (dropdowns || [])[dropdownIndex] || {};
+      var option = (dropdown.options || [])[optionIndex] || {};
+      if (option.shell_request) {
+        ctx.loadShell(option.shell_request);
+      }
+    }
+
     Array.prototype.forEach.call(target.querySelectorAll("[data-cts-gis-dropdown-index]"), function (node) {
-      node.addEventListener("change", function () {
-        var dropdownIndex = Number(node.getAttribute("data-cts-gis-dropdown-index"));
-        var optionIndex = Number(node.value);
-        if (!Number.isFinite(dropdownIndex) || !Number.isFinite(optionIndex)) return;
-        var dropdown = (dropdowns || [])[dropdownIndex] || {};
-        var option = (dropdown.options || [])[optionIndex] || {};
-        if (option.shell_request) {
-          ctx.loadShell(option.shell_request);
-        }
+      var dropdownIndex = Number(node.getAttribute("data-cts-gis-dropdown-index"));
+      if ((node.tagName || "").toUpperCase() === "SELECT") {
+        node.addEventListener("change", function () {
+          if (node.value === "") return;
+          loadSelection(dropdownIndex, Number(node.value));
+        });
+        return;
+      }
+      if (!node.hasAttribute("data-cts-gis-option-index")) return;
+      node.addEventListener("click", function () {
+        loadSelection(dropdownIndex, Number(node.getAttribute("data-cts-gis-option-index")));
       });
     });
   }
@@ -1071,6 +1097,11 @@
     };
     var hasRealGeospatialProjection = !!geospatialProjection.has_real_projection;
     var hasRealProfileProjection = !!profileProjection.has_real_projection;
+    var hasProfileState = !!profileProjection.has_profile_state;
+    var activeProfile = profileProjection.active_profile || {};
+    var activeProfileCounts = hasRealProfileProjection
+      ? String(activeProfile.feature_count || 0) + " features · " + String(activeProfile.child_count || 0) + " children"
+      : "— features · — children";
     var geospatialMarkup = hasRealGeospatialProjection
       ? '<div class="cts-gis-mapCanvas">' +
         '<div class="cts-gis-mapCanvas__state">' +
@@ -1117,7 +1148,7 @@
           "cts-gis-mapCanvas__empty"
         ) +
         "</div>";
-    var profileMarkup = hasRealProfileProjection
+    var profileMarkup = (hasRealProfileProjection || hasProfileState)
       ? '<section class="cts-gis-garlandSplit__profileBody">' +
         '<section class="cts-gis-garlandSplit__profileBlock"><h5>Hierarchy</h5>' +
         renderProfileHierarchy(profileProjection.hierarchy || []) +
@@ -1125,24 +1156,19 @@
         '<section class="cts-gis-garlandSplit__profileBlock"><h5>Current Profile</h5>' +
         '<article class="cts-gis-profileSummary cts-gis-profileSummary--active">' +
         "<strong>" +
-        escapeHtml((profileProjection.active_profile || {}).label || "Active profile") +
+        escapeHtml(activeProfile.label || "Active profile") +
         "</strong>" +
         '<span class="cts-gis-profileSummary__meta">' +
-        escapeHtml((profileProjection.active_profile || {}).node_id || "") +
+        escapeHtml(activeProfile.node_id || "") +
         "</span>" +
         '<span class="cts-gis-profileSummary__meta">' +
-        escapeHtml(
-          String((profileProjection.active_profile || {}).feature_count || 0) +
-            " features · " +
-            String((profileProjection.active_profile || {}).child_count || 0) +
-            " children"
-        ) +
+        escapeHtml(activeProfileCounts) +
         "</span>" +
         "</article></section>" +
-        renderRows(profileProjection.summary_rows || []) +
+        ((profileProjection.summary_rows || []).length ? renderRows(profileProjection.summary_rows || []) : "") +
         '<section class="cts-gis-garlandSplit__profileBlock"><h5>Projected Rows</h5>' +
         renderRequestButtons(profileProjection.projected_rows || [], "row", {
-          emptyMessage: "No projected rows available.",
+          emptyMessage: profileProjection.empty_message || "No projected rows available.",
         }) +
         "</section>" +
         '<section class="cts-gis-garlandSplit__profileBlock"><h5>Correlated Profiles</h5>' +
