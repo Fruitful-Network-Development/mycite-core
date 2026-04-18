@@ -131,6 +131,7 @@ CTS-GIS runtime/body rules:
 
 CTS-GIS canonical defaults:
 
+- fresh entry defaults are:
 - `active_path=[]`
 - `selected_node_id=""`
 - `attention_node_id=""`
@@ -138,6 +139,12 @@ CTS-GIS canonical defaults:
 - `time_directive=""`
 - `archetype_family_id=samras_nominal`
 - default supporting source document: `sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json`
+
+CTS-GIS selection normalization:
+
+- when the request carries `selected_node_id` or `tool_state.aitas.attention_node_id` without an explicit `tool_state.aitas.intention_rule_id`, runtime normalizes intention to `self`
+- that keeps Garland aligned to the current selected node rather than inheriting the fresh-entry descendant posture
+- Garland may materialize a blank but stateful `profile_projection` for a structurally valid selected node even when no matching profile source or HOPS geometry exists yet
 
 NETWORK root query projection keys:
 
