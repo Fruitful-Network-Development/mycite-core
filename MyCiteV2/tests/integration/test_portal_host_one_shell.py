@@ -618,8 +618,9 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                     {"label": "Mediation", "value": "spec.json"},
                 ],
             )
-            self.assertTrue(aws_shell_payload["shell_composition"]["workbench_collapsed"])
+            self.assertFalse(aws_shell_payload["shell_composition"]["workbench_collapsed"])
             self.assertFalse(aws_shell_payload["shell_composition"]["interface_panel_collapsed"])
+            self.assertEqual(aws_shell_payload["shell_composition"]["foreground_shell_region"], "center-workbench")
             self.assertNotIn(
                 "Sections",
                 [

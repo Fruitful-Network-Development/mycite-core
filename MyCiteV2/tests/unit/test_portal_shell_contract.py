@@ -11,6 +11,7 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
+    SURFACE_POSTURE_WORKBENCH_PRIMARY,
     SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
     SYSTEM_ANCHOR_FILE_KEY,
     SYSTEM_ROOT_SURFACE_ID,
@@ -121,12 +122,17 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertEqual([segment.level for segment in no_op.focus_path], ["sandbox"])
         self.assertEqual(no_op.verb, VERB_NAVIGATE)
 
-    def test_tool_defaults_are_interface_led_and_workbench_hidden(self) -> None:
-        registry_entries = [entry.to_dict() for entry in build_portal_tool_registry_entries()]
-        self.assertTrue(registry_entries)
-        for entry in registry_entries:
-            self.assertEqual(entry["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
-            self.assertFalse(entry["default_workbench_visible"])
+    def test_tool_registry_exposes_primary_region_defaults(self) -> None:
+        registry_entries = {
+            entry["tool_id"]: entry
+            for entry in (entry.to_dict() for entry in build_portal_tool_registry_entries())
+        }
+        self.assertEqual(registry_entries["aws_csm"]["surface_posture"], SURFACE_POSTURE_WORKBENCH_PRIMARY)
+        self.assertTrue(registry_entries["aws_csm"]["default_workbench_visible"])
+        self.assertEqual(registry_entries["cts_gis"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
+        self.assertFalse(registry_entries["cts_gis"]["default_workbench_visible"])
+        self.assertEqual(registry_entries["fnd_ebi"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
+        self.assertFalse(registry_entries["fnd_ebi"]["default_workbench_visible"])
 
     def test_dispatch_bodies_preserve_portal_capabilities(self) -> None:
         state = initial_portal_shell_state(
