@@ -45,6 +45,8 @@ def _looks_like_hyphenated_hex(token: str) -> bool:
     parts = [part for part in token.split("-") if part]
     if not parts:
         return False
+    if all(part.isdigit() for part in parts):
+        return False
     compact = "".join(parts)
     if not compact or (len(compact) % 2) != 0:
         return False

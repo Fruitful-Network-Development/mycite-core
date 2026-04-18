@@ -31,6 +31,13 @@ class HopsCoordinateUnitTests(unittest.TestCase):
         self.assertGreaterEqual(decoded["latitude"]["value"], -90.0)
         self.assertLessEqual(decoded["latitude"]["value"], 90.0)
 
+    def test_numeric_hex_like_token_is_not_marked_ambiguous(self) -> None:
+        token = "3-76-11-43-4-38-94-37-98-16-59-86-18-18-80-85-0-5"
+
+        classification = classify_hops_coordinate_token(token)
+
+        self.assertEqual(classification["classification"], "hops")
+
     def test_rejects_ambiguous_hyphenated_hex_token(self) -> None:
         classification = classify_hops_coordinate_token("aa-bb")
         decoded = decode_hops_coordinate_token("aa-bb")
