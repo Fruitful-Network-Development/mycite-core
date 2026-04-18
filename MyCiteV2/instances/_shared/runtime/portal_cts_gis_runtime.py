@@ -505,7 +505,11 @@ def _resolved_tool_state(
     requested_selection = dict(requested_tool_state.get("selection") or {})
     requested_active_path = _normalize_requested_active_path(requested_tool_state.get("active_path"))
     fallback_selected_node_id = ""
-    if _as_text(requested_selection.get("selected_row_address")) or _as_text(requested_selection.get("selected_feature_id")):
+    if (
+        not requested_active_path
+        and not _as_text(requested_tool_state.get("selected_node_id"))
+        and not _as_text(requested_tool_state.get("aitas", {}).get("attention_node_id"))
+    ):
         fallback_selected_node_id = (
             _as_text(selection_summary.get("selected_profile_node_id"))
             or _as_text((service_surface.get("attention_profile") or {}).get("node_id"))
@@ -523,8 +527,18 @@ def _resolved_tool_state(
         "aitas": {
             "attention_node_id": selected_node_id,
             "intention_rule_id": _canonical_intention_rule_id(
-                mediation_state.get("intention_token")
-                or requested_tool_state.get("aitas", {}).get("intention_rule_id")
+                (
+                    "self"
+                    if (
+                        selected_node_id
+                        and not requested_active_path
+                        and not _as_text(requested_tool_state.get("selected_node_id"))
+                        and not _as_text(requested_tool_state.get("aitas", {}).get("attention_node_id"))
+                        and not _as_text(requested_tool_state.get("aitas", {}).get("intention_rule_id"))
+                    )
+                    else mediation_state.get("intention_token")
+                    or requested_tool_state.get("aitas", {}).get("intention_rule_id")
+                )
             ),
             "time_directive": _as_text(requested_tool_state.get("aitas", {}).get("time_directive")) or _DEFAULT_TIME_DIRECTIVE,
             "archetype_family_id": _as_text(requested_tool_state.get("aitas", {}).get("archetype_family_id"))
@@ -1521,10 +1535,17 @@ def _empty_geospatial_projection() -> dict[str, Any]:
     return {
         "title": "Geospatial Projection",
         "data_source": "",
+        "projection_source": "none",
         "projection_state": "awaiting_real_projection",
         "feature_count": 0,
         "render_feature_count": 0,
         "render_row_count": 0,
+        "decode_summary": {
+            "reference_binding_count": 0,
+            "decoded_coordinate_count": 0,
+            "failed_token_count": 0,
+        },
+        "warnings": [],
         "supporting_document_name": "",
         "projection_document_name": "",
         "selected_feature_id": "",
@@ -1626,11 +1647,14 @@ def _real_geospatial_projection(
     return (
         {
             "title": "Geospatial Projection",
-            "data_source": "real_hops_polygon_projection",
+            "data_source": "cts_gis_polygon_projection",
+            "projection_source": _as_text(map_projection.get("projection_source")) or "none",
             "projection_state": _as_text(map_projection.get("projection_state")) or "projectable",
             "feature_count": len(feature_entries),
             "render_feature_count": int(render_set_summary.get("render_feature_count") or len(feature_entries)),
             "render_row_count": int(render_set_summary.get("render_row_count") or 0),
+            "decode_summary": dict(map_projection.get("decode_summary") or {}),
+            "warnings": list(map_projection.get("warnings") or []),
             "supporting_document_name": supporting_document_name,
             "projection_document_name": projection_document_name,
             "selected_feature_id": selected_feature_id,
@@ -1690,6 +1714,13 @@ def _cts_gis_interface_body(
     projection_document_name = _as_text(selected_document.get("document_name")) or "—"
     selected_label = _as_text((active_path_entries[-1] if active_path_entries else {}).get("title")) or selected_node_id
     attention_profile_node_id = _as_text(attention_profile.get("node_id"))
+    map_projection = dict(service_surface.get("map_projection") or {})
+    decode_summary = dict(map_projection.get("decode_summary") or {})
+    decode_summary_text = (
+        f"{int(decode_summary.get('decoded_coordinate_count') or 0)}/"
+        f"{int(decode_summary.get('reference_binding_count') or 0)} decoded"
+        f" · {int(decode_summary.get('failed_token_count') or 0)} failed"
+    )
 
     geospatial_projection = _empty_geospatial_projection()
     profile_projection = _empty_profile_projection(warnings=list(service_surface.get("warnings") or []))
@@ -1708,6 +1739,10 @@ def _cts_gis_interface_body(
         and attention_matches_selection
         and bool(attention_profile)
         and not bool(attention_profile.get("placeholder"))
+        and (
+            bool(attention_profile.get("has_geometry"))
+            or int(map_projection.get("feature_count") or 0) > 0
+        )
     )
     if decode_ready and selected_node_id and attention_matches_selection and garland_swapped:
         geospatial_projection = {
@@ -1737,6 +1772,9 @@ def _cts_gis_interface_body(
             "summary_rows": [
                 {"label": "Supporting document", "value": supporting_document_name},
                 {"label": "Projection document", "value": projection_document_name},
+                {"label": "Projection source", "value": _as_text(map_projection.get("projection_source")) or "none"},
+                {"label": "Projection state", "value": _as_text(map_projection.get("projection_state")) or "inspect_only"},
+                {"label": "Decode summary", "value": decode_summary_text},
             ],
             "projected_rows": [
                 {
@@ -1789,6 +1827,9 @@ def _cts_gis_interface_body(
             "summary_rows": [
                 {"label": "Supporting document", "value": supporting_document_name},
                 {"label": "Projection document", "value": "—"},
+                {"label": "Projection source", "value": _as_text(map_projection.get("projection_source")) or "none"},
+                {"label": "Projection state", "value": "awaiting_real_projection"},
+                {"label": "Decode summary", "value": decode_summary_text},
             ],
             "empty_message": "The selected node resolves structurally, but no profile projection is available for it yet.",
             "has_profile_state": True,
@@ -1803,7 +1844,7 @@ def _cts_gis_interface_body(
         "garland_split_projection": {
             "kind": "garland_split_projection",
             "title": "Garland",
-            "summary": "Correlated projection surface that populates only when the selected SAMRAS node resolves real CTS-GIS evidence.",
+            "summary": "Correlated projection surface that shows provenance, decode health, and document context for the selected SAMRAS node.",
             "lens_state": lens_state,
             "geospatial_projection": geospatial_projection,
             "profile_projection": profile_projection,
@@ -1835,6 +1876,29 @@ def build_portal_cts_gis_surface_bundle(
         capability for capability in tool_entry.required_capabilities if capability not in portal_scope.capabilities
     ]
     datum_store = None if data_dir is None else FilesystemSystemDatumStoreAdapter(Path(data_dir))
+    raw_tool_state = (
+        normalized_request_payload.get("tool_state")
+        if isinstance(normalized_request_payload.get("tool_state"), dict)
+        else {}
+    )
+    raw_aitas = raw_tool_state.get("aitas") if isinstance(raw_tool_state.get("aitas"), dict) else {}
+    raw_mediation = (
+        normalized_request_payload.get("mediation_state")
+        if isinstance(normalized_request_payload.get("mediation_state"), dict)
+        else {}
+    )
+    explicit_selection_requested = bool(
+        _normalize_requested_active_path(requested_tool_state.get("active_path"))
+        or _as_text(requested_tool_state.get("selected_node_id"))
+        or _as_text(requested_tool_state.get("aitas", {}).get("attention_node_id"))
+        or _as_text(requested_tool_state.get("selection", {}).get("selected_row_address"))
+        or _as_text(requested_tool_state.get("selection", {}).get("selected_feature_id"))
+    )
+    explicit_intention_requested = bool(
+        _as_text(raw_aitas.get("intention_rule_id"))
+        or _as_text(raw_mediation.get("intention_token"))
+        or _as_text(normalized_request_payload.get("intention_token"))
+    )
     service_surface = CtsGisReadOnlyService(datum_store).read_surface(
         portal_scope.scope_id,
         selected_document_id=_as_text(requested_tool_state.get("source", {}).get("attention_document_id")),
@@ -1843,8 +1907,10 @@ def build_portal_cts_gis_surface_bundle(
         mediation_state={
             "attention_document_id": _as_text(requested_tool_state.get("source", {}).get("attention_document_id")),
             "attention_node_id": _as_text(requested_tool_state.get("aitas", {}).get("attention_node_id")),
-            "intention_token": _service_intention_token(
-                requested_tool_state.get("aitas", {}).get("intention_rule_id")
+            "intention_token": (
+                _service_intention_token(requested_tool_state.get("aitas", {}).get("intention_rule_id"))
+                if explicit_selection_requested or explicit_intention_requested
+                else ""
             ),
         },
     ) if datum_store is not None else {

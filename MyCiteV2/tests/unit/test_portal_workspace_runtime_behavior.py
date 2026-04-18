@@ -199,15 +199,16 @@ def _write_cts_gis_profile_source(
     titles = _cts_gis_node_titles()
     label = profile_label or titles.get(node_id, node_id)
     file_name = document_name or f"sc.3-2-3-17-77-1-6-4-1-4.fnd.{node_id}.json"
-    coordinate_row = ["4-2-1"]
+    coordinate_row_address = f"4-{len(coordinate_tokens)}-1"
+    coordinate_row = [coordinate_row_address]
     for token in coordinate_tokens:
         coordinate_row.extend(["rf.3-1-1", token])
     _write_json(
         data_dir / "sandbox" / "cts-gis" / "sources" / file_name,
         {
             "datum_addressing_abstraction_space": {
-                "4-2-1": [coordinate_row, [f"{label}_polygon"]],
-                "5-0-1": [["5-0-1", "~", "4-2-1"], [f"{label}_boundary"]],
+                coordinate_row_address: [coordinate_row, [f"{label}_polygon"]],
+                "5-0-1": [["5-0-1", "~", coordinate_row_address], [f"{label}_boundary"]],
                 "7-3-1": [
                     [
                         "7-3-1",
@@ -328,8 +329,16 @@ def _write_cts_gis_fixture(
         data_dir / "sandbox" / "cts-gis" / "sources" / "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
         {
             "datum_addressing_abstraction_space": {
-                "4-2-1": [["4-2-1", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"], ["polygon_1"]],
-                "5-0-1": [["5-0-1", "~", "4-2-1"], ["summit_boundary"]],
+                "4-3-1": [[
+                    "4-3-1",
+                    "rf.3-1-1",
+                    "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73",
+                    "rf.3-1-1",
+                    "3-76-11-40-92-20-21-92-81-29-56-60-79-56-3-4-39",
+                    "rf.3-1-1",
+                    "3-76-11-40-92-20-21-92-81-25-68-43-68-84-44-22-24",
+                ], ["polygon_1"]],
+                "5-0-1": [["5-0-1", "~", "4-3-1"], ["summit_boundary"]],
                 "7-3-1": [
                     [
                         "7-3-1",
@@ -791,8 +800,10 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertGreater(garland["geospatial_projection"]["feature_count"], 0)
             self.assertEqual(
                 garland["geospatial_projection"]["data_source"],
-                "real_hops_polygon_projection",
+                "cts_gis_polygon_projection",
             )
+            self.assertEqual(garland["geospatial_projection"]["projection_source"], "hops")
+            self.assertEqual(garland["geospatial_projection"]["decode_summary"]["failed_token_count"], 0)
             ordered_path_ids = [entry["node_id"] for entry in navigation_canvas["active_path"]]
             self.assertEqual(
                 ordered_path_ids[:5],
@@ -817,9 +828,11 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 summary_by_label["Projection document"],
                 "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
             )
+            self.assertEqual(summary_by_label["Projection source"], "hops")
+            self.assertEqual(summary_by_label["Projection state"], "projectable")
             self.assertEqual(
-                set(summary_by_label),
-                {"Supporting document", "Projection document"},
+                summary_by_label["Decode summary"],
+                "3/3 decoded · 0 failed",
             )
 
     def test_cts_gis_valid_magnitude_renders_single_root_dropdown_on_initial_load(self) -> None:
@@ -839,10 +852,23 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 private_dir=private_dir,
             )
 
+            tool_state = bundle["surface_payload"]["tool_state"]
             navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
+            geo = bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
             self.assertEqual(navigation_canvas["decode_state"], "ready")
-            self.assertEqual(len(navigation_canvas["dropdowns"]), 1)
-            self.assertEqual(navigation_canvas["active_path"], [])
+            self.assertEqual(tool_state["selected_node_id"], "3-2-3-17-77")
+            self.assertEqual(
+                tool_state["active_path"],
+                ["3", "3-2", "3-2-3", "3-2-3-17", "3-2-3-17-77"],
+            )
+            self.assertEqual(tool_state["aitas"]["intention_rule_id"], "self")
+            self.assertEqual(len(navigation_canvas["dropdowns"]), 6)
+            self.assertEqual(
+                [entry["node_id"] for entry in navigation_canvas["active_path"]],
+                ["3", "3-2", "3-2-3", "3-2-3-17", "3-2-3-17-77"],
+            )
+            self.assertEqual(geo["projection_source"], "hops")
+            self.assertEqual(geo["decode_summary"]["failed_token_count"], 0)
             self.assertEqual(
                 [option["display_label"] for option in navigation_canvas["dropdowns"][0]["options"][:4]],
                 ["1 NEG", "2 NEH", "3 NWH", "4 NWG"],
@@ -888,6 +914,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json",
             )
             self.assertEqual(summary_by_label["Projection document"], "—")
+            self.assertEqual(summary_by_label["Projection source"], "none")
+            self.assertEqual(summary_by_label["Projection state"], "awaiting_real_projection")
             self.assertEqual(
                 bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"],
                 "self",
@@ -931,6 +959,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 summary_by_label["Projection document"],
                 "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3.json",
             )
+            self.assertEqual(summary_by_label["Projection source"], "hops")
+            self.assertEqual(summary_by_label["Projection state"], "projectable")
             self.assertEqual(
                 [feature["node_id"] for feature in geo["features"]],
                 ["3-2-3"],
@@ -983,7 +1013,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
 
             navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
             self.assertEqual(navigation_canvas["decode_state"], "ready")
-            self.assertEqual(len(navigation_canvas["dropdowns"]), 1)
+            self.assertEqual(len(navigation_canvas["dropdowns"]), 6)
             outside_diagnostic = next(
                 item for item in navigation_canvas["diagnostics"] if item["code"] == "node_outside_magnitude"
             )
@@ -1016,7 +1046,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertEqual(navigation_canvas["decode_state"], "ready")
             self.assertEqual(navigation_canvas["magnitude_source_kind"], "tool_anchor")
             self.assertEqual(navigation_canvas["magnitude_datum_address"], "1-1-2")
-            self.assertEqual(len(navigation_canvas["dropdowns"]), 1)
+            self.assertEqual(len(navigation_canvas["dropdowns"]), 6)
             diagnostic_codes = [item["code"] for item in navigation_canvas["diagnostics"]]
             self.assertIn("invalid_magnitude_candidate", diagnostic_codes)
 

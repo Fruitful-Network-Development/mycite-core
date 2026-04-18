@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -33,6 +34,14 @@ def _anchor_row(address: str, label: str) -> AuthoritativeDatumDocumentRow:
     )
 
 
+def _anchor_rows() -> tuple[AuthoritativeDatumDocumentRow, ...]:
+    return (
+        _anchor_row("3-1-1", "HOPS-babelette-coordinate"),
+        _anchor_row("3-1-2", "SAMRAS-babelette-msn_id"),
+        _anchor_row("3-1-3", "title-babelette"),
+    )
+
+
 def _cts_gis_document() -> AuthoritativeDatumDocument:
     summit_binary = (
         "011100110111010101101101011011010110100101110100"
@@ -50,24 +59,20 @@ def _cts_gis_document() -> AuthoritativeDatumDocument:
         tool_id="cts_gis",
         anchor_document_name="tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
         anchor_document_path="sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
-        anchor_rows=(
-            _anchor_row("3-1-1", "HOPS-babelette-coordinate"),
-            _anchor_row("3-1-2", "SAMRAS-babelette-msn_id"),
-            _anchor_row("3-1-3", "title-babelette"),
-        ),
+        anchor_rows=_anchor_rows(),
         rows=(
             AuthoritativeDatumDocumentRow(
-                datum_address="4-2-1",
+                datum_address="4-1-1",
                 raw=[
-                    ["4-2-1", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"],
+                    ["4-1-1", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"],
                     ["polygon_1"],
                 ],
             ),
             AuthoritativeDatumDocumentRow(
-                datum_address="4-2-2",
+                datum_address="4-1-2",
                 raw=[
                     [
-                        "4-2-2",
+                        "4-1-2",
                         "rf.3-1-1",
                         "3-76-11-40-92-20-21-92-81-29-56-60-79-56-3-4-39",
                     ],
@@ -77,14 +82,14 @@ def _cts_gis_document() -> AuthoritativeDatumDocument:
             AuthoritativeDatumDocumentRow(
                 datum_address="5-0-1",
                 raw=[
-                    ["5-0-1", "~", "4-2-1"],
+                    ["5-0-1", "~", "4-1-1"],
                     ["summit_boundary"],
                 ],
             ),
             AuthoritativeDatumDocumentRow(
                 datum_address="6-0-1",
                 raw=[
-                    ["6-0-1", "~", "4-2-2"],
+                    ["6-0-1", "~", "4-1-2"],
                     ["fairlawn_boundary_collection"],
                 ],
             ),
@@ -121,6 +126,88 @@ def _cts_gis_document() -> AuthoritativeDatumDocument:
     )
 
 
+def _document_from_source_file(path: Path) -> AuthoritativeDatumDocument:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    space = dict(payload.get("datum_addressing_abstraction_space") or {})
+    metadata = {key: value for key, value in payload.items() if key != "datum_addressing_abstraction_space"}
+    return AuthoritativeDatumDocument(
+        document_id=f"sandbox:cts_gis:{path.name}",
+        source_kind="sandbox_source",
+        document_name=path.name,
+        relative_path=f"sandbox/cts-gis/sources/{path.name}",
+        tool_id="cts_gis",
+        anchor_document_name="tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        anchor_document_path="sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        anchor_rows=_anchor_rows(),
+        document_metadata=metadata,
+        rows=tuple(
+            AuthoritativeDatumDocumentRow(datum_address=address, raw=row)
+            for address, row in sorted(space.items())
+        ),
+    )
+
+
+def _cts_gis_reference_fallback_document() -> AuthoritativeDatumDocument:
+    feature_collection = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [-81.5, 41.1],
+                        [-81.45, 41.1],
+                        [-81.43, 41.12],
+                        [-81.45, 41.15],
+                        [-81.49, 41.16],
+                        [-81.5, 41.1],
+                    ]],
+                },
+                "properties": {"community_name": "fallback_county"},
+            }
+        ],
+    }
+    return AuthoritativeDatumDocument(
+        document_id="sandbox:cts_gis:sc.fallback.3-2-3-17-77.json",
+        source_kind="sandbox_source",
+        document_name="sc.fallback.3-2-3-17-77.json",
+        relative_path="sandbox/cts-gis/sources/sc.fallback.3-2-3-17-77.json",
+        tool_id="cts_gis",
+        anchor_document_name="tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        anchor_document_path="sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        anchor_rows=_anchor_rows(),
+        document_metadata={
+            "reference_geojson_node_id": "3-2-3-17-77",
+            "reference_geojson": feature_collection,
+        },
+        rows=(
+            AuthoritativeDatumDocumentRow(
+                datum_address="4-4-1",
+                raw=[
+                    ["4-4-1", "rf.3-1-1", "8-0-0", "rf.3-1-1", "8-0-0", "rf.3-1-1", "8-0-0", "rf.3-1-1", "8-0-0"],
+                    ["fallback_polygon"],
+                ],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="5-0-1",
+                raw=[["5-0-1", "~", "4-4-1"], ["fallback_boundary"]],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="6-0-1",
+                raw=[["6-0-1", "~", "5-0-1"], ["fallback_collection"]],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="7-3-1",
+                raw=[
+                    ["7-3-1", "rf.3-1-2", "3-2-3-17-77", "rf.3-1-3", "0110011001100001011011000110110001100010011000010110001101101011", "6-0-1", "1"],
+                    ["fallback_county"],
+                ],
+            ),
+        ),
+    )
+
+
 class CtsGisReadOnlyUnitTests(unittest.TestCase):
     def test_builds_attention_first_surface_and_profile_linked_projection(self) -> None:
         store = _FakeDatumStore(
@@ -136,27 +223,34 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
 
         self.assertEqual(surface["map_projection"]["projection_state"], "projectable")
         self.assertEqual(surface["map_projection"]["feature_count"], 1)
-        self.assertEqual(surface["map_projection"]["selected_feature"]["geometry_type"], "Point")
+        self.assertEqual(surface["map_projection"]["selected_feature"]["geometry_type"], "Polygon")
         self.assertEqual(surface["attention_profile"]["node_id"], "3-2-3-17-77-1")
-        self.assertEqual(surface["selected_row"]["datum_address"], "4-2-2")
+        self.assertEqual(surface["selected_row"]["datum_address"], "7-3-1")
         self.assertEqual(surface["mediation_state"]["attention_node_id"], "3-2-3-17-77-1")
-        self.assertEqual(surface["mediation_state"]["intention_token"], "descendants_depth_1_or_2")
+        self.assertEqual(surface["mediation_state"]["intention_token"], "0")
         self.assertIn("1-0", [item["token"] for item in surface["mediation_state"]["available_intentions"]])
         self.assertIn(
             "descendants_depth_1_or_2",
             [item["token"] for item in surface["mediation_state"]["available_intentions"]],
         )
         feature_types = [feature["geometry"]["type"] for feature in surface["map_projection"]["feature_collection"]["features"]]
-        self.assertEqual(feature_types, ["Point"])
+        self.assertEqual(feature_types, ["Polygon"])
         first_feature_props = surface["map_projection"]["feature_collection"]["features"][0]["properties"]
-        self.assertEqual(first_feature_props["samras_node_id"], "3-2-3-17-77-1-1")
-        self.assertEqual(first_feature_props["profile_label"], "fairlawn")
+        self.assertEqual(first_feature_props["samras_node_id"], "3-2-3-17-77-1")
+        self.assertEqual(first_feature_props["profile_label"], "summit")
         self.assertEqual(
             [item["node_id"] for item in surface["render_profiles"]],
-            ["3-2-3-17-77-1-1", "3-2-3-17-77-1-2"],
+            ["3-2-3-17-77-1"],
         )
 
-        named_row = [row for row in surface["rows"] if row["datum_address"] == "7-3-2"][0]
+        children_surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77-1",
+                "intention_token": "1-0",
+            },
+        )
+        named_row = [row for row in children_surface["rows"] if row["datum_address"] == "7-3-2"][0]
         title_overlay = [entry for entry in named_row["overlay_preview"] if entry["overlay_family"] == "title_babelette"][0]
         self.assertEqual(title_overlay["display_value"], "fairlawn")
 
@@ -234,6 +328,65 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         self.assertEqual(surface["map_projection"]["feature_count"], 0)
         self.assertEqual(surface["selected_document"]["document_name"], "anthology.json")
         self.assertTrue(surface["warnings"])
+
+    def test_real_summit_county_document_projects_hops_geometry_with_sane_bounds(self) -> None:
+        county_doc = _document_from_source_file(
+            REPO_ROOT
+            / "deployed"
+            / "fnd"
+            / "data"
+            / "sandbox"
+            / "cts-gis"
+            / "sources"
+            / "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"
+        )
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(county_doc,),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={"attention_node_id": "3-2-3-17-77", "intention_token": "0"},
+        )
+
+        self.assertEqual(surface["map_projection"]["projection_source"], "hops")
+        self.assertEqual(surface["map_projection"]["projection_state"], "projectable")
+        self.assertEqual(surface["map_projection"]["decode_summary"]["reference_binding_count"], 1506)
+        self.assertEqual(surface["map_projection"]["decode_summary"]["decoded_coordinate_count"], 1506)
+        self.assertEqual(surface["map_projection"]["decode_summary"]["failed_token_count"], 0)
+        bounds = surface["map_projection"]["feature_collection"]["bounds"]
+        self.assertAlmostEqual(bounds[0], -81.68848932782907, places=6)
+        self.assertAlmostEqual(bounds[1], 40.90650292929025, places=6)
+        self.assertAlmostEqual(bounds[2], -81.39168784187746, places=6)
+        self.assertAlmostEqual(bounds[3], 41.35117165292599, places=6)
+
+    def test_reference_geojson_fallback_reports_decode_failure_summary(self) -> None:
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(_cts_gis_reference_fallback_document(),),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={"attention_node_id": "3-2-3-17-77", "intention_token": "0"},
+        )
+
+        self.assertEqual(surface["map_projection"]["projection_source"], "reference_geojson_fallback")
+        self.assertEqual(surface["map_projection"]["projection_state"], "projectable_fallback")
+        self.assertEqual(surface["map_projection"]["decode_summary"]["reference_binding_count"], 4)
+        self.assertEqual(surface["map_projection"]["decode_summary"]["decoded_coordinate_count"], 0)
+        self.assertEqual(surface["map_projection"]["decode_summary"]["failed_token_count"], 4)
+        self.assertTrue(surface["map_projection"]["warnings"])
+        self.assertIn("reference GeoJSON geometry", " ".join(surface["map_projection"]["warnings"]))
 
 
 if __name__ == "__main__":

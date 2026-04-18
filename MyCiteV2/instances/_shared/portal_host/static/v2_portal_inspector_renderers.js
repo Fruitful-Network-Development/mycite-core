@@ -616,9 +616,32 @@
     return [x, y];
   }
 
+  function ringPathData(ring, bounds, width, height, pad) {
+    var projected = (ring || []).map(function (point) {
+      var xy = projectPoint(point, bounds, width, height, pad);
+      return String(xy[0]) + " " + String(xy[1]);
+    });
+    if (!projected.length) return "";
+    return "M " + projected.join(" L ") + " Z";
+  }
+
+  function polygonPathData(polygons, bounds, width, height, pad) {
+    return (polygons || [])
+      .map(function (polygon) {
+        return (polygon || [])
+          .map(function (ring) {
+            return ringPathData(ring, bounds, width, height, pad);
+          })
+          .filter(Boolean)
+          .join(" ");
+      })
+      .filter(Boolean)
+      .join(" ");
+  }
+
   function renderFeatureShape(feature, bounds, width, height, pad) {
     var geometry = (feature || {}).geometry || {};
-    var featureId = escapeHtml(feature.feature_id || "");
+    var featureId = escapeHtml(feature.feature_id || feature.id || "");
     var className = "cts-gis-mapStage__shape" + (feature.selected ? " is-selected" : "");
     if (geometry.type === "Point") {
       var point = projectPoint(geometry.coordinates || [], bounds, width, height, pad);
@@ -636,20 +659,23 @@
         '"></circle>'
       );
     }
-    if (geometry.type === "Polygon") {
-      var ring = ((geometry.coordinates || [])[0] || []).map(function (point) {
-        var projected = projectPoint(point, bounds, width, height, pad);
-        return String(projected[0]) + "," + String(projected[1]);
-      });
-      if (!ring.length) return "";
+    if (geometry.type === "Polygon" || geometry.type === "MultiPolygon") {
+      var pathData = polygonPathData(
+        geometry.type === "Polygon" ? [geometry.coordinates || []] : geometry.coordinates || [],
+        bounds,
+        width,
+        height,
+        pad
+      );
+      if (!pathData) return "";
       return (
-        '<polygon class="' +
+        '<path class="' +
         className +
         '" data-feature-id="' +
         featureId +
-        '" points="' +
-        escapeHtml(ring.join(" ")) +
-        '"></polygon>'
+        '" fill-rule="evenodd" d="' +
+        escapeHtml(pathData) +
+        '"></path>'
       );
     }
     return "";
@@ -741,6 +767,46 @@
     );
   }
 
+  function renderWarningList(items, className) {
+    if (!items || !items.length) return "";
+    return (
+      '<ul class="' +
+      escapeHtml(className || "cts-gis-warningList") +
+      '">' +
+      items
+        .map(function (item) {
+          return "<li>" + escapeHtml(item || "") + "</li>";
+        })
+        .join("") +
+      "</ul>"
+    );
+  }
+
+  function renderNavigationDiagnostics(diagnostics) {
+    if (!diagnostics || !diagnostics.length) return "";
+    return (
+      '<section class="cts-gis-navDiagnostics">' +
+      "<h4>Diagnostics</h4>" +
+      '<div class="cts-gis-navDiagnostics__items">' +
+      diagnostics
+        .map(function (item) {
+          return (
+            '<article class="cts-gis-navDiagnostics__item">' +
+            '<strong>' +
+            escapeHtml(item.code || item.severity || "notice") +
+            "</strong>" +
+            '<span class="cts-gis-navDiagnostics__meta">' +
+            escapeHtml(item.message || "") +
+            "</span>" +
+            "</article>"
+          );
+        })
+        .join("") +
+      "</div>" +
+      "</section>"
+    );
+  }
+
   function normalizeCtsGisInterfaceBody(interfaceBody) {
     var body = interfaceBody || {};
     if (body.navigation_canvas && body.garland_split_projection) {
@@ -754,6 +820,18 @@
         active_path: navCanvas.active_path || [],
         active_node_id: navCanvas.active_node_id || "",
       });
+      body.garland_split_projection.geospatial_projection = Object.assign(
+        {
+          projection_source: "none",
+          decode_summary: {
+            reference_binding_count: 0,
+            decoded_coordinate_count: 0,
+            failed_token_count: 0,
+          },
+          warnings: [],
+        },
+        body.garland_split_projection.geospatial_projection || {}
+      );
       body.garland_split_projection.profile_projection = Object.assign(
         {
           has_profile_state: false,
@@ -787,9 +865,16 @@
         geospatial_projection: {
           title: "Geospatial Projection",
           projection_state: "",
+          projection_source: "none",
           feature_count: 0,
           render_feature_count: 0,
           render_row_count: 0,
+          decode_summary: {
+            reference_binding_count: 0,
+            decoded_coordinate_count: 0,
+            failed_token_count: 0,
+          },
+          warnings: [],
           supporting_document_name: "",
           projection_document_name: "",
           selected_feature_id: "",
@@ -1076,6 +1161,7 @@
     var garlandSplit = interfaceBody.garland_split_projection || {};
     var geospatialProjection = garlandSplit.geospatial_projection || {};
     var profileProjection = garlandSplit.profile_projection || {};
+    var decodeSummary = geospatialProjection.decode_summary || {};
     var activePathEntries = navigationCanvas.active_path || [];
     activePathEntries.forEach(function (entry, index) {
       entry._renderIndex = index;
@@ -1108,11 +1194,24 @@
         '<span class="cts-gis-mapCanvas__status">state: ' +
         escapeHtml(geospatialProjection.projection_state || "inspect_only") +
         "</span>" +
+        '<span class="cts-gis-mapCanvas__status">source: ' +
+        escapeHtml(geospatialProjection.projection_source || "none") +
+        "</span>" +
         '<span class="cts-gis-mapCanvas__status">features: ' +
         escapeHtml(String(geospatialProjection.feature_count || 0)) +
         "</span>" +
         '<span class="cts-gis-mapCanvas__status">rows: ' +
         escapeHtml(String(geospatialProjection.render_row_count || 0)) +
+        "</span>" +
+        '<span class="cts-gis-mapCanvas__status">decoded: ' +
+        escapeHtml(
+          String(decodeSummary.decoded_coordinate_count || 0) +
+            "/" +
+            String(decodeSummary.reference_binding_count || 0)
+        ) +
+        "</span>" +
+        '<span class="cts-gis-mapCanvas__status">failed: ' +
+        escapeHtml(String(decodeSummary.failed_token_count || 0)) +
         "</span>" +
         "</div>" +
         renderGeospatialStage(geospatialProjection) +
@@ -1141,6 +1240,7 @@
           emptyMessage: geospatialProjection.empty_message || "No projected geometry is available for the current navigation root.",
         }) +
         "</div>" +
+        renderWarningList(geospatialProjection.warnings || []) +
         "</div>"
       : '<div class="cts-gis-mapCanvas cts-gis-mapCanvas--empty">' +
         renderProjectionPlaceholder(
@@ -1175,13 +1275,9 @@
         renderProfileSummaries(profileProjection.correlated_profiles || []) +
         "</section>" +
         ((profileProjection.warnings || []).length
-          ? '<section class="cts-gis-garlandSplit__profileBlock"><h5>Warnings</h5><ul class="cts-gis-warningList">' +
-            (profileProjection.warnings || [])
-              .map(function (warning) {
-                return "<li>" + escapeHtml(warning) + "</li>";
-              })
-              .join("") +
-            "</ul></section>"
+          ? '<section class="cts-gis-garlandSplit__profileBlock"><h5>Warnings</h5>' +
+            renderWarningList(profileProjection.warnings || []) +
+            "</section>"
           : "") +
         "</section>"
       : renderProjectionPlaceholder(
@@ -1208,6 +1304,7 @@
       '">' +
       navigationCanvasMarkup +
       "</div>" +
+      renderNavigationDiagnostics(navigationCanvas.diagnostics || []) +
       "</section>" +
       "</section>" +
       '<section class="v2-card cts-gis-pane cts-gis-pane--garland">' +

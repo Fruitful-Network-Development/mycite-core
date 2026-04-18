@@ -219,12 +219,275 @@ def _feature_bounds(points: list[list[float]]) -> list[float] | None:
     return [min(longitudes), min(latitudes), max(longitudes), max(latitudes)]
 
 
-def _coordinate_entries(row: DatumRecognitionRow) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    for binding in row.reference_bindings:
-        if _binding_family(binding.anchor_label) != "hops_babelette":
+def _geometry_points(geometry: dict[str, Any]) -> list[list[float]]:
+    geometry_type = _as_text((geometry or {}).get("type"))
+    coordinates = (geometry or {}).get("coordinates")
+    if geometry_type == "Point" and isinstance(coordinates, list) and len(coordinates) >= 2:
+        return [[float(coordinates[0]), float(coordinates[1])]]
+    if geometry_type == "Polygon" and isinstance(coordinates, list):
+        points: list[list[float]] = []
+        for ring in coordinates:
+            if not isinstance(ring, list):
+                continue
+            for point in ring:
+                if isinstance(point, list) and len(point) >= 2:
+                    points.append([float(point[0]), float(point[1])])
+        return points
+    if geometry_type == "MultiPolygon" and isinstance(coordinates, list):
+        points = []
+        for polygon in coordinates:
+            if not isinstance(polygon, list):
+                continue
+            for ring in polygon:
+                if not isinstance(ring, list):
+                    continue
+                for point in ring:
+                    if isinstance(point, list) and len(point) >= 2:
+                        points.append([float(point[0]), float(point[1])])
+        return points
+    return []
+
+
+def _feature_bounds_from_geometry(geometry: dict[str, Any]) -> list[float] | None:
+    return _feature_bounds(_geometry_points(geometry))
+
+
+def _dedupe_texts(values: list[object] | tuple[object, ...]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        token = _as_text(value)
+        if not token or token in seen:
             continue
-        decoded = decode_hops_coordinate_token(binding.value_token)
+        seen.add(token)
+        out.append(token)
+    return out
+
+
+def _row_declared_coordinate_count(row_address: object) -> int:
+    parts = _address_tuple(row_address)
+    if len(parts) == 3 and parts[0] == 4:
+        return int(parts[1])
+    return 0
+
+
+def _decoded_coordinate_payload(
+    token: str,
+    *,
+    longitude: float,
+    latitude: float,
+    encoding: str,
+) -> dict[str, Any]:
+    return {
+        "encoding": encoding,
+        "address": token,
+        "segments": [int(piece) for piece in token.split("-") if piece.isdigit()],
+        "longitude": {
+            "value": float(longitude),
+            "text": f"{float(longitude):.13f}",
+            "range": [float(longitude), float(longitude)],
+        },
+        "latitude": {
+            "value": float(latitude),
+            "text": f"{float(latitude):.13f}",
+            "range": [float(latitude), float(latitude)],
+        },
+        "pair_text": [f"{float(longitude):.13f}", f"{float(latitude):.13f}"],
+    }
+
+
+def _primary_samras_node_id(row: DatumRecognitionRow) -> str:
+    for binding in row.reference_bindings:
+        if _binding_family(binding.anchor_label) == "samras_babelette":
+            return _as_text(binding.value_token)
+    return ""
+
+
+def _geometry_polygons(geometry: dict[str, Any]) -> list[list[list[list[float]]]]:
+    geometry_type = _as_text((geometry or {}).get("type"))
+    coordinates = (geometry or {}).get("coordinates")
+    if geometry_type == "Polygon" and isinstance(coordinates, list):
+        return [[
+            [
+                [float(point[0]), float(point[1])]
+                for point in ring
+                if isinstance(point, list) and len(point) >= 2
+            ]
+            for ring in coordinates
+            if isinstance(ring, list)
+        ]]
+    if geometry_type == "MultiPolygon" and isinstance(coordinates, list):
+        return [
+            [
+                [
+                    [float(point[0]), float(point[1])]
+                    for point in ring
+                    if isinstance(point, list) and len(point) >= 2
+                ]
+                for ring in polygon
+                if isinstance(ring, list)
+            ]
+            for polygon in coordinates
+            if isinstance(polygon, list)
+        ]
+    return []
+
+
+def _row_polygon_groups(row_address: str, raw_row_index: dict[str, DatumRecognitionRow]) -> list[list[str]]:
+    row = raw_row_index.get(row_address)
+    if row is None:
+        return []
+    family = _row_family(row_address)
+    linked = _linked_row_addresses(row, set(raw_row_index))
+    if family == "4":
+        return [[row_address]]
+    if family == "5":
+        rings = [address for address in linked if address in raw_row_index and _row_family(address) == "4"]
+        return [rings] if rings else []
+    if family == "6":
+        polygons: list[list[str]] = []
+        for address in linked:
+            if address not in raw_row_index:
+                continue
+            if _row_family(address) == "5":
+                polygons.extend(_row_polygon_groups(address, raw_row_index))
+            elif _row_family(address) == "4":
+                polygons.append([address])
+        return polygons
+    if family == "7":
+        polygons = []
+        for address in linked:
+            if address not in raw_row_index or _row_family(address) not in {"6", "5", "4"}:
+                continue
+            polygons.extend(_row_polygon_groups(address, raw_row_index))
+        return polygons
+    return []
+
+
+def _normalized_reference_ring(ring: list[list[float]], *, expected_count: int) -> list[list[float]]:
+    points = [
+        [float(point[0]), float(point[1])]
+        for point in ring
+        if isinstance(point, list) and len(point) >= 2
+    ]
+    if not points:
+        return []
+    if expected_count <= 0:
+        return points
+    if len(points) == expected_count:
+        return points
+    if len(points) > 1 and points[0] == points[-1] and len(points) - 1 == expected_count:
+        return points[:-1]
+    if len(points) > 1 and points[0] != points[-1] and len(points) + 1 == expected_count:
+        return points + [list(points[0])]
+    return []
+
+
+def _build_cts_gis_coordinate_authority(document: DatumRecognitionDocument) -> dict[str, Any]:
+    metadata = dict(document.document_metadata or {})
+    payload = metadata.get("reference_geojson")
+    expected_node_id = _as_text(metadata.get("reference_geojson_node_id"))
+    authority: dict[str, Any] = {
+        "node_id": expected_node_id,
+        "row_coordinate_map": {},
+        "warnings": [],
+    }
+    if not isinstance(payload, dict) or not expected_node_id:
+        return authority
+
+    raw_row_index = {row.datum_address: row for row in document.rows}
+    owner_row = next(
+        (row for row in document.rows if _primary_samras_node_id(row) == expected_node_id and _row_family(row.datum_address) == "7"),
+        None,
+    )
+    if owner_row is None:
+        authority["warnings"] = [
+            f"{document.document_name} carries reference GeoJSON for {expected_node_id}, but no matching 7-row binding was found."
+        ]
+        return authority
+
+    polygon_groups = _row_polygon_groups(owner_row.datum_address, raw_row_index)
+    reference_polygons: list[list[list[list[float]]]] = []
+    payload_type = _as_text(payload.get("type"))
+    if payload_type == "FeatureCollection":
+        features = [item for item in list(payload.get("features") or []) if isinstance(item, dict)]
+    elif payload_type == "Feature":
+        features = [payload]
+    else:
+        features = []
+    for feature in features:
+        reference_polygons.extend(_geometry_polygons(dict(feature.get("geometry") or {})))
+
+    warnings: list[str] = []
+    if len(reference_polygons) != len(polygon_groups):
+        warnings.append(
+            f"{document.document_name} reference GeoJSON carries {len(reference_polygons)} polygon members, "
+            f"but the HOPS row chain resolves {len(polygon_groups)}."
+        )
+
+    row_coordinate_map: dict[str, list[list[float]]] = {}
+    for polygon_index, (row_group, reference_polygon) in enumerate(
+        zip(polygon_groups, reference_polygons),
+        start=1,
+    ):
+        if len(row_group) != len(reference_polygon):
+            warnings.append(
+                f"{document.document_name} polygon {polygon_index} carries {len(reference_polygon)} rings, "
+                f"but the HOPS row chain resolves {len(row_group)}."
+            )
+            continue
+        for ring_index, (row_address, reference_ring) in enumerate(zip(row_group, reference_polygon), start=1):
+            normalized_ring = _normalized_reference_ring(
+                reference_ring,
+                expected_count=_row_declared_coordinate_count(row_address),
+            )
+            if not normalized_ring:
+                warnings.append(
+                    f"{document.document_name} ring {polygon_index}.{ring_index} did not align with {row_address}."
+                )
+                continue
+            row_coordinate_map[row_address] = normalized_ring
+
+    authority["row_coordinate_map"] = row_coordinate_map
+    authority["warnings"] = _dedupe_texts(warnings)
+    return authority
+
+
+def _coordinate_projection(
+    row: DatumRecognitionRow,
+    *,
+    coordinate_authority: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    mapped_ring = list(((coordinate_authority or {}).get("row_coordinate_map") or {}).get(row.datum_address) or [])
+    hops_bindings = [
+        binding for binding in row.reference_bindings if _binding_family(binding.anchor_label) == "hops_babelette"
+    ]
+    if not hops_bindings:
+        return {
+            "entries": [],
+            "reference_binding_count": 0,
+            "decoded_coordinate_count": 0,
+            "failed_token_count": 0,
+            "projection_source": "none",
+            "warnings": [],
+        }
+    out: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    reference_binding_count = 0
+    for binding in hops_bindings:
+        binding_index = reference_binding_count
+        reference_binding_count += 1
+        token = _as_text(binding.value_token)
+        decoded = None
+        if binding_index < len(mapped_ring):
+            decoded = _decoded_coordinate_payload(
+                token,
+                longitude=float(mapped_ring[binding_index][0]),
+                latitude=float(mapped_ring[binding_index][1]),
+                encoding="cts_gis_parity_hops",
+            )
+        else:
+            decoded = decode_hops_coordinate_token(token)
         if decoded is None:
             continue
         longitude = decoded["longitude"]
@@ -244,7 +507,30 @@ def _coordinate_entries(row: DatumRecognitionRow) -> list[dict[str, Any]]:
                 "decoded": decoded,
             }
         )
-    return out
+
+    declared_coordinate_count = _row_declared_coordinate_count(row.datum_address)
+    if declared_coordinate_count and declared_coordinate_count != reference_binding_count:
+        warnings.append(
+            f"{row.datum_address} declares {declared_coordinate_count} HOPS vertices but carries {reference_binding_count}."
+        )
+    if mapped_ring and len(mapped_ring) != reference_binding_count:
+        warnings.append(
+            f"{row.datum_address} parity authority mapped {len(mapped_ring)} coordinates for {reference_binding_count} HOPS bindings."
+        )
+    decoded_coordinate_count = len(out)
+    failed_token_count = max(reference_binding_count - decoded_coordinate_count, 0)
+    if reference_binding_count and failed_token_count:
+        warnings.append(
+            f"{row.datum_address} decoded {decoded_coordinate_count}/{reference_binding_count} HOPS coordinates."
+        )
+    return {
+        "entries": out,
+        "reference_binding_count": reference_binding_count,
+        "decoded_coordinate_count": decoded_coordinate_count,
+        "failed_token_count": failed_token_count,
+        "projection_source": "hops" if decoded_coordinate_count else "none",
+        "warnings": _dedupe_texts(warnings),
+    }
 
 
 def _feature_from_row(
@@ -256,6 +542,9 @@ def _feature_from_row(
     primary_samras_node_id: str,
     profile_label: str,
     title_display: str,
+    projection_source: str = "none",
+    decode_summary: dict[str, Any] | None = None,
+    projection_warnings: list[str] | None = None,
 ) -> dict[str, Any] | None:
     if not coordinates:
         return None
@@ -286,6 +575,9 @@ def _feature_from_row(
         "samras_node_id": primary_samras_node_id,
         "profile_label": profile_label,
         "diagnostic_states": list(row.diagnostic_states),
+        "projection_source": projection_source,
+        "decode_summary": dict(decode_summary or {}),
+        "projection_warnings": list(projection_warnings or []),
         "feature": {
             "type": "Feature",
             "id": feature_id,
@@ -298,7 +590,69 @@ def _feature_from_row(
                 "samras_node_id": primary_samras_node_id,
                 "profile_label": profile_label,
                 "diagnostic_states": list(row.diagnostic_states),
+                "projection_source": projection_source,
+                "decode_summary": dict(decode_summary or {}),
+                "projection_warnings": list(projection_warnings or []),
             },
+        },
+    }
+
+
+def _feature_from_geometry(
+    *,
+    document: DatumRecognitionDocument,
+    feature_id: str,
+    row_address: str,
+    geometry: dict[str, Any],
+    label_text: str,
+    labels: list[str],
+    diagnostic_states: list[str],
+    primary_samras_node_id: str,
+    profile_label: str,
+    title_display: str,
+    properties_extra: dict[str, Any] | None = None,
+    projection_source: str = "none",
+    decode_summary: dict[str, Any] | None = None,
+    projection_warnings: list[str] | None = None,
+) -> dict[str, Any] | None:
+    geometry_type = _as_text((geometry or {}).get("type"))
+    if geometry_type not in {"Point", "Polygon", "MultiPolygon"}:
+        return None
+    geometry_points = _geometry_points(geometry)
+    if not geometry_points:
+        return None
+    feature_properties = {
+        **dict(properties_extra or {}),
+        "row_address": row_address,
+        "label_text": label_text,
+        "labels": list(labels),
+        "title_display": title_display,
+        "samras_node_id": primary_samras_node_id,
+        "profile_label": profile_label,
+        "diagnostic_states": list(diagnostic_states),
+        "projection_source": projection_source,
+        "decode_summary": dict(decode_summary or {}),
+        "projection_warnings": list(projection_warnings or []),
+    }
+    return {
+        "feature_id": feature_id,
+        "row_address": row_address,
+        "label_text": label_text,
+        "labels": list(labels),
+        "geometry_type": geometry_type,
+        "bounds": _feature_bounds(geometry_points),
+        "title_display": title_display,
+        "samras_node_id": primary_samras_node_id,
+        "profile_label": profile_label,
+        "diagnostic_states": list(diagnostic_states),
+        "projection_source": projection_source,
+        "decode_summary": dict(decode_summary or {}),
+        "projection_warnings": list(projection_warnings or []),
+        "feature": {
+            "type": "Feature",
+            "id": feature_id,
+            "geometry": geometry,
+            "properties": feature_properties,
         },
     }
 
@@ -325,9 +679,11 @@ def _row_projection(
     *,
     overlay_mode: str,
     row_address_set: set[str],
+    coordinate_authority: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     overlays = [_binding_overlay(binding, overlay_mode=overlay_mode) for binding in row.reference_bindings]
-    coordinates = _coordinate_entries(row)
+    coordinate_projection = _coordinate_projection(row, coordinate_authority=coordinate_authority)
+    coordinates = list(coordinate_projection.get("entries") or [])
     samras_node_ids = [
         _as_text(item.get("display_value")) or _as_text(item.get("raw_value"))
         for item in overlays
@@ -352,6 +708,13 @@ def _row_projection(
         primary_samras_node_id=primary_samras_node_id,
         profile_label=profile_label,
         title_display=title_display,
+        projection_source=_as_text(coordinate_projection.get("projection_source")) or "none",
+        decode_summary={
+            "reference_binding_count": int(coordinate_projection.get("reference_binding_count") or 0),
+            "decoded_coordinate_count": int(coordinate_projection.get("decoded_coordinate_count") or 0),
+            "failed_token_count": int(coordinate_projection.get("failed_token_count") or 0),
+        },
+        projection_warnings=list(coordinate_projection.get("warnings") or []),
     )
     return {
         "datum_address": row.datum_address,
@@ -365,7 +728,15 @@ def _row_projection(
         "reference_bindings": [binding.to_dict() for binding in row.reference_bindings],
         "overlay_values": overlays,
         "projectable_coordinates": coordinates,
-        "feature_ids": [] if feature is None else [feature["feature_id"]],
+        "reference_binding_count": int(coordinate_projection.get("reference_binding_count") or 0),
+        "decoded_coordinate_count": int(coordinate_projection.get("decoded_coordinate_count") or 0),
+        "failed_token_count": int(coordinate_projection.get("failed_token_count") or 0),
+        "coordinate_projection_source": _as_text(coordinate_projection.get("projection_source")) or "none",
+        "coordinate_warnings": list(coordinate_projection.get("warnings") or []),
+        # Profile features are attached at the 7 -> 6 -> 5 -> 4 chain during
+        # document projection so Garland operates on profile geometry rather than
+        # raw coordinate rows.
+        "feature_ids": [],
         "linked_row_addresses": _linked_row_addresses(row, row_address_set),
         "samras_node_id": primary_samras_node_id,
         "samras_node_ids": list(samras_node_ids),
@@ -374,6 +745,182 @@ def _row_projection(
         "depth": _node_depth(primary_samras_node_id),
         "direct_feature": feature,
     }
+
+
+def _row_family(row_address: str) -> str:
+    return _as_text(row_address).split("-", 1)[0]
+
+
+def _coordinate_ring(row: dict[str, Any]) -> list[list[float]]:
+    points = [list(entry["coordinates"]) for entry in list(row.get("projectable_coordinates") or [])]
+    if len(points) < 2:
+        return []
+    ring = [list(point) for point in points]
+    if ring[0] != ring[-1]:
+        ring.append(list(ring[0]))
+    return ring if len(ring) >= 4 else []
+
+
+def _geometry_from_row_address(row_address: str, row_index: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    row = row_index.get(row_address)
+    if row is None:
+        return None
+    family = _row_family(row_address)
+    if family == "4":
+        points = [list(entry["coordinates"]) for entry in list(row.get("projectable_coordinates") or [])]
+        if not points:
+            return None
+        if len(points) == 1:
+            return {"type": "Point", "coordinates": list(points[0])}
+        ring = _coordinate_ring(row)
+        return None if not ring else {"type": "Polygon", "coordinates": [ring]}
+
+    if family == "5":
+        rings = [
+            ring
+            for address in list(row.get("linked_row_addresses") or [])
+            if address in row_index and _row_family(address) == "4"
+            for ring in [_coordinate_ring(row_index[address])]
+            if ring
+        ]
+        return None if not rings else {"type": "Polygon", "coordinates": rings}
+
+    if family == "6":
+        polygons: list[list[list[list[float]]]] = []
+        child_addresses = [
+            address
+            for address in list(row.get("linked_row_addresses") or [])
+            if address in row_index and _row_family(address) in {"5", "4"}
+        ]
+        for address in child_addresses:
+            child_geometry = _geometry_from_row_address(address, row_index)
+            geometry_type = _as_text((child_geometry or {}).get("type"))
+            if geometry_type == "Polygon":
+                polygons.append(list(child_geometry.get("coordinates") or []))
+            elif geometry_type == "MultiPolygon":
+                polygons.extend(list(child_geometry.get("coordinates") or []))
+            elif geometry_type == "Point" and len(child_addresses) == 1:
+                return child_geometry
+        if not polygons:
+            return None
+        if len(polygons) == 1:
+            return {"type": "Polygon", "coordinates": polygons[0]}
+        return {"type": "MultiPolygon", "coordinates": polygons}
+
+    if family == "7":
+        for address in list(row.get("linked_row_addresses") or []):
+            if address not in row_index or _row_family(address) not in {"6", "5", "4"}:
+                continue
+            geometry = _geometry_from_row_address(address, row_index)
+            if geometry is not None:
+                return geometry
+    return None
+
+
+def _projection_summary_for_row_addresses(
+    row_addresses: list[str],
+    row_index: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    reference_binding_count = 0
+    decoded_coordinate_count = 0
+    failed_token_count = 0
+    warnings: list[str] = []
+    for row_address in row_addresses:
+        row = row_index.get(row_address)
+        if row is None or _row_family(row_address) != "4":
+            continue
+        reference_binding_count += int(row.get("reference_binding_count") or 0)
+        decoded_coordinate_count += int(row.get("decoded_coordinate_count") or 0)
+        failed_token_count += int(row.get("failed_token_count") or 0)
+        warnings.extend(list(row.get("coordinate_warnings") or []))
+    return {
+        "reference_binding_count": reference_binding_count,
+        "decoded_coordinate_count": decoded_coordinate_count,
+        "failed_token_count": failed_token_count,
+        "warnings": _dedupe_texts(warnings),
+    }
+
+
+def _reference_geojson_profile_features(
+    document: DatumRecognitionDocument,
+    *,
+    owner_row: dict[str, Any],
+    decode_summary: dict[str, Any] | None = None,
+    projection_warnings: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    metadata = dict(document.document_metadata or {})
+    expected_node_id = _as_text(metadata.get("reference_geojson_node_id"))
+    owner_node_id = _as_text(owner_row.get("samras_node_id"))
+    if expected_node_id and expected_node_id != owner_node_id:
+        return []
+
+    payload = metadata.get("reference_geojson")
+    if not isinstance(payload, dict):
+        return []
+
+    payload_type = _as_text(payload.get("type"))
+    if payload_type == "FeatureCollection":
+        candidate_features = [item for item in list(payload.get("features") or []) if isinstance(item, dict)]
+    elif payload_type == "Feature":
+        candidate_features = [payload]
+    else:
+        return []
+
+    out: list[dict[str, Any]] = []
+    for index, feature_payload in enumerate(candidate_features, start=1):
+        geometry = dict(feature_payload.get("geometry") or {})
+        properties = dict(feature_payload.get("properties") or {})
+        label_text = _first_non_empty(
+            [
+                properties.get("community_name"),
+                properties.get("municipality"),
+                properties.get("twp_name"),
+                owner_row.get("label_text"),
+                owner_row.get("profile_label"),
+                owner_node_id,
+            ]
+        )
+        profile_label = _first_non_empty(
+            [owner_row.get("profile_label"), properties.get("community_name"), label_text, owner_node_id]
+        )
+        title_display = _first_non_empty(
+            [owner_row.get("title_display"), properties.get("community_name"), label_text, profile_label]
+        )
+        warnings = _dedupe_texts(
+            list(projection_warnings or [])
+            + [f"{owner_row['datum_address']} fell back to reference GeoJSON geometry."]
+        )
+        feature = _feature_from_geometry(
+            document=document,
+            feature_id=f"{document.document_id}:{owner_row['datum_address']}:{index}",
+            row_address=_as_text(owner_row.get("datum_address")),
+            geometry=geometry,
+            label_text=label_text,
+            labels=list(owner_row.get("labels") or []),
+            diagnostic_states=list(owner_row.get("diagnostic_states") or []),
+            primary_samras_node_id=owner_node_id,
+            profile_label=profile_label,
+            title_display=title_display,
+            properties_extra=properties,
+            projection_source="reference_geojson_fallback",
+            decode_summary=dict(decode_summary or {}),
+            projection_warnings=warnings,
+        )
+        if feature is not None:
+            out.append(feature)
+    return out
+
+
+def _attach_feature_ids(row_addresses: list[str], feature_ids: list[str], row_index: dict[str, dict[str, Any]]) -> None:
+    for row_address in row_addresses:
+        row = row_index.get(row_address)
+        if row is None:
+            continue
+        existing_ids = list(row.get("feature_ids") or [])
+        for feature_id in feature_ids:
+            if feature_id not in existing_ids:
+                existing_ids.append(feature_id)
+        row["feature_ids"] = existing_ids
 
 
 def _reachable_row_addresses(start_row_address: str, row_index: dict[str, dict[str, Any]]) -> list[str]:
@@ -482,13 +1029,94 @@ def _preferred_default_projection_document(
 
 def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mode: str) -> dict[str, Any]:
     row_address_set = {row.datum_address for row in document.rows}
-    row_views = [_row_projection(document, row, overlay_mode=overlay_mode, row_address_set=row_address_set) for row in document.rows]
+    coordinate_authority = _build_cts_gis_coordinate_authority(document)
+    row_views = [
+        _row_projection(
+            document,
+            row,
+            overlay_mode=overlay_mode,
+            row_address_set=row_address_set,
+            coordinate_authority=coordinate_authority,
+        )
+        for row in document.rows
+    ]
     row_index = {row["datum_address"]: row for row in row_views}
-    feature_index = {
-        row["direct_feature"]["feature_id"]: row["direct_feature"]
-        for row in row_views
-        if row.get("direct_feature") is not None
-    }
+    feature_index: dict[str, dict[str, Any]] = {}
+
+    for row in row_views:
+        node_id = _as_text(row.get("samras_node_id"))
+        if not node_id:
+            continue
+
+        reachable_addresses = _reachable_row_addresses(row["datum_address"], row_index)
+        if not reachable_addresses:
+            reachable_addresses = [row["datum_address"]]
+
+        projection_summary = _projection_summary_for_row_addresses(reachable_addresses, row_index)
+        profile_features: list[dict[str, Any]] = []
+        geometry = _geometry_from_row_address(row["datum_address"], row_index)
+        if geometry is not None:
+            feature = _feature_from_geometry(
+                document=document,
+                feature_id=f"{document.document_id}:{row['datum_address']}",
+                row_address=_as_text(row.get("datum_address")),
+                geometry=geometry,
+                label_text=_as_text(row.get("label_text")),
+                labels=list(row.get("labels") or []),
+                diagnostic_states=list(row.get("diagnostic_states") or []),
+                primary_samras_node_id=node_id,
+                profile_label=_as_text(row.get("profile_label")) or node_id,
+                title_display=_as_text(row.get("title_display")),
+                properties_extra={
+                    "bound_node_ids": list(row.get("samras_node_ids") or [])[1:],
+                },
+                projection_source="hops",
+                decode_summary={
+                    "reference_binding_count": int(projection_summary.get("reference_binding_count") or 0),
+                    "decoded_coordinate_count": int(projection_summary.get("decoded_coordinate_count") or 0),
+                    "failed_token_count": int(projection_summary.get("failed_token_count") or 0),
+                },
+                projection_warnings=list(projection_summary.get("warnings") or []),
+            )
+            if feature is not None:
+                profile_features = [feature]
+        if not profile_features:
+            profile_features = _reference_geojson_profile_features(
+                document,
+                owner_row=row,
+                decode_summary={
+                    "reference_binding_count": int(projection_summary.get("reference_binding_count") or 0),
+                    "decoded_coordinate_count": int(projection_summary.get("decoded_coordinate_count") or 0),
+                    "failed_token_count": int(projection_summary.get("failed_token_count") or 0),
+                },
+                projection_warnings=list(projection_summary.get("warnings") or [])
+                + list(coordinate_authority.get("warnings") or []),
+            )
+        if not profile_features and row.get("direct_feature") is not None:
+            profile_features = [row["direct_feature"]]
+        if not profile_features:
+            continue
+
+        feature_ids: list[str] = []
+        for feature in profile_features:
+            feature_id = _as_text(feature.get("feature_id"))
+            if not feature_id:
+                continue
+            feature_index[feature_id] = feature
+            feature_ids.append(feature_id)
+        if feature_ids:
+            _attach_feature_ids(reachable_addresses, feature_ids, row_index)
+
+    for row in row_views:
+        if row.get("feature_ids") or row.get("direct_feature") is None:
+            continue
+        direct_feature = row["direct_feature"]
+        feature_id = _as_text(direct_feature.get("feature_id"))
+        if not feature_id:
+            continue
+        feature_index.setdefault(feature_id, direct_feature)
+        row["feature_ids"] = [feature_id]
+
     profiles_by_node: dict[str, dict[str, Any]] = {}
     for row in row_views:
         node_id = _as_text(row.get("samras_node_id"))
@@ -564,6 +1192,10 @@ def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mo
         default_attention_node_id = _as_text(sorted_profiles[0]["node_id"])
     document_summary["default_attention_node_id"] = default_attention_node_id
     document_summary["samras_seed_status"] = "ready" if _DEFAULT_ATTENTION_NODE_ID in profiles_by_node else "missing"
+    document_summary["projection_warnings"] = _dedupe_texts(
+        list(document_summary.get("warnings") or [])
+        + list(coordinate_authority.get("warnings") or [])
+    )
 
     return {
         "document": document,
@@ -575,6 +1207,103 @@ def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mo
         "profile_index": profiles_by_node,
         "children_by_parent": children_by_parent,
         "row_profile_index": row_profile_index,
+        "feature_profile_index": feature_profile_index,
+        "default_attention_node_id": default_attention_node_id,
+        "coordinate_authority": coordinate_authority,
+    }
+
+
+def _build_navigation_bundle(documents: list[dict[str, Any]]) -> dict[str, Any]:
+    if not documents:
+        return {
+            "profile_index": {},
+            "children_by_parent": {},
+            "feature_index": {},
+            "feature_profile_index": {},
+            "default_attention_node_id": "",
+        }
+
+    if len(documents) == 1:
+        document_bundle = documents[0]
+        return {
+            "profile_index": dict(document_bundle.get("profile_index") or {}),
+            "children_by_parent": {
+                key: list(value)
+                for key, value in dict(document_bundle.get("children_by_parent") or {}).items()
+            },
+            "feature_index": dict(document_bundle.get("feature_index") or {}),
+            "feature_profile_index": {
+                key: list(value)
+                for key, value in dict(document_bundle.get("feature_profile_index") or {}).items()
+            },
+            "default_attention_node_id": _as_text(document_bundle.get("default_attention_node_id")),
+        }
+
+    profiles_by_node: dict[str, dict[str, Any]] = {}
+    feature_index: dict[str, dict[str, Any]] = {}
+    feature_profile_index: dict[str, list[str]] = {}
+
+    for document_bundle in documents:
+        for feature_id, feature in dict(document_bundle.get("feature_index") or {}).items():
+            feature_index[_as_text(feature_id)] = feature
+        for feature_id, node_ids in dict(document_bundle.get("feature_profile_index") or {}).items():
+            merged_node_ids = feature_profile_index.setdefault(_as_text(feature_id), [])
+            for node_id in list(node_ids or []):
+                node_id_text = _as_text(node_id)
+                if node_id_text and node_id_text not in merged_node_ids:
+                    merged_node_ids.append(node_id_text)
+        for node_id, profile in dict(document_bundle.get("profile_index") or {}).items():
+            node_id_text = _as_text(node_id)
+            if not node_id_text:
+                continue
+            candidate = {
+                **dict(profile),
+                "feature_ids": list(profile.get("feature_ids") or []),
+                "row_addresses": list(profile.get("row_addresses") or []),
+                "bound_node_ids": list(profile.get("bound_node_ids") or []),
+                "labels": list(profile.get("labels") or []),
+                "diagnostic_states": list(profile.get("diagnostic_states") or []),
+                "children": list(profile.get("children") or []),
+            }
+            existing = profiles_by_node.get(node_id_text)
+            if existing is None:
+                profiles_by_node[node_id_text] = candidate
+                continue
+            existing["feature_ids"] = _sorted_addresses(set(existing["feature_ids"]) | set(candidate["feature_ids"]))
+            existing["feature_count"] = len(existing["feature_ids"])
+            existing["row_addresses"] = _sorted_addresses(set(existing["row_addresses"]) | set(candidate["row_addresses"]))
+            existing["bound_node_ids"] = _sorted_addresses(set(existing["bound_node_ids"]) | set(candidate["bound_node_ids"]))
+            existing["labels"] = sorted(set(existing["labels"]) | set(candidate["labels"]))
+            existing["diagnostic_states"] = sorted(
+                set(existing["diagnostic_states"]) | set(candidate["diagnostic_states"])
+            )
+            if candidate["feature_count"] > existing["feature_count"] or (
+                candidate["feature_count"] == existing["feature_count"]
+                and candidate["depth"] < existing["depth"]
+            ):
+                for field in ("row_address", "profile_label", "title_display", "document_id"):
+                    existing[field] = candidate[field]
+
+    children_by_parent: dict[str, list[str]] = {}
+    for node_id, profile in profiles_by_node.items():
+        children_by_parent.setdefault(_as_text(profile.get("parent_node_id")), []).append(node_id)
+    for node_ids in children_by_parent.values():
+        node_ids.sort(key=lambda item: (_node_depth(item), item))
+    for node_id, profile in profiles_by_node.items():
+        profile["child_count"] = len(children_by_parent.get(node_id, []))
+        profile["children"] = list(children_by_parent.get(node_id, []))
+
+    default_attention_node_id = ""
+    if _DEFAULT_ATTENTION_NODE_ID in profiles_by_node:
+        default_attention_node_id = _DEFAULT_ATTENTION_NODE_ID
+    elif profiles_by_node:
+        default_attention_node_id = _as_text(
+            sorted(profiles_by_node.values(), key=_profile_sort_key)[0].get("node_id")
+        )
+    return {
+        "profile_index": profiles_by_node,
+        "children_by_parent": children_by_parent,
+        "feature_index": feature_index,
         "feature_profile_index": feature_profile_index,
         "default_attention_node_id": default_attention_node_id,
     }
@@ -729,7 +1458,7 @@ class CtsGisReadOnlyService:
         requested_row_address = _as_text(selected_row_address)
         requested_feature_id = _as_text(selected_feature_id)
         requested_attention_node_id = _as_text(attention_node_id)
-        project_all_documents = bool((requested_row_address or requested_feature_id) and not requested_document_id)
+        project_all_documents = not requested_document_id
         target_document = None
         if requested_document_id and _is_cts_gis_document_id(requested_document_id):
             for document in cts_gis_documents:
@@ -765,6 +1494,7 @@ class CtsGisReadOnlyService:
         documents = [
             _build_document_projection(document, overlay_mode=normalized_overlay_mode) for document in target_documents
         ]
+        navigation_bundle = _build_navigation_bundle(documents)
         projected_summary_map = {
             _as_text((document_bundle.get("document_summary") or {}).get("document_id")): dict(
                 document_bundle.get("document_summary") or {}
@@ -798,6 +1528,7 @@ class CtsGisReadOnlyService:
             "overlay_mode": normalized_overlay_mode,
             "raw_underlay_visible": normalized_raw_underlay,
             "documents": documents,
+            "navigation_bundle": navigation_bundle,
             "document_catalog": document_catalog,
             "fallback_document_summary": fallback_document_summary,
             "warnings": warnings,
@@ -813,6 +1544,7 @@ class CtsGisReadOnlyService:
         mediation_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         documents = list(projection_bundle.get("documents") or [])
+        navigation_bundle = dict(projection_bundle.get("navigation_bundle") or {})
         requested_document_id = _as_text(selected_document_id)
         requested_row_address = _as_text(selected_row_address)
         requested_feature_id = _as_text(selected_feature_id)
@@ -830,6 +1562,11 @@ class CtsGisReadOnlyService:
                 ):
                     selected_document_bundle = document_bundle
                     break
+        if selected_document_bundle is None and requested_attention_node_id:
+            for document_bundle in documents:
+                if requested_attention_node_id in dict(document_bundle.get("profile_index") or {}):
+                    selected_document_bundle = document_bundle
+                    break
         if selected_document_bundle is None and requested_document_id:
             for document_bundle in documents:
                 if _matches_cts_gis_document_id(
@@ -844,6 +1581,16 @@ class CtsGisReadOnlyService:
             selected_document_bundle, _ = _document_lookup_by_row_address(projection_bundle, requested_row_address)
         if selected_document_bundle is None:
             for document_bundle in documents:
+                if bool((document_bundle.get("document_summary") or {}).get("selected")):
+                    selected_document_bundle = document_bundle
+                    break
+        if selected_document_bundle is None:
+            for document_bundle in documents:
+                if _as_text(document_bundle.get("default_attention_node_id")) == _DEFAULT_ATTENTION_NODE_ID:
+                    selected_document_bundle = document_bundle
+                    break
+        if selected_document_bundle is None:
+            for document_bundle in documents:
                 if _as_text(document_bundle.get("default_attention_node_id")):
                     selected_document_bundle = document_bundle
                     break
@@ -852,9 +1599,9 @@ class CtsGisReadOnlyService:
 
         selected_document_summary = (selected_document_bundle or {}).get("document_summary") or {}
         attention_document_id = _as_text(selected_document_summary.get("document_id"))
-        profile_index = (selected_document_bundle or {}).get("profile_index") or {}
+        profile_index = dict(navigation_bundle.get("profile_index") or {})
         row_profile_index = (selected_document_bundle or {}).get("row_profile_index") or {}
-        feature_profile_index = (selected_document_bundle or {}).get("feature_profile_index") or {}
+        feature_profile_index = dict(navigation_bundle.get("feature_profile_index") or {})
 
         attention_node_id = requested_attention_node_id
         if not attention_node_id and requested_feature_id:
@@ -866,14 +1613,29 @@ class CtsGisReadOnlyService:
             if row_candidates:
                 attention_node_id = _as_text(row_candidates[0])
         if not attention_node_id:
-            attention_node_id = _as_text((selected_document_bundle or {}).get("default_attention_node_id"))
+            attention_node_id = _as_text((selected_document_bundle or {}).get("default_attention_node_id")) or _as_text(
+                navigation_bundle.get("default_attention_node_id")
+            )
         if not attention_node_id and profile_index:
             attention_node_id = _as_text(sorted(profile_index.keys(), key=lambda item: (_node_depth(item), item))[0])
 
         intention_token = _normalize_intention_token(
-            selected_document_bundle or {},
+            {
+                "profile_index": profile_index,
+                "children_by_parent": dict(navigation_bundle.get("children_by_parent") or {}),
+            },
             attention_node_id,
-            requested_intention_token,
+            (
+                _LEGACY_SELF_INTENTION_TOKEN
+                if (
+                    not _as_text(requested_intention_token)
+                    and not requested_attention_node_id
+                    and not requested_row_address
+                    and not requested_feature_id
+                    and attention_node_id
+                )
+                else requested_intention_token
+            ),
         )
         return {
             "attention_document_id": attention_document_id,
@@ -893,6 +1655,7 @@ class CtsGisReadOnlyService:
         intention_token: object = _DEFAULT_INTENTION_TOKEN,
     ) -> dict[str, Any]:
         documents = list(projection_bundle.get("documents") or [])
+        navigation_bundle = dict(projection_bundle.get("navigation_bundle") or {})
         overlay_mode = _as_text(projection_bundle.get("overlay_mode")) or "auto"
         raw_underlay_visible = bool(projection_bundle.get("raw_underlay_visible"))
         selected_document_bundle = None
@@ -903,6 +1666,17 @@ class CtsGisReadOnlyService:
             ):
                 selected_document_bundle = document_bundle
                 break
+        if selected_document_bundle is None:
+            attention_node_id_text = _as_text(attention_node_id)
+            for document_bundle in documents:
+                if attention_node_id_text in dict(document_bundle.get("profile_index") or {}):
+                    selected_document_bundle = document_bundle
+                    break
+        if selected_document_bundle is None:
+            for document_bundle in documents:
+                if bool((document_bundle.get("document_summary") or {}).get("selected")):
+                    selected_document_bundle = document_bundle
+                    break
 
         if selected_document_bundle is None:
             fallback_document_summary = projection_bundle.get("fallback_document_summary")
@@ -927,6 +1701,13 @@ class CtsGisReadOnlyService:
                 "map_projection": {
                     "projection_state": "no_authoritative_cts_gis_documents",
                     "feature_count": 0,
+                    "projection_source": "none",
+                    "decode_summary": {
+                        "reference_binding_count": 0,
+                        "decoded_coordinate_count": 0,
+                        "failed_token_count": 0,
+                    },
+                    "warnings": [],
                     "selected_feature": None,
                     "feature_collection": {
                         "type": "FeatureCollection",
@@ -965,13 +1746,17 @@ class CtsGisReadOnlyService:
 
         document_summary = dict(selected_document_bundle.get("document_summary") or {})
         document_summary["selected"] = True
-        profile_index = selected_document_bundle.get("profile_index") or {}
+        profile_index = dict(navigation_bundle.get("profile_index") or {})
         row_profile_index = selected_document_bundle.get("row_profile_index") or {}
-        feature_profile_index = selected_document_bundle.get("feature_profile_index") or {}
+        feature_profile_index = dict(navigation_bundle.get("feature_profile_index") or {})
         attention_node_id_text = _as_text(attention_node_id)
         attention_profile = profile_index.get(attention_node_id_text)
-        intention_token_text = _normalize_intention_token(selected_document_bundle, attention_node_id_text, intention_token)
-        available_intentions = _available_intentions(selected_document_bundle, attention_node_id_text)
+        navigation_surface_bundle = {
+            "profile_index": profile_index,
+            "children_by_parent": dict(navigation_bundle.get("children_by_parent") or {}),
+        }
+        intention_token_text = _normalize_intention_token(navigation_surface_bundle, attention_node_id_text, intention_token)
+        available_intentions = _available_intentions(navigation_surface_bundle, attention_node_id_text)
         available_token_set = {option["token"] for option in available_intentions}
         if intention_token_text not in available_token_set:
             intention_token_text = _DEFAULT_INTENTION_TOKEN
@@ -979,7 +1764,7 @@ class CtsGisReadOnlyService:
         render_profiles: list[dict[str, Any]] = []
         if intention_token_text == _DEFAULT_INTENTION_TOKEN:
             render_profiles = _descendant_profiles(
-                selected_document_bundle,
+                navigation_surface_bundle,
                 attention_node_id=attention_node_id_text,
                 min_extra_segments=1,
                 max_extra_segments=2,
@@ -989,7 +1774,7 @@ class CtsGisReadOnlyService:
         elif intention_token_text == _CHILDREN_INTENTION_TOKEN:
             render_profiles = [
                 profile_index[node_id]
-                for node_id in list((selected_document_bundle.get("children_by_parent") or {}).get(attention_node_id_text, []))
+                for node_id in list((navigation_bundle.get("children_by_parent") or {}).get(attention_node_id_text, []))
                 if node_id in profile_index
             ]
         elif intention_token_text.startswith(_BRANCH_INTENTION_PREFIX):
@@ -999,8 +1784,10 @@ class CtsGisReadOnlyService:
                 render_profiles = [target_profile]
         render_row_addresses: set[str] = set()
         render_feature_ids: list[str] = []
+        selected_document_id_text = _as_text(document_summary.get("document_id"))
         for profile in render_profiles:
-            render_row_addresses.update(profile.get("row_addresses") or [])
+            if _as_text(profile.get("document_id")) == selected_document_id_text:
+                render_row_addresses.update(profile.get("row_addresses") or [])
             for feature_id in list(profile.get("feature_ids") or []):
                 if feature_id not in render_feature_ids:
                     render_feature_ids.append(feature_id)
@@ -1011,7 +1798,7 @@ class CtsGisReadOnlyService:
             if address in row_index
         ]
         render_row_views = [row_index[address] for address in ordered_render_row_addresses]
-        feature_index = selected_document_bundle.get("feature_index") or {}
+        feature_index = dict(navigation_bundle.get("feature_index") or {})
         render_features = [feature_index[feature_id] for feature_id in render_feature_ids if feature_id in feature_index]
 
         attention_profile_display = attention_profile
@@ -1031,26 +1818,27 @@ class CtsGisReadOnlyService:
 
         children = [
             _profile_public_summary(profile_index[node_id])
-            for node_id in list((selected_document_bundle.get("children_by_parent") or {}).get(attention_node_id_text, []))
+            for node_id in list((navigation_bundle.get("children_by_parent") or {}).get(attention_node_id_text, []))
             if node_id in profile_index
         ]
         related_profiles: list[dict[str, Any]] = []
-        related_seen: set[str] = set()
-        for bound_node_id in list((attention_profile or {}).get("bound_node_ids") or []):
-            if bound_node_id in related_seen:
-                continue
-            related_seen.add(bound_node_id)
-            profile = profile_index.get(bound_node_id)
-            if profile is None:
-                related_profiles.append(_canonical_placeholder_profile_summary(bound_node_id, relation="bound_profile"))
-            else:
-                related_profiles.append(_profile_public_summary(profile, relation="bound_profile"))
-        parent_node_id = _as_text((attention_profile or {}).get("parent_node_id"))
-        for sibling_node_id in list((selected_document_bundle.get("children_by_parent") or {}).get(parent_node_id, [])):
-            if sibling_node_id == attention_node_id_text or sibling_node_id in related_seen or sibling_node_id not in profile_index:
-                continue
-            related_seen.add(sibling_node_id)
-            related_profiles.append(_profile_public_summary(profile_index[sibling_node_id], relation="sibling"))
+        if attention_profile is not None:
+            related_seen: set[str] = set()
+            for bound_node_id in list((attention_profile or {}).get("bound_node_ids") or []):
+                if bound_node_id in related_seen:
+                    continue
+                related_seen.add(bound_node_id)
+                profile = profile_index.get(bound_node_id)
+                if profile is None:
+                    related_profiles.append(_canonical_placeholder_profile_summary(bound_node_id, relation="bound_profile"))
+                else:
+                    related_profiles.append(_profile_public_summary(profile, relation="bound_profile"))
+            parent_node_id = _as_text((attention_profile or {}).get("parent_node_id"))
+            for sibling_node_id in list((navigation_bundle.get("children_by_parent") or {}).get(parent_node_id, [])):
+                if sibling_node_id == attention_node_id_text or sibling_node_id in related_seen or sibling_node_id not in profile_index:
+                    continue
+                related_seen.add(sibling_node_id)
+                related_profiles.append(_profile_public_summary(profile_index[sibling_node_id], relation="sibling"))
 
         feature_collection_features = []
         for feature in render_features:
@@ -1095,14 +1883,40 @@ class CtsGisReadOnlyService:
             [
                 point
                 for feature in render_features
-                for point in (
-                    [feature["feature"]["geometry"]["coordinates"]]
-                    if feature["geometry_type"] == "Point"
-                    else feature["feature"]["geometry"]["coordinates"][0]
-                )
+                for point in _geometry_points(dict((feature.get("feature") or {}).get("geometry") or {}))
             ]
         )
-        projection_state = "projectable" if render_features else "inspect_only"
+        render_projection_summary = _projection_summary_for_row_addresses(ordered_render_row_addresses, row_index)
+        render_projection_warnings = _dedupe_texts(
+            list(render_projection_summary.get("warnings") or [])
+            + [
+                warning
+                for feature in render_features
+                for warning in list(feature.get("projection_warnings") or [])
+            ]
+            + list(document_summary.get("projection_warnings") or [])
+        )
+        projection_sources = {
+            _as_text(feature.get("projection_source"))
+            for feature in render_features
+            if _as_text(feature.get("projection_source")) and _as_text(feature.get("projection_source")) != "none"
+        }
+        if not render_features:
+            projection_source = "none"
+            projection_state = "inspect_only"
+        elif projection_sources == {"hops"}:
+            projection_source = "hops"
+            projection_state = (
+                "projectable_degraded"
+                if int(render_projection_summary.get("failed_token_count") or 0) or render_projection_warnings
+                else "projectable"
+            )
+        elif "reference_geojson_fallback" in projection_sources:
+            projection_source = "reference_geojson_fallback"
+            projection_state = "projectable_fallback"
+        else:
+            projection_source = "none"
+            projection_state = "inspect_only"
         warnings = list(projection_bundle.get("warnings") or [])
         document = selected_document_bundle.get("document")
         if document is not None:
@@ -1164,6 +1978,13 @@ class CtsGisReadOnlyService:
             "map_projection": {
                 "projection_state": projection_state,
                 "feature_count": len(render_features),
+                "projection_source": projection_source,
+                "decode_summary": {
+                    "reference_binding_count": int(render_projection_summary.get("reference_binding_count") or 0),
+                    "decoded_coordinate_count": int(render_projection_summary.get("decoded_coordinate_count") or 0),
+                    "failed_token_count": int(render_projection_summary.get("failed_token_count") or 0),
+                },
+                "warnings": render_projection_warnings,
                 "selected_feature": None,
                 "feature_collection": {
                     "type": "FeatureCollection",
@@ -1288,6 +2109,13 @@ class CtsGisReadOnlyService:
                     "profile_label": _as_text(row.get("profile_label")) or _as_text(row.get("samras_node_id")),
                     "title_display": _as_text(row.get("title_display")),
                     "linked_row_addresses": list(row.get("linked_row_addresses") or []),
+                    "projection_source": _as_text(row.get("coordinate_projection_source")) or "none",
+                    "decode_summary": {
+                        "reference_binding_count": int(row.get("reference_binding_count") or 0),
+                        "decoded_coordinate_count": int(row.get("decoded_coordinate_count") or 0),
+                        "failed_token_count": int(row.get("failed_token_count") or 0),
+                    },
+                    "projection_warnings": list(row.get("coordinate_warnings") or []),
                     "selected": row["datum_address"] == selected_row_address_text,
                     "selected_feature": selected_feature_id_text in (row.get("feature_ids") or []),
                 }
@@ -1320,6 +2148,10 @@ class CtsGisReadOnlyService:
                 "projection_state": _as_text((mediation_surface.get("map_projection") or {}).get("projection_state"))
                 or "inspect_only",
                 "feature_count": int((mediation_surface.get("map_projection") or {}).get("feature_count") or 0),
+                "projection_source": _as_text((mediation_surface.get("map_projection") or {}).get("projection_source"))
+                or "none",
+                "decode_summary": dict((mediation_surface.get("map_projection") or {}).get("decode_summary") or {}),
+                "warnings": list((mediation_surface.get("map_projection") or {}).get("warnings") or []),
                 "selected_feature": selected_feature,
                 "feature_collection": feature_collection,
             },
