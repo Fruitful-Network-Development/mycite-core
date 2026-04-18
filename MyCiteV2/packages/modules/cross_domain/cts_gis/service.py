@@ -1311,6 +1311,8 @@ def _build_navigation_bundle(documents: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _normalize_intention_token(document_bundle: dict[str, Any], attention_node_id: str, requested: object) -> str:
     token = _as_text(requested) or _DEFAULT_INTENTION_TOKEN
+    if attention_node_id and token == f"{attention_node_id}-0-0":
+        token = _DEFAULT_INTENTION_TOKEN
     children = list((document_bundle.get("children_by_parent") or {}).get(attention_node_id, []))
     descendants_depth_1_or_2 = _descendant_profiles(
         document_bundle,

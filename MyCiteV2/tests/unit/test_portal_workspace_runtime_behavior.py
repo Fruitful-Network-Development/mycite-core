@@ -767,6 +767,187 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertTrue(envelope["shell_composition"]["workbench_collapsed"])
             self.assertFalse(envelope["shell_composition"]["interface_panel_collapsed"])
 
+    def test_cts_gis_node_navigation_shell_request_clears_source_document_pin(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(
+                data_dir,
+                private_dir,
+                extra_projection_nodes=("3-2-3",),
+            )
+            pinned_document_id = "sandbox:cts_gis:sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"
+
+            pinned_bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={
+                    "tool_state": {
+                        "source": {"attention_document_id": pinned_document_id},
+                        "aitas": {
+                            "attention_node_id": "3-2-3-17-77",
+                            "intention_rule_id": "self",
+                        },
+                    }
+                },
+            )
+
+            self.assertEqual(
+                pinned_bundle["surface_payload"]["tool_state"]["source"]["attention_document_id"],
+                pinned_document_id,
+            )
+            navigation_canvas = pinned_bundle["inspector"]["interface_body"]["navigation_canvas"]
+            option_for_state_node = next(
+                option
+                for dropdown in navigation_canvas["dropdowns"]
+                for option in dropdown["options"]
+                if option["node_id"] == "3-2-3"
+            )
+            node_shell_request = option_for_state_node["shell_request"]
+            self.assertEqual(
+                node_shell_request["tool_state"]["source"]["attention_document_id"],
+                "",
+            )
+
+            navigated_bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={"tool_state": node_shell_request["tool_state"]},
+            )
+
+            self.assertEqual(
+                navigated_bundle["surface_payload"]["tool_state"]["source"]["attention_document_id"],
+                "",
+            )
+            summary_by_label = {
+                row["label"]: row["value"]
+                for row in navigated_bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"]["summary_rows"]
+            }
+            self.assertNotEqual(summary_by_label["Projection state"], "awaiting_real_projection")
+
+    def test_cts_gis_intention_shell_request_clears_source_document_pin(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(data_dir, private_dir)
+            pinned_document_id = "sandbox:cts_gis:sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"
+
+            pinned_bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={
+                    "tool_state": {
+                        "source": {"attention_document_id": pinned_document_id},
+                        "aitas": {
+                            "attention_node_id": "3-2-3-17-77",
+                            "intention_rule_id": "self",
+                        },
+                    }
+                },
+            )
+
+            projection_rules_group = next(
+                group
+                for group in pinned_bundle["control_panel"]["groups"]
+                if group["title"] == "Projection Rules"
+            )
+            descendants_entry = next(
+                entry
+                for entry in projection_rules_group["entries"]
+                if entry["prefix"] == "descendants_depth_1_or_2"
+            )
+            intention_shell_request = descendants_entry["shell_request"]
+            self.assertEqual(
+                intention_shell_request["tool_state"]["source"]["attention_document_id"],
+                "",
+            )
+
+            descendants_bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={"tool_state": intention_shell_request["tool_state"]},
+            )
+
+            self.assertEqual(
+                descendants_bundle["surface_payload"]["tool_state"]["source"]["attention_document_id"],
+                "",
+            )
+            self.assertEqual(
+                descendants_bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"],
+                "descendants_depth_1_or_2",
+            )
+
+    def test_cts_gis_explicit_source_document_selection_keeps_document_pin(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(data_dir, private_dir)
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+            )
+
+            source_group = next(
+                group
+                for group in bundle["control_panel"]["groups"]
+                if group["title"] == "Source Evidence"
+            )
+            county_projection_entry = next(
+                entry
+                for entry in source_group["entries"]
+                if entry["label"] == "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"
+            )
+            source_shell_request = county_projection_entry["shell_request"]
+            self.assertEqual(
+                source_shell_request["tool_state"]["source"]["attention_document_id"],
+                "sandbox:cts_gis:sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
+            )
+
+            selected_bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={"tool_state": source_shell_request["tool_state"]},
+            )
+
+            self.assertEqual(
+                selected_bundle["surface_payload"]["tool_state"]["source"]["attention_document_id"],
+                "sandbox:cts_gis:sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
+            )
+
     def test_cts_gis_default_runtime_uses_county_root_projection_with_administrative_supporting_document(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)

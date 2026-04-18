@@ -520,6 +520,7 @@ def _resolved_tool_state(
         selected_node_id=_as_text(requested_tool_state.get("selected_node_id")) or fallback_selected_node_id,
         attention_node_id=_as_text(requested_tool_state.get("aitas", {}).get("attention_node_id")) or fallback_selected_node_id,
     )
+    requested_attention_document_id = _as_text(requested_tool_state.get("source", {}).get("attention_document_id"))
     return {
         "nimm_directive": _as_text(requested_tool_state.get("nimm_directive")) or _DEFAULT_NIMM_DIRECTIVE,
         "active_path": active_path,
@@ -545,11 +546,7 @@ def _resolved_tool_state(
             or _DEFAULT_ARCHETYPE_FAMILY_ID,
         },
         "source": {
-            "attention_document_id": _as_text(
-                mediation_state.get("attention_document_id")
-                or _as_text((service_surface.get("selected_document") or {}).get("document_id"))
-                or requested_tool_state.get("source", {}).get("attention_document_id")
-            ),
+            "attention_document_id": requested_attention_document_id,
         },
         "selection": {
             "selected_row_address": _as_text(diagnostic_summary.get("selected_row_address"))
@@ -597,6 +594,8 @@ def _node_shell_request(
     next_state = _tool_state_clone(tool_state)
     _apply_selected_node_state(next_state, attention_node_id)
     next_state["aitas"]["intention_rule_id"] = _canonical_intention_rule_id(intention_rule_id)
+    next_state.setdefault("source", {})
+    next_state["source"]["attention_document_id"] = ""
     next_state["selection"]["selected_row_address"] = _as_text(selected_row_address)
     next_state["selection"]["selected_feature_id"] = _as_text(selected_feature_id)
     return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
@@ -611,6 +610,8 @@ def _intention_shell_request(
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
     next_state["aitas"]["intention_rule_id"] = _canonical_intention_rule_id(intention_rule_id)
+    next_state.setdefault("source", {})
+    next_state["source"]["attention_document_id"] = ""
     next_state["selection"]["selected_row_address"] = ""
     next_state["selection"]["selected_feature_id"] = ""
     return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)

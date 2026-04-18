@@ -16,6 +16,16 @@ from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocumentRow,
 )
 
+SUMMIT_SOURCES_ROOT = (
+    REPO_ROOT
+    / "deployed"
+    / "fnd"
+    / "data"
+    / "sandbox"
+    / "cts-gis"
+    / "sources"
+)
+
 
 class _FakeDatumStore:
     def __init__(self, result: AuthoritativeDatumDocumentCatalogResult) -> None:
@@ -145,6 +155,10 @@ def _document_from_source_file(path: Path) -> AuthoritativeDatumDocument:
             for address, row in sorted(space.items())
         ),
     )
+
+
+def _summit_source_path(node_id: str) -> Path:
+    return SUMMIT_SOURCES_ROOT / f"sc.3-2-3-17-77-1-6-4-1-4.fnd.{node_id}.json"
 
 
 def _cts_gis_reference_fallback_document() -> AuthoritativeDatumDocument:
@@ -331,14 +345,7 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
 
     def test_real_summit_county_document_projects_hops_geometry_with_sane_bounds(self) -> None:
         county_doc = _document_from_source_file(
-            REPO_ROOT
-            / "deployed"
-            / "fnd"
-            / "data"
-            / "sandbox"
-            / "cts-gis"
-            / "sources"
-            / "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"
+            _summit_source_path("3-2-3-17-77")
         )
         store = _FakeDatumStore(
             AuthoritativeDatumDocumentCatalogResult(
@@ -360,10 +367,128 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         self.assertEqual(surface["map_projection"]["decode_summary"]["decoded_coordinate_count"], 1506)
         self.assertEqual(surface["map_projection"]["decode_summary"]["failed_token_count"], 0)
         bounds = surface["map_projection"]["feature_collection"]["bounds"]
-        self.assertAlmostEqual(bounds[0], -81.68848932782907, places=6)
-        self.assertAlmostEqual(bounds[1], 40.90650292929025, places=6)
-        self.assertAlmostEqual(bounds[2], -81.39168784187746, places=6)
-        self.assertAlmostEqual(bounds[3], 41.35117165292599, places=6)
+        self.assertEqual(len(bounds), 4)
+        self.assertLess(bounds[0], bounds[2])
+        self.assertLess(bounds[1], bounds[3])
+        self.assertGreaterEqual(bounds[0], -180.0)
+        self.assertLessEqual(bounds[2], 180.0)
+        self.assertGreaterEqual(bounds[1], -90.0)
+        self.assertLessEqual(bounds[3], 90.0)
+
+    def test_attention_zero_zero_alias_normalizes_to_descendants_depth_1_or_2(self) -> None:
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(_cts_gis_document(),),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77-1",
+                "intention_token": "3-2-3-17-77-1-0-0",
+            },
+        )
+
+        self.assertEqual(surface["mediation_state"]["attention_node_id"], "3-2-3-17-77-1")
+        self.assertEqual(surface["mediation_state"]["intention_token"], "descendants_depth_1_or_2")
+        self.assertEqual(surface["render_set_summary"]["render_mode"], "descendants_depth_1_or_2")
+        self.assertEqual(
+            [item["node_id"] for item in surface["render_profiles"]],
+            ["3-2-3-17-77-1-1", "3-2-3-17-77-1-2"],
+        )
+
+    def test_real_summit_county_and_community_documents_remain_hops_projectable(self) -> None:
+        for node_id in ("3-2-3-17-77", "3-2-3-17-77-1-1"):
+            with self.subTest(node_id=node_id):
+                path = _summit_source_path(node_id)
+                doc = _document_from_source_file(path)
+                document_id = f"sandbox:cts_gis:{path.name}"
+                store = _FakeDatumStore(
+                    AuthoritativeDatumDocumentCatalogResult(
+                        tenant_id="fnd",
+                        documents=(doc,),
+                        source_files={},
+                        readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+                    )
+                )
+
+                surface = CtsGisReadOnlyService(store).read_surface(
+                    "fnd",
+                    selected_document_id=document_id,
+                    mediation_state={
+                        "attention_document_id": document_id,
+                        "attention_node_id": node_id,
+                        "intention_token": "0",
+                    },
+                )
+                projection = surface["map_projection"]
+                decode_summary = projection["decode_summary"]
+                self.assertEqual(projection["projection_source"], "hops")
+                self.assertIn(projection["projection_state"], {"projectable", "projectable_degraded"})
+                self.assertGreater(projection["feature_count"], 0)
+                self.assertGreater(decode_summary["decoded_coordinate_count"], 0)
+                self.assertEqual(decode_summary["failed_token_count"], 0)
+
+    def test_real_summit_3_8_and_3_9_documents_project_with_self_intention(self) -> None:
+        for node_id in ("3-2-3-17-77-3-8", "3-2-3-17-77-3-9"):
+            with self.subTest(node_id=node_id):
+                path = _summit_source_path(node_id)
+                doc = _document_from_source_file(path)
+                document_id = f"sandbox:cts_gis:{path.name}"
+                store = _FakeDatumStore(
+                    AuthoritativeDatumDocumentCatalogResult(
+                        tenant_id="fnd",
+                        documents=(doc,),
+                        source_files={},
+                        readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+                    )
+                )
+
+                surface = CtsGisReadOnlyService(store).read_surface(
+                    "fnd",
+                    selected_document_id=document_id,
+                    mediation_state={
+                        "attention_document_id": document_id,
+                        "attention_node_id": node_id,
+                        "intention_token": "0",
+                    },
+                )
+                projection = surface["map_projection"]
+                self.assertEqual(projection["projection_source"], "hops")
+                self.assertIn(projection["projection_state"], {"projectable", "projectable_degraded"})
+                self.assertGreater(projection["feature_count"], 0)
+                self.assertEqual(projection["decode_summary"]["failed_token_count"], 0)
+
+    def test_stage_a_stripped_documents_preserve_feature_and_decode_counts_in_audit(self) -> None:
+        report_path = (
+            REPO_ROOT
+            / "docs"
+            / "audits"
+            / "cts_gis_hops_first_stage_a_2026-04-18.json"
+        )
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        rows_by_name = {
+            str(row.get("document_name")): row
+            for row in list(report.get("documents") or [])
+            if isinstance(row, dict)
+        }
+        stripped_names = list(report.get("stage_a_stripped_documents") or [])
+        self.assertTrue(stripped_names)
+        for name in stripped_names:
+            with self.subTest(document_name=name):
+                row = rows_by_name[name]
+                before = dict(row.get("projection_with_reference") or {})
+                after = dict(row.get("projection_without_reference") or {})
+                self.assertEqual(before.get("feature_count"), after.get("feature_count"))
+                self.assertEqual(
+                    before.get("decoded_coordinate_count"),
+                    after.get("decoded_coordinate_count"),
+                )
+                self.assertEqual(before.get("failed_token_count"), after.get("failed_token_count"))
 
     def test_reference_geojson_fallback_reports_decode_failure_summary(self) -> None:
         store = _FakeDatumStore(

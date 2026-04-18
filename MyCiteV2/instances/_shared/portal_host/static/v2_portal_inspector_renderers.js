@@ -784,11 +784,16 @@
 
   function renderNavigationDiagnostics(diagnostics) {
     if (!diagnostics || !diagnostics.length) return "";
-    return (
-      '<section class="cts-gis-navDiagnostics">' +
-      "<h4>Diagnostics</h4>" +
-      '<div class="cts-gis-navDiagnostics__items">' +
-      diagnostics
+    var severityCounts = {};
+    diagnostics.forEach(function (item) {
+      var severity = (item && item.severity) || "notice";
+      severityCounts[severity] = (severityCounts[severity] || 0) + 1;
+    });
+    var severityOrder = Object.keys(severityCounts).sort();
+    var previewItems = diagnostics.slice(0, 5);
+    var overflowCount = Math.max(diagnostics.length - previewItems.length, 0);
+    function renderItems(items) {
+      return (items || [])
         .map(function (item) {
           return (
             '<article class="cts-gis-navDiagnostics__item">' +
@@ -801,8 +806,34 @@
             "</article>"
           );
         })
-        .join("") +
+        .join("");
+    }
+    return (
+      '<section class="cts-gis-navDiagnostics">' +
+      "<h4>Diagnostics</h4>" +
+      '<div class="cts-gis-navDiagnostics__summary">' +
+      '<span class="cts-gis-navDiagnostics__meta">' +
+      escapeHtml(String(diagnostics.length) + " total") +
+      "</span>" +
+      '<span class="cts-gis-navDiagnostics__meta">' +
+      severityOrder
+        .map(function (severity) {
+          return escapeHtml(String(severity) + ":" + String(severityCounts[severity] || 0));
+        })
+        .join(" · ") +
+      "</span>" +
       "</div>" +
+      '<div class="cts-gis-navDiagnostics__items">' +
+      renderItems(previewItems) +
+      "</div>" +
+      (overflowCount
+        ? '<details class="cts-gis-navDiagnostics__expand"><summary>' +
+          escapeHtml("Show all diagnostics (" + String(diagnostics.length) + ")") +
+          "</summary>" +
+          '<div class="cts-gis-navDiagnostics__items">' +
+          renderItems(diagnostics) +
+          "</div></details>"
+        : "") +
       "</section>"
     );
   }
