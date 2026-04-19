@@ -1687,8 +1687,6 @@ def _empty_profile_projection(*, warnings: list[str] | None = None) -> dict[str,
         },
         "hierarchy": [],
         "summary_rows": [],
-        "projected_rows": [],
-        "correlated_profiles": [],
         "warnings": list(warnings or []),
         "empty_message": "No projected profile is available until the active path resolves real CTS-GIS evidence.",
         "has_profile_state": False,
@@ -1759,7 +1757,6 @@ def _cts_gis_interface_body(
         }
 
     if has_real_profile:
-        selected_feature_id = _as_text((service_surface.get("diagnostic_summary") or {}).get("selected_feature_id"))
         profile_projection = {
             "title": "Profile Projection",
             "active_profile": {
@@ -1776,37 +1773,6 @@ def _cts_gis_interface_body(
                 {"label": "Projection source", "value": _as_text(map_projection.get("projection_source")) or "none"},
                 {"label": "Projection state", "value": _as_text(map_projection.get("projection_state")) or "inspect_only"},
                 {"label": "Decode summary", "value": decode_summary_text},
-            ],
-            "projected_rows": [
-                {
-                    "datum_address": _as_text(row.get("datum_address")),
-                    "label": _as_text(row.get("title_display"))
-                    or _as_text(row.get("profile_label"))
-                    or _as_text(row.get("samras_node_id"))
-                    or _as_text(row.get("datum_address")),
-                    "detail": _as_text(row.get("datum_address")),
-                    "selected": bool(row.get("selected")),
-                    "shell_request": _selection_shell_request(
-                        portal_scope=portal_scope,
-                        shell_state=shell_state,
-                        tool_state=resolved_tool_state,
-                        selected_row_address=_as_text(row.get("datum_address")),
-                        selected_feature_id=(
-                            selected_feature_id
-                            if bool(row.get("selected_feature"))
-                            else _as_text((list(row.get("feature_ids") or [""]) or [""])[0])
-                        ),
-                    ),
-                }
-                for row in list(service_surface.get("rows") or [])
-            ],
-            "correlated_profiles": [
-                {
-                    "profile_label": _as_text(item.get("profile_label")) or _as_text(item.get("node_id")),
-                    "node_id": _as_text(item.get("node_id")),
-                    "relation": _as_text(item.get("relation")),
-                }
-                for item in list(service_surface.get("related_profiles") or [])
             ],
             "warnings": list(service_surface.get("warnings") or []),
             "empty_message": "",

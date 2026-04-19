@@ -80,33 +80,6 @@
     );
   }
 
-  function renderProfileSummaries(items) {
-    if (!items || !items.length) {
-      return '<p class="ide-controlpanel__empty">No correlated profiles.</p>';
-    }
-    return (
-      '<div class="cts-gis-profileSummaryList">' +
-      items
-        .map(function (item) {
-          return (
-            '<article class="cts-gis-profileSummary">' +
-            "<strong>" +
-            escapeHtml(item.profile_label || item.node_id || "profile") +
-            "</strong>" +
-            '<span class="cts-gis-profileSummary__meta">' +
-            escapeHtml(item.node_id || "") +
-            "</span>" +
-            '<span class="cts-gis-profileSummary__meta">' +
-            escapeHtml(item.relation || "") +
-            "</span>" +
-            "</article>"
-          );
-        })
-        .join("") +
-      "</div>"
-    );
-  }
-
   function directoryOptionTitle(option, depth) {
     var title = String((option && option.title) || "");
     return depth === 1 && title ? title.toUpperCase() : title;
@@ -931,8 +904,6 @@
           },
           hierarchy: [],
           summary_rows: garland.summary_rows || [],
-          projected_rows: garland.row_entries || [],
-          correlated_profiles: garland.related_profiles || [],
           warnings: garland.warnings || [],
           empty_message: "No projected profile is available until the active path resolves real CTS-GIS evidence.",
           has_profile_state: false,
@@ -1197,9 +1168,6 @@
     activePathEntries.forEach(function (entry, index) {
       entry._renderIndex = index;
     });
-    (profileProjection.projected_rows || []).forEach(function (entry, index) {
-      entry._renderIndex = index;
-    });
     (geospatialProjection.features || []).forEach(function (entry, index) {
       entry._renderIndex = index;
     });
@@ -1209,7 +1177,6 @@
         : renderProjectionPlaceholder("This CTS-GIS navigation mode is no longer supported.", "cts-gis-directoryCanvas__empty");
     var entriesByKind = {
       path: activePathEntries,
-      row: profileProjection.projected_rows || [],
       feature: geospatialProjection.features || [],
     };
     var hasRealGeospatialProjection = !!geospatialProjection.has_real_projection;
@@ -1297,14 +1264,6 @@
         "</span>" +
         "</article></section>" +
         ((profileProjection.summary_rows || []).length ? renderRows(profileProjection.summary_rows || []) : "") +
-        '<section class="cts-gis-garlandSplit__profileBlock"><h5>Projected Rows</h5>' +
-        renderRequestButtons(profileProjection.projected_rows || [], "row", {
-          emptyMessage: profileProjection.empty_message || "No projected rows available.",
-        }) +
-        "</section>" +
-        '<section class="cts-gis-garlandSplit__profileBlock"><h5>Correlated Profiles</h5>' +
-        renderProfileSummaries(profileProjection.correlated_profiles || []) +
-        "</section>" +
         ((profileProjection.warnings || []).length
           ? '<section class="cts-gis-garlandSplit__profileBlock"><h5>Warnings</h5>' +
             renderWarningList(profileProjection.warnings || []) +
