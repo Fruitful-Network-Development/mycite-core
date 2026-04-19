@@ -1092,8 +1092,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 [entry["node_id"] for entry in profile["hierarchy"]],
                 ["3", "3-2"],
             )
-            self.assertEqual(profile["projected_rows"], [])
-            self.assertEqual(profile["correlated_profiles"], [])
+            self.assertNotIn("projected_rows", profile)
+            self.assertNotIn("correlated_profiles", profile)
             summary_by_label = {
                 row["label"]: row["value"]
                 for row in profile["summary_rows"]
@@ -1139,10 +1139,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertTrue(geo["has_real_projection"])
             self.assertEqual(profile["active_profile"]["node_id"], "3-2-3")
             self.assertEqual(profile["active_profile"]["label"], "states")
-            self.assertEqual(
-                {row["label"] for row in profile["projected_rows"]},
-                {"states", "states_boundary", "states_polygon"},
-            )
+            self.assertNotIn("projected_rows", profile)
+            self.assertNotIn("correlated_profiles", profile)
+            self.assertGreater(profile["active_profile"]["feature_count"], 0)
             summary_by_label = {row["label"]: row["value"] for row in profile["summary_rows"]}
             self.assertEqual(
                 summary_by_label["Projection document"],
