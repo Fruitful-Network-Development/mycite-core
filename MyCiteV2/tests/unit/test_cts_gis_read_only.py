@@ -402,7 +402,12 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         )
 
     def test_real_summit_county_and_community_documents_remain_hops_projectable(self) -> None:
-        for node_id in ("3-2-3-17-77", "3-2-3-17-77-1-1"):
+        for node_id in (
+            "3-2-3-17-77",
+            "3-2-3-17-77-1-1",
+            "3-2-3-17-77-1-2",
+            "3-2-3-17-77-1-10",
+        ):
             with self.subTest(node_id=node_id):
                 path = _summit_source_path(node_id)
                 doc = _document_from_source_file(path)
