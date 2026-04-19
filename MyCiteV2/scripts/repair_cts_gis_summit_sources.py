@@ -26,6 +26,13 @@ DEFAULT_DATA_ROOTS = [
 ANCHOR_NAME = "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json"
 PROJECTION_GLOB = "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77*.json"
 SWAPPED_SUFFIXES = frozenset(("3-2-3-17-77-3-8", "3-2-3-17-77-3-9"))
+STAGE_B_SUFFIXES = frozenset(
+    (
+        "3-2-3-17-77-1-1",
+        "3-2-3-17-77-1-2",
+        "3-2-3-17-77-1-10",
+    )
+)
 REFERENCE_KEYS = (
     "reference_geojson",
     "reference_geojson_source",
@@ -98,6 +105,83 @@ def _row_tokens(space: dict[str, Any], row_address: str) -> list[Any]:
     if isinstance(row[0], list):
         return list(row[0])
     return list(row)
+
+
+def _set_row_tokens(space: dict[str, Any], row_address: str, tokens: list[Any]) -> bool:
+    row = space.get(row_address)
+    if isinstance(row, list) and row and isinstance(row[0], list):
+        row[0] = list(tokens)
+        space[row_address] = row
+        return True
+    if isinstance(row, list):
+        space[row_address] = list(tokens)
+        return True
+    return False
+
+
+def _replace_reference_token(space: dict[str, Any], *, row_address: str, old: str, new: str) -> bool:
+    tokens = _row_tokens(space, row_address)
+    if not tokens:
+        return False
+    changed = False
+    out: list[Any] = []
+    for token in tokens:
+        if _as_text(token) == old:
+            out.append(new)
+            changed = True
+        else:
+            out.append(token)
+    if changed:
+        _set_row_tokens(space, row_address, out)
+    return changed
+
+
+def _dedupe_row_references(space: dict[str, Any], row_address: str) -> int:
+    tokens = _row_tokens(space, row_address)
+    if len(tokens) < 3:
+        return 0
+    seen: set[str] = set()
+    out = list(tokens[:2])
+    removed = 0
+    for token in tokens[2:]:
+        ref = _as_text(token)
+        if ref and REF_PATTERN.match(ref):
+            if ref in seen:
+                removed += 1
+                continue
+            seen.add(ref)
+        out.append(token)
+    if removed:
+        _set_row_tokens(space, row_address, out)
+    return removed
+
+
+def _rename_row_address(
+    payload: dict[str, Any],
+    *,
+    old_address: str,
+    new_address: str,
+) -> bool:
+    space = _datum_space(payload)
+    if old_address not in space or new_address in space:
+        return False
+    row = space.get(old_address)
+    tokens = _row_tokens(space, old_address)
+    if not tokens:
+        return False
+    tokens[0] = new_address
+    if isinstance(row, list) and row and isinstance(row[0], list):
+        row[0] = tokens
+    elif isinstance(row, list):
+        row = tokens
+    remapped: dict[str, Any] = {}
+    for address, value in space.items():
+        if address == old_address:
+            remapped[new_address] = row
+        else:
+            remapped[address] = value
+    payload["datum_addressing_abstraction_space"] = remapped
+    return True
 
 
 def _first_primary_node_id(tokens: list[Any]) -> str:
@@ -201,18 +285,66 @@ def _align_swapped_node_bindings(path: Path, payload: dict[str, Any]) -> list[st
         secondary_index = rf_indexes[1]
         secondary_value = _as_text(head[secondary_index + 1])
         if old_primary and secondary_value.startswith(old_primary + "-"):
-            head[secondary_index + 1] = suffix + secondary_value[len(old_primary) :]
-            notes.append("7-3-1 secondary node id prefix aligned to suffix")
+            remapped_secondary = suffix + secondary_value[len(old_primary) :]
+            if remapped_secondary != secondary_value:
+                head[secondary_index + 1] = remapped_secondary
+                notes.append("7-3-1 secondary node id prefix aligned to suffix")
 
     row[0] = head
     space["7-3-1"] = row
     payload["datum_addressing_abstraction_space"] = space
 
-    ref_node_id = _as_text(payload.get("reference_geojson_node_id"))
-    if ref_node_id != suffix:
-        payload["reference_geojson_node_id"] = suffix
-        notes.append(f"reference_geojson_node_id set to {suffix}")
+    has_reference_metadata = any(key in payload for key in REFERENCE_KEYS)
+    if has_reference_metadata:
+        ref_node_id = _as_text(payload.get("reference_geojson_node_id"))
+        if ref_node_id != suffix:
+            payload["reference_geojson_node_id"] = suffix
+            notes.append(f"reference_geojson_node_id set to {suffix}")
 
+    return notes
+
+
+def _repair_stage_b_contract_defects(path: Path, payload: dict[str, Any]) -> list[str]:
+    notes: list[str] = []
+    suffix = _node_suffix_from_path(path)
+    if suffix not in STAGE_B_SUFFIXES:
+        return notes
+
+    space = _datum_space(payload)
+    if suffix == "3-2-3-17-77-1-1":
+        removed = _dedupe_row_references(space, "5-0-1")
+        if removed:
+            notes.append(f"5-0-1 duplicate references removed ({removed})")
+
+    if suffix == "3-2-3-17-77-1-2":
+        if "4-1505-1" in space and "4-1505-2" not in space:
+            if _replace_reference_token(
+                space,
+                row_address="5-0-1",
+                old="4-1505-2",
+                new="4-1505-1",
+            ):
+                notes.append("5-0-1 missing row reference 4-1505-2 aligned to 4-1505-1")
+
+    if suffix == "3-2-3-17-77-1-10":
+        tokens = _row_tokens(space, "4-21-1")
+        observed = _hops_token_count(tokens)
+        if observed == 20 and "4-20-1" not in space:
+            if _rename_row_address(payload, old_address="4-21-1", new_address="4-20-1"):
+                space = _datum_space(payload)
+                if _replace_reference_token(
+                    space,
+                    row_address="5-0-1",
+                    old="4-21-1",
+                    new="4-20-1",
+                ):
+                    notes.append("4-21-1 row address aligned to observed 20-token declaration")
+                    notes.append("5-0-1 reference updated from 4-21-1 to 4-20-1")
+                else:
+                    notes.append("4-21-1 row address aligned to observed 20-token declaration")
+
+    if notes:
+        payload["datum_addressing_abstraction_space"] = space
     return notes
 
 
@@ -425,6 +557,7 @@ def _audit_and_repair_data_root(
     for path in sorted(source_dir.glob(PROJECTION_GLOB)):
         payload = _read_json(path)
         deterministic_notes = _align_swapped_node_bindings(path, payload)
+        deterministic_notes.extend(_repair_stage_b_contract_defects(path, payload))
         if deterministic_notes:
             deterministic_fixed.append(path.name)
 
