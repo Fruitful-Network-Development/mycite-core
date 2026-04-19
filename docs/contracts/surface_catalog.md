@@ -80,14 +80,16 @@ Workspace file modes under `system.root`:
 - `Garland` is the CTS-GIS correlated projection surface (`garland_split_projection`) with dominant `geospatial_projection` and secondary `profile_projection`.
 - Garland remains visible and stateful once a structural selection exists.
 - `profile_projection` may show the current selected node with blank values when no matching profile source has been resolved yet.
-- `geospatial_projection` stays blank until the selected node resolves valid profile and HOPS evidence.
+- `geospatial_projection` stays blank until the selected node or its widened intention scope resolves valid profile and HOPS evidence.
+- node-focused widened intention keeps the selected node as the active profile while Garland may overlay multiple in-scope projectable source documents.
 - Title fallback is blank-only when ASCII title decode is unavailable.
 - In narrow posture, the CTS-GIS-local body may fall back to a vertical stack while preserving the same contract.
 - CTS-GIS mediates on the selected anchor-file datum and projects correlated source-file evidence into the Interface Panel.
 - CTS-GIS tool-local navigation does not widen the shared shell focus stack. The shell focus remains `sandbox -> file -> datum -> object`.
 - Tool-local state is body-carried through CTS-GIS `tool_state`, not projected through new query keys.
 - When a selected node is present and no explicit tool-local intention is supplied, CTS-GIS normalizes `Intention` to `self` so Garland reflects the current node.
-- The `Control Panel` holds CTS-GIS-local directive, AITAS, and source-evidence controls.
+- The `Control Panel` holds CTS-GIS-local directive, `AITAS`, and source-evidence controls.
+- Node-focused Intention actions live inside `AITAS`; `Projection Rules` is shown only for sandbox-wide attention without a selected node.
 - The workbench remains diagnostic or raw supporting evidence rather than a duplicate of Garland.
 - v2.5.4 phase-B is canonical-only for CTS-GIS identifiers and storage anchors.
 - Legacy CTS-GIS aliases are rejected at `POST /portal/api/v2/system/tools/cts-gis` with `400 legacy_maps_alias_unsupported`.

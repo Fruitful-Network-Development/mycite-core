@@ -103,6 +103,58 @@ def _address_is_descendant(node_id: str, *, root_node_id: str, min_extra_segment
     return min_extra_segments <= extra_segments <= max_extra_segments
 
 
+def _descendants_intention_token(attention_node_id: str) -> str:
+    return f"{attention_node_id}-0-0" if attention_node_id else _DEFAULT_INTENTION_TOKEN
+
+
+def _children_intention_token(attention_node_id: str) -> str:
+    return f"{attention_node_id}-0" if attention_node_id else "children"
+
+
+def _structural_child_node_ids(
+    document_bundle: dict[str, Any],
+    attention_node_id: str,
+    *,
+    descendants_depth_1_or_2: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    if not attention_node_id:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for node_id in list((document_bundle.get("children_by_parent") or {}).get(attention_node_id, [])):
+        node_id_text = _as_text(node_id)
+        if not node_id_text or node_id_text in seen:
+            continue
+        seen.add(node_id_text)
+        out.append(node_id_text)
+    depth = _node_depth(attention_node_id)
+    descendants = list(
+        descendants_depth_1_or_2
+        if descendants_depth_1_or_2 is not None
+        else _descendant_profiles(
+            document_bundle,
+            attention_node_id=attention_node_id,
+            min_extra_segments=1,
+            max_extra_segments=2,
+        )
+    )
+    for profile in descendants:
+        node_id_text = _as_text(profile.get("node_id"))
+        if not _address_is_descendant(
+            node_id_text,
+            root_node_id=attention_node_id,
+            min_extra_segments=1,
+            max_extra_segments=2,
+        ):
+            continue
+        child_node_id = "-".join(node_id_text.split("-")[: depth + 1])
+        if not child_node_id or child_node_id in seen:
+            continue
+        seen.add(child_node_id)
+        out.append(child_node_id)
+    return out
+
+
 def _binding_family(anchor_label: object) -> str:
     label = _as_lower(anchor_label)
     if "title-babelette" in label or "title-babellette" in label:
@@ -1311,8 +1363,10 @@ def _build_navigation_bundle(documents: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _normalize_intention_token(document_bundle: dict[str, Any], attention_node_id: str, requested: object) -> str:
     token = _as_text(requested) or _DEFAULT_INTENTION_TOKEN
-    if attention_node_id and token == f"{attention_node_id}-0-0":
-        token = _DEFAULT_INTENTION_TOKEN
+    if not attention_node_id:
+        if token in {_LEGACY_SELF_INTENTION_TOKEN, "self"}:
+            return "self"
+        return _DEFAULT_INTENTION_TOKEN
     children = list((document_bundle.get("children_by_parent") or {}).get(attention_node_id, []))
     descendants_depth_1_or_2 = _descendant_profiles(
         document_bundle,
@@ -1320,21 +1374,24 @@ def _normalize_intention_token(document_bundle: dict[str, Any], attention_node_i
         min_extra_segments=1,
         max_extra_segments=2,
     )
-    if token == _LEGACY_SELF_INTENTION_TOKEN:
-        return token
-    if token == _DEFAULT_INTENTION_TOKEN:
-        return token if descendants_depth_1_or_2 else _LEGACY_SELF_INTENTION_TOKEN
-    if token == "self":
-        return _LEGACY_SELF_INTENTION_TOKEN
-    if token == "children":
-        return _CHILDREN_INTENTION_TOKEN if children else _LEGACY_SELF_INTENTION_TOKEN
-    if token == _CHILDREN_INTENTION_TOKEN:
-        return token if children else _LEGACY_SELF_INTENTION_TOKEN
+    structural_child_node_ids = _structural_child_node_ids(
+        document_bundle,
+        attention_node_id,
+        descendants_depth_1_or_2=descendants_depth_1_or_2,
+    )
+    descendants_token = _descendants_intention_token(attention_node_id)
+    children_token = _children_intention_token(attention_node_id)
+    if token in {_LEGACY_SELF_INTENTION_TOKEN, "self"}:
+        return "self"
+    if token in {_DEFAULT_INTENTION_TOKEN, descendants_token}:
+        return descendants_token if descendants_depth_1_or_2 else "self"
+    if token in {"children", _CHILDREN_INTENTION_TOKEN, children_token}:
+        return children_token if structural_child_node_ids or children else "self"
     if token.startswith(_BRANCH_INTENTION_PREFIX):
         branch_node_id = _as_text(token[len(_BRANCH_INTENTION_PREFIX) :])
         if branch_node_id in children:
             return token
-    return _DEFAULT_INTENTION_TOKEN if descendants_depth_1_or_2 else _LEGACY_SELF_INTENTION_TOKEN
+    return descendants_token if descendants_depth_1_or_2 else "self"
 
 
 def _available_intentions(document_bundle: dict[str, Any], attention_node_id: str) -> list[dict[str, Any]]:
@@ -1351,9 +1408,14 @@ def _available_intentions(document_bundle: dict[str, Any], attention_node_id: st
         min_extra_segments=1,
         max_extra_segments=2,
     )
+    structural_child_node_ids = _structural_child_node_ids(
+        document_bundle,
+        attention_node_id,
+        descendants_depth_1_or_2=descendants_depth_1_or_2,
+    )
     out = [
         {
-            "token": _LEGACY_SELF_INTENTION_TOKEN,
+            "token": "self",
             "kind": "self",
             "label": "Self",
             "target_node_id": attention_node_id,
@@ -1366,7 +1428,7 @@ def _available_intentions(document_bundle: dict[str, Any], attention_node_id: st
         out.insert(
             0,
             {
-                "token": _DEFAULT_INTENTION_TOKEN,
+                "token": _descendants_intention_token(attention_node_id),
                 "kind": "descendants_depth_1_or_2",
                 "label": "Descendants depth 1 or 2",
                 "target_node_id": attention_node_id,
@@ -1375,10 +1437,10 @@ def _available_intentions(document_bundle: dict[str, Any], attention_node_id: st
                 "profile_count": len(descendants_depth_1_or_2),
             },
         )
-    if children:
+    if structural_child_node_ids:
         out.append(
             {
-                "token": _CHILDREN_INTENTION_TOKEN,
+                "token": _children_intention_token(attention_node_id),
                 "kind": "children",
                 "label": "Immediate children",
                 "target_node_id": attention_node_id,
@@ -1387,6 +1449,7 @@ def _available_intentions(document_bundle: dict[str, Any], attention_node_id: st
                 "profile_count": len(children),
             }
         )
+    if children:
         for child in children:
             out.append(
                 {
@@ -1753,6 +1816,8 @@ class CtsGisReadOnlyService:
         feature_profile_index = dict(navigation_bundle.get("feature_profile_index") or {})
         attention_node_id_text = _as_text(attention_node_id)
         attention_profile = profile_index.get(attention_node_id_text)
+        descendants_token = _descendants_intention_token(attention_node_id_text)
+        children_token = _children_intention_token(attention_node_id_text)
         navigation_surface_bundle = {
             "profile_index": profile_index,
             "children_by_parent": dict(navigation_bundle.get("children_by_parent") or {}),
@@ -1761,20 +1826,18 @@ class CtsGisReadOnlyService:
         available_intentions = _available_intentions(navigation_surface_bundle, attention_node_id_text)
         available_token_set = {option["token"] for option in available_intentions}
         if intention_token_text not in available_token_set:
-            intention_token_text = _DEFAULT_INTENTION_TOKEN
+            intention_token_text = "self" if attention_node_id_text else _DEFAULT_INTENTION_TOKEN
 
-        render_profiles: list[dict[str, Any]] = []
-        if intention_token_text == _DEFAULT_INTENTION_TOKEN:
-            render_profiles = _descendant_profiles(
+        overlay_profiles: list[dict[str, Any]] = []
+        if intention_token_text == descendants_token:
+            overlay_profiles = _descendant_profiles(
                 navigation_surface_bundle,
                 attention_node_id=attention_node_id_text,
                 min_extra_segments=1,
                 max_extra_segments=2,
             )
-        elif intention_token_text == _LEGACY_SELF_INTENTION_TOKEN:
-            render_profiles = [] if attention_profile is None else [attention_profile]
-        elif intention_token_text == _CHILDREN_INTENTION_TOKEN:
-            render_profiles = [
+        elif intention_token_text == children_token:
+            overlay_profiles = [
                 profile_index[node_id]
                 for node_id in list((navigation_bundle.get("children_by_parent") or {}).get(attention_node_id_text, []))
                 if node_id in profile_index
@@ -1783,25 +1846,45 @@ class CtsGisReadOnlyService:
             target_node_id = _as_text(intention_token_text[len(_BRANCH_INTENTION_PREFIX) :])
             target_profile = profile_index.get(target_node_id)
             if target_profile is not None:
-                render_profiles = [target_profile]
-        render_row_addresses: set[str] = set()
+                overlay_profiles = [target_profile]
+        projected_profiles: list[dict[str, Any]] = []
+        projected_seen: set[str] = set()
+        if attention_profile is not None:
+            attention_profile_node_id = _as_text(attention_profile.get("node_id"))
+            if attention_profile_node_id:
+                projected_profiles.append(attention_profile)
+                projected_seen.add(attention_profile_node_id)
+        for profile in overlay_profiles:
+            node_id = _as_text(profile.get("node_id"))
+            if not node_id or node_id in projected_seen:
+                continue
+            projected_seen.add(node_id)
+            projected_profiles.append(profile)
+        render_document_row_addresses: dict[str, set[str]] = {}
         render_feature_ids: list[str] = []
-        selected_document_id_text = _as_text(document_summary.get("document_id"))
-        for profile in render_profiles:
-            if _as_text(profile.get("document_id")) == selected_document_id_text:
-                render_row_addresses.update(profile.get("row_addresses") or [])
+        render_document_ids: set[str] = set()
+        for profile in projected_profiles:
+            document_id = _as_text(profile.get("document_id"))
+            if document_id:
+                render_document_ids.add(document_id)
+                render_document_row_addresses.setdefault(document_id, set()).update(profile.get("row_addresses") or [])
             for feature_id in list(profile.get("feature_ids") or []):
                 if feature_id not in render_feature_ids:
                     render_feature_ids.append(feature_id)
+        selected_document_id_text = _as_text(document_summary.get("document_id"))
         row_index = selected_document_bundle.get("row_index") or {}
         ordered_render_row_addresses = [
             address
-            for address in _sorted_addresses(render_row_addresses)
+            for address in _sorted_addresses(render_document_row_addresses.get(selected_document_id_text, set()))
             if address in row_index
         ]
         render_row_views = [row_index[address] for address in ordered_render_row_addresses]
         feature_index = dict(navigation_bundle.get("feature_index") or {})
         render_features = [feature_index[feature_id] for feature_id in render_feature_ids if feature_id in feature_index]
+        document_bundle_index = {
+            _as_text((document_bundle.get("document_summary") or {}).get("document_id")): document_bundle
+            for document_bundle in documents
+        }
 
         attention_profile_display = attention_profile
         if attention_profile_display is None and attention_node_id_text:
@@ -1846,7 +1929,7 @@ class CtsGisReadOnlyService:
         for feature in render_features:
             owner_profile = None
             for node_id in list(feature_profile_index.get(feature["feature_id"]) or []):
-                if node_id in {_as_text(profile.get("node_id")) for profile in render_profiles}:
+                if node_id in {_as_text(profile.get("node_id")) for profile in projected_profiles}:
                     owner_profile = profile_index.get(node_id)
                     break
             if owner_profile is None:
@@ -1888,15 +1971,49 @@ class CtsGisReadOnlyService:
                 for point in _geometry_points(dict((feature.get("feature") or {}).get("geometry") or {}))
             ]
         )
-        render_projection_summary = _projection_summary_for_row_addresses(ordered_render_row_addresses, row_index)
+        render_projection_summary = {
+            "reference_binding_count": 0,
+            "decoded_coordinate_count": 0,
+            "failed_token_count": 0,
+            "warnings": [],
+        }
+        total_render_row_count = 0
+        render_projection_warnings: list[str] = []
+        for document_id, row_addresses in render_document_row_addresses.items():
+            document_bundle = document_bundle_index.get(document_id)
+            if document_bundle is None:
+                continue
+            document_row_index = document_bundle.get("row_index") or {}
+            ordered_document_row_addresses = [
+                address
+                for address in _sorted_addresses(row_addresses)
+                if address in document_row_index
+            ]
+            total_render_row_count += len(ordered_document_row_addresses)
+            document_projection_summary = _projection_summary_for_row_addresses(
+                ordered_document_row_addresses,
+                document_row_index,
+            )
+            render_projection_summary["reference_binding_count"] += int(
+                document_projection_summary.get("reference_binding_count") or 0
+            )
+            render_projection_summary["decoded_coordinate_count"] += int(
+                document_projection_summary.get("decoded_coordinate_count") or 0
+            )
+            render_projection_summary["failed_token_count"] += int(
+                document_projection_summary.get("failed_token_count") or 0
+            )
+            render_projection_warnings.extend(list(document_projection_summary.get("warnings") or []))
+            render_projection_warnings.extend(
+                list(((document_bundle.get("document_summary") or {}).get("projection_warnings")) or [])
+            )
         render_projection_warnings = _dedupe_texts(
-            list(render_projection_summary.get("warnings") or [])
+            render_projection_warnings
             + [
                 warning
                 for feature in render_features
                 for warning in list(feature.get("projection_warnings") or [])
             ]
-            + list(document_summary.get("projection_warnings") or [])
         )
         projection_sources = {
             _as_text(feature.get("projection_source"))
@@ -1939,19 +2056,19 @@ class CtsGisReadOnlyService:
         render_set_summary = {
             "render_mode": (
                 "descendants_depth_1_or_2"
-                if intention_token_text == _DEFAULT_INTENTION_TOKEN
+                if intention_token_text == descendants_token
                 else "self"
-                if intention_token_text == _LEGACY_SELF_INTENTION_TOKEN
+                if intention_token_text == "self"
                 else "children"
-                if intention_token_text == _CHILDREN_INTENTION_TOKEN
+                if intention_token_text == children_token
                 else "branch"
             ),
-            "render_profile_count": len(render_profiles),
-            "render_row_count": len(render_row_views),
+            "render_profile_count": len(projected_profiles),
+            "render_row_count": total_render_row_count,
             "render_feature_count": len(render_features),
             "render_profile_labels": [
                 _as_text(profile.get("profile_label")) or _as_text(profile.get("node_id"))
-                for profile in render_profiles
+                for profile in projected_profiles
             ],
         }
 
@@ -1973,7 +2090,7 @@ class CtsGisReadOnlyService:
                     relation="render_profile",
                     selected=_as_text(profile.get("node_id")) == attention_node_id_text,
                 )
-                for profile in render_profiles
+                for profile in projected_profiles
             ],
             "related_profiles": related_profiles,
             "render_set_summary": render_set_summary,

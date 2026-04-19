@@ -165,6 +165,39 @@ class FilesystemSystemDatumStoreAdapterTests(unittest.TestCase):
                 "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
             )
 
+    def test_invalid_anchor_json_surfaces_warning_without_silent_projection_recovery(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps({"0-0-1": [["0-0-1", "~", "0-0-0"], ["time-ordinal-position"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json").write_text(
+                '{"3-1-3": [["3-1-3", "2-1-1", "0"], ["broken-anchor"]],}\n',
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.example.json").write_text(
+                json.dumps({"4-2-1": [["4-2-1", "rf.3-1-3", "HERE"], ["row"]]}) + "\n",
+                encoding="utf-8",
+            )
+
+            payload = FilesystemSystemDatumStoreAdapter(data_dir).read_authoritative_datum_documents(
+                AuthoritativeDatumDocumentRequest(tenant_id="fnd")
+            ).to_dict()
+            sandbox_document = next(
+                document
+                for document in payload["documents"]
+                if document["source_kind"] == "sandbox_source"
+            )
+            self.assertEqual(sandbox_document["anchor_rows"], [])
+            self.assertIn(
+                "Supporting sandbox anchor document is not valid JSON",
+                " ".join(sandbox_document["warnings"]),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

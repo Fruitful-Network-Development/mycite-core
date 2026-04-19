@@ -149,21 +149,39 @@ def _assert_no_legacy_maps_aliases(payload: dict[str, Any]) -> None:
 
 def _canonical_intention_rule_id(value: object) -> str:
     token = _as_text(value)
-    if token in {"", _DEFAULT_INTENTION_RULE_ID}:
-        return _DEFAULT_INTENTION_RULE_ID
     if token in {_SERVICE_SELF_TOKEN, "self"}:
         return "self"
-    if token in {_SERVICE_CHILDREN_TOKEN, "children"}:
-        return "children"
     return token
 
 
-def _service_intention_token(rule_id: object) -> str:
-    token = _canonical_intention_rule_id(rule_id)
+def _descendants_intention_rule_id(attention_node_id: object) -> str:
+    node_id = _as_text(attention_node_id)
+    return f"{node_id}-0-0" if node_id else _DEFAULT_INTENTION_RULE_ID
+
+
+def _children_intention_rule_id(attention_node_id: object) -> str:
+    node_id = _as_text(attention_node_id)
+    return f"{node_id}-0" if node_id else "children"
+
+
+def _canonical_intention_rule_for_attention(value: object, *, attention_node_id: object) -> str:
+    token = _canonical_intention_rule_id(value)
+    node_id = _as_text(attention_node_id)
+    if token in {"", _DEFAULT_INTENTION_RULE_ID}:
+        return _descendants_intention_rule_id(node_id)
+    if token in {_SERVICE_CHILDREN_TOKEN, "children"}:
+        return _children_intention_rule_id(node_id)
+    return token
+
+
+def _service_intention_token(rule_id: object, *, attention_node_id: object) -> str:
+    token = _canonical_intention_rule_for_attention(rule_id, attention_node_id=attention_node_id)
     if token == "self":
-        return _SERVICE_SELF_TOKEN
+        return "self"
     if token == "children":
-        return _SERVICE_CHILDREN_TOKEN
+        return _children_intention_rule_id(attention_node_id)
+    if token == _DEFAULT_INTENTION_RULE_ID:
+        return _descendants_intention_rule_id(attention_node_id)
     return token or _DEFAULT_INTENTION_RULE_ID
 
 
@@ -239,8 +257,9 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
         "selected_node_id": selected_node_id,
         "aitas": {
             "attention_node_id": selected_node_id,
-            "intention_rule_id": _canonical_intention_rule_id(
-                requested_intention or default_intention
+            "intention_rule_id": _canonical_intention_rule_for_attention(
+                requested_intention or default_intention,
+                attention_node_id=selected_node_id,
             ),
             "time_directive": _as_text(raw_aitas.get("time_directive")) or _DEFAULT_TIME_DIRECTIVE,
             "archetype_family_id": _as_text(raw_aitas.get("archetype_family_id")) or _DEFAULT_ARCHETYPE_FAMILY_ID,
@@ -527,7 +546,7 @@ def _resolved_tool_state(
         "selected_node_id": selected_node_id,
         "aitas": {
             "attention_node_id": selected_node_id,
-            "intention_rule_id": _canonical_intention_rule_id(
+            "intention_rule_id": _canonical_intention_rule_for_attention(
                 (
                     "self"
                     if (
@@ -539,7 +558,8 @@ def _resolved_tool_state(
                     )
                     else mediation_state.get("intention_token")
                     or requested_tool_state.get("aitas", {}).get("intention_rule_id")
-                )
+                ),
+                attention_node_id=selected_node_id,
             ),
             "time_directive": _as_text(requested_tool_state.get("aitas", {}).get("time_directive")) or _DEFAULT_TIME_DIRECTIVE,
             "archetype_family_id": _as_text(requested_tool_state.get("aitas", {}).get("archetype_family_id"))
@@ -593,7 +613,10 @@ def _node_shell_request(
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
     _apply_selected_node_state(next_state, attention_node_id)
-    next_state["aitas"]["intention_rule_id"] = _canonical_intention_rule_id(intention_rule_id)
+    next_state["aitas"]["intention_rule_id"] = _canonical_intention_rule_for_attention(
+        intention_rule_id,
+        attention_node_id=attention_node_id,
+    )
     next_state.setdefault("source", {})
     next_state["source"]["attention_document_id"] = ""
     next_state["selection"]["selected_row_address"] = _as_text(selected_row_address)
@@ -609,7 +632,10 @@ def _intention_shell_request(
     intention_rule_id: str,
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
-    next_state["aitas"]["intention_rule_id"] = _canonical_intention_rule_id(intention_rule_id)
+    next_state["aitas"]["intention_rule_id"] = _canonical_intention_rule_for_attention(
+        intention_rule_id,
+        attention_node_id=_as_text(next_state.get("selected_node_id") or next_state.get("aitas", {}).get("attention_node_id")),
+    )
     next_state.setdefault("source", {})
     next_state["source"]["attention_document_id"] = ""
     next_state["selection"]["selected_row_address"] = ""
@@ -685,46 +711,9 @@ def _cts_gis_control_panel(
         {"label": "NIMM directive", "meta": _as_text(resolved_tool_state["nimm_directive"]), "active": True},
         {"label": "Tool posture", "meta": "interface-panel-led"},
     ]
-    aitas_entries = [
-        {
-            "label": "Attention",
-            "meta": _as_text(attention_profile.get("profile_label")) or staged_selected_node_id or "unresolved",
-            "prefix": staged_selected_node_id or "root",
-            "active": has_staged_selection,
-        },
-        {
-            "label": "Intention",
-            "meta": _as_text(resolved_tool_state["aitas"]["intention_rule_id"]) or _DEFAULT_INTENTION_RULE_ID,
-            "active": True,
-        },
-        {
-            "label": "Time",
-            "meta": _as_text(resolved_tool_state["aitas"]["time_directive"]) or "inactive",
-        },
-        {
-            "label": "Archetype",
-            "meta": _as_text(resolved_tool_state["aitas"]["archetype_family_id"]) or _DEFAULT_ARCHETYPE_FAMILY_ID,
-        },
-    ]
-    attention_entries = [
-        {
-            "label": _as_text(item.get("profile_label")) or _as_text(item.get("node_id")),
-            "prefix": _as_text(item.get("node_id")),
-            "meta": "lineage" if item in list(service_surface.get("lineage") or []) else "renderable node",
-            "active": bool(item.get("selected")),
-            "shell_request": _node_shell_request(
-                portal_scope=portal_scope,
-                shell_state=shell_state,
-                tool_state=resolved_tool_state,
-                attention_node_id=_as_text(item.get("node_id")),
-            ),
-        }
-        for item in (list(service_surface.get("lineage") or []) + list(service_surface.get("render_profiles") or []))
-        if _as_text(item.get("node_id"))
-    ] if has_staged_selection else []
     intention_entries = [
         {
-            "label": _as_text(option.get("label")) or _as_text(option.get("token")) or "Rule",
+            "label": f"Intention · {(_as_text(option.get('label')) or _as_text(option.get('token')) or 'Rule')}",
             "prefix": _as_text(option.get("token")),
             "meta": f"{int(option.get('profile_count') or 0)} profiles · {int(option.get('feature_count') or 0)} features",
             "active": bool(option.get("active")),
@@ -736,7 +725,34 @@ def _cts_gis_control_panel(
             ),
         }
         for option in list((service_surface.get("mediation_state") or {}).get("available_intentions") or [])
-    ] if has_staged_selection else []
+    ]
+    aitas_entries = [
+        {
+            "label": "Attention",
+            "meta": _as_text(attention_profile.get("profile_label")) or staged_selected_node_id or "unresolved",
+            "prefix": staged_selected_node_id or "root",
+            "active": has_staged_selection,
+        },
+        *(
+            intention_entries
+            if has_staged_selection and intention_entries
+            else [
+                {
+                    "label": "Intention",
+                    "meta": _as_text(resolved_tool_state["aitas"]["intention_rule_id"]) or _DEFAULT_INTENTION_RULE_ID,
+                    "active": True,
+                }
+            ]
+        ),
+        {
+            "label": "Time",
+            "meta": _as_text(resolved_tool_state["aitas"]["time_directive"]) or "inactive",
+        },
+        {
+            "label": "Archetype",
+            "meta": _as_text(resolved_tool_state["aitas"]["archetype_family_id"]) or _DEFAULT_ARCHETYPE_FAMILY_ID,
+        },
+    ]
     source_entries = [
         {
             "label": "Tool spec",
@@ -776,13 +792,18 @@ def _cts_gis_control_panel(
     return {
         **base_panel,
         "context_items": _context_items_from_base_panel(base_panel, source_evidence),
-        "groups": [
-            {"title": "Directive", "entries": directive_entries},
-            {"title": "AITAS", "entries": aitas_entries},
-            {"title": "Attention", "entries": attention_entries},
-            {"title": "Projection Rules", "entries": intention_entries},
-            {"title": "Source Evidence", "entries": source_entries},
-        ],
+        "groups": (
+            [
+                {"title": "Directive", "entries": directive_entries},
+                {"title": "AITAS", "entries": aitas_entries},
+            ]
+            + (
+                [{"title": "Projection Rules", "entries": intention_entries}]
+                if (not has_staged_selection and intention_entries)
+                else []
+            )
+            + [{"title": "Source Evidence", "entries": source_entries}]
+        ),
         "actions": [],
     }
 
@@ -1875,7 +1896,10 @@ def build_portal_cts_gis_surface_bundle(
             "attention_document_id": _as_text(requested_tool_state.get("source", {}).get("attention_document_id")),
             "attention_node_id": _as_text(requested_tool_state.get("aitas", {}).get("attention_node_id")),
             "intention_token": (
-                _service_intention_token(requested_tool_state.get("aitas", {}).get("intention_rule_id"))
+                _service_intention_token(
+                    requested_tool_state.get("aitas", {}).get("intention_rule_id"),
+                    attention_node_id=_as_text(requested_tool_state.get("aitas", {}).get("attention_node_id")),
+                )
                 if explicit_selection_requested or explicit_intention_requested
                 else ""
             ),
