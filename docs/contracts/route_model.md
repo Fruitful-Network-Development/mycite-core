@@ -161,6 +161,9 @@ CTS-GIS selection normalization:
 
 - when the request carries `selected_node_id` or `tool_state.aitas.attention_node_id` without an explicit `tool_state.aitas.intention_rule_id`, runtime normalizes intention to `self`
 - that keeps Garland aligned to the current selected node rather than inheriting the fresh-entry descendant posture
+- once a node-focused attention exists, CTS-GIS round-trips widened scope as `self`, `<attention_node_id>-0`, `<attention_node_id>-0-0`, or `branch:<node_id>`
+- legacy intention inputs such as `0`, `1-0`, `children`, and `descendants_depth_1_or_2` remain accepted during the compatibility phase, but returned tool state reflects the canonical resolved token
+- changing tool-local intention clears `tool_state.source.attention_document_id` so widened Garland overlays can assemble across projectable source documents again
 - Garland may materialize a blank but stateful `profile_projection` for a structurally valid selected node even when no matching profile source or HOPS geometry exists yet
 
 NETWORK root query projection keys:

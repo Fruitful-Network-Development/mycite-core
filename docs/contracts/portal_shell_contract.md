@@ -208,6 +208,8 @@ This is an interface-panel-led tool model, not a generic workbench page model.
 
 - Shared shell AITAS stays minimal and unchanged.
 - CTS-GIS adds a richer tool-local AITAS layer without widening the shared shell validator.
+- CTS-GIS keeps node-focused `Attention`, `Intention`, `Time`, and `Archetype` inside the tool-local `AITAS` control-panel group.
+- CTS-GIS uses a separate `Projection Rules` group only when no node-focused selection is active and Garland is still at sandbox-wide attention.
 - CTS-GIS tool-local labels are:
   - `Attention` = current tool-local navigation root
   - `Intention` = current tool-local projection rule
@@ -249,8 +251,11 @@ This is an interface-panel-led tool model, not a generic workbench page model.
   - secondary `profile_projection`
 - Garland remains stateful for the selected SAMRAS node once structural navigation resolves.
 - `profile_projection` may materialize a blank current-profile state from the selected node id plus ASCII title overlays even when no matching profile source is available yet.
-- `geospatial_projection` populates only when the selected SAMRAS node resolves a matching profile source with projectable HOPS geometry.
+- `geospatial_projection` populates when the focused SAMRAS node or its widened intention scope resolves one or more matching profile sources with projectable HOPS geometry.
+- node-focused widened intention keeps `profile_projection` anchored to the selected node while `geospatial_projection` may overlay multiple in-scope projectable source documents.
+- explicit source-document selection may still pin row/detail evidence, but changing Intention clears that pin so widened Garland overlays can resolve across projectable documents again.
 - when a request supplies `selected_node_id` or tool-local `Attention` without an explicit `Intention`, CTS-GIS normalizes `tool_state.aitas.intention_rule_id` to `self` so Garland reflects the current selected node rather than a descendant render set.
+- when node-focused intention is explicit, CTS-GIS returns the canonical token as one of `self`, `<attention_node_id>-0`, `<attention_node_id>-0-0`, or `branch:<node_id>`.
 - In narrow posture, the same regions may stack vertically while preserving the same contract.
 
 ### CTS-GIS Evidence Precedence

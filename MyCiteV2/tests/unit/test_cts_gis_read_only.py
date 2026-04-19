@@ -9,6 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
 from MyCiteV2.packages.modules.cross_domain.cts_gis import CtsGisReadOnlyService
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
@@ -241,10 +242,10 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         self.assertEqual(surface["attention_profile"]["node_id"], "3-2-3-17-77-1")
         self.assertEqual(surface["selected_row"]["datum_address"], "7-3-1")
         self.assertEqual(surface["mediation_state"]["attention_node_id"], "3-2-3-17-77-1")
-        self.assertEqual(surface["mediation_state"]["intention_token"], "0")
-        self.assertIn("1-0", [item["token"] for item in surface["mediation_state"]["available_intentions"]])
+        self.assertEqual(surface["mediation_state"]["intention_token"], "self")
+        self.assertIn("3-2-3-17-77-1-0", [item["token"] for item in surface["mediation_state"]["available_intentions"]])
         self.assertIn(
-            "descendants_depth_1_or_2",
+            "3-2-3-17-77-1-0-0",
             [item["token"] for item in surface["mediation_state"]["available_intentions"]],
         )
         feature_types = [feature["geometry"]["type"] for feature in surface["map_projection"]["feature_collection"]["features"]]
@@ -261,7 +262,7 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
             "fnd",
             mediation_state={
                 "attention_node_id": "3-2-3-17-77-1",
-                "intention_token": "1-0",
+                "intention_token": "3-2-3-17-77-1-0",
             },
         )
         named_row = [row for row in children_surface["rows"] if row["datum_address"] == "7-3-2"][0]
@@ -272,7 +273,7 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
             "fnd",
             mediation_state={
                 "attention_node_id": "3-2-3-17-77-1-2",
-                "intention_token": "0",
+                "intention_token": "self",
             },
         )
         bad_row = [row for row in bad_row_surface["rows"] if row["datum_address"] == "7-3-3"][0]
@@ -295,16 +296,25 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
             "fnd",
             mediation_state={
                 "attention_node_id": "3-2-3-17-77-1",
-                "intention_token": "1-0",
+                "intention_token": "3-2-3-17-77-1-0",
             },
         )
 
         self.assertEqual(children_surface["render_set_summary"]["render_mode"], "children")
-        self.assertEqual(children_surface["map_projection"]["feature_count"], 1)
+        self.assertEqual(
+            [item["node_id"] for item in children_surface["render_profiles"]],
+            ["3-2-3-17-77-1", "3-2-3-17-77-1-1", "3-2-3-17-77-1-2"],
+        )
+        self.assertEqual(children_surface["attention_profile"]["node_id"], "3-2-3-17-77-1")
+        self.assertEqual(children_surface["map_projection"]["feature_count"], 2)
         self.assertEqual(children_surface["children"][0]["node_id"], "3-2-3-17-77-1-1")
-        feature_props = children_surface["map_projection"]["feature_collection"]["features"][0]["properties"]
-        self.assertEqual(feature_props["samras_node_id"], "3-2-3-17-77-1-1")
-        self.assertEqual(feature_props["profile_label"], "fairlawn")
+        feature_nodes = [
+            feature["properties"]["samras_node_id"]
+            for feature in children_surface["map_projection"]["feature_collection"]["features"]
+        ]
+        self.assertEqual(feature_nodes, ["3-2-3-17-77-1", "3-2-3-17-77-1-1"])
+        child_feature_props = children_surface["map_projection"]["feature_collection"]["features"][1]["properties"]
+        self.assertEqual(child_feature_props["profile_label"], "fairlawn")
 
         bridged_surface = CtsGisReadOnlyService(store).read_surface(
             "fnd",
@@ -358,7 +368,7 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
 
         surface = CtsGisReadOnlyService(store).read_surface(
             "fnd",
-            mediation_state={"attention_node_id": "3-2-3-17-77", "intention_token": "0"},
+            mediation_state={"attention_node_id": "3-2-3-17-77", "intention_token": "self"},
         )
 
         self.assertEqual(surface["map_projection"]["projection_source"], "hops")
@@ -375,7 +385,7 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         self.assertGreaterEqual(bounds[1], -90.0)
         self.assertLessEqual(bounds[3], 90.0)
 
-    def test_attention_zero_zero_alias_normalizes_to_descendants_depth_1_or_2(self) -> None:
+    def test_attention_zero_zero_alias_normalizes_to_address_based_descendants_scope(self) -> None:
         store = _FakeDatumStore(
             AuthoritativeDatumDocumentCatalogResult(
                 tenant_id="fnd",
@@ -394,12 +404,33 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         )
 
         self.assertEqual(surface["mediation_state"]["attention_node_id"], "3-2-3-17-77-1")
-        self.assertEqual(surface["mediation_state"]["intention_token"], "descendants_depth_1_or_2")
+        self.assertEqual(surface["mediation_state"]["intention_token"], "3-2-3-17-77-1-0-0")
         self.assertEqual(surface["render_set_summary"]["render_mode"], "descendants_depth_1_or_2")
         self.assertEqual(
             [item["node_id"] for item in surface["render_profiles"]],
-            ["3-2-3-17-77-1-1", "3-2-3-17-77-1-2"],
+            ["3-2-3-17-77-1", "3-2-3-17-77-1-1", "3-2-3-17-77-1-2"],
         )
+
+    def test_legacy_self_alias_normalizes_to_self(self) -> None:
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(_cts_gis_document(),),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77-1",
+                "intention_token": "0",
+            },
+        )
+
+        self.assertEqual(surface["mediation_state"]["intention_token"], "self")
+        self.assertEqual(surface["render_set_summary"]["render_mode"], "self")
 
     def test_real_summit_county_and_community_documents_remain_hops_projectable(self) -> None:
         for node_id in (
@@ -427,7 +458,7 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
                     mediation_state={
                         "attention_document_id": document_id,
                         "attention_node_id": node_id,
-                        "intention_token": "0",
+                        "intention_token": "self",
                     },
                 )
                 projection = surface["map_projection"]
@@ -459,7 +490,7 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
                     mediation_state={
                         "attention_document_id": document_id,
                         "attention_node_id": node_id,
-                        "intention_token": "0",
+                        "intention_token": "self",
                     },
                 )
                 projection = surface["map_projection"]
@@ -467,6 +498,57 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
                 self.assertIn(projection["projection_state"], {"projectable", "projectable_degraded"})
                 self.assertGreater(projection["feature_count"], 0)
                 self.assertEqual(projection["decode_summary"]["failed_token_count"], 0)
+
+    def test_live_summit_projection_bundle_reports_projectable_documents_after_anchor_repair(self) -> None:
+        store = FilesystemSystemDatumStoreAdapter(REPO_ROOT / "deployed" / "fnd" / "data")
+        projection_bundle = CtsGisReadOnlyService(store).read_projection_bundle("fnd")
+        projected_by_name = {
+            str((document.get("document_summary") or {}).get("document_name") or ""): dict(
+                document.get("document_summary") or {}
+            )
+            for document in list(projection_bundle.get("documents") or [])
+        }
+        county_summary = projected_by_name["sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"]
+        community_summary = projected_by_name["sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77-1-1.json"]
+        self.assertEqual(county_summary["projection_state"], "projectable")
+        self.assertGreater(int(county_summary["projectable_feature_count"] or 0), 0)
+        self.assertGreater(int(county_summary["profile_count"] or 0), 0)
+        self.assertEqual(community_summary["projection_state"], "projectable")
+        self.assertGreater(int(community_summary["projectable_feature_count"] or 0), 0)
+        self.assertGreater(int(community_summary["profile_count"] or 0), 0)
+
+    def test_live_summit_descendants_scope_overlays_county_and_projectable_descendants(self) -> None:
+        store = FilesystemSystemDatumStoreAdapter(REPO_ROOT / "deployed" / "fnd" / "data")
+
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77",
+                "intention_token": "3-2-3-17-77-0-0",
+            },
+        )
+
+        render_profile_nodes = [item["node_id"] for item in surface["render_profiles"]]
+        feature_nodes = [
+            feature["properties"]["samras_node_id"]
+            for feature in surface["map_projection"]["feature_collection"]["features"]
+        ]
+
+        self.assertEqual(surface["attention_profile"]["node_id"], "3-2-3-17-77")
+        self.assertEqual(surface["mediation_state"]["intention_token"], "3-2-3-17-77-0-0")
+        self.assertEqual(surface["render_set_summary"]["render_mode"], "descendants_depth_1_or_2")
+        self.assertEqual(surface["render_set_summary"]["render_profile_count"], 35)
+        self.assertEqual(surface["render_set_summary"]["render_feature_count"], 32)
+        self.assertEqual(surface["map_projection"]["feature_count"], 32)
+        self.assertEqual(surface["map_projection"]["projection_source"], "hops")
+        self.assertEqual(surface["map_projection"]["projection_state"], "projectable")
+        self.assertIn("3-2-3-17-77", render_profile_nodes)
+        self.assertIn("3-2-3-17-77-1", render_profile_nodes)
+        self.assertIn("3-2-3-17-77-1-1", render_profile_nodes)
+        self.assertIn("3-2-3-17-77-3-9", render_profile_nodes)
+        self.assertIn("3-2-3-17-77", feature_nodes)
+        self.assertIn("3-2-3-17-77-1-1", feature_nodes)
+        self.assertIn("3-2-3-17-77-3-9", feature_nodes)
 
     def test_stage_a_stripped_documents_preserve_feature_and_decode_counts_in_audit(self) -> None:
         report_path = (
@@ -507,7 +589,7 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
 
         surface = CtsGisReadOnlyService(store).read_surface(
             "fnd",
-            mediation_state={"attention_node_id": "3-2-3-17-77", "intention_token": "0"},
+            mediation_state={"attention_node_id": "3-2-3-17-77", "intention_token": "self"},
         )
 
         self.assertEqual(surface["map_projection"]["projection_source"], "reference_geojson_fallback")

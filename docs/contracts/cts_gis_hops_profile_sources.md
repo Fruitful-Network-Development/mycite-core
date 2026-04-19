@@ -33,6 +33,14 @@ That means:
 - the source file does not store GeoJSON geometry arrays
 - ring closure is applied by runtime assembly, not by duplicating the first point in every `4-*` row
 
+## Source Loading And Overlay Assembly
+
+- CTS-GIS source files and their supporting anchor documents remain strict JSON inputs; malformed JSON is surfaced as warnings rather than being parsed permissively.
+- A malformed shared anchor blocks dependent HOPS projection recovery for the affected source files until that anchor is repaired.
+- When node-focused intention widens to `<attention_node_id>-0` or `<attention_node_id>-0-0`, Garland may assemble one geospatial overlay from multiple in-scope projectable source documents.
+- That widened overlay does not change the active profile: `profile_projection` stays focused on the selected node while `geospatial_projection` collects the projectable features.
+- Non-Garland row/detail views remain anchored to the currently selected document even when Garland overlays widen across multiple projectable sources.
+
 ## Row Chain
 
 CTS-GIS profile sources use a `4 -> 5 -> 6 -> 7` chain.
