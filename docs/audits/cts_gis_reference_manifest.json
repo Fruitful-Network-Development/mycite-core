@@ -1,0 +1,18 @@
+{
+  "manifest_type": "cts_gis_reference_geojson_manifest",
+  "generated_at_utc": "2026-04-20T09:11:30Z",
+  "entries": [
+    {
+      "node_id": "3-2-3-17-77",
+      "source_profile": "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
+      "source_profile_path": "deployed/fnd/data/sandbox/cts-gis/sources/sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
+      "reference_geojson_source": "/srv/repo/mycite-core/docs/personal_notes/CTS-GIS-prototype-mockup/3-2-3-17-77.geojson",
+      "reference_geojson_path": "/srv/repo/mycite-core/docs/personal_notes/CTS-GIS-prototype-mockup/3-2-3-17-77.geojson",
+      "reference_geojson_sha256": "56c6312c6f5f270599b5216e3365b14c76ac3b22221d83e2ab9de32ec92f21ce",
+      "status": "repaired",
+      "before_issue_types": [],
+      "after_issue_types": [],
+      "checked_at_utc": "2026-04-20T09:11:30Z"
+    }
+  ]
+}

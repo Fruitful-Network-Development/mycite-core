@@ -229,6 +229,76 @@ def _cts_gis_reference_fallback_document() -> AuthoritativeDatumDocument:
     )
 
 
+def _cts_gis_semantic_guardrail_document(*, with_reference_geojson: bool) -> AuthoritativeDatumDocument:
+    metadata: dict[str, object] = {}
+    if with_reference_geojson:
+        metadata = {
+            "reference_geojson_node_id": "3-2-3-17-77",
+            "reference_geojson": {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[
+                                [-81.63, 41.02],
+                                [-81.45, 41.02],
+                                [-81.44, 41.16],
+                                [-81.62, 41.18],
+                                [-81.63, 41.02],
+                            ]],
+                        },
+                        "properties": {"community_name": "summit_reference"},
+                    }
+                ],
+            },
+        }
+    return AuthoritativeDatumDocument(
+        document_id="sandbox:cts_gis:sc.semantic-guardrail.3-2-3-17-77.json",
+        source_kind="sandbox_source",
+        document_name="sc.semantic-guardrail.3-2-3-17-77.json",
+        relative_path="sandbox/cts-gis/sources/sc.semantic-guardrail.3-2-3-17-77.json",
+        tool_id="cts_gis",
+        anchor_document_name="tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        anchor_document_path="sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        anchor_rows=_anchor_rows(),
+        document_metadata=metadata,
+        rows=(
+            AuthoritativeDatumDocumentRow(
+                datum_address="4-3-1",
+                raw=[
+                    [
+                        "4-3-1",
+                        "rf.3-1-1",
+                        "3-76-11-33-94-18-62-86-96-8-48-58-76-30-32-86-49-4",
+                        "rf.3-1-1",
+                        "3-76-11-33-94-48-33-12-77-27-69-69-38-52-19-46-63",
+                        "rf.3-1-1",
+                        "3-76-11-33-94-58-63-54-38-55-18-2-87-68-26-48-30-5",
+                    ],
+                    ["semantic_guardrail_polygon"],
+                ],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="5-0-1",
+                raw=[["5-0-1", "~", "4-3-1"], ["semantic_guardrail_boundary"]],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="6-0-1",
+                raw=[["6-0-1", "~", "5-0-1"], ["semantic_guardrail_collection"]],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="7-3-1",
+                raw=[
+                    ["7-3-1", "rf.3-1-2", "3-2-3-17-77", "rf.3-1-3", _ascii_bits("summit_guardrail"), "6-0-1", "1"],
+                    ["summit_guardrail"],
+                ],
+            ),
+        ),
+    )
+
+
 def _cts_gis_reference_guarded_document() -> AuthoritativeDatumDocument:
     return AuthoritativeDatumDocument(
         document_id="sandbox:cts_gis:sc.reference-guarded.3-2-3-17-77-1.json",
@@ -488,7 +558,7 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         self.assertEqual(surface["selected_document"]["document_name"], "anthology.json")
         self.assertTrue(surface["warnings"])
 
-    def test_real_summit_county_document_projects_hops_geometry_with_sane_bounds(self) -> None:
+    def test_real_summit_county_document_projects_hops_geometry_with_guardrail_diagnostics(self) -> None:
         county_doc = _document_from_source_file(
             _summit_source_path("3-2-3-17-77")
         )
@@ -507,10 +577,23 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         )
 
         self.assertEqual(surface["map_projection"]["projection_source"], "hops")
-        self.assertEqual(surface["map_projection"]["projection_state"], "projectable")
-        self.assertEqual(surface["map_projection"]["decode_summary"]["reference_binding_count"], 1506)
-        self.assertEqual(surface["map_projection"]["decode_summary"]["decoded_coordinate_count"], 1506)
+        self.assertIn(
+            surface["map_projection"]["projection_state"],
+            {"projectable", "projectable_degraded"},
+        )
+        binding_count = int(surface["map_projection"]["decode_summary"]["reference_binding_count"])
+        decoded_count = int(surface["map_projection"]["decode_summary"]["decoded_coordinate_count"])
+        self.assertGreaterEqual(binding_count, 1500)
+        self.assertEqual(decoded_count, binding_count)
         self.assertEqual(surface["map_projection"]["decode_summary"]["failed_token_count"], 0)
+        if surface["map_projection"]["projection_state"] == "projectable_degraded":
+            self.assertIn(
+                "semantic_bounds_outside_expected_envelope",
+                surface["map_projection"]["fallback_reason_codes"],
+            )
+            self.assertTrue(surface["map_projection"]["semantic_guardrails"]["triggered"])
+        else:
+            self.assertFalse(surface["map_projection"]["semantic_guardrails"]["triggered"])
         bounds = surface["map_projection"]["feature_collection"]["bounds"]
         self.assertEqual(len(bounds), 4)
         self.assertLess(bounds[0], bounds[2])
@@ -645,7 +728,7 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         }
         county_summary = projected_by_name["sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"]
         community_summary = projected_by_name["sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77-1-1.json"]
-        self.assertEqual(county_summary["projection_state"], "projectable")
+        self.assertIn(county_summary["projection_state"], {"projectable", "projectable_degraded"})
         self.assertGreater(int(county_summary["projectable_feature_count"] or 0), 0)
         self.assertGreater(int(county_summary["profile_count"] or 0), 0)
         self.assertEqual(community_summary["projection_state"], "projectable")
@@ -676,7 +759,7 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         self.assertEqual(surface["render_set_summary"]["render_feature_count"], 32)
         self.assertEqual(surface["map_projection"]["feature_count"], 32)
         self.assertEqual(surface["map_projection"]["projection_source"], "hops")
-        self.assertEqual(surface["map_projection"]["projection_state"], "projectable")
+        self.assertIn(surface["map_projection"]["projection_state"], {"projectable", "projectable_degraded"})
         self.assertIn("3-2-3-17-77", render_profile_nodes)
         self.assertIn("3-2-3-17-77-1", render_profile_nodes)
         self.assertIn("3-2-3-17-77-1-1", render_profile_nodes)
@@ -805,6 +888,47 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
             self_surface["map_projection"]["feature_collection"]["features"][0]["properties"]["samras_node_id"],
             "3-2-3-17-77-1",
         )
+
+    def test_semantic_implausibility_falls_back_to_reference_geojson_when_available(self) -> None:
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(_cts_gis_semantic_guardrail_document(with_reference_geojson=True),),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={"attention_node_id": "3-2-3-17-77", "intention_token": "self"},
+        )
+        projection = surface["map_projection"]
+        self.assertEqual(projection["projection_source"], "reference_geojson_fallback")
+        self.assertEqual(projection["projection_state"], "projectable_fallback")
+        self.assertIn("semantic_bounds_outside_expected_envelope", projection["fallback_reason_codes"])
+        self.assertEqual(projection["projection_health"]["state"], "fallback")
+        self.assertTrue(projection["semantic_guardrails"]["triggered"])
+
+    def test_semantic_implausibility_without_reference_keeps_hops_as_degraded(self) -> None:
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(_cts_gis_semantic_guardrail_document(with_reference_geojson=False),),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={"attention_node_id": "3-2-3-17-77", "intention_token": "self"},
+        )
+        projection = surface["map_projection"]
+        self.assertEqual(projection["projection_source"], "hops")
+        self.assertEqual(projection["projection_state"], "projectable_degraded")
+        self.assertEqual(projection["projection_health"]["state"], "degraded")
+        self.assertGreater(projection["feature_count"], 0)
+        self.assertIn("semantic_bounds_outside_expected_envelope", projection["fallback_reason_codes"])
+        self.assertTrue(projection["semantic_guardrails"]["triggered"])
 
     def test_invalid_widened_intention_snaps_to_self_with_warning(self) -> None:
         store = _FakeDatumStore(

@@ -29,6 +29,15 @@ from MyCiteV2.packages.modules.domains.datum_recognition import (
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentPort
 
 _VALID_OVERLAY_MODES = frozenset({"auto", "raw_only"})
+_SEMANTIC_GUARDRAIL_ENVELOPES = {
+    # Summit corpus envelope. When decoded HOPS geometry lands far outside this
+    # range for this subtree, keep the decode diagnostics but mark geometry as
+    # semantically implausible for fallback handling.
+    "3-2-3-17-77": {
+        "bounds": (-83.0, 40.0, -80.0, 42.5),
+        "max_span": (2.5, 2.5),
+    },
+}
 
 
 def _as_lower(value: object) -> str:
@@ -82,6 +91,70 @@ def _first_non_empty(values: list[object] | tuple[object, ...]) -> str:
         if token:
             return token
     return ""
+
+
+def _node_guardrail_envelope(node_id: object) -> dict[str, Any] | None:
+    token = _as_text(node_id)
+    if not token:
+        return None
+    for prefix, envelope in _SEMANTIC_GUARDRAIL_ENVELOPES.items():
+        if token == prefix:
+            return dict(envelope)
+    return None
+
+
+def _semantic_projection_assessment(
+    *,
+    row_address: str,
+    node_id: str,
+    points: list[list[float]],
+) -> dict[str, Any]:
+    envelope = _node_guardrail_envelope(node_id)
+    if not envelope:
+        return {"plausible": True, "reason_codes": [], "warnings": []}
+    if not points:
+        return {"plausible": True, "reason_codes": [], "warnings": []}
+
+    bounds = _feature_bounds(points)
+    if not bounds:
+        return {"plausible": True, "reason_codes": [], "warnings": []}
+
+    min_lon, min_lat, max_lon, max_lat = bounds
+    lon_span = max_lon - min_lon
+    lat_span = max_lat - min_lat
+    expected_min_lon, expected_min_lat, expected_max_lon, expected_max_lat = tuple(
+        float(value) for value in list(envelope.get("bounds") or (-180.0, -90.0, 180.0, 90.0))
+    )
+    expected_max_lon_span, expected_max_lat_span = tuple(
+        float(value) for value in list(envelope.get("max_span") or (360.0, 180.0))
+    )
+
+    reason_codes: list[str] = []
+    warnings: list[str] = []
+    if (
+        max_lon < expected_min_lon
+        or min_lon > expected_max_lon
+        or max_lat < expected_min_lat
+        or min_lat > expected_max_lat
+    ):
+        reason_codes.append("semantic_bounds_outside_expected_envelope")
+        warnings.append(
+            f"{row_address} geometry bounds {bounds} are outside expected envelope "
+            f"[{expected_min_lon}, {expected_min_lat}, {expected_max_lon}, {expected_max_lat}] "
+            f"for node {node_id}."
+        )
+    if lon_span > expected_max_lon_span or lat_span > expected_max_lat_span:
+        reason_codes.append("semantic_span_exceeds_expected_envelope")
+        warnings.append(
+            f"{row_address} geometry span ({lon_span:.3f}, {lat_span:.3f}) exceeds expected "
+            f"max span ({expected_max_lon_span:.3f}, {expected_max_lat_span:.3f}) for node {node_id}."
+        )
+
+    return {
+        "plausible": not reason_codes,
+        "reason_codes": _dedupe_texts(reason_codes),
+        "warnings": _dedupe_texts(warnings),
+    }
 
 
 def _sorted_addresses(values: set[str] | list[str] | tuple[str, ...]) -> list[str]:
@@ -507,6 +580,7 @@ def _coordinate_projection(
     row: DatumRecognitionRow,
     *,
     coordinate_authority: dict[str, Any] | None = None,
+    primary_samras_node_id: str = "",
 ) -> dict[str, Any]:
     mapped_ring = list(((coordinate_authority or {}).get("row_coordinate_map") or {}).get(row.datum_address) or [])
     hops_bindings = [
@@ -519,6 +593,7 @@ def _coordinate_projection(
             "decoded_coordinate_count": 0,
             "failed_token_count": 0,
             "projection_source": "none",
+            "reason_codes": [],
             "warnings": [],
         }
     out: list[dict[str, Any]] = []
@@ -579,12 +654,20 @@ def _coordinate_projection(
         warnings.append(
             f"{row.datum_address} decoded {decoded_coordinate_count}/{reference_binding_count} HOPS coordinates."
         )
+    semantic_assessment = _semantic_projection_assessment(
+        row_address=row.datum_address,
+        node_id=primary_samras_node_id,
+        points=[list(entry["coordinates"]) for entry in out],
+    )
+    semantic_reason_codes = list(semantic_assessment.get("reason_codes") or [])
+    warnings.extend(list(semantic_assessment.get("warnings") or []))
     return {
         "entries": out,
         "reference_binding_count": reference_binding_count,
         "decoded_coordinate_count": decoded_coordinate_count,
         "failed_token_count": failed_token_count,
         "projection_source": "hops" if decoded_coordinate_count else "none",
+        "reason_codes": semantic_reason_codes,
         "warnings": _dedupe_texts(warnings),
     }
 
@@ -600,6 +683,7 @@ def _feature_from_row(
     title_display: str,
     projection_source: str = "none",
     decode_summary: dict[str, Any] | None = None,
+    projection_reason_codes: list[str] | None = None,
     projection_warnings: list[str] | None = None,
 ) -> dict[str, Any] | None:
     if not coordinates:
@@ -633,6 +717,7 @@ def _feature_from_row(
         "diagnostic_states": list(row.diagnostic_states),
         "projection_source": projection_source,
         "decode_summary": dict(decode_summary or {}),
+        "projection_reason_codes": list(projection_reason_codes or []),
         "projection_warnings": list(projection_warnings or []),
         "feature": {
             "type": "Feature",
@@ -648,6 +733,7 @@ def _feature_from_row(
                 "diagnostic_states": list(row.diagnostic_states),
                 "projection_source": projection_source,
                 "decode_summary": dict(decode_summary or {}),
+                "projection_reason_codes": list(projection_reason_codes or []),
                 "projection_warnings": list(projection_warnings or []),
             },
         },
@@ -669,6 +755,7 @@ def _feature_from_geometry(
     properties_extra: dict[str, Any] | None = None,
     projection_source: str = "none",
     decode_summary: dict[str, Any] | None = None,
+    projection_reason_codes: list[str] | None = None,
     projection_warnings: list[str] | None = None,
 ) -> dict[str, Any] | None:
     geometry_type = _as_text((geometry or {}).get("type"))
@@ -688,6 +775,7 @@ def _feature_from_geometry(
         "diagnostic_states": list(diagnostic_states),
         "projection_source": projection_source,
         "decode_summary": dict(decode_summary or {}),
+        "projection_reason_codes": list(projection_reason_codes or []),
         "projection_warnings": list(projection_warnings or []),
     }
     return {
@@ -703,6 +791,7 @@ def _feature_from_geometry(
         "diagnostic_states": list(diagnostic_states),
         "projection_source": projection_source,
         "decode_summary": dict(decode_summary or {}),
+        "projection_reason_codes": list(projection_reason_codes or []),
         "projection_warnings": list(projection_warnings or []),
         "feature": {
             "type": "Feature",
@@ -738,8 +827,6 @@ def _row_projection(
     coordinate_authority: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     overlays = [_binding_overlay(binding, overlay_mode=overlay_mode) for binding in row.reference_bindings]
-    coordinate_projection = _coordinate_projection(row, coordinate_authority=coordinate_authority)
-    coordinates = list(coordinate_projection.get("entries") or [])
     samras_node_ids = [
         _as_text(item.get("display_value")) or _as_text(item.get("raw_value"))
         for item in overlays
@@ -755,6 +842,12 @@ def _row_projection(
     )
     label_text = _row_label_text(row)
     primary_samras_node_id = samras_node_ids[0] if samras_node_ids else ""
+    coordinate_projection = _coordinate_projection(
+        row,
+        coordinate_authority=coordinate_authority,
+        primary_samras_node_id=primary_samras_node_id,
+    )
+    coordinates = list(coordinate_projection.get("entries") or [])
     profile_label = _first_non_empty([title_display, label_text, primary_samras_node_id, row.datum_address])
     feature = _feature_from_row(
         document=document,
@@ -770,6 +863,7 @@ def _row_projection(
             "decoded_coordinate_count": int(coordinate_projection.get("decoded_coordinate_count") or 0),
             "failed_token_count": int(coordinate_projection.get("failed_token_count") or 0),
         },
+        projection_reason_codes=list(coordinate_projection.get("reason_codes") or []),
         projection_warnings=list(coordinate_projection.get("warnings") or []),
     )
     return {
@@ -788,6 +882,7 @@ def _row_projection(
         "decoded_coordinate_count": int(coordinate_projection.get("decoded_coordinate_count") or 0),
         "failed_token_count": int(coordinate_projection.get("failed_token_count") or 0),
         "coordinate_projection_source": _as_text(coordinate_projection.get("projection_source")) or "none",
+        "coordinate_reason_codes": list(coordinate_projection.get("reason_codes") or []),
         "coordinate_warnings": list(coordinate_projection.get("warnings") or []),
         # Profile features are attached at the 7 -> 6 -> 5 -> 4 chain during
         # document projection so Garland operates on profile geometry rather than
@@ -881,6 +976,7 @@ def _projection_summary_for_row_addresses(
     decoded_coordinate_count = 0
     failed_token_count = 0
     warnings: list[str] = []
+    reason_codes: list[str] = []
     for row_address in row_addresses:
         row = row_index.get(row_address)
         if row is None or _row_family(row_address) != "4":
@@ -889,10 +985,12 @@ def _projection_summary_for_row_addresses(
         decoded_coordinate_count += int(row.get("decoded_coordinate_count") or 0)
         failed_token_count += int(row.get("failed_token_count") or 0)
         warnings.extend(list(row.get("coordinate_warnings") or []))
+        reason_codes.extend(list(row.get("coordinate_reason_codes") or []))
     return {
         "reference_binding_count": reference_binding_count,
         "decoded_coordinate_count": decoded_coordinate_count,
         "failed_token_count": failed_token_count,
+        "reason_codes": _dedupe_texts(reason_codes),
         "warnings": _dedupe_texts(warnings),
     }
 
@@ -902,6 +1000,7 @@ def _reference_geojson_profile_features(
     *,
     owner_row: dict[str, Any],
     decode_summary: dict[str, Any] | None = None,
+    projection_reason_codes: list[str] | None = None,
     projection_warnings: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     metadata = dict(document.document_metadata or {})
@@ -960,6 +1059,7 @@ def _reference_geojson_profile_features(
             properties_extra=properties,
             projection_source="reference_geojson_fallback",
             decode_summary=dict(decode_summary or {}),
+            projection_reason_codes=list(projection_reason_codes or []),
             projection_warnings=warnings,
         )
         if feature is not None:
@@ -1135,12 +1235,16 @@ def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mo
             reachable_addresses = [row["datum_address"]]
 
         projection_summary = _projection_summary_for_row_addresses(reachable_addresses, row_index)
+        projection_reason_codes = list(projection_summary.get("reason_codes") or [])
+        projection_warnings = list(projection_summary.get("warnings") or [])
         profile_features: list[dict[str, Any]] = []
         decode_summary = {
             "reference_binding_count": int(projection_summary.get("reference_binding_count") or 0),
             "decoded_coordinate_count": int(projection_summary.get("decoded_coordinate_count") or 0),
             "failed_token_count": int(projection_summary.get("failed_token_count") or 0),
         }
+        semantic_reason_codes = [code for code in projection_reason_codes if _as_text(code).startswith("semantic_")]
+        semantic_implausible = bool(semantic_reason_codes)
         prefer_reference_geojson = _prefer_reference_geojson_projection(
             document,
             owner_row=row,
@@ -1150,6 +1254,21 @@ def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mo
         if not prefer_reference_geojson:
             geometry = _geometry_from_row_address(row["datum_address"], row_index)
             if geometry is not None:
+                geometry_semantic_assessment = _semantic_projection_assessment(
+                    row_address=_as_text(row.get("datum_address")),
+                    node_id=node_id,
+                    points=_geometry_points(geometry),
+                )
+                projection_reason_codes = _dedupe_texts(
+                    projection_reason_codes + list(geometry_semantic_assessment.get("reason_codes") or [])
+                )
+                projection_warnings = _dedupe_texts(
+                    projection_warnings + list(geometry_semantic_assessment.get("warnings") or [])
+                )
+                semantic_reason_codes = [
+                    code for code in projection_reason_codes if _as_text(code).startswith("semantic_")
+                ]
+                semantic_implausible = bool(semantic_reason_codes)
                 feature = _feature_from_geometry(
                     document=document,
                     feature_id=f"{document.document_id}:{row['datum_address']}",
@@ -1166,16 +1285,35 @@ def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mo
                     },
                     projection_source="hops",
                     decode_summary=decode_summary,
-                    projection_warnings=list(projection_summary.get("warnings") or []),
+                    projection_reason_codes=projection_reason_codes,
+                    projection_warnings=projection_warnings,
                 )
                 if feature is not None:
                     profile_features = [feature]
+        if semantic_implausible:
+            fallback_warnings = _dedupe_texts(
+                projection_warnings
+                + [
+                    f"{_as_text(row.get('datum_address'))} failed semantic guardrails and requested authority fallback."
+                ]
+                + list(coordinate_authority.get("warnings") or [])
+            )
+            semantic_fallback_features = _reference_geojson_profile_features(
+                document,
+                owner_row=row,
+                decode_summary=decode_summary,
+                projection_reason_codes=projection_reason_codes,
+                projection_warnings=fallback_warnings,
+            )
+            if semantic_fallback_features:
+                profile_features = semantic_fallback_features
         if not profile_features:
             profile_features = _reference_geojson_profile_features(
                 document,
                 owner_row=row,
                 decode_summary=decode_summary,
-                projection_warnings=list(projection_summary.get("warnings") or [])
+                projection_reason_codes=projection_reason_codes,
+                projection_warnings=projection_warnings
                 + list(coordinate_authority.get("warnings") or []),
             )
         if not profile_features and row.get("direct_feature") is not None:
@@ -2031,6 +2169,7 @@ class CtsGisReadOnlyService:
             "reference_binding_count": 0,
             "decoded_coordinate_count": 0,
             "failed_token_count": 0,
+            "reason_codes": [],
             "warnings": [],
         }
         total_render_row_count = 0
@@ -2059,6 +2198,10 @@ class CtsGisReadOnlyService:
             render_projection_summary["failed_token_count"] += int(
                 document_projection_summary.get("failed_token_count") or 0
             )
+            render_projection_summary["reason_codes"] = _dedupe_texts(
+                list(render_projection_summary.get("reason_codes") or [])
+                + list(document_projection_summary.get("reason_codes") or [])
+            )
             render_projection_warnings.extend(list(document_projection_summary.get("warnings") or []))
             render_projection_warnings.extend(
                 list(((document_bundle.get("document_summary") or {}).get("projection_warnings")) or [])
@@ -2069,6 +2212,14 @@ class CtsGisReadOnlyService:
                 warning
                 for feature in render_features
                 for warning in list(feature.get("projection_warnings") or [])
+            ]
+        )
+        render_projection_summary["reason_codes"] = _dedupe_texts(
+            list(render_projection_summary.get("reason_codes") or [])
+            + [
+                reason_code
+                for feature in render_features
+                for reason_code in list(feature.get("projection_reason_codes") or [])
             ]
         )
         projection_sources = {
@@ -2109,6 +2260,7 @@ class CtsGisReadOnlyService:
                 if any("reference GeoJSON geometry" in warning for warning in render_projection_warnings)
                 else "",
             ]
+            + list(render_projection_summary.get("reason_codes") or [])
         )
         if projection_state == "projectable":
             projection_health = {"state": "ok", "reason_codes": []}
@@ -2187,6 +2339,17 @@ class CtsGisReadOnlyService:
                 },
                 "projection_health": projection_health,
                 "fallback_reason_codes": list(projection_health.get("reason_codes") or []),
+                "semantic_guardrails": {
+                    "triggered": any(
+                        _as_text(code).startswith("semantic_")
+                        for code in list(projection_health.get("reason_codes") or [])
+                    ),
+                    "reason_codes": [
+                        code
+                        for code in list(projection_health.get("reason_codes") or [])
+                        if _as_text(code).startswith("semantic_")
+                    ],
+                },
                 "focus_node_id": attention_node_id_text,
                 "focus_bounds": _feature_bounds(focused_render_points),
                 "warnings": render_projection_warnings,
@@ -2362,6 +2525,10 @@ class CtsGisReadOnlyService:
                 ),
                 "fallback_reason_codes": list(
                     (mediation_surface.get("map_projection") or {}).get("fallback_reason_codes") or []
+                ),
+                "semantic_guardrails": dict(
+                    (mediation_surface.get("map_projection") or {}).get("semantic_guardrails")
+                    or {"triggered": False, "reason_codes": []}
                 ),
                 "focus_node_id": _as_text((mediation_surface.get("map_projection") or {}).get("focus_node_id")),
                 "focus_bounds": list((mediation_surface.get("map_projection") or {}).get("focus_bounds") or []),

@@ -18,6 +18,7 @@ CTS-GIS resolves SAMRAS structure in this order:
 2. scan `data/sandbox/cts-gis/tool.<msn>.cts-gis.json` for decodable `msn-SAMRAS` candidates
 3. use the highest-ranked decodable candidate
 4. if no structure row decodes, attempt legacy reconstruction from `data/sandbox/cts-gis/sources/<corpus>.msn-administrative.json`
+5. if a decodable authority yields poor namespace coverage versus administrative unique node bindings, CTS-GIS may override it with reconstructed authority from administrative rows
 
 CTS-GIS resolves ASCII node titles from:
 
@@ -39,6 +40,12 @@ The SAMRAS magnitude is decoded procedurally:
 The governing reference for the structure datum is `0-0-5`.
 
 The derived namespace is fail-closed only when no valid structure authority or reconstructible row set exists. Overlay rows do not become the governing source of parentage.
+
+Coverage override rule:
+
+- CTS-GIS compares the active decoded namespace to unique administrative node bindings
+- when reconstruction materially reduces `node_outside_magnitude` drift, reconstructed authority is preferred
+- this keeps directory navigation operational when an anchor/cache magnitude is decodable but semantically stale
 
 ## Address Denotation
 
@@ -108,6 +115,7 @@ Display rules:
 - root labels render as `1 NEG` through `8 SWG`
 - deeper labels render as `<node_id> <ascii_title>`
 - when `title=""`, the visible label falls back to the bare `node_id`
+- table/title rendering may use `node_id` fallback even when the underlying `title` field is empty
 
 ## Selection Normalization
 
@@ -126,12 +134,14 @@ Garland is driven by the currently selected SAMRAS node from `navigation_canvas.
 - `profile_projection` may materialize a blank but stateful current-profile view for a structurally valid selected node even when no matching profile source exists yet
 - `geospatial_projection` remains empty until that selected node or its widened intention scope resolves projectable HOPS geometry
 - node-focused widened intention keeps the selected node as Garland's active profile while geospatial overlays may combine multiple in-scope projectable profile source documents
-- explicit source-document selection may still anchor row/detail evidence, but changing Intention clears that pin so widened Garland overlays can resolve across source documents
+- explicit source-document selection anchors row/detail evidence, and node/intention navigation preserves that pin unless the user explicitly switches source document
 - if a node-specific profile source document exists, CTS-GIS may still prefer the profile source whose filename suffix matches the selected node id for the focused document view
-- when a profile document carries `reference_geojson`, fallback geometry is allowed only when HOPS decode cannot produce projectable coordinates for the row/profile; parity warnings alone do not switch geometry authority
+- when a profile document carries `reference_geojson`, fallback geometry is allowed when HOPS decode cannot produce projectable coordinates for the row/profile or when semantic guardrails classify decode-valid geometry as implausible for the active node envelope; parity warnings alone do not switch geometry authority
 - when blocked, CTS-GIS renders diagnostics and leaves Garland empty until a valid structural selection becomes possible
 
 See `docs/contracts/cts_gis_garland_projection_lens.md` for bounds/focus and lens rendering rules.
+See `docs/contracts/cts_gis_reference_promotion_and_profile_repair.md` for the
+required source-repair workflow that updates profile documents bound to SAMRAS nodes.
 
 ## Diagnostics
 
@@ -142,3 +152,4 @@ Secondary overlay problems remain visible as diagnostics without blocking bare n
 - duplicate node-row bindings
 - node rows outside the resolved namespace
 - undecodable ASCII title payloads
+- reconstructed authority override events when drifted decodable magnitudes are replaced

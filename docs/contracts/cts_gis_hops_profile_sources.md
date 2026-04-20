@@ -42,12 +42,14 @@ CTS-GIS treats HOPS coordinate strings as the canonical geometry authority whene
 - decoded coordinate order must preserve row order exactly
 - ring closure is a render-time operation only (first coordinate appended at end)
 - decode warnings are diagnostic metadata; they do not change geometry authority by themselves
+- semantic guardrails may mark decode-valid geometry as implausible for the active node envelope
 
 Decode-failure semantics:
 
 - if a row has `reference_binding_count > 0` and `decoded_coordinate_count == 0`, the row is non-projectable from HOPS
 - if only some tokens fail, the profile may be marked degraded, but decoded HOPS geometry remains authoritative
-- `reference_geojson` is fallback-only for non-projectable rows/profiles, not a warning-triggered override
+- `reference_geojson` is fallback-only for non-projectable rows/profiles or semantic-implausibility override, not a generic warning-triggered override
+- semantic-guardrail reason codes are surfaced via runtime `fallback_reason_codes` (for example `semantic_bounds_outside_expected_envelope`)
 
 ## Source Loading And Overlay Assembly
 
@@ -176,3 +178,11 @@ So profile-source repairs should target:
 - incorrect `4-<n>-1` counts
 
 They should not target Garland by hand-editing runtime GeoJSON into the source file.
+
+## Promotion Workflow Requirement
+
+New source onboarding and profile repair must follow the reference-promotion workflow
+defined in `docs/contracts/cts_gis_reference_promotion_and_profile_repair.md`.
+
+That workflow is the only approved path for converting vetted GeoJSON into
+authoritative `4 -> 5 -> 6 -> 7` HOPS row chains.

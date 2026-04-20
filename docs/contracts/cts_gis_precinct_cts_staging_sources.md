@@ -83,3 +83,9 @@ For the staged `setA` precinct corpus:
 Example:
 
 - `AK01-A` -> `010000010100101100110000001100010010110101000001` plus right-padding to `128` bits
+
+## Promotion To Runtime Sources
+
+When precinct staging geometry is promoted into runtime CTS-GIS source profiles, the
+promotion must use the controlled reference workflow in
+`docs/contracts/cts_gis_reference_promotion_and_profile_repair.md`.

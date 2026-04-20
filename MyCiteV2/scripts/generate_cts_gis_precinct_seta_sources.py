@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import argparse
-import json
-import math
 import re
 from pathlib import Path
 from typing import Any
+
+from MyCiteV2.scripts.cts_gis_geojson_hops_utils import (
+    as_text as _as_text,
+    encode_hops_coordinate,
+    normalize_ring_closed,
+    read_json as _read_json,
+    write_json as _write_json,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INPUT_DIR = (
@@ -30,27 +36,7 @@ DEFAULT_BASE_RUIQI_BRANCH = "247-17-77-0"
 ANCHOR_PREFIX = "sc.3-2-3-17-77-1-6-4-1-4"
 ANCHOR_FILE_VERSION = "<hash here>"
 SETA_FILENAME_PATTERN = re.compile(r"^setA__PRECINCT-(\d+)\.geojson$")
-HOPS_PREFIX = ("3", "76")
-HOPS_PARTITION_SEGMENT_COUNT = 16
-HOPS_BUCKET_COUNT = 100
 FILAMENT_BIT_LENGTH = 128
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"Expected object JSON in {path}")
-    return payload
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")
 
 
 def _precinct_number_from_filename(path: Path) -> int:
@@ -99,21 +85,6 @@ def _load_single_feature(path: Path) -> dict[str, Any]:
     }
 
 
-def _normalize_ring(ring: Any) -> list[list[float]]:
-    if not isinstance(ring, list):
-        raise ValueError("Expected ring coordinate list")
-    normalized = [
-        [float(point[0]), float(point[1])]
-        for point in ring
-        if isinstance(point, list) and len(point) >= 2
-    ]
-    if not normalized:
-        raise ValueError("Expected at least one valid coordinate in ring")
-    if normalized[0] != normalized[-1]:
-        normalized.append(list(normalized[0]))
-    return normalized
-
-
 def _geometry_polygons(geometry: dict[str, Any]) -> list[list[list[list[float]]]]:
     geometry_type = _as_text(geometry.get("type"))
     coordinates = geometry.get("coordinates")
@@ -130,33 +101,8 @@ def _geometry_polygons(geometry: dict[str, Any]) -> list[list[list[list[float]]]
     for polygon in polygons:
         if not isinstance(polygon, list) or not polygon:
             raise ValueError("Expected polygon ring list")
-        normalized_polygons.append([_normalize_ring(ring) for ring in polygon])
+        normalized_polygons.append([normalize_ring_closed(ring) for ring in polygon])
     return normalized_polygons
-
-
-def encode_hops_coordinate(longitude: float, latitude: float) -> str:
-    lon_min = -180.0
-    lon_max = 180.0
-    lat_min = -90.0
-    lat_max = 90.0
-    parts = [*HOPS_PREFIX]
-
-    for index in range(HOPS_PARTITION_SEGMENT_COUNT):
-        if index % 2 == 0:
-            span = (lon_max - lon_min) / HOPS_BUCKET_COUNT
-            bucket = math.floor((float(longitude) - lon_min) / span)
-            bucket = max(0, min(HOPS_BUCKET_COUNT - 1, bucket))
-            lon_min = lon_min + (span * bucket)
-            lon_max = lon_min + span
-        else:
-            span = (lat_max - lat_min) / HOPS_BUCKET_COUNT
-            bucket = math.floor((float(latitude) - lat_min) / span)
-            bucket = max(0, min(HOPS_BUCKET_COUNT - 1, bucket))
-            lat_min = lat_min + (span * bucket)
-            lat_max = lat_min + span
-        parts.append(str(bucket))
-
-    return "-".join(parts)
 
 
 def encode_precinct_name_bits(name: str) -> str:

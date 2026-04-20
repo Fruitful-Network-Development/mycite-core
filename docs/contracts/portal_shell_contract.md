@@ -253,7 +253,7 @@ This is an interface-panel-led tool model, not a generic workbench page model.
 - `profile_projection` may materialize a blank current-profile state from the selected node id plus ASCII title overlays even when no matching profile source is available yet.
 - `geospatial_projection` populates when the focused SAMRAS node or its widened intention scope resolves one or more matching profile sources with projectable HOPS geometry.
 - node-focused widened intention keeps `profile_projection` anchored to the selected node while `geospatial_projection` may overlay multiple in-scope projectable source documents.
-- explicit source-document selection may still pin row/detail evidence, but changing Intention clears that pin so widened Garland overlays can resolve across projectable documents again.
+- explicit source-document selection may still pin row/detail evidence, and changing Intention preserves that pin unless the user explicitly switches source documents.
 - when a request supplies `selected_node_id` or tool-local `Attention` without an explicit `Intention`, CTS-GIS normalizes `tool_state.aitas.intention_rule_id` to `self` so Garland reflects the current selected node rather than a descendant render set.
 - when node-focused intention is explicit, CTS-GIS returns the canonical token as one of `self`, `<attention_node_id>-0`, `<attention_node_id>-0-0`, or `branch:<node_id>`.
 - In narrow posture, the same regions may stack vertically while preserving the same contract.

@@ -85,6 +85,12 @@
     return depth === 1 && title ? title.toUpperCase() : title;
   }
 
+  function directoryOptionDisplayTitle(option, depth) {
+    var title = directoryOptionTitle(option, depth);
+    if (title) return title;
+    return String((option && option.node_id) || "");
+  }
+
   function selectedDirectoryOption(dropdown) {
     var selectedNodeId = String((dropdown && dropdown.selected_node_id) || "");
     if (!selectedNodeId) return null;
@@ -106,7 +112,7 @@
         if (!selected) return "";
         var option = selected.option || {};
         var depth = Number(dropdown.depth || dropdownIndex + 1);
-        var title = directoryOptionTitle(option, depth);
+        var title = directoryOptionDisplayTitle(option, depth);
         return (
           '<section class="cts-gis-stageSelectionBlock">' +
           '<button type="button" class="cts-gis-stageColumn' +
@@ -151,7 +157,7 @@
         ? '<div class="cts-gis-stageTable__rows">' +
           options
             .map(function (option, optionIndex) {
-              var title = directoryOptionTitle(option, depth);
+              var title = directoryOptionDisplayTitle(option, depth);
               return (
                 '<button type="button" class="cts-gis-stageRow' +
                 (option.selected ? " is-active" : "") +
