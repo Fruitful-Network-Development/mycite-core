@@ -774,7 +774,17 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 json={"schema": "mycite.v2.portal.system.tools.cts_gis.request.v1"},
             )
             self.assertEqual(cts_gis_ok.status_code, 200)
-            self.assertEqual(cts_gis_ok.get_json()["surface_id"], "system.tools.cts_gis")
+            cts_gis_payload = cts_gis_ok.get_json()
+            self.assertEqual(cts_gis_payload["surface_id"], "system.tools.cts_gis")
+            geospatial_projection = (
+                cts_gis_payload["shell_composition"]["regions"]["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            )
+            self.assertIn("projection_health", geospatial_projection)
+            self.assertIn("fallback_reason_codes", geospatial_projection)
+            self.assertIn("focus_bounds", geospatial_projection)
+            self.assertTrue(
+                geospatial_projection["projection_health"]["state"] in {"ok", "degraded", "fallback", "empty"}
+            )
 
             cts_gis_legacy = client.post(
                 "/portal/api/v2/system/tools/cts-gis",

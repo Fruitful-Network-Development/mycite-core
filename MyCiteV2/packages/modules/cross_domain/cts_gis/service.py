@@ -270,19 +270,36 @@ def _feature_bounds(points: list[list[float]]) -> list[float] | None:
     return [min(longitudes), min(latitudes), max(longitudes), max(latitudes)]
 
 
+def _safe_coordinate_pair(point: object) -> list[float] | None:
+    if not isinstance(point, list) or len(point) < 2:
+        return None
+    try:
+        return [float(point[0]), float(point[1])]
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_coordinate_pairs(points: object) -> list[list[float]]:
+    if not isinstance(points, list):
+        return []
+    out: list[list[float]] = []
+    for point in points:
+        pair = _safe_coordinate_pair(point)
+        if pair is not None:
+            out.append(pair)
+    return out
+
+
 def _geometry_points(geometry: dict[str, Any]) -> list[list[float]]:
     geometry_type = _as_text((geometry or {}).get("type"))
     coordinates = (geometry or {}).get("coordinates")
     if geometry_type == "Point" and isinstance(coordinates, list) and len(coordinates) >= 2:
-        return [[float(coordinates[0]), float(coordinates[1])]]
+        pair = _safe_coordinate_pair(coordinates)
+        return [pair] if pair is not None else []
     if geometry_type == "Polygon" and isinstance(coordinates, list):
         points: list[list[float]] = []
         for ring in coordinates:
-            if not isinstance(ring, list):
-                continue
-            for point in ring:
-                if isinstance(point, list) and len(point) >= 2:
-                    points.append([float(point[0]), float(point[1])])
+            points.extend(_coerce_coordinate_pairs(ring))
         return points
     if geometry_type == "MultiPolygon" and isinstance(coordinates, list):
         points = []
@@ -290,11 +307,7 @@ def _geometry_points(geometry: dict[str, Any]) -> list[list[float]]:
             if not isinstance(polygon, list):
                 continue
             for ring in polygon:
-                if not isinstance(ring, list):
-                    continue
-                for point in ring:
-                    if isinstance(point, list) and len(point) >= 2:
-                        points.append([float(point[0]), float(point[1])])
+                points.extend(_coerce_coordinate_pairs(ring))
         return points
     return []
 
@@ -358,29 +371,19 @@ def _geometry_polygons(geometry: dict[str, Any]) -> list[list[list[list[float]]]
     geometry_type = _as_text((geometry or {}).get("type"))
     coordinates = (geometry or {}).get("coordinates")
     if geometry_type == "Polygon" and isinstance(coordinates, list):
-        return [[
-            [
-                [float(point[0]), float(point[1])]
-                for point in ring
-                if isinstance(point, list) and len(point) >= 2
-            ]
-            for ring in coordinates
-            if isinstance(ring, list)
-        ]]
+        polygon = [_coerce_coordinate_pairs(ring) for ring in coordinates if isinstance(ring, list)]
+        polygon = [ring for ring in polygon if ring]
+        return [polygon] if polygon else []
     if geometry_type == "MultiPolygon" and isinstance(coordinates, list):
-        return [
-            [
-                [
-                    [float(point[0]), float(point[1])]
-                    for point in ring
-                    if isinstance(point, list) and len(point) >= 2
-                ]
-                for ring in polygon
-                if isinstance(ring, list)
-            ]
-            for polygon in coordinates
-            if isinstance(polygon, list)
-        ]
+        out: list[list[list[list[float]]]] = []
+        for polygon in coordinates:
+            if not isinstance(polygon, list):
+                continue
+            normalized_polygon = [_coerce_coordinate_pairs(ring) for ring in polygon if isinstance(ring, list)]
+            normalized_polygon = [ring for ring in normalized_polygon if ring]
+            if normalized_polygon:
+                out.append(normalized_polygon)
+        return out
     return []
 
 
@@ -416,11 +419,7 @@ def _row_polygon_groups(row_address: str, raw_row_index: dict[str, DatumRecognit
 
 
 def _normalized_reference_ring(ring: list[list[float]], *, expected_count: int) -> list[list[float]]:
-    points = [
-        [float(point[0]), float(point[1])]
-        for point in ring
-        if isinstance(point, list) and len(point) >= 2
-    ]
+    points = _coerce_coordinate_pairs(ring)
     if not points:
         return []
     if expected_count <= 0:
@@ -531,12 +530,18 @@ def _coordinate_projection(
         token = _as_text(binding.value_token)
         decoded = None
         if binding_index < len(mapped_ring):
-            decoded = _decoded_coordinate_payload(
-                token,
-                longitude=float(mapped_ring[binding_index][0]),
-                latitude=float(mapped_ring[binding_index][1]),
-                encoding="cts_gis_parity_hops",
-            )
+            parity_pair = _safe_coordinate_pair(mapped_ring[binding_index])
+            if parity_pair is None:
+                warnings.append(
+                    f"{row.datum_address} parity authority carried non-numeric coordinates at index {binding_index}."
+                )
+            else:
+                decoded = _decoded_coordinate_payload(
+                    token,
+                    longitude=parity_pair[0],
+                    latitude=parity_pair[1],
+                    encoding="cts_gis_parity_hops",
+                )
         else:
             decoded = decode_hops_coordinate_token(token)
         if decoded is None:
@@ -977,9 +982,15 @@ def _prefer_reference_geojson_projection(
         return False
     if expected_node_id and expected_node_id != owner_node_id:
         return False
-    authority_warnings = list((coordinate_authority or {}).get("warnings") or [])
-    projection_warnings = list((projection_summary or {}).get("warnings") or [])
-    return bool(authority_warnings or projection_warnings)
+    reference_binding_count = int((projection_summary or {}).get("reference_binding_count") or 0)
+    decoded_coordinate_count = int((projection_summary or {}).get("decoded_coordinate_count") or 0)
+    failed_token_count = int((projection_summary or {}).get("failed_token_count") or 0)
+    if reference_binding_count <= 0:
+        return False
+    if decoded_coordinate_count <= 0:
+        return True
+    # HOPS remains authoritative when decode succeeds. Warnings alone do not switch authority.
+    return failed_token_count >= reference_binding_count and reference_binding_count > 0
 
 
 def _attach_feature_ids(row_addresses: list[str], feature_ids: list[str], row_index: dict[str, dict[str, Any]]) -> None:
@@ -1414,7 +1425,7 @@ def _normalize_intention_token(document_bundle: dict[str, Any], attention_node_i
         branch_node_id = _as_text(token[len(_BRANCH_INTENTION_PREFIX) :])
         if branch_node_id in children:
             return token
-    return descendants_token if descendants_depth_1_or_2 else "self"
+    return "self"
 
 
 def _available_intentions(document_bundle: dict[str, Any], attention_node_id: str) -> list[dict[str, Any]]:
@@ -1525,6 +1536,7 @@ class CtsGisReadOnlyService:
         attention_node_id: object = "",
         overlay_mode: object = "auto",
         raw_underlay_visible: object = False,
+        project_all_documents: object | None = None,
     ) -> dict[str, Any]:
         if self._datum_store is None:
             raise ValueError("cts_gis.datum_store is not configured")
@@ -1546,7 +1558,9 @@ class CtsGisReadOnlyService:
         requested_row_address = _as_text(selected_row_address)
         requested_feature_id = _as_text(selected_feature_id)
         requested_attention_node_id = _as_text(attention_node_id)
-        project_all_documents = not requested_document_id
+        if project_all_documents is None:
+            project_all_documents = not requested_document_id
+        project_all_documents = bool(project_all_documents)
         target_document = None
         if requested_document_id and _is_cts_gis_document_id(requested_document_id):
             for document in cts_gis_documents:
@@ -1640,6 +1654,7 @@ class CtsGisReadOnlyService:
         requested_attention_document_id = _as_text(mediation_state.get("attention_document_id"))
         requested_attention_node_id = _as_text(mediation_state.get("attention_node_id"))
         requested_intention_token = _as_text(mediation_state.get("intention_token"))
+        intention_warnings: list[str] = []
 
         selected_document_bundle = None
         if requested_attention_document_id:
@@ -1722,13 +1737,24 @@ class CtsGisReadOnlyService:
                 else requested_intention_token
             ),
         )
+        if requested_intention_token and requested_intention_token != intention_token:
+            intention_warnings.append(
+                f"Requested intention `{requested_intention_token}` normalized to `{intention_token}` for attention node `{attention_node_id or 'none'}`."
+            )
+        selected_row_address_out = requested_row_address
+        selected_feature_id_out = requested_feature_id
+        if requested_intention_token and requested_intention_token != intention_token and intention_token == "self":
+            # Stale selection from widened scopes should not leak into strict self rendering.
+            selected_row_address_out = ""
+            selected_feature_id_out = ""
         return {
             "attention_document_id": attention_document_id,
             "attention_node_id": attention_node_id,
             "intention_token": intention_token,
             "selected_document_id": requested_document_id,
-            "selected_row_address": requested_row_address,
-            "selected_feature_id": requested_feature_id,
+            "selected_row_address": selected_row_address_out,
+            "selected_feature_id": selected_feature_id_out,
+            "intention_warnings": intention_warnings,
         }
 
     def build_mediation_surface(
@@ -1945,15 +1971,28 @@ class CtsGisReadOnlyService:
                 related_seen.add(sibling_node_id)
                 related_profiles.append(_profile_public_summary(profile_index[sibling_node_id], relation="sibling"))
 
+        attention_feature_ids = {
+            _as_text(feature_id)
+            for feature_id in list((attention_profile or {}).get("feature_ids") or [])
+            if _as_text(feature_id)
+        }
+        projected_node_ids = {
+            _as_text(profile.get("node_id"))
+            for profile in projected_profiles
+            if _as_text(profile.get("node_id"))
+        }
         feature_collection_features = []
+        all_render_points: list[list[float]] = []
+        focused_render_points: list[list[float]] = []
         for feature in render_features:
+            feature_id = _as_text(feature.get("feature_id"))
             owner_profile = None
-            for node_id in list(feature_profile_index.get(feature["feature_id"]) or []):
-                if node_id in {_as_text(profile.get("node_id")) for profile in projected_profiles}:
+            for node_id in list(feature_profile_index.get(feature_id) or []):
+                if node_id in projected_node_ids:
                     owner_profile = profile_index.get(node_id)
                     break
             if owner_profile is None:
-                for node_id in list(feature_profile_index.get(feature["feature_id"]) or []):
+                for node_id in list(feature_profile_index.get(feature_id) or []):
                     owner_profile = profile_index.get(node_id)
                     if owner_profile is not None:
                         break
@@ -1978,19 +2017,16 @@ class CtsGisReadOnlyService:
                 if _as_text(item)
             )
             feature_properties["parent_node_id"] = _as_text((owner_profile or {}).get("parent_node_id"))
-            feature_properties["attention_member"] = (
-                _as_text((owner_profile or {}).get("node_id")) == attention_node_id_text
-            )
+            attention_member = _as_text((owner_profile or {}).get("node_id")) == attention_node_id_text
+            feature_properties["attention_member"] = attention_member
             feature_payload["properties"] = feature_properties
             feature_collection_features.append(feature_payload)
-
-        map_bounds = _feature_bounds(
-            [
-                point
-                for feature in render_features
-                for point in _geometry_points(dict((feature.get("feature") or {}).get("geometry") or {}))
-            ]
-        )
+            geometry_points = _geometry_points(dict(feature_payload.get("geometry") or {}))
+            if geometry_points:
+                all_render_points.extend(geometry_points)
+                if feature_id in attention_feature_ids or attention_member:
+                    focused_render_points.extend(geometry_points)
+        map_bounds = _feature_bounds(focused_render_points or all_render_points)
         render_projection_summary = {
             "reference_binding_count": 0,
             "decoded_coordinate_count": 0,
@@ -2056,6 +2092,32 @@ class CtsGisReadOnlyService:
         else:
             projection_source = "none"
             projection_state = "inspect_only"
+        fallback_reason_codes = _dedupe_texts(
+            [
+                "decode_failure"
+                if int(render_projection_summary.get("failed_token_count") or 0) > 0
+                else "",
+                "parity_mismatch"
+                if any(
+                    ("did not align" in warning)
+                    or ("reference GeoJSON carries" in warning)
+                    or ("HOPS row chain resolves" in warning)
+                    for warning in render_projection_warnings
+                )
+                else "",
+                "authority_warning"
+                if any("reference GeoJSON geometry" in warning for warning in render_projection_warnings)
+                else "",
+            ]
+        )
+        if projection_state == "projectable":
+            projection_health = {"state": "ok", "reason_codes": []}
+        elif projection_state == "projectable_degraded":
+            projection_health = {"state": "degraded", "reason_codes": fallback_reason_codes}
+        elif projection_state == "projectable_fallback":
+            projection_health = {"state": "fallback", "reason_codes": fallback_reason_codes or ["authority_warning"]}
+        else:
+            projection_health = {"state": "empty", "reason_codes": []}
         warnings = list(projection_bundle.get("warnings") or [])
         document = selected_document_bundle.get("document")
         if document is not None:
@@ -2123,6 +2185,10 @@ class CtsGisReadOnlyService:
                     "decoded_coordinate_count": int(render_projection_summary.get("decoded_coordinate_count") or 0),
                     "failed_token_count": int(render_projection_summary.get("failed_token_count") or 0),
                 },
+                "projection_health": projection_health,
+                "fallback_reason_codes": list(projection_health.get("reason_codes") or []),
+                "focus_node_id": attention_node_id_text,
+                "focus_bounds": _feature_bounds(focused_render_points),
                 "warnings": render_projection_warnings,
                 "selected_feature": None,
                 "feature_collection": {
@@ -2290,6 +2356,15 @@ class CtsGisReadOnlyService:
                 "projection_source": _as_text((mediation_surface.get("map_projection") or {}).get("projection_source"))
                 or "none",
                 "decode_summary": dict((mediation_surface.get("map_projection") or {}).get("decode_summary") or {}),
+                "projection_health": dict(
+                    (mediation_surface.get("map_projection") or {}).get("projection_health")
+                    or {"state": "empty", "reason_codes": []}
+                ),
+                "fallback_reason_codes": list(
+                    (mediation_surface.get("map_projection") or {}).get("fallback_reason_codes") or []
+                ),
+                "focus_node_id": _as_text((mediation_surface.get("map_projection") or {}).get("focus_node_id")),
+                "focus_bounds": list((mediation_surface.get("map_projection") or {}).get("focus_bounds") or []),
                 "warnings": list((mediation_surface.get("map_projection") or {}).get("warnings") or []),
                 "selected_feature": selected_feature,
                 "feature_collection": feature_collection,
@@ -2326,15 +2401,22 @@ class CtsGisReadOnlyService:
         raw_underlay_visible: object = False,
         mediation_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        mediation_state = mediation_state if isinstance(mediation_state, dict) else {}
+        requested_intention_token = _as_text(mediation_state.get("intention_token"))
+        widened_intention_requested = bool(
+            requested_intention_token
+            and requested_intention_token not in {"self", _LEGACY_SELF_INTENTION_TOKEN}
+        )
         projection_bundle = self.read_projection_bundle(
             tenant_id,
             selected_document_id=selected_document_id,
             selected_row_address=selected_row_address,
             selected_feature_id=selected_feature_id,
-            attention_document_id=(mediation_state or {}).get("attention_document_id") if isinstance(mediation_state, dict) else "",
-            attention_node_id=(mediation_state or {}).get("attention_node_id") if isinstance(mediation_state, dict) else "",
+            attention_document_id=mediation_state.get("attention_document_id"),
+            attention_node_id=mediation_state.get("attention_node_id"),
             overlay_mode=overlay_mode,
             raw_underlay_visible=raw_underlay_visible,
+            project_all_documents=widened_intention_requested,
         )
         normalized_request = self.normalize_mediation_request(
             projection_bundle,
@@ -2349,6 +2431,16 @@ class CtsGisReadOnlyService:
             attention_node_id=normalized_request["attention_node_id"],
             intention_token=normalized_request["intention_token"],
         )
+        intention_warnings = list(normalized_request.get("intention_warnings") or [])
+        if intention_warnings:
+            merged_warnings = _dedupe_texts(list(mediation_surface.get("warnings") or []) + intention_warnings)
+            mediation_state = dict(mediation_surface.get("mediation_state") or {})
+            mediation_state["normalization_warnings"] = intention_warnings
+            mediation_surface = {
+                **mediation_surface,
+                "warnings": merged_warnings,
+                "mediation_state": mediation_state,
+            }
         return self.finalize_selection(
             mediation_surface,
             selected_row_address=normalized_request["selected_row_address"],

@@ -4,6 +4,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
@@ -11,6 +12,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
 from MyCiteV2.packages.modules.cross_domain.cts_gis import CtsGisReadOnlyService
+from MyCiteV2.packages.modules.cross_domain.cts_gis import service as cts_gis_service
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
@@ -292,6 +294,64 @@ def _cts_gis_reference_guarded_document() -> AuthoritativeDatumDocument:
                         "1",
                     ],
                     ["reference_guarded_city"],
+                ],
+            ),
+        ),
+    )
+
+
+def _cts_gis_partial_failure_document() -> AuthoritativeDatumDocument:
+    return AuthoritativeDatumDocument(
+        document_id="sandbox:cts_gis:sc.partial-failure.3-2-3-17-77-1.json",
+        source_kind="sandbox_source",
+        document_name="sc.partial-failure.3-2-3-17-77-1.json",
+        relative_path="sandbox/cts-gis/sources/sc.partial-failure.3-2-3-17-77-1.json",
+        tool_id="cts_gis",
+        anchor_document_name="tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        anchor_document_path="sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        anchor_rows=_anchor_rows(),
+        document_metadata={},
+        rows=(
+            AuthoritativeDatumDocumentRow(
+                datum_address="4-2-1",
+                raw=[
+                    [
+                        "4-2-1",
+                        "rf.3-1-1",
+                        "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73",
+                        "rf.3-1-1",
+                        "3-76-11-40-92-20-21-92-81-29-56-60-79-56-3-4-39",
+                    ],
+                    ["parent_polygon"],
+                ],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="5-0-1",
+                raw=[["5-0-1", "~", "4-2-1"], ["parent_boundary"]],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="7-3-1",
+                raw=[
+                    ["7-3-1", "rf.3-1-2", "3-2-3-17-77-1", "rf.3-1-3", _ascii_bits("parent"), "5-0-1", "1"],
+                    ["parent"],
+                ],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="4-2-2",
+                raw=[
+                    ["4-2-2", "rf.3-1-1", "INVALID-HOPS", "rf.3-1-1", "INVALID-HOPS-2"],
+                    ["child_polygon"],
+                ],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="5-0-2",
+                raw=[["5-0-2", "~", "4-2-2"], ["child_boundary"]],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="7-3-2",
+                raw=[
+                    ["7-3-2", "rf.3-1-2", "3-2-3-17-77-1-1", "rf.3-1-3", _ascii_bits("child"), "5-0-2", "1"],
+                    ["child"],
                 ],
             ),
         ),
@@ -672,10 +732,13 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         self.assertEqual(surface["map_projection"]["decode_summary"]["reference_binding_count"], 4)
         self.assertEqual(surface["map_projection"]["decode_summary"]["decoded_coordinate_count"], 0)
         self.assertEqual(surface["map_projection"]["decode_summary"]["failed_token_count"], 4)
+        self.assertEqual(surface["map_projection"]["projection_health"]["state"], "fallback")
+        self.assertIn("decode_failure", surface["map_projection"]["fallback_reason_codes"])
+        self.assertIn("authority_warning", surface["map_projection"]["fallback_reason_codes"])
         self.assertTrue(surface["map_projection"]["warnings"])
         self.assertIn("reference GeoJSON geometry", " ".join(surface["map_projection"]["warnings"]))
 
-    def test_reference_geojson_warnings_prefer_reference_geometry_over_degraded_hops_projection(self) -> None:
+    def test_hops_geometry_remains_authoritative_when_parity_warnings_exist(self) -> None:
         store = _FakeDatumStore(
             AuthoritativeDatumDocumentCatalogResult(
                 tenant_id="fnd",
@@ -690,15 +753,138 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
             mediation_state={"attention_node_id": "3-2-3-17-77-1", "intention_token": "self"},
         )
 
-        self.assertEqual(surface["map_projection"]["projection_source"], "reference_geojson_fallback")
-        self.assertEqual(surface["map_projection"]["projection_state"], "projectable_fallback")
+        self.assertEqual(surface["map_projection"]["projection_source"], "hops")
+        self.assertEqual(surface["map_projection"]["projection_state"], "projectable_degraded")
         self.assertEqual(surface["map_projection"]["feature_count"], 1)
-        self.assertEqual(
-            surface["map_projection"]["feature_collection"]["bounds"],
-            [-81.63, 41.01, -81.55, 41.08],
-        )
+        self.assertEqual(surface["map_projection"]["projection_health"]["state"], "degraded")
+        self.assertIn("parity_mismatch", surface["map_projection"]["fallback_reason_codes"])
         self.assertIn("did not align", " ".join(surface["map_projection"]["warnings"]))
-        self.assertIn("reference GeoJSON geometry", " ".join(surface["map_projection"]["warnings"]))
+        self.assertNotIn("reference GeoJSON geometry", " ".join(surface["map_projection"]["warnings"]))
+
+    def test_partial_polygon_failure_does_not_collapse_descendant_projection(self) -> None:
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(_cts_gis_partial_failure_document(),),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+        degraded_surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77-1",
+                "intention_token": "3-2-3-17-77-1-0-0",
+            },
+        )
+        feature_nodes = [
+            feature["properties"]["samras_node_id"]
+            for feature in degraded_surface["map_projection"]["feature_collection"]["features"]
+        ]
+        self.assertEqual(degraded_surface["render_set_summary"]["render_mode"], "descendants_depth_1_or_2")
+        self.assertEqual(degraded_surface["map_projection"]["projection_state"], "projectable_degraded")
+        self.assertEqual(degraded_surface["map_projection"]["projection_health"]["state"], "degraded")
+        self.assertGreaterEqual(degraded_surface["map_projection"]["feature_count"], 1)
+        self.assertIn("3-2-3-17-77-1", feature_nodes)
+        self.assertEqual(
+            degraded_surface["map_projection"]["focus_bounds"],
+            degraded_surface["map_projection"]["feature_collection"]["bounds"],
+        )
+
+        self_surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77-1",
+                "intention_token": "self",
+            },
+        )
+        self.assertEqual(self_surface["map_projection"]["projection_state"], "projectable")
+        self.assertEqual(self_surface["map_projection"]["projection_health"]["state"], "ok")
+        self.assertEqual(self_surface["map_projection"]["feature_count"], 1)
+        self.assertEqual(
+            self_surface["map_projection"]["feature_collection"]["features"][0]["properties"]["samras_node_id"],
+            "3-2-3-17-77-1",
+        )
+
+    def test_invalid_widened_intention_snaps_to_self_with_warning(self) -> None:
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(_cts_gis_document(),),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            selected_feature_id="sandbox:cts_gis:sc.example.json:7-3-2",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77-1",
+                "intention_token": "branch:non-existent-node",
+            },
+        )
+        self.assertEqual(surface["mediation_state"]["intention_token"], "self")
+        self.assertTrue(surface["mediation_state"]["normalization_warnings"])
+        self.assertEqual(surface["diagnostic_summary"]["selected_feature_id"], surface["map_projection"]["selected_feature"]["feature_id"])
+
+    def test_self_intention_with_pinned_document_projects_only_selected_document(self) -> None:
+        primary = _cts_gis_document()
+        secondary = _cts_gis_reference_fallback_document()
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(primary, secondary),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+
+        with patch(
+            "MyCiteV2.packages.modules.cross_domain.cts_gis.service._build_document_projection",
+            wraps=cts_gis_service._build_document_projection,
+        ) as build_document_projection:
+            surface = CtsGisReadOnlyService(store).read_surface(
+                "fnd",
+                selected_document_id=primary.document_id,
+                mediation_state={
+                    "attention_document_id": primary.document_id,
+                    "attention_node_id": "3-2-3-17-77-1",
+                    "intention_token": "self",
+                },
+            )
+
+        self.assertEqual(build_document_projection.call_count, 1)
+        self.assertEqual(surface["selected_document"]["document_id"], primary.document_id)
+        self.assertEqual(surface["mediation_state"]["intention_token"], "self")
+
+    def test_widened_intention_projects_full_corpus_for_overlay_scope(self) -> None:
+        primary = _cts_gis_document()
+        secondary = _cts_gis_reference_fallback_document()
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(primary, secondary),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+
+        with patch(
+            "MyCiteV2.packages.modules.cross_domain.cts_gis.service._build_document_projection",
+            wraps=cts_gis_service._build_document_projection,
+        ) as build_document_projection:
+            surface = CtsGisReadOnlyService(store).read_surface(
+                "fnd",
+                selected_document_id=primary.document_id,
+                mediation_state={
+                    "attention_document_id": primary.document_id,
+                    "attention_node_id": "3-2-3-17-77-1",
+                    "intention_token": "3-2-3-17-77-1-0-0",
+                },
+            )
+
+        self.assertEqual(build_document_projection.call_count, 2)
+        self.assertEqual(surface["mediation_state"]["intention_token"], "3-2-3-17-77-1-0-0")
 
 
 if __name__ == "__main__":

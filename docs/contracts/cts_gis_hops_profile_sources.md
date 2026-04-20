@@ -33,6 +33,22 @@ That means:
 - the source file does not store GeoJSON geometry arrays
 - ring closure is applied by runtime assembly, not by duplicating the first point in every `4-*` row
 
+## HOPS Encode/Decode Invariants
+
+CTS-GIS treats HOPS coordinate strings as the canonical geometry authority whenever decoding succeeds.
+
+- each coordinate slot in a `4-*` row must alternate as `rf.3-1-1`, `<hops-coordinate-token>`
+- decode produces a numeric `[longitude, latitude]` pair for each valid token
+- decoded coordinate order must preserve row order exactly
+- ring closure is a render-time operation only (first coordinate appended at end)
+- decode warnings are diagnostic metadata; they do not change geometry authority by themselves
+
+Decode-failure semantics:
+
+- if a row has `reference_binding_count > 0` and `decoded_coordinate_count == 0`, the row is non-projectable from HOPS
+- if only some tokens fail, the profile may be marked degraded, but decoded HOPS geometry remains authoritative
+- `reference_geojson` is fallback-only for non-projectable rows/profiles, not a warning-triggered override
+
 ## Source Loading And Overlay Assembly
 
 - CTS-GIS source files and their supporting anchor documents remain strict JSON inputs; malformed JSON is surfaced as warnings rather than being parsed permissively.
@@ -40,6 +56,7 @@ That means:
 - When node-focused intention widens to `<attention_node_id>-0` or `<attention_node_id>-0-0`, Garland may assemble one geospatial overlay from multiple in-scope projectable source documents.
 - That widened overlay does not change the active profile: `profile_projection` stays focused on the selected node while `geospatial_projection` collects the projectable features.
 - Non-Garland row/detail views remain anchored to the currently selected document even when Garland overlays widen across multiple projectable sources.
+- Garland lens projection and bounds behavior are defined in `docs/contracts/cts_gis_garland_projection_lens.md`.
 
 ## Row Chain
 
