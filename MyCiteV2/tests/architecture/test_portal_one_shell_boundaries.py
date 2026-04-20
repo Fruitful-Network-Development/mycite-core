@@ -114,7 +114,10 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("dblclick", portal_js)
         self.assertIn("firstV2ShellCompositionApplied", portal_js)
         self.assertIn("useStoredWorkbenchPreference: false", portal_js)
+        self.assertIn("syncFromDom: (options) => layoutApi.syncFromDom && layoutApi.syncFromDom(options)", portal_js)
         self.assertIn("fromShellComposition: true", shell_core)
+        self.assertIn("routeKeyFromUrl", shell_core)
+        self.assertIn("routeKey: routeKey", shell_core)
         tool_adapter = (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_tool_surface_adapter.js"
         ).read_text(encoding="utf-8")

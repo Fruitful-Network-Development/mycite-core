@@ -2,6 +2,12 @@
 
 Date: `2026-04-20`
 
+## Follow-up status — later pass on `2026-04-20`
+
+- The platform-side hardening work described here is closed in code.
+- Summit Stage-A source cleanup is no longer deferred: `cts_gis_summit_repair_followup_2026-04-20.*` reports `0 flagged / 32 clean` across `/srv/repo/mycite-core/deployed/fnd/data` and `/srv/mycite-state/instances/fnd/data`.
+- The remaining platform backlog from this audit is reduced to optional live-runtime/test-depth work rather than active contract or source-data blockers.
+
 ## Scope
 
 This audit reviewed the active CTS-GIS platform path across:
@@ -60,6 +66,5 @@ The goal was to harden the canonical `CTS-GIS` / `cts_gis` / `cts-gis` path, red
 
 ## Remaining Backlog
 
-- Repair the flagged Summit source documents so HOPS and reference geometry converge again and Garland can return to pure `hops` projection for those profiles.
 - Extend glossary and contract scans if more CTS-GIS naming drift appears outside the active runtime/service path.
 - Consider a dedicated runtime integration test against the live state dataset once the state corpus is stable enough for CI.

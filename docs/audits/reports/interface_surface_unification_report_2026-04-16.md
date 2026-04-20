@@ -5,9 +5,9 @@ Plan executed: `docs/audits/interface_surface_unification_audit_plan_2026-04-16.
 
 ## Current status note — 2026-04-20 foundation-first pass
 
-- **Closed in code:** G-01 (tool posture enforcement in shell composition) and G-05 (NETWORK query normalization drift between shell and adapter).
-- **Still active and worth doing now:** G-02 browser-posture drift, G-04 CTS-GIS query/body guardrail depth, and G-08 route-scope lock-state regression coverage.
+- **Closed in code:** G-01 (tool posture enforcement in shell composition), G-02 (first-hydration browser-posture drift), G-04 (CTS-GIS query/body guardrail depth), G-05 (NETWORK query normalization drift between shell and adapter), and G-08 (route-scope lock-state regression coverage).
 - **Deferred:** G-03, G-06, and G-07 remain low-priority compatibility or documentation guardrail work rather than immediate implementation blockers.
+- **Historical note:** the gap inventory below remains the 2026-04-16 audit record; use this status note as the current repo truth.
 
 ## Scope and evidence base
 

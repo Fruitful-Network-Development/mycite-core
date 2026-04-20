@@ -15,7 +15,7 @@ Foundation-first status:
 
 - `cts_gis_hops_first_stage_b_post_2026-04-19.*` was removed because it was a no-op post-verification snapshot and no longer carried unique audit value.
 - `reports/core_portal_datum_mss_protocol_report_2026-04-16.md` is historical evidence; its publication-domain, write-result schema, malformed `surface_query`, and NETWORK warning findings are now closed in code.
-- `reports/interface_surface_unification_report_2026-04-16.md` is partially historical; the NETWORK query-normalization drift gap and tool-posture enforcement gap are closed in code, while browser-posture and route-scope guardrail work remain backlog.
+- `reports/interface_surface_unification_report_2026-04-16.md` is partially historical; the tool-posture, NETWORK query-normalization, browser-posture, CTS-GIS query/body guardrail, and route-scope lock-state gaps are now closed in code, while only low-priority compatibility/documentation guardrails remain deferred.
 - `reports/package_modularization_report_2026-04-16.md` is partially historical; the filesystem-adapter failures no longer reproduce in the active repo, and the remaining worthwhile cleanup in this pass is low-cost boundary noise only.
 - `reports/tools_ui_implementation_mismatch_report_2026-04-16.md` is partially historical; the shared tool surface adapter, wrapped fallback states, and direct surface-request helper are already present in the shell static bundle.
-- `cts_gis_platform_hardening_audit_2026-04-20.md` remains active for deferred Summit/source-data repair follow-up after the platform and contract passes.
+- `cts_gis_platform_hardening_audit_2026-04-20.md` is now historical evidence for the CTS-GIS platform pass; Summit Stage-A cleanup is closed by `cts_gis_summit_repair_followup_2026-04-20.*`, which reports `0 flagged / 32 clean` across the repo and state data roots.

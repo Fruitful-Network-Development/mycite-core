@@ -128,7 +128,26 @@ class RepairCtsGisSummitSourcesTests(unittest.TestCase):
         self.assertEqual(findings[0]["rows_involved"], ["5-0-1", "4-1505-2", "4-1505-1"])
         self.assertEqual(findings[0]["recommended_action"], "needs_deterministic_repair")
 
-    def test_audit_blocks_safe_to_strip_when_projection_with_reference_warns(self) -> None:
+    def test_known_label_typos_are_repaired_deterministically(self) -> None:
+        suffix = "3-2-3-17-77-3-8"
+        payload = _matching_payload(suffix=suffix)
+        payload["datum_addressing_abstraction_space"]["5-0-1"][1] = ["silver_lake_boundar"]
+
+        notes = _MODULE._repair_known_label_typos(
+            Path(f"/tmp/sc.3-2-3-17-77-1-6-4-1-4.fnd.{suffix}.json"),
+            payload,
+        )
+
+        self.assertEqual(
+            notes,
+            ["5-0-1 label normalized from silver_lake_boundar to silver_lake_boundary"],
+        )
+        self.assertEqual(
+            payload["datum_addressing_abstraction_space"]["5-0-1"][1],
+            ["silver_lake_boundary"],
+        )
+
+    def test_audit_allows_stage_a_strip_when_hops_only_projection_is_clean(self) -> None:
         suffix = "3-2-3-17-77-9-7"
         with tempfile.TemporaryDirectory() as temp_dir:
             data_root = Path(temp_dir) / "data"
@@ -153,8 +172,52 @@ class RepairCtsGisSummitSourcesTests(unittest.TestCase):
                 )
 
         self.assertEqual(report["document_count"], 1)
-        self.assertFalse(report["documents"][0]["safe_to_strip"])
+        self.assertTrue(report["documents"][0]["safe_to_strip"])
         self.assertEqual(report["documents"][0]["reference_warning_count"], 1)
+
+    def test_pending_deterministic_repairs_block_stage_a_strip_until_applied(self) -> None:
+        suffix = "3-2-3-17-77-1-2"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_root = Path(temp_dir) / "data"
+            payload = _matching_payload(suffix=suffix)
+            large_ring = ["4-1505-1"]
+            encoded = _MODULE._encode_hops_coordinate(-81.60, 41.10)
+            for _ in range(1505):
+                large_ring.extend(["rf.3-1-1", encoded])
+            payload["datum_addressing_abstraction_space"]["4-1505-1"] = [large_ring, ["outer"]]
+            payload["datum_addressing_abstraction_space"].pop("4-4-1")
+            payload["datum_addressing_abstraction_space"]["5-0-1"] = [["5-0-1", "~", "4-1505-2"], ["sample_boundary"]]
+            _write_root_document(data_root, suffix=suffix, payload=payload)
+
+            def _fake_snapshot(*, drop_reference_metadata: bool, **_: object) -> dict[str, object]:
+                return {
+                    "projection_state": "projectable",
+                    "projection_source": "hops",
+                    "feature_count": 1,
+                    "reference_binding_count": 7,
+                    "decoded_coordinate_count": 7,
+                    "failed_token_count": 0,
+                    "warnings": ["reference mismatch"] if not drop_reference_metadata else [],
+                }
+
+            with mock.patch.object(_MODULE, "_projection_snapshot", side_effect=_fake_snapshot):
+                pending_report = _MODULE._audit_and_repair_data_root(
+                    data_root=data_root,
+                    apply_deterministic_fixes=False,
+                    strip_stage_a=False,
+                )
+                applied_report = _MODULE._audit_and_repair_data_root(
+                    data_root=data_root,
+                    apply_deterministic_fixes=True,
+                    strip_stage_a=False,
+                )
+
+        self.assertEqual(pending_report["deterministic_fix_count"], 0)
+        self.assertTrue(pending_report["documents"][0]["pending_deterministic_fixes"])
+        self.assertFalse(pending_report["documents"][0]["safe_to_strip"])
+        self.assertEqual(applied_report["deterministic_fix_count"], 1)
+        self.assertFalse(applied_report["documents"][0]["pending_deterministic_fixes"])
+        self.assertTrue(applied_report["documents"][0]["safe_to_strip"])
 
     def test_build_review_report_flags_repo_state_desync_after_stripping_reference_metadata(self) -> None:
         suffix = "3-2-3-17-77-9-6"
