@@ -24,6 +24,7 @@ from .helpers import (
     compare_network_hops_addresses,
     encode_network_datetime_as_hops,
     network_hops_schema_from_anchor_payload,
+    normalize_network_surface_query,
     validate_network_hops_address,
 )
 
@@ -49,5 +50,6 @@ __all__ = [
     "compare_network_hops_addresses",
     "encode_network_datetime_as_hops",
     "network_hops_schema_from_anchor_payload",
+    "normalize_network_surface_query",
     "validate_network_hops_address",
 ]

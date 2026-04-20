@@ -32,12 +32,14 @@ class NetworkRootReadModelTests(unittest.TestCase):
             NetworkRootReadModelRequest(
                 portal_tenant_id="fnd",
                 portal_domain="fruitfulnetworkdevelopment.com",
-                surface_query={"view": "system_logs", "unexpected": "value"},
+                surface_query={"view": "hosted", "unexpected": "value"},
             )
         )
 
         payload = dict(result.source.payload)
         warnings = list(payload["warnings"])
+        workbench = dict(payload["system_log_workbench"])
+        self.assertEqual(workbench["active_filters"]["view"], "system_logs")
         self.assertTrue(any("unsupported NETWORK surface_query" in warning for warning in warnings))
 
 

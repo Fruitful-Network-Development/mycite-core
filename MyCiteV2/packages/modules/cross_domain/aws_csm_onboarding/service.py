@@ -14,7 +14,6 @@ from MyCiteV2.packages.ports.aws_csm_onboarding import (
     AwsCsmOnboardingPolicyError,
     AwsCsmOnboardingProfileStorePort,
 )
-from MyCiteV2.packages.ports.aws_read_only_status import AwsReadOnlyStatusRequest
 
 
 def _as_text(value: object) -> str:

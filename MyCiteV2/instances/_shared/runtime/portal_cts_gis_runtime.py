@@ -19,6 +19,17 @@ from MyCiteV2.packages.core.structures.samras import (
     select_preferred_structure_authority,
 )
 from MyCiteV2.packages.modules.cross_domain.cts_gis import CtsGisReadOnlyService
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    CTS_GIS_NAV_MODE_DIRECTORY as _CTS_GIS_NAV_MODE_DIRECTORY,
+    DEFAULT_ARCHETYPE_FAMILY_ID as _DEFAULT_ARCHETYPE_FAMILY_ID,
+    DEFAULT_INTENTION_TOKEN as _DEFAULT_INTENTION_RULE_ID,
+    DEFAULT_NIMM_DIRECTIVE as _DEFAULT_NIMM_DIRECTIVE,
+    DEFAULT_SUPPORTING_DOCUMENT_NAME as _DEFAULT_SUPPORTING_DOCUMENT_NAME,
+    DEFAULT_TIME_DIRECTIVE as _DEFAULT_TIME_DIRECTIVE,
+    as_text as _as_text,
+    canonical_runtime_intention_rule_id,
+    canonical_service_intention_token,
+)
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_ENTRYPOINT_ID,
@@ -35,23 +46,10 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     resolve_portal_tool_registry_entry,
 )
 
-_DEFAULT_ATTENTION_NODE_ID = "3-2-3-17-77"
-_DEFAULT_INTENTION_RULE_ID = "descendants_depth_1_or_2"
-_DEFAULT_TIME_DIRECTIVE = ""
-_DEFAULT_ARCHETYPE_FAMILY_ID = "samras_nominal"
-_DEFAULT_NIMM_DIRECTIVE = "mediate"
-_DEFAULT_SUPPORTING_DOCUMENT_NAME = "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"
 _CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
 _CANONICAL_TOOL_SLUG = "cts-gis"
 _CANONICAL_TOOL_ANCHOR_PATTERN = "tool.*.cts-gis.json"
 _LEGACY_DOCUMENT_PREFIX = "sandbox:" + ("map" + "s") + ":"
-_SERVICE_SELF_TOKEN = "0"
-_SERVICE_CHILDREN_TOKEN = "1-0"
-_SERVICE_BRANCH_PREFIX = "branch:"
-_CTS_GIS_NAV_MODE_DIRECTORY = "directory_dropdowns"
-_CTS_GIS_NAV_MODE_STAGED = "staged_diktataograph"
-_CTS_GIS_NAV_MODE_ORDERED = "ordered_hierarchy"
-_CTS_GIS_NAV_MODE_LEGACY = "legacy_branch_canvas"
 
 
 class LegacyMapsAliasUnsupportedError(ValueError):
@@ -64,13 +62,6 @@ class LegacyMapsAliasUnsupportedError(ValueError):
         )
         self.code = "legacy_maps_alias_unsupported"
         self.fields = tuple(fields or [])
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
 
 def _path_or_none(path: str | Path | None) -> Path | None:
     if path is None:
@@ -147,44 +138,6 @@ def _assert_no_legacy_maps_aliases(payload: dict[str, Any]) -> None:
         raise LegacyMapsAliasUnsupportedError(fields=fields)
 
 
-def _canonical_intention_rule_id(value: object) -> str:
-    token = _as_text(value)
-    if token in {_SERVICE_SELF_TOKEN, "self"}:
-        return "self"
-    return token
-
-
-def _descendants_intention_rule_id(attention_node_id: object) -> str:
-    node_id = _as_text(attention_node_id)
-    return f"{node_id}-0-0" if node_id else _DEFAULT_INTENTION_RULE_ID
-
-
-def _children_intention_rule_id(attention_node_id: object) -> str:
-    node_id = _as_text(attention_node_id)
-    return f"{node_id}-0" if node_id else "children"
-
-
-def _canonical_intention_rule_for_attention(value: object, *, attention_node_id: object) -> str:
-    token = _canonical_intention_rule_id(value)
-    node_id = _as_text(attention_node_id)
-    if token in {"", _DEFAULT_INTENTION_RULE_ID}:
-        return _descendants_intention_rule_id(node_id)
-    if token in {_SERVICE_CHILDREN_TOKEN, "children"}:
-        return _children_intention_rule_id(node_id)
-    return token
-
-
-def _service_intention_token(rule_id: object, *, attention_node_id: object) -> str:
-    token = _canonical_intention_rule_for_attention(rule_id, attention_node_id=attention_node_id)
-    if token == "self":
-        return "self"
-    if token == "children":
-        return _children_intention_rule_id(attention_node_id)
-    if token == _DEFAULT_INTENTION_RULE_ID:
-        return _descendants_intention_rule_id(attention_node_id)
-    return token or _DEFAULT_INTENTION_RULE_ID
-
-
 def _active_path_from_node_id(node_id: object) -> list[str]:
     token = _as_text(node_id)
     if not token:
@@ -249,7 +202,6 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
         or mediation_state.get("intention_token")
         or normalized_payload.get("intention_token")
     )
-    default_intention = "self" if selected_node_id and not _as_text(requested_intention) else _DEFAULT_INTENTION_RULE_ID
     return {
         "nimm_directive": _as_text(raw_tool_state.get("nimm_directive") or normalized_payload.get("nimm_directive"))
         or _DEFAULT_NIMM_DIRECTIVE,
@@ -257,8 +209,8 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
         "selected_node_id": selected_node_id,
         "aitas": {
             "attention_node_id": selected_node_id,
-            "intention_rule_id": _canonical_intention_rule_for_attention(
-                requested_intention or default_intention,
+            "intention_rule_id": canonical_runtime_intention_rule_id(
+                requested_intention or _DEFAULT_INTENTION_RULE_ID,
                 attention_node_id=selected_node_id,
             ),
             "time_directive": _as_text(raw_aitas.get("time_directive")) or _DEFAULT_TIME_DIRECTIVE,
@@ -540,25 +492,17 @@ def _resolved_tool_state(
         attention_node_id=_as_text(requested_tool_state.get("aitas", {}).get("attention_node_id")) or fallback_selected_node_id,
     )
     requested_attention_document_id = _as_text(requested_tool_state.get("source", {}).get("attention_document_id"))
+    service_intention_token = _as_text(mediation_state.get("intention_token")) or _as_text(
+        requested_tool_state.get("aitas", {}).get("intention_rule_id")
+    )
     return {
         "nimm_directive": _as_text(requested_tool_state.get("nimm_directive")) or _DEFAULT_NIMM_DIRECTIVE,
         "active_path": active_path,
         "selected_node_id": selected_node_id,
         "aitas": {
             "attention_node_id": selected_node_id,
-            "intention_rule_id": _canonical_intention_rule_for_attention(
-                (
-                    "self"
-                    if (
-                        selected_node_id
-                        and not requested_active_path
-                        and not _as_text(requested_tool_state.get("selected_node_id"))
-                        and not _as_text(requested_tool_state.get("aitas", {}).get("attention_node_id"))
-                        and not _as_text(requested_tool_state.get("aitas", {}).get("intention_rule_id"))
-                    )
-                    else mediation_state.get("intention_token")
-                    or requested_tool_state.get("aitas", {}).get("intention_rule_id")
-                ),
+            "intention_rule_id": canonical_runtime_intention_rule_id(
+                service_intention_token or _DEFAULT_INTENTION_RULE_ID,
                 attention_node_id=selected_node_id,
             ),
             "time_directive": _as_text(requested_tool_state.get("aitas", {}).get("time_directive")) or _DEFAULT_TIME_DIRECTIVE,
@@ -613,7 +557,7 @@ def _node_shell_request(
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
     _apply_selected_node_state(next_state, attention_node_id)
-    next_state["aitas"]["intention_rule_id"] = _canonical_intention_rule_for_attention(
+    next_state["aitas"]["intention_rule_id"] = canonical_runtime_intention_rule_id(
         intention_rule_id,
         attention_node_id=attention_node_id,
     )
@@ -632,7 +576,7 @@ def _intention_shell_request(
     intention_rule_id: str,
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
-    next_state["aitas"]["intention_rule_id"] = _canonical_intention_rule_for_attention(
+    next_state["aitas"]["intention_rule_id"] = canonical_runtime_intention_rule_id(
         intention_rule_id,
         attention_node_id=_as_text(next_state.get("selected_node_id") or next_state.get("aitas", {}).get("attention_node_id")),
     )
@@ -1293,127 +1237,6 @@ def _bounds_from_points(points: list[list[float]]) -> list[float]:
     return [min(xs), min(ys), max(xs), max(ys)]
 
 
-def _build_ordered_hierarchy_navigation(
-    *,
-    portal_scope: PortalScope,
-    shell_state: PortalShellState,
-    resolved_tool_state: dict[str, Any],
-    selected_node_id: str,
-    node_titles: dict[str, str],
-) -> dict[str, Any]:
-    tree = _build_node_tree(node_titles)
-    title_map = dict(tree.get("title_map") or {})
-    ordered_nodes = list(tree.get("ordered_nodes") or [])
-    children_by_parent = dict(tree.get("children_by_parent") or {})
-    target_node_id = _as_text(selected_node_id) if _as_text(selected_node_id) in set(ordered_nodes) else ""
-
-    active_path_node_ids = [
-        "-".join(target_node_id.split("-")[:depth])
-        for depth in range(1, _node_depth(target_node_id) + 1)
-    ]
-    active_path_set = set(active_path_node_ids)
-
-    def _entry_payload(node_id: str) -> dict[str, Any]:
-        title = _as_text(title_map.get(node_id))
-        child_count = len(children_by_parent.get(node_id, []))
-        return {
-            "node_id": node_id,
-            "msn_id": node_id,
-            "title": title,
-            "label": title or node_id,
-            "detail": f"{child_count} children",
-            "depth": _node_depth(node_id),
-            "parent_node_id": _parent_node_id(node_id),
-            "child_count": child_count,
-            "selected": node_id == target_node_id,
-            "in_active_path": node_id in active_path_set,
-            "shell_request": _node_shell_request(
-                portal_scope=portal_scope,
-                shell_state=shell_state,
-                tool_state=resolved_tool_state,
-                attention_node_id=node_id,
-            ),
-        }
-
-    active_path_entries = [_entry_payload(node_id) for node_id in active_path_node_ids]
-    structure_entries = [_entry_payload(node_id) for node_id in ordered_nodes]
-    root_entries = [_entry_payload(node_id) for node_id in list(children_by_parent.get("", []))]
-
-    columns = [
-        {
-            "column_id": "depth_1",
-            "depth": 1,
-            "kind": "lineage_root",
-            "anchor_node_id": "",
-            "anchor_msn_id": "",
-            "anchor_title": "",
-            "entries": root_entries,
-        }
-    ]
-    for path_node_id in active_path_node_ids:
-        columns.append(
-            {
-                "column_id": f"depth_{_node_depth(path_node_id) + 1}",
-                "depth": _node_depth(path_node_id) + 1,
-                "kind": "ordered_child_field" if path_node_id == target_node_id else "lineage_child_field",
-                "anchor_node_id": path_node_id,
-                "anchor_msn_id": path_node_id,
-                "anchor_title": _as_text(title_map.get(path_node_id)),
-            "entries": [_entry_payload(node_id) for node_id in list(children_by_parent.get(path_node_id, []))],
-            }
-        )
-
-    return {
-        "active_node_id": target_node_id,
-        "anchored_path": {
-            "title": "Anchored Path",
-            "entries": active_path_entries,
-        },
-        "structure_field": {
-            "title": "Structure Field",
-            "entries": structure_entries,
-        },
-        "ordered_hierarchy": {
-            "title": "Ordered Hierarchy",
-            "columns": columns,
-            "active_path": active_path_entries,
-            "selected_node_id": target_node_id,
-            "interaction": {
-                "dynamic_depth": True,
-                "expand_behavior": "structural_selection_expand",
-                "compress_behavior": "structural_non_focus_compress",
-                "selection_model": "click_to_focus",
-            },
-        },
-    }
-
-
-def _build_node_tree(node_titles: dict[str, str]) -> dict[str, Any]:
-    title_map = {
-        _as_text(node_id): _as_text(title)
-        for node_id, title in dict(node_titles or {}).items()
-        if _looks_like_msn_node_id(node_id)
-    }
-    expanded_nodes: set[str] = set()
-    for node_id in title_map:
-        parts = [part for part in node_id.split("-") if part]
-        for depth in range(1, len(parts) + 1):
-            expanded_nodes.add("-".join(parts[:depth]))
-    for node_id in expanded_nodes:
-        title_map.setdefault(node_id, "")
-    ordered_nodes = sorted(expanded_nodes, key=_node_sort_key)
-    children_by_parent: dict[str, list[str]] = {}
-    for node_id in ordered_nodes:
-        children_by_parent.setdefault(_parent_node_id(node_id), []).append(node_id)
-    for node_ids in children_by_parent.values():
-        node_ids.sort(key=_node_sort_key)
-    return {
-        "title_map": title_map,
-        "ordered_nodes": ordered_nodes,
-        "children_by_parent": children_by_parent,
-    }
-
-
 def _sanitize_active_path(node_ids: list[str], ordered_nodes: list[str]) -> list[str]:
     if not node_ids or not ordered_nodes:
         return []
@@ -1429,128 +1252,6 @@ def _sanitize_active_path(node_ids: list[str], ordered_nodes: list[str]) -> list
             break
         sanitized.append(token)
     return sanitized
-
-
-def _build_staged_diktataograph_navigation(
-    *,
-    portal_scope: PortalScope,
-    shell_state: PortalShellState,
-    resolved_tool_state: dict[str, Any],
-    node_titles: dict[str, str],
-) -> dict[str, Any]:
-    tree = _build_node_tree(node_titles)
-    title_map = dict(tree.get("title_map") or {})
-    ordered_nodes = list(tree.get("ordered_nodes") or [])
-    children_by_parent = dict(tree.get("children_by_parent") or {})
-    requested_active_path = list(resolved_tool_state.get("active_path") or [])
-    requested_selected_node_id = _as_text(resolved_tool_state.get("selected_node_id"))
-    active_path_node_ids = _sanitize_active_path(requested_active_path, ordered_nodes)
-    if not active_path_node_ids and requested_selected_node_id:
-        active_path_node_ids = _sanitize_active_path(_active_path_from_node_id(requested_selected_node_id), ordered_nodes)
-    selected_node_id = active_path_node_ids[-1] if active_path_node_ids else ""
-    active_path_set = set(active_path_node_ids)
-
-    def _entry_payload(node_id: str) -> dict[str, Any]:
-        title = _as_text(title_map.get(node_id))
-        child_count = len(children_by_parent.get(node_id, []))
-        return {
-            "node_id": node_id,
-            "msn_id": node_id,
-            "label": title or node_id,
-            "title": title,
-            "detail": f"{child_count} children",
-            "depth": _node_depth(node_id),
-            "parent_node_id": _parent_node_id(node_id),
-            "child_count": child_count,
-            "selected": node_id == selected_node_id,
-            "in_active_path": node_id in active_path_set,
-            "shell_request": _node_shell_request(
-                portal_scope=portal_scope,
-                shell_state=shell_state,
-                tool_state=resolved_tool_state,
-                attention_node_id=node_id,
-            ),
-        }
-
-    active_path_entries = [_entry_payload(node_id) for node_id in active_path_node_ids]
-    structure_entries = [_entry_payload(node_id) for node_id in ordered_nodes]
-    staged_blocks = [
-        {
-            "block_id": "root",
-            "depth": 0,
-            "anchor_node_id": "",
-            "anchor_title": "root",
-            "entries": [_entry_payload(node_id) for node_id in list(children_by_parent.get("", []))],
-            "selected_node_id": active_path_node_ids[0] if active_path_node_ids else "",
-            "spawn_from_node_id": "",
-        }
-    ]
-    for depth, node_id in enumerate(active_path_node_ids):
-        child_node_ids = list(children_by_parent.get(node_id, []))
-        if not child_node_ids:
-            break
-        staged_blocks.append(
-            {
-                "block_id": f"block_{depth + 1}_{node_id}",
-                "depth": depth + 1,
-                "anchor_node_id": node_id,
-                "anchor_title": _as_text(title_map.get(node_id)) or node_id,
-                "entries": [_entry_payload(child_node_id) for child_node_id in child_node_ids],
-                "selected_node_id": active_path_node_ids[depth + 1] if depth + 1 < len(active_path_node_ids) else "",
-                "spawn_from_node_id": node_id,
-            }
-        )
-
-    return {
-        "active_node_id": selected_node_id,
-        "anchored_path": {
-            "title": "Anchored Path",
-            "entries": active_path_entries,
-        },
-        "structure_field": {
-            "title": "Structure Field",
-            "entries": structure_entries,
-        },
-        "staged_blocks": staged_blocks,
-        "ordered_hierarchy": dict(
-            _build_ordered_hierarchy_navigation(
-                portal_scope=portal_scope,
-                shell_state=shell_state,
-                resolved_tool_state=resolved_tool_state,
-                selected_node_id=selected_node_id,
-                node_titles=node_titles,
-            ).get("ordered_hierarchy")
-            or {}
-        ),
-    }
-
-
-def _extract_real_ordered_hierarchy_nodes(source_payload: dict[str, Any]) -> dict[str, str]:
-    row_source = _split_row_source(source_payload)
-    node_titles: dict[str, str] = {}
-    for datum_address in sorted(row_source.keys(), key=_node_sort_key):
-        raw_row = row_source.get(datum_address)
-        if not isinstance(raw_row, list) or not raw_row:
-            continue
-        data_tokens = raw_row[0] if isinstance(raw_row[0], list) else raw_row
-        if not isinstance(data_tokens, list):
-            continue
-        node_id = ""
-        title_bits = ""
-        for index, token in enumerate(data_tokens):
-            marker = _as_text(token)
-            if marker == "rf.3-1-2" and index + 1 < len(data_tokens):
-                node_id = _as_text(data_tokens[index + 1])
-            if marker == "rf.3-1-3" and index + 1 < len(data_tokens):
-                title_bits = _as_text(data_tokens[index + 1])
-        if not _looks_like_msn_node_id(node_id):
-            continue
-        decoded_title = _decode_ascii_title_babelette(title_bits)
-        if node_id not in node_titles:
-            node_titles[node_id] = decoded_title
-        elif not node_titles[node_id] and decoded_title:
-            node_titles[node_id] = decoded_title
-    return node_titles
 
 
 def _empty_geospatial_projection() -> dict[str, Any]:
@@ -1875,13 +1576,6 @@ def build_portal_cts_gis_surface_bundle(
         if isinstance(normalized_request_payload.get("mediation_state"), dict)
         else {}
     )
-    explicit_selection_requested = bool(
-        _normalize_requested_active_path(requested_tool_state.get("active_path"))
-        or _as_text(requested_tool_state.get("selected_node_id"))
-        or _as_text(requested_tool_state.get("aitas", {}).get("attention_node_id"))
-        or _as_text(requested_tool_state.get("selection", {}).get("selected_row_address"))
-        or _as_text(requested_tool_state.get("selection", {}).get("selected_feature_id"))
-    )
     explicit_intention_requested = bool(
         _as_text(raw_aitas.get("intention_rule_id"))
         or _as_text(raw_mediation.get("intention_token"))
@@ -1893,17 +1587,17 @@ def build_portal_cts_gis_surface_bundle(
         selected_row_address=_as_text(requested_tool_state.get("selection", {}).get("selected_row_address")),
         selected_feature_id=_as_text(requested_tool_state.get("selection", {}).get("selected_feature_id")),
         mediation_state={
-            "attention_document_id": _as_text(requested_tool_state.get("source", {}).get("attention_document_id")),
-            "attention_node_id": _as_text(requested_tool_state.get("aitas", {}).get("attention_node_id")),
-            "intention_token": (
-                _service_intention_token(
-                    requested_tool_state.get("aitas", {}).get("intention_rule_id"),
-                    attention_node_id=_as_text(requested_tool_state.get("aitas", {}).get("attention_node_id")),
+                "attention_document_id": _as_text(requested_tool_state.get("source", {}).get("attention_document_id")),
+                "attention_node_id": _as_text(requested_tool_state.get("aitas", {}).get("attention_node_id")),
+                "intention_token": (
+                    canonical_service_intention_token(
+                        requested_tool_state.get("aitas", {}).get("intention_rule_id"),
+                        attention_node_id=_as_text(requested_tool_state.get("aitas", {}).get("attention_node_id")),
+                    )
+                    if explicit_intention_requested
+                    else ""
                 )
-                if explicit_selection_requested or explicit_intention_requested
-                else ""
-            ),
-        },
+            },
     ) if datum_store is not None else {
         "document_catalog": [],
         "selected_document": None,

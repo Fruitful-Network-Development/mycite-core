@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from MyCiteV2.packages.core.network_root_surface_query import normalize_network_surface_query
 from MyCiteV2.packages.core.structures.hops.chronology import (
     ChronologyAuthority,
     build_chronology_authority,
@@ -23,6 +24,12 @@ LOG_KIND_COUNT_KEY = "event_type_count"
 LOG_KIND_COUNTS_KEY = "event_type_counts"
 LOG_KIND_COLLECTION_LABEL = "event_type_collection"
 LOG_KIND_BABELETTE_LABEL = "event_type_babelette"
+
+
+def _as_text(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def build_network_chronology_authority(
@@ -104,5 +111,6 @@ __all__ = [
     "compare_network_hops_addresses",
     "encode_network_datetime_as_hops",
     "network_hops_schema_from_anchor_payload",
+    "normalize_network_surface_query",
     "validate_network_hops_address",
 ]

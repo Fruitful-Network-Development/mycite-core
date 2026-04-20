@@ -8,6 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from MyCiteV2.packages.ports.network_root_read_model import normalize_network_surface_query
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
     FND_DCM_TOOL_SURFACE_ID,
@@ -210,6 +211,34 @@ class PortalShellContractTests(unittest.TestCase):
                 "type": "4-2-1",
                 "record": "7-3-1",
             },
+        )
+
+    def test_network_surface_query_matches_shared_port_normalizer(self) -> None:
+        raw_query = {
+            "view": "hosted",
+            "contract": " contract-fnd-001 ",
+            "type": "4-2-1",
+            "record": "7-3-1",
+            "ignored": "yes",
+        }
+
+        helper_query, warnings = normalize_network_surface_query(raw_query)
+        self.assertEqual(
+            canonical_query_for_surface_query(raw_query, surface_id=NETWORK_ROOT_SURFACE_ID),
+            helper_query,
+        )
+        self.assertEqual(
+            helper_query,
+            {
+                "view": "system_logs",
+                "contract": "contract-fnd-001",
+                "type": "4-2-1",
+                "record": "7-3-1",
+            },
+        )
+        self.assertEqual(
+            warnings,
+            ("Ignored unsupported NETWORK surface_query key(s): ignored",),
         )
 
     def test_aws_csm_surface_query_is_runtime_owned_and_domain_driven(self) -> None:

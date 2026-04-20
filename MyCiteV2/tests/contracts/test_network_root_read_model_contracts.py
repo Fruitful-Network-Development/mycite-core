@@ -12,6 +12,7 @@ from MyCiteV2.packages.ports.network_root_read_model import (
     NetworkRootReadModelRequest,
     NetworkRootReadModelResult,
     NetworkRootReadModelSource,
+    normalize_network_surface_query,
 )
 
 
@@ -66,6 +67,31 @@ class NetworkRootReadModelContractTests(unittest.TestCase):
                     "surface_query": "contract=abc",
                 }
             )
+
+    def test_helper_normalizes_network_surface_query_and_surfaces_unknown_keys(self) -> None:
+        query, warnings = normalize_network_surface_query(
+            {
+                " view ": " hosted ",
+                "contract": " contract-1 ",
+                "type": " type-1 ",
+                "record": 7,
+                "unused": "ignored",
+            }
+        )
+
+        self.assertEqual(
+            query,
+            {
+                "view": "system_logs",
+                "contract": "contract-1",
+                "type": "type-1",
+                "record": "7",
+            },
+        )
+        self.assertEqual(
+            warnings,
+            ("Ignored unsupported NETWORK surface_query key(s): unused",),
+        )
 
     def test_source_payload_must_be_non_empty_json(self) -> None:
         source = NetworkRootReadModelSource(
