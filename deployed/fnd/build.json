@@ -919,10 +919,10 @@
         "domain": "cuyahogavalleycountrysideconservancy.org",
         "list_address": "news@cuyahogavalleycountrysideconservancy.org",
         "schema": "mycite.service_tool.newsletter.profile.v1",
-        "selected_author_address": "technicalContact@cuyahogavalleycountrysideconservancy.org",
-        "selected_author_profile_id": "aws-csm.cvcc.technicalContact",
-        "selected_sender_address": "technicalContact@cuyahogavalleycountrysideconservancy.org",
-        "selected_sender_profile_id": "aws-csm.cvcc.technicalContact",
+        "selected_author_address": "admin@cuyahogavalleycountrysideconservancy.org",
+        "selected_author_profile_id": "aws-csm.cvcc.admin",
+        "selected_sender_address": "admin@cuyahogavalleycountrysideconservancy.org",
+        "selected_sender_profile_id": "aws-csm.cvcc.admin",
         "sender_address": "news@cuyahogavalleycountrysideconservancy.org"
       },
       "target": "private/utilities/tools/newsletter-admin/newsletter-admin.cuyahogavalleycountrysideconservancy.org.json"

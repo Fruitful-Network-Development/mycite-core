@@ -260,11 +260,35 @@ def _verification_routes() -> dict[str, dict[str, Any]]:
     if isinstance(payload, dict):
         for recipient, route in payload.items():
             normalized_recipient = _normalized_email(recipient)
-            if not normalized_recipient or not isinstance(route, dict):
+            if not normalized_recipient:
                 continue
-            forward_to_email = _normalized_email(route.get("forward_to_email"))
+            if isinstance(route, str):
+                destination = _normalized_email(route)
+                if not destination:
+                    continue
+                out[normalized_recipient] = {
+                    "forward_to_email": destination,
+                    "resolved_forward_to_email": destination,
+                    "source_forward_to_email": destination,
+                    "forward_resolution_status": "resolved_external",
+                    "forward_chain": [normalized_recipient, destination],
+                    "profile_id": "",
+                    "domain": _recipient_domain(normalized_recipient),
+                    "handoff_provider": _provider_from_email(destination),
+                }
+                continue
+            if not isinstance(route, dict):
+                continue
+            forward_to_email = _normalized_email(
+                route.get("f")
+                or route.get("resolved_forward_to_email")
+                or route.get("forward_to_email")
+            )
             resolved_forward_to_email = _normalized_email(
-                route.get("resolved_forward_to_email") or forward_to_email
+                route.get("resolved_forward_to_email")
+                or route.get("f")
+                or route.get("forward_to_email")
+                or forward_to_email
             )
             if not forward_to_email or not resolved_forward_to_email:
                 continue
@@ -272,14 +296,14 @@ def _verification_routes() -> dict[str, dict[str, Any]]:
                 "forward_to_email": forward_to_email,
                 "resolved_forward_to_email": resolved_forward_to_email,
                 "source_forward_to_email": _normalized_email(
-                    route.get("source_forward_to_email") or forward_to_email
+                    route.get("source_forward_to_email") or route.get("forward_to_email") or forward_to_email
                 ),
-                "forward_resolution_status": _text(route.get("forward_resolution_status")),
-                "forward_chain": list(route.get("forward_chain") or []),
+                "forward_resolution_status": _text(route.get("s") or route.get("forward_resolution_status")),
+                "forward_chain": list(route.get("c") or route.get("forward_chain") or []),
                 "profile_id": _text(route.get("profile_id")),
                 "domain": _normalized_domain(route.get("domain")) or _recipient_domain(normalized_recipient),
                 "handoff_provider": _normalized_provider(
-                    route.get("handoff_provider") or _provider_from_email(forward_to_email)
+                    route.get("p") or route.get("handoff_provider") or _provider_from_email(forward_to_email)
                 ),
             }
     _cached_routes = out

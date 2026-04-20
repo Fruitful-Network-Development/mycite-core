@@ -790,6 +790,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             s3_uri=s3_uri,
             region=region,
             expected_recipient=expected_recipient,
+            handoff_provider=self._handoff_provider(profile),
             fallback_subject=_as_text(inbound.get("latest_message_subject")),
             fallback_captured_at=_as_text(inbound.get("latest_message_captured_at")),
             fallback_message_id=_as_text(inbound.get("latest_message_id")),
@@ -829,6 +830,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         s3_uri: str,
         region: str,
         expected_recipient: str,
+        handoff_provider: str,
         fallback_subject: str = "",
         fallback_captured_at: str = "",
         fallback_message_id: str = "",
@@ -867,7 +869,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             recipient=recipient,
             subject=subject,
             raw_bytes=raw_bytes,
-            handoff_provider=self._handoff_provider(profile),
+            handoff_provider=handoff_provider,
         )
         summary.update(
             {
@@ -928,6 +930,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 s3_uri=_as_text(candidate.get("s3_uri")),
                 region=region,
                 expected_recipient=expected_recipient,
+                handoff_provider=self._handoff_provider(profile),
                 fallback_captured_at=_as_text(candidate.get("last_modified")),
                 fallback_message_id=_as_text(candidate.get("key")).split("/")[-1],
             )
@@ -1286,6 +1289,14 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 continue
             seen.add(normalized)
             ordered_candidates.append(normalized)
+        # If tenant-local secrets are not configured, fall back to any configured SMTP secret.
+        # This keeps staging operable when IAM SMTP keys are quota-blocked for new profiles.
+        for candidate in sorted(self._list_smtp_secret_names(prefix=prefix)):
+            normalized = _as_text(candidate)
+            if not normalized or normalized == token or normalized in seen:
+                continue
+            seen.add(normalized)
+            ordered_candidates.append(normalized)
         for candidate in ordered_candidates:
             material = self._smtp_secret_material(secret_name=candidate, region=region)
             if _as_text(material.get("state")).lower() != "configured":
@@ -1420,7 +1431,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 Description=description,
             )
 
-    def _verification_route_map_from_profiles(self, *, profiles: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    def _verification_route_map_from_profiles(self, *, profiles: list[dict[str, Any]]) -> dict[str, Any]:
         routes: dict[str, dict[str, Any]] = {}
         for profile in list(profiles or []):
             if not isinstance(profile, dict):
@@ -1437,23 +1448,26 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 "domain": _normalized_domain(identity.get("domain")) or _email_domain(send_as_email),
                 "handoff_provider": self._handoff_provider(profile),
             }
-        resolved: dict[str, dict[str, Any]] = {}
+        resolved: dict[str, Any] = {}
         for send_as_email, route in sorted(routes.items()):
             resolved_forward_to_email, resolution_status, chain = self._resolve_forward_target(
                 start_recipient=send_as_email,
                 routes=routes,
             )
-            payload = {
-                "forward_to_email": _as_text(route.get("forward_to_email")),
-                "resolved_forward_to_email": resolved_forward_to_email or _as_text(route.get("forward_to_email")),
-                "source_forward_to_email": _as_text(route.get("forward_to_email")),
-                "forward_resolution_status": resolution_status,
-                "forward_chain": list(chain),
-                "profile_id": _as_text(route.get("profile_id")),
-                "domain": _as_text(route.get("domain")),
-                "handoff_provider": _as_text(route.get("handoff_provider")) or "generic_manual",
+            destination = resolved_forward_to_email or _as_text(route.get("forward_to_email"))
+            provider = _as_text(route.get("handoff_provider")) or "generic_manual"
+            inferred_provider = _provider_from_email(destination)
+            # Keep Lambda env payload compact so route-map sync remains under the 4KB env-var limit.
+            # Use the shortest representation when provider can be inferred from destination.
+            if provider == inferred_provider:
+                resolved[send_as_email] = destination
+                continue
+            resolved[send_as_email] = {
+                "f": destination,
+                "p": provider,
+                "s": resolution_status,
+                "c": list(chain),
             }
-            resolved[send_as_email] = payload
         return resolved
 
     def _resolve_forward_target(

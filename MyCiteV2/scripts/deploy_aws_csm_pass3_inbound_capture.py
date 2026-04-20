@@ -117,7 +117,7 @@ def _load_json(path: Path) -> dict[str, Any]:
     return dict(payload) if isinstance(payload, dict) else {}
 
 
-def _build_route_map(state_root: Path) -> dict[str, dict[str, Any]]:
+def _build_route_map(state_root: Path) -> dict[str, Any]:
     routes: dict[str, dict[str, Any]] = {}
     for path in sorted(state_root.glob("aws-csm.*.json")):
         payload = _load_json(path)
@@ -143,21 +143,23 @@ def _build_route_map(state_root: Path) -> dict[str, dict[str, Any]]:
                 or _provider_from_email(forward_to_email)
             ),
         }
-    resolved: dict[str, dict[str, Any]] = {}
+    resolved: dict[str, Any] = {}
     for send_as_email, route in sorted(routes.items()):
         resolved_forward_to_email, resolution_status, chain = _resolve_forward_target(
             start_recipient=send_as_email,
             routes=routes,
         )
+        destination = resolved_forward_to_email or _text(route.get("forward_to_email"))
+        provider = _text(route.get("handoff_provider")) or "generic_manual"
+        inferred_provider = _provider_from_email(destination)
+        if provider == inferred_provider:
+            resolved[send_as_email] = destination
+            continue
         resolved[send_as_email] = {
-            "forward_to_email": _text(route.get("forward_to_email")),
-            "resolved_forward_to_email": resolved_forward_to_email or _text(route.get("forward_to_email")),
-            "source_forward_to_email": _text(route.get("forward_to_email")),
-            "forward_resolution_status": resolution_status,
-            "forward_chain": list(chain),
-            "profile_id": _text(route.get("profile_id")),
-            "domain": _text(route.get("domain")),
-            "handoff_provider": _text(route.get("handoff_provider")) or "generic_manual",
+            "f": destination,
+            "p": provider,
+            "s": resolution_status,
+            "c": list(chain),
         }
     return resolved
 

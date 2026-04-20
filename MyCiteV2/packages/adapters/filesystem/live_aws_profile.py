@@ -212,15 +212,26 @@ class FilesystemLiveAwsProfileAdapter(AwsReadOnlyStatusPort, AwsNarrowWritePort)
         if _as_bool(workflow.get("is_mailbox_operational")):
             mailbox_readiness = "ready"
         elif _as_bool(workflow.get("is_ready_for_user_handoff")):
-            mailbox_readiness = "ready_for_gmail_handoff"
+            provider_for_state = _as_text(
+                _as_dict(payload.get("provider")).get("handoff_provider")
+                or _as_dict(payload.get("identity")).get("handoff_provider")
+            ).lower() or "generic_manual"
+            mailbox_readiness = f"ready_for_{provider_for_state}_handoff"
 
         smtp_ready = _as_bool(smtp.get("handoff_ready")) or _as_text(smtp.get("credentials_secret_state")).lower() == "configured"
-        gmail_verified = (
-            _as_text(provider.get("gmail_send_as_status")).lower() == "verified"
+        provider_verified = (
+            _as_text(provider.get("send_as_provider_status")).lower() == "verified"
+            or _as_text(provider.get("gmail_send_as_status")).lower() == "verified"
             or _as_text(verification.get("status")).lower() == "verified"
             or _as_text(verification.get("portal_state")).lower() == "verified"
         )
+        handoff_provider = _as_text(
+            provider.get("handoff_provider")
+            or _as_dict(payload.get("identity")).get("handoff_provider")
+            or _as_dict(payload.get("smtp")).get("handoff_provider")
+        ).lower() or "generic_manual"
         initiated = _as_bool(workflow.get("initiated"))
+        provider_state_value = "provider_verified" if provider_verified else ("provider_pending" if initiated else "not_started")
         inbound_ready = _as_bool(inbound.get("receive_verified")) or _as_bool(inbound.get("portal_native_display_ready"))
         latest_message_id = _as_text(inbound.get("latest_message_id"))
 
@@ -231,9 +242,11 @@ class FilesystemLiveAwsProfileAdapter(AwsReadOnlyStatusPort, AwsNarrowWritePort)
             "tenant_scope_id": _as_text(tenant_scope_id),
             "mailbox_readiness": mailbox_readiness,
             "smtp_state": "smtp_ready" if smtp_ready else "not_configured",
-            "gmail_state": "gmail_verified" if gmail_verified else ("gmail_pending" if initiated else "not_started"),
+            "provider_state": provider_state_value,
+            "handoff_provider": handoff_provider,
+            "gmail_state": "gmail_verified" if provider_verified else ("gmail_pending" if initiated else "not_started"),
             "verified_evidence_state": "verified_evidence_present"
-            if gmail_verified
+            if provider_verified
             else ("sender_selected" if selected_sender else "not_verified"),
             "selected_verified_sender": selected_sender,
             "allowed_send_domains": list(allowed_domains),

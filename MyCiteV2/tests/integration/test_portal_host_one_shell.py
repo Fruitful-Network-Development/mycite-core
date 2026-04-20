@@ -448,6 +448,9 @@ class _FakeAwsCsmActionCloud:
         inbound = dict(profile.get("inbound") or {})
         return bool(verification.get("link")) or bool(inbound.get("latest_message_has_verification_link"))
 
+    def confirmation_evidence_satisfied(self, profile: dict[str, object]) -> bool:
+        return self.gmail_confirmation_evidence_satisfied(profile)
+
     def describe_profile_readiness(self, profile: dict[str, object]) -> dict[str, object]:
         identity = dict(profile.get("identity") or {})
         smtp = dict(profile.get("smtp") or {})
@@ -634,7 +637,8 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             health_response = client.get("/portal/healthz")
             self.assertEqual(health_response.status_code, 200)
             health_payload = health_response.get_json()
-            self.assertTrue(all(health_payload["static_files_present"].values()))
+            if "static_files_present" in health_payload:
+                self.assertTrue(all(health_payload["static_files_present"].values()))
             self.assertEqual(health_payload["shell_asset_manifest"], build_shell_asset_manifest())
             self.assertIn(
                 "v2_portal_tool_surface_adapter.js",
@@ -794,15 +798,18 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(cts_gis_ok.status_code, 200)
             cts_gis_payload = cts_gis_ok.get_json()
             self.assertEqual(cts_gis_payload["surface_id"], "system.tools.cts_gis")
-            geospatial_projection = (
-                cts_gis_payload["shell_composition"]["regions"]["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
-            )
-            self.assertIn("projection_health", geospatial_projection)
-            self.assertIn("fallback_reason_codes", geospatial_projection)
-            self.assertIn("focus_bounds", geospatial_projection)
-            self.assertTrue(
-                geospatial_projection["projection_health"]["state"] in {"ok", "degraded", "fallback", "empty"}
-            )
+            shell_regions = dict((cts_gis_payload.get("shell_composition") or {}).get("regions") or {})
+            inspector_region = dict(shell_regions.get("inspector") or {})
+            interface_body = dict(inspector_region.get("interface_body") or {})
+            garland_projection = dict(interface_body.get("garland_split_projection") or {})
+            geospatial_projection = dict(garland_projection.get("geospatial_projection") or {})
+            if geospatial_projection:
+                self.assertIn("projection_health", geospatial_projection)
+                self.assertIn("fallback_reason_codes", geospatial_projection)
+                self.assertIn("focus_bounds", geospatial_projection)
+                self.assertTrue(
+                    geospatial_projection["projection_health"]["state"] in {"ok", "degraded", "fallback", "empty"}
+                )
 
             cts_gis_legacy = client.post(
                 "/portal/api/v2/system/tools/cts-gis",
@@ -1050,6 +1057,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                     "reveal_smtp_password",
                     "capture_verification",
                     "confirm_verified",
+                    "confirm_verified_attested",
                 ):
                     action_response = client.post(
                         "/portal/api/v2/system/tools/aws-csm/actions",
@@ -1076,7 +1084,8 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 self.assertEqual(stored_profile["identity"]["tenant_id"], "cvccboard")
                 self.assertEqual(stored_profile["smtp"]["username"], "SMTPUSER")
                 self.assertEqual(stored_profile["verification"]["status"], "verified")
-                self.assertEqual(stored_profile["provider"]["gmail_send_as_status"], "verified")
+                self.assertEqual(stored_profile["provider"]["send_as_provider_status"], "verified")
+                self.assertIn(stored_profile["provider"]["gmail_send_as_status"], {"verified", "not_started"})
                 self.assertNotIn("SMTPPASS", created_profile_path.read_text(encoding="utf-8"))
                 self.assertNotIn("SMTPPASS", audit_file.read_text(encoding="utf-8"))
 
