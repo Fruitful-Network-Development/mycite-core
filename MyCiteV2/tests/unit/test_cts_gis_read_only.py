@@ -53,6 +53,10 @@ def _anchor_rows() -> tuple[AuthoritativeDatumDocumentRow, ...]:
     )
 
 
+def _ascii_bits(text: str) -> str:
+    return "".join(format(value, "08b") for value in text.encode("ascii"))
+
+
 def _cts_gis_document() -> AuthoritativeDatumDocument:
     summit_binary = (
         "011100110111010101101101011011010110100101110100"
@@ -217,6 +221,77 @@ def _cts_gis_reference_fallback_document() -> AuthoritativeDatumDocument:
                 raw=[
                     ["7-3-1", "rf.3-1-2", "3-2-3-17-77", "rf.3-1-3", "0110011001100001011011000110110001100010011000010110001101101011", "6-0-1", "1"],
                     ["fallback_county"],
+                ],
+            ),
+        ),
+    )
+
+
+def _cts_gis_reference_guarded_document() -> AuthoritativeDatumDocument:
+    return AuthoritativeDatumDocument(
+        document_id="sandbox:cts_gis:sc.reference-guarded.3-2-3-17-77-1.json",
+        source_kind="sandbox_source",
+        document_name="sc.reference-guarded.3-2-3-17-77-1.json",
+        relative_path="sandbox/cts-gis/sources/sc.reference-guarded.3-2-3-17-77-1.json",
+        tool_id="cts_gis",
+        anchor_document_name="tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        anchor_document_path="sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        anchor_rows=_anchor_rows(),
+        document_metadata={
+            "reference_geojson_node_id": "3-2-3-17-77-1",
+            "reference_geojson": {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[
+                                [-81.63, 41.01],
+                                [-81.57, 41.01],
+                                [-81.55, 41.05],
+                                [-81.58, 41.08],
+                                [-81.63, 41.01],
+                            ]],
+                        },
+                        "properties": {"community_name": "reference_guarded_city"},
+                    }
+                ],
+            },
+        },
+        rows=(
+            AuthoritativeDatumDocumentRow(
+                datum_address="4-3-1",
+                raw=[
+                    [
+                        "4-3-1",
+                        "rf.3-1-1",
+                        "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73",
+                        "rf.3-1-1",
+                        "3-76-11-40-92-20-21-92-81-29-56-60-79-56-3-4-39",
+                        "rf.3-1-1",
+                        "3-76-11-40-92-20-21-92-81-25-68-43-68-84-44-22-24",
+                    ],
+                    ["reference_guarded_polygon"],
+                ],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="5-0-1",
+                raw=[["5-0-1", "~", "4-3-1"], ["reference_guarded_boundary"]],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="7-3-1",
+                raw=[
+                    [
+                        "7-3-1",
+                        "rf.3-1-2",
+                        "3-2-3-17-77-1",
+                        "rf.3-1-3",
+                        _ascii_bits("reference_guarded_city"),
+                        "5-0-1",
+                        "1",
+                    ],
+                    ["reference_guarded_city"],
                 ],
             ),
         ),
@@ -598,6 +673,31 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         self.assertEqual(surface["map_projection"]["decode_summary"]["decoded_coordinate_count"], 0)
         self.assertEqual(surface["map_projection"]["decode_summary"]["failed_token_count"], 4)
         self.assertTrue(surface["map_projection"]["warnings"])
+        self.assertIn("reference GeoJSON geometry", " ".join(surface["map_projection"]["warnings"]))
+
+    def test_reference_geojson_warnings_prefer_reference_geometry_over_degraded_hops_projection(self) -> None:
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(_cts_gis_reference_guarded_document(),),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={"attention_node_id": "3-2-3-17-77-1", "intention_token": "self"},
+        )
+
+        self.assertEqual(surface["map_projection"]["projection_source"], "reference_geojson_fallback")
+        self.assertEqual(surface["map_projection"]["projection_state"], "projectable_fallback")
+        self.assertEqual(surface["map_projection"]["feature_count"], 1)
+        self.assertEqual(
+            surface["map_projection"]["feature_collection"]["bounds"],
+            [-81.63, 41.01, -81.55, 41.08],
+        )
+        self.assertIn("did not align", " ".join(surface["map_projection"]["warnings"]))
         self.assertIn("reference GeoJSON geometry", " ".join(surface["map_projection"]["warnings"]))
 
 

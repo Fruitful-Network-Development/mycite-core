@@ -6,6 +6,21 @@ from MyCiteV2.packages.core.structures.hops import (
     classify_hops_coordinate_token,
     decode_hops_coordinate_token,
 )
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    BRANCH_INTENTION_PREFIX as _BRANCH_INTENTION_PREFIX,
+    CTS_GIS_CANONICAL_DOCUMENT_PREFIX as _CTS_GIS_CANONICAL_DOCUMENT_PREFIX,
+    CTS_GIS_CANONICAL_TOOL_PUBLIC_ID as _CTS_GIS_CANONICAL_TOOL_PUBLIC_ID,
+    DEFAULT_ATTENTION_NODE_ID as _DEFAULT_ATTENTION_NODE_ID,
+    DEFAULT_ATTENTION_PROFILE_LABEL as _DEFAULT_ATTENTION_PROFILE_LABEL,
+    DEFAULT_INTENTION_TOKEN as _DEFAULT_INTENTION_TOKEN,
+    DEFAULT_PROJECTION_DOCUMENT_SUFFIX as _DEFAULT_PROJECTION_DOCUMENT_SUFFIX,
+    DEFAULT_SUPPORTING_DOCUMENT_NAME as _DEFAULT_SUPPORTING_DOCUMENT_NAME,
+    LEGACY_SELF_INTENTION_TOKEN as _LEGACY_SELF_INTENTION_TOKEN,
+    as_text as _as_text,
+    canonical_service_intention_token,
+    children_intention_token as _contract_children_intention_token,
+    descendants_intention_token as _contract_descendants_intention_token,
+)
 from MyCiteV2.packages.modules.domains.datum_recognition import (
     DatumRecognitionDocument,
     DatumRecognitionRow,
@@ -14,22 +29,6 @@ from MyCiteV2.packages.modules.domains.datum_recognition import (
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentPort
 
 _VALID_OVERLAY_MODES = frozenset({"auto", "raw_only"})
-_CTS_GIS_CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
-_CTS_GIS_CANONICAL_DOCUMENT_PREFIX = "sandbox:cts_gis:"
-_DEFAULT_ATTENTION_NODE_ID = "3-2-3-17-77"
-_DEFAULT_ATTENTION_PROFILE_LABEL = "summit_county"
-_DEFAULT_SUPPORTING_DOCUMENT_NAME = "sc.3-2-3-17-77-1-6-4-1-4.msn-administrative.json"
-_DEFAULT_PROJECTION_DOCUMENT_SUFFIX = f".{_DEFAULT_ATTENTION_NODE_ID}.json"
-_DEFAULT_INTENTION_TOKEN = "descendants_depth_1_or_2"
-_LEGACY_SELF_INTENTION_TOKEN = "0"
-_CHILDREN_INTENTION_TOKEN = "1-0"
-_BRANCH_INTENTION_PREFIX = "branch:"
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
 
 
 def _as_lower(value: object) -> str:
@@ -104,11 +103,11 @@ def _address_is_descendant(node_id: str, *, root_node_id: str, min_extra_segment
 
 
 def _descendants_intention_token(attention_node_id: str) -> str:
-    return f"{attention_node_id}-0-0" if attention_node_id else _DEFAULT_INTENTION_TOKEN
+    return _contract_descendants_intention_token(attention_node_id)
 
 
 def _children_intention_token(attention_node_id: str) -> str:
-    return f"{attention_node_id}-0" if attention_node_id else "children"
+    return _contract_children_intention_token(attention_node_id)
 
 
 def _structural_child_node_ids(
@@ -963,6 +962,26 @@ def _reference_geojson_profile_features(
     return out
 
 
+def _prefer_reference_geojson_projection(
+    document: DatumRecognitionDocument,
+    *,
+    owner_row: dict[str, Any],
+    coordinate_authority: dict[str, Any] | None,
+    projection_summary: dict[str, Any] | None,
+) -> bool:
+    metadata = dict(document.document_metadata or {})
+    payload = metadata.get("reference_geojson")
+    expected_node_id = _as_text(metadata.get("reference_geojson_node_id"))
+    owner_node_id = _as_text(owner_row.get("samras_node_id"))
+    if not isinstance(payload, dict):
+        return False
+    if expected_node_id and expected_node_id != owner_node_id:
+        return False
+    authority_warnings = list((coordinate_authority or {}).get("warnings") or [])
+    projection_warnings = list((projection_summary or {}).get("warnings") or [])
+    return bool(authority_warnings or projection_warnings)
+
+
 def _attach_feature_ids(row_addresses: list[str], feature_ids: list[str], row_index: dict[str, dict[str, Any]]) -> None:
     for row_address in row_addresses:
         row = row_index.get(row_address)
@@ -1106,41 +1125,45 @@ def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mo
 
         projection_summary = _projection_summary_for_row_addresses(reachable_addresses, row_index)
         profile_features: list[dict[str, Any]] = []
-        geometry = _geometry_from_row_address(row["datum_address"], row_index)
-        if geometry is not None:
-            feature = _feature_from_geometry(
-                document=document,
-                feature_id=f"{document.document_id}:{row['datum_address']}",
-                row_address=_as_text(row.get("datum_address")),
-                geometry=geometry,
-                label_text=_as_text(row.get("label_text")),
-                labels=list(row.get("labels") or []),
-                diagnostic_states=list(row.get("diagnostic_states") or []),
-                primary_samras_node_id=node_id,
-                profile_label=_as_text(row.get("profile_label")) or node_id,
-                title_display=_as_text(row.get("title_display")),
-                properties_extra={
-                    "bound_node_ids": list(row.get("samras_node_ids") or [])[1:],
-                },
-                projection_source="hops",
-                decode_summary={
-                    "reference_binding_count": int(projection_summary.get("reference_binding_count") or 0),
-                    "decoded_coordinate_count": int(projection_summary.get("decoded_coordinate_count") or 0),
-                    "failed_token_count": int(projection_summary.get("failed_token_count") or 0),
-                },
-                projection_warnings=list(projection_summary.get("warnings") or []),
-            )
-            if feature is not None:
-                profile_features = [feature]
+        decode_summary = {
+            "reference_binding_count": int(projection_summary.get("reference_binding_count") or 0),
+            "decoded_coordinate_count": int(projection_summary.get("decoded_coordinate_count") or 0),
+            "failed_token_count": int(projection_summary.get("failed_token_count") or 0),
+        }
+        prefer_reference_geojson = _prefer_reference_geojson_projection(
+            document,
+            owner_row=row,
+            coordinate_authority=coordinate_authority,
+            projection_summary=projection_summary,
+        )
+        if not prefer_reference_geojson:
+            geometry = _geometry_from_row_address(row["datum_address"], row_index)
+            if geometry is not None:
+                feature = _feature_from_geometry(
+                    document=document,
+                    feature_id=f"{document.document_id}:{row['datum_address']}",
+                    row_address=_as_text(row.get("datum_address")),
+                    geometry=geometry,
+                    label_text=_as_text(row.get("label_text")),
+                    labels=list(row.get("labels") or []),
+                    diagnostic_states=list(row.get("diagnostic_states") or []),
+                    primary_samras_node_id=node_id,
+                    profile_label=_as_text(row.get("profile_label")) or node_id,
+                    title_display=_as_text(row.get("title_display")),
+                    properties_extra={
+                        "bound_node_ids": list(row.get("samras_node_ids") or [])[1:],
+                    },
+                    projection_source="hops",
+                    decode_summary=decode_summary,
+                    projection_warnings=list(projection_summary.get("warnings") or []),
+                )
+                if feature is not None:
+                    profile_features = [feature]
         if not profile_features:
             profile_features = _reference_geojson_profile_features(
                 document,
                 owner_row=row,
-                decode_summary={
-                    "reference_binding_count": int(projection_summary.get("reference_binding_count") or 0),
-                    "decoded_coordinate_count": int(projection_summary.get("decoded_coordinate_count") or 0),
-                    "failed_token_count": int(projection_summary.get("failed_token_count") or 0),
-                },
+                decode_summary=decode_summary,
                 projection_warnings=list(projection_summary.get("warnings") or [])
                 + list(coordinate_authority.get("warnings") or []),
             )
@@ -1362,9 +1385,9 @@ def _build_navigation_bundle(documents: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _normalize_intention_token(document_bundle: dict[str, Any], attention_node_id: str, requested: object) -> str:
-    token = _as_text(requested) or _DEFAULT_INTENTION_TOKEN
+    token = canonical_service_intention_token(requested, attention_node_id=attention_node_id)
     if not attention_node_id:
-        if token in {_LEGACY_SELF_INTENTION_TOKEN, "self"}:
+        if token == "self":
             return "self"
         return _DEFAULT_INTENTION_TOKEN
     children = list((document_bundle.get("children_by_parent") or {}).get(attention_node_id, []))
@@ -1381,11 +1404,11 @@ def _normalize_intention_token(document_bundle: dict[str, Any], attention_node_i
     )
     descendants_token = _descendants_intention_token(attention_node_id)
     children_token = _children_intention_token(attention_node_id)
-    if token in {_LEGACY_SELF_INTENTION_TOKEN, "self"}:
+    if token == "self":
         return "self"
-    if token in {_DEFAULT_INTENTION_TOKEN, descendants_token}:
+    if token == descendants_token:
         return descendants_token if descendants_depth_1_or_2 else "self"
-    if token in {"children", _CHILDREN_INTENTION_TOKEN, children_token}:
+    if token == children_token:
         return children_token if structural_child_node_ids or children else "self"
     if token.startswith(_BRANCH_INTENTION_PREFIX):
         branch_node_id = _as_text(token[len(_BRANCH_INTENTION_PREFIX) :])
@@ -1694,9 +1717,6 @@ class CtsGisReadOnlyService:
                 _LEGACY_SELF_INTENTION_TOKEN
                 if (
                     not _as_text(requested_intention_token)
-                    and not requested_attention_node_id
-                    and not requested_row_address
-                    and not requested_feature_id
                     and attention_node_id
                 )
                 else requested_intention_token

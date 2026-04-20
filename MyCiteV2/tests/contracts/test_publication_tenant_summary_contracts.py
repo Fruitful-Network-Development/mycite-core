@@ -58,6 +58,15 @@ class PublicationTenantSummaryContractTests(unittest.TestCase):
                 tenant_profile=None,
             )
 
+        with self.assertRaisesRegex(ValueError, "tenant_domain.*plain domain-like value"):
+            PublicationTenantSummarySource(
+                tenant_id="tff",
+                tenant_domain="bad..domain.com",
+                profile_id="3-2-3-17-77-2-6-3-1-6",
+                public_profile=None,
+                tenant_profile=None,
+            )
+
         with self.assertRaisesRegex(ValueError, "must be JSON-serializable"):
             PublicationTenantSummaryResult(
                 source=None,

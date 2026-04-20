@@ -3,6 +3,12 @@
 Date: 2026-04-16  
 Source checklist: `docs/audits/core_portal_datum_mss_protocol_audit_plan_2026-04-16.md`
 
+## Current status note — 2026-04-20 foundation-first pass
+
+- **Closed in code:** publication-domain strictness, `PublicationProfileBasicsWriteResult.schema`, malformed `NetworkRootReadModelRequest.surface_query` rejection, and NETWORK unknown-key warnings.
+- **Still active and worth doing now:** no protocol blocker from the original F1-F4 set remains after the foundation-first pass.
+- **Deferred:** broader producer/consumer compatibility-matrix work remains backlog and is not part of this pass.
+
 ## Audit method
 
 - Contract-first sweep executed in plan order: **Create → Read → Project → Render**.
@@ -209,9 +215,8 @@ Source checklist: `docs/audits/core_portal_datum_mss_protocol_audit_plan_2026-04
 
 ## Executive Summary
 
-- **Total findings:** 4
+- **Historical audit findings:** 4
   - High: 2
   - Medium: 2
-- **Blockers:** 2 high-severity blockers (F1, F2) for strict protocol hardening sign-off.
-- **Go/No-Go recommendation:** **NO-GO** for hard enforcement until F1/F2 are fixed and contract tests are expanded to cover malformed type/domain rejection and unknown-key policy behavior.
-
+- **Current repo status after the 2026-04-20 foundation-first pass:** the original F1-F4 blockers are closed in code.
+- **Go/No-Go recommendation:** the original audit-time **NO-GO** recommendation is historical and no longer reflects the current repository state.

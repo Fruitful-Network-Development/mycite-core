@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 from urllib.parse import urlencode
 
+from MyCiteV2.packages.core.network_root_surface_query import normalize_network_surface_query
+
 PORTAL_SHELL_REQUEST_SCHEMA = "mycite.v2.portal.shell.request.v1"
 PORTAL_SHELL_STATE_SCHEMA = "mycite.v2.portal.shell.state.v1"
 PORTAL_SHELL_COMPOSITION_SCHEMA = "mycite.v2.portal.shell.composition.v1"
@@ -1133,19 +1135,15 @@ def canonical_query_for_surface_query(
     *,
     surface_id: str,
 ) -> dict[str, str]:
+    if surface_id == NETWORK_ROOT_SURFACE_ID:
+        if surface_query is not None and not isinstance(surface_query, Mapping):
+            raise ValueError("portal_shell_request.surface_query must be a mapping or null")
+        query, _ = normalize_network_surface_query(surface_query)
+        return query
     normalized = _normalize_surface_query(
         surface_query,
         field_name="portal_shell_request.surface_query",
     )
-    if surface_id == NETWORK_ROOT_SURFACE_ID:
-        query: dict[str, str] = {"view": "system_logs"}
-        if _as_text(normalized.get("contract")):
-            query["contract"] = _as_text(normalized.get("contract"))
-        if _as_text(normalized.get("type")):
-            query["type"] = _as_text(normalized.get("type"))
-        if _as_text(normalized.get("record")):
-            query["record"] = _as_text(normalized.get("record"))
-        return query
     if surface_id == AWS_CSM_TOOL_SURFACE_ID:
         query = {"view": "domains"}
         if _as_text(normalized.get("domain")):

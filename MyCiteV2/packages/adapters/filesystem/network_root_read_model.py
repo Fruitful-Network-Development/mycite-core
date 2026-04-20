@@ -28,6 +28,7 @@ from ...ports.network_root_read_model import (
     compare_network_hops_addresses,
     encode_network_datetime_as_hops,
     network_hops_schema_from_anchor_payload,
+    normalize_network_surface_query,
     validate_network_hops_address,
 )
 
@@ -139,27 +140,6 @@ def _line_count(path: Path) -> int:
         return len(path.read_text(encoding="utf-8").splitlines())
     except Exception:
         return 0
-
-
-def _normalize_surface_query(query: dict[str, str] | None, *, warnings: list[str]) -> dict[str, str]:
-    normalized = {key: _as_text(value) for key, value in dict(query or {}).items() if _as_text(key)}
-    supported_keys = {"view", "contract", "type", "record"}
-    unknown_keys = sorted(key for key in normalized if key not in supported_keys)
-    if unknown_keys:
-        warnings.append(
-            "Ignored unsupported NETWORK surface_query key(s): " + ", ".join(unknown_keys)
-        )
-    view = normalized.get("view") or "system_logs"
-    if view != "system_logs":
-        view = "system_logs"
-    out = {"view": view}
-    if normalized.get("contract"):
-        out["contract"] = normalized["contract"]
-    if normalized.get("type"):
-        out["type"] = normalized["type"]
-    if normalized.get("record"):
-        out["record"] = normalized["record"]
-    return out
 
 
 def _json_key(value: object) -> str:
@@ -717,7 +697,8 @@ class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
         warnings: list[str] = []
         data_dir = self._data_dir
         private_dir = self._private_dir
-        surface_query = _normalize_surface_query(request.surface_query, warnings=warnings)
+        surface_query, surface_query_warnings = normalize_network_surface_query(request.surface_query)
+        warnings.extend(surface_query_warnings)
         if data_dir is None:
             not_configured_warning = "data_dir was not configured for the network root read model."
             normalized_warnings = list(dict.fromkeys([*warnings, not_configured_warning]))

@@ -190,6 +190,7 @@ def _write_cts_gis_profile_source(
     node_id: str,
     document_name: str | None = None,
     profile_label: str | None = None,
+    extra_payload: dict[str, object] | None = None,
     coordinate_tokens: tuple[str, ...] = (
         "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73",
         "3-76-11-40-92-20-21-92-81-29-56-60-79-56-3-4-39",
@@ -206,6 +207,7 @@ def _write_cts_gis_profile_source(
     _write_json(
         data_dir / "sandbox" / "cts-gis" / "sources" / file_name,
         {
+            **dict(extra_payload or {}),
             "datum_addressing_abstraction_space": {
                 coordinate_row_address: [coordinate_row, [f"{label}_polygon"]],
                 "5-0-1": [["5-0-1", "~", coordinate_row_address], [f"{label}_boundary"]],
@@ -1204,6 +1206,62 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertEqual(geo["projection_source"], "hops")
             self.assertNotIn("Attention", [group["title"] for group in bundle["control_panel"]["groups"]])
             self.assertNotIn("Projection Rules", [group["title"] for group in bundle["control_panel"]["groups"]])
+
+    def test_cts_gis_runtime_prefers_reference_geometry_when_projection_parity_warnings_exist(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(data_dir, private_dir)
+            _write_cts_gis_profile_source(
+                data_dir,
+                node_id="3-2-3",
+                profile_label="reference_guarded_states",
+                extra_payload={
+                    "reference_geojson_node_id": "3-2-3",
+                    "reference_geojson": {
+                        "type": "FeatureCollection",
+                        "features": [
+                            {
+                                "type": "Feature",
+                                "geometry": {
+                                    "type": "Polygon",
+                                    "coordinates": [[
+                                        [-81.63, 41.01],
+                                        [-81.57, 41.01],
+                                        [-81.55, 41.05],
+                                        [-81.58, 41.08],
+                                        [-81.63, 41.01],
+                                    ]],
+                                },
+                                "properties": {"community_name": "reference_guarded_states"},
+                            }
+                        ],
+                    },
+                },
+            )
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={"tool_state": {"selected_node_id": "3-2-3"}},
+            )
+
+            geo = bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            self.assertEqual(geo["projection_source"], "reference_geojson_fallback")
+            self.assertEqual(geo["projection_state"], "projectable_fallback")
+            self.assertEqual(geo["collection_bounds"], [-81.63, 41.01, -81.55, 41.08])
+            self.assertEqual(geo["selected_feature_bounds"], [-81.63, 41.01, -81.55, 41.08])
+            self.assertEqual(
+                [feature["properties"]["profile_label"] for feature in geo["feature_collection"]["features"]],
+                ["reference_guarded_states"],
+            )
+            self.assertIn("reference GeoJSON geometry", " ".join(geo["warnings"]))
 
     def test_cts_gis_children_intention_keeps_focused_county_when_no_child_projection_exists(self) -> None:
         with TemporaryDirectory() as tmp:

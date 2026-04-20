@@ -175,6 +175,24 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("cts-gis-profileHierarchy__item", portal_css)
         self.assertIn(".cts-gis-interface__body", portal_css)
 
+    def test_cts_gis_runtime_and_renderer_expose_only_directory_dropdown_navigation_mode(self) -> None:
+        runtime_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_cts_gis_runtime.py"
+        ).read_text(encoding="utf-8")
+        contract_source = (
+            REPO_ROOT / "MyCiteV2" / "packages" / "modules" / "cross_domain" / "cts_gis" / "contracts.py"
+        ).read_text(encoding="utf-8")
+        renderer_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("CTS_GIS_NAV_MODE_DIRECTORY", runtime_source)
+        self.assertIn("directory_dropdowns", contract_source)
+        self.assertIn("directory_dropdowns", renderer_source)
+        self.assertNotIn("staged_diktataograph", runtime_source)
+        self.assertNotIn("ordered_hierarchy", runtime_source)
+        self.assertNotIn("legacy_branch_canvas", runtime_source)
+
     def test_active_repo_text_does_not_reference_retired_split_routes(self) -> None:
         forbidden_tokens = (
             "MyCite" + "V" + "1",

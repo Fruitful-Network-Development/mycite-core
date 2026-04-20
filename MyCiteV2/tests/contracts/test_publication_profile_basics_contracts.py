@@ -75,6 +75,15 @@ class PublicationProfileBasicsContractTests(unittest.TestCase):
                 }
             )
 
+        with self.assertRaisesRegex(ValueError, "tenant_domain.*plain domain-like value"):
+            PublicationProfileBasicsWriteRequest.from_dict(
+                {
+                    "tenant_id": "tff",
+                    "tenant_domain": "bad/domain.com",
+                    "profile_title": "Title",
+                }
+            )
+
         with self.assertRaisesRegex(ValueError, "must be JSON-serializable"):
             PublicationProfileBasicsWriteResult(
                 source={

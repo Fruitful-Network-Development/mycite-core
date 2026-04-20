@@ -3,6 +3,12 @@
 Date: 2026-04-16  
 Based on plan: `docs/audits/package_modularization_audit_plan_2026-04-16.md`
 
+## Current status note — 2026-04-20 foundation-first pass
+
+- **Closed in code / no longer reproducing:** the filesystem-adapter boundary failures called out in section 2 are historical; the active `test_filesystem_adapter_boundaries` suite is green in the current repo.
+- **Still active and worth doing now:** low-cost boundary cleanup such as dead imports and other verified noise that does not widen the refactor scope.
+- **Deferred:** the broader runtime/domain facade work and deeper package-boundary redesign remain outside this pass.
+
 ## 1) Scope and Method
 
 Scoped paths audited:
