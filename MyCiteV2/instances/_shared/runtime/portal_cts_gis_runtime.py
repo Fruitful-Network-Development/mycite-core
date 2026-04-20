@@ -561,8 +561,6 @@ def _node_shell_request(
         intention_rule_id,
         attention_node_id=attention_node_id,
     )
-    next_state.setdefault("source", {})
-    next_state["source"]["attention_document_id"] = ""
     next_state["selection"]["selected_row_address"] = _as_text(selected_row_address)
     next_state["selection"]["selected_feature_id"] = _as_text(selected_feature_id)
     return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
@@ -580,8 +578,6 @@ def _intention_shell_request(
         intention_rule_id,
         attention_node_id=_as_text(next_state.get("selected_node_id") or next_state.get("aitas", {}).get("attention_node_id")),
     )
-    next_state.setdefault("source", {})
-    next_state["source"]["attention_document_id"] = ""
     next_state["selection"]["selected_row_address"] = ""
     next_state["selection"]["selected_feature_id"] = ""
     return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
@@ -1200,19 +1196,36 @@ def _tool_state_for_navigation(
     return next_state
 
 
+def _safe_coordinate_pair(point: object) -> list[float] | None:
+    if not isinstance(point, list) or len(point) < 2:
+        return None
+    try:
+        return [float(point[0]), float(point[1])]
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_coordinate_pairs(points: object) -> list[list[float]]:
+    if not isinstance(points, list):
+        return []
+    out: list[list[float]] = []
+    for point in points:
+        pair = _safe_coordinate_pair(point)
+        if pair is not None:
+            out.append(pair)
+    return out
+
+
 def _geometry_points(geometry: dict[str, Any]) -> list[list[float]]:
     geometry_type = _as_text(geometry.get("type"))
     coordinates = geometry.get("coordinates")
     if geometry_type == "Point" and isinstance(coordinates, list) and len(coordinates) >= 2:
-        return [[float(coordinates[0]), float(coordinates[1])]]
+        pair = _safe_coordinate_pair(coordinates)
+        return [pair] if pair is not None else []
     if geometry_type == "Polygon" and isinstance(coordinates, list):
         points: list[list[float]] = []
         for ring in coordinates:
-            if not isinstance(ring, list):
-                continue
-            for point in ring:
-                if isinstance(point, list) and len(point) >= 2:
-                    points.append([float(point[0]), float(point[1])])
+            points.extend(_coerce_coordinate_pairs(ring))
         return points
     if geometry_type == "MultiPolygon" and isinstance(coordinates, list):
         points = []
@@ -1220,11 +1233,7 @@ def _geometry_points(geometry: dict[str, Any]) -> list[list[float]]:
             if not isinstance(polygon, list):
                 continue
             for ring in polygon:
-                if not isinstance(ring, list):
-                    continue
-                for point in ring:
-                    if isinstance(point, list) and len(point) >= 2:
-                        points.append([float(point[0]), float(point[1])])
+                points.extend(_coerce_coordinate_pairs(ring))
         return points
     return []
 
@@ -1268,12 +1277,15 @@ def _empty_geospatial_projection() -> dict[str, Any]:
             "decoded_coordinate_count": 0,
             "failed_token_count": 0,
         },
+        "projection_health": {"state": "empty", "reason_codes": []},
+        "fallback_reason_codes": [],
         "warnings": [],
         "supporting_document_name": "",
         "projection_document_name": "",
         "selected_feature_id": "",
         "selected_feature_geometry_type": "",
         "selected_feature_bounds": [],
+        "focus_bounds": [],
         "collection_bounds": [],
         "empty_message": "No projected geometry is available until the active path resolves real CTS-GIS evidence.",
         "has_real_projection": False,
@@ -1377,12 +1389,15 @@ def _real_geospatial_projection(
             "render_feature_count": int(render_set_summary.get("render_feature_count") or len(feature_entries)),
             "render_row_count": int(render_set_summary.get("render_row_count") or 0),
             "decode_summary": dict(map_projection.get("decode_summary") or {}),
+            "projection_health": dict(map_projection.get("projection_health") or {"state": "empty", "reason_codes": []}),
+            "fallback_reason_codes": list(map_projection.get("fallback_reason_codes") or []),
             "warnings": list(map_projection.get("warnings") or []),
             "supporting_document_name": supporting_document_name,
             "projection_document_name": projection_document_name,
             "selected_feature_id": selected_feature_id,
             "selected_feature_geometry_type": selected_geometry_type,
             "selected_feature_bounds": selected_feature_bounds,
+            "focus_bounds": list(map_projection.get("focus_bounds") or []),
             "collection_bounds": collection_bounds,
             "empty_message": "Projection ready.",
             "has_real_projection": True,

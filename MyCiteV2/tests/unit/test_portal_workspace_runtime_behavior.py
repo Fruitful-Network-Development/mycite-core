@@ -774,7 +774,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertTrue(envelope["shell_composition"]["workbench_collapsed"])
             self.assertFalse(envelope["shell_composition"]["interface_panel_collapsed"])
 
-    def test_cts_gis_node_navigation_shell_request_clears_source_document_pin(self) -> None:
+    def test_cts_gis_node_navigation_shell_request_preserves_source_document_pin(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             data_dir = root / "data"
@@ -819,7 +819,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             node_shell_request = option_for_state_node["shell_request"]
             self.assertEqual(
                 node_shell_request["tool_state"]["source"]["attention_document_id"],
-                "",
+                pinned_document_id,
             )
 
             navigated_bundle = build_portal_cts_gis_surface_bundle(
@@ -835,15 +835,15 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
 
             self.assertEqual(
                 navigated_bundle["surface_payload"]["tool_state"]["source"]["attention_document_id"],
-                "",
+                pinned_document_id,
             )
             summary_by_label = {
                 row["label"]: row["value"]
                 for row in navigated_bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"]["summary_rows"]
             }
-            self.assertNotEqual(summary_by_label["Projection state"], "awaiting_real_projection")
+            self.assertEqual(summary_by_label["Projection state"], "awaiting_real_projection")
 
-    def test_cts_gis_intention_shell_request_clears_source_document_pin(self) -> None:
+    def test_cts_gis_intention_shell_request_preserves_source_document_pin(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             data_dir = root / "data"
@@ -883,7 +883,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             intention_shell_request = descendants_entry["shell_request"]
             self.assertEqual(
                 intention_shell_request["tool_state"]["source"]["attention_document_id"],
-                "",
+                pinned_document_id,
             )
 
             descendants_bundle = build_portal_cts_gis_surface_bundle(
@@ -899,7 +899,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
 
             self.assertEqual(
                 descendants_bundle["surface_payload"]["tool_state"]["source"]["attention_document_id"],
-                "",
+                pinned_document_id,
             )
             self.assertEqual(
                 descendants_bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"],
@@ -1253,15 +1253,18 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
 
             geo = bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
-            self.assertEqual(geo["projection_source"], "reference_geojson_fallback")
-            self.assertEqual(geo["projection_state"], "projectable_fallback")
-            self.assertEqual(geo["collection_bounds"], [-81.63, 41.01, -81.55, 41.08])
-            self.assertEqual(geo["selected_feature_bounds"], [-81.63, 41.01, -81.55, 41.08])
+            self.assertEqual(geo["projection_source"], "hops")
+            self.assertEqual(geo["projection_state"], "projectable_degraded")
+            self.assertEqual(len(geo["collection_bounds"]), 4)
+            self.assertEqual(len(geo["selected_feature_bounds"]), 4)
+            self.assertLess(geo["collection_bounds"][0], geo["collection_bounds"][2])
+            self.assertLess(geo["collection_bounds"][1], geo["collection_bounds"][3])
             self.assertEqual(
                 [feature["properties"]["profile_label"] for feature in geo["feature_collection"]["features"]],
                 ["reference_guarded_states"],
             )
-            self.assertIn("reference GeoJSON geometry", " ".join(geo["warnings"]))
+            self.assertNotIn("reference GeoJSON geometry", " ".join(geo["warnings"]))
+            self.assertIn("did not align", " ".join(geo["warnings"]))
 
     def test_cts_gis_children_intention_keeps_focused_county_when_no_child_projection_exists(self) -> None:
         with TemporaryDirectory() as tmp:

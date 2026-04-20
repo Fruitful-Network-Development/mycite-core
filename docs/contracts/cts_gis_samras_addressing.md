@@ -128,8 +128,10 @@ Garland is driven by the currently selected SAMRAS node from `navigation_canvas.
 - node-focused widened intention keeps the selected node as Garland's active profile while geospatial overlays may combine multiple in-scope projectable profile source documents
 - explicit source-document selection may still anchor row/detail evidence, but changing Intention clears that pin so widened Garland overlays can resolve across source documents
 - if a node-specific profile source document exists, CTS-GIS may still prefer the profile source whose filename suffix matches the selected node id for the focused document view
-- when a profile document carries `reference_geojson` and HOPS/reference parity warnings show that the HOPS row chain no longer aligns with the reference geometry, Garland prefers the reference geometry instead of widening the degraded HOPS shape into the map extent
+- when a profile document carries `reference_geojson`, fallback geometry is allowed only when HOPS decode cannot produce projectable coordinates for the row/profile; parity warnings alone do not switch geometry authority
 - when blocked, CTS-GIS renders diagnostics and leaves Garland empty until a valid structural selection becomes possible
+
+See `docs/contracts/cts_gis_garland_projection_lens.md` for bounds/focus and lens rendering rules.
 
 ## Diagnostics
 

@@ -534,19 +534,29 @@
 
   function collectGeometryPoints(geometry) {
     var geo = geometry || {};
+    function normalizePoint(point) {
+      if (!Array.isArray(point) || point.length < 2) return null;
+      var x = Number(point[0]);
+      var y = Number(point[1]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      return [x, y];
+    }
     if (geo.type === "Point") {
-      return [geo.coordinates || []];
+      var pair = normalizePoint(geo.coordinates || []);
+      return pair ? [pair] : [];
     }
     if (geo.type === "Polygon") {
       return (geo.coordinates || []).reduce(function (all, ring) {
-        return all.concat(ring || []);
+        var normalized = (ring || []).map(normalizePoint).filter(Boolean);
+        return all.concat(normalized);
       }, []);
     }
     if (geo.type === "MultiPolygon") {
       return (geo.coordinates || []).reduce(function (all, polygon) {
         return all.concat(
           (polygon || []).reduce(function (memo, ring) {
-            return memo.concat(ring || []);
+            var normalized = (ring || []).map(normalizePoint).filter(Boolean);
+            return memo.concat(normalized);
           }, [])
         );
       }, []);
@@ -576,6 +586,7 @@
   }
 
   function projectPoint(point, bounds, width, height, pad) {
+    if (!Array.isArray(point) || point.length < 2) return null;
     var minX = Number(bounds[0] || 0);
     var minY = Number(bounds[1] || 0);
     var maxX = Number(bounds[2] || minX + 1);
@@ -584,16 +595,20 @@
     var safeHeight = Math.max(0.0001, maxY - minY);
     var usableWidth = width - pad * 2;
     var usableHeight = height - pad * 2;
-    var x = pad + ((Number(point[0] || 0) - minX) / safeWidth) * usableWidth;
-    var y = height - pad - ((Number(point[1] || 0) - minY) / safeHeight) * usableHeight;
+    var px = Number(point[0]);
+    var py = Number(point[1]);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
+    var x = pad + ((px - minX) / safeWidth) * usableWidth;
+    var y = height - pad - ((py - minY) / safeHeight) * usableHeight;
     return [x, y];
   }
 
   function ringPathData(ring, bounds, width, height, pad) {
     var projected = (ring || []).map(function (point) {
       var xy = projectPoint(point, bounds, width, height, pad);
+      if (!xy) return "";
       return String(xy[0]) + " " + String(xy[1]);
-    });
+    }).filter(Boolean);
     if (!projected.length) return "";
     return "M " + projected.join(" L ") + " Z";
   }
@@ -618,6 +633,7 @@
     var className = "cts-gis-mapStage__shape" + (feature.selected ? " is-selected" : "");
     if (geometry.type === "Point") {
       var point = projectPoint(geometry.coordinates || [], bounds, width, height, pad);
+      if (!point) return "";
       return (
         '<circle class="' +
         className +
@@ -669,7 +685,26 @@
     var height = 360;
     var pad = 24;
     var bounds = normalizeFeatureBounds((geospatialProjection || {}).collection_bounds || collection.bounds || [], features);
+    var focusBounds = normalizeFeatureBounds((geospatialProjection || {}).focus_bounds || [], []);
+    var selectedBounds = normalizeFeatureBounds((geospatialProjection || {}).selected_feature_bounds || [], []);
+    function boundsArea(rect) {
+      if (!Array.isArray(rect) || rect.length !== 4) return 0;
+      var widthVal = Number(rect[2]) - Number(rect[0]);
+      var heightVal = Number(rect[3]) - Number(rect[1]);
+      if (!Number.isFinite(widthVal) || !Number.isFinite(heightVal)) return 0;
+      return Math.abs(widthVal * heightVal);
+    }
+    var globalArea = boundsArea(bounds);
+    var focusArea = boundsArea(focusBounds);
+    var selectedArea = boundsArea(selectedBounds);
+    if (focusArea > 0 && (globalArea <= 0 || globalArea / focusArea > 200)) {
+      bounds = focusBounds;
+    } else if (selectedArea > 0 && (globalArea <= 0 || globalArea / selectedArea > 400)) {
+      bounds = selectedBounds;
+    }
+    var selectedFeatureId = String((geospatialProjection || {}).selected_feature_id || "");
     var selectedFeature = features.find(function (feature) {
+      if (selectedFeatureId && String(feature.id || feature.feature_id || "") === selectedFeatureId) return true;
       return feature.selected;
     }) || features[0] || {};
     return (
@@ -827,6 +862,9 @@
       body.garland_split_projection.geospatial_projection = Object.assign(
         {
           projection_source: "none",
+          projection_health: { state: "empty", reason_codes: [] },
+          fallback_reason_codes: [],
+          focus_bounds: [],
           decode_summary: {
             reference_binding_count: 0,
             decoded_coordinate_count: 0,
@@ -870,6 +908,11 @@
           title: "Geospatial Projection",
           projection_state: "",
           projection_source: "none",
+          projection_health: {
+            state: "empty",
+            reason_codes: [],
+          },
+          fallback_reason_codes: [],
           feature_count: 0,
           render_feature_count: 0,
           render_row_count: 0,
@@ -884,6 +927,7 @@
           selected_feature_id: "",
           selected_feature_geometry_type: "",
           selected_feature_bounds: [],
+          focus_bounds: [],
           collection_bounds: [],
           empty_message: "No projected geometry is available for the current navigation root.",
           feature_collection: {
