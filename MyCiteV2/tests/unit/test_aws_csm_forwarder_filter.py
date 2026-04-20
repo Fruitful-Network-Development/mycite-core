@@ -56,6 +56,43 @@ class AwsCsmForwarderFilterTests(unittest.TestCase):
         self.assertFalse(decision.should_forward)
         self.assertEqual(decision.classification, "blocked_report")
 
+    def test_accepts_outlook_confirmation_policy(self) -> None:
+        raw_bytes = (
+            "From: no-reply@microsoft.com\r\n"
+            "To: admin@cuyahogavalleycountrysideconservancy.org\r\n"
+            "Subject: Verify your email address\r\n"
+            "\r\n"
+            "Open https://outlook.live.com/verify now.\r\n"
+        ).encode("utf-8")
+        decision = AwsCsmVerificationForwardFilter().decide(
+            tracked_recipients={"admin@cuyahogavalleycountrysideconservancy.org"},
+            sender="no-reply@microsoft.com",
+            recipient="admin@cuyahogavalleycountrysideconservancy.org",
+            subject="Verify your email address",
+            raw_bytes=raw_bytes,
+            handoff_provider="outlook",
+        )
+        self.assertTrue(decision.should_forward)
+        self.assertEqual(decision.classification, "verification_confirmation")
+
+    def test_generic_manual_does_not_require_sender_allowlist(self) -> None:
+        raw_bytes = (
+            "From: admin@custom-provider.example\r\n"
+            "To: news@cuyahogavalleycountrysideconservancy.org\r\n"
+            "Subject: Please verify this sender\r\n"
+            "\r\n"
+            "Verify at https://example.org/confirm\r\n"
+        ).encode("utf-8")
+        decision = AwsCsmVerificationForwardFilter().decide(
+            tracked_recipients={"news@cuyahogavalleycountrysideconservancy.org"},
+            sender="admin@custom-provider.example",
+            recipient="news@cuyahogavalleycountrysideconservancy.org",
+            subject="Please verify this sender",
+            raw_bytes=raw_bytes,
+            handoff_provider="generic_manual",
+        )
+        self.assertTrue(decision.should_forward)
+
 
 if __name__ == "__main__":
     unittest.main()

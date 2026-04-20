@@ -45,6 +45,58 @@ def _normalized_email(value: object) -> str:
     return token
 
 
+def _normalized_handoff_provider(value: object) -> str:
+    token = _text(value).lower()
+    if token in {"gmail", "outlook", "yahoo", "proofpoint", "generic_manual"}:
+        return token
+    return ""
+
+
+def _provider_from_email(email: object) -> str:
+    token = _normalized_email(email)
+    domain = token.split("@", 1)[1] if token else ""
+    if domain in {"gmail.com", "googlemail.com"}:
+        return "gmail"
+    if domain in {"outlook.com", "hotmail.com", "live.com", "msn.com"}:
+        return "outlook"
+    if domain in {"yahoo.com", "rocketmail.com", "ymail.com"}:
+        return "yahoo"
+    if domain.endswith("proofpoint.com"):
+        return "proofpoint"
+    return "generic_manual"
+
+
+def _resolve_forward_target(
+    *,
+    start_recipient: str,
+    routes: dict[str, dict[str, Any]],
+) -> tuple[str, str, list[str]]:
+    current = _normalized_email(start_recipient)
+    chain: list[str] = []
+    visited: set[str] = set()
+    while current:
+        if current in visited:
+            chain.append(current)
+            return current, "cycle_detected", chain
+        visited.add(current)
+        chain.append(current)
+        route = dict(routes.get(current) or {})
+        target = _normalized_email(route.get("forward_to_email"))
+        if not target:
+            return "", "missing_target", chain
+        if target == current:
+            chain.append(target)
+            return target, "resolved_self", chain
+        if target not in routes:
+            chain.append(target)
+            return target, "resolved_external", chain
+        if len(chain) >= 24:
+            chain.append(target)
+            return target, "max_hops_exceeded", chain
+        current = target
+    return "", "missing_target", chain
+
+
 def _aws(*args: str, expect_json: bool = True) -> Any:
     command = ["aws", *args]
     completed = subprocess.run(command, capture_output=True, text=True, check=False)
@@ -65,14 +117,15 @@ def _load_json(path: Path) -> dict[str, Any]:
     return dict(payload) if isinstance(payload, dict) else {}
 
 
-def _build_route_map(state_root: Path) -> dict[str, dict[str, str]]:
-    routes: dict[str, dict[str, str]] = {}
+def _build_route_map(state_root: Path) -> dict[str, dict[str, Any]]:
+    routes: dict[str, dict[str, Any]] = {}
     for path in sorted(state_root.glob("aws-csm.*.json")):
         payload = _load_json(path)
         if _text(payload.get("schema")) != "mycite.service_tool.aws_csm.profile.v1":
             continue
         identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
         smtp = payload.get("smtp") if isinstance(payload.get("smtp"), dict) else {}
+        provider = payload.get("provider") if isinstance(payload.get("provider"), dict) else {}
         send_as_email = _normalized_email(identity.get("send_as_email") or smtp.get("send_as_email"))
         forward_to_email = _normalized_email(smtp.get("forward_to_email") or identity.get("operator_inbox_target"))
         if not send_as_email or not forward_to_email:
@@ -81,8 +134,32 @@ def _build_route_map(state_root: Path) -> dict[str, dict[str, str]]:
             "forward_to_email": forward_to_email,
             "profile_id": _text(identity.get("profile_id")),
             "domain": _normalized_domain(identity.get("domain")) or send_as_email.split("@", 1)[1],
+            "handoff_provider": (
+                _normalized_handoff_provider(
+                    provider.get("handoff_provider")
+                    or identity.get("handoff_provider")
+                    or smtp.get("handoff_provider")
+                )
+                or _provider_from_email(forward_to_email)
+            ),
         }
-    return routes
+    resolved: dict[str, dict[str, Any]] = {}
+    for send_as_email, route in sorted(routes.items()):
+        resolved_forward_to_email, resolution_status, chain = _resolve_forward_target(
+            start_recipient=send_as_email,
+            routes=routes,
+        )
+        resolved[send_as_email] = {
+            "forward_to_email": _text(route.get("forward_to_email")),
+            "resolved_forward_to_email": resolved_forward_to_email or _text(route.get("forward_to_email")),
+            "source_forward_to_email": _text(route.get("forward_to_email")),
+            "forward_resolution_status": resolution_status,
+            "forward_chain": list(chain),
+            "profile_id": _text(route.get("profile_id")),
+            "domain": _text(route.get("domain")),
+            "handoff_provider": _text(route.get("handoff_provider")) or "generic_manual",
+        }
+    return resolved
 
 
 def _package_lambda_source() -> Path:

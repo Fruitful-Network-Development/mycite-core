@@ -38,6 +38,7 @@ _DEFAULT_DOMAIN_RECEIPT_BUCKET = "ses-inbound-fnd-mail"
 _ROUTE_MAP_ENV_KEY = "VERIFICATION_ROUTE_MAP_JSON"
 _ROUTE_MAP_LAMBDA_ENV_KEY = "AWS_CSM_VERIFICATION_LAMBDA_NAME"
 _ROUTE_MAP_SYNC_TIMEOUT_SECONDS = 90
+_ALLOWED_HANDOFF_PROVIDERS = frozenset({"gmail", "outlook", "yahoo", "proofpoint", "generic_manual"})
 
 
 def _as_text(value: object) -> str:
@@ -91,6 +92,38 @@ def _email_domain(email: object) -> str:
 
 def _status_is_ready(value: object) -> bool:
     return _as_text(value).lower() in {"ok", "active", "ready", "successful"}
+
+
+def _normalized_handoff_provider(value: object) -> str:
+    token = _as_text(value).lower()
+    if token in _ALLOWED_HANDOFF_PROVIDERS:
+        return token
+    return ""
+
+
+def _provider_from_email(email: object) -> str:
+    domain = _email_domain(email)
+    if domain in {"gmail.com", "googlemail.com"}:
+        return "gmail"
+    if domain in {"outlook.com", "hotmail.com", "live.com", "msn.com"}:
+        return "outlook"
+    if domain in {"yahoo.com", "rocketmail.com", "ymail.com"}:
+        return "yahoo"
+    if domain.endswith("proofpoint.com"):
+        return "proofpoint"
+    return "generic_manual"
+
+
+def _provider_label(provider: str) -> str:
+    if provider == "gmail":
+        return "Gmail"
+    if provider == "outlook":
+        return "Outlook"
+    if provider == "yahoo":
+        return "Yahoo"
+    if provider == "proofpoint":
+        return "Proofpoint"
+    return "Manual"
 
 
 def _smtp_secret_description(secret_name: str) -> str:
@@ -189,10 +222,13 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             return patch
         return {}
 
-    def gmail_confirmation_evidence_satisfied(self, profile: dict[str, Any]) -> bool:
+    def confirmation_evidence_satisfied(self, profile: dict[str, Any]) -> bool:
         readiness = self.describe_profile_readiness(profile)
         confirmation = _as_dict(readiness.get("confirmation"))
         return bool(confirmation.get("already_verified")) or bool(confirmation.get("can_confirm_verified"))
+
+    def gmail_confirmation_evidence_satisfied(self, profile: dict[str, Any]) -> bool:
+        return self.confirmation_evidence_satisfied(profile)
 
     def describe_profile_readiness(self, profile: dict[str, Any]) -> dict[str, Any]:
         identity = _as_dict(profile.get("identity"))
@@ -205,6 +241,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         region = self._region_for_profile(profile)
         domain = _normalized_domain(identity.get("domain"))
         send_as_email = self._send_as_email(profile)
+        handoff_provider = self._handoff_provider(profile)
         secret_name = self._smtp_secret_name(profile)
         smtp_material = (
             self._smtp_secret_material(secret_name=secret_name, region=region)
@@ -233,9 +270,11 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         )
         capture = self._capture_summary(profile, region=region, receipt_rule=receipt_rule)
         capture_evidence = bool(capture.get("portal_native_evidence_present"))
+        provider_send_as_status = self._provider_send_as_status(profile)
         already_verified = (
             _as_text(verification.get("status")).lower() == "verified"
             or _as_text(verification.get("portal_state")).lower() == "verified"
+            or provider_send_as_status == "verified"
             or _as_text(provider.get("gmail_send_as_status")).lower() == "verified"
         )
         inbound_ready = bool(inbound.get("receive_verified")) or _as_bool(inbound.get("portal_native_display_ready"))
@@ -272,10 +311,12 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 "smtp_port": _as_text(smtp_material.get("smtp_port") or smtp.get("port") or "587"),
                 "handoff_ready": smtp_status == "ready",
                 "message": _as_text(smtp_material.get("message"))
-                or ("SMTP secret material is ready for Gmail handoff." if smtp_status == "ready" else "SMTP credentials still need operator attention."),
+                or ("SMTP secret material is ready for handoff." if smtp_status == "ready" else "SMTP credentials still need operator attention."),
             },
             "provider": {
                 "status": provider_status,
+                "handoff_provider": handoff_provider,
+                "send_as_provider_status": provider_send_as_status,
                 "aws_ses_identity_status": provider_state or _as_text(provider.get("aws_ses_identity_status")),
                 "last_checked_at": checked_at,
                 "message": _as_text(provider_summary.get("message"))
@@ -297,6 +338,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             },
             "confirmation": {
                 "status": confirmation_status,
+                "handoff_provider": handoff_provider,
                 "already_verified": already_verified,
                 "can_confirm_verified": capture_evidence and not already_verified,
                 "portal_native_evidence_present": capture_evidence,
@@ -304,9 +346,9 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                     "Portal-native verification evidence is ready to confirm."
                     if capture_evidence and not already_verified
                     else (
-                        "Gmail send-as is already verified."
+                        f"{_provider_label(handoff_provider)} send-as is already verified."
                         if already_verified
-                        else "Confirm Gmail send-as only after portal-native evidence is captured."
+                        else "Confirm send-as only after portal-native evidence is captured."
                     )
                 ),
             },
@@ -494,27 +536,32 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         password = _as_text(material.get("password"))
         smtp_host = _as_text(material.get("smtp_host"))
         smtp_port = _as_text(material.get("smtp_port"))
+        handoff_provider = self._handoff_provider(profile)
+        provider_label = _provider_label(handoff_provider)
+        instructions = self._handoff_instruction_lines(
+            handoff_provider=handoff_provider,
+            send_as_email=send_as_email,
+        )
         region = self._region_for_profile(profile)
         response = self._client("sesv2", region=region).send_email(
             FromEmailAddress=send_as_email,
             Destination={"ToAddresses": [destination]},
             Content={
                 "Simple": {
-                    "Subject": {"Data": f"AWS-CSM Gmail send-as handoff for {send_as_email}"},
+                    "Subject": {"Data": f"AWS-CSM {provider_label} send-as handoff for {send_as_email}"},
                     "Body": {
                         "Text": {
                             "Data": "\n".join(
                                 [
-                                    f"Set up Gmail Send mail as for {send_as_email}.",
+                                    f"Set up send-as for {send_as_email} using {provider_label}.",
                                     "",
                                     f"SMTP host: {smtp_host}",
                                     f"SMTP port: {smtp_port}",
                                     f"SMTP username: {username}",
                                     f"SMTP password: {password}",
                                     "",
-                                    "If Gmail asks again, you can also reveal the SMTP password from the AWS-CSM portal action.",
-                                    "After saving the Send mail as entry, wait for the Gmail confirmation email to arrive.",
-                                    "Open the confirmation link to finish verification.",
+                                    "If the provider asks again, you can also reveal the SMTP password from the AWS-CSM portal action.",
+                                    *instructions,
                                 ]
                             )
                         }
@@ -530,6 +577,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             "smtp_host": smtp_host,
             "smtp_port": smtp_port,
             "state": _as_text(material.get("state")),
+            "handoff_provider": handoff_provider,
         }
 
     def sync_verification_route_map(self, *, profiles: list[dict[str, Any]]) -> dict[str, Any]:
@@ -615,6 +663,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         )
         handoff_ready = _as_text(material.get("state")).lower() == "configured"
         send_as_email = self._send_as_email(profile)
+        handoff_provider = self._handoff_provider(profile)
         local_part = _local_part(send_as_email) or _as_text(identity.get("mailbox_local_part")) or _as_text(smtp.get("local_part"))
         return {
             "smtp": {
@@ -627,17 +676,23 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 "credentials_secret_state": "configured" if handoff_ready else (_as_text(smtp.get("credentials_secret_state")) or "missing"),
                 "send_as_email": send_as_email,
                 "local_part": local_part,
+                "handoff_provider": handoff_provider,
                 "staging_state": "material_ready" if handoff_ready else "operator_attention_required",
             },
             "provider": {
+                "handoff_provider": handoff_provider,
+                "send_as_provider_status": self._provider_send_as_status(profile),
                 "aws_ses_identity_status": _as_text(provider.get("aws_ses_identity_status")),
                 "last_checked_at": checked_at,
             },
             "workflow": {
                 "is_ready_for_user_handoff": handoff_ready,
-                "handoff_status": "ready_for_gmail_handoff"
-                if handoff_ready
-                else (_as_text(workflow.get("handoff_status")) or "smtp_pending"),
+                "handoff_provider": handoff_provider,
+                "handoff_status": (
+                    f"ready_for_{handoff_provider}_handoff"
+                    if handoff_ready
+                    else (_as_text(workflow.get("handoff_status")) or "smtp_pending")
+                ),
             },
         }
 
@@ -650,6 +705,8 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         )
         return {
             "provider": {
+                "handoff_provider": self._handoff_provider(profile),
+                "send_as_provider_status": self._provider_send_as_status(profile),
                 "aws_ses_identity_status": _as_text(summary.get("aws_ses_identity_status")),
                 "last_checked_at": checked_at,
             }
@@ -810,6 +867,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             recipient=recipient,
             subject=subject,
             raw_bytes=raw_bytes,
+            handoff_provider=self._handoff_provider(profile),
         )
         summary.update(
             {
@@ -893,10 +951,64 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         smtp = _as_dict(profile.get("smtp"))
         return _normalized_email(identity.get("send_as_email") or smtp.get("send_as_email"))
 
+    def _handoff_provider(self, profile: dict[str, Any]) -> str:
+        identity = _as_dict(profile.get("identity"))
+        smtp = _as_dict(profile.get("smtp"))
+        provider = _as_dict(profile.get("provider"))
+        explicit = _normalized_handoff_provider(
+            provider.get("handoff_provider")
+            or identity.get("handoff_provider")
+            or smtp.get("handoff_provider")
+        )
+        if explicit:
+            return explicit
+        inferred = _provider_from_email(
+            smtp.get("forward_to_email")
+            or identity.get("operator_inbox_target")
+            or identity.get("single_user_email")
+        )
+        return inferred or "generic_manual"
+
+    def _provider_send_as_status(self, profile: dict[str, Any]) -> str:
+        provider = _as_dict(profile.get("provider"))
+        status = _as_text(provider.get("send_as_provider_status")).lower()
+        if status:
+            return status
+        legacy = _as_text(provider.get("gmail_send_as_status")).lower()
+        return legacy or "not_started"
+
     def _handoff_destination(self, profile: dict[str, Any]) -> str:
         identity = _as_dict(profile.get("identity"))
         smtp = _as_dict(profile.get("smtp"))
         return _normalized_email(smtp.get("forward_to_email") or identity.get("operator_inbox_target"))
+
+    def _handoff_instruction_lines(self, *, handoff_provider: str, send_as_email: str) -> list[str]:
+        provider = _normalized_handoff_provider(handoff_provider) or "generic_manual"
+        if provider == "gmail":
+            return [
+                "In Gmail, open Settings -> Accounts and Import -> Send mail as -> Add another email address.",
+                f"Use the SMTP values above for {send_as_email}.",
+                "After saving the entry, wait for the Gmail confirmation email and open its verification link.",
+            ]
+        if provider == "outlook":
+            return [
+                "In Outlook/Hotmail, add a connected address or alias using the SMTP values above.",
+                "Complete the Microsoft verification flow when prompted, then confirm the send-as address.",
+            ]
+        if provider == "yahoo":
+            return [
+                "In Yahoo Mail, add a sending address using the SMTP values above.",
+                "Complete Yahoo verification and confirm the send-as address from the provider message.",
+            ]
+        if provider == "proofpoint":
+            return [
+                "Use your Proofpoint/mail gateway workflow to add the external send-as identity with the SMTP values above.",
+                "Complete the verification message flow and confirm the send-as link or code.",
+            ]
+        return [
+            "Use your mail provider's manual send-as / external SMTP setup flow with the SMTP values above.",
+            "Complete the provider verification email flow and confirm the send-as address.",
+        ]
 
     def _smtp_secret_name(self, profile: dict[str, Any]) -> str:
         identity = _as_dict(profile.get("identity"))
@@ -1308,8 +1420,8 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 Description=description,
             )
 
-    def _verification_route_map_from_profiles(self, *, profiles: list[dict[str, Any]]) -> dict[str, dict[str, str]]:
-        routes: dict[str, dict[str, str]] = {}
+    def _verification_route_map_from_profiles(self, *, profiles: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        routes: dict[str, dict[str, Any]] = {}
         for profile in list(profiles or []):
             if not isinstance(profile, dict):
                 continue
@@ -1323,8 +1435,57 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 "forward_to_email": forward_to_email,
                 "profile_id": _as_text(identity.get("profile_id")),
                 "domain": _normalized_domain(identity.get("domain")) or _email_domain(send_as_email),
+                "handoff_provider": self._handoff_provider(profile),
             }
-        return dict(sorted(routes.items()))
+        resolved: dict[str, dict[str, Any]] = {}
+        for send_as_email, route in sorted(routes.items()):
+            resolved_forward_to_email, resolution_status, chain = self._resolve_forward_target(
+                start_recipient=send_as_email,
+                routes=routes,
+            )
+            payload = {
+                "forward_to_email": _as_text(route.get("forward_to_email")),
+                "resolved_forward_to_email": resolved_forward_to_email or _as_text(route.get("forward_to_email")),
+                "source_forward_to_email": _as_text(route.get("forward_to_email")),
+                "forward_resolution_status": resolution_status,
+                "forward_chain": list(chain),
+                "profile_id": _as_text(route.get("profile_id")),
+                "domain": _as_text(route.get("domain")),
+                "handoff_provider": _as_text(route.get("handoff_provider")) or "generic_manual",
+            }
+            resolved[send_as_email] = payload
+        return resolved
+
+    def _resolve_forward_target(
+        self,
+        *,
+        start_recipient: str,
+        routes: dict[str, dict[str, Any]],
+    ) -> tuple[str, str, list[str]]:
+        current = _normalized_email(start_recipient)
+        chain: list[str] = []
+        visited: set[str] = set()
+        while current:
+            if current in visited:
+                chain.append(current)
+                return current, "cycle_detected", chain
+            visited.add(current)
+            chain.append(current)
+            route = _as_dict(routes.get(current))
+            forward_to_email = _normalized_email(route.get("forward_to_email"))
+            if not forward_to_email:
+                return "", "missing_target", chain
+            if forward_to_email == current:
+                chain.append(forward_to_email)
+                return forward_to_email, "resolved_self", chain
+            if forward_to_email not in routes:
+                chain.append(forward_to_email)
+                return forward_to_email, "resolved_external", chain
+            if len(chain) >= 24:
+                chain.append(forward_to_email)
+                return forward_to_email, "max_hops_exceeded", chain
+            current = forward_to_email
+        return "", "missing_target", chain
 
     def _verification_lambda_name(self, *, profiles: list[dict[str, Any]]) -> str:
         for profile in list(profiles or []):

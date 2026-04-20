@@ -9,6 +9,44 @@ from MyCiteV2.packages.ports.aws_csm_profile_registry import AwsCsmProfileRegist
 
 LIVE_AWS_PROFILE_SCHEMA = "mycite.service_tool.aws_csm.profile.v1"
 _MAILBOX_LOCAL_PART_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._+-]{0,62}[a-z0-9])?$")
+_ALLOWED_HANDOFF_PROVIDERS = frozenset({"gmail", "outlook", "yahoo", "proofpoint", "generic_manual"})
+
+
+def _handoff_provider_from_email(email: str) -> str:
+    token = _normalized_email(email, field_name="aws_csm_profile_registry.handoff_provider_email")
+    domain = token.split("@", 1)[1]
+    if domain in {"gmail.com", "googlemail.com"}:
+        return "gmail"
+    if domain in {"outlook.com", "hotmail.com", "live.com", "msn.com"}:
+        return "outlook"
+    if domain in {"yahoo.com", "rocketmail.com", "ymail.com"}:
+        return "yahoo"
+    if domain.endswith("proofpoint.com"):
+        return "proofpoint"
+    return "generic_manual"
+
+
+def _normalized_handoff_provider(value: object, *, allow_empty: bool = False) -> str:
+    token = as_text(value).lower()
+    if not token and allow_empty:
+        return ""
+    if token not in _ALLOWED_HANDOFF_PROVIDERS:
+        allowed = ", ".join(sorted(_ALLOWED_HANDOFF_PROVIDERS))
+        raise ValueError(
+            f"aws_csm_profile_registry.handoff_provider must be one of: {allowed}"
+        )
+    return token
+
+
+def _inferred_handoff_provider(*emails: str) -> str:
+    for email in emails:
+        if not as_text(email):
+            continue
+        try:
+            return _handoff_provider_from_email(email)
+        except ValueError:
+            continue
+    return "generic_manual"
 
 
 def _normalized_domain(value: object, *, field_name: str) -> str:
@@ -53,6 +91,7 @@ class AwsCsmCreateProfileCommand:
     single_user_email: str
     operator_inbox_target: str = ""
     role: str = "operator"
+    handoff_provider: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -83,6 +122,13 @@ class AwsCsmCreateProfileCommand:
             ),
         )
         object.__setattr__(self, "role", _normalized_role(self.role))
+        explicit_provider = _normalized_handoff_provider(self.handoff_provider, allow_empty=True)
+        object.__setattr__(
+            self,
+            "handoff_provider",
+            explicit_provider
+            or _inferred_handoff_provider(self.operator_inbox_target, self.single_user_email),
+        )
 
     @property
     def send_as_email(self) -> str:
@@ -99,6 +145,7 @@ class AwsCsmCreateProfileCommand:
             "single_user_email": self.single_user_email,
             "operator_inbox_target": self.operator_inbox_target,
             "role": self.role,
+            "handoff_provider": self.handoff_provider,
         }
 
     @classmethod
@@ -111,6 +158,7 @@ class AwsCsmCreateProfileCommand:
             single_user_email=payload.get("single_user_email"),
             operator_inbox_target=payload.get("operator_inbox_target") or "",
             role=payload.get("role") or "operator",
+            handoff_provider=payload.get("handoff_provider") or "",
         )
 
 
@@ -136,6 +184,16 @@ class AwsCsmCreateProfileOutcome:
         identity = as_dict(self.created_profile.get("identity"))
         return as_text(identity.get("operator_inbox_target")).lower()
 
+    @property
+    def handoff_provider(self) -> str:
+        identity = as_dict(self.created_profile.get("identity"))
+        provider = as_dict(self.created_profile.get("provider"))
+        return (
+            as_text(identity.get("handoff_provider")).lower()
+            or as_text(provider.get("handoff_provider")).lower()
+            or "generic_manual"
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "profile_id": self.profile_id,
@@ -144,6 +202,7 @@ class AwsCsmCreateProfileOutcome:
             "send_as_email": self.send_as_email,
             "single_user_email": self.single_user_email,
             "operator_inbox_target": self.operator_inbox_target,
+            "handoff_provider": self.handoff_provider,
             "created_profile": dict(self.created_profile),
         }
 
@@ -177,20 +236,14 @@ class AwsCsmProfileRegistryService:
         existing_profiles = list(self._registry_port.list_profiles())
         existing_profile_ids = set()
         existing_send_as = set()
-        existing_user_emails = set()
         for profile in existing_profiles:
             identity = as_dict(profile.get("identity"))
             existing_profile_ids.add(as_text(identity.get("profile_id")).lower())
             existing_send_as.add(as_text(identity.get("send_as_email")).lower())
-            existing_user_emails.add(as_text(identity.get("single_user_email")).lower())
         if profile_id.lower() in existing_profile_ids:
             raise ValueError(f"AWS-CSM profile_id already exists: {profile_id}")
         if send_as_email.lower() in existing_send_as:
             raise ValueError(f"AWS-CSM send-as email already exists: {send_as_email}")
-        if command.single_user_email.lower() in existing_user_emails:
-            raise ValueError(
-                f"AWS-CSM single_user_email already exists: {command.single_user_email}"
-            )
         seeded_provider = as_dict(seed.get("provider"))
         aws_identity_status = as_text(seeded_provider.get("aws_ses_identity_status"))
         provider_last_checked_at = as_text(seeded_provider.get("last_checked_at"))
@@ -209,6 +262,7 @@ class AwsCsmProfileRegistryService:
                     "single_user_msn_id": "",
                     "single_user_email": command.single_user_email,
                     "operator_inbox_target": command.operator_inbox_target,
+                    "handoff_provider": command.handoff_provider,
                     "send_as_email": send_as_email,
                 },
                 "smtp": {
@@ -220,6 +274,7 @@ class AwsCsmProfileRegistryService:
                     "credentials_secret_state": "missing",
                     "send_as_email": send_as_email,
                     "local_part": command.mailbox_local_part,
+                    "handoff_provider": command.handoff_provider,
                     "forward_to_email": command.operator_inbox_target,
                     "forwarding_status": "not_configured",
                     "handoff_ready": False,
@@ -233,6 +288,8 @@ class AwsCsmProfileRegistryService:
                     "portal_state": "not_started",
                 },
                 "provider": {
+                    "handoff_provider": command.handoff_provider,
+                    "send_as_provider_status": "not_started",
                     "gmail_send_as_status": "not_started",
                     "aws_ses_identity_status": aws_identity_status,
                     "last_checked_at": provider_last_checked_at,
@@ -243,6 +300,7 @@ class AwsCsmProfileRegistryService:
                     "initiated": True,
                     "initiated_at": utc_now_iso(seconds_precision=True),
                     "lifecycle_state": "draft",
+                    "handoff_provider": command.handoff_provider,
                     "handoff_status": "not_started",
                     "is_ready_for_user_handoff": False,
                 },

@@ -14,9 +14,12 @@ class AwsCsmOnboardingUnconfiguredCloudPort:
         _ = action, profile
         return {}
 
-    def gmail_confirmation_evidence_satisfied(self, profile: dict[str, Any]) -> bool:
+    def confirmation_evidence_satisfied(self, profile: dict[str, Any]) -> bool:
         _ = profile
         return False
+
+    def gmail_confirmation_evidence_satisfied(self, profile: dict[str, Any]) -> bool:
+        return self.confirmation_evidence_satisfied(profile)
 
     def describe_profile_readiness(self, profile: dict[str, Any]) -> dict[str, Any]:
         _ = profile

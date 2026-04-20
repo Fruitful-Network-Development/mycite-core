@@ -18,6 +18,55 @@ _REPORT_SUBJECT_TOKENS = (
 _REPORT_SENDER_TOKENS = ("dmarc",)
 _CONFIRMATION_SUBJECT_PREFIX = "gmail confirmation - send mail as "
 _LINK_PATTERN = re.compile(r"https?://[^\s<>\"]+")
+_PROVIDER_SUBJECT_HINTS: dict[str, tuple[str, ...]] = {
+    "gmail": (_CONFIRMATION_SUBJECT_PREFIX,),
+    "outlook": (
+        "verify",
+        "verification",
+        "confirm",
+        "microsoft",
+        "outlook",
+    ),
+    "yahoo": (
+        "verify",
+        "verification",
+        "confirm",
+        "yahoo",
+    ),
+    "proofpoint": (
+        "verify",
+        "verification",
+        "confirm",
+        "proofpoint",
+    ),
+    "generic_manual": (
+        "verify",
+        "verification",
+        "confirm",
+    ),
+}
+_PROVIDER_ALLOWED_SENDERS: dict[str, set[str]] = {
+    "gmail": {"gmail-noreply@google.com"},
+    "outlook": {
+        "account-security-noreply@accountprotection.microsoft.com",
+        "noreply@outlook.com",
+        "no-reply@microsoft.com",
+    },
+    "yahoo": {
+        "account-security@yahoo-inc.com",
+        "no-reply@yahoo.com",
+        "noreply@yahoo.com",
+    },
+    "proofpoint": set(),
+    "generic_manual": set(),
+}
+
+
+def _normalized_provider(value: object) -> str:
+    token = as_text(value).lower()
+    if token in _PROVIDER_SUBJECT_HINTS:
+        return token
+    return "generic_manual"
 
 def _normalized_email(value: object) -> str:
     token = as_text(value).lower()
@@ -80,12 +129,24 @@ class AwsCsmVerificationForwardFilter:
         *,
         allowed_senders: list[str] | tuple[str, ...] | set[str] | None = None,
     ) -> None:
-        senders = list(allowed_senders or ["gmail-noreply@google.com"])
-        self._allowed_senders = {
+        senders = list(allowed_senders or [])
+        self._global_allowed_senders = {
             _normalized_email(item)
             for item in senders
             if _normalized_email(item)
         }
+
+    def _subject_matches_provider(self, *, provider: str, lowered_subject: str) -> bool:
+        hints = _PROVIDER_SUBJECT_HINTS.get(provider, _PROVIDER_SUBJECT_HINTS["generic_manual"])
+        if provider == "gmail":
+            return lowered_subject.startswith(_CONFIRMATION_SUBJECT_PREFIX)
+        return any(token in lowered_subject for token in hints)
+
+    def _allowed_senders_for_provider(self, *, provider: str) -> set[str]:
+        defaults = set(_PROVIDER_ALLOWED_SENDERS.get(provider, set()))
+        if not self._global_allowed_senders:
+            return defaults
+        return defaults.union(self._global_allowed_senders)
 
     def decide(
         self,
@@ -95,7 +156,9 @@ class AwsCsmVerificationForwardFilter:
         recipient: str,
         subject: str,
         raw_bytes: bytes,
+        handoff_provider: str = "gmail",
     ) -> AwsCsmForwardDecision:
+        provider = _normalized_provider(handoff_provider)
         normalized_sender = _normalized_email(sender)
         normalized_recipient = _normalized_email(recipient)
         normalized_subject = as_text(subject)
@@ -123,11 +186,12 @@ class AwsCsmVerificationForwardFilter:
                 recipient=normalized_recipient,
                 subject=normalized_subject,
             )
-        if normalized_sender not in self._allowed_senders:
+        allowed_senders = self._allowed_senders_for_provider(provider=provider)
+        if allowed_senders and normalized_sender not in allowed_senders:
             return AwsCsmForwardDecision(
                 should_forward=False,
                 classification="blocked_sender",
-                reason="Sender is not in the verification allowlist.",
+                reason=f"Sender is not allowlisted for {provider} confirmation forwarding.",
                 sender=normalized_sender,
                 recipient=normalized_recipient,
                 subject=normalized_subject,
@@ -141,11 +205,11 @@ class AwsCsmVerificationForwardFilter:
                 recipient=normalized_recipient,
                 subject=normalized_subject,
             )
-        if not lowered_subject.startswith(_CONFIRMATION_SUBJECT_PREFIX):
+        if not self._subject_matches_provider(provider=provider, lowered_subject=lowered_subject):
             return AwsCsmForwardDecision(
                 should_forward=False,
                 classification="blocked_subject",
-                reason="Subject is not a Gmail send-as confirmation message.",
+                reason=f"Subject is not recognized as a {provider} confirmation message.",
                 sender=normalized_sender,
                 recipient=normalized_recipient,
                 subject=normalized_subject,
@@ -163,7 +227,7 @@ class AwsCsmVerificationForwardFilter:
         return AwsCsmForwardDecision(
             should_forward=True,
             classification="verification_confirmation",
-            reason="Mail matches the Gmail confirmation forwarding allowlist.",
+            reason=f"Mail matches the {provider} confirmation forwarding policy.",
             sender=normalized_sender,
             recipient=normalized_recipient,
             subject=normalized_subject,
