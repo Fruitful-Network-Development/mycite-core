@@ -31,7 +31,8 @@ Garland renders whatever geometry authority the service emits.
 
 - HOPS-decoded geometry is authoritative whenever decode succeeds
 - warning diagnostics do not change geometry authority
-- `reference_geojson_fallback` appears only when HOPS cannot produce projectable geometry
+- `reference_geojson_fallback` appears when HOPS cannot produce projectable geometry or semantic guardrails reject the decoded shape
+- semantic guardrails can request fallback when decode-valid geometry is implausible for node-level envelope policy
 
 ## Bounds And Focus Rules
 
@@ -51,9 +52,16 @@ Garland surfaces service projection state through:
 - `projection_state`: `inspect_only`, `projectable`, `projectable_degraded`, `projectable_fallback`
 - `projection_health.state`: `empty`, `ok`, `degraded`, `fallback`
 - `fallback_reason_codes`: machine-readable reason list
+- `semantic_guardrails`: `{ triggered, reason_codes }` for semantic plausibility diagnostics
 
 ## Non-Goals
 
 - Garland does not redefine HOPS decode rules.
 - Garland does not invent geometry from diagnostics.
 - Garland does not treat title/overlay decode issues as map geometry authority changes.
+
+## Promotion Coupling
+
+Geometry quality regressions should be corrected through the reference-promotion
+repair pipeline (`docs/contracts/cts_gis_reference_promotion_and_profile_repair.md`),
+not by Garland-only behavior changes.

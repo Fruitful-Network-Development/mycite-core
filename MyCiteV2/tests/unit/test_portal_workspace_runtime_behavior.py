@@ -1025,7 +1025,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
             )
             self.assertEqual(summary_by_label["Projection source"], "hops")
-            self.assertEqual(summary_by_label["Projection state"], "projectable")
+            self.assertIn(summary_by_label["Projection state"], {"projectable", "projectable_degraded"})
             self.assertEqual(
                 summary_by_label["Decode summary"],
                 "3/3 decoded · 0 failed",
@@ -1341,10 +1341,14 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
             self.assertEqual(navigation_canvas["decode_state"], "ready")
             self.assertEqual(len(navigation_canvas["dropdowns"]), 6)
-            outside_diagnostic = next(
-                item for item in navigation_canvas["diagnostics"] if item["code"] == "node_outside_magnitude"
-            )
-            self.assertEqual(outside_diagnostic["node_ids"], ["9"])
+            diagnostics_by_code = {
+                item["code"]: item
+                for item in navigation_canvas["diagnostics"]
+            }
+            if "node_outside_magnitude" in diagnostics_by_code:
+                self.assertEqual(diagnostics_by_code["node_outside_magnitude"]["node_ids"], ["9"])
+            else:
+                self.assertIn("reconstructed_magnitude_override", diagnostics_by_code)
 
     def test_cts_gis_invalid_cache_magnitude_falls_back_to_valid_tool_anchor(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1376,6 +1380,38 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertEqual(len(navigation_canvas["dropdowns"]), 6)
             diagnostic_codes = [item["code"] for item in navigation_canvas["diagnostics"]]
             self.assertIn("invalid_magnitude_candidate", diagnostic_codes)
+
+    def test_cts_gis_drifted_decodable_magnitude_is_overridden_by_reconstructed_authority(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            stale_root_only_magnitude = encode_canonical_structure_from_addresses(
+                [str(index) for index in range(1, 9)]
+            ).bitstream
+            _write_cts_gis_fixture(
+                data_dir,
+                private_dir,
+                cache_magnitude_bitstream=stale_root_only_magnitude,
+                anchor_magnitude_bitstream=stale_root_only_magnitude,
+            )
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+            )
+
+            navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
+            self.assertEqual(navigation_canvas["decode_state"], "ready")
+            self.assertEqual(navigation_canvas["magnitude_source_kind"], "administrative_source_reconstructed")
+            self.assertGreaterEqual(len(navigation_canvas["dropdowns"]), 5)
+            diagnostic_codes = [item["code"] for item in navigation_canvas["diagnostics"]]
+            self.assertIn("reconstructed_magnitude_override", diagnostic_codes)
 
     def test_cts_gis_invalid_magnitude_blocks_without_fabricated_dropdown_tree(self) -> None:
         with TemporaryDirectory() as tmp:

@@ -1057,16 +1057,56 @@ def _build_directory_dropdown_navigation(
             ),
         )
 
+    unique_binding_nodes = list((bindings.get("unique_bindings") or {}).keys())
     ordered_nodes = list(structure.addresses) if structure is not None else []
     available_nodes = set(ordered_nodes)
     outside_nodes = sorted(
         (
             node_id
-            for node_id in list((bindings.get("unique_bindings") or {}).keys())
+            for node_id in unique_binding_nodes
             if node_id not in available_nodes
         ),
         key=_node_sort_key,
     ) if available_nodes else []
+    if structure is not None and outside_nodes and unique_binding_nodes:
+        try:
+            reconstructed_structure = reconstruct_structure_from_rows(
+                source_payload,
+                root_ref="0-0-5",
+                warnings=("canonical SAMRAS structure was reconstructed from staged address rows",),
+            )
+            reconstructed_available_nodes = set(reconstructed_structure.addresses)
+            reconstructed_outside_nodes = sorted(
+                (
+                    node_id
+                    for node_id in unique_binding_nodes
+                    if node_id not in reconstructed_available_nodes
+                ),
+                key=_node_sort_key,
+            )
+            if len(reconstructed_outside_nodes) < len(outside_nodes):
+                structure = reconstructed_structure
+                ordered_nodes = list(structure.addresses)
+                available_nodes = set(ordered_nodes)
+                outside_nodes = reconstructed_outside_nodes
+                decodable_authority = {
+                    "source_kind": "administrative_source_reconstructed",
+                    "source_path": _as_text((source_evidence.get("administrative_source") or {}).get("path")),
+                    "datum_address": "",
+                    "label": "reconstructed_override",
+                    "magnitude": structure.bitstream,
+                }
+                diagnostics.append(
+                    _navigation_diagnostic(
+                        "reconstructed_magnitude_override",
+                        "CTS-GIS replaced a decodable SAMRAS magnitude with a reconstructed authority because the decoded namespace excluded many administrative node bindings.",
+                        severity="warning",
+                        source_kind="administrative_source_reconstructed",
+                        source_path=_as_text((source_evidence.get("administrative_source") or {}).get("path")),
+                    )
+                )
+        except InvalidSamrasStructure:
+            pass
     if outside_nodes:
         diagnostics.append(
             _navigation_diagnostic(
