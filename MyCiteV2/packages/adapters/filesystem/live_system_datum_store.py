@@ -110,6 +110,23 @@ def _find_tool_anchor_file(tool_dir: Path) -> Path | None:
     return candidates[0] if candidates else None
 
 
+def _iter_sandbox_source_files(source_dir: Path, *, tool_id: str) -> list[Path]:
+    candidates = list(sorted(source_dir.glob("*.json")))
+    if _canonical_tool_public_id(tool_id) == _CTS_GIS_CANONICAL_TOOL_PUBLIC_ID:
+        precinct_dir = source_dir / "precincts"
+        if precinct_dir.exists() and precinct_dir.is_dir():
+            candidates.extend(sorted(precinct_dir.glob("*.json")))
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(candidate)
+    return deduped
+
+
 def _document_id_for_path(*, source_kind: str, tool_id: str, path: Path) -> str:
     if source_kind == "system_anthology":
         return "system:anthology"
@@ -205,7 +222,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                     continue
                 anchor_file = _find_tool_anchor_file(tool_dir)
                 public_tool_id = _canonical_tool_public_id(tool_dir.name)
-                for source_path in sorted(source_dir.glob("*.json")):
+                for source_path in _iter_sandbox_source_files(source_dir, tool_id=public_tool_id):
                     document_id = _document_id_for_path(
                         source_kind="sandbox_source",
                         tool_id=public_tool_id,

@@ -50,12 +50,38 @@ def _bad_source_payload(node_id: str) -> dict[str, object]:
     }
 
 
+def _state_like_payload(node_id: str) -> dict[str, object]:
+    return {
+        "anchor_file_version": "<hash here>",
+        "reference_geojson": _reference_geojson(),
+        "reference_geojson_source": "test://state-reference",
+        "reference_geojson_node_id": node_id,
+        "datum_addressing_abstraction_space": {
+            "4-2-1": [["4-2-1", "rf.3-1-1", "3-76-0-0-0-0-0-0-0-0-0-0-0-0-0-0-0-0"], ["district_ring"]],
+            "4-4-1": [["4-4-1", "rf.3-1-1", "3-76-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1"], ["state_ring"]],
+            "5-0-1": [["5-0-1", "~", "4-4-1"], ["state_polygon"]],
+            "5-0-26": [["5-0-26", "~", "4-2-1"], ["district_polygon"]],
+            "6-0-1": [["6-0-1", "~", "5-0-1"], ["state_boundary_collection"]],
+            "6-0-2": [["6-0-2", "~", "5-0-26"], ["district_set_collection"]],
+            "7-4-1": [["7-4-1", "rf.3-1-2", node_id, "6-0-1", "1", "6-0-2", "1"], ["ohio"]],
+        },
+    }
+
+
 class RepairCtsGisFromReferenceGeojsonTests(unittest.TestCase):
     def test_encode_reference_rows_is_deterministic(self) -> None:
         reference = _reference_geojson()
 
-        first = _MODULE._encode_reference_rows(reference)
-        second = _MODULE._encode_reference_rows(reference)
+        first = _MODULE._encode_reference_rows(
+            reference,
+            used_addresses=set(),
+            primary_collection_row_address="6-0-1",
+        )
+        second = _MODULE._encode_reference_rows(
+            reference,
+            used_addresses=set(),
+            primary_collection_row_address="6-0-1",
+        )
 
         self.assertEqual(first, second)
         self.assertIn("6-0-1", first)
@@ -142,6 +168,53 @@ class RepairCtsGisFromReferenceGeojsonTests(unittest.TestCase):
             self.assertIn("6-0-1", repaired["datum_addressing_abstraction_space"])
             findings = _MODULE.summit_repair._reference_geometry_findings(source_path, repaired)
             self.assertEqual(findings, [])
+
+    def test_apply_preserves_supplemental_collection_rows_for_state_like_profile(self) -> None:
+        node_id = "3-2-3-17"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_root = root / "data"
+            source_path = (
+                data_root
+                / "sandbox"
+                / "cts-gis"
+                / "sources"
+                / f"sc.3-2-3-17-77-1-6-4-1-4.fnd.{node_id}.json"
+            )
+            _write_json(source_path, _state_like_payload(node_id))
+            manifest_path = root / "manifest.json"
+            report_json_path = root / "report.json"
+            report_md_path = root / "report.md"
+
+            old_argv = list(sys.argv)
+            try:
+                sys.argv = [
+                    "repair_cts_gis_from_reference_geojson.py",
+                    "--data-root",
+                    str(data_root),
+                    "--manifest-path",
+                    str(manifest_path),
+                    "--report-json",
+                    str(report_json_path),
+                    "--report-markdown",
+                    str(report_md_path),
+                    "--node-id",
+                    node_id,
+                    "--apply",
+                ]
+                result = _MODULE.main()
+            finally:
+                sys.argv = old_argv
+
+            self.assertEqual(result, 0)
+            repaired = json.loads(source_path.read_text(encoding="utf-8"))
+            space = repaired["datum_addressing_abstraction_space"]
+            self.assertIn("6-0-2", space)
+            self.assertIn("5-0-26", space)
+            owner_tokens = space["7-4-1"][0]
+            self.assertEqual(owner_tokens[0], "7-4-1")
+            self.assertIn("6-0-1", owner_tokens)
+            self.assertIn("6-0-2", owner_tokens)
 
 
 if __name__ == "__main__":

@@ -231,6 +231,12 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
             "selected_feature_id": _as_text(
                 raw_selection.get("selected_feature_id") or normalized_payload.get("selected_feature_id")
             ),
+            "selected_row_explicit": bool(
+                _as_text(raw_selection.get("selected_row_address") or normalized_payload.get("selected_row_address"))
+            ),
+            "selected_feature_explicit": bool(
+                _as_text(raw_selection.get("selected_feature_id") or normalized_payload.get("selected_feature_id"))
+            ),
         },
     }
 
@@ -314,6 +320,23 @@ def _cts_gis_data_tool_root(data_dir: str | Path | None) -> Path | None:
     if candidate.exists() and candidate.is_dir():
         return candidate
     return candidate
+
+
+def _cts_gis_source_path(data_dir: str | Path | None, *, document_name: str) -> Path | None:
+    tool_root = _cts_gis_data_tool_root(data_dir)
+    if tool_root is None:
+        return None
+    token = _as_text(document_name)
+    if not token:
+        return None
+    source_root = tool_root / "sources"
+    direct = source_root / token
+    if direct.exists() and direct.is_file():
+        return direct
+    precinct = source_root / "precincts" / token
+    if precinct.exists() and precinct.is_file():
+        return precinct
+    return direct
 
 
 def _split_row_source(payload: dict[str, Any]) -> dict[str, Any]:
@@ -414,7 +437,7 @@ def _build_source_evidence(
     tool_anchor_path = _cts_gis_tool_anchor_path(data_dir)
     tool_anchor_payload = _safe_json_object(tool_anchor_path)
     member_files = _anchor_member_files(tool_anchor_payload)
-    source_path = None if data_tool_root is None else data_tool_root / "sources" / supporting_document_name
+    source_path = _cts_gis_source_path(data_dir, document_name=supporting_document_name)
     payload_cache_root = None if data_dir is None else Path(data_dir) / "payloads" / "cache"
     registrar_path = None if payload_cache_root is None or not corpus_prefix else payload_cache_root / f"{corpus_prefix}.registrar.json"
     administrative_cache_path = (
@@ -517,6 +540,10 @@ def _resolved_tool_state(
             or _as_text(requested_tool_state.get("selection", {}).get("selected_row_address")),
             "selected_feature_id": _as_text(diagnostic_summary.get("selected_feature_id"))
             or _as_text(requested_tool_state.get("selection", {}).get("selected_feature_id")),
+            "selected_row_explicit": bool(_as_text(requested_tool_state.get("selection", {}).get("selected_row_address"))),
+            "selected_feature_explicit": bool(
+                _as_text(requested_tool_state.get("selection", {}).get("selected_feature_id"))
+            ),
         },
     }
 
@@ -563,6 +590,8 @@ def _node_shell_request(
     )
     next_state["selection"]["selected_row_address"] = _as_text(selected_row_address)
     next_state["selection"]["selected_feature_id"] = _as_text(selected_feature_id)
+    next_state["selection"]["selected_row_explicit"] = bool(_as_text(selected_row_address))
+    next_state["selection"]["selected_feature_explicit"] = bool(_as_text(selected_feature_id))
     return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
 
 
@@ -580,6 +609,44 @@ def _intention_shell_request(
     )
     next_state["selection"]["selected_row_address"] = ""
     next_state["selection"]["selected_feature_id"] = ""
+    next_state["selection"]["selected_row_explicit"] = False
+    next_state["selection"]["selected_feature_explicit"] = False
+    return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
+
+
+def _attention_shell_request(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    tool_state: dict[str, Any],
+    attention_node_id: str,
+) -> dict[str, Any]:
+    next_state = _tool_state_clone(tool_state)
+    _apply_selected_node_state(next_state, attention_node_id)
+    next_state["aitas"]["intention_rule_id"] = canonical_runtime_intention_rule_id(
+        _as_text(next_state.get("aitas", {}).get("intention_rule_id")) or "self",
+        attention_node_id=attention_node_id,
+    )
+    next_state["selection"]["selected_row_address"] = ""
+    next_state["selection"]["selected_feature_id"] = ""
+    next_state["selection"]["selected_row_explicit"] = False
+    next_state["selection"]["selected_feature_explicit"] = False
+    return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
+
+
+def _time_shell_request(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    tool_state: dict[str, Any],
+    time_directive: str,
+) -> dict[str, Any]:
+    next_state = _tool_state_clone(tool_state)
+    next_state["aitas"]["time_directive"] = _as_text(time_directive)
+    next_state["selection"]["selected_row_address"] = ""
+    next_state["selection"]["selected_feature_id"] = ""
+    next_state["selection"]["selected_row_explicit"] = False
+    next_state["selection"]["selected_feature_explicit"] = False
     return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
 
 
@@ -595,6 +662,8 @@ def _document_shell_request(
     next_state["source"]["attention_document_id"] = _as_text(attention_document_id)
     next_state["selection"]["selected_row_address"] = ""
     next_state["selection"]["selected_feature_id"] = ""
+    next_state["selection"]["selected_row_explicit"] = False
+    next_state["selection"]["selected_feature_explicit"] = False
     return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
 
 
@@ -609,6 +678,8 @@ def _selection_shell_request(
     next_state = _tool_state_clone(tool_state)
     next_state["selection"]["selected_row_address"] = _as_text(selected_row_address)
     next_state["selection"]["selected_feature_id"] = _as_text(selected_feature_id)
+    next_state["selection"]["selected_row_explicit"] = bool(_as_text(selected_row_address))
+    next_state["selection"]["selected_feature_explicit"] = bool(_as_text(selected_feature_id))
     return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
 
 
@@ -647,10 +718,50 @@ def _cts_gis_control_panel(
     staged_selected_node_id = _as_text(resolved_tool_state.get("selected_node_id"))
     has_staged_selection = bool(staged_selected_node_id)
     attention_profile = dict(service_surface.get("attention_profile") or {}) if has_staged_selection else {}
-    directive_entries = [
-        {"label": "NIMM directive", "meta": _as_text(resolved_tool_state["nimm_directive"]), "active": True},
-        {"label": "Tool posture", "meta": "interface-panel-led"},
+    current_attention_node_id = _as_text(resolved_tool_state.get("aitas", {}).get("attention_node_id"))
+    current_time_directive = _as_text(resolved_tool_state.get("aitas", {}).get("time_directive"))
+    current_intention_rule_id = _as_text(resolved_tool_state.get("aitas", {}).get("intention_rule_id")) or _DEFAULT_INTENTION_RULE_ID
+    attention_entries = [
+        {
+            "label": "Attention",
+            "meta": _as_text(attention_profile.get("profile_label")) or current_attention_node_id or "unresolved",
+            "prefix": current_attention_node_id or "root",
+            "active": bool(current_attention_node_id),
+        }
     ]
+    attention_options: list[tuple[str, str]] = []
+    if current_attention_node_id:
+        attention_options.append(
+            (
+                current_attention_node_id,
+                _as_text(attention_profile.get("profile_label")) or current_attention_node_id,
+            )
+        )
+    for profile in list(service_surface.get("children") or []):
+        node_id = _as_text(profile.get("node_id"))
+        label = _as_text(profile.get("profile_label")) or node_id
+        if node_id and node_id not in {item[0] for item in attention_options}:
+            attention_options.append((node_id, label))
+    for profile in list(service_surface.get("lineage") or []):
+        node_id = _as_text(profile.get("node_id"))
+        label = _as_text(profile.get("profile_label")) or node_id
+        if node_id and node_id not in {item[0] for item in attention_options}:
+            attention_options.append((node_id, label))
+    for node_id, label in attention_options:
+        attention_entries.append(
+            {
+                "label": f"Attention · {label}",
+                "prefix": node_id,
+                "meta": "set attention context",
+                "active": node_id == current_attention_node_id,
+                "shell_request": _attention_shell_request(
+                    portal_scope=portal_scope,
+                    shell_state=shell_state,
+                    tool_state=resolved_tool_state,
+                    attention_node_id=node_id,
+                ),
+            }
+        )
     intention_entries = [
         {
             "label": f"Intention · {(_as_text(option.get('label')) or _as_text(option.get('token')) or 'Rule')}",
@@ -666,84 +777,147 @@ def _cts_gis_control_panel(
         }
         for option in list((service_surface.get("mediation_state") or {}).get("available_intentions") or [])
     ]
-    aitas_entries = [
-        {
-            "label": "Attention",
-            "meta": _as_text(attention_profile.get("profile_label")) or staged_selected_node_id or "unresolved",
-            "prefix": staged_selected_node_id or "root",
-            "active": has_staged_selection,
-        },
-        *(
-            intention_entries
-            if has_staged_selection and intention_entries
-            else [
-                {
-                    "label": "Intention",
-                    "meta": _as_text(resolved_tool_state["aitas"]["intention_rule_id"]) or _DEFAULT_INTENTION_RULE_ID,
-                    "active": True,
-                }
-            ]
-        ),
-        {
-            "label": "Time",
-            "meta": _as_text(resolved_tool_state["aitas"]["time_directive"]) or "inactive",
-        },
-        {
-            "label": "Archetype",
-            "meta": _as_text(resolved_tool_state["aitas"]["archetype_family_id"]) or _DEFAULT_ARCHETYPE_FAMILY_ID,
-        },
-    ]
-    source_entries = [
-        {
-            "label": "Tool spec",
-            "prefix": _as_text((source_evidence.get("tool_spec") or {}).get("file")) or "spec.json",
-            "meta": "tool-owned governance file",
-            "active": True,
-        },
-        {
-            "label": "Tool anchor",
-            "prefix": _as_text((source_evidence.get("tool_anchor") or {}).get("file")) or "tool.<msn>.cts-gis.json",
-            "meta": "tool-owned data anchor",
-            "active": True,
-        },
-        {
-            "label": "Registrar payload",
-            "prefix": _as_text((source_evidence.get("registrar_payload") or {}).get("file")) or "registrar.json",
-            "meta": _as_text((source_evidence.get("readiness") or {}).get("state")),
-            "active": bool((source_evidence.get("registrar_payload") or {}).get("exists")),
-        },
-    ]
-    for document in list(service_surface.get("document_catalog") or []):
-        document_id = _as_text(document.get("document_id"))
-        source_entries.append(
+    if not intention_entries:
+        fallback_attention_node_id = current_attention_node_id or staged_selected_node_id
+        fallback_options = [("self", "Self")]
+        if fallback_attention_node_id:
+            fallback_options.extend(
+                [
+                    (f"{fallback_attention_node_id}-0", "Children"),
+                    (f"{fallback_attention_node_id}-0-0", "Descendants depth 1-2"),
+                ]
+            )
+        intention_entries = [
             {
-                "label": _as_text(document.get("document_name")) or document_id or "document",
-                "prefix": _as_text(document.get("default_attention_node_id")),
-                "meta": _as_text(document.get("projection_state")) or "pending",
-                "active": bool(document.get("selected")),
-                "shell_request": _document_shell_request(
+                "label": f"Intention · {label}",
+                "prefix": token,
+                "meta": "set intention context",
+                "active": (_as_text(resolved_tool_state.get("aitas", {}).get("intention_rule_id")) or _DEFAULT_INTENTION_RULE_ID)
+                == token,
+                "shell_request": _intention_shell_request(
                     portal_scope=portal_scope,
                     shell_state=shell_state,
                     tool_state=resolved_tool_state,
-                    attention_document_id=document_id,
+                    intention_rule_id=token,
                 ),
             }
-        )
+            for token, label in fallback_options
+        ]
+    intention_self_token = "self"
+    intention_children_token = (
+        f"{current_attention_node_id}-0" if current_attention_node_id else canonical_runtime_intention_rule_id("children", attention_node_id="")
+    )
+    intention_descendants_token = (
+        f"{current_attention_node_id}-0-0"
+        if current_attention_node_id
+        else canonical_runtime_intention_rule_id("descendants_depth_1_or_2", attention_node_id="")
+    )
+    intention_levels = [
+        {"display": "1", "token": intention_self_token},
+        {"display": "0", "token": intention_children_token},
+        {"display": "0-0", "token": intention_descendants_token},
+    ]
+    intention_level_index = 0
+    for index, level in enumerate(intention_levels):
+        if _as_text(level.get("token")) == current_intention_rule_id:
+            intention_level_index = index
+            break
+    time_tokens = ["", "today"]
+    if current_time_directive and current_time_directive not in time_tokens:
+        time_tokens.insert(1, current_time_directive)
+    time_entries = [
+        {
+            "label": f"Time · {token if token else 'inactive'}",
+            "prefix": token if token else "inactive",
+            "meta": "set time context",
+            "active": token == current_time_directive,
+            "shell_request": _time_shell_request(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                tool_state=resolved_tool_state,
+                time_directive=token,
+            ),
+        }
+        for token in time_tokens
+    ]
+    locked_entries = [
+        {"label": "Archetype", "meta": _as_text(resolved_tool_state["aitas"]["archetype_family_id"]) or _DEFAULT_ARCHETYPE_FAMILY_ID, "active": False},
+        {"label": "NAV", "meta": "locked", "active": False},
+        {"label": "INV", "meta": "locked", "active": False},
+        {"label": "MED", "meta": "locked", "active": False},
+        {"label": "MAN", "meta": "locked", "active": False},
+    ]
+    state_directive_entries = [
+        {"label": "NIMM directive", "meta": _as_text(resolved_tool_state["nimm_directive"]), "active": True},
+        *attention_entries,
+        *intention_entries,
+        *time_entries,
+        *locked_entries,
+    ]
+    state_directive_compact = {
+        "nimm_buttons": [
+            {"label": "NAV", "active": _as_text(resolved_tool_state.get("nimm_directive")) == "nav"},
+            {"label": "INV", "active": _as_text(resolved_tool_state.get("nimm_directive")) == "inv"},
+            {"label": "MED", "active": _as_text(resolved_tool_state.get("nimm_directive")) == "med"},
+            {"label": "MAN", "active": _as_text(resolved_tool_state.get("nimm_directive")) == "man"},
+        ],
+        "script_input": {
+            "placeholder": "/enter...",
+            "enabled": False,
+            "help": "Directive script input is not active yet.",
+        },
+        "aitas_modes": [
+            {"id": "A", "label": "A", "field": "attention"},
+            {"id": "I", "label": "I", "field": "intention"},
+            {"id": "T", "label": "T", "field": "time"},
+            {"id": "A2", "label": "A", "field": "archetype", "locked": True},
+            {"id": "S", "label": "S", "field": "source", "locked": True},
+        ],
+        "active_mode": "I",
+        "attention": {
+            "value": current_attention_node_id,
+            "shell_template": _tool_state_request(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                tool_state=resolved_tool_state,
+            ),
+        },
+        "time": {
+            "value": current_time_directive,
+            "shell_template": _tool_state_request(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                tool_state=resolved_tool_state,
+            ),
+        },
+        "intention": {
+            "active_index": intention_level_index,
+            "levels": [
+                {
+                    "display": _as_text(level.get("display")),
+                    "token": _as_text(level.get("token")),
+                    "shell_request": _intention_shell_request(
+                        portal_scope=portal_scope,
+                        shell_state=shell_state,
+                        tool_state=resolved_tool_state,
+                        intention_rule_id=_as_text(level.get("token")),
+                    ),
+                }
+                for level in intention_levels
+            ],
+        },
+        "validation": {
+            "node_id_pattern": r"^\d+(?:-\d+)*$",
+            "invalid_attention_message": "Invalid attention node id.",
+            "invalid_time_message": "Invalid time token; use HOPS-style address id.",
+        },
+    }
     return {
         **base_panel,
         "context_items": _context_items_from_base_panel(base_panel, source_evidence),
-        "groups": (
-            [
-                {"title": "Directive", "entries": directive_entries},
-                {"title": "AITAS", "entries": aitas_entries},
-            ]
-            + (
-                [{"title": "Projection Rules", "entries": intention_entries}]
-                if (not has_staged_selection and intention_entries)
-                else []
-            )
-            + [{"title": "Source Evidence", "entries": source_entries}]
-        ),
+        "verb_tabs": [],
+        "groups": [{"title": "STATE DIRECTIVE", "entries": state_directive_entries}],
+        "state_directive_compact": state_directive_compact,
         "actions": [],
     }
 
@@ -1323,6 +1497,7 @@ def _empty_geospatial_projection() -> dict[str, Any]:
         "supporting_document_name": "",
         "projection_document_name": "",
         "selected_feature_id": "",
+        "selected_feature_explicit": False,
         "selected_feature_geometry_type": "",
         "selected_feature_bounds": [],
         "focus_bounds": [],
@@ -1362,6 +1537,9 @@ def _real_geospatial_projection(
         return {}, False
 
     selected_feature_id = _as_text((map_projection.get("selected_feature") or {}).get("feature_id"))
+    selected_feature_explicit = bool(
+        resolved_tool_state.get("selection", {}).get("selected_feature_explicit")
+    )
     feature_entries: list[dict[str, Any]] = []
     feature_collection_features: list[dict[str, Any]] = []
     selected_feature_bounds: list[float] = []
@@ -1435,6 +1613,7 @@ def _real_geospatial_projection(
             "supporting_document_name": supporting_document_name,
             "projection_document_name": projection_document_name,
             "selected_feature_id": selected_feature_id,
+            "selected_feature_explicit": selected_feature_explicit,
             "selected_feature_geometry_type": selected_geometry_type,
             "selected_feature_bounds": selected_feature_bounds,
             "focus_bounds": list(map_projection.get("focus_bounds") or []),
@@ -1636,6 +1815,12 @@ def build_portal_cts_gis_surface_bundle(
         or _as_text(raw_mediation.get("intention_token"))
         or _as_text(normalized_request_payload.get("intention_token"))
     )
+    mediation_time = raw_mediation.get("time")
+    if not isinstance(mediation_time, (dict, str)):
+        mediation_time = None
+    requested_time_directive = _as_text(requested_tool_state.get("aitas", {}).get("time_directive"))
+    if requested_time_directive:
+        mediation_time = {"value_token": requested_time_directive, "family": "tool_state_time_directive"}
     service_surface = CtsGisReadOnlyService(datum_store).read_surface(
         portal_scope.scope_id,
         selected_document_id=_as_text(requested_tool_state.get("source", {}).get("attention_document_id")),
@@ -1651,7 +1836,8 @@ def build_portal_cts_gis_surface_bundle(
                     )
                     if explicit_intention_requested
                     else ""
-                )
+                ),
+                "time": mediation_time,
             },
     ) if datum_store is not None else {
         "document_catalog": [],

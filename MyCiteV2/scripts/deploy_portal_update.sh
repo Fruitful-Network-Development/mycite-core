@@ -33,6 +33,7 @@ Options:
   --skip-build-bump        Do not write /srv/compose/portals/v2_portal_build.env
   --skip-restart           Do not restart portal service
   --skip-health            Do not hit /portal/healthz
+  --skip-verify           Skip post-sync rsync verification checks.
 
   --dry-run                Show actions without changing files or services
   --help                   Show this help text
@@ -81,6 +82,27 @@ run_or_echo() {
     return 0
   fi
   "$@"
+}
+
+verify_sync() {
+  local src="$1"
+  local dst="$2"
+  local label="$3"
+  require_dir "$src"
+  require_dir "$dst"
+  log "Verifying ${label} sync parity"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf '[dry-run] '
+    printf '%q ' rsync -ani --delete "${src}/" "${dst}/"
+    printf '\n'
+    return 0
+  fi
+  local diff
+  diff="$(rsync -ani --delete "${src}/" "${dst}/")"
+  if [[ -n "$diff" ]]; then
+    printf '%s\n' "$diff" >&2
+    fail "Verification failed for ${label}; live tree differs from deployed source."
+  fi
 }
 
 portal_service_for_instance() {
@@ -204,6 +226,7 @@ SKIP_RESTART="0"
 SKIP_HEALTH="0"
 DRY_RUN="0"
 INCLUDE_TOOL_STATE="0"
+SKIP_VERIFY="0"
 TOOLS=()
 
 while [[ $# -gt 0 ]]; do
@@ -266,6 +289,10 @@ while [[ $# -gt 0 ]]; do
       SKIP_HEALTH="1"
       shift
       ;;
+    --skip-verify)
+      SKIP_VERIFY="1"
+      shift
+      ;;
     --dry-run)
       DRY_RUN="1"
       shift
@@ -303,12 +330,21 @@ fi
 
 if [[ "$DO_DATA" == "1" ]]; then
   sync_tree "${DEPLOYED_ROOT}/data" "${LIVE_ROOT}/data" "data snapshot"
+  if [[ "$SKIP_VERIFY" != "1" ]]; then
+    verify_sync "${DEPLOYED_ROOT}/data" "${LIVE_ROOT}/data" "data snapshot"
+  fi
 fi
 if [[ "$DO_PUBLIC" == "1" ]]; then
   sync_tree "${DEPLOYED_ROOT}/public" "${LIVE_ROOT}/public" "public files"
+  if [[ "$SKIP_VERIFY" != "1" ]]; then
+    verify_sync "${DEPLOYED_ROOT}/public" "${LIVE_ROOT}/public" "public files"
+  fi
 fi
 if [[ "$DO_PRIVATE" == "1" ]]; then
   sync_tree "${DEPLOYED_ROOT}/private" "${LIVE_ROOT}/private" "private files"
+  if [[ "$SKIP_VERIFY" != "1" ]]; then
+    verify_sync "${DEPLOYED_ROOT}/private" "${LIVE_ROOT}/private" "private files"
+  fi
 fi
 
 if [[ "$DO_TOOLS_ONLY" == "1" ]]; then

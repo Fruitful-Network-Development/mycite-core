@@ -154,7 +154,235 @@
     );
   }
 
+  function cloneJson(value) {
+    try {
+      return JSON.parse(JSON.stringify(value || {}));
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function buildActivePathFromNodeId(nodeId) {
+    var token = String(nodeId || "").trim();
+    if (!token || !/^\d+(?:-\d+)*$/.test(token)) return [];
+    var parts = token.split("-");
+    var out = [];
+    for (var depth = 1; depth <= parts.length; depth += 1) {
+      out.push(parts.slice(0, depth).join("-"));
+    }
+    return out;
+  }
+
+  function renderCtsGisDirectivePanel(ctx, root, region) {
+    var compact = region.state_directive_compact || {};
+    var contextItems = region.context_items || [];
+    var nimmButtons = compact.nimm_buttons || [];
+    var aitasModes = compact.aitas_modes || [];
+    var activeMode = String(compact.active_mode || "I");
+    var intention = compact.intention || {};
+    var intentionLevels = intention.levels || [];
+    var activeIndex = Number(intention.active_index || 0);
+    if (activeIndex < 0 || activeIndex >= intentionLevels.length) activeIndex = 0;
+    var activeLevel = intentionLevels[activeIndex] || {};
+    var scriptPlaceholder = ((compact.script_input || {}).placeholder || "/enter...").toString();
+    var scriptHelp = ((compact.script_input || {}).help || "Directive input unavailable.").toString();
+    var attentionValue = ((compact.attention || {}).value || "").toString();
+    var timeValue = ((compact.time || {}).value || "").toString();
+    var validation = compact.validation || {};
+    var nodeIdPattern = new RegExp((validation.node_id_pattern || "^\\d+(?:-\\d+)*$").toString());
+    var invalidAttentionMessage = (validation.invalid_attention_message || "Invalid attention node id.").toString();
+    var invalidTimeMessage = (validation.invalid_time_message || "Invalid time token.").toString();
+
+    root.innerHTML =
+      '<section class="ide-controlpanel__section"><div class="ide-controlpanel__selectionPanel">' +
+      '<header class="ide-controlpanel__selectionHeader">' +
+      '<div class="ide-controlpanel__title">' +
+      ctx.escapeHtml(region.title || "Control Panel") +
+      '</div><div class="ide-controlpanel__surfaceLabel">' +
+      ctx.escapeHtml(region.surface_label || "") +
+      "</div></header>" +
+      '<div class="ide-controlpanel__contextRows">' +
+      contextItems
+        .map(function (item) {
+          return (
+            '<div class="ide-controlpanel__contextRow">' +
+            '<span class="ide-controlpanel__contextKey">' +
+            ctx.escapeHtml(item.label || "") +
+            ':</span><span class="ide-controlpanel__contextValue">' +
+            ctx.escapeHtml(item.value || "—") +
+            "</span></div>"
+          );
+        })
+        .join("") +
+      '</div><section class="ide-controlpanel__selectionGroup">' +
+      '<header class="ide-controlpanel__selectionGroupTitle">STATE DIRECTIVE</header>' +
+      '<div class="ide-controlpanel__directiveBlock">' +
+      '<div class="ide-controlpanel__directiveRow ide-controlpanel__directiveRow--nimm">' +
+      nimmButtons
+        .map(function (button, index) {
+          return (
+            '<button type="button" class="ide-controlpanel__directiveButton' +
+            (button.active ? " is-active" : "") +
+            '" data-cts-gis-directive-nimm-index="' +
+            String(index) +
+            '" disabled>' +
+            ctx.escapeHtml(button.label || "") +
+            "</button>"
+          );
+        })
+        .join("") +
+      "</div>" +
+      '<form class="ide-controlpanel__directiveRow ide-controlpanel__directiveRow--script" data-cts-gis-directive-script-form>' +
+      '<input class="ide-controlpanel__directiveInput" data-cts-gis-directive-script-input type="text" placeholder="' +
+      ctx.escapeHtml(scriptPlaceholder) +
+      '" />' +
+      "</form>" +
+      '<div class="ide-controlpanel__directiveRow ide-controlpanel__directiveRow--aitas">' +
+      aitasModes
+        .map(function (mode, index) {
+          var modeId = String(mode.id || "");
+          var locked = !!mode.locked;
+          return (
+            '<button type="button" class="ide-controlpanel__directiveButton ide-controlpanel__directiveButton--aitas' +
+            (modeId === activeMode ? " is-active" : "") +
+            (locked ? " is-locked" : "") +
+            '" data-cts-gis-directive-mode-index="' +
+            String(index) +
+            '"' +
+            (locked ? " disabled" : "") +
+            ">" +
+            ctx.escapeHtml(mode.label || modeId) +
+            "</button>"
+          );
+        })
+        .join("") +
+      "</div>" +
+      '<div class="ide-controlpanel__directiveRow ide-controlpanel__directiveRow--value" data-cts-gis-directive-value-row>' +
+      '<div class="ide-controlpanel__directiveIntention" data-cts-gis-directive-intention>' +
+      '<span class="ide-controlpanel__directiveValueText" data-cts-gis-directive-intention-display>' +
+      ctx.escapeHtml(activeLevel.display || "1") +
+      "</span>" +
+      '<div class="ide-controlpanel__directiveStepButtons">' +
+      '<button type="button" class="ide-controlpanel__directiveStep" data-cts-gis-directive-plus>+</button>' +
+      '<button type="button" class="ide-controlpanel__directiveStep" data-cts-gis-directive-minus>−</button>' +
+      "</div></div>" +
+      '<form class="ide-controlpanel__directiveApply" data-cts-gis-directive-apply-form>' +
+      '<input class="ide-controlpanel__directiveInput" data-cts-gis-directive-apply-input type="text" value="" />' +
+      "</form></div>" +
+      '<p class="ide-controlpanel__directiveFeedback" data-cts-gis-directive-feedback></p>' +
+      "</div></section></div></section>";
+
+    var currentMode = activeMode;
+    var applyInput = root.querySelector("[data-cts-gis-directive-apply-input]");
+    var applyForm = root.querySelector("[data-cts-gis-directive-apply-form]");
+    var feedback = root.querySelector("[data-cts-gis-directive-feedback]");
+    var intentionBlock = root.querySelector("[data-cts-gis-directive-intention]");
+    var plusButton = root.querySelector("[data-cts-gis-directive-plus]");
+    var minusButton = root.querySelector("[data-cts-gis-directive-minus]");
+    var intentionDisplay = root.querySelector("[data-cts-gis-directive-intention-display]");
+    var scriptForm = root.querySelector("[data-cts-gis-directive-script-form]");
+
+    function setFeedback(message, isError) {
+      if (!feedback) return;
+      feedback.textContent = String(message || "");
+      feedback.classList.toggle("is-error", !!isError);
+      feedback.classList.toggle("is-info", !isError && !!message);
+    }
+
+    function updateValueMode() {
+      var isIntention = currentMode === "I";
+      if (intentionBlock) intentionBlock.style.display = isIntention ? "flex" : "none";
+      if (applyForm) applyForm.style.display = isIntention ? "none" : "block";
+      if (applyInput) {
+        if (currentMode === "A") {
+          applyInput.value = attentionValue;
+          applyInput.placeholder = "attention node id";
+        } else if (currentMode === "T") {
+          applyInput.value = timeValue;
+          applyInput.placeholder = "time token / node id";
+        } else {
+          applyInput.value = "";
+          applyInput.placeholder = "";
+        }
+      }
+      setFeedback("", false);
+    }
+
+    Array.prototype.forEach.call(root.querySelectorAll("[data-cts-gis-directive-mode-index]"), function (node) {
+      node.addEventListener("click", function () {
+        var index = Number(node.getAttribute("data-cts-gis-directive-mode-index"));
+        var mode = aitasModes[index] || {};
+        if (mode.locked) return;
+        currentMode = String(mode.id || currentMode);
+        Array.prototype.forEach.call(root.querySelectorAll("[data-cts-gis-directive-mode-index]"), function (button) {
+          button.classList.remove("is-active");
+        });
+        node.classList.add("is-active");
+        updateValueMode();
+      });
+    });
+
+    if (scriptForm) {
+      scriptForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        setFeedback(scriptHelp, false);
+      });
+    }
+
+    if (plusButton) {
+      plusButton.addEventListener("click", function () {
+        var nextIndex = Math.min(activeIndex + 1, intentionLevels.length - 1);
+        var nextLevel = intentionLevels[nextIndex] || {};
+        if (nextLevel.shell_request) {
+          ctx.loadShell(nextLevel.shell_request);
+        }
+      });
+    }
+    if (minusButton) {
+      minusButton.addEventListener("click", function () {
+        var nextIndex = Math.max(activeIndex - 1, 0);
+        var nextLevel = intentionLevels[nextIndex] || {};
+        if (nextLevel.shell_request) {
+          ctx.loadShell(nextLevel.shell_request);
+        }
+      });
+    }
+    if (intentionDisplay) {
+      intentionDisplay.textContent = String(activeLevel.display || "1");
+    }
+
+    if (applyForm) {
+      applyForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        if (currentMode !== "A" && currentMode !== "T") return;
+        var raw = ((applyInput && applyInput.value) || "").trim();
+        if (!nodeIdPattern.test(raw)) {
+          setFeedback(currentMode === "A" ? invalidAttentionMessage : invalidTimeMessage, true);
+          return;
+        }
+        var template =
+          currentMode === "A" ? cloneJson((compact.attention || {}).shell_template) : cloneJson((compact.time || {}).shell_template);
+        if (!template.tool_state) template.tool_state = {};
+        if (!template.tool_state.aitas) template.tool_state.aitas = {};
+        if (currentMode === "A") {
+          template.tool_state.selected_node_id = raw;
+          template.tool_state.active_path = buildActivePathFromNodeId(raw);
+          template.tool_state.aitas.attention_node_id = raw;
+        } else {
+          template.tool_state.aitas.time_directive = raw;
+        }
+        ctx.loadShell(template);
+      });
+    }
+
+    updateValueMode();
+  }
+
   function renderFocusSelectionPanel(ctx, root, region) {
+    if (region.surface_label === "CTS-GIS" && region.state_directive_compact) {
+      renderCtsGisDirectivePanel(ctx, root, region);
+      return;
+    }
     var contextItems = region.context_items || [];
     var verbTabs = region.verb_tabs || [];
     var groups = region.groups || [];

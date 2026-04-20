@@ -24,6 +24,11 @@ CTS-GIS resolves ASCII node titles from:
 
 1. `data/sandbox/cts-gis/sources/<corpus>.msn-administrative.json`
 
+CTS-GIS profile source discovery includes:
+
+- `data/sandbox/cts-gis/sources/*.json`
+- `data/sandbox/cts-gis/sources/precincts/*.json`
+
 ## Magnitude Decode Logic
 
 The SAMRAS magnitude is decoded procedurally:
@@ -127,6 +132,31 @@ CTS-GIS keeps SAMRAS navigation tool-local.
 - the portal runtime transports the normalized tool-state envelope, but it does not invent the CTS-GIS intention default on its own
 - this keeps Garland aligned to the currently selected structural node instead of a descendant render set
 
+Intention overlay semantics:
+
+- `self` renders the attention profile only
+- `<attention_node_id>-0` renders attention plus direct children
+- `<attention_node_id>-0-0` renders attention plus descendants within depth +1 and +2
+- `branch:<node_id>` is valid only for a direct child of attention; invalid targets normalize to `self` with warnings
+
+## Adjunct Time Context (Additive)
+
+CTS-GIS supports additive SAMRAS adjunct context for time-indexed profile
+collections.
+
+- runtime mediation may carry a `time` payload in `mediation_state.time`
+- this payload is preserved as contextual metadata and does not mutate
+  `attention_node_id`/`intention_token` normalization
+- supporting anchor rows may include adjunct references such as:
+  - `1-1-4` + `2-0-3` + `3-1-4` (adjunct state profile set)
+  - `1-1-5` + `2-0-4` + `3-1-5` (chronological HOPS variant when present)
+- when time context is requested without chronological adjunct rows, CTS-GIS
+  emits diagnostics but keeps navigation operational
+
+Canonical chronology reference:
+
+- `wiki/hops/homogeneous_ordinal_partition_structure.md`
+
 ## Garland Coupling
 
 Garland is driven by the currently selected SAMRAS node from `navigation_canvas.active_path`.
@@ -134,6 +164,7 @@ Garland is driven by the currently selected SAMRAS node from `navigation_canvas.
 - `profile_projection` may materialize a blank but stateful current-profile view for a structurally valid selected node even when no matching profile source exists yet
 - `geospatial_projection` remains empty until that selected node or its widened intention scope resolves projectable HOPS geometry
 - node-focused widened intention keeps the selected node as Garland's active profile while geospatial overlays may combine multiple in-scope projectable profile source documents
+- when widened intention is active, render profile and feature counts are derived from the same projected set and should remain count-consistent with geospatial projection payload summaries
 - explicit source-document selection anchors row/detail evidence, and node/intention navigation preserves that pin unless the user explicitly switches source document
 - if a node-specific profile source document exists, CTS-GIS may still prefer the profile source whose filename suffix matches the selected node id for the focused document view
 - when a profile document carries `reference_geojson`, fallback geometry is allowed when HOPS decode cannot produce projectable coordinates for the row/profile or when semantic guardrails classify decode-valid geometry as implausible for the active node envelope; parity warnings alone do not switch geometry authority

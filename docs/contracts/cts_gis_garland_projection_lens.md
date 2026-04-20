@@ -24,6 +24,10 @@ Expected payload fields:
 - `collection_bounds` as `[min_lon, min_lat, max_lon, max_lat]`
 - `focus_bounds` as optional attention-profile bounds
 - `selected_feature_bounds` as optional selected-feature bounds
+- `selected_feature_explicit` as a bool indicating whether selected-feature focus came
+  from an explicit user selection request
+- `contextual_references` with additive context metadata (for example
+  `time_context` and anchor-context summaries)
 
 ## Geometry Authority
 
@@ -40,7 +44,8 @@ Primary intent is to keep the viewport stable for the active profile while still
 
 1. Prefer `collection_bounds` when sane.
 2. If `collection_bounds` is pathologically larger than `focus_bounds`, use `focus_bounds`.
-3. If still pathological and `selected_feature_bounds` exists, use `selected_feature_bounds`.
+3. If still pathological and `selected_feature_bounds` exists, use `selected_feature_bounds`
+   only when `selected_feature_explicit=true`.
 4. If no valid bounds are present, compute bounds from geometry points.
 
 This prevents one outlier overlay member from collapsing the visible active shape.
@@ -53,6 +58,19 @@ Garland surfaces service projection state through:
 - `projection_health.state`: `empty`, `ok`, `degraded`, `fallback`
 - `fallback_reason_codes`: machine-readable reason list
 - `semantic_guardrails`: `{ triggered, reason_codes }` for semantic plausibility diagnostics
+
+## Context Metadata
+
+CTS-GIS may include additive context metadata that does not change navigation:
+
+- `mediation_state.time` carries requested `time` context payload from the caller
+- `mediation_state.anchor_context` summarizes supporting anchor adjunct rows
+- `diagnostic_summary.time_context_active` signals active contextual request state
+- when time context is active, widened overlays may include matching precinct
+  cohort profiles for the active state/county attention lineage
+
+These fields are contextual-only and do not change how `attention_node_id` and
+`intention_token` are normalized.
 
 ## Non-Goals
 

@@ -55,10 +55,18 @@ Decode-failure semantics:
 
 - CTS-GIS source files and their supporting anchor documents remain strict JSON inputs; malformed JSON is surfaced as warnings rather than being parsed permissively.
 - A malformed shared anchor blocks dependent HOPS projection recovery for the affected source files until that anchor is repaired.
+- CTS-GIS source discovery includes both `data/sandbox/cts-gis/sources/*.json` and
+  `data/sandbox/cts-gis/sources/precincts/*.json`.
 - When node-focused intention widens to `<attention_node_id>-0` or `<attention_node_id>-0-0`, Garland may assemble one geospatial overlay from multiple in-scope projectable source documents.
+- When `mediation_state.time.active=true`, widened overlays may additionally include
+  precinct cohort profiles from `sources/precincts/` that match the active
+  state/county attention lineage (for example `247-<state>-<county>-*` under
+  `3-2-3-<state>-<county>` attention).
 - That widened overlay does not change the active profile: `profile_projection` stays focused on the selected node while `geospatial_projection` collects the projectable features.
 - Non-Garland row/detail views remain anchored to the currently selected document even when Garland overlays widen across multiple projectable sources.
 - Garland lens projection and bounds behavior are defined in `docs/contracts/cts_gis_garland_projection_lens.md`.
+- For widened overlays, `render_set_summary.render_feature_count` and
+  `map_projection.feature_count` must stay aligned to the same projected profile set.
 
 ## Row Chain
 
@@ -95,26 +103,31 @@ Contract:
 
 ### `6-*` rows: collection wrapper
 
-`6-0-1` groups the polygon members.
+`6-*` rows group polygon members into one or more collections.
 
 Contract:
 
 - row reference form: `~`
 - payload entries after the row id are `5-*` row addresses
-- references must be unique inside the `6-*` row
+- references must be unique inside each `6-*` row
+- `6-0-1` is the primary boundary collection for the active profile owner row
+- additional `6-*` collections (for example `6-0-2`) are allowed for additive
+  profile sets such as precinct-group adjuncts
 
 This row is the source-side equivalent of a runtime multi-member geometry collection.
 
 ### `7-*` rows: SAMRAS profile binding
 
-`7-3-1` binds the collected geometry to the SAMRAS profile node.
+`7-*` owner rows bind collected geometry to SAMRAS profile nodes.
 
 Contract:
 
 - anchor reference: `rf.3-1-2`
 - primary SAMRAS node id must match the file suffix node id
 - secondary SAMRAS node id may bind a deeper related profile node
-- the collection row reference points at `6-0-1`
+- the first linked `6-*` row is the primary boundary collection used for the
+  profile boundary chain
+- additional `6-*` links may be preserved for additive collections
 
 Example:
 
@@ -165,7 +178,8 @@ CTS-GIS profile sources are valid only when all of the following hold:
 - every `5-*` row references unique `4-*` rows
 - every `6-*` row references unique `5-*` rows
 - every `4-<n>-1` row stores exactly `n` HOPS coordinate tokens
-- `7-3-1` binds to the same primary SAMRAS node named by the file suffix
+- a `7-*` owner row binds to the same primary SAMRAS node named by the file suffix
+- the first owner-row `6-*` collection resolves to valid `5-*` and `4-*` rows
 
 ## Operational Consequence
 

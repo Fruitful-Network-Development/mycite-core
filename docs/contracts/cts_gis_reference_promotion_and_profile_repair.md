@@ -18,7 +18,9 @@ drift.
      pipeline.
 3. **Encode deterministic HOPS rows**
    - Encode each coordinate through canonical HOPS partitioning.
-   - Rebuild row families `4-*`, `5-*`, `6-*`, and bind them from `7-3-1`.
+   - Rebuild row families `4-*`, `5-*`, `6-*`, and bind them from the owner `7-*` row.
+   - Preserve supplemental non-primary collection chains (for example `6-0-2` and
+     linked `5-*` rows) when applying state-profile repairs.
 4. **Round-trip and semantic checks**
    - Validate contract structure and row references.
    - Run semantic projection guardrails in CTS-GIS runtime pathways.
@@ -43,6 +45,8 @@ drift.
   - contract violations are not introduced
   - projection diagnostics remain within allowed states (`projectable` or
     `projectable_degraded` with explicit reason codes)
+  - owner-row primary collection and any preserved supplemental collections remain
+    structurally linked after repair
 
 ## Runtime Authority Boundaries
 

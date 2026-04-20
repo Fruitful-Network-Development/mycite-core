@@ -126,21 +126,32 @@ write_build_id() {
 restart_service() {
   local main_pid
   local next_pid
+  local -a restart_cmd
 
   log "Restarting ${SERVICE_NAME}"
   if [[ "$DRY_RUN" == "1" ]]; then
     printf '[dry-run] '
-    printf '%q ' systemctl restart "$SERVICE_NAME"
+    if sudo -n true >/dev/null 2>&1; then
+      printf '%q ' sudo -n systemctl restart "$SERVICE_NAME"
+    else
+      printf '%q ' systemctl --no-ask-password restart "$SERVICE_NAME"
+    fi
     printf '\n'
     return 0
   fi
 
-  if systemctl restart "$SERVICE_NAME"; then
-    systemctl is-active "$SERVICE_NAME"
+  if sudo -n true >/dev/null 2>&1; then
+    restart_cmd=(sudo -n systemctl restart "$SERVICE_NAME")
+  else
+    restart_cmd=(systemctl --no-ask-password restart "$SERVICE_NAME")
+  fi
+
+  if "${restart_cmd[@]}"; then
+    systemctl is-active "$SERVICE_NAME" >/dev/null
     return 0
   fi
 
-  log "systemctl restart was blocked; falling back to signaling the gunicorn master"
+  log "Restart command failed or was blocked; falling back to signaling the gunicorn master"
   main_pid="$(systemctl show -p MainPID --value "$SERVICE_NAME" 2>/dev/null | tr -d '[:space:]')"
   [[ "$main_pid" =~ ^[0-9]+$ ]] || fail "Could not resolve MainPID for ${SERVICE_NAME}"
   [[ "$main_pid" != "0" ]] || fail "MainPID is 0 for ${SERVICE_NAME}"
@@ -241,8 +252,28 @@ fi
 
 if [[ "$SKIP_HEALTH" != "1" ]]; then
   [[ -n "$PORT" ]] || fail "No health-check port is cataloged for instance ${INSTANCE}"
-  log "Checking health endpoint on port ${PORT}"
-  run_or_echo curl -fsS "http://127.0.0.1:${PORT}/portal/healthz"
+  local_url="http://127.0.0.1:${PORT}/portal/healthz"
+  attempts=20
+  sleep_seconds=1
+  log "Checking health endpoint on port ${PORT} (up to ${attempts}s wait)"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf '[dry-run] '
+    printf '%q ' curl -fsS "$local_url"
+    printf '\n'
+  else
+    health_ok="0"
+    for _ in $(seq 1 "$attempts"); do
+      if curl -fsS "$local_url" >/dev/null; then
+        curl -fsS "$local_url"
+        health_ok="1"
+        break
+      fi
+      sleep "$sleep_seconds"
+    done
+    if [[ "$health_ok" != "1" ]]; then
+      fail "Health endpoint did not become ready at ${local_url} within ${attempts}s"
+    fi
+  fi
 fi
 
 log "Completed for instance ${INSTANCE}"
