@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -39,6 +41,32 @@ REFERENCE_KEYS = (
     "reference_geojson_node_id",
 )
 REF_PATTERN = re.compile(r"^[4567]-\d+-\d+$")
+ROW_ADDRESS_PATTERN = re.compile(r"\b[4567]-\d+-\d+\b")
+HOPS_PREFIX = ("3", "76")
+HOPS_PARTITION_SEGMENT_COUNT = 16
+HOPS_BUCKET_COUNT = 100
+REFERENCE_MISMATCH_ISSUES = frozenset(
+    (
+        "polygon_count_mismatch",
+        "ring_count_mismatch",
+        "ring_ordering",
+        "stale_hops_data",
+        "declared_count_mismatch",
+    )
+)
+CONTRACT_DRIFT_ISSUES = frozenset(("contract_violation", "row_address_defect"))
+ACTION_PRIORITY = {
+    "needs_full_hops_regeneration_from_geojson": 0,
+    "needs_deterministic_repair": 1,
+    "needs_repo_state_reconciliation": 2,
+    "safe_to_leave_as_is": 3,
+}
+CLASSIFICATION_PRIORITY = {
+    "reference_mismatch": 0,
+    "contract_drift": 1,
+    "repo_state_drift_only": 2,
+    "clean": 3,
+}
 
 
 class _SingleDocumentStore:
@@ -68,6 +96,26 @@ def _as_text(value: object) -> str:
     return str(value).strip()
 
 
+def _dedupe_texts(values: list[object] | tuple[object, ...]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = _as_text(value)
+        if not text or text in seen:
+            continue
+        out.append(text)
+        seen.add(text)
+    return out
+
+
+def _first_non_empty(values: list[object] | tuple[object, ...]) -> str:
+    for value in values:
+        text = _as_text(value)
+        if text:
+            return text
+    return ""
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -91,6 +139,13 @@ def _node_suffix_from_path(path: Path) -> str:
     if ".fnd." not in name or not name.endswith(".json"):
         return ""
     return name.split(".fnd.", 1)[1][:-5]
+
+
+def _row_family(row_address: str) -> str:
+    parts = _as_text(row_address).split("-")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+        return ""
+    return parts[0]
 
 
 def _datum_space(payload: dict[str, Any]) -> dict[str, Any]:
@@ -117,6 +172,167 @@ def _set_row_tokens(space: dict[str, Any], row_address: str, tokens: list[Any]) 
         space[row_address] = list(tokens)
         return True
     return False
+
+
+def _row_hops_tokens(space: dict[str, Any], row_address: str) -> list[str]:
+    tokens = _row_tokens(space, row_address)
+    out: list[str] = []
+    for index, token in enumerate(tokens[:-1]):
+        if _as_text(token) != "rf.3-1-1":
+            continue
+        hops_token = _as_text(tokens[index + 1])
+        if hops_token:
+            out.append(hops_token)
+    return out
+
+
+def _linked_row_addresses(space: dict[str, Any], row_address: str) -> list[str]:
+    tokens = _row_tokens(space, row_address)
+    seen: set[str] = set()
+    out: list[str] = []
+    for token in tokens:
+        address = _as_text(token)
+        if address == row_address or address in seen or address not in space:
+            continue
+        if not _row_family(address):
+            continue
+        out.append(address)
+        seen.add(address)
+    return out
+
+
+def _row_polygon_groups(space: dict[str, Any], row_address: str) -> list[dict[str, Any]]:
+    family = _row_family(row_address)
+    linked = _linked_row_addresses(space, row_address)
+    if family == "4":
+        return [{"polygon_row_address": row_address, "ring_row_addresses": [row_address]}]
+    if family == "5":
+        rings = [address for address in linked if _row_family(address) == "4"]
+        return [{"polygon_row_address": row_address, "ring_row_addresses": rings}] if rings else []
+    if family in {"6", "7"}:
+        polygons: list[dict[str, Any]] = []
+        for address in linked:
+            if _row_family(address) not in {"6", "5", "4"}:
+                continue
+            polygons.extend(_row_polygon_groups(space, address))
+        return polygons
+    return []
+
+
+def _normalize_reference_ring(ring: Any) -> list[list[float]]:
+    if not isinstance(ring, list):
+        return []
+    normalized = [
+        [float(point[0]), float(point[1])]
+        for point in ring
+        if isinstance(point, list) and len(point) >= 2
+    ]
+    if not normalized:
+        return []
+    if normalized[0] == normalized[-1]:
+        return normalized[:-1]
+    return normalized
+
+
+def _reference_polygons(payload: dict[str, Any]) -> list[list[list[list[float]]]]:
+    out: list[list[list[list[float]]]] = []
+    payload_type = _as_text(payload.get("type"))
+    if payload_type == "FeatureCollection":
+        features = [item for item in list(payload.get("features") or []) if isinstance(item, dict)]
+    elif payload_type == "Feature":
+        features = [payload]
+    else:
+        return out
+
+    for feature in features:
+        geometry = dict(feature.get("geometry") or {})
+        geometry_type = _as_text(geometry.get("type"))
+        coordinates = geometry.get("coordinates")
+        if geometry_type == "Polygon" and isinstance(coordinates, list):
+            polygons = [coordinates]
+        elif geometry_type == "MultiPolygon" and isinstance(coordinates, list):
+            polygons = list(coordinates)
+        else:
+            continue
+        for polygon in polygons:
+            if not isinstance(polygon, list):
+                continue
+            rings = [_normalize_reference_ring(ring) for ring in polygon]
+            rings = [ring for ring in rings if ring]
+            if rings:
+                out.append(rings)
+    return out
+
+
+def _encode_hops_coordinate(longitude: float, latitude: float) -> str:
+    lon_min = -180.0
+    lon_max = 180.0
+    lat_min = -90.0
+    lat_max = 90.0
+    parts = [*HOPS_PREFIX]
+    for index in range(HOPS_PARTITION_SEGMENT_COUNT):
+        if index % 2 == 0:
+            span = (lon_max - lon_min) / HOPS_BUCKET_COUNT
+            bucket = math.floor((float(longitude) - lon_min) / span)
+            bucket = max(0, min(HOPS_BUCKET_COUNT - 1, bucket))
+            lon_min = lon_min + (span * bucket)
+            lon_max = lon_min + span
+        else:
+            span = (lat_max - lat_min) / HOPS_BUCKET_COUNT
+            bucket = math.floor((float(latitude) - lat_min) / span)
+            bucket = max(0, min(HOPS_BUCKET_COUNT - 1, bucket))
+            lat_min = lat_min + (span * bucket)
+            lat_max = lat_min + span
+        parts.append(str(bucket))
+    return "-".join(parts)
+
+
+def _issue_sort_key(issue_type: str) -> tuple[int, str]:
+    priorities = {
+        "polygon_count_mismatch": 0,
+        "ring_count_mismatch": 1,
+        "ring_ordering": 2,
+        "stale_hops_data": 3,
+        "declared_count_mismatch": 4,
+        "row_address_defect": 5,
+        "contract_violation": 6,
+        "repo_state_desync": 7,
+    }
+    return priorities.get(issue_type, 10**6), issue_type
+
+
+def _finding_sort_key(finding: dict[str, Any]) -> tuple[int, str]:
+    return _issue_sort_key(_as_text(finding.get("issue_type"))) + (_as_text(finding.get("detail")),)
+
+
+def _sort_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(list(findings), key=_finding_sort_key)
+
+
+def _recommended_action(findings: list[dict[str, Any]]) -> str:
+    if not findings:
+        return "safe_to_leave_as_is"
+    actions = [_as_text(finding.get("recommended_action")) for finding in findings]
+    ranked = sorted(
+        (action for action in actions if action),
+        key=lambda action: (ACTION_PRIORITY.get(action, 10**6), action),
+    )
+    return ranked[0] if ranked else "safe_to_leave_as_is"
+
+
+def _classification_for_findings(findings: list[dict[str, Any]]) -> str:
+    issue_types = {_as_text(finding.get("issue_type")) for finding in findings if _as_text(finding.get("issue_type"))}
+    if issue_types & REFERENCE_MISMATCH_ISSUES:
+        return "reference_mismatch"
+    if issue_types & CONTRACT_DRIFT_ISSUES:
+        return "contract_drift"
+    if "repo_state_desync" in issue_types:
+        return "repo_state_drift_only"
+    return "clean"
+
+
+def _rows_from_text(text: str) -> list[str]:
+    return _dedupe_texts(ROW_ADDRESS_PATTERN.findall(_as_text(text)))
 
 
 def _replace_reference_token(space: dict[str, Any], *, row_address: str, old: str, new: str) -> bool:
@@ -257,6 +473,271 @@ def _contract_violations(path: Path, payload: dict[str, Any]) -> list[str]:
         seen.add(item)
         deduped.append(item)
     return deduped
+
+
+def _finding(
+    *,
+    issue_type: str,
+    detail: str,
+    rows_involved: list[str] | tuple[str, ...] = (),
+    recommended_action: str,
+    reference_geojson_source: str = "",
+    roots_involved: list[str] | tuple[str, ...] = (),
+) -> dict[str, Any]:
+    return {
+        "issue_type": _as_text(issue_type),
+        "detail": _as_text(detail),
+        "rows_involved": _dedupe_texts(list(rows_involved)),
+        "recommended_action": _as_text(recommended_action),
+        "reference_geojson_source": _as_text(reference_geojson_source),
+        "roots_involved": _dedupe_texts(list(roots_involved)),
+    }
+
+
+def _deterministic_findings(
+    notes: list[str],
+    *,
+    reference_geojson_source: str = "",
+) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for note in list(notes or []):
+        issue_type = "row_address_defect"
+        if "duplicate references removed" in note:
+            issue_type = "contract_violation"
+        findings.append(
+            _finding(
+                issue_type=issue_type,
+                detail=note,
+                rows_involved=_rows_from_text(note),
+                recommended_action="needs_deterministic_repair",
+                reference_geojson_source=reference_geojson_source,
+            )
+        )
+    return findings
+
+
+def _contract_findings(
+    violations: list[str],
+    *,
+    reference_geojson_source: str = "",
+) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for violation in list(violations or []):
+        issue_type = "contract_violation"
+        if "declares" in violation and "HOPS tokens but carries" in violation:
+            issue_type = "declared_count_mismatch"
+        elif "references missing row" in violation or "references wrong family" in violation:
+            issue_type = "row_address_defect"
+        findings.append(
+            _finding(
+                issue_type=issue_type,
+                detail=violation,
+                rows_involved=_rows_from_text(violation),
+                recommended_action="needs_deterministic_repair",
+                reference_geojson_source=reference_geojson_source,
+            )
+        )
+    return findings
+
+
+def _reference_owner_row_address(path: Path, payload: dict[str, Any]) -> str:
+    suffix = _node_suffix_from_path(path)
+    expected_node_id = _as_text(payload.get("reference_geojson_node_id")) or suffix
+    space = _datum_space(payload)
+    for row_address in sorted(space.keys(), key=_address_sort_key):
+        if _row_family(row_address) != "7":
+            continue
+        tokens = _row_tokens(space, row_address)
+        if _first_primary_node_id(tokens) == expected_node_id:
+            return row_address
+    return "7-3-1" if "7-3-1" in space else ""
+
+
+def _reference_geometry_findings(path: Path, payload: dict[str, Any]) -> list[dict[str, Any]]:
+    reference_geojson_source = _as_text(payload.get("reference_geojson_source"))
+    reference_payload = payload.get("reference_geojson")
+    if not isinstance(reference_payload, dict):
+        return []
+
+    space = _datum_space(payload)
+    owner_row_address = _reference_owner_row_address(path, payload)
+    if not owner_row_address:
+        return []
+
+    polygon_groups = _row_polygon_groups(space, owner_row_address)
+    reference_polygons = _reference_polygons(reference_payload)
+    findings: list[dict[str, Any]] = []
+
+    if len(reference_polygons) != len(polygon_groups):
+        findings.append(
+            _finding(
+                issue_type="polygon_count_mismatch",
+                detail=(
+                    f"{path.name} reference GeoJSON carries {len(reference_polygons)} polygon members, "
+                    f"but the HOPS row chain resolves {len(polygon_groups)}."
+                ),
+                rows_involved=[owner_row_address, *[entry.get("polygon_row_address", "") for entry in polygon_groups]],
+                recommended_action="needs_full_hops_regeneration_from_geojson",
+                reference_geojson_source=reference_geojson_source,
+            )
+        )
+
+    for polygon_index, (polygon_entry, reference_polygon) in enumerate(
+        zip(polygon_groups, reference_polygons),
+        start=1,
+    ):
+        polygon_row_address = _as_text(polygon_entry.get("polygon_row_address"))
+        ring_row_addresses = _dedupe_texts(list(polygon_entry.get("ring_row_addresses") or []))
+        if len(ring_row_addresses) != len(reference_polygon):
+            findings.append(
+                _finding(
+                    issue_type="ring_count_mismatch",
+                    detail=(
+                        f"{path.name} polygon {polygon_index} carries {len(reference_polygon)} rings, "
+                        f"but the HOPS row chain resolves {len(ring_row_addresses)}."
+                    ),
+                    rows_involved=[polygon_row_address, *ring_row_addresses],
+                    recommended_action="needs_full_hops_regeneration_from_geojson",
+                    reference_geojson_source=reference_geojson_source,
+                )
+            )
+            continue
+
+        expected_token_rows = [
+            [_encode_hops_coordinate(longitude, latitude) for longitude, latitude in _normalize_reference_ring(ring)]
+            for ring in reference_polygon
+        ]
+        actual_token_rows = [_row_hops_tokens(space, row_address) for row_address in ring_row_addresses]
+        if actual_token_rows == expected_token_rows:
+            continue
+
+        expected_counter = Counter(tuple(row) for row in expected_token_rows)
+        actual_counter = Counter(tuple(row) for row in actual_token_rows)
+        if expected_counter == actual_counter:
+            findings.append(
+                _finding(
+                    issue_type="ring_ordering",
+                    detail=(
+                        f"{path.name} polygon {polygon_index} links the correct rings, "
+                        "but the shell/hole ordering does not match the reference GeoJSON."
+                    ),
+                    rows_involved=[polygon_row_address, *ring_row_addresses],
+                    recommended_action="needs_deterministic_repair",
+                    reference_geojson_source=reference_geojson_source,
+                )
+            )
+            continue
+
+        for ring_index, (row_address, actual_tokens, expected_tokens) in enumerate(
+            zip(ring_row_addresses, actual_token_rows, expected_token_rows),
+            start=1,
+        ):
+            if len(actual_tokens) != len(expected_tokens):
+                findings.append(
+                    _finding(
+                        issue_type="declared_count_mismatch",
+                        detail=(
+                            f"{path.name} ring {polygon_index}.{ring_index} expected {len(expected_tokens)} "
+                            f"HOPS vertices from reference GeoJSON, but {row_address} carries {len(actual_tokens)}."
+                        ),
+                        rows_involved=[row_address],
+                        recommended_action="needs_full_hops_regeneration_from_geojson",
+                        reference_geojson_source=reference_geojson_source,
+                    )
+                )
+                continue
+            if actual_tokens != expected_tokens:
+                findings.append(
+                    _finding(
+                        issue_type="stale_hops_data",
+                        detail=(
+                            f"{path.name} ring {polygon_index}.{ring_index} HOPS tokens do not match the "
+                            f"canonical reference geometry for {row_address}."
+                        ),
+                        rows_involved=[row_address],
+                        recommended_action="needs_full_hops_regeneration_from_geojson",
+                        reference_geojson_source=reference_geojson_source,
+                    )
+                )
+
+    return _sort_findings(findings)
+
+
+def _normalized_core_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in dict(payload).items()
+        if key not in REFERENCE_KEYS
+    }
+
+
+def _repo_state_drift_finding(
+    *,
+    document_name: str,
+    baseline_root: str,
+    comparison_root: str,
+    baseline_payload: dict[str, Any] | None,
+    comparison_payload: dict[str, Any] | None,
+    reference_geojson_source: str = "",
+) -> dict[str, Any] | None:
+    if baseline_payload is None and comparison_payload is None:
+        return None
+    if baseline_payload is None:
+        return _finding(
+            issue_type="repo_state_desync",
+            detail=f"{document_name} is missing from baseline root {baseline_root}.",
+            recommended_action="needs_repo_state_reconciliation",
+            reference_geojson_source=reference_geojson_source,
+            roots_involved=[baseline_root, comparison_root],
+        )
+    if comparison_payload is None:
+        return _finding(
+            issue_type="repo_state_desync",
+            detail=f"{document_name} is missing from comparison root {comparison_root}.",
+            recommended_action="needs_repo_state_reconciliation",
+            reference_geojson_source=reference_geojson_source,
+            roots_involved=[baseline_root, comparison_root],
+        )
+
+    baseline_core = _normalized_core_payload(baseline_payload)
+    comparison_core = _normalized_core_payload(comparison_payload)
+    if baseline_core == comparison_core:
+        return None
+
+    baseline_space = _datum_space(baseline_core)
+    comparison_space = _datum_space(comparison_core)
+    changed_rows = sorted(
+        {
+            address
+            for address in set(baseline_space) | set(comparison_space)
+            if baseline_space.get(address) != comparison_space.get(address)
+        },
+        key=_address_sort_key,
+    )
+    changed_top_level_keys = sorted(
+        {
+            key
+            for key in set(baseline_core) | set(comparison_core)
+            if key != "datum_addressing_abstraction_space"
+            and baseline_core.get(key) != comparison_core.get(key)
+        }
+    )
+    detail_parts: list[str] = []
+    if changed_top_level_keys:
+        detail_parts.append(f"top-level keys differ: {', '.join(changed_top_level_keys)}")
+    if changed_rows:
+        detail_parts.append(f"rows differ: {', '.join(changed_rows)}")
+    return _finding(
+        issue_type="repo_state_desync",
+        detail=(
+            f"{document_name} differs between {comparison_root} and baseline {baseline_root}"
+            + (f" ({'; '.join(detail_parts)})" if detail_parts else ".")
+        ),
+        rows_involved=changed_rows,
+        recommended_action="needs_repo_state_reconciliation",
+        reference_geojson_source=reference_geojson_source,
+        roots_involved=[baseline_root, comparison_root],
+    )
 
 
 def _align_swapped_node_bindings(path: Path, payload: dict[str, Any]) -> list[str]:
@@ -433,8 +914,18 @@ def _projection_snapshot(
     }
 
 
-def _is_stage_a_safe(contract_violations: list[str], without_ref: dict[str, Any]) -> bool:
+def _is_stage_a_safe(
+    contract_violations: list[str],
+    *,
+    with_ref: dict[str, Any],
+    without_ref: dict[str, Any],
+    pending_deterministic_fixes: bool,
+) -> bool:
     if contract_violations:
+        return False
+    if pending_deterministic_fixes:
+        return False
+    if list(with_ref.get("warnings") or []):
         return False
     if _as_text(without_ref.get("projection_source")) != "hops":
         return False
@@ -458,69 +949,68 @@ def _strip_reference_metadata(payload: dict[str, Any]) -> bool:
 
 def _markdown_summary(report: dict[str, Any]) -> str:
     lines: list[str] = []
-    lines.append("# CTS-GIS HOPS-First Stage-A Audit")
+    lines.append("# CTS-GIS Summit Source Review")
     lines.append("")
-    lines.append(f"Data root: `{_as_text(report.get('data_root'))}`")
+    lines.append(f"Reference baseline: `{_as_text(report.get('baseline_data_root'))}`")
+    comparison_roots = list(report.get("comparison_data_roots") or [])
+    if comparison_roots:
+        lines.append(
+            "Comparison roots: " + ", ".join(f"`{_as_text(root)}`" for root in comparison_roots if _as_text(root))
+        )
     lines.append("")
     lines.append("## Totals")
     lines.append("")
-    lines.append(f"- Projection documents audited: {int(report.get('document_count') or 0)}")
-    lines.append(f"- Stage-A safe to strip: {int(report.get('safe_to_strip_count') or 0)}")
-    lines.append(f"- Stage-A stripped this run: {int(report.get('stage_a_stripped_count') or 0)}")
-    lines.append(f"- Deterministic fixes applied: {int(report.get('deterministic_fix_count') or 0)}")
+    lines.append(f"- Unique projection documents reviewed: {int(report.get('document_count') or 0)}")
+    lines.append(f"- Flagged documents: {int(report.get('flagged_count') or 0)}")
+    lines.append(f"- Clean documents: {int(report.get('clean_count') or 0)}")
+    counts = dict(report.get("classification_counts") or {})
+    for key in ("reference_mismatch", "contract_drift", "repo_state_drift_only", "clean"):
+        if key in counts:
+            lines.append(f"- `{key}`: {int(counts.get(key) or 0)}")
     lines.append("")
-    lines.append("## Stage-A Safe Documents")
+    lines.append("## Root Passes")
     lines.append("")
-    safe_docs = list(report.get("safe_to_strip_documents") or [])
-    if not safe_docs:
-        lines.append("- None")
-    else:
-        for name in safe_docs:
-            lines.append(f"- `{name}`")
-    lines.append("")
-    lines.append("## Needs Repair / Blocked")
-    lines.append("")
-    rows = list(report.get("documents") or [])
-    blocked = [row for row in rows if not bool(row.get("safe_to_strip"))]
-    if not blocked:
-        lines.append("- None")
-    else:
-        for row in blocked:
-            lines.append(f"- `{_as_text(row.get('document_name'))}`")
-            violations = list(row.get("contract_violations") or [])
-            if violations:
-                for violation in violations:
-                    lines.append(f"  - contract: {violation}")
-            without_ref = dict(row.get("projection_without_reference") or {})
-            lines.append(
-                "  - projection_without_reference: "
-                + f"{_as_text(without_ref.get('projection_state'))}/"
-                + f"{_as_text(without_ref.get('projection_source'))}/"
-                + f"features={int(without_ref.get('feature_count') or 0)}"
-            )
-    lines.append("")
-    lines.append("## Before/After Projection Snapshots")
-    lines.append("")
-    lines.append("| Document | With Reference | Without Reference |")
-    lines.append("| --- | --- | --- |")
-    for row in rows:
-        before = dict(row.get("projection_with_reference") or {})
-        after = dict(row.get("projection_without_reference") or {})
-        before_text = (
-            f"{_as_text(before.get('projection_state'))}/"
-            f"{_as_text(before.get('projection_source'))}/"
-            f"f{int(before.get('feature_count') or 0)}/"
-            f"w{len(before.get('warnings') or [])}"
-        )
-        after_text = (
-            f"{_as_text(after.get('projection_state'))}/"
-            f"{_as_text(after.get('projection_source'))}/"
-            f"f{int(after.get('feature_count') or 0)}/"
-            f"w{len(after.get('warnings') or [])}"
-        )
+    lines.append("| Data Root | Documents | Safe To Strip | Deterministic Fixes |")
+    lines.append("| --- | --- | --- | --- |")
+    for root_report in list(report.get("root_reports") or []):
         lines.append(
-            f"| `{_as_text(row.get('document_name'))}` | `{before_text}` | `{after_text}` |"
+            f"| `{_as_text(root_report.get('data_root'))}` | "
+            f"{int(root_report.get('document_count') or 0)} | "
+            f"{int(root_report.get('safe_to_strip_count') or 0)} | "
+            f"{int(root_report.get('deterministic_fix_count') or 0)} |"
         )
+    lines.append("")
+    lines.append("## Flagged Documents")
+    lines.append("")
+    flagged = [row for row in list(report.get("documents") or []) if _as_text(row.get("review_bucket")) == "flagged"]
+    if not flagged:
+        lines.append("- None")
+    else:
+        lines.append("| Document | Classification | Action | Issues | Reference |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for row in flagged:
+            lines.append(
+                f"| `{_as_text(row.get('document_name'))}` | "
+                f"`{_as_text(row.get('classification'))}` | "
+                f"`{_as_text(row.get('recommended_action'))}` | "
+                f"`{', '.join(list(row.get('finding_types') or []))}` | "
+                f"`{_as_text(row.get('reference_geojson_source'))}` |"
+            )
+        lines.append("")
+        lines.append("## Findings")
+        lines.append("")
+        for row in flagged:
+            lines.append(f"- `{_as_text(row.get('document_name'))}`")
+            lines.append(
+                f"  classification: `{_as_text(row.get('classification'))}` | "
+                f"action: `{_as_text(row.get('recommended_action'))}`"
+            )
+            for finding in list(row.get("findings") or []):
+                rows_text = ", ".join(list(finding.get("rows_involved") or [])) or "n/a"
+                lines.append(
+                    f"  - `{_as_text(finding.get('issue_type'))}`: {_as_text(finding.get('detail'))} "
+                    f"(rows: {rows_text})"
+                )
     lines.append("")
     return "\n".join(lines) + "\n"
 
@@ -556,6 +1046,7 @@ def _audit_and_repair_data_root(
 
     for path in sorted(source_dir.glob(PROJECTION_GLOB)):
         payload = _read_json(path)
+        reference_geojson_source = _as_text(payload.get("reference_geojson_source"))
         deterministic_notes = _align_swapped_node_bindings(path, payload)
         deterministic_notes.extend(_repair_stage_b_contract_defects(path, payload))
         if deterministic_notes:
@@ -575,7 +1066,25 @@ def _audit_and_repair_data_root(
             drop_reference_metadata=True,
         )
 
-        safe_to_strip = _is_stage_a_safe(violations, without_ref)
+        pending_deterministic_fixes = bool(deterministic_notes) and not apply_deterministic_fixes
+        reference_findings = _reference_geometry_findings(path, payload) if list(with_ref.get("warnings") or []) else []
+        local_findings = _sort_findings(
+            _deterministic_findings(
+                deterministic_notes if pending_deterministic_fixes else [],
+                reference_geojson_source=reference_geojson_source,
+            )
+            + _contract_findings(violations, reference_geojson_source=reference_geojson_source)
+            + reference_findings
+        )
+        root_classification = _classification_for_findings(local_findings)
+        review_bucket = "clean" if root_classification == "clean" else "flagged"
+
+        safe_to_strip = _is_stage_a_safe(
+            violations,
+            with_ref=with_ref,
+            without_ref=without_ref,
+            pending_deterministic_fixes=pending_deterministic_fixes,
+        )
         if safe_to_strip:
             safe_docs.append(path.name)
 
@@ -595,11 +1104,20 @@ def _audit_and_repair_data_root(
         document_rows.append(
             {
                 "document_name": path.name,
+                "document_path": str(path),
                 "node_suffix": _node_suffix_from_path(path),
+                "reference_geojson_source": reference_geojson_source,
                 "deterministic_fix_notes": deterministic_notes,
+                "pending_deterministic_fixes": pending_deterministic_fixes,
                 "contract_violations": violations,
+                "local_findings": local_findings,
+                "finding_types": _dedupe_texts([finding.get("issue_type") for finding in local_findings]),
+                "root_classification": root_classification,
+                "review_bucket": review_bucket,
+                "recommended_action": _recommended_action(local_findings),
                 "safe_to_strip": safe_to_strip,
                 "stage_a_stripped": stripped,
+                "reference_warning_count": len(list(with_ref.get("warnings") or [])),
                 "projection_with_reference": with_ref,
                 "projection_without_reference": without_ref,
             }
@@ -615,6 +1133,143 @@ def _audit_and_repair_data_root(
         "deterministic_fix_count": len(deterministic_fixed),
         "deterministic_fix_documents": sorted(deterministic_fixed),
         "documents": document_rows,
+        "warnings": [],
+    }
+
+
+def _select_reference_baseline_report(reports: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not reports:
+        return None
+
+    def _score(report: dict[str, Any]) -> tuple[int, str]:
+        documents = list(report.get("documents") or [])
+        ref_count = sum(1 for row in documents if _as_text(row.get("reference_geojson_source")))
+        return ref_count, _as_text(report.get("data_root"))
+
+    return max(reports, key=_score)
+
+
+def _build_review_report(reports: list[dict[str, Any]]) -> dict[str, Any]:
+    baseline_report = _select_reference_baseline_report(reports)
+    baseline_root = _as_text((baseline_report or {}).get("data_root"))
+    comparison_roots = [
+        _as_text(report.get("data_root"))
+        for report in reports
+        if _as_text(report.get("data_root")) and _as_text(report.get("data_root")) != baseline_root
+    ]
+    report_indexes = {
+        _as_text(report.get("data_root")): {
+            _as_text(row.get("document_name")): row
+            for row in list(report.get("documents") or [])
+            if _as_text(row.get("document_name"))
+        }
+        for report in reports
+    }
+    document_names = sorted(
+        {
+            name
+            for index in report_indexes.values()
+            for name in index.keys()
+        }
+    )
+
+    documents: list[dict[str, Any]] = []
+    finding_type_counts: Counter[str] = Counter()
+    classification_counts: Counter[str] = Counter()
+
+    for document_name in document_names:
+        baseline_row = (report_indexes.get(baseline_root) or {}).get(document_name)
+        source_row = baseline_row
+        if source_row is None:
+            for index in report_indexes.values():
+                source_row = index.get(document_name)
+                if source_row is not None:
+                    break
+        if source_row is None:
+            continue
+
+        reference_geojson_source = _first_non_empty(
+            [row.get("reference_geojson_source") for index in report_indexes.values() for row in [index.get(document_name)] if row]
+        )
+        findings = list((source_row or {}).get("local_findings") or [])
+
+        baseline_payload = None
+        baseline_document_path = _as_text((baseline_row or {}).get("document_path"))
+        if baseline_document_path:
+            baseline_payload = _read_json(Path(baseline_document_path))
+
+        for comparison_root in comparison_roots:
+            comparison_row = (report_indexes.get(comparison_root) or {}).get(document_name)
+            comparison_payload = None
+            comparison_document_path = _as_text((comparison_row or {}).get("document_path"))
+            if comparison_document_path:
+                comparison_payload = _read_json(Path(comparison_document_path))
+            drift_finding = _repo_state_drift_finding(
+                document_name=document_name,
+                baseline_root=baseline_root,
+                comparison_root=comparison_root,
+                baseline_payload=baseline_payload,
+                comparison_payload=comparison_payload,
+                reference_geojson_source=reference_geojson_source,
+            )
+            if drift_finding is not None:
+                findings.append(drift_finding)
+
+        findings = _sort_findings(findings)
+        finding_types = _dedupe_texts([finding.get("issue_type") for finding in findings])
+        classification = _classification_for_findings(findings)
+        review_bucket = "clean" if classification == "clean" else "flagged"
+        recommended_action = _recommended_action(findings)
+        classification_counts[classification] += 1
+        for issue_type in finding_types:
+            finding_type_counts[issue_type] += 1
+
+        root_status = {
+            root: {
+                "present": document_name in index,
+                "root_classification": _as_text((index.get(document_name) or {}).get("root_classification")),
+                "safe_to_strip": bool((index.get(document_name) or {}).get("safe_to_strip")),
+                "reference_warning_count": int((index.get(document_name) or {}).get("reference_warning_count") or 0),
+            }
+            for root, index in report_indexes.items()
+        }
+
+        documents.append(
+            {
+                "document_name": document_name,
+                "node_suffix": _as_text((source_row or {}).get("node_suffix")),
+                "reference_geojson_source": reference_geojson_source,
+                "classification": classification,
+                "review_bucket": review_bucket,
+                "recommended_action": recommended_action,
+                "finding_types": finding_types,
+                "finding_count": len(findings),
+                "findings": findings,
+                "root_status": root_status,
+            }
+        )
+
+    documents = sorted(
+        documents,
+        key=lambda row: (
+            0 if _as_text(row.get("review_bucket")) == "flagged" else 1,
+            CLASSIFICATION_PRIORITY.get(_as_text(row.get("classification")), 10**6),
+            _as_text(row.get("document_name")),
+        ),
+    )
+    flagged_count = sum(1 for row in documents if _as_text(row.get("review_bucket")) == "flagged")
+    clean_count = sum(1 for row in documents if _as_text(row.get("review_bucket")) == "clean")
+    return {
+        "report_type": "cts_gis_summit_review",
+        "baseline_data_root": baseline_root,
+        "comparison_data_roots": comparison_roots,
+        "root_reports": reports,
+        "document_count": len(documents),
+        "flagged_count": flagged_count,
+        "clean_count": clean_count,
+        "classification_counts": dict(classification_counts),
+        "finding_type_counts": dict(finding_type_counts),
+        "documents": documents,
         "warnings": [],
     }
 
@@ -650,12 +1305,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--report-json",
         default="",
-        help="Write machine-readable report JSON to this path (single data-root runs).",
+        help="Write machine-readable combined review JSON to this path.",
     )
     parser.add_argument(
         "--report-markdown",
         default="",
-        help="Write markdown summary to this path (single data-root runs).",
+        help="Write combined markdown review summary to this path.",
     )
     return parser
 
@@ -680,16 +1335,19 @@ def main() -> int:
         for warning in list(report.get("warnings") or []):
             print(f"  WARNING: {warning}")
 
-    if len(reports) == 1:
-        report = reports[0]
-        if _as_text(args.report_json):
-            _write_report_file(Path(args.report_json), json.dumps(report, indent=2, sort_keys=False) + "\n")
-            print(f"Wrote JSON report: {args.report_json}")
-        if _as_text(args.report_markdown):
-            _write_report_file(Path(args.report_markdown), _markdown_summary(report))
-            print(f"Wrote markdown report: {args.report_markdown}")
-    elif _as_text(args.report_json) or _as_text(args.report_markdown):
-        print("WARNING: --report-json/--report-markdown are only emitted automatically for single data-root runs.")
+    review_report = _build_review_report(reports)
+    print(f"Review summary: {int(review_report.get('flagged_count') or 0)} flagged / {int(review_report.get('clean_count') or 0)} clean")
+    classification_counts = dict(review_report.get("classification_counts") or {})
+    for key in ("reference_mismatch", "contract_drift", "repo_state_drift_only"):
+        if key in classification_counts:
+            print(f"  {key}: {int(classification_counts.get(key) or 0)}")
+
+    if _as_text(args.report_json):
+        _write_report_file(Path(args.report_json), json.dumps(review_report, indent=2, sort_keys=False) + "\n")
+        print(f"Wrote JSON report: {args.report_json}")
+    if _as_text(args.report_markdown):
+        _write_report_file(Path(args.report_markdown), _markdown_summary(review_report))
+        print(f"Wrote markdown report: {args.report_markdown}")
 
     return 0
 
