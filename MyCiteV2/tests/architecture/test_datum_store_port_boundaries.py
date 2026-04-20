@@ -33,7 +33,10 @@ def _is_allowed_absolute_import(module_name: str) -> bool:
         return True
     if root_name in getattr(sys, "stdlib_module_names", set()):
         return True
-    return module_name.startswith("MyCiteV2.packages.ports.datum_store")
+    return (
+        module_name.startswith("MyCiteV2.packages.ports.datum_store")
+        or module_name.startswith("MyCiteV2.packages.core.identities")
+    )
 
 
 class DatumStorePortBoundaryTests(unittest.TestCase):

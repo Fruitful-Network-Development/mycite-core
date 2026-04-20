@@ -2,29 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
+from MyCiteV2.packages.modules.shared import as_dict_list, as_text
 from MyCiteV2.packages.ports.network_root_read_model import (
     NetworkRootReadModelPort,
     NetworkRootReadModelRequest,
 )
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _as_dict_list(value: object) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        return []
-    return [dict(item) for item in value if isinstance(item, dict)]
-
-
 def _metric(label: str, value: object, *, meta: object = "") -> dict[str, str]:
     return {
-        "label": _as_text(label),
-        "value": _as_text(value) or "0",
-        "meta": _as_text(meta),
+        "label": as_text(label),
+        "value": as_text(value) or "0",
+        "meta": as_text(meta),
     }
 
 
@@ -49,10 +38,10 @@ class NetworkRootReadModelService:
         payload = dict(result.source.payload) if result.source is not None else {}
         portal_instance = dict(payload.get("portal_instance") or {})
         workspace = dict(payload.get("system_log_workbench") or {})
-        warnings = [str(item) for item in list(payload.get("warnings") or []) if _as_text(item)]
-        records = _as_dict_list(workspace.get("records"))
-        event_type_filters = _as_dict_list(workspace.get("event_type_filters"))
-        contract_filters = _as_dict_list(workspace.get("contract_filters"))
+        warnings = [str(item) for item in list(payload.get("warnings") or []) if as_text(item)]
+        records = as_dict_list(workspace.get("records"))
+        event_type_filters = as_dict_list(workspace.get("event_type_filters"))
+        contract_filters = as_dict_list(workspace.get("contract_filters"))
         summary = dict(workspace.get("summary") or {})
         active_filters = dict(workspace.get("active_filters") or {})
         selected_record = dict(workspace.get("selected_record") or {}) if isinstance(workspace.get("selected_record"), dict) else None
@@ -82,19 +71,19 @@ class NetworkRootReadModelService:
             "cards": cards,
             "notes": notes,
             "workspace": {
-                "state": _as_text(workspace.get("state")) or "empty",
-                "document_path": _as_text(workspace.get("document_path")),
+                "state": as_text(workspace.get("state")) or "empty",
+                "document_path": as_text(workspace.get("document_path")),
                 "active_filters": {
-                    "view": _as_text(active_filters.get("view")) or "system_logs",
-                    "contract_id": _as_text(active_filters.get("contract_id")),
-                    "event_type_id": _as_text(active_filters.get("event_type_id")),
-                    "record_id": _as_text(active_filters.get("record_id")),
+                    "view": as_text(active_filters.get("view")) or "system_logs",
+                    "contract_id": as_text(active_filters.get("contract_id")),
+                    "event_type_id": as_text(active_filters.get("event_type_id")),
+                    "record_id": as_text(active_filters.get("record_id")),
                 },
                 "summary": {
                     "record_count": int(summary.get("record_count") or 0),
                     "event_type_count": int(summary.get("event_type_count") or 0),
                     "contract_count": int(summary.get("contract_count") or 0),
-                    "latest_hops_timestamp": _as_text(summary.get("latest_hops_timestamp")),
+                    "latest_hops_timestamp": as_text(summary.get("latest_hops_timestamp")),
                 },
                 "chronology": chronology,
                 "audit_summary": audit_summary,
@@ -102,16 +91,16 @@ class NetworkRootReadModelService:
                 "contract_filters": contract_filters,
                 "records": [
                     {
-                        "datum_address": _as_text(record.get("datum_address")),
-                        "title": _as_text(record.get("title") or record.get("label")),
-                        "label": _as_text(record.get("label") or record.get("title")),
-                        "hops_timestamp": _as_text(record.get("hops_timestamp")),
-                        "event_type_id": _as_text(record.get("event_type_id")),
-                        "event_type_label": _as_text(record.get("event_type_label") or record.get("event_type_slug")),
-                        "status": _as_text(record.get("status")),
-                        "counterparty": _as_text(record.get("counterparty")),
-                        "contract_id": _as_text(record.get("contract_id")),
-                        "selected": _as_text(record.get("datum_address")) == _as_text(active_filters.get("record_id")),
+                        "datum_address": as_text(record.get("datum_address")),
+                        "title": as_text(record.get("title") or record.get("label")),
+                        "label": as_text(record.get("label") or record.get("title")),
+                        "hops_timestamp": as_text(record.get("hops_timestamp")),
+                        "event_type_id": as_text(record.get("event_type_id")),
+                        "event_type_label": as_text(record.get("event_type_label") or record.get("event_type_slug")),
+                        "status": as_text(record.get("status")),
+                        "counterparty": as_text(record.get("counterparty")),
+                        "contract_id": as_text(record.get("contract_id")),
+                        "selected": as_text(record.get("datum_address")) == as_text(active_filters.get("record_id")),
                     }
                     for record in records
                 ],

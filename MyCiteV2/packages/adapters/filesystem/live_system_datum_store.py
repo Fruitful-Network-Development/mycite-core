@@ -167,6 +167,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
     def __init__(self, data_dir: str | Path, *, public_dir: str | Path | None = None) -> None:
         self._data_dir = Path(data_dir)
         self._public_dir = None if public_dir is None else Path(public_dir)
+        self._path_capabilities: dict[str, Path] = {}
         self._rows_metadata_cache: dict[
             str,
             tuple[
@@ -183,6 +184,33 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                 tuple[str, str, dict[str, Any], tuple[AuthoritativeDatumDocumentRow, ...], list[str]],
             ],
         ] = {}
+
+    def with_path_capabilities(
+        self,
+        *,
+        system_anthology_file: str | Path | None = None,
+        system_sources_dir: str | Path | None = None,
+        payload_cache_dir: str | Path | None = None,
+        sandbox_root_dir: str | Path | None = None,
+    ) -> "FilesystemSystemDatumStoreAdapter":
+        if system_anthology_file is not None:
+            self._path_capabilities["system_anthology_file"] = Path(system_anthology_file)
+        if system_sources_dir is not None:
+            self._path_capabilities["system_sources_dir"] = Path(system_sources_dir)
+        if payload_cache_dir is not None:
+            self._path_capabilities["payload_cache_dir"] = Path(payload_cache_dir)
+        if sandbox_root_dir is not None:
+            self._path_capabilities["sandbox_root_dir"] = Path(sandbox_root_dir)
+        return self
+
+    def _resolve_path(self, key: str, fallback: Path) -> Path:
+        return self._path_capabilities.get(key, fallback)
+
+    def _relative_or_absolute(self, path: Path) -> str:
+        try:
+            return str(path.relative_to(self._data_dir))
+        except Exception:
+            return str(path)
 
     @staticmethod
     def _path_signature(path: Path) -> tuple[bool, int, int]:
@@ -258,9 +286,13 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
             if isinstance(request, AuthoritativeDatumDocumentRequest)
             else AuthoritativeDatumDocumentRequest.from_dict(request)
         )
-        anthology_file = self._data_dir / "system" / "anthology.json"
-        system_source_files = sorted((self._data_dir / "system" / "sources").glob("*.json"))
-        payload_cache_files = sorted((self._data_dir / "payloads" / "cache").glob("*.json"))
+        anthology_file = self._resolve_path("system_anthology_file", self._data_dir / "system" / "anthology.json")
+        system_source_files = sorted(
+            self._resolve_path("system_sources_dir", self._data_dir / "system" / "sources").glob("*.json")
+        )
+        payload_cache_files = sorted(
+            self._resolve_path("payload_cache_dir", self._data_dir / "payloads" / "cache").glob("*.json")
+        )
 
         documents: list[AuthoritativeDatumDocument] = []
         warnings: list[str] = []
@@ -280,7 +312,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                         ),
                         source_kind="system_anthology",
                         document_name=anthology_file.name,
-                        relative_path=str(anthology_file.relative_to(self._data_dir)),
+                        relative_path=self._relative_or_absolute(anthology_file),
                         document_metadata=metadata,
                         rows=rows,
                     )
@@ -295,7 +327,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
 
         sandbox_source_files: list[Path] = []
         seen_sandbox_document_ids: set[str] = set()
-        sandbox_root = self._data_dir / "sandbox"
+        sandbox_root = self._resolve_path("sandbox_root_dir", self._data_dir / "sandbox")
         if sandbox_root.exists() and sandbox_root.is_dir():
             for tool_dir in sorted(path for path in sandbox_root.iterdir() if path.is_dir()):
                 source_dir = tool_dir / "sources"
@@ -356,7 +388,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                             document_id=document_id,
                             source_kind="sandbox_source",
                             document_name=source_path.name,
-                            relative_path=str(source_path.relative_to(self._data_dir)),
+                            relative_path=self._relative_or_absolute(source_path),
                             tool_id=public_tool_id,
                             document_metadata=metadata_with_cache,
                             anchor_document_name=anchor_document_name,

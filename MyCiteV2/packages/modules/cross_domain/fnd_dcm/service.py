@@ -4,6 +4,8 @@ import json
 import re
 from typing import Any
 
+from MyCiteV2.packages.modules.shared import as_dict, as_list, as_text
+from MyCiteV2.packages.modules.shared.warnings import dedupe_warnings
 from MyCiteV2.packages.ports.fnd_dcm_read_only import (
     FndDcmReadOnlyPort,
     FndDcmReadOnlyRequest,
@@ -23,17 +25,15 @@ _SENTINEL_EMPTY_VALUES = {"", "~"}
 
 
 def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+    return as_text(value)
 
 
 def _as_dict(value: object) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
+    return as_dict(value)
 
 
 def _as_list(value: object) -> list[Any]:
-    return list(value) if isinstance(value, list) else []
+    return as_list(value)
 
 
 def _slugify(value: object) -> str:
@@ -129,21 +129,6 @@ def normalize_board_profile(record: dict[str, Any]) -> dict[str, Any]:
 
 def normalize_board_profiles(value: object) -> list[dict[str, Any]]:
     return [normalize_board_profile(item) for item in _as_list(value) if isinstance(item, dict)]
-
-
-def _dedupe_warnings(*sources: object) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for source in sources:
-        if not isinstance(source, list):
-            continue
-        for item in source:
-            token = _as_text(item)
-            if not token or token in seen:
-                continue
-            seen.add(token)
-            out.append(token)
-    return out
 
 
 def _dedupe_issue_rows(rows: object) -> list[dict[str, Any]]:
@@ -311,9 +296,9 @@ class FndDcmReadOnlyService:
             "issue_count": len(issues),
         }
 
-        warnings = _dedupe_warnings(payload.get("warnings"), selected.get("warnings"))
+        warnings = dedupe_warnings(payload.get("warnings"), selected.get("warnings"))
         if not selected:
-            warnings = _dedupe_warnings(warnings, ["No FND-DCM profile matched the requested site."])
+            warnings = dedupe_warnings(warnings, ["No FND-DCM profile matched the requested site."])
 
         return {
             "site_cards": site_cards,

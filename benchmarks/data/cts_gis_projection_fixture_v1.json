@@ -1,0 +1,35 @@
+{
+  "schema": "mycite.benchmarks.cts_gis_projection_fixture.v1",
+  "fixture_id": "cts_gis_projection_fixture_v1",
+  "iterations": 250,
+  "rows": [
+    {
+      "node_id": "3-2-3-17-77",
+      "title": "Summit County",
+      "point_count": 1024,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [1, 1], [2, 1], [0, 0]]]
+      }
+    },
+    {
+      "node_id": "3-2-3-17-77-1-1",
+      "title": "Akron City",
+      "point_count": 820,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[1, 1], [2, 2], [3, 2], [1, 1]]]
+      }
+    },
+    {
+      "node_id": "3-2-3-17-77-1-6",
+      "title": "Hudson City",
+      "point_count": 540,
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[2, 2], [4, 2], [4, 4], [2, 2]]]
+      }
+    }
+  ]
+}
+

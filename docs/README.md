@@ -22,3 +22,4 @@ This repository now describes one portal shell only.
 - Shell static assets are versioned through one embedded shell asset manifest
 - CTS-GIS keeps the shared shell contract unchanged while projecting a CTS-GIS-local Interface Panel body with magnitude-derived `Diktataograph` navigation and a selection-aligned `Garland`
 - Canonical term mapping and compatibility aliases are documented in `docs/contracts/portal_vocabulary_glossary.md`
+- Documentation IA and guided-task YAML standards are maintained under `docs/standards/`

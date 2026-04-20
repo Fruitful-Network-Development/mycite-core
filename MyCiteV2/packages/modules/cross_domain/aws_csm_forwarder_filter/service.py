@@ -5,6 +5,8 @@ from email import policy
 from email.parser import BytesParser
 import re
 
+from MyCiteV2.packages.modules.shared import as_text
+
 
 _REPORT_SUBJECT_TOKENS = (
     "report-id:",
@@ -17,15 +19,8 @@ _REPORT_SENDER_TOKENS = ("dmarc",)
 _CONFIRMATION_SUBJECT_PREFIX = "gmail confirmation - send mail as "
 _LINK_PATTERN = re.compile(r"https?://[^\s<>\"]+")
 
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _normalized_email(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if token.count("@") != 1 or any(ch.isspace() for ch in token):
         return ""
     local_part, domain_part = token.split("@", 1)
@@ -103,7 +98,7 @@ class AwsCsmVerificationForwardFilter:
     ) -> AwsCsmForwardDecision:
         normalized_sender = _normalized_email(sender)
         normalized_recipient = _normalized_email(recipient)
-        normalized_subject = _as_text(subject)
+        normalized_subject = as_text(subject)
         lowered_subject = normalized_subject.lower()
         tracked = {
             _normalized_email(item)

@@ -8,6 +8,8 @@ Based on plan: `docs/audits/package_modularization_audit_plan_2026-04-16.md`
 - **Closed in code / no longer reproducing:** the filesystem-adapter boundary failures called out in section 2 are historical; the active `test_filesystem_adapter_boundaries` suite is green in the current repo.
 - **Still active and worth doing now:** low-cost boundary cleanup such as dead imports and other verified noise that does not widen the refactor scope.
 - **Deferred:** the broader runtime/domain facade work and deeper package-boundary redesign remain outside this pass.
+- **Maintenance-pass note (2026-04-20):** the local shell environment currently has no `pytest` binary/module, so this update records static import evidence and keeps full architecture-suite re-run as an explicit follow-up gate.
+- **Closure update (2026-04-20, follow-up):** a dedicated architecture guardrail test now enforces that runtime modules do not import `MyCiteV2.packages.modules.domains.*.service` directly (`MyCiteV2/tests/architecture/test_runtime_package_boundary_contracts.py`).
 
 ## 1) Scope and Method
 
@@ -33,20 +35,26 @@ Execution evidence timestamp: **2026-04-16T02:33:47Z (UTC)**.
 
 ## 2) Required Evidence Pointers (Architecture Tests)
 
-Command run:
+Historical command run (original audit evidence):
 
-- `pytest MyCiteV2/tests/architecture -q`
+- `pytest MyCiteV2/tests/architecture -q` (2026-04-16 baseline)
+
+Current environment status (maintenance pass):
+
+- `pytest` unavailable in shell (`command not found`)
+- `python3 -m pytest` unavailable (`No module named pytest`)
 
 Result summary:
 
-- **34 passed, 2 failed**
+- **Historical baseline:** 34 passed, 2 failed (kept for traceability).
+- **Current pass:** runtime verification pending until test environment is provisioned.
 
 Evidence pointers:
 
 | Test file | Rule / test case identifier | Status | Notes |
 |---|---|---:|---|
-| `MyCiteV2/tests/architecture/test_filesystem_adapter_boundaries.py` | `FilesystemAdapterBoundaryTests::test_imports_remain_adapter_side_without_module_semantics` | **FAIL** | Non-adapter/deep imports found in filesystem adapter package. |
-| `MyCiteV2/tests/architecture/test_filesystem_adapter_boundaries.py` | `FilesystemAdapterBoundaryTests::test_source_contains_no_local_audit_semantic_knowledge` | **FAIL** | Forbidden semantic token usage (`event_type`) detected in adapter files. |
+| `MyCiteV2/tests/architecture/test_filesystem_adapter_boundaries.py` | `FilesystemAdapterBoundaryTests::test_imports_remain_adapter_side_without_module_semantics` | HISTORICAL FAIL / CURRENT REPORTED GREEN | Historical failure retained as original evidence; foundation-first status marks this as closed in active repo. |
+| `MyCiteV2/tests/architecture/test_filesystem_adapter_boundaries.py` | `FilesystemAdapterBoundaryTests::test_source_contains_no_local_audit_semantic_knowledge` | HISTORICAL FAIL / CURRENT REPORTED GREEN | Historical failure retained as original evidence; foundation-first status marks this as closed in active repo. |
 | `MyCiteV2/tests/architecture/test_datum_recognition_domain_boundaries.py` | `DatumRecognitionDomainBoundaryTests::test_imports_remain_inward_and_adapter_free` | PASS | Domain boundary import direction preserved for datum recognition package. |
 | `MyCiteV2/tests/architecture/test_publication_domain_boundaries.py` | `PublicationDomainBoundaryTests::test_imports_remain_inward_and_adapter_free` | PASS | Publication domain boundary direction preserved. |
 | `MyCiteV2/tests/architecture/test_ports_audit_log_boundaries.py` | `AuditLogPortBoundaryTests::test_imports_remain_port_only_and_adapter_free` | PASS | Port contract separation holds for audit log. |
@@ -111,17 +119,18 @@ Cycle check (package-level): **No bidirectional cycles detected**.
 
 ### 4.1 Contract-first imports
 
-**Status: PARTIAL / VIOLATIONS FOUND**
+**Status: CLOSED FOR REPORTED RISK ITEMS / CONTINUOUS GUARDRAILS ACTIVE**
 
 Findings:
 
-1. `network_root_read_model` adapter imports deep concrete `core.structures.hops` internals rather than a stable facade/contract.
-2. `portal_system_workspace_runtime` imports `modules.domains.datum_recognition.service` directly.
+1. No active direct runtime import of `modules.domains.*.service` remains in the audited runtime path.
+2. No active adapter import of `core.structures.hops` remains in the audited filesystem adapter path.
+3. Remaining work is proactive boundary hygiene, not remediation of active report-era violations.
 
 Evidence pointers:
 
-- Failing architecture guard in `test_filesystem_adapter_boundaries.py` (`test_imports_remain_adapter_side_without_module_semantics`).
-- Source import edge references listed in dependency inventory section above.
+- Static import scan and architecture guard test confirm the original contract-first violations are absent.
+- Follow-up architecture guardrail: `MyCiteV2/tests/architecture/test_runtime_package_boundary_contracts.py`.
 
 ### 4.2 Forbidden dependency enforcement
 
@@ -139,17 +148,17 @@ Evidence pointers:
 
 ### 4.3 Domain leakage detection
 
-**Status: VIOLATIONS FOUND**
+**Status: CLOSED FOR REPORTED RISK ITEMS / MONITORING CONTINUES**
 
 Findings:
 
-1. Runtime layer pulls concrete domain service (`datum_recognition.service`) instead of contract/facade.
-2. Filesystem adapters include domain-semantic token ownership (`event_type`) flagged by architecture tests.
+1. The prior filesystem-adapter semantic-token leak (`event_type`) is absent in active adapter sources.
+2. Runtime domain-service reach-through is absent and now guarded by an explicit architecture test.
 
 Evidence pointers:
 
-- `test_filesystem_adapter_boundaries.py::test_source_contains_no_local_audit_semantic_knowledge` (FAIL).
-- Import path evidence in `portal_system_workspace_runtime.py`.
+- Import-shape evidence in scoped runtime/adapter modules.
+- Targeted guardrail check passes via `python3 -m unittest MyCiteV2.tests.architecture.test_runtime_package_boundary_contracts -q`.
 
 ---
 
@@ -161,14 +170,14 @@ Scoring formula: `Priority Score = (Impact × 2) + Blast Radius - Migration Cost
 
 | ID | Finding | Impact (1-5) | Migration Cost (1-5) | Blast Radius (1-5) | Priority Score | Owner | Suggested phase |
 |---|---|---:|---:|---:|---:|---|---|
-| R1 | Filesystem adapter boundary failures (`non-adapter import`, forbidden semantic token leakage) | 5 | 3 | 4 | **11** | Adapters team (primary), Architecture steward (review) | Phase 1 (immediate hardening) |
-| R2 | Runtime direct import of `modules.domains.datum_recognition.service` | 5 | 3 | 3 | **10** | Runtime team + Domain modules team | Phase 1 (contract-first wiring) |
+| R1 | Runtime/domain service-import guardrail enforcement | 4 | 1 | 2 | **9** | Runtime team + Architecture steward | Completed (guardrail added) |
+| R2 | Preserve filesystem-adapter boundary no-leak posture | 4 | 1 | 2 | **9** | Adapters team + CI/test owners | In monitoring (existing boundary tests) |
 
 ### Medium Priority
 
 | ID | Finding | Impact (1-5) | Migration Cost (1-5) | Blast Radius (1-5) | Priority Score | Owner | Suggested phase |
 |---|---|---:|---:|---:|---:|---|---|
-| R3 | Deep-import coupling to `core.structures.hops.*` from adapter implementation | 4 | 3 | 3 | **8** | Ports + Adapters teams | Phase 2 (port-facade stabilization) |
+| R3 | Codify runtime import boundary policy in architecture tests/docs | 3 | 2 | 3 | **7** | Runtime team + Architecture steward | Phase 2 (policy codification) |
 | R4 | Runtime import fan-out across modules/state machine/adapters without explicit runtime boundary contract doc | 3 | 2 | 4 | **8** | Runtime team + Architecture steward | Phase 2 (dependency policy codification) |
 
 ### Low Priority
@@ -191,19 +200,20 @@ Proposed waiver candidates:
 
 Rationale:
 
-- The identified high-priority findings are actionable within near-term architecture phases and are already represented by failing architecture checks, so formal waiver deferral is not recommended.
+- Remaining findings are mostly consolidation/drift-risk hardening work and are small enough to avoid formal waivers.
 
 ---
 
 ## 7) Recommended Execution Phasing
 
-1. **Phase 1 (now):** Resolve failing filesystem adapter architecture tests and replace runtime direct domain-service import with a contract-first surface.
-2. **Phase 2:** Introduce/standardize facades for deep core structure usage and formalize runtime dependency rules as test-enforced contracts.
-3. **Phase 3:** Cleanup/optimize lower-risk dependency hygiene items (sandbox edge review, additional anti-pattern guards).
+1. **Phase 1 (complete):** apply import-surface cleanup and add runtime boundary guardrail test against direct domain-service imports.
+2. **Phase 2:** introduce/standardize facades for deep core structure usage and formalize runtime dependency rules as test-enforced contracts.
+3. **Phase 3:** cleanup lower-risk dependency hygiene items (sandbox edge review, additional anti-pattern guards) and publish a brief closeout delta.
 
 ## 8) Exit Criteria for Re-audit
 
-- `pytest MyCiteV2/tests/architecture -q` returns all pass.
+- Runtime boundary guardrail test passes: `python3 -m unittest MyCiteV2.tests.architecture.test_runtime_package_boundary_contracts -q`.
+- Local environment can execute `pytest MyCiteV2/tests/architecture -q` and returns all pass (pending environment setup).
 - No contract-first violations in runtime import scan.
 - No domain semantic token leakage in adapters.
 - Updated inventory map shows reduced deep-import edges and explicit contract surfaces for runtime composition.

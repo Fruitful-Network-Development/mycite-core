@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from MyCiteV2.packages.core.datum_refs import normalize_datum_ref
+from MyCiteV2.packages.modules.shared import as_text, normalize_focus_subject
 from MyCiteV2.packages.modules.cross_domain.aws_operational_visibility import (
     AwsReadOnlyOperationalVisibility,
     normalize_aws_operational_visibility,
@@ -16,14 +16,8 @@ _ALLOWED_COMMAND_FIELDS = frozenset(
 )
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _normalize_email(value: object, *, field_name: str) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token or "@" not in token or token.startswith("@") or token.endswith("@"):
         raise ValueError(f"{field_name} must be an email-like value")
     return token
@@ -38,8 +32,8 @@ class AwsNarrowWriteCommand:
     writable_field_set: tuple[str, ...] = field(default=("selected_verified_sender",), init=False)
 
     def __post_init__(self) -> None:
-        tenant_scope_id = _as_text(self.tenant_scope_id)
-        profile_id = _as_text(self.profile_id)
+        tenant_scope_id = as_text(self.tenant_scope_id)
+        profile_id = as_text(self.profile_id)
         if not tenant_scope_id:
             raise ValueError("aws_narrow_write.tenant_scope_id is required")
         if not profile_id:
@@ -49,10 +43,8 @@ class AwsNarrowWriteCommand:
         object.__setattr__(
             self,
             "focus_subject",
-            normalize_datum_ref(
+            normalize_focus_subject(
                 self.focus_subject,
-                require_qualified=True,
-                write_format="dot",
                 field_name="aws_narrow_write.focus_subject",
             ),
         )
@@ -140,7 +132,7 @@ class AwsNarrowWriteService:
         )
         confirmed_payload = dict(result.source.payload)
         if confirmed_payload.get("tenant_scope_id"):
-            if _as_text(confirmed_payload.get("tenant_scope_id")) != command.tenant_scope_id:
+            if as_text(confirmed_payload.get("tenant_scope_id")) != command.tenant_scope_id:
                 raise ValueError("aws_narrow_write confirmation tenant_scope_id does not match request")
         confirmed_payload["tenant_scope_id"] = command.tenant_scope_id
         confirmed_visibility = normalize_aws_operational_visibility(confirmed_payload)

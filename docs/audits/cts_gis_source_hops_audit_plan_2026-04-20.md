@@ -1,10 +1,31 @@
 # CTS-GIS Source HOPS Audit Plan (Summit Lineage)
 
+Doc type: `plan`  
+Normativity: `supporting`  
+Lifecycle: `active`  
+Last reviewed: `2026-04-20`
+
+## Purpose
+
+Create a repeatable, file-by-file audit and correction process for Summit-lineage
+CTS-GIS source profiles so HOPS geometry and source-correlation behavior remain aligned
+to current one-shell runtime conventions and package modularization boundaries.
+
+## Canonical Contract Links
+
+- `docs/contracts/portal_shell_contract.md`
+- `docs/contracts/route_model.md`
+- `docs/contracts/surface_catalog.md`
+- `docs/contracts/portal_vocabulary_glossary.md`
+- `docs/contracts/cts_gis_samras_addressing.md`
+- `docs/contracts/samras_structural_model.md`
+- `docs/contracts/samras_validity_and_mutation.md`
+
 ## Goal
 
 Create a repeatable, file-by-file audit and correction process for every Summit-lineage
-CTS-GIS source profile so HOPS geometry is verified against vetted reference GeoJSON and
-runtime projection quality is documented.
+CTS-GIS source profile so HOPS geometry is verified against vetted reference GeoJSON,
+runtime projection quality is documented, and source-file conventions remain canonical.
 
 This plan prioritizes **Hudson City (`3-2-3-17-77-1-6`) first** because it remains
 visually incorrect.
@@ -47,6 +68,38 @@ visually incorrect.
 6. **Audit output**
    - Record before/after findings, actions, and final status.
    - Update manifest entry and batch report.
+
+## Rule Investigation Track (Required Before New Repairs)
+
+For each audited source file, explicitly capture how the current rules are interpreted:
+
+1. **Geometry authority rule**
+   - Confirm whether decoded HOPS geometry is accepted, rejected, or fallback-substituted.
+   - Record rule path and reason code when semantic guardrails reject decode-valid geometry.
+2. **Source precedence rule**
+   - Confirm precedence between node-specific source documents and corpus-level source documents.
+   - Record when explicit document pinning is preserved across node/intention transitions.
+3. **Projection coherence rule**
+   - Confirm Garland/profile counts and geospatial projection counts remain aligned for the same scope.
+   - Record any count divergence with evidence and classification (`contract drift`, `data defect`, `tool bug`).
+4. **Compatibility rule**
+   - Confirm legacy compatibility behavior remains additive and does not create a second authority path.
+   - Record warnings for compatibility paths that are still exercised.
+
+## Paradigm and Modularization Alignment Checks
+
+Every audit/repair decision must pass these alignment checks:
+
+- **One-shell convention alignment**
+  - No source-file correction may redefine shell route/surface semantics.
+  - No HOPS correction may bypass runtime-owned mediation envelopes.
+- **Contract-first alignment**
+  - Any normative change discovered in practice must be proposed as a contract update task, not silently embedded in repair scripts.
+- **Modularization alignment**
+  - Keep source-repair logic in scripts/adapters; avoid introducing data-repair semantics into cross-domain runtime orchestration modules.
+  - Keep shared decode/normalization helpers in shared or core structural modules, not duplicated per feature path.
+- **Evidence alignment**
+  - Every correction must have rule evidence, data evidence, and verification evidence recorded in manifest/report outputs.
 
 ## Batch Execution Controls
 
@@ -132,3 +185,4 @@ Latest execution updates:
 - Every in-scope file is in `verified` or `blocked` state with explicit rationale.
 - Hudson City (`3-2-3-17-77-1-6`) corrected or explicitly blocked with root cause.
 - Manifest and repair reports are current and reproducible from script commands.
+- Rule investigation and modularization alignment evidence are recorded for each corrected or blocked file.

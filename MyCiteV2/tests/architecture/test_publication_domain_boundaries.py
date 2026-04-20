@@ -34,6 +34,7 @@ def _is_allowed_absolute_import(module_name: str) -> bool:
     return (
         module_name.startswith("MyCiteV2.packages.modules.domains.publication")
         or module_name.startswith("MyCiteV2.packages.ports.datum_store")
+        or module_name.startswith("MyCiteV2.packages.core.identities")
     )
 
 

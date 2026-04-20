@@ -2,11 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared import as_text
 
 
 def normalize_optional_domain_list(value: object, *, field_name: str) -> tuple[str, ...]:
@@ -18,7 +14,7 @@ def normalize_optional_domain_list(value: object, *, field_name: str) -> tuple[s
     seen: set[str] = set()
     out: list[str] = []
     for index, item in enumerate(value):
-        token = _as_text(item).lower()
+        token = as_text(item).lower()
         if not token or "." not in token:
             raise ValueError(f"{field_name}[{index}] must be a domain-like value")
         if token not in seen:
@@ -29,14 +25,14 @@ def normalize_optional_domain_list(value: object, *, field_name: str) -> tuple[s
 
 def effective_allowed_send_domains(*, primary_domain: str, extra_domains: tuple[str, ...]) -> tuple[str, ...]:
     """Union of primary `identity.domain` and optional secondary domains; always includes primary when set."""
-    primary = _as_text(primary_domain).lower()
+    primary = as_text(primary_domain).lower()
     if not primary:
         return tuple(sorted(extra_domains))
     return tuple(sorted({primary} | set(extra_domains)))
 
 
 def sender_email_domain(email: object) -> str:
-    token = _as_text(email).lower()
+    token = as_text(email).lower()
     if "@" not in token:
         return ""
     return token.split("@", 1)[1]

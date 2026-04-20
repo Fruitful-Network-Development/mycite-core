@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import multiprocessing
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -18,6 +19,21 @@ from MyCiteV2.packages.ports.audit_log import (
     AuditLogRecentWindowRequest,
     AuditLogReadRequest,
 )
+
+
+def _append_many_records(storage_file: str, count: int, worker_id: int) -> None:
+    adapter = FilesystemAuditLogAdapter(Path(storage_file))
+    for index in range(count):
+        adapter.append_audit_record(
+            AuditLogAppendRequest(
+                record={
+                    "event_type": "shell.transition.accepted",
+                    "focus_subject": f"{worker_id}-{index}",
+                    "shell_verb": "navigate",
+                    "details": {"worker": worker_id, "index": index},
+                }
+            )
+        )
 
 
 class FilesystemAuditLogAdapterTests(unittest.TestCase):
@@ -168,6 +184,29 @@ class FilesystemAuditLogAdapterTests(unittest.TestCase):
             self.assertEqual(recent.record_count, AUDIT_LOG_RECENT_WINDOW_LIMIT)
             self.assertEqual(recent.records[0].record_id, f"audit-{AUDIT_LOG_RECENT_WINDOW_LIMIT + 2:04d}")
             self.assertEqual(recent.records[-1].record_id, "audit-0003")
+
+    def test_append_is_concurrent_safe_across_processes(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            storage_file = Path(temp_dir) / "audit.ndjson"
+            worker_count = 4
+            records_per_worker = 20
+            processes: list[multiprocessing.Process] = []
+            for worker_id in range(worker_count):
+                process = multiprocessing.Process(
+                    target=_append_many_records,
+                    args=(str(storage_file), records_per_worker, worker_id),
+                )
+                process.start()
+                processes.append(process)
+            for process in processes:
+                process.join(timeout=10)
+                self.assertEqual(process.exitcode, 0)
+
+            lines = [line for line in storage_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+            self.assertEqual(len(lines), worker_count * records_per_worker)
+            parsed_records = [json.loads(line) for line in lines]
+            self.assertTrue(all(isinstance(record, dict) for record in parsed_records))
+            self.assertTrue(all(record.get("record_id") for record in parsed_records))
 
 
 if __name__ == "__main__":

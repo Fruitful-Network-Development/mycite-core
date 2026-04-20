@@ -2,6 +2,17 @@
 
 Source plan: `docs/audits/performance_weight_speed_audit_plan_2026-04-16.md`.
 
+## Maintenance-pass note (2026-04-20)
+
+- Benchmark harness and deterministic fixtures are now present:
+  - `scripts/benchmarks/build_weight.sh`
+  - `scripts/benchmarks/runtime_interactions.sh`
+  - `scripts/benchmarks/projection_serialization.py`
+  - `benchmarks/data/*` with `CHECKSUMS.sha256`
+  - generated baselines under `benchmarks/results/*_baseline.json`
+- Low-risk hotspot remediation implemented:
+  - `v2_portal_shell_core.js` now prefers `structuredClone` with safe fallback in `cloneRequest(...)`, replacing hot-path JSON clone-only behavior where supported.
+
 ## 1) Static Hotspots (Concrete Targets)
 
 ### A. Asset weight hotspots (JS/static)
@@ -72,10 +83,10 @@ Source plan: `docs/audits/performance_weight_speed_audit_plan_2026-04-16.md`.
 
 | Metric | Baseline Placeholder | Post-change Placeholder | Delta | Threshold / Rule |
 |---|---:|---:|---:|---|
-| Total JS shipped on initial load (raw) | `TBD_BASELINE_RAW_KB` | `TBD_POST_RAW_KB` | `TBD_DELTA_%` | Track for trend + composition analysis |
-| Total JS shipped on initial load (gzip) | `TBD_BASELINE_GZIP_KB` | `TBD_POST_GZIP_KB` | `TBD_DELTA_%` | **No regression rule:** Initial JS gzip must not increase by more than **+1%** from baseline. |
+| Total JS shipped on initial load (raw) | `221,798 B` | `TBD_POST_RAW_KB` | `TBD_DELTA_%` | Track for trend + composition analysis |
+| Total JS shipped on initial load (gzip) | `45,606 B` | `TBD_POST_GZIP_KB` | `TBD_DELTA_%` | **No regression rule:** Initial JS gzip must not increase by more than **+1%** from baseline. |
 | Total JS shipped on initial load (brotli) | `TBD_BASELINE_BR_KB` | `TBD_POST_BR_KB` | `TBD_DELTA_%` | Monitor with gzip trend; explain divergence |
-| Largest chunk #1..#5 (gzip) | `TBD_BASELINE_TOP5` | `TBD_POST_TOP5` | `TBD_DELTA_%` | **Chunk guardrail:** No new chunk over baseline largest chunk by more than **+5%** unless justified in RFC. |
+| Largest chunk #1..#5 (gzip) | `v2_portal_inspector_renderers.js (11,161B), portal.js (7,010B), v2_portal_aws_workspace.js (5,772B), v2_portal_system_workspace.js (4,728B), v2_portal_shell_region_renderers.js (4,439B)` | `TBD_POST_TOP5` | `TBD_DELTA_%` | **Chunk guardrail:** No new chunk over baseline largest chunk by more than **+5%** unless justified in RFC. |
 | Parse + compile + execute time (initial scripts) | `TBD_BASELINE_PARSE_EXEC_MS` | `TBD_POST_PARSE_EXEC_MS` | `TBD_DELTA_%` | Tie improvements to chunking and startup critical-path split |
 | Unused/duplicated module weight | `TBD_BASELINE_DUP_KB` | `TBD_POST_DUP_KB` | `TBD_DELTA_%` | **Improvement target:** Reduce initial JS gzip by **10–20%** in prioritized areas. |
 
@@ -87,28 +98,28 @@ Source plan: `docs/audits/performance_weight_speed_audit_plan_2026-04-16.md`.
 | Main-thread long tasks (startup + key interactions) | `TBD_BASELINE_LONGTASK_COUNT_MS` | `TBD_POST_LONGTASK_COUNT_MS` | `TBD_DELTA_%` | Must not regress user-visible responsiveness |
 | Render commit duration (hotspot flows) | `TBD_BASELINE_RENDER_COMMIT_MS` | `TBD_POST_RENDER_COMMIT_MS` | `TBD_DELTA_%` | Prioritize high-frequency flows |
 | Render count (audited screens) | `TBD_BASELINE_RENDER_COUNT` | `TBD_POST_RENDER_COUNT` | `TBD_DELTA_%` | **Render efficiency target:** Reduce redundant rerender count by **25%** on audited screens. |
-| p95 interaction latency (top journeys) | `TBD_BASELINE_P95_MS` | `TBD_POST_P95_MS` | `TBD_DELTA_%` | **No regression rule:** p95 interaction latency must remain within **±5%** of baseline at minimum. |
-| p95 interaction latency (selected hotspots) | `TBD_BASELINE_HOTSPOT_P95_MS` | `TBD_POST_HOTSPOT_P95_MS` | `TBD_DELTA_%` | **Improvement target:** p95 interaction latency reduced by **15%** for selected hotspots. |
+| p95 interaction latency (top journeys) | `136.0` | `TBD_POST_P95_MS` | `TBD_DELTA_%` | **No regression rule:** p95 interaction latency must remain within **±5%** of baseline at minimum. |
+| p95 interaction latency (selected hotspots) | `136.0` | `TBD_POST_HOTSPOT_P95_MS` | `TBD_DELTA_%` | **Improvement target:** p95 interaction latency reduced by **15%** for selected hotspots. |
 
 ### C. Projection/Serialization Metrics
 
 | Metric | Baseline Placeholder | Post-change Placeholder | Delta | Threshold / Rule |
 |---|---:|---:|---:|---|
-| End-to-end time in projection helpers (representative flows) | `TBD_BASELINE_PROJECTION_CPU_MS` | `TBD_POST_PROJECTION_CPU_MS` | `TBD_DELTA_%` | **No regression rule:** CPU time in critical projection path does not increase over baseline. |
-| Allocation count/bytes in transformation pipelines | `TBD_BASELINE_ALLOC_COUNT_BYTES` | `TBD_POST_ALLOC_COUNT_BYTES` | `TBD_DELTA_%` | **Allocation target:** Reduce intermediate object allocations by **20%** in audited pathways. |
+| End-to-end time in projection helpers (representative flows) | `median 0.039ms / p95 0.103ms` | `TBD_POST_PROJECTION_CPU_MS` | `TBD_DELTA_%` | **No regression rule:** CPU time in critical projection path does not increase over baseline. |
+| Allocation count/bytes in transformation pipelines | `425 B avg payload` | `TBD_POST_ALLOC_COUNT_BYTES` | `TBD_DELTA_%` | **Allocation target:** Reduce intermediate object allocations by **20%** in audited pathways. |
 | Serialization/deserialization CPU cost + invocation frequency | `TBD_BASELINE_SERDE_CPU_FREQ` | `TBD_POST_SERDE_CPU_FREQ` | `TBD_DELTA_%` | **Improvement target:** Reduce projection+serialization CPU time by **20%** on top 3 hotspots. |
 
 ### D. Measurement Hygiene Placeholders (must be filled in Code mode)
 
-- Dataset ID/version: `TBD_DATASET_ID`
-- Scenario script set: `TBD_SCENARIO_SCRIPT_SET`
-- Iteration count per benchmark: `TBD_ITERATION_COUNT`
+- Dataset ID/version: `portal_shell_fixture_v1 / cts_gis_projection_fixture_v1 / interaction_journeys_v1`
+- Scenario script set: `scripts/benchmarks/build_weight.sh`, `scripts/benchmarks/runtime_interactions.sh`, `scripts/benchmarks/projection_serialization.py`
+- Iteration count per benchmark: `250` (projection), fixture-bound for interaction journeys
 - Reported stats: `median` + `p95` (required)
 - Environment metadata capture:
-  - machine profile: `TBD_MACHINE_PROFILE`
-  - runtime version(s): `TBD_RUNTIME_VERSIONS`
-  - commit SHA: `TBD_COMMIT_SHA`
-- Baseline vs post storage path: `TBD_RESULTS_PATH`
+- machine profile: `linux 6.12.63+deb13-cloud-amd64`
+- runtime version(s): `python3 + shell scripts`
+- commit SHA: `TBD_COMMIT_SHA`
+- Baseline vs post storage path: `benchmarks/results/*_baseline.json`
 
 ---
 

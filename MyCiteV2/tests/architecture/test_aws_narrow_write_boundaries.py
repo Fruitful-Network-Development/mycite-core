@@ -34,6 +34,7 @@ def _is_allowed_absolute_import(module_name: str) -> bool:
         return True
     return (
         module_name.startswith("MyCiteV2.packages.core")
+        or module_name.startswith("MyCiteV2.packages.modules.shared")
         or module_name.startswith("MyCiteV2.packages.modules.cross_domain.aws_narrow_write")
         or module_name.startswith("MyCiteV2.packages.modules.cross_domain.aws_operational_visibility")
         or module_name.startswith("MyCiteV2.packages.ports.aws_narrow_write")

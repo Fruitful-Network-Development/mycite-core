@@ -3,6 +3,14 @@
 Date: 2026-04-16
 Program status: In progress (planning baseline consolidated)
 
+Maintenance note (2026-04-20):
+- This rollup is retained as historical baseline evidence.
+- Completed plan files that now have retained report evidence were removed from `docs/audits/`:
+  - `package_modularization_audit_plan_2026-04-16.md`
+  - `peripheral_packages_modularization_audit_plan_2026-04-16.md`
+  - plus previously removed completed plans recorded in `docs/audits/README.md`.
+- Active audit plans are now limited to desktop drift, documentation IA/YAML migration, and performance execution.
+
 ## Scope
 
 This rollup consolidates the active audit plans dated 2026-04-16:
@@ -14,6 +22,9 @@ This rollup consolidates the active audit plans dated 2026-04-16:
 5. `performance_weight_speed_audit_plan_2026-04-16.md`
 6. `peripheral_packages_modularization_audit_plan_2026-04-16.md`
 7. `tools_ui_implementation_audit_plan_2026-04-16.md`
+
+Status update:
+- Items 4 and 6 are completed and their plan files have been removed after report closure.
 
 ---
 

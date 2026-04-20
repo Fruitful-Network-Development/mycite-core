@@ -1,0 +1,9 @@
+{
+  "average_payload_bytes": 425,
+  "fixture_rows": 3,
+  "generated_at_utc": "2026-04-20T19:04:06.247703Z",
+  "iterations": 250,
+  "median_iteration_ms": 0.039,
+  "p95_iteration_ms": 0.103,
+  "schema": "mycite.benchmarks.projection_serialization.v1"
+}

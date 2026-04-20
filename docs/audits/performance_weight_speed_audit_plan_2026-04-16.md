@@ -1,5 +1,17 @@
 # Performance Weight/Speed Audit Plan (2026-04-16)
 
+Doc type: `plan`  
+Normativity: `supporting`  
+Lifecycle: `active`  
+Last reviewed: `2026-04-20`
+
+## Canonical Contract Links
+
+- `docs/contracts/portal_shell_contract.md`
+- `docs/contracts/route_model.md`
+- `docs/contracts/surface_catalog.md`
+- `docs/contracts/portal_vocabulary_glossary.md`
+
 ## Scope and Intent
 
 This audit plan defines how to identify and prioritize performance opportunities that reduce runtime cost and shipped weight while preserving behavior. The plan focuses on static hotspots visible from source/build artifacts and a follow-up measurement phase to be executed in Code mode.
@@ -209,3 +221,14 @@ Use a 2-axis ranking:
 
 - This document is planning-only and intentionally tool-agnostic.
 - Concrete measurement scripts, exact commands, and benchmark outputs will be added during Code mode execution.
+
+## Maintenance-pass note (2026-04-20)
+
+- Code-mode baseline harness is now present:
+  - `scripts/benchmarks/build_weight.sh`
+  - `scripts/benchmarks/runtime_interactions.sh`
+  - `scripts/benchmarks/projection_serialization.py`
+  - deterministic fixtures under `benchmarks/data/*` (with `CHECKSUMS.sha256`)
+  - baseline outputs under `benchmarks/results/*_baseline.json`
+- First low-risk optimization action from the backlog is implemented:
+  - `v2_portal_shell_core.js` clone path now prefers `structuredClone` with compatibility fallback.

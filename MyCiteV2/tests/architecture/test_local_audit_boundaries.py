@@ -37,6 +37,7 @@ def _is_allowed_absolute_import(module_name: str) -> bool:
     return (
         module_name.startswith("MyCiteV2.packages.core")
         or module_name.startswith("MyCiteV2.packages.ports")
+        or module_name.startswith("MyCiteV2.packages.modules.shared")
         or module_name.startswith("MyCiteV2.packages.modules.cross_domain.local_audit")
     )
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from MyCiteV2.packages.core.datum_refs import normalize_datum_ref
+from MyCiteV2.packages.modules.shared import as_text, normalize_focus_subject, reject_forbidden_keys
 from MyCiteV2.packages.ports.audit_log import (
     AUDIT_LOG_RECENT_WINDOW_LIMIT,
     AuditLogAppendReceipt,
@@ -56,12 +56,6 @@ _LOCAL_AUDIT_ACTIVITY_STATES = frozenset(
 )
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _normalize_json_value(value: Any, *, field_name: str) -> Any:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
@@ -70,12 +64,9 @@ def _normalize_json_value(value: Any, *, field_name: str) -> Any:
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         for key, item in value.items():
-            token = _as_text(key)
+            token = as_text(key)
             if not token:
                 raise ValueError(f"{field_name} keys must be non-empty strings")
-            lowered = token.lower()
-            if lowered in FORBIDDEN_LOCAL_AUDIT_KEYS:
-                raise ValueError(f"{field_name}.{token} is forbidden in local audit")
             out[token] = _normalize_json_value(item, field_name=f"{field_name}.{token}")
         return out
     raise ValueError(f"{field_name} must be JSON-serializable data")
@@ -89,24 +80,28 @@ class LocalAuditRecord:
     details: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
-        event_type = _as_text(self.event_type).lower()
+        event_type = as_text(self.event_type).lower()
         if not event_type:
             raise ValueError("local_audit.event_type is required")
 
-        shell_verb = _as_text(self.shell_verb).lower()
+        shell_verb = as_text(self.shell_verb).lower()
         if not shell_verb:
             raise ValueError("local_audit.shell_verb is required")
 
-        focus_subject = normalize_datum_ref(
+        focus_subject = normalize_focus_subject(
             self.focus_subject,
-            require_qualified=True,
-            write_format="dot",
             field_name="local_audit.focus_subject",
         )
 
         details = self.details if self.details is not None else {}
         if not isinstance(details, dict):
             raise ValueError("local_audit.details must be a dict")
+        reject_forbidden_keys(
+            details,
+            forbidden_keys=FORBIDDEN_LOCAL_AUDIT_KEYS,
+            field_name="local_audit.details",
+            violation_suffix="in local audit",
+        )
         normalized_details = _normalize_json_value(details, field_name="local_audit.details")
         if not isinstance(normalized_details, dict):
             raise ValueError("local_audit.details must be a dict")
@@ -146,7 +141,7 @@ class StoredLocalAuditRecord:
     record: LocalAuditRecord
 
     def __post_init__(self) -> None:
-        if not _as_text(self.record_id):
+        if not as_text(self.record_id):
             raise ValueError("stored_local_audit.record_id is required")
         if isinstance(self.record, LocalAuditRecord):
             normalized_record = self.record
@@ -154,7 +149,7 @@ class StoredLocalAuditRecord:
             normalized_record = LocalAuditRecord.from_dict(self.record)
         else:
             raise ValueError("stored_local_audit.record must be a LocalAuditRecord or dict")
-        object.__setattr__(self, "record_id", _as_text(self.record_id))
+        object.__setattr__(self, "record_id", as_text(self.record_id))
         object.__setattr__(self, "recorded_at_unix_ms", int(self.recorded_at_unix_ms))
         object.__setattr__(self, "record", normalized_record)
 
@@ -175,8 +170,8 @@ class LocalAuditOperationalStatusSummary:
     latest_recorded_at_unix_ms: int | None = None
 
     def __post_init__(self) -> None:
-        health_state = _as_text(self.health_state).lower()
-        storage_state = _as_text(self.storage_state).lower()
+        health_state = as_text(self.health_state).lower()
+        storage_state = as_text(self.storage_state).lower()
         if health_state not in _LOCAL_AUDIT_HEALTH_STATES:
             raise ValueError("local_audit_operational_status.health_state is invalid")
         if storage_state not in _LOCAL_AUDIT_STORAGE_STATES:
@@ -228,7 +223,7 @@ class LocalAuditVisibleRecord:
     details: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
-        record_id = _as_text(self.record_id)
+        record_id = as_text(self.record_id)
         if not record_id:
             raise ValueError("local_audit_visible_record.record_id is required")
         recorded_at_unix_ms = int(self.recorded_at_unix_ms)
@@ -284,7 +279,7 @@ class LocalAuditRecentActivityProjection:
     latest_recorded_at_unix_ms: int | None = None
 
     def __post_init__(self) -> None:
-        activity_state = _as_text(self.activity_state).lower()
+        activity_state = as_text(self.activity_state).lower()
         if activity_state not in _LOCAL_AUDIT_ACTIVITY_STATES:
             raise ValueError("local_audit_recent_activity.activity_state is invalid")
         if int(self.recent_window_limit) != AUDIT_LOG_RECENT_WINDOW_LIMIT:
@@ -432,7 +427,7 @@ class LocalAuditService:
         return self._require_port().append_audit_record(request)
 
     def read_record(self, record_id: object) -> StoredLocalAuditRecord | None:
-        request = AuditLogReadRequest(record_id=_as_text(record_id))
+        request = AuditLogReadRequest(record_id=as_text(record_id))
         result = self._require_port().read_audit_record(request)
         if result.record is None:
             return None
