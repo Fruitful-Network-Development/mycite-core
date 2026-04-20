@@ -1,0 +1,70 @@
+{
+  "schema": "mycite.service_tool.aws_csm.profile.v1",
+  "identity": {
+    "profile_id": "aws-csm.cvccboard.kalyanis",
+    "tenant_id": "cvccboard",
+    "domain": "cvccboard.org",
+    "region": "us-east-1",
+    "mailbox_local_part": "kalyanis",
+    "role": "operator",
+    "profile_kind": "mailbox",
+    "single_user_msn_id": "",
+    "single_user_email": "kalyanisapkal.r@gmail.com",
+    "operator_inbox_target": "kalyanisapkal.r@gmail.com",
+    "handoff_provider": "gmail",
+    "send_as_email": "kalyanis@cvccboard.org"
+  },
+  "smtp": {
+    "host": "email-smtp.us-east-1.amazonaws.com",
+    "port": "587",
+    "username": "AKIAQ6WWUMKC3QD5SRVX",
+    "credentials_source": "operator_managed",
+    "credentials_secret_name": "aws-cms/smtp/cvccboard.kalyanis",
+    "credentials_secret_state": "configured",
+    "send_as_email": "kalyanis@cvccboard.org",
+    "local_part": "kalyanis",
+    "handoff_provider": "gmail",
+    "forward_to_email": "kalyanisapkal.r@gmail.com",
+    "forwarding_status": "not_configured",
+    "handoff_ready": true,
+    "staging_state": "material_ready"
+  },
+  "verification": {
+    "status": "not_started",
+    "code": "",
+    "link": "",
+    "email_received_at": "",
+    "verified_at": "",
+    "portal_state": "not_started"
+  },
+  "provider": {
+    "handoff_provider": "gmail",
+    "send_as_provider_status": "not_started",
+    "gmail_send_as_status": "not_started",
+    "aws_ses_identity_status": "not_started",
+    "last_checked_at": "2026-04-20T23:24:16+00:00"
+  },
+  "workflow": {
+    "schema": "mycite.service_tool.aws_csm.onboarding.v1",
+    "flow": "mailbox_send_as",
+    "initiated": true,
+    "initiated_at": "2026-04-20T23:19:44+00:00",
+    "lifecycle_state": "draft",
+    "handoff_provider": "gmail",
+    "handoff_status": "ready_for_gmail_handoff",
+    "is_ready_for_user_handoff": true,
+    "smtp_staging_requested_at": "2026-04-20T23:24:16+00:00"
+  },
+  "inbound": {
+    "receive_routing_target": "kalyanisapkal.r@gmail.com",
+    "receive_state": "receive_unconfigured",
+    "receive_verified": false,
+    "portal_native_display_ready": false,
+    "legacy_forwarder_dependency": false,
+    "latest_message_sender": "",
+    "latest_message_subject": "",
+    "latest_message_captured_at": "",
+    "latest_message_s3_key": "",
+    "latest_message_s3_uri": ""
+  }
+}

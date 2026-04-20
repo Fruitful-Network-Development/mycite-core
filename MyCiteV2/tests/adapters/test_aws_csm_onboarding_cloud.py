@@ -80,6 +80,20 @@ def _domain_record() -> dict[str, object]:
     }
 
 
+def _route_destination(route: object) -> str:
+    if isinstance(route, str):
+        return route.lower()
+    if isinstance(route, dict):
+        value = (
+            route.get("f")
+            or route.get("resolved_forward_to_email")
+            or route.get("forward_to_email")
+            or ""
+        )
+        return str(value).strip().lower()
+    return ""
+
+
 class _FakeSecretsManagerClient:
     class exceptions:
         class ResourceNotFoundException(Exception):
@@ -276,6 +290,7 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
                 "credentials_secret_state": "missing",
                 "send_as_email": "marilyn@cuyahogavalleycountrysideconservancy.org",
             }
+            profile["provider"] = {}
 
             class _FakeIamQuotaBlockedClient:
                 def list_access_keys(self, *, UserName: str) -> dict[str, object]:
@@ -307,6 +322,64 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
             self.assertEqual(patch_payload["smtp"]["credentials_secret_state"], "configured")
             self.assertEqual(patch_payload["workflow"]["handoff_status"], "ready_for_generic_manual_handoff")
             secret_string = secrets.secrets["aws-cms/smtp/cvcc.marilyn"]
+            stored = json.loads(secret_string)
+            self.assertEqual(stored["username"], "AKIAEXISTING")
+            self.assertEqual(stored["reused_from_secret"], "aws-cms/smtp/cvcc.technicalContact")
+
+    def test_stage_smtp_credentials_reuses_cross_tenant_secret_when_local_secret_missing(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            secrets = _FakeSecretsManagerClient()
+            secrets.secrets["aws-cms/smtp/cvcc.technicalContact"] = json.dumps(
+                {"username": "AKIAEXISTING", "password": "SMTPPASS"},
+                separators=(",", ":"),
+            )
+            adapter = AwsEc2RoleOnboardingCloudAdapter(private_dir=temp_dir, tenant_id="cvccboard")
+            profile = _profile()
+            profile["identity"] = {
+                "profile_id": "aws-csm.cvccboard.danielg",
+                "tenant_id": "cvccboard",
+                "domain": "cvccboard.org",
+                "region": "us-east-1",
+                "mailbox_local_part": "danielg",
+                "send_as_email": "danielg@cvccboard.org",
+                "operator_inbox_target": "dgreenfi67@hotmail.com",
+            }
+            profile["smtp"] = {
+                "credentials_secret_name": "aws-cms/smtp/cvccboard.danielg",
+                "credentials_secret_state": "missing",
+                "send_as_email": "danielg@cvccboard.org",
+            }
+            profile["provider"] = {}
+
+            class _FakeIamQuotaBlockedClient:
+                def list_access_keys(self, *, UserName: str) -> dict[str, object]:
+                    _ = UserName
+                    return {
+                        "AccessKeyMetadata": [
+                            {"AccessKeyId": "AKIAONE", "Status": "Active", "CreateDate": "2026-04-01T00:00:00+00:00"},
+                            {"AccessKeyId": "AKIATWO", "Status": "Active", "CreateDate": "2026-04-02T00:00:00+00:00"},
+                        ]
+                    }
+
+                def create_access_key(self, *, UserName: str) -> dict[str, object]:
+                    raise AssertionError(f"create_access_key should not run for {UserName}")
+
+            def fake_client(service_name: str, *, region: str | None = None) -> object:
+                _ = region
+                if service_name == "secretsmanager":
+                    return secrets
+                if service_name == "iam":
+                    return _FakeIamQuotaBlockedClient()
+                if service_name == "sesv2":
+                    return _FakeSesV2Client()
+                raise AssertionError(f"unexpected service {service_name}")
+
+            with patch.object(adapter, "_client", side_effect=fake_client):
+                patch_payload = adapter.supplemental_profile_patch("stage_smtp_credentials", profile)
+
+            self.assertTrue(patch_payload["smtp"]["handoff_ready"])
+            self.assertEqual(patch_payload["smtp"]["credentials_secret_state"], "configured")
+            secret_string = secrets.secrets["aws-cms/smtp/cvccboard.danielg"]
             stored = json.loads(secret_string)
             self.assertEqual(stored["username"], "AKIAEXISTING")
             self.assertEqual(stored["reused_from_secret"], "aws-cms/smtp/cvcc.technicalContact")
@@ -350,10 +423,9 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
         self.assertEqual(summary["route_count"], 2)
         self.assertEqual(len(lambda_client.update_calls), 1)
         route_map = json.loads(lambda_client.environment["VERIFICATION_ROUTE_MAP_JSON"])
-        self.assertEqual(route_map["mark@trappfamilyfarm.com"]["forward_to_email"], "mark@trappfamilyfarm.com")
-        self.assertEqual(route_map["mark@trappfamilyfarm.com"]["resolved_forward_to_email"], "mark@trappfamilyfarm.com")
+        self.assertEqual(_route_destination(route_map["mark@trappfamilyfarm.com"]), "mark@trappfamilyfarm.com")
         self.assertEqual(
-            route_map["technicalcontact@cuyahogavalleycountrysideconservancy.org"]["forward_to_email"],
+            _route_destination(route_map["technicalcontact@cuyahogavalleycountrysideconservancy.org"]),
             "ops@example.com",
         )
 
@@ -397,11 +469,7 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
 
         route_map = json.loads(lambda_client.environment["VERIFICATION_ROUTE_MAP_JSON"])
         self.assertEqual(
-            route_map["news@cuyahogavalleycountrysideconservancy.org"]["forward_to_email"],
-            "admin@cuyahogavalleycountrysideconservancy.org",
-        )
-        self.assertEqual(
-            route_map["news@cuyahogavalleycountrysideconservancy.org"]["resolved_forward_to_email"],
+            _route_destination(route_map["news@cuyahogavalleycountrysideconservancy.org"]),
             "dylancarsonmontgomery@gmail.com",
         )
 

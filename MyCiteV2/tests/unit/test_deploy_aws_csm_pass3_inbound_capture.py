@@ -50,16 +50,45 @@ class DeployAwsCsmPass3InboundCaptureTests(unittest.TestCase):
 
             routes = _build_route_map(root)
 
-        self.assertEqual(
-            routes,
-            {
-                "mark@trappfamilyfarm.com": {
-                    "forward_to_email": "trapp.family.farm@gmail.com",
-                    "profile_id": "aws-csm.tff.mark",
-                    "domain": "trappfamilyfarm.com",
-                }
-            },
-        )
+        self.assertEqual(routes, {"mark@trappfamilyfarm.com": "trapp.family.farm@gmail.com"})
+
+    def test_build_route_map_resolves_alias_chain(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _write_json(
+                root / "aws-csm.cvcc.admin.json",
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvcc.admin",
+                        "domain": "cuyahogavalleycountrysideconservancy.org",
+                        "send_as_email": "admin@cuyahogavalleycountrysideconservancy.org",
+                    },
+                    "smtp": {
+                        "forward_to_email": "dylancarsonmontgomery@gmail.com",
+                    },
+                },
+            )
+            _write_json(
+                root / "aws-csm.cvcc.news.json",
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvcc.news",
+                        "domain": "cuyahogavalleycountrysideconservancy.org",
+                        "send_as_email": "news@cuyahogavalleycountrysideconservancy.org",
+                    },
+                    "smtp": {
+                        "forward_to_email": "admin@cuyahogavalleycountrysideconservancy.org",
+                    },
+                },
+            )
+            routes = _build_route_map(root)
+
+        news = routes["news@cuyahogavalleycountrysideconservancy.org"]
+        self.assertIsInstance(news, dict)
+        self.assertEqual(news["f"], "dylancarsonmontgomery@gmail.com")
+        self.assertEqual(news["p"], "generic_manual")
 
     def test_updated_rule_replaces_legacy_forwarder_and_normalizes_fnd_prefix(self) -> None:
         updated = _updated_rule(

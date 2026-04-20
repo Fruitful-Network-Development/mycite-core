@@ -6,7 +6,21 @@
     "aws-csm.fnd.dylan.json",
     "aws-csm.tff.technicalContact.json",
     "aws-csm.tff.mark.json",
-    "aws-csm.cvcc.technicalContact.json",
-    "aws-csm.cvcc.marilyn.json"
+    "aws-csm.cvcc.marilyn.json",
+    "aws-csm.cvccboard.danielg.json",
+    "aws-csm.cvccboard.elizabethb.json",
+    "aws-csm.cvccboard.jenniferg.json",
+    "aws-csm.cvccboard.jennifert.json",
+    "aws-csm.cvccboard.kalyanis.json",
+    "aws-csm.cvccboard.marilynw.json",
+    "aws-csm.cvccboard.saras.json",
+    "aws-csm.cvccboard.susans.json",
+    "aws-csm.cvccboard.nathans.json",
+    "aws-csm.cvccboard.matthewm.json",
+    "aws-csm.cvcc.tech.json",
+    "aws-csm.cvcc.finance.json",
+    "aws-csm.cvcc.board.json",
+    "aws-csm.cvcc.admin.json",
+    "aws-csm.cvcc.news.json"
   ]
 }

@@ -824,6 +824,11 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
             "single_user_email": _as_text(identity.get("single_user_email") or selected_profile.get("user_email")),
             "operator_inbox_target": _as_text(identity.get("operator_inbox_target")),
             "forward_target": _as_text(smtp.get("forward_to_email") or selected_profile.get("forward_target")),
+            "handoff_provider": _as_text(
+                provider.get("handoff_provider")
+                or identity.get("handoff_provider")
+                or smtp.get("handoff_provider")
+            ),
             "smtp_host": _as_text(smtp.get("host")),
             "smtp_port": _as_text(smtp.get("port")),
             "smtp_username": _as_text(smtp.get("username")),
@@ -1305,12 +1310,16 @@ def _selected_profile_row(
     surface_query: Mapping[str, Any],
     action_payload: Mapping[str, Any],
 ) -> dict[str, Any] | None:
-    profile_id = _as_text(action_payload.get("profile_id") or surface_query.get("profile"))
-    if not profile_id:
+    candidate_ids: list[str] = []
+    for candidate in (_as_text(surface_query.get("profile")), _as_text(action_payload.get("profile_id"))):
+        if candidate and candidate not in candidate_ids:
+            candidate_ids.append(candidate)
+    if not candidate_ids:
         return None
-    for row in _mailbox_profiles(tool_root):
-        if _as_text(row.get("profile_id")) == profile_id:
-            return row
+    for candidate_id in candidate_ids:
+        for row in _mailbox_profiles(tool_root):
+            if _as_text(row.get("profile_id")) == candidate_id:
+                return row
     return None
 
 
@@ -1691,6 +1700,7 @@ def _apply_action(
                 "send_as_email": outcome.send_as_email,
                 "single_user_email": outcome.single_user_email,
                 "operator_inbox_target": outcome.operator_inbox_target,
+                "handoff_provider": outcome.handoff_provider,
             }
             _merge_route_sync_details(details, route_sync)
             message = f"Created draft AWS-CSM profile {outcome.profile_id}."
@@ -1800,6 +1810,7 @@ def _apply_action(
                 "send_as_email": _as_text(dispatch.get("send_as_email")),
                 "sent_to": _as_text(dispatch.get("sent_to")),
                 "message_id": _as_text(dispatch.get("message_id")),
+                "handoff_provider": _as_text(dispatch.get("handoff_provider")),
             }
             _append_local_audit(
                 audit_storage_file=audit_storage_file,

@@ -259,7 +259,10 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
             workflow = payload.get("workflow") if isinstance(payload.get("workflow"), dict) else {}
             if _as_text(verification.get("status")).lower() != "verified":
                 continue
-            if _as_text(provider.get("gmail_send_as_status")).lower() != "verified":
+            provider_status = _as_text(provider.get("send_as_provider_status")).lower()
+            if not provider_status:
+                provider_status = _as_text(provider.get("gmail_send_as_status")).lower()
+            if provider_status != "verified":
                 continue
             if not bool(workflow.get("is_send_as_confirmed") or workflow.get("is_mailbox_operational")):
                 continue
