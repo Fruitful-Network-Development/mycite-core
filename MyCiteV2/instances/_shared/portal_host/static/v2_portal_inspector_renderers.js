@@ -1218,6 +1218,8 @@
     var garlandSplit = interfaceBody.garland_split_projection || {};
     var geospatialProjection = garlandSplit.geospatial_projection || {};
     var profileProjection = garlandSplit.profile_projection || {};
+    var districtToggle = profileProjection.district_overlay_toggle || {};
+    var hasDistrictToggleRequest = !!(districtToggle.shell_request && districtToggle.shell_request.tool_state);
     var decodeSummary = geospatialProjection.decode_summary || {};
     var activePathEntries = navigationCanvas.active_path || [];
     activePathEntries.forEach(function (entry, index) {
@@ -1233,6 +1235,7 @@
     var entriesByKind = {
       path: activePathEntries,
       feature: geospatialProjection.features || [],
+      district_toggle: hasDistrictToggleRequest ? [districtToggle] : [],
     };
     var hasRealGeospatialProjection = !!geospatialProjection.has_real_projection;
     var hasRealProfileProjection = !!profileProjection.has_real_projection;
@@ -1303,6 +1306,29 @@
         "</div>";
     var profileMarkup = (hasRealProfileProjection || hasProfileState)
       ? '<section class="cts-gis-garlandSplit__profileBody">' +
+        '<section class="cts-gis-garlandSplit__profileBlock"><h5>District Precinct Collections</h5>' +
+        '<button type="button" class="cts-gis-entryButton cts-gis-entryButton--toggle' +
+        (districtToggle.enabled ? " is-active" : "") +
+        '" data-cts-gis-entry-kind="district_toggle" data-cts-gis-entry-index="0"' +
+        (hasDistrictToggleRequest ? "" : " disabled") +
+        ">" +
+        '<span class="cts-gis-entryButton__title">' +
+        escapeHtml(districtToggle.enabled ? "Enabled" : "Disabled") +
+        "</span>" +
+        '<span class="cts-gis-entryButton__meta">time: ' +
+        escapeHtml(districtToggle.time_token || "inactive") +
+        " · " +
+        escapeHtml(districtToggle.timeframe_match ? "within timeframe" : "outside timeframe") +
+        " · " +
+        escapeHtml(districtToggle.overlay_active ? "overlay active" : "overlay inactive") +
+        "</span>" +
+        "</button>" +
+        ((districtToggle.timeframe_tokens || []).length
+          ? '<p class="cts-gis-mapCanvas__meta">timeframes: ' +
+            escapeHtml((districtToggle.timeframe_tokens || []).join(", ")) +
+            "</p>"
+          : "") +
+        "</section>" +
         '<section class="cts-gis-garlandSplit__profileBlock"><h5>Hierarchy</h5>' +
         renderProfileHierarchy(profileProjection.hierarchy || []) +
         "</section>" +

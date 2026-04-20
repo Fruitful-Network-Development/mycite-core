@@ -1,22 +1,29 @@
-Not currently in this repo. There isn’t an existing deploy script checked in.
+Done — you now have a single wrapper script for exactly this.
 
-You can use this as your repeatable deploy script:
+Created:
+- `MyCiteV2/scripts/deploy.sh`
 
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
+It supports:
+- `./deploy.sh all` → sync deployed `data/public/private` + deploy portal code
+- `./deploy.sh data` → sync deployed `data/public/private` only
+- `./deploy.sh portal` (or `code`) → deploy portal code only
+- `./deploy.sh -- ...` → pass raw options straight to `deploy_portal_update.sh`
 
-# restart both portal services
-sudo systemctl restart mycite-v2-fnd-portal.service mycite-v2-tff-portal.service
+I also made it executable and verified all three modes with dry-runs:
+- `./deploy.sh all --instance fnd --dry-run`
+- `./deploy.sh data --instance fnd --dry-run`
+- `./deploy.sh portal --instance fnd --dry-run`
 
-# verify services are active
-systemctl is-active mycite-v2-fnd-portal.service mycite-v2-tff-portal.service
+So for your normal need, you can now run:
 
-# health checks
-curl -fsS http://127.0.0.1:6101/portal/healthz >/dev/null
-curl -fsS http://127.0.0.1:6203/portal/healthz >/dev/null
+- Update everything:
+  - `cd /srv/repo/mycite-core/MyCiteV2/scripts`
+  - `./deploy.sh all --instance fnd`
 
-echo "Deploy restart + health checks passed."
-```
+- Update deployed repo data only:
+  - `./deploy.sh data --instance fnd`
 
-If you want, I can add this as a tracked file (for example `scripts/deploy_portals.sh`) and make it executable.
+- Update portal code only:
+  - `./deploy.sh portal --instance fnd`
+
+If you want, I can run a real `./deploy.sh all --instance fnd` now (non-dry-run).

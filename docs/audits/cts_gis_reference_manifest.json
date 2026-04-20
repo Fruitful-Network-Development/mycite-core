@@ -1,18 +1,24 @@
 {
   "manifest_type": "cts_gis_reference_geojson_manifest",
-  "generated_at_utc": "2026-04-20T13:33:04Z",
+  "generated_at_utc": "2026-04-20T17:46:01Z",
   "entries": [
     {
       "node_id": "3-2-3-17",
       "source_profile": "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17.json",
       "source_profile_path": "/srv/repo/mycite-core/deployed/fnd/data/sandbox/cts-gis/sources/sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17.json",
       "reference_geojson_source": "/srv/repo/mycite-core/docs/personal_notes/CTS-GIS-prototype-mockup/3-2-3-17.geojson",
-      "reference_geojson_path": "/srv/repo/mycite-core/docs/personal_notes/CTS-GIS-prototype-mockup/3-2-3-17.geojson",
-      "reference_geojson_sha256": "344f71633411f057133c433afa4018d691449745667591a1ef42a10860a62564",
+      "reference_geojson_path": "",
+      "reference_geojson_sha256": "",
       "status": "repaired",
-      "before_issue_types": [],
-      "after_issue_types": [],
-      "checked_at_utc": "2026-04-20T13:33:04Z"
+      "before_issue_types": [
+        "contract_violation",
+        "polygon_count_mismatch"
+      ],
+      "after_issue_types": [
+        "contract_violation",
+        "polygon_count_mismatch"
+      ],
+      "checked_at_utc": "2026-04-20T17:46:01Z"
     },
     {
       "node_id": "3-2-3-17-77",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from MyCiteV2.packages.core.structures.hops import (
@@ -15,6 +16,7 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     DEFAULT_INTENTION_TOKEN as _DEFAULT_INTENTION_TOKEN,
     DEFAULT_PROJECTION_DOCUMENT_SUFFIX as _DEFAULT_PROJECTION_DOCUMENT_SUFFIX,
     DEFAULT_SUPPORTING_DOCUMENT_NAME as _DEFAULT_SUPPORTING_DOCUMENT_NAME,
+    DEFAULT_TIME_DIRECTIVE as _DEFAULT_TIME_DIRECTIVE,
     LEGACY_SELF_INTENTION_TOKEN as _LEGACY_SELF_INTENTION_TOKEN,
     as_text as _as_text,
     canonical_service_intention_token,
@@ -274,6 +276,49 @@ def _matching_precinct_profiles(
             continue
         matches.append(profile)
     return sorted(matches, key=_profile_sort_key)
+
+
+def _district_timeframe_tokens(document_bundle: dict[str, Any]) -> list[str]:
+    tokens: set[str] = set()
+    for row in list(document_bundle.get("row_views") or []):
+        for label in list(row.get("labels") or []):
+            token = _as_text(label).lower()
+            if not token:
+                continue
+            if any(marker in token for marker in ("time_frame", "district", "present", "precinct_group")):
+                tokens.add(token)
+    return sorted(tokens)
+
+
+def _time_context_in_timeframe(*, time_token: str, timeframe_tokens: list[str]) -> bool:
+    token = _as_text(time_token).lower()
+    if not token or not timeframe_tokens:
+        return False
+    if token in timeframe_tokens:
+        return True
+    if token in {"today", _as_text(_DEFAULT_TIME_DIRECTIVE).lower()}:
+        return any("present" in item for item in timeframe_tokens)
+    for timeframe in timeframe_tokens:
+        parts = [part for part in timeframe.replace("-", "_").split("_") if part]
+        if token in parts:
+            return True
+    return False
+
+
+def _document_district_timeframe_tokens(document: DatumRecognitionDocument) -> list[str]:
+    tokens: set[str] = set()
+    for row in list(getattr(document, "rows", ()) or []):
+        raw = getattr(row, "raw", None)
+        labels: list[object] = []
+        if isinstance(raw, list) and len(raw) > 1:
+            labels = list(raw[1]) if isinstance(raw[1], (list, tuple)) else [raw[1]]
+        for label in labels:
+            token = _as_text(label).lower()
+            if not token:
+                continue
+            if any(marker in token for marker in ("time_frame", "district", "present", "precinct_group")):
+                tokens.add(token)
+    return sorted(tokens)
 
 
 def _descendants_intention_token(attention_node_id: str) -> str:
@@ -1310,6 +1355,153 @@ def _preferred_default_projection_document(
     return None
 
 
+def _document_node_id(document: DatumRecognitionDocument) -> str:
+    candidates = [
+        _as_text(getattr(document, "document_name", "")),
+        _as_text(getattr(document, "document_id", "")),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        stem = candidate[:-5] if candidate.endswith(".json") else candidate
+        tail = stem.rsplit(".", 1)[-1]
+        if _address_tuple(tail):
+            return tail
+    return ""
+
+
+def _document_projection_cache_key(document: DatumRecognitionDocument, *, overlay_mode: str) -> tuple[Any, ...]:
+    metadata = dict(getattr(document, "document_metadata", {}) or {})
+    filesystem_cache = dict(metadata.get("__filesystem_cache__") or {})
+    source_signature = dict(filesystem_cache.get("source_signature") or {})
+    anchor_signature = dict(filesystem_cache.get("anchor_signature") or {})
+    row_count = len(tuple(getattr(document, "rows", ()) or ()))
+    anchor_row_count = len(tuple(getattr(document, "anchor_rows", ()) or ()))
+    metadata_fingerprint = ""
+    if not source_signature and not anchor_signature:
+        normalized_metadata = {
+            key: value
+            for key, value in metadata.items()
+            if key != "__filesystem_cache__"
+        }
+        metadata_fingerprint = json.dumps(normalized_metadata, sort_keys=True, default=str)
+    return (
+        _as_text(getattr(document, "document_id", "")),
+        _as_text(getattr(document, "relative_path", "")),
+        _as_text(overlay_mode),
+        metadata_fingerprint,
+        bool(source_signature.get("exists")),
+        int(source_signature.get("mtime_ns") or 0),
+        int(source_signature.get("size") or 0),
+        bool(anchor_signature.get("exists")),
+        int(anchor_signature.get("mtime_ns") or 0),
+        int(anchor_signature.get("size") or 0),
+        row_count,
+        anchor_row_count,
+    )
+
+
+def _is_descendants_intention_token(token: str, *, attention_node_id: str) -> bool:
+    if not token:
+        return False
+    return token == _descendants_intention_token(attention_node_id) or token == "descendants_depth_1_or_2"
+
+
+def _is_children_intention_token(token: str, *, attention_node_id: str) -> bool:
+    if not token:
+        return False
+    return token == _children_intention_token(attention_node_id) or token == "children"
+
+
+def _scoped_projection_documents(
+    *,
+    documents: list[DatumRecognitionDocument],
+    target_document: DatumRecognitionDocument | None,
+    requested_attention_node_id: str,
+    requested_intention_token: str,
+    time_context_active: bool,
+    precinct_district_overlay_enabled: bool,
+) -> list[DatumRecognitionDocument]:
+    if not documents:
+        return []
+    if (
+        not _as_text(requested_attention_node_id)
+        and not _as_text(requested_intention_token)
+        and not bool(time_context_active)
+    ):
+        return list(documents)
+    attention_node_id = _as_text(requested_attention_node_id)
+    intention_token = _as_text(requested_intention_token)
+    if not attention_node_id and target_document is not None:
+        attention_node_id = _document_node_id(target_document)
+    if not attention_node_id:
+        return [target_document] if target_document is not None else [documents[0]]
+
+    descendant_intention = _is_descendants_intention_token(intention_token, attention_node_id=attention_node_id)
+    children_intention = _is_children_intention_token(intention_token, attention_node_id=attention_node_id)
+    branch_node_id = ""
+    if intention_token.startswith(_BRANCH_INTENTION_PREFIX):
+        branch_node_id = _as_text(intention_token[len(_BRANCH_INTENTION_PREFIX) :])
+
+    out: list[DatumRecognitionDocument] = []
+    seen_ids: set[str] = set()
+
+    def _include(document: DatumRecognitionDocument) -> None:
+        doc_id = _as_text(getattr(document, "document_id", ""))
+        if not doc_id or doc_id in seen_ids:
+            return
+        seen_ids.add(doc_id)
+        out.append(document)
+
+    if target_document is not None:
+        _include(target_document)
+    for document in documents:
+        node_id = _document_node_id(document)
+        if not node_id:
+            relative_path = _as_text(getattr(document, "relative_path", ""))
+            if (
+                precinct_district_overlay_enabled
+                and time_context_active
+                and "/precincts/" in relative_path.replace("\\", "/")
+            ):
+                _include(document)
+                continue
+            if intention_token and intention_token not in {"self", _LEGACY_SELF_INTENTION_TOKEN}:
+                _include(document)
+            continue
+        include = node_id == attention_node_id
+        if branch_node_id and node_id == branch_node_id:
+            include = True
+        if children_intention:
+            include = include or _address_is_descendant(
+                node_id,
+                root_node_id=attention_node_id,
+                min_extra_segments=1,
+                max_extra_segments=1,
+            )
+        if descendant_intention:
+            include = include or _address_is_descendant(
+                node_id,
+                root_node_id=attention_node_id,
+                min_extra_segments=1,
+                max_extra_segments=2,
+            )
+        if (
+            precinct_district_overlay_enabled
+            and time_context_active
+            and _precinct_profile_matches_attention(
+                precinct_node_id=node_id,
+                attention_node_id=attention_node_id,
+            )
+        ):
+            include = True
+        if include:
+            _include(document)
+    if out:
+        return out
+    return [target_document] if target_document is not None else [documents[0]]
+
+
 def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mode: str) -> dict[str, Any]:
     row_address_set = {row.datum_address for row in document.rows}
     coordinate_authority = _build_cts_gis_coordinate_authority(document)
@@ -1761,8 +1953,23 @@ def _document_lookup_by_row_address(
 
 
 class CtsGisReadOnlyService:
+    _DOCUMENT_PROJECTION_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
+    _DOCUMENT_PROJECTION_CACHE_MAX = 512
+
     def __init__(self, datum_store: AuthoritativeDatumDocumentPort | None) -> None:
         self._datum_store = datum_store
+
+    @classmethod
+    def _cached_document_projection(cls, document: DatumRecognitionDocument, *, overlay_mode: str) -> dict[str, Any]:
+        cache_key = _document_projection_cache_key(document, overlay_mode=overlay_mode)
+        cached = cls._DOCUMENT_PROJECTION_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+        projection = _build_document_projection(document, overlay_mode=overlay_mode)
+        cls._DOCUMENT_PROJECTION_CACHE[cache_key] = projection
+        if len(cls._DOCUMENT_PROJECTION_CACHE) > cls._DOCUMENT_PROJECTION_CACHE_MAX:
+            cls._DOCUMENT_PROJECTION_CACHE.pop(next(iter(cls._DOCUMENT_PROJECTION_CACHE)))
+        return projection
 
     def read_projection_bundle(
         self,
@@ -1776,6 +1983,10 @@ class CtsGisReadOnlyService:
         overlay_mode: object = "auto",
         raw_underlay_visible: object = False,
         project_all_documents: object | None = None,
+        requested_intention_token: object = "",
+        time_context_active: object = False,
+        precinct_district_overlay_enabled: object = False,
+        requested_time_token: object = "",
     ) -> dict[str, Any]:
         if self._datum_store is None:
             raise ValueError("cts_gis.datum_store is not configured")
@@ -1797,6 +2008,10 @@ class CtsGisReadOnlyService:
         requested_row_address = _as_text(selected_row_address)
         requested_feature_id = _as_text(selected_feature_id)
         requested_attention_node_id = _as_text(attention_node_id)
+        requested_intention_token_text = _as_text(requested_intention_token)
+        time_context_active_flag = bool(time_context_active)
+        precinct_district_overlay_enabled_flag = bool(precinct_district_overlay_enabled)
+        requested_time_token_text = _as_text(requested_time_token)
         if project_all_documents is None:
             project_all_documents = not requested_document_id
         project_all_documents = bool(project_all_documents)
@@ -1820,6 +2035,15 @@ class CtsGisReadOnlyService:
                     break
         if target_document is None and cts_gis_documents:
             target_document = cts_gis_documents[0]
+        scope_timeframes = _document_district_timeframe_tokens(target_document) if target_document is not None else []
+        precinct_scope_active = bool(
+            precinct_district_overlay_enabled_flag
+            and time_context_active_flag
+            and _time_context_in_timeframe(
+                time_token=requested_time_token_text,
+                timeframe_tokens=scope_timeframes,
+            )
+        )
 
         document_catalog = []
         for document in cts_gis_documents:
@@ -1831,9 +2055,21 @@ class CtsGisReadOnlyService:
             summary["selected"] = _as_text(summary.get("document_id")) == _as_text(getattr(target_document, "document_id", ""))
             document_catalog.append(summary)
 
-        target_documents = cts_gis_documents if project_all_documents else ([] if target_document is None else [target_document])
+        target_documents = (
+            _scoped_projection_documents(
+                documents=cts_gis_documents,
+                target_document=target_document,
+                requested_attention_node_id=requested_attention_node_id,
+                requested_intention_token=requested_intention_token_text,
+                time_context_active=time_context_active_flag,
+                precinct_district_overlay_enabled=precinct_scope_active,
+            )
+            if project_all_documents
+            else ([] if target_document is None else [target_document])
+        )
         documents = [
-            _build_document_projection(document, overlay_mode=normalized_overlay_mode) for document in target_documents
+            self._cached_document_projection(document, overlay_mode=normalized_overlay_mode)
+            for document in target_documents
         ]
         navigation_bundle = _build_navigation_bundle(documents)
         projected_summary_map = {
@@ -1873,6 +2109,7 @@ class CtsGisReadOnlyService:
             "document_catalog": document_catalog,
             "fallback_document_summary": fallback_document_summary,
             "warnings": warnings,
+            "precinct_district_overlay_enabled": precinct_district_overlay_enabled_flag,
         }
 
     def normalize_mediation_request(
@@ -2006,12 +2243,14 @@ class CtsGisReadOnlyService:
         attention_node_id: object = "",
         intention_token: object = _DEFAULT_INTENTION_TOKEN,
         time_context: object = None,
+        precinct_district_overlay_enabled: object = False,
     ) -> dict[str, Any]:
         documents = list(projection_bundle.get("documents") or [])
         navigation_bundle = dict(projection_bundle.get("navigation_bundle") or {})
         overlay_mode = _as_text(projection_bundle.get("overlay_mode")) or "auto"
         raw_underlay_visible = bool(projection_bundle.get("raw_underlay_visible"))
         time_context_payload = _normalize_time_context(time_context)
+        precinct_district_overlay_enabled_flag = bool(precinct_district_overlay_enabled)
         selected_document_bundle = None
         for document_bundle in documents:
             if _matches_cts_gis_document_id(
@@ -2097,12 +2336,21 @@ class CtsGisReadOnlyService:
                     },
                     "available_intentions": [],
                     "selection_summary": {},
+                    "precinct_district_overlay_enabled": precinct_district_overlay_enabled_flag,
+                    "precinct_district_overlay_active": False,
                 },
                 "contextual_references": {
                     "time_context": time_context_payload,
                     "anchor_context": {
                         "samras_ruiqi": {"present": False, "bit_length": 0},
                         "chronological_hops": {"present": False, "bit_length": 0},
+                    },
+                    "district_precincts": {
+                        "enabled": precinct_district_overlay_enabled_flag,
+                        "overlay_active": False,
+                        "time_token": _as_text(time_context_payload.get("value_token")),
+                        "timeframe_tokens": [],
+                        "timeframe_match": False,
                     },
                 },
                 "warnings": warnings,
@@ -2119,6 +2367,12 @@ class CtsGisReadOnlyService:
         anchor_context = _anchor_context_metadata(selected_document_bundle.get("document"))
         time_context_without_anchor = bool(time_context_payload.get("active")) and not bool(
             (anchor_context.get("chronological_hops") or {}).get("present")
+        )
+        time_context_token = _as_text(time_context_payload.get("value_token"))
+        district_timeframes = _district_timeframe_tokens(selected_document_bundle)
+        district_timeframe_match = _time_context_in_timeframe(
+            time_token=time_context_token,
+            timeframe_tokens=district_timeframes,
         )
         attention_node_id_text = _as_text(attention_node_id)
         attention_profile = profile_index.get(attention_node_id_text)
@@ -2158,7 +2412,13 @@ class CtsGisReadOnlyService:
                 overlay_profiles = [target_profile]
         # Time-contextualized overlays may include precinct cohorts that map to
         # the active state/county attention lineage.
-        if bool(time_context_payload.get("active")) and attention_node_id_text:
+        precinct_overlay_active = bool(
+            precinct_district_overlay_enabled_flag
+            and time_context_payload.get("active")
+            and district_timeframe_match
+            and attention_node_id_text
+        )
+        if precinct_overlay_active:
             overlay_seen = {
                 _as_text(profile.get("node_id"))
                 for profile in overlay_profiles
@@ -2436,6 +2696,14 @@ class CtsGisReadOnlyService:
             warnings.extend(list(document.warnings))
         if time_context_without_anchor:
             warnings.append("Time context requested but no chronological anchor space was found in supporting anchor rows.")
+        if (
+            precinct_district_overlay_enabled_flag
+            and bool(time_context_payload.get("active"))
+            and not district_timeframe_match
+        ):
+            warnings.append(
+                f"Time context `{time_context_token or 'inactive'}` is outside district timeframe scope; precinct overlays were skipped."
+            )
         warnings = list(dict.fromkeys(_as_text(item) for item in warnings if _as_text(item)))
 
         document_catalog = []
@@ -2533,6 +2801,9 @@ class CtsGisReadOnlyService:
                 "render_feature_count": len(render_features),
                 "projection_state": projection_state,
                 "time_context_active": bool(time_context_payload.get("active")),
+                "precinct_district_overlay_enabled": precinct_district_overlay_enabled_flag,
+                "precinct_district_overlay_active": precinct_overlay_active,
+                "precinct_district_timeframe_match": district_timeframe_match,
             },
             "lens_state": {
                 "overlay_mode": overlay_mode,
@@ -2553,10 +2824,19 @@ class CtsGisReadOnlyService:
                     for option in available_intentions
                 ],
                 "selection_summary": {},
+                "precinct_district_overlay_enabled": precinct_district_overlay_enabled_flag,
+                "precinct_district_overlay_active": precinct_overlay_active,
             },
             "contextual_references": {
                 "time_context": time_context_payload,
                 "anchor_context": anchor_context,
+                "district_precincts": {
+                    "enabled": precinct_district_overlay_enabled_flag,
+                    "overlay_active": precinct_overlay_active,
+                    "time_token": time_context_token,
+                    "timeframe_tokens": district_timeframes,
+                    "timeframe_match": district_timeframe_match,
+                },
             },
             "warnings": warnings,
             "_render_row_views": render_row_views,
@@ -2722,6 +3002,7 @@ class CtsGisReadOnlyService:
                     "render_feature_count": int((mediation_surface.get("map_projection") or {}).get("feature_count") or 0),
                 },
             },
+            "contextual_references": dict(mediation_surface.get("contextual_references") or {}),
             "warnings": list(mediation_surface.get("warnings") or []),
         }
         return out
@@ -2739,6 +3020,7 @@ class CtsGisReadOnlyService:
     ) -> dict[str, Any]:
         mediation_state = mediation_state if isinstance(mediation_state, dict) else {}
         requested_intention_token = _as_text(mediation_state.get("intention_token"))
+        requested_time_context = _normalize_time_context(mediation_state.get("time"))
         widened_intention_requested = bool(
             requested_intention_token
             and requested_intention_token not in {"self", _LEGACY_SELF_INTENTION_TOKEN}
@@ -2753,6 +3035,10 @@ class CtsGisReadOnlyService:
             overlay_mode=overlay_mode,
             raw_underlay_visible=raw_underlay_visible,
             project_all_documents=widened_intention_requested,
+            requested_intention_token=requested_intention_token,
+            time_context_active=bool(requested_time_context.get("active")),
+            precinct_district_overlay_enabled=bool(mediation_state.get("precinct_district_overlay_enabled")),
+            requested_time_token=_as_text(requested_time_context.get("value_token")),
         )
         normalized_request = self.normalize_mediation_request(
             projection_bundle,
@@ -2767,6 +3053,7 @@ class CtsGisReadOnlyService:
             attention_node_id=normalized_request["attention_node_id"],
             intention_token=normalized_request["intention_token"],
             time_context=normalized_request.get("time_context"),
+            precinct_district_overlay_enabled=bool(mediation_state.get("precinct_district_overlay_enabled")),
         )
         intention_warnings = list(normalized_request.get("intention_warnings") or [])
         if intention_warnings:

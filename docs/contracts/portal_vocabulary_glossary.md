@@ -18,3 +18,8 @@ Notes:
 
 - CTS-GIS phase-B (v2.5.4) removes legacy CTS-GIS alias acceptance from active contracts.
 - The canonical shell chrome language is `ide-shell`, `ide-menubar`, `ide-body`, `Activity Bar`, `Control Panel`, `Workbench`, and `Interface Panel`.
+
+## CTS-GIS Terms
+
+- **filament datum**: a source-file owner binding row (typically `7-*`) used as the forward-facing access point for a profile source, including primary and additive collection references for projection mediation.
+- **hyphae value**: the derived connective value used when composing a source datum file from its filament datum relationship chain, preserving primary boundary and additive collection intent across source-generation workflows.

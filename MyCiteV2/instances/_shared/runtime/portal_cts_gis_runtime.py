@@ -50,6 +50,7 @@ _CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
 _CANONICAL_TOOL_SLUG = "cts-gis"
 _CANONICAL_TOOL_ANCHOR_PATTERN = "tool.*.cts-gis.json"
 _LEGACY_DOCUMENT_PREFIX = "sandbox:" + ("map" + "s") + ":"
+_DATUM_STORE_BY_DATA_DIR: dict[str, FilesystemSystemDatumStoreAdapter] = {}
 
 
 class LegacyMapsAliasUnsupportedError(ValueError):
@@ -67,6 +68,19 @@ def _path_or_none(path: str | Path | None) -> Path | None:
     if path is None:
         return None
     return Path(path)
+
+
+def _datum_store_for_data_dir(data_dir: str | Path | None) -> FilesystemSystemDatumStoreAdapter | None:
+    root = _path_or_none(data_dir)
+    if root is None:
+        return None
+    cache_key = str(root.resolve())
+    cached = _DATUM_STORE_BY_DATA_DIR.get(cache_key)
+    if cached is not None:
+        return cached
+    store = FilesystemSystemDatumStoreAdapter(root)
+    _DATUM_STORE_BY_DATA_DIR[cache_key] = store
+    return store
 
 
 def _safe_json_object(path: Path | None) -> dict[str, Any]:
@@ -223,6 +237,7 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
                 or normalized_payload.get("selected_document_id")
                 or normalized_payload.get("attention_document_id")
             ),
+            "precinct_district_overlay_enabled": bool(raw_source.get("precinct_district_overlay_enabled")),
         },
         "selection": {
             "selected_row_address": _as_text(
@@ -282,7 +297,9 @@ def _datum_summary(data_dir: str | Path | None, *, portal_instance_id: str) -> d
             "warnings": ["data_dir_missing"],
         }
     try:
-        datum_store = FilesystemSystemDatumStoreAdapter(Path(data_dir))
+        datum_store = _datum_store_for_data_dir(data_dir)
+        if datum_store is None:
+            raise ValueError("data_dir_missing")
         catalog = datum_store.read_authoritative_datum_documents(
             AuthoritativeDatumDocumentRequest(tenant_id=portal_instance_id)
         )
@@ -534,6 +551,9 @@ def _resolved_tool_state(
         },
         "source": {
             "attention_document_id": requested_attention_document_id,
+            "precinct_district_overlay_enabled": bool(
+                requested_tool_state.get("source", {}).get("precinct_district_overlay_enabled")
+            ),
         },
         "selection": {
             "selected_row_address": _as_text(diagnostic_summary.get("selected_row_address"))
@@ -643,6 +663,23 @@ def _time_shell_request(
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
     next_state["aitas"]["time_directive"] = _as_text(time_directive)
+    next_state["selection"]["selected_row_address"] = ""
+    next_state["selection"]["selected_feature_id"] = ""
+    next_state["selection"]["selected_row_explicit"] = False
+    next_state["selection"]["selected_feature_explicit"] = False
+    return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
+
+
+def _precinct_overlay_shell_request(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    tool_state: dict[str, Any],
+    enabled: bool,
+) -> dict[str, Any]:
+    next_state = _tool_state_clone(tool_state)
+    next_state.setdefault("source", {})
+    next_state["source"]["precinct_district_overlay_enabled"] = bool(enabled)
     next_state["selection"]["selected_row_address"] = ""
     next_state["selection"]["selected_feature_id"] = ""
     next_state["selection"]["selected_row_explicit"] = False
@@ -822,13 +859,13 @@ def _cts_gis_control_panel(
         if _as_text(level.get("token")) == current_intention_rule_id:
             intention_level_index = index
             break
-    time_tokens = ["", "today"]
+    time_tokens = [_DEFAULT_TIME_DIRECTIVE]
     if current_time_directive and current_time_directive not in time_tokens:
-        time_tokens.insert(1, current_time_directive)
+        time_tokens.insert(0, current_time_directive)
     time_entries = [
         {
-            "label": f"Time · {token if token else 'inactive'}",
-            "prefix": token if token else "inactive",
+            "label": f"Time · {token}",
+            "prefix": token,
             "meta": "set time context",
             "active": token == current_time_directive,
             "shell_request": _time_shell_request(
@@ -1644,6 +1681,14 @@ def _empty_profile_projection(*, warnings: list[str] | None = None) -> dict[str,
         "hierarchy": [],
         "summary_rows": [],
         "warnings": list(warnings or []),
+        "district_overlay_toggle": {
+            "enabled": False,
+            "overlay_active": False,
+            "time_token": "",
+            "timeframe_tokens": [],
+            "timeframe_match": False,
+            "shell_request": {},
+        },
         "empty_message": "No projected profile is available until the active path resolves real CTS-GIS evidence.",
         "has_profile_state": False,
         "has_real_projection": False,
@@ -1661,6 +1706,8 @@ def _cts_gis_interface_body(
 ) -> dict[str, Any]:
     attention_profile = dict(service_surface.get("attention_profile") or {})
     lens_state = dict(service_surface.get("lens_state") or {})
+    contextual_references = dict(service_surface.get("contextual_references") or {})
+    district_precincts = dict(contextual_references.get("district_precincts") or {})
     selected_document = dict(service_surface.get("selected_document") or {})
     supporting_document = dict(source_evidence.get("administrative_source") or {})
     active_path_entries = list(navigation_canvas.get("active_path") or [])
@@ -1679,6 +1726,20 @@ def _cts_gis_interface_body(
 
     geospatial_projection = _empty_geospatial_projection()
     profile_projection = _empty_profile_projection(warnings=list(service_surface.get("warnings") or []))
+    district_overlay_enabled = bool(resolved_tool_state.get("source", {}).get("precinct_district_overlay_enabled"))
+    district_overlay_toggle = {
+        "enabled": district_overlay_enabled,
+        "overlay_active": bool(district_precincts.get("overlay_active")),
+        "time_token": _as_text(district_precincts.get("time_token")),
+        "timeframe_tokens": list(district_precincts.get("timeframe_tokens") or []),
+        "timeframe_match": bool(district_precincts.get("timeframe_match")),
+        "shell_request": _precinct_overlay_shell_request(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            tool_state=resolved_tool_state,
+            enabled=not district_overlay_enabled,
+        ),
+    }
     real_geospatial_projection, garland_swapped = _real_geospatial_projection(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -1731,6 +1792,7 @@ def _cts_gis_interface_body(
                 {"label": "Decode summary", "value": decode_summary_text},
             ],
             "warnings": list(service_surface.get("warnings") or []),
+            "district_overlay_toggle": district_overlay_toggle,
             "empty_message": "",
             "has_profile_state": True,
             "has_real_projection": True,
@@ -1754,6 +1816,7 @@ def _cts_gis_interface_body(
                 {"label": "Projection state", "value": "awaiting_real_projection"},
                 {"label": "Decode summary", "value": decode_summary_text},
             ],
+            "district_overlay_toggle": district_overlay_toggle,
             "empty_message": "The selected node resolves structurally, but no profile projection is available for it yet.",
             "has_profile_state": True,
             "lens_state": lens_state,
@@ -1798,7 +1861,7 @@ def build_portal_cts_gis_surface_bundle(
     missing_capabilities = [
         capability for capability in tool_entry.required_capabilities if capability not in portal_scope.capabilities
     ]
-    datum_store = None if data_dir is None else FilesystemSystemDatumStoreAdapter(Path(data_dir))
+    datum_store = _datum_store_for_data_dir(data_dir)
     raw_tool_state = (
         normalized_request_payload.get("tool_state")
         if isinstance(normalized_request_payload.get("tool_state"), dict)
@@ -1838,6 +1901,9 @@ def build_portal_cts_gis_surface_bundle(
                     else ""
                 ),
                 "time": mediation_time,
+                "precinct_district_overlay_enabled": bool(
+                    requested_tool_state.get("source", {}).get("precinct_district_overlay_enabled")
+                ),
             },
     ) if datum_store is not None else {
         "document_catalog": [],
