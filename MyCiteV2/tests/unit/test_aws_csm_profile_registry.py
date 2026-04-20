@@ -66,9 +66,11 @@ class AwsCsmProfileRegistryServiceTests(unittest.TestCase):
         self.assertEqual(created["workflow"]["handoff_status"], "not_started")
         self.assertEqual(created["verification"]["portal_state"], "not_started")
         self.assertEqual(created["provider"]["gmail_send_as_status"], "not_started")
+        self.assertEqual(created["provider"]["send_as_provider_status"], "not_started")
+        self.assertEqual(created["provider"]["handoff_provider"], "generic_manual")
         self.assertEqual(created["inbound"]["receive_state"], "receive_unconfigured")
 
-    def test_create_profile_rejects_duplicates_for_profile_send_as_and_single_user(self) -> None:
+    def test_create_profile_rejects_duplicates_for_profile_and_send_as_only(self) -> None:
         existing = {
             "schema": "mycite.service_tool.aws_csm.profile.v1",
             "identity": {
@@ -94,14 +96,50 @@ class AwsCsmProfileRegistryServiceTests(unittest.TestCase):
                 }
             )
 
-        with self.assertRaisesRegex(ValueError, "single_user_email already exists"):
-            service.create_profile(
-                {
-                    "domain": "fruitfulnetworkdevelopment.com",
-                    "mailbox_local_part": "jordan",
-                    "single_user_email": "alex@example.com",
-                }
-            )
+    def test_create_profile_allows_duplicate_single_user_email(self) -> None:
+        existing = {
+            "schema": "mycite.service_tool.aws_csm.profile.v1",
+            "identity": {
+                "profile_id": "aws-csm.fnd.alex",
+                "tenant_id": "fnd",
+                "domain": "fruitfulnetworkdevelopment.com",
+                "send_as_email": "alex@fruitfulnetworkdevelopment.com",
+                "single_user_email": "alex@example.com",
+            },
+        }
+        registry = _FakeRegistryPort(
+            seed={"domain": "fruitfulnetworkdevelopment.com", "tenant_id": "fnd", "region": "us-east-1"},
+            profiles=[existing],
+        )
+        service = AwsCsmProfileRegistryService(registry)
+        outcome = service.create_profile(
+            {
+                "domain": "fruitfulnetworkdevelopment.com",
+                "mailbox_local_part": "jordan",
+                "single_user_email": "alex@example.com",
+            }
+        )
+        self.assertEqual(outcome.profile_id, "aws-csm.fnd.jordan")
+
+    def test_create_profile_accepts_explicit_handoff_provider(self) -> None:
+        registry = _FakeRegistryPort(
+            seed={
+                "domain": "fruitfulnetworkdevelopment.com",
+                "tenant_id": "fnd",
+                "region": "us-east-1",
+                "provider": {"aws_ses_identity_status": "verified", "last_checked_at": "2026-04-17T00:00:00+00:00"},
+            }
+        )
+        outcome = AwsCsmProfileRegistryService(registry).create_profile(
+            {
+                "domain": "fruitfulnetworkdevelopment.com",
+                "mailbox_local_part": "tech",
+                "single_user_email": "ops@gmail.com",
+                "handoff_provider": "outlook",
+            }
+        )
+        self.assertEqual(outcome.created_profile["identity"]["handoff_provider"], "outlook")
+        self.assertEqual(outcome.created_profile["provider"]["handoff_provider"], "outlook")
 
     def test_create_profile_requires_seed_tenant_metadata(self) -> None:
         service = AwsCsmProfileRegistryService(_FakeRegistryPort())

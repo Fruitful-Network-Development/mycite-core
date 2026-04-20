@@ -86,6 +86,7 @@ _ALLOWED_ACTION_KINDS = frozenset(
         "refresh_provider_status",
         "capture_verification",
         "confirm_verified",
+        "confirm_verified_attested",
     }
 )
 _SERVICE_ACTION_KINDS = frozenset(
@@ -94,6 +95,7 @@ _SERVICE_ACTION_KINDS = frozenset(
         "refresh_provider_status",
         "capture_verification",
         "confirm_verified",
+        "confirm_verified_attested",
     }
 )
 
@@ -275,7 +277,9 @@ def _mailbox_profiles(tool_root: Path | None) -> list[dict[str, Any]]:
                 "workflow_state": _as_text(workflow.get("lifecycle_state")) or "unknown",
                 "verification_state": _as_text(verification.get("portal_state") or verification.get("status")) or "unknown",
                 "provider_state": _as_text(
-                    provider.get("gmail_send_as_status") or provider.get("aws_ses_identity_status")
+                    provider.get("send_as_provider_status")
+                    or provider.get("gmail_send_as_status")
+                    or provider.get("aws_ses_identity_status")
                 )
                 or "unknown",
                 "inbound_state": _as_text(inbound.get("receive_state")) or "unknown",
@@ -787,6 +791,12 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
             "enabled": True,
             "disabled_reason": "",
         },
+        {
+            "kind": "confirm_verified_attested",
+            "label": "Confirm Verified (Attested)",
+            "enabled": True,
+            "disabled_reason": "",
+        },
     ]
     return {
         "profile_id": _as_text(selected_profile.get("profile_id")),
@@ -802,7 +812,11 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
             or inbound.get("latest_message_s3_uri")
             or inbound.get("capture_source_reference")
         ),
-        "provider_state": _as_text(provider.get("gmail_send_as_status") or provider.get("aws_ses_identity_status"))
+        "provider_state": _as_text(
+            provider.get("send_as_provider_status")
+            or provider.get("gmail_send_as_status")
+            or provider.get("aws_ses_identity_status")
+        )
         or _as_text(selected_profile.get("provider_state")),
         "inbound_state": _as_text(inbound.get("receive_state")) or _as_text(selected_profile.get("inbound_state")),
         "handoff": {
@@ -962,7 +976,9 @@ def _build_inspector(
                             ("verification", verification.get("portal_state") or verification.get("status")),
                             (
                                 "provider",
-                                provider.get("gmail_send_as_status") or provider.get("aws_ses_identity_status"),
+                                provider.get("send_as_provider_status")
+                                or provider.get("gmail_send_as_status")
+                                or provider.get("aws_ses_identity_status"),
                             ),
                             ("inbound", inbound.get("receive_state")),
                         ]
@@ -1794,7 +1810,7 @@ def _apply_action(
             return surface_query, _action_result(
                 action_kind=action_kind,
                 status="accepted",
-                message=f"Sent Gmail handoff instructions to {_as_text(dispatch.get('sent_to'))}.",
+                message=f"Sent send-as handoff instructions to {_as_text(dispatch.get('sent_to'))}.",
                 details=details,
                 handoff_dispatch=dispatch,
             )

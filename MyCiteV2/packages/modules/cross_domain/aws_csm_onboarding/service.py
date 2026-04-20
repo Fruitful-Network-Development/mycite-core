@@ -93,6 +93,15 @@ class AwsCsmOnboardingService:
             onboarding_action=as_text(payload.get("onboarding_action")),
         )
 
+    def _confirmation_evidence_satisfied(self, profile: dict[str, Any]) -> bool:
+        probe = getattr(self._cloud, "confirmation_evidence_satisfied", None)
+        if callable(probe):
+            return bool(probe(profile))
+        legacy_probe = getattr(self._cloud, "gmail_confirmation_evidence_satisfied", None)
+        if callable(legacy_probe):
+            return bool(legacy_probe(profile))
+        return False
+
     def _mutate_for_action(self, command: AwsCsmOnboardingCommand, working: dict[str, Any]) -> list[str]:
         action = command.onboarding_action
         touched: list[str] = []
@@ -155,20 +164,59 @@ class AwsCsmOnboardingService:
             touched.append("inbound")
 
         elif action == "confirm_verified":
-            if not self._cloud.gmail_confirmation_evidence_satisfied(working):
+            if not self._confirmation_evidence_satisfied(working):
                 raise AwsCsmOnboardingPolicyError(
-                    "gmail_confirmation_evidence_required",
-                    "confirm_verified requires Gmail confirmation evidence from the cloud port.",
+                    "confirmation_evidence_required",
+                    "confirm_verified requires confirmation evidence from the cloud port.",
                 )
             ver = as_dict(working.get("verification"))
             ver["status"] = "verified"
             ver["portal_state"] = "verified"
+            ver["verified_at"] = utc_now_iso(seconds_precision=True)
+            ver["verification_mode"] = "evidence"
+            ver["verified_by_focus_subject"] = command.focus_subject
             working["verification"] = ver
             prov = as_dict(working.get("provider"))
-            prov["gmail_send_as_status"] = "verified"
+            handoff_provider = as_text(
+                prov.get("handoff_provider")
+                or as_dict(working.get("identity")).get("handoff_provider")
+            ).lower()
+            prov["handoff_provider"] = handoff_provider or "generic_manual"
+            prov["send_as_provider_status"] = "verified"
+            if prov["handoff_provider"] == "gmail":
+                prov["gmail_send_as_status"] = "verified"
             working["provider"] = prov
             wf = as_dict(working.get("workflow"))
             wf["is_ready_for_user_handoff"] = True
+            wf["handoff_status"] = "send_as_confirmed"
+            working["workflow"] = wf
+            inbound = as_dict(working.get("inbound"))
+            inbound["portal_native_display_ready"] = True
+            working["inbound"] = inbound
+            touched.extend(["verification", "provider", "workflow", "inbound"])
+
+        elif action == "confirm_verified_attested":
+            ver = as_dict(working.get("verification"))
+            ver["status"] = "verified"
+            ver["portal_state"] = "verified"
+            ver["verified_at"] = utc_now_iso(seconds_precision=True)
+            ver["verification_mode"] = "attested"
+            ver["attested_at"] = utc_now_iso(seconds_precision=True)
+            ver["attested_by_focus_subject"] = command.focus_subject
+            working["verification"] = ver
+            prov = as_dict(working.get("provider"))
+            handoff_provider = as_text(
+                prov.get("handoff_provider")
+                or as_dict(working.get("identity")).get("handoff_provider")
+            ).lower()
+            prov["handoff_provider"] = handoff_provider or "generic_manual"
+            prov["send_as_provider_status"] = "verified"
+            if prov["handoff_provider"] == "gmail":
+                prov["gmail_send_as_status"] = "verified"
+            working["provider"] = prov
+            wf = as_dict(working.get("workflow"))
+            wf["is_ready_for_user_handoff"] = True
+            wf["handoff_status"] = "send_as_confirmed_attested"
             working["workflow"] = wf
             inbound = as_dict(working.get("inbound"))
             inbound["portal_native_display_ready"] = True

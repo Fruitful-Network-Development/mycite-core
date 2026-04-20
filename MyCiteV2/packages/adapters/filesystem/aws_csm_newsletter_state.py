@@ -113,8 +113,7 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
         profiles = [profile for profile in self._verified_profiles() if _normalized_domain(profile.get("domain")) == token]
         profiles.sort(
             key=lambda item: (
-                0 if _as_text(item.get("mailbox_local_part")).lower() == "technicalcontact" else 1,
-                0 if _as_text(item.get("role")).lower() == "technical_contact" else 1,
+                0 if _as_text(item.get("mailbox_local_part")).lower() == "admin" else 1,
                 _as_text(item.get("send_as_email")).lower(),
             )
         )

@@ -25,16 +25,18 @@ def _profile() -> dict[str, object]:
             "domain": "trappfamilyfarm.com",
             "region": "us-east-1",
             "mailbox_local_part": "mark",
+            "handoff_provider": "gmail",
             "send_as_email": "mark@trappfamilyfarm.com",
             "operator_inbox_target": "mark@trappfamilyfarm.com",
         },
         "smtp": {
             "credentials_secret_name": "aws-cms/smtp/tff.mark",
             "credentials_secret_state": "missing",
+            "handoff_provider": "gmail",
             "send_as_email": "mark@trappfamilyfarm.com",
         },
         "verification": {"status": "pending", "portal_state": "pending"},
-        "provider": {"gmail_send_as_status": "pending"},
+        "provider": {"handoff_provider": "gmail", "gmail_send_as_status": "pending", "send_as_provider_status": "pending"},
         "workflow": {"initiated": True},
         "inbound": {},
     }
@@ -303,7 +305,7 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
 
             self.assertTrue(patch_payload["smtp"]["handoff_ready"])
             self.assertEqual(patch_payload["smtp"]["credentials_secret_state"], "configured")
-            self.assertEqual(patch_payload["workflow"]["handoff_status"], "ready_for_gmail_handoff")
+            self.assertEqual(patch_payload["workflow"]["handoff_status"], "ready_for_generic_manual_handoff")
             secret_string = secrets.secrets["aws-cms/smtp/cvcc.marilyn"]
             stored = json.loads(secret_string)
             self.assertEqual(stored["username"], "AKIAEXISTING")
@@ -349,9 +351,58 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
         self.assertEqual(len(lambda_client.update_calls), 1)
         route_map = json.loads(lambda_client.environment["VERIFICATION_ROUTE_MAP_JSON"])
         self.assertEqual(route_map["mark@trappfamilyfarm.com"]["forward_to_email"], "mark@trappfamilyfarm.com")
+        self.assertEqual(route_map["mark@trappfamilyfarm.com"]["resolved_forward_to_email"], "mark@trappfamilyfarm.com")
         self.assertEqual(
             route_map["technicalcontact@cuyahogavalleycountrysideconservancy.org"]["forward_to_email"],
             "ops@example.com",
+        )
+
+    def test_sync_verification_route_map_resolves_alias_chain_targets(self) -> None:
+        adapter = AwsEc2RoleOnboardingCloudAdapter(tenant_id="cvcc")
+        lambda_client = _FakeLambdaClient(environment={"VERIFICATION_ROUTE_MAP_JSON": "{}"})
+        profiles = [
+            {
+                "schema": "mycite.service_tool.aws_csm.profile.v1",
+                "identity": {
+                    "profile_id": "aws-csm.cvcc.admin",
+                    "tenant_id": "cvcc",
+                    "domain": "cuyahogavalleycountrysideconservancy.org",
+                    "send_as_email": "admin@cuyahogavalleycountrysideconservancy.org",
+                    "operator_inbox_target": "dylancarsonmontgomery@gmail.com",
+                    "handoff_provider": "gmail",
+                },
+                "smtp": {"forward_to_email": "dylancarsonmontgomery@gmail.com"},
+            },
+            {
+                "schema": "mycite.service_tool.aws_csm.profile.v1",
+                "identity": {
+                    "profile_id": "aws-csm.cvcc.news",
+                    "tenant_id": "cvcc",
+                    "domain": "cuyahogavalleycountrysideconservancy.org",
+                    "send_as_email": "news@cuyahogavalleycountrysideconservancy.org",
+                    "operator_inbox_target": "admin@cuyahogavalleycountrysideconservancy.org",
+                },
+                "smtp": {"forward_to_email": "admin@cuyahogavalleycountrysideconservancy.org"},
+            },
+        ]
+
+        def fake_client(service_name: str, *, region: str | None = None) -> object:
+            _ = region
+            if service_name == "lambda":
+                return lambda_client
+            raise AssertionError(f"unexpected service {service_name}")
+
+        with patch.object(adapter, "_client", side_effect=fake_client):
+            adapter.sync_verification_route_map(profiles=profiles)
+
+        route_map = json.loads(lambda_client.environment["VERIFICATION_ROUTE_MAP_JSON"])
+        self.assertEqual(
+            route_map["news@cuyahogavalleycountrysideconservancy.org"]["forward_to_email"],
+            "admin@cuyahogavalleycountrysideconservancy.org",
+        )
+        self.assertEqual(
+            route_map["news@cuyahogavalleycountrysideconservancy.org"]["resolved_forward_to_email"],
+            "dylancarsonmontgomery@gmail.com",
         )
 
     def test_describe_profile_readiness_reports_receipt_rule_and_capture_evidence(self) -> None:

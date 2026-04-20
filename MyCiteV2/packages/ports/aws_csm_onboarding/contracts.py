@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -26,8 +26,12 @@ class AwsCsmOnboardingCloudPort(Protocol):
         """Top-level partial profile fragments (identity/smtp/verification/provider/workflow/inbound)."""
         ...
 
-    def gmail_confirmation_evidence_satisfied(self, profile: dict[str, Any]) -> bool:
+    def confirmation_evidence_satisfied(self, profile: dict[str, Any]) -> bool:
         """Fail closed unless confirmation evidence exists."""
+        ...
+
+    def gmail_confirmation_evidence_satisfied(self, profile: dict[str, Any]) -> bool:
+        """Backward-compatible alias for confirmation evidence checks."""
         ...
 
     def describe_profile_readiness(self, profile: dict[str, Any]) -> dict[str, Any]:
@@ -71,6 +75,7 @@ _ALLOWED_ACTIONS = frozenset(
         "replay_verification_forward",
         "confirm_receive_verified",
         "confirm_verified",
+        "confirm_verified_attested",
     }
 )
 

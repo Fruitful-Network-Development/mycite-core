@@ -25,7 +25,7 @@ S3_PREFIX_TEMPLATE = os.environ.get("S3_PREFIX_TEMPLATE", "inbound/{domain}/").s
 VERIFICATION_ROUTE_MAP_JSON = os.environ.get("VERIFICATION_ROUTE_MAP_JSON", "{}").strip()
 VERIFICATION_ALLOWED_SENDERS_JSON = os.environ.get(
     "VERIFICATION_ALLOWED_SENDERS_JSON",
-    "[\"gmail-noreply@google.com\"]",
+    "[]",
 ).strip()
 VERIFICATION_FORWARD_FROM_ADDRESS = os.environ.get(
     "VERIFICATION_FORWARD_FROM_ADDRESS",
@@ -42,12 +42,34 @@ _REPORT_SUBJECT_TOKENS = (
 _REPORT_SENDER_TOKENS = ("dmarc",)
 _CONFIRMATION_SUBJECT_PREFIX = "gmail confirmation - send mail as "
 _LINK_PATTERN = re.compile(r"https?://[^\s<>\"]+")
+_PROVIDER_SUBJECT_HINTS: dict[str, tuple[str, ...]] = {
+    "gmail": (_CONFIRMATION_SUBJECT_PREFIX,),
+    "outlook": ("verify", "verification", "confirm", "microsoft", "outlook"),
+    "yahoo": ("verify", "verification", "confirm", "yahoo"),
+    "proofpoint": ("verify", "verification", "confirm", "proofpoint"),
+    "generic_manual": ("verify", "verification", "confirm"),
+}
+_PROVIDER_ALLOWED_SENDERS: dict[str, set[str]] = {
+    "gmail": {"gmail-noreply@google.com"},
+    "outlook": {
+        "account-security-noreply@accountprotection.microsoft.com",
+        "noreply@outlook.com",
+        "no-reply@microsoft.com",
+    },
+    "yahoo": {
+        "account-security@yahoo-inc.com",
+        "no-reply@yahoo.com",
+        "noreply@yahoo.com",
+    },
+    "proofpoint": set(),
+    "generic_manual": set(),
+}
 
 _secrets = boto3.client("secretsmanager", region_name=SES_REGION)
 _s3 = boto3.client("s3", region_name=SES_REGION)
 _sesv2 = boto3.client("sesv2", region_name=SES_REGION)
 _cached_secret: str | None = None
-_cached_routes: dict[str, dict[str, str]] | None = None
+_cached_routes: dict[str, dict[str, Any]] | None = None
 _cached_allowed_senders: set[str] | None = None
 
 
@@ -72,9 +94,29 @@ def _normalized_email(value: object) -> str:
     return token
 
 
+def _normalized_provider(value: object) -> str:
+    token = _text(value).lower()
+    if token in _PROVIDER_SUBJECT_HINTS:
+        return token
+    return "generic_manual"
+
+
 def _recipient_domain(recipient: object) -> str:
     token = _normalized_email(recipient)
     return token.split("@", 1)[1] if token else ""
+
+
+def _provider_from_email(email: object) -> str:
+    domain = _recipient_domain(email)
+    if domain in {"gmail.com", "googlemail.com"}:
+        return "gmail"
+    if domain in {"outlook.com", "hotmail.com", "live.com", "msn.com"}:
+        return "outlook"
+    if domain in {"yahoo.com", "rocketmail.com", "ymail.com"}:
+        return "yahoo"
+    if domain.endswith("proofpoint.com"):
+        return "proofpoint"
+    return "generic_manual"
 
 
 def _extract_links(raw_bytes: bytes) -> list[str]:
@@ -206,7 +248,7 @@ def _post_callback(payload: dict[str, str]) -> None:
             raise RuntimeError(f"callback failed with HTTP {response.status}: {body}")
 
 
-def _verification_routes() -> dict[str, dict[str, str]]:
+def _verification_routes() -> dict[str, dict[str, Any]]:
     global _cached_routes
     if _cached_routes is not None:
         return _cached_routes
@@ -214,19 +256,31 @@ def _verification_routes() -> dict[str, dict[str, str]]:
         payload = json.loads(VERIFICATION_ROUTE_MAP_JSON or "{}")
     except json.JSONDecodeError:
         payload = {}
-    out: dict[str, dict[str, str]] = {}
+    out: dict[str, dict[str, Any]] = {}
     if isinstance(payload, dict):
         for recipient, route in payload.items():
             normalized_recipient = _normalized_email(recipient)
             if not normalized_recipient or not isinstance(route, dict):
                 continue
             forward_to_email = _normalized_email(route.get("forward_to_email"))
-            if not forward_to_email:
+            resolved_forward_to_email = _normalized_email(
+                route.get("resolved_forward_to_email") or forward_to_email
+            )
+            if not forward_to_email or not resolved_forward_to_email:
                 continue
             out[normalized_recipient] = {
                 "forward_to_email": forward_to_email,
+                "resolved_forward_to_email": resolved_forward_to_email,
+                "source_forward_to_email": _normalized_email(
+                    route.get("source_forward_to_email") or forward_to_email
+                ),
+                "forward_resolution_status": _text(route.get("forward_resolution_status")),
+                "forward_chain": list(route.get("forward_chain") or []),
                 "profile_id": _text(route.get("profile_id")),
                 "domain": _normalized_domain(route.get("domain")) or _recipient_domain(normalized_recipient),
+                "handoff_provider": _normalized_provider(
+                    route.get("handoff_provider") or _provider_from_email(forward_to_email)
+                ),
             }
     _cached_routes = out
     return out
@@ -245,11 +299,32 @@ def _allowed_senders() -> set[str]:
         for item in list(payload or [])
         if _normalized_email(item)
     }
-    _cached_allowed_senders = allowed or {"gmail-noreply@google.com"}
+    _cached_allowed_senders = allowed
     return _cached_allowed_senders
 
 
-def _decision(*, tracked_recipients: set[str], sender: str, recipient: str, subject: str, raw_bytes: bytes) -> dict[str, Any]:
+def _allowed_senders_for_provider(provider: str) -> set[str]:
+    provider_defaults = set(_PROVIDER_ALLOWED_SENDERS.get(provider, set()))
+    return provider_defaults.union(_allowed_senders())
+
+
+def _subject_matches_provider(*, provider: str, lowered_subject: str) -> bool:
+    if provider == "gmail":
+        return lowered_subject.startswith(_CONFIRMATION_SUBJECT_PREFIX)
+    hints = _PROVIDER_SUBJECT_HINTS.get(provider, _PROVIDER_SUBJECT_HINTS["generic_manual"])
+    return any(token in lowered_subject for token in hints)
+
+
+def _decision(
+    *,
+    tracked_recipients: set[str],
+    sender: str,
+    recipient: str,
+    subject: str,
+    raw_bytes: bytes,
+    handoff_provider: str,
+) -> dict[str, Any]:
+    provider = _normalized_provider(handoff_provider)
     normalized_sender = _normalized_email(sender)
     normalized_recipient = _normalized_email(recipient)
     normalized_subject = _text(subject)
@@ -258,47 +333,51 @@ def _decision(*, tracked_recipients: set[str], sender: str, recipient: str, subj
         return {"should_forward": False, "classification": "blocked_report", "reason": "sender_report_like"}
     if any(token in lowered_subject for token in _REPORT_SUBJECT_TOKENS):
         return {"should_forward": False, "classification": "blocked_report", "reason": "subject_report_like"}
-    if normalized_sender not in _allowed_senders():
+    allowed_senders = _allowed_senders_for_provider(provider)
+    if allowed_senders and normalized_sender not in allowed_senders:
         return {"should_forward": False, "classification": "blocked_sender", "reason": "sender_not_allowlisted"}
     if normalized_recipient not in tracked_recipients:
         return {"should_forward": False, "classification": "blocked_recipient", "reason": "recipient_not_tracked"}
-    if not lowered_subject.startswith(_CONFIRMATION_SUBJECT_PREFIX):
+    if not _subject_matches_provider(provider=provider, lowered_subject=lowered_subject):
         return {"should_forward": False, "classification": "blocked_subject", "reason": "subject_not_confirmation"}
     links = _extract_links(raw_bytes)
     if not links:
         return {"should_forward": False, "classification": "blocked_missing_link", "reason": "missing_confirmation_link"}
     return {
         "should_forward": True,
-        "classification": "verification_confirmation",
-        "reason": "gmail_confirmation",
+        "classification": f"verification_confirmation_{provider}",
+        "reason": f"{provider}_confirmation",
         "links": links,
     }
 
 
 def _send_verification_forward(
     *,
-    route: dict[str, str],
+    route: dict[str, Any],
     tracked_recipient: str,
     sender: str,
     subject: str,
     links: list[str],
     s3_uri: str,
 ) -> dict[str, str]:
+    destination = _text(route.get("resolved_forward_to_email") or route.get("forward_to_email"))
+    handoff_provider = _normalized_provider(route.get("handoff_provider"))
     response = _sesv2.send_email(
         FromEmailAddress=VERIFICATION_FORWARD_FROM_ADDRESS,
-        Destination={"ToAddresses": [_text(route.get("forward_to_email"))]},
+        Destination={"ToAddresses": [destination]},
         Content={
             "Simple": {
-                "Subject": {"Data": f"AWS-CSM Gmail confirmation for {tracked_recipient}"},
+                "Subject": {"Data": f"AWS-CSM send-as confirmation ({handoff_provider}) for {tracked_recipient}"},
                 "Body": {
                     "Text": {
                         "Data": "\n".join(
                             [
-                                f"Gmail confirmation received for {tracked_recipient}.",
+                                f"Send-as confirmation received for {tracked_recipient}.",
                                 "",
                                 f"Original sender: {sender}",
                                 f"Original subject: {subject}",
                                 f"Captured message: {s3_uri}",
+                                f"Forward provider: {handoff_provider}",
                                 "",
                                 "Confirmation link:",
                                 *(links[:3] or ["(missing)"]),
@@ -313,7 +392,7 @@ def _send_verification_forward(
     )
     return {
         "message_id": _text(response.get("MessageId")),
-        "sent_to": _text(route.get("forward_to_email")),
+        "sent_to": destination,
     }
 
 
@@ -366,6 +445,7 @@ def _handle_verification_record(
         recipient=resolved_recipient,
         subject=resolved_subject,
         raw_bytes=raw_bytes,
+        handoff_provider=_text(route_map[recipient].get("handoff_provider")),
     )
     print(
         json.dumps(
@@ -376,6 +456,8 @@ def _handle_verification_record(
                 "classification": decision.get("classification"),
                 "reason": decision.get("reason"),
                 "s3_uri": s3_uri,
+                "handoff_provider": _text(route_map[recipient].get("handoff_provider")),
+                "forward_resolution_status": _text(route_map[recipient].get("forward_resolution_status")),
             }
         )
     )
