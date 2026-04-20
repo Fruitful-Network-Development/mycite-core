@@ -6312,7 +6312,7 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 }
 
 .cts-gis-interface__body {
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
   align-items: stretch;
   align-content: stretch;
   gap: 0.75rem;
@@ -6349,7 +6349,37 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 
 .cts-gis-navCanvas__mode {
   min-height: 0;
+  overflow: auto;
+}
+
+.cts-gis-pane--diktataograph .cts-gis-navCanvas {
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
+}
+
+.cts-gis-pane--diktataograph .cts-gis-navCanvas__mode {
+  display: grid;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cts-gis-pane--diktataograph .cts-gis-directoryCanvas,
+.cts-gis-pane--diktataograph .cts-gis-structureCanvas {
+  height: 100%;
+  min-height: 0;
+}
+
+.cts-gis-pane--diktataograph .cts-gis-stageSelector,
+.cts-gis-pane--diktataograph .cts-gis-stageTable {
+  max-height: 100%;
+  min-height: 0;
+}
+
+.cts-gis-pane--diktataograph .cts-gis-stageTable__rows {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 .cts-gis-navField {
@@ -7186,6 +7216,7 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .cts-gis-mapStage__frame {
   min-height: 0;
   height: 100%;
+  min-height: clamp(16rem, 42vh, 34rem);
   border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
   border-radius: 14px;
   overflow: hidden;

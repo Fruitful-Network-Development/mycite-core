@@ -50,14 +50,15 @@ def _bad_source_payload(node_id: str) -> dict[str, object]:
     }
 
 
-def _state_like_payload(node_id: str) -> dict[str, object]:
+def _state_like_payload(node_id: str, *, illegal_coordinate_marker: bool = False) -> dict[str, object]:
+    district_marker = "rf.3-1-4" if illegal_coordinate_marker else "rf.3-1-1"
     return {
         "anchor_file_version": "<hash here>",
         "reference_geojson": _reference_geojson(),
         "reference_geojson_source": "test://state-reference",
         "reference_geojson_node_id": node_id,
         "datum_addressing_abstraction_space": {
-            "4-2-1": [["4-2-1", "rf.3-1-1", "3-76-0-0-0-0-0-0-0-0-0-0-0-0-0-0-0-0"], ["district_ring"]],
+            "4-2-1": [["4-2-1", district_marker, "3-76-0-0-0-0-0-0-0-0-0-0-0-0-0-0-0-0"], ["district_ring"]],
             "4-4-1": [["4-4-1", "rf.3-1-1", "3-76-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1-1"], ["state_ring"]],
             "5-0-1": [["5-0-1", "~", "4-4-1"], ["state_polygon"]],
             "5-0-26": [["5-0-26", "~", "4-2-1"], ["district_polygon"]],
@@ -69,6 +70,17 @@ def _state_like_payload(node_id: str) -> dict[str, object]:
 
 
 class RepairCtsGisFromReferenceGeojsonTests(unittest.TestCase):
+    def test_strict_contract_flags_illegal_state_coordinate_marker(self) -> None:
+        node_id = "3-2-3-17"
+        payload = _state_like_payload(node_id, illegal_coordinate_marker=True)
+        findings, _ = _MODULE._findings_for(
+            Path(f"sc.3-2-3-17-77-1-6-4-1-4.fnd.{node_id}.json"),
+            payload,
+            node_id=node_id,
+        )
+        joined = "\n".join(findings)
+        self.assertIn("4-2-1 uses non-coordinate marker (rf.3-1-4)", joined)
+
     def test_encode_reference_rows_is_deterministic(self) -> None:
         reference = _reference_geojson()
 

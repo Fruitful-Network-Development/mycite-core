@@ -944,8 +944,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertTrue(any(label.startswith("Attention · ") for label in labels))
             self.assertTrue(any(label.startswith("Intention · ") for label in labels))
             self.assertNotIn("Tool posture", labels)
-            self.assertIn("Time · inactive", labels)
-            self.assertIn("Time · today", labels)
+            self.assertIn("Time · 4-447-751-507-819", labels)
             self.assertIn("NAV", labels)
             self.assertIn("INV", labels)
             self.assertIn("MED", labels)
@@ -984,12 +983,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             time_today_entry = next(
                 entry
                 for entry in state_directive_group["entries"]
-                if entry["label"] == "Time · today"
+                if entry["label"] == "Time · 4-447-751-507-819"
             )
             source_shell_request = time_today_entry["shell_request"]
             self.assertEqual(
                 source_shell_request["tool_state"]["aitas"]["time_directive"],
-                "today",
+                "4-447-751-507-819",
             )
 
             selected_bundle = build_portal_cts_gis_surface_bundle(
@@ -1005,7 +1004,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
 
             self.assertEqual(
                 selected_bundle["surface_payload"]["tool_state"]["aitas"]["time_directive"],
-                "today",
+                "4-447-751-507-819",
             )
 
     def test_cts_gis_default_runtime_uses_county_root_projection_with_administrative_supporting_document(self) -> None:
@@ -1274,6 +1273,18 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                     "247-17-25-1",
                 ),
             )
+            district_source_path = (
+                data_dir
+                / "sandbox"
+                / "cts-gis"
+                / "sources"
+                / "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"
+            )
+            district_payload = json.loads(district_source_path.read_text(encoding="utf-8"))
+            district_space = dict(district_payload.get("datum_addressing_abstraction_space") or {})
+            district_space["5-0-26"] = [["5-0-26", "~", "4-3-1"], ["23_present-district_31"]]
+            district_payload["datum_addressing_abstraction_space"] = district_space
+            district_source_path.write_text(json.dumps(district_payload, indent=2) + "\n", encoding="utf-8")
 
             base_bundle = build_portal_cts_gis_surface_bundle(
                 portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
@@ -1307,8 +1318,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                         "selected_node_id": "3-2-3-17-77",
                         "aitas": {
                             "intention_rule_id": "3-2-3-17-77-0-0",
-                            "time_directive": "2026-Q1",
+                            "time_directive": "23",
                         },
+                        "source": {"precinct_district_overlay_enabled": True},
                     }
                 },
             )
@@ -1316,6 +1328,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             timed_feature_ids = [feature["node_id"] for feature in timed_geo["features"]]
             self.assertIn("247-17-77-1", timed_feature_ids)
             self.assertNotIn("247-17-25-1", timed_feature_ids)
+            profile_projection = timed_bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"]
+            self.assertTrue(bool((profile_projection.get("district_overlay_toggle") or {}).get("enabled")))
 
     def test_cts_gis_runtime_prefers_reference_geometry_when_projection_parity_warnings_exist(self) -> None:
         with TemporaryDirectory() as tmp:

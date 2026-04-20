@@ -272,6 +272,85 @@ def _update_owner_row_tokens(tokens: list[Any], *, node_id: str, primary_collect
     return updated
 
 
+def _strict_contract_violations(path: Path, payload: dict[str, Any], *, node_id: str) -> list[str]:
+    space = dict(payload.get("datum_addressing_abstraction_space") or {})
+    violations: list[str] = []
+    suffix = _node_id_from_source_name(path.name)
+
+    owner_row_address = _owner_row_address_for_node(space, node_id)
+    if not owner_row_address:
+        violations.append(f"missing owner row for node ({node_id})")
+    else:
+        owner_tokens = _row_tokens(space, owner_row_address)
+        if not owner_tokens:
+            violations.append(f"{owner_row_address} has no tokens")
+        elif suffix and suffix != node_id:
+            violations.append(f"suffix/node mismatch ({suffix} != {node_id})")
+        elif "rf.3-1-2" not in [as_text(token) for token in owner_tokens]:
+            violations.append(f"{owner_row_address} missing rf.3-1-2 binding")
+        elif node_id not in [as_text(token) for token in owner_tokens]:
+            violations.append(f"{owner_row_address} missing node binding token ({node_id})")
+
+        owner_collections = _collection_refs_from_owner(space, owner_row_address)
+        if not owner_collections:
+            violations.append(f"{owner_row_address} has no 6-* collection references")
+        for ref in owner_collections:
+            if ref not in space:
+                violations.append(f"{owner_row_address} references missing row ({ref})")
+
+    for row_address in sorted(space.keys()):
+        tokens = _row_tokens(space, row_address)
+        if not tokens:
+            continue
+        family = as_text(row_address).split("-", 1)[0]
+        if family == "4":
+            declared_parts = as_text(row_address).split("-")
+            declared = int(declared_parts[1]) if len(declared_parts) == 3 and declared_parts[1].isdigit() else 0
+            payload_tokens = tokens[1:]
+            if len(payload_tokens) % 2 != 0:
+                violations.append(f"{row_address} has uneven coordinate token pairing")
+                continue
+            observed = 0
+            for index in range(0, len(payload_tokens), 2):
+                marker = as_text(payload_tokens[index])
+                value = as_text(payload_tokens[index + 1]) if index + 1 < len(payload_tokens) else ""
+                if marker != "rf.3-1-1":
+                    violations.append(f"{row_address} uses non-coordinate marker ({marker})")
+                if not value:
+                    violations.append(f"{row_address} contains empty coordinate token")
+                observed += 1
+            if declared != observed:
+                violations.append(f"{row_address} declares {declared} coordinates but carries {observed}")
+            continue
+
+        if family in {"5", "6"}:
+            expected_family = "4" if family == "5" else "5"
+            refs = [as_text(token) for token in tokens[2:] if _is_row_address(token)]
+            if len(refs) != len(set(refs)):
+                violations.append(f"{row_address} has duplicate row references")
+            if not refs:
+                violations.append(f"{row_address} has no referenced rows")
+            for ref in refs:
+                ref_family = ref.split("-", 1)[0]
+                if ref_family != expected_family:
+                    violations.append(f"{row_address} references wrong family ({ref})")
+                if ref not in space:
+                    violations.append(f"{row_address} references missing row ({ref})")
+
+    ref_node_id = as_text(payload.get("reference_geojson_node_id"))
+    if ref_node_id and ref_node_id != node_id:
+        violations.append(f"reference_geojson_node_id mismatch ({ref_node_id} != {node_id})")
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for violation in violations:
+        if violation in seen:
+            continue
+        deduped.append(violation)
+        seen.add(violation)
+    return deduped
+
+
 def _rebuild_source_payload(
     *,
     source_payload: dict[str, Any],
@@ -324,15 +403,15 @@ def _rebuild_source_payload(
 
 
 def _findings_for(path: Path, payload: dict[str, Any], *, node_id: str) -> tuple[list[str], list[dict[str, Any]]]:
-    # Summit community validator is strict by design around 7-3-1/single-collection
-    # assumptions. Keep that behavior for the Summit lineage and avoid false
-    # contract failures for additive state-profile variants.
+    contract_violations = _strict_contract_violations(path, payload, node_id=node_id)
+    reference_findings = summit_repair._reference_geometry_findings(path, payload)
+
+    # Keep Summit-specific checks in addition to strict generic checks.
     if node_id.startswith("3-2-3-17-77"):
-        return (
-            summit_repair._contract_violations(path, payload),
-            summit_repair._reference_geometry_findings(path, payload),
-        )
-    return ([], [])
+        for item in summit_repair._contract_violations(path, payload):
+            if item not in contract_violations:
+                contract_violations.append(item)
+    return (contract_violations, reference_findings)
 
 
 def _entry_sort_key(entry: dict[str, Any]) -> tuple[str, str]:

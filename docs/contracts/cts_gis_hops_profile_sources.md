@@ -72,6 +72,11 @@ Decode-failure semantics:
 
 CTS-GIS profile sources use a `4 -> 5 -> 6 -> 7` chain.
 
+Terminology:
+
+- **filament datum**: the `7-*` owner binding row that acts as the forward-facing source access point for a profile.
+- **hyphae value**: the connective value derived from filament binding links when generating or repairing source profile files.
+
 ### `4-*` rows: coordinate rings
 
 `4-<n>-1` rows store one polygon ring as `n` HOPS coordinate tokens.

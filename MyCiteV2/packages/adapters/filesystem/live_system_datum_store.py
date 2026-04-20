@@ -167,6 +167,87 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
     def __init__(self, data_dir: str | Path, *, public_dir: str | Path | None = None) -> None:
         self._data_dir = Path(data_dir)
         self._public_dir = None if public_dir is None else Path(public_dir)
+        self._rows_metadata_cache: dict[
+            str,
+            tuple[
+                tuple[bool, int, int],
+                tuple[AuthoritativeDatumDocumentRow, ...] | None,
+                dict[str, Any] | None,
+                Exception | None,
+            ],
+        ] = {}
+        self._anchor_document_cache: dict[
+            str,
+            tuple[
+                tuple[bool, int, int],
+                tuple[str, str, dict[str, Any], tuple[AuthoritativeDatumDocumentRow, ...], list[str]],
+            ],
+        ] = {}
+
+    @staticmethod
+    def _path_signature(path: Path) -> tuple[bool, int, int]:
+        try:
+            stat = path.stat()
+        except OSError:
+            return (False, 0, 0)
+        return (path.is_file(), int(stat.st_mtime_ns), int(stat.st_size))
+
+    def _cached_read_document_rows_and_metadata(
+        self,
+        path: Path,
+    ) -> tuple[tuple[AuthoritativeDatumDocumentRow, ...], dict[str, Any]]:
+        cache_key = str(path)
+        signature = self._path_signature(path)
+        cached = self._rows_metadata_cache.get(cache_key)
+        if cached is not None and cached[0] == signature:
+            if cached[3] is not None:
+                raise cached[3]
+            return tuple(cached[1] or ()), dict(cached[2] or {})
+
+        try:
+            rows, metadata = _read_document_rows_and_metadata(path)
+        except Exception as exc:
+            self._rows_metadata_cache[cache_key] = (signature, None, None, exc)
+            raise
+
+        self._rows_metadata_cache[cache_key] = (signature, rows, metadata, None)
+        return rows, metadata
+
+    def _cached_load_anchor_document(
+        self,
+        path: Path | None,
+    ) -> tuple[str, str, dict[str, Any], tuple[AuthoritativeDatumDocumentRow, ...], list[str]]:
+        if path is None:
+            return "", "", {}, (), []
+        cache_key = str(path)
+        signature = self._path_signature(path)
+        cached = self._anchor_document_cache.get(cache_key)
+        if cached is not None and cached[0] == signature:
+            name, anchor_path, metadata, rows, warnings = cached[1]
+            return name, anchor_path, dict(metadata), tuple(rows), list(warnings)
+
+        warnings: list[str] = []
+        try:
+            rows, metadata = self._cached_read_document_rows_and_metadata(path)
+        except FileNotFoundError:
+            warnings.append(f"Supporting sandbox anchor document is missing at {path}.")
+            result = (path.name, str(path), {}, (), warnings)
+            self._anchor_document_cache[cache_key] = (signature, result)
+            return result
+        except json.JSONDecodeError:
+            warnings.append(f"Supporting sandbox anchor document is not valid JSON at {path}.")
+            result = (path.name, str(path), {}, (), warnings)
+            self._anchor_document_cache[cache_key] = (signature, result)
+            return result
+        except ValueError:
+            warnings.append(f"Supporting sandbox anchor document must be a JSON object at {path}.")
+            result = (path.name, str(path), {}, (), warnings)
+            self._anchor_document_cache[cache_key] = (signature, result)
+            return result
+
+        result = (path.name, str(path), dict(metadata), tuple(rows), warnings)
+        self._anchor_document_cache[cache_key] = (signature, result)
+        return result
 
     def read_authoritative_datum_documents(
         self,
@@ -189,7 +270,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
             warnings.append("Canonical system anthology is missing at data/system/anthology.json.")
         else:
             try:
-                rows, metadata = _read_document_rows_and_metadata(anthology_file)
+                rows, metadata = self._cached_read_document_rows_and_metadata(anthology_file)
                 documents.append(
                     AuthoritativeDatumDocument(
                         document_id=_document_id_for_path(
@@ -223,6 +304,8 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                 anchor_file = _find_tool_anchor_file(tool_dir)
                 public_tool_id = _canonical_tool_public_id(tool_dir.name)
                 for source_path in _iter_sandbox_source_files(source_dir, tool_id=public_tool_id):
+                    source_signature = self._path_signature(source_path)
+                    anchor_signature = self._path_signature(anchor_file) if anchor_file is not None else (False, 0, 0)
                     document_id = _document_id_for_path(
                         source_kind="sandbox_source",
                         tool_id=public_tool_id,
@@ -234,7 +317,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                     sandbox_source_files.append(source_path)
                     source_warnings: list[str] = []
                     try:
-                        rows, metadata = _read_document_rows_and_metadata(source_path)
+                        rows, metadata = self._cached_read_document_rows_and_metadata(source_path)
                     except json.JSONDecodeError:
                         rows = ()
                         metadata = {}
@@ -243,6 +326,21 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                         rows = ()
                         metadata = {}
                         source_warnings.append(f"Sandbox source document must be a JSON object at {source_path}.")
+                    metadata_with_cache = {
+                        **dict(metadata),
+                        "__filesystem_cache__": {
+                            "source_signature": {
+                                "exists": bool(source_signature[0]),
+                                "mtime_ns": int(source_signature[1]),
+                                "size": int(source_signature[2]),
+                            },
+                            "anchor_signature": {
+                                "exists": bool(anchor_signature[0]),
+                                "mtime_ns": int(anchor_signature[1]),
+                                "size": int(anchor_signature[2]),
+                            },
+                        },
+                    }
 
                     (
                         anchor_document_name,
@@ -250,7 +348,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                         anchor_document_metadata,
                         anchor_rows,
                         anchor_warnings,
-                    ) = _load_anchor_document(anchor_file)
+                    ) = self._cached_load_anchor_document(anchor_file)
                     source_warnings.extend(anchor_warnings)
 
                     documents.append(
@@ -260,7 +358,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                             document_name=source_path.name,
                             relative_path=str(source_path.relative_to(self._data_dir)),
                             tool_id=public_tool_id,
-                            document_metadata=metadata,
+                            document_metadata=metadata_with_cache,
                             anchor_document_name=anchor_document_name,
                             anchor_document_path=anchor_document_path,
                             anchor_document_metadata=anchor_document_metadata,
