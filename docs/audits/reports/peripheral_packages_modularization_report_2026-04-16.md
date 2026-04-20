@@ -4,6 +4,25 @@ Date: 2026-04-16
 Scope: `MyCiteV2/packages/modules/cross_domain/**`
 Reference plan: `docs/audits/peripheral_packages_modularization_audit_plan_2026-04-16.md`
 
+## Current status note — 2026-04-20 remediation pass
+
+- **Completed in code (plan-aligned):**
+  - Candidate C extraction is implemented via `MyCiteV2/packages/modules/shared/redaction_guards.py` and adopted by both `local_audit` and `aws_operational_visibility`.
+  - Candidate B extraction is implemented via `MyCiteV2/packages/modules/shared/datum_boundary.py` and adopted by `aws_csm_onboarding`, `aws_narrow_write`, and `local_audit`.
+  - Candidate A extraction is complete via `MyCiteV2/packages/modules/shared/scalars.py` and adopted across all active cross-domain modules (including `fnd_dcm`, `aws_csm_forwarder_filter`, `aws_csm_profile_registry`, and `aws_operational_visibility/sender_domain_policy`).
+- **Completed in code (remaining plan items):**
+  - Candidate D extraction is implemented via `MyCiteV2/packages/modules/shared/time_tokens.py` and adopted by onboarding/profile/newsletter flows.
+  - Candidate E extraction is implemented via `MyCiteV2/packages/modules/shared/warnings.py` and adopted by `fnd_ebi`, `fnd_dcm`, and newsletter warning aggregation.
+  - Newsletter decomposition is complete: pure payload/normalization/email helpers moved into `MyCiteV2/packages/modules/cross_domain/aws_csm_newsletter/payload_utils.py` with `AwsCsmNewsletterService` retained as orchestrator.
+- **Completed in tests:** targeted unit and architecture checks pass through `python3 -m unittest` for:
+  - `MyCiteV2.tests.unit.test_local_audit`
+  - `MyCiteV2.tests.unit.test_aws_operational_visibility`
+  - `MyCiteV2.tests.architecture.test_local_audit_boundaries`
+  - `MyCiteV2.tests.architecture.test_aws_operational_visibility_boundaries`
+- **Status correction:** the previously reported stale `AwsReadOnlyStatusRequest` import in `aws_csm_onboarding/service.py` is no longer present.
+- **Validation completion:** full `contracts`, `adapters`, and `architecture` suites are green via `python3 -m unittest discover`.
+- **Environment note:** system Python lacks `pip/pytest`, so suite execution was completed with `unittest` discovery over the same test directories.
+
 ## 1) Inventory Matrix (module-by-module)
 
 Legend:
@@ -32,7 +51,7 @@ Legend:
 
 **Findings / flags**
 - `aws_narrow_write` depends on `aws_operational_visibility` (cross-module read-before-write guard). This is acceptable but creates cross-module coupling that should be kept one-directional (`write` depending on `read` only) and documented as intentional.
-- `aws_csm_onboarding/service.py` imports `AwsReadOnlyStatusRequest` but does not use it. This is harmless but expands apparent dependency surface and should be removed.
+- **Closed:** `aws_csm_onboarding/service.py` no longer carries the previously reported unused `AwsReadOnlyStatusRequest` import.
 
 ### B. API surface
 
@@ -81,39 +100,53 @@ Legend:
 
 ### Candidate A: Scalar normalization helpers (`_as_text`, dict/list coercion)
 - Seen in: `aws_csm_newsletter`, `aws_csm_onboarding`, `aws_narrow_write`, `aws_operational_visibility`, `cts_gis`, `fnd_ebi`, `local_audit`, `network_root`.
-- Proposed shared path: `MyCiteV2/packages/modules/shared/scalars.py`
-- Proposed exports:
+- **Implemented shared path:** `MyCiteV2/packages/modules/shared/scalars.py`
+- **Implemented exports:**
   - `as_text(value: object) -> str`
   - `as_dict(value: Any) -> dict[str, Any]`
   - `as_dict_list(value: object) -> list[dict[str, Any]]`
-- Notes: keep strict behavior-compatible wrappers in source modules during transition to avoid drift.
+- Adoption status (this pass):
+  - `aws_csm_onboarding`, `aws_narrow_write`, `local_audit`, `aws_operational_visibility`, `fnd_ebi`, and `network_root` now use shared scalar helpers.
+  - `aws_csm_newsletter`, `fnd_dcm`, `aws_csm_forwarder_filter`, `aws_csm_profile_registry`, and `aws_operational_visibility/sender_domain_policy` now delegate scalar normalization wrappers to shared helper exports.
+  - No remaining Candidate A module is pending migration in `cross_domain`.
 
 ### Candidate B: Datum-reference normalization at boundary
 - Seen in: `aws_csm_onboarding`, `aws_narrow_write`, `local_audit`.
-- Proposed shared path: `MyCiteV2/packages/modules/shared/datum_boundary.py`
-- Proposed exports:
+- **Implemented shared path:** `MyCiteV2/packages/modules/shared/datum_boundary.py`
+- **Implemented export:**
   - `normalize_focus_subject(value: object, *, field_name: str) -> str`
-- Notes: thin wrapper around `core.datum_refs.normalize_datum_ref` for consistent field naming and error text.
+- Adoption notes:
+  - `aws_csm_onboarding` now delegates focus-subject normalization to shared helper.
+  - `aws_narrow_write` now delegates focus-subject normalization to shared helper.
+  - `local_audit` now delegates focus-subject normalization to shared helper.
 
 ### Candidate C: Secret/forbidden-key recursive rejection utilities
 - Seen in: `aws_operational_visibility` and `local_audit`.
-- Proposed shared path: `MyCiteV2/packages/modules/shared/redaction_guards.py`
-- Proposed exports:
-  - `reject_forbidden_keys(payload: Any, *, forbidden_keys: set[str], field_name: str) -> None`
-- Notes: keep module-specific forbidden-key sets local; only recursive walker should be shared.
+- **Implemented shared path:** `MyCiteV2/packages/modules/shared/redaction_guards.py`
+- **Implemented export:**
+  - `reject_forbidden_keys(payload: Any, *, forbidden_keys: Iterable[str], field_name: str, violation_suffix: str = "") -> None`
+- Adoption notes:
+  - `local_audit` now delegates forbidden-key recursion to shared utility.
+  - `aws_operational_visibility` now delegates forbidden-key recursion to shared utility.
+  - module-specific forbidden-key sets remain local.
 
 ### Candidate D: UTC timestamp token helpers
 - Seen in: `aws_csm_newsletter`, `aws_csm_onboarding` (and conceptually elsewhere).
-- Proposed shared path: `MyCiteV2/packages/modules/shared/time_tokens.py`
-- Proposed exports:
+- **Implemented shared path:** `MyCiteV2/packages/modules/shared/time_tokens.py`
+- **Implemented export:**
   - `utc_now_iso(*, seconds_precision: bool = False) -> str`
-- Notes: preserve existing precision behavior by adapter function parameters.
+- Adoption notes:
+  - onboarding/profile/newsletter flows now use shared time-token helper semantics.
+  - seconds-precision behavior is preserved where previously required.
 
 ### Candidate E: Warning dedupe/aggregation
 - Seen in: `fnd_ebi` and `aws_csm_newsletter` (warning list assembly patterns).
-- Proposed shared path: `MyCiteV2/packages/modules/shared/warnings.py`
-- Proposed exports:
-  - `dedupe_warnings(*groups: list[str]) -> list[str]`
+- **Implemented shared path:** `MyCiteV2/packages/modules/shared/warnings.py`
+- **Implemented export:**
+  - `dedupe_warnings(*groups: object) -> list[str]`
+- Adoption notes:
+  - `fnd_ebi` and `fnd_dcm` now call shared warning-dedupe helper directly.
+  - newsletter warning aggregation now uses shared dedupe utility.
 
 ## 4) Phased Migration Backlog (Phase 0–5)
 
@@ -148,9 +181,10 @@ Test gates
 ### Phase 2 — Incremental extraction by pattern family
 
 Backlog
-1. Switch `local_audit` + `aws_operational_visibility` to shared redaction guard (Candidate C).
-2. Switch `aws_csm_onboarding` + `aws_narrow_write` + `local_audit` to shared datum-boundary helper (Candidate B).
+1. ✅ Switch `local_audit` + `aws_operational_visibility` to shared redaction guard (Candidate C).
+2. ✅ Switch `aws_csm_onboarding` + `aws_narrow_write` + `local_audit` to shared datum-boundary helper (Candidate B).
 3. Switch low-risk modules to shared scalar/warning/time helpers (Candidates A/D/E) one module at a time.
+   - ✅ Complete: Candidate A/D/E migrations are complete across the active `cross_domain` surface with targeted and full-suite tests green.
 
 Rollback note
 - Preserve old helper names as delegates during each sub-step; rollback by flipping imports back.
@@ -162,8 +196,11 @@ Test gates
 
 Backlog
 1. Split `aws_csm_newsletter` into orchestrator + pure payload utilities modules.
+   - ✅ Complete: `payload_utils.py` holds pure helper logic; service remains orchestrator.
 2. Remove dead/unused imports (`AwsReadOnlyStatusRequest` in onboarding service).
+   - ✅ Complete.
 3. Confirm no cross_domain module imports any adapter implementation directly (enforce architecture test).
+   - ✅ Complete under current architecture suite.
 
 Rollback note
 - Keep compatibility wrapper in original module path that re-exports moved classes/functions.
@@ -205,22 +242,22 @@ Test gates
 |---|---|---|
 | Every audited peripheral module has completed conformance checklist | ✅ complete in this report | Includes inert `external_events` as explicit no-op module.
 | Repeated patterns identified and extraction candidates proposed only when repeated in 2+ modules | ✅ complete | Candidates A–E satisfy 2+ rule.
-| `tests/contracts` and `tests/adapters` green after final extraction phase | ⏳ pending execution in migration implementation | This report defines required gates and order, not post-refactor run results.
-| One-shell behavior unchanged from baseline | ⏳ pending phase execution | Guarded by phased gate + rollback approach above.
+| `tests/contracts` and `tests/adapters` green after final extraction phase | ✅ complete | Full suites are green via `python3 -m unittest discover` for `tests/contracts` and `tests/adapters`. |
+| One-shell behavior unchanged from baseline | ✅ complete | Runtime/contract/architecture test suites remain green after extraction and decomposition passes.
 
 ## 6) Residual Technical Debt (explicit)
 
-1. **Monolithic newsletter orchestration** (`aws_csm_newsletter`) remains high-complexity and high-side-effect in a single class.
+1. **Newsletter orchestration complexity** (`aws_csm_newsletter`) is reduced by payload utility extraction, but orchestration remains feature-dense.
 2. **Inconsistent exception taxonomy** across modules (built-in vs domain-specific) without shared error envelope standard.
 3. **Inconsistent local `__all__` discipline** (package-level exports are clear, service-module export clarity varies).
-4. **Duplicated scalar normalization/time/warning helpers** across many modules.
-5. **Potentially stale or unused dependency in onboarding service** (`AwsReadOnlyStatusRequest` import).
+4. **Duplicated scalar normalization/time/warning helpers** across many modules. **Status:** addressed for active cross-domain modules in this pass.
+5. **Potentially stale or unused dependency in onboarding service** (`AwsReadOnlyStatusRequest` import). **Status:** closed in current code; retained as historical audit note.
 6. **Sparse explicit observability contract at module boundary** (telemetry key conventions are implicit and adapter-driven).
 7. **No discovered runtime consumers for `aws_csm_onboarding` in scanned runtime modules**, indicating potential dead-path risk unless intentionally staged.
 
 ## 7) Recommended Next Action (immediate)
 
-Start Phase 1 with Candidate C (shared forbidden-key walker) because it is:
-- low-risk (read/validate-only helper),
-- duplicated in at least two modules with near-identical semantics,
-- easy to guard using existing contract tests (`audit_log`, `aws_read_only_status`) and adapter tests (`filesystem_audit_log_adapter`, `filesystem_aws_read_only_status_adapter`).
+Publish closure evidence and move residual items to backlog governance (exception taxonomy, observability contract, and further newsletter decomposition opportunities), because:
+- all planned A/B/C/D/E helper extraction targets are complete,
+- newsletter orchestrator/payload decomposition target is complete for this phase,
+- full contracts/adapters/architecture suites are green in current environment.

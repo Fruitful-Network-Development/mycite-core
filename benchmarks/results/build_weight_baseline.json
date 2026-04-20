@@ -1,0 +1,71 @@
+{
+  "files_analyzed": 11,
+  "generated_at_utc": "2026-04-20T19:04:06.101842Z",
+  "schema": "mycite.benchmarks.build_weight.v1",
+  "top5_gzip": [
+    {
+      "gzip_bytes": 11161,
+      "name": "v2_portal_inspector_renderers.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js",
+      "raw_bytes": 60004
+    },
+    {
+      "gzip_bytes": 7010,
+      "name": "portal.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/portal.js",
+      "raw_bytes": 36093
+    },
+    {
+      "gzip_bytes": 5772,
+      "name": "v2_portal_aws_workspace.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js",
+      "raw_bytes": 31017
+    },
+    {
+      "gzip_bytes": 4728,
+      "name": "v2_portal_system_workspace.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_system_workspace.js",
+      "raw_bytes": 22771
+    },
+    {
+      "gzip_bytes": 4439,
+      "name": "v2_portal_shell_region_renderers.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js",
+      "raw_bytes": 21961
+    }
+  ],
+  "top5_raw": [
+    {
+      "gzip_bytes": 11161,
+      "name": "v2_portal_inspector_renderers.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js",
+      "raw_bytes": 60004
+    },
+    {
+      "gzip_bytes": 7010,
+      "name": "portal.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/portal.js",
+      "raw_bytes": 36093
+    },
+    {
+      "gzip_bytes": 5772,
+      "name": "v2_portal_aws_workspace.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js",
+      "raw_bytes": 31017
+    },
+    {
+      "gzip_bytes": 4728,
+      "name": "v2_portal_system_workspace.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_system_workspace.js",
+      "raw_bytes": 22771
+    },
+    {
+      "gzip_bytes": 4439,
+      "name": "v2_portal_shell_region_renderers.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js",
+      "raw_bytes": 21961
+    }
+  ],
+  "total_gzip_bytes": 45606,
+  "total_raw_bytes": 221798
+}

@@ -234,6 +234,54 @@ class FilesystemSystemDatumStoreAdapterTests(unittest.TestCase):
             self.assertIn("sandbox/cts-gis/sources/sc.root.json", relative_paths)
             self.assertIn("sandbox/cts-gis/sources/precincts/sc.precinct.json", relative_paths)
 
+    def test_capability_paths_allow_remapped_layout_without_behavior_change(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "default_data"
+            remap = root / "packaged_layout"
+            (data_dir / "public").mkdir(parents=True)
+            (remap / "system_root").mkdir(parents=True)
+            (remap / "system_sources_root").mkdir(parents=True)
+            (remap / "payload_cache_root").mkdir(parents=True)
+            (remap / "sandbox_root" / "cts-gis" / "sources").mkdir(parents=True)
+            (remap / "system_root" / "anthology.json").write_text(
+                json.dumps({"0-0-1": [["0-0-1", "~", "0-0-0"], ["time-ordinal-position"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (remap / "system_sources_root" / "sc.example.json").write_text("{}\n", encoding="utf-8")
+            (remap / "sandbox_root" / "cts-gis" / "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json").write_text(
+                json.dumps({"3-1-3": [["3-1-3", "2-1-1", "0"], ["title-babelette"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (remap / "sandbox_root" / "cts-gis" / "sources" / "sc.example.json").write_text(
+                json.dumps({"4-2-1": [["4-2-1", "rf.3-1-3", "HERE"], ["row"]]}) + "\n",
+                encoding="utf-8",
+            )
+            adapter = FilesystemSystemDatumStoreAdapter(data_dir).with_path_capabilities(
+                system_anthology_file=remap / "system_root" / "anthology.json",
+                system_sources_dir=remap / "system_sources_root",
+                payload_cache_dir=remap / "payload_cache_root",
+                sandbox_root_dir=remap / "sandbox_root",
+            )
+
+            payload = adapter.read_authoritative_datum_documents(
+                AuthoritativeDatumDocumentRequest(tenant_id="fnd")
+            ).to_dict()
+            sandbox_docs = [
+                document
+                for document in payload["documents"]
+                if document["source_kind"] == "sandbox_source"
+            ]
+            self.assertEqual(payload["document_count"], 2)
+            self.assertEqual(payload["readiness_status"]["anthology_status"], "loaded")
+            self.assertEqual(payload["readiness_status"]["system_source_count"], 1)
+            self.assertEqual(payload["readiness_status"]["payload_cache_count"], 0)
+            self.assertEqual(payload["readiness_status"]["sandbox_source_document_count"], 1)
+            self.assertEqual(len(sandbox_docs), 1)
+            self.assertTrue(str(remap / "sandbox_root" / "cts-gis" / "sources" / "sc.example.json") in {
+                doc["relative_path"] for doc in sandbox_docs
+            })
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,37 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from MyCiteV2.packages.modules.shared import as_dict_list, as_text
+from MyCiteV2.packages.modules.shared.warnings import dedupe_warnings
 from MyCiteV2.packages.ports.fnd_ebi_read_only import (
     FndEbiReadOnlyPort,
     FndEbiReadOnlyRequest,
 )
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _as_profile_list(value: object) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        return []
-    return [dict(item) for item in value if isinstance(item, dict)]
-
-
-def _dedupe_warnings(*sources: object) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for source in sources:
-        if not isinstance(source, list):
-            continue
-        for item in source:
-            token = _as_text(item)
-            if not token or token in seen:
-                continue
-            seen.add(token)
-            out.append(token)
-    return out
 
 
 class FndEbiReadOnlyService:
@@ -56,21 +31,21 @@ class FndEbiReadOnlyService:
         )
 
         payload = dict(result.source.payload) if result.source is not None else {}
-        profiles = _as_profile_list(payload.get("profiles"))
+        profiles = as_dict_list(payload.get("profiles"))
         global_warnings = list(payload.get("warnings") or []) if isinstance(payload.get("warnings"), list) else []
-        year_month_token = _as_text(payload.get("year_month") or year_month)
-        requested_domain = _as_text(selected_domain or payload.get("selected_domain")).lower()
-        tenant_domain = _as_text(portal_tenant_domain).lower()
+        year_month_token = as_text(payload.get("year_month") or year_month)
+        requested_domain = as_text(selected_domain or payload.get("selected_domain")).lower()
+        tenant_domain = as_text(portal_tenant_domain).lower()
 
         selected_profile: dict[str, Any] | None = None
         if requested_domain:
             selected_profile = next(
-                (profile for profile in profiles if _as_text(profile.get("domain")).lower() == requested_domain),
+                (profile for profile in profiles if as_text(profile.get("domain")).lower() == requested_domain),
                 None,
             )
         if selected_profile is None and tenant_domain:
             selected_profile = next(
-                (profile for profile in profiles if _as_text(profile.get("domain")).lower() == tenant_domain),
+                (profile for profile in profiles if as_text(profile.get("domain")).lower() == tenant_domain),
                 None,
             )
         if selected_profile is None and profiles:
@@ -87,14 +62,14 @@ class FndEbiReadOnlyService:
 
         profile_cards = []
         for profile in profiles:
-            domain = _as_text(profile.get("domain"))
+            domain = as_text(profile.get("domain"))
             traffic_summary = dict(profile.get("traffic") or {})
             event_summary = dict(profile.get("events_summary") or {})
             profile_cards.append(
                 {
                     "domain": domain,
-                    "selected": bool(domain and domain == _as_text(selected.get("domain"))),
-                    "health_label": _as_text(profile.get("health_label")) or "unknown",
+                    "selected": bool(domain and domain == as_text(selected.get("domain"))),
+                    "health_label": as_text(profile.get("health_label")) or "unknown",
                     "requests_30d": int(traffic_summary.get("requests_30d") or 0),
                     "real_page_requests_30d": int(traffic_summary.get("real_page_requests_30d") or 0),
                     "events_30d": int(event_summary.get("events_30d") or 0),
@@ -105,19 +80,19 @@ class FndEbiReadOnlyService:
             )
 
         overview = {
-            "domain": _as_text(selected.get("domain")),
-            "profile_file": _as_text(selected.get("profile_file")),
-            "site_root": _as_text(selected.get("site_root")),
-            "analytics_root": _as_text(selected.get("analytics_root")),
+            "domain": as_text(selected.get("domain")),
+            "profile_file": as_text(selected.get("profile_file")),
+            "site_root": as_text(selected.get("site_root")),
+            "analytics_root": as_text(selected.get("analytics_root")),
             "year_month": year_month_token,
-            "health_label": _as_text(selected.get("health_label")) or "unavailable",
-            "access_last_seen_utc": _as_text(freshness.get("access_last_seen_utc")),
-            "error_last_seen_utc": _as_text(freshness.get("error_last_seen_utc")),
-            "events_last_seen_utc": _as_text(freshness.get("events_last_seen_utc")),
+            "health_label": as_text(selected.get("health_label")) or "unavailable",
+            "access_last_seen_utc": as_text(freshness.get("access_last_seen_utc")),
+            "error_last_seen_utc": as_text(freshness.get("error_last_seen_utc")),
+            "events_last_seen_utc": as_text(freshness.get("events_last_seen_utc")),
         }
         files = {
             "profile_file": {
-                "path": _as_text(selected.get("profile_file")),
+                "path": as_text(selected.get("profile_file")),
                 "exists": bool(selected),
                 "readable": bool(selected),
                 "state": "ready" if selected else "missing",
@@ -127,13 +102,13 @@ class FndEbiReadOnlyService:
             "error_log": error_log,
             "events_file": events_file,
         }
-        warnings = _dedupe_warnings(global_warnings, list(selected.get("warnings") or []))
+        warnings = dedupe_warnings(global_warnings, list(selected.get("warnings") or []))
         if not selected:
-            warnings = _dedupe_warnings(warnings, ["No FND-EBI profile matched the requested selection."])
+            warnings = dedupe_warnings(warnings, ["No FND-EBI profile matched the requested selection."])
 
         return {
             "profile_cards": profile_cards,
-            "selected_domain": _as_text(selected.get("domain")),
+            "selected_domain": as_text(selected.get("domain")),
             "overview": overview,
             "traffic": traffic,
             "events_summary": events_summary,

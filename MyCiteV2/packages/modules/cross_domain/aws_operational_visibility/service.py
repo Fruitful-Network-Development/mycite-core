@@ -8,6 +8,7 @@ from MyCiteV2.packages.modules.cross_domain.aws_operational_visibility.sender_do
     normalize_optional_domain_list,
     selected_verified_sender_allowed,
 )
+from MyCiteV2.packages.modules.shared import as_text, reject_forbidden_keys
 from MyCiteV2.packages.ports.aws_read_only_status import AwsReadOnlyStatusPort, AwsReadOnlyStatusRequest
 
 FORBIDDEN_AWS_VISIBILITY_KEYS = frozenset(
@@ -72,35 +73,14 @@ _COMPATIBILITY_WARNING = (
 )
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _require_allowed_fields(payload: dict[str, Any], *, field_name: str, allowed: frozenset[str]) -> None:
     extra_fields = sorted(set(payload.keys()) - allowed)
     if extra_fields:
         raise ValueError(f"{field_name} has unsupported fields: {extra_fields}")
 
 
-def _reject_forbidden_keys(value: Any, *, field_name: str) -> None:
-    if isinstance(value, dict):
-        for key, item in value.items():
-            token = _as_text(key)
-            if not token:
-                raise ValueError(f"{field_name} keys must be non-empty strings")
-            if token.lower() in FORBIDDEN_AWS_VISIBILITY_KEYS:
-                raise ValueError(f"{field_name}.{token} is forbidden in aws operational visibility")
-            _reject_forbidden_keys(item, field_name=f"{field_name}.{token}")
-        return
-    if isinstance(value, list):
-        for index, item in enumerate(value):
-            _reject_forbidden_keys(item, field_name=f"{field_name}[{index}]")
-
-
 def _normalize_state(value: object, *, field_name: str, allowed: frozenset[str]) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if token not in allowed:
         supported = ", ".join(sorted(allowed))
         raise ValueError(f"{field_name} must be one of: {supported}")
@@ -108,14 +88,14 @@ def _normalize_state(value: object, *, field_name: str, allowed: frozenset[str])
 
 
 def _normalize_email(value: object, *, field_name: str) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token or "@" not in token or token.startswith("@") or token.endswith("@"):
         raise ValueError(f"{field_name} must be an email-like value")
     return token
 
 
 def _normalize_domain_token(value: object, *, field_name: str) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token or "." not in token:
         raise ValueError(f"{field_name} must be a domain-like value")
     return token
@@ -142,8 +122,8 @@ class CanonicalNewsletterOperationalProfile:
     delivery_mode: str
 
     def __post_init__(self) -> None:
-        profile_id = _as_text(self.profile_id)
-        domain = _as_text(self.domain).lower()
+        profile_id = as_text(self.profile_id)
+        domain = as_text(self.domain).lower()
         if not profile_id:
             raise ValueError("canonical_newsletter_profile.profile_id is required")
         if not domain or "." not in domain:
@@ -191,7 +171,12 @@ class CanonicalNewsletterOperationalProfile:
             field_name="canonical_newsletter_profile",
             allowed=_ALLOWED_PROFILE_FIELDS,
         )
-        _reject_forbidden_keys(payload, field_name="canonical_newsletter_profile")
+        reject_forbidden_keys(
+            payload,
+            forbidden_keys=FORBIDDEN_AWS_VISIBILITY_KEYS,
+            field_name="canonical_newsletter_profile",
+            violation_suffix="in aws operational visibility",
+        )
         return cls(
             profile_id=payload.get("profile_id"),
             domain=payload.get("domain"),
@@ -216,7 +201,7 @@ class AwsReadOnlyOperationalVisibility:
     dispatch_health: dict[str, Any]
 
     def __post_init__(self) -> None:
-        tenant_scope_id = _as_text(self.tenant_scope_id)
+        tenant_scope_id = as_text(self.tenant_scope_id)
         if not tenant_scope_id:
             raise ValueError("aws_operational_visibility.tenant_scope_id is required")
         object.__setattr__(self, "tenant_scope_id", tenant_scope_id)
@@ -286,7 +271,7 @@ class AwsReadOnlyOperationalVisibility:
         object.__setattr__(
             self,
             "compatibility_warnings",
-            tuple(_as_text(item) for item in self.compatibility_warnings if _as_text(item)),
+            tuple(as_text(item) for item in self.compatibility_warnings if as_text(item)),
         )
         object.__setattr__(self, "inbound_capture", dict(self.inbound_capture))
         object.__setattr__(self, "dispatch_health", dict(self.dispatch_health))
@@ -314,7 +299,12 @@ def normalize_aws_operational_visibility(
         return payload
     if not isinstance(payload, dict):
         raise ValueError("aws_operational_visibility must be a dict")
-    _reject_forbidden_keys(payload, field_name="aws_operational_visibility")
+    reject_forbidden_keys(
+        payload,
+        forbidden_keys=FORBIDDEN_AWS_VISIBILITY_KEYS,
+        field_name="aws_operational_visibility",
+        violation_suffix="in aws operational visibility",
+    )
     _require_allowed_fields(
         payload,
         field_name="aws_operational_visibility",
@@ -357,7 +347,7 @@ def normalize_aws_operational_visibility(
             field_name="aws_operational_visibility.inbound_capture.status",
             allowed=_ALLOWED_INBOUND_CAPTURE_STATES,
         ),
-        "last_capture_state": _as_text(inbound_capture.get("last_capture_state")) or "none",
+        "last_capture_state": as_text(inbound_capture.get("last_capture_state")) or "none",
     }
 
     dispatch_health = payload.get("dispatch_health") or {}
@@ -374,7 +364,7 @@ def normalize_aws_operational_visibility(
             field_name="aws_operational_visibility.dispatch_health.status",
             allowed=_ALLOWED_DISPATCH_HEALTH_STATES,
         ),
-        "last_delivery_outcome": _as_text(dispatch_health.get("last_delivery_outcome")) or "unknown",
+        "last_delivery_outcome": as_text(dispatch_health.get("last_delivery_outcome")) or "unknown",
         "pending_message_count": _normalize_positive_count(
             dispatch_health.get("pending_message_count", 0),
             field_name="aws_operational_visibility.dispatch_health.pending_message_count",
@@ -414,12 +404,12 @@ class AwsOperationalVisibilityService:
         self._aws_status_port = aws_status_port
 
     def read_surface(self, tenant_scope_id: object) -> AwsReadOnlyOperationalVisibility | None:
-        request = AwsReadOnlyStatusRequest(tenant_scope_id=_as_text(tenant_scope_id))
+        request = AwsReadOnlyStatusRequest(tenant_scope_id=as_text(tenant_scope_id))
         result = self._aws_status_port.read_aws_read_only_status(request)
         if result.source is None:
             return None
         source_payload = result.source.payload
-        if source_payload.get("tenant_scope_id") and _as_text(source_payload.get("tenant_scope_id")) != request.tenant_scope_id:
+        if source_payload.get("tenant_scope_id") and as_text(source_payload.get("tenant_scope_id")) != request.tenant_scope_id:
             return None
         normalized_payload = dict(source_payload)
         normalized_payload["tenant_scope_id"] = request.tenant_scope_id

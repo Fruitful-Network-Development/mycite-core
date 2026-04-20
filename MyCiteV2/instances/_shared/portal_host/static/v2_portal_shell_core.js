@@ -96,7 +96,19 @@
   }
 
   function cloneRequest(req) {
-    return JSON.parse(JSON.stringify(req || {}));
+    var value = req || {};
+    if (typeof window.structuredClone === "function") {
+      try {
+        return window.structuredClone(value);
+      } catch (_) {}
+    }
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (_) {
+      if (Array.isArray(value)) return value.slice();
+      if (value && typeof value === "object") return Object.assign({}, value);
+      return {};
+    }
   }
 
   function readBootstrapRequest() {

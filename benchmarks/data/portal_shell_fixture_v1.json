@@ -1,0 +1,37 @@
+{
+  "schema": "mycite.benchmarks.portal_shell_fixture.v1",
+  "fixture_id": "portal_shell_fixture_v1",
+  "description": "Deterministic shell request + composition sample for benchmark harness smoke checks.",
+  "shell_request": {
+    "schema": "mycite.v2.portal.shell.request.v1",
+    "requested_surface_id": "system.root",
+    "portal_scope": {
+      "scope_id": "fnd",
+      "capabilities": [
+        "datum_recognition",
+        "spatial_projection"
+      ]
+    },
+    "surface_query": {
+      "view": "system_logs"
+    }
+  },
+  "shell_composition": {
+    "active_service": "system",
+    "composition_mode": "system",
+    "page_title": "System",
+    "page_subtitle": "Portal workspace",
+    "regions": {
+      "activity_bar": {
+        "items": [
+          {
+            "item_id": "system.root",
+            "label": "System",
+            "active": true
+          }
+        ]
+      }
+    }
+  }
+}
+

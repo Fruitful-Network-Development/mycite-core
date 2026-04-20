@@ -1,0 +1,20 @@
+{
+  "schema": "mycite.benchmarks.interaction_journeys.v1",
+  "fixture_id": "interaction_journeys_v1",
+  "journeys": [
+    {
+      "name": "system_to_network_navigation",
+      "durations_ms": [82, 88, 91, 95, 89, 92, 96, 93, 87, 90]
+    },
+    {
+      "name": "network_filter_apply",
+      "durations_ms": [104, 110, 108, 115, 112, 117, 109, 113, 106, 111]
+    },
+    {
+      "name": "system_tool_open_aws_csm",
+      "durations_ms": [126, 132, 128, 136, 134, 130, 129, 138, 131, 127]
+    }
+  ],
+  "startup_long_tasks_ms": [45, 52, 49, 61, 57, 53, 50]
+}
+

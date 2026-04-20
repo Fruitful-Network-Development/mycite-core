@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime, timezone
 from typing import Any
 
-from MyCiteV2.packages.core.datum_refs import normalize_datum_ref
+from MyCiteV2.packages.modules.shared import as_dict, as_text, normalize_focus_subject, utc_now_iso
 from MyCiteV2.packages.ports.aws_csm_onboarding import (
     AwsCsmOnboardingCloudPort,
     AwsCsmOnboardingCommand,
@@ -16,24 +15,10 @@ from MyCiteV2.packages.ports.aws_csm_onboarding import (
 )
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _as_dict(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-
-
 def _merge_section(dst: dict[str, Any], key: str, delta: dict[str, Any] | None) -> None:
     if not delta:
         return
-    base = _as_dict(dst.get(key))
+    base = as_dict(dst.get(key))
     base.update(delta)
     dst[key] = base
 
@@ -41,7 +26,7 @@ def _merge_section(dst: dict[str, Any], key: str, delta: dict[str, Any] | None) 
 def _deep_merge_profile(dst: dict[str, Any], fragment: dict[str, Any]) -> None:
     for key, val in fragment.items():
         if isinstance(val, dict) and isinstance(dst.get(key), dict):
-            merged = dict(_as_dict(dst.get(key)))
+            merged = dict(as_dict(dst.get(key)))
             merged.update(val)
             dst[key] = merged
         elif val is not None:
@@ -95,19 +80,17 @@ class AwsCsmOnboardingService:
     def _command_from_dict(self, payload: dict[str, Any]) -> AwsCsmOnboardingCommand:
         if not isinstance(payload, dict):
             raise ValueError("aws_csm_onboarding command must be a dict")
-        focus = normalize_datum_ref(
+        focus = normalize_focus_subject(
             payload.get("focus_subject"),
-            require_qualified=True,
-            write_format="dot",
             field_name="aws_csm_onboarding.focus_subject",
         )
-        tenant_scope = _as_dict(payload.get("tenant_scope"))
-        scope_id = _as_text(tenant_scope.get("scope_id") or tenant_scope.get("tenant_id"))
+        tenant_scope = as_dict(payload.get("tenant_scope"))
+        scope_id = as_text(tenant_scope.get("scope_id") or tenant_scope.get("tenant_id"))
         return AwsCsmOnboardingCommand(
             tenant_scope_id=scope_id,
             focus_subject=focus,
-            profile_id=_as_text(payload.get("profile_id")),
-            onboarding_action=_as_text(payload.get("onboarding_action")),
+            profile_id=as_text(payload.get("profile_id")),
+            onboarding_action=as_text(payload.get("onboarding_action")),
         )
 
     def _mutate_for_action(self, command: AwsCsmOnboardingCommand, working: dict[str, Any]) -> list[str]:
@@ -115,56 +98,56 @@ class AwsCsmOnboardingService:
         touched: list[str] = []
 
         if action == "begin_onboarding":
-            wf = _as_dict(working.get("workflow"))
+            wf = as_dict(working.get("workflow"))
             wf["initiated"] = True
-            wf["initiated_at"] = _utc_now_iso()
+            wf["initiated_at"] = utc_now_iso(seconds_precision=True)
             working["workflow"] = wf
             touched.append("workflow")
 
         elif action in {"prepare_send_as", "stage_smtp_credentials"}:
             # Operator handoff + SES/secret material arrives via cloud patch; mark staging intent locally.
-            wf = _as_dict(working.get("workflow"))
-            wf["smtp_staging_requested_at"] = _utc_now_iso()
+            wf = as_dict(working.get("workflow"))
+            wf["smtp_staging_requested_at"] = utc_now_iso(seconds_precision=True)
             working["workflow"] = wf
-            smtp = _as_dict(working.get("smtp"))
+            smtp = as_dict(working.get("smtp"))
             smtp["staging_state"] = "requested"
             working["smtp"] = smtp
             touched.extend(["workflow", "smtp"])
 
         elif action == "capture_verification":
-            ver = _as_dict(working.get("verification"))
+            ver = as_dict(working.get("verification"))
             ver["portal_state"] = "capture_requested"
-            ver["last_capture_requested_at"] = _utc_now_iso()
+            ver["last_capture_requested_at"] = utc_now_iso(seconds_precision=True)
             working["verification"] = ver
-            inbound = _as_dict(working.get("inbound"))
+            inbound = as_dict(working.get("inbound"))
             inbound["receive_state"] = "awaiting_message"
             working["inbound"] = inbound
             touched.extend(["verification", "inbound"])
 
         elif action == "refresh_provider_status":
-            prov = _as_dict(working.get("provider"))
-            prov["last_refresh_requested_at"] = _utc_now_iso()
+            prov = as_dict(working.get("provider"))
+            prov["last_refresh_requested_at"] = utc_now_iso(seconds_precision=True)
             working["provider"] = prov
             touched.append("provider")
 
         elif action == "refresh_inbound_status":
-            inbound = _as_dict(working.get("inbound"))
-            inbound["last_refresh_requested_at"] = _utc_now_iso()
+            inbound = as_dict(working.get("inbound"))
+            inbound["last_refresh_requested_at"] = utc_now_iso(seconds_precision=True)
             working["inbound"] = inbound
             touched.append("inbound")
 
         elif action == "enable_inbound_capture":
-            inbound = _as_dict(working.get("inbound"))
-            inbound["capture_enable_requested_at"] = _utc_now_iso()
+            inbound = as_dict(working.get("inbound"))
+            inbound["capture_enable_requested_at"] = utc_now_iso(seconds_precision=True)
             inbound["mx_receipt_enable_intent"] = "requested"
             working["inbound"] = inbound
-            wf = _as_dict(working.get("workflow"))
-            wf["inbound_enablement_requested_at"] = _utc_now_iso()
+            wf = as_dict(working.get("workflow"))
+            wf["inbound_enablement_requested_at"] = utc_now_iso(seconds_precision=True)
             working["workflow"] = wf
             touched.extend(["inbound", "workflow"])
 
         elif action == "confirm_receive_verified":
-            inbound = _as_dict(working.get("inbound"))
+            inbound = as_dict(working.get("inbound"))
             inbound["receive_verified"] = True
             inbound["receive_state"] = "receive_operational"
             inbound["portal_native_display_ready"] = True
@@ -177,17 +160,17 @@ class AwsCsmOnboardingService:
                     "gmail_confirmation_evidence_required",
                     "confirm_verified requires Gmail confirmation evidence from the cloud port.",
                 )
-            ver = _as_dict(working.get("verification"))
+            ver = as_dict(working.get("verification"))
             ver["status"] = "verified"
             ver["portal_state"] = "verified"
             working["verification"] = ver
-            prov = _as_dict(working.get("provider"))
+            prov = as_dict(working.get("provider"))
             prov["gmail_send_as_status"] = "verified"
             working["provider"] = prov
-            wf = _as_dict(working.get("workflow"))
+            wf = as_dict(working.get("workflow"))
             wf["is_ready_for_user_handoff"] = True
             working["workflow"] = wf
-            inbound = _as_dict(working.get("inbound"))
+            inbound = as_dict(working.get("inbound"))
             inbound["portal_native_display_ready"] = True
             working["inbound"] = inbound
             touched.extend(["verification", "provider", "workflow", "inbound"])

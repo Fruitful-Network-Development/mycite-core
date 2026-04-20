@@ -10,6 +10,39 @@ if str(REPO_ROOT) not in sys.path:
 
 
 class ContractDocsAlignmentTests(unittest.TestCase):
+    def test_documentation_ia_standards_baseline_exists(self) -> None:
+        docs_root = REPO_ROOT / "docs"
+        standards = docs_root / "standards"
+        self.assertTrue((standards / "documentation_style_guide.md").is_file())
+        self.assertTrue((standards / "agent_yaml_schema.md").is_file())
+        self.assertTrue((standards / "agent_task_template_examples.md").is_file())
+        self.assertTrue((docs_root / "plans" / "documentation_ia_remediation_backlog.md").is_file())
+        self.assertTrue((docs_root / "audits" / "reports" / "documentation_ia_audit_report_2026-04-20.md").is_file())
+
+        plan_text = (docs_root / "audits" / "documentation_agent_yaml_optimization_plan_2026-04-16.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## Canonical Contract Links", plan_text)
+        self.assertIn("docs/contracts/portal_shell_contract.md", plan_text)
+        self.assertIn("docs/contracts/route_model.md", plan_text)
+        self.assertIn("docs/contracts/surface_catalog.md", plan_text)
+        self.assertIn("docs/contracts/portal_vocabulary_glossary.md", plan_text)
+
+    def test_performance_benchmark_baseline_artifacts_exist(self) -> None:
+        repo_root = REPO_ROOT
+        self.assertTrue((repo_root / "scripts" / "benchmarks" / "build_weight.sh").is_file())
+        self.assertTrue((repo_root / "scripts" / "benchmarks" / "runtime_interactions.sh").is_file())
+        self.assertTrue((repo_root / "scripts" / "benchmarks" / "projection_serialization.py").is_file())
+
+        self.assertTrue((repo_root / "benchmarks" / "data" / "portal_shell_fixture_v1.json").is_file())
+        self.assertTrue((repo_root / "benchmarks" / "data" / "cts_gis_projection_fixture_v1.json").is_file())
+        self.assertTrue((repo_root / "benchmarks" / "data" / "interaction_journeys_v1.json").is_file())
+        self.assertTrue((repo_root / "benchmarks" / "data" / "CHECKSUMS.sha256").is_file())
+
+        self.assertTrue((repo_root / "benchmarks" / "results" / "build_weight_baseline.json").is_file())
+        self.assertTrue((repo_root / "benchmarks" / "results" / "runtime_interactions_baseline.json").is_file())
+        self.assertTrue((repo_root / "benchmarks" / "results" / "projection_serialization_baseline.json").is_file())
+
     def test_contract_docs_use_one_shell_routes(self) -> None:
         route_model = (REPO_ROOT / "docs" / "contracts" / "route_model.md").read_text(encoding="utf-8")
         self.assertIn("/portal/api/v2/shell", route_model)

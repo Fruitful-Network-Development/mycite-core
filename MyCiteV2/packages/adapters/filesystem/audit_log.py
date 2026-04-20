@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 import time
 import uuid
 from pathlib import Path
@@ -27,8 +28,27 @@ class FilesystemAuditLogAdapter(AuditLogPort):
         id_factory: Callable[[], str] | None = None,
     ) -> None:
         self._storage_file = Path(storage_file)
+        self._lock_file = self._storage_file.with_suffix(self._storage_file.suffix + ".lock")
         self._clock = clock or (lambda: int(time.time() * 1000))
         self._id_factory = id_factory or (lambda: uuid.uuid4().hex)
+
+    @contextmanager
+    def _append_lock(self):
+        self._lock_file.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock_file.open("a+", encoding="utf-8") as lock_handle:
+            try:
+                import fcntl  # type: ignore
+            except Exception:
+                yield
+                return
+            try:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+                yield
+            finally:
+                try:
+                    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+                except Exception:
+                    pass
 
     def _iter_tail_lines(self, *, chunk_size: int = 4096):
         with self._storage_file.open("rb") as handle:
@@ -54,8 +74,10 @@ class FilesystemAuditLogAdapter(AuditLogPort):
             record=normalized_request.record,
         )
         self._storage_file.parent.mkdir(parents=True, exist_ok=True)
-        with self._storage_file.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record.to_dict(), separators=(",", ":")) + "\n")
+        with self._append_lock():
+            with self._storage_file.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record.to_dict(), separators=(",", ":")) + "\n")
+                handle.flush()
         return AuditLogAppendReceipt(
             record_id=record.record_id,
             recorded_at_unix_ms=record.recorded_at_unix_ms,

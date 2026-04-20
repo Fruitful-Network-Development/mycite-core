@@ -1,212 +1,39 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from email import policy
-from email.parser import BytesParser
-from email.utils import getaddresses
-import hmac
-import hashlib
 import json
 import secrets
 from typing import Any
 
+from MyCiteV2.packages.modules.shared import as_text
 from MyCiteV2.packages.ports.aws_csm_newsletter import (
     AWS_CSM_NEWSLETTER_CONTACT_LOG_SCHEMA,
     AWS_CSM_NEWSLETTER_PROFILE_SCHEMA,
     AwsCsmNewsletterCloudPort,
     AwsCsmNewsletterStatePort,
 )
-
-_MAX_DISPATCH_HISTORY = 20
-_MAX_DISPATCH_RESULT_HISTORY = 100
-_MAX_CONTACT_PREVIEW = 50
-_DELIVERY_MODE = "inbound-mail-workflow"
+from MyCiteV2.packages.modules.shared import dedupe_warnings, utc_now_iso
+from .payload_utils import (
+    DELIVERY_MODE as _DELIVERY_MODE,
+    MAX_CONTACT_PREVIEW as _MAX_CONTACT_PREVIEW,
+    MAX_DISPATCH_HISTORY as _MAX_DISPATCH_HISTORY,
+    MAX_DISPATCH_RESULT_HISTORY as _MAX_DISPATCH_RESULT_HISTORY,
+    contact_summary as _contact_summary,
+    email_addresses as _email_addresses,
+    message_subject_from_email as _message_subject_from_email,
+    message_text_from_email as _message_text_from_email,
+    normalize_contact as _normalize_contact,
+    normalize_contact_log as _normalize_contact_log,
+    normalized_domain as _normalized_domain,
+    normalized_email as _normalized_email,
+    optional_email as _optional_email,
+    preserved_email as _preserved_email,
+    render_inbound_capture_signature as _render_inbound_capture_signature,
+    render_unsubscribe_token as _render_unsubscribe_token,
+)
 
 
 def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _normalized_email(value: object, *, field_name: str) -> str:
-    token = _as_text(value).lower()
-    if not token or token.count("@") != 1 or any(ch.isspace() for ch in token):
-        raise ValueError(f"{field_name} must be an email-like value")
-    local_part, domain_part = token.split("@", 1)
-    if not local_part or not domain_part or "." not in domain_part:
-        raise ValueError(f"{field_name} must be an email-like value")
-    return token
-
-
-def _normalized_domain(value: object, *, field_name: str) -> str:
-    token = _as_text(value).lower()
-    if token.startswith("www."):
-        token = token[4:]
-    if not token or "." not in token:
-        raise ValueError(f"{field_name} must be a domain-like value")
-    return token
-
-
-def _optional_email(value: object) -> str:
-    token = _as_text(value).lower()
-    if not token:
-        return ""
-    try:
-        return _normalized_email(token, field_name="email")
-    except ValueError:
-        return ""
-
-
-def _preserved_email(value: object) -> str:
-    raw = _as_text(value)
-    for _name, address in getaddresses([raw]):
-        candidate = _optional_email(address)
-        if candidate:
-            return candidate
-    return _optional_email(raw)
-
-
-def _email_addresses(value: object) -> set[str]:
-    out: set[str] = set()
-    raw = _as_text(value)
-    for _name, address in getaddresses([raw]):
-        candidate = _optional_email(address)
-        if candidate:
-            out.add(candidate)
-    fallback = _optional_email(raw)
-    if fallback:
-        out.add(fallback)
-    return out
-
-
-def _render_unsubscribe_token(secret: str, *, domain: str, email: str) -> str:
-    payload = f"{_normalized_domain(domain, field_name='domain')}|{_normalized_email(email, field_name='email')}".encode(
-        "utf-8"
-    )
-    return hmac.new(_as_text(secret).encode("utf-8"), payload, hashlib.sha256).hexdigest()
-
-
-def _render_inbound_capture_signature(
-    secret: str,
-    *,
-    domain: str,
-    ses_message_id: str,
-    s3_uri: str,
-    sender: str,
-    recipient: str,
-    subject: str,
-    captured_at: str,
-) -> str:
-    payload = "|".join(
-        [
-            _normalized_domain(domain, field_name="domain"),
-            _as_text(ses_message_id),
-            _as_text(s3_uri),
-            _optional_email(sender),
-            _optional_email(recipient),
-            _as_text(subject),
-            _as_text(captured_at),
-        ]
-    ).encode("utf-8")
-    return hmac.new(_as_text(secret).encode("utf-8"), payload, hashlib.sha256).hexdigest()
-
-
-def _normalize_contact(contact: Any) -> dict[str, Any] | None:
-    if not isinstance(contact, dict):
-        return None
-    email = _optional_email(contact.get("email"))
-    if not email:
-        return None
-    created_at = _as_text(contact.get("created_at")) or _utc_now_iso()
-    subscribed = bool(contact.get("subscribed", True))
-    return {
-        "email": email,
-        "name": _as_text(contact.get("name")),
-        "zip": _as_text(contact.get("zip")),
-        "source": _as_text(contact.get("source")) or "unknown",
-        "subscribed": subscribed,
-        "created_at": created_at,
-        "subscribed_at": _as_text(contact.get("subscribed_at")) or (created_at if subscribed else ""),
-        "unsubscribed_at": _as_text(contact.get("unsubscribed_at")),
-        "updated_at": _as_text(contact.get("updated_at")) or created_at,
-        "last_newsletter_sent_at": _as_text(contact.get("last_newsletter_sent_at")),
-        "send_count": int(contact.get("send_count") or 0),
-        "notes": _as_text(contact.get("notes")),
-    }
-
-
-def _normalize_contact_log(payload: dict[str, Any], *, domain: str) -> dict[str, Any]:
-    token = _normalized_domain(domain, field_name="domain")
-    contacts_by_email: dict[str, dict[str, Any]] = {}
-    for raw in list(payload.get("contacts") or []):
-        normalized = _normalize_contact(raw)
-        if normalized is None:
-            continue
-        contacts_by_email[normalized["email"]] = normalized
-    dispatches: list[dict[str, Any]] = []
-    for item in list(payload.get("dispatches") or []):
-        if isinstance(item, dict):
-            dispatches.append(dict(item))
-    return {
-        "schema": AWS_CSM_NEWSLETTER_CONTACT_LOG_SCHEMA,
-        "domain": token,
-        "contacts": [contacts_by_email[key] for key in sorted(contacts_by_email.keys())],
-        "dispatches": dispatches[-_MAX_DISPATCH_HISTORY:],
-        "updated_at": _as_text(payload.get("updated_at")) or _utc_now_iso(),
-    }
-
-
-def _contact_summary(contact_log: dict[str, Any]) -> dict[str, int]:
-    subscribed = 0
-    unsubscribed = 0
-    for raw in list(contact_log.get("contacts") or []):
-        normalized = _normalize_contact(raw)
-        if normalized is None:
-            continue
-        if normalized["subscribed"]:
-            subscribed += 1
-        else:
-            unsubscribed += 1
-    return {
-        "contact_count": subscribed + unsubscribed,
-        "subscribed_count": subscribed,
-        "unsubscribed_count": unsubscribed,
-    }
-
-
-def _message_text_from_email(raw_bytes: bytes) -> str:
-    message = BytesParser(policy=policy.default).parsebytes(raw_bytes)
-    if hasattr(message, "walk"):
-        for part in message.walk():
-            if str(part.get_content_type() or "").lower() != "text/plain":
-                continue
-            if str(part.get_content_disposition() or "").lower() == "attachment":
-                continue
-            try:
-                return str(part.get_content() or "")
-            except Exception:
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = str(part.get_content_charset() or "utf-8")
-                    return payload.decode(charset, errors="replace")
-    payload = message.get_payload(decode=True)
-    if payload:
-        charset = str(message.get_content_charset() or "utf-8")
-        return payload.decode(charset, errors="replace")
-    try:
-        return str(message.get_content() or "")
-    except Exception:
-        return ""
-
-
-def _message_subject_from_email(raw_bytes: bytes) -> str:
-    message = BytesParser(policy=policy.default).parsebytes(raw_bytes)
-    return _as_text(message.get("Subject"))
+    return as_text(value)
 
 
 class AwsCsmNewsletterService:
@@ -314,7 +141,7 @@ class AwsCsmNewsletterService:
             "contacts_preview": list(normalized_contact_log.get("contacts") or [])[:_MAX_CONTACT_PREVIEW],
             "dispatches": list(normalized_contact_log.get("dispatches") or []),
             "latest_dispatch": latest_dispatch,
-            "warnings": warnings,
+            "warnings": dedupe_warnings(warnings),
             "readiness": readiness,
             **summary,
         }
@@ -439,7 +266,7 @@ class AwsCsmNewsletterService:
         contact_log = self._state_port.load_contact_log(domain=token)
         normalized = _normalize_contact_log(contact_log, domain=token)
         contacts = list(normalized.get("contacts") or [])
-        now_iso = _utc_now_iso()
+        now_iso = utc_now_iso()
         by_email: dict[str, dict[str, Any]] = {row["email"]: dict(row) for row in contacts if isinstance(row, dict)}
         current = by_email.get(normalized_email)
         if current is None:
@@ -496,7 +323,7 @@ class AwsCsmNewsletterService:
             inbound_callback_url=inbound_callback_url,
         )
         contact_log = _normalize_contact_log(self._state_port.load_contact_log(domain=domain_token), domain=domain_token)
-        now_iso = _utc_now_iso()
+        now_iso = utc_now_iso()
         updated: dict[str, Any] | None = None
         contacts: list[dict[str, Any]] = []
         for row in list(contact_log.get("contacts") or []):
@@ -582,7 +409,7 @@ class AwsCsmNewsletterService:
             for item in list(contact_log.get("contacts") or [])
             if isinstance(item, dict) and _as_text(item.get("email"))
         }
-        now_iso = _utc_now_iso()
+        now_iso = utc_now_iso()
         updated = False
         for dispatch in list(contact_log.get("dispatches") or []):
             if _as_text(dispatch.get("dispatch_id")) != _as_text(dispatch_id):
@@ -784,7 +611,7 @@ class AwsCsmNewsletterService:
                 result_row["error"] = _as_text(exc)
             results.append(result_row)
 
-        now_iso = _utc_now_iso()
+        now_iso = utc_now_iso()
         dispatch_row = {
             "dispatch_id": dispatch_id,
             "requested_at": now_iso,

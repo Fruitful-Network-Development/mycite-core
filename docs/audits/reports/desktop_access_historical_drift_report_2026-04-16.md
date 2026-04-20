@@ -1,7 +1,7 @@
 # Desktop Access Historical Drift Report
 
 Date: 2026-04-16  
-Source plan: `docs/audits/desktop_access_and_historical_drift_audit_plan_2026-04-16.md`
+Source plan: `docs/plans/desktop_dm02_dm04_reconciliation_plan_2026-04-20.md` (active implementation handoff for remaining high-priority drift items)
 
 ## Compatibility Inventory (Section 2)
 
@@ -35,6 +35,22 @@ Source plan: `docs/audits/desktop_access_and_historical_drift_audit_plan_2026-04
 | DM-07 | Browser-only keyboard semantics should not conflict with native host accelerators. | Current shell controls are DOM-first; native menu ownership map is unspecified. | narrowed | **High** | Menubar and shell toggle controls in `portal.html` + JS modules. | **retire with migration** | Publish accelerator ownership table; migrate conflicting shortcuts to native-first map with documented web fallback; UX verification confirms no duplicate trigger paths. |
 | DM-08 | Split-shell historical routes should not persist as active behavior. | One-shell route set is canonical and documented; split-shell paths are absent from active route constants. | obsolete | Low | Current docs/contracts and route constants. | retire with migration | Maintain deprecation note and redirect/no-op policy for any legacy bookmarks; telemetry confirms near-zero legacy route traffic before removal. |
 
+### Maintenance-pass note (2026-04-20)
+
+- `DM-05` and `DM-06` are now implemented in code and covered by adapter tests:
+  - `FilesystemSystemDatumStoreAdapter` now supports capability-routed path overrides for anthology, system sources, payload cache, and sandbox roots (`with_path_capabilities(...)`) so packaged/remapped layouts can preserve canonical behavior.
+  - `FilesystemAuditLogAdapter` now serializes appends through a lock file (`.lock`) with an exclusive lock during write, reducing concurrent writer corruption risk for multi-process desktop usage.
+- New validation coverage:
+  - `MyCiteV2/tests/adapters/test_filesystem_system_datum_store_adapter.py` includes remapped-layout parity coverage.
+  - `MyCiteV2/tests/adapters/test_filesystem_audit_log_adapter.py` includes multi-process concurrent append coverage.
+- Validation run on this maintenance pass:
+  - `python3 -m unittest discover -s MyCiteV2/tests/contracts -p "test_*.py" -q`
+  - `python3 -m unittest discover -s MyCiteV2/tests/adapters -p "test_*.py" -q`
+  - `python3 -m unittest discover -s MyCiteV2/tests/architecture -p "test_*.py" -q`
+  - all suites passed.
+- Implementation handoff:
+  - Remaining high-priority open items (`DM-02`, `DM-04`) are now governed by `docs/plans/desktop_dm02_dm04_reconciliation_plan_2026-04-20.md`.
+
 ## Phase 0–3 Work Mapping (Section 5)
 
 | Accepted Work Item | Source Rows | Phase | Target Sprint | Dependencies / Notes |
@@ -42,8 +58,8 @@ Source plan: `docs/audits/desktop_access_and_historical_drift_audit_plan_2026-04
 | Build desktop compatibility inventory + executable parity baseline | CI-01..CI-09, DM-01 | Phase 0 | Sprint P0-S1 | Requires contract test harness capable of replaying shell requests against web and desktop adapter stubs. |
 | Deep-link startup translation shim | DM-02 | Phase 1 (contract-critical) with Phase 2 integration hardening | Sprint P1-S1 (shim) + P2-S1 (host integration) | Depends on canonical shell request factory and desktop boot hook injection point. |
 | Scoped persistence provider for shell chrome/theme state | CI-03, DM-04 | Phase 1 | Sprint P1-S2 | Depends on storage abstraction interface and migration for existing localStorage keys. |
-| Capability-routed data path provider | CI-04, DM-05 | Phase 1 | Sprint P1-S1 | Blocks desktop packaging portability; requires adapter contract and fixture layout matrix. |
-| Concurrent-safe audit append strategy | CI-05, DM-06 | Phase 1 | Sprint P1-S2 | Depends on lock/journal approach decision (OS lock vs host service). |
+| Capability-routed data path provider | CI-04, DM-05 | Phase 1 | Sprint P1-S1 | **Implemented (2026-04-20)** in `FilesystemSystemDatumStoreAdapter` path capability overrides + remapped-layout tests. |
+| Concurrent-safe audit append strategy | CI-05, DM-06 | Phase 1 | Sprint P1-S2 | **Implemented (2026-04-20)** with lock-file guarded appends in `FilesystemAuditLogAdapter` + concurrent writer tests. |
 | Native/web accelerator ownership reconciliation | CI-07, DM-07 | Phase 2 | Sprint P2-S1 | Depends on desktop shell API constraints and UX sign-off. |
 | Integration-health truthfulness (path exists vs process health) | CI-09 | Phase 2 | Sprint P2-S1 | Requires optional health probe contract for adapters. |
 | Sunset old route assumptions + telemetry deprecation gate | DM-08 | Phase 3 | Sprint P3-S1 (start), ongoing cleanup | Depends on telemetry instrumentation and published migration window. |
@@ -52,15 +68,14 @@ Source plan: `docs/audits/desktop_access_and_historical_drift_audit_plan_2026-04
 
 | Exit Criterion (Section 5) | Status | Notes |
 |---|---|---|
-| All critical/high findings resolved or accepted with explicit waivers. | **At risk / open** | Critical/high findings are identified; reconciliation actions defined, not yet implemented. |
-| Contract test suite demonstrates parity for agreed historical behaviors. | **Open** | Parity suite expansion is planned in Phase 0 and Phase 1. |
+| All critical/high findings resolved or accepted with explicit waivers. | **Partially met** | DM-05/DM-06 completed; DM-02/DM-04/DM-07 remain open pending desktop host/JS parity work. |
+| Contract test suite demonstrates parity for agreed historical behaviors. | **Partially met** | Filesystem portability and concurrent append paths now have executable adapter coverage; deep-link and scoped shell-state parity remain open. |
 | Desktop and web variants share one canonical state/routing authority. | **Partially met** | Core runtime/state machine is canonical; desktop-specific translation/accelerator handling still pending. |
 | Remaining compatibility paths have owners, sunset dates, and telemetry. | **Partially met** | Owners/phases assigned; sunset dates/telemetry thresholds still to be ratified in Phase 3. |
 
 ## Unresolved Risks (Explicit)
 
-1. **Packaging path indirection risk**: if desktop installer moves writable paths without a capability provider, canonical datum documents can become non-discoverable.
-2. **Concurrent write integrity risk**: single-file audit append behavior may fail under simultaneous desktop windows/processes.
-3. **History/deep-link divergence risk**: browser history semantics may not map 1:1 to native navigation lifecycle without a translation shim.
-4. **Accelerator collision risk**: duplicate shortcut bindings between web JS and native menu can trigger conflicting shell actions.
-5. **Operational false-positive risk**: path-existence integration checks may claim tools are healthy even when backing process/services are unavailable.
+1. **History/deep-link divergence risk**: browser history semantics may not map 1:1 to native navigation lifecycle without a translation shim.
+2. **Scoped persistence mediation risk**: shell chrome/theme state still relies on browser-local storage semantics and lacks explicit desktop window/session conflict policy.
+3. **Accelerator collision risk**: duplicate shortcut bindings between web JS and native menu can trigger conflicting shell actions.
+4. **Operational false-positive risk**: path-existence integration checks may claim tools are healthy even when backing process/services are unavailable.
