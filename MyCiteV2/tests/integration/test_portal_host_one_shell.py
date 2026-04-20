@@ -1056,7 +1056,10 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
 
         self.assertIn("firstV2ShellCompositionApplied", portal_js)
         self.assertIn("applyShellPostureFromDom({ useStoredWorkbenchPreference: false })", portal_js)
+        self.assertIn("syncFromDom: (options) => layoutApi.syncFromDom && layoutApi.syncFromDom(options)", portal_js)
+        self.assertIn("routeKeyFromUrl", shell_core)
         self.assertIn("fromShellComposition: true", shell_core)
+        self.assertIn("routeKey: routeKey", shell_core)
 
 
 if __name__ == "__main__":

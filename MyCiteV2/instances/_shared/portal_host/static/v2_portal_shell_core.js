@@ -34,6 +34,20 @@
     }
   }
 
+  function routeKeyFromUrl(rawUrl) {
+    if (!rawUrl) {
+      return `${window.location.pathname || ""}${window.location.search || ""}`;
+    }
+    try {
+      var parsed = new URL(rawUrl, window.location.origin);
+      return `${parsed.pathname || ""}${parsed.search || ""}`;
+    } catch (_) {
+      return String(rawUrl || "").trim().charAt(0) === "/"
+        ? String(rawUrl || "").trim()
+        : `${window.location.pathname || ""}${window.location.search || ""}`;
+    }
+  }
+
   function setBootState(state) {
     if (!BODY_DATA) return;
     BODY_DATA.setAttribute("data-shell-boot-state", String(state || "").trim() || "template");
@@ -105,7 +119,7 @@
     };
   }
 
-  function applyChrome(composition) {
+  function applyChrome(composition, options) {
     var shell = qs(".ide-shell");
     var workbench = qs(".ide-workbench");
     var inspector = qs("#portalInspector");
@@ -117,6 +131,7 @@
         (composition.regions && composition.regions.inspector)) ||
       {};
     var workbenchRegion = (composition.regions && composition.regions.workbench) || {};
+    var routeKey = (options && options.routeKey) || routeKeyFromUrl((lastEnvelope && lastEnvelope.canonical_url) || "");
     var workbenchVisible = !(composition.workbench_collapsed === true || workbenchRegion.visible === false);
     var inspectorVisible =
       inspectorRegion.visible !== false &&
@@ -159,10 +174,10 @@
       );
     }
     if (window.PortalShell && typeof window.PortalShell.setShellComposition === "function") {
-      window.PortalShell.setShellComposition(composition.composition_mode || "system");
+      window.PortalShell.setShellComposition(composition.composition_mode || "system", { routeKey: routeKey });
     }
     if (window.PortalShell && typeof window.PortalShell.syncFromDom === "function") {
-      window.PortalShell.syncFromDom({ fromShellComposition: true });
+      window.PortalShell.syncFromDom({ fromShellComposition: true, routeKey: routeKey });
     }
   }
 
@@ -237,7 +252,7 @@
     }
     lastEnvelope = envelope;
     lastShellRequest = canonicalShellRequestFromEnvelope(envelope) || lastShellRequest;
-    applyChrome(envelope.shell_composition);
+    applyChrome(envelope.shell_composition, { routeKey: routeKeyFromUrl(envelope.canonical_url) });
     renderRegions(envelope.shell_composition);
     if (!(options && options.updateHistory === false)) {
       syncHistory(envelope, options && options.historyPayload, options || {});

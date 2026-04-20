@@ -829,6 +829,25 @@ def _repair_stage_b_contract_defects(path: Path, payload: dict[str, Any]) -> lis
     return notes
 
 
+def _repair_known_label_typos(path: Path, payload: dict[str, Any]) -> list[str]:
+    notes: list[str] = []
+    suffix = _node_suffix_from_path(path)
+    if suffix != "3-2-3-17-77-3-8":
+        return notes
+
+    space = _datum_space(payload)
+    row = space.get("5-0-1")
+    if not isinstance(row, list) or len(row) < 2 or not isinstance(row[1], list):
+        return notes
+    labels = list(row[1])
+    if labels == ["silver_lake_boundar"]:
+        row[1] = ["silver_lake_boundary"]
+        space["5-0-1"] = row
+        payload["datum_addressing_abstraction_space"] = space
+        notes.append("5-0-1 label normalized from silver_lake_boundar to silver_lake_boundary")
+    return notes
+
+
 def _load_anchor_rows(anchor_path: Path) -> tuple[AuthoritativeDatumDocumentRow, ...]:
     payload = _read_json(anchor_path)
     space = payload.get("datum_addressing_abstraction_space")
@@ -921,11 +940,10 @@ def _is_stage_a_safe(
     without_ref: dict[str, Any],
     pending_deterministic_fixes: bool,
 ) -> bool:
+    del with_ref
     if contract_violations:
         return False
     if pending_deterministic_fixes:
-        return False
-    if list(with_ref.get("warnings") or []):
         return False
     if _as_text(without_ref.get("projection_source")) != "hops":
         return False
@@ -1049,8 +1067,7 @@ def _audit_and_repair_data_root(
         reference_geojson_source = _as_text(payload.get("reference_geojson_source"))
         deterministic_notes = _align_swapped_node_bindings(path, payload)
         deterministic_notes.extend(_repair_stage_b_contract_defects(path, payload))
-        if deterministic_notes:
-            deterministic_fixed.append(path.name)
+        deterministic_notes.extend(_repair_known_label_typos(path, payload))
 
         violations = _contract_violations(path, payload)
         with_ref = _projection_snapshot(
@@ -1093,6 +1110,7 @@ def _audit_and_repair_data_root(
         if apply_deterministic_fixes and deterministic_notes:
             _write_json(path, payload)
             wrote_file = True
+            deterministic_fixed.append(path.name)
 
         if strip_stage_a and safe_to_strip:
             strip_payload = payload if wrote_file else _read_json(path)

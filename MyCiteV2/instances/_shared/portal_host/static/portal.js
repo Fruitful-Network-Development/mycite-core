@@ -212,8 +212,24 @@
       return (shell.getAttribute("data-shell-composition") || "").trim().toLowerCase() === "tool" ? "tool" : "system";
     }
 
-    function currentRouteKey() {
+    function browserRouteKey() {
       return `${window.location.pathname || ""}${window.location.search || ""}`;
+    }
+
+    function routeKeyFromValue(value) {
+      const raw = String(value || "").trim();
+      if (!raw) return browserRouteKey();
+      try {
+        const url = new URL(raw, window.location.origin);
+        return `${url.pathname || ""}${url.search || ""}`;
+      } catch (_) {
+        return raw.startsWith("/") ? raw : browserRouteKey();
+      }
+    }
+
+    function currentRouteKey(options) {
+      const opts = options || {};
+      return routeKeyFromValue(opts.routeKey);
     }
 
     function toolPanelLockIsEnabled() {
@@ -225,21 +241,21 @@
       const next = currentShellComposition() === "tool" && enabled === true;
       shell.setAttribute("data-tool-panel-lock", next ? "true" : "false");
       if (next) {
-        shell.setAttribute("data-tool-panel-lock-route", opts.routeKey || currentRouteKey());
+        shell.setAttribute("data-tool-panel-lock-route", currentRouteKey(opts));
       } else {
         shell.removeAttribute("data-tool-panel-lock-route");
       }
       shell.classList.toggle("ide-shell--tool-panel-lock", next);
     }
 
-    function syncToolPanelLockScope() {
+    function syncToolPanelLockScope(options) {
       if (!toolPanelLockIsEnabled()) return;
       if (currentShellComposition() !== "tool") {
         setToolPanelLock(false);
         return;
       }
       const lockRoute = shell.getAttribute("data-tool-panel-lock-route") || "";
-      if (lockRoute && lockRoute !== currentRouteKey()) {
+      if (lockRoute && lockRoute !== currentRouteKey(options)) {
         setToolPanelLock(false);
       }
     }
@@ -376,8 +392,8 @@
       shell.classList.toggle("ide-shell--workbench-tight", workbenchWidth < policy.minWorkbenchWidth);
     }
 
-    function syncShellToggleButtons() {
-      syncToolPanelLockScope();
+    function syncShellToggleButtons(options) {
+      syncToolPanelLockScope(options);
       const composition = currentShellComposition();
       const toolLock = composition === "tool" && toolPanelLockIsEnabled();
       qsa("[data-shell-toggle]", shell).forEach(button => {
@@ -504,6 +520,7 @@
 
     function applyShellPostureFromDom(options) {
       const opts = options || {};
+      const routeKey = currentRouteKey(opts);
       const composition = currentShellComposition();
       const fromShellComposition = opts.fromShellComposition === true;
       const controlPanelOpen = shell.getAttribute("data-control-panel-collapsed") !== "true";
@@ -533,22 +550,23 @@
       if (currentShellComposition() !== "tool") {
         setToolPanelLock(false);
       } else if (!shell.getAttribute("data-tool-panel-lock")) {
-        setToolPanelLock(false, { routeKey: currentRouteKey() });
+        setToolPanelLock(false, { routeKey: routeKey });
       }
-      syncShellToggleButtons();
+      syncShellToggleButtons({ routeKey: routeKey });
       rebalanceWorkbench();
       if (fromShellComposition) {
         firstV2ShellCompositionApplied = true;
       }
     }
 
-    function setShellComposition(mode) {
+    function setShellComposition(mode, options) {
+      const routeKey = currentRouteKey(options);
       const composition = String(mode || "").trim().toLowerCase() === "tool" ? "tool" : "system";
       shell.setAttribute("data-shell-composition", composition);
       if (composition !== "tool") {
         setToolPanelLock(false);
       } else {
-        syncToolPanelLockScope();
+        syncToolPanelLockScope({ routeKey: routeKey });
       }
       if (!shell.getAttribute("data-foreground-shell-region")) {
         shell.setAttribute("data-foreground-shell-region", "center-workbench");
@@ -564,7 +582,7 @@
         inspector.setAttribute("data-surface-layout", "sidebar");
       }
       document.dispatchEvent(new CustomEvent("mycite:shell:composition-changed", { detail: { composition } }));
-      syncShellToggleButtons();
+      syncShellToggleButtons({ routeKey: routeKey });
       rebalanceWorkbench();
     }
 
@@ -925,8 +943,8 @@
         setInterfacePanelOpen: (open, persist) => layoutApi.setInterfacePanelOpen(!!open, persist !== false),
         setInspectorOpen: (open, persist) => layoutApi.setInterfacePanelOpen(!!open, persist !== false),
         setControlPanelOpen: (open, persist) => layoutApi.setControlPanelOpen(!!open, persist !== false),
-        setShellComposition: (mode) => layoutApi.setShellComposition(mode),
-        syncFromDom: () => layoutApi.syncFromDom && layoutApi.syncFromDom(),
+        setShellComposition: (mode, options) => layoutApi.setShellComposition(mode, options),
+        syncFromDom: (options) => layoutApi.syncFromDom && layoutApi.syncFromDom(options),
         rebalanceWorkbench: () => layoutApi.rebalanceWorkbench && layoutApi.rebalanceWorkbench(),
       }
     : null;
