@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -62,6 +63,8 @@ _AUDIT_FOCUS_SUFFIX = "4-1-77"
 _DEFAULT_DOMAIN_REGION = "us-east-1"
 _DEFAULT_DOMAIN_INBOUND_LAMBDA = "newsletter-inbound-capture"
 _DEFAULT_DOMAIN_RECEIPT_BUCKET = "ses-inbound-fnd-mail"
+_ROUTE_SYNC_FAIL_CLOSED_ENV = "AWS_CSM_ROUTE_SYNC_FAIL_CLOSED"
+_ROUTE_SYNC_FALLBACK_SCRIPT = "MyCiteV2/scripts/deploy_aws_csm_pass3_inbound_capture.py"
 _VISIBLE_ACTIVITY_SURFACE_IDS = (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
@@ -1446,6 +1449,104 @@ def _record_profile_handoff_event(
     )
 
 
+def _route_sync_fail_closed() -> bool:
+    token = _as_text(os.getenv(_ROUTE_SYNC_FAIL_CLOSED_ENV)).lower()
+    return token in {"1", "true", "yes", "on"}
+
+
+def _route_sync_manual_step(private_dir: str | Path | None) -> str:
+    state_root = (
+        Path(private_dir) / "utilities" / "tools" / "aws-csm"
+        if private_dir is not None
+        else Path("<private_dir>") / "utilities" / "tools" / "aws-csm"
+    )
+    return (
+        f"python3 {_ROUTE_SYNC_FALLBACK_SCRIPT} --apply --state-root {state_root}"
+    )
+
+
+def _sync_verification_route_map(
+    *,
+    store: FilesystemAwsCsmToolProfileStore,
+    cloud: object,
+    private_dir: str | Path | None,
+) -> dict[str, Any]:
+    if not hasattr(cloud, "sync_verification_route_map"):
+        return {
+            "status": "skipped",
+            "message": "Verification-forward route sync is not supported by this runtime cloud adapter.",
+            "route_count": 0,
+            "tracked_recipients": [],
+            "lambda_name": "",
+            "changed": False,
+            "manual_step": _route_sync_manual_step(private_dir),
+        }
+    sync = getattr(cloud, "sync_verification_route_map")
+    if not callable(sync):
+        return {
+            "status": "warning",
+            "message": "Verification-forward route sync adapter entry is present but not callable.",
+            "route_count": 0,
+            "tracked_recipients": [],
+            "lambda_name": "",
+            "changed": False,
+            "manual_step": _route_sync_manual_step(private_dir),
+        }
+    try:
+        summary = sync(profiles=store.list_profiles())
+    except Exception as exc:  # noqa: BLE001
+        warning = (
+            f"Verification-forward route sync failed: {_as_text(exc) or 'unknown error'}. "
+            f"Fallback: {_route_sync_manual_step(private_dir)}"
+        )
+        if _route_sync_fail_closed():
+            raise ValueError(warning)
+        return {
+            "status": "warning",
+            "message": warning,
+            "route_count": 0,
+            "tracked_recipients": [],
+            "lambda_name": "",
+            "changed": False,
+            "manual_step": _route_sync_manual_step(private_dir),
+        }
+    payload = _as_dict(summary)
+    status = _as_text(payload.get("status")).lower() or "success"
+    if status not in {"success", "warning", "failure", "skipped"}:
+        status = "success"
+    message = _as_text(payload.get("message")) or (
+        "Verification-forward route sync completed."
+        if status in {"success", "skipped"}
+        else "Verification-forward route sync needs operator attention."
+    )
+    if status in {"warning", "failure"} and _route_sync_fail_closed():
+        raise ValueError(message)
+    return {
+        "status": status,
+        "message": message,
+        "route_count": payload.get("route_count"),
+        "tracked_recipients": list(payload.get("tracked_recipients") or []),
+        "lambda_name": _as_text(payload.get("lambda_name")),
+        "changed": _as_bool(payload.get("changed")),
+        "manual_step": _as_text(payload.get("manual_step")) or _route_sync_manual_step(private_dir),
+    }
+
+
+def _merge_route_sync_details(details: dict[str, Any], route_sync: dict[str, Any] | None) -> None:
+    payload = _as_dict(route_sync)
+    if not payload:
+        return
+    details["route_sync_status"] = _as_text(payload.get("status")) or "unknown"
+    details["route_sync_message"] = _as_text(payload.get("message"))
+    details["route_sync_route_count"] = _as_text(payload.get("route_count"))
+    details["route_sync_lambda_name"] = _as_text(payload.get("lambda_name"))
+    details["route_sync_changed"] = "true" if _as_bool(payload.get("changed")) else "false"
+    details["route_sync_tracked_recipients"] = ", ".join(
+        _as_text(item) for item in _as_list(payload.get("tracked_recipients")) if _as_text(item)
+    )
+    details["route_sync_manual_step"] = _as_text(payload.get("manual_step"))
+
+
 def _apply_action(
     *,
     portal_scope: PortalScope,
@@ -1560,6 +1661,12 @@ def _apply_action(
 
         if action_kind == "create_profile":
             outcome = AwsCsmProfileRegistryService(store).create_profile(action_payload)
+            cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=outcome.tenant_id)
+            route_sync = _sync_verification_route_map(
+                store=store,
+                cloud=cloud,
+                private_dir=private_dir,
+            )
             next_query = {"view": "domains", "domain": outcome.domain, "profile": outcome.profile_id, "section": "onboarding"}
             details = {
                 "profile_id": outcome.profile_id,
@@ -1569,6 +1676,10 @@ def _apply_action(
                 "single_user_email": outcome.single_user_email,
                 "operator_inbox_target": outcome.operator_inbox_target,
             }
+            _merge_route_sync_details(details, route_sync)
+            message = f"Created draft AWS-CSM profile {outcome.profile_id}."
+            if _as_text(route_sync.get("status")) in {"warning", "failure"}:
+                message += " Verification-forward route sync needs operator attention."
             _append_local_audit(
                 audit_storage_file=audit_storage_file,
                 private_dir=private_dir,
@@ -1578,7 +1689,7 @@ def _apply_action(
             return next_query, _action_result(
                 action_kind=action_kind,
                 status="accepted",
-                message=f"Created draft AWS-CSM profile {outcome.profile_id}.",
+                message=message,
                 details=details,
                 created_profile=details,
             )
@@ -1627,6 +1738,16 @@ def _apply_action(
                 "tenant_scope_id": tenant_scope_id,
                 "updated_sections": list(outcome.updated_sections),
             }
+            route_sync_message_suffix = ""
+            if action_kind == "stage_smtp_credentials":
+                route_sync = _sync_verification_route_map(
+                    store=store,
+                    cloud=cloud,
+                    private_dir=private_dir,
+                )
+                _merge_route_sync_details(details, route_sync)
+                if _as_text(route_sync.get("status")) in {"warning", "failure"}:
+                    route_sync_message_suffix = " Verification-forward route sync needs operator attention."
             _append_local_audit(
                 audit_storage_file=audit_storage_file,
                 private_dir=private_dir,
@@ -1636,7 +1757,7 @@ def _apply_action(
             return surface_query, _action_result(
                 action_kind=action_kind,
                 status="accepted",
-                message=f"AWS-CSM action {action_kind} completed for {_as_text(profile_row.get('profile_id'))}.",
+                message=f"AWS-CSM action {action_kind} completed for {_as_text(profile_row.get('profile_id'))}.{route_sync_message_suffix}",
                 details=details,
             )
 

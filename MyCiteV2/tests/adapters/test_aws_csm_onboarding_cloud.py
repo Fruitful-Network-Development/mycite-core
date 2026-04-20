@@ -103,6 +103,31 @@ class _FakeSecretsManagerClient:
         self.secrets[Name] = SecretString
         return {"ARN": f"arn:aws:secretsmanager:us-east-1:123456789012:secret:{Name}"}
 
+    def list_secrets(
+        self,
+        *,
+        Filters: list[dict[str, object]] | None = None,
+        MaxResults: int | None = None,
+        NextToken: str | None = None,
+    ) -> dict[str, object]:
+        _ = MaxResults, NextToken
+        prefix = ""
+        for row in list(Filters or []):
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("Key") or "") != "name":
+                continue
+            values = list(row.get("Values") or [])
+            if values:
+                prefix = str(values[0] or "")
+                break
+        names = [
+            {"Name": name}
+            for name in sorted(self.secrets.keys())
+            if not prefix or name.startswith(prefix)
+        ]
+        return {"SecretList": names}
+
 
 class _FakeIamClient:
     def list_access_keys(self, *, UserName: str) -> dict[str, object]:
@@ -173,6 +198,32 @@ class _FakeSesReceiptClient:
         return {}
 
 
+class _FakeLambdaClient:
+    def __init__(self, *, environment: dict[str, str] | None = None) -> None:
+        self.environment = dict(environment or {})
+        self.update_calls: list[dict[str, object]] = []
+
+    def get_function_configuration(self, *, FunctionName: str) -> dict[str, object]:
+        _ = FunctionName
+        return {
+            "FunctionName": "newsletter-inbound-capture",
+            "State": "Active",
+            "LastUpdateStatus": "Successful",
+            "Environment": {"Variables": dict(self.environment)},
+        }
+
+    def update_function_configuration(
+        self,
+        *,
+        FunctionName: str,
+        Environment: dict[str, object],
+    ) -> dict[str, object]:
+        _ = FunctionName
+        self.update_calls.append({"environment": dict(Environment)})
+        self.environment = dict(Environment.get("Variables") or {})
+        return {"LastUpdateStatus": "InProgress"}
+
+
 class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
     def test_stage_smtp_credentials_materializes_secret_backed_readiness(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -199,6 +250,109 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
             stored = json.loads(secret_string)
             self.assertEqual(stored["username"], "AKIAEXAMPLEKEY")
             self.assertTrue(stored["password"])
+
+    def test_stage_smtp_credentials_reuses_existing_secret_when_key_quota_is_blocked(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            secrets = _FakeSecretsManagerClient()
+            secrets.secrets["aws-cms/smtp/cvcc.technicalContact"] = json.dumps(
+                {"username": "AKIAEXISTING", "password": "SMTPPASS"},
+                separators=(",", ":"),
+            )
+            adapter = AwsEc2RoleOnboardingCloudAdapter(private_dir=temp_dir, tenant_id="cvcc")
+            profile = _profile()
+            profile["identity"] = {
+                "profile_id": "aws-csm.cvcc.marilyn",
+                "tenant_id": "cvcc",
+                "domain": "cuyahogavalleycountrysideconservancy.org",
+                "region": "us-east-1",
+                "mailbox_local_part": "marilyn",
+                "send_as_email": "marilyn@cuyahogavalleycountrysideconservancy.org",
+                "operator_inbox_target": "ops@example.com",
+            }
+            profile["smtp"] = {
+                "credentials_secret_name": "aws-cms/smtp/cvcc.marilyn",
+                "credentials_secret_state": "missing",
+                "send_as_email": "marilyn@cuyahogavalleycountrysideconservancy.org",
+            }
+
+            class _FakeIamQuotaBlockedClient:
+                def list_access_keys(self, *, UserName: str) -> dict[str, object]:
+                    _ = UserName
+                    return {
+                        "AccessKeyMetadata": [
+                            {"AccessKeyId": "AKIAONE", "Status": "Active", "CreateDate": "2026-04-01T00:00:00+00:00"},
+                            {"AccessKeyId": "AKIATWO", "Status": "Active", "CreateDate": "2026-04-02T00:00:00+00:00"},
+                        ]
+                    }
+
+                def create_access_key(self, *, UserName: str) -> dict[str, object]:
+                    raise AssertionError(f"create_access_key should not run for {UserName}")
+
+            def fake_client(service_name: str, *, region: str | None = None) -> object:
+                _ = region
+                if service_name == "secretsmanager":
+                    return secrets
+                if service_name == "iam":
+                    return _FakeIamQuotaBlockedClient()
+                if service_name == "sesv2":
+                    return _FakeSesV2Client()
+                raise AssertionError(f"unexpected service {service_name}")
+
+            with patch.object(adapter, "_client", side_effect=fake_client):
+                patch_payload = adapter.supplemental_profile_patch("stage_smtp_credentials", profile)
+
+            self.assertTrue(patch_payload["smtp"]["handoff_ready"])
+            self.assertEqual(patch_payload["smtp"]["credentials_secret_state"], "configured")
+            self.assertEqual(patch_payload["workflow"]["handoff_status"], "ready_for_gmail_handoff")
+            secret_string = secrets.secrets["aws-cms/smtp/cvcc.marilyn"]
+            stored = json.loads(secret_string)
+            self.assertEqual(stored["username"], "AKIAEXISTING")
+            self.assertEqual(stored["reused_from_secret"], "aws-cms/smtp/cvcc.technicalContact")
+
+    def test_sync_verification_route_map_updates_lambda_environment(self) -> None:
+        adapter = AwsEc2RoleOnboardingCloudAdapter(tenant_id="fnd")
+        lambda_client = _FakeLambdaClient(
+            environment={
+                "CALLBACK_URL_TEMPLATE": "https://{domain}/__fnd/newsletter/inbound-capture",
+                "VERIFICATION_ROUTE_MAP_JSON": "{}",
+            }
+        )
+        profiles = [
+            _profile(),
+            {
+                "schema": "mycite.service_tool.aws_csm.profile.v1",
+                "identity": {
+                    "profile_id": "aws-csm.cvcc.technicalContact",
+                    "tenant_id": "cvcc",
+                    "domain": "cuyahogavalleycountrysideconservancy.org",
+                    "send_as_email": "technicalContact@cuyahogavalleycountrysideconservancy.org",
+                    "operator_inbox_target": "ops@example.com",
+                },
+                "smtp": {
+                    "forward_to_email": "ops@example.com",
+                },
+            },
+        ]
+
+        def fake_client(service_name: str, *, region: str | None = None) -> object:
+            _ = region
+            if service_name == "lambda":
+                return lambda_client
+            raise AssertionError(f"unexpected service {service_name}")
+
+        with patch.object(adapter, "_client", side_effect=fake_client):
+            summary = adapter.sync_verification_route_map(profiles=profiles)
+
+        self.assertEqual(summary["status"], "success")
+        self.assertTrue(summary["changed"])
+        self.assertEqual(summary["route_count"], 2)
+        self.assertEqual(len(lambda_client.update_calls), 1)
+        route_map = json.loads(lambda_client.environment["VERIFICATION_ROUTE_MAP_JSON"])
+        self.assertEqual(route_map["mark@trappfamilyfarm.com"]["forward_to_email"], "mark@trappfamilyfarm.com")
+        self.assertEqual(
+            route_map["technicalcontact@cuyahogavalleycountrysideconservancy.org"]["forward_to_email"],
+            "ops@example.com",
+        )
 
     def test_describe_profile_readiness_reports_receipt_rule_and_capture_evidence(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -406,7 +560,7 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
         self.assertTrue(capture["has_verification_link"])
         self.assertIn("https://mail.google.com/mail/u/0/?ui=2&ik=verify", capture["link"])
 
-    def test_send_handoff_email_omits_password_from_message_body(self) -> None:
+    def test_send_handoff_email_includes_password_in_message_body(self) -> None:
         with TemporaryDirectory() as temp_dir:
             sesv2 = _FakeSesV2Client()
             adapter = AwsEc2RoleOnboardingCloudAdapter(private_dir=temp_dir, tenant_id="tff")
@@ -437,7 +591,7 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
         self.assertEqual(result["message_id"], "ses-message-001")
         body = sesv2.sent_messages[0]["content"]["Simple"]["Body"]["Text"]["Data"]
         self.assertIn("SMTP username: SMTPUSER", body)
-        self.assertNotIn("SMTPPASS", body)
+        self.assertIn("SMTP password: SMTPPASS", body)
 
     def test_sync_domain_dns_refuses_when_nameservers_do_not_match(self) -> None:
         adapter = AwsEc2RoleOnboardingCloudAdapter(tenant_id="cvccboard")

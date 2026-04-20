@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -34,6 +35,9 @@ _AWS_SMTP_DATE_SEED = "11111111"
 _DEFAULT_REGION = "us-east-1"
 _DEFAULT_INBOUND_LAMBDA = "newsletter-inbound-capture"
 _DEFAULT_DOMAIN_RECEIPT_BUCKET = "ses-inbound-fnd-mail"
+_ROUTE_MAP_ENV_KEY = "VERIFICATION_ROUTE_MAP_JSON"
+_ROUTE_MAP_LAMBDA_ENV_KEY = "AWS_CSM_VERIFICATION_LAMBDA_NAME"
+_ROUTE_MAP_SYNC_TIMEOUT_SECONDS = 90
 
 
 def _as_text(value: object) -> str:
@@ -487,6 +491,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             raise ValueError("AWS-CSM operator inbox target is not configured for this profile.")
         material = self.read_handoff_secret(profile)
         username = _as_text(material.get("username"))
+        password = _as_text(material.get("password"))
         smtp_host = _as_text(material.get("smtp_host"))
         smtp_port = _as_text(material.get("smtp_port"))
         region = self._region_for_profile(profile)
@@ -505,8 +510,9 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                                     f"SMTP host: {smtp_host}",
                                     f"SMTP port: {smtp_port}",
                                     f"SMTP username: {username}",
+                                    f"SMTP password: {password}",
                                     "",
-                                    "Use the separately revealed SMTP password when Gmail asks for it.",
+                                    "If Gmail asks again, you can also reveal the SMTP password from the AWS-CSM portal action.",
                                     "After saving the Send mail as entry, wait for the Gmail confirmation email to arrive.",
                                     "Open the confirmation link to finish verification.",
                                 ]
@@ -524,6 +530,49 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             "smtp_host": smtp_host,
             "smtp_port": smtp_port,
             "state": _as_text(material.get("state")),
+        }
+
+    def sync_verification_route_map(self, *, profiles: list[dict[str, Any]]) -> dict[str, Any]:
+        routes = self._verification_route_map_from_profiles(profiles=profiles)
+        lambda_name = (
+            _as_text(os.getenv(_ROUTE_MAP_LAMBDA_ENV_KEY))
+            or self._verification_lambda_name(profiles=profiles)
+            or _DEFAULT_INBOUND_LAMBDA
+        )
+        region = _DEFAULT_REGION
+        client = self._client("lambda", region=region)
+        configuration = client.get_function_configuration(FunctionName=lambda_name)
+        environment = dict(_as_dict(configuration.get("Environment")).get("Variables") or {})
+        existing_raw = _as_text(environment.get(_ROUTE_MAP_ENV_KEY)) or "{}"
+        try:
+            existing_routes = json.loads(existing_raw)
+        except json.JSONDecodeError:
+            existing_routes = {}
+        existing_routes = existing_routes if isinstance(existing_routes, dict) else {}
+        if existing_routes == routes:
+            return {
+                "status": "success",
+                "message": "Verification-forward route map already up to date.",
+                "route_count": len(routes),
+                "tracked_recipients": sorted(routes),
+                "lambda_name": lambda_name,
+                "region": region,
+                "changed": False,
+            }
+        environment[_ROUTE_MAP_ENV_KEY] = json.dumps(routes, separators=(",", ":"), sort_keys=True)
+        client.update_function_configuration(
+            FunctionName=lambda_name,
+            Environment={"Variables": environment},
+        )
+        self._wait_for_lambda_update(client=client, function_name=lambda_name)
+        return {
+            "status": "success",
+            "message": "Verification-forward route map synced to Lambda environment.",
+            "route_count": len(routes),
+            "tracked_recipients": sorted(routes),
+            "lambda_name": lambda_name,
+            "region": region,
+            "changed": True,
         }
 
     def read_handoff_secret(self, profile: dict[str, Any]) -> dict[str, Any]:
@@ -1085,6 +1134,9 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 if _as_text(row.get("status")).lower() == "active"
             ]
             if len(active_keys) >= 2:
+                reused = self._reuse_existing_smtp_secret_material(secret_name=secret_name, region=region)
+                if _as_text(reused.get("state")).lower() == "configured":
+                    return reused
                 current["state"] = "quota_blocked"
                 current["message"] = (
                     f"{_AWS_SMTP_IAM_USER} already has two active access keys; rotate or reuse existing SMTP material first."
@@ -1097,6 +1149,93 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 current["message"] = _as_text(exc) or "Unable to materialize SMTP secret material."
                 return current
             return created
+
+    def _reuse_existing_smtp_secret_material(self, *, secret_name: str, region: str) -> dict[str, Any]:
+        token = _as_text(secret_name)
+        if not token:
+            return {}
+        prefix = "aws-cms/smtp/"
+        suffix = token[len(prefix) :] if token.startswith(prefix) else token
+        tenant_id = suffix.split(".", 1)[0].strip()
+        if not tenant_id:
+            return {}
+        tenant_secret = f"{prefix}{tenant_id}"
+        candidate_names = [tenant_secret]
+        candidate_names.extend(
+            name
+            for name in self._list_smtp_secret_names(prefix=f"{prefix}{tenant_id}.")
+            if _as_text(name)
+        )
+        seen: set[str] = set()
+        ordered_candidates: list[str] = []
+        for candidate in candidate_names:
+            normalized = _as_text(candidate)
+            if not normalized or normalized == token or normalized in seen:
+                continue
+            seen.add(normalized)
+            ordered_candidates.append(normalized)
+        for candidate in ordered_candidates:
+            material = self._smtp_secret_material(secret_name=candidate, region=region)
+            if _as_text(material.get("state")).lower() != "configured":
+                continue
+            username = _as_text(material.get("persisted_username") or material.get("username"))
+            password = _as_text(material.get("password"))
+            if not username or not password:
+                continue
+            payload = {
+                "username": username,
+                "password": password,
+                "iam_user": _AWS_SMTP_IAM_USER,
+                "access_key_id": _as_text(material.get("access_key_id") or username),
+                "smtp_region": region,
+                "smtp_host": _as_text(material.get("smtp_host")) or f"email-smtp.{region}.amazonaws.com",
+                "smtp_port": _as_text(material.get("smtp_port")) or "587",
+                "tls_mode": "TLS",
+                "provisioned_at": _utc_now_iso(),
+                "reused_from_secret": candidate,
+            }
+            self._upsert_secret_payload(
+                secret_name=token,
+                payload=payload,
+                description=_smtp_secret_description(token),
+            )
+            reused = self._smtp_secret_material(secret_name=token, region=region)
+            reused["message"] = (
+                f"SMTP secret material was reused from {candidate} because new IAM access keys are quota blocked."
+            )
+            reused["reused_from_secret"] = candidate
+            return reused
+        return {}
+
+    def _list_smtp_secret_names(self, *, prefix: str) -> list[str]:
+        token = _as_text(prefix)
+        if not token:
+            return []
+        client = self._client("secretsmanager", region=_DEFAULT_REGION)
+        collected: list[str] = []
+        next_token = ""
+        while True:
+            kwargs: dict[str, Any] = {
+                "Filters": [{"Key": "name", "Values": [token]}],
+                "MaxResults": 100,
+            }
+            if next_token:
+                kwargs["NextToken"] = next_token
+            try:
+                response = client.list_secrets(**kwargs)
+            except Exception:  # noqa: BLE001
+                return collected
+            for row in _as_list(response.get("SecretList")):
+                if not isinstance(row, dict):
+                    continue
+                name = _as_text(row.get("Name"))
+                if name and name.startswith(token):
+                    collected.append(name)
+            next_token = _as_text(response.get("NextToken"))
+            if not next_token:
+                break
+        collected.sort()
+        return collected
 
     def _list_smtp_access_keys(self) -> list[dict[str, Any]]:
         try:
@@ -1168,6 +1307,48 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 SecretString=secret_string,
                 Description=description,
             )
+
+    def _verification_route_map_from_profiles(self, *, profiles: list[dict[str, Any]]) -> dict[str, dict[str, str]]:
+        routes: dict[str, dict[str, str]] = {}
+        for profile in list(profiles or []):
+            if not isinstance(profile, dict):
+                continue
+            identity = _as_dict(profile.get("identity"))
+            smtp = _as_dict(profile.get("smtp"))
+            send_as_email = _normalized_email(identity.get("send_as_email") or smtp.get("send_as_email"))
+            forward_to_email = _normalized_email(smtp.get("forward_to_email") or identity.get("operator_inbox_target"))
+            if not send_as_email or not forward_to_email:
+                continue
+            routes[send_as_email] = {
+                "forward_to_email": forward_to_email,
+                "profile_id": _as_text(identity.get("profile_id")),
+                "domain": _normalized_domain(identity.get("domain")) or _email_domain(send_as_email),
+            }
+        return dict(sorted(routes.items()))
+
+    def _verification_lambda_name(self, *, profiles: list[dict[str, Any]]) -> str:
+        for profile in list(profiles or []):
+            if not isinstance(profile, dict):
+                continue
+            lambda_name = _as_text(self._inbound_lambda_name(profile))
+            if lambda_name:
+                return lambda_name
+        return _DEFAULT_INBOUND_LAMBDA
+
+    def _wait_for_lambda_update(self, *, client: Any, function_name: str) -> None:
+        deadline = time.time() + _ROUTE_MAP_SYNC_TIMEOUT_SECONDS
+        while time.time() < deadline:
+            payload = client.get_function_configuration(FunctionName=function_name)
+            status = _as_text(payload.get("LastUpdateStatus"))
+            state = _as_text(payload.get("State"))
+            if status in {"Successful", ""} and state in {"Active", ""}:
+                return
+            if status == "Failed":
+                raise ValueError(
+                    f"Lambda route-map update failed for {function_name}: {_as_text(payload.get('LastUpdateStatusReason'))}"
+                )
+            time.sleep(2)
+        raise TimeoutError(f"Timed out waiting for Lambda route-map update on {function_name}.")
 
     def _ses_identity_summary(self, *, region: str, email_identity: str) -> dict[str, Any]:
         identity = _as_text(email_identity)

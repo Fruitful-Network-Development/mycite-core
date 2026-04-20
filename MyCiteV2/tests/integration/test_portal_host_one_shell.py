@@ -288,6 +288,7 @@ class _FakeAwsCsmActionCloud:
     def __init__(self) -> None:
         self.sent_messages: list[dict[str, object]] = []
         self.domain_statuses: dict[str, dict[str, object]] = {}
+        self.route_sync_calls: list[list[dict[str, object]]] = []
 
     def _domain_status_patch(self, domain_record: dict[str, object]) -> dict[str, object]:
         identity = dict(domain_record.get("identity") or {})
@@ -510,6 +511,23 @@ class _FakeAwsCsmActionCloud:
             "password": "SMTPPASS",
             "smtp_host": smtp.get("host") or "email-smtp.us-east-1.amazonaws.com",
             "smtp_port": smtp.get("port") or "587",
+        }
+
+    def sync_verification_route_map(self, *, profiles: list[dict[str, object]]) -> dict[str, object]:
+        self.route_sync_calls.append(list(profiles))
+        tracked = sorted(
+            str((dict(item.get("identity") or {})).get("send_as_email") or "").lower()
+            for item in profiles
+            if isinstance(item, dict)
+            and str((dict(item.get("identity") or {})).get("send_as_email") or "").strip()
+        )
+        return {
+            "status": "success",
+            "message": "Verification-forward route map synced to Lambda environment.",
+            "route_count": len(tracked),
+            "tracked_recipients": tracked,
+            "lambda_name": "newsletter-inbound-capture",
+            "changed": True,
         }
 
 
@@ -1000,6 +1018,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 create_result = create_payload["surface_payload"]["action_result"]
                 self.assertEqual(create_result["status"], "accepted")
                 self.assertEqual(create_result["created_profile"]["profile_id"], "aws-csm.cvccboard.alex")
+                self.assertEqual(create_result["details"]["route_sync_status"], "success")
                 self.assertEqual(
                     create_payload["canonical_query"],
                     {"view": "domains", "domain": "cvccboard.org", "profile": "aws-csm.cvccboard.alex", "section": "onboarding"},
@@ -1040,6 +1059,11 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                     action_payload = action_response.get_json()
                     self.assertEqual(action_payload["surface_payload"]["action_result"]["status"], "accepted")
                     active_query = action_payload["canonical_query"]
+                    if action_kind == "stage_smtp_credentials":
+                        self.assertEqual(
+                            action_payload["surface_payload"]["action_result"]["details"]["route_sync_status"],
+                            "success",
+                        )
 
                     if action_kind == "send_handoff_email":
                         dispatch = action_payload["surface_payload"]["action_result"]["handoff_dispatch"]
