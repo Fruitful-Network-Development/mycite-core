@@ -93,6 +93,66 @@ def _first_non_empty(values: list[object] | tuple[object, ...]) -> str:
     return ""
 
 
+def _anchor_row_tokens(raw: Any) -> list[Any]:
+    if not isinstance(raw, list) or not raw:
+        return []
+    if isinstance(raw[0], list):
+        return list(raw[0])
+    return list(raw)
+
+
+def _normalize_time_context(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        token = _first_non_empty(
+            (value.get("value_token"), value.get("value"), value.get("token"), value.get("node_id"))
+        )
+        family = _as_text(value.get("family"))
+        return {
+            "active": bool(token),
+            "value_token": token,
+            "family": family,
+            "raw": dict(value),
+        }
+    token = _as_text(value)
+    return {
+        "active": bool(token),
+        "value_token": token,
+        "family": "",
+        "raw": token,
+    }
+
+
+def _anchor_context_metadata(document: Any) -> dict[str, Any]:
+    anchor_rows = list(getattr(document, "anchor_rows", ()) or [])
+    row_map: dict[str, list[Any]] = {}
+    for row in anchor_rows:
+        address = _as_text(getattr(row, "datum_address", ""))
+        if not address:
+            continue
+        row_map[address] = _anchor_row_tokens(getattr(row, "raw", None))
+
+    ruiqi_bits = _as_text((row_map.get("1-1-4") or [None, None, ""])[2] if len(row_map.get("1-1-4") or []) > 2 else "")
+    chronological_bits = _as_text(
+        (row_map.get("1-1-5") or [None, None, ""])[2] if len(row_map.get("1-1-5") or []) > 2 else ""
+    )
+    return {
+        "samras_ruiqi": {
+            "space_row": "1-1-4" if "1-1-4" in row_map else "",
+            "space_binding_row": "2-0-3" if "2-0-3" in row_map else "",
+            "babelette_row": "3-1-4" if "3-1-4" in row_map else "",
+            "bit_length": len(ruiqi_bits),
+            "present": bool(ruiqi_bits),
+        },
+        "chronological_hops": {
+            "space_row": "1-1-5" if "1-1-5" in row_map else "",
+            "space_binding_row": "2-0-4" if "2-0-4" in row_map else "",
+            "babelette_row": "3-1-5" if "3-1-5" in row_map else "",
+            "bit_length": len(chronological_bits),
+            "present": bool(chronological_bits),
+        },
+    }
+
+
 def _node_guardrail_envelope(node_id: object) -> dict[str, Any] | None:
     token = _as_text(node_id)
     if not token:
@@ -173,6 +233,47 @@ def _address_is_descendant(node_id: str, *, root_node_id: str, min_extra_segment
         return False
     extra_segments = len(node_parts) - len(root_parts)
     return min_extra_segments <= extra_segments <= max_extra_segments
+
+
+def _precinct_profile_matches_attention(*, precinct_node_id: str, attention_node_id: str) -> bool:
+    precinct_parts = _address_tuple(precinct_node_id)
+    attention_parts = _address_tuple(attention_node_id)
+    # Precinct cohort addressing (current staged convention): 247-<state>-<county>-<precinct...>
+    if len(precinct_parts) < 4 or not attention_parts:
+        return False
+    if precinct_parts[0] != 247:
+        return False
+    # state attention: 3-2-3-<state>
+    if len(attention_parts) == 4 and tuple(attention_parts[:3]) == (3, 2, 3):
+        return precinct_parts[1] == attention_parts[3]
+    # county attention: 3-2-3-<state>-<county>
+    if len(attention_parts) == 5 and tuple(attention_parts[:3]) == (3, 2, 3):
+        return precinct_parts[1] == attention_parts[3] and precinct_parts[2] == attention_parts[4]
+    return False
+
+
+def _matching_precinct_profiles(
+    *,
+    profile_index: dict[str, dict[str, Any]],
+    attention_node_id: str,
+    exclude_node_ids: set[str],
+) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for node_id, profile in profile_index.items():
+        node_id_text = _as_text(node_id)
+        if (
+            not node_id_text
+            or node_id_text in exclude_node_ids
+            or not _precinct_profile_matches_attention(
+                precinct_node_id=node_id_text,
+                attention_node_id=attention_node_id,
+            )
+        ):
+            continue
+        if int(profile.get("feature_count") or 0) <= 0:
+            continue
+        matches.append(profile)
+    return sorted(matches, key=_profile_sort_key)
 
 
 def _descendants_intention_token(attention_node_id: str) -> str:
@@ -1792,6 +1893,7 @@ class CtsGisReadOnlyService:
         requested_attention_document_id = _as_text(mediation_state.get("attention_document_id"))
         requested_attention_node_id = _as_text(mediation_state.get("attention_node_id"))
         requested_intention_token = _as_text(mediation_state.get("intention_token"))
+        requested_time_context = _normalize_time_context(mediation_state.get("time"))
         intention_warnings: list[str] = []
 
         selected_document_bundle = None
@@ -1892,6 +1994,7 @@ class CtsGisReadOnlyService:
             "selected_document_id": requested_document_id,
             "selected_row_address": selected_row_address_out,
             "selected_feature_id": selected_feature_id_out,
+            "time_context": requested_time_context,
             "intention_warnings": intention_warnings,
         }
 
@@ -1902,11 +2005,13 @@ class CtsGisReadOnlyService:
         attention_document_id: object = "",
         attention_node_id: object = "",
         intention_token: object = _DEFAULT_INTENTION_TOKEN,
+        time_context: object = None,
     ) -> dict[str, Any]:
         documents = list(projection_bundle.get("documents") or [])
         navigation_bundle = dict(projection_bundle.get("navigation_bundle") or {})
         overlay_mode = _as_text(projection_bundle.get("overlay_mode")) or "auto"
         raw_underlay_visible = bool(projection_bundle.get("raw_underlay_visible"))
+        time_context_payload = _normalize_time_context(time_context)
         selected_document_bundle = None
         for document_bundle in documents:
             if _matches_cts_gis_document_id(
@@ -1974,6 +2079,7 @@ class CtsGisReadOnlyService:
                     "render_feature_count": 0,
                     "projection_state": "no_authoritative_cts_gis_documents",
                     "document_row_count": _as_text((fallback_document_summary or {}).get("row_count")),
+                    "time_context_active": bool(time_context_payload.get("active")),
                 },
                 "lens_state": {
                     "overlay_mode": overlay_mode,
@@ -1984,8 +2090,20 @@ class CtsGisReadOnlyService:
                     "attention_document_id": "",
                     "attention_node_id": "",
                     "intention_token": _DEFAULT_INTENTION_TOKEN,
+                    "time": time_context_payload,
+                    "anchor_context": {
+                        "samras_ruiqi": {"present": False, "bit_length": 0},
+                        "chronological_hops": {"present": False, "bit_length": 0},
+                    },
                     "available_intentions": [],
                     "selection_summary": {},
+                },
+                "contextual_references": {
+                    "time_context": time_context_payload,
+                    "anchor_context": {
+                        "samras_ruiqi": {"present": False, "bit_length": 0},
+                        "chronological_hops": {"present": False, "bit_length": 0},
+                    },
                 },
                 "warnings": warnings,
                 "_render_row_views": [],
@@ -1998,6 +2116,10 @@ class CtsGisReadOnlyService:
         profile_index = dict(navigation_bundle.get("profile_index") or {})
         row_profile_index = selected_document_bundle.get("row_profile_index") or {}
         feature_profile_index = dict(navigation_bundle.get("feature_profile_index") or {})
+        anchor_context = _anchor_context_metadata(selected_document_bundle.get("document"))
+        time_context_without_anchor = bool(time_context_payload.get("active")) and not bool(
+            (anchor_context.get("chronological_hops") or {}).get("present")
+        )
         attention_node_id_text = _as_text(attention_node_id)
         attention_profile = profile_index.get(attention_node_id_text)
         descendants_token = _descendants_intention_token(attention_node_id_text)
@@ -2021,16 +2143,34 @@ class CtsGisReadOnlyService:
                 max_extra_segments=2,
             )
         elif intention_token_text == children_token:
-            overlay_profiles = [
+            overlay_profiles = sorted(
+                [
                 profile_index[node_id]
                 for node_id in list((navigation_bundle.get("children_by_parent") or {}).get(attention_node_id_text, []))
                 if node_id in profile_index
-            ]
+                ],
+                key=_profile_sort_key,
+            )
         elif intention_token_text.startswith(_BRANCH_INTENTION_PREFIX):
             target_node_id = _as_text(intention_token_text[len(_BRANCH_INTENTION_PREFIX) :])
             target_profile = profile_index.get(target_node_id)
             if target_profile is not None:
                 overlay_profiles = [target_profile]
+        # Time-contextualized overlays may include precinct cohorts that map to
+        # the active state/county attention lineage.
+        if bool(time_context_payload.get("active")) and attention_node_id_text:
+            overlay_seen = {
+                _as_text(profile.get("node_id"))
+                for profile in overlay_profiles
+                if _as_text(profile.get("node_id"))
+            }
+            overlay_profiles.extend(
+                _matching_precinct_profiles(
+                    profile_index=profile_index,
+                    attention_node_id=attention_node_id_text,
+                    exclude_node_ids=overlay_seen,
+                )
+            )
         projected_profiles: list[dict[str, Any]] = []
         projected_seen: set[str] = set()
         if attention_profile is not None:
@@ -2045,7 +2185,7 @@ class CtsGisReadOnlyService:
             projected_seen.add(node_id)
             projected_profiles.append(profile)
         render_document_row_addresses: dict[str, set[str]] = {}
-        render_feature_ids: list[str] = []
+        render_feature_id_set: set[str] = set()
         render_document_ids: set[str] = set()
         for profile in projected_profiles:
             document_id = _as_text(profile.get("document_id"))
@@ -2053,8 +2193,9 @@ class CtsGisReadOnlyService:
                 render_document_ids.add(document_id)
                 render_document_row_addresses.setdefault(document_id, set()).update(profile.get("row_addresses") or [])
             for feature_id in list(profile.get("feature_ids") or []):
-                if feature_id not in render_feature_ids:
-                    render_feature_ids.append(feature_id)
+                feature_id_text = _as_text(feature_id)
+                if feature_id_text:
+                    render_feature_id_set.add(feature_id_text)
         selected_document_id_text = _as_text(document_summary.get("document_id"))
         row_index = selected_document_bundle.get("row_index") or {}
         ordered_render_row_addresses = [
@@ -2063,6 +2204,25 @@ class CtsGisReadOnlyService:
             if address in row_index
         ]
         render_row_views = [row_index[address] for address in ordered_render_row_addresses]
+        projected_profile_order = {
+            _as_text(profile.get("node_id")): index
+            for index, profile in enumerate(projected_profiles)
+            if _as_text(profile.get("node_id"))
+        }
+        render_feature_ids = sorted(
+            render_feature_id_set,
+            key=lambda feature_id: (
+                min(
+                    [
+                        projected_profile_order[node_id]
+                        for node_id in list(feature_profile_index.get(feature_id) or [])
+                        if node_id in projected_profile_order
+                    ]
+                    or [len(projected_profiles) + 1]
+                ),
+                feature_id,
+            ),
+        )
         feature_index = dict(navigation_bundle.get("feature_index") or {})
         render_features = [feature_index[feature_id] for feature_id in render_feature_ids if feature_id in feature_index]
         document_bundle_index = {
@@ -2274,6 +2434,8 @@ class CtsGisReadOnlyService:
         document = selected_document_bundle.get("document")
         if document is not None:
             warnings.extend(list(document.warnings))
+        if time_context_without_anchor:
+            warnings.append("Time context requested but no chronological anchor space was found in supporting anchor rows.")
         warnings = list(dict.fromkeys(_as_text(item) for item in warnings if _as_text(item)))
 
         document_catalog = []
@@ -2370,6 +2532,7 @@ class CtsGisReadOnlyService:
                 "render_row_count": len(render_row_views),
                 "render_feature_count": len(render_features),
                 "projection_state": projection_state,
+                "time_context_active": bool(time_context_payload.get("active")),
             },
             "lens_state": {
                 "overlay_mode": overlay_mode,
@@ -2380,6 +2543,8 @@ class CtsGisReadOnlyService:
                 "attention_document_id": _as_text(document_summary.get("document_id")),
                 "attention_node_id": attention_node_id_text,
                 "intention_token": intention_token_text,
+                "time": time_context_payload,
+                "anchor_context": anchor_context,
                 "available_intentions": [
                     {
                         **option,
@@ -2388,6 +2553,10 @@ class CtsGisReadOnlyService:
                     for option in available_intentions
                 ],
                 "selection_summary": {},
+            },
+            "contextual_references": {
+                "time_context": time_context_payload,
+                "anchor_context": anchor_context,
             },
             "warnings": warnings,
             "_render_row_views": render_row_views,
@@ -2597,6 +2766,7 @@ class CtsGisReadOnlyService:
             attention_document_id=normalized_request["attention_document_id"],
             attention_node_id=normalized_request["attention_node_id"],
             intention_token=normalized_request["intention_token"],
+            time_context=normalized_request.get("time_context"),
         )
         intention_warnings = list(normalized_request.get("intention_warnings") or [])
         if intention_warnings:

@@ -528,6 +528,70 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         self.assertEqual(bridged_surface["attention_profile"]["node_id"], "3-2-3-17-77-1-1")
         self.assertEqual(bridged_surface["selected_row"]["datum_address"], "7-3-2")
 
+    def test_branch_intention_renders_attention_plus_target_child_only(self) -> None:
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(_cts_gis_document(),),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77-1",
+                "intention_token": "branch:3-2-3-17-77-1-1",
+            },
+        )
+
+        self.assertEqual(surface["render_set_summary"]["render_mode"], "branch")
+        self.assertEqual(surface["mediation_state"]["intention_token"], "branch:3-2-3-17-77-1-1")
+        self.assertEqual(
+            [item["node_id"] for item in surface["render_profiles"]],
+            ["3-2-3-17-77-1", "3-2-3-17-77-1-1"],
+        )
+        self.assertEqual(surface["render_set_summary"]["render_profile_count"], 2)
+        self.assertEqual(
+            surface["render_set_summary"]["render_feature_count"],
+            surface["map_projection"]["feature_count"],
+        )
+        feature_nodes = [
+            feature["properties"]["samras_node_id"]
+            for feature in surface["map_projection"]["feature_collection"]["features"]
+        ]
+        self.assertEqual(feature_nodes, ["3-2-3-17-77-1", "3-2-3-17-77-1-1"])
+
+    def test_time_context_is_exposed_without_changing_navigation_semantics(self) -> None:
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(_cts_gis_document(),),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77-1",
+                "intention_token": "self",
+                "time": {"value": "2026-Q1", "family": "samras-time"},
+            },
+        )
+
+        self.assertEqual(surface["mediation_state"]["attention_node_id"], "3-2-3-17-77-1")
+        self.assertEqual(surface["mediation_state"]["intention_token"], "self")
+        self.assertEqual(surface["mediation_state"]["time"]["value_token"], "2026-Q1")
+        self.assertEqual(surface["mediation_state"]["time"]["family"], "samras-time")
+        self.assertTrue(surface["diagnostic_summary"]["time_context_active"])
+        self.assertIn(
+            "Time context requested but no chronological anchor space was found",
+            " ".join(surface["warnings"]),
+        )
+
     def test_reports_no_authoritative_cts_gis_documents_with_fallback_document(self) -> None:
         system_document = AuthoritativeDatumDocument(
             document_id="system:anthology",

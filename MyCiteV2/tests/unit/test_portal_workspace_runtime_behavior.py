@@ -11,6 +11,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+    _cts_gis_source_path,
     build_portal_cts_gis_surface_bundle,
     run_portal_cts_gis,
 )
@@ -388,6 +389,18 @@ def _write_network_chronology_authority(data_dir: Path) -> None:
 
 
 class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
+    def test_cts_gis_source_path_prefers_precinct_subdirectory_when_present(self) -> None:
+        with TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            source_root = data_dir / "sandbox" / "cts-gis" / "sources"
+            precinct_root = source_root / "precincts"
+            precinct_root.mkdir(parents=True, exist_ok=True)
+            _write_json(precinct_root / "sc.precinct.json", {"datum_addressing_abstraction_space": {}})
+
+            resolved = _cts_gis_source_path(data_dir, document_name="sc.precinct.json")
+
+            self.assertEqual(resolved, precinct_root / "sc.precinct.json")
+
     def test_mediation_transition_opens_interface_panel_and_back_out_clears_removed_subject(self) -> None:
         scope = {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]}
         state = initial_portal_shell_state(surface_id=SYSTEM_ROOT_SURFACE_ID, portal_scope=scope)
@@ -486,7 +499,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         )
         self.assertEqual(
             [group["title"] for group in bundle["control_panel"]["groups"][:3]],
-            ["Directive", "AITAS", "Source Evidence"],
+            ["STATE DIRECTIVE"],
         )
         self.assertNotIn("Attention", [group["title"] for group in bundle["control_panel"]["groups"]])
 
@@ -718,7 +731,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 "profile_projection",
                 bundle["inspector"]["interface_body"]["garland_split_projection"],
             )
-            self.assertIn("Source Evidence", [group["title"] for group in bundle["control_panel"]["groups"]])
+            self.assertIn("STATE DIRECTIVE", [group["title"] for group in bundle["control_panel"]["groups"]])
+            self.assertNotIn("Source Evidence", [group["title"] for group in bundle["control_panel"]["groups"]])
             geo = bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
             self.assertIn("empty_message", geo)
             self.assertIn("features", geo)
@@ -873,12 +887,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             aitas_group = next(
                 group
                 for group in pinned_bundle["control_panel"]["groups"]
-                if group["title"] == "AITAS"
+                if group["title"] == "STATE DIRECTIVE"
             )
             descendants_entry = next(
                 entry
                 for entry in aitas_group["entries"]
-                if entry["prefix"] == "3-2-3-17-77-0-0"
+                if entry.get("prefix") == "3-2-3-17-77-0-0"
             )
             intention_shell_request = descendants_entry["shell_request"]
             self.assertEqual(
@@ -906,7 +920,46 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 "3-2-3-17-77-0-0",
             )
 
-    def test_cts_gis_explicit_source_document_selection_keeps_document_pin(self) -> None:
+    def test_cts_gis_state_directive_group_contains_attention_intention_time_controls(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(data_dir, private_dir)
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={"tool_state": {"selected_node_id": "3-2-3-17-77"}},
+            )
+
+            state_group = next(group for group in bundle["control_panel"]["groups"] if group["title"] == "STATE DIRECTIVE")
+            labels = [entry["label"] for entry in state_group["entries"]]
+            self.assertIn("NIMM directive", labels)
+            self.assertTrue(any(label.startswith("Attention · ") for label in labels))
+            self.assertTrue(any(label.startswith("Intention · ") for label in labels))
+            self.assertNotIn("Tool posture", labels)
+            self.assertIn("Time · inactive", labels)
+            self.assertIn("Time · today", labels)
+            self.assertIn("NAV", labels)
+            self.assertIn("INV", labels)
+            self.assertIn("MED", labels)
+            self.assertIn("MAN", labels)
+            intention_entries = [entry for entry in state_group["entries"] if entry["label"].startswith("Intention · ")]
+            self.assertTrue(all(isinstance(entry.get("shell_request"), dict) for entry in intention_entries))
+            self.assertEqual(bundle["control_panel"]["verb_tabs"], [])
+            compact = dict(bundle["control_panel"].get("state_directive_compact") or {})
+            self.assertEqual(compact.get("active_mode"), "I")
+            self.assertEqual([item.get("label") for item in list(compact.get("nimm_buttons") or [])], ["NAV", "INV", "MED", "MAN"])
+            self.assertTrue(bool((compact.get("attention") or {}).get("shell_template")))
+            self.assertTrue(bool((compact.get("time") or {}).get("shell_template")))
+
+    def test_cts_gis_state_directive_time_shell_request_updates_time_context(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             data_dir = root / "data"
@@ -923,20 +976,20 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 private_dir=private_dir,
             )
 
-            source_group = next(
+            state_directive_group = next(
                 group
                 for group in bundle["control_panel"]["groups"]
-                if group["title"] == "Source Evidence"
+                if group["title"] == "STATE DIRECTIVE"
             )
-            county_projection_entry = next(
+            time_today_entry = next(
                 entry
-                for entry in source_group["entries"]
-                if entry["label"] == "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"
+                for entry in state_directive_group["entries"]
+                if entry["label"] == "Time · today"
             )
-            source_shell_request = county_projection_entry["shell_request"]
+            source_shell_request = time_today_entry["shell_request"]
             self.assertEqual(
-                source_shell_request["tool_state"]["source"]["attention_document_id"],
-                "sandbox:cts_gis:sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
+                source_shell_request["tool_state"]["aitas"]["time_directive"],
+                "today",
             )
 
             selected_bundle = build_portal_cts_gis_surface_bundle(
@@ -951,8 +1004,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                selected_bundle["surface_payload"]["tool_state"]["source"]["attention_document_id"],
-                "sandbox:cts_gis:sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json",
+                selected_bundle["surface_payload"]["tool_state"]["aitas"]["time_directive"],
+                "today",
             )
 
     def test_cts_gis_default_runtime_uses_county_root_projection_with_administrative_supporting_document(self) -> None:
@@ -1207,6 +1260,63 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertNotIn("Attention", [group["title"] for group in bundle["control_panel"]["groups"]])
             self.assertNotIn("Projection Rules", [group["title"] for group in bundle["control_panel"]["groups"]])
 
+    def test_cts_gis_descendants_time_context_adds_matching_precinct_profiles(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(
+                data_dir,
+                private_dir,
+                extra_projection_nodes=(
+                    "3-2-3-17-77-1-1",
+                    "247-17-77-1",
+                    "247-17-25-1",
+                ),
+            )
+
+            base_bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={
+                    "tool_state": {
+                        "selected_node_id": "3-2-3-17-77",
+                        "aitas": {"intention_rule_id": "3-2-3-17-77-0-0"},
+                    }
+                },
+            )
+            base_geo = base_bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            self.assertNotIn("247-17-77-1", [feature["node_id"] for feature in base_geo["features"]])
+            self.assertNotIn("247-17-25-1", [feature["node_id"] for feature in base_geo["features"]])
+
+            timed_bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={
+                    "tool_state": {
+                        "selected_node_id": "3-2-3-17-77",
+                        "aitas": {
+                            "intention_rule_id": "3-2-3-17-77-0-0",
+                            "time_directive": "2026-Q1",
+                        },
+                    }
+                },
+            )
+            timed_geo = timed_bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            timed_feature_ids = [feature["node_id"] for feature in timed_geo["features"]]
+            self.assertIn("247-17-77-1", timed_feature_ids)
+            self.assertNotIn("247-17-25-1", timed_feature_ids)
+
     def test_cts_gis_runtime_prefers_reference_geometry_when_projection_parity_warnings_exist(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1296,6 +1406,127 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             geo = bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
             self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"], "3-2-3-17-77-0")
             self.assertEqual([feature["node_id"] for feature in geo["features"]], ["3-2-3-17-77"])
+
+    def test_cts_gis_branch_intention_overlays_attention_plus_target_child(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(
+                data_dir,
+                private_dir,
+                extra_projection_nodes=("3-2-3-17-77-1-1", "3-2-3-17-77-1-2"),
+            )
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={
+                    "tool_state": {
+                        "selected_node_id": "3-2-3-17-77-1",
+                        "aitas": {"intention_rule_id": "branch:3-2-3-17-77-1-1"},
+                    }
+                },
+            )
+
+            garland = bundle["inspector"]["interface_body"]["garland_split_projection"]
+            geo = garland["geospatial_projection"]
+            self.assertEqual(
+                bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"],
+                "branch:3-2-3-17-77-1-1",
+            )
+            self.assertEqual(
+                [feature["node_id"] for feature in geo["features"]],
+                ["3-2-3-17-77-1-1"],
+            )
+            self.assertNotIn("3-2-3-17-77-1-2", [feature["node_id"] for feature in geo["features"]])
+            self.assertEqual(geo["render_feature_count"], geo["feature_count"])
+
+    def test_cts_gis_explicit_feature_selection_does_not_replace_attention_focus_bounds(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(
+                data_dir,
+                private_dir,
+                extra_projection_nodes=("3-2-3-17-77-1-1", "3-2-3-17-77-1-2"),
+            )
+            base_bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={
+                    "tool_state": {
+                        "selected_node_id": "3-2-3-17-77",
+                        "aitas": {"intention_rule_id": "3-2-3-17-77-0-0"},
+                    }
+                },
+            )
+            base_geo = base_bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            target_feature_id = base_geo["features"][1]["feature_id"]
+
+            selected_bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={
+                    "tool_state": {
+                        "selected_node_id": "3-2-3-17-77",
+                        "aitas": {"intention_rule_id": "3-2-3-17-77-0-0"},
+                        "selection": {
+                            "selected_feature_id": target_feature_id,
+                            "selected_feature_explicit": True,
+                        },
+                    }
+                },
+            )
+
+            geo = selected_bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            self.assertTrue(geo["selected_feature_explicit"])
+            self.assertEqual(geo["selected_feature_id"], target_feature_id)
+            self.assertEqual(geo["focus_bounds"], base_geo["focus_bounds"])
+            self.assertNotEqual(geo["selected_feature_bounds"], [])
+
+    def test_cts_gis_invalid_branch_intention_normalizes_to_self(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(data_dir, private_dir)
+
+            bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection")),
+                shell_state=initial_portal_shell_state(
+                    surface_id="system.tools.cts_gis",
+                    portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                ),
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={
+                    "tool_state": {
+                        "selected_node_id": "3-2-3-17-77",
+                        "aitas": {"intention_rule_id": "branch:missing-child"},
+                    }
+                },
+            )
+
+            self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"], "self")
+            warnings = list((bundle["surface_payload"]["service_surface"] or {}).get("warnings") or [])
+            self.assertTrue(any("normalized to `self`" in warning for warning in warnings))
 
     def test_cts_gis_duplicate_node_rows_do_not_block_directory_navigation(self) -> None:
         with TemporaryDirectory() as tmp:

@@ -705,7 +705,11 @@
     var selectedArea = boundsArea(selectedBounds);
     if (focusArea > 0 && (globalArea <= 0 || globalArea / focusArea > 200)) {
       bounds = focusBounds;
-    } else if (selectedArea > 0 && (globalArea <= 0 || globalArea / selectedArea > 400)) {
+    } else if (
+      selectedArea > 0 &&
+      Boolean((geospatialProjection || {}).selected_feature_explicit) &&
+      (globalArea <= 0 || globalArea / selectedArea > 400)
+    ) {
       bounds = selectedBounds;
     }
     var selectedFeatureId = String((geospatialProjection || {}).selected_feature_id || "");
@@ -933,6 +937,7 @@
           selected_feature_id: "",
           selected_feature_geometry_type: "",
           selected_feature_bounds: [],
+          selected_feature_explicit: false,
           focus_bounds: [],
           collection_bounds: [],
           empty_message: "No projected geometry is available for the current navigation root.",

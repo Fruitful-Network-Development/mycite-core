@@ -198,6 +198,42 @@ class FilesystemSystemDatumStoreAdapterTests(unittest.TestCase):
                 " ".join(sandbox_document["warnings"]),
             )
 
+    def test_cts_gis_catalog_includes_precinct_subdirectory_sources(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "precincts").mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps({"0-0-1": [["0-0-1", "~", "0-0-0"], ["time-ordinal-position"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json").write_text(
+                json.dumps({"3-1-3": [["3-1-3", "2-1-1", "0"], ["title-babelette"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.root.json").write_text(
+                json.dumps({"4-2-1": [["4-2-1", "rf.3-1-3", "ROOT"], ["row"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "precincts" / "sc.precinct.json").write_text(
+                json.dumps({"4-2-1": [["4-2-1", "rf.3-1-3", "PRECINCT"], ["row"]]}) + "\n",
+                encoding="utf-8",
+            )
+
+            payload = FilesystemSystemDatumStoreAdapter(data_dir).read_authoritative_datum_documents(
+                AuthoritativeDatumDocumentRequest(tenant_id="fnd")
+            ).to_dict()
+            sandbox_docs = [
+                document
+                for document in payload["documents"]
+                if document["source_kind"] == "sandbox_source"
+            ]
+            self.assertEqual(len(sandbox_docs), 2)
+            relative_paths = {document["relative_path"] for document in sandbox_docs}
+            self.assertIn("sandbox/cts-gis/sources/sc.root.json", relative_paths)
+            self.assertIn("sandbox/cts-gis/sources/precincts/sc.precinct.json", relative_paths)
+
 
 if __name__ == "__main__":
     unittest.main()
