@@ -21,9 +21,13 @@ The shell state is reducer-owned only for:
 
 `FND-DCM` is also a runtime-owned `SYSTEM` child tool surface. Its canonical query is manifest-driven rather than reducer-driven.
 
+`Workbench UI` is also a runtime-owned `SYSTEM` child tool surface. Its canonical query is SQL-read driven rather than reducer-driven.
+
 `/portal/network` and `/portal/utilities*` stay in the same host shell, but they do not participate in focus-path reduction.
 
 Non-reducer roots may still project canonical query state when the host needs a stable read-only detail lens inside the workbench. `NETWORK` uses raw `surface_query` projection keys for this purpose, while runtime remains the source of truth.
+
+For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant posture is resolved from the MOS authority database. Missing or uninitialized SQL authority is a readiness failure rather than a silent filesystem bootstrap.
 
 ## Ordered Focus Stack
 
@@ -55,6 +59,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 
 - It is not a generic dashboard or home page.
 - Its default active file is the system sandbox anchor file, `anthology.json`.
+- For migrated portals, `SYSTEM` anthology/profile/grant posture resolves from the MOS authority database while preserving the same file/workbench outward contract.
 - The anchor file is rendered as a layered datum table grouped by `layer` and `value_group`.
 - Datum rows carry structural coordinates: `layer`, `value_group`, and `iteration`.
 - Selecting a datum opens a read-only detail lens inside the same workbench.
@@ -143,11 +148,14 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - `AWS-CSM` is the canonical AWS service tool surface under `SYSTEM`.
 - `CTS-GIS` is the canonical structural/spatial mediation tool surface under `SYSTEM`.
 - `FND-DCM` is the canonical hosted-manifest control surface under `SYSTEM`.
+- `Workbench UI` is the canonical utilitarian SQL datum-grid surface under `SYSTEM`.
 - `AWS-CSM` has one public route: `/portal/system/tools/aws-csm`.
 - `CTS-GIS` has one public route: `/portal/system/tools/cts-gis`.
 - `FND-DCM` has one public route: `/portal/system/tools/fnd-dcm`.
+- `Workbench UI` has one public route: `/portal/system/tools/workbench-ui`.
 - `AWS-CSM` uses runtime-owned query keys: `view`, `domain`, `profile`, `section`.
 - `FND-DCM` uses runtime-owned query keys: `site`, `view`, `page`, `collection`.
+- `Workbench UI` uses runtime-owned query keys: `document`, `filter`, `sort`, `dir`, `overlay`, `row`.
 - `CTS-GIS` does not widen shell query. Its tool-local navigation and projection state is body-carried in the tool request/runtime payload.
 - `AWS-CSM` control-panel context is file-backed and projects:
   - `Sandbox: AWS-CSM`
@@ -157,17 +165,23 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
   - `Sandbox: FND-DCM`
   - `Site: <selected site>`
   - `View: <selected view>`
+- `Workbench UI` control-panel context is SQL selection-backed and projects:
+  - `Document: <selected document>`
+  - `Version: <selected version_hash>`
+  - `Filter: <active text filter>`
 - `CTS-GIS` control-panel context is file-backed and projects:
   - `Sandbox: CTS-GIS`
   - `File: tool.<msn>.cts-gis.json` when the canonical anchor exists, otherwise the active compatibility anchor file
   - `Mediation: spec.json`
 - Tool configuration, enabling, exposure, integration state, vault, peripherals, and control surfaces belong under `UTILITIES`.
-- Tool registry posture fields serialize the shared tool default (`interface_panel_primary`) as compatibility metadata; they do not authorize per-tool first-load posture exceptions.
-- Every tool composition defaults to `regions.workbench.visible=false`.
-- Tool composition building always normalizes tool surfaces to `regions.interface_panel.visible=true` on the first server response.
+- Tool registry posture fields serialize the shared tool default (`interface_panel_primary`) as compatibility metadata; approved posture exceptions must be named explicitly in the contract.
+- `Workbench UI` is the approved `workbench_primary` exception because its primary surface is the SQL-backed datum grid rather than an interface-panel tool body.
+- Every non-`workbench_primary` tool composition defaults to `regions.workbench.visible=false`.
+- Tool composition building always normalizes tool surfaces to `regions.interface_panel.visible=true` on the first server response, while `Workbench UI` also keeps the workbench visible on first composition.
 - Secondary-evidence workbench content is explicit opt-in per tool runtime.
 - Tool runtimes may project workbench content, but they do not open the workbench on first composition.
 - `FND-DCM` workbench evidence is raw manifest JSON, collection metadata, and normalization evidence rather than a second primary workspace.
+- `Workbench UI` workbench evidence is the first-class spreadsheet-like SQL datum grid with selected-row semantic identity and additive overlay inspection in the `Interface Panel`.
 - Tool surfaces use mutually exclusive single-click behavior between `Workbench` and `Interface Panel` by default.
 - Tool surfaces may lock co-visible behavior by double-clicking either `Workbench` or `Interface Panel` toggle.
 - Tool lock is route-scoped and non-persistent; leaving the tool route or switching composition clears the lock.
@@ -175,9 +189,11 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - Shared tool rendering now normalizes direct-query request building plus wrapper states for `loading`, `error`, `empty`, and `unsupported` through one shell-side adapter before specialized or generic renderers run.
 - A service tool may remain visible while `operational=false` when an external integration or required capability is missing.
 - Service-tool posture comes from peripheral and integration availability, not from portal identity or portal "types".
+- `Workbench UI` is read-only, surfaces additive directive summaries only, and must never mutate authoritative datum rows through overlay state.
+- Shared directive snapshots/events may only be imported from explicit normalized manifests; runtime must not infer shared overlays from historical tool-local files.
 - All tools attach to the same interface surface. Service-tool behavior is distinguished by whether the tool can employ the portal's authenticated peripheral package, not by a separate class of portal.
 
-This is an interface-panel-led tool model, not a generic workbench page model.
+Default tool posture is interface-panel-led; `Workbench UI` is the approved workbench-primary exception for SQL-backed datum inspection.
 
 ### CTS-GIS Tool-Local State
 

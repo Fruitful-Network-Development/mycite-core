@@ -11,6 +11,16 @@ Last reviewed: `2026-04-21`
 
 Record the first executed Track A pass from `docs/plans/master_plan_mos.md`, including the implemented SQL authority seams, runtime cutover modes, parity evidence, and remaining blocked semantic work.
 
+## Supersession Note
+
+This report records the intermediate execution pass only. Final FND ingestion, SQL-only activation, directive non-inference validation, documentation cleanup, and overall closure are now captured by:
+
+- `docs/audits/reports/mos_fnd_sql_ingestion_coverage_report_2026-04-21.md`
+- `docs/audits/reports/mos_sql_only_authority_activation_and_legacy_retirement_2026-04-21.md`
+- `docs/audits/reports/mos_directive_context_non_inference_validation_2026-04-21.md`
+- `docs/audits/reports/mos_documentation_alignment_and_cleanup_2026-04-21.md`
+- `docs/audits/reports/mos_program_closure_report_2026-04-21.md`
+
 ## Scope
 
 Implementation scope:

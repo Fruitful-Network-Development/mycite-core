@@ -29,6 +29,7 @@ env/
 
 # Portal runtime/state (never commit)
 **/private/request_log/*.ndjson
+**/private/*.sqlite3
 **/private/daemon_state/**
 **/data/cache/**
 **/data/queue/**

@@ -5,6 +5,7 @@ Canonical visible routes:
 - `/portal`
 - `/portal/system`
 - `/portal/system/tools/<tool_slug>`
+- `/portal/system/tools/workbench-ui`
 - `/portal/network`
 - `/portal/utilities`
 - `/portal/utilities/tool-exposure`
@@ -13,6 +14,8 @@ Canonical visible routes:
 `/portal` is the canonical public entry and redirects to `/portal/system`.
 
 `/portal/system` opens the SYSTEM datum-file workbench. Its fresh reducer-owned entry projects the system sandbox anchor file, `anthology.json`.
+
+For migrated portals, the authoritative `SYSTEM` datum/workbench/profile/grant posture is resolved from the MOS authority database. Missing or uninitialized SQL authority is a readiness failure rather than a filesystem fallback for those migrated surfaces.
 
 `/portal/network` opens the read-only NETWORK system-log workbench. Its canonical operational document is `data/system/system_log.json`. Contract correspondence is selected as a filter over the same document rather than through peer tabs or child routes.
 
@@ -25,6 +28,7 @@ Canonical shell API:
 Direct APIs:
 
 - `POST /portal/api/v2/system/workspace/profile-basics`
+- `POST /portal/api/v2/system/tools/workbench-ui`
 - `POST /portal/api/v2/system/tools/aws-csm`
 - `POST /portal/api/v2/system/tools/aws-csm/actions`
 - `POST /portal/api/v2/system/tools/cts-gis`
@@ -98,6 +102,27 @@ FND-DCM canonical query rules:
 - `view=pages` may project `page=<page_id>`
 - `view=collections` may project `collection=<collection_id>`
 - runtime clears stale `page` and `collection` selections when `site` or `view` changes
+
+`Workbench UI` is one `SYSTEM` child SQL datum-grid surface. The canonical public route is `/portal/system/tools/workbench-ui`.
+
+Workbench UI query projection keys:
+
+- `document`
+- `filter`
+- `sort`
+- `dir`
+- `overlay`
+- `row`
+
+Workbench UI canonical query rules:
+
+- fresh `Workbench UI` entry projects the first SQL-backed authoritative document with `sort=datum_address&dir=asc&overlay=show`
+- `document=<document_id>` selects one SQL-backed authoritative document
+- `filter=<text>` narrows the read-only row grid
+- `sort=<datum_address|layer|value_group|iteration|hyphae_hash>` changes grid ordering
+- `dir=<asc|desc>` changes grid order direction
+- `row=<datum_address>` focuses one selected row in the read-only Interface Panel detail view
+- `overlay=hide` suppresses additive directive summaries without changing authoritative row content
 
 `CTS-GIS` is one `SYSTEM` child mediation tool surface. The canonical public route is `/portal/system/tools/cts-gis`.
 

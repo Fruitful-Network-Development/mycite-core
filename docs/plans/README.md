@@ -15,12 +15,20 @@ Documentation IA + guided-task YAML program:
 
 MOS SQL core program:
 
-- `master_plan_mos.md` is the authoritative MOS SQL-backed core cutover and semantic-closure program.
-- `master_plan_mos.index.yaml` is the lightweight companion index for phases, dependencies, gates, and evidence links.
+- `master_plan_mos.md` remains the single authoritative MOS program document and now records the completed Track A `Phase 6` through `Phase 8` cut-over pass.
+- `master_plan_mos.index.yaml` is the lightweight companion index for completed phases, dependencies, gates, and evidence links.
 - `mos_semantic_gate_register_2026-04-21.md` records the closed Track B semantic gates and their retained evidence.
 - `mos_sg1_version_identity_policy_2026-04-21.md` through `mos_sg4_standard_closure_policy_2026-04-21.md` retain the dedicated Track B closure artifacts.
-- `mos_directive_context_design_track_2026-04-21.md` tracks the active Track C directive-context design work.
-- `mos_track_c_directive_context_overlay_closure_2026-04-21.md` records the approved additive SQL overlay implementation pass for Track C.
+- `mos_directive_context_design_track_2026-04-21.md` retains the Track C directive-context design posture, including the non-inference migration rule and approved SQL-backed read surfaces.
+- `mos_track_c_directive_context_overlay_closure_2026-04-21.md` retains the approved additive SQL overlay implementation pass for Track C as superseded historical evidence.
+
+MOS closure evidence:
+
+- `docs/audits/reports/mos_fnd_sql_ingestion_coverage_report_2026-04-21.md`
+- `docs/audits/reports/mos_sql_only_authority_activation_and_legacy_retirement_2026-04-21.md`
+- `docs/audits/reports/mos_directive_context_non_inference_validation_2026-04-21.md`
+- `docs/audits/reports/mos_documentation_alignment_and_cleanup_2026-04-21.md`
+- `docs/audits/reports/mos_program_closure_report_2026-04-21.md`
 
 Desktop reconciliation program:
 

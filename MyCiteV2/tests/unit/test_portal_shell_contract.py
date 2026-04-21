@@ -14,6 +14,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     FND_DCM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
+    SURFACE_POSTURE_WORKBENCH_PRIMARY,
     SYSTEM_ANCHOR_FILE_KEY,
     SYSTEM_ROOT_SURFACE_ID,
     TRANSITION_BACK_OUT,
@@ -22,6 +23,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     TRANSITION_FOCUS_OBJECT,
     UTILITIES_ROOT_SURFACE_ID,
     VERB_NAVIGATE,
+    WORKBENCH_UI_TOOL_SURFACE_ID,
     build_portal_activity_dispatch_bodies,
     build_shell_composition_payload,
     build_portal_surface_catalog,
@@ -138,6 +140,8 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertFalse(registry_entries["fnd_dcm"]["default_workbench_visible"])
         self.assertEqual(registry_entries["fnd_ebi"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
         self.assertFalse(registry_entries["fnd_ebi"]["default_workbench_visible"])
+        self.assertEqual(registry_entries["workbench_ui"]["surface_posture"], SURFACE_POSTURE_WORKBENCH_PRIMARY)
+        self.assertTrue(registry_entries["workbench_ui"]["default_workbench_visible"])
 
     def test_tool_composition_hides_workbench_even_when_runtime_projects_it_visible(self) -> None:
         composition = build_shell_composition_payload(
@@ -155,6 +159,24 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertFalse(composition["interface_panel_collapsed"])
         self.assertEqual(composition["foreground_shell_region"], "interface-panel")
         self.assertFalse(composition["regions"]["workbench"]["visible"])
+        self.assertTrue(composition["regions"]["interface_panel"]["visible"])
+
+    def test_workbench_ui_tool_composition_keeps_workbench_primary(self) -> None:
+        composition = build_shell_composition_payload(
+            active_surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
+            portal_instance_id="fnd",
+            page_title="Workbench UI",
+            page_subtitle="",
+            activity_items=[],
+            control_panel={},
+            workbench={"visible": True},
+            inspector={},
+            shell_state=None,
+        )
+        self.assertFalse(composition["workbench_collapsed"])
+        self.assertFalse(composition["interface_panel_collapsed"])
+        self.assertEqual(composition["foreground_shell_region"], "center-workbench")
+        self.assertTrue(composition["regions"]["workbench"]["visible"])
         self.assertTrue(composition["regions"]["interface_panel"]["visible"])
 
     def test_dispatch_bodies_preserve_portal_capabilities(self) -> None:

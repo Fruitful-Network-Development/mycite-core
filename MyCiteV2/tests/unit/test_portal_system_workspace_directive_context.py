@@ -52,6 +52,12 @@ class PortalSystemWorkspaceDirectiveContextTests(unittest.TestCase):
                 seed_anchor_file=False,
             )
 
+            SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
+            )
+
             build_system_workspace_bundle(
                 portal_scope=scope,
                 portal_domain="fruitfulnetworkdevelopment.com",

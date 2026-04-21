@@ -8,7 +8,7 @@ authority:
 program:
   id: "MOS-MASTER-001"
   title: "MOS SQL Core Master Plan and Cutover Program"
-  status: "active"
+  status: "completed"
   last_reviewed: "2026-04-21"
   defaults:
     database_posture: "PostgreSQL-class relational authority, kept adapter- and contract-oriented rather than vendor-specific."
@@ -123,7 +123,7 @@ entries:
       - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
       - "MyCiteV2/packages/adapters/sql/portal_authority.py"
       - "MyCiteV2/tests/unit/test_portal_shell_sql_authority.py"
-    notes: "The SQL-primary cutover path now supports DB-backed portal grants and tool exposure. Filesystem/default posture remains as the non-SQL fallback path."
+    notes: "The SQL-primary cutover path established DB-backed portal grants and tool exposure. Final SQL-only activation and shared-runtime legacy retirement are recorded in `MOS-A7`."
 
   - id: "MOS-SG1"
     track: "Track B"
@@ -239,3 +239,83 @@ entries:
       - "MyCiteV2/tests/unit/test_portal_system_workspace_directive_context.py"
     notes: "Track C now has additive SQL tables, append/read adapters, and an approved system-workspace runtime seam for normalized directive overlays keyed by `version_hash` and optional `hyphae_hash`. The overlay path is read-only with respect to authoritative datum rows and remains a non-blocking parallel track."
     rationale: "Directive context can be projected into the SQL-backed core once Track B semantic identities exist, but it must remain additive and must not widen datum mutation authority."
+
+  - id: "MOS-A6"
+    track: "Track A"
+    phase: "Phase 6"
+    status: "completed"
+    dependencies:
+      - "MOS-A5"
+      - "MOS-SG1"
+      - "MOS-SG2"
+      - "MOS-C2"
+    gates:
+      - "sql_authority_ingestion_coverage"
+      - "directive_overlay_non_inference"
+      - "yaml_integrity"
+    evidence_refs:
+      - "MyCiteV2/scripts/migrate_fnd_repo_to_mos_sql.py"
+      - "docs/audits/reports/mos_fnd_sql_ingestion_dry_run_2026-04-21.md"
+      - "docs/audits/reports/mos_fnd_sql_ingestion_coverage_report_2026-04-21.md"
+      - "MyCiteV2/tests/unit/test_migrate_fnd_repo_to_mos_sql.py"
+    notes: "The FND repo copy was inventoried and migrated into the MOS SQL authority database with 409 authoritative documents, 3,133 authoritative datum rows, 25,215 anchor rows, and a passed coverage gate. No shared directive overlays were imported because no explicit directive-context manifest was supplied."
+    rationale: "The cut-over cannot close until every authoritative datum row is present in SQL semantics or explicitly exception-listed."
+
+  - id: "MOS-A7"
+    track: "Track A"
+    phase: "Phase 7"
+    status: "completed"
+    dependencies:
+      - "MOS-A6"
+    gates:
+      - "sql_only_authority_activation"
+      - "documentation_alignment"
+      - "yaml_integrity"
+    evidence_refs:
+      - "MyCiteV2/instances/_shared/portal_host/app.py"
+      - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
+      - "MyCiteV2/instances/_shared/runtime/portal_system_workspace_runtime.py"
+      - "MyCiteV2/tests/unit/test_portal_shell_sql_authority.py"
+      - "MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py"
+      - "docs/audits/reports/mos_sql_only_authority_activation_and_legacy_retirement_2026-04-21.md"
+    notes: "Shared runtime now requires an initialized SQL authority database for migrated SYSTEM surfaces, no longer advertises public filesystem/shadow authority modes there, and retains filesystem datum/audit code only as migration or fixture support."
+    rationale: "Final cut-over requires fail-closed SQL authority rather than a silent mixed-authority runtime."
+
+  - id: "MOS-A8"
+    track: "Track A"
+    phase: "Phase 8"
+    status: "completed"
+    dependencies:
+      - "MOS-A6"
+      - "MOS-C2"
+    gates:
+      - "directive_overlay_non_mutation"
+      - "directive_overlay_non_inference"
+      - "sql_only_authority_activation"
+    evidence_refs:
+      - "MyCiteV2/packages/tools/workbench_ui/service.py"
+      - "MyCiteV2/packages/tools/workbench_ui/README.md"
+      - "MyCiteV2/instances/_shared/runtime/portal_workbench_ui_runtime.py"
+      - "MyCiteV2/tests/unit/test_workbench_ui_runtime.py"
+      - "docs/audits/reports/mos_program_closure_report_2026-04-21.md"
+    notes: "The SQL-backed `workbench_ui` tool surface now exposes a read-only, spreadsheet-like datum grid with sorting/filtering plus additive directive overlay summaries keyed by `version_hash` and `hyphae_hash`."
+    rationale: "The final cut-over needs a sturdy utilitarian inspection surface that reflects SQL-backed authority without widening datum mutation."
+
+  - id: "MOS-Z1"
+    track: "Program Closure"
+    phase: "Closure"
+    status: "completed"
+    dependencies:
+      - "MOS-A8"
+      - "MOS-SG4"
+      - "MOS-C2"
+    gates:
+      - "documentation_alignment"
+      - "sql_only_authority_activation"
+      - "native_closure"
+    evidence_refs:
+      - "docs/plans/master_plan_mos.md"
+      - "docs/audits/reports/mos_documentation_alignment_and_cleanup_2026-04-21.md"
+      - "docs/audits/reports/mos_program_closure_report_2026-04-21.md"
+    notes: "The MOS cut-over program is complete for the current repo scope: migrated SYSTEM surfaces are SQL-authoritative, Track B semantic closure is complete, Track C remains additive-only, and retained non-blocking exception scope is explicit."
+    rationale: "Closure requires one final authoritative statement of what is now SQL-owned, what was retired, and what remains intentionally outside the cut-over."

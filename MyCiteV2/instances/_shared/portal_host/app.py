@@ -38,6 +38,7 @@ from MyCiteV2.instances._shared.runtime.portal_shell_runtime import (
     run_portal_shell_entry,
     run_system_profile_basics_action,
 )
+from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import run_portal_workbench_ui
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA,
     AWS_CSM_TOOL_REQUEST_SCHEMA,
@@ -46,6 +47,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     FND_EBI_TOOL_REQUEST_SCHEMA,
     PORTAL_RUNTIME_ENVELOPE_SCHEMA,
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
+    WORKBENCH_UI_TOOL_REQUEST_SCHEMA,
     build_tool_exposure_policy,
 )
 from MyCiteV2.packages.state_machine.portal_shell import (
@@ -58,6 +60,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     UTILITIES_INTEGRATIONS_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
     UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+    WORKBENCH_UI_TOOL_SURFACE_ID,
     PortalScope,
     build_portal_shell_state_from_query,
     build_portal_tool_registry_entries,
@@ -186,6 +189,15 @@ def _validate_optional_path(path: Path | None, *, expect_dir: bool = False) -> P
     return resolved
 
 
+def _normalize_optional_file_path(path: Path | None) -> Path | None:
+    if path is None:
+        return None
+    resolved = Path(path)
+    if resolved.exists() and resolved.is_dir():
+        raise ValueError(f"Expected a file path: {resolved}")
+    return resolved
+
+
 def _load_optional_json_object(path: Path) -> dict[str, Any]:
     if not path.exists() or not path.is_file():
         return {}
@@ -204,10 +216,7 @@ def _default_capabilities(portal_instance_id: str) -> list[str]:
 
 
 def _bootstrap_request(surface_id: str, *, portal_instance_id: str, query_params: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    portal_scope = PortalScope(
-        scope_id=portal_instance_id,
-        capabilities=_default_capabilities(portal_instance_id),
-    )
+    portal_scope = PortalScope(scope_id=portal_instance_id, capabilities=())
     payload: dict[str, Any] = {
         "schema": "mycite.v2.portal.shell.request.v1",
         "requested_surface_id": surface_id,
@@ -239,6 +248,7 @@ class V2PortalHostConfig:
     portal_domain: str
     webapps_root: Path
     portal_audit_storage_file: Path | None = None
+    authority_db_file: Path | None = None
     tool_exposure_policy: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -255,6 +265,7 @@ class V2PortalHostConfig:
         object.__setattr__(self, "data_dir", _validate_existing_dir(Path(self.data_dir), env_name="DATA_DIR"))
         object.__setattr__(self, "webapps_root", _validate_existing_dir(Path(self.webapps_root), env_name="MYCITE_WEBAPPS_ROOT"))
         object.__setattr__(self, "portal_audit_storage_file", _validate_optional_path(self.portal_audit_storage_file))
+        object.__setattr__(self, "authority_db_file", _normalize_optional_file_path(self.authority_db_file))
         policy = self.tool_exposure_policy
         if policy is None:
             private_config = _load_optional_json_object(Path(self.private_dir) / "config.json")
@@ -280,6 +291,9 @@ class V2PortalHostConfig:
             portal_audit_storage_file=Path(_required_env_text("MYCITE_V2_PORTAL_AUDIT_FILE"))
             if _as_text(os.environ.get("MYCITE_V2_PORTAL_AUDIT_FILE"))
             else None,
+            authority_db_file=Path(_required_env_text("MYCITE_V2_PORTAL_AUTHORITY_DB"))
+            if _as_text(os.environ.get("MYCITE_V2_PORTAL_AUTHORITY_DB"))
+            else None,
         )
 
     def to_public_dict(self) -> dict[str, Any]:
@@ -290,6 +304,7 @@ class V2PortalHostConfig:
             "private_dir": str(self.private_dir),
             "data_dir": str(self.data_dir),
             "webapps_root": str(self.webapps_root),
+            "authority_db_file": str(self.authority_db_file) if self.authority_db_file is not None else "",
         }
 
 
@@ -298,6 +313,7 @@ TOOL_SLUG_TO_SURFACE_ID = {
     "cts-gis": CTS_GIS_TOOL_SURFACE_ID,
     "fnd-dcm": FND_DCM_TOOL_SURFACE_ID,
     "fnd-ebi": FND_EBI_TOOL_SURFACE_ID,
+    "workbench-ui": WORKBENCH_UI_TOOL_SURFACE_ID,
 }
 
 
@@ -313,7 +329,13 @@ def _runtime_status_code(envelope: dict[str, Any]) -> int:
     code = _as_text(error.get("code"))
     if code in {"surface_unknown"}:
         return 404
-    if code in {"data_dir_not_configured"}:
+    if code in {
+        "data_dir_not_configured",
+        "sql_authority_required",
+        "sql_authority_uninitialized",
+        "sql_portal_authority_missing",
+        "sql_publication_summary_missing",
+    }:
         return 503
     return 400
 
@@ -382,6 +404,11 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         "shell_endpoint": "/portal/api/v2/shell",
         "tool_exposure": config.tool_exposure_policy,
         "state_roots": config.to_public_dict(),
+        "authority_db": {
+            "configured": config.authority_db_file is not None,
+            "exists": bool(config.authority_db_file and config.authority_db_file.exists()),
+            "path": str(config.authority_db_file) if config.authority_db_file is not None else "",
+        },
     }
 
 
@@ -451,6 +478,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     audit_storage_file=host_config.portal_audit_storage_file,
                     webapps_root=host_config.webapps_root,
                     tool_exposure_policy=host_config.tool_exposure_policy,
+                    authority_db_file=host_config.authority_db_file,
                 )
             )
         except LegacyMapsAliasUnsupportedError as exc:
@@ -472,6 +500,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     data_dir=host_config.data_dir,
                     public_dir=host_config.public_dir,
                     audit_storage_file=host_config.portal_audit_storage_file,
+                    authority_db_file=host_config.authority_db_file,
                 )
             )
         except ValueError as exc:
@@ -557,6 +586,23 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     webapps_root=host_config.webapps_root,
                     private_dir=host_config.private_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
+                )
+            )
+        except ValueError as exc:
+            return _error_response("invalid_request", str(exc))
+
+    @app.post("/portal/api/v2/system/tools/workbench-ui")
+    def portal_workbench_ui() -> tuple[Any, int]:
+        try:
+            payload = _json_payload()
+            if "schema" not in payload:
+                payload["schema"] = WORKBENCH_UI_TOOL_REQUEST_SCHEMA
+            return _runtime_response(
+                run_portal_workbench_ui(
+                    payload,
+                    portal_instance_id=host_config.portal_instance_id,
+                    portal_domain=host_config.portal_domain,
+                    authority_db_file=host_config.authority_db_file,
                 )
             )
         except ValueError as exc:

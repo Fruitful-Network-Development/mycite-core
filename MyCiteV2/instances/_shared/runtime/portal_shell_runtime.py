@@ -8,6 +8,7 @@ from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import build_port
 from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import build_portal_fnd_dcm_surface_bundle
 from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import build_portal_fnd_ebi_surface_bundle
 from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import build_system_workspace_bundle
+from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import build_portal_workbench_ui_surface_bundle
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     PORTAL_RUNTIME_ENVELOPE_SCHEMA,
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
@@ -17,9 +18,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     surface_schema_for_surface,
 )
 from MyCiteV2.packages.adapters.filesystem import (
-    FilesystemAuditLogAdapter,
     FilesystemNetworkRootReadModelAdapter,
-    FilesystemSystemDatumStoreAdapter,
 )
 from MyCiteV2.packages.adapters.sql import (
     SqliteAuditLogAdapter,
@@ -51,6 +50,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     UTILITIES_ROOT_SURFACE_ID,
     UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
     VERB_NAVIGATE,
+    WORKBENCH_UI_TOOL_SURFACE_ID,
     activity_icon_id_for_surface,
     build_canonical_url,
     build_portal_activity_dispatch_bodies,
@@ -62,6 +62,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     canonicalize_portal_shell_state,
     initial_portal_shell_state,
     resolve_portal_shell_request,
+    SYSTEM_SURFACE_IDS,
 )
 
 
@@ -78,39 +79,23 @@ def _path_or_none(path: str | Path | None) -> Path | None:
 
 
 def _normalize_authority_mode(value: object) -> str:
-    token = _as_text(value).lower() or "filesystem"
-    if token not in {"filesystem", "shadow", "sql_primary"}:
-        return "filesystem"
-    return token
+    del value
+    return "sql_primary"
 
 
-def _default_capabilities(portal_instance_id: str) -> tuple[str, ...]:
-    base = {"datum_recognition", "spatial_projection"}
-    if _as_text(portal_instance_id).lower() == "fnd":
-        base.update({"fnd_peripheral_routing", "hosted_site_manifest_visibility", "hosted_site_visibility"})
-    return tuple(sorted(base))
-
-
-def _seed_sql_portal_authority(
+def _portal_authority_source(
     *,
     portal_instance_id: str,
     authority_db_file: str | Path | None,
-    authority_mode: str,
-    known_tool_ids: tuple[str, ...],
-    tool_exposure_policy: dict[str, Any] | None,
-) -> SqlitePortalAuthorityAdapter | None:
-    normalized_mode = _normalize_authority_mode(authority_mode)
+) -> Any | None:
     authority_path = _path_or_none(authority_db_file)
-    if authority_path is None or normalized_mode == "filesystem":
+    if authority_path is None:
         return None
-    adapter = SqlitePortalAuthorityAdapter(authority_path)
-    adapter.bootstrap_from_defaults(
-        scope_id=portal_instance_id,
-        capabilities=_default_capabilities(portal_instance_id),
-        tool_exposure_policy=tool_exposure_policy
-        or build_allow_all_tool_exposure_policy(known_tool_ids=list(known_tool_ids)),
+    known_tool_ids = tuple(entry.tool_id for entry in build_portal_tool_registry_entries())
+    result = SqlitePortalAuthorityAdapter(authority_path).read_portal_authority(
+        PortalAuthorityRequest(scope_id=portal_instance_id, known_tool_ids=known_tool_ids)
     )
-    return adapter
+    return result.source
 
 
 def _portal_scope_from_request(
@@ -118,47 +103,32 @@ def _portal_scope_from_request(
     *,
     portal_instance_id: str,
     authority_db_file: str | Path | None = None,
-    authority_mode: str = "filesystem",
+    authority_mode: str = "sql_primary",
     tool_exposure_policy: dict[str, Any] | None = None,
 ) -> PortalScope:
-    known_tool_ids = tuple(entry.tool_id for entry in build_portal_tool_registry_entries())
-    authority_adapter = _seed_sql_portal_authority(
-        portal_instance_id=portal_instance_id,
-        authority_db_file=authority_db_file,
-        authority_mode=authority_mode,
-        known_tool_ids=known_tool_ids,
-        tool_exposure_policy=tool_exposure_policy,
-    )
+    del authority_mode, tool_exposure_policy
     normalized_payload = request_payload if isinstance(request_payload, dict) else {}
     if isinstance(normalized_payload.get("portal_scope"), dict):
         raw_scope = dict(normalized_payload.get("portal_scope") or {})
         raw_scope.setdefault("scope_id", portal_instance_id)
         existing_capabilities = raw_scope.get("capabilities")
         if not isinstance(existing_capabilities, list) or not existing_capabilities:
-            if authority_adapter is not None:
-                authority = authority_adapter.read_portal_authority(
-                    PortalAuthorityRequest(scope_id=portal_instance_id, known_tool_ids=known_tool_ids)
-                )
-                if authority.source is not None:
-                    raw_scope["capabilities"] = list(authority.source.capabilities)
-                else:
-                    raw_scope["capabilities"] = list(_default_capabilities(portal_instance_id))
-            else:
-                raw_scope["capabilities"] = list(_default_capabilities(portal_instance_id))
-        return PortalScope.from_value(raw_scope)
-    if authority_adapter is not None:
-        authority = authority_adapter.read_portal_authority(
-            PortalAuthorityRequest(scope_id=portal_instance_id, known_tool_ids=known_tool_ids)
-        )
-        if authority.source is not None:
-            return PortalScope(
-                scope_id=authority.source.scope_id,
-                capabilities=authority.source.capabilities,
+            authority_source = _portal_authority_source(
+                portal_instance_id=portal_instance_id,
+                authority_db_file=authority_db_file,
             )
-    return PortalScope(
-        scope_id=portal_instance_id,
-        capabilities=_default_capabilities(portal_instance_id),
+            raw_scope["capabilities"] = list(authority_source.capabilities) if authority_source is not None else []
+        return PortalScope.from_value(raw_scope)
+    authority_source = _portal_authority_source(
+        portal_instance_id=portal_instance_id,
+        authority_db_file=authority_db_file,
     )
+    if authority_source is not None:
+        return PortalScope(
+            scope_id=authority_source.scope_id,
+            capabilities=authority_source.capabilities,
+        )
+    return PortalScope(scope_id=portal_instance_id, capabilities=())
 
 
 def _normalize_request(
@@ -166,7 +136,7 @@ def _normalize_request(
     *,
     portal_instance_id: str,
     authority_db_file: str | Path | None = None,
-    authority_mode: str = "filesystem",
+    authority_mode: str = "sql_primary",
     tool_exposure_policy: dict[str, Any] | None = None,
 ) -> PortalShellRequest:
     portal_scope = _portal_scope_from_request(
@@ -188,29 +158,51 @@ def _resolved_tool_exposure_policy(
     *,
     portal_instance_id: str,
     authority_db_file: str | Path | None = None,
-    authority_mode: str = "filesystem",
+    authority_mode: str = "sql_primary",
 ) -> dict[str, Any]:
-    known_tool_ids = tuple(entry.tool_id for entry in build_portal_tool_registry_entries())
-    if tool_exposure_policy is not None:
-        return tool_exposure_policy
-    authority_adapter = _seed_sql_portal_authority(
+    del authority_mode
+    authority_source = _portal_authority_source(
         portal_instance_id=portal_instance_id,
         authority_db_file=authority_db_file,
-        authority_mode=authority_mode,
-        known_tool_ids=known_tool_ids,
-        tool_exposure_policy=None,
     )
-    if authority_adapter is not None:
-        authority = authority_adapter.read_portal_authority(
-            PortalAuthorityRequest(scope_id=portal_instance_id, known_tool_ids=known_tool_ids)
+    if authority_source is not None and isinstance(authority_source.tool_exposure_policy, dict):
+        return dict(authority_source.tool_exposure_policy)
+    if tool_exposure_policy is not None:
+        return tool_exposure_policy
+    return build_allow_all_tool_exposure_policy(known_tool_ids=[entry.tool_id for entry in build_portal_tool_registry_entries()])
+
+
+def _sql_runtime_error_for_surface(
+    *,
+    surface_id: str,
+    portal_instance_id: str,
+    authority_db_file: str | Path | None,
+) -> dict[str, str] | None:
+    if surface_id not in SYSTEM_SURFACE_IDS:
+        return None
+    authority_path = _path_or_none(authority_db_file)
+    if authority_path is None:
+        return build_portal_runtime_error(
+            code="sql_authority_required",
+            message="The MOS SQL authority database is required for SYSTEM surfaces.",
         )
-        if authority.source is not None:
-            policy = authority.source.tool_exposure_policy
-            if isinstance(policy, dict):
-                return dict(policy)
-    return build_allow_all_tool_exposure_policy(
-        known_tool_ids=list(known_tool_ids)
+    authority_source = _portal_authority_source(
+        portal_instance_id=portal_instance_id,
+        authority_db_file=authority_path,
     )
+    if authority_source is None:
+        return build_portal_runtime_error(
+            code="sql_portal_authority_missing",
+            message="The MOS SQL authority database is missing the portal authority snapshot for this scope.",
+        )
+    if surface_id in {SYSTEM_ROOT_SURFACE_ID, WORKBENCH_UI_TOOL_SURFACE_ID}:
+        datum_store = SqliteSystemDatumStoreAdapter(authority_path)
+        if not datum_store.has_authoritative_catalog(portal_instance_id) or not datum_store.has_system_workbench(portal_instance_id):
+            return build_portal_runtime_error(
+                code="sql_authority_uninitialized",
+                message="The MOS SQL authority database is not initialized for the requested tenant.",
+            )
+    return None
 
 
 def _integration_flags(
@@ -696,6 +688,8 @@ def _tool_bundle_for_surface(
     webapps_root: str | Path | None,
     tool_exposure_policy: dict[str, Any] | None,
     tool_rows: list[dict[str, Any]],
+    portal_domain: str,
+    authority_db_file: str | Path | None,
 ) -> dict[str, Any]:
     if surface_id == AWS_CSM_TOOL_SURFACE_ID:
         return build_portal_aws_surface_bundle(
@@ -734,6 +728,14 @@ def _tool_bundle_for_surface(
             tool_exposure_policy=tool_exposure_policy,
             tool_rows=tool_rows,
         )
+    if surface_id == WORKBENCH_UI_TOOL_SURFACE_ID:
+        return build_portal_workbench_ui_surface_bundle(
+            portal_scope=portal_scope,
+            portal_domain=portal_domain,
+            shell_state=shell_state,
+            authority_db_file=authority_db_file,
+            tool_rows=tool_rows,
+        )
     raise ValueError(f"Unsupported tool surface: {surface_id}")
 
 
@@ -752,7 +754,7 @@ def _bundle_for_surface(
     webapps_root: str | Path | None,
     tool_exposure_policy: dict[str, Any] | None,
     authority_db_file: str | Path | None = None,
-    authority_mode: str = "filesystem",
+    authority_mode: str = "sql_primary",
 ) -> dict[str, Any]:
     integration_flags = _integration_flags(
         data_dir=data_dir,
@@ -793,10 +795,11 @@ def _bundle_for_surface(
         CTS_GIS_TOOL_SURFACE_ID,
         FND_DCM_TOOL_SURFACE_ID,
         FND_EBI_TOOL_SURFACE_ID,
+        WORKBENCH_UI_TOOL_SURFACE_ID,
     }:
         canonical_state = (
             None
-            if selection_surface_id in {AWS_CSM_TOOL_SURFACE_ID, FND_DCM_TOOL_SURFACE_ID}
+            if selection_surface_id in {AWS_CSM_TOOL_SURFACE_ID, FND_DCM_TOOL_SURFACE_ID, WORKBENCH_UI_TOOL_SURFACE_ID}
             else canonicalize_portal_shell_state(
                 shell_state,
                 active_surface_id=selection_surface_id,
@@ -815,6 +818,8 @@ def _bundle_for_surface(
             webapps_root=webapps_root,
             tool_exposure_policy=tool_exposure_policy,
             tool_rows=tool_rows,
+            portal_domain=portal_domain,
+            authority_db_file=authority_db_file,
         )
         bundle["tool_rows"] = tool_rows
         return bundle
@@ -889,7 +894,7 @@ def run_portal_shell_entry(
     webapps_root: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
     authority_db_file: str | Path | None = None,
-    authority_mode: str = "filesystem",
+    authority_mode: str = "sql_primary",
 ) -> dict[str, Any]:
     normalized_request = _normalize_request(
         request_payload,
@@ -946,6 +951,12 @@ def run_portal_shell_entry(
             code=selection.reason_code or "surface_unknown",
             message=selection.reason_message or "Requested surface is not available.",
         )
+    elif selection.active_surface_id in SYSTEM_SURFACE_IDS:
+        error = _sql_runtime_error_for_surface(
+            surface_id=selection.active_surface_id,
+            portal_instance_id=portal_scope.scope_id,
+            authority_db_file=authority_db_file,
+        )
     return build_portal_runtime_envelope(
         portal_scope=portal_scope.to_dict(),
         requested_surface_id=selection.requested_surface_id,
@@ -973,47 +984,12 @@ def run_system_profile_basics_action(
     public_dir: str | Path | None,
     audit_storage_file: str | Path | None = None,
     authority_db_file: str | Path | None = None,
-    authority_mode: str = "filesystem",
+    authority_mode: str = "sql_primary",
 ) -> dict[str, Any]:
     payload = dict(request_payload or {})
     if _as_text(payload.get("schema")) != SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA:
         raise ValueError(f"request.schema must be {SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA}")
-    if data_dir is None:
-        raise ValueError("data_dir is required for profile basics updates")
-    normalized_mode = _normalize_authority_mode(authority_mode)
-    if normalized_mode == "filesystem" or authority_db_file is None:
-        adapter = FilesystemSystemDatumStoreAdapter(Path(data_dir), public_dir=public_dir)
-    else:
-        adapter = SqliteSystemDatumStoreAdapter(Path(authority_db_file))
-        if normalized_mode == "shadow" or not adapter.has_publication_summary(portal_instance_id, portal_domain):
-            adapter.bootstrap_from_filesystem(
-                data_dir=Path(data_dir),
-                public_dir=public_dir,
-                tenant_id=portal_instance_id,
-                tenant_domain=portal_domain,
-            )
-    outcome = PublicationProfileBasicsService(adapter).apply_write(
-        {
-            "tenant_id": portal_instance_id,
-            "tenant_domain": portal_domain,
-            "profile_title": payload.get("profile_title") or "",
-            "profile_summary": payload.get("profile_summary") or "",
-            "contact_email": payload.get("contact_email") or "",
-            "public_website_url": payload.get("public_website_url") or "",
-        }
-    )
-    if audit_storage_file is not None:
-        try:
-            if normalized_mode == "filesystem" or authority_db_file is None:
-                LocalAuditService(FilesystemAuditLogAdapter(Path(audit_storage_file))).append_record(
-                    outcome.to_local_audit_payload()
-                )
-            else:
-                sql_audit = SqliteAuditLogAdapter(Path(authority_db_file))
-                sql_audit.bootstrap_from_filesystem(audit_storage_file)
-                LocalAuditService(sql_audit).append_record(outcome.to_local_audit_payload())
-        except Exception:
-            pass
+    _normalize_authority_mode(authority_mode)
     portal_scope = _portal_scope_from_request(
         payload,
         portal_instance_id=portal_instance_id,
@@ -1047,6 +1023,36 @@ def run_system_profile_basics_action(
             "transition": {"kind": TRANSITION_FOCUS_FILE, "file_key": SYSTEM_PROFILE_BASICS_FILE_KEY},
         }
     )
+    preexisting_error = _sql_runtime_error_for_surface(
+        surface_id=SYSTEM_ROOT_SURFACE_ID,
+        portal_instance_id=portal_scope.scope_id,
+        authority_db_file=authority_db_file,
+    )
+    authority_path = _path_or_none(authority_db_file)
+    if preexisting_error is None and authority_path is not None:
+        adapter = SqliteSystemDatumStoreAdapter(authority_path)
+        if not adapter.has_publication_summary(portal_instance_id, portal_domain):
+            preexisting_error = build_portal_runtime_error(
+                code="sql_publication_summary_missing",
+                message="The MOS SQL authority database is missing the publication summary required for profile updates.",
+            )
+    outcome = None
+    if preexisting_error is None and authority_path is not None:
+        adapter = SqliteSystemDatumStoreAdapter(authority_path)
+        outcome = PublicationProfileBasicsService(adapter).apply_write(
+            {
+                "tenant_id": portal_instance_id,
+                "tenant_domain": portal_domain,
+                "profile_title": payload.get("profile_title") or "",
+                "profile_summary": payload.get("profile_summary") or "",
+                "contact_email": payload.get("contact_email") or "",
+                "public_website_url": payload.get("public_website_url") or "",
+            }
+        )
+        try:
+            LocalAuditService(SqliteAuditLogAdapter(authority_path)).append_record(outcome.to_local_audit_payload())
+        except Exception:
+            pass
     integration_flags = _integration_flags(
         data_dir=data_dir,
         webapps_root=None,
@@ -1067,11 +1073,12 @@ def run_system_profile_basics_action(
         public_dir=public_dir,
         audit_storage_file=audit_storage_file,
         tool_rows=tool_rows,
-        profile_save_status="saved",
+        profile_save_status="saved" if outcome is not None else "",
         authority_db_file=authority_db_file,
         authority_mode=authority_mode,
     )
-    workspace_bundle["surface_payload"]["workspace"]["profile_basics"]["confirmed_summary"] = outcome.confirmed_summary.to_dict()
+    if outcome is not None:
+        workspace_bundle["surface_payload"]["workspace"]["profile_basics"]["confirmed_summary"] = outcome.confirmed_summary.to_dict()
     composition = build_shell_composition_payload(
         active_surface_id=SYSTEM_ROOT_SURFACE_ID,
         portal_instance_id=portal_scope.scope_id,
@@ -1101,7 +1108,7 @@ def run_system_profile_basics_action(
         surface_payload=workspace_bundle["surface_payload"],
         shell_composition=composition,
         warnings=[],
-        error=None,
+        error=preexisting_error,
     )
 
 

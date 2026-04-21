@@ -8,7 +8,6 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     SYSTEM_ROOT_SURFACE_SCHEMA,
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
 )
-from MyCiteV2.packages.adapters.filesystem import FilesystemAuditLogAdapter, FilesystemSystemDatumStoreAdapter
 from MyCiteV2.packages.adapters.sql import (
     SqliteAuditLogAdapter,
     SqliteDirectiveContextAdapter,
@@ -69,10 +68,8 @@ def _path_or_none(value: str | Path | None) -> Path | None:
 
 
 def _normalize_authority_mode(value: object) -> str:
-    token = _as_text(value).lower() or "filesystem"
-    if token not in {"filesystem", "shadow", "sql_primary"}:
-        return "filesystem"
-    return token
+    del value
+    return "sql_primary"
 
 
 def _resolved_sql_datum_store(
@@ -84,59 +81,24 @@ def _resolved_sql_datum_store(
     authority_db_file: str | Path | None,
     authority_mode: str,
 ):
-    normalized_mode = _normalize_authority_mode(authority_mode)
+    del portal_domain, data_dir, public_dir, authority_mode
     authority_path = _path_or_none(authority_db_file)
-    if authority_path is None or normalized_mode == "filesystem":
-        if data_dir is None:
-            return None
-        return FilesystemSystemDatumStoreAdapter(Path(data_dir), public_dir=public_dir)
-    adapter = SqliteSystemDatumStoreAdapter(authority_path)
-    if data_dir is not None and normalized_mode == "shadow":
-        adapter.bootstrap_from_filesystem(
-            data_dir=data_dir,
-            public_dir=public_dir,
-            tenant_id=portal_scope.scope_id,
-            tenant_domain=portal_domain,
-        )
-    elif data_dir is not None and not adapter.has_authoritative_catalog(portal_scope.scope_id):
-        adapter.bootstrap_from_filesystem(
-            data_dir=data_dir,
-            public_dir=public_dir,
-            tenant_id=portal_scope.scope_id,
-            tenant_domain=portal_domain,
-        )
-    elif (
-        normalized_mode == "sql_primary"
-        and _as_text(portal_domain)
-        and not adapter.has_publication_summary(portal_scope.scope_id, portal_domain)
-        and data_dir is not None
-    ):
-        adapter.bootstrap_from_filesystem(
-            data_dir=data_dir,
-            public_dir=public_dir,
-            tenant_id=portal_scope.scope_id,
-            tenant_domain=portal_domain,
-        )
-    return adapter
+    if authority_path is None:
+        return None
+    return SqliteSystemDatumStoreAdapter(authority_path)
 
 
 def _audit_service(
     audit_storage_file: str | Path | None,
     *,
     authority_db_file: str | Path | None = None,
-    authority_mode: str = "filesystem",
+    authority_mode: str = "sql_primary",
 ) -> LocalAuditService:
-    normalized_mode = _normalize_authority_mode(authority_mode)
-    if normalized_mode == "filesystem" or authority_db_file is None:
-        if audit_storage_file is None:
-            return LocalAuditService(None)
-        return LocalAuditService(FilesystemAuditLogAdapter(Path(audit_storage_file)))
-    adapter = SqliteAuditLogAdapter(Path(authority_db_file))
-    if normalized_mode == "shadow":
-        adapter.bootstrap_from_filesystem(audit_storage_file)
-    elif normalized_mode == "sql_primary":
-        adapter.bootstrap_from_filesystem(audit_storage_file)
-    return LocalAuditService(adapter)
+    del audit_storage_file, authority_mode
+    authority_path = _path_or_none(authority_db_file)
+    if authority_path is None:
+        return LocalAuditService(None)
+    return LocalAuditService(SqliteAuditLogAdapter(authority_path))
 
 
 def _publication_services(
@@ -146,7 +108,7 @@ def _publication_services(
     data_dir: str | Path | None,
     public_dir: str | Path | None,
     authority_db_file: str | Path | None = None,
-    authority_mode: str = "filesystem",
+    authority_mode: str = "sql_primary",
 ) -> tuple[PublicationTenantSummaryService, PublicationProfileBasicsService] | None:
     adapter = _resolved_sql_datum_store(
         portal_scope=portal_scope,
@@ -168,7 +130,7 @@ def _profile_summary(
     data_dir: str | Path | None,
     public_dir: str | Path | None,
     authority_db_file: str | Path | None = None,
-    authority_mode: str = "filesystem",
+    authority_mode: str = "sql_primary",
 ) -> PublicationTenantSummary:
     services = _publication_services(
         portal_scope=portal_scope,
@@ -182,7 +144,7 @@ def _profile_summary(
         return PublicationTenantSummary.fallback(
             tenant_id=portal_scope.scope_id,
             tenant_domain=portal_domain,
-            warnings=("data_dir_not_configured",),
+            warnings=("sql_authority_required",),
         )
     summary_service, _ = services
     summary = summary_service.read_summary(portal_scope.scope_id, portal_domain)
@@ -190,7 +152,7 @@ def _profile_summary(
         return PublicationTenantSummary.fallback(
             tenant_id=portal_scope.scope_id,
             tenant_domain=portal_domain,
-            warnings=("publication_profile_not_found",),
+            warnings=("sql_publication_summary_missing",),
         )
     return summary
 
@@ -201,7 +163,7 @@ def read_system_workbench_projection(
     data_dir: str | Path | None,
     public_dir: str | Path | None,
     authority_db_file: str | Path | None = None,
-    authority_mode: str = "filesystem",
+    authority_mode: str = "sql_primary",
 ) -> DatumWorkbenchProjection:
     store = _resolved_sql_datum_store(
         portal_scope=portal_scope,
@@ -217,9 +179,18 @@ def read_system_workbench_projection(
             documents=(),
             selected_document_id="",
             source_files={},
-            readiness_status={"authoritative_catalog": "missing", "data_dir": "not_configured"},
-            warnings=("data_dir_not_configured",),
-    )
+            readiness_status={"authoritative_catalog": "missing", "sql_authority": "required"},
+            warnings=("sql_authority_required",),
+        )
+    if not store.has_authoritative_catalog(portal_scope.scope_id) or not store.has_system_workbench(portal_scope.scope_id):
+        return DatumWorkbenchProjection(
+            tenant_id=portal_scope.scope_id,
+            documents=(),
+            selected_document_id="",
+            source_files={},
+            readiness_status={"authoritative_catalog": "missing", "sql_authority": "uninitialized"},
+            warnings=("sql_authority_uninitialized",),
+        )
     return DatumWorkbenchService(store).read_workbench(portal_scope.scope_id)
 
 
@@ -230,7 +201,7 @@ def _directive_context_adapter(
 ) -> SqliteDirectiveContextAdapter | None:
     normalized_mode = _normalize_authority_mode(authority_mode)
     authority_path = _path_or_none(authority_db_file)
-    if authority_path is None or normalized_mode == "filesystem":
+    if authority_path is None or normalized_mode != "sql_primary":
         return None
     return SqliteDirectiveContextAdapter(authority_path)
 
