@@ -19,7 +19,7 @@ from MyCiteV2.packages.state_machine.portal_shell import PortalScope
 
 
 class WorkbenchUiRuntimeTests(unittest.TestCase):
-    def test_workbench_ui_runtime_reads_sql_rows_and_projects_grid(self) -> None:
+    def test_workbench_ui_runtime_projects_document_table_and_row_grid(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             data_dir = root / "data"
@@ -27,6 +27,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             db_file = root / "authority.sqlite3"
             (data_dir / "system" / "sources").mkdir(parents=True)
             (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True)
             public_dir.mkdir(parents=True)
             (data_dir / "system" / "anthology.json").write_text(
                 json.dumps(
@@ -36,6 +37,10 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                     }
                 )
                 + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.example.json").write_text(
+                json.dumps({"1-1-1": [["1-1-1", "~", "ROOT"], ["sandbox"]]}) + "\n",
                 encoding="utf-8",
             )
             SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
@@ -57,10 +62,129 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
 
             self.assertEqual(envelope["surface_id"], "system.tools.workbench_ui")
             self.assertEqual(envelope["canonical_query"]["sort"], "hyphae_hash")
-            table = envelope["surface_payload"]["sections"][0]
-            self.assertEqual(table["title"], "Datum Grid")
-            self.assertEqual(len(table["items"]), 2)
-            self.assertTrue(table["items"][0]["hyphae_hash"])
+            document_table = next(
+                section for section in envelope["surface_payload"]["sections"] if section["title"] == "Document Table"
+            )
+            row_table = next(section for section in envelope["surface_payload"]["sections"] if section["title"] == "Datum Grid")
+            self.assertEqual(len(document_table["items"]), 2)
+            self.assertIn("version_hash", document_table["items"][0])
+            self.assertEqual(row_table["title"], "Datum Grid")
+            self.assertEqual(len(row_table["items"]), 2)
+            self.assertTrue(row_table["items"][0]["hyphae_hash"])
+
+    def test_workbench_ui_document_table_supports_version_hash_filter_and_sort(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            public_dir = root / "public"
+            db_file = root / "authority.sqlite3"
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True)
+            public_dir.mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps(
+                    {
+                        "1-1-1": [["1-1-1", "~", "ROOT"], ["root"]],
+                        "1-1-2": [["1-1-2", "1-1-1", "CHILD"], ["child"]],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.example.json").write_text(
+                json.dumps(
+                    {
+                        "1-1-1": [["1-1-1", "~", "ROOT"], ["sandbox"]],
+                        "1-1-2": [["1-1-2", "1-1-1", "PROFILE"], ["profile"]],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            datum_store = SqliteSystemDatumStoreAdapter(db_file)
+            datum_store.bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
+            )
+            anthology_hash = datum_store.read_document_version_identity(
+                tenant_id="fnd",
+                document_id="system:anthology",
+            )["version_hash"]
+
+            bundle = build_portal_workbench_ui_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
+                portal_domain="fruitfulnetworkdevelopment.com",
+                shell_state=None,
+                authority_db_file=db_file,
+                surface_query={
+                    "document_filter": anthology_hash[:12],
+                    "document_sort": "version_hash",
+                    "document_dir": "desc",
+                },
+            )
+
+            document_table = next(
+                section for section in bundle["surface_payload"]["sections"] if section["title"] == "Document Table"
+            )
+            query_controls = next(
+                section for section in bundle["surface_payload"]["sections"] if section["title"] == "Query Controls"
+            )
+            self.assertEqual(len(document_table["items"]), 1)
+            self.assertEqual(document_table["items"][0]["document_id"], "system:anthology")
+            self.assertEqual(document_table["items"][0]["version_hash"], anthology_hash)
+            controls = {row["label"]: row["value"] for row in query_controls["rows"]}
+            self.assertEqual(controls["document filter"], anthology_hash[:12].lower())
+            self.assertEqual(controls["document sort"], "version_hash")
+            self.assertEqual(controls["document direction"], "desc")
+
+    def test_workbench_ui_row_filter_supports_hyphae_hash(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            public_dir = root / "public"
+            db_file = root / "authority.sqlite3"
+            (data_dir / "system").mkdir(parents=True)
+            public_dir.mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps(
+                    {
+                        "1-1-1": [["1-1-1", "~", "ROOT"], ["root"]],
+                        "1-1-2": [["1-1-2", "1-1-1", "CHILD"], ["child"]],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            datum_store = SqliteSystemDatumStoreAdapter(db_file)
+            datum_store.bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
+            )
+            row_identity = datum_store.read_datum_semantic_identity(
+                tenant_id="fnd",
+                document_id="system:anthology",
+                datum_address="1-1-2",
+            )
+
+            bundle = build_portal_workbench_ui_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
+                portal_domain="fruitfulnetworkdevelopment.com",
+                shell_state=None,
+                authority_db_file=db_file,
+                surface_query={
+                    "document": "system:anthology",
+                    "filter": row_identity["hyphae_hash"][:12],
+                    "sort": "hyphae_hash",
+                    "dir": "asc",
+                },
+            )
+
+            row_table = next(section for section in bundle["surface_payload"]["sections"] if section["title"] == "Datum Grid")
+            self.assertEqual(len(row_table["items"]), 1)
+            self.assertEqual(row_table["items"][0]["datum_address"], "1-1-2")
 
     def test_workbench_ui_overlay_remains_additive_and_does_not_mutate_rows(self) -> None:
         with TemporaryDirectory() as temp_dir:

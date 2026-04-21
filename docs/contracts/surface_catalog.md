@@ -65,7 +65,7 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 
 - `system.tools.workbench_ui`
 
-`Workbench UI` is one `SYSTEM` child read-only SQL datum-grid surface.
+`Workbench UI` is one `SYSTEM` child read-only two-pane SQL spreadsheet surface.
 
 - Its canonical route is `/portal/system/tools/workbench-ui`.
 - Its default posture is workbench-primary.
@@ -73,12 +73,21 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 - Its `Interface Panel` shows selected-row semantic identity plus additive directive overlay summaries.
 - Its canonical query keys are:
   - `document`
+  - `document_filter`
+  - `document_sort`
+  - `document_dir`
   - `filter`
   - `sort`
   - `dir`
   - `overlay`
   - `row`
-- Its primary columns are:
+- Its document-table columns are:
+  - `document_name`
+  - `document_id`
+  - `source_kind`
+  - `version_hash`
+  - `row_count`
+- Its row-grid columns are:
   - `datum_address`
   - `layer`
   - `value_group`
@@ -87,6 +96,7 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
   - `relation`
   - `object_ref`
   - `hyphae_hash`
+- Its document table is keyed by `version_hash`, while its selected-document row grid is keyed by `hyphae_hash`.
 - It is read-only in v1.
 - It must never mutate authoritative datum rows.
 - Any directive overlay is additive only and may be hidden without changing authoritative row content.

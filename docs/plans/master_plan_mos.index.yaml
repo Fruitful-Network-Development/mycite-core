@@ -69,7 +69,7 @@ entries:
       - "MyCiteV2/packages/ports/portal_authority/contracts.py"
       - "docs/audits/reports/peripheral_packages_modularization_report_2026-04-16.md"
       - "docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md"
-    notes: "Shadow-mode SQL adapters and the combined portal-authority seam are implemented while filesystem projections remain available."
+    notes: "Shadow-mode SQL adapters and the combined portal-authority seam are implemented; any retained filesystem projections are now non-authoritative bootstrap, parity, or fixture helpers only."
     open_questions:
       - "Whether grants, ownership posture, and tool exposure can share one reusable boundary without widening public contracts."
 
@@ -92,7 +92,7 @@ entries:
       - "MyCiteV2/tests/adapters/test_sql_portal_authority_adapter.py"
       - "MyCiteV2/tests/unit/test_portal_shell_sql_authority.py"
       - "docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md"
-    notes: "Representative SQL-versus-filesystem parity coverage is in place and rollback-safe filesystem projections remain available."
+    notes: "Representative SQL-versus-legacy parity coverage is in place, and any retained filesystem projections are explicitly non-authoritative parity evidence only."
 
   - id: "MOS-A4"
     track: "Track A"
@@ -277,8 +277,9 @@ entries:
       - "MyCiteV2/instances/_shared/runtime/portal_system_workspace_runtime.py"
       - "MyCiteV2/tests/unit/test_portal_shell_sql_authority.py"
       - "MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py"
+      - "docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md"
       - "docs/audits/reports/mos_sql_only_authority_activation_and_legacy_retirement_2026-04-21.md"
-    notes: "Shared runtime now requires an initialized SQL authority database for migrated SYSTEM surfaces, no longer advertises public filesystem/shadow authority modes there, and retains filesystem datum/audit code only as migration or fixture support."
+    notes: "Shared runtime now requires an initialized SQL authority database for migrated SYSTEM surfaces, no longer advertises public filesystem/shadow authority modes there, and retains filesystem datum/audit code only as non-authoritative migration or fixture support."
     rationale: "Final cut-over requires fail-closed SQL authority rather than a silent mixed-authority runtime."
 
   - id: "MOS-A8"
@@ -297,8 +298,9 @@ entries:
       - "MyCiteV2/packages/tools/workbench_ui/README.md"
       - "MyCiteV2/instances/_shared/runtime/portal_workbench_ui_runtime.py"
       - "MyCiteV2/tests/unit/test_workbench_ui_runtime.py"
+      - "docs/contracts/route_model.md"
       - "docs/audits/reports/mos_program_closure_report_2026-04-21.md"
-    notes: "The SQL-backed `workbench_ui` tool surface now exposes a read-only, spreadsheet-like datum grid with sorting/filtering plus additive directive overlay summaries keyed by `version_hash` and `hyphae_hash`."
+    notes: "The SQL-backed `workbench_ui` tool surface now exposes a read-only, two-pane spreadsheet with a document table keyed by `version_hash`, a row grid keyed by `hyphae_hash`, backward-compatible row-grid query keys, and additive directive overlay summaries."
     rationale: "The final cut-over needs a sturdy utilitarian inspection surface that reflects SQL-backed authority without widening datum mutation."
 
   - id: "MOS-Z1"
@@ -315,7 +317,8 @@ entries:
       - "native_closure"
     evidence_refs:
       - "docs/plans/master_plan_mos.md"
+      - "docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md"
       - "docs/audits/reports/mos_documentation_alignment_and_cleanup_2026-04-21.md"
       - "docs/audits/reports/mos_program_closure_report_2026-04-21.md"
-    notes: "The MOS cut-over program is complete for the current repo scope: migrated SYSTEM surfaces are SQL-authoritative, Track B semantic closure is complete, Track C remains additive-only, and retained non-blocking exception scope is explicit."
+    notes: "The MOS cut-over program is complete for the current repo scope: migrated SYSTEM surfaces are SQL-authoritative, authority-only legacy cleanup is complete, Track B semantic closure is complete, Track C remains additive-only, and retained non-blocking exception scope is explicit."
     rationale: "Closure requires one final authoritative statement of what is now SQL-owned, what was retired, and what remains intentionally outside the cut-over."

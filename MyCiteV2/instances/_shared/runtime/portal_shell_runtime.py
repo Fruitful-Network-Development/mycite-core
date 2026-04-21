@@ -223,7 +223,7 @@ def _tool_posture_rows(
     integration_flags: dict[str, bool],
     portal_instance_id: str,
     authority_db_file: str | Path | None = None,
-    authority_mode: str = "filesystem",
+    authority_mode: str = "sql_primary",
 ) -> list[dict[str, Any]]:
     policy = _resolved_tool_exposure_policy(
         tool_exposure_policy,

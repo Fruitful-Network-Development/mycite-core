@@ -10,8 +10,16 @@ from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocument, Auth
 from MyCiteV2.packages.ports.directive_context import DirectiveContextEventQuery, DirectiveContextRequest
 
 WORKBENCH_UI_TOOL_ID = "workbench_ui"
-WORKBENCH_UI_DEFAULT_SORT = "datum_address"
-_SORT_KEYS = {
+WORKBENCH_UI_DEFAULT_DOCUMENT_SORT = "version_hash"
+WORKBENCH_UI_DEFAULT_ROW_SORT = "datum_address"
+_DOCUMENT_SORT_KEYS = {
+    "document_id",
+    "document_name",
+    "source_kind",
+    "row_count",
+    "version_hash",
+}
+_ROW_SORT_KEYS = {
     "datum_address",
     "layer",
     "value_group",
@@ -27,6 +35,17 @@ def _as_text(value: object) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _normalize_sort_key(value: object, *, allowed: set[str], default: str) -> str:
+    sort_key = _as_text(value).lower() or default
+    if sort_key not in allowed:
+        return default
+    return sort_key
+
+
+def _normalize_sort_direction(value: object) -> str:
+    return "desc" if _as_text(value).lower() == "desc" else "asc"
 
 
 def _joined_labels(raw: Any) -> str:
@@ -56,6 +75,19 @@ def _object_ref(raw: Any, *, datum_address: str) -> str:
     if isinstance(raw, dict):
         return _as_text(raw.get("object_ref") or raw.get("object") or datum_address)
     return ""
+
+
+def _document_filter_haystack(document: dict[str, Any]) -> str:
+    return " ".join(
+        _as_text(document.get(key)).lower()
+        for key in ("document_id", "document_name", "source_kind", "version_hash")
+    )
+
+
+def _document_sort_value(document: dict[str, Any], *, sort_key: str) -> Any:
+    if sort_key == "row_count":
+        return int(document.get(sort_key) or 0)
+    return _as_text(document.get(sort_key)).lower()
 
 
 def _row_filter_haystack(row: dict[str, Any]) -> str:
@@ -105,7 +137,27 @@ class WorkbenchUiReadService:
         self._datum_store = SqliteSystemDatumStoreAdapter(self._db_file)
         self._directive_context = SqliteDirectiveContextAdapter(self._db_file)
 
-    def _document_rows(
+    def _build_document_entry(
+        self,
+        *,
+        tenant_id: str,
+        document: AuthoritativeDatumDocument,
+    ) -> dict[str, Any]:
+        document_identity = self._datum_store.read_document_version_identity(
+            tenant_id=tenant_id,
+            document_id=document.document_id,
+        )
+        return {
+            "document_id": document.document_id,
+            "document_name": document.document_name,
+            "label": document.document_name,
+            "source_kind": document.source_kind,
+            "row_count": int(document.row_count),
+            "version_hash": _as_text((document_identity or {}).get("version_hash")),
+            "selected": False,
+        }
+
+    def _row_items(
         self,
         *,
         tenant_id: str,
@@ -150,45 +202,64 @@ class WorkbenchUiReadService:
         )
         selected_document_id = _as_text(query.get("document"))
         selected_row_id = _as_text(query.get("row"))
+        document_filter = _as_text(query.get("document_filter")).lower()
+        document_sort_key = _normalize_sort_key(
+            query.get("document_sort"),
+            allowed=_DOCUMENT_SORT_KEYS,
+            default=WORKBENCH_UI_DEFAULT_DOCUMENT_SORT,
+        )
+        document_sort_direction = _normalize_sort_direction(query.get("document_dir"))
         text_filter = _as_text(query.get("filter")).lower()
-        sort_key = _as_text(query.get("sort")).lower() or WORKBENCH_UI_DEFAULT_SORT
-        if sort_key not in _SORT_KEYS:
-            sort_key = WORKBENCH_UI_DEFAULT_SORT
-        sort_direction = "desc" if _as_text(query.get("dir")).lower() == "desc" else "asc"
+        row_sort_key = _normalize_sort_key(query.get("sort"), allowed=_ROW_SORT_KEYS, default=WORKBENCH_UI_DEFAULT_ROW_SORT)
+        row_sort_direction = _normalize_sort_direction(query.get("dir"))
         overlay_visibility = "hide" if _as_text(query.get("overlay")).lower() == "hide" else "show"
 
         documents = list(catalog.documents)
-        if not selected_document_id and documents:
-            selected_document_id = documents[0].document_id
-        active_document = next((document for document in documents if document.document_id == selected_document_id), None)
-        if active_document is None and documents:
-            active_document = documents[0]
-            selected_document_id = active_document.document_id
+        document_rows = [
+            self._build_document_entry(tenant_id=portal_instance_id, document=document)
+            for document in documents
+        ]
+        if document_filter:
+            document_rows = [document for document in document_rows if document_filter in _document_filter_haystack(document)]
+        document_rows.sort(
+            key=lambda document: (
+                _document_sort_value(document, sort_key=document_sort_key),
+                _as_text(document.get("document_id")).lower(),
+            ),
+            reverse=document_sort_direction == "desc",
+        )
+        if selected_document_id not in {document["document_id"] for document in document_rows}:
+            selected_document_id = ""
+        if not selected_document_id and document_rows:
+            selected_document_id = document_rows[0]["document_id"]
 
-        document_identity = None
+        active_document = next((document for document in documents if document.document_id == selected_document_id), None)
+        active_document_row = next((document for document in document_rows if document["document_id"] == selected_document_id), None)
+        for document in document_rows:
+            document["selected"] = document["document_id"] == selected_document_id
+
+        document_version_hash = _as_text((active_document_row or {}).get("version_hash"))
         rows: list[dict[str, Any]] = []
         if active_document is not None:
-            document_identity = self._datum_store.read_document_version_identity(
-                tenant_id=portal_instance_id,
-                document_id=active_document.document_id,
-            )
-            rows = self._document_rows(tenant_id=portal_instance_id, document=active_document)
+            rows = self._row_items(tenant_id=portal_instance_id, document=active_document)
         if text_filter:
             rows = [row for row in rows if text_filter in _row_filter_haystack(row)]
-        rows.sort(key=lambda row: (_row_sort_value(row, sort_key=sort_key), row["datum_address"]), reverse=sort_direction == "desc")
+        rows.sort(
+            key=lambda row: (_row_sort_value(row, sort_key=row_sort_key), row["datum_address"]),
+            reverse=row_sort_direction == "desc",
+        )
         selected_row = next((row for row in rows if row["datum_address"] == selected_row_id), None)
         if selected_row is None and rows:
             selected_row = rows[0]
-            selected_row_id = selected_row["datum_address"]
 
         overlay = None
         overlay_events: list[dict[str, Any]] = []
-        if overlay_visibility == "show" and document_identity is not None:
+        if overlay_visibility == "show" and document_version_hash:
             request = DirectiveContextRequest(
                 portal_instance_id=portal_instance_id,
                 tool_id=WORKBENCH_UI_TOOL_ID,
                 subject_hyphae_hash=_as_text((selected_row or {}).get("hyphae_hash")),
-                subject_version_hash=_as_text(document_identity.get("version_hash")),
+                subject_version_hash=document_version_hash,
             )
             directive_result = self._directive_context.read_directive_context(request)
             if directive_result.source is not None:
@@ -205,25 +276,18 @@ class WorkbenchUiReadService:
                     )
                 ]
 
-        document_rows = [
-            {
-                "document_id": document.document_id,
-                "label": document.document_name,
-                "source_kind": document.source_kind,
-                "row_count": str(document.row_count),
-                "selected": document.document_id == selected_document_id,
-            }
-            for document in documents
-        ]
-
         return {
             "tool_id": WORKBENCH_UI_TOOL_ID,
             "document_id": selected_document_id,
+            "document_name": _as_text((active_document_row or {}).get("document_name")),
             "document_rows": document_rows,
-            "document_version_hash": _as_text((document_identity or {}).get("version_hash")),
+            "document_filter": document_filter,
+            "document_sort_key": document_sort_key,
+            "document_sort_direction": document_sort_direction,
+            "document_version_hash": document_version_hash,
             "row_count": len(rows),
-            "sort_key": sort_key,
-            "sort_direction": sort_direction,
+            "sort_key": row_sort_key,
+            "sort_direction": row_sort_direction,
             "text_filter": text_filter,
             "overlay_visibility": overlay_visibility,
             "rows": rows,
@@ -235,17 +299,30 @@ class WorkbenchUiReadService:
                 "kind": "workbench_ui_surface",
                 "tool_id": WORKBENCH_UI_TOOL_ID,
                 "title": "Workbench UI",
-                "subtitle": "Read-only SQL-backed datum grid with additive directive overlays.",
+                "subtitle": "Read-only two-pane SQL-backed spreadsheet with additive directive overlays.",
                 "cards": [
+                    {"label": "documents", "value": str(len(document_rows))},
                     {"label": "document", "value": selected_document_id or "—"},
-                    {"label": "version hash", "value": _as_text((document_identity or {}).get("version_hash")) or "—"},
+                    {"label": "version hash", "value": document_version_hash or "—"},
                     {"label": "rows", "value": str(len(rows))},
                     {"label": "overlay", "value": overlay_visibility},
                 ],
                 "sections": [
                     {
+                        "title": "Document Table",
+                        "summary": "Read-only authoritative documents keyed by SQL version identity.",
+                        "columns": [
+                            {"key": "document_name", "label": "document_name"},
+                            {"key": "document_id", "label": "document_id"},
+                            {"key": "source_kind", "label": "source_kind"},
+                            {"key": "version_hash", "label": "version_hash"},
+                            {"key": "row_count", "label": "row_count"},
+                        ],
+                        "items": document_rows,
+                    },
+                    {
                         "title": "Datum Grid",
-                        "summary": "Spreadsheet-like read-only rows backed by MOS SQL authority.",
+                        "summary": "Spreadsheet-like read-only rows keyed by row semantic identity.",
                         "columns": [
                             {"key": "datum_address", "label": "datum_address"},
                             {"key": "layer", "label": "layer"},
@@ -261,15 +338,20 @@ class WorkbenchUiReadService:
                     {
                         "title": "Query Controls",
                         "rows": [
-                            {"label": "filter", "value": text_filter or "—"},
-                            {"label": "sort", "value": sort_key},
-                            {"label": "direction", "value": sort_direction},
+                            {"label": "document filter", "value": document_filter or "—"},
+                            {"label": "document sort", "value": document_sort_key},
+                            {"label": "document direction", "value": document_sort_direction},
+                            {"label": "row filter", "value": text_filter or "—"},
+                            {"label": "row sort", "value": row_sort_key},
+                            {"label": "row direction", "value": row_sort_direction},
                             {"label": "overlay visibility", "value": overlay_visibility},
                         ],
                     },
                 ],
                 "notes": [
                     "Directive overlays are additive summaries only.",
+                    "Document filtering indexes version_hash and document identity fields.",
+                    "Row filtering indexes hyphae_hash and row semantic fields.",
                     "No mutation controls are exposed on this surface.",
                 ],
             },
@@ -277,7 +359,9 @@ class WorkbenchUiReadService:
                 {
                     "title": "Selection",
                     "rows": [
+                        {"label": "document name", "value": _as_text((active_document_row or {}).get("document_name")) or "—"},
                         {"label": "document id", "value": selected_document_id or "—"},
+                        {"label": "document version hash", "value": document_version_hash or "—"},
                         {"label": "datum address", "value": _as_text((selected_row or {}).get("datum_address")) or "—"},
                         {"label": "semantic hash", "value": _as_text((selected_row or {}).get("semantic_hash")) or "—"},
                         {"label": "hyphae hash", "value": _as_text((selected_row or {}).get("hyphae_hash")) or "—"},

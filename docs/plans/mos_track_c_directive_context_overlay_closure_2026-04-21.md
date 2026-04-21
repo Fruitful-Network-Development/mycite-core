@@ -4,7 +4,7 @@ Date: 2026-04-21
 
 Doc type: `policy`  
 Normativity: `supporting`  
-Lifecycle: `active`  
+Lifecycle: `historical-superseded`  
 Last reviewed: `2026-04-21`
 
 ## Purpose

@@ -108,6 +108,9 @@ FND-DCM canonical query rules:
 Workbench UI query projection keys:
 
 - `document`
+- `document_filter`
+- `document_sort`
+- `document_dir`
 - `filter`
 - `sort`
 - `dir`
@@ -116,11 +119,14 @@ Workbench UI query projection keys:
 
 Workbench UI canonical query rules:
 
-- fresh `Workbench UI` entry projects the first SQL-backed authoritative document with `sort=datum_address&dir=asc&overlay=show`
+- fresh `Workbench UI` entry projects the first document from the `version_hash`-sorted document table with `document_sort=version_hash&document_dir=asc&sort=datum_address&dir=asc&overlay=show`
 - `document=<document_id>` selects one SQL-backed authoritative document
-- `filter=<text>` narrows the read-only row grid
-- `sort=<datum_address|layer|value_group|iteration|hyphae_hash>` changes grid ordering
-- `dir=<asc|desc>` changes grid order direction
+- `document_filter=<text>` narrows the read-only document table by `document_id`, `document_name`, `source_kind`, or `version_hash`
+- `document_sort=<document_id|document_name|source_kind|row_count|version_hash>` changes document-table ordering
+- `document_dir=<asc|desc>` changes document-table order direction
+- `filter=<text>` narrows the selected-document row grid, including `hyphae_hash`
+- `sort=<datum_address|layer|value_group|iteration|hyphae_hash>` changes row-grid ordering
+- `dir=<asc|desc>` changes row-grid order direction
 - `row=<datum_address>` focuses one selected row in the read-only Interface Panel detail view
 - `overlay=hide` suppresses additive directive summaries without changing authoritative row content
 

@@ -1130,7 +1130,7 @@ def build_system_workspace_bundle(
     tool_rows: list[dict[str, Any]],
     profile_save_status: str = "",
     authority_db_file: str | Path | None = None,
-    authority_mode: str = "filesystem",
+    authority_mode: str = "sql_primary",
 ) -> dict[str, Any]:
     projection = read_system_workbench_projection(
         portal_scope=portal_scope,
