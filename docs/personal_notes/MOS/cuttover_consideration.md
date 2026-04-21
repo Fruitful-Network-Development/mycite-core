@@ -61,7 +61,7 @@ Handle NIMM/AITAS and other directive‑context ideas as a parallel design/spec 
 ## PROMPT 2
 
 Consider the currnet plan.
-> `mos_master_plan.md`
+> `master_plan_mos.md`
 
 ---
 

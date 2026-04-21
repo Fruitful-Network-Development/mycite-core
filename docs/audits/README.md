@@ -15,6 +15,9 @@ Completed audits (report/evidence retained, planning docs removed):
 - `reports/mos_directive_context_non_inference_validation_2026-04-21.md` records the additive-only, explicit-manifest-only directive-context import posture.
 - `reports/mos_documentation_alignment_and_cleanup_2026-04-21.md` records active-doc alignment and historical-artifact cleanup for the completed MOS program.
 - `reports/mos_program_closure_report_2026-04-21.md` records the final authoritative MOS cut-over closure statement.
+- `reports/mos_personal_notes_to_canon_crosswalk_2026-04-21.md` records which named MOS personal-note concepts are now canonical, deferred, or source-only.
+- `reports/mos_documentation_supersession_audit_2026-04-21.md` records the post-closure canonical-versus-historical MOS documentation posture.
+- `reports/workbench_ui_utilitarian_design_audit_2026-04-21.md` records the current utilitarian datum-file workbench strengths, gaps, and next hardening steps.
 
 Foundation-first status:
 
@@ -36,6 +39,7 @@ Still useful and not yet fully completed:
 - `docs/plans/desktop_dm02_dm04_reconciliation_plan_2026-04-20.md` now governs remaining desktop deep-link and scoped shell-state persistence work from `reports/desktop_access_historical_drift_report_2026-04-16.md`.
 - `docs/plans/documentation_ia_remediation_backlog.md` now governs remaining documentation IA/YAML migration and CI-enforcement expansion from `reports/documentation_ia_audit_report_2026-04-20.md`.
 - `docs/plans/master_plan_mos.md` is now the completed authoritative closure record for the MOS SQL cut-over program; follow-on MOS work should use supporting plans or audits rather than creating a competing master-plan document.
+- `docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md`, `docs/plans/mos_novelty_positioning_follow_on_2026-04-21.md`, and `docs/plans/workbench_ui_hardening_follow_on_2026-04-21.md` now govern post-closure MOS follow-on work without reopening the completed master plan.
 - `cts_gis_source_hops_audit_plan_2026-04-20.md` remains useful until all listed Summit lineage files are either `verified` or explicitly `blocked` with rationale.
 - `cts_gis_samras_rule_alignment_audit_plan_2026-04-20.md` defines SAMRAS structural/mutation/mediation rule investigation and alignment gates.
 - `cts_gis_datum_handling_alignment_audit_plan_2026-04-20.md` defines datum-file/source-file handling, ordering/editing, MSS-form compatibility, and modularization alignment as a top-priority audit track.
