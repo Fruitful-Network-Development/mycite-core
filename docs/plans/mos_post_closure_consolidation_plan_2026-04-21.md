@@ -19,6 +19,8 @@ Define the post-closure consolidation work that follows the completed MOS progra
 - Host-bound private/public assets remain documented exception scope unless a separate dedicated port plan is created.
 - `deployed/fnd/data/**` is retained as non-authoritative historical/test support and remains outside MOS datum authority.
 - Shared-engine NIMM/AITAS canon is not widened in this pass.
+- `SYSTEM` remains the anthology-centered datum-file workbench at `/portal/system`.
+- `workbench_ui` remains a separate SQL authority inspector under `SYSTEM`.
 - `workbench_ui` remains read-only and additive-only.
 
 ## Bucket 1 - Documentation Canonicalization
@@ -70,13 +72,14 @@ Exit:
 
 Goal:
 
-- harden the canonical datum-file workbench surface without turning it into a heavy parallel UI stack
+- harden the `workbench_ui` SQL authority inspector without turning it into a heavy parallel UI stack
 
 Required work:
 
-- use `docs/plans/workbench_ui_hardening_follow_on_2026-04-21.md` as the active follow-on plan for the datum-file workbench
-- treat `workbench_ui` as the canonical shell-attached, script-backed datum-file workbench surface
-- preserve the current anchor file posture, layered datum table posture, datum row structural coordinates, and additive overlay rules
+- use `docs/plans/workbench_ui_hardening_follow_on_2026-04-21.md` as the active follow-on plan for `workbench_ui`
+- keep `SYSTEM` as the canonical anthology workspace and keep `workbench_ui` as the separate shell-attached, script-backed SQL authority inspector under `SYSTEM`
+- preserve the current layered datum table posture, datum row structural coordinates, additive overlay rules, and the deliberate CTS-GIS-first `workbench_ui` landing posture
+- keep `workbench_ui` scoped to authoritative SQL-backed documents; retained host-bound/private assets and `NETWORK` materializations remain outside that corpus unless separately ported
 - keep hardening minimal and utilitarian:
   - keyboard navigation
   - frozen headers and clearer selection state
@@ -88,7 +91,8 @@ Required work:
 
 Exit:
 
-- the datum-file workbench remains shell-attached, read-only, and additive-only
+- `SYSTEM` remains the reducer-owned anthology workspace
+- `workbench_ui` remains a separate shell-attached, read-only, additive-only SQL inspection tool
 - the follow-on hardening improves navigation and inspection clarity without introducing a parallel frontend framework
 
 ## Verification
@@ -99,4 +103,4 @@ Exit:
 
 ## Result
 
-The post-closure MOS work is now constrained to documentation canonicalization, retained exception scope planning, and datum-file workbench hardening. Anything outside those buckets requires its own dedicated plan and must not reopen the completed MOS cut-over.
+The post-closure MOS work is now constrained to documentation canonicalization, retained exception scope planning, and `workbench_ui` SQL authority inspector hardening while leaving `/portal/system` alone. Anything outside those buckets requires its own dedicated plan and must not reopen the completed MOS cut-over.

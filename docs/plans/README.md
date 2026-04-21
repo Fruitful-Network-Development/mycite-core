@@ -20,7 +20,6 @@ MOS SQL core program:
 - `mos_semantic_gate_register_2026-04-21.md` records the closed Track B semantic gates and their retained evidence.
 - `mos_sg1_version_identity_policy_2026-04-21.md` through `mos_sg4_standard_closure_policy_2026-04-21.md` retain the dedicated Track B closure artifacts.
 - `mos_directive_context_design_track_2026-04-21.md` retains the Track C directive-context design posture, including the non-inference migration rule and approved SQL-backed read surfaces.
-- `mos_track_c_directive_context_overlay_closure_2026-04-21.md` retains the approved additive SQL overlay implementation pass for Track C as superseded historical evidence.
 
 MOS closure evidence:
 
@@ -30,16 +29,21 @@ MOS closure evidence:
 - `docs/audits/reports/mos_directive_context_non_inference_validation_2026-04-21.md`
 - `docs/audits/reports/mos_documentation_alignment_and_cleanup_2026-04-21.md`
 - `docs/audits/reports/mos_program_closure_report_2026-04-21.md`
+- `docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md`
 
 MOS post-closure follow-on plans:
 
-- `mos_post_closure_consolidation_plan_2026-04-21.md` constrains post-closure MOS work to documentation canonicalization, retained exception scope planning, and datum-file workbench hardening.
+- `mos_post_closure_consolidation_plan_2026-04-21.md` constrains post-closure MOS work to documentation canonicalization, retained exception scope planning, and `workbench_ui` SQL authority inspector hardening while leaving `/portal/system` alone.
 - `mos_novelty_positioning_follow_on_2026-04-21.md` carries internal novelty/positioning language separately from operational cut-over docs.
-- `workbench_ui_hardening_follow_on_2026-04-21.md` defines the next minimal datum-file workbench hardening steps for `workbench_ui`.
+- `workbench_ui_hardening_follow_on_2026-04-21.md` defines the next minimal hardening steps for `workbench_ui` as the separate SQL authority inspector under `SYSTEM`.
 
 Desktop reconciliation program:
 
 - `desktop_dm02_dm04_reconciliation_plan_2026-04-20.md` is the active comprehensive implementation plan for desktop deep-link startup translation (`DM-02`) and scoped shell-state persistence policy (`DM-04`).
+
+Historical archive:
+
+- `archive/mos_track_c_directive_context_overlay_closure_2026-04-21.md` retains the approved additive SQL overlay implementation pass for Track C as superseded historical evidence.
 
 Canonical contract anchors for plan documents:
 

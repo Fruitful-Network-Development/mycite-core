@@ -66,6 +66,7 @@ Implemented improvements:
 
 - the surface now separates document selection from row inspection with a document table keyed by `version_hash`
 - the selected-document row grid remains sortable/filterable by `hyphae_hash`
+- the surface remains a separate SQL inspection tool under `SYSTEM`; `/portal/system` itself stays anthology-centered
 - directive overlays remain additive-only and never mutate authoritative datum rows
 - the read model stays modular by separating SQL read-service logic from the runtime wrapper/control-panel projection
 

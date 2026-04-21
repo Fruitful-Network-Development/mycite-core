@@ -16,6 +16,7 @@ def _read_text(path: Path) -> str:
 class MosPostClosureDocsTests(unittest.TestCase):
     def test_post_closure_follow_on_artifacts_exist(self) -> None:
         expected = {
+            "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md",
             "docs/audits/reports/mos_personal_notes_to_canon_crosswalk_2026-04-21.md",
             "docs/audits/reports/mos_documentation_supersession_audit_2026-04-21.md",
             "docs/audits/reports/workbench_ui_utilitarian_design_audit_2026-04-21.md",
@@ -31,6 +32,7 @@ class MosPostClosureDocsTests(unittest.TestCase):
             REPO_ROOT / "docs" / "audits" / "reports" / "mos_program_closure_audit_checklist_2026-04-21.md"
         )
         for relative_path in (
+            "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md",
             "docs/audits/reports/mos_personal_notes_to_canon_crosswalk_2026-04-21.md",
             "docs/audits/reports/mos_documentation_supersession_audit_2026-04-21.md",
             "docs/audits/reports/workbench_ui_utilitarian_design_audit_2026-04-21.md",
@@ -84,12 +86,28 @@ class MosPostClosureDocsTests(unittest.TestCase):
         plans_readme = _read_text(REPO_ROOT / "docs" / "plans" / "README.md")
         audits_readme = _read_text(REPO_ROOT / "docs" / "audits" / "README.md")
 
+        self.assertIn("cts_gis_sql_authority_assurance_report_2026-04-21.md", plans_readme)
         self.assertIn("mos_post_closure_consolidation_plan_2026-04-21.md", plans_readme)
         self.assertIn("mos_novelty_positioning_follow_on_2026-04-21.md", plans_readme)
         self.assertIn("workbench_ui_hardening_follow_on_2026-04-21.md", plans_readme)
+        self.assertIn("cts_gis_sql_authority_assurance_report_2026-04-21.md", audits_readme)
         self.assertIn("mos_personal_notes_to_canon_crosswalk_2026-04-21.md", audits_readme)
         self.assertIn("mos_documentation_supersession_audit_2026-04-21.md", audits_readme)
         self.assertIn("workbench_ui_utilitarian_design_audit_2026-04-21.md", audits_readme)
+
+    def test_cts_gis_sql_authority_assurance_report_records_gate_and_counts(self) -> None:
+        report_text = _read_text(
+            REPO_ROOT / "docs" / "audits" / "reports" / "cts_gis_sql_authority_assurance_report_2026-04-21.md"
+        )
+
+        self.assertIn("409", report_text)
+        self.assertIn("3133", report_text)
+        self.assertIn("406", report_text)
+        self.assertIn("2233", report_text)
+        self.assertIn("no missing local references", report_text)
+        self.assertIn("no row warnings", report_text)
+        self.assertIn("3-2-3-17-77-1-14", report_text)
+        self.assertIn("blocked", report_text)
 
 
 if __name__ == "__main__":

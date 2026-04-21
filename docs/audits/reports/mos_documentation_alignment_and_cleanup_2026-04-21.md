@@ -55,7 +55,7 @@ Focused active-doc updates:
 
 4. Historical MOS artifacts are clearly separated from current authority.
    - `mos_sql_cutover_execution_report_2026-04-21.md` is explicitly labeled as historical-superseded.
-   - `mos_track_c_directive_context_overlay_closure_2026-04-21.md` remains retained as historical Track C evidence rather than an active closure statement.
+   - `docs/plans/archive/mos_track_c_directive_context_overlay_closure_2026-04-21.md` remains retained as historical Track C evidence rather than an active closure statement.
 
 ## Verification
 

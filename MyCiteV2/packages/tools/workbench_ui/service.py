@@ -16,6 +16,7 @@ WORKBENCH_UI_DEFAULT_GROUP = "flat"
 WORKBENCH_UI_DEFAULT_LENS = "interpreted"
 WORKBENCH_UI_DEFAULT_SOURCE_VISIBILITY = "show"
 WORKBENCH_UI_DEFAULT_OVERLAY_VISIBILITY = "show"
+WORKBENCH_UI_PREFERRED_DOCUMENT_PREFIX = "sandbox:cts_gis:"
 
 _DOCUMENT_SORT_KEYS = {
     "document_id",
@@ -279,6 +280,14 @@ def _navigation_item(items: list[dict[str, Any]], *, index: int, label_key: str,
     }
 
 
+def _preferred_document_id(document_rows: list[dict[str, Any]]) -> str:
+    for document in document_rows:
+        document_id = _as_text(document.get("document_id"))
+        if document_id.startswith(WORKBENCH_UI_PREFERRED_DOCUMENT_PREFIX):
+            return document_id
+    return _as_text((document_rows[0] if document_rows else {}).get("document_id"))
+
+
 class WorkbenchUiReadService:
     def __init__(self, db_file: str | Path) -> None:
         self._db_file = Path(db_file)
@@ -400,7 +409,7 @@ class WorkbenchUiReadService:
         if selected_document_id not in {document["document_id"] for document in document_rows}:
             selected_document_id = ""
         if not selected_document_id and document_rows:
-            selected_document_id = document_rows[0]["document_id"]
+            selected_document_id = _preferred_document_id(document_rows)
 
         active_document = next((document for document in documents if document.document_id == selected_document_id), None)
         active_document_row = next((document for document in document_rows if document["document_id"] == selected_document_id), None)

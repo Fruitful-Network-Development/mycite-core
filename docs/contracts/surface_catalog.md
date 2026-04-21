@@ -65,11 +65,13 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 
 - `system.tools.workbench_ui`
 
-`Workbench UI` is one `SYSTEM` child read-only two-pane SQL spreadsheet surface.
+`Workbench UI` is one `SYSTEM` child read-only two-pane SQL authority inspector surface.
 
 - Its canonical route is `/portal/system/tools/workbench-ui`.
 - Its default posture is workbench-primary.
 - Its workbench is the primary spreadsheet-like SQL datum grid and stays visible on first composition.
+- It does not replace the reducer-owned `/portal/system` anthology workspace.
+- It inspects authoritative SQL-backed documents only; retained host-bound/private assets and `NETWORK` derived materializations remain outside its corpus unless separately ported.
 - Its `Interface Panel` shows selected-row semantic identity plus additive directive overlay summaries.
 - Its canonical query keys are:
   - `document`
@@ -101,6 +103,7 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
   - `hyphae_hash` with short identity badges plus full value text
 - Its raw row-grid lens swaps interpreted row-summary cells for the canonical raw payload preview while keeping the same structural coordinates and selected-row identity.
 - Its document table is keyed by `version_hash`, while its selected-document row grid is keyed by `hyphae_hash`.
+- Fresh entry deliberately prefers the first available CTS-GIS authoritative document in the current document ordering and falls back to the first available authoritative document when no CTS-GIS document is present.
 - Its document and datum panes both carry sticky-header intent and explicit selected-document / selected-datum-row markers.
 - Its datum grid may be grouped as `flat`, `layer`, or `layer_value_group` while preserving canonical structural order inside each group.
 - Its source and overlay visibility remain query-driven.

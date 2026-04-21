@@ -14,8 +14,8 @@ Record the closure-review baseline plus the current classification of every file
 ## Review Summary
 
 - closure-time reviewed corpus: `31`
-- current `docs/plans/` total: `16`
-- current `docs/audits/reports/` total: `22`
+- current `docs/plans/` total: `15`
+- current `docs/audits/reports/` total: `23`
 - current total tracked by this checklist: `38`
 - classification legend:
   - `authoritative`: active primary source of truth
@@ -39,11 +39,11 @@ Record the closure-review baseline plus the current classification of every file
 | `docs/plans/mos_sg2_hyphae_derivation_policy_2026-04-21.md` | `supporting-current` | reviewed | Active supporting policy for row semantic identity. |
 | `docs/plans/mos_sg3_edit_remap_policy_2026-04-21.md` | `supporting-current` | reviewed | Active supporting policy for deterministic remap semantics. |
 | `docs/plans/mos_sg4_standard_closure_policy_2026-04-21.md` | `supporting-current` | reviewed | Active supporting policy for closure and compatibility retirement. |
-| `docs/plans/mos_track_c_directive_context_overlay_closure_2026-04-21.md` | `historical-superseded` | reviewed | Immutable evidence only; superseded by the final closure state and retained for Track C implementation history. |
 | `docs/plans/one_shell_portal_refactor.md` | `authoritative` | reviewed | Active portal-shell implementation plan; compatible with the completed MOS SQL-only posture. |
-| `docs/plans/workbench_ui_hardening_follow_on_2026-04-21.md` | `supporting-current` | reviewed | Active datum-file workbench hardening plan; keeps `workbench_ui` shell-attached, read-only, and additive-only. |
+| `docs/plans/workbench_ui_hardening_follow_on_2026-04-21.md` | `supporting-current` | reviewed | Active `workbench_ui` SQL authority inspector hardening plan; keeps `SYSTEM` and `workbench_ui` distinct while keeping `workbench_ui` shell-attached, read-only, and additive-only. |
 | `docs/audits/reports/audit_program_rollup_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; pre-closure rollup retained for audit history. |
 | `docs/audits/reports/core_portal_datum_mss_protocol_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as pre-closure datum-handling history. |
+| `docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md` | `supporting-current` | reviewed | Active post-closure CTS-GIS parity/readiness gate: confirms SQL/filesystem corpus parity, clean row-graph integrity, and names blocking provenance/readiness concerns before more CTS-GIS feature work. |
 | `docs/audits/reports/desktop_access_historical_drift_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as historical desktop risk context. |
 | `docs/audits/reports/documentation_ia_audit_report_2026-04-20.md` | `supporting-current` | reviewed | Active documentation IA audit baseline. |
 | `docs/audits/reports/interface_surface_unification_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as pre-closure surface-architecture history. |
@@ -63,7 +63,7 @@ Record the closure-review baseline plus the current classification of every file
 | `docs/audits/reports/performance_weight_speed_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as historical performance baseline. |
 | `docs/audits/reports/peripheral_packages_modularization_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as historical modularization evidence. |
 | `docs/audits/reports/tools_ui_implementation_mismatch_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as pre-closure UI mismatch history. |
-| `docs/audits/reports/workbench_ui_utilitarian_design_audit_2026-04-21.md` | `supporting-current` | reviewed | Active audit of the datum-file workbench's utilitarian strengths, deficiencies, and next hardening steps. |
+| `docs/audits/reports/workbench_ui_utilitarian_design_audit_2026-04-21.md` | `supporting-current` | reviewed | Active audit of `workbench_ui` as the SQL authority inspector under `SYSTEM`, including its current strengths, role boundaries, and next hardening posture. |
 
 ## Final Cleanup Pass
 
@@ -73,6 +73,18 @@ Record the closure-review baseline plus the current classification of every file
   `docs/personal_notes/archive/MOS/cuttover_consideration.md`
   `docs/personal_notes/archive/MOS/datum_logic_area_investigation_clarity.md`
   `docs/personal_notes/archive/MOS/mos_master_plan.md`
+- Archived out-of-date plans/audits:
+  `docs/plans/archive/mos_track_c_directive_context_overlay_closure_2026-04-21.md`
+  `docs/audits/archive/documentation_agent_yaml_optimization_plan_2026-04-16.md`
+  `docs/audits/archive/one_shell_completion_audit_2026-04-14.md`
+  `docs/audits/archive/portal_modernization_audit_matrix_2026-04-16.md`
+  `docs/audits/archive/portal_shell_hardening_2026-04-15.md`
+  `docs/audits/archive/portal_shell_menu_lock_and_containment_2026-04-15.md`
+  `docs/audits/archive/portal_shell_peer_region_normalization_2026-04-15.md`
+  `docs/audits/archive/cts_gis_tool_language_unification_2026-04-15.md`
+  `docs/audits/archive/cts_gis_legacy_maps_phase_a_alignment_2026-04-16.md`
+  `docs/audits/archive/cts_gis_phase_b_canonical_removal_2026-04-16.md`
+  `docs/audits/archive/cts_gis_platform_hardening_audit_2026-04-20.md`
 - Retained historical/source evidence in place:
   `docs/personal_notes/MOS/data_base_use_findings.md`
   `docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md`

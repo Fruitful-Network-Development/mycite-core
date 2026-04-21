@@ -7,6 +7,8 @@ This repository now describes one portal shell only.
 - Canonical shell endpoint: `/portal/api/v2/shell`
 - Canonical tool work pages: `/portal/system/tools/<tool_slug>`
 - Canonical two-pane SQL-backed spreadsheet tool: `/portal/system/tools/workbench-ui`
+- `SYSTEM` remains the anthology-centered datum-file workbench at `/portal/system`
+- `workbench_ui` remains a separate SQL authority inspector for authoritative documents only; it does not manage all deployed files
 - Canonical AWS service tool: `/portal/system/tools/aws-csm`
 - Canonical CTS-GIS tool: `/portal/system/tools/cts-gis`
 - Canonical FND-DCM tool: `/portal/system/tools/fnd-dcm`
@@ -20,6 +22,7 @@ This repository now describes one portal shell only.
 - Operator migration note: remove or ignore stale pre-v2.5.4 CTS-GIS legacy roots before or during rollout
 - `NETWORK` is the read-only portal-instance system-log workbench over `data/system/system_log.json`
 - `NETWORK` remains a derived-materialization surface outside SQL datum authority in the completed MOS cut-over
+- retained host-bound/private assets also remain outside the `workbench_ui` SQL corpus unless separately ported
 - `UTILITIES` owns configuration, exposure, integrations, and control surfaces
 - The top menubar is the only shell header; `ide-body` is the peer-region window for the `Activity Bar`, `Control Panel`, `Workbench`, and `Interface Panel`
 - Shell static assets are versioned through one embedded shell asset manifest

@@ -9,23 +9,26 @@ Last reviewed: `2026-04-21`
 
 ## Purpose
 
-Define the next minimal hardening steps for `workbench_ui` as the canonical datum-file workbench surface without turning it into a heavy or parallel frontend stack.
+Define the next minimal hardening steps for `workbench_ui` as the SQL authority inspector surface under `SYSTEM` without turning it into a heavy or parallel frontend stack.
 
 ## Current Baseline
 
-- `workbench_ui` is the canonical datum-file workbench surface for SQL-backed inspection.
+- `SYSTEM` remains the canonical anthology-centered datum-file workbench at `/portal/system`.
+- `workbench_ui` is the separate shell-attached SQL authority inspector for authoritative document inspection under `SYSTEM`.
+- fresh `workbench_ui` entry deliberately prefers a CTS-GIS authoritative document when one is available and falls back to the first available authoritative document otherwise.
 - The left pane is a document table keyed by `version_hash`.
-- The right pane is a layered datum table for the selected anchor file or source document.
+- The right pane is a layered datum table for the selected authoritative document.
 - Each datum row exposes structural coordinates: `layer`, `value_group`, and `iteration`.
 - The inspector is the current workbench lens for selected datum-row detail and additive overlay summary.
 - The surface is shell-attached, script-backed, read-only, and additive-only.
 
 ## Constraints
 
-- Keep the datum-file workbench shell-attached.
+- Keep the SQL authority inspector shell-attached.
 - Keep it script-backed and query-driven.
 - Keep it read-only.
 - Keep overlays additive-only.
+- Do not repurpose `/portal/system` into a database manager.
 - Do not introduce a parallel frontend framework.
 - Prefer small query-contract or payload-shape additions over large client-state systems.
 
@@ -95,7 +98,7 @@ Minimal shape:
 
 Goal:
 
-- let operators simplify the datum-file workbench without losing grounded source or overlay context
+- let operators simplify the SQL authority inspector without losing grounded source or overlay context
 
 Minimal shape:
 
@@ -130,4 +133,4 @@ Minimal shape:
 
 ## Result
 
-The next datum-file workbench steps are now bounded and utilitarian: better navigation, clearer table posture, better workbench-lens control, and clearer identity/source visibility without changing the shell-attached, script-backed, read-only nature of `workbench_ui`.
+The next `workbench_ui` steps are now bounded and utilitarian: better navigation, clearer table posture, better workbench-lens control, and clearer identity/source visibility without changing its shell-attached, script-backed, read-only role as the SQL authority inspector under `SYSTEM`.

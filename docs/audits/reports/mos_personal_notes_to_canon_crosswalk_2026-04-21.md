@@ -211,13 +211,13 @@ Canonical now:
 
 - the MOS cut-over remains complete and must not be reopened
 - host-bound private/public assets remain retained exception scope unless a separate dedicated port plan is created
-- `workbench_ui` is the canonical datum-file workbench follow-on surface for read-only, additive-only hardening
+- `workbench_ui` is the follow-on SQL authority inspector surface for read-only, additive-only hardening under `SYSTEM`
 - historical intermediate MOS docs are retained as historical evidence rather than active authority
 
 Deferred:
 
 - retained exception scope planning as a separate post-closure concern
-- datum-file workbench hardening beyond the current read-only two-pane baseline
+- `workbench_ui` hardening beyond the current read-only two-pane SQL inspection baseline
 
 Source-only:
 
