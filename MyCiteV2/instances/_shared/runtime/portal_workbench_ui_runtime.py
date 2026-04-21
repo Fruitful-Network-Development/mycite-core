@@ -66,6 +66,28 @@ def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, dic
     return portal_scope, surface_query
 
 
+def _surface_query(base_query: dict[str, Any], **updates: object) -> dict[str, str]:
+    merged = dict(base_query)
+    for key, value in updates.items():
+        token = _as_text(value)
+        if token:
+            merged[key] = token
+        else:
+            merged.pop(key, None)
+    return canonical_query_for_surface_query(merged, surface_id=WORKBENCH_UI_TOOL_SURFACE_ID)
+
+
+def _surface_request(*, portal_scope: PortalScope, surface_query: dict[str, str]) -> dict[str, Any]:
+    return {
+        "href": build_canonical_url(surface_id=WORKBENCH_UI_TOOL_SURFACE_ID, query=surface_query),
+        "shell_request": build_portal_shell_request_payload(
+            requested_surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
+            portal_scope=portal_scope,
+            surface_query=surface_query,
+        ),
+    }
+
+
 def _control_entry(
     *,
     label: str,
@@ -74,17 +96,59 @@ def _control_entry(
     active: bool = False,
     meta: object = "",
 ) -> dict[str, Any]:
+    request = _surface_request(portal_scope=portal_scope, surface_query=dict(surface_query))
     return {
         "label": label,
-        "href": build_canonical_url(surface_id=WORKBENCH_UI_TOOL_SURFACE_ID, query=surface_query),
+        "href": request["href"],
         "active": active,
         "meta": _as_text(meta),
-        "shell_request": build_portal_shell_request_payload(
-            requested_surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
-            portal_scope=portal_scope,
-            surface_query=surface_query,
-        ),
+        "shell_request": request["shell_request"],
     }
+
+
+def _decorate_workspace_navigation(
+    *,
+    portal_scope: PortalScope,
+    base_query: dict[str, str],
+    model: dict[str, Any],
+) -> None:
+    surface_payload = model.get("surface_payload")
+    if not isinstance(surface_payload, dict):
+        return
+    workspace = surface_payload.get("workspace")
+    if not isinstance(workspace, dict):
+        return
+
+    document_table = workspace.get("document_table")
+    if isinstance(document_table, dict):
+        for document in list(document_table.get("rows") or []):
+            document_query = _surface_query(
+                base_query,
+                document=document.get("document_id"),
+                row="",
+            )
+            document.update(_surface_request(portal_scope=portal_scope, surface_query=document_query))
+
+    datum_grid = workspace.get("datum_grid")
+    if isinstance(datum_grid, dict):
+        for row in list(datum_grid.get("rows") or []):
+            row_query = _surface_query(base_query, row=row.get("datum_address"))
+            row.update(_surface_request(portal_scope=portal_scope, surface_query=row_query))
+        for group in list(datum_grid.get("groups") or []):
+            for row in list((group or {}).get("items") or []):
+                row_query = _surface_query(base_query, row=row.get("datum_address"))
+                row.update(_surface_request(portal_scope=portal_scope, surface_query=row_query))
+
+    navigation = workspace.get("navigation")
+    if isinstance(navigation, dict):
+        for key, item in list(navigation.items()):
+            if not isinstance(item, dict):
+                continue
+            if "document" in key:
+                item_query = _surface_query(base_query, document=item.get("id"), row="")
+            else:
+                item_query = _surface_query(base_query, row=item.get("id"))
+            item.update(_surface_request(portal_scope=portal_scope, surface_query=item_query))
 
 
 def build_portal_workbench_ui_surface_bundle(
@@ -117,10 +181,17 @@ def build_portal_workbench_ui_surface_bundle(
         "document_sort_key": "version_hash",
         "document_sort_direction": "asc",
         "document_version_hash": "",
+        "document_version_hash_short": "",
         "sort_key": "datum_address",
         "sort_direction": "asc",
         "text_filter": "",
+        "group_mode": "flat",
+        "workbench_lens": "interpreted",
+        "source_visibility": "show",
         "overlay_visibility": "show",
+        "selected_row": {},
+        "selected_row_hyphae_hash_short": "",
+        "navigation": {},
         "inspector_sections": [],
     }
     authority_path = _path_or_none(authority_db_file)
@@ -137,7 +208,37 @@ def build_portal_workbench_ui_surface_bundle(
             "surface_id": WORKBENCH_UI_TOOL_SURFACE_ID,
         }
 
-    active_query = dict(surface_query or {})
+    workspace_query = (
+        ((model.get("surface_payload") or {}).get("workspace") or {}).get("query")
+        if isinstance(model.get("surface_payload"), dict)
+        else {}
+    )
+    active_query = canonical_query_for_surface_query(
+        workspace_query or surface_query,
+        surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
+    )
+    _decorate_workspace_navigation(portal_scope=portal_scope, base_query=active_query, model=model)
+
+    navigation = model.get("navigation") or {}
+    navigation_entries = []
+    for key, label in (
+        ("previous_document", "previous document"),
+        ("next_document", "next document"),
+        ("previous_row", "previous row"),
+        ("next_row", "next row"),
+    ):
+        item = navigation.get(key)
+        if not isinstance(item, dict):
+            continue
+        navigation_entries.append(
+            {
+                "label": label,
+                "href": item.get("href", "#"),
+                "shell_request": item.get("shell_request"),
+                "meta": _as_text(item.get("label")) or _as_text(item.get("id")) or "—",
+            }
+        )
+
     control_panel = {
         "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
         "kind": "focus_selection_panel",
@@ -145,9 +246,9 @@ def build_portal_workbench_ui_surface_bundle(
         "surface_label": "WORKBENCH UI",
         "context_items": [
             {"label": "Document", "value": _as_text(model.get("document_id")) or "—"},
-            {"label": "Version", "value": _as_text(model.get("document_version_hash")) or "—"},
-            {"label": "Document Filter", "value": _as_text(model.get("document_filter")) or "—"},
-            {"label": "Row Filter", "value": _as_text(model.get("text_filter")) or "—"},
+            {"label": "Version", "value": _as_text(model.get("document_version_hash_short")) or "—"},
+            {"label": "Selected Row", "value": _as_text((model.get("selected_row") or {}).get("datum_address")) or "—"},
+            {"label": "Row Identity", "value": _as_text(model.get("selected_row_hyphae_hash_short")) or "—"},
             {
                 "label": "Document Sort",
                 "value": (
@@ -159,23 +260,27 @@ def build_portal_workbench_ui_surface_bundle(
                 "label": "Row Sort",
                 "value": f"{_as_text(model.get('sort_key')) or 'datum_address'}:{_as_text(model.get('sort_direction')) or 'asc'}",
             },
+            {"label": "Grouping", "value": _as_text(model.get("group_mode")) or "flat"},
+            {"label": "Lens", "value": _as_text(model.get("workbench_lens")) or "interpreted"},
+            {"label": "Source", "value": _as_text(model.get("source_visibility")) or "show"},
+            {"label": "Overlay", "value": _as_text(model.get("overlay_visibility")) or "show"},
         ],
         "verb_tabs": [],
         "groups": [
             {
                 "title": "Documents",
                 "entries": [
-                    _control_entry(
-                        label=_as_text(document.get("label")) or _as_text(document.get("document_id")) or "Document",
-                        portal_scope=portal_scope,
-                        surface_query={**active_query, "document": document.get("document_id", "")},
-                        active=bool(document.get("selected")),
-                        meta=(
-                            f"{_as_text(document.get('source_kind'))} · "
-                            f"{_as_text(document.get('version_hash')) or '—'} · "
-                            f"{document.get('row_count')}"
+                    {
+                        "label": _as_text(document.get("label")) or _as_text(document.get("document_id")) or "Document",
+                        "href": document.get("href", "#"),
+                        "shell_request": document.get("shell_request"),
+                        "active": bool(document.get("selected")),
+                        "meta": (
+                            f"{_as_text(document.get('source_kind')) or '—'} · "
+                            f"{_as_text(document.get('version_hash_short')) or '—'} · "
+                            f"{document.get('row_count') or 0}"
                         ),
-                    )
+                    }
                     for document in list(model.get("document_rows") or [])
                 ],
             },
@@ -185,10 +290,10 @@ def build_portal_workbench_ui_surface_bundle(
                     _control_entry(
                         label=f"sort {sort_key}",
                         portal_scope=portal_scope,
-                        surface_query={**active_query, "document_sort": sort_key},
+                        surface_query=_surface_query(active_query, document_sort=sort_key),
                         active=_as_text(model.get("document_sort_key")) == sort_key,
                     )
-                    for sort_key in ("version_hash", "document_name", "document_id", "row_count")
+                    for sort_key in ("version_hash", "document_name", "document_id", "row_count", "source_kind")
                 ],
             },
             {
@@ -197,13 +302,13 @@ def build_portal_workbench_ui_surface_bundle(
                     _control_entry(
                         label="asc",
                         portal_scope=portal_scope,
-                        surface_query={**active_query, "document_dir": "asc"},
+                        surface_query=_surface_query(active_query, document_dir="asc"),
                         active=_as_text(model.get("document_sort_direction")) != "desc",
                     ),
                     _control_entry(
                         label="desc",
                         portal_scope=portal_scope,
-                        surface_query={**active_query, "document_dir": "desc"},
+                        surface_query=_surface_query(active_query, document_dir="desc"),
                         active=_as_text(model.get("document_sort_direction")) == "desc",
                     ),
                 ],
@@ -214,10 +319,10 @@ def build_portal_workbench_ui_surface_bundle(
                     _control_entry(
                         label=f"sort {sort_key}",
                         portal_scope=portal_scope,
-                        surface_query={**active_query, "sort": sort_key},
+                        surface_query=_surface_query(active_query, sort=sort_key),
                         active=_as_text(model.get("sort_key")) == sort_key,
                     )
-                    for sort_key in ("datum_address", "layer", "value_group", "iteration", "hyphae_hash")
+                    for sort_key in ("datum_address", "layer", "value_group", "iteration", "labels", "relation", "object_ref", "hyphae_hash")
                 ],
             },
             {
@@ -226,14 +331,55 @@ def build_portal_workbench_ui_surface_bundle(
                     _control_entry(
                         label="asc",
                         portal_scope=portal_scope,
-                        surface_query={**active_query, "dir": "asc"},
+                        surface_query=_surface_query(active_query, dir="asc"),
                         active=_as_text(model.get("sort_direction")) != "desc",
                     ),
                     _control_entry(
                         label="desc",
                         portal_scope=portal_scope,
-                        surface_query={**active_query, "dir": "desc"},
+                        surface_query=_surface_query(active_query, dir="desc"),
                         active=_as_text(model.get("sort_direction")) == "desc",
+                    ),
+                ],
+            },
+            {
+                "title": "Grouping",
+                "entries": [
+                    _control_entry(
+                        label=group_mode.replace("_", " "),
+                        portal_scope=portal_scope,
+                        surface_query=_surface_query(active_query, group=group_mode),
+                        active=_as_text(model.get("group_mode")) == group_mode,
+                    )
+                    for group_mode in ("flat", "layer", "layer_value_group")
+                ],
+            },
+            {
+                "title": "Workbench Lens",
+                "entries": [
+                    _control_entry(
+                        label=lens,
+                        portal_scope=portal_scope,
+                        surface_query=_surface_query(active_query, workbench_lens=lens),
+                        active=_as_text(model.get("workbench_lens")) == lens,
+                    )
+                    for lens in ("interpreted", "raw")
+                ],
+            },
+            {
+                "title": "Source Visibility",
+                "entries": [
+                    _control_entry(
+                        label="show source",
+                        portal_scope=portal_scope,
+                        surface_query=_surface_query(active_query, source="show"),
+                        active=_as_text(model.get("source_visibility")) != "hide",
+                    ),
+                    _control_entry(
+                        label="hide source",
+                        portal_scope=portal_scope,
+                        surface_query=_surface_query(active_query, source="hide"),
+                        active=_as_text(model.get("source_visibility")) == "hide",
                     ),
                 ],
             },
@@ -243,16 +389,20 @@ def build_portal_workbench_ui_surface_bundle(
                     _control_entry(
                         label="show overlay",
                         portal_scope=portal_scope,
-                        surface_query={**active_query, "overlay": "show"},
+                        surface_query=_surface_query(active_query, overlay="show"),
                         active=_as_text(model.get("overlay_visibility")) != "hide",
                     ),
                     _control_entry(
                         label="hide overlay",
                         portal_scope=portal_scope,
-                        surface_query={**active_query, "overlay": "hide"},
+                        surface_query=_surface_query(active_query, overlay="hide"),
                         active=_as_text(model.get("overlay_visibility")) == "hide",
                     ),
                 ],
+            },
+            {
+                "title": "Navigation",
+                "entries": navigation_entries,
             },
         ],
         "actions": [],
@@ -271,7 +421,10 @@ def build_portal_workbench_ui_surface_bundle(
         "title": "Selection",
         "summary": "Selected document/version metadata, row semantics, and additive directive overlays.",
         "visible": True,
-        "subject": {"level": "datum", "id": _as_text(active_query.get("row")) or _as_text(model.get("document_id"))},
+        "subject": {
+            "level": "datum",
+            "id": _as_text((model.get("selected_row") or {}).get("datum_address")) or _as_text(model.get("document_id")),
+        },
         "sections": list(model.get("inspector_sections") or []),
     }
     return {
@@ -279,6 +432,7 @@ def build_portal_workbench_ui_surface_bundle(
         "read_write_posture": "read-only",
         "page_title": "Workbench UI",
         "page_subtitle": "Read-only two-pane SQL-backed spreadsheet.",
+        "canonical_query": active_query,
         "surface_payload": model["surface_payload"],
         "control_panel": control_panel,
         "workbench": workbench,
@@ -316,8 +470,11 @@ def run_portal_workbench_ui(
         read_write_posture=bundle["read_write_posture"],
         reducer_owned=False,
         canonical_route=bundle["route"],
-        canonical_query=surface_query,
-        canonical_url=build_canonical_url(surface_id=WORKBENCH_UI_TOOL_SURFACE_ID, query=surface_query),
+        canonical_query=bundle.get("canonical_query") or surface_query,
+        canonical_url=build_canonical_url(
+            surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
+            query=bundle.get("canonical_query") or surface_query,
+        ),
         shell_state={},
         surface_payload=bundle["surface_payload"],
         shell_composition={},

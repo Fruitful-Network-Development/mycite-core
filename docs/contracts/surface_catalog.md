@@ -79,15 +79,18 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
   - `filter`
   - `sort`
   - `dir`
+  - `group`
+  - `workbench_lens`
+  - `source`
   - `overlay`
   - `row`
 - Its document-table columns are:
   - `document_name`
   - `document_id`
-  - `source_kind`
-  - `version_hash`
+  - `source_kind` when source metadata is visible
+  - `version_hash` with short identity badges plus full value text
   - `row_count`
-- Its row-grid columns are:
+- Its interpreted row-grid columns are:
   - `datum_address`
   - `layer`
   - `value_group`
@@ -95,8 +98,13 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
   - `labels`
   - `relation`
   - `object_ref`
-  - `hyphae_hash`
+  - `hyphae_hash` with short identity badges plus full value text
+- Its raw row-grid lens swaps interpreted row-summary cells for the canonical raw payload preview while keeping the same structural coordinates and selected-row identity.
 - Its document table is keyed by `version_hash`, while its selected-document row grid is keyed by `hyphae_hash`.
+- Its document and datum panes both carry sticky-header intent and explicit selected-document / selected-datum-row markers.
+- Its datum grid may be grouped as `flat`, `layer`, or `layer_value_group` while preserving canonical structural order inside each group.
+- Its source and overlay visibility remain query-driven.
+- Its keyboard navigation stays query-driven through runtime-owned document/row selection actions rather than new canonical navigation keys.
 - It is read-only in v1.
 - It must never mutate authoritative datum rows.
 - Any directive overlay is additive only and may be hidden without changing authoritative row content.

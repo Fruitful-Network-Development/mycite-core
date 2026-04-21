@@ -18,28 +18,36 @@ Map the named MOS personal notes to their current repo status after program clos
 - `deferred`: the note's main idea remains intentionally outside the completed MOS closure scope.
 - `superseded`: the note's active meaning has been replaced by canonical docs, closure audits, or explicitly historical evidence.
 
+## Final Disposition Legend
+
+- `retained in place`: the note remains under `docs/personal_notes/MOS/` because it still provides useful source evidence for current repo work.
+- `archived`: the note moved to `docs/personal_notes/archive/MOS/` because it is superseded or source-only historical evidence.
+
 ## Stale Reference Cleanup
 
-- The stale personal-note master-plan basename was removed from `docs/personal_notes/MOS/cuttover_consideration.md`.
+- The stale personal-note master-plan basename was removed from `docs/personal_notes/archive/MOS/cuttover_consideration.md`.
 - The canonical MOS program file is `docs/plans/master_plan_mos.md`.
-- The personal-note master-plan precursor under `docs/personal_notes/MOS/` remains historical source material only and is not a canonical planning file.
+- The personal-note master-plan precursor under `docs/personal_notes/archive/MOS/` remains historical source material only and is not a canonical planning file.
 
 ## Summary
 
-| Personal note | Status | Active meaning now lives in |
-|---|---|---|
-| `docs/personal_notes/MOS/data_base_use_findings.md` | `partially canonized` | MOS closure plan/policies plus shell/workbench contracts |
-| `docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md` | `superseded` | `SG-1` through `SG-3`, Track C design, and closure audits |
-| `docs/personal_notes/MOS/mos_novelty_definition.md` | `partially canonized` | `docs/plans/mos_novelty_positioning_follow_on_2026-04-21.md` plus MOS identity policies |
-| `docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md` | `canonized` | MOS master plan and final closure audits |
-| `docs/personal_notes/MOS/mycelial_ontological_schema.md` | `partially canonized` | MOS identity/remap policies plus datum-file workbench contracts |
-| `docs/personal_notes/MOS/cuttover_consideration.md` | `superseded` | closure audits, follow-on plans, and post-closure supersession audit |
+| Personal note | Status | Final disposition | Active meaning now lives in |
+|---|---|---|---|
+| `docs/personal_notes/MOS/data_base_use_findings.md` | `partially canonized` | `retained in place` | MOS closure plan/policies plus shell/workbench contracts |
+| `docs/personal_notes/archive/MOS/datum_logic_area_investigation_clarity.md` | `superseded` | `archived` | `SG-1` through `SG-3`, Track C design, and closure audits |
+| `docs/personal_notes/MOS/mos_novelty_definition.md` | `partially canonized` | `retained in place` | `docs/plans/mos_novelty_positioning_follow_on_2026-04-21.md` plus MOS identity policies |
+| `docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md` | `canonized` | `retained in place` | MOS master plan and final closure audits |
+| `docs/personal_notes/MOS/mycelial_ontological_schema.md` | `partially canonized` | `retained in place` | MOS identity/remap policies plus datum-file workbench contracts |
+| `docs/personal_notes/archive/MOS/cuttover_consideration.md` | `superseded` | `archived` | closure audits, follow-on plans, and post-closure supersession audit |
+| `docs/personal_notes/archive/MOS/mos_master_plan.md` | `superseded` | `archived` | `docs/plans/master_plan_mos.md` as the only canonical MOS program document |
 
 ## Note Crosswalk
 
 ### `docs/personal_notes/MOS/data_base_use_findings.md`
 
 Status: `partially canonized`
+
+Final disposition: `retained in place`
 
 Canonical now:
 
@@ -69,9 +77,11 @@ Canonical repo files:
 - `docs/contracts/portal_shell_contract.md`
 - `docs/contracts/surface_catalog.md`
 
-### `docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md`
+### `docs/personal_notes/archive/MOS/datum_logic_area_investigation_clarity.md`
 
 Status: `superseded`
+
+Final disposition: `archived` from `docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md`
 
 Canonical now:
 
@@ -102,6 +112,8 @@ Canonical repo files:
 
 Status: `partially canonized`
 
+Final disposition: `retained in place`
+
 Canonical now:
 
 - MOS is positioned internally as datum-native rather than record-first, document-first, or graph-first
@@ -128,6 +140,8 @@ Canonical repo files:
 ### `docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md`
 
 Status: `canonized`
+
+Final disposition: `retained in place`
 
 Canonical now:
 
@@ -158,6 +172,8 @@ Canonical repo files:
 
 Status: `partially canonized`
 
+Final disposition: `retained in place`
+
 Canonical now:
 
 - the anchor file and datum row remain first-class repo concepts
@@ -185,9 +201,11 @@ Canonical repo files:
 - `docs/contracts/route_model.md`
 - `docs/contracts/surface_catalog.md`
 
-### `docs/personal_notes/MOS/cuttover_consideration.md`
+### `docs/personal_notes/archive/MOS/cuttover_consideration.md`
 
 Status: `superseded`
+
+Final disposition: `archived` from `docs/personal_notes/MOS/cuttover_consideration.md`
 
 Canonical now:
 
@@ -215,6 +233,28 @@ Canonical repo files:
 - `docs/audits/reports/mos_documentation_supersession_audit_2026-04-21.md`
 - `docs/audits/reports/workbench_ui_utilitarian_design_audit_2026-04-21.md`
 
+### `docs/personal_notes/archive/MOS/mos_master_plan.md`
+
+Status: `superseded`
+
+Final disposition: `archived` from `docs/personal_notes/MOS/mos_master_plan.md`
+
+Canonical now:
+
+- `docs/plans/master_plan_mos.md` is the only canonical MOS program document
+- the YAML companion index is a supporting index only and not a competing planning file
+
+Source-only:
+
+- the archived precursor remains useful only as prompt/transcript evidence for how the canonical plan was shaped
+- it must not be treated as active planning authority
+
+Canonical repo files:
+
+- `docs/plans/master_plan_mos.md`
+- `docs/plans/master_plan_mos.index.yaml`
+- `docs/audits/reports/mos_documentation_supersession_audit_2026-04-21.md`
+
 ## Result
 
-The named MOS personal notes are now fully cross-walked into the post-closure repo state. The active MOS authority remains `docs/plans/master_plan_mos.md`, the personal notes remain source evidence only, and the remaining follow-on work is documentation canonicalization, retained exception scope planning, and datum-file workbench hardening rather than a reopened cut-over.
+The named MOS personal notes are now fully cross-walked into the post-closure repo state. The active MOS authority remains `docs/plans/master_plan_mos.md`; `data_base_use_findings.md`, `mos_sql_backed_core_declaration_draft.md`, `mycelial_ontological_schema.md`, and `mos_novelty_definition.md` remain in place as source evidence; and `cuttover_consideration.md`, `datum_logic_area_investigation_clarity.md`, and `mos_master_plan.md` are archived as historical/source-only evidence rather than active authority.

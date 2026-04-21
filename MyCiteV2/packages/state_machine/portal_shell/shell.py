@@ -1195,6 +1195,15 @@ def canonical_query_for_surface_query(
         document_id = _as_text(normalized.get("document"))
         if document_id:
             query["document"] = document_id
+        document_filter = _as_text(normalized.get("document_filter"))
+        if document_filter:
+            query["document_filter"] = document_filter
+        document_sort_key = _as_text(normalized.get("document_sort")).lower()
+        if document_sort_key in {"document_id", "document_name", "source_kind", "row_count", "version_hash"}:
+            query["document_sort"] = document_sort_key
+        document_sort_direction = _as_text(normalized.get("document_dir")).lower()
+        if document_sort_direction in {"asc", "desc"}:
+            query["document_dir"] = document_sort_direction
         text_filter = _as_text(normalized.get("filter"))
         if text_filter:
             query["filter"] = text_filter
@@ -1213,6 +1222,15 @@ def canonical_query_for_surface_query(
         sort_direction = _as_text(normalized.get("dir")).lower()
         if sort_direction in {"asc", "desc"}:
             query["dir"] = sort_direction
+        group_mode = _as_text(normalized.get("group")).lower()
+        if group_mode in {"flat", "layer", "layer_value_group"}:
+            query["group"] = group_mode
+        workbench_lens = _as_text(normalized.get("workbench_lens")).lower()
+        if workbench_lens in {"interpreted", "raw"}:
+            query["workbench_lens"] = workbench_lens
+        source_visibility = _as_text(normalized.get("source")).lower()
+        if source_visibility in {"show", "hide"}:
+            query["source"] = source_visibility
         overlay = _as_text(normalized.get("overlay")).lower()
         if overlay in {"show", "hide"}:
             query["overlay"] = overlay

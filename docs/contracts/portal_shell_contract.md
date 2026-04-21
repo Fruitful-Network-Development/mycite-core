@@ -155,7 +155,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - `Workbench UI` has one public route: `/portal/system/tools/workbench-ui`.
 - `AWS-CSM` uses runtime-owned query keys: `view`, `domain`, `profile`, `section`.
 - `FND-DCM` uses runtime-owned query keys: `site`, `view`, `page`, `collection`.
-- `Workbench UI` uses runtime-owned query keys: `document`, `document_filter`, `document_sort`, `document_dir`, `filter`, `sort`, `dir`, `overlay`, `row`.
+- `Workbench UI` uses runtime-owned query keys: `document`, `document_filter`, `document_sort`, `document_dir`, `filter`, `sort`, `dir`, `group`, `workbench_lens`, `source`, `overlay`, `row`.
 - `CTS-GIS` does not widen shell query. Its tool-local navigation and projection state is body-carried in the tool request/runtime payload.
 - `AWS-CSM` control-panel context is file-backed and projects:
   - `Sandbox: AWS-CSM`
@@ -167,9 +167,13 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
   - `View: <selected view>`
 - `Workbench UI` control-panel context is SQL selection-backed and projects:
   - `Document: <selected document>`
-  - `Version: <selected version_hash>`
-  - `Document Filter: <active document filter>`
-  - `Row Filter: <active row filter>`
+  - `Version: <selected version_hash short identity>`
+  - `Selected Row: <active datum address>`
+  - `Row Identity: <selected hyphae_hash short identity>`
+  - `Grouping: <active grouping mode>`
+  - `Lens: <active workbench lens>`
+  - `Source: <active source visibility>`
+  - `Overlay: <active overlay visibility>`
 - `CTS-GIS` control-panel context is file-backed and projects:
   - `Sandbox: CTS-GIS`
   - `File: tool.<msn>.cts-gis.json` when the canonical anchor exists, otherwise the active compatibility anchor file
@@ -183,6 +187,8 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - Tool runtimes may project workbench content, but they do not open the workbench on first composition.
 - `FND-DCM` workbench evidence is raw manifest JSON, collection metadata, and normalization evidence rather than a second primary workspace.
 - `Workbench UI` workbench evidence is the first-class two-pane spreadsheet-like SQL view: a document table keyed by `version_hash` plus a selected-document row grid keyed by `hyphae_hash`, with additive overlay inspection in the `Interface Panel`.
+- `Workbench UI` projects explicit selected-document and selected-row markers, sticky-header intent for both panes, short semantic-identity badges, and query-driven grouping/lens/source controls.
+- `Workbench UI` keyboard navigation and next/previous actions always resolve to canonical `document` and `row` query changes rather than introducing new navigation-specific query keys.
 - Tool surfaces use mutually exclusive single-click behavior between `Workbench` and `Interface Panel` by default.
 - Tool surfaces may lock co-visible behavior by double-clicking either `Workbench` or `Interface Panel` toggle.
 - Tool lock is route-scoped and non-persistent; leaving the tool route or switching composition clears the lock.

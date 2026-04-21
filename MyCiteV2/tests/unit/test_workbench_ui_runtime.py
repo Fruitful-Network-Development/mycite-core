@@ -248,6 +248,128 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             row = next(item for item in document.rows if item.datum_address == "1-1-2")
             self.assertEqual(row.raw[0][2], "CHILD")
 
+    def test_workbench_ui_supports_grouping_lens_visibility_and_selection_markers(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            public_dir = root / "public"
+            db_file = root / "authority.sqlite3"
+            (data_dir / "system").mkdir(parents=True)
+            public_dir.mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps(
+                    {
+                        "1-1-1": [["1-1-1", "~", "ROOT"], ["root"]],
+                        "2-1-1": [["2-1-1", "1-1-1", "CHILD"], ["child-a"]],
+                        "2-2-1": [["2-2-1", "1-1-1", "CHILD"], ["child-b"]],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
+            )
+
+            bundle = build_portal_workbench_ui_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
+                portal_domain="fruitfulnetworkdevelopment.com",
+                shell_state=None,
+                authority_db_file=db_file,
+                surface_query={
+                    "document": "system:anthology",
+                    "group": "layer_value_group",
+                    "workbench_lens": "raw",
+                    "source": "hide",
+                    "row": "2-2-1",
+                },
+            )
+
+            workspace = bundle["surface_payload"]["workspace"]
+            document_table = workspace["document_table"]
+            datum_grid = workspace["datum_grid"]
+            inspector_titles = [section["title"] for section in bundle["inspector"]["sections"]]
+
+            self.assertEqual(workspace["query"]["group"], "layer_value_group")
+            self.assertEqual(workspace["query"]["workbench_lens"], "raw")
+            self.assertEqual(workspace["query"]["source"], "hide")
+            self.assertTrue(document_table["sticky_header"])
+            self.assertTrue(datum_grid["sticky_header"])
+            self.assertEqual(
+                [group["title"] for group in datum_grid["groups"]],
+                ["Layer 1 / Value Group 1", "Layer 2 / Value Group 1", "Layer 2 / Value Group 2"],
+            )
+            grouped_rows = [row for group in datum_grid["groups"] for row in group["items"]]
+            selected = next(row for row in grouped_rows if row["selected"])
+            self.assertEqual(selected["datum_address"], "2-2-1")
+            self.assertLessEqual(len(workspace["selected_document"]["version_hash_short"]), 12)
+            self.assertLessEqual(len(workspace["selected_row"]["hyphae_hash_short"]), 12)
+            self.assertIn("raw_preview", [column["key"] for column in datum_grid["columns"]])
+            self.assertNotIn("labels", [column["key"] for column in datum_grid["columns"]])
+            self.assertNotIn("Source Metadata", inspector_titles)
+
+    def test_workbench_ui_runtime_projects_navigation_requests_for_documents_and_rows(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            public_dir = root / "public"
+            db_file = root / "authority.sqlite3"
+            (data_dir / "system").mkdir(parents=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True)
+            public_dir.mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps(
+                    {
+                        "1-1-1": [["1-1-1", "~", "ROOT"], ["root"]],
+                        "1-1-2": [["1-1-2", "1-1-1", "CHILD"], ["child"]],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.example.json").write_text(
+                json.dumps({"1-1-1": [["1-1-1", "~", "ROOT"], ["sandbox"]]}) + "\n",
+                encoding="utf-8",
+            )
+            SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
+            )
+
+            bundle = build_portal_workbench_ui_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
+                portal_domain="fruitfulnetworkdevelopment.com",
+                shell_state=None,
+                authority_db_file=db_file,
+                surface_query={
+                    "document": "system:anthology",
+                    "document_sort": "document_id",
+                    "document_dir": "asc",
+                    "row": "1-1-1",
+                    "group": "flat",
+                },
+            )
+
+            workspace = bundle["surface_payload"]["workspace"]
+            other_document_id = next(
+                document["document_id"]
+                for document in workspace["document_table"]["rows"]
+                if document["document_id"] != "system:anthology"
+            )
+            next_document = workspace["navigation"]["next_document"] or workspace["navigation"]["previous_document"]
+            next_row = workspace["navigation"]["next_row"]
+
+            self.assertEqual(next_document["id"], other_document_id)
+            self.assertEqual(next_document["shell_request"]["surface_query"]["document"], other_document_id)
+            self.assertNotIn("row", next_document["shell_request"]["surface_query"])
+            self.assertEqual(next_row["shell_request"]["surface_query"]["row"], "1-1-2")
+            self.assertEqual(next_row["shell_request"]["surface_query"]["document"], "system:anthology")
+            self.assertTrue(all(document.get("href") and document.get("shell_request") for document in workspace["document_table"]["rows"]))
+            self.assertTrue(all(row.get("href") and row.get("shell_request") for row in workspace["datum_grid"]["rows"]))
+
 
 if __name__ == "__main__":
     unittest.main()

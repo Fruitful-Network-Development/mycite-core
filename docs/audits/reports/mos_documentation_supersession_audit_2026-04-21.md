@@ -26,8 +26,8 @@ Historical or source-evidence review set:
 
 - `docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md`
 - `docs/plans/mos_track_c_directive_context_overlay_closure_2026-04-21.md`
-- the personal-note MOS master-plan precursor under `docs/personal_notes/MOS/`
-- `docs/personal_notes/MOS/cuttover_consideration.md`
+- the personal-note MOS master-plan precursor under `docs/personal_notes/archive/MOS/`
+- `docs/personal_notes/archive/MOS/cuttover_consideration.md`
 - the five named personal-note files cross-walked in `docs/audits/reports/mos_personal_notes_to_canon_crosswalk_2026-04-21.md`
 
 ## Findings
@@ -40,7 +40,7 @@ Historical or source-evidence review set:
 2. Historical intermediate docs are now clearly separated from active closure authority.
    - `docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md` remains `historical-superseded` and is kept only as intermediate execution evidence.
    - `docs/plans/mos_track_c_directive_context_overlay_closure_2026-04-21.md` remains `historical-superseded` and is kept only as Track C implementation history.
-   - MOS personal notes remain source-only evidence and are no longer needed to interpret active repo posture.
+   - Superseded MOS personal notes now live under `docs/personal_notes/archive/MOS/` as source-only evidence and are no longer needed to interpret active repo posture.
 
 3. The repo now has an explicit personal-note-to-canon map.
    - `docs/audits/reports/mos_personal_notes_to_canon_crosswalk_2026-04-21.md` classifies the six named MOS personal notes as `canonized`, `partially canonized`, or `superseded`.
@@ -61,7 +61,8 @@ Historical or source-evidence review set:
 | `docs/audits/reports/mos_sql_only_authority_activation_and_legacy_retirement_2026-04-21.md` | supporting-current SQL-only runtime authority evidence |
 | `docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md` | historical-superseded intermediate execution evidence |
 | `docs/plans/mos_track_c_directive_context_overlay_closure_2026-04-21.md` | historical-superseded Track C implementation evidence |
-| `docs/personal_notes/MOS/*` | source-only personal evidence, never canonical closure authority |
+| `docs/personal_notes/MOS/*` | active source-only personal evidence that may still support current repo work |
+| `docs/personal_notes/archive/MOS/*` | archived source-only personal evidence, never canonical closure authority |
 
 ## Verification
 
@@ -72,4 +73,4 @@ Planned verification for this pass:
 
 ## Result
 
-The repo now has a clean post-closure documentation posture. The completed MOS cut-over docs remain canonical, historical intermediates are explicitly historical, and follow-on work is documented as consolidation or hardening rather than a reopened SQL cut-over.
+The repo now has a clean post-closure documentation posture. The completed MOS cut-over docs remain canonical, superseded personal-note artifacts are explicitly archived, and follow-on work is documented as consolidation or hardening rather than a reopened SQL cut-over.
