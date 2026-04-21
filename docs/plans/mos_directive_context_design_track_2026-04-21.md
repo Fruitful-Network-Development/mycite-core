@@ -107,6 +107,13 @@ The current repo now implements the first non-blocking Track C seam:
 - the runtime reads overlays only after resolving `version_hash` and `hyphae_hash`
 - the runtime composes directive context additively and never mutates datum rows
 
+## Final Cut-Over Addendum
+
+- `system.tools.workbench_ui` is now an additional approved read surface that may summarize directive overlays against SQL-backed datum semantics.
+- Shared directive snapshots/events remain optional and additive; the final FND cut-over imported `0` shared snapshots/events because no explicit migration manifest was supplied.
+- Migration and runtime must not infer shared directive overlays from historical CTS-GIS tool state, personal notes, or arbitrary repo files.
+- Future widening beyond these additive read surfaces requires a separate follow-on plan and must not reopen the completed master plan as a parallel authority source.
+
 ## V1 Non-Goals
 
 - no shared-shell archetype selector

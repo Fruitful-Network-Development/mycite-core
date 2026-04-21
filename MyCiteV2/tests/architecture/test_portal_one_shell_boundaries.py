@@ -11,6 +11,7 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.instances._shared.portal_host.app import PORTAL_SHELL_ASSET_MANIFEST_SCHEMA, PORTAL_SHELL_MODULE_FILES, build_shell_asset_manifest
 from MyCiteV2.packages.state_machine.portal_shell import (
     SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
+    SURFACE_POSTURE_WORKBENCH_PRIMARY,
     build_portal_tool_registry_entries,
 )
 
@@ -57,10 +58,13 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertNotIn("system.activity", shell_source)
         self.assertNotIn("system.profile_basics", shell_source)
 
-    def test_tool_registry_keeps_shared_interface_panel_defaults(self) -> None:
-        for entry in build_portal_tool_registry_entries():
-            self.assertEqual(entry.surface_posture, SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
-            self.assertFalse(entry.default_workbench_visible)
+    def test_tool_registry_keeps_explicit_surface_posture_contracts(self) -> None:
+        registry = {entry.tool_id: entry for entry in build_portal_tool_registry_entries()}
+        for tool_id in ("aws_csm", "cts_gis", "fnd_dcm", "fnd_ebi"):
+            self.assertEqual(registry[tool_id].surface_posture, SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
+            self.assertFalse(registry[tool_id].default_workbench_visible)
+        self.assertEqual(registry["workbench_ui"].surface_posture, SURFACE_POSTURE_WORKBENCH_PRIMARY)
+        self.assertTrue(registry["workbench_ui"].default_workbench_visible)
 
     def test_shell_asset_manifest_is_canonical_and_loader_reads_it_dynamically(self) -> None:
         manifest = build_shell_asset_manifest(build_id="build-123")

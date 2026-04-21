@@ -13,6 +13,10 @@ Track and prioritize remediation work from the documentation + agent-yaml optimi
 
 Active documentation under `docs/audits` and `docs/plans`, and guided agent YAML standards under `docs/standards`.
 
+## Status Note — 2026-04-21
+
+The MOS final cut-over pass updated the active plan/audit/contract/runtime documentation set to describe SQL-backed authority for migrated `SYSTEM` surfaces, added the final MOS closure reports, and restored `docs/audits/documentation_agent_yaml_optimization_plan_2026-04-16.md` as superseded historical evidence so baseline linkage remains reviewable.
+
 ## Canonical Contract Links
 
 - portal shell contract: `docs/contracts/portal_shell_contract.md`
@@ -48,4 +52,3 @@ Active documentation under `docs/audits` and `docs/plans`, and guided agent YAML
 - Active plan/audit docs have lifecycle metadata.
 - New guided tasks use the standard YAML schema and templates.
 - Validation checks exist for standards/doc linkage presence.
-

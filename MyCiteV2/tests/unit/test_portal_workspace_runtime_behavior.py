@@ -24,6 +24,7 @@ from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
     build_system_workspace_bundle,
     read_system_workbench_projection,
 )
+from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.adapters.filesystem.network_root_read_model import build_system_log_document
 from MyCiteV2.packages.core.structures.samras import encode_canonical_structure_from_addresses
 from MyCiteV2.packages.state_machine.portal_shell import (
@@ -1919,6 +1920,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             root = Path(tmp)
             data_dir = root / "data"
             public_dir = root / "public"
+            db_file = root / "authority.sqlite3"
             (data_dir / "system").mkdir(parents=True, exist_ok=True)
             public_dir.mkdir(parents=True, exist_ok=True)
             (data_dir / "system" / "anthology.json").write_text(
@@ -1929,6 +1931,11 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 '  "2-3-1": [["2-3-1", "rf.1-0-1", "333"], ["third-datum"]]\n'
                 '}\n',
                 encoding="utf-8",
+            )
+            SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
             )
 
             base_state = initial_portal_shell_state(
@@ -1943,6 +1950,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 public_dir=public_dir,
                 audit_storage_file=None,
                 tool_rows=[],
+                authority_db_file=db_file,
+                authority_mode="sql_primary",
             )
             workspace = bundle["surface_payload"]["workspace"]
             document = workspace["document"]
@@ -1978,6 +1987,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 public_dir=public_dir,
                 audit_storage_file=None,
                 tool_rows=[],
+                authority_db_file=db_file,
+                authority_mode="sql_primary",
             )
             selected_datum = selected_bundle["surface_payload"]["workspace"]["document"]["selected_datum"]
             self.assertEqual(selected_datum["datum_id"], "1-1-2")
@@ -1995,6 +2006,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             root = Path(tmp)
             data_dir = root / "data"
             public_dir = root / "public"
+            db_file = root / "authority.sqlite3"
             (data_dir / "system").mkdir(parents=True, exist_ok=True)
             (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True, exist_ok=True)
             public_dir.mkdir(parents=True, exist_ok=True)
@@ -2010,12 +2022,19 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 '{\n  "4-2-118": [["4-2-118", "rf.3-1-1", "HERE"], ["summit_county_cities"]]\n}\n',
                 encoding="utf-8",
             )
+            SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
+            )
 
             scope = PortalScope(scope_id="fnd", capabilities=("fnd_peripheral_routing",))
             projection = read_system_workbench_projection(
                 portal_scope=scope,
                 data_dir=data_dir,
                 public_dir=public_dir,
+                authority_db_file=db_file,
+                authority_mode="sql_primary",
             )
             sandbox_document_id = [
                 document.document_id for document in projection.documents if document.document_id != "system:anthology"
@@ -2038,6 +2057,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 public_dir=public_dir,
                 audit_storage_file=None,
                 tool_rows=[],
+                authority_db_file=db_file,
+                authority_mode="sql_primary",
             )
             document = bundle["surface_payload"]["workspace"]["document"]
             self.assertNotIn("presentation", document)

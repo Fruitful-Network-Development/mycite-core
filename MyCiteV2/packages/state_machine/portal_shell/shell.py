@@ -26,12 +26,14 @@ AWS_CSM_TOOL_SURFACE_ID = "system.tools.aws_csm"
 CTS_GIS_TOOL_SURFACE_ID = "system.tools.cts_gis"
 FND_DCM_TOOL_SURFACE_ID = "system.tools.fnd_dcm"
 FND_EBI_TOOL_SURFACE_ID = "system.tools.fnd_ebi"
+WORKBENCH_UI_TOOL_SURFACE_ID = "system.tools.workbench_ui"
 
 PORTAL_SHELL_ENTRYPOINT_ID = "portal.shell"
 AWS_CSM_TOOL_ENTRYPOINT_ID = "portal.system.tools.aws_csm"
 CTS_GIS_TOOL_ENTRYPOINT_ID = "portal.system.tools.cts_gis"
 FND_DCM_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_dcm"
 FND_EBI_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_ebi"
+WORKBENCH_UI_TOOL_ENTRYPOINT_ID = "portal.system.tools.workbench_ui"
 
 SYSTEM_ROOT_ROUTE = "/portal/system"
 NETWORK_ROOT_ROUTE = "/portal/network"
@@ -43,6 +45,7 @@ AWS_CSM_TOOL_ROUTE = "/portal/system/tools/aws-csm"
 CTS_GIS_TOOL_ROUTE = "/portal/system/tools/cts-gis"
 FND_DCM_TOOL_ROUTE = "/portal/system/tools/fnd-dcm"
 FND_EBI_TOOL_ROUTE = "/portal/system/tools/fnd-ebi"
+WORKBENCH_UI_TOOL_ROUTE = "/portal/system/tools/workbench-ui"
 FND_DCM_DEFAULT_SITE = "cuyahogavalleycountrysideconservancy.org"
 
 SYSTEM_ANCHOR_FILE_KEY = "anthology"
@@ -112,6 +115,7 @@ TOOL_SURFACE_IDS = frozenset(
         CTS_GIS_TOOL_SURFACE_ID,
         FND_DCM_TOOL_SURFACE_ID,
         FND_EBI_TOOL_SURFACE_ID,
+        WORKBENCH_UI_TOOL_SURFACE_ID,
     }
 )
 SYSTEM_SURFACE_IDS = frozenset({SYSTEM_ROOT_SURFACE_ID, *TOOL_SURFACE_IDS})
@@ -594,10 +598,6 @@ class PortalToolRegistryEntry:
             raise ValueError("tool_registry.surface_posture is invalid")
         if self.read_write_posture not in {"read-only", "write"}:
             raise ValueError("tool_registry.read_write_posture must be read-only or write")
-        if self.surface_posture != SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY:
-            raise ValueError("tool_registry.surface_posture must remain interface_panel_primary for tool surfaces")
-        if bool(self.default_workbench_visible):
-            raise ValueError("tool_registry.default_workbench_visible must remain false for tool surfaces")
         object.__setattr__(
             self,
             "required_capabilities",
@@ -717,6 +717,15 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
             page_owner="system",
             tool_id="fnd_ebi",
         ),
+        PortalSurfaceCatalogEntry(
+            surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
+            label="Workbench UI",
+            route=WORKBENCH_UI_TOOL_ROUTE,
+            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
+            surface_kind="tool_surface",
+            page_owner="system",
+            tool_id="workbench_ui",
+        ),
     )
 
 
@@ -769,6 +778,20 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             read_write_posture="read-only",
             required_capabilities=("hosted_site_visibility", "fnd_peripheral_routing"),
             summary="Hosted site operational visibility.",
+        ),
+        PortalToolRegistryEntry(
+            tool_id="workbench_ui",
+            label="Workbench UI",
+            surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
+            entrypoint_id=WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
+            route=WORKBENCH_UI_TOOL_ROUTE,
+            tool_kind=TOOL_KIND_GENERAL,
+            surface_posture=SURFACE_POSTURE_WORKBENCH_PRIMARY,
+            read_write_posture="read-only",
+            required_capabilities=("datum_recognition",),
+            default_enabled=True,
+            default_workbench_visible=True,
+            summary="Read-only SQL datum grid with additive directive-overlay inspection.",
         ),
     )
 
@@ -1167,6 +1190,36 @@ def canonical_query_for_surface_query(
         if view == "collections" and _as_text(normalized.get("collection")):
             query["collection"] = _as_text(normalized.get("collection"))
         return query
+    if surface_id == WORKBENCH_UI_TOOL_SURFACE_ID:
+        query: dict[str, str] = {}
+        document_id = _as_text(normalized.get("document"))
+        if document_id:
+            query["document"] = document_id
+        text_filter = _as_text(normalized.get("filter"))
+        if text_filter:
+            query["filter"] = text_filter
+        sort_key = _as_text(normalized.get("sort")).lower()
+        if sort_key in {
+            "datum_address",
+            "layer",
+            "value_group",
+            "iteration",
+            "labels",
+            "relation",
+            "object_ref",
+            "hyphae_hash",
+        }:
+            query["sort"] = sort_key
+        sort_direction = _as_text(normalized.get("dir")).lower()
+        if sort_direction in {"asc", "desc"}:
+            query["dir"] = sort_direction
+        overlay = _as_text(normalized.get("overlay")).lower()
+        if overlay in {"show", "hide"}:
+            query["overlay"] = overlay
+        row_id = _as_text(normalized.get("row"))
+        if row_id:
+            query["row"] = row_id
+        return query
     return {}
 
 
@@ -1351,6 +1404,8 @@ def activity_icon_id_for_surface(surface_id: object) -> str:
         return "fnd_dcm"
     if normalized_surface_id == FND_EBI_TOOL_SURFACE_ID:
         return "fnd_ebi"
+    if normalized_surface_id == WORKBENCH_UI_TOOL_SURFACE_ID:
+        return "workbench_ui"
     return "generic"
 
 
@@ -1371,12 +1426,17 @@ def shell_composition_mode_for_surface(active_surface_id: str) -> str:
 
 def surface_posture_for_surface(active_surface_id: str) -> str:
     if is_tool_surface(active_surface_id):
-        return SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY
+        entry = resolve_portal_tool_registry_entry(surface_id=active_surface_id)
+        if entry is not None:
+            return entry.surface_posture
     return SURFACE_POSTURE_WORKBENCH_PRIMARY
 
 
 def default_workbench_visible_for_surface(active_surface_id: str) -> bool:
     if is_tool_surface(active_surface_id):
+        entry = resolve_portal_tool_registry_entry(surface_id=active_surface_id)
+        if entry is not None:
+            return entry.default_workbench_visible
         return False
     return True
 
@@ -1457,11 +1517,15 @@ def build_shell_composition_payload(
         interface_open = state.chrome.interface_panel_open and state.verb == VERB_MEDIATE
     requested_inspector_visible = inspector_region.get("visible") is True
     if tool_surface:
-        # Tool posture is shell-owned: the first server composition always opens
-        # the Interface Panel and keeps the Workbench hidden until the client
-        # explicitly reveals secondary evidence locally.
-        workbench_visible = False
-        inspector_visible = True
+        if surface_posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY:
+            workbench_visible = False
+            inspector_visible = True
+        else:
+            workbench_visible = _region_visible(
+                workbench_region.get("visible"),
+                default=default_workbench_visible_for_surface(active_surface_id),
+            )
+            inspector_visible = True
     else:
         inspector_visible = bool(interface_open or requested_inspector_visible)
     workbench_region["visible"] = workbench_visible
@@ -1531,6 +1595,9 @@ __all__ = [
     "FND_EBI_TOOL_ENTRYPOINT_ID",
     "FND_EBI_TOOL_ROUTE",
     "FND_EBI_TOOL_SURFACE_ID",
+    "WORKBENCH_UI_TOOL_ENTRYPOINT_ID",
+    "WORKBENCH_UI_TOOL_ROUTE",
+    "WORKBENCH_UI_TOOL_SURFACE_ID",
     "FOCUS_LEVEL_DATUM",
     "FOCUS_LEVEL_FILE",
     "FOCUS_LEVEL_OBJECT",
@@ -1564,6 +1631,7 @@ __all__ = [
     "SYSTEM_PROFILE_BASICS_FILE_KEY",
     "SYSTEM_ROOT_ROUTE",
     "SYSTEM_ROOT_SURFACE_ID",
+    "SYSTEM_SURFACE_IDS",
     "SYSTEM_SANDBOX_QUERY_FILE_TOKEN",
     "TOOL_KIND_GENERAL",
     "TOOL_KIND_HOST_ALIAS",

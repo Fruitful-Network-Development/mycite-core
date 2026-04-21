@@ -7,6 +7,7 @@ The surface catalog is rooted only in `SYSTEM`, `NETWORK`, and `UTILITIES`.
 First-class surfaces:
 
 - `system.root`
+- `system.tools.workbench_ui`
 - `system.tools.aws_csm`
 - `system.tools.cts_gis`
 - `system.tools.fnd_dcm`
@@ -22,6 +23,8 @@ Workspace file modes under `system.root`:
 `activity` and `profile_basics` are not first-class surfaces anymore.
 
 `anthology` is rendered as a layered datum table grouped by `layer` and `value_group`, with datum selection opening a detail lens inside `system.root`.
+
+For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant posture is SQL-backed while preserving the same file/workbench outward shapes.
 
 `SYSTEM` control-panel behavior is canonicalized as:
 
@@ -57,6 +60,36 @@ Workspace file modes under `system.root`:
   - a newsletter section
 - Service-tool posture is determined by required capabilities and available peripheral employment, not by a separate portal type model.
 - `AWS-CSM` is operational only when the active portal can employ the authenticated peripheral package. In the live topology that means FND alone can route those external operations.
+
+## Workbench UI
+
+- `system.tools.workbench_ui`
+
+`Workbench UI` is one `SYSTEM` child read-only SQL datum-grid surface.
+
+- Its canonical route is `/portal/system/tools/workbench-ui`.
+- Its default posture is workbench-primary.
+- Its workbench is the primary spreadsheet-like SQL datum grid and stays visible on first composition.
+- Its `Interface Panel` shows selected-row semantic identity plus additive directive overlay summaries.
+- Its canonical query keys are:
+  - `document`
+  - `filter`
+  - `sort`
+  - `dir`
+  - `overlay`
+  - `row`
+- Its primary columns are:
+  - `datum_address`
+  - `layer`
+  - `value_group`
+  - `iteration`
+  - `labels`
+  - `relation`
+  - `object_ref`
+  - `hyphae_hash`
+- It is read-only in v1.
+- It must never mutate authoritative datum rows.
+- Any directive overlay is additive only and may be hidden without changing authoritative row content.
 
 ## CTS-GIS
 
@@ -156,8 +189,10 @@ The top menubar is the only shell header.
 
 - Tool work pages stay under `SYSTEM`.
 - Tool registry defaults are interface-panel-led.
+- `workbench_ui` is the approved workbench-primary exception.
 - Tool registry posture metadata is descriptive only; shell composition remains authoritative for first-load tool posture.
 - Tool workbench visibility defaults to `false`.
+- `workbench_ui` defaults to `true` because its primary surface is the SQL-backed datum grid.
 - Tool surfaces use mutually exclusive single-click behavior between `Workbench` and `Interface Panel` by default.
 - Double-clicking either tool toggle enables route-scoped lock mode that allows both panels to remain visible together.
 - Tool lock is non-persistent and clears when leaving the current tool route or composition.

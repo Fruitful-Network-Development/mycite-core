@@ -6,9 +6,11 @@ This repository now describes one portal shell only.
 - Root surfaces: `SYSTEM`, `NETWORK`, `UTILITIES`
 - Canonical shell endpoint: `/portal/api/v2/shell`
 - Canonical tool work pages: `/portal/system/tools/<tool_slug>`
+- Canonical SQL-backed datum-grid tool: `/portal/system/tools/workbench-ui`
 - Canonical AWS service tool: `/portal/system/tools/aws-csm`
 - Canonical CTS-GIS tool: `/portal/system/tools/cts-gis`
 - Canonical FND-DCM tool: `/portal/system/tools/fnd-dcm`
+- Migrated `SYSTEM` authority surfaces are SQL-backed and fail closed without the per-instance MOS authority database
 - Canonical CTS-GIS storage contract: `private/utilities/tools/cts-gis/spec.json` + `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
 - Canonical FND-DCM docs: `docs/contracts/fnd_dcm_tool_contract.md`, `docs/contracts/fnd_dcm_manifest_conventions.md`
 - Canonical CTS-GIS SAMRAS addressing contract: `docs/contracts/cts_gis_samras_addressing.md`
@@ -17,6 +19,7 @@ This repository now describes one portal shell only.
 - CTS-GIS phase-B (v2.5.4) is canonical-only: legacy CTS-GIS aliases are no longer accepted
 - Operator migration note: remove or ignore stale pre-v2.5.4 CTS-GIS legacy roots before or during rollout
 - `NETWORK` is the read-only portal-instance system-log workbench over `data/system/system_log.json`
+- `NETWORK` remains a derived-materialization surface outside SQL datum authority in the completed MOS cut-over
 - `UTILITIES` owns configuration, exposure, integrations, and control surfaces
 - The top menubar is the only shell header; `ide-body` is the peer-region window for the `Activity Bar`, `Control Panel`, `Workbench`, and `Interface Panel`
 - Shell static assets are versioned through one embedded shell asset manifest

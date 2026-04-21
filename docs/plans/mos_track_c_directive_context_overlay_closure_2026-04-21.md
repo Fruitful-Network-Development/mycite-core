@@ -11,6 +11,15 @@ Last reviewed: `2026-04-21`
 
 Record the implemented Track C runtime posture for directive-context overlays so the SQL-backed core can compose normalized NIMM/AITAS-adjacent state without turning directive context into datum authority.
 
+## Supersession Note
+
+This artifact remains retained as historical Track C evidence. The completed MOS closure state, including the `workbench_ui` additive read surface and the explicit non-inference migration rule, is recorded in:
+
+- `docs/plans/master_plan_mos.md`
+- `docs/plans/mos_directive_context_design_track_2026-04-21.md`
+- `docs/audits/reports/mos_directive_context_non_inference_validation_2026-04-21.md`
+- `docs/audits/reports/mos_program_closure_report_2026-04-21.md`
+
 ## Implemented Scope
 
 The approved Track C implementation pass now includes:
