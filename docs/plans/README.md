@@ -17,6 +17,8 @@ MOS SQL core program:
 
 - `master_plan_mos.md` is the authoritative MOS SQL-backed core cutover and semantic-closure program.
 - `master_plan_mos.index.yaml` is the lightweight companion index for phases, dependencies, gates, and evidence links.
+- `mos_semantic_gate_register_2026-04-21.md` tracks the open Track B semantic gates.
+- `mos_directive_context_design_track_2026-04-21.md` tracks the active Track C directive-context design work.
 
 Desktop reconciliation program:
 

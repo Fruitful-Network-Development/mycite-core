@@ -21,9 +21,15 @@ from MyCiteV2.packages.adapters.filesystem import (
     FilesystemNetworkRootReadModelAdapter,
     FilesystemSystemDatumStoreAdapter,
 )
+from MyCiteV2.packages.adapters.sql import (
+    SqliteAuditLogAdapter,
+    SqlitePortalAuthorityAdapter,
+    SqliteSystemDatumStoreAdapter,
+)
 from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
 from MyCiteV2.packages.modules.cross_domain.network_root import NetworkRootReadModelService
 from MyCiteV2.packages.modules.domains.publication import PublicationProfileBasicsService
+from MyCiteV2.packages.ports.portal_authority import PortalAuthorityRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
@@ -71,6 +77,13 @@ def _path_or_none(path: str | Path | None) -> Path | None:
     return Path(path)
 
 
+def _normalize_authority_mode(value: object) -> str:
+    token = _as_text(value).lower() or "filesystem"
+    if token not in {"filesystem", "shadow", "sql_primary"}:
+        return "filesystem"
+    return token
+
+
 def _default_capabilities(portal_instance_id: str) -> tuple[str, ...]:
     base = {"datum_recognition", "spatial_projection"}
     if _as_text(portal_instance_id).lower() == "fnd":
@@ -78,23 +91,91 @@ def _default_capabilities(portal_instance_id: str) -> tuple[str, ...]:
     return tuple(sorted(base))
 
 
-def _portal_scope_from_request(request_payload: dict[str, Any] | None, *, portal_instance_id: str) -> PortalScope:
+def _seed_sql_portal_authority(
+    *,
+    portal_instance_id: str,
+    authority_db_file: str | Path | None,
+    authority_mode: str,
+    known_tool_ids: tuple[str, ...],
+    tool_exposure_policy: dict[str, Any] | None,
+) -> SqlitePortalAuthorityAdapter | None:
+    normalized_mode = _normalize_authority_mode(authority_mode)
+    authority_path = _path_or_none(authority_db_file)
+    if authority_path is None or normalized_mode == "filesystem":
+        return None
+    adapter = SqlitePortalAuthorityAdapter(authority_path)
+    adapter.bootstrap_from_defaults(
+        scope_id=portal_instance_id,
+        capabilities=_default_capabilities(portal_instance_id),
+        tool_exposure_policy=tool_exposure_policy
+        or build_allow_all_tool_exposure_policy(known_tool_ids=list(known_tool_ids)),
+    )
+    return adapter
+
+
+def _portal_scope_from_request(
+    request_payload: dict[str, Any] | None,
+    *,
+    portal_instance_id: str,
+    authority_db_file: str | Path | None = None,
+    authority_mode: str = "filesystem",
+    tool_exposure_policy: dict[str, Any] | None = None,
+) -> PortalScope:
+    known_tool_ids = tuple(entry.tool_id for entry in build_portal_tool_registry_entries())
+    authority_adapter = _seed_sql_portal_authority(
+        portal_instance_id=portal_instance_id,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
+        known_tool_ids=known_tool_ids,
+        tool_exposure_policy=tool_exposure_policy,
+    )
     normalized_payload = request_payload if isinstance(request_payload, dict) else {}
     if isinstance(normalized_payload.get("portal_scope"), dict):
         raw_scope = dict(normalized_payload.get("portal_scope") or {})
         raw_scope.setdefault("scope_id", portal_instance_id)
         existing_capabilities = raw_scope.get("capabilities")
         if not isinstance(existing_capabilities, list) or not existing_capabilities:
-            raw_scope["capabilities"] = list(_default_capabilities(portal_instance_id))
+            if authority_adapter is not None:
+                authority = authority_adapter.read_portal_authority(
+                    PortalAuthorityRequest(scope_id=portal_instance_id, known_tool_ids=known_tool_ids)
+                )
+                if authority.source is not None:
+                    raw_scope["capabilities"] = list(authority.source.capabilities)
+                else:
+                    raw_scope["capabilities"] = list(_default_capabilities(portal_instance_id))
+            else:
+                raw_scope["capabilities"] = list(_default_capabilities(portal_instance_id))
         return PortalScope.from_value(raw_scope)
+    if authority_adapter is not None:
+        authority = authority_adapter.read_portal_authority(
+            PortalAuthorityRequest(scope_id=portal_instance_id, known_tool_ids=known_tool_ids)
+        )
+        if authority.source is not None:
+            return PortalScope(
+                scope_id=authority.source.scope_id,
+                capabilities=authority.source.capabilities,
+            )
     return PortalScope(
         scope_id=portal_instance_id,
         capabilities=_default_capabilities(portal_instance_id),
     )
 
 
-def _normalize_request(request_payload: dict[str, Any] | None, *, portal_instance_id: str) -> PortalShellRequest:
-    portal_scope = _portal_scope_from_request(request_payload, portal_instance_id=portal_instance_id)
+def _normalize_request(
+    request_payload: dict[str, Any] | None,
+    *,
+    portal_instance_id: str,
+    authority_db_file: str | Path | None = None,
+    authority_mode: str = "filesystem",
+    tool_exposure_policy: dict[str, Any] | None = None,
+) -> PortalShellRequest:
+    portal_scope = _portal_scope_from_request(
+        request_payload,
+        portal_instance_id=portal_instance_id,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
+        tool_exposure_policy=tool_exposure_policy,
+    )
     normalized_payload = dict(request_payload or {})
     normalized_payload["portal_scope"] = portal_scope.to_dict()
     if "schema" not in normalized_payload:
@@ -102,11 +183,33 @@ def _normalize_request(request_payload: dict[str, Any] | None, *, portal_instanc
     return PortalShellRequest.from_dict(normalized_payload)
 
 
-def _resolved_tool_exposure_policy(tool_exposure_policy: dict[str, Any] | None) -> dict[str, Any]:
+def _resolved_tool_exposure_policy(
+    tool_exposure_policy: dict[str, Any] | None,
+    *,
+    portal_instance_id: str,
+    authority_db_file: str | Path | None = None,
+    authority_mode: str = "filesystem",
+) -> dict[str, Any]:
+    known_tool_ids = tuple(entry.tool_id for entry in build_portal_tool_registry_entries())
     if tool_exposure_policy is not None:
         return tool_exposure_policy
+    authority_adapter = _seed_sql_portal_authority(
+        portal_instance_id=portal_instance_id,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
+        known_tool_ids=known_tool_ids,
+        tool_exposure_policy=None,
+    )
+    if authority_adapter is not None:
+        authority = authority_adapter.read_portal_authority(
+            PortalAuthorityRequest(scope_id=portal_instance_id, known_tool_ids=known_tool_ids)
+        )
+        if authority.source is not None:
+            policy = authority.source.tool_exposure_policy
+            if isinstance(policy, dict):
+                return dict(policy)
     return build_allow_all_tool_exposure_policy(
-        known_tool_ids=[entry.tool_id for entry in build_portal_tool_registry_entries()]
+        known_tool_ids=list(known_tool_ids)
     )
 
 
@@ -126,8 +229,16 @@ def _tool_posture_rows(
     portal_scope: PortalScope,
     tool_exposure_policy: dict[str, Any] | None,
     integration_flags: dict[str, bool],
+    portal_instance_id: str,
+    authority_db_file: str | Path | None = None,
+    authority_mode: str = "filesystem",
 ) -> list[dict[str, Any]]:
-    policy = _resolved_tool_exposure_policy(tool_exposure_policy)
+    policy = _resolved_tool_exposure_policy(
+        tool_exposure_policy,
+        portal_instance_id=portal_instance_id,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
+    )
     rows: list[dict[str, Any]] = []
     for entry in build_portal_tool_registry_entries():
         configured_tools = policy.get("configured_tools") if isinstance(policy.get("configured_tools"), dict) else {}
@@ -640,6 +751,8 @@ def _bundle_for_surface(
     audit_storage_file: str | Path | None,
     webapps_root: str | Path | None,
     tool_exposure_policy: dict[str, Any] | None,
+    authority_db_file: str | Path | None = None,
+    authority_mode: str = "filesystem",
 ) -> dict[str, Any]:
     integration_flags = _integration_flags(
         data_dir=data_dir,
@@ -649,6 +762,9 @@ def _bundle_for_surface(
         portal_scope=portal_scope,
         tool_exposure_policy=tool_exposure_policy,
         integration_flags=integration_flags,
+        portal_instance_id=portal_scope.scope_id,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
     )
     if selection_surface_id == SYSTEM_ROOT_SURFACE_ID:
         canonical_state = canonicalize_portal_shell_state(
@@ -665,6 +781,8 @@ def _bundle_for_surface(
             public_dir=public_dir,
             audit_storage_file=audit_storage_file,
             tool_rows=tool_rows,
+            authority_db_file=authority_db_file,
+            authority_mode=authority_mode,
         )
         workspace_bundle["entrypoint_id"] = PORTAL_SHELL_ENTRYPOINT_ID
         workspace_bundle["read_write_posture"] = "read-only"
@@ -770,8 +888,16 @@ def run_portal_shell_entry(
     audit_storage_file: str | Path | None = None,
     webapps_root: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
+    authority_db_file: str | Path | None = None,
+    authority_mode: str = "filesystem",
 ) -> dict[str, Any]:
-    normalized_request = _normalize_request(request_payload, portal_instance_id=portal_instance_id)
+    normalized_request = _normalize_request(
+        request_payload,
+        portal_instance_id=portal_instance_id,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
+        tool_exposure_policy=tool_exposure_policy,
+    )
     selection = resolve_portal_shell_request(normalized_request)
     portal_scope = normalized_request.portal_scope
     bundle = _bundle_for_surface(
@@ -787,6 +913,8 @@ def run_portal_shell_entry(
         audit_storage_file=audit_storage_file,
         webapps_root=webapps_root,
         tool_exposure_policy=tool_exposure_policy,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
     )
     canonical_route = _as_text(bundle.get("canonical_route")) or selection.canonical_route
     canonical_query = dict(bundle.get("canonical_query") or selection.canonical_query)
@@ -844,13 +972,26 @@ def run_system_profile_basics_action(
     data_dir: str | Path | None,
     public_dir: str | Path | None,
     audit_storage_file: str | Path | None = None,
+    authority_db_file: str | Path | None = None,
+    authority_mode: str = "filesystem",
 ) -> dict[str, Any]:
     payload = dict(request_payload or {})
     if _as_text(payload.get("schema")) != SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA:
         raise ValueError(f"request.schema must be {SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA}")
     if data_dir is None:
         raise ValueError("data_dir is required for profile basics updates")
-    adapter = FilesystemSystemDatumStoreAdapter(Path(data_dir), public_dir=public_dir)
+    normalized_mode = _normalize_authority_mode(authority_mode)
+    if normalized_mode == "filesystem" or authority_db_file is None:
+        adapter = FilesystemSystemDatumStoreAdapter(Path(data_dir), public_dir=public_dir)
+    else:
+        adapter = SqliteSystemDatumStoreAdapter(Path(authority_db_file))
+        if normalized_mode == "shadow" or not adapter.has_publication_summary(portal_instance_id, portal_domain):
+            adapter.bootstrap_from_filesystem(
+                data_dir=Path(data_dir),
+                public_dir=public_dir,
+                tenant_id=portal_instance_id,
+                tenant_domain=portal_domain,
+            )
     outcome = PublicationProfileBasicsService(adapter).apply_write(
         {
             "tenant_id": portal_instance_id,
@@ -863,12 +1004,23 @@ def run_system_profile_basics_action(
     )
     if audit_storage_file is not None:
         try:
-            LocalAuditService(FilesystemAuditLogAdapter(Path(audit_storage_file))).append_record(
-                outcome.to_local_audit_payload()
-            )
+            if normalized_mode == "filesystem" or authority_db_file is None:
+                LocalAuditService(FilesystemAuditLogAdapter(Path(audit_storage_file))).append_record(
+                    outcome.to_local_audit_payload()
+                )
+            else:
+                sql_audit = SqliteAuditLogAdapter(Path(authority_db_file))
+                sql_audit.bootstrap_from_filesystem(audit_storage_file)
+                LocalAuditService(sql_audit).append_record(outcome.to_local_audit_payload())
         except Exception:
             pass
-    portal_scope = _portal_scope_from_request(payload, portal_instance_id=portal_instance_id)
+    portal_scope = _portal_scope_from_request(
+        payload,
+        portal_instance_id=portal_instance_id,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
+        tool_exposure_policy=None,
+    )
     incoming_state = payload.get("shell_state")
     shell_state = (
         PortalShellState.from_value(incoming_state, portal_scope=portal_scope, fallback_surface_id=SYSTEM_ROOT_SURFACE_ID)
@@ -903,6 +1055,9 @@ def run_system_profile_basics_action(
         portal_scope=portal_scope,
         tool_exposure_policy=None,
         integration_flags=integration_flags,
+        portal_instance_id=portal_scope.scope_id,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
     )
     workspace_bundle = build_system_workspace_bundle(
         portal_scope=portal_scope,
@@ -913,6 +1068,8 @@ def run_system_profile_basics_action(
         audit_storage_file=audit_storage_file,
         tool_rows=tool_rows,
         profile_save_status="saved",
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
     )
     workspace_bundle["surface_payload"]["workspace"]["profile_basics"]["confirmed_summary"] = outcome.confirmed_summary.to_dict()
     composition = build_shell_composition_payload(
