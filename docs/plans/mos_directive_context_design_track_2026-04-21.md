@@ -55,29 +55,23 @@ If Track C widens into SQL authority later, the first schema should be additive 
   - `context_id`
   - `portal_instance_id`
   - `tool_id`
-  - `subject_hyphae_hash`
-  - `subject_version_hash`
-  - `nimm_state_json`
-  - `aitas_state_json`
-  - `scope_json`
-  - `provenance_json`
+  - `hyphae_hash`
+  - `version_hash`
+  - `payload_json`
   - `updated_at_unix_ms`
 - `directive_context_events`
   - append-only change log for review, replay, and rollback
+  - keyed for lookup by `portal_instance_id`, `tool_id`, `hyphae_hash`, `version_hash`
   - never treated as the authoritative datum store
 
 ## Canonical Field Expectations
 
-- `subject_hyphae_hash`
-  - stable semantic subject handle
-- `subject_version_hash`
+- `hyphae_hash`
+  - stable semantic subject handle at the SQL lookup boundary
+- `version_hash`
   - binds a directive snapshot to one storage-version posture when needed
-- `nimm_state_json`
-  - navigation, investigation, mediation, manipulation posture
-- `aitas_state_json`
-  - attention, intention, time, archetype, space posture
-- `scope_json`
-  - portal, workspace, and route scope
+- `payload_json`
+  - normalized port payload containing `nimm_state`, `aitas_state`, `scope`, and `provenance`
 - `provenance_json`
   - tool-local source, confidence, and ownership notes
 
@@ -102,6 +96,16 @@ The intended interface order is:
 1. authoritative SQL datum-store resolves document and row semantics
 2. directive-context layer binds overlays to those semantics
 3. runtime composes shell or tool posture from the overlay only where approved
+
+## Approved Implementation Pass
+
+The current repo now implements the first non-blocking Track C seam:
+
+- `directive_context_snapshots` and `directive_context_events` exist as additive SQL tables
+- a dedicated directive-context port and SQL adapter exist
+- the approved shared runtime seam is the system workspace selection path
+- the runtime reads overlays only after resolving `version_hash` and `hyphae_hash`
+- the runtime composes directive context additively and never mutates datum rows
 
 ## V1 Non-Goals
 

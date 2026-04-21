@@ -20,6 +20,7 @@ MOS SQL core program:
 - `mos_semantic_gate_register_2026-04-21.md` records the closed Track B semantic gates and their retained evidence.
 - `mos_sg1_version_identity_policy_2026-04-21.md` through `mos_sg4_standard_closure_policy_2026-04-21.md` retain the dedicated Track B closure artifacts.
 - `mos_directive_context_design_track_2026-04-21.md` tracks the active Track C directive-context design work.
+- `mos_track_c_directive_context_overlay_closure_2026-04-21.md` records the approved additive SQL overlay implementation pass for Track C.
 
 Desktop reconciliation program:
 
