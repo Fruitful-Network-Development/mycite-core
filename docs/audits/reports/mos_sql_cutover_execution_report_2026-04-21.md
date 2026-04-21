@@ -116,6 +116,16 @@ Evidence files:
 4. `SG-4` remains open because standard-closure and compatibility retirement policy depend on the first three gates.
 5. Track C remains an active design/spec track rather than an implementation blocker.
 
+## Track B Addendum — 2026-04-21 Closure Pass
+
+This addendum supersedes the Track B status in the historical "Remaining Open Work" list above.
+
+- `SG-1` is now closed through `docs/plans/mos_sg1_version_identity_policy_2026-04-21.md` plus SQL-backed persistence in `datum_document_semantics`.
+- `SG-2` is now closed through `docs/plans/mos_sg2_hyphae_derivation_policy_2026-04-21.md` plus SQL-backed persistence in `datum_row_semantics`.
+- `SG-3` is now closed through `docs/plans/mos_sg3_edit_remap_policy_2026-04-21.md` plus bounded preview/apply helpers on the SQL datum-store adapter.
+- `SG-4` is now closed through `docs/plans/mos_sg4_standard_closure_policy_2026-04-21.md`.
+- Track C has advanced to a schema/update-policy design posture in `docs/plans/mos_directive_context_design_track_2026-04-21.md` and remains non-blocking.
+
 ## Exit Criteria Status
 
 - Track A v1 SQL authority path implemented: **Met for the approved first-cut surfaces**

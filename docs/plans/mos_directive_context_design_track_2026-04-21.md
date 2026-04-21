@@ -9,16 +9,16 @@ Last reviewed: `2026-04-21`
 
 ## Purpose
 
-Begin Track C from `docs/plans/master_plan_mos.md` by defining where NIMM/AITAS and broader directive-context behavior could later widen the engine without blocking the v1 operational SQL-backed core cutover.
+Advance Track C from `docs/plans/master_plan_mos.md` by defining the scope, schema, and update-policy posture for future NIMM/AITAS directive-context integration without turning it into a blocker for the SQL-backed core.
 
 ## Scope
 
 In scope:
 
 - future insertion points for directive-context behavior
-- explicit v1 non-goals
+- directive-context schema candidates keyed to Track B semantic identity
+- update and conflict policies for directive-context snapshots
 - boundaries between shared shell behavior and tool-local behavior
-- dependencies on Track B semantic gates
 
 Out of scope:
 
@@ -26,43 +26,94 @@ Out of scope:
 - rewriting the shared shell around NIMM/AITAS
 - redefining current tool-local CTS-GIS mediation as shared-engine truth
 
-## Canonical Contract Links
+## Directive-Context Posture
 
-- portal shell contract: `docs/contracts/portal_shell_contract.md`
-- route model: `docs/contracts/route_model.md`
-- surface catalog: `docs/contracts/surface_catalog.md`
-- vocabulary glossary: `docs/contracts/portal_vocabulary_glossary.md`
-- CTS-GIS HOPS profile sources: `docs/contracts/cts_gis_hops_profile_sources.md`
-- SAMRAS structural model: `docs/contracts/samras_structural_model.md`
-- SAMRAS validity and mutation: `docs/contracts/samras_validity_and_mutation.md`
+1. Directive context is a **semantic overlay**, not a replacement for authoritative datum rows.
+2. Directive context must key to Track B outputs:
+   - `version_hash` for storage-bound snapshots
+   - `hyphae_hash` for stable semantic subjects
+3. Directive context may shape navigation, attention, mediation, and manipulation posture, but it does not rewrite authoritative datum identity.
+4. Until a later widening decision, directive context remains tool-local by default and shared-shell-visible only through explicitly approved surfaces.
 
-## Initial Insertion Points
+## Insertion Points
 
 1. Shared shell posture
-   - possible future insertion only after shared semantic identity and edit/remap rules are closed
-   - current shared shell remains file/workbench-oriented
+   - future insertion only after stable semantic identity and remap behavior are available
+   - shared shell consumes normalized directive summaries, not raw tool-local state
 2. Domain services
-   - possible future insertion for normalized directive-state interpretation over stable semantic identities
-   - depends on `SG-2` and `SG-3`
+   - may interpret directive overlays keyed by `hyphae_hash` and `version_hash`
+   - may expose summarized subject, intention, and workspace posture
 3. Tool-local mediation
-   - remains the active home for NIMM/AITAS-like behavior in the current repo
-   - CTS-GIS mediation remains tool-local until a later widening decision is approved
+   - remains the active home for NIMM/AITAS-like experimentation
+   - CTS-GIS retains local ownership until a later canon decision
+
+## Proposed Schema
+
+If Track C widens into SQL authority later, the first schema should be additive and reference the existing SQL-backed core:
+
+- `directive_context_snapshots`
+  - `context_id`
+  - `portal_instance_id`
+  - `tool_id`
+  - `subject_hyphae_hash`
+  - `subject_version_hash`
+  - `nimm_state_json`
+  - `aitas_state_json`
+  - `scope_json`
+  - `provenance_json`
+  - `updated_at_unix_ms`
+- `directive_context_events`
+  - append-only change log for review, replay, and rollback
+  - never treated as the authoritative datum store
+
+## Canonical Field Expectations
+
+- `subject_hyphae_hash`
+  - stable semantic subject handle
+- `subject_version_hash`
+  - binds a directive snapshot to one storage-version posture when needed
+- `nimm_state_json`
+  - navigation, investigation, mediation, manipulation posture
+- `aitas_state_json`
+  - attention, intention, time, archetype, space posture
+- `scope_json`
+  - portal, workspace, and route scope
+- `provenance_json`
+  - tool-local source, confidence, and ownership notes
+
+## Update Policy
+
+1. Directive context is **replace-by-snapshot** at the shared boundary.
+2. Tool-local systems may keep richer transient state, but only normalized snapshots cross into shared storage.
+3. Shared directive writes must be rejected if they do not bind to a valid `hyphae_hash` or an explicitly declared non-datum subject.
+4. Directive snapshots must not mutate authoritative datum rows directly.
+5. Shared-shell consumers should tolerate missing directive context and fall back to file/workbench-oriented behavior.
+
+## Interface with the SQL-Backed Core
+
+Once Track B is closed, directive-context integration should read from, but not overwrite:
+
+- `datum_document_semantics.version_hash`
+- `datum_row_semantics.hyphae_hash`
+- portal-authority scope data for grants/tool exposure
+
+The intended interface order is:
+
+1. authoritative SQL datum-store resolves document and row semantics
+2. directive-context layer binds overlays to those semantics
+3. runtime composes shell or tool posture from the overlay only where approved
 
 ## V1 Non-Goals
 
 - no shared-shell archetype selector
 - no SQL cutover dependency on directive-context closure
 - no assumption that current tool-local mediation vocabulary is already universal engine canon
-
-## Design Tasks
-
-1. Map which directive values require stable semantic identity rather than compact storage address.
-2. Define what must remain tool-local even after a future widening pass.
-3. Define the minimum contract changes that would be required before directive-context behavior could become shared-shell-visible.
+- no directive writes that bypass Track B semantic identities
 
 ## Exit Criteria
 
 - insertion points are explicit
-- v1 non-goals are explicit
-- dependencies on `SG-2` and `SG-3` are explicit
-- the Track C design can progress without blocking Track A cutover
+- schema candidates are explicit
+- update policies are explicit
+- interface dependencies on Track B are explicit
+- Track C can progress without reopening Track A or Track B

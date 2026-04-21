@@ -128,59 +128,59 @@ entries:
   - id: "MOS-SG1"
     track: "Track B"
     phase: "SG-1"
-    status: "registered"
+    status: "completed"
     dependencies: []
     gates:
       - "native_closure"
       - "semantic_discipline"
     evidence_refs:
-      - "docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md"
-      - "docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md"
+      - "docs/plans/mos_sg1_version_identity_policy_2026-04-21.md"
       - "docs/plans/mos_semantic_gate_register_2026-04-21.md"
-    notes: "Close version identity and MSS hashing policy."
-    open_questions:
-      - "What exact input is hashed for version identity."
-      - "How historical MSS forms remain compatible during migration."
+      - "MyCiteV2/packages/adapters/sql/datum_semantics.py"
+      - "MyCiteV2/packages/adapters/sql/datum_store.py"
+      - "MyCiteV2/tests/adapters/test_sql_datum_store_adapter.py"
+    notes: "Version identity is now storage-derived through `mos.mss_sha256_v1`, with SQL-backed persistence of the canonical hash input."
+    rationale: "Track B closure required a deterministic repo-native version identity that did not pretend to inherit a historical bitstream implementation absent from the current code."
 
   - id: "MOS-SG2"
     track: "Track B"
     phase: "SG-2"
-    status: "registered"
+    status: "completed"
     dependencies:
       - "MOS-SG1"
     gates:
       - "native_closure"
       - "semantic_discipline"
     evidence_refs:
-      - "docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md"
-      - "docs/contracts/portal_vocabulary_glossary.md"
-      - "docs/contracts/cts_gis_hops_profile_sources.md"
+      - "docs/plans/mos_sg2_hyphae_derivation_policy_2026-04-21.md"
       - "docs/plans/mos_semantic_gate_register_2026-04-21.md"
-    notes: "Close hyphae derivation and stable semantic identity policy."
-    open_questions:
-      - "How hyphae derivation includes preceding rudi datums beyond explicit references."
+      - "MyCiteV2/packages/adapters/sql/datum_semantics.py"
+      - "MyCiteV2/packages/adapters/sql/datum_store.py"
+      - "MyCiteV2/tests/adapters/test_sql_datum_store_adapter.py"
+    notes: "Hyphae derivation is now defined by anchor-context hashing, local dependency closure, and the required `0-0-*` rudi prefix."
 
   - id: "MOS-SG3"
     track: "Track B"
     phase: "SG-3"
-    status: "registered"
+    status: "completed"
     dependencies:
       - "MOS-SG2"
     gates:
       - "native_closure"
       - "semantic_discipline"
     evidence_refs:
-      - "docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md"
-      - "docs/audits/cts_gis_datum_handling_alignment_audit_plan_2026-04-20.md"
-      - "docs/contracts/samras_validity_and_mutation.md"
+      - "docs/plans/mos_sg3_edit_remap_policy_2026-04-21.md"
       - "docs/plans/mos_semantic_gate_register_2026-04-21.md"
-    notes: "Close deterministic edit/remap semantics for insert, delete, and move."
-    rationale: "Generalized mutation authority remains out of v1 until this gate is closed."
+      - "MyCiteV2/packages/adapters/sql/datum_semantics.py"
+      - "MyCiteV2/packages/adapters/sql/datum_store.py"
+      - "MyCiteV2/tests/adapters/test_sql_datum_store_adapter.py"
+    notes: "Deterministic insert/delete/move preview/apply behavior now exists behind the SQL datum-store adapter, with explicit compatibility limits for mutation surfaces."
+    rationale: "Generalized mutation authority only becomes acceptable once remap behavior is deterministic and unsafe deletes are refused."
 
   - id: "MOS-SG4"
     track: "Track B"
     phase: "SG-4"
-    status: "registered"
+    status: "completed"
     dependencies:
       - "MOS-SG1"
       - "MOS-SG2"
@@ -188,15 +188,16 @@ entries:
     gates:
       - "native_closure"
     evidence_refs:
-      - "docs/personal_notes/MOS/mos_novelty_definition.md"
-      - "docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md"
+      - "docs/plans/mos_sg4_standard_closure_policy_2026-04-21.md"
       - "docs/plans/mos_semantic_gate_register_2026-04-21.md"
-    notes: "Define standard-closure declaration criteria and compatibility retirement rules."
+      - "docs/plans/master_plan_mos.md"
+      - "MyCiteV2/tests/adapters/test_sql_datum_store_adapter.py"
+    notes: "Native MOS closure criteria and staged compatibility retirement rules are now explicit."
 
   - id: "MOS-C1"
     track: "Track C"
     phase: "Directive Design Track"
-    status: "in_progress"
+    status: "completed"
     dependencies:
       - "MOS-A1"
     gates:
@@ -206,5 +207,6 @@ entries:
       - "docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md"
       - "docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md"
       - "docs/plans/mos_directive_context_design_track_2026-04-21.md"
-    notes: "Track C design work has started as a parallel design/spec track without blocking the SQL cutover."
+      - "docs/plans/master_plan_mos.md"
+    notes: "Track C now defines directive-context scope, schema candidates, update policy, and SQL-core binding points without blocking the cutover or Track B closure."
     rationale: "Directive-context work should inform future architecture without blocking the v1 SQL cutover."

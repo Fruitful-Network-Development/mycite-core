@@ -13,13 +13,45 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.ports.datum_store import (
+    AuthoritativeDatumDocument,
+    AuthoritativeDatumDocumentCatalogResult,
     AuthoritativeDatumDocumentRequest,
+    AuthoritativeDatumDocumentRow,
     PublicationTenantSummaryRequest,
     SystemDatumStoreRequest,
 )
 
 
 class SqlDatumStoreAdapterTests(unittest.TestCase):
+    def _seed_catalog(
+        self,
+        adapter: SqliteSystemDatumStoreAdapter,
+        *,
+        rows: tuple[tuple[str, object], ...],
+        tenant_id: str = "fnd",
+        document_id: str = "system:anthology",
+    ) -> None:
+        adapter.store_authoritative_catalog(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id=tenant_id,
+                documents=(
+                    AuthoritativeDatumDocument(
+                        document_id=document_id,
+                        source_kind="system_anthology",
+                        document_name="anthology.json",
+                        relative_path="system/anthology.json",
+                        document_metadata={"semantic_mode": "test"},
+                        rows=tuple(
+                            AuthoritativeDatumDocumentRow(datum_address=datum_address, raw=raw)
+                            for datum_address, raw in rows
+                        ),
+                    ),
+                ),
+                source_files={"system_anthology": "system/anthology.json"},
+                readiness_status={"authoritative_catalog": "loaded"},
+            )
+        )
+
     def test_bootstrap_from_filesystem_preserves_catalog_and_workbench_shapes(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -115,6 +147,144 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
             )
             self.assertEqual(after.source.tenant_profile["title"], "Updated Title")
             self.assertEqual(after.source.tenant_profile["summary"], "Updated Summary")
+
+    def test_store_authoritative_catalog_persists_version_identity_and_hyphae_chain(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            self._seed_catalog(
+                adapter,
+                rows=(
+                    ("0-0-1", [["0-0-1", "~", "ROOT"], ["rudi-1"]]),
+                    ("0-0-2", [["0-0-2", "~", "0-0-1"], ["rudi-2"]]),
+                    ("0-0-3", [["0-0-3", "~", "0-0-2"], ["rudi-3"]]),
+                    ("1-0-1", [["1-0-1", "~", "0-0-3"], ["derived-1"]]),
+                    ("2-0-1", [["2-0-1", "~", "1-0-1"], ["derived-2"]]),
+                ),
+            )
+
+            document_identity = adapter.read_document_version_identity(
+                tenant_id="fnd",
+                document_id="system:anthology",
+            )
+            self.assertIsNotNone(document_identity)
+            self.assertEqual(document_identity["policy"], "mos.mss_sha256_v1")
+            self.assertTrue(document_identity["version_hash"].startswith("sha256:"))
+            self.assertEqual(len(document_identity["canonical_payload"]["rows"]), 5)
+
+            datum_identity = adapter.read_datum_semantic_identity(
+                tenant_id="fnd",
+                document_id="system:anthology",
+                datum_address="2-0-1",
+            )
+            self.assertIsNotNone(datum_identity)
+            self.assertEqual(datum_identity["policy"], "mos.hyphae_chain_v1")
+            self.assertEqual(
+                datum_identity["hyphae_chain"]["addresses"],
+                ["0-0-1", "0-0-2", "0-0-3", "1-0-1", "2-0-1"],
+            )
+            self.assertEqual(datum_identity["local_references"], ["1-0-1"])
+
+    def test_apply_document_insert_shifts_rows_and_updates_references(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            self._seed_catalog(
+                adapter,
+                rows=(
+                    ("1-0-1", [["1-0-1", "~", "ROOT"], ["first"]]),
+                    ("1-0-2", [["1-0-2", "~", "1-0-1"], ["second"]]),
+                    ("1-0-3", [["1-0-3", "~", "1-0-2"], ["third"]]),
+                    ("2-0-1", [["2-0-1", "~", "1-0-2"], ["consumer"]]),
+                ),
+            )
+
+            result = adapter.apply_document_insert(
+                tenant_id="fnd",
+                document_id="system:anthology",
+                target_address="1-0-2",
+                raw=[["1-0-2", "~", "1-0-2"], ["inserted"]],
+            )
+
+            updated_rows = result["updated_document"]["documents"][0]["rows"] if "documents" in result["updated_document"] else result["updated_document"]["rows"]
+            addresses = [row["datum_address"] for row in updated_rows]
+            self.assertEqual(addresses, ["1-0-1", "1-0-2", "1-0-3", "1-0-4", "2-0-1"])
+            self.assertEqual(updated_rows[1]["raw"][0][2], "1-0-3")
+            self.assertEqual(updated_rows[2]["raw"][0][0], "1-0-3")
+            self.assertEqual(updated_rows[4]["raw"][0][2], "1-0-3")
+            self.assertEqual(result["persisted_version_hash"], result["version_hash_after"])
+
+    def test_apply_document_delete_rejects_live_references(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            self._seed_catalog(
+                adapter,
+                rows=(
+                    ("1-0-1", [["1-0-1", "~", "ROOT"], ["first"]]),
+                    ("1-0-2", [["1-0-2", "~", "1-0-1"], ["second"]]),
+                    ("1-0-3", [["1-0-3", "~", "1-0-2"], ["third"]]),
+                ),
+            )
+
+            with self.assertRaisesRegex(ValueError, "delete_target_row_still_referenced"):
+                adapter.preview_document_delete(
+                    tenant_id="fnd",
+                    document_id="system:anthology",
+                    target_address="1-0-2",
+                )
+
+    def test_apply_document_delete_shifts_following_rows(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            self._seed_catalog(
+                adapter,
+                rows=(
+                    ("1-0-1", [["1-0-1", "~", "ROOT"], ["first"]]),
+                    ("1-0-2", [["1-0-2", "~", "1-0-1"], ["second"]]),
+                    ("1-0-3", [["1-0-3", "~", "1-0-1"], ["third"]]),
+                    ("2-0-1", [["2-0-1", "~", "1-0-3"], ["consumer"]]),
+                ),
+            )
+
+            result = adapter.apply_document_delete(
+                tenant_id="fnd",
+                document_id="system:anthology",
+                target_address="1-0-2",
+            )
+
+            updated_rows = result["updated_document"]["rows"]
+            addresses = [row["datum_address"] for row in updated_rows]
+            self.assertEqual(addresses, ["1-0-1", "1-0-2", "2-0-1"])
+            self.assertEqual(updated_rows[1]["raw"][0][0], "1-0-2")
+            self.assertEqual(updated_rows[2]["raw"][0][2], "1-0-2")
+            self.assertEqual(result["persisted_version_hash"], result["version_hash_after"])
+
+    def test_apply_document_move_reindexes_source_and_destination_families(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            self._seed_catalog(
+                adapter,
+                rows=(
+                    ("1-0-1", [["1-0-1", "~", "ROOT"], ["first"]]),
+                    ("1-0-2", [["1-0-2", "~", "1-0-1"], ["second"]]),
+                    ("1-0-3", [["1-0-3", "~", "1-0-2"], ["third"]]),
+                    ("2-0-1", [["2-0-1", "~", "1-0-1"], ["consumer"]]),
+                ),
+            )
+
+            result = adapter.apply_document_move(
+                tenant_id="fnd",
+                document_id="system:anthology",
+                source_address="1-0-1",
+                destination_address="1-0-3",
+            )
+
+            updated_rows = result["updated_document"]["rows"]
+            addresses = [row["datum_address"] for row in updated_rows]
+            self.assertEqual(addresses, ["1-0-1", "1-0-2", "1-0-3", "2-0-1"])
+            self.assertEqual(updated_rows[0]["raw"][0][2], "1-0-3")
+            self.assertEqual(updated_rows[1]["raw"][0][2], "1-0-1")
+            self.assertEqual(updated_rows[2]["raw"][0][0], "1-0-3")
+            self.assertEqual(updated_rows[3]["raw"][0][2], "1-0-3")
+            self.assertEqual(result["persisted_version_hash"], result["version_hash_after"])
 
 
 if __name__ == "__main__":

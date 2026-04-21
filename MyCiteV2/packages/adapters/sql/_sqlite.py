@@ -40,8 +40,38 @@ CREATE TABLE IF NOT EXISTS audit_records (
     record_json TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS datum_document_semantics (
+    tenant_id TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    policy TEXT NOT NULL,
+    version_hash TEXT NOT NULL,
+    canonical_payload_json TEXT NOT NULL,
+    updated_at_unix_ms INTEGER NOT NULL,
+    PRIMARY KEY (tenant_id, document_id)
+);
+
+CREATE TABLE IF NOT EXISTS datum_row_semantics (
+    tenant_id TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    datum_address TEXT NOT NULL,
+    policy TEXT NOT NULL,
+    semantic_hash TEXT NOT NULL,
+    hyphae_hash TEXT NOT NULL,
+    hyphae_chain_json TEXT NOT NULL,
+    local_references_json TEXT NOT NULL,
+    warnings_json TEXT NOT NULL,
+    updated_at_unix_ms INTEGER NOT NULL,
+    PRIMARY KEY (tenant_id, document_id, datum_address),
+    FOREIGN KEY (tenant_id, document_id)
+        REFERENCES datum_document_semantics(tenant_id, document_id)
+        ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS audit_records_recorded_at_idx
 ON audit_records(recorded_at_unix_ms DESC, record_id DESC);
+
+CREATE INDEX IF NOT EXISTS datum_row_semantics_document_idx
+ON datum_row_semantics(tenant_id, document_id);
 """
 
 

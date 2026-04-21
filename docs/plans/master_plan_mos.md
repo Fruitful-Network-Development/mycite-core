@@ -38,12 +38,13 @@ Out of scope for v1 cutover:
 - SAMRAS structural model: `docs/contracts/samras_structural_model.md`
 - SAMRAS validity and mutation: `docs/contracts/samras_validity_and_mutation.md`
 
-## Current Status Note — 2026-04-21 Execution Pass
+## Current Status Note — 2026-04-21 Closure Pass
 
 - **Completed in code for Track A:** a bounded portal-authority read seam, SQLite-backed SQL adapters for datum-store/audit/portal-authority surfaces, and runtime authority modes `filesystem`, `shadow`, and `sql_primary`.
-- **Completed in validation for Track A:** SQL-versus-filesystem parity coverage for authoritative catalog reads, system workbench reads, audit-log behavior, portal-authority reads, and SQL-primary runtime composition.
-- **Completed in program artifacts:** the Track A execution report, the Track B semantic gate register, and the Track C directive-context design track.
-- **Still open by design:** `SG-1` through `SG-4` remain unresolved semantic gates, and NIMM/AITAS widening remains a parallel design/spec track rather than a v1 blocker.
+- **Completed in code for Track B:** SQL-backed document version identity storage, row-level hyphae/semantic identity storage, and deterministic insert/delete/move remap helpers behind the datum-store adapter.
+- **Completed in validation for Track A and Track B:** SQL-versus-filesystem parity coverage for the approved cutover surfaces plus dedicated regression coverage for version hashing, hyphae derivation, and edit/remap behavior.
+- **Completed in program artifacts:** dedicated closure artifacts for `SG-1` through `SG-4`, an updated semantic gate register, and a widened Track C directive-context design track.
+- **Still non-blocking by design:** NIMM/AITAS widening remains a parallel design/spec track rather than a prerequisite for the SQL-backed core or Track B closure.
 
 ## Program Authority Rules
 
@@ -74,13 +75,13 @@ Out of scope for v1 cutover:
 |---|---|---|---|---|
 | Portal instance as the authority principal | `canonical` | `stable now` | adopt directly in `Track A` | Supported by current runtime posture and the SQL-core declaration draft. |
 | File-owned units remain first-class in the API | `canonical` | `stable now` | preserve file/workbench outward shapes | SQL may replace backing authority without replacing file-oriented contracts. |
-| Ordered `layer-value_group-iteration` datum rows | `canonical` | `stable now` | preserve as an operational invariant | Detailed edit/remap closure still depends on `Track B`. |
+| Ordered `layer-value_group-iteration` datum rows | `canonical` | `stable now` | preserve as an operational invariant | Deterministic remap rules are now defined in `SG-3`. |
 | Adapter-swap architecture over rewrite | `canonical` | `stable now` | use as the cutover method | Repo audits show port-driven separation is already the right seam. |
 | Datum-store reads, audit append/read seams, and tool-exposure/runtime composition as main cutover boundaries | `canonical` | `stable now` | use as initial SQL authority surfaces | No public contract redesign in the first swap. |
 | Portal grants and ownership posture boundary | `operational_v1` | `provisional for v1` | add an explicit reusable boundary in `Phase 1` and `Phase 2` | Needed to replace hard-coded capability posture cleanly. |
-| `version_hash` and MSS hashing semantics | `unresolved` | `unresolved` | do not assume solved; route to `SG-1` | Required for native standard closure. |
-| Generalized hyphae-chain derivation and stable semantic identity policy | `unresolved` | `unresolved` | do not assume solved; route to `SG-2` | Distinguish compact storage address from stable semantic identity. |
-| Deterministic insert/delete/move remap algorithm | `unresolved` | `unresolved` | keep v1 write scope narrowed; route to `SG-3` | Blocks generalized mutation authority. |
+| `version_hash` and MSS hashing semantics | `canonical` | `stable now` | use `mos.mss_sha256_v1` | Storage-derived document identity is now defined and persisted in SQL. |
+| Generalized hyphae-chain derivation and stable semantic identity policy | `canonical` | `stable now` | use `mos.hyphae_chain_v1` | Stable identity is now defined through anchor-context and dependency-closure hashing. |
+| Deterministic insert/delete/move remap algorithm | `canonical` | `stable now` | allow bounded authoritative mutation behind SQL datum-store helpers | Canonical write surface is explicit; unsafe deletes are refused instead of guessed. |
 | Legacy MSS and historical compatibility paths | `compatibility_only` | `compatibility only` | keep explicit, bounded, and warning-instrumented | Retirement is governed by `SG-4`. |
 | Shared-engine NIMM/AITAS directive semantics | `unresolved` | `unresolved` | keep out of v1 blocker path; route to `Track C` | Remains a design/spec track, not cutover canon. |
 
@@ -209,10 +210,10 @@ Phase exit:
 
 Semantic gap register:
 
-- `SG-1`: no concrete repo-implemented `version_hash` hashing algorithm has been established as current canon.
-- `SG-2`: current repo evidence distinguishes semantic identity from compact storage address but does not yet close generalized hyphae derivation.
-- `SG-3`: current repo evidence supports ordered rows and deterministic structural mutation in bounded areas, but not a generalized datum-file remap algorithm.
-- `SG-4`: compatibility retirement cannot happen until the first three gates are closed and outward migration policy is explicit.
+- `SG-1`: closed by `docs/plans/mos_sg1_version_identity_policy_2026-04-21.md`
+- `SG-2`: closed by `docs/plans/mos_sg2_hyphae_derivation_policy_2026-04-21.md`
+- `SG-3`: closed by `docs/plans/mos_sg3_edit_remap_policy_2026-04-21.md`
+- `SG-4`: closed by `docs/plans/mos_sg4_standard_closure_policy_2026-04-21.md`
 
 ## Track C — Directive-Context Design and Spec Track
 
@@ -223,6 +224,8 @@ Purpose:
 Required outputs:
 
 - future insertion-point map for shared shell, domain, and tool-local boundaries
+- schema candidates keyed to `hyphae_hash` and `version_hash`
+- update and conflict-policy posture for directive snapshots
 - explicit non-goals for v1
 - list of behaviors that remain tool-local until a later design approval
 - dependency notes showing where directive-context work depends on `SG-2` and `SG-3`
