@@ -927,6 +927,7 @@ def run_portal_shell_entry(
         surface_id=selection.active_surface_id,
         query=canonical_query,
     )
+    composition_shell_state = selection.shell_state if selection.reducer_owned else None
     composition = build_shell_composition_payload(
         active_surface_id=selection.active_surface_id,
         portal_instance_id=portal_scope.scope_id,
@@ -935,14 +936,14 @@ def run_portal_shell_entry(
         activity_items=_activity_items(
             portal_scope=portal_scope,
             active_surface_id=selection.active_surface_id,
-            shell_state=selection.shell_state,
+            shell_state=composition_shell_state,
         ),
         control_panel=bundle["control_panel"],
         workbench=bundle["workbench"],
         inspector=bundle["inspector"],
-        shell_state=selection.shell_state,
+        shell_state=composition_shell_state,
         control_panel_collapsed=bool(
-            selection.shell_state.chrome.control_panel_collapsed if selection.shell_state is not None else False
+            composition_shell_state.chrome.control_panel_collapsed if composition_shell_state is not None else False
         ),
     )
     error = None
@@ -967,7 +968,7 @@ def run_portal_shell_entry(
         canonical_route=canonical_route,
         canonical_query=canonical_query,
         canonical_url=canonical_url,
-        shell_state=None if selection.shell_state is None else selection.shell_state.to_dict(),
+        shell_state=None if composition_shell_state is None else composition_shell_state.to_dict(),
         surface_payload=bundle["surface_payload"],
         shell_composition=composition,
         warnings=[],

@@ -2108,6 +2108,13 @@ class CtsGisReadOnlyService:
             "navigation_bundle": navigation_bundle,
             "document_catalog": document_catalog,
             "fallback_document_summary": fallback_document_summary,
+            "authority_catalog_summary": {
+                "configured": True,
+                "document_count": len(workbench.documents),
+                "source_files": list(workbench.source_files),
+                "readiness_status": dict(workbench.readiness_status),
+                "warnings": list(workbench.warnings),
+            },
             "warnings": warnings,
             "precinct_district_overlay_enabled": precinct_district_overlay_enabled_flag,
         }
@@ -3065,8 +3072,10 @@ class CtsGisReadOnlyService:
                 "warnings": merged_warnings,
                 "mediation_state": mediation_state,
             }
-        return self.finalize_selection(
+        finalized_surface = self.finalize_selection(
             mediation_surface,
             selected_row_address=normalized_request["selected_row_address"],
             selected_feature_id=normalized_request["selected_feature_id"],
         )
+        finalized_surface["authority_catalog_summary"] = dict(projection_bundle.get("authority_catalog_summary") or {})
+        return finalized_surface

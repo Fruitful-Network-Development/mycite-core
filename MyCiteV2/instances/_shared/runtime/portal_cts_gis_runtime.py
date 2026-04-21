@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from time import perf_counter
 from pathlib import Path
 from typing import Any
 
@@ -319,6 +320,23 @@ def _datum_summary(data_dir: str | Path | None, *, portal_instance_id: str) -> d
     }
 
 
+def _datum_summary_from_service_surface(service_surface: dict[str, Any]) -> dict[str, Any] | None:
+    summary = (
+        service_surface.get("authority_catalog_summary")
+        if isinstance(service_surface.get("authority_catalog_summary"), dict)
+        else {}
+    )
+    if not summary:
+        return None
+    return {
+        "configured": bool(summary.get("configured", True)),
+        "document_count": int(summary.get("document_count") or 0),
+        "source_files": list(summary.get("source_files") or []),
+        "warnings": list(summary.get("warnings") or []),
+        "readiness_status": dict(summary.get("readiness_status") or {}),
+    }
+
+
 def _cts_gis_private_tool_root(private_dir: str | Path | None) -> Path | None:
     root = _path_or_none(private_dir)
     if root is None:
@@ -573,11 +591,15 @@ def _tool_state_request(
     portal_scope: PortalScope,
     shell_state: PortalShellState,
     tool_state: dict[str, Any],
+    base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    request_body = build_portal_shell_request_payload(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        requested_surface_id=CTS_GIS_TOOL_SURFACE_ID,
+    request_body = dict(
+        base_shell_request
+        or build_portal_shell_request_payload(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            requested_surface_id=CTS_GIS_TOOL_SURFACE_ID,
+        )
     )
     request_body["tool_state"] = _tool_state_clone(tool_state)
     return request_body
@@ -601,6 +623,7 @@ def _node_shell_request(
     intention_rule_id: str = "self",
     selected_row_address: str = "",
     selected_feature_id: str = "",
+    base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
     _apply_selected_node_state(next_state, attention_node_id)
@@ -612,7 +635,12 @@ def _node_shell_request(
     next_state["selection"]["selected_feature_id"] = _as_text(selected_feature_id)
     next_state["selection"]["selected_row_explicit"] = bool(_as_text(selected_row_address))
     next_state["selection"]["selected_feature_explicit"] = bool(_as_text(selected_feature_id))
-    return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
+    return _tool_state_request(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        tool_state=next_state,
+        base_shell_request=base_shell_request,
+    )
 
 
 def _intention_shell_request(
@@ -621,6 +649,7 @@ def _intention_shell_request(
     shell_state: PortalShellState,
     tool_state: dict[str, Any],
     intention_rule_id: str,
+    base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
     next_state["aitas"]["intention_rule_id"] = canonical_runtime_intention_rule_id(
@@ -631,7 +660,12 @@ def _intention_shell_request(
     next_state["selection"]["selected_feature_id"] = ""
     next_state["selection"]["selected_row_explicit"] = False
     next_state["selection"]["selected_feature_explicit"] = False
-    return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
+    return _tool_state_request(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        tool_state=next_state,
+        base_shell_request=base_shell_request,
+    )
 
 
 def _attention_shell_request(
@@ -640,6 +674,7 @@ def _attention_shell_request(
     shell_state: PortalShellState,
     tool_state: dict[str, Any],
     attention_node_id: str,
+    base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
     _apply_selected_node_state(next_state, attention_node_id)
@@ -651,7 +686,12 @@ def _attention_shell_request(
     next_state["selection"]["selected_feature_id"] = ""
     next_state["selection"]["selected_row_explicit"] = False
     next_state["selection"]["selected_feature_explicit"] = False
-    return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
+    return _tool_state_request(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        tool_state=next_state,
+        base_shell_request=base_shell_request,
+    )
 
 
 def _time_shell_request(
@@ -660,6 +700,7 @@ def _time_shell_request(
     shell_state: PortalShellState,
     tool_state: dict[str, Any],
     time_directive: str,
+    base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
     next_state["aitas"]["time_directive"] = _as_text(time_directive)
@@ -667,7 +708,12 @@ def _time_shell_request(
     next_state["selection"]["selected_feature_id"] = ""
     next_state["selection"]["selected_row_explicit"] = False
     next_state["selection"]["selected_feature_explicit"] = False
-    return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
+    return _tool_state_request(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        tool_state=next_state,
+        base_shell_request=base_shell_request,
+    )
 
 
 def _precinct_overlay_shell_request(
@@ -676,6 +722,7 @@ def _precinct_overlay_shell_request(
     shell_state: PortalShellState,
     tool_state: dict[str, Any],
     enabled: bool,
+    base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
     next_state.setdefault("source", {})
@@ -684,7 +731,12 @@ def _precinct_overlay_shell_request(
     next_state["selection"]["selected_feature_id"] = ""
     next_state["selection"]["selected_row_explicit"] = False
     next_state["selection"]["selected_feature_explicit"] = False
-    return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
+    return _tool_state_request(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        tool_state=next_state,
+        base_shell_request=base_shell_request,
+    )
 
 
 def _document_shell_request(
@@ -693,6 +745,7 @@ def _document_shell_request(
     shell_state: PortalShellState,
     tool_state: dict[str, Any],
     attention_document_id: str,
+    base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
     _apply_selected_node_state(next_state, "")
@@ -701,7 +754,12 @@ def _document_shell_request(
     next_state["selection"]["selected_feature_id"] = ""
     next_state["selection"]["selected_row_explicit"] = False
     next_state["selection"]["selected_feature_explicit"] = False
-    return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
+    return _tool_state_request(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        tool_state=next_state,
+        base_shell_request=base_shell_request,
+    )
 
 
 def _selection_shell_request(
@@ -711,13 +769,19 @@ def _selection_shell_request(
     tool_state: dict[str, Any],
     selected_row_address: str,
     selected_feature_id: str,
+    base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
     next_state["selection"]["selected_row_address"] = _as_text(selected_row_address)
     next_state["selection"]["selected_feature_id"] = _as_text(selected_feature_id)
     next_state["selection"]["selected_row_explicit"] = bool(_as_text(selected_row_address))
     next_state["selection"]["selected_feature_explicit"] = bool(_as_text(selected_feature_id))
-    return _tool_state_request(portal_scope=portal_scope, shell_state=shell_state, tool_state=next_state)
+    return _tool_state_request(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        tool_state=next_state,
+        base_shell_request=base_shell_request,
+    )
 
 
 def _context_items_from_base_panel(base_panel: dict[str, Any], source_evidence: dict[str, Any]) -> list[dict[str, Any]]:
@@ -738,6 +802,7 @@ def _cts_gis_control_panel(
     resolved_tool_state: dict[str, Any],
     source_evidence: dict[str, Any],
     service_surface: dict[str, Any],
+    base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     base_panel = build_tool_control_panel(
         portal_scope=portal_scope,
@@ -796,6 +861,7 @@ def _cts_gis_control_panel(
                     shell_state=shell_state,
                     tool_state=resolved_tool_state,
                     attention_node_id=node_id,
+                    base_shell_request=base_shell_request,
                 ),
             }
         )
@@ -810,6 +876,7 @@ def _cts_gis_control_panel(
                 shell_state=shell_state,
                 tool_state=resolved_tool_state,
                 intention_rule_id=_as_text(option.get("token")),
+                base_shell_request=base_shell_request,
             ),
         }
         for option in list((service_surface.get("mediation_state") or {}).get("available_intentions") or [])
@@ -836,6 +903,7 @@ def _cts_gis_control_panel(
                     shell_state=shell_state,
                     tool_state=resolved_tool_state,
                     intention_rule_id=token,
+                    base_shell_request=base_shell_request,
                 ),
             }
             for token, label in fallback_options
@@ -873,6 +941,7 @@ def _cts_gis_control_panel(
                 shell_state=shell_state,
                 tool_state=resolved_tool_state,
                 time_directive=token,
+                base_shell_request=base_shell_request,
             ),
         }
         for token in time_tokens
@@ -917,6 +986,7 @@ def _cts_gis_control_panel(
                 portal_scope=portal_scope,
                 shell_state=shell_state,
                 tool_state=resolved_tool_state,
+                base_shell_request=base_shell_request,
             ),
         },
         "time": {
@@ -925,6 +995,7 @@ def _cts_gis_control_panel(
                 portal_scope=portal_scope,
                 shell_state=shell_state,
                 tool_state=resolved_tool_state,
+                base_shell_request=base_shell_request,
             ),
         },
         "intention": {
@@ -938,6 +1009,7 @@ def _cts_gis_control_panel(
                         shell_state=shell_state,
                         tool_state=resolved_tool_state,
                         intention_rule_id=_as_text(level.get("token")),
+                        base_shell_request=base_shell_request,
                     ),
                 }
                 for level in intention_levels
@@ -1129,6 +1201,7 @@ def _directory_option_payload(
     node_id: str,
     title_map: dict[str, str],
     selected_node_id: str,
+    base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     title = _as_text(title_map.get(node_id))
     display_title = title.upper() if _node_depth(node_id) == 1 and title else title
@@ -1143,6 +1216,7 @@ def _directory_option_payload(
             shell_state=shell_state,
             tool_state=resolved_tool_state,
             attention_node_id=node_id,
+            base_shell_request=base_shell_request,
         ),
     }
 
@@ -1153,6 +1227,7 @@ def _build_directory_dropdown_navigation(
     shell_state: PortalShellState,
     resolved_tool_state: dict[str, Any],
     source_evidence: dict[str, Any],
+    base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     authorities = _samras_structure_authorities(source_evidence)
     source_payload = dict((source_evidence.get("administrative_source") or {}).get("payload") or {})
@@ -1361,6 +1436,7 @@ def _build_directory_dropdown_navigation(
                     node_id=node_id,
                     title_map=title_map,
                     selected_node_id=active_node_id,
+                    base_shell_request=base_shell_request,
                 ),
                 "depth": _node_depth(node_id),
                 "parent_node_id": _parent_node_id(node_id),
@@ -1380,6 +1456,7 @@ def _build_directory_dropdown_navigation(
                         node_id=node_id,
                         title_map=title_map,
                         selected_node_id=requested_active_path[0] if requested_active_path else "",
+                        base_shell_request=base_shell_request,
                     )
                     for node_id in list(children_by_parent.get("", []))
                 ],
@@ -1403,6 +1480,7 @@ def _build_directory_dropdown_navigation(
                             node_id=node_id,
                             title_map=title_map,
                             selected_node_id=selected_child_id,
+                            base_shell_request=base_shell_request,
                         )
                         for node_id in child_node_ids
                     ],
@@ -1557,6 +1635,7 @@ def _real_geospatial_projection(
     resolved_tool_state: dict[str, Any],
     service_surface: dict[str, Any],
     source_evidence: dict[str, Any],
+    base_shell_request: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], bool]:
     map_projection = dict(service_surface.get("map_projection") or {})
     selected_document = dict(service_surface.get("selected_document") or {})
@@ -1614,6 +1693,7 @@ def _real_geospatial_projection(
                     tool_state=resolved_tool_state,
                     selected_row_address=selected_row_address,
                     selected_feature_id=feature_id,
+                    base_shell_request=base_shell_request,
                 ),
             }
         )
@@ -1703,6 +1783,7 @@ def _cts_gis_interface_body(
     navigation_canvas: dict[str, Any],
     source_evidence: dict[str, Any],
     service_surface: dict[str, Any],
+    base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     attention_profile = dict(service_surface.get("attention_profile") or {})
     lens_state = dict(service_surface.get("lens_state") or {})
@@ -1738,6 +1819,7 @@ def _cts_gis_interface_body(
             shell_state=shell_state,
             tool_state=resolved_tool_state,
             enabled=not district_overlay_enabled,
+            base_shell_request=base_shell_request,
         ),
     }
     real_geospatial_projection, garland_swapped = _real_geospatial_projection(
@@ -1746,6 +1828,7 @@ def _cts_gis_interface_body(
         resolved_tool_state=resolved_tool_state,
         service_surface=service_surface,
         source_evidence=source_evidence,
+        base_shell_request=base_shell_request,
     )
     decode_ready = _as_text(navigation_canvas.get("decode_state")) == "ready"
     attention_matches_selection = bool(selected_node_id) and attention_profile_node_id == selected_node_id
@@ -1848,16 +1931,17 @@ def build_portal_cts_gis_surface_bundle(
     tool_rows: list[dict[str, Any]] | None = None,
     request_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    total_started_at = perf_counter()
+    phase_timings_ms: dict[str, float] = {}
     tool_entry = resolve_portal_tool_registry_entry(surface_id=CTS_GIS_TOOL_SURFACE_ID)
     if tool_entry is None:
         raise ValueError("CTS-GIS tool surface is not registered")
     normalized_request_payload = request_payload if isinstance(request_payload, dict) else {}
     _assert_no_legacy_maps_aliases(normalized_request_payload)
     requested_tool_state = _normalize_tool_state(normalized_request_payload)
-    datum_summary = _datum_summary(data_dir, portal_instance_id=portal_scope.scope_id)
     configured = tool_exposure_configured(tool_exposure_policy, tool_id=tool_entry.tool_id)
     enabled = tool_exposure_enabled(tool_exposure_policy, tool_id=tool_entry.tool_id)
-    missing_integrations = [] if datum_summary.get("configured") else ["data_dir"]
+    missing_integrations: list[str] = []
     missing_capabilities = [
         capability for capability in tool_entry.required_capabilities if capability not in portal_scope.capabilities
     ]
@@ -1884,6 +1968,7 @@ def build_portal_cts_gis_surface_bundle(
     requested_time_directive = _as_text(requested_tool_state.get("aitas", {}).get("time_directive"))
     if requested_time_directive:
         mediation_time = {"value_token": requested_time_directive, "family": "tool_state_time_directive"}
+    service_surface_started_at = perf_counter()
     service_surface = CtsGisReadOnlyService(datum_store).read_surface(
         portal_scope.scope_id,
         selected_document_id=_as_text(requested_tool_state.get("source", {}).get("attention_document_id")),
@@ -1926,12 +2011,26 @@ def build_portal_cts_gis_surface_bundle(
         },
         "warnings": ["data_dir_missing"],
     }
+    phase_timings_ms["service_surface_read"] = round((perf_counter() - service_surface_started_at) * 1000.0, 3)
+    datum_summary_started_at = perf_counter()
+    datum_summary = _datum_summary_from_service_surface(service_surface)
+    if datum_summary is None:
+        datum_summary = _datum_summary(data_dir, portal_instance_id=portal_scope.scope_id)
+    phase_timings_ms["datum_summary"] = round((perf_counter() - datum_summary_started_at) * 1000.0, 3)
+    missing_integrations = [] if datum_summary.get("configured") else ["data_dir"]
     resolved_tool_state = _resolved_tool_state(requested_tool_state, service_surface)
+    tool_shell_request_base = build_portal_shell_request_payload(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        requested_surface_id=CTS_GIS_TOOL_SURFACE_ID,
+    )
+    source_evidence_started_at = perf_counter()
     source_evidence = _build_source_evidence(
         data_dir=data_dir,
         private_dir=private_dir,
         service_surface=service_surface,
     )
+    phase_timings_ms["source_evidence"] = round((perf_counter() - source_evidence_started_at) * 1000.0, 3)
     source_warnings = _dedupe_warnings(list(source_evidence.get("warnings") or []))
     source_evidence = {**source_evidence, "warnings": source_warnings}
     service_warnings = _dedupe_warnings(
@@ -1942,12 +2041,15 @@ def build_portal_cts_gis_surface_bundle(
         **service_surface,
         "warnings": service_warnings,
     }
+    navigation_started_at = perf_counter()
     navigation_canvas = _build_directory_dropdown_navigation(
         portal_scope=portal_scope,
         shell_state=shell_state,
         resolved_tool_state=resolved_tool_state,
         source_evidence=source_evidence,
+        base_shell_request=tool_shell_request_base,
     )
+    phase_timings_ms["navigation_canvas"] = round((perf_counter() - navigation_started_at) * 1000.0, 3)
     resolved_tool_state = _tool_state_for_navigation(resolved_tool_state, navigation_canvas)
     operational = bool(
         configured
@@ -1956,6 +2058,7 @@ def build_portal_cts_gis_surface_bundle(
         and not missing_capabilities
         and _as_text((source_evidence.get("readiness") or {}).get("state")) == "ready"
     )
+    interface_body_started_at = perf_counter()
     interface_body = _cts_gis_interface_body(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -1963,7 +2066,10 @@ def build_portal_cts_gis_surface_bundle(
         navigation_canvas=navigation_canvas,
         source_evidence=source_evidence,
         service_surface=service_surface,
+        base_shell_request=tool_shell_request_base,
     )
+    phase_timings_ms["interface_body"] = round((perf_counter() - interface_body_started_at) * 1000.0, 3)
+    control_panel_started_at = perf_counter()
     surface_payload = {
         "schema": CTS_GIS_TOOL_SURFACE_SCHEMA,
         "kind": "tool_mediation_surface",
@@ -2013,7 +2119,29 @@ def build_portal_cts_gis_surface_bundle(
         resolved_tool_state=resolved_tool_state,
         source_evidence=source_evidence,
         service_surface=service_surface,
+        base_shell_request=tool_shell_request_base,
     )
+    phase_timings_ms["control_panel"] = round((perf_counter() - control_panel_started_at) * 1000.0, 3)
+    phase_timings_ms["total_bundle_build"] = round((perf_counter() - total_started_at) * 1000.0, 3)
+    runtime_diagnostics = {
+        "phase_timings_ms": phase_timings_ms,
+        "service_document_catalog_count": len(list(service_surface.get("document_catalog") or [])),
+        "service_render_feature_count": int((service_surface.get("render_set_summary") or {}).get("render_feature_count") or 0),
+        "authority_document_count": int(datum_summary.get("document_count") or 0),
+        "navigation_dropdown_count": len(list(navigation_canvas.get("dropdowns") or [])),
+        "geospatial_feature_count": int(
+            (
+                (
+                    (interface_body.get("garland_split_projection") or {}).get("geospatial_projection")
+                    if isinstance(interface_body.get("garland_split_projection"), dict)
+                    else {}
+                )
+                or {}
+            ).get("feature_count")
+            or 0
+        ),
+    }
+    surface_payload["runtime_diagnostics"] = runtime_diagnostics
     workbench = {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "tool_secondary_evidence",
