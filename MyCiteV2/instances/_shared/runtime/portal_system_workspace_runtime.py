@@ -9,6 +9,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
 )
 from MyCiteV2.packages.adapters.filesystem import FilesystemAuditLogAdapter, FilesystemSystemDatumStoreAdapter
+from MyCiteV2.packages.adapters.sql import SqliteAuditLogAdapter, SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
 from MyCiteV2.packages.modules.domains.datum_recognition import DatumWorkbenchProjection, DatumWorkbenchService
 from MyCiteV2.packages.modules.domains.publication import (
@@ -60,20 +61,96 @@ def _path_or_none(value: str | Path | None) -> Path | None:
     return Path(value)
 
 
-def _audit_service(audit_storage_file: str | Path | None) -> LocalAuditService:
-    if audit_storage_file is None:
-        return LocalAuditService(None)
-    return LocalAuditService(FilesystemAuditLogAdapter(Path(audit_storage_file)))
+def _normalize_authority_mode(value: object) -> str:
+    token = _as_text(value).lower() or "filesystem"
+    if token not in {"filesystem", "shadow", "sql_primary"}:
+        return "filesystem"
+    return token
+
+
+def _resolved_sql_datum_store(
+    *,
+    portal_scope: PortalScope,
+    portal_domain: str,
+    data_dir: str | Path | None,
+    public_dir: str | Path | None,
+    authority_db_file: str | Path | None,
+    authority_mode: str,
+):
+    normalized_mode = _normalize_authority_mode(authority_mode)
+    authority_path = _path_or_none(authority_db_file)
+    if authority_path is None or normalized_mode == "filesystem":
+        if data_dir is None:
+            return None
+        return FilesystemSystemDatumStoreAdapter(Path(data_dir), public_dir=public_dir)
+    adapter = SqliteSystemDatumStoreAdapter(authority_path)
+    if data_dir is not None and normalized_mode == "shadow":
+        adapter.bootstrap_from_filesystem(
+            data_dir=data_dir,
+            public_dir=public_dir,
+            tenant_id=portal_scope.scope_id,
+            tenant_domain=portal_domain,
+        )
+    elif data_dir is not None and not adapter.has_authoritative_catalog(portal_scope.scope_id):
+        adapter.bootstrap_from_filesystem(
+            data_dir=data_dir,
+            public_dir=public_dir,
+            tenant_id=portal_scope.scope_id,
+            tenant_domain=portal_domain,
+        )
+    elif (
+        normalized_mode == "sql_primary"
+        and _as_text(portal_domain)
+        and not adapter.has_publication_summary(portal_scope.scope_id, portal_domain)
+        and data_dir is not None
+    ):
+        adapter.bootstrap_from_filesystem(
+            data_dir=data_dir,
+            public_dir=public_dir,
+            tenant_id=portal_scope.scope_id,
+            tenant_domain=portal_domain,
+        )
+    return adapter
+
+
+def _audit_service(
+    audit_storage_file: str | Path | None,
+    *,
+    authority_db_file: str | Path | None = None,
+    authority_mode: str = "filesystem",
+) -> LocalAuditService:
+    normalized_mode = _normalize_authority_mode(authority_mode)
+    if normalized_mode == "filesystem" or authority_db_file is None:
+        if audit_storage_file is None:
+            return LocalAuditService(None)
+        return LocalAuditService(FilesystemAuditLogAdapter(Path(audit_storage_file)))
+    adapter = SqliteAuditLogAdapter(Path(authority_db_file))
+    if normalized_mode == "shadow":
+        adapter.bootstrap_from_filesystem(audit_storage_file)
+    elif normalized_mode == "sql_primary":
+        adapter.bootstrap_from_filesystem(audit_storage_file)
+    return LocalAuditService(adapter)
 
 
 def _publication_services(
     *,
+    portal_scope: PortalScope,
+    portal_domain: str,
     data_dir: str | Path | None,
     public_dir: str | Path | None,
+    authority_db_file: str | Path | None = None,
+    authority_mode: str = "filesystem",
 ) -> tuple[PublicationTenantSummaryService, PublicationProfileBasicsService] | None:
-    if data_dir is None:
+    adapter = _resolved_sql_datum_store(
+        portal_scope=portal_scope,
+        portal_domain=portal_domain,
+        data_dir=data_dir,
+        public_dir=public_dir,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
+    )
+    if adapter is None:
         return None
-    adapter = FilesystemSystemDatumStoreAdapter(Path(data_dir), public_dir=public_dir)
     return PublicationTenantSummaryService(adapter), PublicationProfileBasicsService(adapter)
 
 
@@ -83,8 +160,17 @@ def _profile_summary(
     portal_domain: str,
     data_dir: str | Path | None,
     public_dir: str | Path | None,
+    authority_db_file: str | Path | None = None,
+    authority_mode: str = "filesystem",
 ) -> PublicationTenantSummary:
-    services = _publication_services(data_dir=data_dir, public_dir=public_dir)
+    services = _publication_services(
+        portal_scope=portal_scope,
+        portal_domain=portal_domain,
+        data_dir=data_dir,
+        public_dir=public_dir,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
+    )
     if services is None:
         return PublicationTenantSummary.fallback(
             tenant_id=portal_scope.scope_id,
@@ -107,8 +193,18 @@ def read_system_workbench_projection(
     portal_scope: PortalScope,
     data_dir: str | Path | None,
     public_dir: str | Path | None,
+    authority_db_file: str | Path | None = None,
+    authority_mode: str = "filesystem",
 ) -> DatumWorkbenchProjection:
-    if data_dir is None:
+    store = _resolved_sql_datum_store(
+        portal_scope=portal_scope,
+        portal_domain="",
+        data_dir=data_dir,
+        public_dir=public_dir,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
+    )
+    if store is None:
         return DatumWorkbenchProjection(
             tenant_id=portal_scope.scope_id,
             documents=(),
@@ -117,7 +213,6 @@ def read_system_workbench_projection(
             readiness_status={"authoritative_catalog": "missing", "data_dir": "not_configured"},
             warnings=("data_dir_not_configured",),
         )
-    store = FilesystemSystemDatumStoreAdapter(Path(data_dir), public_dir=public_dir)
     return DatumWorkbenchService(store).read_workbench(portal_scope.scope_id)
 
 
@@ -930,11 +1025,15 @@ def build_system_workspace_bundle(
     audit_storage_file: str | Path | None,
     tool_rows: list[dict[str, Any]],
     profile_save_status: str = "",
+    authority_db_file: str | Path | None = None,
+    authority_mode: str = "filesystem",
 ) -> dict[str, Any]:
     projection = read_system_workbench_projection(
         portal_scope=portal_scope,
         data_dir=data_dir,
         public_dir=public_dir,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
     )
     file_entries = build_workspace_file_entries(
         projection=projection,
@@ -950,12 +1049,18 @@ def build_system_workspace_bundle(
     )
     selected_datum = _selected_datum(active_document, datum_id=selected_datum_id)
     selected_object = _selected_object(selected_datum, object_id=selected_object_id)
-    activity_projection = _audit_service(audit_storage_file).read_recent_activity_projection()
+    activity_projection = _audit_service(
+        audit_storage_file,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
+    ).read_recent_activity_projection()
     profile_summary = _profile_summary(
         portal_scope=portal_scope,
         portal_domain=portal_domain,
         data_dir=data_dir,
         public_dir=public_dir,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
     )
     focus_level = focus_level_for_shell_state(shell_state)
     if not active_file_key:

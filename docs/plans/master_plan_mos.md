@@ -38,6 +38,13 @@ Out of scope for v1 cutover:
 - SAMRAS structural model: `docs/contracts/samras_structural_model.md`
 - SAMRAS validity and mutation: `docs/contracts/samras_validity_and_mutation.md`
 
+## Current Status Note — 2026-04-21 Execution Pass
+
+- **Completed in code for Track A:** a bounded portal-authority read seam, SQLite-backed SQL adapters for datum-store/audit/portal-authority surfaces, and runtime authority modes `filesystem`, `shadow`, and `sql_primary`.
+- **Completed in validation for Track A:** SQL-versus-filesystem parity coverage for authoritative catalog reads, system workbench reads, audit-log behavior, portal-authority reads, and SQL-primary runtime composition.
+- **Completed in program artifacts:** the Track A execution report, the Track B semantic gate register, and the Track C directive-context design track.
+- **Still open by design:** `SG-1` through `SG-4` remain unresolved semantic gates, and NIMM/AITAS widening remains a parallel design/spec track rather than a v1 blocker.
+
 ## Program Authority Rules
 
 1. `docs/plans/master_plan_mos.md` is the single authoritative MOS planning document.
@@ -292,4 +299,3 @@ Native MOS closure exit:
 - `SG-1` through `SG-4` are closed
 - compatibility retirement policy is published
 - unresolved semantic claims no longer remain in the semantic gap register
-

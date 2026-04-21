@@ -1,0 +1,77 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
+import json
+import sqlite3
+from pathlib import Path
+from typing import Any
+
+
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS authoritative_catalog_snapshots (
+    tenant_id TEXT PRIMARY KEY,
+    payload_json TEXT NOT NULL,
+    updated_at_unix_ms INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS system_workbench_snapshots (
+    tenant_id TEXT PRIMARY KEY,
+    payload_json TEXT NOT NULL,
+    updated_at_unix_ms INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS publication_summary_snapshots (
+    tenant_id TEXT NOT NULL,
+    tenant_domain TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    updated_at_unix_ms INTEGER NOT NULL,
+    PRIMARY KEY (tenant_id, tenant_domain)
+);
+
+CREATE TABLE IF NOT EXISTS portal_authority_snapshots (
+    scope_id TEXT PRIMARY KEY,
+    payload_json TEXT NOT NULL,
+    updated_at_unix_ms INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS audit_records (
+    record_id TEXT PRIMARY KEY,
+    recorded_at_unix_ms INTEGER NOT NULL,
+    record_json TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS audit_records_recorded_at_idx
+ON audit_records(recorded_at_unix_ms DESC, record_id DESC);
+"""
+
+
+def _db_path(value: str | Path) -> Path:
+    return Path(value)
+
+
+def dumps_json(value: Any) -> str:
+    return json.dumps(value, separators=(",", ":"), sort_keys=True)
+
+
+def loads_json(value: str) -> Any:
+    return json.loads(value)
+
+
+def connect_sqlite(db_file: str | Path) -> sqlite3.Connection:
+    path = _db_path(db_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(str(path))
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA journal_mode = WAL")
+    connection.executescript(SCHEMA_SQL)
+    return connection
+
+
+@contextmanager
+def open_sqlite(db_file: str | Path):
+    connection = connect_sqlite(db_file)
+    try:
+        yield connection
+    finally:
+        connection.close()

@@ -19,23 +19,25 @@ entries:
   - id: "MOS-A0"
     track: "Track A"
     phase: "Phase 0"
-    status: "planned"
+    status: "completed"
     dependencies: []
     gates:
       - "authority_mapping_completeness"
       - "cutover_scope_completeness"
     evidence_refs:
+      - "docs/plans/master_plan_mos.md"
+      - "docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md"
       - "docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md"
       - "docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md"
       - "docs/personal_notes/MOS/mycelial_ontological_schema.md"
       - "docs/audits/cts_gis_datum_handling_alignment_audit_plan_2026-04-20.md"
-    notes: "Publish the authority matrix, semantic gap register, and cutover scope table."
+    notes: "Authority matrix, semantic gap register, cutover scope table, and execution report are published."
     rationale: "The program cannot cut over safely until every major MOS claim is classified."
 
   - id: "MOS-A1"
     track: "Track A"
     phase: "Phase 1"
-    status: "planned"
+    status: "completed"
     dependencies:
       - "MOS-A0"
     gates:
@@ -44,32 +46,37 @@ entries:
     evidence_refs:
       - "MyCiteV2/packages/ports/datum_store/contracts.py"
       - "MyCiteV2/packages/ports/audit_log/contracts.py"
+      - "MyCiteV2/packages/ports/portal_authority/contracts.py"
       - "MyCiteV2/instances/_shared/runtime/README.md"
       - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
-    notes: "Define the approved SQL authority surface and explicit exclusions."
+      - "docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md"
+    notes: "Approved first-cut SQL authority surfaces are defined and bounded; the active append path promoted in this pass is audit-log, while `packages/ports/event_log/` remains a placeholder seam."
     rationale: "The first implementation target is adapter replacement, not contract redesign."
 
   - id: "MOS-A2"
     track: "Track A"
     phase: "Phase 2"
-    status: "planned"
+    status: "completed"
     dependencies:
       - "MOS-A1"
     gates:
       - "shadow_parity"
       - "yaml_integrity"
     evidence_refs:
-      - "MyCiteV2/packages/ports/datum_store/contracts.py"
-      - "MyCiteV2/packages/ports/audit_log/contracts.py"
+      - "MyCiteV2/packages/adapters/sql/datum_store.py"
+      - "MyCiteV2/packages/adapters/sql/audit_log.py"
+      - "MyCiteV2/packages/adapters/sql/portal_authority.py"
+      - "MyCiteV2/packages/ports/portal_authority/contracts.py"
       - "docs/audits/reports/peripheral_packages_modularization_report_2026-04-16.md"
-    notes: "Design shadow-mode SQL adapters and the portal-authority boundary while keeping filesystem projections available."
+      - "docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md"
+    notes: "Shadow-mode SQL adapters and the combined portal-authority seam are implemented while filesystem projections remain available."
     open_questions:
       - "Whether grants, ownership posture, and tool exposure can share one reusable boundary without widening public contracts."
 
   - id: "MOS-A3"
     track: "Track A"
     phase: "Phase 3"
-    status: "planned"
+    status: "completed"
     dependencies:
       - "MOS-A2"
     gates:
@@ -80,12 +87,17 @@ entries:
       - "docs/audits/reports/core_portal_datum_mss_protocol_report_2026-04-16.md"
       - "MyCiteV2/packages/adapters/filesystem/live_system_datum_store.py"
       - "MyCiteV2/packages/adapters/filesystem/audit_log.py"
-    notes: "Run representative SQL-versus-filesystem comparisons and publish rollback readiness."
+      - "MyCiteV2/tests/adapters/test_sql_datum_store_adapter.py"
+      - "MyCiteV2/tests/adapters/test_sql_audit_log_adapter.py"
+      - "MyCiteV2/tests/adapters/test_sql_portal_authority_adapter.py"
+      - "MyCiteV2/tests/unit/test_portal_shell_sql_authority.py"
+      - "docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md"
+    notes: "Representative SQL-versus-filesystem parity coverage is in place and rollback-safe filesystem projections remain available."
 
   - id: "MOS-A4"
     track: "Track A"
     phase: "Phase 4"
-    status: "planned"
+    status: "completed"
     dependencies:
       - "MOS-A3"
     gates:
@@ -94,12 +106,14 @@ entries:
     evidence_refs:
       - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
       - "MyCiteV2/instances/_shared/runtime/README.md"
-    notes: "Promote SQL to primary authority only for approved v1 surfaces."
+      - "MyCiteV2/instances/_shared/runtime/portal_system_workspace_runtime.py"
+      - "MyCiteV2/tests/unit/test_portal_shell_sql_authority.py"
+    notes: "SQL-primary runtime composition is implemented for the approved Track A surfaces through the `authority_mode=sql_primary` path."
 
   - id: "MOS-A5"
     track: "Track A"
     phase: "Phase 5"
-    status: "planned"
+    status: "completed"
     dependencies:
       - "MOS-A4"
     gates:
@@ -107,12 +121,14 @@ entries:
       - "semantic_discipline"
     evidence_refs:
       - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
-    notes: "Remove hard-coded FND capability defaults only after grant-derived posture matches current effective behavior."
+      - "MyCiteV2/packages/adapters/sql/portal_authority.py"
+      - "MyCiteV2/tests/unit/test_portal_shell_sql_authority.py"
+    notes: "The SQL-primary cutover path now supports DB-backed portal grants and tool exposure. Filesystem/default posture remains as the non-SQL fallback path."
 
   - id: "MOS-SG1"
     track: "Track B"
     phase: "SG-1"
-    status: "planned"
+    status: "registered"
     dependencies: []
     gates:
       - "native_closure"
@@ -120,6 +136,7 @@ entries:
     evidence_refs:
       - "docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md"
       - "docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md"
+      - "docs/plans/mos_semantic_gate_register_2026-04-21.md"
     notes: "Close version identity and MSS hashing policy."
     open_questions:
       - "What exact input is hashed for version identity."
@@ -128,7 +145,7 @@ entries:
   - id: "MOS-SG2"
     track: "Track B"
     phase: "SG-2"
-    status: "planned"
+    status: "registered"
     dependencies:
       - "MOS-SG1"
     gates:
@@ -138,6 +155,7 @@ entries:
       - "docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md"
       - "docs/contracts/portal_vocabulary_glossary.md"
       - "docs/contracts/cts_gis_hops_profile_sources.md"
+      - "docs/plans/mos_semantic_gate_register_2026-04-21.md"
     notes: "Close hyphae derivation and stable semantic identity policy."
     open_questions:
       - "How hyphae derivation includes preceding rudi datums beyond explicit references."
@@ -145,7 +163,7 @@ entries:
   - id: "MOS-SG3"
     track: "Track B"
     phase: "SG-3"
-    status: "planned"
+    status: "registered"
     dependencies:
       - "MOS-SG2"
     gates:
@@ -155,13 +173,14 @@ entries:
       - "docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md"
       - "docs/audits/cts_gis_datum_handling_alignment_audit_plan_2026-04-20.md"
       - "docs/contracts/samras_validity_and_mutation.md"
+      - "docs/plans/mos_semantic_gate_register_2026-04-21.md"
     notes: "Close deterministic edit/remap semantics for insert, delete, and move."
     rationale: "Generalized mutation authority remains out of v1 until this gate is closed."
 
   - id: "MOS-SG4"
     track: "Track B"
     phase: "SG-4"
-    status: "planned"
+    status: "registered"
     dependencies:
       - "MOS-SG1"
       - "MOS-SG2"
@@ -171,12 +190,13 @@ entries:
     evidence_refs:
       - "docs/personal_notes/MOS/mos_novelty_definition.md"
       - "docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md"
+      - "docs/plans/mos_semantic_gate_register_2026-04-21.md"
     notes: "Define standard-closure declaration criteria and compatibility retirement rules."
 
   - id: "MOS-C1"
     track: "Track C"
     phase: "Directive Design Track"
-    status: "planned"
+    status: "in_progress"
     dependencies:
       - "MOS-A1"
     gates:
@@ -185,5 +205,6 @@ entries:
       - "docs/personal_notes/v2.5portal_work_writtings.md"
       - "docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md"
       - "docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md"
-    notes: "Keep NIMM/AITAS and broader directive-context widening on a parallel design/spec track."
+      - "docs/plans/mos_directive_context_design_track_2026-04-21.md"
+    notes: "Track C design work has started as a parallel design/spec track without blocking the SQL cutover."
     rationale: "Directive-context work should inform future architecture without blocking the v1 SQL cutover."
