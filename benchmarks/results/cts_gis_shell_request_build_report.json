@@ -1,0 +1,22 @@
+{
+  "average_request_payload_bytes": 1090.8,
+  "delta": {
+    "median_improvement_pct": 91.44,
+    "median_iteration_ms": 2.169,
+    "p95_improvement_pct": 91.652,
+    "p95_iteration_ms": 3.137
+  },
+  "generated_at_utc": "2026-04-21T21:31:09.947484Z",
+  "iterations": 250,
+  "legacy": {
+    "median_iteration_ms": 2.372,
+    "p95_iteration_ms": 3.423
+  },
+  "requests_per_iteration": 50,
+  "schema": "mycite.benchmarks.cts_gis_shell_request_build.v1",
+  "templated": {
+    "median_iteration_ms": 0.203,
+    "p95_iteration_ms": 0.286
+  },
+  "total_requests": 12500
+}

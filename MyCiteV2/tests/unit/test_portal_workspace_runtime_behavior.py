@@ -503,6 +503,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             ["STATE DIRECTIVE"],
         )
         self.assertNotIn("Attention", [group["title"] for group in bundle["control_panel"]["groups"]])
+        runtime_diagnostics = dict(bundle["surface_payload"].get("runtime_diagnostics") or {})
+        self.assertIn("phase_timings_ms", runtime_diagnostics)
+        self.assertIn("total_bundle_build", dict(runtime_diagnostics.get("phase_timings_ms") or {}))
+        self.assertIn("service_surface_read", dict(runtime_diagnostics.get("phase_timings_ms") or {}))
+        self.assertIn("navigation_canvas", dict(runtime_diagnostics.get("phase_timings_ms") or {}))
+        self.assertGreaterEqual(float(dict(runtime_diagnostics.get("phase_timings_ms") or {}).get("total_bundle_build") or 0.0), 0.0)
 
         envelope = run_portal_cts_gis(
             {
@@ -1827,6 +1833,11 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 focused_envelope["shell_composition"]["regions"]["interface_panel"],
                 focused_envelope["shell_composition"]["regions"]["inspector"],
             )
+            self.assertEqual(
+                focused_envelope["shell_state"],
+                {"schema": "mycite.v2.portal.shell.state.v1"},
+            )
+            self.assertIsNone(focused_envelope["shell_composition"]["shell_state"])
 
     def test_system_root_shell_composition_uses_logo_as_the_only_system_activity_entry(self) -> None:
         envelope = run_portal_shell_entry(
@@ -1914,6 +1925,40 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             envelope["shell_composition"]["regions"]["interface_panel"],
             envelope["shell_composition"]["regions"]["inspector"],
         )
+
+    def test_runtime_owned_surface_does_not_emit_client_supplied_shell_state(self) -> None:
+        envelope = run_portal_shell_entry(
+            {
+                "schema": "mycite.v2.portal.shell.request.v1",
+                "requested_surface_id": NETWORK_ROOT_SURFACE_ID,
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                "surface_query": {"view": "overview"},
+                "shell_state": {
+                    "schema": "mycite.v2.portal.shell.state.v1",
+                    "active_surface_id": SYSTEM_ROOT_SURFACE_ID,
+                    "focus_path": [{"level": FOCUS_LEVEL_SANDBOX, "id": "fnd"}],
+                    "focus_subject": {"level": FOCUS_LEVEL_SANDBOX, "id": "fnd"},
+                    "mediation_subject": {"level": FOCUS_LEVEL_OBJECT, "id": "1-0-0"},
+                    "verb": VERB_MEDIATE,
+                    "chrome": {"control_panel_collapsed": True, "interface_panel_open": True},
+                },
+            },
+            portal_instance_id="fnd",
+            portal_domain="fruitfulnetworkdevelopment.com",
+            data_dir=None,
+            public_dir=None,
+            private_dir=None,
+            audit_storage_file=None,
+            webapps_root=None,
+            tool_exposure_policy=None,
+        )
+        self.assertFalse(envelope["reducer_owned"])
+        self.assertEqual(envelope["surface_id"], NETWORK_ROOT_SURFACE_ID)
+        self.assertEqual(
+            envelope["shell_state"],
+            {"schema": "mycite.v2.portal.shell.state.v1"},
+        )
+        self.assertIsNone(envelope["shell_composition"]["shell_state"])
 
     def test_system_workspace_bundle_projects_anthology_as_layered_datum_table(self) -> None:
         with TemporaryDirectory() as tmp:
