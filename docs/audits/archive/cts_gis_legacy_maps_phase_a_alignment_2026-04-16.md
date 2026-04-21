@@ -38,4 +38,3 @@ Date: 2026-04-16
 - Phase-B target (v2.5.4):
   - remove phase-A alias intake and warning path
   - remove phase-A legacy fixture and deprecation mapping entries
-

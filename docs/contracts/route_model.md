@@ -103,7 +103,9 @@ FND-DCM canonical query rules:
 - `view=collections` may project `collection=<collection_id>`
 - runtime clears stale `page` and `collection` selections when `site` or `view` changes
 
-`Workbench UI` is one `SYSTEM` child SQL datum-grid surface. The canonical public route is `/portal/system/tools/workbench-ui`.
+`Workbench UI` is one `SYSTEM` child SQL authority-inspection surface. The canonical public route is `/portal/system/tools/workbench-ui`.
+
+It does not replace `/portal/system`, and it does not imply coverage of retained host-bound/private assets or `NETWORK` derived materializations.
 
 Workbench UI query projection keys:
 
@@ -122,7 +124,7 @@ Workbench UI query projection keys:
 
 Workbench UI canonical query rules:
 
-- fresh `Workbench UI` entry projects the first document from the `version_hash`-sorted document table with `document_sort=version_hash&document_dir=asc&sort=datum_address&dir=asc&group=flat&workbench_lens=interpreted&source=show&overlay=show`, plus the first selected row from that resolved document
+- fresh `Workbench UI` entry prefers the first available `sandbox:cts_gis:*` document in the current document-table ordering and falls back to the first available authoritative document when no CTS-GIS document is present; the default fresh query still projects `document_sort=version_hash&document_dir=asc&sort=datum_address&dir=asc&group=flat&workbench_lens=interpreted&source=show&overlay=show`, plus the first selected row from that resolved document
 - `document=<document_id>` selects one SQL-backed authoritative document
 - `document_filter=<text>` narrows the read-only document table by `document_id`, `document_name`, `source_kind`, or `version_hash`
 - `document_sort=<document_id|document_name|source_kind|row_count|version_hash>` changes document-table ordering

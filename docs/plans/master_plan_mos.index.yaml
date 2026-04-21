@@ -227,7 +227,7 @@ entries:
     evidence_refs:
       - "docs/plans/master_plan_mos.md"
       - "docs/plans/mos_directive_context_design_track_2026-04-21.md"
-      - "docs/plans/mos_track_c_directive_context_overlay_closure_2026-04-21.md"
+      - "docs/plans/archive/mos_track_c_directive_context_overlay_closure_2026-04-21.md"
       - "MyCiteV2/packages/ports/directive_context/contracts.py"
       - "MyCiteV2/packages/ports/directive_context/README.md"
       - "MyCiteV2/packages/adapters/sql/_sqlite.py"

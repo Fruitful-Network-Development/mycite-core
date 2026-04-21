@@ -29,7 +29,8 @@ documentation tree.
 - migrated `SYSTEM` shell/runtime posture is SQL-authoritative and fail-closed when the authority DB is missing or uninitialized
 - `AWS-CSM` is one `SYSTEM` child service tool with a unified domain gallery, user-email gallery, onboarding section, and newsletter section
 - `FND-DCM` is one `SYSTEM` child service tool for hosted manifest inspection and normalization across profile-led webapps
-- `workbench_ui` is one `SYSTEM` child read-only tool for two-pane spreadsheet-like SQL document/version inspection, row-level `hyphae_hash` inspection, and additive directive overlay summaries
+- `workbench_ui` is one `SYSTEM` child read-only tool for two-pane spreadsheet-like SQL authority inspection, row-level `hyphae_hash` inspection, and additive directive overlay summaries
+- `workbench_ui` does not replace `/portal/system`; it remains scoped to authoritative SQL-backed documents rather than all deployed files
 - service-tool posture comes from required capabilities and peripheral employment, not from portal identity or portal types
 - shell chrome is one `ide-shell` split into `ide-menubar` and `ide-body`, with `Activity Bar`, `Control Panel`, `Workbench`, and `Interface Panel` as peer regions
 - utilities/configuration pages: `/portal/utilities/*`

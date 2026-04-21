@@ -19,6 +19,59 @@ from MyCiteV2.packages.state_machine.portal_shell import PortalScope
 
 
 class WorkbenchUiRuntimeTests(unittest.TestCase):
+    def test_workbench_ui_defaults_to_cts_gis_document_when_available(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            public_dir = root / "public"
+            db_file = root / "authority.sqlite3"
+            (data_dir / "system").mkdir(parents=True)
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True)
+            public_dir.mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps(
+                    {
+                        "1-1-1": [["1-1-1", "~", "ROOT"], ["root"]],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.example.json").write_text(
+                json.dumps(
+                    {
+                        "1-1-1": [["1-1-1", "~", "ROOT"], ["sandbox"]],
+                        "1-1-2": [["1-1-2", "1-1-1", "PROFILE"], ["profile"]],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
+            )
+
+            envelope = run_portal_workbench_ui(
+                {
+                    "schema": "mycite.v2.portal.system.tools.workbench_ui.request.v1",
+                    "portal_scope": {"scope_id": "fnd"},
+                },
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+                authority_db_file=db_file,
+            )
+
+            workspace = envelope["surface_payload"]["workspace"]
+            selected_document_id = workspace["selected_document"]["document_id"]
+
+            self.assertTrue(selected_document_id.startswith("sandbox:cts_gis:"))
+            self.assertEqual(envelope["canonical_query"]["document"], selected_document_id)
+            self.assertEqual(workspace["query"]["document"], selected_document_id)
+
     def test_workbench_ui_runtime_projects_document_table_and_row_grid(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -71,6 +124,44 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertEqual(row_table["title"], "Datum Grid")
             self.assertEqual(len(row_table["items"]), 2)
             self.assertTrue(row_table["items"][0]["hyphae_hash"])
+
+    def test_workbench_ui_falls_back_to_first_document_when_no_cts_gis_document_exists(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            public_dir = root / "public"
+            db_file = root / "authority.sqlite3"
+            (data_dir / "system").mkdir(parents=True)
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            public_dir.mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps(
+                    {
+                        "1-1-1": [["1-1-1", "~", "ROOT"], ["root"]],
+                        "1-1-2": [["1-1-2", "1-1-1", "CHILD"], ["child"]],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
+            )
+
+            bundle = build_portal_workbench_ui_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
+                portal_domain="fruitfulnetworkdevelopment.com",
+                shell_state=None,
+                authority_db_file=db_file,
+                surface_query={},
+            )
+
+            workspace = bundle["surface_payload"]["workspace"]
+            self.assertEqual(workspace["selected_document"]["document_id"], "system:anthology")
+            self.assertEqual(workspace["query"]["document"], "system:anthology")
 
     def test_workbench_ui_document_table_supports_version_hash_filter_and_sort(self) -> None:
         with TemporaryDirectory() as temp_dir:

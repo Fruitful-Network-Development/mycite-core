@@ -18,6 +18,8 @@ Notes:
 
 - CTS-GIS phase-B (v2.5.4) removes legacy CTS-GIS alias acceptance from active contracts.
 - The canonical shell chrome language is `ide-shell`, `ide-menubar`, `ide-body`, `Activity Bar`, `Control Panel`, `Workbench`, and `Interface Panel`.
+- `datum-file workbench` refers to the reducer-owned `SYSTEM` anthology workspace at `/portal/system`.
+- `Workbench UI` refers to the separate SQL authority inspector surface at `/portal/system/tools/workbench-ui`; it does not replace `SYSTEM` and it does not cover all deployed files.
 
 ## CTS-GIS Terms
 

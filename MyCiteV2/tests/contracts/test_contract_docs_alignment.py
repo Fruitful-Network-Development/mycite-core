@@ -19,7 +19,7 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertTrue((docs_root / "plans" / "documentation_ia_remediation_backlog.md").is_file())
         self.assertTrue((docs_root / "audits" / "reports" / "documentation_ia_audit_report_2026-04-20.md").is_file())
 
-        plan_text = (docs_root / "audits" / "documentation_agent_yaml_optimization_plan_2026-04-16.md").read_text(
+        plan_text = (docs_root / "audits" / "archive" / "documentation_agent_yaml_optimization_plan_2026-04-16.md").read_text(
             encoding="utf-8"
         )
         self.assertIn("## Canonical Contract Links", plan_text)
@@ -245,18 +245,24 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("group", route_model)
         self.assertIn("workbench_lens", route_model)
         self.assertIn("source", route_model)
+        self.assertIn("prefers the first available `sandbox:cts_gis:*` document", route_model)
         self.assertIn("version_hash", route_model)
         self.assertIn("hyphae_hash", route_model)
+        self.assertIn("authority inspector", surface_catalog)
         self.assertIn("two-pane", surface_catalog)
         self.assertIn("document table", surface_catalog.lower())
+        self.assertIn("does not replace the reducer-owned `/portal/system` anthology workspace", surface_catalog)
         self.assertIn("version_hash", surface_catalog)
         self.assertIn("hyphae_hash", surface_catalog)
         self.assertIn("Grouping", shell_contract)
         self.assertIn("Lens", shell_contract)
         self.assertIn("Source", shell_contract)
+        self.assertIn("does not replace the reducer-owned `SYSTEM` anthology workspace", shell_contract)
         self.assertIn("sticky-header", shell_contract)
         self.assertIn("selected-row", shell_contract)
         self.assertIn("version_hash", shell_contract)
+        self.assertIn("authority inspector", docs_readme)
+        self.assertIn("does not replace `/portal/system`", root_readme)
         self.assertIn("two-pane", docs_readme)
         self.assertIn("two-pane", root_readme)
 
