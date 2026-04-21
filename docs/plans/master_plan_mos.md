@@ -38,13 +38,15 @@ Out of scope for v1 cutover:
 - SAMRAS structural model: `docs/contracts/samras_structural_model.md`
 - SAMRAS validity and mutation: `docs/contracts/samras_validity_and_mutation.md`
 
-## Current Status Note — 2026-04-21 Closure Pass
+## Current Status Note — 2026-04-21 Track C Overlay Pass
 
 - **Completed in code for Track A:** a bounded portal-authority read seam, SQLite-backed SQL adapters for datum-store/audit/portal-authority surfaces, and runtime authority modes `filesystem`, `shadow`, and `sql_primary`.
 - **Completed in code for Track B:** SQL-backed document version identity storage, row-level hyphae/semantic identity storage, and deterministic insert/delete/move remap helpers behind the datum-store adapter.
+- **Completed in code for Track C:** additive SQL directive-context snapshots/events, a bounded directive-context port/adapter, and a read-only system-workspace overlay seam keyed by `version_hash` and `hyphae_hash`.
 - **Completed in validation for Track A and Track B:** SQL-versus-filesystem parity coverage for the approved cutover surfaces plus dedicated regression coverage for version hashing, hyphae derivation, and edit/remap behavior.
-- **Completed in program artifacts:** dedicated closure artifacts for `SG-1` through `SG-4`, an updated semantic gate register, and a widened Track C directive-context design track.
-- **Still non-blocking by design:** NIMM/AITAS widening remains a parallel design/spec track rather than a prerequisite for the SQL-backed core or Track B closure.
+- **Completed in validation for Track C:** contract, adapter, and runtime-seam coverage for directive snapshots/events and system-workspace overlay composition.
+- **Completed in program artifacts:** dedicated closure artifacts for `SG-1` through `SG-4`, an updated semantic gate register, a widened Track C directive-context design track, and the Track C overlay closure artifact.
+- **Still non-blocking by design:** NIMM/AITAS widening remains a parallel design/spec track rather than a prerequisite for the SQL-backed core, and shared-engine directive canon remains intentionally deferred.
 
 ## Program Authority Rules
 
@@ -83,6 +85,7 @@ Out of scope for v1 cutover:
 | Generalized hyphae-chain derivation and stable semantic identity policy | `canonical` | `stable now` | use `mos.hyphae_chain_v1` | Stable identity is now defined through anchor-context and dependency-closure hashing. |
 | Deterministic insert/delete/move remap algorithm | `canonical` | `stable now` | allow bounded authoritative mutation behind SQL datum-store helpers | Canonical write surface is explicit; unsafe deletes are refused instead of guessed. |
 | Legacy MSS and historical compatibility paths | `compatibility_only` | `compatibility only` | keep explicit, bounded, and warning-instrumented | Retirement is governed by `SG-4`. |
+| Read-only directive-context overlays keyed by semantic identity | `operational_v1` | `stable now` | allow only as additive read models in `Track C` | Overlays may compose shell posture but must never mutate authoritative datum rows. |
 | Shared-engine NIMM/AITAS directive semantics | `unresolved` | `unresolved` | keep out of v1 blocker path; route to `Track C` | Remains a design/spec track, not cutover canon. |
 
 ## Cutover Scope Table
@@ -226,6 +229,7 @@ Required outputs:
 - future insertion-point map for shared shell, domain, and tool-local boundaries
 - schema candidates keyed to `hyphae_hash` and `version_hash`
 - update and conflict-policy posture for directive snapshots
+- approved additive runtime seams for reading normalized directive overlays
 - explicit non-goals for v1
 - list of behaviors that remain tool-local until a later design approval
 - dependency notes showing where directive-context work depends on `SG-2` and `SG-3`
@@ -235,6 +239,7 @@ Current defaults:
 - do not treat current CTS-GIS tool-local mediation behavior as shared-engine canon
 - do not redesign the shared shell around directive-context semantics in v1
 - do not block SQL cutover on directive-context closure
+- do allow approved read-only overlay seams that depend on Track B semantic identities and preserve file/workbench behavior
 
 ## YAML Companion Workflow
 
@@ -276,6 +281,8 @@ Companion rules:
    - The companion YAML keeps dependency and evidence links intact while remaining lightweight enough for exploratory work.
 6. **Native closure gate**
    - MOS cannot be declared a closed native standard until `SG-1` through `SG-4` are closed.
+7. **Directive overlay non-mutation gate**
+   - Directive context remains additive, keyed to `version_hash`/`hyphae_hash`, and must not rewrite authoritative datum rows or block file/workbench fallbacks.
 
 ## Risks
 

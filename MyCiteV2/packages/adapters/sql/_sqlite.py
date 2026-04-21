@@ -72,6 +72,38 @@ ON audit_records(recorded_at_unix_ms DESC, record_id DESC);
 
 CREATE INDEX IF NOT EXISTS datum_row_semantics_document_idx
 ON datum_row_semantics(tenant_id, document_id);
+
+CREATE TABLE IF NOT EXISTS directive_context_snapshots (
+    context_id TEXT PRIMARY KEY,
+    portal_instance_id TEXT NOT NULL,
+    tool_id TEXT NOT NULL,
+    hyphae_hash TEXT NOT NULL DEFAULT '',
+    version_hash TEXT NOT NULL DEFAULT '',
+    payload_json TEXT NOT NULL,
+    updated_at_unix_ms INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS directive_context_events (
+    event_id TEXT PRIMARY KEY,
+    context_id TEXT NOT NULL,
+    portal_instance_id TEXT NOT NULL,
+    tool_id TEXT NOT NULL,
+    event_kind TEXT NOT NULL,
+    hyphae_hash TEXT NOT NULL DEFAULT '',
+    version_hash TEXT NOT NULL DEFAULT '',
+    payload_json TEXT NOT NULL,
+    provenance_json TEXT NOT NULL,
+    recorded_at_unix_ms INTEGER NOT NULL,
+    FOREIGN KEY (context_id)
+        REFERENCES directive_context_snapshots(context_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS directive_context_snapshots_lookup_idx
+ON directive_context_snapshots(portal_instance_id, tool_id, hyphae_hash, version_hash, updated_at_unix_ms DESC);
+
+CREATE INDEX IF NOT EXISTS directive_context_events_lookup_idx
+ON directive_context_events(portal_instance_id, tool_id, context_id, recorded_at_unix_ms DESC);
 """
 
 

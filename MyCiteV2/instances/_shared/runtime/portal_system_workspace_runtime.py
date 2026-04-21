@@ -9,7 +9,11 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
 )
 from MyCiteV2.packages.adapters.filesystem import FilesystemAuditLogAdapter, FilesystemSystemDatumStoreAdapter
-from MyCiteV2.packages.adapters.sql import SqliteAuditLogAdapter, SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.adapters.sql import (
+    SqliteAuditLogAdapter,
+    SqliteDirectiveContextAdapter,
+    SqliteSystemDatumStoreAdapter,
+)
 from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
 from MyCiteV2.packages.modules.domains.datum_recognition import DatumWorkbenchProjection, DatumWorkbenchService
 from MyCiteV2.packages.modules.domains.publication import (
@@ -17,6 +21,7 @@ from MyCiteV2.packages.modules.domains.publication import (
     PublicationTenantSummary,
     PublicationTenantSummaryService,
 )
+from MyCiteV2.packages.ports.directive_context import DirectiveContextRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
@@ -47,6 +52,8 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     focus_level_for_shell_state,
     segment_id_for_level,
 )
+
+_DIRECTIVE_CONTEXT_TOOL_ID = "system_workspace"
 
 
 def _as_text(value: object) -> str:
@@ -212,8 +219,134 @@ def read_system_workbench_projection(
             source_files={},
             readiness_status={"authoritative_catalog": "missing", "data_dir": "not_configured"},
             warnings=("data_dir_not_configured",),
-        )
+    )
     return DatumWorkbenchService(store).read_workbench(portal_scope.scope_id)
+
+
+def _directive_context_adapter(
+    *,
+    authority_db_file: str | Path | None,
+    authority_mode: str,
+) -> SqliteDirectiveContextAdapter | None:
+    normalized_mode = _normalize_authority_mode(authority_mode)
+    authority_path = _path_or_none(authority_db_file)
+    if authority_path is None or normalized_mode == "filesystem":
+        return None
+    return SqliteDirectiveContextAdapter(authority_path)
+
+
+def _directive_state_summary(value: dict[str, Any]) -> str:
+    bits = [f"{_as_text(key)}={_as_text(item)}" for key, item in value.items() if _as_text(key) and _as_text(item)]
+    return ", ".join(bits[:4])
+
+
+def _workspace_directive_context(
+    *,
+    portal_scope: PortalScope,
+    active_document: Any | None,
+    selected_datum: Any | None,
+    authority_db_file: str | Path | None,
+    authority_mode: str,
+) -> dict[str, Any] | None:
+    adapter = _directive_context_adapter(
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
+    )
+    authority_path = _path_or_none(authority_db_file)
+    document_id = _as_text(getattr(active_document, "document_id", "")) if active_document is not None else ""
+    if adapter is None or authority_path is None or not document_id:
+        return None
+    datum_store = SqliteSystemDatumStoreAdapter(authority_path)
+    document_identity = datum_store.read_document_version_identity(
+        tenant_id=portal_scope.scope_id,
+        document_id=document_id,
+    )
+    if document_identity is None:
+        return {
+            "subject_level": "document",
+            "tool_id": _DIRECTIVE_CONTEXT_TOOL_ID,
+            "document_id": document_id,
+            "subject_version_hash": "",
+            "subject_hyphae_hash": "",
+            "resolution_status": {"directive_context": "semantic_identity_missing"},
+            "warnings": ["sql_document_version_identity_missing"],
+            "overlay": None,
+        }
+    datum_id = _as_text(getattr(selected_datum, "datum_address", "")) if selected_datum is not None else ""
+    datum_identity = None
+    subject_level = "document"
+    if datum_id:
+        datum_identity = datum_store.read_datum_semantic_identity(
+            tenant_id=portal_scope.scope_id,
+            document_id=document_id,
+            datum_address=datum_id,
+        )
+        if datum_identity is not None:
+            subject_level = "datum"
+    request = DirectiveContextRequest(
+        portal_instance_id=portal_scope.scope_id,
+        tool_id=_DIRECTIVE_CONTEXT_TOOL_ID,
+        subject_hyphae_hash=_as_text((datum_identity or {}).get("hyphae_hash")),
+        subject_version_hash=document_identity["version_hash"],
+    )
+    result = adapter.read_directive_context(request)
+    overlay = None
+    if result.source is not None:
+        overlay = {
+            "context_id": result.source.context_id,
+            "portal_instance_id": result.source.portal_instance_id,
+            "tool_id": result.source.tool_id,
+            "subject_hyphae_hash": result.source.subject_hyphae_hash,
+            "subject_version_hash": result.source.subject_version_hash,
+            "nimm_state": dict(result.source.nimm_state or {}),
+            "aitas_state": dict(result.source.aitas_state or {}),
+            "scope": dict(result.source.scope or {}),
+            "provenance": dict(result.source.provenance or {}),
+        }
+    warnings = list(result.warnings)
+    if datum_id and datum_identity is None:
+        warnings.append("sql_datum_semantic_identity_missing")
+    return {
+        "subject_level": subject_level,
+        "tool_id": _DIRECTIVE_CONTEXT_TOOL_ID,
+        "document_id": document_id,
+        "datum_id": datum_id,
+        "subject_version_hash": document_identity["version_hash"],
+        "subject_hyphae_hash": _as_text((datum_identity or {}).get("hyphae_hash")),
+        "resolution_status": dict(result.resolution_status),
+        "warnings": warnings,
+        "overlay": overlay,
+    }
+
+
+def _directive_context_section(directive_context: dict[str, Any]) -> dict[str, Any]:
+    overlay = directive_context.get("overlay") if isinstance(directive_context.get("overlay"), dict) else None
+    rows = [
+        {"label": "subject level", "value": _as_text(directive_context.get("subject_level")) or "document"},
+        {"label": "overlay", "value": "loaded" if overlay is not None else "missing"},
+        {"label": "version hash", "value": _as_text(directive_context.get("subject_version_hash")) or "—"},
+        {"label": "hyphae hash", "value": _as_text(directive_context.get("subject_hyphae_hash")) or "—"},
+    ]
+    if overlay is not None:
+        rows.append(
+            {
+                "label": "NIMM",
+                "value": _directive_state_summary(dict(overlay.get("nimm_state") or {})) or "configured",
+            }
+        )
+        rows.append(
+            {
+                "label": "AITAS",
+                "value": _directive_state_summary(dict(overlay.get("aitas_state") or {})) or "configured",
+            }
+        )
+        rows.append(
+            {
+                "label": "provenance",
+                "value": _directive_state_summary(dict(overlay.get("provenance") or {})) or _as_text(overlay.get("context_id")),
+            }
+        )
+    return {"title": "Directive context", "rows": rows}
 
 
 def _document_label(document: Any) -> str:
@@ -1049,6 +1182,13 @@ def build_system_workspace_bundle(
     )
     selected_datum = _selected_datum(active_document, datum_id=selected_datum_id)
     selected_object = _selected_object(selected_datum, object_id=selected_object_id)
+    directive_context = _workspace_directive_context(
+        portal_scope=portal_scope,
+        active_document=active_document,
+        selected_datum=selected_datum,
+        authority_db_file=authority_db_file,
+        authority_mode=authority_mode,
+    )
     activity_projection = _audit_service(
         audit_storage_file,
         authority_db_file=authority_db_file,
@@ -1147,6 +1287,8 @@ def build_system_workspace_bundle(
                 active_document,
                 selected_datum_id=selected_datum_id,
             )
+        if directive_context is not None:
+            document_payload["directive_context"] = directive_context
         workspace["document"] = document_payload
 
     surface_payload = {
@@ -1195,6 +1337,8 @@ def build_system_workspace_bundle(
             },
         ],
     }
+    if directive_context is not None:
+        inspector["sections"].append(_directive_context_section(directive_context))
     workbench = {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "system_workspace",
@@ -1213,6 +1357,7 @@ def build_system_workspace_bundle(
         "active_document": active_document,
         "selected_datum": selected_datum,
         "selected_object": selected_object,
+        "directive_context": directive_context,
         "projection": projection,
     }
 
