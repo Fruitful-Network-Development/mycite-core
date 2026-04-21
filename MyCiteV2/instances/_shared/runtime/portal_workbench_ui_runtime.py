@@ -8,6 +8,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     WORKBENCH_UI_TOOL_SURFACE_SCHEMA,
     build_portal_runtime_envelope,
 )
+from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.state_machine.portal_shell import (
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
@@ -33,6 +34,22 @@ def _path_or_none(path: str | Path | None) -> Path | None:
     if path is None:
         return None
     return Path(path)
+
+
+def _workbench_sql_runtime_error(*, portal_instance_id: str, authority_db_file: str | Path | None) -> dict[str, str] | None:
+    authority_path = _path_or_none(authority_db_file)
+    if authority_path is None:
+        return {
+            "code": "sql_authority_required",
+            "message": "The MOS SQL authority database is required for the workbench UI surface.",
+        }
+    datum_store = SqliteSystemDatumStoreAdapter(authority_path)
+    if not datum_store.has_authoritative_catalog(portal_instance_id) or not datum_store.has_system_workbench(portal_instance_id):
+        return {
+            "code": "sql_authority_uninitialized",
+            "message": "The MOS SQL authority database is not initialized for the requested tenant.",
+        }
+    return None
 
 
 def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, dict[str, str]]:
@@ -80,18 +97,25 @@ def build_portal_workbench_ui_surface_bundle(
     surface_query: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     del shell_state, tool_rows
-    authority_path = _path_or_none(authority_db_file)
+    runtime_error = _workbench_sql_runtime_error(
+        portal_instance_id=portal_scope.scope_id,
+        authority_db_file=authority_db_file,
+    )
     model = {
         "surface_payload": {
             "schema": WORKBENCH_UI_TOOL_SURFACE_SCHEMA,
             "kind": "workbench_ui_surface",
             "title": "Workbench UI",
-            "subtitle": "Read-only SQL-backed datum grid.",
+            "subtitle": "Read-only two-pane SQL-backed spreadsheet.",
             "sections": [],
             "notes": ["The SQL authority database is required for this surface."],
         },
         "document_rows": [],
         "document_id": "",
+        "document_name": "",
+        "document_filter": "",
+        "document_sort_key": "version_hash",
+        "document_sort_direction": "asc",
         "document_version_hash": "",
         "sort_key": "datum_address",
         "sort_direction": "asc",
@@ -99,7 +123,8 @@ def build_portal_workbench_ui_surface_bundle(
         "overlay_visibility": "show",
         "inspector_sections": [],
     }
-    if authority_path is not None:
+    authority_path = _path_or_none(authority_db_file)
+    if authority_path is not None and runtime_error is None:
         model = WorkbenchUiReadService(authority_path).read_surface(
             portal_instance_id=portal_scope.scope_id,
             portal_domain=portal_domain,
@@ -121,9 +146,17 @@ def build_portal_workbench_ui_surface_bundle(
         "context_items": [
             {"label": "Document", "value": _as_text(model.get("document_id")) or "—"},
             {"label": "Version", "value": _as_text(model.get("document_version_hash")) or "—"},
-            {"label": "Filter", "value": _as_text(model.get("text_filter")) or "—"},
+            {"label": "Document Filter", "value": _as_text(model.get("document_filter")) or "—"},
+            {"label": "Row Filter", "value": _as_text(model.get("text_filter")) or "—"},
             {
-                "label": "Sort",
+                "label": "Document Sort",
+                "value": (
+                    f"{_as_text(model.get('document_sort_key')) or 'version_hash'}:"
+                    f"{_as_text(model.get('document_sort_direction')) or 'asc'}"
+                ),
+            },
+            {
+                "label": "Row Sort",
                 "value": f"{_as_text(model.get('sort_key')) or 'datum_address'}:{_as_text(model.get('sort_direction')) or 'asc'}",
             },
         ],
@@ -137,13 +170,46 @@ def build_portal_workbench_ui_surface_bundle(
                         portal_scope=portal_scope,
                         surface_query={**active_query, "document": document.get("document_id", "")},
                         active=bool(document.get("selected")),
-                        meta=f"{_as_text(document.get('source_kind'))} · {document.get('row_count')}",
+                        meta=(
+                            f"{_as_text(document.get('source_kind'))} · "
+                            f"{_as_text(document.get('version_hash')) or '—'} · "
+                            f"{document.get('row_count')}"
+                        ),
                     )
                     for document in list(model.get("document_rows") or [])
                 ],
             },
             {
-                "title": "Sorting",
+                "title": "Document Sorting",
+                "entries": [
+                    _control_entry(
+                        label=f"sort {sort_key}",
+                        portal_scope=portal_scope,
+                        surface_query={**active_query, "document_sort": sort_key},
+                        active=_as_text(model.get("document_sort_key")) == sort_key,
+                    )
+                    for sort_key in ("version_hash", "document_name", "document_id", "row_count")
+                ],
+            },
+            {
+                "title": "Document Direction",
+                "entries": [
+                    _control_entry(
+                        label="asc",
+                        portal_scope=portal_scope,
+                        surface_query={**active_query, "document_dir": "asc"},
+                        active=_as_text(model.get("document_sort_direction")) != "desc",
+                    ),
+                    _control_entry(
+                        label="desc",
+                        portal_scope=portal_scope,
+                        surface_query={**active_query, "document_dir": "desc"},
+                        active=_as_text(model.get("document_sort_direction")) == "desc",
+                    ),
+                ],
+            },
+            {
+                "title": "Row Sorting",
                 "entries": [
                     _control_entry(
                         label=f"sort {sort_key}",
@@ -152,6 +218,23 @@ def build_portal_workbench_ui_surface_bundle(
                         active=_as_text(model.get("sort_key")) == sort_key,
                     )
                     for sort_key in ("datum_address", "layer", "value_group", "iteration", "hyphae_hash")
+                ],
+            },
+            {
+                "title": "Row Direction",
+                "entries": [
+                    _control_entry(
+                        label="asc",
+                        portal_scope=portal_scope,
+                        surface_query={**active_query, "dir": "asc"},
+                        active=_as_text(model.get("sort_direction")) != "desc",
+                    ),
+                    _control_entry(
+                        label="desc",
+                        portal_scope=portal_scope,
+                        surface_query={**active_query, "dir": "desc"},
+                        active=_as_text(model.get("sort_direction")) == "desc",
+                    ),
                 ],
             },
             {
@@ -178,7 +261,7 @@ def build_portal_workbench_ui_surface_bundle(
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "surface_payload",
         "title": "Workbench UI",
-        "subtitle": "Read-only SQL-backed datum grid.",
+        "subtitle": "Read-only two-pane SQL-backed spreadsheet.",
         "visible": True,
         "surface_payload": model["surface_payload"],
     }
@@ -186,7 +269,7 @@ def build_portal_workbench_ui_surface_bundle(
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
         "kind": "summary_panel",
         "title": "Selection",
-        "summary": "Selected row semantics and additive directive overlays.",
+        "summary": "Selected document/version metadata, row semantics, and additive directive overlays.",
         "visible": True,
         "subject": {"level": "datum", "id": _as_text(active_query.get("row")) or _as_text(model.get("document_id"))},
         "sections": list(model.get("inspector_sections") or []),
@@ -195,7 +278,7 @@ def build_portal_workbench_ui_surface_bundle(
         "entrypoint_id": WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
         "read_write_posture": "read-only",
         "page_title": "Workbench UI",
-        "page_subtitle": "Read-only SQL-backed datum grid.",
+        "page_subtitle": "Read-only two-pane SQL-backed spreadsheet.",
         "surface_payload": model["surface_payload"],
         "control_panel": control_panel,
         "workbench": workbench,
@@ -214,6 +297,10 @@ def run_portal_workbench_ui(
     portal_scope, surface_query = _normalize_request(request_payload)
     if not portal_scope.scope_id:
         portal_scope = PortalScope(scope_id=portal_instance_id, capabilities=())
+    runtime_error = _workbench_sql_runtime_error(
+        portal_instance_id=portal_scope.scope_id,
+        authority_db_file=authority_db_file,
+    )
     bundle = build_portal_workbench_ui_surface_bundle(
         portal_scope=portal_scope,
         portal_domain=portal_domain,
@@ -235,10 +322,7 @@ def run_portal_workbench_ui(
         surface_payload=bundle["surface_payload"],
         shell_composition={},
         warnings=[],
-        error=None if authority_db_file is not None else {
-            "code": "sql_authority_required",
-            "message": "The MOS SQL authority database is required for the workbench UI surface.",
-        },
+        error=runtime_error,
     )
 
 

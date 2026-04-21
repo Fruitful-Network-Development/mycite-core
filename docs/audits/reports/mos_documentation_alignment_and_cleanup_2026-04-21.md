@@ -9,16 +9,21 @@ Last reviewed: `2026-04-21`
 
 ## Purpose
 
-Verify that active documentation reflects the SQL-only MOS cut-over for migrated `SYSTEM` surfaces, that the new `workbench_ui` surface is represented in the contract set, and that intermediate MOS artifacts are retained only as superseded historical evidence.
+Verify that active documentation reflects the completed SQL-only MOS cut-over for migrated `SYSTEM` surfaces, that the updated two-pane `workbench_ui` surface is represented in the contract set, and that every file in `docs/plans/` plus `docs/audits/reports/` is explicitly classified as current authority or historical evidence.
 
 ## Scope
 
-Active docs reviewed:
+Comprehensive review corpus:
+
+- `docs/plans/`: `13` files
+- `docs/audits/reports/`: `18` files
+- checklist artifact: `docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md`
+
+Focused active-doc updates:
 
 - `docs/plans/master_plan_mos.md`
 - `docs/plans/master_plan_mos.index.yaml`
 - `docs/plans/README.md`
-- `docs/audits/README.md`
 - `docs/plans/documentation_ia_remediation_backlog.md`
 - `docs/contracts/portal_shell_contract.md`
 - `docs/contracts/route_model.md`
@@ -26,12 +31,6 @@ Active docs reviewed:
 - `docs/README.md`
 - `README.md`
 - `MyCiteV2/instances/_shared/runtime/README.md`
-
-Historical artifacts reviewed:
-
-- `docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md`
-- `docs/plans/mos_track_c_directive_context_overlay_closure_2026-04-21.md`
-- `docs/audits/documentation_agent_yaml_optimization_plan_2026-04-16.md`
 
 ## Canonical Contract Links
 
@@ -42,26 +41,28 @@ Historical artifacts reviewed:
 
 ## Findings
 
-1. Active docs now describe SQL-backed authority for migrated `SYSTEM` surfaces.
-   - Root docs and runtime docs describe per-instance authority DB posture.
-   - Contract docs now describe the fail-closed SQL runtime posture and `workbench_ui` route/surface.
+1. The full 31-artifact closure review is now explicit.
+   - `mos_program_closure_audit_checklist_2026-04-21.md` classifies every file in `docs/plans/` and `docs/audits/reports/` as `authoritative`, `supporting-current`, or `historical-superseded`.
+   - Historical artifacts that were left untouched in place are marked as immutable evidence through the checklist.
 
-2. `workbench_ui` is represented in the contract layer.
-   - `portal_shell_contract.md`, `route_model.md`, and `surface_catalog.md` now describe the tool route, posture, query keys, and additive overlay rules.
+2. Active MOS docs now describe the completed SQL-only posture.
+   - `master_plan_mos.md` and `master_plan_mos.index.yaml` state that migrated `SYSTEM` runtime authority is SQL-only and that any retained filesystem helpers are non-authoritative only.
+   - Active MOS reports now use the final closure counts and no longer describe legacy authority as an active option.
 
-3. Historical MOS artifacts are marked as superseded evidence.
-   - The intermediate cut-over execution report now points to the final closure audit set.
-   - The Track C overlay closure artifact now points to the completed closure state.
-   - `documentation_agent_yaml_optimization_plan_2026-04-16.md` is restored only as a historical bridge document.
+3. `workbench_ui` is represented as a two-pane SQL-backed read surface.
+   - `portal_shell_contract.md`, `route_model.md`, and `surface_catalog.md` now describe the document table keyed by `version_hash`, the row grid keyed by `hyphae_hash`, and the added document-pane query keys.
+   - Root/runtime docs now describe the updated spreadsheet posture consistently.
 
-4. YAML/index linkage remains reviewable.
-   - `master_plan_mos.index.yaml` points to the completed A6/A7/A8 and closure evidence set.
+4. Historical MOS artifacts are clearly separated from current authority.
+   - `mos_sql_cutover_execution_report_2026-04-21.md` is explicitly labeled as historical-superseded.
+   - `mos_track_c_directive_context_overlay_closure_2026-04-21.md` remains retained as historical Track C evidence rather than an active closure statement.
 
 ## Verification
 
 Executed:
 
 - `python3 -m unittest MyCiteV2.tests.contracts.test_contract_docs_alignment`
+- `python3 -m unittest MyCiteV2.tests.unit.test_mos_program_closure`
 - `python3 - <<'PY'`
   `import yaml, pathlib`
   `path = pathlib.Path('/srv/repo/mycite-core/docs/plans/master_plan_mos.index.yaml')`
@@ -71,4 +72,4 @@ Executed:
 
 ## Result
 
-Documentation alignment is complete for the current MOS cut-over scope. Active docs describe the SQL-only migrated posture, and retained intermediate artifacts are clearly historical rather than competing sources of authority.
+Documentation alignment is complete for the current MOS cut-over scope. Active docs describe the completed SQL-only migrated posture, the updated workbench UI contract is synchronized across the shell docs, and all reviewed historical artifacts are explicitly classified as non-authoritative evidence.

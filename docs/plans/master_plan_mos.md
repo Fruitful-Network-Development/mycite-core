@@ -43,9 +43,9 @@ Out of scope for v1 cutover:
 - **Completed in execution for Track A:** the FND repo copy was inventoried and migrated into `/srv/repo/mycite-core/deployed/fnd/private/mos_authority.sqlite3` through `MyCiteV2/scripts/migrate_fnd_repo_to_mos_sql.py`, with `409` authoritative documents, `3133` authoritative datum rows, `25215` supporting anchor rows, and a passed SQL coverage gate.
 - **Completed in execution for Track B:** SQL-backed document version identity, row-level hyphae identity, and deterministic remap semantics remain the canonical semantic layer for the migrated SQL core.
 - **Completed in execution for Track C:** additive directive-context snapshots/events remain implemented and non-blocking, and the final migration imported `0` shared directive snapshots and `0` shared directive events because no explicit directive-context manifest was supplied.
-- **Completed in runtime cut-over:** migrated `SYSTEM` authority surfaces now fail closed without the authority database instead of silently bootstrapping filesystem datum/audit authority, and shared runtime no longer advertises public `filesystem` or `shadow` modes for those migrated surfaces.
-- **Completed in UI hardening:** `/portal/system/tools/workbench-ui` now provides a read-only, spreadsheet-like SQL-backed datum grid with additive directive overlay summaries and no datum-row mutation path.
-- **Completed in closure artifacts:** final ingestion, SQL-only activation, directive non-inference, documentation cleanup, and overall program-closure audits are published under `docs/audits/reports/`.
+- **Completed in runtime cut-over:** migrated `SYSTEM` authority surfaces now fail closed without the authority database instead of silently bootstrapping legacy datum/audit authority, and any retained filesystem helpers are explicitly non-authoritative migration or fixture support only.
+- **Completed in UI hardening:** `/portal/system/tools/workbench-ui` now provides a read-only, two-pane SQL-backed spreadsheet with a document table keyed by `version_hash`, a row grid keyed by `hyphae_hash`, additive directive overlay summaries, and no datum-row mutation path.
+- **Completed in closure artifacts:** final ingestion, SQL-only activation, directive non-inference, documentation cleanup, the 31-artifact closure checklist, and the overall program-closure audits are published under `docs/audits/reports/`.
 - **Retained explicitly as non-blocking exception scope:** `NETWORK` remains a derived-materialization/system-log surface, host-bound private/public assets remain outside SQL datum authority until dedicated ports exist, and future NIMM/AITAS widening requires a separate follow-on plan rather than reopening this master plan.
 
 ## Program Authority Rules
@@ -156,12 +156,12 @@ Required work:
 
 - design SQL-backed adapters behind the existing datum-store and audit/event seams
 - design the portal-authority boundary for grants, ownership posture, and tool-exposure metadata
-- keep filesystem adapters available as compatibility projections
+- confine legacy filesystem projections to bootstrap, parity evidence, or fixture support outside active runtime authority
 - define rollback posture before any authority promotion
 
 Phase exit:
 
-- shadow-mode topology is documented and no public contract redesign is required to compare SQL and filesystem behavior
+- shadow-mode topology is documented and no public contract redesign is required to compare SQL behavior against non-authoritative legacy evidence
 
 ### Phase 3 — Parity and Rollback Readiness
 
@@ -174,13 +174,13 @@ Required comparisons:
 
 Required posture:
 
-- filesystem adapters remain available as compatibility projections
+- legacy filesystem comparisons remain available only as non-authoritative parity evidence
 - parity drift is tracked explicitly with owner and remediation path
 - rollback path is documented before SQL becomes primary
 
 Phase exit:
 
-- representative SQL and filesystem paths compare cleanly enough to promote approved surfaces without losing rollback safety
+- representative SQL-versus-legacy paths compare cleanly enough to promote approved surfaces without losing rollback safety
 
 ### Phase 4 — Promote SQL to Primary Authority
 
@@ -229,25 +229,26 @@ Required work:
 - remove public shared-runtime support for `filesystem` and `shadow` authority modes on migrated surfaces
 - fail closed when the authority database or required snapshots are missing
 - remove shared-runtime dependence on filesystem datum/audit authority adapters
-- retain filesystem parsing logic only where migration or fixture tests still need it
+- retain filesystem parsing logic only where migration or fixture tests still need it, and keep that code explicitly non-authoritative
 
 Phase exit:
 
-- migrated `SYSTEM` surfaces no longer consume filesystem datum/audit authority in shared runtime, and remaining filesystem code is explicitly migration/test-only rather than active authority
+- migrated `SYSTEM` surfaces no longer consume filesystem datum/audit authority in shared runtime, and remaining filesystem code is explicitly non-authoritative migration/test-only support rather than active authority
 
 ### Phase 8 — Minimal SQL-Backed Workbench UI Hardening
 
 Required work:
 
 - add `MyCiteV2/packages/tools/workbench_ui/` as a shell-attached, script-backed tool package
-- expose `/portal/system/tools/workbench-ui` as the utilitarian SQL-backed datum grid surface
+- expose `/portal/system/tools/workbench-ui` as the utilitarian SQL-backed two-pane spreadsheet surface
 - keep the first pass read-only, spreadsheet-like, and additive-only with respect to directive overlays
-- provide sorting/filtering and selected-row inspection over `datum_address`, `version_hash`, and `hyphae_hash`
+- provide a document table keyed by `version_hash` plus a selected-document row grid keyed by `hyphae_hash`
+- keep backward-compatible row-grid query keys (`filter`, `sort`, `dir`) while adding document-pane query keys (`document_filter`, `document_sort`, `document_dir`)
 - keep file/workbench behavior intact while reusing the existing shell region model
 
 Phase exit:
 
-- the repo has a stable, read-only SQL-backed workbench UI that surfaces datum semantics and additive directive overlays without introducing datum mutation authority
+- the repo has a stable, read-only SQL-backed workbench UI that surfaces document/version selection, row semantics, and additive directive overlays without introducing datum mutation authority
 
 ## Track B — Semantic Closure Gates
 
@@ -378,7 +379,7 @@ Native MOS closure exit:
 - Workbench UI read-only SQL surface: **Met**
 - Track B semantic closure (`SG-1` through `SG-4`): **Met**
 - Track C additive-only directive overlay implementation (`MOS-C2`): **Met and intentionally non-blocking**
-- Documentation alignment and historical cleanup: **Met**
+- Documentation alignment, 31-artifact review, and historical cleanup: **Met**
 
 Program close-out posture:
 

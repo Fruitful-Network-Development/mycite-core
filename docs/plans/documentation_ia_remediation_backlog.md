@@ -3,7 +3,7 @@
 Doc type: `plan`  
 Normativity: `supporting`  
 Lifecycle: `active`  
-Last reviewed: `2026-04-20`
+Last reviewed: `2026-04-21`
 
 ## Purpose
 
@@ -15,7 +15,7 @@ Active documentation under `docs/audits` and `docs/plans`, and guided agent YAML
 
 ## Status Note — 2026-04-21
 
-The MOS final cut-over pass updated the active plan/audit/contract/runtime documentation set to describe SQL-backed authority for migrated `SYSTEM` surfaces, added the final MOS closure reports, and restored `docs/audits/documentation_agent_yaml_optimization_plan_2026-04-16.md` as superseded historical evidence so baseline linkage remains reviewable.
+The MOS final cut-over pass updated the active plan/audit/contract/runtime documentation set to describe SQL-backed authority for migrated `SYSTEM` surfaces, added the final MOS closure reports, reviewed all `31` artifacts in `docs/plans/` plus `docs/audits/reports/`, and published `docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md` to classify active versus historical evidence explicitly.
 
 ## Canonical Contract Links
 

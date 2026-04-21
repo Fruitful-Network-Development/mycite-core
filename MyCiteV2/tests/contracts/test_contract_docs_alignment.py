@@ -232,6 +232,28 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertNotIn("staged_blocks", route_model)
         self.assertNotIn("legacy_branch_canvas", route_model)
 
+    def test_workbench_ui_contract_docs_describe_two_pane_sql_sheet(self) -> None:
+        route_model = (REPO_ROOT / "docs" / "contracts" / "route_model.md").read_text(encoding="utf-8")
+        surface_catalog = (REPO_ROOT / "docs" / "contracts" / "surface_catalog.md").read_text(encoding="utf-8")
+        shell_contract = (REPO_ROOT / "docs" / "contracts" / "portal_shell_contract.md").read_text(encoding="utf-8")
+        docs_readme = (REPO_ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+        root_readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("document_filter", route_model)
+        self.assertIn("document_sort", route_model)
+        self.assertIn("document_dir", route_model)
+        self.assertIn("version_hash", route_model)
+        self.assertIn("hyphae_hash", route_model)
+        self.assertIn("two-pane", surface_catalog)
+        self.assertIn("document table", surface_catalog.lower())
+        self.assertIn("version_hash", surface_catalog)
+        self.assertIn("hyphae_hash", surface_catalog)
+        self.assertIn("Document Filter", shell_contract)
+        self.assertIn("Row Filter", shell_contract)
+        self.assertIn("version_hash", shell_contract)
+        self.assertIn("two-pane", docs_readme)
+        self.assertIn("two-pane", root_readme)
+
     def test_cts_gis_contract_docs_capture_selection_aligned_garland_behavior(self) -> None:
         shell_contract = (REPO_ROOT / "docs" / "contracts" / "portal_shell_contract.md").read_text(encoding="utf-8")
         route_model = (REPO_ROOT / "docs" / "contracts" / "route_model.md").read_text(encoding="utf-8")

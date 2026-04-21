@@ -6,7 +6,7 @@ This repository now describes one portal shell only.
 - Root surfaces: `SYSTEM`, `NETWORK`, `UTILITIES`
 - Canonical shell endpoint: `/portal/api/v2/shell`
 - Canonical tool work pages: `/portal/system/tools/<tool_slug>`
-- Canonical SQL-backed datum-grid tool: `/portal/system/tools/workbench-ui`
+- Canonical two-pane SQL-backed spreadsheet tool: `/portal/system/tools/workbench-ui`
 - Canonical AWS service tool: `/portal/system/tools/aws-csm`
 - Canonical CTS-GIS tool: `/portal/system/tools/cts-gis`
 - Canonical FND-DCM tool: `/portal/system/tools/fnd-dcm`

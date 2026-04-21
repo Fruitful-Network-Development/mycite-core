@@ -4,12 +4,16 @@ Date: 2026-04-21
 
 Doc type: `audit`  
 Normativity: `supporting`  
-Lifecycle: `active`  
+Lifecycle: `historical-superseded`  
 Last reviewed: `2026-04-21`
 
 ## Purpose
 
 Record the first executed Track A pass from `docs/plans/master_plan_mos.md`, including the implemented SQL authority seams, runtime cutover modes, parity evidence, and remaining blocked semantic work.
+
+## Historical Status
+
+Historical status: this file is retained as superseded execution evidence only. It is not an active authority statement for the completed SQL-only closure posture.
 
 ## Supersession Note
 

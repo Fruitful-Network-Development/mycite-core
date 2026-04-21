@@ -24,6 +24,7 @@ MOS SQL core program:
 
 MOS closure evidence:
 
+- `docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md`
 - `docs/audits/reports/mos_fnd_sql_ingestion_coverage_report_2026-04-21.md`
 - `docs/audits/reports/mos_sql_only_authority_activation_and_legacy_retirement_2026-04-21.md`
 - `docs/audits/reports/mos_directive_context_non_inference_validation_2026-04-21.md`

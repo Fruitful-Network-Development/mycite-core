@@ -12,7 +12,7 @@ Implemented in shared runtime:
 - one NETWORK read-only system-log workbench rooted in `data/system/system_log.json`
 - one shell entrypoint family for SYSTEM child surfaces
 - one tool runtime family for SYSTEM tool work pages
-- one read-only SQL-backed `workbench_ui` tool runtime for spreadsheet-like datum inspection
+- one read-only SQL-backed `workbench_ui` tool runtime for two-pane spreadsheet-like document/version and row inspection
 - one utility surface family for tool exposure and integration state
 - one SQL-backed local-audit composition path for normalized portal-shell requests on migrated SYSTEM surfaces
 
