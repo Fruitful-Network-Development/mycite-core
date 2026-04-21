@@ -15,8 +15,8 @@ Record the closure-review baseline plus the current classification of every file
 
 - closure-time reviewed corpus: `31`
 - current `docs/plans/` total: `15`
-- current `docs/audits/reports/` total: `23`
-- current total tracked by this checklist: `38`
+- current `docs/audits/reports/` total: `24`
+- current total tracked by this checklist: `39`
 - classification legend:
   - `authoritative`: active primary source of truth
   - `supporting-current`: active supporting evidence aligned to the completed SQL-only posture
@@ -57,6 +57,7 @@ Record the closure-review baseline plus the current classification of every file
 | `docs/audits/reports/mos_personal_notes_to_canon_crosswalk_2026-04-21.md` | `supporting-current` | reviewed | Active crosswalk for the named MOS personal notes and their canonical successors. |
 | `docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md` | `supporting-current` | reviewed | This checklist is the active classification index for the reviewed closure corpus. |
 | `docs/audits/reports/mos_program_closure_report_2026-04-21.md` | `supporting-current` | reviewed | Active final closure report summarizing ingestion, legacy retirement, UI evaluation, and verification. |
+| `docs/audits/reports/mos_runtime_authority_and_access_reality_report_2026-04-21.md` | `supporting-current` | reviewed | Active focused MOS reality audit covering SQL authority data, package-peripheral mediation, FND authorization posture, and `/portal/system` renderer-availability drift. |
 | `docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md` | `historical-superseded` | reviewed | Immutable evidence only; superseded by the final closure audit set. |
 | `docs/audits/reports/mos_sql_only_authority_activation_and_legacy_retirement_2026-04-21.md` | `supporting-current` | reviewed | Active closure audit for SQL-only runtime activation and authority-only legacy cleanup. |
 | `docs/audits/reports/package_modularization_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as pre-closure modularization history. |
