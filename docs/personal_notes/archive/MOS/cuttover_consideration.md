@@ -10,7 +10,7 @@ Considering that my main concerns are making sure the MOS paradigm of data is hi
 
 PROMPT:
 Help me externalize the staging for seeing out and planning the cut over deffined by the contents of [mos_sql_backed_core_declaration_draft.md](repo/mycite-core/docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md) .
-Also see [datum_logic_area_investigation_clarity.md](repo/mycite-core/docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md) , [data_base_use_findings.md](repo/mycite-core/docs/personal_notes/MOS/data_base_use_findings.md) , [mos_novelty_definition.md](repo/mycite-core/docs/personal_notes/MOS/mos_novelty_definition.md) , and [mycelial_ontological_schema.md](repo/mycite-core/docs/personal_notes/MOS/mycelial_ontological_schema.md) .
+Also see [datum_logic_area_investigation_clarity.md](repo/mycite-core/docs/personal_notes/archive/MOS/datum_logic_area_investigation_clarity.md) , [data_base_use_findings.md](repo/mycite-core/docs/personal_notes/MOS/data_base_use_findings.md) , [mos_novelty_definition.md](repo/mycite-core/docs/personal_notes/MOS/mos_novelty_definition.md) , and [mycelial_ontological_schema.md](repo/mycite-core/docs/personal_notes/MOS/mycelial_ontological_schema.md) .
 
 I want to properly plan and have a hard, stable unification of logic defined and planned.
 Consider the contents, reffeences and conceptual materialization that will fuel the creation go the master plan to be made in [master_plan_mos.md](repo/mycite-core/docs/plans/master_plan_mos.md) , as well as the other plan files and audit files.

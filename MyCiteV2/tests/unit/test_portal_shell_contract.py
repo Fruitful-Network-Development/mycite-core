@@ -258,9 +258,40 @@ class PortalShellContractTests(unittest.TestCase):
                 "record": "7-3-1",
             },
         )
+
+    def test_workbench_ui_surface_query_keeps_supported_runtime_owned_keys(self) -> None:
+        raw_query = {
+            "document": "system:anthology",
+            "document_filter": "abc123",
+            "document_sort": "row_count",
+            "document_dir": "DESC",
+            "filter": "child",
+            "sort": "hyphae_hash",
+            "dir": "desc",
+            "group": "layer_value_group",
+            "workbench_lens": "RAW",
+            "source": "hide",
+            "overlay": "show",
+            "row": "2-2-1",
+            "ignored": "yes",
+        }
+
         self.assertEqual(
-            warnings,
-            ("Ignored unsupported NETWORK surface_query key(s): ignored",),
+            canonical_query_for_surface_query(raw_query, surface_id=WORKBENCH_UI_TOOL_SURFACE_ID),
+            {
+                "document": "system:anthology",
+                "document_filter": "abc123",
+                "document_sort": "row_count",
+                "document_dir": "desc",
+                "filter": "child",
+                "sort": "hyphae_hash",
+                "dir": "desc",
+                "group": "layer_value_group",
+                "workbench_lens": "raw",
+                "source": "hide",
+                "overlay": "show",
+                "row": "2-2-1",
+            },
         )
 
     def test_aws_csm_surface_query_is_runtime_owned_and_domain_driven(self) -> None:

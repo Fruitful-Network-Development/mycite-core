@@ -17,6 +17,7 @@ Define the post-closure consolidation work that follows the completed MOS progra
 - This file is not a new master plan.
 - The MOS cut-over remains complete.
 - Host-bound private/public assets remain documented exception scope unless a separate dedicated port plan is created.
+- `deployed/fnd/data/**` is retained as non-authoritative historical/test support and remains outside MOS datum authority.
 - Shared-engine NIMM/AITAS canon is not widened in this pass.
 - `workbench_ui` remains read-only and additive-only.
 
@@ -49,6 +50,7 @@ Goal:
 Required work:
 
 - maintain a plain inventory of host-bound private/public assets that remain outside SQL datum authority
+- keep `deployed/fnd/data/**` explicitly classified as retained historical/test support rather than active MOS authority
 - separate retained exception scope into:
   - host-bound private/public assets without dedicated ports
   - derived-materialization surfaces such as `NETWORK`

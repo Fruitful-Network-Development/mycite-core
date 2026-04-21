@@ -114,21 +114,28 @@ Workbench UI query projection keys:
 - `filter`
 - `sort`
 - `dir`
+- `group`
+- `workbench_lens`
+- `source`
 - `overlay`
 - `row`
 
 Workbench UI canonical query rules:
 
-- fresh `Workbench UI` entry projects the first document from the `version_hash`-sorted document table with `document_sort=version_hash&document_dir=asc&sort=datum_address&dir=asc&overlay=show`
+- fresh `Workbench UI` entry projects the first document from the `version_hash`-sorted document table with `document_sort=version_hash&document_dir=asc&sort=datum_address&dir=asc&group=flat&workbench_lens=interpreted&source=show&overlay=show`, plus the first selected row from that resolved document
 - `document=<document_id>` selects one SQL-backed authoritative document
 - `document_filter=<text>` narrows the read-only document table by `document_id`, `document_name`, `source_kind`, or `version_hash`
 - `document_sort=<document_id|document_name|source_kind|row_count|version_hash>` changes document-table ordering
 - `document_dir=<asc|desc>` changes document-table order direction
 - `filter=<text>` narrows the selected-document row grid, including `hyphae_hash`
-- `sort=<datum_address|layer|value_group|iteration|hyphae_hash>` changes row-grid ordering
+- `sort=<datum_address|layer|value_group|iteration|labels|relation|object_ref|hyphae_hash>` changes flat row-grid ordering
 - `dir=<asc|desc>` changes row-grid order direction
+- `group=<flat|layer|layer_value_group>` switches the datum grid between flat and structural grouping modes while grouped sections preserve canonical structural order
+- `workbench_lens=<interpreted|raw>` switches the workbench between the interpreted row summary and the raw canonical payload lens
+- `source=<show|hide>` toggles source metadata columns and sections without changing authoritative rows
 - `row=<datum_address>` focuses one selected row in the read-only Interface Panel detail view
 - `overlay=hide` suppresses additive directive summaries without changing authoritative row content
+- keyboard navigation and next/previous selection actions stay query-driven by resolving to canonical `document` and `row` selections rather than adding new navigation keys
 
 `CTS-GIS` is one `SYSTEM` child mediation tool surface. The canonical public route is `/portal/system/tools/cts-gis`.
 

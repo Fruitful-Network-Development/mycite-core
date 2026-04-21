@@ -28,7 +28,7 @@ entries:
       - "docs/plans/master_plan_mos.md"
       - "docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md"
       - "docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md"
-      - "docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md"
+      - "docs/personal_notes/archive/MOS/datum_logic_area_investigation_clarity.md"
       - "docs/personal_notes/MOS/mycelial_ontological_schema.md"
       - "docs/audits/cts_gis_datum_handling_alignment_audit_plan_2026-04-20.md"
     notes: "Authority matrix, semantic gap register, cutover scope table, and execution report are published."
@@ -69,7 +69,7 @@ entries:
       - "MyCiteV2/packages/ports/portal_authority/contracts.py"
       - "docs/audits/reports/peripheral_packages_modularization_report_2026-04-16.md"
       - "docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md"
-    notes: "Shadow-mode SQL adapters and the combined portal-authority seam are implemented; any retained filesystem projections are now non-authoritative bootstrap, parity, or fixture helpers only."
+    notes: "Phase 2 closed with shadow-mode SQL adapters and the combined portal-authority seam implemented; retained filesystem projections are historical bootstrap, parity, or fixture helpers only."
     open_questions:
       - "Whether grants, ownership posture, and tool exposure can share one reusable boundary without widening public contracts."
 
@@ -108,7 +108,7 @@ entries:
       - "MyCiteV2/instances/_shared/runtime/README.md"
       - "MyCiteV2/instances/_shared/runtime/portal_system_workspace_runtime.py"
       - "MyCiteV2/tests/unit/test_portal_shell_sql_authority.py"
-    notes: "SQL-primary runtime composition is implemented for the approved Track A surfaces through the `authority_mode=sql_primary` path."
+    notes: "Phase 4 closed with SQL-primary runtime composition established for the approved Track A surfaces through the `authority_mode=sql_primary` path."
 
   - id: "MOS-A5"
     track: "Track A"
@@ -205,7 +205,7 @@ entries:
     evidence_refs:
       - "docs/personal_notes/v2.5portal_work_writtings.md"
       - "docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md"
-      - "docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md"
+      - "docs/personal_notes/archive/MOS/datum_logic_area_investigation_clarity.md"
       - "docs/plans/mos_directive_context_design_track_2026-04-21.md"
       - "docs/plans/master_plan_mos.md"
     notes: "Track C now defines directive-context scope, schema candidates, update policy, and SQL-core binding points without blocking the cutover or Track B closure. The additive SQL overlay implementation pass is tracked in `MOS-C2`."
@@ -300,7 +300,7 @@ entries:
       - "MyCiteV2/tests/unit/test_workbench_ui_runtime.py"
       - "docs/contracts/route_model.md"
       - "docs/audits/reports/mos_program_closure_report_2026-04-21.md"
-    notes: "The SQL-backed `workbench_ui` tool surface now exposes a read-only, two-pane spreadsheet with a document table keyed by `version_hash`, a row grid keyed by `hyphae_hash`, backward-compatible row-grid query keys, and additive directive overlay summaries."
+    notes: "Phase 8 closed with the SQL-backed `workbench_ui` tool surface exposing a read-only, two-pane spreadsheet with query-driven grouping/lens/source controls, short identity badges, keyboard-safe document/row selection, and additive directive overlay summaries."
     rationale: "The final cut-over needs a sturdy utilitarian inspection surface that reflects SQL-backed authority without widening datum mutation."
 
   - id: "MOS-Z1"

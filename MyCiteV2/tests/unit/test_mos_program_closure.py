@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 import sys
 import unittest
@@ -93,8 +94,20 @@ class MosProgramClosureTests(unittest.TestCase):
 
         self.assertIn('authority_mode: str = "sql_primary"', shell_runtime)
         self.assertNotIn('authority_mode: str = "filesystem"', shell_runtime)
+        self.assertNotIn('authority_mode: str = "shadow"', shell_runtime)
         self.assertIn('authority_mode: str = "sql_primary"', workspace_runtime)
         self.assertNotIn('authority_mode: str = "filesystem"', workspace_runtime)
+        self.assertNotIn('authority_mode: str = "shadow"', workspace_runtime)
+
+    def test_python_source_drops_obsolete_filesystem_and_shadow_authority_modes(self) -> None:
+        pattern = re.compile(r"authority_mode\s*[:=][^#\n]*[\"'](?:filesystem|shadow)[\"']")
+        for path in (REPO_ROOT / "MyCiteV2").rglob("*.py"):
+            if path.name == "test_mos_program_closure.py":
+                continue
+            self.assertIsNone(pattern.search(_read_text(path)), path.relative_to(REPO_ROOT).as_posix())
+
+    def test_obsolete_mvp_runtime_is_removed(self) -> None:
+        self.assertFalse((REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "mvp_runtime.py").exists())
 
 
 if __name__ == "__main__":

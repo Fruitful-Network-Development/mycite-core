@@ -7891,6 +7891,154 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   word-break: break-word;
 }
 
+.v2-workbenchUi__layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(420px, 1.45fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.v2-workbenchUi__pane {
+  min-width: 0;
+}
+
+.v2-workbenchUi__paneHeader {
+  margin-bottom: 12px;
+}
+
+.v2-workbenchUi__paneHeader h3 {
+  margin: 0 0 4px;
+}
+
+.v2-workbenchUi__paneHeader p,
+.v2-workbenchUi__groupHeader p {
+  margin: 0;
+  color: rgba(32, 56, 77, 0.82);
+}
+
+.v2-workbenchUi__tableWrap {
+  max-height: 540px;
+  overflow: auto;
+}
+
+.v2-workbenchUi__stickyHeader th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ide-panel-bg, #f6f8fa);
+}
+
+.v2-workbenchUi__row {
+  cursor: pointer;
+}
+
+.v2-workbenchUi__row.is-selected {
+  background: rgba(46, 116, 181, 0.12);
+}
+
+.v2-workbenchUi__row:focus {
+  outline: 2px solid rgba(46, 116, 181, 0.44);
+  outline-offset: -2px;
+}
+
+.v2-workbenchUi__primaryCell {
+  display: grid;
+  gap: 4px;
+}
+
+.v2-workbenchUi__subvalue {
+  font-size: 12px;
+  color: rgba(32, 56, 77, 0.82);
+  word-break: break-word;
+}
+
+.v2-workbenchUi__identity {
+  display: grid;
+  gap: 4px;
+}
+
+.v2-workbenchUi__badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(32, 56, 77, 0.08);
+  border: 1px solid rgba(32, 56, 77, 0.12);
+  color: #20384d;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.v2-workbenchUi__selectedTag {
+  display: inline-flex;
+  width: fit-content;
+  padding: 0.14rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(46, 116, 181, 0.12);
+  color: #204d72;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.v2-workbenchUi__action,
+.v2-workbenchUi__navButton {
+  border: 1px solid rgba(32, 56, 77, 0.18);
+  background: #f7fafc;
+  color: #20384d;
+  border-radius: 8px;
+  padding: 0.35rem 0.65rem;
+  cursor: pointer;
+}
+
+.v2-workbenchUi__action:hover,
+.v2-workbenchUi__navButton:hover {
+  background: #e8f1f8;
+}
+
+.v2-workbenchUi__group + .v2-workbenchUi__group {
+  margin-top: 12px;
+}
+
+.v2-workbenchUi__groupHeader {
+  margin-bottom: 8px;
+}
+
+.v2-workbenchUi__groupHeader h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.v2-workbenchUi__navButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.v2-workbenchUi__navButton {
+  display: grid;
+  gap: 2px;
+  min-width: 160px;
+  text-align: left;
+}
+
+.v2-workbenchUi__navButton small {
+  color: rgba(32, 56, 77, 0.82);
+}
+
+@media (max-width: 1100px) {
+  .v2-workbenchUi__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .v2-workbenchUi__tableWrap {
+    max-height: none;
+  }
+}
+
 .agro-scaffold__ordering {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 160px;

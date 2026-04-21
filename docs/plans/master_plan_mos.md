@@ -44,7 +44,7 @@ Out of scope for v1 cutover:
 - **Completed in execution for Track B:** SQL-backed document version identity, row-level hyphae identity, and deterministic remap semantics remain the canonical semantic layer for the migrated SQL core.
 - **Completed in execution for Track C:** additive directive-context snapshots/events remain implemented and non-blocking, and the final migration imported `0` shared directive snapshots and `0` shared directive events because no explicit directive-context manifest was supplied.
 - **Completed in runtime cut-over:** migrated `SYSTEM` authority surfaces now fail closed without the authority database instead of silently bootstrapping legacy datum/audit authority, and any retained filesystem helpers are explicitly non-authoritative migration or fixture support only.
-- **Completed in UI hardening:** `/portal/system/tools/workbench-ui` now provides a read-only, two-pane SQL-backed spreadsheet with a document table keyed by `version_hash`, a row grid keyed by `hyphae_hash`, additive directive overlay summaries, and no datum-row mutation path.
+- **Completed in UI hardening:** `/portal/system/tools/workbench-ui` now provides a read-only, two-pane SQL-backed spreadsheet with sticky headers, explicit selection markers, query-driven document/row navigation, structural grouping modes, interpreted/raw workbench lenses, source/overlay visibility controls, short semantic-identity badges, additive directive overlay summaries, and no datum-row mutation path.
 - **Completed in closure artifacts:** final ingestion, SQL-only activation, directive non-inference, documentation cleanup, the closure checklist, and the overall program-closure audits are published under `docs/audits/reports/`.
 - **Retained explicitly as non-blocking exception scope:** `NETWORK` remains a derived-materialization/system-log surface, host-bound private/public assets remain outside SQL datum authority until dedicated ports exist, and future NIMM/AITAS widening requires a separate follow-on plan rather than reopening this master plan.
 
@@ -60,7 +60,7 @@ Out of scope for v1 cutover:
 
 - `docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md`
 - `docs/personal_notes/MOS/mycelial_ontological_schema.md`
-- `docs/personal_notes/MOS/datum_logic_area_investigation_clarity.md`
+- `docs/personal_notes/archive/MOS/datum_logic_area_investigation_clarity.md`
 - `docs/personal_notes/MOS/mos_novelty_definition.md`
 - `docs/audits/cts_gis_datum_handling_alignment_audit_plan_2026-04-20.md`
 - `docs/audits/reports/core_portal_datum_mss_protocol_report_2026-04-16.md`

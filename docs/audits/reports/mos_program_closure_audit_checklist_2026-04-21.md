@@ -65,6 +65,26 @@ Record the closure-review baseline plus the current classification of every file
 | `docs/audits/reports/tools_ui_implementation_mismatch_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as pre-closure UI mismatch history. |
 | `docs/audits/reports/workbench_ui_utilitarian_design_audit_2026-04-21.md` | `supporting-current` | reviewed | Active audit of the datum-file workbench's utilitarian strengths, deficiencies, and next hardening steps. |
 
+## Final Cleanup Pass
+
+- Deleted obsolete runtime artifact:
+  `MyCiteV2/instances/_shared/runtime/mvp_runtime.py`
+- Archived superseded/source-only MOS notes:
+  `docs/personal_notes/archive/MOS/cuttover_consideration.md`
+  `docs/personal_notes/archive/MOS/datum_logic_area_investigation_clarity.md`
+  `docs/personal_notes/archive/MOS/mos_master_plan.md`
+- Retained historical/source evidence in place:
+  `docs/personal_notes/MOS/data_base_use_findings.md`
+  `docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md`
+  `docs/personal_notes/MOS/mos_novelty_definition.md`
+  `docs/personal_notes/MOS/mycelial_ontological_schema.md`
+- Remaining documented exception-scope filesystem surfaces:
+  `deployed/fnd/data/**` as non-authoritative historical/test support
+  host-bound AWS/private filesystem assets outside MOS datum authority
+  CTS/GIS, FND-DCM, FND-EBI, and `NETWORK` read-model support surfaces where the active docs already retain file-bound evidence or materialization scope
+- Verification note:
+  the full contract/adapters/architecture suites and the curated MOS/runtime/workbench unit modules are green after this cleanup; `MyCiteV2.tests.integration.test_portal_host_one_shell` was available but reported `OK (skipped=5)` in this environment
+
 ## Result
 
 Every file in `docs/plans/` and `docs/audits/reports/` is now classified in one place. The closure-time review remains preserved, active artifacts stay aligned to the completed SQL-only MOS posture, and post-closure follow-on docs are explicitly tracked without reopening master-plan authority.

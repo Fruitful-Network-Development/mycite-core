@@ -12,6 +12,11 @@ from MyCiteV2.packages.ports.directive_context import DirectiveContextEventQuery
 WORKBENCH_UI_TOOL_ID = "workbench_ui"
 WORKBENCH_UI_DEFAULT_DOCUMENT_SORT = "version_hash"
 WORKBENCH_UI_DEFAULT_ROW_SORT = "datum_address"
+WORKBENCH_UI_DEFAULT_GROUP = "flat"
+WORKBENCH_UI_DEFAULT_LENS = "interpreted"
+WORKBENCH_UI_DEFAULT_SOURCE_VISIBILITY = "show"
+WORKBENCH_UI_DEFAULT_OVERLAY_VISIBILITY = "show"
+
 _DOCUMENT_SORT_KEYS = {
     "document_id",
     "document_name",
@@ -29,6 +34,9 @@ _ROW_SORT_KEYS = {
     "object_ref",
     "hyphae_hash",
 }
+_GROUP_MODES = {"flat", "layer", "layer_value_group"}
+_LENS_MODES = {"interpreted", "raw"}
+_VISIBILITY_MODES = {"show", "hide"}
 
 
 def _as_text(value: object) -> str:
@@ -46,6 +54,32 @@ def _normalize_sort_key(value: object, *, allowed: set[str], default: str) -> st
 
 def _normalize_sort_direction(value: object) -> str:
     return "desc" if _as_text(value).lower() == "desc" else "asc"
+
+
+def _normalize_mode(value: object, *, allowed: set[str], default: str) -> str:
+    token = _as_text(value).lower() or default
+    if token not in allowed:
+        return default
+    return token
+
+
+def _short_hash(value: object, *, length: int = 12) -> str:
+    token = _as_text(value)
+    return token[:length] if token else ""
+
+
+def _truncate_text(value: object, *, limit: int = 96) -> str:
+    token = _as_text(value)
+    if len(token) <= limit:
+        return token
+    return f"{token[:limit - 1]}…"
+
+
+def _json_text(value: object) -> str:
+    try:
+        return json.dumps(value, sort_keys=True)
+    except TypeError:
+        return _as_text(value)
 
 
 def _joined_labels(raw: Any) -> str:
@@ -93,7 +127,7 @@ def _document_sort_value(document: dict[str, Any], *, sort_key: str) -> Any:
 def _row_filter_haystack(row: dict[str, Any]) -> str:
     return " ".join(
         _as_text(row.get(key)).lower()
-        for key in ("datum_address", "labels", "relation", "object_ref", "hyphae_hash")
+        for key in ("datum_address", "labels", "relation", "object_ref", "hyphae_hash", "semantic_hash", "raw_json")
     )
 
 
@@ -131,6 +165,120 @@ def _overlay_summary_rows(overlay: dict[str, Any] | None, *, event_rows: Iterabl
     return rows
 
 
+def _document_table_columns(*, source_visibility: str) -> list[dict[str, str]]:
+    columns = [
+        {"key": "document_name", "label": "document_name"},
+        {"key": "document_id", "label": "document_id"},
+    ]
+    if source_visibility == "show":
+        columns.append({"key": "source_kind", "label": "source_kind"})
+    columns.extend(
+        [
+            {"key": "version_hash_short", "label": "version_hash_badge"},
+            {"key": "version_hash", "label": "version_hash"},
+            {"key": "row_count", "label": "row_count"},
+        ]
+    )
+    return columns
+
+
+def _datum_grid_columns(*, workbench_lens: str) -> list[dict[str, str]]:
+    columns = [
+        {"key": "datum_address", "label": "datum_address"},
+        {"key": "layer", "label": "layer"},
+        {"key": "value_group", "label": "value_group"},
+        {"key": "iteration", "label": "iteration"},
+    ]
+    if workbench_lens == "raw":
+        columns.extend(
+            [
+                {"key": "raw_preview", "label": "raw"},
+                {"key": "hyphae_hash_short", "label": "hyphae_hash_badge"},
+            ]
+        )
+    else:
+        columns.extend(
+            [
+                {"key": "labels", "label": "labels"},
+                {"key": "relation", "label": "relation"},
+                {"key": "object_ref", "label": "object_ref"},
+                {"key": "hyphae_hash_short", "label": "hyphae_hash_badge"},
+            ]
+        )
+    return columns
+
+
+def _group_rows(rows: list[dict[str, Any]], *, group_mode: str, workbench_lens: str) -> list[dict[str, Any]]:
+    if group_mode == "flat":
+        return [
+            {
+                "key": "flat",
+                "title": "All Rows",
+                "summary": "Flat row list for the selected authoritative document.",
+                "columns": _datum_grid_columns(workbench_lens=workbench_lens),
+                "items": rows,
+                "row_count": len(rows),
+            }
+        ]
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if group_mode == "layer":
+            key = f"layer:{row['layer']}"
+            title = f"Layer {row['layer']}"
+            summary = f"Canonical datum order within layer {row['layer']}."
+        else:
+            key = f"layer:{row['layer']}:value_group:{row['value_group']}"
+            title = f"Layer {row['layer']} / Value Group {row['value_group']}"
+            summary = (
+                f"Canonical datum order within layer {row['layer']} "
+                f"and value group {row['value_group']}."
+            )
+        grouped.setdefault(
+            key,
+            {
+                "key": key,
+                "title": title,
+                "summary": summary,
+                "columns": _datum_grid_columns(workbench_lens=workbench_lens),
+                "items": [],
+            },
+        )["items"].append(row)
+
+    groups = list(grouped.values())
+    for group in groups:
+        items = list(group["items"])
+        items.sort(key=lambda item: datum_address_sort_key(item["datum_address"]))
+        group["items"] = items
+        group["row_count"] = len(items)
+    groups.sort(key=lambda group: datum_address_sort_key(group["items"][0]["datum_address"]) if group["items"] else ())
+    return groups
+
+
+def _section_rows_for_groups(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    sections: list[dict[str, Any]] = []
+    for group in groups:
+        sections.append(
+            {
+                "title": group["title"],
+                "summary": group["summary"],
+                "columns": list(group["columns"]),
+                "items": list(group["items"]),
+            }
+        )
+    return sections
+
+
+def _navigation_item(items: list[dict[str, Any]], *, index: int, label_key: str, id_key: str) -> dict[str, str] | None:
+    if index < 0 or index >= len(items):
+        return None
+    item = items[index]
+    return {
+        "id": _as_text(item.get(id_key)),
+        "label": _as_text(item.get(label_key)) or _as_text(item.get(id_key)) or "—",
+    }
+
+
 class WorkbenchUiReadService:
     def __init__(self, db_file: str | Path) -> None:
         self._db_file = Path(db_file)
@@ -147,13 +295,15 @@ class WorkbenchUiReadService:
             tenant_id=tenant_id,
             document_id=document.document_id,
         )
+        version_hash = _as_text((document_identity or {}).get("version_hash"))
         return {
             "document_id": document.document_id,
             "document_name": document.document_name,
             "label": document.document_name,
             "source_kind": document.source_kind,
             "row_count": int(document.row_count),
-            "version_hash": _as_text((document_identity or {}).get("version_hash")),
+            "version_hash": version_hash,
+            "version_hash_short": _short_hash(version_hash),
             "selected": False,
         }
 
@@ -171,6 +321,9 @@ class WorkbenchUiReadService:
                 document_id=document.document_id,
                 datum_address=row.datum_address,
             )
+            hyphae_hash = _as_text((semantics or {}).get("hyphae_hash"))
+            semantic_hash = _as_text((semantics or {}).get("semantic_hash"))
+            raw_json = _json_text(row.raw)
             items.append(
                 {
                     "datum_address": row.datum_address,
@@ -180,10 +333,15 @@ class WorkbenchUiReadService:
                     "labels": _joined_labels(row.raw),
                     "relation": _relation(row.raw),
                     "object_ref": _object_ref(row.raw, datum_address=row.datum_address),
-                    "hyphae_hash": _as_text((semantics or {}).get("hyphae_hash")),
-                    "semantic_hash": _as_text((semantics or {}).get("semantic_hash")),
+                    "hyphae_hash": hyphae_hash,
+                    "hyphae_hash_short": _short_hash(hyphae_hash),
+                    "semantic_hash": semantic_hash,
+                    "semantic_hash_short": _short_hash(semantic_hash),
                     "warnings": list((semantics or {}).get("warnings") or []),
                     "raw": row.raw,
+                    "raw_json": raw_json,
+                    "raw_preview": _truncate_text(raw_json),
+                    "selected": False,
                 }
             )
         return items
@@ -212,7 +370,18 @@ class WorkbenchUiReadService:
         text_filter = _as_text(query.get("filter")).lower()
         row_sort_key = _normalize_sort_key(query.get("sort"), allowed=_ROW_SORT_KEYS, default=WORKBENCH_UI_DEFAULT_ROW_SORT)
         row_sort_direction = _normalize_sort_direction(query.get("dir"))
-        overlay_visibility = "hide" if _as_text(query.get("overlay")).lower() == "hide" else "show"
+        group_mode = _normalize_mode(query.get("group"), allowed=_GROUP_MODES, default=WORKBENCH_UI_DEFAULT_GROUP)
+        workbench_lens = _normalize_mode(query.get("workbench_lens"), allowed=_LENS_MODES, default=WORKBENCH_UI_DEFAULT_LENS)
+        source_visibility = _normalize_mode(
+            query.get("source"),
+            allowed=_VISIBILITY_MODES,
+            default=WORKBENCH_UI_DEFAULT_SOURCE_VISIBILITY,
+        )
+        overlay_visibility = _normalize_mode(
+            query.get("overlay"),
+            allowed=_VISIBILITY_MODES,
+            default=WORKBENCH_UI_DEFAULT_OVERLAY_VISIBILITY,
+        )
 
         documents = list(catalog.documents)
         document_rows = [
@@ -239,18 +408,33 @@ class WorkbenchUiReadService:
             document["selected"] = document["document_id"] == selected_document_id
 
         document_version_hash = _as_text((active_document_row or {}).get("version_hash"))
+        document_version_hash_short = _as_text((active_document_row or {}).get("version_hash_short"))
         rows: list[dict[str, Any]] = []
         if active_document is not None:
             rows = self._row_items(tenant_id=portal_instance_id, document=active_document)
         if text_filter:
             rows = [row for row in rows if text_filter in _row_filter_haystack(row)]
-        rows.sort(
+
+        flat_rows = list(rows)
+        flat_rows.sort(
             key=lambda row: (_row_sort_value(row, sort_key=row_sort_key), row["datum_address"]),
             reverse=row_sort_direction == "desc",
         )
-        selected_row = next((row for row in rows if row["datum_address"] == selected_row_id), None)
-        if selected_row is None and rows:
-            selected_row = rows[0]
+        grouped_rows = list(rows)
+        grouped_rows.sort(key=lambda row: datum_address_sort_key(row["datum_address"]))
+        active_rows = flat_rows if group_mode == "flat" else grouped_rows
+
+        selected_row = next((row for row in active_rows if row["datum_address"] == selected_row_id), None)
+        if selected_row is None and active_rows:
+            selected_row = active_rows[0]
+        selected_row_id = _as_text((selected_row or {}).get("datum_address"))
+        for row in rows:
+            row["selected"] = row["datum_address"] == selected_row_id
+        selected_row = next((row for row in rows if row["datum_address"] == selected_row_id), selected_row)
+
+        row_groups = _group_rows(grouped_rows, group_mode=group_mode, workbench_lens=workbench_lens)
+        row_sections = _section_rows_for_groups(row_groups)
+        visible_row_items = flat_rows if group_mode == "flat" else []
 
         overlay = None
         overlay_events: list[dict[str, Any]] = []
@@ -276,25 +460,140 @@ class WorkbenchUiReadService:
                     )
                 ]
 
+        document_index = next(
+            (index for index, document in enumerate(document_rows) if document["document_id"] == selected_document_id),
+            -1,
+        )
+        row_index = next(
+            (index for index, row in enumerate(active_rows) if row["datum_address"] == selected_row_id),
+            -1,
+        )
+        navigation = {
+            "previous_document": _navigation_item(document_rows, index=document_index - 1, label_key="document_name", id_key="document_id"),
+            "next_document": _navigation_item(document_rows, index=document_index + 1, label_key="document_name", id_key="document_id"),
+            "previous_row": _navigation_item(active_rows, index=row_index - 1, label_key="datum_address", id_key="datum_address"),
+            "next_row": _navigation_item(active_rows, index=row_index + 1, label_key="datum_address", id_key="datum_address"),
+        }
+
+        selected_document_summary = {
+            "document_id": selected_document_id,
+            "document_name": _as_text((active_document_row or {}).get("document_name")),
+            "source_kind": _as_text((active_document_row or {}).get("source_kind")),
+            "version_hash": document_version_hash,
+            "version_hash_short": document_version_hash_short,
+            "row_count": int((active_document_row or {}).get("row_count") or 0),
+        }
+        selected_row_summary = {
+            "datum_address": _as_text((selected_row or {}).get("datum_address")),
+            "layer": int((selected_row or {}).get("layer") or 0),
+            "value_group": int((selected_row or {}).get("value_group") or 0),
+            "iteration": int((selected_row or {}).get("iteration") or 0),
+            "labels": _as_text((selected_row or {}).get("labels")),
+            "relation": _as_text((selected_row or {}).get("relation")),
+            "object_ref": _as_text((selected_row or {}).get("object_ref")),
+            "hyphae_hash": _as_text((selected_row or {}).get("hyphae_hash")),
+            "hyphae_hash_short": _as_text((selected_row or {}).get("hyphae_hash_short")),
+            "semantic_hash": _as_text((selected_row or {}).get("semantic_hash")),
+            "semantic_hash_short": _as_text((selected_row or {}).get("semantic_hash_short")),
+            "raw": (selected_row or {}).get("raw"),
+            "raw_json": _as_text((selected_row or {}).get("raw_json")),
+        }
+
+        query_summary_rows = [
+            {"label": "document filter", "value": document_filter or "—"},
+            {"label": "document sort", "value": document_sort_key},
+            {"label": "document direction", "value": document_sort_direction},
+            {"label": "row filter", "value": text_filter or "—"},
+            {"label": "row sort", "value": row_sort_key},
+            {"label": "row direction", "value": row_sort_direction},
+            {"label": "group", "value": group_mode},
+            {"label": "workbench lens", "value": workbench_lens},
+            {"label": "source visibility", "value": source_visibility},
+            {"label": "overlay visibility", "value": overlay_visibility},
+        ]
+
+        notes = [
+            "Directive overlays are additive summaries only.",
+            "Document filtering indexes version_hash and document identity fields.",
+            "Row filtering indexes hyphae_hash, semantic identity, and row semantic fields.",
+            "Grouped datum views preserve canonical structural ordering within each section.",
+            "No mutation controls are exposed on this surface.",
+        ]
+
+        inspector_sections = [
+            {
+                "title": "Selection",
+                "rows": [
+                    {"label": "document name", "value": selected_document_summary["document_name"] or "—"},
+                    {"label": "document id", "value": selected_document_summary["document_id"] or "—"},
+                    {"label": "document version hash", "value": selected_document_summary["version_hash"] or "—"},
+                    {"label": "datum address", "value": selected_row_summary["datum_address"] or "—"},
+                    {"label": "semantic hash", "value": selected_row_summary["semantic_hash"] or "—"},
+                    {"label": "hyphae hash", "value": selected_row_summary["hyphae_hash"] or "—"},
+                    {"label": "raw", "value": selected_row_summary["raw_json"] or "—"},
+                ],
+            }
+        ]
+        if source_visibility == "show":
+            inspector_sections.append(
+                {
+                    "title": "Source Metadata",
+                    "rows": [
+                        {"label": "source kind", "value": selected_document_summary["source_kind"] or "—"},
+                        {"label": "row count", "value": str(selected_document_summary["row_count"])},
+                    ],
+                }
+            )
+        inspector_sections.append(
+            {
+                "title": "Directive Overlay",
+                "rows": _overlay_summary_rows(overlay, event_rows=overlay_events),
+            }
+        )
+
+        document_section = {
+            "title": "Document Table",
+            "summary": "Read-only authoritative documents keyed by SQL version identity.",
+            "sticky_header": True,
+            "columns": _document_table_columns(source_visibility=source_visibility),
+            "items": document_rows,
+        }
+        datum_section: dict[str, Any] = {
+            "title": "Datum Grid",
+            "summary": "Spreadsheet-like read-only rows keyed by row semantic identity.",
+            "sticky_header": True,
+            "columns": _datum_grid_columns(workbench_lens=workbench_lens),
+            "items": visible_row_items,
+        }
+        if group_mode != "flat":
+            datum_section["subsections"] = row_sections
+
         return {
             "tool_id": WORKBENCH_UI_TOOL_ID,
             "document_id": selected_document_id,
-            "document_name": _as_text((active_document_row or {}).get("document_name")),
+            "document_name": selected_document_summary["document_name"],
             "document_rows": document_rows,
             "document_filter": document_filter,
             "document_sort_key": document_sort_key,
             "document_sort_direction": document_sort_direction,
             "document_version_hash": document_version_hash,
-            "row_count": len(rows),
+            "document_version_hash_short": document_version_hash_short,
+            "row_count": len(active_rows),
             "sort_key": row_sort_key,
             "sort_direction": row_sort_direction,
             "text_filter": text_filter,
+            "group_mode": group_mode,
+            "workbench_lens": workbench_lens,
+            "source_visibility": source_visibility,
             "overlay_visibility": overlay_visibility,
-            "rows": rows,
-            "selected_row": selected_row,
+            "rows": active_rows,
+            "row_groups": row_groups,
+            "selected_row": selected_row_summary,
+            "selected_row_hyphae_hash_short": selected_row_summary["hyphae_hash_short"],
             "overlay": overlay,
             "overlay_events": overlay_events,
             "warnings": list(catalog.warnings),
+            "navigation": navigation,
             "surface_payload": {
                 "kind": "workbench_ui_surface",
                 "tool_id": WORKBENCH_UI_TOOL_ID,
@@ -303,77 +602,57 @@ class WorkbenchUiReadService:
                 "cards": [
                     {"label": "documents", "value": str(len(document_rows))},
                     {"label": "document", "value": selected_document_id or "—"},
-                    {"label": "version hash", "value": document_version_hash or "—"},
-                    {"label": "rows", "value": str(len(rows))},
+                    {"label": "version", "value": document_version_hash_short or "—", "meta": document_version_hash or "—"},
+                    {"label": "rows", "value": str(len(active_rows))},
                     {"label": "overlay", "value": overlay_visibility},
                 ],
                 "sections": [
-                    {
-                        "title": "Document Table",
-                        "summary": "Read-only authoritative documents keyed by SQL version identity.",
-                        "columns": [
-                            {"key": "document_name", "label": "document_name"},
-                            {"key": "document_id", "label": "document_id"},
-                            {"key": "source_kind", "label": "source_kind"},
-                            {"key": "version_hash", "label": "version_hash"},
-                            {"key": "row_count", "label": "row_count"},
-                        ],
-                        "items": document_rows,
-                    },
-                    {
-                        "title": "Datum Grid",
-                        "summary": "Spreadsheet-like read-only rows keyed by row semantic identity.",
-                        "columns": [
-                            {"key": "datum_address", "label": "datum_address"},
-                            {"key": "layer", "label": "layer"},
-                            {"key": "value_group", "label": "value_group"},
-                            {"key": "iteration", "label": "iteration"},
-                            {"key": "labels", "label": "labels"},
-                            {"key": "relation", "label": "relation"},
-                            {"key": "object_ref", "label": "object_ref"},
-                            {"key": "hyphae_hash", "label": "hyphae_hash"},
-                        ],
-                        "items": rows,
-                    },
+                    document_section,
+                    datum_section,
                     {
                         "title": "Query Controls",
-                        "rows": [
-                            {"label": "document filter", "value": document_filter or "—"},
-                            {"label": "document sort", "value": document_sort_key},
-                            {"label": "document direction", "value": document_sort_direction},
-                            {"label": "row filter", "value": text_filter or "—"},
-                            {"label": "row sort", "value": row_sort_key},
-                            {"label": "row direction", "value": row_sort_direction},
-                            {"label": "overlay visibility", "value": overlay_visibility},
-                        ],
+                        "rows": query_summary_rows,
                     },
                 ],
-                "notes": [
-                    "Directive overlays are additive summaries only.",
-                    "Document filtering indexes version_hash and document identity fields.",
-                    "Row filtering indexes hyphae_hash and row semantic fields.",
-                    "No mutation controls are exposed on this surface.",
-                ],
+                "workspace": {
+                    "query": {
+                        "document": selected_document_id,
+                        "document_filter": document_filter,
+                        "document_sort": document_sort_key,
+                        "document_dir": document_sort_direction,
+                        "filter": text_filter,
+                        "sort": row_sort_key,
+                        "dir": row_sort_direction,
+                        "group": group_mode,
+                        "workbench_lens": workbench_lens,
+                        "source": source_visibility,
+                        "overlay": overlay_visibility,
+                        "row": selected_row_summary["datum_address"],
+                    },
+                    "document_table": {
+                        "sticky_header": True,
+                        "columns": _document_table_columns(source_visibility=source_visibility),
+                        "rows": document_rows,
+                        "selected_document_id": selected_document_id,
+                        "selected_marker": "selected",
+                    },
+                    "datum_grid": {
+                        "sticky_header": True,
+                        "columns": _datum_grid_columns(workbench_lens=workbench_lens),
+                        "rows": visible_row_items,
+                        "groups": row_groups,
+                        "group_mode": group_mode,
+                        "lens": workbench_lens,
+                        "selected_row_id": selected_row_summary["datum_address"],
+                        "selected_marker": "selected",
+                    },
+                    "selected_document": selected_document_summary,
+                    "selected_row": selected_row_summary,
+                    "navigation": navigation,
+                    "source_visibility": source_visibility,
+                    "overlay_visibility": overlay_visibility,
+                },
+                "notes": notes,
             },
-            "inspector_sections": [
-                {
-                    "title": "Selection",
-                    "rows": [
-                        {"label": "document name", "value": _as_text((active_document_row or {}).get("document_name")) or "—"},
-                        {"label": "document id", "value": selected_document_id or "—"},
-                        {"label": "document version hash", "value": document_version_hash or "—"},
-                        {"label": "datum address", "value": _as_text((selected_row or {}).get("datum_address")) or "—"},
-                        {"label": "semantic hash", "value": _as_text((selected_row or {}).get("semantic_hash")) or "—"},
-                        {"label": "hyphae hash", "value": _as_text((selected_row or {}).get("hyphae_hash")) or "—"},
-                        {
-                            "label": "raw",
-                            "value": json.dumps((selected_row or {}).get("raw"), sort_keys=True),
-                        },
-                    ],
-                },
-                {
-                    "title": "Directive Overlay",
-                    "rows": _overlay_summary_rows(overlay, event_rows=overlay_events),
-                },
-            ],
+            "inspector_sections": inspector_sections,
         }
