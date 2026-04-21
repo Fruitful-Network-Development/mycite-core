@@ -76,7 +76,7 @@ Usability result:
 
 ## Documentation and Audit Completion
 
-- `docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md` classifies all `31` reviewed plan/report artifacts
+- `docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md` classifies all closure-time reviewed plan/report artifacts
 - `docs/audits/reports/mos_fnd_sql_ingestion_coverage_report_2026-04-21.md` confirms final ingestion totals and zero-gap coverage
 - `docs/audits/reports/mos_sql_only_authority_activation_and_legacy_retirement_2026-04-21.md` confirms SQL-only runtime activation plus authority-only legacy cleanup
 - `docs/audits/reports/mos_directive_context_non_inference_validation_2026-04-21.md` confirms explicit-manifest-only directive imports

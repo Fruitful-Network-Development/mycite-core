@@ -31,6 +31,12 @@ MOS closure evidence:
 - `docs/audits/reports/mos_documentation_alignment_and_cleanup_2026-04-21.md`
 - `docs/audits/reports/mos_program_closure_report_2026-04-21.md`
 
+MOS post-closure follow-on plans:
+
+- `mos_post_closure_consolidation_plan_2026-04-21.md` constrains post-closure MOS work to documentation canonicalization, retained exception scope planning, and datum-file workbench hardening.
+- `mos_novelty_positioning_follow_on_2026-04-21.md` carries internal novelty/positioning language separately from operational cut-over docs.
+- `workbench_ui_hardening_follow_on_2026-04-21.md` defines the next minimal datum-file workbench hardening steps for `workbench_ui`.
+
 Desktop reconciliation program:
 
 - `desktop_dm02_dm04_reconciliation_plan_2026-04-20.md` is the active comprehensive implementation plan for desktop deep-link startup translation (`DM-02`) and scoped shell-state persistence policy (`DM-04`).

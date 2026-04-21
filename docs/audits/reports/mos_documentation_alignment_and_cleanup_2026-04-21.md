@@ -9,11 +9,11 @@ Last reviewed: `2026-04-21`
 
 ## Purpose
 
-Verify that active documentation reflects the completed SQL-only MOS cut-over for migrated `SYSTEM` surfaces, that the updated two-pane `workbench_ui` surface is represented in the contract set, and that every file in `docs/plans/` plus `docs/audits/reports/` is explicitly classified as current authority or historical evidence.
+Verify that active documentation reflects the completed SQL-only MOS cut-over for migrated `SYSTEM` surfaces, that the updated two-pane `workbench_ui` surface is represented in the contract set, and that the closure-time review corpus in `docs/plans/` plus `docs/audits/reports/` is explicitly classified as current authority or historical evidence.
 
 ## Scope
 
-Comprehensive review corpus:
+Comprehensive closure-time review corpus:
 
 - `docs/plans/`: `13` files
 - `docs/audits/reports/`: `18` files
@@ -41,8 +41,8 @@ Focused active-doc updates:
 
 ## Findings
 
-1. The full 31-artifact closure review is now explicit.
-   - `mos_program_closure_audit_checklist_2026-04-21.md` classifies every file in `docs/plans/` and `docs/audits/reports/` as `authoritative`, `supporting-current`, or `historical-superseded`.
+1. The full closure-time review corpus is now explicit.
+   - `mos_program_closure_audit_checklist_2026-04-21.md` classifies the closure-time files in `docs/plans/` and `docs/audits/reports/` as `authoritative`, `supporting-current`, or `historical-superseded`.
    - Historical artifacts that were left untouched in place are marked as immutable evidence through the checklist.
 
 2. Active MOS docs now describe the completed SQL-only posture.
@@ -72,4 +72,4 @@ Executed:
 
 ## Result
 
-Documentation alignment is complete for the current MOS cut-over scope. Active docs describe the completed SQL-only migrated posture, the updated workbench UI contract is synchronized across the shell docs, and all reviewed historical artifacts are explicitly classified as non-authoritative evidence.
+Documentation alignment is complete for the closure-time MOS cut-over scope. Active docs describe the completed SQL-only migrated posture, the updated workbench UI contract is synchronized across the shell docs, and all reviewed historical artifacts are explicitly classified as non-authoritative evidence.

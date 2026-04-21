@@ -9,7 +9,7 @@ Last reviewed: `2026-04-21`
 
 ## Purpose
 
-Record the first executed Track A pass from `docs/plans/master_plan_mos.md`, including the implemented SQL authority seams, runtime cutover modes, parity evidence, and remaining blocked semantic work.
+Record the first executed Track A pass from `docs/plans/master_plan_mos.md`, including the implemented SQL authority seams, runtime cutover modes, parity evidence, and the intermediate-stage blocked semantic work recorded at that time.
 
 ## Historical Status
 
@@ -122,7 +122,7 @@ Evidence files:
 - `MyCiteV2/tests/adapters/test_sql_portal_authority_adapter.py`
 - `MyCiteV2/tests/unit/test_portal_shell_sql_authority.py`
 
-## Remaining Open Work
+## Historical Remaining Open Work
 
 1. `SG-1` remains open because `version_hash`/MSS hashing policy is still not closed canon.
 2. `SG-2` remains open because generalized hyphae derivation and stable semantic identity rules are still not closed canon.
@@ -132,7 +132,7 @@ Evidence files:
 
 ## Track B Addendum — 2026-04-21 Closure Pass
 
-This addendum supersedes the Track B status in the historical "Remaining Open Work" list above.
+This addendum supersedes the Track B status in the historical "Historical Remaining Open Work" list above.
 
 - `SG-1` is now closed through `docs/plans/mos_sg1_version_identity_policy_2026-04-21.md` plus SQL-backed persistence in `datum_document_semantics`.
 - `SG-2` is now closed through `docs/plans/mos_sg2_hyphae_derivation_policy_2026-04-21.md` plus SQL-backed persistence in `datum_row_semantics`.
@@ -145,4 +145,4 @@ This addendum supersedes the Track B status in the historical "Remaining Open Wo
 - Track A v1 SQL authority path implemented: **Met for the approved first-cut surfaces**
 - Shadow/parity evidence published: **Met**
 - SQL-primary runtime path available: **Met**
-- Native MOS closure: **Not met by design**
+- Native MOS closure at that intermediate stage: **Not met by design**

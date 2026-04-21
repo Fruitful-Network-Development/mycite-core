@@ -45,7 +45,7 @@ Out of scope for v1 cutover:
 - **Completed in execution for Track C:** additive directive-context snapshots/events remain implemented and non-blocking, and the final migration imported `0` shared directive snapshots and `0` shared directive events because no explicit directive-context manifest was supplied.
 - **Completed in runtime cut-over:** migrated `SYSTEM` authority surfaces now fail closed without the authority database instead of silently bootstrapping legacy datum/audit authority, and any retained filesystem helpers are explicitly non-authoritative migration or fixture support only.
 - **Completed in UI hardening:** `/portal/system/tools/workbench-ui` now provides a read-only, two-pane SQL-backed spreadsheet with a document table keyed by `version_hash`, a row grid keyed by `hyphae_hash`, additive directive overlay summaries, and no datum-row mutation path.
-- **Completed in closure artifacts:** final ingestion, SQL-only activation, directive non-inference, documentation cleanup, the 31-artifact closure checklist, and the overall program-closure audits are published under `docs/audits/reports/`.
+- **Completed in closure artifacts:** final ingestion, SQL-only activation, directive non-inference, documentation cleanup, the closure checklist, and the overall program-closure audits are published under `docs/audits/reports/`.
 - **Retained explicitly as non-blocking exception scope:** `NETWORK` remains a derived-materialization/system-log surface, host-bound private/public assets remain outside SQL datum authority until dedicated ports exist, and future NIMM/AITAS widening requires a separate follow-on plan rather than reopening this master plan.
 
 ## Program Authority Rules
@@ -379,7 +379,7 @@ Native MOS closure exit:
 - Workbench UI read-only SQL surface: **Met**
 - Track B semantic closure (`SG-1` through `SG-4`): **Met**
 - Track C additive-only directive overlay implementation (`MOS-C2`): **Met and intentionally non-blocking**
-- Documentation alignment, 31-artifact review, and historical cleanup: **Met**
+- Documentation alignment, closure-corpus review, and historical cleanup: **Met**
 
 Program close-out posture:
 
