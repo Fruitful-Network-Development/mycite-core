@@ -13,6 +13,11 @@ Documentation IA + guided-task YAML program:
 
 - `documentation_ia_remediation_backlog.md` tracks active migration and enforcement work from the documentation optimization plan.
 
+MOS SQL core program:
+
+- `master_plan_mos.md` is the authoritative MOS SQL-backed core cutover and semantic-closure program.
+- `master_plan_mos.index.yaml` is the lightweight companion index for phases, dependencies, gates, and evidence links.
+
 Desktop reconciliation program:
 
 - `desktop_dm02_dm04_reconciliation_plan_2026-04-20.md` is the active comprehensive implementation plan for desktop deep-link startup translation (`DM-02`) and scoped shell-state persistence policy (`DM-04`).
