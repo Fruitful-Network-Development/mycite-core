@@ -9,7 +9,7 @@ Last reviewed: `2026-04-21`
 
 ## Purpose
 
-Register the unresolved semantic closure work required by Track B of `docs/plans/master_plan_mos.md` so the SQL cutover can proceed without silently promoting unresolved identity and mutation rules into canon.
+Record the closure state for Track B from `docs/plans/master_plan_mos.md` so the SQL cutover and the native MOS semantic rules stay synchronized.
 
 ## Scope
 
@@ -22,80 +22,101 @@ In scope:
 
 Out of scope:
 
-- performing the full semantic closure in this first SQL cutover pass
-- promoting any unresolved semantic claim into the v1 operational authority declaration
+- Track C directive-context widening
+- inventing new runtime surfaces outside the approved Track A seams
 
-## Canonical Contract Links
-
-- portal shell contract: `docs/contracts/portal_shell_contract.md`
-- route model: `docs/contracts/route_model.md`
-- surface catalog: `docs/contracts/surface_catalog.md`
-- vocabulary glossary: `docs/contracts/portal_vocabulary_glossary.md`
-- CTS-GIS HOPS profile sources: `docs/contracts/cts_gis_hops_profile_sources.md`
-- SAMRAS structural model: `docs/contracts/samras_structural_model.md`
-- SAMRAS validity and mutation: `docs/contracts/samras_validity_and_mutation.md`
-
-## Gate Backlog
+## Gate Ledger
 
 ### SG-1 — Version identity and MSS hashing policy
 
-Current state:
+Status: `closed`
 
-- current repo evidence supports canonical MSS compile/decode references
-- no current repo-implemented `version_hash` hashing algorithm is closed canon
+Closure artifact:
 
-Required outputs:
+- `docs/plans/mos_sg1_version_identity_policy_2026-04-21.md`
 
-- declared hash input and canonicalization boundary
-- compatibility rules for historical MSS forms
-- authority statement defining when version identity is storage-derived versus semantic-derived
+Implementation evidence:
+
+- `MyCiteV2/packages/adapters/sql/datum_semantics.py`
+- `MyCiteV2/packages/adapters/sql/datum_store.py`
+- `MyCiteV2/tests/adapters/test_sql_datum_store_adapter.py`
+
+Closure summary:
+
+- document version identity is now storage-derived through `mos.mss_sha256_v1`
+- the SQL datum store persists `version_hash` plus the canonical MSS-equivalent input payload
+- historical MSS assumptions remain compatibility-only unless equivalence is proven
 
 ### SG-2 — Hyphae derivation and stable semantic identity policy
 
-Current state:
+Status: `closed`
 
-- the repo distinguishes compact storage address from stable semantic identity
-- generalized hyphae derivation is not yet closed canon
+Closure artifact:
 
-Required outputs:
+- `docs/plans/mos_sg2_hyphae_derivation_policy_2026-04-21.md`
 
-- derivation algorithm
-- treatment of preceding rudi datums beyond explicit references
-- edge-case matrix for source/file/workbench projections
+Implementation evidence:
+
+- `MyCiteV2/packages/adapters/sql/datum_semantics.py`
+- `MyCiteV2/packages/adapters/sql/datum_store.py`
+- `MyCiteV2/tests/adapters/test_sql_datum_store_adapter.py`
+
+Closure summary:
+
+- stable semantic identity is now distinct from storage address
+- the canonical hyphae chain includes local dependency closure plus the required `0-0-*` rudi prefix
+- the SQL datum store persists semantic hashes and hyphae chains per row
 
 ### SG-3 — Deterministic edit/remap algorithm
 
-Current state:
+Status: `closed`
 
-- bounded structural mutation exists in parts of the repo
-- no generalized datum-file insert/delete/move remap algorithm is closed canon
+Closure artifact:
 
-Required outputs:
+- `docs/plans/mos_sg3_edit_remap_policy_2026-04-21.md`
 
-- ordered transactional remap rules
-- preview/apply parity rules
-- reference-shift invariants across affected abstractions
+Implementation evidence:
+
+- `MyCiteV2/packages/adapters/sql/datum_semantics.py`
+- `MyCiteV2/packages/adapters/sql/datum_store.py`
+- `MyCiteV2/tests/adapters/test_sql_datum_store_adapter.py`
+
+Closure summary:
+
+- canonical insert/delete/move rules now exist behind the SQL datum-store adapter
+- deletion refuses live-reference targets instead of guessing semantic replacements
+- successful apply operations re-store the authoritative catalog and refresh version/hyphae identities
 
 ### SG-4 — Native-standard closure and compatibility retirement rules
 
-Current state:
+Status: `closed`
 
-- closure criteria remain blocked by `SG-1` through `SG-3`
+Closure artifact:
 
-Required outputs:
+- `docs/plans/mos_sg4_standard_closure_policy_2026-04-21.md`
 
-- declaration checklist for native MOS closure
-- compatibility retirement policy and warning window
-- explicit standard-closure language distinct from the v1 operational SQL-backed core declaration
+Implementation evidence:
+
+- `docs/plans/master_plan_mos.md`
+- `docs/plans/master_plan_mos.index.yaml`
+- `docs/plans/mos_sg1_version_identity_policy_2026-04-21.md`
+- `docs/plans/mos_sg2_hyphae_derivation_policy_2026-04-21.md`
+- `docs/plans/mos_sg3_edit_remap_policy_2026-04-21.md`
+
+Closure summary:
+
+- native MOS closure criteria are now explicit
+- compatibility retirement is staged as detect, freeze, migrate, retire
+- Track C remains non-blocking for Track B semantic closure
 
 ## Validation Rules
 
-1. None of the four gates may be marked closed without a dedicated closure artifact.
-2. No Track A milestone may assume a gate is solved unless the closure artifact exists.
-3. Compatibility retirement cannot begin before `SG-1` through `SG-3` are closed.
+1. Every closed gate must retain its dedicated closure artifact.
+2. If implementation diverges from a closure artifact, `docs/plans/master_plan_mos.md` must be updated before the gate may remain closed.
+3. Compatibility retirement may proceed only in the order defined by `SG-4`.
 
 ## Exit Criteria
 
-- all four gates have named closure artifacts
-- the semantic gap register in `master_plan_mos.md` is empty
-- native MOS closure and compatibility retirement are both decision-complete
+- all four semantic gates remain closed with active evidence
+- the master plan no longer treats Track B semantics as unresolved
+- compatibility retirement is decision-complete even when individual compatibility paths remain intentionally retained

@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
 from MyCiteV2.packages.adapters.sql._sqlite import dumps_json, loads_json, open_sqlite
+from MyCiteV2.packages.adapters.sql.datum_semantics import (
+    build_document_semantics,
+    preview_document_delete as preview_document_delete_mutation,
+    preview_document_insert as preview_document_insert_mutation,
+    preview_document_move as preview_document_move_mutation,
+)
 from MyCiteV2.packages.ports.datum_store import (
+    AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
     AuthoritativeDatumDocumentPort,
     AuthoritativeDatumDocumentRequest,
@@ -102,6 +109,7 @@ class SqliteSystemDatumStoreAdapter(
             if isinstance(result, AuthoritativeDatumDocumentCatalogResult)
             else AuthoritativeDatumDocumentCatalogResult.from_dict(result)
         )
+        updated_at = self._clock()
         with self._connect() as connection:
             connection.execute(
                 """
@@ -111,8 +119,63 @@ class SqliteSystemDatumStoreAdapter(
                     payload_json = excluded.payload_json,
                     updated_at_unix_ms = excluded.updated_at_unix_ms
                 """,
-                (normalized.tenant_id, dumps_json(normalized.to_dict()), self._clock()),
+                (normalized.tenant_id, dumps_json(normalized.to_dict()), updated_at),
             )
+            connection.execute("DELETE FROM datum_row_semantics WHERE tenant_id = ?", (normalized.tenant_id,))
+            connection.execute("DELETE FROM datum_document_semantics WHERE tenant_id = ?", (normalized.tenant_id,))
+            for document in normalized.documents:
+                semantics = build_document_semantics(document)
+                connection.execute(
+                    """
+                    INSERT INTO datum_document_semantics (
+                        tenant_id,
+                        document_id,
+                        policy,
+                        version_hash,
+                        canonical_payload_json,
+                        updated_at_unix_ms
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        normalized.tenant_id,
+                        document.document_id,
+                        semantics["document"]["policy"],
+                        semantics["document"]["version_hash"],
+                        dumps_json(semantics["document"]["canonical_payload"]),
+                        updated_at,
+                    ),
+                )
+                for datum_address, row_semantics in semantics["rows"].items():
+                    connection.execute(
+                        """
+                        INSERT INTO datum_row_semantics (
+                            tenant_id,
+                            document_id,
+                            datum_address,
+                            policy,
+                            semantic_hash,
+                            hyphae_hash,
+                            hyphae_chain_json,
+                            local_references_json,
+                            warnings_json,
+                            updated_at_unix_ms
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            normalized.tenant_id,
+                            document.document_id,
+                            datum_address,
+                            row_semantics["policy"],
+                            row_semantics["semantic_hash"],
+                            row_semantics["hyphae_hash"],
+                            dumps_json(row_semantics["hyphae_chain"]),
+                            dumps_json(row_semantics["local_references"]),
+                            dumps_json(row_semantics["warnings"]),
+                            updated_at,
+                        ),
+                    )
             connection.commit()
 
     def store_system_workbench(self, result: SystemDatumWorkbenchResult) -> None:
@@ -259,6 +322,213 @@ class SqliteSystemDatumStoreAdapter(
                 warnings=("sql_publication_summary_missing",),
             )
         return PublicationTenantSummaryResult.from_dict(loads_json(row["payload_json"]))
+
+    def read_document_version_identity(self, *, tenant_id: str, document_id: str) -> dict[str, Any] | None:
+        normalized_request = AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
+        document_token = _as_text(document_id)
+        if not document_token:
+            raise ValueError("document_id is required")
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT policy, version_hash, canonical_payload_json
+                FROM datum_document_semantics
+                WHERE tenant_id = ? AND document_id = ?
+                """,
+                (normalized_request.tenant_id, document_token),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "policy": row["policy"],
+            "version_hash": row["version_hash"],
+            "canonical_payload": loads_json(row["canonical_payload_json"]),
+        }
+
+    def read_datum_semantic_identity(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+        datum_address: str,
+    ) -> dict[str, Any] | None:
+        normalized_request = AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
+        document_token = _as_text(document_id)
+        datum_token = _as_text(datum_address)
+        if not document_token:
+            raise ValueError("document_id is required")
+        if not datum_token:
+            raise ValueError("datum_address is required")
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT policy, semantic_hash, hyphae_hash, hyphae_chain_json, local_references_json, warnings_json
+                FROM datum_row_semantics
+                WHERE tenant_id = ? AND document_id = ? AND datum_address = ?
+                """,
+                (normalized_request.tenant_id, document_token, datum_token),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "policy": row["policy"],
+            "semantic_hash": row["semantic_hash"],
+            "hyphae_hash": row["hyphae_hash"],
+            "hyphae_chain": loads_json(row["hyphae_chain_json"]),
+            "local_references": loads_json(row["local_references_json"]),
+            "warnings": loads_json(row["warnings_json"]),
+        }
+
+    def _catalog_with_document(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+    ) -> tuple[AuthoritativeDatumDocumentCatalogResult, AuthoritativeDatumDocument]:
+        catalog = self.read_authoritative_datum_documents(AuthoritativeDatumDocumentRequest(tenant_id=tenant_id))
+        for document in catalog.documents:
+            if document.document_id == _as_text(document_id):
+                return catalog, document
+        raise ValueError("authoritative_document_missing")
+
+    def _persist_updated_document(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+        updated_document: AuthoritativeDatumDocument,
+    ) -> AuthoritativeDatumDocumentCatalogResult:
+        catalog = self.read_authoritative_datum_documents(AuthoritativeDatumDocumentRequest(tenant_id=tenant_id))
+        documents: list[AuthoritativeDatumDocument] = []
+        found = False
+        for document in catalog.documents:
+            if document.document_id == _as_text(document_id):
+                documents.append(updated_document)
+                found = True
+            else:
+                documents.append(document)
+        if not found:
+            raise ValueError("authoritative_document_missing")
+        next_catalog = AuthoritativeDatumDocumentCatalogResult(
+            tenant_id=catalog.tenant_id,
+            documents=tuple(documents),
+            source_files=dict(catalog.source_files),
+            readiness_status=dict(catalog.readiness_status),
+            warnings=tuple(catalog.warnings),
+        )
+        self.store_authoritative_catalog(next_catalog)
+        return self.read_authoritative_datum_documents(AuthoritativeDatumDocumentRequest(tenant_id=tenant_id))
+
+    def preview_document_insert(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+        target_address: str,
+        raw: Any,
+    ) -> dict[str, Any]:
+        _, document = self._catalog_with_document(tenant_id=tenant_id, document_id=document_id)
+        preview = preview_document_insert_mutation(document, target_address=target_address, raw=raw)
+        preview["updated_document"] = preview["updated_document"].to_dict()
+        return preview
+
+    def apply_document_insert(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+        target_address: str,
+        raw: Any,
+    ) -> dict[str, Any]:
+        _, document = self._catalog_with_document(tenant_id=tenant_id, document_id=document_id)
+        preview = preview_document_insert_mutation(document, target_address=target_address, raw=raw)
+        persisted_catalog = self._persist_updated_document(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            updated_document=preview["updated_document"],
+        )
+        latest_identity = self.read_document_version_identity(tenant_id=tenant_id, document_id=document_id)
+        preview["updated_document"] = next(
+            item.to_dict() for item in persisted_catalog.documents if item.document_id == _as_text(document_id)
+        )
+        preview["persisted_version_hash"] = latest_identity["version_hash"] if latest_identity else ""
+        return preview
+
+    def preview_document_delete(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+        target_address: str,
+    ) -> dict[str, Any]:
+        _, document = self._catalog_with_document(tenant_id=tenant_id, document_id=document_id)
+        preview = preview_document_delete_mutation(document, target_address=target_address)
+        preview["updated_document"] = preview["updated_document"].to_dict()
+        return preview
+
+    def apply_document_delete(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+        target_address: str,
+    ) -> dict[str, Any]:
+        _, document = self._catalog_with_document(tenant_id=tenant_id, document_id=document_id)
+        preview = preview_document_delete_mutation(document, target_address=target_address)
+        persisted_catalog = self._persist_updated_document(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            updated_document=preview["updated_document"],
+        )
+        latest_identity = self.read_document_version_identity(tenant_id=tenant_id, document_id=document_id)
+        preview["updated_document"] = next(
+            item.to_dict() for item in persisted_catalog.documents if item.document_id == _as_text(document_id)
+        )
+        preview["persisted_version_hash"] = latest_identity["version_hash"] if latest_identity else ""
+        return preview
+
+    def preview_document_move(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+        source_address: str,
+        destination_address: str,
+    ) -> dict[str, Any]:
+        _, document = self._catalog_with_document(tenant_id=tenant_id, document_id=document_id)
+        preview = preview_document_move_mutation(
+            document,
+            source_address=source_address,
+            destination_address=destination_address,
+        )
+        preview["updated_document"] = preview["updated_document"].to_dict()
+        return preview
+
+    def apply_document_move(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+        source_address: str,
+        destination_address: str,
+    ) -> dict[str, Any]:
+        _, document = self._catalog_with_document(tenant_id=tenant_id, document_id=document_id)
+        preview = preview_document_move_mutation(
+            document,
+            source_address=source_address,
+            destination_address=destination_address,
+        )
+        persisted_catalog = self._persist_updated_document(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            updated_document=preview["updated_document"],
+        )
+        latest_identity = self.read_document_version_identity(tenant_id=tenant_id, document_id=document_id)
+        preview["updated_document"] = next(
+            item.to_dict() for item in persisted_catalog.documents if item.document_id == _as_text(document_id)
+        )
+        preview["persisted_version_hash"] = latest_identity["version_hash"] if latest_identity else ""
+        return preview
 
     def write_publication_profile_basics(
         self,
