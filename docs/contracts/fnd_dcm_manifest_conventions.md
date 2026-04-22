@@ -16,6 +16,7 @@ Schema mapping:
 
 - `webdz.site_content.v2` maps shell metadata, navigation, footer, page definitions, and collections into the shared buckets
 - `webdz.site_content.v3` maps site shell metadata, icon sets, footer columns, page definitions, and collections into the shared buckets
+- machine-surface metadata (when present under `machine` or legacy `machine_surfaces`) is surfaced additively in `extensions.machine_surface_summary`
 - schema-specific behavior that should not constrain future frontend work remains in `extensions`
 
 Collection conventions:
