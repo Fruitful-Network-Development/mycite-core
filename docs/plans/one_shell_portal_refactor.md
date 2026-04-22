@@ -187,6 +187,35 @@ Follow-up task:
 - create a dedicated CTS-GIS fixture hardening pass to make data/compiled prerequisites explicit and deterministic for workspace-runtime behavior tests
 - do not relax shell contracts to satisfy unstable CTS-GIS fixture assumptions
 
+### Tool operation gap register (2026-04-22 live portal observations)
+
+Status:
+
+- active and untriaged implementation backlog
+- sourced from live UI behavior observations on tool routes
+
+Observed route-level symptoms:
+
+- `/portal/system/tools/aws-csm?view=domains`: Interface Panel shows posture and selection context but no clear action control/button to execute the next tool operation from the panel.
+- `/portal/system/tools/cts-gis?file=anthology&verb=mediate`: panel reports `COMPILED_STATE_INVALID`; CTS-GIS navigation is blocked and does not reflect expected mediation state transitions.
+- `/portal/system/tools/fnd-ebi`: reported as lacking analytics rendering and lacking functional use of service peripheral access for analytics workflows.
+- `/portal/system/tools/fnd-dcm?...`: live surface is present, but current behavior appears inspection-only; verify boundary and expected split versus the reported FND-EBI analytics role.
+
+Tasks to address:
+
+- `TOOL-GAP-01` AWS-CSM Interface Panel actionability: add explicit panel-level action affordance(s) for the selected domain/user workflow, with request/response feedback states (`idle`, `pending`, `success`, `error`) and contract-backed action routing.
+- `TOOL-GAP-02` CTS-GIS state/render reliability: triage `compiled_state_invalid` root cause across data readiness, compiled-state generation, and runtime guards; restore state-reflective rendering when inputs are valid while preserving protective blocking when inputs are invalid.
+- `TOOL-GAP-03` FND-EBI analytics surface enablement: define and implement the minimum viable analytics outputs that must render through the service peripheral path, including a no-data fallback that still proves the pipeline is functional.
+- `TOOL-GAP-04` FND-DCM vs FND-EBI role/route clarity: resolve and document the expected operational split between manifest inspection (`fnd-dcm`) and analytics behavior (`fnd-ebi`), then align route matrix/tests so operators do not encounter ambiguous tool purpose.
+- `TOOL-GAP-05` Cross-tool operational readiness gate: add a focused architecture/runtime test gate that fails when a tool route is posture-healthy but functionally non-actionable in the Interface Panel for its declared capability.
+
+Planning/triage order:
+
+- first run `TOOL-GAP-04` to lock naming/ownership boundaries
+- then execute `TOOL-GAP-01` and `TOOL-GAP-03` in parallel on their isolated tool surfaces
+- execute `TOOL-GAP-02` with data-fixture hardening to prevent false green UI states
+- close with `TOOL-GAP-05` as the regression gate
+
 ## Result Target
 
 The portal remains unique in state model (HANUS + interface-surface mediation + NIMM-AITAS) while becoming operationally predictable:
