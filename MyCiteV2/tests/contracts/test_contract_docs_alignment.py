@@ -286,6 +286,9 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("node-specific profile source document", samras_addressing)
         self.assertIn("tool_mediation_surface_archetype.md", contracts_readme)
         self.assertIn("tool_mediation_surface_archetype.md", docs_readme)
+        self.assertIn("cts_gis_compiled_artifact_contract.md", contracts_readme)
+        self.assertIn("cts_gis_operating_contract.md", contracts_readme)
+        self.assertIn("cts_gis_legacy_alias_retirement_timeline.md", contracts_readme)
 
 
 if __name__ == "__main__":

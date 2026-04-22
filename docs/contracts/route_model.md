@@ -145,6 +145,9 @@ CTS-GIS request body contract:
 
 - shared shell query stays unchanged
 - tool-local state is carried in `tool_state`
+- runtime mode is explicit in body via `runtime_mode`:
+  - `production_strict`
+  - `audit_forensic`
 - CTS-GIS canonical `tool_state` keys are:
   - `tool_state.active_path`
   - `tool_state.selected_node_id`
@@ -175,6 +178,10 @@ CTS-GIS runtime/body rules:
 - `navigation_canvas.dropdowns` carries one dropdown per resolved structural depth
 - `navigation_canvas.active_path` carries the resolved lineage
 - `Garland` is projected through `garland_split_projection`, where dominant `geospatial_projection` and secondary `profile_projection` update for that navigation root
+- strict runtime also emits compact canonical models:
+  - `navigation_model`
+  - `projection_model`
+  - `evidence_model`
 - these are CTS-GIS-local projections of one mediation posture, not two separate shell mediations
 - title fallback is blank-only when ASCII decoding is unavailable
 - CTS-GIS supporting evidence precedence is:
@@ -185,6 +192,7 @@ CTS-GIS runtime/body rules:
   - GeoJSON lens or equivalent runtime cache for spatial projection
 - v2.5.4 phase-B is canonical-only; CTS-GIS accepts only `cts_gis` / `cts-gis` / `sandbox:cts_gis:*` and `tool.<msn>.cts-gis.json`
 - legacy CTS-GIS aliases are rejected at the CTS-GIS tool endpoint with `400 legacy_maps_alias_unsupported`
+- `production_strict` runtime refuses missing/invalid compiled artifacts and returns `compiled_cts_gis_state_invalid` without request-time repair fallback
 
 CTS-GIS canonical defaults:
 

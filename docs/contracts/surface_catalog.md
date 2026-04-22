@@ -141,12 +141,20 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 - CTS-GIS mediates on the selected anchor-file datum and projects correlated source-file evidence into the Interface Panel.
 - CTS-GIS tool-local navigation does not widen the shared shell focus stack. The shell focus remains `sandbox -> file -> datum -> object`.
 - Tool-local state is body-carried through CTS-GIS `tool_state`, not projected through new query keys.
+- CTS-GIS mode is explicit via `runtime_mode`:
+  - `production_strict` consumes compiled-only state and fails fast when invalid.
+  - `audit_forensic` exposes richer evidence and compatibility diagnostics.
+- CTS-GIS runtime also emits compact model partitions for universal shell tooling:
+  - `navigation_model`
+  - `projection_model`
+  - `evidence_model`
 - When a selected node is present and no explicit tool-local intention is supplied, CTS-GIS normalizes `Intention` to `self` so Garland reflects the current node.
 - The `Control Panel` holds CTS-GIS-local directive, `AITAS`, and source-evidence controls.
 - Node-focused Intention actions live inside `AITAS`; `Projection Rules` is shown only for sandbox-wide attention without a selected node.
 - The workbench remains diagnostic or raw supporting evidence rather than a duplicate of Garland.
 - v2.5.4 phase-B is canonical-only for CTS-GIS identifiers and storage anchors.
 - Legacy CTS-GIS aliases are rejected at `POST /portal/api/v2/system/tools/cts-gis` with `400 legacy_maps_alias_unsupported`.
+- Compiled artifact authority schema is `mycite.v2.portal.system.tools.cts_gis.compiled.v1`.
 
 ## FND-DCM
 
