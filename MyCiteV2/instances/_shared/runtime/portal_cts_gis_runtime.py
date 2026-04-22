@@ -20,7 +20,16 @@ from MyCiteV2.packages.core.structures.samras import (
     select_preferred_structure_authority,
 )
 from MyCiteV2.packages.modules.cross_domain.cts_gis import CtsGisReadOnlyService
+from MyCiteV2.packages.modules.cross_domain.cts_gis import (
+    build_compiled_artifact,
+    compiled_artifact_path,
+    read_compiled_artifact,
+    validate_compiled_artifact,
+    write_compiled_artifact,
+)
 from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC as _CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
+    CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT as _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT,
     CTS_GIS_NAV_MODE_DIRECTORY as _CTS_GIS_NAV_MODE_DIRECTORY,
     DEFAULT_ARCHETYPE_FAMILY_ID as _DEFAULT_ARCHETYPE_FAMILY_ID,
     DEFAULT_INTENTION_TOKEN as _DEFAULT_INTENTION_RULE_ID,
@@ -255,6 +264,23 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
             ),
         },
     }
+
+
+def _runtime_mode_from_request(payload: dict[str, Any] | None) -> str:
+    normalized_payload = payload if isinstance(payload, dict) else {}
+    requested = _as_text(normalized_payload.get("runtime_mode"))
+    if requested in {_CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT, _CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC}:
+        return requested
+    raw_tool_state = normalized_payload.get("tool_state") if isinstance(normalized_payload.get("tool_state"), dict) else {}
+    source = raw_tool_state.get("source") if isinstance(raw_tool_state.get("source"), dict) else {}
+    requested = _as_text(source.get("runtime_mode") or raw_tool_state.get("runtime_mode"))
+    if requested in {_CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT, _CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC}:
+        return requested
+    return _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT
+
+
+def _shell_action(kind: str, **payload: Any) -> dict[str, Any]:
+    return {"kind": _as_text(kind), "payload": dict(payload or {})}
 
 
 def _dedupe_warnings(*groups: list[str] | tuple[str, ...]) -> list[str]:
@@ -863,6 +889,7 @@ def _cts_gis_control_panel(
                     attention_node_id=node_id,
                     base_shell_request=base_shell_request,
                 ),
+                "action": _shell_action("select_node", node_id=node_id),
             }
         )
     intention_entries = [
@@ -878,6 +905,7 @@ def _cts_gis_control_panel(
                 intention_rule_id=_as_text(option.get("token")),
                 base_shell_request=base_shell_request,
             ),
+            "action": _shell_action("set_intention", token=_as_text(option.get("token"))),
         }
         for option in list((service_surface.get("mediation_state") or {}).get("available_intentions") or [])
     ]
@@ -905,6 +933,7 @@ def _cts_gis_control_panel(
                     intention_rule_id=token,
                     base_shell_request=base_shell_request,
                 ),
+                "action": _shell_action("set_intention", token=token),
             }
             for token, label in fallback_options
         ]
@@ -943,6 +972,7 @@ def _cts_gis_control_panel(
                 time_directive=token,
                 base_shell_request=base_shell_request,
             ),
+            "action": _shell_action("set_time", token=token),
         }
         for token in time_tokens
     ]
@@ -1011,6 +1041,7 @@ def _cts_gis_control_panel(
                         intention_rule_id=_as_text(level.get("token")),
                         base_shell_request=base_shell_request,
                     ),
+                    "action": _shell_action("set_intention", token=_as_text(level.get("token"))),
                 }
                 for level in intention_levels
             ],
@@ -1218,6 +1249,7 @@ def _directory_option_payload(
             attention_node_id=node_id,
             base_shell_request=base_shell_request,
         ),
+        "action": _shell_action("select_node", node_id=node_id),
     }
 
 
@@ -1695,6 +1727,11 @@ def _real_geospatial_projection(
                     selected_feature_id=feature_id,
                     base_shell_request=base_shell_request,
                 ),
+                "action": _shell_action(
+                    "select_feature",
+                    feature_id=feature_id,
+                    row_address=selected_row_address,
+                ),
             }
         )
         if is_selected and geometry_points:
@@ -1768,6 +1805,7 @@ def _empty_profile_projection(*, warnings: list[str] | None = None) -> dict[str,
             "timeframe_tokens": [],
             "timeframe_match": False,
             "shell_request": {},
+            "action": {},
         },
         "empty_message": "No projected profile is available until the active path resolves real CTS-GIS evidence.",
         "has_profile_state": False,
@@ -1821,6 +1859,7 @@ def _cts_gis_interface_body(
             enabled=not district_overlay_enabled,
             base_shell_request=base_shell_request,
         ),
+        "action": _shell_action("toggle_overlay", enabled=not district_overlay_enabled),
     }
     real_geospatial_projection, garland_swapped = _real_geospatial_projection(
         portal_scope=portal_scope,
@@ -1921,6 +1960,137 @@ def _cts_gis_interface_body(
     }
 
 
+def _service_surface_from_compiled_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
+    projection_model = dict(artifact.get("projection_model") or {})
+    evidence_model = dict(artifact.get("evidence_model") or {})
+    profile_summary = dict(projection_model.get("profile_summary") or {})
+    selected_feature = dict(projection_model.get("selected_feature") or {})
+    return {
+        "document_catalog": [],
+        "selected_document": {"document_name": "", "document_id": profile_summary.get("document_id")},
+        "attention_profile": {
+            "node_id": _as_text(profile_summary.get("node_id")),
+            "profile_label": _as_text(profile_summary.get("label")),
+            "feature_count": int(profile_summary.get("feature_count") or 0),
+            "child_count": int(profile_summary.get("child_count") or 0),
+            "document_id": _as_text(profile_summary.get("document_id")),
+            "has_geometry": bool(list((projection_model.get("feature_collection") or {}).get("features") or [])),
+        },
+        "lineage": [],
+        "children": [],
+        "render_profiles": [],
+        "related_profiles": [],
+        "render_set_summary": {
+            "render_mode": "self",
+            "render_profile_count": 0,
+            "render_row_count": 0,
+            "render_feature_count": len(list((projection_model.get("feature_collection") or {}).get("features") or [])),
+        },
+        "map_projection": {
+            "projection_state": _as_text(projection_model.get("projection_state")) or "inspect_only",
+            "projection_source": _as_text(projection_model.get("projection_source")) or "none",
+            "projection_health": dict(projection_model.get("projection_health") or {"state": "empty", "reason_codes": []}),
+            "fallback_reason_codes": list(projection_model.get("fallback_reason_codes") or []),
+            "focus_bounds": projection_model.get("focus_bounds"),
+            "selected_feature": selected_feature if selected_feature else None,
+            "decode_summary": {"reference_binding_count": 0, "decoded_coordinate_count": 0, "failed_token_count": 0},
+            "feature_count": len(list((projection_model.get("feature_collection") or {}).get("features") or [])),
+            "feature_collection": {
+                "type": "FeatureCollection",
+                "features": list((projection_model.get("feature_collection") or {}).get("features") or []),
+                "bounds": (projection_model.get("feature_collection") or {}).get("bounds"),
+            },
+            "warnings": [],
+        },
+        "rows": [],
+        "diagnostic_summary": dict(evidence_model.get("diagnostic_summary") or {}),
+        "lens_state": {"overlay_mode": "auto", "raw_underlay_visible": False},
+        "mediation_state": {
+            "attention_document_id": _as_text(profile_summary.get("document_id")),
+            "attention_node_id": _as_text(profile_summary.get("node_id")),
+            "intention_token": "self",
+            "available_intentions": [],
+            "selection_summary": {},
+        },
+        "contextual_references": {"district_precincts": {"enabled": False, "overlay_active": False}},
+        "warnings": list(evidence_model.get("warnings") or []),
+    }
+
+
+def _navigation_canvas_from_compiled_artifact(
+    *,
+    artifact: dict[str, Any],
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    resolved_tool_state: dict[str, Any],
+    base_shell_request: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    nav_model = dict(artifact.get("navigation_model") or {})
+    dropdown_models = list(nav_model.get("dropdowns") or [])
+    active_path_models = list(nav_model.get("active_path") or [])
+    active_node_id = _as_text(nav_model.get("active_node_id")) or _as_text(resolved_tool_state.get("selected_node_id"))
+    title_map: dict[str, str] = {}
+    for dropdown in dropdown_models:
+        for option in list((dropdown.get("options") or [])):
+            node_id = _as_text(option.get("node_id"))
+            if node_id:
+                title_map[node_id] = _as_text(option.get("title"))
+    dropdowns: list[dict[str, Any]] = []
+    for index, dropdown in enumerate(dropdown_models):
+        dropdown_options = []
+        for option in list((dropdown.get("options") or [])):
+            node_id = _as_text(option.get("node_id"))
+            if not node_id:
+                continue
+            dropdown_options.append(
+                _directory_option_payload(
+                    portal_scope=portal_scope,
+                    shell_state=shell_state,
+                    resolved_tool_state=resolved_tool_state,
+                    node_id=node_id,
+                    title_map=title_map,
+                    selected_node_id=_as_text(dropdown.get("selected_node_id")) or active_node_id,
+                    base_shell_request=base_shell_request,
+                )
+            )
+        dropdowns.append(
+            {
+                "depth": int(dropdown.get("depth") or index + 1),
+                "parent_node_id": _as_text(dropdown.get("parent_node_id")),
+                "selected_node_id": _as_text(dropdown.get("selected_node_id")) or active_node_id,
+                "options": dropdown_options,
+            }
+        )
+    active_path = []
+    for entry in active_path_models:
+        node_id = _as_text(entry.get("node_id"))
+        if not node_id:
+            continue
+        active_path.append(
+            _directory_option_payload(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                resolved_tool_state=resolved_tool_state,
+                node_id=node_id,
+                title_map=title_map,
+                selected_node_id=active_node_id,
+                base_shell_request=base_shell_request,
+            )
+        )
+    return {
+        "kind": "diktataograph_navigation_canvas",
+        "title": "Diktataograph",
+        "summary": "Compiled SAMRAS navigation state.",
+        "mode": _CTS_GIS_NAV_MODE_DIRECTORY,
+        "source_authority": _as_text(nav_model.get("source_authority")) or "samras_magnitude",
+        "decode_state": _as_text(nav_model.get("decode_state")) or "blocked_invalid_magnitude",
+        "diagnostics": [],
+        "dropdowns": dropdowns,
+        "active_path": active_path,
+        "active_node_id": active_node_id,
+    }
+
+
 def build_portal_cts_gis_surface_bundle(
     *,
     portal_scope: PortalScope,
@@ -1939,6 +2109,8 @@ def build_portal_cts_gis_surface_bundle(
     normalized_request_payload = request_payload if isinstance(request_payload, dict) else {}
     _assert_no_legacy_maps_aliases(normalized_request_payload)
     requested_tool_state = _normalize_tool_state(normalized_request_payload)
+    runtime_mode = _runtime_mode_from_request(normalized_request_payload)
+    include_evidence = bool(normalized_request_payload.get("include_evidence")) or runtime_mode == _CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC
     configured = tool_exposure_configured(tool_exposure_policy, tool_id=tool_entry.tool_id)
     enabled = tool_exposure_enabled(tool_exposure_policy, tool_id=tool_entry.tool_id)
     missing_integrations: list[str] = []
@@ -1946,35 +2118,124 @@ def build_portal_cts_gis_surface_bundle(
         capability for capability in tool_entry.required_capabilities if capability not in portal_scope.capabilities
     ]
     datum_store = _datum_store_for_data_dir(data_dir)
-    raw_tool_state = (
-        normalized_request_payload.get("tool_state")
-        if isinstance(normalized_request_payload.get("tool_state"), dict)
-        else {}
+    compiled_path = compiled_artifact_path(data_dir, portal_scope_id=portal_scope.scope_id)
+    compiled_artifact = read_compiled_artifact(compiled_path)
+    compiled_valid, compiled_issues = validate_compiled_artifact(compiled_artifact)
+    strict_invalid = runtime_mode == _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT and not compiled_valid
+    tool_shell_request_base = build_portal_shell_request_payload(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        requested_surface_id=CTS_GIS_TOOL_SURFACE_ID,
     )
-    raw_aitas = raw_tool_state.get("aitas") if isinstance(raw_tool_state.get("aitas"), dict) else {}
-    raw_mediation = (
-        normalized_request_payload.get("mediation_state")
-        if isinstance(normalized_request_payload.get("mediation_state"), dict)
-        else {}
-    )
-    explicit_intention_requested = bool(
-        _as_text(raw_aitas.get("intention_rule_id"))
-        or _as_text(raw_mediation.get("intention_token"))
-        or _as_text(normalized_request_payload.get("intention_token"))
-    )
-    mediation_time = raw_mediation.get("time")
-    if not isinstance(mediation_time, (dict, str)):
-        mediation_time = None
-    requested_time_directive = _as_text(requested_tool_state.get("aitas", {}).get("time_directive"))
-    if requested_time_directive:
-        mediation_time = {"value_token": requested_time_directive, "family": "tool_state_time_directive"}
-    service_surface_started_at = perf_counter()
-    service_surface = CtsGisReadOnlyService(datum_store).read_surface(
-        portal_scope.scope_id,
-        selected_document_id=_as_text(requested_tool_state.get("source", {}).get("attention_document_id")),
-        selected_row_address=_as_text(requested_tool_state.get("selection", {}).get("selected_row_address")),
-        selected_feature_id=_as_text(requested_tool_state.get("selection", {}).get("selected_feature_id")),
-        mediation_state={
+    if runtime_mode == _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT and compiled_valid and compiled_artifact is not None:
+        service_surface_started_at = perf_counter()
+        service_surface = _service_surface_from_compiled_artifact(compiled_artifact)
+        phase_timings_ms["service_surface_read"] = round((perf_counter() - service_surface_started_at) * 1000.0, 3)
+        resolved_tool_state = _tool_state_for_navigation(
+            _resolved_tool_state(
+                dict(compiled_artifact.get("default_tool_state") or requested_tool_state),
+                service_surface,
+            ),
+            _navigation_canvas_from_compiled_artifact(
+                artifact=compiled_artifact,
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                resolved_tool_state=requested_tool_state,
+                base_shell_request=tool_shell_request_base,
+            ),
+        )
+        source_evidence = dict((compiled_artifact.get("evidence_model") or {}).get("source_evidence") or {})
+        source_evidence.setdefault(
+            "readiness",
+            {"state": "ready", "message": "CTS-GIS loaded compiled artifact successfully."},
+        )
+        navigation_canvas = _navigation_canvas_from_compiled_artifact(
+            artifact=compiled_artifact,
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            resolved_tool_state=resolved_tool_state,
+            base_shell_request=tool_shell_request_base,
+        )
+    elif runtime_mode == _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT and strict_invalid:
+        service_surface_started_at = perf_counter()
+        service_surface = {
+            "document_catalog": [],
+            "selected_document": None,
+            "attention_profile": None,
+            "lineage": [],
+            "children": [],
+            "render_profiles": [],
+            "related_profiles": [],
+            "render_set_summary": {"render_feature_count": 0, "render_row_count": 0, "render_profile_count": 0},
+            "map_projection": {"projection_state": "compiled_state_invalid", "selected_feature": None},
+            "rows": [],
+            "diagnostic_summary": {"compiled_issues": list(compiled_issues)},
+            "lens_state": {"overlay_mode": "auto", "raw_underlay_visible": False},
+            "mediation_state": {
+                "attention_document_id": "",
+                "attention_node_id": "",
+                "intention_token": "self",
+                "available_intentions": [],
+            },
+            "warnings": ["compiled_cts_gis_state_invalid"],
+        }
+        phase_timings_ms["service_surface_read"] = round((perf_counter() - service_surface_started_at) * 1000.0, 3)
+        resolved_tool_state = requested_tool_state
+        source_evidence = {
+            "readiness": {
+                "state": "compiled_state_invalid",
+                "message": "Compiled CTS-GIS state invalid. Run the CTS-GIS compile command or switch to audit_forensic mode.",
+            },
+            "warnings": ["compiled_cts_gis_state_invalid"] + list(compiled_issues),
+        }
+        navigation_canvas = {
+            "kind": "diktataograph_navigation_canvas",
+            "title": "Diktataograph",
+            "summary": "CTS-GIS navigation is unavailable until compiled state is valid.",
+            "mode": _CTS_GIS_NAV_MODE_DIRECTORY,
+            "source_authority": "samras_magnitude",
+            "decode_state": "blocked_invalid_magnitude",
+            "diagnostics": [
+                _navigation_diagnostic(
+                    "compiled_state_invalid",
+                    "Compiled CTS-GIS state is invalid for production_strict mode.",
+                    datum_addresses=list(compiled_issues),
+                )
+            ],
+            "dropdowns": [],
+            "active_path": [],
+            "active_node_id": "",
+        }
+    else:
+        raw_tool_state = (
+            normalized_request_payload.get("tool_state")
+            if isinstance(normalized_request_payload.get("tool_state"), dict)
+            else {}
+        )
+        raw_aitas = raw_tool_state.get("aitas") if isinstance(raw_tool_state.get("aitas"), dict) else {}
+        raw_mediation = (
+            normalized_request_payload.get("mediation_state")
+            if isinstance(normalized_request_payload.get("mediation_state"), dict)
+            else {}
+        )
+        explicit_intention_requested = bool(
+            _as_text(raw_aitas.get("intention_rule_id"))
+            or _as_text(raw_mediation.get("intention_token"))
+            or _as_text(normalized_request_payload.get("intention_token"))
+        )
+        mediation_time = raw_mediation.get("time")
+        if not isinstance(mediation_time, (dict, str)):
+            mediation_time = None
+        requested_time_directive = _as_text(requested_tool_state.get("aitas", {}).get("time_directive"))
+        if requested_time_directive:
+            mediation_time = {"value_token": requested_time_directive, "family": "tool_state_time_directive"}
+        service_surface_started_at = perf_counter()
+        service_surface = CtsGisReadOnlyService(datum_store).read_surface(
+            portal_scope.scope_id,
+            selected_document_id=_as_text(requested_tool_state.get("source", {}).get("attention_document_id")),
+            selected_row_address=_as_text(requested_tool_state.get("selection", {}).get("selected_row_address")),
+            selected_feature_id=_as_text(requested_tool_state.get("selection", {}).get("selected_feature_id")),
+            mediation_state={
                 "attention_document_id": _as_text(requested_tool_state.get("source", {}).get("attention_document_id")),
                 "attention_node_id": _as_text(requested_tool_state.get("aitas", {}).get("attention_node_id")),
                 "intention_token": (
@@ -1990,47 +2251,61 @@ def build_portal_cts_gis_surface_bundle(
                     requested_tool_state.get("source", {}).get("precinct_district_overlay_enabled")
                 ),
             },
-    ) if datum_store is not None else {
-        "document_catalog": [],
-        "selected_document": None,
-        "attention_profile": None,
-        "lineage": [],
-        "children": [],
-        "render_profiles": [],
-        "related_profiles": [],
-        "render_set_summary": {"render_feature_count": 0, "render_row_count": 0, "render_profile_count": 0},
-        "map_projection": {"projection_state": "no_authoritative_cts_gis_documents", "selected_feature": None},
-        "rows": [],
-        "diagnostic_summary": {},
-        "lens_state": {"overlay_mode": "auto", "raw_underlay_visible": False},
-        "mediation_state": {
-            "attention_document_id": "",
-            "attention_node_id": "",
-            "intention_token": _DEFAULT_INTENTION_RULE_ID,
-            "available_intentions": [],
-        },
-        "warnings": ["data_dir_missing"],
-    }
-    phase_timings_ms["service_surface_read"] = round((perf_counter() - service_surface_started_at) * 1000.0, 3)
+        ) if datum_store is not None else {
+            "document_catalog": [],
+            "selected_document": None,
+            "attention_profile": None,
+            "lineage": [],
+            "children": [],
+            "render_profiles": [],
+            "related_profiles": [],
+            "render_set_summary": {"render_feature_count": 0, "render_row_count": 0, "render_profile_count": 0},
+            "map_projection": {"projection_state": "no_authoritative_cts_gis_documents", "selected_feature": None},
+            "rows": [],
+            "diagnostic_summary": {},
+            "lens_state": {"overlay_mode": "auto", "raw_underlay_visible": False},
+            "mediation_state": {
+                "attention_document_id": "",
+                "attention_node_id": "",
+                "intention_token": _DEFAULT_INTENTION_RULE_ID,
+                "available_intentions": [],
+            },
+            "warnings": ["data_dir_missing"],
+        }
+        phase_timings_ms["service_surface_read"] = round((perf_counter() - service_surface_started_at) * 1000.0, 3)
+        resolved_tool_state = _resolved_tool_state(requested_tool_state, service_surface)
+        source_evidence_started_at = perf_counter()
+        source_evidence = _build_source_evidence(
+            data_dir=data_dir,
+            private_dir=private_dir,
+            service_surface=service_surface,
+        )
+        phase_timings_ms["source_evidence"] = round((perf_counter() - source_evidence_started_at) * 1000.0, 3)
+        navigation_started_at = perf_counter()
+        navigation_canvas = _build_directory_dropdown_navigation(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            resolved_tool_state=resolved_tool_state,
+            source_evidence=source_evidence,
+            base_shell_request=tool_shell_request_base,
+        )
+        phase_timings_ms["navigation_canvas"] = round((perf_counter() - navigation_started_at) * 1000.0, 3)
+        resolved_tool_state = _tool_state_for_navigation(resolved_tool_state, navigation_canvas)
+        compiled_out = build_compiled_artifact(
+            portal_scope_id=portal_scope.scope_id,
+            source_evidence=source_evidence,
+            service_surface=service_surface,
+            navigation_canvas=navigation_canvas,
+            default_tool_state=resolved_tool_state,
+            build_mode=_CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
+        )
+        write_compiled_artifact(compiled_path, compiled_out)
     datum_summary_started_at = perf_counter()
     datum_summary = _datum_summary_from_service_surface(service_surface)
     if datum_summary is None:
         datum_summary = _datum_summary(data_dir, portal_instance_id=portal_scope.scope_id)
     phase_timings_ms["datum_summary"] = round((perf_counter() - datum_summary_started_at) * 1000.0, 3)
     missing_integrations = [] if datum_summary.get("configured") else ["data_dir"]
-    resolved_tool_state = _resolved_tool_state(requested_tool_state, service_surface)
-    tool_shell_request_base = build_portal_shell_request_payload(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        requested_surface_id=CTS_GIS_TOOL_SURFACE_ID,
-    )
-    source_evidence_started_at = perf_counter()
-    source_evidence = _build_source_evidence(
-        data_dir=data_dir,
-        private_dir=private_dir,
-        service_surface=service_surface,
-    )
-    phase_timings_ms["source_evidence"] = round((perf_counter() - source_evidence_started_at) * 1000.0, 3)
     source_warnings = _dedupe_warnings(list(source_evidence.get("warnings") or []))
     source_evidence = {**source_evidence, "warnings": source_warnings}
     service_warnings = _dedupe_warnings(
@@ -2041,16 +2316,12 @@ def build_portal_cts_gis_surface_bundle(
         **service_surface,
         "warnings": service_warnings,
     }
-    navigation_started_at = perf_counter()
-    navigation_canvas = _build_directory_dropdown_navigation(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        resolved_tool_state=resolved_tool_state,
-        source_evidence=source_evidence,
-        base_shell_request=tool_shell_request_base,
-    )
-    phase_timings_ms["navigation_canvas"] = round((perf_counter() - navigation_started_at) * 1000.0, 3)
-    resolved_tool_state = _tool_state_for_navigation(resolved_tool_state, navigation_canvas)
+    source_evidence_public = source_evidence if include_evidence else {
+        "readiness": dict(source_evidence.get("readiness") or {}),
+        "warnings": list(source_evidence.get("warnings") or []),
+    }
+    phase_timings_ms.setdefault("source_evidence", 0.0)
+    phase_timings_ms.setdefault("navigation_canvas", 0.0)
     operational = bool(
         configured
         and enabled
@@ -2097,6 +2368,10 @@ def build_portal_cts_gis_surface_bundle(
             "route": CTS_GIS_TOOL_ROUTE,
             "surface_id": CTS_GIS_TOOL_SURFACE_ID,
             "tool_state_supported": True,
+            "runtime_modes": [
+                _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT,
+                _CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
+            ],
             "legacy_aliases": [
                 "mediation_state.attention_node_id",
                 "mediation_state.intention_token",
@@ -2104,10 +2379,18 @@ def build_portal_cts_gis_surface_bundle(
                 "selected_feature_id",
             ],
         },
+        "runtime_mode": runtime_mode,
         "tool_state": resolved_tool_state,
-        "source_evidence": source_evidence,
+        "source_evidence": source_evidence_public,
+        "navigation_model": dict(navigation_canvas or {}),
+        "projection_model": dict(service_surface.get("map_projection") or {}),
+        "evidence_model": {
+            "source_evidence": source_evidence_public,
+            "diagnostic_summary": dict(service_surface.get("diagnostic_summary") or {}),
+            "warnings": list(service_surface.get("warnings") or []),
+        },
         "warnings": service_warnings,
-        "readiness": dict(source_evidence.get("readiness") or {}),
+        "readiness": dict(source_evidence_public.get("readiness") or {}),
         "service_surface": service_surface,
     }
     control_panel = _cts_gis_control_panel(
@@ -2117,7 +2400,7 @@ def build_portal_cts_gis_surface_bundle(
         private_dir=private_dir,
         tool_rows=list(tool_rows or []),
         resolved_tool_state=resolved_tool_state,
-        source_evidence=source_evidence,
+        source_evidence=source_evidence_public,
         service_surface=service_surface,
         base_shell_request=tool_shell_request_base,
     )
@@ -2125,6 +2408,10 @@ def build_portal_cts_gis_surface_bundle(
     phase_timings_ms["total_bundle_build"] = round((perf_counter() - total_started_at) * 1000.0, 3)
     runtime_diagnostics = {
         "phase_timings_ms": phase_timings_ms,
+        "runtime_mode": runtime_mode,
+        "compiled_artifact_path": str(compiled_path) if compiled_path is not None else "",
+        "compiled_artifact_valid": bool(compiled_valid),
+        "compiled_artifact_issues": list(compiled_issues),
         "service_document_catalog_count": len(list(service_surface.get("document_catalog") or [])),
         "service_render_feature_count": int((service_surface.get("render_set_summary") or {}).get("render_feature_count") or 0),
         "authority_document_count": int(datum_summary.get("document_count") or 0),
@@ -2154,7 +2441,7 @@ def build_portal_cts_gis_surface_bundle(
             "surface_id": CTS_GIS_TOOL_SURFACE_ID,
             "datum_summary": datum_summary,
             "tool_state": resolved_tool_state,
-            "source_evidence": source_evidence,
+            "source_evidence": source_evidence_public,
             "diagnostic_summary": dict(service_surface.get("diagnostic_summary") or {}),
             "warnings": list(service_surface.get("warnings") or []),
         },
@@ -2171,18 +2458,18 @@ def build_portal_cts_gis_surface_bundle(
                 "rows": [
                     {
                         "label": "state",
-                        "value": _as_text((source_evidence.get("readiness") or {}).get("state")) or "pending",
-                        "detail": _as_text((source_evidence.get("readiness") or {}).get("message")),
+                        "value": _as_text((source_evidence_public.get("readiness") or {}).get("state")) or "pending",
+                        "detail": _as_text((source_evidence_public.get("readiness") or {}).get("message")),
                     },
                     {
                         "label": "tool anchor",
-                        "value": "yes" if (source_evidence.get("tool_anchor") or {}).get("exists") else "no",
-                        "detail": _as_text((source_evidence.get("tool_anchor") or {}).get("file")),
+                        "value": "yes" if (source_evidence_public.get("tool_anchor") or {}).get("exists") else "no",
+                        "detail": _as_text((source_evidence_public.get("tool_anchor") or {}).get("file")),
                     },
                     {
                         "label": "registrar payload",
-                        "value": "yes" if (source_evidence.get("registrar_payload") or {}).get("exists") else "no",
-                        "detail": _as_text((source_evidence.get("registrar_payload") or {}).get("file")),
+                        "value": "yes" if (source_evidence_public.get("registrar_payload") or {}).get("exists") else "no",
+                        "detail": _as_text((source_evidence_public.get("registrar_payload") or {}).get("file")),
                     },
                 ],
             }

@@ -968,6 +968,20 @@
     };
   }
 
+  function loadCtsGisEntry(ctx, entry) {
+    if (entry && entry.shell_request) {
+      ctx.loadShell(entry.shell_request);
+      return;
+    }
+    if (
+      entry &&
+      entry.action &&
+      typeof ctx.dispatchToolAction === "function"
+    ) {
+      ctx.dispatchToolAction(entry.action);
+    }
+  }
+
   function bindShellRequestEntries(target, ctx, entriesByKind) {
     Array.prototype.forEach.call(target.querySelectorAll("[data-cts-gis-entry-kind]"), function (node) {
       node.addEventListener("click", function () {
@@ -975,9 +989,7 @@
         var index = Number(node.getAttribute("data-cts-gis-entry-index"));
         var entries = entriesByKind[kind] || [];
         var entry = entries[index] || {};
-        if (entry.shell_request) {
-          ctx.loadShell(entry.shell_request);
-        }
+        loadCtsGisEntry(ctx, entry);
       });
     });
   }
@@ -987,9 +999,7 @@
       if (!Number.isFinite(dropdownIndex) || !Number.isFinite(optionIndex)) return;
       var dropdown = (dropdowns || [])[dropdownIndex] || {};
       var option = (dropdown.options || [])[optionIndex] || {};
-      if (option.shell_request) {
-        ctx.loadShell(option.shell_request);
-      }
+      loadCtsGisEntry(ctx, option);
     }
 
     Array.prototype.forEach.call(target.querySelectorAll("[data-cts-gis-dropdown-index]"), function (node) {
@@ -1219,7 +1229,10 @@
     var geospatialProjection = garlandSplit.geospatial_projection || {};
     var profileProjection = garlandSplit.profile_projection || {};
     var districtToggle = profileProjection.district_overlay_toggle || {};
-    var hasDistrictToggleRequest = !!(districtToggle.shell_request && districtToggle.shell_request.tool_state);
+    var hasDistrictToggleRequest = !!(
+      (districtToggle.shell_request && districtToggle.shell_request.tool_state) ||
+      districtToggle.action
+    );
     var decodeSummary = geospatialProjection.decode_summary || {};
     var activePathEntries = navigationCanvas.active_path || [];
     activePathEntries.forEach(function (entry, index) {

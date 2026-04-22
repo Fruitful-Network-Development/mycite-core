@@ -157,6 +157,13 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - `FND-DCM` uses runtime-owned query keys: `site`, `view`, `page`, `collection`.
 - `Workbench UI` uses runtime-owned query keys: `document`, `document_filter`, `document_sort`, `document_dir`, `filter`, `sort`, `dir`, `group`, `workbench_lens`, `source`, `overlay`, `row`.
 - `CTS-GIS` does not widen shell query. Its tool-local navigation and projection state is body-carried in the tool request/runtime payload.
+- `CTS-GIS` runtime mode is explicit and body-carried (`runtime_mode`):
+  - `production_strict` (compiled artifact only, fail-fast on invalid compiled state)
+  - `audit_forensic` (expanded diagnostics and source forensics)
+- `CTS-GIS` production runtime emits compact hot-path models:
+  - `navigation_model`
+  - `projection_model`
+  - `evidence_model` (lazy by default)
 - `AWS-CSM` control-panel context is file-backed and projects:
   - `Sandbox: AWS-CSM`
   - `File: tool.<msn>.aws-csm.json`
@@ -229,6 +236,7 @@ Default tool posture is interface-panel-led; `Workbench UI` is the approved work
   - `mediation_state.intention_token`
   - top-level `selected_row_address`
   - top-level `selected_feature_id`
+- Alias retirement timing and migration gates are tracked in `docs/contracts/cts_gis_legacy_alias_retirement_timeline.md`.
 
 ### CTS-GIS NIMM/AITAS Crosswalk
 
@@ -268,6 +276,7 @@ Default tool posture is interface-panel-led; `Workbench UI` is the approved work
   - `display_label`
   - `selected`
   - `shell_request`
+- CTS-GIS options may additionally carry semantic `action` descriptors (`select_node`, `set_intention`, `set_time`, `select_feature`, `toggle_overlay`) so universal shell adapters can dispatch stable intent without per-entry request envelope expansion.
 - `navigation_canvas.active_path` carries the currently resolved structural lineage.
 - Root display labels render `1 NEG` through `8 SWG`.
 - Deeper display labels render `<node_id> <ascii_title>`, and title output is blank when ASCII decoding fails.
@@ -300,3 +309,4 @@ Default tool posture is interface-panel-led; `Workbench UI` is the approved work
 - Requests that provide legacy CTS-GIS aliases are rejected at `POST /portal/api/v2/system/tools/cts-gis` with:
   - HTTP `400`
   - `error.code=legacy_maps_alias_unsupported`
+- Compiled artifact authority for strict mode is `mycite.v2.portal.system.tools.cts_gis.compiled.v1` at `data/payloads/compiled/cts_gis.<scope_id>.compiled.json`.
