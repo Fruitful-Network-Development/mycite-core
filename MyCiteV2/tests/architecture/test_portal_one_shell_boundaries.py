@@ -35,6 +35,17 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         app_source = (REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "app.py").read_text(encoding="utf-8")
         runtime_source = (REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "runtime_platform.py").read_text(encoding="utf-8")
         shell_source = (REPO_ROOT / "MyCiteV2" / "packages" / "state_machine" / "portal_shell" / "shell.py").read_text(encoding="utf-8")
+        direct_runtime_sources = [
+            (
+                REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_cts_gis_runtime.py"
+            ).read_text(encoding="utf-8"),
+            (
+                REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_fnd_ebi_runtime.py"
+            ).read_text(encoding="utf-8"),
+            (
+                REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_workbench_ui_runtime.py"
+            ).read_text(encoding="utf-8"),
+        ]
 
         self.assertIn("/portal/api/v2/shell", app_source)
         self.assertIn('@app.get("/portal")', app_source)
@@ -48,6 +59,24 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertNotIn("/portal/system/profile-basics", app_source)
         self.assertNotIn("trusted" + "_tenant", runtime_source)
         self.assertNotIn("admin" + " shell", shell_source.lower())
+        for source in direct_runtime_sources:
+            self.assertIn("build_shell_composition_payload(", source)
+            self.assertNotIn("shell_composition={}", source)
+
+    def test_runtime_owned_tool_query_normalization_uses_single_runtime_request_helper(self) -> None:
+        aws_runtime_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_aws_runtime.py"
+        ).read_text(encoding="utf-8")
+        fnd_dcm_runtime_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_fnd_dcm_runtime.py"
+        ).read_text(encoding="utf-8")
+        workbench_ui_runtime_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_workbench_ui_runtime.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("canonical_query_for_runtime_request_payload", aws_runtime_source)
+        self.assertIn("canonical_query_for_runtime_request_payload", fnd_dcm_runtime_source)
+        self.assertIn("canonical_query_for_runtime_request_payload", workbench_ui_runtime_source)
 
     def test_shell_contracts_enforce_workspace_and_tool_behavior(self) -> None:
         shell_source = (REPO_ROOT / "MyCiteV2" / "packages" / "state_machine" / "portal_shell" / "shell.py").read_text(encoding="utf-8")

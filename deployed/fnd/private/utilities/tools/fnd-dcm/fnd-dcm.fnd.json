@@ -1,0 +1,7 @@
+{
+  "schema": "mycite.service_tool.fnd_dcm.profile.v1",
+  "domain": "fruitfulnetworkdevelopment.com",
+  "label": "Fruitful Network Development",
+  "manifest_relative_path": "assets/docs/manifest.json",
+  "render_script_relative_path": "scripts/render_manifest.py"
+}

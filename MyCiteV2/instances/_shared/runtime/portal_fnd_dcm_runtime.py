@@ -32,6 +32,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     build_portal_activity_dispatch_bodies,
     build_portal_surface_catalog,
     build_shell_composition_payload,
+    canonical_query_for_runtime_request_payload,
     resolve_portal_tool_registry_entry,
 )
 
@@ -79,19 +80,10 @@ def _href_for_query(query: Mapping[str, str]) -> str:
 
 
 def _normalize_surface_query(raw_query: Mapping[str, Any] | None) -> dict[str, str]:
-    raw = dict(raw_query or {})
-    view = _as_text(raw.get("view")).lower()
-    if view not in {"overview", "pages", "collections", "issues"}:
-        view = "overview"
-    site = _as_text(raw.get("site")).lower() or FND_DCM_DEFAULT_SITE
-    query = {"site": site, "view": view}
-    page = _as_text(raw.get("page"))
-    collection = _as_text(raw.get("collection"))
-    if view == "pages" and page:
-        query["page"] = page
-    if view == "collections" and collection:
-        query["collection"] = collection
-    return query
+    return canonical_query_for_runtime_request_payload(
+        {"surface_query": raw_query},
+        surface_id=FND_DCM_TOOL_SURFACE_ID,
+    )
 
 
 def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, dict[str, str]]:
@@ -106,14 +98,11 @@ def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, dic
         if _as_text(portal_scope.scope_id).lower() == "fnd":
             default_capabilities.extend(["fnd_peripheral_routing", "hosted_site_manifest_visibility", "hosted_site_visibility"])
         portal_scope = PortalScope(scope_id=portal_scope.scope_id, capabilities=default_capabilities)
-    surface_query = normalized_payload.get("surface_query")
-    if not isinstance(surface_query, Mapping):
-        surface_query = {
-            key: normalized_payload.get(key)
-            for key in ("site", "view", "page", "collection")
-            if _as_text(normalized_payload.get(key))
-        }
-    return portal_scope, _normalize_surface_query(surface_query)
+    return portal_scope, canonical_query_for_runtime_request_payload(
+        normalized_payload,
+        surface_id=FND_DCM_TOOL_SURFACE_ID,
+        legacy_query_keys=("site", "view", "page", "collection"),
+    )
 
 
 def _tool_status(

@@ -30,6 +30,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     build_portal_tool_registry_entries,
     canonical_query_for_shell_state,
     canonical_query_for_surface_query,
+    canonical_query_for_runtime_request_payload,
     canonical_route_for_surface,
     initial_portal_shell_state,
     reduce_portal_shell_state,
@@ -291,6 +292,35 @@ class PortalShellContractTests(unittest.TestCase):
                 "source": "hide",
                 "overlay": "show",
                 "row": "2-2-1",
+            },
+        )
+
+    def test_runtime_request_payload_helper_normalizes_surface_query_with_legacy_fallback_keys(self) -> None:
+        aws_query = canonical_query_for_runtime_request_payload(
+            {"domain": "Example.com", "section": "NEWSLETTER"},
+            surface_id=AWS_CSM_TOOL_SURFACE_ID,
+            legacy_query_keys=("view", "domain", "profile", "section"),
+        )
+        self.assertEqual(
+            aws_query,
+            {
+                "view": "domains",
+                "domain": "example.com",
+                "section": "newsletter",
+            },
+        )
+
+        fnd_query = canonical_query_for_runtime_request_payload(
+            {"site": "TrappFamilyFarm.com", "view": "collections", "collection": "newsletters"},
+            surface_id=FND_DCM_TOOL_SURFACE_ID,
+            legacy_query_keys=("site", "view", "page", "collection"),
+        )
+        self.assertEqual(
+            fnd_query,
+            {
+                "site": "trappfamilyfarm.com",
+                "view": "collections",
+                "collection": "newsletters",
             },
         )
 

@@ -65,6 +65,10 @@ class CtsGisRequestValidationTests(unittest.TestCase):
         payload["selected_document_id"] = "sandbox:cts_gis:sc.example.json"
         envelope = run_portal_cts_gis(payload, data_dir=None)
         self.assertEqual(envelope["surface_id"], "system.tools.cts_gis")
+        self.assertTrue(envelope["shell_composition"]["workbench_collapsed"])
+        self.assertFalse(envelope["shell_composition"]["interface_panel_collapsed"])
+        self.assertFalse(envelope["shell_composition"]["regions"]["workbench"]["visible"])
+        self.assertTrue(envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
 
 
 if __name__ == "__main__":

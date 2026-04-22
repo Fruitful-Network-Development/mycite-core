@@ -2,6 +2,8 @@
 
 The surface catalog is rooted only in `SYSTEM`, `NETWORK`, and `UTILITIES`.
 
+Cross-tool operating invariants (region families, posture authority, and normalization ownership) are defined in `docs/contracts/tool_operating_contract.md`.
+
 ## SYSTEM
 
 First-class surfaces:

@@ -9,6 +9,11 @@ The active implementation plan is the one-shell portal model:
 - tool work pages under `SYSTEM`
 - tool configuration and exposure under `UTILITIES`
 
+Active one-shell stabilization execution plan:
+
+- `one_shell_portal_refactor.md` is the aggressive drift-removal execution sequence for shell authority, normalization unification, region-family unification, and widget-host stabilization.
+- `one_shell_stabilization_matrix.md` is the required shell-boundary route matrix used as the stabilization regression gate.
+
 Documentation IA + guided-task YAML program:
 
 - `documentation_ia_remediation_backlog.md` tracks active migration and enforcement work from the documentation optimization plan.
