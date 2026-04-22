@@ -4,14 +4,15 @@ Date: 2026-04-21
 
 Doc type: `plan`
 Normativity: `supporting`
-Lifecycle: `active`
-Last reviewed: `2026-04-21`
+Lifecycle: `completed`
+Last reviewed: `2026-04-22`
 
 ## Purpose
 
 Audit MOS post-cutover posture for premorice (state-memory continuity and
 predictable carry-forward context) and modularization boundaries across shell,
-tool runtimes, and adapters.
+tool runtimes, and adapters. This plan is completed by
+`docs/audits/reports/mos_premorice_and_modularization_posture_report_2026-04-22.md`.
 
 ## Scope
 
@@ -51,6 +52,9 @@ tool runtimes, and adapters.
 
 ## Exit Criteria
 
-- Published drift matrix for premorice and modular boundaries.
-- Critical boundary violations have concrete owner and patch path.
-- Ongoing diagnostics/test hooks are named for regression prevention.
+- Published drift matrix now lives in
+  `docs/audits/reports/mos_premorice_and_modularization_posture_report_2026-04-22.md`.
+- The shell-module registry/self-registration contract provides the concrete
+  patch path for the named reflectivity boundary drift.
+- Ongoing diagnostics/test hooks are named and implemented for regression
+  prevention.

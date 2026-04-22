@@ -37,6 +37,13 @@
     return window.PortalToolSurfaceAdapter || {};
   }
 
+  function resolveRegisteredModuleExport(moduleId, globalName) {
+    if (typeof window.__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT === "function") {
+      return window.__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT(moduleId, globalName);
+    }
+    return window[globalName] || null;
+  }
+
   function renderRequestButtons(entries, kind, options) {
     var opts = options || {};
     var listClass = opts.listClass || "cts-gis-entryList";
@@ -1423,17 +1430,19 @@
       var sections = region.sections || [];
       var surfacePayload = region.surface_payload || {};
       var adapter = toolSurfaceAdapter();
+      var awsInspectorRenderer = resolveRegisteredModuleExport("aws_workspace", "PortalAwsCsmInspectorRenderer");
+      var networkInspectorRenderer = resolveRegisteredModuleExport("network_workspace", "PortalNetworkInspectorRenderer");
       if (!target) return;
       if (region.visible === false) {
         target.innerHTML = "";
         return;
       }
       if (
-        window.PortalAwsCsmInspectorRenderer &&
-        typeof window.PortalAwsCsmInspectorRenderer.render === "function" &&
+        awsInspectorRenderer &&
+        typeof awsInspectorRenderer.render === "function" &&
         region.kind === "aws_csm_inspector"
       ) {
-        window.PortalAwsCsmInspectorRenderer.render(ctx, target, surfacePayload);
+        awsInspectorRenderer.render(ctx, target, surfacePayload);
         return;
       } else if (region.kind === "aws_csm_inspector") {
         adapter.renderWrappedSurface(
@@ -1450,11 +1459,11 @@
         return;
       }
       if (
-        window.PortalNetworkInspectorRenderer &&
-        typeof window.PortalNetworkInspectorRenderer.render === "function" &&
+        networkInspectorRenderer &&
+        typeof networkInspectorRenderer.render === "function" &&
         region.kind === "network_system_log_inspector"
       ) {
-        window.PortalNetworkInspectorRenderer.render(ctx, target, surfacePayload);
+        networkInspectorRenderer.render(ctx, target, surfacePayload);
         return;
       } else if (region.kind === "network_system_log_inspector") {
         adapter.renderWrappedSurface(
@@ -1527,4 +1536,7 @@
       );
     },
   };
+  if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
+    window.__MYCITE_V2_REGISTER_SHELL_MODULE("inspector_renderers");
+  }
 })();

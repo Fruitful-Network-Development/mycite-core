@@ -80,17 +80,113 @@ def _as_text(value: object) -> str:
 
 PORTAL_BUILD_ID = _as_text(os.environ.get("MYCITE_V2_PORTAL_BUILD_ID")) or "not-set"
 PORTAL_SHELL_ASSET_MANIFEST_SCHEMA = "mycite.v2.portal.shell.asset_manifest.v1"
-PORTAL_SHELL_MODULE_FILES = (
-    "v2_portal_shell_region_renderers.js",
-    "v2_portal_tool_surface_adapter.js",
-    "v2_portal_aws_workspace.js",
-    "v2_portal_system_workspace.js",
-    "v2_portal_network_workspace.js",
-    "v2_portal_workbench_renderers.js",
-    "v2_portal_inspector_renderers.js",
-    "v2_portal_shell_core.js",
-    "v2_portal_shell_watchdog.js",
+PORTAL_SHELL_MODULE_CONTRACTS = (
+    {
+        "module_id": "region_renderers",
+        "file": "v2_portal_shell_region_renderers.js",
+        "exports": (
+            {
+                "global": "PortalShellRegionRenderers",
+                "required_callables": ("renderActivityBar", "renderControlPanel"),
+            },
+        ),
+    },
+    {
+        "module_id": "tool_surface_adapter",
+        "file": "v2_portal_tool_surface_adapter.js",
+        "exports": (
+            {
+                "global": "PortalToolSurfaceAdapter",
+                "required_callables": (
+                    "buildDirectSurfaceRequest",
+                    "resolveReadiness",
+                    "resolveToolId",
+                    "resolveSurfaceState",
+                    "renderWrappedSurface",
+                ),
+            },
+        ),
+    },
+    {
+        "module_id": "aws_workspace",
+        "file": "v2_portal_aws_workspace.js",
+        "exports": (
+            {
+                "global": "PortalAwsCsmWorkspaceRenderer",
+                "required_callables": ("render",),
+            },
+            {
+                "global": "PortalAwsCsmInspectorRenderer",
+                "required_callables": ("render",),
+            },
+        ),
+    },
+    {
+        "module_id": "system_workspace",
+        "file": "v2_portal_system_workspace.js",
+        "exports": (
+            {
+                "global": "PortalSystemWorkspaceRenderer",
+                "required_callables": ("render",),
+            },
+        ),
+    },
+    {
+        "module_id": "network_workspace",
+        "file": "v2_portal_network_workspace.js",
+        "exports": (
+            {
+                "global": "PortalNetworkWorkspaceRenderer",
+                "required_callables": ("render",),
+            },
+            {
+                "global": "PortalNetworkInspectorRenderer",
+                "required_callables": ("render",),
+            },
+        ),
+    },
+    {
+        "module_id": "workbench_renderers",
+        "file": "v2_portal_workbench_renderers.js",
+        "exports": (
+            {
+                "global": "PortalShellWorkbenchRenderer",
+                "required_callables": ("render",),
+            },
+        ),
+    },
+    {
+        "module_id": "inspector_renderers",
+        "file": "v2_portal_inspector_renderers.js",
+        "exports": (
+            {
+                "global": "PortalShellInspectorRenderer",
+                "required_callables": ("render",),
+            },
+        ),
+    },
+    {
+        "module_id": "shell_core",
+        "file": "v2_portal_shell_core.js",
+        "exports": (
+            {
+                "global": "PortalShellCore",
+                "required_callables": ("loadShell", "loadRuntimeView", "dispatchTransition"),
+            },
+        ),
+    },
+    {
+        "module_id": "shell_watchdog",
+        "file": "v2_portal_shell_watchdog.js",
+        "exports": (
+            {
+                "global": "__MYCITE_V2_SHELL_WATCHDOG",
+                "required_callables": ("start",),
+            },
+        ),
+    },
 )
+PORTAL_SHELL_MODULE_FILES = tuple(contract["file"] for contract in PORTAL_SHELL_MODULE_CONTRACTS)
 
 
 def _static_asset_descriptor(filename: str, *, build_id: str, asset_id: str) -> dict[str, str]:
@@ -102,6 +198,29 @@ def _static_asset_descriptor(filename: str, *, build_id: str, asset_id: str) -> 
         "path": path,
         "url": f"{path}{suffix}",
     }
+
+
+def _shell_module_descriptor(module_contract: Mapping[str, Any], *, build_id: str) -> dict[str, Any]:
+    filename = _as_text(module_contract.get("file"))
+    descriptor: dict[str, Any] = _static_asset_descriptor(
+        filename,
+        build_id=build_id,
+        asset_id=filename.rsplit(".", 1)[0],
+    )
+    descriptor["module_id"] = _as_text(module_contract.get("module_id"))
+    descriptor["exports"] = [
+        {
+            "global": _as_text(export_contract.get("global")),
+            "required_callables": [
+                _as_text(callable_name)
+                for callable_name in export_contract.get("required_callables") or []
+                if _as_text(callable_name)
+            ],
+        }
+        for export_contract in module_contract.get("exports") or []
+        if isinstance(export_contract, Mapping)
+    ]
+    return descriptor
 
 
 def build_shell_asset_manifest(build_id: str = PORTAL_BUILD_ID) -> dict[str, Any]:
@@ -128,12 +247,11 @@ def build_shell_asset_manifest(build_id: str = PORTAL_BUILD_ID) -> dict[str, Any
                 asset_id="shell_entry",
             ),
             "shell_modules": [
-                _static_asset_descriptor(
-                    filename,
+                _shell_module_descriptor(
+                    module_contract,
                     build_id=safe_build_id,
-                    asset_id=filename.rsplit(".", 1)[0],
                 )
-                for filename in PORTAL_SHELL_MODULE_FILES
+                for module_contract in PORTAL_SHELL_MODULE_CONTRACTS
             ],
         },
     }

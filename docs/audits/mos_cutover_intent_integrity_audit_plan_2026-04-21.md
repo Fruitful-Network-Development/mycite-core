@@ -4,15 +4,16 @@ Date: 2026-04-21
 
 Doc type: `plan`
 Normativity: `supporting`
-Lifecycle: `active`
-Last reviewed: `2026-04-21`
+Lifecycle: `completed`
+Last reviewed: `2026-04-22`
 
 ## Purpose
 
 Audit whether the MOS SQL cutover still reflects intended operation from
 `docs/personal_notes/MOS/` at the level of behavior, not just file presence.
 Focus on hidden drift risks where runtime contracts appear valid but semantic
-intent has shifted.
+intent has shifted. This plan is completed by
+`docs/audits/reports/mos_cutover_intent_integrity_report_2026-04-22.md`.
 
 ## Intent Source Set
 
@@ -81,7 +82,11 @@ For each finding, capture:
 
 ## Exit Criteria
 
-- Every intended operational facet is classified with evidence.
-- All critical/high `broken` drifts are either fixed or explicitly waived.
-- Hidden regression traps have named follow-up checks.
-- A published report records current MOS realities without reopening closure.
+- Every intended operational facet is classified with evidence in
+  `docs/audits/reports/mos_cutover_intent_integrity_report_2026-04-22.md`.
+- The named high-severity hidden drift around `/portal/system` render
+  realization is fixed rather than waived.
+- Hidden regression traps now have concrete manifest/registration/source-guard
+  checks.
+- The published closure report records current MOS realities without reopening
+  closure.

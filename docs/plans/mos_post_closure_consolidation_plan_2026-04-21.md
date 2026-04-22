@@ -5,7 +5,15 @@ Date: 2026-04-21
 Doc type: `plan`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-21`
+Last reviewed: `2026-04-22`
+
+## Canonical Contract Links
+
+- `docs/contracts/portal_shell_contract.md`
+- `docs/contracts/route_model.md`
+- `docs/contracts/surface_catalog.md`
+- `docs/contracts/portal_vocabulary_glossary.md`
+- `docs/plans/master_plan_mos.md`
 
 ## Purpose
 
@@ -80,27 +88,31 @@ Required work:
 - keep `SYSTEM` as the canonical anthology workspace and keep `workbench_ui` as the separate shell-attached, script-backed SQL authority inspector under `SYSTEM`
 - preserve the current layered datum table posture, datum row structural coordinates, additive overlay rules, and the deliberate CTS-GIS-first `workbench_ui` landing posture
 - keep `workbench_ui` scoped to authoritative SQL-backed documents; retained host-bound/private assets and `NETWORK` materializations remain outside that corpus unless separately ported
-- keep hardening minimal and utilitarian:
+- retain the now-deployed minimal hardening baseline:
   - keyboard navigation
   - frozen headers and clearer selection state
   - layer/value-group grouping options
   - raw versus interpreted workbench lens toggle
   - semantic identity badges for `version_hash` and `hyphae_hash`
   - source/overlay visibility controls
-  - saved filters/sorts only when they stay simple and script-grounded
+- keep any remaining `workbench_ui` follow-on scope limited to optional saved query bundles or sort/filter persistence only when it stays simple and script-grounded
 
 Exit:
 
 - `SYSTEM` remains the reducer-owned anthology workspace
 - `workbench_ui` remains a separate shell-attached, read-only, additive-only SQL inspection tool
-- the follow-on hardening improves navigation and inspection clarity without introducing a parallel frontend framework
+- the shipped hardening baseline remains intact and any further follow-on work does not introduce a parallel frontend framework
 
 ## Verification
 
 - targeted `workbench_ui` runtime tests stay green
 - contract-doc alignment stays green after any vocabulary or discoverability updates
 - MOS doc/reference integrity checks stay green after any new follow-on docs are added
+- `/portal/system` reflectivity closure remains evidenced by:
+  - `docs/audits/reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md`
+  - `docs/audits/reports/mos_cutover_intent_integrity_report_2026-04-22.md`
+  - `docs/audits/reports/mos_premorice_and_modularization_posture_report_2026-04-22.md`
 
 ## Result
 
-The post-closure MOS work is now constrained to documentation canonicalization, retained exception scope planning, and `workbench_ui` SQL authority inspector hardening while leaving `/portal/system` alone. Anything outside those buckets requires its own dedicated plan and must not reopen the completed MOS cut-over.
+The post-closure MOS work is now constrained to documentation canonicalization, retained exception scope planning, and `workbench_ui` SQL authority inspector hardening. The named `/portal/system` reflectivity drift is already closed by the 2026-04-22 closure reports, and anything outside these buckets requires its own dedicated plan rather than reopening the completed MOS cut-over.

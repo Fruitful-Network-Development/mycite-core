@@ -5,7 +5,7 @@ Date: 2026-04-21
 Doc type: `audit`
 Normativity: `supporting`
 Lifecycle: `completed`
-Last reviewed: `2026-04-21`
+Last reviewed: `2026-04-22`
 
 ## Purpose
 
@@ -143,7 +143,13 @@ Implication:
 - likely runtime-side bundle/load/cache/order fault, or earlier JS failure before
   renderer registration, not an intentional server-side posture.
 
-Status: `narrowed` (contract intact, render realization degraded)
+Status: `closed on 2026-04-22`
+
+Closure evidence:
+
+- `docs/audits/reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md`
+- `docs/audits/reports/mos_cutover_intent_integrity_report_2026-04-22.md`
+- `docs/audits/reports/mos_premorice_and_modularization_posture_report_2026-04-22.md`
 
 ## Intent Drift Assessment
 
@@ -165,12 +171,12 @@ Status: `narrowed` (contract intact, render realization degraded)
 
 ## Recommendation Set
 
-1. Add a deploy-time shell-module health assertion that fails when
-   `PortalSystemWorkspaceRenderer` is not registered.
-2. Add runtime diagnostics for module-registration and script-load ordering in
-   shell watchdog output.
-3. Add contract tests for tool adapter payload locations
-   (`resolveToolId`/`resolveReadiness`) to prevent subtle UI-state drift.
+1. Completed on `2026-04-22`: deploy-time/runtime shell-module health is now
+   asserted through the manifest-backed registration contract.
+2. Completed on `2026-04-22`: module-registration and script-load ordering
+   diagnostics now flow through shell loader/watchdog/workbench paths.
+3. Completed on `2026-04-22`: contract tests now pin tool adapter payload
+   lookup locations (`resolveToolId` / `resolveReadiness`).
 4. Keep SQL authority and tool-grant verification in CI with explicit `fnd`
    scope checks.
 
@@ -184,8 +190,8 @@ Executed evidence collection:
 
 ## Result
 
-Current MOS reality is largely aligned to intended cutover operation: SQL
-authority is populated, package-peripheral/tool access is contract-mediated, and
-FND privileged access is explicitly represented in authority snapshots. The main
-active drift is in system-page visualization realization (`renderer unavailable`)
-rather than underlying authority or data integrity.
+Current MOS reality is aligned to intended cutover operation: SQL authority is
+populated, package-peripheral/tool access is contract-mediated, FND privileged
+access is explicitly represented in authority snapshots, and the previously
+named system-page visualization drift is now closed by the 2026-04-22
+reflectivity closure package rather than remaining an active authority concern.

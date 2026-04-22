@@ -5,7 +5,7 @@ Date: 2026-04-21
 Doc type: `audit`  
 Normativity: `supporting`  
 Lifecycle: `completed`  
-Last reviewed: `2026-04-21`
+Last reviewed: `2026-04-22`
 
 ## Purpose
 
@@ -14,9 +14,9 @@ Record the closure-review baseline plus the current classification of every file
 ## Review Summary
 
 - closure-time reviewed corpus: `31`
-- current `docs/plans/` total: `15`
-- current `docs/audits/reports/` total: `24`
-- current total tracked by this checklist: `39`
+- current `docs/plans/` total: `16`
+- current `docs/audits/reports/` total: `27`
+- current total tracked by this checklist: `43`
 - classification legend:
   - `authoritative`: active primary source of truth
   - `supporting-current`: active supporting evidence aligned to the completed SQL-only posture
@@ -40,6 +40,7 @@ Record the closure-review baseline plus the current classification of every file
 | `docs/plans/mos_sg3_edit_remap_policy_2026-04-21.md` | `supporting-current` | reviewed | Active supporting policy for deterministic remap semantics. |
 | `docs/plans/mos_sg4_standard_closure_policy_2026-04-21.md` | `supporting-current` | reviewed | Active supporting policy for closure and compatibility retirement. |
 | `docs/plans/one_shell_portal_refactor.md` | `authoritative` | reviewed | Active portal-shell implementation plan; compatible with the completed MOS SQL-only posture. |
+| `docs/plans/one_shell_stabilization_matrix.md` | `supporting-current` | reviewed | Active shell-boundary regression matrix supporting the one-shell implementation plan and deployed route/composition posture. |
 | `docs/plans/workbench_ui_hardening_follow_on_2026-04-21.md` | `supporting-current` | reviewed | Active `workbench_ui` SQL authority inspector hardening plan; keeps `SYSTEM` and `workbench_ui` distinct while keeping `workbench_ui` shell-attached, read-only, and additive-only. |
 | `docs/audits/reports/audit_program_rollup_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; pre-closure rollup retained for audit history. |
 | `docs/audits/reports/core_portal_datum_mss_protocol_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as pre-closure datum-handling history. |
@@ -47,6 +48,7 @@ Record the closure-review baseline plus the current classification of every file
 | `docs/audits/reports/desktop_access_historical_drift_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as historical desktop risk context. |
 | `docs/audits/reports/documentation_ia_audit_report_2026-04-20.md` | `supporting-current` | reviewed | Active documentation IA audit baseline. |
 | `docs/audits/reports/interface_surface_unification_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as pre-closure surface-architecture history. |
+| `docs/audits/reports/mos_cutover_intent_integrity_report_2026-04-22.md` | `supporting-current` | reviewed | Active closure report for the paired intent-integrity follow-up: confirms the `/portal/system` issue was render realization drift, not SQL-cutover retreat. |
 | `docs/audits/reports/mos_directive_context_non_inference_validation_2026-04-21.md` | `supporting-current` | reviewed | Active closure audit confirming explicit-manifest-only directive imports. |
 | `docs/audits/reports/mos_documentation_alignment_and_cleanup_2026-04-21.md` | `supporting-current` | reviewed | Active closure audit confirming the closure-time review corpus and doc alignment at program close. |
 | `docs/audits/reports/mos_documentation_supersession_audit_2026-04-21.md` | `supporting-current` | reviewed | Active post-closure audit confirming canonical closure docs versus historical intermediates. |
@@ -55,11 +57,13 @@ Record the closure-review baseline plus the current classification of every file
 | `docs/audits/reports/mos_fnd_sql_ingestion_dry_run_2026-04-21.json` | `historical-superseded` | reviewed | Immutable evidence only; retained as pre-apply dry-run output. |
 | `docs/audits/reports/mos_fnd_sql_ingestion_dry_run_2026-04-21.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as pre-apply dry-run output. |
 | `docs/audits/reports/mos_personal_notes_to_canon_crosswalk_2026-04-21.md` | `supporting-current` | reviewed | Active crosswalk for the named MOS personal notes and their canonical successors. |
+| `docs/audits/reports/mos_premorice_and_modularization_posture_report_2026-04-22.md` | `supporting-current` | reviewed | Active closure report for the paired premorice/modularization follow-up: records explicit boot-state continuity and shell-module boundary contracts. |
 | `docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md` | `supporting-current` | reviewed | This checklist is the active classification index for the reviewed closure corpus. |
 | `docs/audits/reports/mos_program_closure_report_2026-04-21.md` | `supporting-current` | reviewed | Active final closure report summarizing ingestion, legacy retirement, UI evaluation, and verification. |
-| `docs/audits/reports/mos_runtime_authority_and_access_reality_report_2026-04-21.md` | `supporting-current` | reviewed | Active focused MOS reality audit covering SQL authority data, package-peripheral mediation, FND authorization posture, and `/portal/system` renderer-availability drift. |
+| `docs/audits/reports/mos_runtime_authority_and_access_reality_report_2026-04-21.md` | `supporting-current` | reviewed | Active focused MOS reality audit covering SQL authority data, package-peripheral mediation, FND authorization posture, and the previously named `/portal/system` reflectivity issue now closed by the 2026-04-22 follow-on reports. |
 | `docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md` | `historical-superseded` | reviewed | Immutable evidence only; superseded by the final closure audit set. |
 | `docs/audits/reports/mos_sql_only_authority_activation_and_legacy_retirement_2026-04-21.md` | `supporting-current` | reviewed | Active closure audit for SQL-only runtime activation and authority-only legacy cleanup. |
+| `docs/audits/reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md` | `supporting-current` | reviewed | Active closure report for the named `/portal/system` reflectivity drift: records manifest-backed shell-module registration, registry diagnostics, and registry-backed SYSTEM dispatch. |
 | `docs/audits/reports/package_modularization_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as pre-closure modularization history. |
 | `docs/audits/reports/performance_weight_speed_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as historical performance baseline. |
 | `docs/audits/reports/peripheral_packages_modularization_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as historical modularization evidence. |

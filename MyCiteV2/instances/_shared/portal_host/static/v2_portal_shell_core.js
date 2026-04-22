@@ -34,6 +34,70 @@
     }
   }
 
+  function asList(value) {
+    return Array.isArray(value) ? value.slice() : [];
+  }
+
+  function asText(value) {
+    return String(value == null ? "" : value).trim();
+  }
+
+  function resolveRegisteredModuleExport(moduleId, globalName) {
+    if (typeof window.__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT === "function") {
+      return window.__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT(moduleId, globalName);
+    }
+    return window[globalName] || null;
+  }
+
+  function buildModuleRegistrationError(label, moduleId, globalName, callableName) {
+    var message =
+      asText(label || "Renderer") +
+      " renderer unavailable. " +
+      "module_id=" +
+      moduleId +
+      " expected_global=" +
+      globalName +
+      " expected_callable=" +
+      callableName +
+      ".";
+    if (typeof window.__MYCITE_V2_GET_SHELL_MODULE_DIAGNOSTICS === "function") {
+      var diagnostics = window.__MYCITE_V2_GET_SHELL_MODULE_DIAGNOSTICS(moduleId) || {};
+      var loadedScripts = asList(diagnostics.script_load_order)
+        .map(function (entry) {
+          return asText((entry && entry.module_id) || (entry && entry.file));
+        })
+        .filter(Boolean);
+      var registeredModules = asList(diagnostics.registered_module_ids)
+        .map(function (entry) {
+          return asText(entry);
+        })
+        .filter(Boolean);
+      var invalidMessages = asList(diagnostics.invalid_messages)
+        .map(function (entry) {
+          return asText(entry);
+        })
+        .filter(Boolean);
+      var failures = asList(diagnostics.failures)
+        .map(function (entry) {
+          return asText(entry);
+        })
+        .filter(Boolean);
+      message +=
+        " boot_stage=" +
+        (asText(diagnostics.boot_stage) || "unknown") +
+        " loaded_scripts=" +
+        (loadedScripts.join(" -> ") || "none") +
+        " registered_modules=" +
+        (registeredModules.join(", ") || "none") +
+        " invalid_registrations=" +
+        (invalidMessages.join("; ") || "none") +
+        (failures.length ? " contract_failures=" + failures.join("; ") : "");
+    }
+    var error = new Error(message);
+    error.fatalClass = "module_registration_missing";
+    return error;
+  }
+
   function routeKeyFromUrl(rawUrl) {
     if (!rawUrl) {
       return `${window.location.pathname || ""}${window.location.search || ""}`;
@@ -50,13 +114,19 @@
 
   function setBootState(state) {
     if (!BODY_DATA) return;
-    BODY_DATA.setAttribute("data-shell-boot-state", String(state || "").trim() || "template");
+    BODY_DATA.setAttribute("data-shell-boot-state", asText(state) || "template");
+    if (typeof window.__MYCITE_V2_SET_SHELL_BOOT_STAGE === "function") {
+      window.__MYCITE_V2_SET_SHELL_BOOT_STAGE(state);
+    }
   }
 
   function showFatal(message, fatalClass) {
     if (BODY_DATA) {
       BODY_DATA.setAttribute("data-shell-boot-state", "fatal");
       BODY_DATA.setAttribute("data-shell-fatal-class", fatalClass || "render_dispatch_failed");
+    }
+    if (typeof window.__MYCITE_V2_SET_SHELL_BOOT_STAGE === "function") {
+      window.__MYCITE_V2_SET_SHELL_BOOT_STAGE("fatal");
     }
     window.__MYCITE_V2_SHELL_FATAL_SHOWN = true;
     window.__MYCITE_V2_SHELL_HYDRATED = false;
@@ -214,24 +284,44 @@
   }
 
   function renderRegions(composition) {
-    var chromeRenderers = window.PortalShellRegionRenderers || {};
-    var workbenchRenderer = window.PortalShellWorkbenchRenderer;
-    var inspectorRenderer = window.PortalShellInspectorRenderer;
+    var chromeRenderers = resolveRegisteredModuleExport("region_renderers", "PortalShellRegionRenderers") || {};
+    var workbenchRenderer = resolveRegisteredModuleExport("workbench_renderers", "PortalShellWorkbenchRenderer");
+    var inspectorRenderer = resolveRegisteredModuleExport("inspector_renderers", "PortalShellInspectorRenderer");
     var interfacePanelRegion =
       ((composition.regions && composition.regions.interface_panel) ||
         (composition.regions && composition.regions.inspector)) ||
       {};
     if (typeof chromeRenderers.renderActivityBar !== "function") {
-      throw new Error("Activity-bar renderer unavailable.");
+      throw buildModuleRegistrationError(
+        "Activity-bar",
+        "region_renderers",
+        "PortalShellRegionRenderers",
+        "renderActivityBar"
+      );
     }
     if (typeof chromeRenderers.renderControlPanel !== "function") {
-      throw new Error("Control-panel renderer unavailable.");
+      throw buildModuleRegistrationError(
+        "Control-panel",
+        "region_renderers",
+        "PortalShellRegionRenderers",
+        "renderControlPanel"
+      );
     }
     if (!workbenchRenderer || typeof workbenchRenderer.render !== "function") {
-      throw new Error("Workbench renderer unavailable.");
+      throw buildModuleRegistrationError(
+        "Workbench",
+        "workbench_renderers",
+        "PortalShellWorkbenchRenderer",
+        "render"
+      );
     }
     if (!inspectorRenderer || typeof inspectorRenderer.render !== "function") {
-      throw new Error("Inspector renderer unavailable.");
+      throw buildModuleRegistrationError(
+        "Inspector",
+        "inspector_renderers",
+        "PortalShellInspectorRenderer",
+        "render"
+      );
     }
     chromeRenderers.renderActivityBar(buildRendererContext(composition.regions.activity_bar, qs("#v2-activity-nav")));
     chromeRenderers.renderControlPanel(buildRendererContext(composition.regions.control_panel, qs("#portalControlPanel")));
@@ -265,7 +355,15 @@
     lastEnvelope = envelope;
     lastShellRequest = canonicalShellRequestFromEnvelope(envelope) || lastShellRequest;
     applyChrome(envelope.shell_composition, { routeKey: routeKeyFromUrl(envelope.canonical_url) });
-    renderRegions(envelope.shell_composition);
+    try {
+      renderRegions(envelope.shell_composition);
+    } catch (error) {
+      showFatal(
+        error && error.message ? error.message : "The shell render dispatch failed.",
+        error && error.fatalClass ? error.fatalClass : "render_dispatch_failed"
+      );
+      return;
+    }
     if (!(options && options.updateHistory === false)) {
       syncHistory(envelope, options && options.historyPayload, options || {});
     }
@@ -432,6 +530,9 @@
       return lastEnvelope;
     },
   };
+  if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
+    window.__MYCITE_V2_REGISTER_SHELL_MODULE("shell_core");
+  }
   window.__MYCITE_V2_SHOW_FATAL = showFatal;
   window.__MYCITE_V2_SHELL_CORE_LOADED = true;
 
