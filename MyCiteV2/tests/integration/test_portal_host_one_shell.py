@@ -644,6 +644,28 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 "v2_portal_tool_surface_adapter.js",
                 [entry["file"] for entry in health_payload["shell_asset_manifest"]["scripts"]["shell_modules"]],
             )
+            shell_modules = health_payload["shell_asset_manifest"]["scripts"]["shell_modules"]
+            self.assertEqual(
+                [entry["module_id"] for entry in shell_modules],
+                [
+                    "region_renderers",
+                    "tool_surface_adapter",
+                    "aws_workspace",
+                    "system_workspace",
+                    "network_workspace",
+                    "workbench_renderers",
+                    "inspector_renderers",
+                    "shell_core",
+                    "shell_watchdog",
+                ],
+            )
+            system_module = next(entry for entry in shell_modules if entry["module_id"] == "system_workspace")
+            self.assertEqual(
+                system_module["exports"],
+                [{"global": "PortalSystemWorkspaceRenderer", "required_callables": ["render"]}],
+            )
+            tool_adapter_module = next(entry for entry in shell_modules if entry["module_id"] == "tool_surface_adapter")
+            self.assertIn("resolveToolId", tool_adapter_module["exports"][0]["required_callables"])
 
             system_html = system_response.get_data(as_text=True)
             self.assertEqual(system_html.count("data-theme-selector"), 1)
@@ -656,7 +678,9 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertIn('data-tool-panel-lock="false"', system_html)
             self.assertIn('data-shell-lockable="tool-panel"', system_html)
             self.assertIn('data-workbench-collapsed="false"', system_html)
-            self.assertIn('id="v2-shell-asset-manifest"', system_html)
+            self.assertEqual(system_html.count('id="v2-shell-asset-manifest"'), 1)
+            self.assertIn('"module_id": "system_workspace"', system_html)
+            self.assertIn('"required_callables": ["render"]', system_html)
             for asset in (
                 [health_payload["shell_asset_manifest"]["styles"]["portal_css"]]
                 + [

@@ -100,18 +100,105 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         loader_source = (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_shell.js"
         ).read_text(encoding="utf-8")
+        expected_module_ids = [
+            "region_renderers",
+            "tool_surface_adapter",
+            "aws_workspace",
+            "system_workspace",
+            "network_workspace",
+            "workbench_renderers",
+            "inspector_renderers",
+            "shell_core",
+            "shell_watchdog",
+        ]
 
         self.assertEqual(manifest["schema"], PORTAL_SHELL_ASSET_MANIFEST_SCHEMA)
         self.assertEqual(
             [entry["file"] for entry in manifest["scripts"]["shell_modules"]],
             list(PORTAL_SHELL_MODULE_FILES),
         )
+        self.assertEqual(
+            [entry["module_id"] for entry in manifest["scripts"]["shell_modules"]],
+            expected_module_ids,
+        )
+        system_module = manifest["scripts"]["shell_modules"][3]
+        self.assertEqual(system_module["module_id"], "system_workspace")
+        self.assertEqual(
+            system_module["exports"],
+            [{"global": "PortalSystemWorkspaceRenderer", "required_callables": ["render"]}],
+        )
+        tool_adapter_module = manifest["scripts"]["shell_modules"][1]
+        self.assertEqual(tool_adapter_module["module_id"], "tool_surface_adapter")
+        self.assertIn(
+            "resolveToolId",
+            tool_adapter_module["exports"][0]["required_callables"],
+        )
         self.assertIn('document.getElementById("v2-shell-asset-manifest")', loader_source)
         self.assertIn("scripts.shell_modules", loader_source)
         self.assertIn("window.__MYCITE_V2_SHELL_ASSET_MANIFEST = assetManifest", loader_source)
+        self.assertIn("window.__MYCITE_V2_SHELL_MODULE_REGISTRY = buildModuleRegistry", loader_source)
+        self.assertIn("window.__MYCITE_V2_REGISTER_SHELL_MODULE = registerShellModule", loader_source)
+        self.assertIn("window.__MYCITE_V2_GET_SHELL_MODULE_DIAGNOSTICS = buildModuleDiagnostics", loader_source)
+        self.assertIn("window.__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT = resolveShellModuleExport", loader_source)
+        self.assertIn("invalid_registrations", loader_source)
+        self.assertIn("script_load_order", loader_source)
         self.assertIn("v2_portal_tool_surface_adapter.js", PORTAL_SHELL_MODULE_FILES)
         for filename in PORTAL_SHELL_MODULE_FILES:
             self.assertNotIn(f'"{filename}"', loader_source)
+
+    def test_shell_static_sources_self_register_required_modules_and_use_registry_contracts(self) -> None:
+        static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
+        expected_registrations = {
+            "v2_portal_shell_region_renderers.js": "region_renderers",
+            "v2_portal_tool_surface_adapter.js": "tool_surface_adapter",
+            "v2_portal_aws_workspace.js": "aws_workspace",
+            "v2_portal_system_workspace.js": "system_workspace",
+            "v2_portal_network_workspace.js": "network_workspace",
+            "v2_portal_workbench_renderers.js": "workbench_renderers",
+            "v2_portal_inspector_renderers.js": "inspector_renderers",
+            "v2_portal_shell_core.js": "shell_core",
+            "v2_portal_shell_watchdog.js": "shell_watchdog",
+        }
+        for filename, module_id in expected_registrations.items():
+            source = (static_root / filename).read_text(encoding="utf-8")
+            self.assertIn(f'__MYCITE_V2_REGISTER_SHELL_MODULE("{module_id}")', source, filename)
+
+        workbench_source = (static_root / "v2_portal_workbench_renderers.js").read_text(encoding="utf-8")
+        inspector_source = (static_root / "v2_portal_inspector_renderers.js").read_text(encoding="utf-8")
+        core_source = (static_root / "v2_portal_shell_core.js").read_text(encoding="utf-8")
+
+        self.assertIn('resolveRegisteredModuleExport("system_workspace", "PortalSystemWorkspaceRenderer")', workbench_source)
+        self.assertIn("__MYCITE_V2_GET_SHELL_MODULE_DIAGNOSTICS", workbench_source)
+        self.assertNotIn("window.PortalSystemWorkspaceRenderer &&", workbench_source)
+        self.assertIn("__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT", inspector_source)
+        self.assertIn("module_registration_missing", core_source)
+        self.assertIn('resolveRegisteredModuleExport("region_renderers", "PortalShellRegionRenderers")', core_source)
+
+    def test_tool_surface_adapter_keeps_canonical_tool_and_readiness_resolution_order(self) -> None:
+        tool_adapter = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_tool_surface_adapter.js"
+        ).read_text(encoding="utf-8")
+
+        readiness_tokens = [
+            "surfacePayload && surfacePayload.readiness",
+            "surfacePayload && surfacePayload.source_evidence).readiness",
+            "surfacePayload && surfacePayload.workspace).readiness",
+            "region && region.interface_body).readiness",
+        ]
+        tool_id_tokens = [
+            "surfacePayload && surfacePayload.tool_id",
+            "surfacePayload && surfacePayload.tool_state).tool_id",
+            "surfacePayload && surfacePayload.source_evidence).tool_spec).tool_id",
+            "region && region.tool_id",
+        ]
+        readiness_indexes = [tool_adapter.index(token) for token in readiness_tokens]
+        tool_id_indexes = [tool_adapter.index(token) for token in tool_id_tokens]
+
+        self.assertEqual(readiness_indexes, sorted(readiness_indexes))
+        self.assertEqual(tool_id_indexes, sorted(tool_id_indexes))
+        self.assertIn("toolId: resolveToolId(region, surfacePayload)", tool_adapter)
+        self.assertIn("readiness: readiness", tool_adapter)
+        self.assertIn("resolveToolId: resolveToolId", tool_adapter)
 
     def test_shell_static_sources_expose_workbench_toggle_and_interface_panel_aliases(self) -> None:
         template_source = (

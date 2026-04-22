@@ -16,7 +16,7 @@ Active one-shell stabilization execution plan:
 
 Documentation IA + guided-task YAML program:
 
-- `documentation_ia_remediation_backlog.md` tracks active migration and enforcement work from the documentation optimization plan.
+- `documentation_ia_remediation_backlog.md` tracks the remaining documentation optimization work after the lifecycle-metadata retrofit, with active focus now on contract-link coverage, rationale/terminology cleanup, and YAML/CI enforcement.
 
 MOS SQL core program:
 
@@ -35,12 +35,15 @@ MOS closure evidence:
 - `docs/audits/reports/mos_documentation_alignment_and_cleanup_2026-04-21.md`
 - `docs/audits/reports/mos_program_closure_report_2026-04-21.md`
 - `docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md`
+- `docs/audits/reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md`
+- `docs/audits/reports/mos_cutover_intent_integrity_report_2026-04-22.md`
+- `docs/audits/reports/mos_premorice_and_modularization_posture_report_2026-04-22.md`
 
 MOS post-closure follow-on plans:
 
-- `mos_post_closure_consolidation_plan_2026-04-21.md` constrains post-closure MOS work to documentation canonicalization, retained exception scope planning, and `workbench_ui` SQL authority inspector hardening while leaving `/portal/system` alone.
+- `mos_post_closure_consolidation_plan_2026-04-21.md` constrains post-closure MOS work to documentation canonicalization, retained exception scope planning, and `workbench_ui` SQL authority inspector hardening after the `/portal/system` reflectivity closure package published on `2026-04-22`.
 - `mos_novelty_positioning_follow_on_2026-04-21.md` carries internal novelty/positioning language separately from operational cut-over docs.
-- `workbench_ui_hardening_follow_on_2026-04-21.md` defines the next minimal hardening steps for `workbench_ui` as the separate SQL authority inspector under `SYSTEM`.
+- `workbench_ui_hardening_follow_on_2026-04-21.md` now records the shipped navigation/grouping/lens/visibility hardening baseline for `workbench_ui`, leaving only optional simple saved-query follow-on work under `SYSTEM`.
 
 Desktop reconciliation program:
 

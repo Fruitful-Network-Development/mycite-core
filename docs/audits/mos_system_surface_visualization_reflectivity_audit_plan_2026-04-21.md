@@ -4,15 +4,15 @@ Date: 2026-04-21
 
 Doc type: `plan`
 Normativity: `supporting`
-Lifecycle: `active`
-Last reviewed: `2026-04-21`
+Lifecycle: `completed`
+Last reviewed: `2026-04-22`
 
 ## Purpose
 
 Audit whether `/portal/system` visualization remains state-machine reflective:
 control panel as state-reaction contract, interface panel as mediation contract,
-and workbench as datum-file representation. Include renderer fallback behavior
-that can conceal contract-valid but UX-broken states.
+and workbench as datum-file representation. This plan is completed by
+`docs/audits/reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md`.
 
 ## Scope
 
@@ -44,11 +44,16 @@ Host/static rendering:
 
 ## Deliverables
 
-- render-path matrix (`payload kind` -> `renderer` -> `fallback state`)
-- mismatch list where payload contract is healthy but UX reflects unavailable state
-- corrective guardrails for deployment/build-id/cache invalidation posture
+- published report:
+  `docs/audits/reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md`
+- render-path matrix and mismatch diagnosis captured in that report
+- deployment/build-id/cache/registration guardrails captured in code and tests
 
 ## Exit Criteria
 
-- Report publishes root causes and operational mitigations for renderer drift.
-- At least one verification check is defined for every renderer-unavailable path.
+- Report published root causes and mitigations for the named `/portal/system`
+  reflectivity drift.
+- Shell manifest/loader/renderer contracts now expose module-registration
+  diagnostics for missing renderer paths.
+- Verification checks now exist for manifest metadata, loader registry
+  initialization, self-registration, and registry-backed SYSTEM dispatch.

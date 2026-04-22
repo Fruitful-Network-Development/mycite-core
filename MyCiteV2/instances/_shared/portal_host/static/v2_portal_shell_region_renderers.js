@@ -532,4 +532,7 @@
       bindSurfaceNavigation(link, flatEntries[index], ctx);
     });
   };
+  if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
+    window.__MYCITE_V2_REGISTER_SHELL_MODULE("region_renderers");
+  }
 })();

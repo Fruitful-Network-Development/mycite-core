@@ -159,6 +159,63 @@
     return window.PortalToolSurfaceAdapter || {};
   }
 
+  function resolveRegisteredModuleExport(moduleId, globalName) {
+    if (typeof window.__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT === "function") {
+      return window.__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT(moduleId, globalName);
+    }
+    return window[globalName] || null;
+  }
+
+  function buildModuleRegistrationMessage(label, moduleId, globalName, callableName) {
+    var message =
+      "The " +
+      asText(label || "surface") +
+      " renderer contract is unavailable. " +
+      "module_id=" +
+      moduleId +
+      " expected_global=" +
+      globalName +
+      " expected_callable=" +
+      callableName +
+      ".";
+    if (typeof window.__MYCITE_V2_GET_SHELL_MODULE_DIAGNOSTICS !== "function") {
+      return message;
+    }
+    var diagnostics = window.__MYCITE_V2_GET_SHELL_MODULE_DIAGNOSTICS(moduleId) || {};
+    var loadedScripts = asList(diagnostics.script_load_order)
+      .map(function (entry) {
+        return asText((entry && entry.module_id) || (entry && entry.file));
+      })
+      .filter(Boolean);
+    var registeredModules = asList(diagnostics.registered_module_ids)
+      .map(function (entry) {
+        return asText(entry);
+      })
+      .filter(Boolean);
+    var invalidMessages = asList(diagnostics.invalid_messages)
+      .map(function (entry) {
+        return asText(entry);
+      })
+      .filter(Boolean);
+    var failures = asList(diagnostics.failures)
+      .map(function (entry) {
+        return asText(entry);
+      })
+      .filter(Boolean);
+    return (
+      message +
+      " boot_stage=" +
+      (asText(diagnostics.boot_stage) || "unknown") +
+      " loaded_scripts=" +
+      (loadedScripts.join(" -> ") || "none") +
+      " registered_modules=" +
+      (registeredModules.join(", ") || "none") +
+      " invalid_registrations=" +
+      (invalidMessages.join("; ") || "none") +
+      (failures.length ? " contract_failures=" + failures.join("; ") : "")
+    );
+  }
+
   function renderGenericSurface(ctx, target, region, surfacePayload) {
     var adapter = toolSurfaceAdapter();
     return adapter.renderWrappedSurface(
@@ -506,17 +563,20 @@
       var region = ctx.region || {};
       var surfacePayload = region.surface_payload || {};
       var adapter = toolSurfaceAdapter();
+      var awsRenderer = resolveRegisteredModuleExport("aws_workspace", "PortalAwsCsmWorkspaceRenderer");
+      var systemRenderer = resolveRegisteredModuleExport("system_workspace", "PortalSystemWorkspaceRenderer");
+      var networkRenderer = resolveRegisteredModuleExport("network_workspace", "PortalNetworkWorkspaceRenderer");
       if (!target) return;
       if (region.visible === false) {
         target.innerHTML = "";
         return;
       }
       if (
-        window.PortalAwsCsmWorkspaceRenderer &&
-        typeof window.PortalAwsCsmWorkspaceRenderer.render === "function" &&
+        awsRenderer &&
+        typeof awsRenderer.render === "function" &&
         surfacePayload.kind === "aws_csm_workspace"
       ) {
-        window.PortalAwsCsmWorkspaceRenderer.render(ctx, target, surfacePayload);
+        awsRenderer.render(ctx, target, surfacePayload);
         return;
       } else if (surfacePayload.kind === "aws_csm_workspace") {
         adapter.renderWrappedSurface(
@@ -526,18 +586,23 @@
             surfacePayload: surfacePayload,
             title: "AWS-CSM",
             unsupported: true,
-            message: "The AWS-CSM workspace renderer is unavailable.",
+            message: buildModuleRegistrationMessage(
+              "AWS-CSM workspace",
+              "aws_workspace",
+              "PortalAwsCsmWorkspaceRenderer",
+              "render"
+            ),
           }),
           ""
         );
         return;
       }
       if (
-        window.PortalSystemWorkspaceRenderer &&
-        typeof window.PortalSystemWorkspaceRenderer.render === "function" &&
+        systemRenderer &&
+        typeof systemRenderer.render === "function" &&
         surfacePayload.kind === "system_workspace"
       ) {
-        window.PortalSystemWorkspaceRenderer.render(ctx, target, surfacePayload);
+        systemRenderer.render(ctx, target, surfacePayload);
         return;
       } else if (surfacePayload.kind === "system_workspace") {
         adapter.renderWrappedSurface(
@@ -547,18 +612,23 @@
             surfacePayload: surfacePayload,
             title: "System",
             unsupported: true,
-            message: "The system workspace renderer is unavailable.",
+            message: buildModuleRegistrationMessage(
+              "system workspace",
+              "system_workspace",
+              "PortalSystemWorkspaceRenderer",
+              "render"
+            ),
           }),
           ""
         );
         return;
       }
       if (
-        window.PortalNetworkWorkspaceRenderer &&
-        typeof window.PortalNetworkWorkspaceRenderer.render === "function" &&
+        networkRenderer &&
+        typeof networkRenderer.render === "function" &&
         surfacePayload.kind === "network_system_log_workspace"
       ) {
-        window.PortalNetworkWorkspaceRenderer.render(ctx, target, surfacePayload);
+        networkRenderer.render(ctx, target, surfacePayload);
         return;
       } else if (surfacePayload.kind === "network_system_log_workspace") {
         adapter.renderWrappedSurface(
@@ -568,7 +638,12 @@
             surfacePayload: surfacePayload,
             title: "NETWORK",
             unsupported: true,
-            message: "The NETWORK workspace renderer is unavailable.",
+            message: buildModuleRegistrationMessage(
+              "NETWORK workspace",
+              "network_workspace",
+              "PortalNetworkWorkspaceRenderer",
+              "render"
+            ),
           }),
           ""
         );
@@ -643,4 +718,7 @@
       renderGenericSurface(ctx, target, region, surfacePayload);
     },
   };
+  if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
+    window.__MYCITE_V2_REGISTER_SHELL_MODULE("workbench_renderers");
+  }
 })();

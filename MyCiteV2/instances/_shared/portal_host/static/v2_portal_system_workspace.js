@@ -560,4 +560,7 @@
   window.PortalSystemWorkspaceRenderer = {
     render: renderWorkspace,
   };
+  if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
+    window.__MYCITE_V2_REGISTER_SHELL_MODULE("system_workspace");
+  }
 })();

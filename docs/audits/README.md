@@ -22,6 +22,7 @@ Completed audits (report/evidence retained, planning docs removed):
 - `reports/mos_personal_notes_to_canon_crosswalk_2026-04-21.md` records which named MOS personal-note concepts are now canonical, deferred, or source-only.
 - `reports/mos_documentation_supersession_audit_2026-04-21.md` records the post-closure canonical-versus-historical MOS documentation posture.
 - `reports/workbench_ui_utilitarian_design_audit_2026-04-21.md` records the current `workbench_ui` SQL authority inspector strengths, role boundaries, and next hardening posture.
+- `reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md`, `reports/mos_cutover_intent_integrity_report_2026-04-22.md`, and `reports/mos_premorice_and_modularization_posture_report_2026-04-22.md` record the completed `/portal/system` reflectivity closure package, including the shell-module registration contract and paired intent/modularization follow-through.
 
 Foundation-first status:
 
@@ -41,15 +42,12 @@ Still useful and not yet fully completed:
 
 - `performance_weight_speed_audit_plan_2026-04-16.md` with active report `reports/performance_weight_speed_report_2026-04-16.md` (measurement and execution phases still open).
 - `docs/plans/desktop_dm02_dm04_reconciliation_plan_2026-04-20.md` now governs remaining desktop deep-link and scoped shell-state persistence work from `reports/desktop_access_historical_drift_report_2026-04-16.md`.
-- `docs/plans/documentation_ia_remediation_backlog.md` now governs remaining documentation IA/YAML migration and CI-enforcement expansion from `reports/documentation_ia_audit_report_2026-04-20.md`.
+- `docs/plans/documentation_ia_remediation_backlog.md` now governs the remaining documentation IA/YAML migration and CI-enforcement expansion after the lifecycle-metadata retrofit completed across the active plan/audit set.
 - `docs/plans/master_plan_mos.md` is now the completed authoritative closure record for the MOS SQL cut-over program; follow-on MOS work should use supporting plans or audits rather than creating a competing master-plan document.
 - `docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md`, `docs/plans/mos_novelty_positioning_follow_on_2026-04-21.md`, and `docs/plans/workbench_ui_hardening_follow_on_2026-04-21.md` now govern post-closure MOS follow-on work without reopening the completed master plan.
 - `reports/cts_gis_sql_authority_assurance_report_2026-04-21.md` is now the published CTS-GIS parity/readiness gate; upstream CTS-GIS audit plans remain useful until the named blockers are fixed or explicitly waived.
-- `cts_gis_source_hops_audit_plan_2026-04-20.md` remains useful until all listed Summit lineage files are either `verified` or explicitly `blocked` with rationale.
+- `cts_gis_source_hops_audit_plan_2026-04-20.md` is now effectively narrowed to one remaining blocker: the deployed/source-mapping gap for node `3-2-3-17-77-1-14`; the deployed and live Summit-lineage profiles otherwise verified clean at `0 flagged / 32 clean`.
 - `cts_gis_samras_rule_alignment_audit_plan_2026-04-20.md` defines SAMRAS structural/mutation/mediation rule investigation and alignment gates.
 - `cts_gis_datum_handling_alignment_audit_plan_2026-04-20.md` defines datum-file/source-file handling, ordering/editing, MSS-form compatibility, and modularization alignment as a top-priority audit track.
-- `mos_cutover_intent_integrity_audit_plan_2026-04-21.md` defines a hidden-drift audit track from MOS personal-note intent to live canonical/runtime behavior.
 - `mos_database_authority_and_peripheral_access_audit_plan_2026-04-21.md` defines SQL authority, peripheral grants, tool-access mediation, and FND authorization audit checks.
-- `mos_system_surface_visualization_reflectivity_audit_plan_2026-04-21.md` defines `/portal/system` render-reflectivity checks between shell payload contracts and static render realization.
-- `mos_premorice_and_modularization_posture_audit_plan_2026-04-21.md` defines post-cutover state-memory continuity and modular boundary drift checks.
-- `reports/mos_runtime_authority_and_access_reality_report_2026-04-21.md` publishes the executed MOS reality check for SQL data integrity, package-peripheral access posture, FND authorization scope, and current system-page renderer drift.
+- `reports/mos_runtime_authority_and_access_reality_report_2026-04-21.md` publishes the executed MOS reality check for SQL data integrity, package-peripheral access posture, FND authorization scope, and the now-closed system-page reflectivity drift.

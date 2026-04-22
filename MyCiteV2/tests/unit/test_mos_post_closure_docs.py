@@ -19,6 +19,9 @@ class MosPostClosureDocsTests(unittest.TestCase):
             "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md",
             "docs/audits/reports/mos_personal_notes_to_canon_crosswalk_2026-04-21.md",
             "docs/audits/reports/mos_documentation_supersession_audit_2026-04-21.md",
+            "docs/audits/reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md",
+            "docs/audits/reports/mos_cutover_intent_integrity_report_2026-04-22.md",
+            "docs/audits/reports/mos_premorice_and_modularization_posture_report_2026-04-22.md",
             "docs/audits/reports/workbench_ui_utilitarian_design_audit_2026-04-21.md",
             "docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md",
             "docs/plans/mos_novelty_positioning_follow_on_2026-04-21.md",
@@ -35,6 +38,9 @@ class MosPostClosureDocsTests(unittest.TestCase):
             "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md",
             "docs/audits/reports/mos_personal_notes_to_canon_crosswalk_2026-04-21.md",
             "docs/audits/reports/mos_documentation_supersession_audit_2026-04-21.md",
+            "docs/audits/reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md",
+            "docs/audits/reports/mos_cutover_intent_integrity_report_2026-04-22.md",
+            "docs/audits/reports/mos_premorice_and_modularization_posture_report_2026-04-22.md",
             "docs/audits/reports/workbench_ui_utilitarian_design_audit_2026-04-21.md",
             "docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md",
             "docs/plans/mos_novelty_positioning_follow_on_2026-04-21.md",
@@ -87,13 +93,38 @@ class MosPostClosureDocsTests(unittest.TestCase):
         audits_readme = _read_text(REPO_ROOT / "docs" / "audits" / "README.md")
 
         self.assertIn("cts_gis_sql_authority_assurance_report_2026-04-21.md", plans_readme)
+        self.assertIn("mos_system_surface_visualization_reflectivity_report_2026-04-22.md", plans_readme)
+        self.assertIn("mos_cutover_intent_integrity_report_2026-04-22.md", plans_readme)
+        self.assertIn("mos_premorice_and_modularization_posture_report_2026-04-22.md", plans_readme)
         self.assertIn("mos_post_closure_consolidation_plan_2026-04-21.md", plans_readme)
         self.assertIn("mos_novelty_positioning_follow_on_2026-04-21.md", plans_readme)
         self.assertIn("workbench_ui_hardening_follow_on_2026-04-21.md", plans_readme)
         self.assertIn("cts_gis_sql_authority_assurance_report_2026-04-21.md", audits_readme)
         self.assertIn("mos_personal_notes_to_canon_crosswalk_2026-04-21.md", audits_readme)
         self.assertIn("mos_documentation_supersession_audit_2026-04-21.md", audits_readme)
+        self.assertIn("mos_system_surface_visualization_reflectivity_report_2026-04-22.md", audits_readme)
+        self.assertIn("mos_cutover_intent_integrity_report_2026-04-22.md", audits_readme)
+        self.assertIn("mos_premorice_and_modularization_posture_report_2026-04-22.md", audits_readme)
         self.assertIn("workbench_ui_utilitarian_design_audit_2026-04-21.md", audits_readme)
+
+    def test_mos_reflectivity_follow_on_audits_are_closed_by_reports(self) -> None:
+        active_plan_paths = [
+            REPO_ROOT / "docs" / "audits" / "mos_system_surface_visualization_reflectivity_audit_plan_2026-04-21.md",
+            REPO_ROOT / "docs" / "audits" / "mos_cutover_intent_integrity_audit_plan_2026-04-21.md",
+            REPO_ROOT / "docs" / "audits" / "mos_premorice_and_modularization_posture_audit_plan_2026-04-21.md",
+        ]
+        for path in active_plan_paths:
+            text = _read_text(path)
+            self.assertIn("Lifecycle: `completed`", text, path.relative_to(REPO_ROOT).as_posix())
+            self.assertIn("2026-04-22.md", text, path.relative_to(REPO_ROOT).as_posix())
+
+        reality_report = _read_text(
+            REPO_ROOT / "docs" / "audits" / "reports" / "mos_runtime_authority_and_access_reality_report_2026-04-21.md"
+        )
+        self.assertIn("closed on 2026-04-22", reality_report)
+        self.assertIn("mos_system_surface_visualization_reflectivity_report_2026-04-22.md", reality_report)
+        self.assertIn("mos_cutover_intent_integrity_report_2026-04-22.md", reality_report)
+        self.assertIn("mos_premorice_and_modularization_posture_report_2026-04-22.md", reality_report)
 
     def test_cts_gis_sql_authority_assurance_report_records_gate_and_counts(self) -> None:
         report_text = _read_text(

@@ -248,6 +248,10 @@
     renderStateHtml: renderStateHtml,
     renderWrappedSurface: renderWrappedSurface,
     resolveReadiness: resolveReadiness,
+    resolveToolId: resolveToolId,
     resolveSurfaceState: resolveSurfaceState,
   };
+  if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
+    window.__MYCITE_V2_REGISTER_SHELL_MODULE("tool_surface_adapter");
+  }
 })();

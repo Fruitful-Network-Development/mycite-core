@@ -3,7 +3,7 @@
 Doc type: `plan`  
 Normativity: `supporting`  
 Lifecycle: `active`  
-Last reviewed: `2026-04-20`
+Last reviewed: `2026-04-22`
 
 ## Purpose
 
@@ -27,14 +27,17 @@ Create a repeatable, file-by-file audit and correction process for every Summit-
 CTS-GIS source profile so HOPS geometry is verified against vetted reference GeoJSON,
 runtime projection quality is documented, and source-file conventions remain canonical.
 
-This plan prioritizes **Hudson City (`3-2-3-17-77-1-6`) first** because it remains
-visually incorrect.
+This plan initially prioritized **Hudson City (`3-2-3-17-77-1-6`) first** because it was
+visually incorrect. That repair/verification pass is now complete. The remaining open
+Summit-lineage blocker is node `3-2-3-17-77-1-14`, which still lacks a deployed source
+profile and vetted reference mapping.
 
 ## Scope
 
 - Dataset root: `deployed/fnd/data/sandbox/cts-gis/sources/`
 - File pattern: `sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77*.json`
-- Total in-scope source profiles: `32`
+- Existing deployed source profiles under this pattern: `32`
+- Additional blocked logical node with no deployed source profile: `3-2-3-17-77-1-14`
 - Reference corpus root: `docs/personal_notes/CTS-GIS-prototype-mockup/`
 
 ## Required Inputs Per File
@@ -117,10 +120,8 @@ Every audit/repair decision must pass these alignment checks:
 
 ## Priority Order
 
-1. `3-2-3-17-77-1-6` (Hudson City) - highest priority
-2. `3-2-3-17-77` (Summit County) - verify post-repair consistency
-3. `3-2-3-17-77-1-1` (Akron City) - verify post-repair consistency
-4. Remaining files in deterministic node-id order
+1. `3-2-3-17-77-1-14` - only remaining Summit-lineage blocker; requires a deployed source profile plus vetted reference mapping, or an explicit readiness waiver
+2. Reopen already verified Summit-lineage files only if new provenance or projection evidence contradicts the current `0 flagged / 32 clean` follow-up state
 
 ## File-By-File Checklist
 
@@ -133,10 +134,14 @@ Latest execution updates:
   focused CTS-GIS regression suites passed.
 - `2026-04-20`: Remaining city/township/village batches (`1-2..1-13`, `2-1..2-9`, `3-1..3-9`) completed via dry-run then apply; all targeted nodes marked repaired in manifest and verified here.
 - `2026-04-20`: Node `3-2-3-17-77-1-14` marked blocked due to missing deployed source profile and missing vetted reference mapping.
+- `2026-04-22`: Post-repair follow-up against `/srv/repo/mycite-core/deployed/fnd/data`
+  and `/srv/mycite-state/instances/fnd/data` reported `0 flagged / 32 clean`; the
+  checklist below now reflects the post-follow-up verification state for deployed
+  Summit-lineage source profiles.
 
 - `sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77-1-6.json` - status: `verified` - note: Hudson City priority
-- `sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json` - status: `unchecked`
-- `sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77-1-1.json` - status: `unchecked`
+- `sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json` - status: `verified`
+- `sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77-1-1.json` - status: `verified`
 - `sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77-1-2.json` - status: `verified`
 - `sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77-1-3.json` - status: `verified`
 - `sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77-1-4.json` - status: `verified`
@@ -182,7 +187,14 @@ Latest execution updates:
 
 ## Exit Criteria
 
-- Every in-scope file is in `verified` or `blocked` state with explicit rationale.
+- Every deployed Summit-lineage source profile is in `verified` state, and the undeployed
+  node `3-2-3-17-77-1-14` remains explicitly `blocked` with rationale.
 - Hudson City (`3-2-3-17-77-1-6`) corrected or explicitly blocked with root cause.
 - Manifest and repair reports are current and reproducible from script commands.
 - Rule investigation and modularization alignment evidence are recorded for each corrected or blocked file.
+
+## Remaining Open Item
+
+- Resolve or explicitly waive blocked node `3-2-3-17-77-1-14` by supplying a deployed
+  source profile plus vetted reference mapping, or by recording a formal readiness waiver
+  in the upstream CTS-GIS parity/readiness gate.
