@@ -313,6 +313,31 @@ def _normalize_footer(footer_payload: object) -> dict[str, Any]:
     }
 
 
+def _machine_surface_summary(manifest_payload: dict[str, Any]) -> dict[str, Any]:
+    machine_payload = _as_dict(manifest_payload.get("machine"))
+    if not machine_payload:
+        machine_payload = _as_dict(manifest_payload.get("machine_surfaces"))
+    if not machine_payload:
+        return {}
+
+    inpage = _as_dict(machine_payload.get("inpage"))
+    pages = _as_dict(machine_payload.get("pages"))
+    endpoint_maps = _as_dict(machine_payload.get("endpoint_maps"))
+    blocks = [item for item in _as_list(inpage.get("blocks")) if isinstance(item, dict)]
+    endpoints = [item for item in _as_list(pages.get("endpoints")) if isinstance(item, dict)]
+
+    return {
+        "root_keys": sorted(machine_payload.keys()),
+        "inpage_root": _as_text(inpage.get("root")),
+        "inpage_block_count": len(blocks),
+        "inpage_block_ids": [_as_text(item.get("id")) for item in blocks if _as_text(item.get("id"))],
+        "pages_root": _as_text(pages.get("root")),
+        "endpoint_count": len(endpoints),
+        "endpoint_rels": [_as_text(item.get("rel")) for item in endpoints if _as_text(item.get("rel"))],
+        "endpoint_maps": endpoint_maps,
+    }
+
+
 def _normalize_manifest(
     manifest_payload: dict[str, Any],
     *,
@@ -393,6 +418,11 @@ def _normalize_manifest(
         )
         evidence.append("Manifest could not be fully normalized because the schema is unsupported.")
         extensions = {"schema": schema}
+
+    machine_summary = _machine_surface_summary(manifest_payload)
+    if machine_summary:
+        extensions["machine_surface_summary"] = machine_summary
+        evidence.append("Captured additive machine-surface summary under extensions.machine_surface_summary.")
 
     projection = {
         "site": {
