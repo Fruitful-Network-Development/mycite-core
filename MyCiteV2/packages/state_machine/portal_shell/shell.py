@@ -1241,6 +1241,32 @@ def canonical_query_for_surface_query(
     return {}
 
 
+def canonical_query_for_runtime_request_payload(
+    request_payload: Mapping[str, Any] | None,
+    *,
+    surface_id: str,
+    legacy_query_keys: tuple[str, ...] = (),
+) -> dict[str, str]:
+    payload = dict(request_payload or {})
+    raw_surface_query = payload.get("surface_query")
+    surface_query: Mapping[str, Any] | None
+    if isinstance(raw_surface_query, Mapping):
+        surface_query = raw_surface_query
+    elif legacy_query_keys:
+        legacy_surface_query: dict[str, Any] = {}
+        for key in legacy_query_keys:
+            token = _as_text(payload.get(key))
+            if token:
+                legacy_surface_query[key] = token
+        surface_query = legacy_surface_query
+    else:
+        surface_query = None
+    return canonical_query_for_surface_query(
+        surface_query,
+        surface_id=surface_id,
+    )
+
+
 def build_canonical_url(*, surface_id: str, query: Mapping[str, str] | None = None) -> str:
     route = canonical_route_for_surface(surface_id)
     filtered = {key: value for key, value in dict(query or {}).items() if _as_text(value)}
@@ -1535,14 +1561,13 @@ def build_shell_composition_payload(
         interface_open = state.chrome.interface_panel_open and state.verb == VERB_MEDIATE
     requested_inspector_visible = inspector_region.get("visible") is True
     if tool_surface:
+        # First-load tool posture is composition-owned. Runtime payload visibility
+        # hints are treated as content metadata, not posture authority.
         if surface_posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY:
             workbench_visible = False
             inspector_visible = True
         else:
-            workbench_visible = _region_visible(
-                workbench_region.get("visible"),
-                default=default_workbench_visible_for_surface(active_surface_id),
-            )
+            workbench_visible = default_workbench_visible_for_surface(active_surface_id)
             inspector_visible = True
     else:
         inspector_visible = bool(interface_open or requested_inspector_visible)
@@ -1683,6 +1708,7 @@ __all__ = [
     "build_portal_tool_registry_entries",
     "build_shell_composition_payload",
     "canonical_query_for_surface_query",
+    "canonical_query_for_runtime_request_payload",
     "canonical_query_for_shell_state",
     "canonical_route_for_surface",
     "canonicalize_portal_shell_state",

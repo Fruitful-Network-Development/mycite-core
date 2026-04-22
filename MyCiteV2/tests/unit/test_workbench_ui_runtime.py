@@ -71,6 +71,11 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertTrue(selected_document_id.startswith("sandbox:cts_gis:"))
             self.assertEqual(envelope["canonical_query"]["document"], selected_document_id)
             self.assertEqual(workspace["query"]["document"], selected_document_id)
+            composition = envelope["shell_composition"]
+            self.assertFalse(composition["workbench_collapsed"])
+            self.assertFalse(composition["interface_panel_collapsed"])
+            self.assertTrue(composition["regions"]["workbench"]["visible"])
+            self.assertTrue(composition["regions"]["interface_panel"]["visible"])
 
     def test_workbench_ui_runtime_projects_document_table_and_row_grid(self) -> None:
         with TemporaryDirectory() as temp_dir:

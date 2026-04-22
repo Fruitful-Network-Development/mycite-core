@@ -42,14 +42,23 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
 )
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
+    AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_ENTRYPOINT_ID,
     CTS_GIS_TOOL_ROUTE,
     CTS_GIS_TOOL_SURFACE_ID,
+    FND_DCM_TOOL_SURFACE_ID,
+    FND_EBI_TOOL_SURFACE_ID,
+    NETWORK_ROOT_SURFACE_ID,
     PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PortalScope,
     PortalShellState,
+    UTILITIES_ROOT_SURFACE_ID,
+    activity_icon_id_for_surface,
     build_canonical_url,
+    build_portal_activity_dispatch_bodies,
+    build_portal_surface_catalog,
+    build_shell_composition_payload,
     build_portal_shell_request_payload,
     canonical_query_for_shell_state,
     canonicalize_portal_shell_state,
@@ -61,6 +70,14 @@ _CANONICAL_TOOL_SLUG = "cts-gis"
 _CANONICAL_TOOL_ANCHOR_PATTERN = "tool.*.cts-gis.json"
 _LEGACY_DOCUMENT_PREFIX = "sandbox:" + ("map" + "s") + ":"
 _DATUM_STORE_BY_DATA_DIR: dict[str, FilesystemSystemDatumStoreAdapter] = {}
+_VISIBLE_ACTIVITY_SURFACE_IDS = (
+    AWS_CSM_TOOL_SURFACE_ID,
+    CTS_GIS_TOOL_SURFACE_ID,
+    FND_DCM_TOOL_SURFACE_ID,
+    FND_EBI_TOOL_SURFACE_ID,
+    NETWORK_ROOT_SURFACE_ID,
+    UTILITIES_ROOT_SURFACE_ID,
+)
 
 
 class LegacyMapsAliasUnsupportedError(ValueError):
@@ -78,6 +95,38 @@ def _path_or_none(path: str | Path | None) -> Path | None:
     if path is None:
         return None
     return Path(path)
+
+
+def _activity_items(*, portal_scope: PortalScope, active_surface_id: str, shell_state: PortalShellState) -> list[dict[str, Any]]:
+    dispatch_bodies = build_portal_activity_dispatch_bodies(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+    )
+    items: list[dict[str, Any]] = []
+    for entry in build_portal_surface_catalog():
+        if entry.surface_id not in _VISIBLE_ACTIVITY_SURFACE_IDS:
+            continue
+        items.append(
+            {
+                "item_id": entry.surface_id,
+                "label": entry.label,
+                "icon_id": activity_icon_id_for_surface(entry.surface_id),
+                "href": entry.route,
+                "active": entry.surface_id == active_surface_id,
+                "nav_kind": "surface",
+                "nav_behavior": "dispatch" if entry.surface_id in dispatch_bodies else "direct",
+                "shell_request": dispatch_bodies.get(entry.surface_id),
+            }
+        )
+    return items
+
+
+def _control_panel_collapsed(shell_state: PortalShellState | dict[str, Any] | None) -> bool:
+    if isinstance(shell_state, dict):
+        chrome = shell_state.get("chrome")
+        return bool(chrome.get("control_panel_collapsed")) if isinstance(chrome, dict) else False
+    chrome = getattr(shell_state, "chrome", None)
+    return bool(getattr(chrome, "control_panel_collapsed", False))
 
 
 def _datum_store_for_data_dir(data_dir: str | Path | None) -> FilesystemSystemDatumStoreAdapter | None:
@@ -2508,6 +2557,22 @@ def run_portal_cts_gis(
         request_payload=normalized_payload,
     )
     canonical_query = canonical_query_for_shell_state(shell_state, surface_id=CTS_GIS_TOOL_SURFACE_ID)
+    composition = build_shell_composition_payload(
+        active_surface_id=CTS_GIS_TOOL_SURFACE_ID,
+        portal_instance_id=portal_scope.scope_id,
+        page_title=_as_text(bundle.get("page_title")) or "CTS-GIS",
+        page_subtitle=_as_text(bundle.get("page_subtitle")),
+        activity_items=_activity_items(
+            portal_scope=portal_scope,
+            active_surface_id=CTS_GIS_TOOL_SURFACE_ID,
+            shell_state=shell_state,
+        ),
+        control_panel=dict(bundle.get("control_panel") or {}),
+        workbench=dict(bundle.get("workbench") or {}),
+        inspector=dict(bundle.get("inspector") or {}),
+        shell_state=shell_state,
+        control_panel_collapsed=_control_panel_collapsed(shell_state),
+    )
     return build_portal_runtime_envelope(
         portal_scope=portal_scope.to_dict(),
         requested_surface_id=CTS_GIS_TOOL_SURFACE_ID,
@@ -2520,7 +2585,7 @@ def run_portal_cts_gis(
         canonical_url=build_canonical_url(surface_id=CTS_GIS_TOOL_SURFACE_ID, query=canonical_query),
         shell_state=shell_state.to_dict(),
         surface_payload=bundle["surface_payload"],
-        shell_composition={},
+        shell_composition=composition,
         warnings=list(bundle["surface_payload"].get("warnings") or []),
         error=None,
     )

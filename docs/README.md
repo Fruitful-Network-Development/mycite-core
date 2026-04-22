@@ -15,6 +15,7 @@ This repository now describes one portal shell only.
 - Migrated `SYSTEM` authority surfaces are SQL-backed and fail closed without the per-instance MOS authority database
 - Canonical CTS-GIS storage contract: `private/utilities/tools/cts-gis/spec.json` + `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
 - Canonical FND-DCM docs: `docs/contracts/fnd_dcm_tool_contract.md`, `docs/contracts/fnd_dcm_manifest_conventions.md`
+- Canonical universal tool operating contract: `docs/contracts/tool_operating_contract.md`
 - Canonical CTS-GIS SAMRAS addressing contract: `docs/contracts/cts_gis_samras_addressing.md`
 - Canonical mediation-tool archetype note: `docs/contracts/tool_mediation_surface_archetype.md`
 - Canonical SAMRAS structural docs: `docs/contracts/samras_structural_model.md`, `docs/contracts/samras_validity_and_mutation.md`, `docs/contracts/samras_engine_ui_boundary.md`
@@ -29,3 +30,4 @@ This repository now describes one portal shell only.
 - CTS-GIS keeps the shared shell contract unchanged while projecting a CTS-GIS-local Interface Panel body with magnitude-derived `Diktataograph` navigation and a selection-aligned `Garland`
 - Canonical term mapping and compatibility aliases are documented in `docs/contracts/portal_vocabulary_glossary.md`
 - Documentation IA and guided-task YAML standards are maintained under `docs/standards/`
+- One-shell refactor guardrails are maintained in `docs/standards/portal_shell_refactor_guardrails.md`

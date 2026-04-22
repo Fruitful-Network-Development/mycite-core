@@ -29,6 +29,23 @@ Non-reducer roots may still project canonical query state when the host needs a 
 
 For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant posture is resolved from the MOS authority database. Missing or uninitialized SQL authority is a readiness failure rather than a silent filesystem bootstrap.
 
+## Shell Stabilization Invariants
+
+The shell remains a narrow host with fixed orchestration duties.
+
+Authoritative invariants:
+
+- shell-level region dispatch is constrained to three canonical families:
+  - `reflective_workspace`
+  - `directive_panel`
+  - `presentation_surface`
+- tool-specific semantics are payload content inside those families, not new shell dispatcher kinds
+- composition building in `build_shell_composition_payload()` is the sole first-load authority for region visibility/posture
+- request/query normalization is centralized; drift-prone per-surface normalization branches are non-canonical
+- CTS-GIS tool-local navigation and AITAS/NIMM state stay body-carried and must not widen shared shell query
+
+The detailed cross-tool operating contract and migration program are documented in `docs/contracts/tool_operating_contract.md`.
+
 ## Ordered Focus Stack
 
 The canonical shell state carries an ordered focus stack, not a bag of optional ids.
@@ -209,6 +226,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - `Workbench UI` is read-only, surfaces additive directive summaries only, and must never mutate authoritative datum rows through overlay state.
 - Shared directive snapshots/events may only be imported from explicit normalized manifests; runtime must not infer shared overlays from historical tool-local files.
 - All tools attach to the same interface surface. Service-tool behavior is distinguished by whether the tool can employ the portal's authenticated peripheral package, not by a separate class of portal.
+- All tool region payloads must conform to the three canonical shell region families declared in this contract.
 
 Default tool posture is interface-panel-led; `Workbench UI` is the approved workbench-primary exception for SQL-backed authority inspection.
 

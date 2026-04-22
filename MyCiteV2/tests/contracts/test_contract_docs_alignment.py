@@ -16,6 +16,7 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertTrue((standards / "documentation_style_guide.md").is_file())
         self.assertTrue((standards / "agent_yaml_schema.md").is_file())
         self.assertTrue((standards / "agent_task_template_examples.md").is_file())
+        self.assertTrue((standards / "portal_shell_refactor_guardrails.md").is_file())
         self.assertTrue((docs_root / "plans" / "documentation_ia_remediation_backlog.md").is_file())
         self.assertTrue((docs_root / "audits" / "reports" / "documentation_ia_audit_report_2026-04-20.md").is_file())
 
@@ -27,6 +28,30 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("docs/contracts/route_model.md", plan_text)
         self.assertIn("docs/contracts/surface_catalog.md", plan_text)
         self.assertIn("docs/contracts/portal_vocabulary_glossary.md", plan_text)
+
+    def test_tool_operating_contract_and_stabilization_matrix_docs_exist_and_are_linked(self) -> None:
+        contracts_readme = (REPO_ROOT / "docs" / "contracts" / "README.md").read_text(encoding="utf-8")
+        docs_readme = (REPO_ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+        plans_readme = (REPO_ROOT / "docs" / "plans" / "README.md").read_text(encoding="utf-8")
+        shell_contract = (REPO_ROOT / "docs" / "contracts" / "portal_shell_contract.md").read_text(encoding="utf-8")
+        operating_contract = (REPO_ROOT / "docs" / "contracts" / "tool_operating_contract.md").read_text(encoding="utf-8")
+        stabilization_plan = (REPO_ROOT / "docs" / "plans" / "one_shell_portal_refactor.md").read_text(encoding="utf-8")
+        matrix_plan = (REPO_ROOT / "docs" / "plans" / "one_shell_stabilization_matrix.md").read_text(encoding="utf-8")
+        guardrails = (REPO_ROOT / "docs" / "standards" / "portal_shell_refactor_guardrails.md").read_text(encoding="utf-8")
+
+        self.assertIn("tool_operating_contract.md", contracts_readme)
+        self.assertIn("tool_operating_contract.md", docs_readme)
+        self.assertIn("one_shell_portal_refactor.md", plans_readme)
+        self.assertIn("tool_operating_contract.md", shell_contract)
+        self.assertIn("reflective_workspace", operating_contract)
+        self.assertIn("directive_panel", operating_contract)
+        self.assertIn("presentation_surface", operating_contract)
+        self.assertIn("Wave 0", stabilization_plan)
+        self.assertIn("Contract Matrix (Must Pass)", stabilization_plan)
+        self.assertIn("/portal/system/tools/workbench-ui", matrix_plan)
+        self.assertIn("test_portal_shell_stabilization_matrix", matrix_plan)
+        self.assertIn("Blocking Rules", guardrails)
+        self.assertIn("build_shell_composition_payload()", guardrails)
 
     def test_performance_benchmark_baseline_artifacts_exist(self) -> None:
         repo_root = REPO_ROOT

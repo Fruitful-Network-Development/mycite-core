@@ -51,6 +51,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     build_portal_activity_dispatch_bodies,
     build_portal_surface_catalog,
     build_shell_composition_payload,
+    canonical_query_for_runtime_request_payload,
     resolve_portal_tool_registry_entry,
 )
 
@@ -153,18 +154,10 @@ def _href_for_query(query: Mapping[str, str]) -> str:
 
 
 def _normalize_surface_query(raw_query: Mapping[str, Any] | None) -> dict[str, str]:
-    raw = dict(raw_query or {})
-    query: dict[str, str] = {"view": "domains"}
-    domain = _as_text(raw.get("domain")).lower()
-    profile = _as_text(raw.get("profile"))
-    section = _as_text(raw.get("section")).lower()
-    if domain:
-        query["domain"] = domain
-    if profile:
-        query["profile"] = profile
-    if section in {"users", "onboarding", "newsletter"}:
-        query["section"] = section
-    return query
+    return canonical_query_for_runtime_request_payload(
+        {"surface_query": raw_query},
+        surface_id=AWS_CSM_TOOL_SURFACE_ID,
+    )
 
 
 def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, dict[str, str]]:
@@ -173,14 +166,11 @@ def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, dic
     if schema != AWS_CSM_TOOL_REQUEST_SCHEMA:
         raise ValueError(f"request.schema must be {AWS_CSM_TOOL_REQUEST_SCHEMA}")
     portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
-    surface_query = normalized_payload.get("surface_query")
-    if not isinstance(surface_query, Mapping):
-        surface_query = {
-            key: normalized_payload.get(key)
-            for key in ("view", "domain", "profile", "section")
-            if _as_text(normalized_payload.get(key))
-        }
-    return portal_scope, _normalize_surface_query(surface_query)
+    return portal_scope, canonical_query_for_runtime_request_payload(
+        normalized_payload,
+        surface_id=AWS_CSM_TOOL_SURFACE_ID,
+        legacy_query_keys=("view", "domain", "profile", "section"),
+    )
 
 
 def _normalize_action_request(
@@ -191,7 +181,11 @@ def _normalize_action_request(
     if schema != AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA:
         raise ValueError(f"request.schema must be {AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA}")
     portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
-    surface_query = _normalize_surface_query(normalized_payload.get("surface_query"))
+    surface_query = canonical_query_for_runtime_request_payload(
+        normalized_payload,
+        surface_id=AWS_CSM_TOOL_SURFACE_ID,
+        legacy_query_keys=("view", "domain", "profile", "section"),
+    )
     raw_shell_state = normalized_payload.get("shell_state")
     shell_state = dict(raw_shell_state) if isinstance(raw_shell_state, dict) else None
     action_kind = _as_text(normalized_payload.get("action_kind")).lower()

@@ -8,6 +8,7 @@ The canonical portal contract set is:
 - [fnd_dcm_tool_contract.md](fnd_dcm_tool_contract.md)
 - [fnd_dcm_manifest_conventions.md](fnd_dcm_manifest_conventions.md)
 - [tool_mediation_surface_archetype.md](tool_mediation_surface_archetype.md)
+- [tool_operating_contract.md](tool_operating_contract.md)
 - [cts_gis_samras_addressing.md](cts_gis_samras_addressing.md)
 - [cts_gis_hops_profile_sources.md](cts_gis_hops_profile_sources.md)
 - [cts_gis_compiled_artifact_contract.md](cts_gis_compiled_artifact_contract.md)
