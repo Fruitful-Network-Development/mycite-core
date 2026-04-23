@@ -18,6 +18,35 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 
 
 class PortalOneShellBoundaryTests(unittest.TestCase):
+    def test_runtime_and_client_sources_no_longer_reference_retired_fallback_keys(self) -> None:
+        retired_keys = (
+            "aws_csm_inspector",
+            "network_system_log_inspector",
+            "aws_csm_workspace",
+            "cts_gis_interface_body",
+            "tool_secondary_evidence",
+            "state_directive_compact",
+            "tool_mediation_panel",
+        )
+        sources = [
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_aws_runtime.py",
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_cts_gis_runtime.py",
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_fnd_dcm_runtime.py",
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_fnd_ebi_runtime.py",
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_shell_runtime.py",
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_system_workspace_runtime.py",
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_workbench_ui_runtime.py",
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_tool_surface_adapter.js",
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_shell_region_renderers.js",
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js",
+        ]
+
+        for path in sources:
+            source = path.read_text(encoding="utf-8")
+            for key in retired_keys:
+                with self.subTest(path=path.name, key=key):
+                    self.assertNotIn(key, source)
+
     def test_retired_split_artifacts_are_absent(self) -> None:
         retired_history_dir = REPO_ROOT / ("MyCite" + "V" + "1")
         retired_bridge_dir = REPO_ROOT / "MyCiteV2" / "packages" / "adapters" / ("portal_" + "runtime")

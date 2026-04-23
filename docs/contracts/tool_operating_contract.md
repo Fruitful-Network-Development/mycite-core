@@ -151,7 +151,7 @@ Do not add:
 ### Phase 2: Unify region contracts
 
 - adapt current tool payloads into the three canonical region families
-- keep compatibility adapters while branch removal is in progress
+- retire compatibility adapters once the family-first hosts are green and the retired fallback keys no longer appear in runtime or client code
 
 ### Phase 3: Unify normalization
 

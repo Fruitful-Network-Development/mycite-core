@@ -34,8 +34,8 @@ This plan exists separately because it is the highest-risk server-side slice. It
 - complete: `workbench_ui` shell-route bundle assembly now forwards normalized `surface_query`
 - complete: tool bundle dispatch in `portal_shell_runtime.py` is now registry-backed instead of an open-coded per-tool branch ladder
 - complete: direct view entrypoints for CTS-GIS, FND-DCM, FND-EBI, and `workbench_ui` now reuse `run_portal_shell_entry()`
-- remaining gap: `_bundle_for_surface()` still keeps inline root/helper assembly for `SYSTEM`, `NETWORK`, and `UTILITIES`
-- remaining gap: AWS action responses still use `_runtime_envelope_from_bundle()`, which is now a trailing cleanup seam rather than a blocker for family-host migration
+- non-blocking residual for later cleanup: `_bundle_for_surface()` still keeps inline root/helper assembly for `SYSTEM`, `NETWORK`, and `UTILITIES`
+- non-blocking residual for later cleanup: AWS action responses still use `_runtime_envelope_from_bundle()`, which is outside the shell-unification closeout criteria
 
 ## 3. Exact Repo Evidence
 

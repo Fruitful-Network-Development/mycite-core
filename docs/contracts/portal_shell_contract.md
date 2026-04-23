@@ -155,6 +155,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - `shell_composition.workbench_collapsed` reports whether the workbench is currently hidden.
 - `shell_composition.regions.inspector` remains valid during the compatibility phase.
 - `shell_composition.regions.interface_panel` mirrors `regions.inspector`.
+- Retired runtime/client fallback keys such as `aws_csm_inspector`, `network_system_log_inspector`, `aws_csm_workspace`, `cts_gis_interface_body`, `tool_secondary_evidence`, `state_directive_compact`, and `tool_mediation_panel` are not part of the active shell composition contract.
 - Composition building, not upstream region defaults, owns the final root-vs-tool visibility posture for `Workbench` and `Interface Panel`.
 - On the first V2 shell hydration, server composition wins over any stored workbench-open preference; stored layout state only resumes after hydration and user interaction.
 - Client chrome publishes route-scoped tool lock state through `data-tool-panel-lock` on `ide-shell`.
