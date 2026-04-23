@@ -937,25 +937,6 @@ def _cts_gis_control_panel(
             }
             for token, label in fallback_options
         ]
-    intention_self_token = "self"
-    intention_children_token = (
-        f"{current_attention_node_id}-0" if current_attention_node_id else canonical_runtime_intention_rule_id("children", attention_node_id="")
-    )
-    intention_descendants_token = (
-        f"{current_attention_node_id}-0-0"
-        if current_attention_node_id
-        else canonical_runtime_intention_rule_id("descendants_depth_1_or_2", attention_node_id="")
-    )
-    intention_levels = [
-        {"display": "1", "token": intention_self_token},
-        {"display": "0", "token": intention_children_token},
-        {"display": "0-0", "token": intention_descendants_token},
-    ]
-    intention_level_index = 0
-    for index, level in enumerate(intention_levels):
-        if _as_text(level.get("token")) == current_intention_rule_id:
-            intention_level_index = index
-            break
     time_tokens = [_DEFAULT_TIME_DIRECTIVE]
     if current_time_directive and current_time_directive not in time_tokens:
         time_tokens.insert(0, current_time_directive)
@@ -990,74 +971,11 @@ def _cts_gis_control_panel(
         *time_entries,
         *locked_entries,
     ]
-    state_directive_compact = {
-        "nimm_buttons": [
-            {"label": "NAV", "active": _as_text(resolved_tool_state.get("nimm_directive")) == "nav"},
-            {"label": "INV", "active": _as_text(resolved_tool_state.get("nimm_directive")) == "inv"},
-            {"label": "MED", "active": _as_text(resolved_tool_state.get("nimm_directive")) == "med"},
-            {"label": "MAN", "active": _as_text(resolved_tool_state.get("nimm_directive")) == "man"},
-        ],
-        "script_input": {
-            "placeholder": "/enter...",
-            "enabled": False,
-            "help": "Directive script input is not active yet.",
-        },
-        "aitas_modes": [
-            {"id": "A", "label": "A", "field": "attention"},
-            {"id": "I", "label": "I", "field": "intention"},
-            {"id": "T", "label": "T", "field": "time"},
-            {"id": "A2", "label": "A", "field": "archetype", "locked": True},
-            {"id": "S", "label": "S", "field": "source", "locked": True},
-        ],
-        "active_mode": "I",
-        "attention": {
-            "value": current_attention_node_id,
-            "shell_template": _tool_state_request(
-                portal_scope=portal_scope,
-                shell_state=shell_state,
-                tool_state=resolved_tool_state,
-                base_shell_request=base_shell_request,
-            ),
-        },
-        "time": {
-            "value": current_time_directive,
-            "shell_template": _tool_state_request(
-                portal_scope=portal_scope,
-                shell_state=shell_state,
-                tool_state=resolved_tool_state,
-                base_shell_request=base_shell_request,
-            ),
-        },
-        "intention": {
-            "active_index": intention_level_index,
-            "levels": [
-                {
-                    "display": _as_text(level.get("display")),
-                    "token": _as_text(level.get("token")),
-                    "shell_request": _intention_shell_request(
-                        portal_scope=portal_scope,
-                        shell_state=shell_state,
-                        tool_state=resolved_tool_state,
-                        intention_rule_id=_as_text(level.get("token")),
-                        base_shell_request=base_shell_request,
-                    ),
-                    "action": _shell_action("set_intention", token=_as_text(level.get("token"))),
-                }
-                for level in intention_levels
-            ],
-        },
-        "validation": {
-            "node_id_pattern": r"^\d+(?:-\d+)*$",
-            "invalid_attention_message": "Invalid attention node id.",
-            "invalid_time_message": "Invalid time token; use HOPS-style address id.",
-        },
-    }
     return {
         **base_panel,
         "context_items": _context_items_from_base_panel(base_panel, source_evidence),
         "verb_tabs": [],
         "groups": [{"title": "STATE DIRECTIVE", "entries": state_directive_entries}],
-        "state_directive_compact": state_directive_compact,
         "actions": [],
     }
 
@@ -1945,7 +1863,6 @@ def _cts_gis_interface_body(
         }
 
     return {
-        "kind": "cts_gis_interface_body",
         "layout": "diktataograph_garland_split",
         "narrow_layout": "diktataograph_garland_stack",
         "navigation_canvas": navigation_canvas,
@@ -2436,12 +2353,12 @@ def build_portal_cts_gis_surface_bundle(
     workbench = attach_region_family_contract(
         {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-        "kind": "tool_secondary_evidence",
+        "kind": "surface_payload",
         "title": "CTS-GIS Evidence",
         "subtitle": "Raw registrar, source, and cache evidence stays secondary to the Garland projection.",
         "visible": False,
         "surface_payload": {
-            "kind": "tool_secondary_evidence",
+            "kind": "surface_payload",
             "tool_id": tool_entry.tool_id,
             "surface_id": CTS_GIS_TOOL_SURFACE_ID,
             "datum_summary": datum_summary,
@@ -2457,7 +2374,7 @@ def build_portal_cts_gis_surface_bundle(
     inspector = attach_region_family_contract(
         {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
-        "kind": "tool_mediation_panel",
+        "kind": "mediation_panel",
         "title": "CTS-GIS",
         "summary": "CTS-GIS projects one mediation posture through structural navigation and correlated spatial evidence.",
         "subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),

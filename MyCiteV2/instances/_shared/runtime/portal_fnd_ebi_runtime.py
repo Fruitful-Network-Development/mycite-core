@@ -129,12 +129,12 @@ def build_portal_fnd_ebi_surface_bundle(
     workbench = attach_region_family_contract(
         {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-        "kind": "tool_secondary_evidence",
+        "kind": "surface_payload",
         "title": "FND-EBI Evidence",
         "subtitle": "Workbench remains hidden until the runtime requests supporting evidence.",
         "visible": False,
         "surface_payload": {
-            "kind": "tool_secondary_evidence",
+            "kind": "surface_payload",
             "surface_id": FND_EBI_TOOL_SURFACE_ID,
             "webapps_summary": webapps_summary,
         },
@@ -145,7 +145,7 @@ def build_portal_fnd_ebi_surface_bundle(
     inspector = attach_region_family_contract(
         {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
-        "kind": "tool_mediation_panel",
+        "kind": "summary_panel",
         "title": "FND-EBI",
         "summary": "Shared hosted visibility posture.",
         "subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),

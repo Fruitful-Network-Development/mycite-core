@@ -88,37 +88,32 @@
     );
   }
 
-  function resolveRegionCompatibilityKind(region) {
-    return asText(resolveRegionFamilyContract(region).compatibility_kind) || asText(region && region.kind);
-  }
-
-  function resolveRegionInterfaceBodyKind(region) {
+  function hasSecondaryEvidencePayload(surfacePayload) {
+    var payload = asObject(surfacePayload);
     return (
-      asText(resolveRegionFamilyContract(region).interface_body_kind) ||
-      asText(asObject(region && region.interface_body).kind)
+      Object.keys(asObject(payload.source_evidence)).length > 0 ||
+      Object.keys(asObject(payload.diagnostic_summary)).length > 0 ||
+      Object.keys(asObject(payload.webapps_summary)).length > 0
     );
   }
 
   function resolveDirectivePanelMode(region) {
     var family = resolveRegionFamily(region);
+    var surfaceId = resolveRegionSurfaceId(region);
     var kind = asText(region && region.kind);
-    var compact = asObject(region && region.state_directive_compact);
-    var hasCompactStateDirective = Object.keys(compact).length > 0;
 
     if (family === "directive_panel") {
-      if (hasCompactStateDirective) return "state_directive_compact";
+      if (surfaceId === "system.tools.cts_gis") return "cts_gis_directive_panel";
       if (kind === "focus_selection_panel") return "focus_selection_panel";
       return "sections_panel";
     }
-    if (hasCompactStateDirective) return "state_directive_compact";
+    if (surfaceId === "system.tools.cts_gis") return "cts_gis_directive_panel";
     if (kind === "focus_selection_panel") return "focus_selection_panel";
     return "sections_panel";
   }
 
   function resolveReflectiveWorkspaceModuleSpec(region, surfacePayload) {
-    var family = resolveRegionFamily(region);
     var surfaceId = resolveRegionSurfaceId(region, surfacePayload);
-    var payloadKind = resolveSurfacePayloadKind(region, surfacePayload);
     var moduleSpecs = {
       "system.root": {
         moduleId: "system_workspace",
@@ -137,37 +132,28 @@
       },
     };
 
-    if (family === "reflective_workspace" && moduleSpecs[surfaceId]) {
-      return moduleSpecs[surfaceId];
-    }
-    if (payloadKind === "system_workspace") return moduleSpecs["system.root"];
-    if (payloadKind === "network_system_log_workspace") return moduleSpecs["network.root"];
-    if (payloadKind === "aws_csm_workspace") return moduleSpecs["system.tools.aws_csm"];
-    return {};
+    return moduleSpecs[surfaceId] || {};
   }
 
   function resolveReflectiveWorkspaceMode(region, surfacePayload) {
     var family = resolveRegionFamily(region);
-    var payloadKind = resolveSurfacePayloadKind(region, surfacePayload);
+    var surfaceId = resolveRegionSurfaceId(region, surfacePayload);
     var moduleSpec = resolveReflectiveWorkspaceModuleSpec(region, surfacePayload);
 
     if (family === "reflective_workspace") {
       if (moduleSpec.moduleId) return "registered_workspace";
-      if (payloadKind === "workbench_ui_surface") return "workbench_ui_surface";
-      if (payloadKind === "tool_secondary_evidence") return "secondary_evidence";
+      if (surfaceId === "system.tools.workbench_ui") return "workbench_ui_surface";
+      if (hasSecondaryEvidencePayload(surfacePayload)) return "secondary_evidence";
       return "generic_surface";
     }
     if (moduleSpec.moduleId) return "registered_workspace";
-    if (payloadKind === "workbench_ui_surface") return "workbench_ui_surface";
-    if (payloadKind === "tool_secondary_evidence") return "secondary_evidence";
+    if (surfaceId === "system.tools.workbench_ui") return "workbench_ui_surface";
+    if (hasSecondaryEvidencePayload(surfacePayload)) return "secondary_evidence";
     return "generic_surface";
   }
 
   function resolvePresentationSurfaceModuleSpec(region, surfacePayload) {
-    var family = resolveRegionFamily(region);
     var surfaceId = resolveRegionSurfaceId(region, surfacePayload);
-    var payloadKind = resolveSurfacePayloadKind(region, surfacePayload);
-    var compatibilityKind = resolveRegionCompatibilityKind(region);
     var moduleSpecs = {
       "network.root": {
         moduleId: "network_workspace",
@@ -181,26 +167,13 @@
       },
     };
 
-    if (family === "presentation_surface" && moduleSpecs[surfaceId]) {
-      return moduleSpecs[surfaceId];
-    }
-    if (surfaceId && moduleSpecs[surfaceId]) {
-      return moduleSpecs[surfaceId];
-    }
-    if (compatibilityKind === "aws_csm_inspector" || payloadKind === "aws_csm_workspace") {
-      return moduleSpecs["system.tools.aws_csm"];
-    }
-    if (compatibilityKind === "network_system_log_inspector") {
-      return moduleSpecs["network.root"];
-    }
-    return {};
+    return moduleSpecs[surfaceId] || {};
   }
 
   function resolvePresentationSurfaceMode(region, surfacePayload) {
     var family = resolveRegionFamily(region);
     var interfaceBody = asObject(region && region.interface_body);
     var moduleSpec = resolvePresentationSurfaceModuleSpec(region, surfacePayload);
-    var interfaceBodyKind = resolveRegionInterfaceBodyKind(region);
     var hasStructuredProjectionContract =
       (Object.keys(asObject(interfaceBody.navigation_canvas)).length > 0 &&
         Object.keys(asObject(interfaceBody.garland_split_projection)).length > 0) ||
@@ -211,13 +184,11 @@
     if (family === "presentation_surface") {
       if (moduleSpec.moduleId) return "registered_surface";
       if (hasStructuredProjectionContract) return "structured_interface_body";
-      if (hasInterfaceBody && interfaceBodyKind === "cts_gis_interface_body") return "structured_interface_body";
       if (hasInterfaceBody) return "unsupported_interface_body";
       return "summary_surface";
     }
     if (moduleSpec.moduleId) return "registered_surface";
     if (hasStructuredProjectionContract) return "structured_interface_body";
-    if (hasInterfaceBody && interfaceBodyKind === "cts_gis_interface_body") return "structured_interface_body";
     if (hasInterfaceBody) return "unsupported_interface_body";
     return "summary_surface";
   }
@@ -406,10 +377,8 @@
     resolvePresentationSurfaceModuleSpec: resolvePresentationSurfaceModuleSpec,
     resolveReflectiveWorkspaceMode: resolveReflectiveWorkspaceMode,
     resolveReflectiveWorkspaceModuleSpec: resolveReflectiveWorkspaceModuleSpec,
-    resolveRegionCompatibilityKind: resolveRegionCompatibilityKind,
     resolveRegionFamily: resolveRegionFamily,
     resolveRegionFamilyContract: resolveRegionFamilyContract,
-    resolveRegionInterfaceBodyKind: resolveRegionInterfaceBodyKind,
     resolveRegionSurfaceId: resolveRegionSurfaceId,
     resolveSurfacePayloadKind: resolveSurfacePayloadKind,
     renderStateHtml: renderStateHtml,

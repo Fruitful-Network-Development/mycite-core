@@ -1042,7 +1042,7 @@ def _build_inspector(
         )
     return {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
-        "kind": "aws_csm_inspector",
+        "kind": "summary_panel",
         "title": "AWS-CSM",
         "summary": "Unified service-tool posture and selected domain detail.",
         "visible": True,
@@ -1107,7 +1107,7 @@ def _surface_payload(
 ) -> dict[str, Any]:
     payload = {
         "schema": AWS_CSM_TOOL_SURFACE_SCHEMA,
-        "kind": "aws_csm_workspace",
+        "kind": "surface_payload",
         "title": "AWS-CSM",
         "subtitle": "Unified domain gallery with mailbox onboarding and newsletter state.",
         "tool": tool_status,

@@ -34,7 +34,7 @@ This plan exists separately because every later slice touches the same files. Wi
 - complete: `portal_shell_runtime.py` now uses registry-backed tool bundle lookup and forwards normalized `surface_query` to `workbench_ui`
 - complete enough for the current stage: canonical routes already emit `family_contract` markers and the directive-panel plus reflective-workspace hosts already dispatch by family before compatibility fallbacks
 - complete enough for the current stage: the top-level `presentation_surface` host now dispatches by family-first mode/spec resolution, with registered inspector modules and structured interface-body rendering routed through the shared adapter
-- trailing cleanup: runtime emitters and compatibility adapters still carry shrinking legacy markers such as `state_directive_compact`, `tool_secondary_evidence`, `tool_mediation_panel`, `aws_csm_inspector`, `network_system_log_inspector`, and `cts_gis_interface_body`, but they no longer own the primary inspector dispatch path
+- complete for the current phase: the scoped runtime emitters no longer publish compatibility-only markers such as `state_directive_compact`, `tool_secondary_evidence`, `tool_mediation_panel`, `aws_csm_inspector`, `aws_csm_workspace`, `network_system_log_inspector`, or `cts_gis_interface_body`; family-first routing now relies on canonical `surface_id` and structured CTS-GIS body contracts
 
 ## 3. Exact Repo Evidence
 
@@ -54,21 +54,21 @@ This plan exists separately because every later slice touches the same files. Wi
 - `MyCiteV2/instances/_shared/runtime/portal_workbench_ui_runtime.py`
   - `build_portal_workbench_ui_surface_bundle()` builds the runtime-owned SQL authority inspector with `document`, `row`, grouping, lens, source, and overlay query handling.
 - `MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py`
-  - emits `aws_csm_workspace` and `aws_csm_inspector`.
+  - now emits a canonical AWS surface payload plus a generic `summary_panel`; the retired `aws_csm_workspace` and `aws_csm_inspector` compatibility labels are gone.
 - `MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py`
-  - emits `tool_mediation_surface`, `tool_mediation_panel`, `tool_secondary_evidence`, and `cts_gis_interface_body`.
+  - still emits `tool_mediation_surface`, but its control-panel, workbench, and interface-panel payloads no longer carry `state_directive_compact`, `tool_secondary_evidence`, `tool_mediation_panel`, or `cts_gis_interface_body`.
 - `MyCiteV2/instances/_shared/runtime/portal_fnd_dcm_runtime.py`
-  - emits `tool_mediation_surface` and `tool_mediation_panel`.
+  - still emits `tool_mediation_surface`, and its inspector now uses the generic summary-panel contract instead of `tool_mediation_panel`.
 - `MyCiteV2/instances/_shared/runtime/portal_fnd_ebi_runtime.py`
-  - emits `tool_mediation_surface`, `tool_secondary_evidence`, and `tool_mediation_panel`.
+  - still emits `tool_mediation_surface`, but its secondary-evidence and inspector regions no longer use the retired compatibility labels.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js`
   - top-level control-panel host now dispatches through family-plus-mode resolution.
-  - remaining CTS-GIS specialization is confined to the compatibility `state_directive_compact` path.
+  - CTS-GIS directive rendering now resolves from canonical `surface_id` plus the existing grouped entries rather than `state_directive_compact`.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js`
   - top-level workbench host now dispatches through family-plus-mode resolution.
-  - remaining compatibility is concentrated in adapter-managed `surface_payload_kind` and `surface_id` fallback tables, including the `tool_secondary_evidence` path.
+  - secondary-evidence rendering is now selected from canonical runtime structure instead of `tool_secondary_evidence`.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js`
-  - top-level interface-panel host now dispatches through `resolvePresentationSurfaceMode()` and `resolvePresentationSurfaceModuleSpec()`.
+  - top-level interface-panel host now dispatches through `resolvePresentationSurfaceMode()` and `resolvePresentationSurfaceModuleSpec()` without legacy inspector-kind or `interface_body.kind` fallbacks.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_tool_surface_adapter.js`
   - already centralizes readiness, warning, loading, error, empty, and unsupported wrappers.
   - now also owns family-first directive/workbench/presentation mode resolution and the shrinking compatibility fallback tables; this is the correct compatibility layer to shrink rather than bypass.
@@ -122,7 +122,7 @@ This plan exists separately because every later slice touches the same files. Wi
 | compatibility adapters to shrink over time | `MyCiteV2/instances/_shared/portal_host/static/portal.js` | layout persistence, legacy `inspector` storage aliases, route-scoped tool lock, splitter behavior | payload content, canonical query, runtime composition | mixing compatibility layout state into runtime payload or using it as first-load authority |
 | specialized tool-local UI logic still awaiting migration | `MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py` | CTS-GIS-local directive and presentation content while migration is incomplete | top-level shell family choice | claiming CTS-GIS is already region-family generic because the file only changed names |
 | specialized tool-local UI logic still awaiting migration | `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js` | temporary CTS-GIS directive-panel compatibility path | permanent directive-panel authority | leaving `renderCtsGisDirectivePanel()` in place after the family contract exists |
-| specialized tool-local UI logic still awaiting migration | `MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js` | temporary CTS-GIS secondary-evidence compatibility path | permanent reflective-workspace authority | treating `tool_secondary_evidence` plus `tool_id` branches as the end-state |
+| specialized tool-local UI logic still awaiting migration | `MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js` | CTS-GIS/FND-EBI supporting-evidence presentation selected from canonical payload structure | permanent reflective-workspace authority | reintroducing legacy `tool_secondary_evidence` branches instead of keeping the structural contract |
 | specialized tool-local UI logic still awaiting migration | `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js` | temporary CTS-GIS Diktataograph/Garland host while the presentation-surface contract is being normalized | permanent presentation-surface authority | assuming moving helpers around inside the same 1500-line file counts as unification |
 
 ## 5. Staged Execution Slices
@@ -189,13 +189,13 @@ Status:
   - `MyCiteV2/instances/_shared/portal_host/app.py`
 - Exact behavior expected to change:
   - top-level hosts stop treating tool identity as primary dispatch authority
-  - compatibility adapters consume legacy fields while the runtime and client contracts converge on `directive_panel`, `reflective_workspace`, and `presentation_surface`
+  - legacy compatibility fields are retired once the runtime and client contracts converge on `directive_panel`, `reflective_workspace`, and `presentation_surface`
   - the inspector host becomes family-first before any compatibility-key deletion begins
 - Tests to add or update:
   - `MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py`
   - `MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py`
 - Compatibility adapters or temporary aliases required:
-  - `surfacePayload.kind`, `region.kind`, `state_directive_compact`, `tool_secondary_evidence`, and `cts_gis_interface_body` remain only as documented compatibility inputs
+  - none for the retired runtime keys; only the public `inspector` alias remains explicitly out of scope for this sequence
 - Retirement gate:
   - the top-level family hosts no longer branch on `surface_label`, `surfacePayload.kind`, or `region.kind` in their primary path
 

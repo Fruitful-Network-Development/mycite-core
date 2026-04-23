@@ -390,7 +390,7 @@ def _build_inspector(
         )
     return {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
-        "kind": "tool_mediation_panel",
+        "kind": "summary_panel",
         "title": "FND-DCM",
         "summary": "Hosted manifest inspection and collection normalization.",
         "subject": subject,

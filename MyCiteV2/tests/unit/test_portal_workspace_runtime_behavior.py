@@ -460,8 +460,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             "descendants_depth_1_or_2",
         )
         self.assertEqual(bundle["surface_payload"]["source_evidence"]["readiness"]["state"], "no_authoritative_cts_gis_documents")
-        self.assertEqual(bundle["inspector"]["interface_body"]["kind"], "cts_gis_interface_body")
         interface_body = bundle["inspector"]["interface_body"]
+        self.assertNotIn("kind", interface_body)
         self.assertIn("navigation_canvas", interface_body)
         self.assertIn("garland_split_projection", interface_body)
         self.assertEqual(interface_body["navigation_canvas"]["title"], "Diktataograph")
@@ -752,9 +752,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
             self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"], "3-2-3-17-77-0-0")
             self.assertEqual(bundle["surface_payload"]["source_evidence"]["readiness"]["state"], "ready")
-            self.assertEqual(bundle["inspector"]["interface_body"]["kind"], "cts_gis_interface_body")
             self.assertEqual(bundle["inspector"]["interface_body"]["layout"], "diktataograph_garland_split")
             self.assertEqual(bundle["inspector"]["interface_body"]["narrow_layout"], "diktataograph_garland_stack")
+            self.assertNotIn("kind", bundle["inspector"]["interface_body"])
             self.assertIn("navigation_canvas", bundle["inspector"]["interface_body"])
             self.assertIn("garland_split_projection", bundle["inspector"]["interface_body"])
             self.assertEqual(
@@ -831,10 +831,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 envelope["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"],
                 "3-2-3-17-77-0-0",
             )
-            self.assertEqual(
-                envelope["shell_composition"]["regions"]["inspector"]["interface_body"]["kind"],
-                "cts_gis_interface_body",
-            )
+            self.assertNotIn("kind", envelope["shell_composition"]["regions"]["inspector"]["interface_body"])
             self.assertTrue(envelope["shell_composition"]["workbench_collapsed"])
             self.assertFalse(envelope["shell_composition"]["interface_panel_collapsed"])
 
@@ -1002,11 +999,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             intention_entries = [entry for entry in state_group["entries"] if entry["label"].startswith("Intention · ")]
             self.assertTrue(all(isinstance(entry.get("shell_request"), dict) for entry in intention_entries))
             self.assertEqual(bundle["control_panel"]["verb_tabs"], [])
-            compact = dict(bundle["control_panel"].get("state_directive_compact") or {})
-            self.assertEqual(compact.get("active_mode"), "I")
-            self.assertEqual([item.get("label") for item in list(compact.get("nimm_buttons") or [])], ["NAV", "INV", "MED", "MAN"])
-            self.assertTrue(bool((compact.get("attention") or {}).get("shell_template")))
-            self.assertTrue(bool((compact.get("time") or {}).get("shell_template")))
+            self.assertNotIn("state_directive_compact", bundle["control_panel"])
 
     def test_cts_gis_state_directive_time_shell_request_updates_time_context(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1832,7 +1825,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
             self.assertEqual(
                 envelope["shell_composition"]["regions"]["inspector"]["kind"],
-                "network_system_log_inspector",
+                "summary_panel",
             )
             self.assertTrue(envelope["shell_composition"]["inspector_collapsed"])
             self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])

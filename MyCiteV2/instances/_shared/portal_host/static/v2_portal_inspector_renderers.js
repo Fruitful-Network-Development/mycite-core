@@ -909,7 +909,6 @@
     }
     var garland = body.garland || {};
     return {
-      kind: body.kind || "cts_gis_interface_body",
       layout: body.layout || "diktataograph_garland_split",
       narrow_layout: body.narrow_layout || "diktataograph_garland_stack",
       feature_flags: body.feature_flags || {},

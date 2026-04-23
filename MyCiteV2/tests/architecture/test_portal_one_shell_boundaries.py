@@ -322,7 +322,8 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
 
         self.assertIn("resolveDirectivePanelMode", region_renderers)
         self.assertIn('family === "directive_panel"', region_renderers)
-        self.assertIn("state_directive_compact", region_renderers)
+        self.assertIn("cts_gis_directive_panel", region_renderers)
+        self.assertNotIn("state_directive_compact", region_renderers)
         self.assertNotIn('region.surface_label === "CTS-GIS"', region_renderers)
 
         self.assertIn("function resolveDirectivePanelMode(region)", tool_adapter)
@@ -330,6 +331,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("resolveDirectivePanelMode: resolveDirectivePanelMode", tool_adapter)
         self.assertIn("resolveRegionFamily: resolveRegionFamily", tool_adapter)
         self.assertIn("family_contract", tool_adapter)
+        self.assertNotIn("state_directive_compact", tool_adapter)
 
     def test_reflective_workspace_host_dispatches_by_family_contract_before_payload_kind_compatibility(self) -> None:
         static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
@@ -352,6 +354,8 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("resolveReflectiveWorkspaceModuleSpec: resolveReflectiveWorkspaceModuleSpec", tool_adapter)
         self.assertIn("resolveSurfacePayloadKind", tool_adapter)
         self.assertIn("resolveRegionSurfaceId", tool_adapter)
+        self.assertNotIn("aws_csm_workspace", tool_adapter)
+        self.assertNotIn("tool_secondary_evidence", tool_adapter)
 
     def test_presentation_surface_host_dispatches_by_family_contract_before_legacy_inspector_kinds(self) -> None:
         static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
@@ -372,9 +376,12 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("function resolvePresentationSurfaceModuleSpec(region, surfacePayload)", tool_adapter)
         self.assertIn("resolvePresentationSurfaceMode: resolvePresentationSurfaceMode", tool_adapter)
         self.assertIn("resolvePresentationSurfaceModuleSpec: resolvePresentationSurfaceModuleSpec", tool_adapter)
-        self.assertIn("resolveRegionCompatibilityKind", tool_adapter)
-        self.assertIn("resolveRegionInterfaceBodyKind", tool_adapter)
+        self.assertNotIn("resolveRegionCompatibilityKind", tool_adapter)
+        self.assertNotIn("resolveRegionInterfaceBodyKind", tool_adapter)
         self.assertIn("family_contract", tool_adapter)
+        self.assertNotIn("aws_csm_inspector", tool_adapter)
+        self.assertNotIn("network_system_log_inspector", tool_adapter)
+        self.assertNotIn("cts_gis_interface_body", tool_adapter)
 
     def test_shell_static_sources_expose_workbench_toggle_and_interface_panel_aliases(self) -> None:
         template_source = (
@@ -441,7 +448,10 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
 
         self.assertIn('data-workbench-collapsed="true"', portal_css)
         self.assertIn("minmax(0, 1fr)", portal_css)
-        self.assertIn("cts_gis_interface_body", (
+        self.assertNotIn("cts_gis_interface_body", (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8"))
+        self.assertIn("normalizeCtsGisInterfaceBody", (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn("Diktataograph", (
