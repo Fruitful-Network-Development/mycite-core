@@ -4,7 +4,7 @@ Date: 2026-04-23
 
 Doc type: `plan`
 Normativity: `supporting`
-Lifecycle: `active`
+Lifecycle: `completed`
 Last reviewed: `2026-04-23`
 
 ## 1. Purpose

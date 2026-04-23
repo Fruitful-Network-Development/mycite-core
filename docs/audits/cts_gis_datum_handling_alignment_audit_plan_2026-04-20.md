@@ -4,8 +4,13 @@ Date: 2026-04-20
 
 Doc type: `plan`  
 Normativity: `supporting`  
-Lifecycle: `active`  
+Lifecycle: `historical-superseded`  
 Last reviewed: `2026-04-20`
+
+## Archive Note
+
+This plan is now superseded as the active entrypoint by:
+`docs/audits/cts_gis_open_alignment_audit_plan_2026-04-23.md`.
 
 ## Purpose
 

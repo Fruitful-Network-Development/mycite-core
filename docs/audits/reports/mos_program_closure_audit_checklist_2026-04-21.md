@@ -31,17 +31,17 @@ Record the closure-review baseline plus the current classification of every file
 | `docs/plans/documentation_ia_remediation_backlog.md` | `supporting-current` | reviewed | Active documentation maintenance backlog; closure wording updated through current MOS audits. |
 | `docs/plans/master_plan_mos.index.yaml` | `supporting-current` | reviewed | Companion index for the authoritative MOS master plan; updated for final closure evidence and authority-only cleanup language. |
 | `docs/plans/master_plan_mos.md` | `authoritative` | reviewed | Canonical MOS closure plan; updated to state final SQL-only cutover completion and non-authoritative legacy retention. |
-| `docs/plans/mos_directive_context_design_track_2026-04-21.md` | `supporting-current` | reviewed | Active Track C design evidence; remains additive-only and non-blocking. |
+| `docs/plans/mos_directive_context_design_track_2026-04-21.md` | `historical-superseded` | reviewed | Closure-era Track C design evidence retained for provenance continuity. |
 | `docs/plans/mos_novelty_positioning_follow_on_2026-04-21.md` | `supporting-current` | reviewed | Active internal positioning/spec note; deliberately separate from operational cut-over authority. |
 | `docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md` | `supporting-current` | reviewed | Active post-closure follow-on plan; explicitly not a competing master-plan document. |
-| `docs/plans/mos_semantic_gate_register_2026-04-21.md` | `supporting-current` | reviewed | Active evidence of closed Track B semantic gates. |
-| `docs/plans/mos_sg1_version_identity_policy_2026-04-21.md` | `supporting-current` | reviewed | Active supporting policy for document version identity. |
-| `docs/plans/mos_sg2_hyphae_derivation_policy_2026-04-21.md` | `supporting-current` | reviewed | Active supporting policy for row semantic identity. |
-| `docs/plans/mos_sg3_edit_remap_policy_2026-04-21.md` | `supporting-current` | reviewed | Active supporting policy for deterministic remap semantics. |
-| `docs/plans/mos_sg4_standard_closure_policy_2026-04-21.md` | `supporting-current` | reviewed | Active supporting policy for closure and compatibility retirement. |
+| `docs/plans/mos_semantic_gate_register_2026-04-21.md` | `historical-superseded` | reviewed | Closure ledger for Track B semantic gates; retained as historical evidence. |
+| `docs/plans/mos_sg1_version_identity_policy_2026-04-21.md` | `historical-superseded` | reviewed | Closure policy evidence for document version identity. |
+| `docs/plans/mos_sg2_hyphae_derivation_policy_2026-04-21.md` | `historical-superseded` | reviewed | Closure policy evidence for row semantic identity. |
+| `docs/plans/mos_sg3_edit_remap_policy_2026-04-21.md` | `historical-superseded` | reviewed | Closure policy evidence for deterministic remap semantics. |
+| `docs/plans/mos_sg4_standard_closure_policy_2026-04-21.md` | `historical-superseded` | reviewed | Closure policy evidence for compatibility retirement posture. |
 | `docs/plans/one_shell_portal_refactor.md` | `authoritative` | reviewed | Active portal-shell implementation plan; compatible with the completed MOS SQL-only posture. |
 | `docs/plans/one_shell_stabilization_matrix.md` | `supporting-current` | reviewed | Active shell-boundary regression matrix supporting the one-shell implementation plan and deployed route/composition posture. |
-| `docs/plans/workbench_ui_hardening_follow_on_2026-04-21.md` | `supporting-current` | reviewed | Active `workbench_ui` SQL authority inspector hardening plan; keeps `SYSTEM` and `workbench_ui` distinct while keeping `workbench_ui` shell-attached, read-only, and additive-only. |
+| `docs/plans/workbench_ui_hardening_follow_on_2026-04-21.md` | `historical-superseded` | reviewed | Retained hardening detail artifact; active follow-on tracking now lives in `mos_post_closure_consolidation_plan_2026-04-21.md` plus the unified YAML manifest/task board. |
 | `docs/audits/reports/audit_program_rollup_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; pre-closure rollup retained for audit history. |
 | `docs/audits/reports/core_portal_datum_mss_protocol_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as pre-closure datum-handling history. |
 | `docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md` | `supporting-current` | reviewed | Active post-closure CTS-GIS parity/readiness gate: confirms SQL/filesystem corpus parity, clean row-graph integrity, and names blocking provenance/readiness concerns before more CTS-GIS feature work. |

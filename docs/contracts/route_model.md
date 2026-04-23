@@ -36,6 +36,14 @@ Direct APIs:
 - `POST /portal/api/v2/system/tools/fnd-dcm`
 - `POST /portal/api/v2/system/tools/fnd-ebi`
 
+Canonical shared mutation lifecycle APIs:
+
+- `POST /portal/api/v2/mutations/stage`
+- `POST /portal/api/v2/mutations/validate`
+- `POST /portal/api/v2/mutations/preview`
+- `POST /portal/api/v2/mutations/apply`
+- `POST /portal/api/v2/mutations/discard`
+
 Reducer-owned query projection keys:
 
 - `file`

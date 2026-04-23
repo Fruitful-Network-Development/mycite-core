@@ -1,0 +1,70 @@
+schema_version: "1.0"
+kind: "refinement_phase_task_board"
+board:
+  id: "REFINEMENT-PHASE4-TASK-BOARD-2026-04-23"
+  title: "Refinement phase 4 testing and validation"
+  lifecycle: "active"
+  phase: "phase_4_testing_and_validation"
+  last_reviewed: "2026-04-23"
+  canonical_plan: "docs/plans/refinement.md"
+
+tasks:
+  - id: "TASK-REFINE-P4-001"
+    title: "Expand NIMM parser/validator unit coverage for invalid and edge payloads"
+    status: "done"
+    priority: "p1"
+    owner_role: "state-machine-test-engineer"
+    acceptance:
+      - "Invalid verb, missing authority/document, and empty target payloads are rejected by tests."
+      - "Lens transformation behavior is asserted in staging-focused unit tests."
+    evidence_targets:
+      - "MyCiteV2/tests/unit/test_nimm_phase2_foundations.py"
+
+  - id: "TASK-REFINE-P4-002"
+    title: "Add integration test for staging and mutation contract lifecycle"
+    status: "done"
+    priority: "p1"
+    owner_role: "integration-test-engineer"
+    acceptance:
+      - "Integration flow covers stage, preview, apply, and authoritative row update."
+      - "Integration flow verifies staged payload clearing after apply."
+    evidence_targets:
+      - "MyCiteV2/tests/integration/test_nimm_mutation_contract_flow.py"
+
+  - id: "TASK-REFINE-P4-003"
+    title: "Validate CTS-GIS navigation and staged reflectivity behavior"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-test-engineer"
+    acceptance:
+      - "Runtime request contract and navigation canvas remain available in integration tests."
+      - "Staged/preview/apply flows continue to expose compiled NIMM metadata in runtime payloads."
+    evidence_targets:
+      - "MyCiteV2/tests/integration/test_nimm_mutation_contract_flow.py"
+      - "MyCiteV2/tests/unit/test_portal_cts_gis_actions.py"
+      - "MyCiteV2/tests/unit/test_cts_gis_request_validation.py"
+
+  - id: "TASK-REFINE-P4-004"
+    title: "Update contracts and package docs with NIMM/AITAS/lens examples"
+    status: "done"
+    priority: "p1"
+    owner_role: "contract-doc-author"
+    acceptance:
+      - "Mutation contract includes concrete NIMM envelope example and lens usage guidance."
+      - "Operating contract explicitly reiterates three-authority and staging-boundary model."
+      - "Lens package docs define codec responsibilities and usage."
+    evidence_targets:
+      - "docs/contracts/mutation_contract.md"
+      - "docs/contracts/tool_operating_contract.md"
+      - "MyCiteV2/packages/state_machine/lens/README.md"
+
+  - id: "TASK-REFINE-P4-005"
+    title: "Run regression validation suites and close phase 4 report"
+    status: "done"
+    priority: "p1"
+    owner_role: "qa-owner"
+    acceptance:
+      - "Phase 4 targeted unit/integration/contract suites pass."
+      - "Phase 4 report records executed validations and closure verdict."
+    evidence_targets:
+      - "docs/audits/reports/refinement_phase4_validation_report_2026-04-23.md"

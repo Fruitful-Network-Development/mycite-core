@@ -91,3 +91,13 @@ Those checks now cover:
 ## Result
 
 The live SQL authority data needed by CTS-GIS is present and internally consistent: filesystem and SQL match across the full authoritative corpus and across the CTS-GIS subset, and CTS-GIS row semantics in the authority DB are clean. Continued CTS-GIS feature work is still blocked, but now for named provenance/readiness concerns rather than for uncertainty about whether the SQL authority corpus was fully and correctly loaded.
+
+## Contextual planning status update (2026-04-23)
+
+- `TASK-CTSGIS-BLOCKER-001` remains the primary readiness blocker.
+- Dependent tasks `TASK-CTSGIS-SAMRAS-001` and `TASK-CTSGIS-DATUM-001` are
+  blocked by that gate and cannot be closed independently.
+- Blocking node remains `3-2-3-17-77-1-14` pending deployed source + vetted
+  mapping or explicit waiver.
+- Next unblocked task in the executed priority pass was `TASK-DOC-IA-001`
+  (completed).

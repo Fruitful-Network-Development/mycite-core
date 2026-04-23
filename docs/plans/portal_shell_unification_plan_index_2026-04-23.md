@@ -4,7 +4,7 @@ Date: 2026-04-23
 
 Doc type: `index`
 Normativity: `supporting`
-Lifecycle: `active`
+Lifecycle: `completed`
 Last reviewed: `2026-04-23`
 
 ## Plan Set

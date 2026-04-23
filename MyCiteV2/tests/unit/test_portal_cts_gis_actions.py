@@ -93,6 +93,32 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
             "action_payload": action_payload,
         }
 
+    def test_stage_accepts_structure_operation_for_compound_directives(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            db_file = Path(temp_dir) / "authority.sqlite3"
+            self._seed_db(db_file)
+            staged = run_portal_cts_gis_action(
+                self._request(
+                    None,
+                    "stage_insert_yaml",
+                    {
+                        "stage_document": self._stage_document(),
+                        "structure_operation": {
+                            "operation": "expand_samras",
+                            "target_node_address": "3-2-3-17-77-1",
+                            "new_node_addresses": ["3-2-3-17-77-1-99"],
+                        },
+                    },
+                ),
+                data_dir=None,
+                authority_db_file=db_file,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+            )
+            compound = staged["surface_payload"]["staged_insert"]["compiled_nimm_envelope"]["compound_directives"]
+            self.assertEqual(compound["schema"], "mycite.v2.nimm.compound.v1")
+            self.assertEqual(len(compound["steps"]), 2)
+
     def test_stage_preview_apply_and_discard_flow_round_trips_through_runtime(self) -> None:
         with TemporaryDirectory() as temp_dir:
             db_file = Path(temp_dir) / "authority.sqlite3"
@@ -115,6 +141,16 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
                 "Validate Stage",
                 [item["label"] for item in staged["shell_composition"]["regions"]["control_panel"]["actions"]],
             )
+            self.assertEqual(
+                staged["surface_payload"]["staged_insert"]["compiled_nimm_envelope"]["schema"],
+                "mycite.v2.nimm.envelope.v1",
+            )
+            self.assertEqual(
+                staged["shell_composition"]["regions"]["interface_panel"]["interface_body"]["staging_widget"]["compiled_nimm_envelope"][
+                    "schema"
+                ],
+                "mycite.v2.nimm.envelope.v1",
+            )
 
             preview = run_portal_cts_gis_action(
                 self._request(
@@ -131,6 +167,10 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
             self.assertEqual(
                 preview["shell_composition"]["regions"]["workbench"]["surface_payload"]["stage_preview"]["proposed_inserted_rows"][0]["datum_address"],
                 "4-2-2",
+            )
+            self.assertEqual(
+                preview["surface_payload"]["nimm_envelope"]["schema"],
+                "mycite.v2.nimm.envelope.v1",
             )
 
             applied = run_portal_cts_gis_action(

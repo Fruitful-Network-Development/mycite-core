@@ -84,7 +84,9 @@ Goal:
 
 Required work:
 
-- use `docs/plans/workbench_ui_hardening_follow_on_2026-04-21.md` as the active follow-on plan for `workbench_ui`
+- use this file plus the unified YAML control surfaces as the active follow-on tracker for `workbench_ui`:
+  - `docs/plans/planning_audit_manifest.yaml`
+  - `docs/plans/planning_task_board.yaml`
 - keep `SYSTEM` as the canonical anthology workspace and keep `workbench_ui` as the separate shell-attached, script-backed SQL authority inspector under `SYSTEM`
 - preserve the current layered datum table posture, datum row structural coordinates, additive overlay rules, and the deliberate CTS-GIS-first `workbench_ui` landing posture
 - keep `workbench_ui` scoped to authoritative SQL-backed documents; retained host-bound/private assets and `NETWORK` materializations remain outside that corpus unless separately ported

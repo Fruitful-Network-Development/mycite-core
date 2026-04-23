@@ -97,6 +97,23 @@ Tool-local richness is allowed here, but composition rules and wrapper behavior 
 - presentation only
 - local interaction state that does not change canonical shell/runtime state
 
+### Three-Authority Recap
+
+The active mutation-capable architecture separates responsibilities:
+
+- shell authority:
+  - route and posture orchestration
+  - region-family projection
+  - dispatch handoff only
+- directive authority:
+  - canonical NIMM directive envelopes (`mycite.v2.nimm.envelope.v1`)
+  - validated stage/preview/apply intent
+- lens authority:
+  - stateless display/canonical codecs used at the staging boundary
+  - no operation selection or mutation permission logic
+
+The staging boundary remains explicit: UI edits enter stage storage first, stage values compile to NIMM directives, and only runtime `apply` mutates authoritative state.
+
 ## Posture and Visibility Invariant
 
 `build_shell_composition_payload()` is the sole authority for region posture and first-response visibility.
