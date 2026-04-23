@@ -8,7 +8,10 @@ from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import b
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     CTS_GIS_TOOL_REQUEST_SCHEMA,
     CTS_GIS_TOOL_SURFACE_SCHEMA,
-    build_portal_runtime_envelope,
+    PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+    PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+    PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+    attach_region_family_contract,
     tool_exposure_configured,
     tool_exposure_enabled,
 )
@@ -42,25 +45,15 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
 )
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_ENTRYPOINT_ID,
     CTS_GIS_TOOL_ROUTE,
     CTS_GIS_TOOL_SURFACE_ID,
-    FND_DCM_TOOL_SURFACE_ID,
-    FND_EBI_TOOL_SURFACE_ID,
-    NETWORK_ROOT_SURFACE_ID,
     PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
+    PORTAL_SHELL_REQUEST_SCHEMA,
     PortalScope,
     PortalShellState,
-    UTILITIES_ROOT_SURFACE_ID,
-    activity_icon_id_for_surface,
-    build_canonical_url,
-    build_portal_activity_dispatch_bodies,
-    build_portal_surface_catalog,
-    build_shell_composition_payload,
     build_portal_shell_request_payload,
-    canonical_query_for_shell_state,
     canonicalize_portal_shell_state,
     resolve_portal_tool_registry_entry,
 )
@@ -70,16 +63,6 @@ _CANONICAL_TOOL_SLUG = "cts-gis"
 _CANONICAL_TOOL_ANCHOR_PATTERN = "tool.*.cts-gis.json"
 _LEGACY_DOCUMENT_PREFIX = "sandbox:" + ("map" + "s") + ":"
 _DATUM_STORE_BY_DATA_DIR: dict[str, FilesystemSystemDatumStoreAdapter] = {}
-_VISIBLE_ACTIVITY_SURFACE_IDS = (
-    AWS_CSM_TOOL_SURFACE_ID,
-    CTS_GIS_TOOL_SURFACE_ID,
-    FND_DCM_TOOL_SURFACE_ID,
-    FND_EBI_TOOL_SURFACE_ID,
-    NETWORK_ROOT_SURFACE_ID,
-    UTILITIES_ROOT_SURFACE_ID,
-)
-
-
 class LegacyMapsAliasUnsupportedError(ValueError):
     def __init__(self, *, fields: list[str] | None = None) -> None:
         details = ", ".join(fields or []) or "request payload"
@@ -95,38 +78,6 @@ def _path_or_none(path: str | Path | None) -> Path | None:
     if path is None:
         return None
     return Path(path)
-
-
-def _activity_items(*, portal_scope: PortalScope, active_surface_id: str, shell_state: PortalShellState) -> list[dict[str, Any]]:
-    dispatch_bodies = build_portal_activity_dispatch_bodies(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-    )
-    items: list[dict[str, Any]] = []
-    for entry in build_portal_surface_catalog():
-        if entry.surface_id not in _VISIBLE_ACTIVITY_SURFACE_IDS:
-            continue
-        items.append(
-            {
-                "item_id": entry.surface_id,
-                "label": entry.label,
-                "icon_id": activity_icon_id_for_surface(entry.surface_id),
-                "href": entry.route,
-                "active": entry.surface_id == active_surface_id,
-                "nav_kind": "surface",
-                "nav_behavior": "dispatch" if entry.surface_id in dispatch_bodies else "direct",
-                "shell_request": dispatch_bodies.get(entry.surface_id),
-            }
-        )
-    return items
-
-
-def _control_panel_collapsed(shell_state: PortalShellState | dict[str, Any] | None) -> bool:
-    if isinstance(shell_state, dict):
-        chrome = shell_state.get("chrome")
-        return bool(chrome.get("control_panel_collapsed")) if isinstance(chrome, dict) else False
-    chrome = getattr(shell_state, "chrome", None)
-    return bool(getattr(chrome, "control_panel_collapsed", False))
 
 
 def _datum_store_for_data_dir(data_dir: str | Path | None) -> FilesystemSystemDatumStoreAdapter | None:
@@ -2442,16 +2393,20 @@ def build_portal_cts_gis_surface_bundle(
         "readiness": dict(source_evidence_public.get("readiness") or {}),
         "service_surface": service_surface,
     }
-    control_panel = _cts_gis_control_panel(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        data_dir=data_dir,
-        private_dir=private_dir,
-        tool_rows=list(tool_rows or []),
-        resolved_tool_state=resolved_tool_state,
-        source_evidence=source_evidence_public,
-        service_surface=service_surface,
-        base_shell_request=tool_shell_request_base,
+    control_panel = attach_region_family_contract(
+        _cts_gis_control_panel(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            data_dir=data_dir,
+            private_dir=private_dir,
+            tool_rows=list(tool_rows or []),
+            resolved_tool_state=resolved_tool_state,
+            source_evidence=source_evidence_public,
+            service_surface=service_surface,
+            base_shell_request=tool_shell_request_base,
+        ),
+        family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+        surface_id=CTS_GIS_TOOL_SURFACE_ID,
     )
     phase_timings_ms["control_panel"] = round((perf_counter() - control_panel_started_at) * 1000.0, 3)
     phase_timings_ms["total_bundle_build"] = round((perf_counter() - total_started_at) * 1000.0, 3)
@@ -2478,7 +2433,8 @@ def build_portal_cts_gis_surface_bundle(
         ),
     }
     surface_payload["runtime_diagnostics"] = runtime_diagnostics
-    workbench = {
+    workbench = attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "tool_secondary_evidence",
         "title": "CTS-GIS Evidence",
@@ -2494,8 +2450,12 @@ def build_portal_cts_gis_surface_bundle(
             "diagnostic_summary": dict(service_surface.get("diagnostic_summary") or {}),
             "warnings": list(service_surface.get("warnings") or []),
         },
-    }
-    inspector = {
+        },
+        family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+        surface_id=CTS_GIS_TOOL_SURFACE_ID,
+    )
+    inspector = attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
         "kind": "tool_mediation_panel",
         "title": "CTS-GIS",
@@ -2525,7 +2485,10 @@ def build_portal_cts_gis_surface_bundle(
         ],
         "surface_payload": surface_payload,
         "interface_body": interface_body,
-    }
+        },
+        family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+        surface_id=CTS_GIS_TOOL_SURFACE_ID,
+    )
     return {
         "entrypoint_id": CTS_GIS_TOOL_ENTRYPOINT_ID,
         "read_write_posture": tool_entry.read_write_posture,
@@ -2546,48 +2509,28 @@ def run_portal_cts_gis(
     data_dir: str | Path | None,
     private_dir: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
+    portal_instance_id: str | None = None,
+    portal_domain: str = "",
 ) -> dict[str, Any]:
     portal_scope, shell_state, normalized_payload, _ = _normalize_request(request_payload)
-    bundle = build_portal_cts_gis_surface_bundle(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
+    resolved_portal_instance_id = _as_text(portal_instance_id) or portal_scope.scope_id
+    if not portal_scope.scope_id:
+        portal_scope = PortalScope(scope_id=resolved_portal_instance_id, capabilities=portal_scope.capabilities)
+    shell_request = dict(normalized_payload)
+    shell_request["schema"] = PORTAL_SHELL_REQUEST_SCHEMA
+    shell_request["requested_surface_id"] = CTS_GIS_TOOL_SURFACE_ID
+    shell_request["portal_scope"] = portal_scope.to_dict()
+    shell_request["shell_state"] = shell_state.to_dict()
+    shell_request.pop("surface_query", None)
+    from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
+
+    return run_portal_shell_entry(
+        shell_request,
+        portal_instance_id=resolved_portal_instance_id,
+        portal_domain=portal_domain,
         data_dir=data_dir,
         private_dir=private_dir,
         tool_exposure_policy=tool_exposure_policy,
-        request_payload=normalized_payload,
-    )
-    canonical_query = canonical_query_for_shell_state(shell_state, surface_id=CTS_GIS_TOOL_SURFACE_ID)
-    composition = build_shell_composition_payload(
-        active_surface_id=CTS_GIS_TOOL_SURFACE_ID,
-        portal_instance_id=portal_scope.scope_id,
-        page_title=_as_text(bundle.get("page_title")) or "CTS-GIS",
-        page_subtitle=_as_text(bundle.get("page_subtitle")),
-        activity_items=_activity_items(
-            portal_scope=portal_scope,
-            active_surface_id=CTS_GIS_TOOL_SURFACE_ID,
-            shell_state=shell_state,
-        ),
-        control_panel=dict(bundle.get("control_panel") or {}),
-        workbench=dict(bundle.get("workbench") or {}),
-        inspector=dict(bundle.get("inspector") or {}),
-        shell_state=shell_state,
-        control_panel_collapsed=_control_panel_collapsed(shell_state),
-    )
-    return build_portal_runtime_envelope(
-        portal_scope=portal_scope.to_dict(),
-        requested_surface_id=CTS_GIS_TOOL_SURFACE_ID,
-        surface_id=CTS_GIS_TOOL_SURFACE_ID,
-        entrypoint_id=bundle["entrypoint_id"],
-        read_write_posture=bundle["read_write_posture"],
-        reducer_owned=True,
-        canonical_route=bundle["route"],
-        canonical_query=canonical_query,
-        canonical_url=build_canonical_url(surface_id=CTS_GIS_TOOL_SURFACE_ID, query=canonical_query),
-        shell_state=shell_state.to_dict(),
-        surface_payload=bundle["surface_payload"],
-        shell_composition=composition,
-        warnings=list(bundle["surface_payload"].get("warnings") or []),
-        error=None,
     )
 
 

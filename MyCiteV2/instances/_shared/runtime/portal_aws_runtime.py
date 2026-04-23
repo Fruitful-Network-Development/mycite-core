@@ -10,6 +10,10 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA,
     AWS_CSM_TOOL_REQUEST_SCHEMA,
     AWS_CSM_TOOL_SURFACE_SCHEMA,
+    PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+    PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+    PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+    attach_region_family_contract,
     build_portal_runtime_envelope,
     tool_exposure_configured,
     tool_exposure_enabled,
@@ -1184,16 +1188,28 @@ def build_portal_aws_surface_bundle(
         "page_title": "AWS-CSM",
         "page_subtitle": "Unified domain gallery and FND-routed service-tool posture.",
         "surface_payload": surface_payload,
-        "control_panel": _build_control_panel(portal_scope=portal_scope, workspace=enriched_workspace),
-        "workbench": {
-            "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-            "kind": "aws_csm_workbench",
-            "title": "AWS-CSM",
-            "subtitle": "Domain gallery, user email gallery, onboarding, and newsletter state.",
-            "visible": False,
-            "surface_payload": surface_payload,
-        },
-        "inspector": inspector,
+        "control_panel": attach_region_family_contract(
+            _build_control_panel(portal_scope=portal_scope, workspace=enriched_workspace),
+            family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+            surface_id=AWS_CSM_TOOL_SURFACE_ID,
+        ),
+        "workbench": attach_region_family_contract(
+            {
+                "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
+                "kind": "aws_csm_workbench",
+                "title": "AWS-CSM",
+                "subtitle": "Domain gallery, user email gallery, onboarding, and newsletter state.",
+                "visible": False,
+                "surface_payload": surface_payload,
+            },
+            family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+            surface_id=AWS_CSM_TOOL_SURFACE_ID,
+        ),
+        "inspector": attach_region_family_contract(
+            inspector,
+            family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+            surface_id=AWS_CSM_TOOL_SURFACE_ID,
+        ),
         "canonical_route": AWS_CSM_TOOL_ROUTE,
         "canonical_query": canonical_query,
         "canonical_url": build_canonical_url(surface_id=AWS_CSM_TOOL_SURFACE_ID, query=canonical_query),
@@ -1887,22 +1903,27 @@ def run_portal_aws_csm(
     *,
     private_dir: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
+    portal_instance_id: str | None = None,
+    portal_domain: str = "",
 ) -> dict[str, Any]:
-    portal_scope, query = _normalize_request(request_payload)
-    bundle = build_portal_aws_surface_bundle(
-        surface_id=AWS_CSM_TOOL_SURFACE_ID,
-        portal_scope=portal_scope,
-        shell_state=None,
-        surface_query=query,
+    portal_scope, surface_query = _normalize_request(request_payload)
+    resolved_portal_instance_id = _as_text(portal_instance_id) or portal_scope.scope_id
+    if not portal_scope.scope_id:
+        portal_scope = PortalScope(scope_id=resolved_portal_instance_id, capabilities=portal_scope.capabilities)
+    shell_request = {
+        "schema": PORTAL_SHELL_REQUEST_SCHEMA,
+        "requested_surface_id": AWS_CSM_TOOL_SURFACE_ID,
+        "portal_scope": portal_scope.to_dict(),
+        "surface_query": surface_query,
+    }
+    from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
+
+    return run_portal_shell_entry(
+        shell_request,
+        portal_instance_id=resolved_portal_instance_id,
+        portal_domain=portal_domain,
         private_dir=private_dir,
         tool_exposure_policy=tool_exposure_policy,
-    )
-    return _runtime_envelope_from_bundle(
-        bundle=bundle,
-        portal_scope=portal_scope,
-        requested_surface_id=AWS_CSM_TOOL_SURFACE_ID,
-        entrypoint_id=AWS_CSM_TOOL_ENTRYPOINT_ID,
-        read_write_posture="read-only",
     )
 
 

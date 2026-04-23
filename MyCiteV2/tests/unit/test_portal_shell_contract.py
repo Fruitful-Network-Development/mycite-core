@@ -260,6 +260,48 @@ class PortalShellContractTests(unittest.TestCase):
             },
         )
 
+    def test_shell_request_resolution_keeps_workbench_ui_runtime_owned_query_model(self) -> None:
+        selection = resolve_portal_shell_request(
+            {
+                "schema": "mycite.v2.portal.shell.request.v1",
+                "requested_surface_id": WORKBENCH_UI_TOOL_SURFACE_ID,
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition"]},
+                "surface_query": {
+                    "document": "system:anthology",
+                    "document_sort": "row_count",
+                    "document_dir": "desc",
+                    "sort": "hyphae_hash",
+                    "dir": "asc",
+                    "group": "layer_value_group",
+                    "workbench_lens": "raw",
+                    "source": "hide",
+                    "overlay": "show",
+                    "row": "2-2-1",
+                    "ignored": "yes",
+                },
+            }
+        )
+        self.assertTrue(selection.allowed)
+        self.assertFalse(selection.reducer_owned)
+        self.assertEqual(selection.active_surface_id, WORKBENCH_UI_TOOL_SURFACE_ID)
+        self.assertEqual(
+            selection.canonical_query,
+            {
+                "document": "system:anthology",
+                "document_sort": "row_count",
+                "document_dir": "desc",
+                "sort": "hyphae_hash",
+                "dir": "asc",
+                "group": "layer_value_group",
+                "workbench_lens": "raw",
+                "source": "hide",
+                "overlay": "show",
+                "row": "2-2-1",
+            },
+        )
+        for key in ("file", "datum", "object", "verb"):
+            self.assertNotIn(key, selection.canonical_query)
+
     def test_workbench_ui_surface_query_keeps_supported_runtime_owned_keys(self) -> None:
         raw_query = {
             "document": "system:anthology",

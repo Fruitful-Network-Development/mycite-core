@@ -14,6 +14,7 @@ from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import (
     build_portal_fnd_dcm_surface_bundle,
     run_portal_fnd_dcm,
 )
+from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 from MyCiteV2.packages.state_machine.portal_shell import PortalScope
 
 
@@ -133,6 +134,50 @@ class PortalFndDcmRuntimeTests(unittest.TestCase):
             self.assertEqual(envelope["surface_payload"]["tool"]["operational"], False)
             self.assertIn("webapps_root", envelope["surface_payload"]["tool"]["missing_integrations"])
             self.assertEqual(envelope["shell_composition"]["regions"]["workbench"]["kind"], "fnd_dcm_workbench")
+
+    def test_direct_fnd_dcm_endpoint_matches_shell_runtime_envelope(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            private_dir = root / "private"
+            webapps_root = root / "webapps"
+            _write_fixture(private_dir, webapps_root)
+
+            request_payload = {
+                "schema": "mycite.v2.portal.system.tools.fnd_dcm.request.v1",
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing", "hosted_site_manifest_visibility"]},
+                "surface_query": {"site": "trappfamilyfarm.com", "view": "pages", "page": "home"},
+            }
+            direct_envelope = run_portal_fnd_dcm(
+                request_payload,
+                webapps_root=webapps_root,
+                private_dir=private_dir,
+                tool_exposure_policy={"configured_tools": {"fnd_dcm": True}, "enabled_tools": {"fnd_dcm": True}},
+                portal_instance_id="fnd",
+                portal_domain="trappfamilyfarm.com",
+            )
+            shell_envelope = run_portal_shell_entry(
+                {
+                    "schema": "mycite.v2.portal.shell.request.v1",
+                    "requested_surface_id": "system.tools.fnd_dcm",
+                    "portal_scope": request_payload["portal_scope"],
+                    "surface_query": request_payload["surface_query"],
+                },
+                portal_instance_id="fnd",
+                portal_domain="trappfamilyfarm.com",
+                webapps_root=webapps_root,
+                private_dir=private_dir,
+                tool_exposure_policy={"configured_tools": {"fnd_dcm": True}, "enabled_tools": {"fnd_dcm": True}},
+            )
+
+            self.assertEqual(direct_envelope["surface_id"], shell_envelope["surface_id"])
+            self.assertEqual(direct_envelope["reducer_owned"], shell_envelope["reducer_owned"])
+            self.assertEqual(direct_envelope["canonical_query"], shell_envelope["canonical_query"])
+            self.assertEqual(direct_envelope["canonical_url"], shell_envelope["canonical_url"])
+            self.assertEqual(direct_envelope["shell_composition"], shell_envelope["shell_composition"])
+            self.assertEqual(
+                direct_envelope["surface_payload"]["workspace"]["canonical_query"],
+                shell_envelope["surface_payload"]["workspace"]["canonical_query"],
+            )
 
 
 if __name__ == "__main__":

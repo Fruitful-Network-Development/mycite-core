@@ -6,43 +6,28 @@ from typing import Any, Mapping
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     FND_DCM_TOOL_REQUEST_SCHEMA,
     FND_DCM_TOOL_SURFACE_SCHEMA,
-    build_portal_runtime_envelope,
+    PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+    PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+    PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+    attach_region_family_contract,
     tool_exposure_configured,
     tool_exposure_enabled,
 )
 from MyCiteV2.packages.adapters.filesystem import FilesystemFndDcmReadOnlyAdapter
 from MyCiteV2.packages.modules.cross_domain.fnd_dcm import FndDcmReadOnlyService
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_TOOL_SURFACE_ID,
-    CTS_GIS_TOOL_SURFACE_ID,
     FND_DCM_DEFAULT_SITE,
     FND_DCM_TOOL_ENTRYPOINT_ID,
     FND_DCM_TOOL_ROUTE,
     FND_DCM_TOOL_SURFACE_ID,
-    FND_EBI_TOOL_SURFACE_ID,
-    NETWORK_ROOT_SURFACE_ID,
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PORTAL_SHELL_REQUEST_SCHEMA,
-    UTILITIES_ROOT_SURFACE_ID,
     PortalScope,
-    activity_icon_id_for_surface,
     build_canonical_url,
-    build_portal_activity_dispatch_bodies,
-    build_portal_surface_catalog,
-    build_shell_composition_payload,
     canonical_query_for_runtime_request_payload,
     resolve_portal_tool_registry_entry,
-)
-
-_VISIBLE_ACTIVITY_SURFACE_IDS = (
-    AWS_CSM_TOOL_SURFACE_ID,
-    CTS_GIS_TOOL_SURFACE_ID,
-    FND_DCM_TOOL_SURFACE_ID,
-    FND_EBI_TOOL_SURFACE_ID,
-    NETWORK_ROOT_SURFACE_ID,
-    UTILITIES_ROOT_SURFACE_ID,
 )
 _ALLOWED_VIEWS = (
     ("overview", "Overview"),
@@ -64,6 +49,16 @@ def _as_dict(value: object) -> dict[str, Any]:
 
 def _as_list(value: object) -> list[Any]:
     return list(value) if isinstance(value, list) else []
+
+
+def _shell_state_payload(shell_state: object | None) -> dict[str, Any] | None:
+    if isinstance(shell_state, dict):
+        return dict(shell_state)
+    to_dict = getattr(shell_state, "to_dict", None)
+    if callable(to_dict):
+        payload = to_dict()
+        return dict(payload) if isinstance(payload, dict) else None
+    return None
 
 
 def _shell_request(portal_scope: PortalScope, query: Mapping[str, str]) -> dict[str, Any]:
@@ -134,53 +129,6 @@ def _tool_status(
         "required_capabilities": list(tool_entry.required_capabilities),
         "missing_capabilities": missing_capabilities,
     }
-
-
-def _activity_items(
-    *,
-    portal_scope: PortalScope,
-    active_surface_id: str,
-    shell_state: object | None,
-) -> list[dict[str, Any]]:
-    dispatch_bodies = build_portal_activity_dispatch_bodies(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-    )
-    items: list[dict[str, Any]] = []
-    for entry in build_portal_surface_catalog():
-        if entry.surface_id not in _VISIBLE_ACTIVITY_SURFACE_IDS:
-            continue
-        items.append(
-            {
-                "item_id": entry.surface_id,
-                "label": entry.label,
-                "icon_id": activity_icon_id_for_surface(entry.surface_id),
-                "href": entry.route,
-                "active": entry.surface_id == active_surface_id,
-                "nav_kind": "surface",
-                "nav_behavior": "dispatch" if entry.surface_id in dispatch_bodies else "direct",
-                "shell_request": dispatch_bodies.get(entry.surface_id),
-            }
-        )
-    return items
-
-
-def _shell_state_payload(shell_state: object | None) -> dict[str, Any] | None:
-    if isinstance(shell_state, dict):
-        return dict(shell_state)
-    to_dict = getattr(shell_state, "to_dict", None)
-    if callable(to_dict):
-        payload = to_dict()
-        return dict(payload) if isinstance(payload, dict) else None
-    return None
-
-
-def _control_panel_collapsed(shell_state: object | None) -> bool:
-    if isinstance(shell_state, dict):
-        chrome = shell_state.get("chrome")
-        return bool(chrome.get("control_panel_collapsed")) if isinstance(chrome, dict) else False
-    chrome = getattr(shell_state, "chrome", None)
-    return bool(getattr(chrome, "control_panel_collapsed", False))
 
 
 def _facts_rows(items: list[tuple[str, object]]) -> list[dict[str, str]]:
@@ -577,16 +525,28 @@ def build_portal_fnd_dcm_surface_bundle(
         "page_title": "FND-DCM",
         "page_subtitle": "Read-only hosted manifest inspection and normalization.",
         "surface_payload": surface_payload,
-        "control_panel": _build_control_panel(portal_scope=portal_scope, workspace=workspace),
-        "workbench": {
-            "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-            "kind": "fnd_dcm_workbench",
-            "title": "FND-DCM Evidence",
-            "subtitle": "Raw manifest JSON, collection file metadata, and normalization evidence.",
-            "visible": False,
-            "surface_payload": _workbench_surface_payload(workspace),
-        },
-        "inspector": _build_inspector(tool_status=tool_status, workspace=workspace),
+        "control_panel": attach_region_family_contract(
+            _build_control_panel(portal_scope=portal_scope, workspace=workspace),
+            family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+            surface_id=FND_DCM_TOOL_SURFACE_ID,
+        ),
+        "workbench": attach_region_family_contract(
+            {
+                "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
+                "kind": "fnd_dcm_workbench",
+                "title": "FND-DCM Evidence",
+                "subtitle": "Raw manifest JSON, collection file metadata, and normalization evidence.",
+                "visible": False,
+                "surface_payload": _workbench_surface_payload(workspace),
+            },
+            family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+            surface_id=FND_DCM_TOOL_SURFACE_ID,
+        ),
+        "inspector": attach_region_family_contract(
+            _build_inspector(tool_status=tool_status, workspace=workspace),
+            family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+            surface_id=FND_DCM_TOOL_SURFACE_ID,
+        ),
         "canonical_route": FND_DCM_TOOL_ROUTE,
         "canonical_query": canonical_query,
         "canonical_url": build_canonical_url(surface_id=FND_DCM_TOOL_SURFACE_ID, query=canonical_query),
@@ -600,49 +560,28 @@ def run_portal_fnd_dcm(
     webapps_root: str | Path | None,
     private_dir: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
+    portal_instance_id: str | None = None,
+    portal_domain: str = "",
 ) -> dict[str, Any]:
-    portal_scope, query = _normalize_request(request_payload)
-    bundle = build_portal_fnd_dcm_surface_bundle(
-        portal_scope=portal_scope,
-        shell_state=request_payload.get("shell_state") if isinstance(request_payload, dict) else None,
-        surface_query=query,
+    portal_scope, surface_query = _normalize_request(request_payload)
+    resolved_portal_instance_id = _as_text(portal_instance_id) or portal_scope.scope_id
+    if not portal_scope.scope_id:
+        portal_scope = PortalScope(scope_id=resolved_portal_instance_id, capabilities=portal_scope.capabilities)
+    shell_request = {
+        "schema": PORTAL_SHELL_REQUEST_SCHEMA,
+        "requested_surface_id": FND_DCM_TOOL_SURFACE_ID,
+        "portal_scope": portal_scope.to_dict(),
+        "surface_query": surface_query,
+    }
+    from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
+
+    return run_portal_shell_entry(
+        shell_request,
+        portal_instance_id=resolved_portal_instance_id,
+        portal_domain=portal_domain,
         webapps_root=webapps_root,
         private_dir=private_dir,
         tool_exposure_policy=tool_exposure_policy,
-    )
-    shell_state = bundle.get("shell_state")
-    composition = build_shell_composition_payload(
-        active_surface_id=FND_DCM_TOOL_SURFACE_ID,
-        portal_instance_id=portal_scope.scope_id,
-        page_title=_as_text(bundle.get("page_title")) or "FND-DCM",
-        page_subtitle=_as_text(bundle.get("page_subtitle")),
-        activity_items=_activity_items(
-            portal_scope=portal_scope,
-            active_surface_id=FND_DCM_TOOL_SURFACE_ID,
-            shell_state=shell_state,
-        ),
-        control_panel=_as_dict(bundle.get("control_panel")),
-        workbench=_as_dict(bundle.get("workbench")),
-        inspector=_as_dict(bundle.get("inspector")),
-        shell_state=shell_state,
-        control_panel_collapsed=_control_panel_collapsed(shell_state),
-    )
-    return build_portal_runtime_envelope(
-        portal_scope=portal_scope.to_dict(),
-        requested_surface_id=FND_DCM_TOOL_SURFACE_ID,
-        surface_id=FND_DCM_TOOL_SURFACE_ID,
-        entrypoint_id=FND_DCM_TOOL_ENTRYPOINT_ID,
-        read_write_posture="read-only",
-        reducer_owned=False,
-        canonical_route=_as_text(bundle.get("canonical_route")) or FND_DCM_TOOL_ROUTE,
-        canonical_query=_as_dict(bundle.get("canonical_query")),
-        canonical_url=_as_text(bundle.get("canonical_url"))
-        or build_canonical_url(surface_id=FND_DCM_TOOL_SURFACE_ID, query=_as_dict(bundle.get("canonical_query"))),
-        shell_state=_shell_state_payload(shell_state),
-        surface_payload=_as_dict(bundle.get("surface_payload")),
-        shell_composition=composition,
-        warnings=[],
-        error=None,
     )
 
 

@@ -635,6 +635,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     payload,
                     private_dir=host_config.private_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
+                    portal_instance_id=host_config.portal_instance_id,
+                    portal_domain=host_config.portal_domain,
                 )
             )
         except ValueError as exc:
@@ -669,6 +671,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     data_dir=host_config.data_dir,
                     private_dir=host_config.private_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
+                    portal_instance_id=host_config.portal_instance_id,
+                    portal_domain=host_config.portal_domain,
                 )
             )
         except LegacyMapsAliasUnsupportedError as exc:
@@ -686,7 +690,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 run_portal_fnd_ebi(
                     payload,
                     webapps_root=host_config.webapps_root,
+                    private_dir=host_config.private_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
+                    portal_instance_id=host_config.portal_instance_id,
+                    portal_domain=host_config.portal_domain,
                 )
             )
         except ValueError as exc:
@@ -704,6 +711,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     webapps_root=host_config.webapps_root,
                     private_dir=host_config.private_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
+                    portal_instance_id=host_config.portal_instance_id,
+                    portal_domain=host_config.portal_domain,
                 )
             )
         except ValueError as exc:
