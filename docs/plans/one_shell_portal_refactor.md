@@ -5,11 +5,16 @@ Date: 2026-04-21
 Doc type: `plan`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-21`
+Last reviewed: `2026-04-23`
 
 ## Objective
 
 Aggressively drive the portal back to a stable one-shell operating model where extension happens through canonical state and widget contracts, not shell branching.
+
+Closeout status:
+
+- achieved for active shell unification on `2026-04-23`
+- retained as the governing refactor record for maintaining the one-shell model without reopening shell drift
 
 ## Canonical Anchors
 
@@ -31,7 +36,7 @@ Effective immediately for active refactor work:
 If a change needs an exception, it must include:
 
 - explicit contract delta
-- compatibility window
+- documented sunset criteria
 - retirement gate
 
 ## Stability Program (Aggressive Sequence)
@@ -105,7 +110,7 @@ Required actions:
   - `reflective_workspace`
   - `directive_panel`
   - `presentation_surface`
-- keep compatibility adapters for legacy payload structures during cutover
+- keep every active route on the three canonical region families
 - remove direct coupling between tool identity and shell dispatcher branching
 
 Exit:
@@ -161,7 +166,7 @@ Initial required route set:
 
 - run this plan as a stability-first sequence, not a parallel feature stream
 - treat drift regressions as blocking defects, not polish
-- prefer additive compatibility adapters during migration, then retire on explicit gates
+- treat any new compatibility adapter as an exception that requires explicit sunset criteria and contract coverage
 - every merged refactor change updates contract docs and tests in the same PR
 
 ## Open Task Notes

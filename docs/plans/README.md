@@ -9,10 +9,11 @@ The active implementation plan is the one-shell portal model:
 - tool work pages under `SYSTEM`
 - tool configuration and exposure under `UTILITIES`
 
-Active one-shell stabilization execution plan:
+One-shell closeout records:
 
-- `one_shell_portal_refactor.md` is the aggressive drift-removal execution sequence for shell authority, normalization unification, region-family unification, and widget-host stabilization.
-- `one_shell_stabilization_matrix.md` is the required shell-boundary route matrix used as the stabilization regression gate.
+- `one_shell_portal_refactor.md` remains the foundational drift-removal record for the one-shell operating model.
+- `one_shell_stabilization_matrix.md` is the required shell-boundary route matrix and regression gate for the active three-family contract.
+- `portal_shell_unification_plan_index_2026-04-23.md` indexes the completed boundary, runtime, renderer, and execution closeout documents for the family-only shell.
 
 Documentation IA + guided-task YAML program:
 

@@ -36,7 +36,8 @@ class PortalShellStabilizationMatrixTests(unittest.TestCase):
         self.assertIn("reflective_workspace", matrix_doc)
         self.assertIn("directive_panel", matrix_doc)
         self.assertIn("presentation_surface", matrix_doc)
-        self.assertIn("legacy fallback runtime/client keys are retired", matrix_doc)
+        self.assertIn("all canonical routes now use only", matrix_doc)
+        self.assertIn("family-first shell composition is the active route contract", matrix_doc)
 
     def test_first_load_posture_matches_stabilization_matrix_expectations(self) -> None:
         def composition_for(surface_id: str) -> dict[str, object]:

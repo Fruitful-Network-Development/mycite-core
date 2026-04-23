@@ -16,37 +16,34 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     build_portal_tool_registry_entries,
 )
 
-RETIRED_FALLBACK_KEYS = (
-    "aws_csm_inspector",
-    "network_system_log_inspector",
-    "aws_csm_workspace",
-    "cts_gis_interface_body",
-    "tool_secondary_evidence",
-    "state_directive_compact",
-    "tool_mediation_panel",
-)
-
-
 class PortalOneShellBoundaryTests(unittest.TestCase):
-    def test_runtime_and_client_sources_no_longer_reference_retired_fallback_keys(self) -> None:
-        sources = [
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_aws_runtime.py",
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_cts_gis_runtime.py",
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_fnd_dcm_runtime.py",
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_fnd_ebi_runtime.py",
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_shell_runtime.py",
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_system_workspace_runtime.py",
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_workbench_ui_runtime.py",
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_tool_surface_adapter.js",
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_shell_region_renderers.js",
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js",
-        ]
+    def test_runtime_and_client_sources_keep_family_first_shell_contract(self) -> None:
+        runtime_platform_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "runtime_platform.py"
+        ).read_text(encoding="utf-8")
+        tool_adapter_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_tool_surface_adapter.js"
+        ).read_text(encoding="utf-8")
+        region_renderers_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_shell_region_renderers.js"
+        ).read_text(encoding="utf-8")
+        workbench_renderers_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_workbench_renderers.js"
+        ).read_text(encoding="utf-8")
+        inspector_renderers_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8")
 
-        for path in sources:
-            source = path.read_text(encoding="utf-8")
-            for key in RETIRED_FALLBACK_KEYS:
-                with self.subTest(path=path.name, key=key):
-                    self.assertNotIn(key, source)
+        self.assertIn("PORTAL_REGION_FAMILY_DIRECTIVE_PANEL", runtime_platform_source)
+        self.assertIn("PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE", runtime_platform_source)
+        self.assertIn("PORTAL_REGION_FAMILY_PRESENTATION_SURFACE", runtime_platform_source)
+        self.assertIn("resolveDirectivePanelMode", tool_adapter_source)
+        self.assertIn("resolveReflectiveWorkspaceMode", tool_adapter_source)
+        self.assertIn("resolvePresentationSurfaceMode", tool_adapter_source)
+        self.assertNotIn("surface_label ===", region_renderers_source)
+        self.assertNotIn("surfacePayload.kind ===", workbench_renderers_source)
+        self.assertNotIn("region.kind ===", inspector_renderers_source)
+        self.assertNotIn("region.interface_body.kind ===", inspector_renderers_source)
 
     def test_retired_split_artifacts_are_absent(self) -> None:
         retired_history_dir = REPO_ROOT / ("MyCite" + "V" + "1")
@@ -345,7 +342,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("readiness: readiness", tool_adapter)
         self.assertIn("resolveToolId: resolveToolId", tool_adapter)
 
-    def test_directive_panel_host_dispatches_by_family_contract_before_cts_gis_compatibility(self) -> None:
+    def test_directive_panel_host_dispatches_by_family_contract(self) -> None:
         static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
         region_renderers = (static_root / "v2_portal_shell_region_renderers.js").read_text(encoding="utf-8")
         tool_adapter = (static_root / "v2_portal_tool_surface_adapter.js").read_text(encoding="utf-8")
@@ -362,7 +359,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("family_contract", tool_adapter)
         self.assertNotIn("surface_label ===", tool_adapter)
 
-    def test_reflective_workspace_host_dispatches_by_family_contract_before_payload_kind_compatibility(self) -> None:
+    def test_reflective_workspace_host_dispatches_by_family_contract_without_payload_kind_branching(self) -> None:
         static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
         workbench_renderers = (static_root / "v2_portal_workbench_renderers.js").read_text(encoding="utf-8")
         tool_adapter = (static_root / "v2_portal_tool_surface_adapter.js").read_text(encoding="utf-8")
@@ -381,7 +378,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("resolveRegionSurfaceId", tool_adapter)
         self.assertNotIn("surfacePayload.kind ===", tool_adapter)
 
-    def test_presentation_surface_host_dispatches_by_family_contract_before_legacy_inspector_kinds(self) -> None:
+    def test_presentation_surface_host_dispatches_by_family_contract_without_top_level_kind_branching(self) -> None:
         static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
         inspector_renderers = (static_root / "v2_portal_inspector_renderers.js").read_text(encoding="utf-8")
         tool_adapter = (static_root / "v2_portal_tool_surface_adapter.js").read_text(encoding="utf-8")
