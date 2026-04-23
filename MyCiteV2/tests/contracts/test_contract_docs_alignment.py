@@ -8,6 +8,16 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+RETIRED_FALLBACK_KEYS = (
+    "aws_csm_inspector",
+    "network_system_log_inspector",
+    "aws_csm_workspace",
+    "cts_gis_interface_body",
+    "tool_secondary_evidence",
+    "state_directive_compact",
+    "tool_mediation_panel",
+)
+
 
 class ContractDocsAlignmentTests(unittest.TestCase):
     def test_documentation_ia_standards_baseline_exists(self) -> None:
@@ -84,6 +94,16 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertNotIn("/portal/api/v2/system/tools/aws-csm-onboarding", route_model)
         self.assertNotIn("/portal/api/v2/" + "tenant", route_model)
         self.assertNotIn("/portal/api/v2/" + "admin" + "/shell", route_model)
+
+    def test_contract_and_plan_docs_do_not_name_retired_fallback_keys(self) -> None:
+        violations: list[str] = []
+        for root in (REPO_ROOT / "docs" / "contracts", REPO_ROOT / "docs" / "plans"):
+            for path in sorted(root.rglob("*.md")):
+                text = path.read_text(encoding="utf-8")
+                for key in RETIRED_FALLBACK_KEYS:
+                    if key in text:
+                        violations.append(f"{path.relative_to(REPO_ROOT)} -> {key}")
+        self.assertEqual(violations, [])
 
     def test_contract_docs_describe_behavioral_shell_model(self) -> None:
         shell_contract = (REPO_ROOT / "docs" / "contracts" / "portal_shell_contract.md").read_text(encoding="utf-8")
@@ -194,6 +214,9 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertIn("workbench-primary", surface_catalog)
         self.assertIn("hidden by default", surface_catalog)
         self.assertIn("secondary workbench content", surface_catalog.lower())
+        self.assertIn("directive_panel", surface_catalog)
+        self.assertIn("reflective_workspace", surface_catalog)
+        self.assertIn("presentation_surface", surface_catalog)
         self.assertIn("system.tools.cts_gis", surface_catalog)
         self.assertIn("/portal/system/tools/cts-gis", route_model)
         self.assertIn("Diktataograph", surface_catalog)

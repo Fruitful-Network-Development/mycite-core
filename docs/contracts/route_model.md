@@ -159,7 +159,7 @@ CTS-GIS request body contract:
   - `tool_state.source.attention_document_id`
   - `tool_state.selection.selected_row_address`
   - `tool_state.selection.selected_feature_id`
-- compatibility aliases remain accepted during the transition:
+- legacy request-body field aliases remain confined to request normalization during retirement:
   - `mediation_state.attention_node_id`
   - `mediation_state.intention_token`
   - `selected_row_address`
@@ -191,7 +191,7 @@ CTS-GIS runtime/body rules:
   - `data/sandbox/cts-gis/sources/<corpus>.msn-administrative.json` for ASCII title overlays
   - GeoJSON lens or equivalent runtime cache for spatial projection
 - v2.5.4 phase-B is canonical-only; CTS-GIS accepts only `cts_gis` / `cts-gis` / `sandbox:cts_gis:*` and `tool.<msn>.cts-gis.json`
-- legacy CTS-GIS aliases are rejected at the CTS-GIS tool endpoint with `400 legacy_maps_alias_unsupported`
+- legacy CTS-GIS `maps` identifiers are rejected at the CTS-GIS tool endpoint with `400 legacy_maps_alias_unsupported`
 - `production_strict` runtime refuses missing/invalid compiled artifacts and returns `compiled_cts_gis_state_invalid` without request-time repair fallback
 
 CTS-GIS canonical defaults:

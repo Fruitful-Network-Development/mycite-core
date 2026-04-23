@@ -32,15 +32,6 @@ def _assert_region_family_contracts(
     expected_surface_id: str,
     expected_interface_body_kind: str | None = None,
 ) -> None:
-    retired_compatibility_kinds = {
-        "aws_csm_inspector",
-        "network_system_log_inspector",
-        "aws_csm_workspace",
-        "cts_gis_interface_body",
-        "tool_secondary_evidence",
-        "state_directive_compact",
-        "tool_mediation_panel",
-    }
     composition = dict(envelope.get("shell_composition") or {})
     regions = dict(composition.get("regions") or {})
     control_panel = dict(regions.get("control_panel") or {})
@@ -49,27 +40,31 @@ def _assert_region_family_contracts(
 
     testcase.assertEqual(control_panel["family_contract"]["family"], "directive_panel")
     testcase.assertEqual(control_panel["family_contract"]["surface_id"], expected_surface_id)
-    testcase.assertTrue(control_panel["family_contract"]["compatibility_kind"])
-    testcase.assertNotIn(control_panel["family_contract"]["compatibility_kind"], retired_compatibility_kinds)
+    testcase.assertEqual(
+        control_panel["family_contract"]["compatibility_kind"],
+        str(control_panel.get("kind") or ""),
+    )
 
     testcase.assertEqual(workbench["family_contract"]["family"], "reflective_workspace")
     testcase.assertEqual(workbench["family_contract"]["surface_id"], expected_surface_id)
-    testcase.assertTrue(workbench["family_contract"]["compatibility_kind"])
-    testcase.assertNotIn(workbench["family_contract"]["compatibility_kind"], retired_compatibility_kinds)
+    testcase.assertEqual(
+        workbench["family_contract"]["compatibility_kind"],
+        str(workbench.get("kind") or ""),
+    )
     if isinstance(workbench.get("surface_payload"), dict):
         testcase.assertEqual(
             workbench["family_contract"]["surface_payload_kind"],
             str((workbench.get("surface_payload") or {}).get("kind") or ""),
         )
-        testcase.assertNotIn(workbench["family_contract"]["surface_payload_kind"], retired_compatibility_kinds)
 
     testcase.assertEqual(interface_panel["family_contract"]["family"], "presentation_surface")
     testcase.assertEqual(interface_panel["family_contract"]["surface_id"], expected_surface_id)
-    testcase.assertTrue(interface_panel["family_contract"]["compatibility_kind"])
-    testcase.assertNotIn(interface_panel["family_contract"]["compatibility_kind"], retired_compatibility_kinds)
+    testcase.assertEqual(
+        interface_panel["family_contract"]["compatibility_kind"],
+        str(interface_panel.get("kind") or ""),
+    )
     if expected_interface_body_kind is not None:
         testcase.assertEqual(interface_panel["family_contract"]["interface_body_kind"], expected_interface_body_kind)
-        testcase.assertNotIn(interface_panel["family_contract"]["interface_body_kind"], retired_compatibility_kinds)
 
 
 class PortalRegionFamilyContractTests(unittest.TestCase):

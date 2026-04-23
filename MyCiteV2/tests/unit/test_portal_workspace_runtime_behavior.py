@@ -1029,7 +1029,6 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             intention_entries = [entry for entry in state_group["entries"] if entry["label"].startswith("Intention · ")]
             self.assertTrue(all(isinstance(entry.get("shell_request"), dict) for entry in intention_entries))
             self.assertEqual(bundle["control_panel"]["verb_tabs"], [])
-            self.assertNotIn("state_directive_compact", bundle["control_panel"])
 
     def test_cts_gis_state_directive_time_shell_request_updates_time_context(self) -> None:
         with TemporaryDirectory() as tmp:

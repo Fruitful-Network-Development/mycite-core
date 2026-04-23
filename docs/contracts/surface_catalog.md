@@ -123,7 +123,7 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 - Its canonical route is `/portal/system/tools/cts-gis`.
 - Its default posture is interface-panel-led.
 - Its workbench is a hidden reflective-workspace supporting-evidence surface and stays hidden by default until secondary evidence is explicitly shown.
-- Its dominant `Interface Panel` mounts one CTS-GIS-local body with:
+- Its dominant `presentation_surface` Interface Panel mounts one CTS-GIS-local body with:
   - `Diktataograph`
   - `Garland` geospatial pane
   - `Garland` profile pane
@@ -155,7 +155,7 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 - Node-focused Intention actions live inside `AITAS`; `Projection Rules` is shown only for sandbox-wide attention without a selected node.
 - The workbench remains diagnostic or raw supporting evidence rather than a duplicate of Garland.
 - v2.5.4 phase-B is canonical-only for CTS-GIS identifiers and storage anchors.
-- Legacy CTS-GIS aliases are rejected at `POST /portal/api/v2/system/tools/cts-gis` with `400 legacy_maps_alias_unsupported`.
+- Legacy CTS-GIS `maps` identifiers are rejected at `POST /portal/api/v2/system/tools/cts-gis` with `400 legacy_maps_alias_unsupported`.
 - Compiled artifact authority schema is `mycite.v2.portal.system.tools.cts_gis.compiled.v1`.
 
 ## FND-DCM
@@ -219,11 +219,16 @@ The top menubar is the only shell header.
 ## Tool Posture
 
 - Tool work pages stay under `SYSTEM`.
+- Tool regions participate only through the canonical shell families:
+  - `directive_panel`
+  - `reflective_workspace`
+  - `presentation_surface`
 - Tool registry defaults are interface-panel-led.
 - `workbench_ui` is the approved workbench-primary exception.
 - Tool registry posture metadata is descriptive only; shell composition remains authoritative for first-load tool posture.
 - Tool workbench visibility defaults to `false`.
 - `workbench_ui` defaults to `true` because its primary surface is the SQL-backed datum grid.
+- Retired scoped fallback keys are not part of the active surface catalog or tool posture contract.
 - Tool surfaces use mutually exclusive single-click behavior between `Workbench` and `Interface Panel` by default.
 - Double-clicking either tool toggle enables route-scoped lock mode that allows both panels to remain visible together.
 - Tool lock is non-persistent and clears when leaving the current tool route or composition.

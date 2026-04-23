@@ -37,8 +37,8 @@ That gap is now closed; this document remains as the closeout record for the hos
 ### Current completion state
 
 - complete: runtime emitters now attach `family_contract` markers for the canonical region families
-- complete: the directive-panel host now dispatches by family-plus-mode, and CTS-GIS no longer depends on `state_directive_compact`
-- complete: the reflective-workspace host now dispatches by family-plus-mode, and the retired `tool_secondary_evidence`/`aws_csm_workspace` fallback table is gone
+- complete: the directive-panel host now dispatches by family-plus-mode, and CTS-GIS no longer depends on a retired compact directive key
+- complete: the reflective-workspace host now dispatches by family-plus-mode, and the retired split-workbench fallback table is gone
 - complete: the presentation-surface host now dispatches by family-plus-mode, with registered inspector lookup and structured interface-body detection driven by canonical `surface_id` and interface-body structure
 - complete for this migration slice: the scoped runtime emitters no longer produce the legacy compatibility kinds that were only needed during cutover
 
@@ -51,7 +51,7 @@ That gap is now closed; this document remains as the closeout record for the hos
   - CTS-GIS specialization is now derived from canonical `surface_id` plus grouped directive entries
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js`
   - top-level workbench renderer now dispatches through `resolveReflectiveWorkspaceMode()` and `resolveReflectiveWorkspaceModuleSpec()`
-  - secondary-evidence surfaces are now recognized from canonical payload structure rather than `tool_secondary_evidence`
+  - secondary-evidence surfaces are now recognized from canonical payload structure rather than retired workbench fallback labels
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js`
   - top-level interface-panel renderer now dispatches through `resolvePresentationSurfaceMode()` and `resolvePresentationSurfaceModuleSpec()`
   - AWS and NETWORK registered inspector modules now resolve entirely by canonical family/surface metadata
@@ -63,10 +63,10 @@ That gap is now closed; this document remains as the closeout record for the hos
   - already behaves like a proper shell host: it routes each region to its family renderer without inspecting tool identity
 - runtime emitters now rely on canonical route metadata and structured bodies rather than legacy branch keys:
   - `portal_system_workspace_runtime.py` still emits `system_workspace`
-  - `portal_shell_runtime.py` still emits `network_system_log_workbench`, but no longer emits `network_system_log_inspector`
-  - `portal_aws_runtime.py` no longer emits `aws_csm_workspace` or `aws_csm_inspector`
+  - `portal_shell_runtime.py` still emits `network_system_log_workbench`, but no longer emits the retired network inspector fallback label
+  - `portal_aws_runtime.py` no longer emits the retired AWS split-surface fallback labels
   - `portal_workbench_ui_runtime.py` still emits `workbench_ui_surface`
-  - `portal_cts_gis_runtime.py` no longer emits `state_directive_compact`, `tool_mediation_panel`, `tool_secondary_evidence`, or `cts_gis_interface_body`
+  - `portal_cts_gis_runtime.py` no longer emits the retired compact/directive/supporting-evidence fallback markers
 - `MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py`
   - now proves the module registry plus family-first `presentation_surface` dispatch without top-level legacy inspector-kind branches
 - `MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py`
