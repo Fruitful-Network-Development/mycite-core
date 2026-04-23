@@ -29,30 +29,39 @@ This plan exists separately because it is the highest-risk server-side slice. It
 - tool-specific feature backlog such as AWS action affordances, CTS-GIS data readiness, or FND-EBI analytics
 - changing canonical query vocabularies beyond restoring already-contracted behavior
 
+### Current completion state
+
+- complete: `workbench_ui` shell-route bundle assembly now forwards normalized `surface_query`
+- complete: tool bundle dispatch in `portal_shell_runtime.py` is now registry-backed instead of an open-coded per-tool branch ladder
+- complete: direct view entrypoints for CTS-GIS, FND-DCM, FND-EBI, and `workbench_ui` now reuse `run_portal_shell_entry()`
+- remaining gap: `_bundle_for_surface()` still keeps inline root/helper assembly for `SYSTEM`, `NETWORK`, and `UTILITIES`
+- remaining gap: AWS action responses still use `_runtime_envelope_from_bundle()`, which is now a trailing cleanup seam rather than a blocker for family-host migration
+
 ## 3. Exact Repo Evidence
 
 - `MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py`
   - imports every tool/root builder directly at module scope
-  - `_tool_bundle_for_surface()` still uses open-coded `if surface_id == ...` dispatch
-  - `_bundle_for_surface()` still mixes selection, tool/root branching, inline `NETWORK`/`UTILITIES` payload generation, and bundle assembly
-  - `run_portal_shell_entry()` still builds the final envelope after surface-specific bundle generation
+  - `_TOOL_SURFACE_BUNDLE_BUILDERS` now owns tool-bundle dispatch
+  - `_bundle_for_surface()` still mixes selected-surface orchestration, inline `SYSTEM`/`NETWORK`/`UTILITIES` payload generation, and final bundle assembly
+  - `run_portal_shell_entry()` remains the shared final-envelope path for shell-route and direct view entrypoints
 - `MyCiteV2/instances/_shared/runtime/portal_workbench_ui_runtime.py`
   - `build_portal_workbench_ui_surface_bundle()` accepts `surface_query`
   - `run_portal_workbench_ui()` passes `surface_query`
 - verified on 2026-04-23:
-  - `run_portal_shell_entry()` for `system.tools.workbench_ui` drops incoming `surface_query` and falls back to the fresh-entry default query because `_tool_bundle_for_surface()` does not forward `surface_query`
+  - `_build_workbench_ui_tool_bundle()` now forwards `surface_query=surface_query`
 - `MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py`
-  - keeps a private `_runtime_envelope_from_bundle()` even though shell runtime already owns an envelope builder
+  - `run_portal_aws_csm()` reuses `run_portal_shell_entry()`
+  - keeps a private `_runtime_envelope_from_bundle()` for the AWS action path
 - `MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py`
-  - `run_portal_cts_gis()` rebuilds composition and the final envelope locally
+  - `run_portal_cts_gis()` reuses `run_portal_shell_entry()`
 - `MyCiteV2/instances/_shared/runtime/portal_fnd_dcm_runtime.py`
-  - `run_portal_fnd_dcm()` rebuilds composition and the final envelope locally
+  - `run_portal_fnd_dcm()` reuses `run_portal_shell_entry()`
 - `MyCiteV2/instances/_shared/runtime/portal_fnd_ebi_runtime.py`
-  - `run_portal_fnd_ebi()` rebuilds composition and the final envelope locally
+  - `run_portal_fnd_ebi()` reuses `run_portal_shell_entry()`
 - `MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py`
-  - currently asserts that runtime-owned tool query normalization uses the shared helper, but does not yet assert that shell-route and direct-route assembly share the same bundle path
+  - now asserts registry-backed tool bundle lookup, `workbench_ui` query forwarding, and direct-route reuse of `run_portal_shell_entry()`
 - `MyCiteV2/tests/unit/test_workbench_ui_runtime.py`
-  - covers direct `Workbench UI` behavior thoroughly, but not the shell-route query handoff
+  - remains the main regression guard for `workbench_ui` query handling
 - `MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py`
   - already locks posture and canonical URL behavior for tool routes, so this is the main regression gate for the unified assembler
 
@@ -75,6 +84,10 @@ This plan exists separately because it is the highest-risk server-side slice. It
 
 ### Stage 1: Normalize the shell-route bundle call contract
 
+Status:
+
+- complete
+
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py`
   - `MyCiteV2/instances/_shared/runtime/portal_workbench_ui_runtime.py`
@@ -87,9 +100,15 @@ This plan exists separately because it is the highest-risk server-side slice. It
 - Compatibility adapters or temporary aliases required:
   - direct `run_portal_workbench_ui()` remains public and unchanged at the route/schema level
 - Retirement gate:
-  - no runtime-owned surface builder can be called from shell-route assembly without its contracted normalized query inputs
+  - keep this assertion green; no runtime-owned surface builder may lose its contracted normalized query inputs
 
 ### Stage 2: Replace segmented surface dispatch with one shared bundle registry
+
+Status:
+
+- mostly complete
+- tool-surface branching has been reduced to registry lookup
+- root/helper assembly remains inlined in `_bundle_for_surface()`
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py`
@@ -108,9 +127,15 @@ This plan exists separately because it is the highest-risk server-side slice. It
 - Compatibility adapters or temporary aliases required:
   - legacy extra bundle keys may remain while direct endpoints are still being collapsed
 - Retirement gate:
-  - `_tool_bundle_for_surface()` is removed or reduced to data-driven registry lookup with no surface-specific orchestration logic left in the branch body
+  - `_tool_bundle_for_surface()` must remain data-driven, and root/helper cleanup must not reintroduce per-tool branch logic
 
 ### Stage 3: Collapse duplicate direct-entry envelope builders
+
+Status:
+
+- partially complete
+- direct view entrypoints already reuse `run_portal_shell_entry()`
+- AWS action responses still keep a private envelope helper
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py`
@@ -128,9 +153,14 @@ This plan exists separately because it is the highest-risk server-side slice. It
 - Compatibility adapters or temporary aliases required:
   - public direct endpoints stay in place as thin wrappers
 - Retirement gate:
-  - duplicate `_runtime_envelope_from_bundle()` or inline `build_shell_composition_payload()` plus `build_portal_runtime_envelope()` blocks are removed from direct runtime files
+  - duplicate `_runtime_envelope_from_bundle()` or inline `build_shell_composition_payload()` plus `build_portal_runtime_envelope()` blocks are removed from remaining direct runtime paths
 
 ### Stage 4: Tighten shared bundle assertions for later renderer migration
+
+Status:
+
+- active as trailing cleanup
+- no longer the primary blocker for family-host work
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py`

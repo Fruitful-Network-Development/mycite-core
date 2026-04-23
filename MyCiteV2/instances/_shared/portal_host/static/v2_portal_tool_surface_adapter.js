@@ -88,6 +88,17 @@
     );
   }
 
+  function resolveRegionCompatibilityKind(region) {
+    return asText(resolveRegionFamilyContract(region).compatibility_kind) || asText(region && region.kind);
+  }
+
+  function resolveRegionInterfaceBodyKind(region) {
+    return (
+      asText(resolveRegionFamilyContract(region).interface_body_kind) ||
+      asText(asObject(region && region.interface_body).kind)
+    );
+  }
+
   function resolveDirectivePanelMode(region) {
     var family = resolveRegionFamily(region);
     var kind = asText(region && region.kind);
@@ -150,6 +161,65 @@
     if (payloadKind === "workbench_ui_surface") return "workbench_ui_surface";
     if (payloadKind === "tool_secondary_evidence") return "secondary_evidence";
     return "generic_surface";
+  }
+
+  function resolvePresentationSurfaceModuleSpec(region, surfacePayload) {
+    var family = resolveRegionFamily(region);
+    var surfaceId = resolveRegionSurfaceId(region, surfacePayload);
+    var payloadKind = resolveSurfacePayloadKind(region, surfacePayload);
+    var compatibilityKind = resolveRegionCompatibilityKind(region);
+    var moduleSpecs = {
+      "network.root": {
+        moduleId: "network_workspace",
+        globalName: "PortalNetworkInspectorRenderer",
+        label: "NETWORK detail",
+      },
+      "system.tools.aws_csm": {
+        moduleId: "aws_workspace",
+        globalName: "PortalAwsCsmInspectorRenderer",
+        label: "AWS-CSM interface panel",
+      },
+    };
+
+    if (family === "presentation_surface" && moduleSpecs[surfaceId]) {
+      return moduleSpecs[surfaceId];
+    }
+    if (surfaceId && moduleSpecs[surfaceId]) {
+      return moduleSpecs[surfaceId];
+    }
+    if (compatibilityKind === "aws_csm_inspector" || payloadKind === "aws_csm_workspace") {
+      return moduleSpecs["system.tools.aws_csm"];
+    }
+    if (compatibilityKind === "network_system_log_inspector") {
+      return moduleSpecs["network.root"];
+    }
+    return {};
+  }
+
+  function resolvePresentationSurfaceMode(region, surfacePayload) {
+    var family = resolveRegionFamily(region);
+    var interfaceBody = asObject(region && region.interface_body);
+    var moduleSpec = resolvePresentationSurfaceModuleSpec(region, surfacePayload);
+    var interfaceBodyKind = resolveRegionInterfaceBodyKind(region);
+    var hasStructuredProjectionContract =
+      (Object.keys(asObject(interfaceBody.navigation_canvas)).length > 0 &&
+        Object.keys(asObject(interfaceBody.garland_split_projection)).length > 0) ||
+      (asText(interfaceBody.layout) === "diktataograph_garland_split" &&
+        asText(interfaceBody.narrow_layout) === "diktataograph_garland_stack");
+    var hasInterfaceBody = Object.keys(interfaceBody).length > 0;
+
+    if (family === "presentation_surface") {
+      if (moduleSpec.moduleId) return "registered_surface";
+      if (hasStructuredProjectionContract) return "structured_interface_body";
+      if (hasInterfaceBody && interfaceBodyKind === "cts_gis_interface_body") return "structured_interface_body";
+      if (hasInterfaceBody) return "unsupported_interface_body";
+      return "summary_surface";
+    }
+    if (moduleSpec.moduleId) return "registered_surface";
+    if (hasStructuredProjectionContract) return "structured_interface_body";
+    if (hasInterfaceBody && interfaceBodyKind === "cts_gis_interface_body") return "structured_interface_body";
+    if (hasInterfaceBody) return "unsupported_interface_body";
+    return "summary_surface";
   }
 
   function hasGenericContent(surfacePayload) {
@@ -332,10 +402,14 @@
     collectWarnings: collectWarnings,
     hasGenericContent: hasGenericContent,
     resolveDirectivePanelMode: resolveDirectivePanelMode,
+    resolvePresentationSurfaceMode: resolvePresentationSurfaceMode,
+    resolvePresentationSurfaceModuleSpec: resolvePresentationSurfaceModuleSpec,
     resolveReflectiveWorkspaceMode: resolveReflectiveWorkspaceMode,
     resolveReflectiveWorkspaceModuleSpec: resolveReflectiveWorkspaceModuleSpec,
+    resolveRegionCompatibilityKind: resolveRegionCompatibilityKind,
     resolveRegionFamily: resolveRegionFamily,
     resolveRegionFamilyContract: resolveRegionFamilyContract,
+    resolveRegionInterfaceBodyKind: resolveRegionInterfaceBodyKind,
     resolveRegionSurfaceId: resolveRegionSurfaceId,
     resolveSurfacePayloadKind: resolveSurfacePayloadKind,
     renderStateHtml: renderStateHtml,

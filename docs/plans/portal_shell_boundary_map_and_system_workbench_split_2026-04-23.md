@@ -28,6 +28,14 @@ This plan exists separately because every later slice touches the same files. Wi
 - removing the public `inspector` compatibility alias in this sequence
 - adding new shell regions, new shell-level renderer kinds, or a second posture authority path
 
+### Current completion state
+
+- complete: `shell.py` remains the sole posture and canonical route/query authority, and the current tests already defend that boundary
+- complete: `portal_shell_runtime.py` now uses registry-backed tool bundle lookup and forwards normalized `surface_query` to `workbench_ui`
+- complete enough for the current stage: canonical routes already emit `family_contract` markers and the directive-panel plus reflective-workspace hosts already dispatch by family before compatibility fallbacks
+- complete enough for the current stage: the top-level `presentation_surface` host now dispatches by family-first mode/spec resolution, with registered inspector modules and structured interface-body rendering routed through the shared adapter
+- trailing cleanup: runtime emitters and compatibility adapters still carry shrinking legacy markers such as `state_directive_compact`, `tool_secondary_evidence`, `tool_mediation_panel`, `aws_csm_inspector`, `network_system_log_inspector`, and `cts_gis_interface_body`, but they no longer own the primary inspector dispatch path
+
 ## 3. Exact Repo Evidence
 
 - `MyCiteV2/packages/state_machine/portal_shell/shell.py`
@@ -35,9 +43,12 @@ This plan exists separately because every later slice touches the same files. Wi
   - `canonical_query_for_surface_query()` owns runtime-owned query normalization for `network.root`, `system.tools.aws_csm`, `system.tools.fnd_dcm`, and `system.tools.workbench_ui`.
   - `build_shell_composition_payload()` is already the first-load posture authority and already carries the `workbench_ui` `workbench_primary` exception.
 - `MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py`
-  - `_tool_bundle_for_surface()` still dispatches with open-coded `if surface_id == ...` branches.
-  - `_bundle_for_surface()` still mixes surface selection, root/tool assembly, and inline payload generation for `NETWORK` and `UTILITIES`.
-  - verified on 2026-04-23: `run_portal_shell_entry()` ignores incoming `surface_query` for `system.tools.workbench_ui` because `_tool_bundle_for_surface()` does not forward it to `build_portal_workbench_ui_surface_bundle()`.
+  - `_TOOL_SURFACE_BUNDLE_BUILDERS` now owns tool-bundle dispatch instead of open-coded `if surface_id == ...` branches.
+  - `_build_workbench_ui_tool_bundle()` now forwards normalized `surface_query` to `build_portal_workbench_ui_surface_bundle()`.
+  - `_bundle_for_surface()` still mixes selected-surface orchestration with inline `SYSTEM`/`NETWORK`/`UTILITIES` root helpers, so root assembly is not yet fully data-driven.
+- `MyCiteV2/instances/_shared/runtime/runtime_platform.py`
+  - `build_portal_region_family_contract()` and `attach_region_family_contract()` now stamp the canonical family markers plus shrinking compatibility metadata.
+  - this file is the shared family-contract helper, not a second shell-authority path.
 - `MyCiteV2/instances/_shared/runtime/portal_system_workspace_runtime.py`
   - `build_system_workspace_bundle()` builds the reducer-owned datum-file workbench, including `anthology` presentation and mediation-panel content.
 - `MyCiteV2/instances/_shared/runtime/portal_workbench_ui_runtime.py`
@@ -51,17 +62,23 @@ This plan exists separately because every later slice touches the same files. Wi
 - `MyCiteV2/instances/_shared/runtime/portal_fnd_ebi_runtime.py`
   - emits `tool_mediation_surface`, `tool_secondary_evidence`, and `tool_mediation_panel`.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js`
-  - top-level control-panel host still special-cases CTS-GIS through `region.surface_label === "CTS-GIS"` and `region.state_directive_compact`.
+  - top-level control-panel host now dispatches through family-plus-mode resolution.
+  - remaining CTS-GIS specialization is confined to the compatibility `state_directive_compact` path.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js`
-  - top-level workbench host still branches on `surfacePayload.kind` and on `surfacePayload.tool_id === "cts_gis"` for secondary evidence.
+  - top-level workbench host now dispatches through family-plus-mode resolution.
+  - remaining compatibility is concentrated in adapter-managed `surface_payload_kind` and `surface_id` fallback tables, including the `tool_secondary_evidence` path.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js`
-  - top-level interface-panel host still branches on `region.kind` and on `region.interface_body.kind === "cts_gis_interface_body"`.
+  - top-level interface-panel host now dispatches through `resolvePresentationSurfaceMode()` and `resolvePresentationSurfaceModuleSpec()`.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_tool_surface_adapter.js`
-  - already centralizes readiness, warning, loading, error, empty, and unsupported wrappers; this is the correct compatibility layer to shrink rather than bypass.
+  - already centralizes readiness, warning, loading, error, empty, and unsupported wrappers.
+  - now also owns family-first directive/workbench/presentation mode resolution and the shrinking compatibility fallback tables; this is the correct compatibility layer to shrink rather than bypass.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_core.js`
   - already stays shell-shaped: it validates the envelope, applies chrome, and calls the family hosts without inspecting tool identity.
 - `MyCiteV2/instances/_shared/portal_host/static/portal.js`
   - still owns layout persistence, legacy `inspector` storage aliases, and route-scoped tool-lock behavior; it is not a payload or query authority.
+- `MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py`
+  - direct route entry now reuses `run_portal_shell_entry()`.
+  - `_runtime_envelope_from_bundle()` still remains for the AWS action path and is a trailing runtime-closeout seam rather than the current primary drift source.
 - verified on 2026-04-23 by running:
   - `python3 -m unittest MyCiteV2.tests.architecture.test_portal_one_shell_boundaries`
   - `python3 -m unittest MyCiteV2.tests.architecture.test_portal_shell_stabilization_matrix`
@@ -90,6 +107,7 @@ This plan exists separately because every later slice touches the same files. Wi
 | shell authority | `MyCiteV2/packages/state_machine/portal_shell/shell.py` | surface catalog, reducer/runtime ownership, canonical route and query projection, first-load posture, `workbench_ui` posture exception | tool-local payload markup, client module choice, secondary evidence rendering | adding a new surface-specific renderer kind or a posture override outside `build_shell_composition_payload()` |
 | shell authority | `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_core.js` | envelope validation, chrome application, family-renderer invocation, history sync from canonical runtime URL | tool-specific render branching, canonical query rewriting, tool-local body semantics | moving payload dispatch logic into shell core because it is convenient to reach all regions there |
 | runtime composition / bundle assembly | `MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py` | request normalization, selection resolution, shared bundle assembly orchestration, runtime envelope assembly, shared root helpers while they remain there | first-load posture, tool-local rendering details, silent omission of runtime-owned query inputs | extending `_tool_bundle_for_surface()` and `_bundle_for_surface()` with more per-surface branches instead of tightening the shared assembly contract |
+| runtime composition / shared family contract helpers | `MyCiteV2/instances/_shared/runtime/runtime_platform.py` | runtime envelope schemas, family-contract helpers, shared tool-exposure helpers, compatibility marker stamping | shell posture, canonical route ownership, tool-specific UI semantics | inventing a second authority layer here because it already touches every runtime bundle |
 | runtime payload generators | `MyCiteV2/instances/_shared/runtime/portal_system_workspace_runtime.py` | reducer-owned `SYSTEM` workbench, directive context, `anthology` table projection, mediation-panel content for `SYSTEM` | SQL-inspector query ownership, tool-posture authority, client module registration | treating `SYSTEM` as a generic home page or as a SQL document browser |
 | runtime payload generators | `MyCiteV2/instances/_shared/runtime/portal_workbench_ui_runtime.py` | SQL-backed authoritative document and datum-grid payloads, runtime-owned `workbench_ui` query interpretation, additive overlay summaries | reducer-owned `SYSTEM` focus stack, anchor-file behavior, shell posture authority | treating `workbench_ui` as a replacement for `/portal/system`, or letting shell-route assembly drop its `surface_query` |
 | runtime payload generators | `MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py` | AWS-CSM control-panel, workbench evidence, and interface-panel payload content | shell posture, shell query ownership beyond canonical runtime normalization | encoding AWS renderer decisions into shell/runtime entry selection |
@@ -109,7 +127,11 @@ This plan exists separately because every later slice touches the same files. Wi
 
 ## 5. Staged Execution Slices
 
-### Stage 1: Freeze the boundary in tests before refactor work
+### Stage 1: Boundary freeze and split guardrails
+
+Status:
+
+- complete
 
 - Exact files expected to change:
   - `MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py`
@@ -122,9 +144,14 @@ This plan exists separately because every later slice touches the same files. Wi
 - Compatibility adapters or temporary aliases required:
   - none beyond existing `inspector` compatibility aliases already in contract
 - Retirement gate:
-  - these tests must land and stay green before runtime or renderer unification starts
+  - keep these tests green; do not weaken them to make later renderer work easier
 
-### Stage 2: Apply the boundary map in runtime bundle assembly
+### Stage 2: Runtime bundle foundation
+
+Status:
+
+- mostly complete
+- remaining server cleanup is bounded to root-helper extraction and the AWS action envelope path
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py`
@@ -144,9 +171,15 @@ This plan exists separately because every later slice touches the same files. Wi
 - Compatibility adapters or temporary aliases required:
   - existing bundle keys remain until the renderer migration retires them
 - Retirement gate:
-  - no runtime assembly path still decides both surface selection and tool-local payload shape in the same branch table
+  - do not reintroduce per-tool shell-route bundle branching while the remaining root/helper cleanup is still open
 
-### Stage 3: Apply the boundary map in region-family rendering
+### Stage 3: Region-family host migration
+
+Status:
+
+- active
+- directive-panel and reflective-workspace hosts are already family-first
+- `presentation_surface` host migration is now complete enough for compatibility-retirement follow-up
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js`
@@ -157,6 +190,7 @@ This plan exists separately because every later slice touches the same files. Wi
 - Exact behavior expected to change:
   - top-level hosts stop treating tool identity as primary dispatch authority
   - compatibility adapters consume legacy fields while the runtime and client contracts converge on `directive_panel`, `reflective_workspace`, and `presentation_surface`
+  - the inspector host becomes family-first before any compatibility-key deletion begins
 - Tests to add or update:
   - `MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py`
   - `MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py`
@@ -164,6 +198,28 @@ This plan exists separately because every later slice touches the same files. Wi
   - `surfacePayload.kind`, `region.kind`, `state_directive_compact`, `tool_secondary_evidence`, and `cts_gis_interface_body` remain only as documented compatibility inputs
 - Retirement gate:
   - the top-level family hosts no longer branch on `surface_label`, `surfacePayload.kind`, or `region.kind` in their primary path
+
+### Stage 4: Compatibility retirement
+
+Status:
+
+- pending behind presentation-surface cutover
+
+- Exact files expected to change:
+  - `MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py`
+  - `MyCiteV2/instances/_shared/runtime/portal_fnd_dcm_runtime.py`
+  - `MyCiteV2/instances/_shared/runtime/portal_fnd_ebi_runtime.py`
+  - `MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py`
+  - `MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py`
+  - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_tool_surface_adapter.js`
+  - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js`
+  - `MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py`
+  - `MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py`
+- Exact behavior expected to change:
+  - compatibility-only `kind` markers and adapter fallbacks are deleted once family-first presentation dispatch is proven
+  - no shell route, posture, or ownership rules change during this closeout
+- Retirement gate:
+  - no compatibility key may be removed until the family-first inspector path is green across the canonical route set
 
 ## 6. Risks And Anti-Patterns
 
