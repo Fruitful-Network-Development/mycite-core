@@ -11,6 +11,8 @@ Last reviewed: `2026-04-23`
 
 Define the stability-first merge order for the shell/runtime/renderer unification work and make retirement gates explicit so later agents can execute the program without rediscovering sequencing constraints.
 
+The sequence is now complete; this document remains as the execution closeout record.
+
 ## 2. In-Scope vs Out-of-Scope
 
 ### In scope
@@ -29,8 +31,8 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
 
 - complete: shell authority, posture guardrails, and route/query normalization are already stabilized in contract and tests
 - complete: the boundary-freeze and `SYSTEM` versus `workbench_ui` split checks have already landed
-- complete: runtime bundle dispatch is registry-backed, `workbench_ui` shell-route query forwarding is restored, and the directive-panel plus reflective-workspace hosts dispatch by family without compatibility-key ownership
-- complete: render/payload unification has retired the scoped fallback keys, with `presentation_surface` dispatch family-first alongside the other canonical region families
+- complete: runtime bundle dispatch is registry-backed, `workbench_ui` shell-route query forwarding is restored, and active hosts dispatch by canonical family
+- complete: all canonical routes now render through only `directive_panel`, `reflective_workspace`, and `presentation_surface`
 - closeout note: root/helper extraction in `portal_shell_runtime.py` and the AWS action envelope helper remain separate, non-blocking cleanup items outside shell-unification closeout
 
 ## 3. Exact Repo Evidence
@@ -49,9 +51,9 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
   - `python3 -m unittest MyCiteV2.tests.architecture.test_portal_shell_stabilization_matrix`
   - `python3 -m unittest MyCiteV2.tests.unit.test_portal_shell_contract`
   - `python3 -m unittest MyCiteV2.tests.unit.test_workbench_ui_runtime`
-- verified migrated presentation-surface host and compatibility-key retirement on 2026-04-23:
+- verified presentation-surface host closeout on 2026-04-23:
   - `v2_portal_inspector_renderers.js` now dispatches through adapter-managed `presentation_surface` mode/spec resolution
-  - scoped runtime emitters no longer produce the retired split-surface fallback labels from the cutover period
+  - scoped runtime emitters align with the canonical family contract across the active route set
 
 ## 4. Target State
 
@@ -59,7 +61,7 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
 - runtime bundle assembly becomes shared before renderer retirement starts
 - family-normalized payloads land before host branches are removed
 - host migration proceeds family by family, not tool by tool
-- compatibility branches retire only after tests prove they are no longer reached
+- obsolete host branches retire only after tests prove they are no longer reached
 - public `inspector` alias retirement is explicitly deferred to a later schema-revision plan
 
 ## 5. Staged Execution Slices
@@ -116,7 +118,7 @@ Status:
 - What can run in parallel:
   - only additive tests and docs that do not edit runtime assembly files
 - Repo should look like after the stage:
-  - server-side bundle assembly is unified, but legacy renderer kinds and compatibility fields are still present
+  - server-side bundle assembly is unified and ready for the canonical family hosts
 - Retirement gate:
   - do not reopen bundle divergence while renderer work is in flight
 
@@ -137,13 +139,13 @@ Status:
   - every canonical route emits enough family-scoped payload metadata for the hosts to consume
   - current host branches still exist, but they are no longer the only available contract
 - What must not begin until this slice retires:
-  - removing `surfacePayload.kind`, `region.kind`, or CTS-GIS compatibility branches
+  - removing obsolete top-level host branches before family metadata is proven green
 - What can run in parallel:
   - after this stage merges, the directive-panel and reflective-workspace host migrations may run as separate PRs only if their write sets stay disjoint
 - Repo should look like after the stage:
-  - runtime is unified, payloads carry canonical family metadata, and temporary legacy fields are either retired or explicitly out of scope
+  - runtime is unified, payloads carry canonical family metadata, and active routes no longer depend on cutover-only shell patterns
 - Retirement gate:
-  - keep family metadata asserted in tests; do not delete legacy host branches until the presentation host is family-first
+  - keep family metadata asserted in tests; do not weaken host guards before all three family hosts are green
 
 ### Stage 4: Host migration by family, not by tool
 
@@ -158,7 +160,7 @@ Status:
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js`
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js`
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js`
-  - runtime files that still emit temporary compatibility shapes
+  - runtime files that still need family-local cleanup after shared bundle unification
   - `MyCiteV2/instances/_shared/portal_host/app.py` if asset-manifest changes are needed
   - architecture and runtime tests
 - Exact behavior expected to change:
@@ -170,9 +172,9 @@ Status:
   - directive-panel and reflective-workspace follow-on retirement cleanup may run in parallel only if they do not edit `v2_portal_tool_surface_adapter.js` concurrently
   - the presentation-surface host remains serial and owns the next architectural change
 - Repo should look like after the stage:
-  - shell core is still unchanged, family hosts are primary, and the retired runtime compatibility keys are no longer needed for canonical routes
+  - shell core is still unchanged, family hosts are primary, and canonical routes stay inside the three active region families
 - Retirement gate:
-  - do not remove the fallback branches until all three family hosts are green on the canonical route set
+  - all three family hosts must be green on the canonical route set before closeout is declared
 
 ### Stage 5: Compatibility retirement and closeout
 
@@ -184,12 +186,12 @@ Status:
   - `portal_shell_runtime_bundle_unification_2026-04-23.md`
   - `portal_shell_region_family_renderer_migration_2026-04-23.md`
 - Exact files expected to change:
-  - runtime files that still emit compatibility-only branch keys
+  - final runtime and static closeout files
   - the three static family hosts
   - architecture and runtime tests
 - Exact behavior expected to change:
   - no user-facing route or posture change
-  - compatibility-only runtime keys and top-level host branches are removed once they are no longer needed
+  - closeout removes any remaining top-level host branches outside canonical family authority
 - What must not begin until this slice retires:
   - unrelated tool feature work that would otherwise reintroduce local branching against obsolete compatibility fields
 - What can run in parallel:
@@ -211,5 +213,5 @@ Status:
 
 - The repo reaches family-scoped rendering through the documented stage order.
 - Every stage leaves the repo in a mergeable state with green boundary, contract, and runtime tests.
-- Runtime and renderer compatibility fields retire only after explicit gates, not by assumption.
+- Runtime and renderer closeout steps follow explicit gates rather than assumption.
 - Follow-on tool feature work can proceed without rediscovering how shell authority, bundle assembly, and family hosts are supposed to fit together.

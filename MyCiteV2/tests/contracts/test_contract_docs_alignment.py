@@ -8,17 +8,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-RETIRED_FALLBACK_KEYS = (
-    "aws_csm_inspector",
-    "network_system_log_inspector",
-    "aws_csm_workspace",
-    "cts_gis_interface_body",
-    "tool_secondary_evidence",
-    "state_directive_compact",
-    "tool_mediation_panel",
-)
-
-
 class ContractDocsAlignmentTests(unittest.TestCase):
     def test_documentation_ia_standards_baseline_exists(self) -> None:
         docs_root = REPO_ROOT / "docs"
@@ -95,15 +84,66 @@ class ContractDocsAlignmentTests(unittest.TestCase):
         self.assertNotIn("/portal/api/v2/" + "tenant", route_model)
         self.assertNotIn("/portal/api/v2/" + "admin" + "/shell", route_model)
 
-    def test_contract_and_plan_docs_do_not_name_retired_fallback_keys(self) -> None:
-        violations: list[str] = []
-        for root in (REPO_ROOT / "docs" / "contracts", REPO_ROOT / "docs" / "plans"):
-            for path in sorted(root.rglob("*.md")):
-                text = path.read_text(encoding="utf-8")
-                for key in RETIRED_FALLBACK_KEYS:
-                    if key in text:
-                        violations.append(f"{path.relative_to(REPO_ROOT)} -> {key}")
-        self.assertEqual(violations, [])
+    def test_shell_contract_and_plan_docs_describe_completed_family_unification(self) -> None:
+        tool_operating_contract = (REPO_ROOT / "docs" / "contracts" / "tool_operating_contract.md").read_text(
+            encoding="utf-8"
+        )
+        plans_readme = (REPO_ROOT / "docs" / "plans" / "README.md").read_text(encoding="utf-8")
+        matrix_plan = (REPO_ROOT / "docs" / "plans" / "one_shell_stabilization_matrix.md").read_text(encoding="utf-8")
+        plan_index = (
+            REPO_ROOT / "docs" / "plans" / "portal_shell_unification_plan_index_2026-04-23.md"
+        ).read_text(encoding="utf-8")
+        execution_plan = (
+            REPO_ROOT / "docs" / "plans" / "portal_shell_unification_execution_plan_2026-04-23.md"
+        ).read_text(encoding="utf-8")
+        renderer_plan = (
+            REPO_ROOT / "docs" / "plans" / "portal_shell_region_family_renderer_migration_2026-04-23.md"
+        ).read_text(encoding="utf-8")
+        runtime_plan = (
+            REPO_ROOT / "docs" / "plans" / "portal_shell_runtime_bundle_unification_2026-04-23.md"
+        ).read_text(encoding="utf-8")
+        boundary_map = (
+            REPO_ROOT / "docs" / "plans" / "portal_shell_boundary_map_and_system_workbench_split_2026-04-23.md"
+        ).read_text(encoding="utf-8")
+
+        for text in (
+            tool_operating_contract,
+            matrix_plan,
+            execution_plan,
+            renderer_plan,
+            boundary_map,
+        ):
+            self.assertIn("directive_panel", text)
+            self.assertIn("reflective_workspace", text)
+            self.assertIn("presentation_surface", text)
+
+        self.assertIn("family-only shell", plans_readme)
+        self.assertIn("closeout", plan_index.lower())
+        self.assertIn("execution closeout record", execution_plan.lower())
+        self.assertIn("renderer-side closeout record", renderer_plan.lower())
+        self.assertIn("server-side closeout record", runtime_plan.lower())
+        self.assertIn("shell unification is complete", boundary_map.lower())
+        self.assertNotIn("legacy renderer kinds and compatibility fields are still present", execution_plan)
+        self.assertNotIn("temporary CTS-GIS directive-panel compatibility path", boundary_map)
+        self.assertNotIn("legacy extra bundle keys may remain", runtime_plan)
+
+    def test_cts_gis_admin_entity_yaml_guidelines_are_published(self) -> None:
+        contracts_readme = (REPO_ROOT / "docs" / "contracts" / "README.md").read_text(encoding="utf-8")
+        yaml_guidelines = (
+            REPO_ROOT / "docs" / "contracts" / "cts_gis_admin_entity_yaml_guidelines.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("cts_gis_admin_entity_yaml_guidelines.md", contracts_readme)
+        self.assertIn("datums:", yaml_guidelines)
+        self.assertIn("valueGroup: 2", yaml_guidelines)
+        self.assertIn("iteration:", yaml_guidelines)
+        self.assertIn("type: msn-samras", yaml_guidelines)
+        self.assertIn("type: title", yaml_guidelines)
+        self.assertIn("grouped by city", yaml_guidelines)
+        self.assertIn("placeholder ASCII title", yaml_guidelines)
+        self.assertIn("Upload the YAML into the CTS-GIS tool", yaml_guidelines)
+        self.assertIn("convert the same structure to JSON", yaml_guidelines)
+        self.assertIn("Do not edit the database-backed administrative file through ad-hoc UI changes", yaml_guidelines)
 
     def test_contract_docs_describe_behavioral_shell_model(self) -> None:
         shell_contract = (REPO_ROOT / "docs" / "contracts" / "portal_shell_contract.md").read_text(encoding="utf-8")

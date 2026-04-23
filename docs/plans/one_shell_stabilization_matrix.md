@@ -20,8 +20,8 @@ Canonical owner contracts:
 
 Closeout note:
 
-- legacy fallback runtime/client keys are retired from the active shell path
-- the canonical shell composition path now uses only `directive_panel`, `reflective_workspace`, and `presentation_surface`
+- all canonical routes now use only `directive_panel`, `reflective_workspace`, and `presentation_surface`
+- family-first shell composition is the active route contract across runtime and client hosts
 
 ## Matrix Columns
 

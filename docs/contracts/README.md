@@ -13,6 +13,7 @@ The canonical portal contract set is:
 - [cts_gis_hops_profile_sources.md](cts_gis_hops_profile_sources.md)
 - [cts_gis_compiled_artifact_contract.md](cts_gis_compiled_artifact_contract.md)
 - [cts_gis_operating_contract.md](cts_gis_operating_contract.md)
+- [cts_gis_admin_entity_yaml_guidelines.md](cts_gis_admin_entity_yaml_guidelines.md)
 - [cts_gis_legacy_alias_retirement_timeline.md](cts_gis_legacy_alias_retirement_timeline.md)
 - [samras_structural_model.md](samras_structural_model.md)
 - [samras_validity_and_mutation.md](samras_validity_and_mutation.md)

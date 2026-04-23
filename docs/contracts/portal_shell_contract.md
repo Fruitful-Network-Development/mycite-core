@@ -44,7 +44,7 @@ Authoritative invariants:
 - request/query normalization is centralized; drift-prone per-surface normalization branches are non-canonical
 - CTS-GIS tool-local navigation and AITAS/NIMM state stay body-carried and must not widen shared shell query
 
-The detailed cross-tool operating contract and migration program are documented in `docs/contracts/tool_operating_contract.md`.
+The detailed cross-tool operating contract and unification closeout record are documented in `docs/contracts/tool_operating_contract.md`.
 
 ## Ordered Focus Stack
 

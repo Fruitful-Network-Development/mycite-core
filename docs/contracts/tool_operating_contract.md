@@ -10,6 +10,8 @@ Define one stable operating contract for all portal tools so extension remains p
 
 This contract preserves HANUS, interface-surface mediation, and NIMM-AITAS by constraining where each concern is allowed to live.
 
+Shell unification is complete for the active portal routes. The three region families below are the only active shell-level families in the contract.
+
 ## Fixed Shell Model
 
 The shell is one host layout with four peer regions inside `ide-body`:
@@ -142,32 +144,21 @@ Do not add:
 - a new shell-level renderer kind for one tool
 - a second posture authority path
 
-## Migration Program
+## Unification Closeout
 
-### Phase 1: Lock shell authority
+The shell-unification closeout is complete for the active portal routes.
 
-- enforce first-load region posture only in shell composition
-- remove posture overrides from runtime bundles
+Active contract state:
 
-### Phase 2: Unify region contracts
+- shell authority remains locked to route/state synchronization and first-load posture application
+- runtime normalization is shared across shell and direct tool entrypoints
+- active route dispatch uses only `reflective_workspace`, `directive_panel`, and `presentation_surface`
+- wrapper states and direct-query helpers continue to flow through shared adapters and widget contracts
+- top-level tool-specific shell dispatcher branches are retired from the active runtime/client paths
 
-- adapt current tool payloads into the three canonical region families
-- retire compatibility adapters once the family-first hosts are green and retired scoped fallback keys no longer appear in runtime or client code
+Deferred scope:
 
-### Phase 3: Unify normalization
-
-- route all shell request/query normalization through one helper
-- enforce CTS-GIS anti-query-widening and runtime-owned query boundaries centrally
-
-### Phase 4: Build shared widget registry
-
-- host interface panel content through stable widget descriptors and layout containers
-- normalize fallback wrappers (`loading`, `error`, `empty`, `unsupported`) through shared adapters
-
-### Phase 5: Remove legacy specialization
-
-- delete per-tool shell dispatcher branches replaced by canonical families
-- retire compatibility aliases after documented cutover gates
+- public `inspector` alias retirement remains a later schema-revision task and does not change the active three-family shell contract
 
 ## Contract Test Matrix
 

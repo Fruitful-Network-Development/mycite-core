@@ -15,8 +15,8 @@ Move the client from tool-identity and payload-kind dispatch to the canonical re
 - `reflective_workspace`
 - `presentation_surface`
 
-This plan exists separately because the repo already has a shell-shaped host. The remaining gap is that each family host still carries tool-specific compatibility branches, especially for CTS-GIS.
-That gap is now closed; this document remains as the closeout record for the host migration.
+This plan exists separately because the repo already has a shell-shaped host.
+That host migration is now closed out; this document remains as the renderer-side closeout record for the family-first shell.
 
 ## 2. In-Scope vs Out-of-Scope
 
@@ -37,10 +37,10 @@ That gap is now closed; this document remains as the closeout record for the hos
 ### Current completion state
 
 - complete: runtime emitters now attach `family_contract` markers for the canonical region families
-- complete: the directive-panel host now dispatches by family-plus-mode, and CTS-GIS no longer depends on a retired compact directive key
-- complete: the reflective-workspace host now dispatches by family-plus-mode, and the retired split-workbench fallback table is gone
+- complete: the directive-panel host now dispatches by family-plus-mode, and CTS-GIS arrives through canonical family-local structure
+- complete: the reflective-workspace host now dispatches by family-plus-mode, and active routes no longer depend on split-workbench cutover tables
 - complete: the presentation-surface host now dispatches by family-plus-mode, with registered inspector lookup and structured interface-body detection driven by canonical `surface_id` and interface-body structure
-- complete for this migration slice: the scoped runtime emitters no longer produce the legacy compatibility kinds that were only needed during cutover
+- complete for this migration slice: scoped runtime emitters and top-level hosts stay inside the canonical family contract on active routes
 
 ## 3. Exact Repo Evidence
 
@@ -55,35 +55,35 @@ That gap is now closed; this document remains as the closeout record for the hos
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js`
   - top-level interface-panel renderer now dispatches through `resolvePresentationSurfaceMode()` and `resolvePresentationSurfaceModuleSpec()`
   - AWS and NETWORK registered inspector modules now resolve entirely by canonical family/surface metadata
-  - CTS-GIS now enters through structured interface-body descriptors (`layout`, `navigation_canvas`, `garland_split_projection`) with no `interface_body.kind` fallback
+  - CTS-GIS now enters through structured interface-body descriptors (`layout`, `navigation_canvas`, `garland_split_projection`) alone
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_tool_surface_adapter.js`
   - already centralizes readiness/warning resolution and wrapper states
-  - now also centralizes family-first directive/workbench/presentation mode resolution plus shrinking compatibility fallback logic
+  - now also centralizes family-first directive/workbench/presentation mode resolution plus shared wrapper/readiness logic
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_core.js`
   - already behaves like a proper shell host: it routes each region to its family renderer without inspecting tool identity
-- runtime emitters now rely on canonical route metadata and structured bodies rather than legacy branch keys:
-  - `portal_system_workspace_runtime.py` still emits `system_workspace`
-  - `portal_shell_runtime.py` still emits `network_system_log_workbench`, but no longer emits the retired network inspector fallback label
-  - `portal_aws_runtime.py` no longer emits the retired AWS split-surface fallback labels
-  - `portal_workbench_ui_runtime.py` still emits `workbench_ui_surface`
-  - `portal_cts_gis_runtime.py` no longer emits the retired compact/directive/supporting-evidence fallback markers
+- runtime emitters now rely on canonical route metadata and structured bodies:
+  - `portal_system_workspace_runtime.py` projects the reducer-owned `system_workspace`
+  - `portal_shell_runtime.py` projects the `network_system_log_workbench` through the reflective-workspace family contract
+  - `portal_aws_runtime.py` projects canonical AWS family-local payloads
+  - `portal_workbench_ui_runtime.py` projects the `workbench_ui_surface` through the reflective-workspace family contract
+  - `portal_cts_gis_runtime.py` projects CTS-GIS directive, workbench, and presentation content through family-local structure
 - `MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py`
   - now proves the module registry plus family-first `presentation_surface` dispatch without top-level legacy inspector-kind branches
 - `MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py`
-  - now asserts the structured CTS-GIS interface body contract, the retired-key absence, and posture behavior
+  - now asserts the structured CTS-GIS interface body contract and posture behavior
 
 ## 4. Target State
 
 - `v2_portal_shell_region_renderers.js` becomes the `directive_panel` host, not a surface-label switchboard.
 - `v2_portal_workbench_renderers.js` becomes the `reflective_workspace` host, not a `surfacePayload.kind` switchboard.
 - `v2_portal_inspector_renderers.js` becomes the `presentation_surface` host, not a `region.kind` and `interface_body.kind` switchboard.
-- `v2_portal_tool_surface_adapter.js` remains the compatibility layer for readiness, warnings, wrapper states, and direct-query helpers.
+- `v2_portal_tool_surface_adapter.js` remains the shared adapter for readiness, warnings, wrapper states, and direct-query helpers.
 - Tool-local richness remains allowed, but it must enter through family-scoped data or registered local modules behind the family host, not through top-level host branching.
 - `v2_portal_shell_core.js` stays shell-shaped and should not gain tool-specific dispatch.
 
 ### Change placement
 
-- Runtime emitters may change to provide family-normalized payloads and compatibility markers.
+- Runtime emitters provide family-normalized payloads and family-contract markers.
 - Family-host changes belong in the static renderer files and the asset manifest when needed.
 - `shell.py` is out of scope except for tests or documentation references.
 
@@ -128,7 +128,7 @@ Status:
   - `MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py`
 - Exact behavior expected to change:
   - top-level control-panel rendering consumes a `directive_panel` contract instead of branching on `surface_label === "CTS-GIS"`
-  - CTS-GIS directive content is still allowed, but it arrives through a documented compatibility adapter or family-local structure rather than a host-level identity check
+  - CTS-GIS directive content is still allowed, but it arrives through family-local structure rather than a host-level identity check
 - Compatibility adapters or temporary aliases required:
   - none beyond the public `inspector` alias that stays out of scope for this sequence
 - Retirement gate:
@@ -190,7 +190,7 @@ Status:
 - Retirement gate:
   - the top-level interface-panel host no longer requires tool-identity or legacy body-kind branching in its primary path
 
-### Stage 5: Retire compatibility branches without touching public alias retirement
+### Stage 5: Close out host branches without touching public alias retirement
 
 Status:
 
@@ -203,7 +203,7 @@ Status:
   - `MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py`
   - `MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py`
 - Exact behavior expected to change:
-  - family hosts delete compatibility branches that are no longer reached
+  - family hosts delete obsolete top-level branches that are no longer reached
   - no public route, query contract, or shell-region set changes
 - Compatibility adapters or temporary aliases required:
   - keep `regions.inspector` and `inspector_collapsed` compatibility aliases out of scope for this sequence

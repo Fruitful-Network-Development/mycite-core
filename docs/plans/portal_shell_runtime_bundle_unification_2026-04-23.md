@@ -13,6 +13,8 @@ Unify server-side runtime bundle assembly so the shell has one shared surface-bu
 
 This plan exists separately because it is the highest-risk server-side slice. It must land before client renderer retirement so the browser is consuming one stable assembly contract instead of a moving set of special cases.
 
+The shell-unification sequence is now complete; this document remains as the server-side closeout record.
+
 ## 2. In-Scope vs Out-of-Scope
 
 ### In scope
@@ -125,7 +127,7 @@ Status:
   - all surface builders return one normalized bundle shape that the shell runtime can compose without knowing tool-specific field names
   - `NETWORK` and `UTILITIES` bundle generation follows the same return contract as `SYSTEM` and the tools, even if helper functions temporarily stay in `portal_shell_runtime.py`
 - Compatibility adapters or temporary aliases required:
-  - legacy extra bundle keys may remain while direct endpoints are still being collapsed
+  - bundle-local shape fields may remain when they are opaque tool data and not shell-dispatch inputs
 - Retirement gate:
   - `_tool_bundle_for_surface()` must remain data-driven, and root/helper cleanup must not reintroduce per-tool branch logic
 
@@ -171,7 +173,7 @@ Status:
   - the shared bundle contract becomes explicit enough for region-family renderers to rely on it
   - the shell runtime treats surface-specific payload content as opaque bundle data rather than inline orchestration knowledge
 - Compatibility adapters or temporary aliases required:
-  - existing legacy `kind` fields may remain until the renderer plan retires them
+  - bundle-local `kind` fields may remain only as opaque tool-local data and not as shell-dispatch inputs
 - Retirement gate:
   - no later renderer slice needs to rediscover how a selected surface becomes a bundle or which path owns canonical route/query/url
 
