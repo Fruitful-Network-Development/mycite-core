@@ -31,6 +31,7 @@ from MyCiteV2.instances._shared.runtime.portal_aws_runtime import (
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
     LegacyMapsAliasUnsupportedError,
     run_portal_cts_gis,
+    run_portal_cts_gis_action,
 )
 from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import run_portal_fnd_dcm
 from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import run_portal_fnd_ebi
@@ -42,6 +43,7 @@ from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import run_p
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA,
     AWS_CSM_TOOL_REQUEST_SCHEMA,
+    CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
     CTS_GIS_TOOL_REQUEST_SCHEMA,
     FND_DCM_TOOL_REQUEST_SCHEMA,
     FND_EBI_TOOL_REQUEST_SCHEMA,
@@ -669,6 +671,29 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 run_portal_cts_gis(
                     payload,
                     data_dir=host_config.data_dir,
+                    authority_db_file=host_config.authority_db_file,
+                    private_dir=host_config.private_dir,
+                    tool_exposure_policy=host_config.tool_exposure_policy,
+                    portal_instance_id=host_config.portal_instance_id,
+                    portal_domain=host_config.portal_domain,
+                )
+            )
+        except LegacyMapsAliasUnsupportedError as exc:
+            return _error_response(exc.code, str(exc), status_code=400)
+        except ValueError as exc:
+            return _error_response("invalid_request", str(exc))
+
+    @app.post("/portal/api/v2/system/tools/cts-gis/actions")
+    def portal_cts_gis_actions() -> tuple[Any, int]:
+        try:
+            payload = _json_payload()
+            if "schema" not in payload:
+                payload["schema"] = CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA
+            return _runtime_response(
+                run_portal_cts_gis_action(
+                    payload,
+                    data_dir=host_config.data_dir,
+                    authority_db_file=host_config.authority_db_file,
                     private_dir=host_config.private_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                     portal_instance_id=host_config.portal_instance_id,

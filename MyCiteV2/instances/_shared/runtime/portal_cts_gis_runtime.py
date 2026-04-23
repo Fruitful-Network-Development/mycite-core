@@ -6,6 +6,7 @@ from typing import Any
 
 from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import build_tool_control_panel
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
     CTS_GIS_TOOL_REQUEST_SCHEMA,
     CTS_GIS_TOOL_SURFACE_SCHEMA,
     PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
@@ -16,20 +17,26 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     tool_exposure_enabled,
 )
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
+from MyCiteV2.packages.adapters.sql import SqliteAuditLogAdapter, SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.core.structures.samras import (
     InvalidSamrasStructure,
     find_structure_authorities,
     reconstruct_structure_from_rows,
     select_preferred_structure_authority,
 )
-from MyCiteV2.packages.modules.cross_domain.cts_gis import CtsGisReadOnlyService
 from MyCiteV2.packages.modules.cross_domain.cts_gis import (
+    CTS_GIS_STAGE_INSERT_SCHEMA,
+    CTS_GIS_STAGED_INSERT_STATE_SCHEMA,
+    CtsGisMutationError,
+    CtsGisMutationService,
+    CtsGisReadOnlyService,
     build_compiled_artifact,
     compiled_artifact_path,
     read_compiled_artifact,
     validate_compiled_artifact,
     write_compiled_artifact,
 )
+from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
 from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC as _CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
     CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT as _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT,
@@ -63,6 +70,21 @@ _CANONICAL_TOOL_SLUG = "cts-gis"
 _CANONICAL_TOOL_ANCHOR_PATTERN = "tool.*.cts-gis.json"
 _LEGACY_DOCUMENT_PREFIX = "sandbox:" + ("map" + "s") + ":"
 _DATUM_STORE_BY_DATA_DIR: dict[str, FilesystemSystemDatumStoreAdapter] = {}
+_DATUM_STORE_BY_AUTHORITY_DB: dict[str, SqliteSystemDatumStoreAdapter] = {}
+CTS_GIS_ACTION_RESULT_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.action.result.v1"
+CTS_GIS_TOOL_ACTION_ROUTE = "/portal/api/v2/system/tools/cts-gis/actions"
+CTS_GIS_TOOL_ACTION_ENTRYPOINT_ID = "portal.system.tools.cts_gis.actions"
+_ALLOWED_ACTION_KINDS = frozenset(
+    {
+        "stage_insert_yaml",
+        "validate_stage",
+        "preview_apply",
+        "apply_stage",
+        "discard_stage",
+    }
+)
+
+
 class LegacyMapsAliasUnsupportedError(ValueError):
     def __init__(self, *, fields: list[str] | None = None) -> None:
         details = ", ".join(fields or []) or "request payload"
@@ -93,6 +115,32 @@ def _datum_store_for_data_dir(data_dir: str | Path | None) -> FilesystemSystemDa
     return store
 
 
+def _datum_store_for_authority_db(
+    authority_db_file: str | Path | None,
+) -> SqliteSystemDatumStoreAdapter | None:
+    root = _path_or_none(authority_db_file)
+    if root is None:
+        return None
+    cache_key = str(root.resolve())
+    cached = _DATUM_STORE_BY_AUTHORITY_DB.get(cache_key)
+    if cached is not None:
+        return cached
+    store = SqliteSystemDatumStoreAdapter(root)
+    _DATUM_STORE_BY_AUTHORITY_DB[cache_key] = store
+    return store
+
+
+def _runtime_datum_store(
+    *,
+    data_dir: str | Path | None,
+    authority_db_file: str | Path | None,
+) -> SqliteSystemDatumStoreAdapter | FilesystemSystemDatumStoreAdapter | None:
+    authority_store = _datum_store_for_authority_db(authority_db_file)
+    if authority_store is not None:
+        return authority_store
+    return _datum_store_for_data_dir(data_dir)
+
+
 def _safe_json_object(path: Path | None) -> dict[str, Any]:
     if path is None or not path.exists() or not path.is_file():
         return {}
@@ -105,6 +153,34 @@ def _safe_json_object(path: Path | None) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _staged_insert_state(payload: object) -> dict[str, Any]:
+    state = payload if isinstance(payload, dict) else {}
+    normalized_payload = (
+        dict(state.get("normalized_payload"))
+        if isinstance(state.get("normalized_payload"), dict)
+        else {}
+    )
+    last_validation = (
+        dict(state.get("last_validation"))
+        if isinstance(state.get("last_validation"), dict)
+        else {}
+    )
+    last_preview = (
+        dict(state.get("last_preview"))
+        if isinstance(state.get("last_preview"), dict)
+        else {}
+    )
+    return {
+        "schema": _as_text(state.get("schema")) or CTS_GIS_STAGED_INSERT_STATE_SCHEMA,
+        "draft_text": _as_text(state.get("draft_text")),
+        "draft_format": _as_text(state.get("draft_format")) or "yaml",
+        "normalized_payload": normalized_payload,
+        "placeholder_title_requested": bool(state.get("placeholder_title_requested")),
+        "last_validation": last_validation,
+        "last_preview": last_preview,
+    }
+
+
 def _tool_state_clone(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "nimm_directive": _as_text(payload.get("nimm_directive")),
@@ -113,6 +189,7 @@ def _tool_state_clone(payload: dict[str, Any]) -> dict[str, Any]:
         "aitas": dict(payload.get("aitas") or {}),
         "source": dict(payload.get("source") or {}),
         "selection": dict(payload.get("selection") or {}),
+        "staged_insert": dict(payload.get("staged_insert") or {}),
     }
 
 
@@ -209,6 +286,11 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
     raw_aitas = raw_tool_state.get("aitas") if isinstance(raw_tool_state.get("aitas"), dict) else {}
     raw_source = raw_tool_state.get("source") if isinstance(raw_tool_state.get("source"), dict) else {}
     raw_selection = raw_tool_state.get("selection") if isinstance(raw_tool_state.get("selection"), dict) else {}
+    raw_staged_insert = (
+        raw_tool_state.get("staged_insert")
+        if isinstance(raw_tool_state.get("staged_insert"), dict)
+        else {}
+    )
     mediation_state = (
         normalized_payload.get("mediation_state") if isinstance(normalized_payload.get("mediation_state"), dict) else {}
     )
@@ -263,6 +345,7 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
                 _as_text(raw_selection.get("selected_feature_id") or normalized_payload.get("selected_feature_id"))
             ),
         },
+        "staged_insert": _staged_insert_state(raw_staged_insert),
     }
 
 
@@ -283,6 +366,19 @@ def _shell_action(kind: str, **payload: Any) -> dict[str, Any]:
     return {"kind": _as_text(kind), "payload": dict(payload or {})}
 
 
+def _tool_action(
+    action_kind: str,
+    *,
+    action_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "route": CTS_GIS_TOOL_ACTION_ROUTE,
+        "request_schema": CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
+        "action_kind": _as_text(action_kind),
+        "action_payload": dict(action_payload or {}),
+    }
+
+
 def _dedupe_warnings(*groups: list[str] | tuple[str, ...]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
@@ -294,6 +390,119 @@ def _dedupe_warnings(*groups: list[str] | tuple[str, ...]) -> list[str]:
             seen.add(token)
             out.append(token)
     return out
+
+
+def _cts_gis_action_result(
+    *,
+    action_kind: str,
+    status: str,
+    message: str,
+    code: str = "",
+    details: dict[str, Any] | None = None,
+    warnings: list[str] | None = None,
+    errors: list[str] | None = None,
+) -> dict[str, Any]:
+    payload = {
+        "schema": CTS_GIS_ACTION_RESULT_SCHEMA,
+        "action_kind": _as_text(action_kind),
+        "status": _as_text(status) or "accepted",
+        "message": _as_text(message),
+    }
+    if code:
+        payload["code"] = _as_text(code)
+    if isinstance(details, dict) and details:
+        payload["details"] = dict(details)
+    if warnings:
+        payload["warnings"] = [item for item in warnings if _as_text(item)]
+    if errors:
+        payload["errors"] = [item for item in errors if _as_text(item)]
+    return payload
+
+
+def _cts_gis_contract_state(
+    *,
+    portal_scope: PortalScope,
+    tool_exposure_policy: dict[str, Any] | None,
+) -> dict[str, Any]:
+    tool_entry = resolve_portal_tool_registry_entry(surface_id=CTS_GIS_TOOL_SURFACE_ID)
+    required_capabilities = list(tool_entry.required_capabilities) if tool_entry is not None else []
+    missing_capabilities = [capability for capability in required_capabilities if capability not in portal_scope.capabilities]
+    return {
+        "configured": tool_exposure_configured(tool_exposure_policy, tool_id=_CANONICAL_TOOL_PUBLIC_ID),
+        "enabled": tool_exposure_enabled(tool_exposure_policy, tool_id=_CANONICAL_TOOL_PUBLIC_ID),
+        "required_capabilities": required_capabilities,
+        "missing_capabilities": missing_capabilities,
+    }
+
+
+def _append_sql_audit(
+    *,
+    authority_db_file: str | Path | None,
+    event_type: str,
+    focus_subject: str,
+    shell_verb: str,
+    details: dict[str, Any],
+) -> None:
+    authority_path = _path_or_none(authority_db_file)
+    if authority_path is None:
+        return
+    try:
+        LocalAuditService(SqliteAuditLogAdapter(authority_path)).append_record(
+            {
+                "event_type": event_type,
+                "focus_subject": focus_subject,
+                "shell_verb": shell_verb,
+                "details": dict(details or {}),
+            }
+        )
+    except Exception:
+        return
+
+
+def _public_stage_validation(payload: dict[str, Any]) -> dict[str, Any]:
+    return dict(payload or {})
+
+
+def _public_stage_preview(payload: dict[str, Any]) -> dict[str, Any]:
+    public = dict(payload or {})
+    public.pop("updated_document", None)
+    public.pop("persisted_catalog", None)
+    return public
+
+
+def _document_name_for_id(
+    *,
+    datum_store: SqliteSystemDatumStoreAdapter | None,
+    tenant_id: str,
+    document_id: str,
+) -> str:
+    if datum_store is None or not _as_text(document_id):
+        return ""
+    try:
+        catalog = datum_store.read_authoritative_datum_documents(
+            AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
+        )
+    except Exception:
+        return ""
+    for document in catalog.documents:
+        if document.document_id == _as_text(document_id):
+            return document.document_name
+    return ""
+
+
+def _cts_gis_audit_focus_subject(tool_state: dict[str, Any]) -> str:
+    staged_insert = _staged_insert_state(tool_state.get("staged_insert"))
+    stage_payload = dict(staged_insert.get("normalized_payload") or {})
+    last_preview = dict(staged_insert.get("last_preview") or {})
+    first_insert = next(iter(list(last_preview.get("proposed_inserted_rows") or [])), {})
+    node_address = (
+        _as_text(first_insert.get("target_node_address"))
+        or _as_text(tool_state.get("selected_node_id"))
+        or _as_text((next(iter(list(stage_payload.get("datums") or [])), {}) or {}).get("targetNodeAddress"))
+        or "3"
+    )
+    datum_address = _as_text(first_insert.get("datum_address")) or "4-2-1"
+    return f"{node_address}.{datum_address}"
 
 
 def _normalize_request(
@@ -315,8 +524,41 @@ def _normalize_request(
     return portal_scope, shell_state, normalized_payload, _normalize_tool_state(normalized_payload)
 
 
-def _datum_summary(data_dir: str | Path | None, *, portal_instance_id: str) -> dict[str, Any]:
-    if data_dir is None:
+def _normalize_action_request(
+    payload: dict[str, Any] | None,
+) -> tuple[PortalScope, PortalShellState, dict[str, Any], dict[str, Any], str, dict[str, Any]]:
+    normalized_payload = payload if isinstance(payload, dict) else {}
+    if normalized_payload.get("schema") in {None, ""}:
+        normalized_payload = {"schema": CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA, **normalized_payload}
+    if _as_text(normalized_payload.get("schema")) != CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA:
+        raise ValueError(f"request.schema must be {CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA}")
+    _assert_no_legacy_maps_aliases(normalized_payload)
+    portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
+    shell_state = canonicalize_portal_shell_state(
+        normalized_payload.get("shell_state"),
+        active_surface_id=CTS_GIS_TOOL_SURFACE_ID,
+        portal_scope=portal_scope,
+        seed_anchor_file=normalized_payload.get("shell_state") is None,
+    )
+    tool_state = _normalize_tool_state({"tool_state": normalized_payload.get("tool_state") or {}})
+    action_kind = _as_text(normalized_payload.get("action_kind")).lower()
+    if action_kind not in _ALLOWED_ACTION_KINDS:
+        raise ValueError(f"action_kind must be one of {sorted(_ALLOWED_ACTION_KINDS)}")
+    action_payload = normalized_payload.get("action_payload")
+    if action_payload is None:
+        action_payload = {}
+    if not isinstance(action_payload, dict):
+        raise ValueError("action_payload must be a dict when provided")
+    return portal_scope, shell_state, normalized_payload, tool_state, action_kind, dict(action_payload)
+
+
+def _datum_summary(
+    data_dir: str | Path | None,
+    *,
+    portal_instance_id: str,
+    authority_db_file: str | Path | None = None,
+) -> dict[str, Any]:
+    if data_dir is None and authority_db_file is None:
         return {
             "configured": False,
             "document_count": 0,
@@ -324,7 +566,7 @@ def _datum_summary(data_dir: str | Path | None, *, portal_instance_id: str) -> d
             "warnings": ["data_dir_missing"],
         }
     try:
-        datum_store = _datum_store_for_data_dir(data_dir)
+        datum_store = _runtime_datum_store(data_dir=data_dir, authority_db_file=authority_db_file)
         if datum_store is None:
             raise ValueError("data_dir_missing")
         catalog = datum_store.read_authoritative_datum_documents(
@@ -609,6 +851,7 @@ def _resolved_tool_state(
                 _as_text(requested_tool_state.get("selection", {}).get("selected_feature_id"))
             ),
         },
+        "staged_insert": _staged_insert_state(requested_tool_state.get("staged_insert")),
     }
 
 
@@ -828,6 +1071,7 @@ def _cts_gis_control_panel(
     resolved_tool_state: dict[str, Any],
     source_evidence: dict[str, Any],
     service_surface: dict[str, Any],
+    action_result: dict[str, Any],
     base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     base_panel = build_tool_control_panel(
@@ -964,6 +1208,52 @@ def _cts_gis_control_panel(
         {"label": "MED", "meta": "locked", "active": False},
         {"label": "MAN", "meta": "locked", "active": False},
     ]
+    staged_insert = _staged_insert_state(resolved_tool_state.get("staged_insert"))
+    stage_payload = dict(staged_insert.get("normalized_payload") or {})
+    stage_validation = dict(staged_insert.get("last_validation") or {})
+    stage_preview = dict(staged_insert.get("last_preview") or {})
+    stage_datums = list(stage_payload.get("datums") or [])
+    stage_groups: list[dict[str, Any]] = []
+    if stage_payload:
+        stage_groups = [
+            {
+                "title": "STAGED INSERT",
+                "entries": [
+                    {
+                        "label": "Document",
+                        "meta": _as_text(stage_payload.get("document_name")) or _as_text(stage_payload.get("document_id")),
+                        "active": True,
+                    },
+                    {
+                        "label": "Datums",
+                        "meta": str(len(stage_datums)),
+                        "active": True,
+                    },
+                    {
+                        "label": "Validation",
+                        "meta": _as_text(stage_validation.get("expected_document_version_hash"))[:12] or "pending",
+                        "active": bool(stage_validation),
+                    },
+                    {
+                        "label": "Preview",
+                        "meta": str(len(list(stage_preview.get("proposed_inserted_rows") or []))) or "0",
+                        "active": bool(stage_preview),
+                    },
+                    {
+                        "label": "Latest action",
+                        "meta": _as_text(action_result.get("action_kind")) or "stage_insert_yaml",
+                        "active": bool(action_result),
+                    },
+                ],
+            }
+        ]
+    stage_actions: list[dict[str, Any]] = []
+    if stage_payload:
+        stage_actions.append({"label": "Validate Stage", **_tool_action("validate_stage")})
+        stage_actions.append({"label": "Preview Apply", **_tool_action("preview_apply")})
+        if stage_preview:
+            stage_actions.append({"label": "Apply Stage", **_tool_action("apply_stage")})
+        stage_actions.append({"label": "Discard Stage", **_tool_action("discard_stage")})
     state_directive_entries = [
         {"label": "NIMM directive", "meta": _as_text(resolved_tool_state["nimm_directive"]), "active": True},
         *attention_entries,
@@ -975,8 +1265,8 @@ def _cts_gis_control_panel(
         **base_panel,
         "context_items": _context_items_from_base_panel(base_panel, source_evidence),
         "verb_tabs": [],
-        "groups": [{"title": "STATE DIRECTIVE", "entries": state_directive_entries}],
-        "actions": [],
+        "groups": [{"title": "STATE DIRECTIVE", "entries": state_directive_entries}, *stage_groups],
+        "actions": stage_actions,
     }
 
 
@@ -1731,6 +2021,123 @@ def _empty_profile_projection(*, warnings: list[str] | None = None) -> dict[str,
     }
 
 
+def _seed_stage_document(
+    *,
+    document_id: str,
+    document_name: str,
+    target_node_address: str,
+    title: str,
+) -> dict[str, Any]:
+    return {
+        "schema": CTS_GIS_STAGE_INSERT_SCHEMA,
+        "document_id": document_id,
+        "document_name": document_name,
+        "operation": "insert_datums",
+        "datums": [
+            {
+                "family": "administrative_street",
+                "valueGroup": 2,
+                "targetNodeAddress": target_node_address,
+                "title": title,
+                "references": [
+                    {"type": "msn-samras", "nodeAddress": target_node_address},
+                    {"type": "title", "text": title},
+                ],
+            }
+        ],
+    }
+
+
+def _seed_stage_yaml(
+    *,
+    document_id: str,
+    document_name: str,
+    target_node_address: str,
+    title: str,
+) -> str:
+    safe_title = _as_text(title) or "ASCII STREET NAME"
+    return "\n".join(
+        [
+            f"schema: {CTS_GIS_STAGE_INSERT_SCHEMA}",
+            f"document_id: {document_id}",
+            f"document_name: {document_name}",
+            "operation: insert_datums",
+            "datums:",
+            "  - family: administrative_street",
+            "    valueGroup: 2",
+            f"    targetNodeAddress: {target_node_address}",
+            f'    title: "{safe_title}"',
+            "    references:",
+            "      - type: msn-samras",
+            f"        nodeAddress: {target_node_address}",
+            "      - type: title",
+            f'        text: "{safe_title}"',
+        ]
+    )
+
+
+def _cts_gis_staging_widget(
+    *,
+    resolved_tool_state: dict[str, Any],
+    service_surface: dict[str, Any],
+    source_evidence: dict[str, Any],
+    selected_node_id: str,
+    selected_label: str,
+    action_result: dict[str, Any],
+) -> dict[str, Any]:
+    stage_state = _staged_insert_state(resolved_tool_state.get("staged_insert"))
+    selected_document = dict(service_surface.get("selected_document") or {})
+    administrative_source = dict(source_evidence.get("administrative_source") or {})
+    document_id = (
+        _as_text(stage_state.get("normalized_payload", {}).get("document_id"))
+        or _as_text(selected_document.get("document_id"))
+        or _as_text(administrative_source.get("document_id"))
+    )
+    document_name = (
+        _as_text(stage_state.get("normalized_payload", {}).get("document_name"))
+        or _as_text(selected_document.get("document_name"))
+        or _as_text(administrative_source.get("document_name"))
+    )
+    seed_title = (_as_text(selected_label) or "ASCII STREET NAME").upper()
+    seed_document = _seed_stage_document(
+        document_id=document_id,
+        document_name=document_name,
+        target_node_address=selected_node_id,
+        title=seed_title,
+    ) if document_id and document_name and selected_node_id else {}
+    draft_text = _as_text(stage_state.get("draft_text"))
+    if not draft_text and seed_document:
+        draft_text = _seed_stage_yaml(
+            document_id=document_id,
+            document_name=document_name,
+            target_node_address=selected_node_id,
+            title=seed_title,
+        )
+    return {
+        "kind": "cts_gis_staging_widget",
+        "title": "Staged Insert",
+        "summary": "YAML-first MOS-safe administrative datum inserts with preview/apply guarded in runtime.",
+        "document_id": document_id,
+        "document_name": document_name,
+        "selected_node_id": selected_node_id,
+        "seed_stage_document": seed_document,
+        "draft_text": draft_text,
+        "draft_format": _as_text(stage_state.get("draft_format")) or "yaml",
+        "placeholder_title_requested": bool(stage_state.get("placeholder_title_requested")),
+        "validation": dict(stage_state.get("last_validation") or {}),
+        "preview": dict(stage_state.get("last_preview") or {}),
+        "action_result": dict(action_result or {}),
+        "actions": {
+            "stage_insert_yaml": _tool_action("stage_insert_yaml"),
+            "validate_stage": _tool_action("validate_stage"),
+            "preview_apply": _tool_action("preview_apply"),
+            "apply_stage": _tool_action("apply_stage"),
+            "discard_stage": _tool_action("discard_stage"),
+        },
+        "ready": bool(document_id and selected_node_id),
+    }
+
+
 def _build_cts_gis_structured_interface_body(
     *,
     portal_scope: PortalScope,
@@ -1739,6 +2146,7 @@ def _build_cts_gis_structured_interface_body(
     navigation_canvas: dict[str, Any],
     source_evidence: dict[str, Any],
     service_surface: dict[str, Any],
+    action_result: dict[str, Any],
     base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     attention_profile = dict(service_surface.get("attention_profile") or {})
@@ -1866,6 +2274,14 @@ def _build_cts_gis_structured_interface_body(
         "layout": "diktataograph_garland_split",
         "narrow_layout": "diktataograph_garland_stack",
         "navigation_canvas": navigation_canvas,
+        "staging_widget": _cts_gis_staging_widget(
+            resolved_tool_state=resolved_tool_state,
+            service_surface=service_surface,
+            source_evidence=source_evidence,
+            selected_node_id=selected_node_id,
+            selected_label=selected_label,
+            action_result=action_result,
+        ),
         "garland_split_projection": {
             "kind": "garland_split_projection",
             "title": "Garland",
@@ -2013,6 +2429,7 @@ def build_portal_cts_gis_surface_bundle(
     portal_scope: PortalScope,
     shell_state: PortalShellState,
     data_dir: str | Path | None,
+    authority_db_file: str | Path | None = None,
     private_dir: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
     tool_rows: list[dict[str, Any]] | None = None,
@@ -2027,6 +2444,14 @@ def build_portal_cts_gis_surface_bundle(
     _assert_no_legacy_maps_aliases(normalized_request_payload)
     requested_tool_state = _normalize_tool_state(normalized_request_payload)
     runtime_mode = _runtime_mode_from_request(normalized_request_payload)
+    force_live_read = bool(normalized_request_payload.get("force_live_read"))
+    entrypoint_id = _as_text(normalized_request_payload.get("cts_gis_entrypoint_id")) or CTS_GIS_TOOL_ENTRYPOINT_ID
+    read_write_posture = _as_text(normalized_request_payload.get("cts_gis_read_write_posture")) or tool_entry.read_write_posture
+    action_result = (
+        dict(normalized_request_payload.get("cts_gis_action_result"))
+        if isinstance(normalized_request_payload.get("cts_gis_action_result"), dict)
+        else {}
+    )
     include_evidence = bool(normalized_request_payload.get("include_evidence")) or runtime_mode == _CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC
     configured = tool_exposure_configured(tool_exposure_policy, tool_id=tool_entry.tool_id)
     enabled = tool_exposure_enabled(tool_exposure_policy, tool_id=tool_entry.tool_id)
@@ -2034,7 +2459,7 @@ def build_portal_cts_gis_surface_bundle(
     missing_capabilities = [
         capability for capability in tool_entry.required_capabilities if capability not in portal_scope.capabilities
     ]
-    datum_store = _datum_store_for_data_dir(data_dir)
+    datum_store = _runtime_datum_store(data_dir=data_dir, authority_db_file=authority_db_file)
     compiled_path = compiled_artifact_path(data_dir, portal_scope_id=portal_scope.scope_id)
     compiled_artifact = read_compiled_artifact(compiled_path)
     compiled_valid, compiled_issues = validate_compiled_artifact(compiled_artifact)
@@ -2044,7 +2469,12 @@ def build_portal_cts_gis_surface_bundle(
         shell_state=shell_state,
         requested_surface_id=CTS_GIS_TOOL_SURFACE_ID,
     )
-    if runtime_mode == _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT and compiled_valid and compiled_artifact is not None:
+    if (
+        not force_live_read
+        and runtime_mode == _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT
+        and compiled_valid
+        and compiled_artifact is not None
+    ):
         service_surface_started_at = perf_counter()
         service_surface = _service_surface_from_compiled_artifact(compiled_artifact)
         phase_timings_ms["service_surface_read"] = round((perf_counter() - service_surface_started_at) * 1000.0, 3)
@@ -2073,7 +2503,7 @@ def build_portal_cts_gis_surface_bundle(
             resolved_tool_state=resolved_tool_state,
             base_shell_request=tool_shell_request_base,
         )
-    elif runtime_mode == _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT and strict_invalid:
+    elif (not force_live_read) and runtime_mode == _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT and strict_invalid:
         service_surface_started_at = perf_counter()
         service_surface = {
             "document_catalog": [],
@@ -2220,7 +2650,11 @@ def build_portal_cts_gis_surface_bundle(
     datum_summary_started_at = perf_counter()
     datum_summary = _datum_summary_from_service_surface(service_surface)
     if datum_summary is None:
-        datum_summary = _datum_summary(data_dir, portal_instance_id=portal_scope.scope_id)
+        datum_summary = _datum_summary(
+            data_dir,
+            portal_instance_id=portal_scope.scope_id,
+            authority_db_file=authority_db_file,
+        )
     phase_timings_ms["datum_summary"] = round((perf_counter() - datum_summary_started_at) * 1000.0, 3)
     missing_integrations = [] if datum_summary.get("configured") else ["data_dir"]
     source_warnings = _dedupe_warnings(list(source_evidence.get("warnings") or []))
@@ -2254,6 +2688,7 @@ def build_portal_cts_gis_surface_bundle(
         navigation_canvas=navigation_canvas,
         source_evidence=source_evidence,
         service_surface=service_surface,
+        action_result=action_result,
         base_shell_request=tool_shell_request_base,
     )
     phase_timings_ms["interface_body"] = round((perf_counter() - interface_body_started_at) * 1000.0, 3)
@@ -2263,7 +2698,7 @@ def build_portal_cts_gis_surface_bundle(
         "kind": "tool_mediation_surface",
         "tool_id": tool_entry.tool_id,
         "surface_id": CTS_GIS_TOOL_SURFACE_ID,
-        "entrypoint_id": CTS_GIS_TOOL_ENTRYPOINT_ID,
+        "entrypoint_id": entrypoint_id,
         "title": "CTS-GIS",
         "subtitle": "Spatial mediation surface owned by SYSTEM.",
         "tool": {
@@ -2295,9 +2730,18 @@ def build_portal_cts_gis_surface_bundle(
                 "selected_row_address",
                 "selected_feature_id",
             ],
+            "action_contract": {
+                "schema": CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
+                "result_schema": CTS_GIS_ACTION_RESULT_SCHEMA,
+                "route": CTS_GIS_TOOL_ACTION_ROUTE,
+                "entrypoint_id": CTS_GIS_TOOL_ACTION_ENTRYPOINT_ID,
+                "action_kinds": sorted(_ALLOWED_ACTION_KINDS),
+            },
         },
         "runtime_mode": runtime_mode,
         "tool_state": resolved_tool_state,
+        "staged_insert": dict(_staged_insert_state(resolved_tool_state.get("staged_insert"))),
+        "action_result": action_result,
         "source_evidence": source_evidence_public,
         "navigation_model": dict(navigation_canvas or {}),
         "projection_model": dict(service_surface.get("map_projection") or {}),
@@ -2320,6 +2764,7 @@ def build_portal_cts_gis_surface_bundle(
             resolved_tool_state=resolved_tool_state,
             source_evidence=source_evidence_public,
             service_surface=service_surface,
+            action_result=action_result,
             base_shell_request=tool_shell_request_base,
         ),
         family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
@@ -2350,19 +2795,30 @@ def build_portal_cts_gis_surface_bundle(
         ),
     }
     surface_payload["runtime_diagnostics"] = runtime_diagnostics
+    stage_state_public = _staged_insert_state(resolved_tool_state.get("staged_insert"))
+    stage_preview_public = dict(stage_state_public.get("last_preview") or {})
+    stage_validation_public = dict(stage_state_public.get("last_validation") or {})
+    show_workbench = bool(stage_preview_public) or _as_text(action_result.get("action_kind")) in {
+        "preview_apply",
+        "apply_stage",
+    }
     workbench = attach_region_family_contract(
         {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "surface_payload",
         "title": "CTS-GIS Evidence",
         "subtitle": "Raw registrar, source, and cache evidence stays secondary to the Garland projection.",
-        "visible": False,
+        "visible": show_workbench,
         "surface_payload": {
             "kind": "surface_payload",
             "tool_id": tool_entry.tool_id,
             "surface_id": CTS_GIS_TOOL_SURFACE_ID,
             "datum_summary": datum_summary,
             "tool_state": resolved_tool_state,
+            "staged_insert": stage_state_public,
+            "stage_validation": stage_validation_public,
+            "stage_preview": stage_preview_public,
+            "action_result": action_result,
             "source_evidence": source_evidence_public,
             "diagnostic_summary": dict(service_surface.get("diagnostic_summary") or {}),
             "warnings": list(service_surface.get("warnings") or []),
@@ -2407,8 +2863,8 @@ def build_portal_cts_gis_surface_bundle(
         surface_id=CTS_GIS_TOOL_SURFACE_ID,
     )
     return {
-        "entrypoint_id": CTS_GIS_TOOL_ENTRYPOINT_ID,
-        "read_write_posture": tool_entry.read_write_posture,
+        "entrypoint_id": entrypoint_id,
+        "read_write_posture": read_write_posture,
         "page_title": "CTS-GIS",
         "page_subtitle": "Spatial mediation surface owned by SYSTEM.",
         "surface_payload": surface_payload,
@@ -2420,10 +2876,203 @@ def build_portal_cts_gis_surface_bundle(
     }
 
 
+def _apply_cts_gis_action(
+    *,
+    portal_scope: PortalScope,
+    tool_state: dict[str, Any],
+    action_kind: str,
+    action_payload: dict[str, Any],
+    authority_db_file: str | Path | None,
+    tool_exposure_policy: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any], bool]:
+    next_tool_state = _tool_state_clone(tool_state)
+    next_tool_state["staged_insert"] = _staged_insert_state(next_tool_state.get("staged_insert"))
+    sql_store = _datum_store_for_authority_db(authority_db_file)
+    mutation_service = CtsGisMutationService(sql_store)
+    contract_state = _cts_gis_contract_state(
+        portal_scope=portal_scope,
+        tool_exposure_policy=tool_exposure_policy,
+    )
+    tenant_id = portal_scope.scope_id
+    force_live_read = False
+
+    try:
+        if action_kind == "stage_insert_yaml":
+            stage_document, stage_meta = mutation_service.parse_stage_input(action_payload)
+            selected_document_id = _as_text(next_tool_state.get("source", {}).get("attention_document_id"))
+            selected_document_name = _document_name_for_id(
+                datum_store=sql_store,
+                tenant_id=tenant_id,
+                document_id=selected_document_id,
+            )
+            stage_state, warnings = mutation_service.build_stage_state(
+                stage_document=stage_document,
+                draft_text=_as_text(stage_meta.get("draft_text")),
+                draft_format=_as_text(stage_meta.get("draft_format")) or "yaml",
+                placeholder_title_requested=bool(stage_meta.get("placeholder_title_requested")),
+                selected_document_id=selected_document_id,
+                selected_document_name=selected_document_name,
+            )
+            next_tool_state["staged_insert"] = stage_state
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message="CTS-GIS staged insert payload captured.",
+                details={
+                    "schema": CTS_GIS_STAGE_INSERT_SCHEMA,
+                    "document_id": _as_text(stage_state.get("normalized_payload", {}).get("document_id")),
+                    "document_name": _as_text(stage_state.get("normalized_payload", {}).get("document_name")),
+                    "datum_count": len(list(stage_state.get("normalized_payload", {}).get("datums") or [])),
+                },
+                warnings=warnings,
+            )
+            _append_sql_audit(
+                authority_db_file=authority_db_file,
+                event_type="portal.cts_gis.stage_insert_yaml.accepted",
+                focus_subject=_cts_gis_audit_focus_subject(next_tool_state),
+                shell_verb="portal.cts_gis.stage_insert_yaml",
+                details=dict(action_result.get("details") or {}),
+            )
+            return next_tool_state, action_result, force_live_read
+
+        if action_kind == "validate_stage":
+            validation = mutation_service.validate_stage(
+                tenant_id=tenant_id,
+                tool_state=next_tool_state,
+                contract_state=contract_state,
+            )
+            public_validation = _public_stage_validation(validation)
+            next_tool_state["staged_insert"]["last_validation"] = public_validation
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message="CTS-GIS staged insert payload validated.",
+                details=public_validation,
+                warnings=list(public_validation.get("warnings") or []),
+            )
+            return next_tool_state, action_result, force_live_read
+
+        if action_kind == "preview_apply":
+            validation = mutation_service.validate_stage(
+                tenant_id=tenant_id,
+                tool_state=next_tool_state,
+                contract_state=contract_state,
+            )
+            public_validation = _public_stage_validation(validation)
+            next_tool_state["staged_insert"]["last_validation"] = public_validation
+            preview = mutation_service.preview_stage(
+                tenant_id=tenant_id,
+                tool_state=next_tool_state,
+                contract_state=contract_state,
+            )
+            public_preview = _public_stage_preview(preview)
+            next_tool_state["staged_insert"]["last_preview"] = public_preview
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message="CTS-GIS staged insert preview is ready.",
+                details=public_preview,
+                warnings=list(public_preview.get("warnings") or []),
+            )
+            return next_tool_state, action_result, force_live_read
+
+        if action_kind == "apply_stage":
+            validation = mutation_service.validate_stage(
+                tenant_id=tenant_id,
+                tool_state=next_tool_state,
+                contract_state=contract_state,
+            )
+            applied = mutation_service.apply_stage(
+                tenant_id=tenant_id,
+                tool_state=next_tool_state,
+                contract_state=contract_state,
+            )
+            public_validation = _public_stage_validation(validation)
+            public_preview = _public_stage_preview(applied)
+            next_tool_state["staged_insert"] = _staged_insert_state({})
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message="CTS-GIS staged insert plan applied transactionally.",
+                details={
+                    **public_preview,
+                    "persisted_version_hash": _as_text(applied.get("persisted_version_hash")),
+                    "last_validation": public_validation,
+                },
+                warnings=list(public_preview.get("warnings") or []),
+            )
+            force_live_read = True
+            _append_sql_audit(
+                authority_db_file=authority_db_file,
+                event_type="portal.cts_gis.apply_stage.accepted",
+                focus_subject=_cts_gis_audit_focus_subject(tool_state),
+                shell_verb="portal.cts_gis.apply_stage",
+                details=dict(action_result.get("details") or {}),
+            )
+            return next_tool_state, action_result, force_live_read
+
+        if action_kind == "discard_stage":
+            discarded_payload = dict(next_tool_state.get("staged_insert", {}).get("normalized_payload") or {})
+            next_tool_state["staged_insert"] = _staged_insert_state({})
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message="CTS-GIS staged insert payload discarded.",
+                details={
+                    "document_id": _as_text(discarded_payload.get("document_id")),
+                    "document_name": _as_text(discarded_payload.get("document_name")),
+                    "datum_count": len(list(discarded_payload.get("datums") or [])),
+                },
+            )
+            _append_sql_audit(
+                authority_db_file=authority_db_file,
+                event_type="portal.cts_gis.discard_stage.accepted",
+                focus_subject=_cts_gis_audit_focus_subject(tool_state),
+                shell_verb="portal.cts_gis.discard_stage",
+                details=dict(action_result.get("details") or {}),
+            )
+            return next_tool_state, action_result, force_live_read
+    except CtsGisMutationError as exc:
+        return (
+            next_tool_state,
+            _cts_gis_action_result(
+                action_kind=action_kind,
+                status="error",
+                code=exc.code,
+                message=str(exc),
+                details=exc.details,
+            ),
+            False,
+        )
+    except ValueError as exc:
+        return (
+            next_tool_state,
+            _cts_gis_action_result(
+                action_kind=action_kind,
+                status="error",
+                code="action_failed",
+                message=str(exc),
+            ),
+            False,
+        )
+
+    return (
+        next_tool_state,
+        _cts_gis_action_result(
+            action_kind=action_kind,
+            status="error",
+            code="action_unhandled",
+            message=f"CTS-GIS action {action_kind} is not implemented.",
+        ),
+        False,
+    )
+
+
 def run_portal_cts_gis(
     request_payload: dict[str, Any] | None,
     *,
     data_dir: str | Path | None,
+    authority_db_file: str | Path | None = None,
     private_dir: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
     portal_instance_id: str | None = None,
@@ -2438,6 +3087,8 @@ def run_portal_cts_gis(
     shell_request["requested_surface_id"] = CTS_GIS_TOOL_SURFACE_ID
     shell_request["portal_scope"] = portal_scope.to_dict()
     shell_request["shell_state"] = shell_state.to_dict()
+    shell_request["cts_gis_entrypoint_id"] = CTS_GIS_TOOL_ENTRYPOINT_ID
+    shell_request["cts_gis_read_write_posture"] = "read-only"
     shell_request.pop("surface_query", None)
     from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 
@@ -2448,11 +3099,65 @@ def run_portal_cts_gis(
         data_dir=data_dir,
         private_dir=private_dir,
         tool_exposure_policy=tool_exposure_policy,
+        authority_db_file=authority_db_file,
+    )
+
+
+def run_portal_cts_gis_action(
+    request_payload: dict[str, Any] | None,
+    *,
+    data_dir: str | Path | None,
+    authority_db_file: str | Path | None,
+    private_dir: str | Path | None = None,
+    tool_exposure_policy: dict[str, Any] | None = None,
+    portal_instance_id: str | None = None,
+    portal_domain: str = "",
+) -> dict[str, Any]:
+    portal_scope, shell_state, normalized_payload, tool_state, action_kind, action_payload = _normalize_action_request(
+        request_payload
+    )
+    resolved_portal_instance_id = _as_text(portal_instance_id) or portal_scope.scope_id
+    if not portal_scope.scope_id:
+        portal_scope = PortalScope(scope_id=resolved_portal_instance_id, capabilities=portal_scope.capabilities)
+    next_tool_state, action_result, force_live_read = _apply_cts_gis_action(
+        portal_scope=portal_scope,
+        tool_state=tool_state,
+        action_kind=action_kind,
+        action_payload=action_payload,
+        authority_db_file=authority_db_file,
+        tool_exposure_policy=tool_exposure_policy,
+    )
+    shell_request = build_portal_shell_request_payload(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        requested_surface_id=CTS_GIS_TOOL_SURFACE_ID,
+    )
+    shell_request["tool_state"] = next_tool_state
+    shell_request["cts_gis_action_result"] = action_result
+    shell_request["cts_gis_entrypoint_id"] = CTS_GIS_TOOL_ACTION_ENTRYPOINT_ID
+    shell_request["cts_gis_read_write_posture"] = "write"
+    shell_request["force_live_read"] = force_live_read
+    if _as_text(normalized_payload.get("runtime_mode")):
+        shell_request["runtime_mode"] = _as_text(normalized_payload.get("runtime_mode"))
+    from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
+
+    return run_portal_shell_entry(
+        shell_request,
+        portal_instance_id=resolved_portal_instance_id,
+        portal_domain=portal_domain,
+        data_dir=data_dir,
+        private_dir=private_dir,
+        tool_exposure_policy=tool_exposure_policy,
+        authority_db_file=authority_db_file,
     )
 
 
 __all__ = [
+    "CTS_GIS_ACTION_RESULT_SCHEMA",
+    "CTS_GIS_TOOL_ACTION_ENTRYPOINT_ID",
+    "CTS_GIS_TOOL_ACTION_ROUTE",
     "LegacyMapsAliasUnsupportedError",
     "build_portal_cts_gis_surface_bundle",
     "run_portal_cts_gis",
+    "run_portal_cts_gis_action",
 ]

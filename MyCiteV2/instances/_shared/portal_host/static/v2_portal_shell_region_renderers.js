@@ -545,7 +545,9 @@
               return (
                 '<button type="button" class="ide-controlpanel__action ide-controlpanel__action--full" data-control-action-index="' +
                 String(index) +
-                '">' +
+                '"' +
+                (action.disabled ? " disabled" : "") +
+                ">" +
                 ctx.escapeHtml(action.label || "") +
                 "</button>"
               );
@@ -573,10 +575,18 @@
       node.addEventListener("click", function () {
         var index = Number(node.getAttribute("data-control-action-index"));
         var action = actions[index] || {};
+        if (action.disabled) return;
         if (action.action_kind === "copy_text" && action.value) {
           if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
             navigator.clipboard.writeText(String(action.value)).catch(function () {});
           }
+          return;
+        }
+        if (
+          (action.route || action.request_schema || action.action_kind) &&
+          typeof ctx.dispatchToolAction === "function"
+        ) {
+          ctx.dispatchToolAction(action);
         }
       });
     });

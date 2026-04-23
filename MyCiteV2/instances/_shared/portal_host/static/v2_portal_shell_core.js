@@ -193,12 +193,18 @@
 
   function canonicalShellRequestFromEnvelope(envelope) {
     if (!envelope || !envelope.reducer_owned || !envelope.shell_state) return null;
-    return {
+    var requestBody = {
       schema: "mycite.v2.portal.shell.request.v1",
       requested_surface_id: envelope.surface_id || "system.root",
       portal_scope: cloneRequest(envelope.portal_scope || {}),
       shell_state: cloneRequest(envelope.shell_state || {}),
     };
+    var surfacePayload = (envelope && envelope.surface_payload) || {};
+    var requestContract = (surfacePayload && surfacePayload.request_contract) || {};
+    if (requestContract.tool_state_supported && surfacePayload.tool_state) {
+      requestBody.tool_state = cloneRequest(surfacePayload.tool_state || {});
+    }
+    return requestBody;
   }
 
   function applyChrome(composition, options) {
@@ -272,6 +278,7 @@
       loadShell: loadShell,
       loadRuntimeView: loadRuntimeView,
       dispatchTransition: dispatchTransition,
+      dispatchToolAction: dispatchToolAction,
       postJson: postJson,
       cloneRequest: cloneRequest,
       getEnvelope: function () {
@@ -412,6 +419,43 @@
     });
   }
 
+  function dispatchToolAction(action, overrides) {
+    var envelope = lastEnvelope || {};
+    var surfacePayload = envelope.surface_payload || {};
+    var requestContract = surfacePayload.request_contract || {};
+    var actionContract = requestContract.action_contract || {};
+    var baseAction = cloneRequest(action || {});
+    var extra = cloneRequest(overrides || {});
+    var route = baseAction.route || extra.route || actionContract.route;
+    var requestSchema =
+      baseAction.request_schema ||
+      extra.request_schema ||
+      actionContract.schema ||
+      "";
+    var actionKind =
+      baseAction.action_kind ||
+      baseAction.kind ||
+      extra.action_kind ||
+      "";
+    var actionPayload = Object.assign(
+      {},
+      cloneRequest(baseAction.action_payload || baseAction.payload || {}),
+      cloneRequest(extra.action_payload || extra.payload || {})
+    );
+    var toolState = cloneRequest(extra.tool_state || surfacePayload.tool_state || {});
+    if (!route || !requestSchema || !actionKind) {
+      return Promise.resolve();
+    }
+    return loadRuntimeView(route, {
+      schema: requestSchema,
+      portal_scope: cloneRequest(envelope.portal_scope || {}),
+      shell_state: cloneRequest(envelope.shell_state || {}),
+      tool_state: toolState,
+      action_kind: actionKind,
+      action_payload: actionPayload,
+    });
+  }
+
   function dispatchTransition(transition, requestedSurfaceId) {
     var envelope = lastEnvelope;
     if (!envelope || !envelope.reducer_owned) return Promise.resolve();
@@ -526,6 +570,7 @@
     loadShell: loadShell,
     loadRuntimeView: loadRuntimeView,
     dispatchTransition: dispatchTransition,
+    dispatchToolAction: dispatchToolAction,
     getEnvelope: function () {
       return lastEnvelope;
     },

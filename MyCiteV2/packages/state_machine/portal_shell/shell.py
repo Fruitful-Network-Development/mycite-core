@@ -751,9 +751,9 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             route=CTS_GIS_TOOL_ROUTE,
             tool_kind=TOOL_KIND_GENERAL,
             surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-            read_write_posture="read-only",
+            read_write_posture="write",
             required_capabilities=("datum_recognition", "spatial_projection"),
-            summary="Spatial mediation and read-only diagnostics.",
+            summary="Spatial mediation with staged validation, preview, and apply diagnostics.",
         ),
         PortalToolRegistryEntry(
             tool_id="fnd_dcm",
@@ -1556,6 +1556,7 @@ def build_shell_composition_payload(
         workbench_region.get("visible"),
         default=default_workbench_visible_for_surface(active_surface_id),
     )
+    requested_workbench_visible = workbench_region.get("visible") is True
     interface_open = bool(tool_surface)
     if not interface_open and state is not None:
         interface_open = state.chrome.interface_panel_open and state.verb == VERB_MEDIATE
@@ -1564,7 +1565,7 @@ def build_shell_composition_payload(
         # First-load tool posture is composition-owned. Runtime payload visibility
         # hints are treated as content metadata, not posture authority.
         if surface_posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY:
-            workbench_visible = False
+            workbench_visible = requested_workbench_visible
             inspector_visible = True
         else:
             workbench_visible = default_workbench_visible_for_surface(active_surface_id)

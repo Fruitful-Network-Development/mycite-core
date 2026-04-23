@@ -58,6 +58,7 @@ WORKBENCH_UI_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.workbench_ui.s
 AWS_CSM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.request.v1"
 AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.action.request.v1"
 CTS_GIS_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.request.v1"
+CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.action.request.v1"
 FND_DCM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_dcm.request.v1"
 FND_EBI_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_ebi.request.v1"
 WORKBENCH_UI_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.workbench_ui.request.v1"
@@ -314,6 +315,16 @@ def build_portal_runtime_entrypoint_catalog() -> tuple[PortalRuntimeEntrypointDe
             required_configuration=("data_dir",),
         ),
         PortalRuntimeEntrypointDescriptor(
+            entrypoint_id="portal.system.tools.cts_gis.actions",
+            callable_path="MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime.run_portal_cts_gis_action",
+            surface_id=CTS_GIS_TOOL_SURFACE_ID,
+            route="/portal/api/v2/system/tools/cts-gis/actions",
+            request_schema=CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
+            surface_schema=CTS_GIS_TOOL_SURFACE_SCHEMA,
+            read_write_posture="write",
+            required_configuration=("authority_db_file",),
+        ),
+        PortalRuntimeEntrypointDescriptor(
             entrypoint_id=FND_DCM_TOOL_ENTRYPOINT_ID,
             callable_path="MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime.run_portal_fnd_dcm",
             surface_id=FND_DCM_TOOL_SURFACE_ID,
@@ -487,6 +498,7 @@ __all__ = [
     "AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA",
     "AWS_CSM_TOOL_REQUEST_SCHEMA",
     "AWS_CSM_TOOL_SURFACE_SCHEMA",
+    "CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA",
     "CTS_GIS_TOOL_REQUEST_SCHEMA",
     "CTS_GIS_TOOL_SURFACE_SCHEMA",
     "FND_DCM_TOOL_REQUEST_SCHEMA",

@@ -32,6 +32,7 @@ Direct APIs:
 - `POST /portal/api/v2/system/tools/aws-csm`
 - `POST /portal/api/v2/system/tools/aws-csm/actions`
 - `POST /portal/api/v2/system/tools/cts-gis`
+- `POST /portal/api/v2/system/tools/cts-gis/actions`
 - `POST /portal/api/v2/system/tools/fnd-dcm`
 - `POST /portal/api/v2/system/tools/fnd-ebi`
 
@@ -165,6 +166,27 @@ CTS-GIS request body contract:
   - `selected_row_address`
   - `selected_feature_id`
 
+CTS-GIS internal action route:
+
+- `POST /portal/api/v2/system/tools/cts-gis/actions`
+- request schema: `mycite.v2.portal.system.tools.cts_gis.action.request.v1`
+- body fields:
+  - `portal_scope`
+  - optional `shell_state`
+  - `tool_state`
+  - `action_kind`
+  - `action_payload`
+- cataloged action kinds:
+  - `stage_insert_yaml`
+  - `validate_stage`
+  - `preview_apply`
+  - `apply_stage`
+  - `discard_stage`
+- staged insert payload schema:
+  - `mycite.v2.cts_gis.stage_insert.v1`
+- staged insert state schema:
+  - `mycite.v2.cts_gis.staged_insert.state.v1`
+
 CTS-GIS runtime/body rules:
 
 - CTS-GIS is the `system.tools.cts_gis` tool_mediation_surface under `SYSTEM`
@@ -172,12 +194,15 @@ CTS-GIS runtime/body rules:
 - the dominant Interface Panel mounts one CTS-GIS-local body with `Diktataograph` and `Garland`
 - tool menubar toggles are single-click exclusive by default (`Workbench` or `Interface Panel`), with a route-scoped double-click lock that allows both
 - `Diktataograph` is projected through `navigation_canvas`
+- the same Interface Panel body hosts the CTS-GIS staging widget; no new shell region is introduced
 - `navigation_canvas.mode` defaults to `directory_dropdowns`
 - `navigation_canvas.source_authority=samras_magnitude`
 - `navigation_canvas.decode_state` is fail-closed when CTS-GIS cannot recover a valid SAMRAS structure from authority rows or legacy row reconstruction
 - `navigation_canvas.dropdowns` carries one dropdown per resolved structural depth
 - `navigation_canvas.active_path` carries the resolved lineage
 - `Garland` is projected through `garland_split_projection`, where dominant `geospatial_projection` and secondary `profile_projection` update for that navigation root
+- staged insert recap and legal mutation verbs stay in the `directive_panel`
+- preview/apply evidence stays in the reflective workbench; renderer code does not write SQL or files directly
 - strict runtime also emits compact canonical models:
   - `navigation_model`
   - `projection_model`

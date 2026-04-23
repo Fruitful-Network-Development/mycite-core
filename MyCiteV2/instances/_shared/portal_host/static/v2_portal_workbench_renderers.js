@@ -610,6 +610,12 @@
     if (surfaceId === "system.tools.cts_gis") {
       var sourceEvidence = asObject(surfacePayload.source_evidence);
       var readiness = asObject(sourceEvidence.readiness);
+      var stageValidation = asObject(surfacePayload.stage_validation);
+      var stagePreview = asObject(surfacePayload.stage_preview);
+      var actionResult = asObject(surfacePayload.action_result);
+      var stagedInsert = asObject(surfacePayload.staged_insert);
+      var proposedRows = asArray(stagePreview.proposed_inserted_rows);
+      var remaps = asArray(stagePreview.remaps);
       secondaryHtml =
         '<section class="v2-card"><h3>' +
         escapeHtml(region.title || "CTS-GIS Evidence") +
@@ -633,7 +639,46 @@
         "<dt>Administrative source</dt><dd><strong>" +
         escapeHtml((sourceEvidence.administrative_source && sourceEvidence.administrative_source.document_name) || "—") +
         "</strong></dd>" +
+        "<dt>Staged document</dt><dd><strong>" +
+        escapeHtml(
+          ((stagedInsert.normalized_payload || {}).document_name) ||
+          ((stagedInsert.normalized_payload || {}).document_id) ||
+          "—"
+        ) +
+        "</strong></dd>" +
+        "<dt>Validation hash</dt><dd><strong>" +
+        escapeHtml(String(stageValidation.expected_document_version_hash || "").slice(0, 12) || "—") +
+        "</strong></dd>" +
+        "<dt>Preview rows</dt><dd><strong>" +
+        escapeHtml(String(proposedRows.length || 0)) +
+        "</strong></dd>" +
+        "<dt>Preview remaps</dt><dd><strong>" +
+        escapeHtml(String(remaps.length || 0)) +
+        "</strong></dd>" +
+        "<dt>Latest action</dt><dd><strong>" +
+        escapeHtml(actionResult.action_kind || "—") +
+        "</strong><br />" +
+        escapeHtml(actionResult.message || "") +
+        "</dd>" +
         "</dl></section>";
+      if (proposedRows.length) {
+        secondaryHtml +=
+          '<section class="v2-card"><h3>Preview Rows</h3><ul class="v2-list">' +
+          proposedRows
+            .map(function (row) {
+              return (
+                "<li><strong>" +
+                escapeHtml(row.datum_address || "—") +
+                "</strong> · " +
+                escapeHtml(row.target_node_address || "—") +
+                " · " +
+                escapeHtml(row.title || "—") +
+                "</li>"
+              );
+            })
+            .join("") +
+          "</ul></section>";
+      }
     } else {
       secondaryHtml =
         '<section class="v2-card"><h3>' +
