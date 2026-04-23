@@ -281,7 +281,8 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         inspector_source = (static_root / "v2_portal_inspector_renderers.js").read_text(encoding="utf-8")
         core_source = (static_root / "v2_portal_shell_core.js").read_text(encoding="utf-8")
 
-        self.assertIn('resolveRegisteredModuleExport("system_workspace", "PortalSystemWorkspaceRenderer")', workbench_source)
+        self.assertIn("resolveReflectiveWorkspaceModuleSpec", workbench_source)
+        self.assertIn("resolveRegisteredModuleExport(spec.moduleId, spec.globalName)", workbench_source)
         self.assertIn("__MYCITE_V2_GET_SHELL_MODULE_DIAGNOSTICS", workbench_source)
         self.assertNotIn("window.PortalSystemWorkspaceRenderer &&", workbench_source)
         self.assertIn("__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT", inspector_source)
@@ -329,6 +330,28 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("resolveDirectivePanelMode: resolveDirectivePanelMode", tool_adapter)
         self.assertIn("resolveRegionFamily: resolveRegionFamily", tool_adapter)
         self.assertIn("family_contract", tool_adapter)
+
+    def test_reflective_workspace_host_dispatches_by_family_contract_before_payload_kind_compatibility(self) -> None:
+        static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
+        workbench_renderers = (static_root / "v2_portal_workbench_renderers.js").read_text(encoding="utf-8")
+        tool_adapter = (static_root / "v2_portal_tool_surface_adapter.js").read_text(encoding="utf-8")
+
+        self.assertIn("resolveReflectiveWorkspaceMode", workbench_renderers)
+        self.assertIn("resolveReflectiveWorkspaceModuleSpec", workbench_renderers)
+        self.assertIn('family === "reflective_workspace"', workbench_renderers)
+        self.assertNotIn('surfacePayload.kind === "aws_csm_workspace"', workbench_renderers)
+        self.assertNotIn('surfacePayload.kind === "system_workspace"', workbench_renderers)
+        self.assertNotIn('surfacePayload.kind === "network_system_log_workspace"', workbench_renderers)
+        self.assertNotIn('surfacePayload.kind === "workbench_ui_surface"', workbench_renderers)
+        self.assertNotIn('surfacePayload.kind === "tool_secondary_evidence"', workbench_renderers)
+        self.assertNotIn('surfacePayload.tool_id === "cts_gis"', workbench_renderers)
+
+        self.assertIn("function resolveReflectiveWorkspaceMode(region, surfacePayload)", tool_adapter)
+        self.assertIn("function resolveReflectiveWorkspaceModuleSpec(region, surfacePayload)", tool_adapter)
+        self.assertIn("resolveReflectiveWorkspaceMode: resolveReflectiveWorkspaceMode", tool_adapter)
+        self.assertIn("resolveReflectiveWorkspaceModuleSpec: resolveReflectiveWorkspaceModuleSpec", tool_adapter)
+        self.assertIn("resolveSurfacePayloadKind", tool_adapter)
+        self.assertIn("resolveRegionSurfaceId", tool_adapter)
 
     def test_shell_static_sources_expose_workbench_toggle_and_interface_panel_aliases(self) -> None:
         template_source = (
