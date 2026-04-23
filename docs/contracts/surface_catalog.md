@@ -122,7 +122,7 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 
 - Its canonical route is `/portal/system/tools/cts-gis`.
 - Its default posture is interface-panel-led.
-- Its workbench is `tool_secondary_evidence` and stays hidden by default until secondary evidence is explicitly shown.
+- Its workbench is a hidden reflective-workspace supporting-evidence surface and stays hidden by default until secondary evidence is explicitly shown.
 - Its dominant `Interface Panel` mounts one CTS-GIS-local body with:
   - `Diktataograph`
   - `Garland` geospatial pane

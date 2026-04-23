@@ -271,7 +271,7 @@ Default tool posture is interface-panel-led; `Workbench UI` is the approved work
 
 ### CTS-GIS Interface Body
 
-- The dominant `tool_mediation_panel` mounts one CTS-GIS-local interface body.
+- The dominant `presentation_surface` region mounts one CTS-GIS-local interface body.
 - The CTS-GIS interface body is magnitude-first and role-shaped.
 - The frame always renders:
   - `Diktataograph` pane

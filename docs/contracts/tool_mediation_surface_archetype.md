@@ -23,7 +23,7 @@ For tools in this class, the public posture is:
 - `tool_mediation_surface`
 - `interface-panel-led`
 - `workbench.visible=false` by default
-- `tool_secondary_evidence` only when the runtime explicitly projects supporting evidence
+- supporting-evidence workbench content only when the runtime explicitly projects it
 
 ## Tool-Local State
 
@@ -37,7 +37,7 @@ The stable pattern is:
 
 ## Interface Body
 
-A mediation tool should project one tool-local interface body inside the dominant `tool_mediation_panel`.
+A mediation tool should project one tool-local interface body inside the dominant `presentation_surface` region.
 
 Recommended structure:
 

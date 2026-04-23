@@ -30,7 +30,7 @@ def _assert_region_family_contracts(
     envelope: dict[str, object],
     *,
     expected_surface_id: str,
-    expected_interface_body_kind: str = "",
+    expected_interface_body_kind: str | None = None,
 ) -> None:
     composition = dict(envelope.get("shell_composition") or {})
     regions = dict(composition.get("regions") or {})
@@ -54,7 +54,7 @@ def _assert_region_family_contracts(
     testcase.assertEqual(interface_panel["family_contract"]["family"], "presentation_surface")
     testcase.assertEqual(interface_panel["family_contract"]["surface_id"], expected_surface_id)
     testcase.assertTrue(interface_panel["family_contract"]["compatibility_kind"])
-    if expected_interface_body_kind:
+    if expected_interface_body_kind is not None:
         testcase.assertEqual(interface_panel["family_contract"]["interface_body_kind"], expected_interface_body_kind)
 
 
@@ -122,7 +122,7 @@ class PortalRegionFamilyContractTests(unittest.TestCase):
                 self,
                 cts_envelope,
                 expected_surface_id=CTS_GIS_TOOL_SURFACE_ID,
-                expected_interface_body_kind="cts_gis_interface_body",
+                expected_interface_body_kind="",
             )
 
             fnd_dcm_envelope = run_portal_fnd_dcm(

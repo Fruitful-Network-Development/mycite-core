@@ -49,9 +49,9 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
   - `python3 -m unittest MyCiteV2.tests.architecture.test_portal_shell_stabilization_matrix`
   - `python3 -m unittest MyCiteV2.tests.unit.test_portal_shell_contract`
   - `python3 -m unittest MyCiteV2.tests.unit.test_workbench_ui_runtime`
-- verified migrated presentation-surface host on 2026-04-23:
+- verified migrated presentation-surface host and compatibility-key retirement on 2026-04-23:
   - `v2_portal_inspector_renderers.js` now dispatches through adapter-managed `presentation_surface` mode/spec resolution
-  - runtime emitters still produce compatibility kinds such as `tool_mediation_panel`, `aws_csm_inspector`, `network_system_log_inspector`, and `cts_gis_interface_body`, but they no longer own the primary inspector path
+  - scoped runtime emitters no longer produce compatibility kinds such as `tool_mediation_panel`, `aws_csm_inspector`, `network_system_log_inspector`, `aws_csm_workspace`, or `cts_gis_interface_body`
 
 ## 4. Target State
 
@@ -141,7 +141,7 @@ Status:
 - What can run in parallel:
   - after this stage merges, the directive-panel and reflective-workspace host migrations may run as separate PRs only if their write sets stay disjoint
 - Repo should look like after the stage:
-  - runtime is unified and payloads carry both family metadata and temporary legacy fields
+  - runtime is unified, payloads carry canonical family metadata, and temporary legacy fields are either retired or explicitly out of scope
 - Retirement gate:
   - keep family metadata asserted in tests; do not delete legacy host branches until the presentation host is family-first
 
@@ -170,7 +170,7 @@ Status:
   - directive-panel and reflective-workspace follow-on retirement cleanup may run in parallel only if they do not edit `v2_portal_tool_surface_adapter.js` concurrently
   - the presentation-surface host remains serial and owns the next architectural change
 - Repo should look like after the stage:
-  - shell core is still unchanged, family hosts are primary, and legacy kind branches are fallback-only
+  - shell core is still unchanged, family hosts are primary, and the retired runtime compatibility keys are no longer needed for canonical routes
 - Retirement gate:
   - do not remove the fallback branches until all three family hosts are green on the canonical route set
 

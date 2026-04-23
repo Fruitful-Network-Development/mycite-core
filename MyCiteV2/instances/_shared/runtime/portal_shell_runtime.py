@@ -580,7 +580,7 @@ def _network_inspector(surface_payload: dict[str, Any]) -> dict[str, Any]:
         subject = {"level": "record", "id": _as_text(selected_record.get("datum_address"))}
     return {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
-        "kind": "network_system_log_inspector",
+        "kind": "summary_panel",
         "title": "Log Record",
         "summary": "Read-only log-record inspector.",
         "visible": subject is not None,

@@ -796,7 +796,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             tool_payload = tool_response.get_json()
             self.assertEqual(tool_payload["surface_id"], "system.tools.aws_csm")
             self.assertEqual(tool_payload["canonical_query"], {"view": "domains"})
-            self.assertEqual(tool_payload["surface_payload"]["kind"], "aws_csm_workspace")
+            self.assertEqual(tool_payload["surface_payload"]["kind"], "surface_payload")
 
             fnd_dcm_response = client.post(
                 "/portal/api/v2/system/tools/fnd-dcm",
