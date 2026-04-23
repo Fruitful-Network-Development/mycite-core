@@ -5,6 +5,12 @@ from typing import Any, Mapping
 from urllib.parse import urlencode
 
 from MyCiteV2.packages.core.network_root_surface_query import normalize_network_surface_query
+from MyCiteV2.packages.state_machine.nimm import (
+    NimmDirective,
+    NimmDirectiveEnvelope,
+    NimmTargetAddress,
+    normalize_nimm_verb,
+)
 
 PORTAL_SHELL_REQUEST_SCHEMA = "mycite.v2.portal.shell.request.v1"
 PORTAL_SHELL_STATE_SCHEMA = "mycite.v2.portal.shell.state.v1"
@@ -341,8 +347,7 @@ class PortalShellState:
 
     def __post_init__(self) -> None:
         active_surface_id = _as_text(self.active_surface_id) or SYSTEM_ROOT_SURFACE_ID
-        if self.verb not in PORTAL_SHELL_VERBS:
-            raise ValueError("portal_shell_state.verb is invalid")
+        verb = normalize_nimm_verb(self.verb, field_name="portal_shell_state.verb")
         chrome = self.chrome if isinstance(self.chrome, PortalShellChrome) else PortalShellChrome.from_value(self.chrome)
         scope_id = PORTAL_SCOPE_DEFAULT_ID
         if self.focus_path:
@@ -360,6 +365,7 @@ class PortalShellState:
         object.__setattr__(self, "focus_path", focus_path)
         object.__setattr__(self, "focus_subject", focus_subject)
         object.__setattr__(self, "mediation_subject", mediation_subject)
+        object.__setattr__(self, "verb", verb)
         object.__setattr__(self, "chrome", chrome)
 
     def to_dict(self) -> dict[str, Any]:
@@ -415,8 +421,8 @@ class PortalShellTransition:
         verb = _normalize_slug(self.verb)
         if kind not in PORTAL_SHELL_TRANSITIONS:
             raise ValueError("portal_shell_transition.kind is invalid")
-        if verb and verb not in PORTAL_SHELL_VERBS:
-            raise ValueError("portal_shell_transition.verb is invalid")
+        if verb:
+            verb = normalize_nimm_verb(verb, field_name="portal_shell_transition.verb")
         object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "surface_id", _as_text(self.surface_id))
         object.__setattr__(self, "file_key", _as_text(self.file_key))
@@ -462,6 +468,7 @@ class PortalShellRequest:
     portal_scope: PortalScope = field(default_factory=PortalScope)
     shell_state: PortalShellState | None = None
     transition: PortalShellTransition | None = None
+    nimm_envelope: NimmDirectiveEnvelope | None = None
     surface_query: dict[str, str] = field(default_factory=dict)
     schema: str = field(default=PORTAL_SHELL_REQUEST_SCHEMA, init=False)
 
@@ -478,6 +485,11 @@ class PortalShellRequest:
             if isinstance(self.transition, PortalShellTransition) or self.transition is None
             else PortalShellTransition.from_value(self.transition)
         )
+        nimm_envelope = (
+            self.nimm_envelope
+            if isinstance(self.nimm_envelope, NimmDirectiveEnvelope) or self.nimm_envelope is None
+            else NimmDirectiveEnvelope.from_dict(self.nimm_envelope)
+        )
         surface_query = _normalize_surface_query(
             self.surface_query,
             field_name="portal_shell_request.surface_query",
@@ -486,6 +498,7 @@ class PortalShellRequest:
         object.__setattr__(self, "portal_scope", portal_scope)
         object.__setattr__(self, "shell_state", shell_state)
         object.__setattr__(self, "transition", transition)
+        object.__setattr__(self, "nimm_envelope", nimm_envelope)
         object.__setattr__(self, "surface_query", surface_query)
 
     def to_dict(self) -> dict[str, Any]:
@@ -498,6 +511,8 @@ class PortalShellRequest:
             payload["shell_state"] = self.shell_state.to_dict()
         if self.transition is not None:
             payload["transition"] = self.transition.to_dict()
+        if self.nimm_envelope is not None:
+            payload["nimm_envelope"] = self.nimm_envelope.to_dict()
         if self.surface_query:
             payload["surface_query"] = dict(self.surface_query)
         return payload
@@ -522,6 +537,9 @@ class PortalShellRequest:
             if payload.get("shell_state") is not None
             else None,
             transition=PortalShellTransition.from_value(payload.get("transition")),
+            nimm_envelope=NimmDirectiveEnvelope.from_dict(payload.get("nimm_envelope"))
+            if payload.get("nimm_envelope") is not None
+            else None,
             surface_query=_normalize_surface_query(
                 payload.get("surface_query"),
                 field_name="portal_shell_request.surface_query",
@@ -1334,6 +1352,7 @@ def build_portal_shell_request_payload(
     portal_scope: PortalScope | dict[str, Any] | None,
     shell_state: PortalShellState | dict[str, Any] | None = None,
     transition: PortalShellTransition | dict[str, Any] | None = None,
+    nimm_envelope: NimmDirectiveEnvelope | dict[str, Any] | None = None,
     surface_query: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     scope = portal_scope if isinstance(portal_scope, PortalScope) else PortalScope.from_value(portal_scope)
@@ -1347,16 +1366,52 @@ def build_portal_shell_request_payload(
         if isinstance(transition, PortalShellTransition) or transition is None
         else PortalShellTransition.from_value(transition)
     )
+    normalized_nimm_envelope = (
+        nimm_envelope
+        if isinstance(nimm_envelope, NimmDirectiveEnvelope) or nimm_envelope is None
+        else NimmDirectiveEnvelope.from_dict(nimm_envelope)
+    )
     return PortalShellRequest(
         requested_surface_id=requested_surface_id,
         portal_scope=scope,
         shell_state=state,
         transition=normalized_transition,
+        nimm_envelope=normalized_nimm_envelope,
         surface_query=_normalize_surface_query(
             surface_query,
             field_name="portal_shell_request.surface_query",
         ),
     ).to_dict()
+
+
+def build_nimm_envelope_for_shell_state(
+    *,
+    shell_state: PortalShellState | dict[str, Any],
+    target_authority: str,
+    document_id: str = "",
+    aitas_defaults: dict[str, Any] | None = None,
+    aitas_overrides: dict[str, Any] | None = None,
+) -> NimmDirectiveEnvelope:
+    state = shell_state if isinstance(shell_state, PortalShellState) else PortalShellState.from_value(shell_state)
+    focus_targets = [
+        NimmTargetAddress(
+            file_key=segment_id_for_level(state, level=FOCUS_LEVEL_FILE) or SYSTEM_SANDBOX_QUERY_FILE_TOKEN,
+            datum_address=segment_id_for_level(state, level=FOCUS_LEVEL_DATUM),
+            object_ref=segment_id_for_level(state, level=FOCUS_LEVEL_OBJECT),
+        )
+    ]
+    directive = NimmDirective(
+        verb=state.verb,
+        target_authority=target_authority,
+        document_id=document_id,
+        targets=tuple(focus_targets),
+        payload={"source": "portal_shell_state"},
+    )
+    return NimmDirectiveEnvelope.with_merged_aitas(
+        directive=directive,
+        defaults=aitas_defaults,
+        overrides=aitas_overrides,
+    )
 
 
 def resolve_portal_shell_request(request: PortalShellRequest | dict[str, Any] | None) -> PortalShellResolution:
@@ -1702,6 +1757,7 @@ __all__ = [
     "activity_icon_id_for_surface",
     "apply_surface_posture_to_composition",
     "build_canonical_url",
+    "build_nimm_envelope_for_shell_state",
     "build_portal_activity_dispatch_bodies",
     "build_portal_shell_request_payload",
     "build_portal_shell_state_from_query",

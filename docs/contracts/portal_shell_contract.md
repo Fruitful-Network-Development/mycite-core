@@ -17,6 +17,8 @@ The shell state is reducer-owned only for:
 - `system.root`
 - reducer-owned `SYSTEM` child tool surfaces such as `system.tools.cts_gis` and `system.tools.fnd_ebi`
 
+Shell requests may optionally carry a normalized `nimm_envelope` payload to project directive intent metadata through runtime without granting shell mutation authority.
+
 `AWS-CSM` is a `SYSTEM` child tool surface, but it is runtime-owned and query-driven rather than reducer-owned.
 
 `FND-DCM` is also a runtime-owned `SYSTEM` child tool surface. Its canonical query is manifest-driven rather than reducer-driven.

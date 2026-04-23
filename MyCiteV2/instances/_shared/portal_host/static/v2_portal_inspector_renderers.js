@@ -1013,6 +1013,8 @@
     var validation = widget.validation || {};
     var preview = widget.preview || {};
     var actionResult = widget.action_result || {};
+    var compiledNimm = widget.compiled_nimm_envelope || {};
+    var compoundDirectives = widget.compound_directives || {};
     var proposedRows = preview.proposed_inserted_rows || [];
     var warnings = []
       .concat(validation.warnings || [])
@@ -1068,6 +1070,16 @@
       ((validation.expected_document_version_hash || "")
         ? '<p class="cts-gis-stageWidget__status">validation hash: ' +
           escapeHtml(String(validation.expected_document_version_hash || "").slice(0, 12)) +
+          "</p>"
+        : "") +
+      ((compiledNimm.schema || "")
+        ? '<p class="cts-gis-stageWidget__status">nimm envelope: ' +
+          escapeHtml(String(compiledNimm.schema)) +
+          "</p>"
+        : "") +
+      ((compoundDirectives.schema || "")
+        ? '<p class="cts-gis-stageWidget__status">compound directives: ' +
+          escapeHtml(String((compoundDirectives.steps || []).length)) +
           "</p>"
         : "") +
       (proposedRows.length

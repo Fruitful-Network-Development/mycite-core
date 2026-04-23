@@ -64,6 +64,8 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     canonicalize_portal_shell_state,
     resolve_portal_tool_registry_entry,
 )
+from MyCiteV2.packages.state_machine.lens import TrimmedStringLens
+from MyCiteV2.packages.state_machine.nimm import StagingArea
 
 _CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
 _CANONICAL_TOOL_SLUG = "cts-gis"
@@ -170,6 +172,16 @@ def _staged_insert_state(payload: object) -> dict[str, Any]:
         if isinstance(state.get("last_preview"), dict)
         else {}
     )
+    structure_operation = (
+        dict(state.get("structure_operation"))
+        if isinstance(state.get("structure_operation"), dict)
+        else {}
+    )
+    compiled_nimm_envelope = (
+        dict(state.get("compiled_nimm_envelope"))
+        if isinstance(state.get("compiled_nimm_envelope"), dict)
+        else {}
+    )
     return {
         "schema": _as_text(state.get("schema")) or CTS_GIS_STAGED_INSERT_STATE_SCHEMA,
         "draft_text": _as_text(state.get("draft_text")),
@@ -178,7 +190,55 @@ def _staged_insert_state(payload: object) -> dict[str, Any]:
         "placeholder_title_requested": bool(state.get("placeholder_title_requested")),
         "last_validation": last_validation,
         "last_preview": last_preview,
+        "structure_operation": structure_operation,
+        "compiled_nimm_envelope": compiled_nimm_envelope,
     }
+
+
+def _compile_staged_nimm_envelope(tool_state: dict[str, Any]) -> dict[str, Any]:
+    staged_insert = _staged_insert_state(tool_state.get("staged_insert"))
+    normalized_payload = dict(staged_insert.get("normalized_payload") or {})
+    datums = list(normalized_payload.get("datums") or [])
+    document_id = _as_text(normalized_payload.get("document_id"))
+    if not datums or not document_id:
+        return {}
+
+    stage = StagingArea()
+    for datum in datums:
+        datum_mapping = dict(datum or {})
+        stage = stage.stage_with_lens(
+            target={
+                "file_key": document_id,
+                "datum_address": _as_text(datum_mapping.get("targetNodeAddress")),
+                "object_ref": "",
+            },
+            lens=TrimmedStringLens(),
+            display_value=_as_text(datum_mapping.get("title")),
+        )
+    envelope = stage.compile_manipulation_envelope(
+        target_authority="cts_gis",
+        document_id=document_id,
+        aitas=dict(tool_state.get("aitas") or {}),
+    ).to_dict()
+
+    structure_operation = dict(staged_insert.get("structure_operation") or {})
+    if structure_operation:
+        envelope["compound_directives"] = {
+            "schema": "mycite.v2.nimm.compound.v1",
+            "steps": [
+                {
+                    "kind": "structure_space_mutation",
+                    "verb": "manipulate",
+                    "target_authority": "cts_gis_structure",
+                    "payload": structure_operation,
+                },
+                {
+                    "kind": "datum_mutation",
+                    "directive": dict(envelope.get("directive") or {}),
+                },
+            ],
+        }
+    return envelope
 
 
 def _tool_state_clone(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1212,6 +1272,7 @@ def _cts_gis_control_panel(
     stage_payload = dict(staged_insert.get("normalized_payload") or {})
     stage_validation = dict(staged_insert.get("last_validation") or {})
     stage_preview = dict(staged_insert.get("last_preview") or {})
+    compiled_nimm_envelope = dict(staged_insert.get("compiled_nimm_envelope") or {})
     stage_datums = list(stage_payload.get("datums") or [])
     stage_groups: list[dict[str, Any]] = []
     if stage_payload:
@@ -1243,6 +1304,11 @@ def _cts_gis_control_panel(
                         "label": "Latest action",
                         "meta": _as_text(action_result.get("action_kind")) or "stage_insert_yaml",
                         "active": bool(action_result),
+                    },
+                    {
+                        "label": "Compiled NIMM",
+                        "meta": "ready" if compiled_nimm_envelope else "pending",
+                        "active": bool(compiled_nimm_envelope),
                     },
                 ],
             }
@@ -2126,6 +2192,8 @@ def _cts_gis_staging_widget(
         "placeholder_title_requested": bool(stage_state.get("placeholder_title_requested")),
         "validation": dict(stage_state.get("last_validation") or {}),
         "preview": dict(stage_state.get("last_preview") or {}),
+        "compiled_nimm_envelope": dict(stage_state.get("compiled_nimm_envelope") or {}),
+        "compound_directives": dict((stage_state.get("compiled_nimm_envelope") or {}).get("compound_directives") or {}),
         "action_result": dict(action_result or {}),
         "actions": {
             "stage_insert_yaml": _tool_action("stage_insert_yaml"),
@@ -2741,6 +2809,7 @@ def build_portal_cts_gis_surface_bundle(
         "runtime_mode": runtime_mode,
         "tool_state": resolved_tool_state,
         "staged_insert": dict(_staged_insert_state(resolved_tool_state.get("staged_insert"))),
+        "nimm_envelope": dict(_staged_insert_state(resolved_tool_state.get("staged_insert")).get("compiled_nimm_envelope") or {}),
         "action_result": action_result,
         "source_evidence": source_evidence_public,
         "navigation_model": dict(navigation_canvas or {}),
@@ -2914,6 +2983,9 @@ def _apply_cts_gis_action(
                 selected_document_name=selected_document_name,
             )
             next_tool_state["staged_insert"] = stage_state
+            if isinstance(action_payload.get("structure_operation"), dict):
+                next_tool_state["staged_insert"]["structure_operation"] = dict(action_payload.get("structure_operation") or {})
+            next_tool_state["staged_insert"]["compiled_nimm_envelope"] = _compile_staged_nimm_envelope(next_tool_state)
             action_result = _cts_gis_action_result(
                 action_kind=action_kind,
                 status="accepted",
@@ -2923,6 +2995,7 @@ def _apply_cts_gis_action(
                     "document_id": _as_text(stage_state.get("normalized_payload", {}).get("document_id")),
                     "document_name": _as_text(stage_state.get("normalized_payload", {}).get("document_name")),
                     "datum_count": len(list(stage_state.get("normalized_payload", {}).get("datums") or [])),
+                    "compiled_nimm": bool(next_tool_state["staged_insert"].get("compiled_nimm_envelope")),
                 },
                 warnings=warnings,
             )
@@ -2943,6 +3016,7 @@ def _apply_cts_gis_action(
             )
             public_validation = _public_stage_validation(validation)
             next_tool_state["staged_insert"]["last_validation"] = public_validation
+            next_tool_state["staged_insert"]["compiled_nimm_envelope"] = _compile_staged_nimm_envelope(next_tool_state)
             action_result = _cts_gis_action_result(
                 action_kind=action_kind,
                 status="accepted",
@@ -2967,6 +3041,7 @@ def _apply_cts_gis_action(
             )
             public_preview = _public_stage_preview(preview)
             next_tool_state["staged_insert"]["last_preview"] = public_preview
+            next_tool_state["staged_insert"]["compiled_nimm_envelope"] = _compile_staged_nimm_envelope(next_tool_state)
             action_result = _cts_gis_action_result(
                 action_kind=action_kind,
                 status="accepted",

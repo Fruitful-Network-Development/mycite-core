@@ -1,0 +1,483 @@
+schema_version: "1.0"
+kind: "planning_task_board"
+board:
+  id: "TASK-BOARD-2026-04-23"
+  title: "Unified planning/audit task board"
+  lifecycle: "active"
+  last_reviewed: "2026-04-23"
+  manifest_path: "docs/plans/planning_audit_manifest.yaml"
+  canonical_context_task_board: "docs/plans/contextual_system_task_board.yaml"
+  compatibility_role: "secondary"
+  task_schema_reference: "docs/standards/agent_yaml_schema.md"
+
+tasks:
+  - id: "TASK-DOC-IA-001"
+    initiative_id: "INIT-DOC-IA"
+    title: "Expand contract-link coverage on active docs"
+    status: "done"
+    priority: "p1"
+    owner_role: "doc-author"
+    acceptance:
+      - "Active plan/audit docs include Canonical Contract Links."
+      - "No active doc remains without lifecycle metadata."
+    evidence_targets:
+      - "docs/audits/reports/documentation_ia_audit_report_2026-04-20.md"
+
+  - id: "TASK-DOC-IA-002"
+    initiative_id: "INIT-DOC-IA"
+    title: "Adopt YAML-driven task governance checks"
+    status: "done"
+    priority: "p1"
+    owner_role: "doc-author"
+    acceptance:
+      - "Planning/audit execution states are maintained in YAML manifest + task board."
+      - "New work uses stable task ids and closure evidence mapping."
+    evidence_targets:
+      - "docs/plans/planning_audit_manifest.yaml"
+      - "docs/plans/planning_task_board.yaml"
+
+  - id: "TASK-DESKTOP-DM02-001"
+    initiative_id: "INIT-DESKTOP-DM02-DM04"
+    title: "Implement desktop startup deep-link translation"
+    status: "blocked"
+    priority: "p1"
+    owner_role: "runtime-engineer"
+    acceptance:
+      - "Desktop startup routes translate to one canonical shell request."
+      - "Contract/integration parity tests pass."
+    evidence_targets:
+      - "docs/audits/reports/desktop_access_historical_drift_report_2026-04-16.md"
+    blocked_by:
+      - "BLOCKER-DESKTOP-HOST-INTEGRATION-001"
+    blocker_detail: "Desktop startup deep-link translation requires host bootstrap injection contract and parity fixtures that are not yet published in repo-owned harnesses."
+    next_unblocked_task: "TASK-DOC-IA-001"
+
+  - id: "TASK-DESKTOP-DM04-001"
+    initiative_id: "INIT-DESKTOP-DM02-DM04"
+    title: "Implement scoped shell-state persistence policy"
+    status: "blocked"
+    priority: "p1"
+    owner_role: "frontend-runtime-engineer"
+    acceptance:
+      - "Scoped persistence isolation and deterministic conflict policy are test-backed."
+      - "Legacy key migration behavior is documented and tested."
+    evidence_targets:
+      - "docs/audits/reports/desktop_access_historical_drift_report_2026-04-16.md"
+    blocked_by:
+      - "BLOCKER-DESKTOP-HOST-INTEGRATION-001"
+    blocker_detail: "Scoped shell-state persistence policy implementation depends on desktop host session/window identity primitives not yet exposed in current integration harness."
+    next_unblocked_task: "TASK-DOC-IA-001"
+
+  - id: "TASK-CTSGIS-BLOCKER-001"
+    initiative_id: "INIT-CTS-GIS-OPEN-ALIGNMENT"
+    title: "Resolve or waive source-hops blocker node 3-2-3-17-77-1-14"
+    status: "blocked"
+    priority: "p0"
+    owner_role: "cts-gis-domain-owner"
+    acceptance:
+      - "Blocked node is resolved with deployed source + vetted mapping or explicit waiver."
+      - "Readiness gate reflects final blocker disposition."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md"
+    blocker_detail: "Blocked node 3-2-3-17-77-1-14 lacks deployed source profile and vetted reference mapping; readiness gate requires resolution or explicit waiver."
+    impacted_task_ids:
+      - "TASK-CTSGIS-SAMRAS-001"
+      - "TASK-CTSGIS-DATUM-001"
+    next_unblocked_task: "TASK-DOC-IA-001"
+
+  - id: "TASK-CTSGIS-SAMRAS-001"
+    initiative_id: "INIT-CTS-GIS-OPEN-ALIGNMENT"
+    title: "Complete SAMRAS structural/mutation/mediation drift matrix"
+    status: "blocked"
+    priority: "p1"
+    owner_role: "cts-gis-domain-owner"
+    acceptance:
+      - "Structural, mutation, and mediation matrices are complete."
+      - "High-severity drifts are closed or explicitly waived."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md"
+    blocked_by:
+      - "TASK-CTSGIS-BLOCKER-001"
+    blocker_detail: "SAMRAS high-severity drift disposition cannot close while source-hops blocker node 3-2-3-17-77-1-14 remains unresolved or unwaived."
+    next_unblocked_task: "TASK-DOC-IA-001"
+
+  - id: "TASK-CTSGIS-DATUM-001"
+    initiative_id: "INIT-CTS-GIS-OPEN-ALIGNMENT"
+    title: "Close datum handling alignment high-severity drifts"
+    status: "blocked"
+    priority: "p1"
+    owner_role: "datum-domain-owner"
+    acceptance:
+      - "Critical/high datum-handling drifts are closed or waived."
+      - "Deterministic ordering/editing behavior is evidence-backed."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md"
+    blocked_by:
+      - "TASK-CTSGIS-BLOCKER-001"
+    blocker_detail: "Datum alignment closure depends on blocker queue retirement in the CTS-GIS readiness gate."
+    next_unblocked_task: "TASK-DOC-IA-001"
+
+  - id: "TASK-PERF-001"
+    initiative_id: "INIT-PERF-WEIGHT-SPEED"
+    title: "Execute measurement phase and rank optimization backlog"
+    status: "in_progress"
+    priority: "p2"
+    owner_role: "performance-owner"
+    acceptance:
+      - "Baseline and post-change metrics include median and p95."
+      - "Optimization backlog includes impact/risk ranking and evidence."
+    evidence_targets:
+      - "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
+
+  - id: "TASK-MOS-DOCS-001"
+    initiative_id: "INIT-MOS-POST-CLOSURE"
+    title: "Keep MOS post-closure docs canonical and non-reopening"
+    status: "in_progress"
+    priority: "p2"
+    owner_role: "doc-author"
+    acceptance:
+      - "Active MOS docs remain closure-consistent and do not imply pending cutover."
+      - "Historical artifacts remain explicitly labeled."
+    evidence_targets:
+      - "docs/audits/reports/mos_documentation_supersession_audit_2026-04-21.md"
+
+  - id: "TASK-MOS-WORKBENCH-001"
+    initiative_id: "INIT-MOS-POST-CLOSURE"
+    title: "Keep workbench_ui follow-on bounded to optional simple saved-query scope"
+    status: "planned"
+    priority: "p3"
+    owner_role: "workbench-owner"
+    acceptance:
+      - "No parallel frontend stack is introduced."
+      - "Any follow-on stays read-only, additive-only, and shell-attached."
+    evidence_targets:
+      - "docs/audits/reports/workbench_ui_utilitarian_design_audit_2026-04-21.md"
+
+  - id: "TASK-REFINE-P1-001"
+    initiative_id: "INIT-REFINEMENT-PHASE1"
+    title: "Audit shell, runtime, and UI authority boundaries"
+    status: "done"
+    priority: "p1"
+    owner_role: "architecture-auditor"
+    acceptance:
+      - "Shell ownership, runtime ownership, and UI constraints are verified against canonical contracts."
+      - "Any drift or ambiguity between articulation and implementation is documented with repo evidence."
+    evidence_targets:
+      - "docs/audits/reports/refinement_phase1_audit_report_2026-04-23.md"
+
+  - id: "TASK-REFINE-P1-002"
+    initiative_id: "INIT-REFINEMENT-PHASE1"
+    title: "Inspect NIMM implementation and deferred verb posture"
+    status: "done"
+    priority: "p1"
+    owner_role: "state-machine-auditor"
+    acceptance:
+      - "Current NIMM grammar and supported verbs are documented."
+      - "Locations of deferred investigate/mediate/manipulate semantics are cataloged."
+    evidence_targets:
+      - "docs/audits/reports/refinement_phase1_audit_report_2026-04-23.md"
+
+  - id: "TASK-REFINE-P1-003"
+    initiative_id: "INIT-REFINEMENT-PHASE1"
+    title: "Survey CTS-GIS tool-local NIMM/AITAS and SAMRAS staging flow"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-auditor"
+    acceptance:
+      - "Tool-local state keys and action routes are documented."
+      - "Mutation path ownership is traced through runtime/service and not renderer writes."
+    evidence_targets:
+      - "docs/audits/reports/refinement_phase1_audit_report_2026-04-23.md"
+
+  - id: "TASK-REFINE-P1-004"
+    initiative_id: "INIT-REFINEMENT-PHASE1"
+    title: "Publish phase 1 glossary and terminology mismatch log"
+    status: "done"
+    priority: "p1"
+    owner_role: "doc-author"
+    acceptance:
+      - "Canonical terms for shell, directive script, lens, and stage/apply flow are defined."
+      - "Current-term mismatches and normalization targets are listed."
+    evidence_targets:
+      - "docs/plans/refinement_phase1_glossary_2026-04-23.md"
+      - "docs/audits/reports/refinement_phase1_audit_report_2026-04-23.md"
+
+  - id: "TASK-REFINE-P2-001"
+    initiative_id: "INIT-REFINEMENT-PHASE2"
+    title: "Define versioned NIMM directive schema in state_machine"
+    status: "done"
+    priority: "p1"
+    owner_role: "state-machine-engineer"
+    acceptance:
+      - "Directive schema includes canonical verbs and target-address model."
+      - "Dataclass parsing/validation supports deterministic round-trip."
+    evidence_targets:
+      - "MyCiteV2/packages/state_machine/nimm/directives.py"
+      - "MyCiteV2/tests/unit/test_nimm_phase2_foundations.py"
+
+  - id: "TASK-REFINE-P2-002"
+    initiative_id: "INIT-REFINEMENT-PHASE2"
+    title: "Implement AITAS wrapper and merge utility"
+    status: "done"
+    priority: "p1"
+    owner_role: "state-machine-engineer"
+    acceptance:
+      - "AITAS context carries attention/intention/time/archetype/scope."
+      - "Default+override merge utility exists and is test-backed."
+    evidence_targets:
+      - "MyCiteV2/packages/state_machine/aitas/context.py"
+      - "MyCiteV2/packages/state_machine/nimm/envelope.py"
+      - "MyCiteV2/tests/unit/test_nimm_phase2_foundations.py"
+
+  - id: "TASK-REFINE-P2-003"
+    initiative_id: "INIT-REFINEMENT-PHASE2"
+    title: "Introduce Lens abstraction and normalize staging values"
+    status: "done"
+    priority: "p1"
+    owner_role: "runtime-engineer"
+    acceptance:
+      - "Lens abstraction is available as a stateless codec contract."
+      - "Staging layer compiles lens-normalized values into NIMM manipulation envelopes."
+    evidence_targets:
+      - "MyCiteV2/packages/state_machine/lens/base.py"
+      - "MyCiteV2/packages/state_machine/nimm/staging.py"
+      - "MyCiteV2/tests/unit/test_nimm_phase2_foundations.py"
+
+  - id: "TASK-REFINE-P2-004"
+    initiative_id: "INIT-REFINEMENT-PHASE2"
+    title: "Specify shared mutation contract actions and handler seam"
+    status: "done"
+    priority: "p1"
+    owner_role: "contract-author"
+    acceptance:
+      - "Shared stage/validate/preview/apply/discard endpoints are documented."
+      - "Runtime handler interface exposes one method per lifecycle action."
+    evidence_targets:
+      - "MyCiteV2/packages/state_machine/nimm/mutation_contract.py"
+      - "docs/contracts/mutation_contract.md"
+      - "docs/contracts/route_model.md"
+
+  - id: "TASK-REFINE-P2-005"
+    initiative_id: "INIT-REFINEMENT-PHASE2"
+    title: "Publish phase 2 implementation report and close task board"
+    status: "done"
+    priority: "p1"
+    owner_role: "doc-author"
+    acceptance:
+      - "Report maps implementation to phase 2 objectives."
+      - "Validation evidence includes unit and architecture boundary tests."
+    evidence_targets:
+      - "docs/audits/reports/refinement_phase2_foundation_report_2026-04-23.md"
+
+  - id: "TASK-REFINE-P3-001"
+    initiative_id: "INIT-REFINEMENT-PHASE3"
+    title: "Refactor portal shell to recognize NIMM envelope requests"
+    status: "done"
+    priority: "p1"
+    owner_role: "shell-runtime-engineer"
+    acceptance:
+      - "Portal shell request supports optional NIMM envelope payload."
+      - "Shell verb normalization is tied to canonical NIMM verb validation."
+    evidence_targets:
+      - "MyCiteV2/packages/state_machine/portal_shell/shell.py"
+      - "MyCiteV2/tests/unit/test_nimm_phase2_foundations.py"
+
+  - id: "TASK-REFINE-P3-002"
+    initiative_id: "INIT-REFINEMENT-PHASE3"
+    title: "Add NIMM non-navigation verb handlers with deferred stubs"
+    status: "done"
+    priority: "p1"
+    owner_role: "state-machine-engineer"
+    acceptance:
+      - "Investigate/mediate/manipulate handlers exist and validate verb payloads."
+      - "Deferred semantics are explicit through NotImplemented stubs."
+    evidence_targets:
+      - "MyCiteV2/packages/state_machine/nimm/directives.py"
+      - "MyCiteV2/tests/unit/test_nimm_phase2_foundations.py"
+
+  - id: "TASK-REFINE-P3-003"
+    initiative_id: "INIT-REFINEMENT-PHASE3"
+    title: "Compile CTS-GIS stage values into NIMM envelopes in runtime path"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-runtime-engineer"
+    acceptance:
+      - "Stage/validate/preview action flow stores compiled NIMM envelope metadata."
+      - "Runtime surface payload exposes compiled envelope for reflectivity."
+    evidence_targets:
+      - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
+      - "MyCiteV2/tests/unit/test_portal_cts_gis_actions.py"
+
+  - id: "TASK-REFINE-P3-004"
+    initiative_id: "INIT-REFINEMENT-PHASE3"
+    title: "Reflect compiled NIMM/compound directives in CTS-GIS staging UI"
+    status: "done"
+    priority: "p1"
+    owner_role: "interface-engineer"
+    acceptance:
+      - "Staging widget includes compiled NIMM envelope status."
+      - "Compound directive summary renders when structure operation metadata exists."
+    evidence_targets:
+      - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js"
+      - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
+
+  - id: "TASK-REFINE-P3-005"
+    initiative_id: "INIT-REFINEMENT-PHASE3"
+    title: "Add compound directive metadata support for SAMRAS structure operations"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-runtime-engineer"
+    acceptance:
+      - "Staged action payload accepts optional structure operation metadata."
+      - "Compiled NIMM envelope can include a two-step compound directive plan."
+    evidence_targets:
+      - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
+      - "MyCiteV2/tests/unit/test_portal_cts_gis_actions.py"
+
+  - id: "TASK-REFINE-P3-006"
+    initiative_id: "INIT-REFINEMENT-PHASE3"
+    title: "Publish phase 3 completion report and normalize contract language"
+    status: "done"
+    priority: "p1"
+    owner_role: "doc-author"
+    acceptance:
+      - "Phase 3 report maps implementation to objectives and validation evidence."
+      - "Contract docs describe NIMM envelope and mutation reflectivity posture."
+    evidence_targets:
+      - "docs/audits/reports/refinement_phase3_implementation_report_2026-04-23.md"
+      - "docs/contracts/portal_shell_contract.md"
+      - "docs/contracts/mutation_contract.md"
+
+  - id: "TASK-REFINE-P4-001"
+    initiative_id: "INIT-REFINEMENT-PHASE4"
+    title: "Expand NIMM parser/validator unit coverage for invalid and edge payloads"
+    status: "done"
+    priority: "p1"
+    owner_role: "state-machine-test-engineer"
+    acceptance:
+      - "Invalid verb, missing authority/document, and empty target payloads are rejected by tests."
+      - "Lens transformation behavior is asserted in staging-focused unit tests."
+    evidence_targets:
+      - "MyCiteV2/tests/unit/test_nimm_phase2_foundations.py"
+
+  - id: "TASK-REFINE-P4-002"
+    initiative_id: "INIT-REFINEMENT-PHASE4"
+    title: "Add integration test for staging and mutation contract lifecycle"
+    status: "done"
+    priority: "p1"
+    owner_role: "integration-test-engineer"
+    acceptance:
+      - "Integration flow covers stage, preview, apply, and authoritative row update."
+      - "Integration flow verifies staged payload clearing after apply."
+    evidence_targets:
+      - "MyCiteV2/tests/integration/test_nimm_mutation_contract_flow.py"
+
+  - id: "TASK-REFINE-P4-003"
+    initiative_id: "INIT-REFINEMENT-PHASE4"
+    title: "Validate CTS-GIS navigation and staged reflectivity behavior"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-test-engineer"
+    acceptance:
+      - "Runtime request contract and navigation canvas remain available in integration tests."
+      - "Staged/preview/apply flows continue to expose compiled NIMM metadata in runtime payloads."
+    evidence_targets:
+      - "MyCiteV2/tests/integration/test_nimm_mutation_contract_flow.py"
+      - "MyCiteV2/tests/unit/test_portal_cts_gis_actions.py"
+      - "MyCiteV2/tests/unit/test_cts_gis_request_validation.py"
+
+  - id: "TASK-REFINE-P4-004"
+    initiative_id: "INIT-REFINEMENT-PHASE4"
+    title: "Update contracts and package docs with NIMM/AITAS/lens examples"
+    status: "done"
+    priority: "p1"
+    owner_role: "contract-doc-author"
+    acceptance:
+      - "Mutation contract includes concrete NIMM envelope example and lens usage guidance."
+      - "Operating contract explicitly reiterates three-authority and staging-boundary model."
+      - "Lens package docs define codec responsibilities and usage."
+    evidence_targets:
+      - "docs/contracts/mutation_contract.md"
+      - "docs/contracts/tool_operating_contract.md"
+      - "MyCiteV2/packages/state_machine/lens/README.md"
+
+  - id: "TASK-REFINE-P4-005"
+    initiative_id: "INIT-REFINEMENT-PHASE4"
+    title: "Run regression validation suites and close phase 4 report"
+    status: "done"
+    priority: "p1"
+    owner_role: "qa-owner"
+    acceptance:
+      - "Phase 4 targeted unit/integration/contract suites pass."
+      - "Phase 4 report records executed validations and closure verdict."
+    evidence_targets:
+      - "docs/audits/reports/refinement_phase4_validation_report_2026-04-23.md"
+
+  - id: "TASK-CONTEXT-ORG-001"
+    initiative_id: "INIT-CONTEXTUAL-SYSTEM-ORG"
+    title: "Define canonical contextual system manifest and entrypoints"
+    status: "done"
+    priority: "p1"
+    owner_role: "system-doc-architect"
+    acceptance:
+      - "One manifest maps canonical entrypoints across plans, audits, and reports."
+      - "Program streams have one canonical plan and one canonical report each."
+    evidence_targets:
+      - "docs/plans/contextual_system_manifest.yaml"
+      - "docs/plans/planning_audit_operating_system.md"
+
+  - id: "TASK-CONTEXT-ORG-002"
+    initiative_id: "INIT-CONTEXTUAL-SYSTEM-ORG"
+    title: "Consolidate directory READMEs to one contextual navigation model"
+    status: "done"
+    priority: "p1"
+    owner_role: "doc-author"
+    acceptance:
+      - "plans/audits/reports READMEs point to the same canonical operating surfaces."
+      - "Each README separates active streams from historical materials."
+    evidence_targets:
+      - "docs/plans/README.md"
+      - "docs/audits/README.md"
+      - "docs/audits/reports/README.md"
+
+  - id: "TASK-CONTEXT-ORG-003"
+    initiative_id: "INIT-CONTEXTUAL-SYSTEM-ORG"
+    title: "Mark dated/dispersed plan content as historical with canonical pointers"
+    status: "done"
+    priority: "p1"
+    owner_role: "doc-curator"
+    acceptance:
+      - "Superseded audit plans are explicitly labeled historical-superseded."
+      - "Dated plan index artifacts carry archival posture and canonical pointer."
+    evidence_targets:
+      - "docs/audits/cts_gis_source_hops_audit_plan_2026-04-20.md"
+      - "docs/audits/cts_gis_samras_rule_alignment_audit_plan_2026-04-20.md"
+      - "docs/audits/cts_gis_datum_handling_alignment_audit_plan_2026-04-20.md"
+      - "docs/plans/master_plan_mos.index.yaml"
+
+  - id: "TASK-CONTEXT-ORG-004"
+    initiative_id: "INIT-CONTEXTUAL-SYSTEM-ORG"
+    title: "Align test-analysis access with planning closure rules"
+    status: "done"
+    priority: "p1"
+    owner_role: "qa-doc-owner"
+    acceptance:
+      - "Manifest records required unit/integration/contract/architecture regression suites."
+      - "Organization report records executed validations and results."
+    evidence_targets:
+      - "docs/plans/contextual_system_manifest.yaml"
+      - "docs/audits/reports/contextual_planning_system_alignment_report_2026-04-23.md"
+
+  - id: "TASK-CONTEXT-ORG-005"
+    initiative_id: "INIT-CONTEXTUAL-SYSTEM-ORG"
+    title: "Publish contextual organization report and close organization initiative"
+    status: "done"
+    priority: "p1"
+    owner_role: "program-owner"
+    acceptance:
+      - "Report describes consolidated model, archival decisions, and access workflow."
+      - "Compatibility surfaces and migration posture are explicit."
+    evidence_targets:
+      - "docs/audits/reports/contextual_planning_system_alignment_report_2026-04-23.md"
+      - "docs/plans/planning_audit_manifest.yaml"
+      - "docs/plans/planning_task_board.yaml"

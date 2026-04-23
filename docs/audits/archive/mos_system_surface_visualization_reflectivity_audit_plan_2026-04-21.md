@@ -4,15 +4,19 @@ Date: 2026-04-21
 
 Doc type: `plan`
 Normativity: `supporting`
-Lifecycle: `completed`
-Last reviewed: `2026-04-22`
+Lifecycle: `historical-superseded`
+Last reviewed: `2026-04-23`
+
+## Archive Note
+
+This plan is archived as completed historical evidence. Execution is closed by:
+`docs/audits/reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md`.
 
 ## Purpose
 
 Audit whether `/portal/system` visualization remains state-machine reflective:
 control panel as state-reaction contract, interface panel as mediation contract,
-and workbench as datum-file representation. This plan is completed by
-`docs/audits/reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md`.
+and workbench as datum-file representation.
 
 ## Scope
 
@@ -35,25 +39,7 @@ Host/static rendering:
 - `docs/contracts/route_model.md`
 - `docs/contracts/surface_catalog.md`
 
-## Audit Questions
-
-1. Does reducer-owned `SYSTEM` state map cleanly into region payloads?
-2. Do workbench and interface roles remain distinct and additive?
-3. Are renderer-unavailable states contract-diagnosable in payload terms?
-4. Can stale or incomplete shell module loading create hidden drift from intent?
-
-## Deliverables
+## Deliverables (Completed)
 
 - published report:
   `docs/audits/reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md`
-- render-path matrix and mismatch diagnosis captured in that report
-- deployment/build-id/cache/registration guardrails captured in code and tests
-
-## Exit Criteria
-
-- Report published root causes and mitigations for the named `/portal/system`
-  reflectivity drift.
-- Shell manifest/loader/renderer contracts now expose module-registration
-  diagnostics for missing renderer paths.
-- Verification checks now exist for manifest metadata, loader registry
-  initialization, self-registration, and registry-backed SYSTEM dispatch.

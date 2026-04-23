@@ -1,0 +1,73 @@
+schema_version: "1.0"
+kind: "contextual_planning_system_task_board"
+board:
+  id: "TASK-BOARD-CONTEXTUAL-SYSTEM-2026-04-23"
+  title: "Contextual planning/audit/report organization board"
+  lifecycle: "active"
+  last_reviewed: "2026-04-23"
+  manifest_path: "docs/plans/contextual_system_manifest.yaml"
+
+tasks:
+  - id: "TASK-CONTEXT-ORG-001"
+    title: "Define canonical contextual system manifest and entrypoints"
+    status: "done"
+    priority: "p1"
+    owner_role: "system-doc-architect"
+    acceptance:
+      - "One manifest maps canonical entrypoints across plans, audits, and reports."
+      - "Program streams have one canonical plan and one canonical report each."
+    evidence_targets:
+      - "docs/plans/contextual_system_manifest.yaml"
+      - "docs/plans/planning_audit_operating_system.md"
+
+  - id: "TASK-CONTEXT-ORG-002"
+    title: "Consolidate directory READMEs to one contextual navigation model"
+    status: "done"
+    priority: "p1"
+    owner_role: "doc-author"
+    acceptance:
+      - "plans/audits/reports READMEs point to the same canonical operating surfaces."
+      - "Each README separates active streams from historical materials."
+    evidence_targets:
+      - "docs/plans/README.md"
+      - "docs/audits/README.md"
+      - "docs/audits/reports/README.md"
+
+  - id: "TASK-CONTEXT-ORG-003"
+    title: "Mark dated/dispersed plan content as historical with canonical pointers"
+    status: "done"
+    priority: "p1"
+    owner_role: "doc-curator"
+    acceptance:
+      - "Superseded audit plans are explicitly labeled historical-superseded."
+      - "Dated plan index artifacts carry archival posture and canonical pointer."
+    evidence_targets:
+      - "docs/audits/cts_gis_source_hops_audit_plan_2026-04-20.md"
+      - "docs/audits/cts_gis_samras_rule_alignment_audit_plan_2026-04-20.md"
+      - "docs/audits/cts_gis_datum_handling_alignment_audit_plan_2026-04-20.md"
+      - "docs/plans/master_plan_mos.index.yaml"
+
+  - id: "TASK-CONTEXT-ORG-004"
+    title: "Align test-analysis access with planning closure rules"
+    status: "done"
+    priority: "p1"
+    owner_role: "qa-doc-owner"
+    acceptance:
+      - "Manifest records required unit/integration/contract/architecture regression suites."
+      - "Organization report records executed validations and results."
+    evidence_targets:
+      - "docs/plans/contextual_system_manifest.yaml"
+      - "docs/audits/reports/contextual_planning_system_alignment_report_2026-04-23.md"
+
+  - id: "TASK-CONTEXT-ORG-005"
+    title: "Publish contextual organization report and close organization initiative"
+    status: "done"
+    priority: "p1"
+    owner_role: "program-owner"
+    acceptance:
+      - "Report describes consolidated model, archival decisions, and access workflow."
+      - "Compatibility surfaces and migration posture are explicit."
+    evidence_targets:
+      - "docs/audits/reports/contextual_planning_system_alignment_report_2026-04-23.md"
+      - "docs/plans/planning_audit_manifest.yaml"
+      - "docs/plans/planning_task_board.yaml"

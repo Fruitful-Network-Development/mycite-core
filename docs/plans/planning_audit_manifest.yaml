@@ -1,0 +1,198 @@
+schema_version: "1.0"
+kind: "planning_audit_manifest"
+manifest:
+  id: "PLANNING-AUDIT-MANIFEST-2026-04-23"
+  title: "Unified plans/audits/reports control manifest"
+  lifecycle: "active"
+  last_reviewed: "2026-04-23"
+  canonical_operating_doc: "docs/plans/planning_audit_operating_system.md"
+  canonical_context_manifest: "docs/plans/contextual_system_manifest.yaml"
+  canonical_context_task_board: "docs/plans/contextual_system_task_board.yaml"
+  compatibility_role: "secondary"
+  directories:
+    plans: "docs/plans"
+    audits: "docs/audits"
+    reports: "docs/audits/reports"
+
+initiatives:
+  - id: "INIT-DOC-IA"
+    title: "Documentation IA + YAML governance"
+    status: "completed"
+    priority: "p1"
+    lifecycle: "active"
+    canonical_plan: "docs/plans/documentation_ia_remediation_backlog.md"
+    canonical_audit_plan: "docs/audits/archive/documentation_agent_yaml_optimization_plan_2026-04-16.md"
+    active_report: "docs/audits/reports/documentation_ia_audit_report_2026-04-20.md"
+    closure_reports:
+      - "docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md"
+    open_issue_summary: "Contract-link coverage and YAML-governance baseline closure completed in compatibility surfaces; remaining cleanup is routine maintenance."
+    task_ids:
+      - "TASK-DOC-IA-001"
+      - "TASK-DOC-IA-002"
+
+  - id: "INIT-DESKTOP-DM02-DM04"
+    title: "Desktop deep-link + scoped persistence reconciliation"
+    status: "blocked"
+    priority: "p1"
+    lifecycle: "active"
+    canonical_plan: "docs/plans/desktop_dm02_dm04_reconciliation_plan_2026-04-20.md"
+    canonical_audit_plan: "docs/audits/reports/desktop_access_historical_drift_report_2026-04-16.md"
+    active_report: "docs/audits/reports/desktop_access_historical_drift_report_2026-04-16.md"
+    closure_reports: []
+    open_issue_summary: "Blocked pending desktop host bootstrap/session identity integration contracts required for DM-02 startup translation and DM-04 scoped persistence policy implementation."
+    task_ids:
+      - "TASK-DESKTOP-DM02-001"
+      - "TASK-DESKTOP-DM04-001"
+
+  - id: "INIT-CTS-GIS-OPEN-ALIGNMENT"
+    title: "CTS-GIS remaining alignment and blocker retirement"
+    status: "blocked"
+    priority: "p0"
+    lifecycle: "active"
+    canonical_plan: "docs/audits/cts_gis_open_alignment_audit_plan_2026-04-23.md"
+    canonical_audit_plan: "docs/audits/cts_gis_open_alignment_audit_plan_2026-04-23.md"
+    active_report: "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md"
+    closure_reports: []
+    open_issue_summary: "Source-hops node 3-2-3-17-77-1-14 blocker remains open; SAMRAS and datum alignment closures are blocked by readiness-gate dependency until resolved or waived."
+    task_ids:
+      - "TASK-CTSGIS-BLOCKER-001"
+      - "TASK-CTSGIS-SAMRAS-001"
+      - "TASK-CTSGIS-DATUM-001"
+
+  - id: "INIT-PERF-WEIGHT-SPEED"
+    title: "Performance weight/speed measurement and optimization backlog"
+    status: "in_progress"
+    priority: "p2"
+    lifecycle: "active"
+    canonical_plan: "docs/audits/performance_weight_speed_audit_plan_2026-04-16.md"
+    canonical_audit_plan: "docs/audits/performance_weight_speed_audit_plan_2026-04-16.md"
+    active_report: "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
+    closure_reports: []
+    open_issue_summary: "Measurement + execution phases still open."
+    task_ids:
+      - "TASK-PERF-001"
+
+  - id: "INIT-MOS-POST-CLOSURE"
+    title: "MOS post-closure bounded follow-on"
+    status: "in_progress"
+    priority: "p2"
+    lifecycle: "active"
+    canonical_plan: "docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md"
+    canonical_audit_plan: "docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md"
+    active_report: "docs/audits/reports/mos_documentation_supersession_audit_2026-04-21.md"
+    closure_reports:
+      - "docs/audits/reports/mos_program_closure_report_2026-04-21.md"
+      - "docs/audits/reports/mos_runtime_authority_and_access_reality_report_2026-04-21.md"
+    open_issue_summary: "Remain bounded to doc canonicalization, retained exception scope, and optional simple workbench_ui follow-on."
+    task_ids:
+      - "TASK-MOS-DOCS-001"
+      - "TASK-MOS-WORKBENCH-001"
+
+  - id: "INIT-REFINEMENT-PHASE1"
+    title: "Refinement phase 1 audit and documentation closure"
+    status: "completed"
+    priority: "p1"
+    lifecycle: "active"
+    canonical_plan: "docs/plans/refinement.md"
+    canonical_audit_plan: "docs/plans/refinement.md"
+    active_report: "docs/audits/reports/refinement_phase1_audit_report_2026-04-23.md"
+    closure_reports:
+      - "docs/audits/reports/refinement_phase1_audit_report_2026-04-23.md"
+    open_issue_summary: "Phase 1 complete; follow-on work moves to foundation refactor tasks (phase 2+)."
+    task_ids:
+      - "TASK-REFINE-P1-001"
+      - "TASK-REFINE-P1-002"
+      - "TASK-REFINE-P1-003"
+      - "TASK-REFINE-P1-004"
+
+  - id: "INIT-REFINEMENT-PHASE2"
+    title: "Refinement phase 2 foundations closure"
+    status: "completed"
+    priority: "p1"
+    lifecycle: "active"
+    canonical_plan: "docs/plans/refinement.md"
+    canonical_audit_plan: "docs/plans/refinement.md"
+    active_report: "docs/audits/reports/refinement_phase2_foundation_report_2026-04-23.md"
+    closure_reports:
+      - "docs/audits/reports/refinement_phase2_foundation_report_2026-04-23.md"
+    open_issue_summary: "Phase 2 complete; follow-on work moves to runtime and UI refactor integration in phase 3+."
+    task_ids:
+      - "TASK-REFINE-P2-001"
+      - "TASK-REFINE-P2-002"
+      - "TASK-REFINE-P2-003"
+      - "TASK-REFINE-P2-004"
+      - "TASK-REFINE-P2-005"
+
+  - id: "INIT-REFINEMENT-PHASE3"
+    title: "Refinement phase 3 implementation refactor closure"
+    status: "completed"
+    priority: "p1"
+    lifecycle: "active"
+    canonical_plan: "docs/plans/refinement.md"
+    canonical_audit_plan: "docs/plans/refinement.md"
+    active_report: "docs/audits/reports/refinement_phase3_implementation_report_2026-04-23.md"
+    closure_reports:
+      - "docs/audits/reports/refinement_phase3_implementation_report_2026-04-23.md"
+    open_issue_summary: "Phase 3 complete; phase 4 focuses on broad regression and documentation hardening."
+    task_ids:
+      - "TASK-REFINE-P3-001"
+      - "TASK-REFINE-P3-002"
+      - "TASK-REFINE-P3-003"
+      - "TASK-REFINE-P3-004"
+      - "TASK-REFINE-P3-005"
+      - "TASK-REFINE-P3-006"
+
+  - id: "INIT-REFINEMENT-PHASE4"
+    title: "Refinement phase 4 testing and validation closure"
+    status: "completed"
+    priority: "p1"
+    lifecycle: "active"
+    canonical_plan: "docs/plans/refinement.md"
+    canonical_audit_plan: "docs/plans/refinement.md"
+    active_report: "docs/audits/reports/refinement_phase4_validation_report_2026-04-23.md"
+    closure_reports:
+      - "docs/audits/reports/refinement_phase4_validation_report_2026-04-23.md"
+    open_issue_summary: "Phase 4 complete; follow-on work is optional enhancement and long-run hardening."
+    task_ids:
+      - "TASK-REFINE-P4-001"
+      - "TASK-REFINE-P4-002"
+      - "TASK-REFINE-P4-003"
+      - "TASK-REFINE-P4-004"
+      - "TASK-REFINE-P4-005"
+
+  - id: "INIT-CONTEXTUAL-SYSTEM-ORG"
+    title: "Contextual planning/audit/report system organization"
+    status: "completed"
+    priority: "p1"
+    lifecycle: "active"
+    canonical_plan: "docs/plans/planning_audit_operating_system.md"
+    canonical_audit_plan: "docs/plans/contextual_system_manifest.yaml"
+    active_report: "docs/audits/reports/contextual_planning_system_alignment_report_2026-04-23.md"
+    closure_reports:
+      - "docs/audits/reports/contextual_planning_system_alignment_report_2026-04-23.md"
+    open_issue_summary: "Contextual access and test-analysis alignment completed; compatibility surfaces retained."
+    task_ids:
+      - "TASK-CONTEXT-ORG-001"
+      - "TASK-CONTEXT-ORG-002"
+      - "TASK-CONTEXT-ORG-003"
+      - "TASK-CONTEXT-ORG-004"
+      - "TASK-CONTEXT-ORG-005"
+
+consolidation_map:
+  - canonical: "docs/audits/cts_gis_open_alignment_audit_plan_2026-04-23.md"
+    supersedes:
+      - "docs/audits/cts_gis_source_hops_audit_plan_2026-04-20.md"
+      - "docs/audits/cts_gis_samras_rule_alignment_audit_plan_2026-04-20.md"
+      - "docs/audits/cts_gis_datum_handling_alignment_audit_plan_2026-04-20.md"
+    reason: "Single remaining CTS-GIS alignment program with shared closure gates and one blocker queue."
+
+  - canonical: "docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md"
+    supersedes:
+      - "docs/plans/workbench_ui_hardening_follow_on_2026-04-21.md"
+    reason: "Workbench follow-on is now a sub-track of post-closure MOS consolidation."
+
+closure_policy:
+  done_definition:
+    - "all linked task_ids are status done"
+    - "closure evidence exists in docs/audits/reports or explicit waiver is recorded"
+    - "lifecycle reflects final state and legacy docs are marked historical-superseded"
