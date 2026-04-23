@@ -4,6 +4,10 @@
 (function () {
   var api = window.PortalShellRegionRenderers || (window.PortalShellRegionRenderers = {});
 
+  function toolSurfaceAdapter() {
+    return window.PortalToolSurfaceAdapter || {};
+  }
+
   function activityIconMarkup(iconId) {
     var id = String(iconId || "generic");
     var svg = "";
@@ -378,11 +382,7 @@
     updateValueMode();
   }
 
-  function renderFocusSelectionPanel(ctx, root, region) {
-    if (region.surface_label === "CTS-GIS" && region.state_directive_compact) {
-      renderCtsGisDirectivePanel(ctx, root, region);
-      return;
-    }
+  function renderGenericFocusSelectionPanel(ctx, root, region) {
     var contextItems = region.context_items || [];
     var verbTabs = region.verb_tabs || [];
     var groups = region.groups || [];
@@ -487,14 +487,7 @@
     });
   }
 
-  api.renderControlPanel = function (ctx) {
-    var region = ctx.region || {};
-    var root = ctx.target || document.getElementById("portalControlPanel");
-    if (!root) return;
-    if (region.kind === "focus_selection_panel") {
-      renderFocusSelectionPanel(ctx, root, region);
-      return;
-    }
+  function renderSectionModules(ctx, root, region) {
     var sections = region.sections || [];
     root.innerHTML =
       '<section class="ide-controlpanel__section">' +
@@ -531,6 +524,41 @@
       });
       bindSurfaceNavigation(link, flatEntries[index], ctx);
     });
+  }
+
+  function renderDirectivePanelHost(ctx, root, region) {
+    var adapter = toolSurfaceAdapter();
+    var mode =
+      (adapter && typeof adapter.resolveDirectivePanelMode === "function" && adapter.resolveDirectivePanelMode(region)) ||
+      "sections_panel";
+
+    if (mode === "state_directive_compact") {
+      renderCtsGisDirectivePanel(ctx, root, region);
+      return;
+    }
+    if (mode === "focus_selection_panel") {
+      renderGenericFocusSelectionPanel(ctx, root, region);
+      return;
+    }
+    renderSectionModules(ctx, root, region);
+  }
+
+  api.renderControlPanel = function (ctx) {
+    var adapter = toolSurfaceAdapter();
+    var region = ctx.region || {};
+    var root = ctx.target || document.getElementById("portalControlPanel");
+    var family =
+      (adapter && typeof adapter.resolveRegionFamily === "function" && adapter.resolveRegionFamily(region)) ||
+      "";
+    var directiveMode =
+      (adapter && typeof adapter.resolveDirectivePanelMode === "function" && adapter.resolveDirectivePanelMode(region)) ||
+      "sections_panel";
+    if (!root) return;
+    if (family === "directive_panel" || directiveMode !== "sections_panel") {
+      renderDirectivePanelHost(ctx, root, region);
+      return;
+    }
+    renderSectionModules(ctx, root, region);
   };
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
     window.__MYCITE_V2_REGISTER_SHELL_MODULE("region_renderers");

@@ -38,6 +38,11 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 
 PORTAL_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.portal.runtime.envelope.v1"
 PORTAL_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA = "mycite.v2.portal.runtime_entrypoint_descriptor.v1"
+PORTAL_REGION_FAMILY_CONTRACT_SCHEMA = "mycite.v2.portal.region_family_contract.v1"
+
+PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE = "reflective_workspace"
+PORTAL_REGION_FAMILY_DIRECTIVE_PANEL = "directive_panel"
+PORTAL_REGION_FAMILY_PRESENTATION_SURFACE = "presentation_surface"
 
 SYSTEM_ROOT_SURFACE_SCHEMA = "mycite.v2.portal.system.workspace.surface.v1"
 NETWORK_ROOT_SURFACE_SCHEMA = "mycite.v2.portal.network.surface.v1"
@@ -388,6 +393,50 @@ def build_portal_runtime_error(*, code: str, message: str) -> dict[str, str]:
     }
 
 
+def build_portal_region_family_contract(
+    *,
+    family: str,
+    surface_id: str = "",
+    compatibility_kind: str = "",
+    surface_payload_kind: str = "",
+    interface_body_kind: str = "",
+) -> dict[str, Any]:
+    family_token = _as_text(family)
+    if family_token not in {
+        PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+        PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+        PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+    }:
+        raise ValueError("family must be reflective_workspace, directive_panel, or presentation_surface")
+    return {
+        "schema": PORTAL_REGION_FAMILY_CONTRACT_SCHEMA,
+        "family": family_token,
+        "surface_id": _as_text(surface_id),
+        "compatibility_kind": _as_text(compatibility_kind),
+        "surface_payload_kind": _as_text(surface_payload_kind),
+        "interface_body_kind": _as_text(interface_body_kind),
+    }
+
+
+def attach_region_family_contract(
+    region: dict[str, Any] | None,
+    *,
+    family: str,
+    surface_id: str = "",
+) -> dict[str, Any]:
+    normalized = dict(region or {})
+    surface_payload = normalized.get("surface_payload") if isinstance(normalized.get("surface_payload"), dict) else {}
+    interface_body = normalized.get("interface_body") if isinstance(normalized.get("interface_body"), dict) else {}
+    normalized["family_contract"] = build_portal_region_family_contract(
+        family=family,
+        surface_id=_as_text(surface_id) or _as_text(surface_payload.get("surface_id")),
+        compatibility_kind=_as_text(normalized.get("kind")),
+        surface_payload_kind=_as_text(surface_payload.get("kind")),
+        interface_body_kind=_as_text(interface_body.get("kind")),
+    )
+    return normalized
+
+
 def build_portal_runtime_envelope(
     *,
     portal_scope: dict[str, Any] | None,
@@ -444,9 +493,11 @@ __all__ = [
     "FND_DCM_TOOL_SURFACE_SCHEMA",
     "FND_EBI_TOOL_REQUEST_SCHEMA",
     "FND_EBI_TOOL_SURFACE_SCHEMA",
-    "WORKBENCH_UI_TOOL_REQUEST_SCHEMA",
-    "WORKBENCH_UI_TOOL_SURFACE_SCHEMA",
     "NETWORK_ROOT_SURFACE_SCHEMA",
+    "PORTAL_REGION_FAMILY_CONTRACT_SCHEMA",
+    "PORTAL_REGION_FAMILY_DIRECTIVE_PANEL",
+    "PORTAL_REGION_FAMILY_PRESENTATION_SURFACE",
+    "PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE",
     "PORTAL_RUNTIME_ENVELOPE_SCHEMA",
     "PORTAL_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA",
     "PORTAL_RUNTIME_REQUIRED_ENVELOPE_KEYS",
@@ -456,7 +507,11 @@ __all__ = [
     "UTILITIES_ROOT_SURFACE_SCHEMA",
     "UTILITIES_TOOL_EXPOSURE_SURFACE_SCHEMA",
     "PortalRuntimeEntrypointDescriptor",
+    "WORKBENCH_UI_TOOL_REQUEST_SCHEMA",
+    "WORKBENCH_UI_TOOL_SURFACE_SCHEMA",
+    "attach_region_family_contract",
     "build_allow_all_tool_exposure_policy",
+    "build_portal_region_family_contract",
     "build_portal_runtime_envelope",
     "build_portal_runtime_entrypoint_catalog",
     "build_portal_runtime_error",

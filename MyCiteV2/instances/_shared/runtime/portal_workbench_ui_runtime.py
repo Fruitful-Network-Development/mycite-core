@@ -4,46 +4,28 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+    PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+    PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
     WORKBENCH_UI_TOOL_REQUEST_SCHEMA,
     WORKBENCH_UI_TOOL_SURFACE_SCHEMA,
-    build_portal_runtime_envelope,
+    attach_region_family_contract,
 )
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_TOOL_SURFACE_ID,
-    CTS_GIS_TOOL_SURFACE_ID,
-    FND_DCM_TOOL_SURFACE_ID,
-    FND_EBI_TOOL_SURFACE_ID,
-    NETWORK_ROOT_SURFACE_ID,
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PortalScope,
-    UTILITIES_ROOT_SURFACE_ID,
     WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
     WORKBENCH_UI_TOOL_ROUTE,
     WORKBENCH_UI_TOOL_SURFACE_ID,
-    activity_icon_id_for_surface,
     build_canonical_url,
-    build_portal_activity_dispatch_bodies,
-    build_portal_surface_catalog,
-    build_shell_composition_payload,
     build_portal_shell_request_payload,
     canonical_query_for_runtime_request_payload,
     canonical_query_for_surface_query,
 )
 from MyCiteV2.packages.tools.workbench_ui import WorkbenchUiReadService
-
-_VISIBLE_ACTIVITY_SURFACE_IDS = (
-    AWS_CSM_TOOL_SURFACE_ID,
-    CTS_GIS_TOOL_SURFACE_ID,
-    FND_DCM_TOOL_SURFACE_ID,
-    FND_EBI_TOOL_SURFACE_ID,
-    WORKBENCH_UI_TOOL_SURFACE_ID,
-    NETWORK_ROOT_SURFACE_ID,
-    UTILITIES_ROOT_SURFACE_ID,
-)
-
 
 def _as_text(value: object) -> str:
     if value is None:
@@ -139,30 +121,6 @@ def _control_entry(
         "meta": _as_text(meta),
         "shell_request": request["shell_request"],
     }
-
-
-def _activity_items(*, portal_scope: PortalScope, active_surface_id: str) -> list[dict[str, Any]]:
-    dispatch_bodies = build_portal_activity_dispatch_bodies(
-        portal_scope=portal_scope,
-        shell_state=None,
-    )
-    items: list[dict[str, Any]] = []
-    for entry in build_portal_surface_catalog():
-        if entry.surface_id not in _VISIBLE_ACTIVITY_SURFACE_IDS:
-            continue
-        items.append(
-            {
-                "item_id": entry.surface_id,
-                "label": entry.label,
-                "icon_id": activity_icon_id_for_surface(entry.surface_id),
-                "href": entry.route,
-                "active": entry.surface_id == active_surface_id,
-                "nav_kind": "surface",
-                "nav_behavior": "dispatch" if entry.surface_id in dispatch_bodies else "direct",
-                "shell_request": dispatch_bodies.get(entry.surface_id),
-            }
-        )
-    return items
 
 
 def _decorate_workspace_navigation(
@@ -298,7 +256,8 @@ def build_portal_workbench_ui_surface_bundle(
             }
         )
 
-    control_panel = {
+    control_panel = attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
         "kind": "focus_selection_panel",
         "title": "Control Panel",
@@ -465,16 +424,24 @@ def build_portal_workbench_ui_surface_bundle(
             },
         ],
         "actions": [],
-    }
-    workbench = {
+        },
+        family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+        surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
+    )
+    workbench = attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "surface_payload",
         "title": "Workbench UI",
         "subtitle": "Read-only two-pane SQL-backed spreadsheet.",
         "visible": True,
         "surface_payload": model["surface_payload"],
-    }
-    inspector = {
+        },
+        family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+        surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
+    )
+    inspector = attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
         "kind": "summary_panel",
         "title": "Selection",
@@ -485,7 +452,10 @@ def build_portal_workbench_ui_surface_bundle(
             "id": _as_text((model.get("selected_row") or {}).get("datum_address")) or _as_text(model.get("document_id")),
         },
         "sections": list(model.get("inspector_sections") or []),
-    }
+        },
+        family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+        surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
+    )
     return {
         "entrypoint_id": WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
         "read_write_posture": "read-only",
@@ -510,50 +480,19 @@ def run_portal_workbench_ui(
     portal_scope, surface_query = _normalize_request(request_payload)
     if not portal_scope.scope_id:
         portal_scope = PortalScope(scope_id=portal_instance_id, capabilities=())
-    runtime_error = _workbench_sql_runtime_error(
-        portal_instance_id=portal_scope.scope_id,
-        authority_db_file=authority_db_file,
-    )
-    bundle = build_portal_workbench_ui_surface_bundle(
-        portal_scope=portal_scope,
+    shell_request = {
+        "schema": "mycite.v2.portal.shell.request.v1",
+        "requested_surface_id": WORKBENCH_UI_TOOL_SURFACE_ID,
+        "portal_scope": portal_scope.to_dict(),
+        "surface_query": surface_query,
+    }
+    from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
+
+    return run_portal_shell_entry(
+        shell_request,
+        portal_instance_id=portal_instance_id,
         portal_domain=portal_domain,
-        shell_state=None,
         authority_db_file=authority_db_file,
-        surface_query=surface_query,
-    )
-    composition = build_shell_composition_payload(
-        active_surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
-        portal_instance_id=portal_scope.scope_id,
-        page_title=_as_text(bundle.get("page_title")) or "Workbench UI",
-        page_subtitle=_as_text(bundle.get("page_subtitle")),
-        activity_items=_activity_items(
-            portal_scope=portal_scope,
-            active_surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
-        ),
-        control_panel=dict(bundle.get("control_panel") or {}),
-        workbench=dict(bundle.get("workbench") or {}),
-        inspector=dict(bundle.get("inspector") or {}),
-        shell_state=None,
-        control_panel_collapsed=False,
-    )
-    return build_portal_runtime_envelope(
-        portal_scope=portal_scope.to_dict(),
-        requested_surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
-        surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
-        entrypoint_id=bundle["entrypoint_id"],
-        read_write_posture=bundle["read_write_posture"],
-        reducer_owned=False,
-        canonical_route=bundle["route"],
-        canonical_query=bundle.get("canonical_query") or surface_query,
-        canonical_url=build_canonical_url(
-            surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
-            query=bundle.get("canonical_query") or surface_query,
-        ),
-        shell_state=None,
-        surface_payload=bundle["surface_payload"],
-        shell_composition=composition,
-        warnings=[],
-        error=runtime_error,
     )
 
 

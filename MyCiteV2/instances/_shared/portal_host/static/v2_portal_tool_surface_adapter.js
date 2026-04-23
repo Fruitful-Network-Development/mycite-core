@@ -66,6 +66,30 @@
     );
   }
 
+  function resolveRegionFamilyContract(region) {
+    return asObject(region && region.family_contract);
+  }
+
+  function resolveRegionFamily(region) {
+    return asText(resolveRegionFamilyContract(region).family);
+  }
+
+  function resolveDirectivePanelMode(region) {
+    var family = resolveRegionFamily(region);
+    var kind = asText(region && region.kind);
+    var compact = asObject(region && region.state_directive_compact);
+    var hasCompactStateDirective = Object.keys(compact).length > 0;
+
+    if (family === "directive_panel") {
+      if (hasCompactStateDirective) return "state_directive_compact";
+      if (kind === "focus_selection_panel") return "focus_selection_panel";
+      return "sections_panel";
+    }
+    if (hasCompactStateDirective) return "state_directive_compact";
+    if (kind === "focus_selection_panel") return "focus_selection_panel";
+    return "sections_panel";
+  }
+
   function hasGenericContent(surfacePayload) {
     return (
       asList(surfacePayload && surfacePayload.cards).length > 0 ||
@@ -245,6 +269,9 @@
     buildDirectSurfaceRequest: buildDirectSurfaceRequest,
     collectWarnings: collectWarnings,
     hasGenericContent: hasGenericContent,
+    resolveDirectivePanelMode: resolveDirectivePanelMode,
+    resolveRegionFamily: resolveRegionFamily,
+    resolveRegionFamilyContract: resolveRegionFamilyContract,
     renderStateHtml: renderStateHtml,
     renderWrappedSurface: renderWrappedSurface,
     resolveReadiness: resolveReadiness,

@@ -5,8 +5,12 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+    PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+    PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
     SYSTEM_ROOT_SURFACE_SCHEMA,
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
+    attach_region_family_contract,
 )
 from MyCiteV2.packages.adapters.sql import (
     SqliteAuditLogAdapter,
@@ -1032,7 +1036,8 @@ def build_system_control_panel(
                 value=selected_datum_payload.get("primary_value_token"),
             )
         )
-    return {
+    return attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
         "kind": "focus_selection_panel",
         "title": "Control Panel",
@@ -1060,7 +1065,10 @@ def build_system_control_panel(
             profile_summary=profile_summary,
         ),
         "actions": actions,
-    }
+        },
+        family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+        surface_id=SYSTEM_ROOT_SURFACE_ID,
+    )
 
 
 def build_tool_control_panel(
@@ -1099,7 +1107,8 @@ def build_tool_control_panel(
         context_items.append({"label": "File", "value": collection_file})
     if active_member:
         context_items.append({"label": "Mediation", "value": active_member})
-    return {
+    return attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
         "kind": "focus_selection_panel",
         "title": "Control Panel",
@@ -1118,7 +1127,10 @@ def build_tool_control_panel(
             active_member=active_member,
         ) if tool_slug else [],
         "actions": [],
-    }
+        },
+        family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+        surface_id=surface_id,
+    )
 def build_system_workspace_bundle(
     *,
     portal_scope: PortalScope,
@@ -1279,7 +1291,8 @@ def build_system_workspace_bundle(
         activity_projection=activity_projection,
         profile_summary=profile_summary,
     )
-    inspector = {
+    inspector = attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
         "kind": "mediation_panel" if shell_state.verb == VERB_MEDIATE else "summary_panel",
         "title": "Mediation" if shell_state.verb == VERB_MEDIATE else "Interface Panel",
@@ -1307,17 +1320,24 @@ def build_system_workspace_bundle(
                 ],
             },
         ],
-    }
+        },
+        family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+        surface_id=SYSTEM_ROOT_SURFACE_ID,
+    )
     if directive_context is not None:
         inspector["sections"].append(_directive_context_section(directive_context))
-    workbench = {
+    workbench = attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "system_workspace",
         "title": "System",
         "subtitle": "Datum-file workbench for the system sandbox.",
         "visible": True,
         "surface_payload": surface_payload,
-    }
+        },
+        family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+        surface_id=SYSTEM_ROOT_SURFACE_ID,
+    )
     return {
         "page_title": "System",
         "page_subtitle": "Datum-file workbench for the system sandbox.",

@@ -18,6 +18,7 @@ from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
 from MyCiteV2.instances._shared.runtime.portal_aws_runtime import (
     _project_domain_readiness,
     build_portal_aws_surface_bundle,
+    run_portal_aws_csm,
 )
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
@@ -536,6 +537,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             private_dir=None,
         )
         self.assertFalse(bundle["workbench"]["visible"])
+        self.assertEqual(bundle["control_panel"]["family_contract"]["family"], "directive_panel")
+        self.assertEqual(bundle["workbench"]["family_contract"]["family"], "reflective_workspace")
+        self.assertEqual(bundle["inspector"]["family_contract"]["family"], "presentation_surface")
 
         envelope = run_portal_shell_entry(
             {
@@ -558,6 +562,45 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertEqual(composition["foreground_shell_region"], "interface-panel")
         self.assertFalse(composition["regions"]["workbench"]["visible"])
         self.assertEqual(composition["regions"]["interface_panel"], composition["regions"]["inspector"])
+        self.assertEqual(composition["regions"]["control_panel"]["family_contract"]["family"], "directive_panel")
+        self.assertEqual(composition["regions"]["workbench"]["family_contract"]["family"], "reflective_workspace")
+        self.assertEqual(composition["regions"]["interface_panel"]["family_contract"]["family"], "presentation_surface")
+
+    def test_direct_aws_csm_endpoint_matches_shell_runtime_envelope(self) -> None:
+        request_payload = {
+            "schema": "mycite.v2.portal.system.tools.aws_csm.request.v1",
+            "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+            "surface_query": {
+                "domain": "FruitfulNetworkDevelopment.com",
+                "section": "newsletter",
+            },
+        }
+
+        direct_envelope = run_portal_aws_csm(
+            request_payload,
+            private_dir=None,
+            tool_exposure_policy=None,
+            portal_instance_id="fnd",
+            portal_domain="fruitfulnetworkdevelopment.com",
+        )
+        shell_envelope = run_portal_shell_entry(
+            {
+                "schema": "mycite.v2.portal.shell.request.v1",
+                "requested_surface_id": "system.tools.aws_csm",
+                "portal_scope": request_payload["portal_scope"],
+                "surface_query": request_payload["surface_query"],
+            },
+            portal_instance_id="fnd",
+            portal_domain="fruitfulnetworkdevelopment.com",
+            data_dir=None,
+            public_dir=None,
+            private_dir=None,
+            audit_storage_file=None,
+            webapps_root=None,
+            tool_exposure_policy=None,
+        )
+
+        self.assertEqual(direct_envelope, shell_envelope)
 
     def test_aws_csm_domain_readiness_projects_identity_missing(self) -> None:
         payload = _domain_readiness_payload()
