@@ -10,6 +10,14 @@
       .replace(/"/g, "&quot;");
   }
 
+  function asObject(value) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  }
+
+  function asText(value) {
+    return String(value == null ? "" : value).trim();
+  }
+
   function renderRows(rows) {
     if (!rows || !rows.length) {
       return '<p class="ide-controlpanel__empty">No interface panel details.</p>';
@@ -1423,89 +1431,19 @@
     bindDirectoryDropdowns(target, ctx, navigationCanvas.dropdowns || []);
   }
 
-  window.PortalShellInspectorRenderer = {
-    render: function (ctx) {
-      var target = ctx.target;
-      var region = ctx.region || {};
-      var sections = region.sections || [];
-      var surfacePayload = region.surface_payload || {};
-      var adapter = toolSurfaceAdapter();
-      var awsInspectorRenderer = resolveRegisteredModuleExport("aws_workspace", "PortalAwsCsmInspectorRenderer");
-      var networkInspectorRenderer = resolveRegisteredModuleExport("network_workspace", "PortalNetworkInspectorRenderer");
-      if (!target) return;
-      if (region.visible === false) {
-        target.innerHTML = "";
-        return;
-      }
-      if (
-        awsInspectorRenderer &&
-        typeof awsInspectorRenderer.render === "function" &&
-        region.kind === "aws_csm_inspector"
-      ) {
-        awsInspectorRenderer.render(ctx, target, surfacePayload);
-        return;
-      } else if (region.kind === "aws_csm_inspector") {
-        adapter.renderWrappedSurface(
-          target,
-          adapter.resolveSurfaceState({
-            region: region,
-            surfacePayload: surfacePayload,
-            title: "AWS-CSM Interface Panel",
-            unsupported: true,
-            message: "The AWS-CSM interface renderer is unavailable.",
-          }),
-          ""
-        );
-        return;
-      }
-      if (
-        networkInspectorRenderer &&
-        typeof networkInspectorRenderer.render === "function" &&
-        region.kind === "network_system_log_inspector"
-      ) {
-        networkInspectorRenderer.render(ctx, target, surfacePayload);
-        return;
-      } else if (region.kind === "network_system_log_inspector") {
-        adapter.renderWrappedSurface(
-          target,
-          adapter.resolveSurfaceState({
-            region: region,
-            surfacePayload: surfacePayload,
-            title: "NETWORK Detail",
-            unsupported: true,
-            message: "The NETWORK detail renderer is unavailable.",
-          }),
-          ""
-        );
-        return;
-      }
-      if (region.kind === "tool_mediation_panel" && region.interface_body && region.interface_body.kind === "cts_gis_interface_body") {
-        renderCtsGisInspector(ctx, target, region);
-        return;
-      } else if (region.kind === "tool_mediation_panel" && region.interface_body) {
-        adapter.renderWrappedSurface(
-          target,
-          adapter.resolveSurfaceState({
-            region: region,
-            surfacePayload: surfacePayload,
-            title: region.title || "Tool Interface Panel",
-            unsupported: true,
-            message: "This tool interface is not supported by the current renderer set.",
-          }),
-          ""
-        );
-        return;
-      }
-      adapter.renderWrappedSurface(
-        target,
-        adapter.resolveSurfaceState({
-          region: region,
-          surfacePayload: surfacePayload,
-          title: region.title || "Interface Panel",
-          hasContent: !!region.subject || !!sections.length,
-          message: region.summary || "Select an item to load interface panel content.",
-        }),
-        '<div class="v2-inspector-stack">' +
+  function renderGenericInspectorSurface(target, region, surfacePayload) {
+    var sections = region.sections || [];
+    var adapter = toolSurfaceAdapter();
+    adapter.renderWrappedSurface(
+      target,
+      adapter.resolveSurfaceState({
+        region: region,
+        surfacePayload: surfacePayload,
+        title: region.title || "Interface Panel",
+        hasContent: !!region.subject || !!sections.length,
+        message: region.summary || "Select an item to load interface panel content.",
+      }),
+      '<div class="v2-inspector-stack">' +
         (region.subject
           ? '<section class="v2-card"><h3>Subject</h3>' +
             renderRows([
@@ -1533,7 +1471,96 @@
           })
           .join("") +
         "</div>"
+    );
+  }
+
+  function renderRegisteredPresentationSurface(ctx, target, region, surfacePayload, spec) {
+    var moduleSpec = asObject(spec);
+    var adapter = toolSurfaceAdapter();
+    var renderer = resolveRegisteredModuleExport(moduleSpec.moduleId, moduleSpec.globalName);
+
+    if (renderer && typeof renderer.render === "function") {
+      renderer.render(ctx, target, surfacePayload);
+      return;
+    }
+    adapter.renderWrappedSurface(
+      target,
+      adapter.resolveSurfaceState({
+        region: region,
+        surfacePayload: surfacePayload,
+        title: asText(moduleSpec.label) || region.title || "Interface Panel",
+        unsupported: true,
+        message:
+          "The " +
+          (asText(moduleSpec.label) || "interface panel") +
+          " renderer is unavailable.",
+      }),
+      ""
+    );
+  }
+
+  function renderPresentationSurfaceHost(ctx, target, region, surfacePayload) {
+    var adapter = toolSurfaceAdapter();
+    var mode =
+      (adapter &&
+        typeof adapter.resolvePresentationSurfaceMode === "function" &&
+        adapter.resolvePresentationSurfaceMode(region, surfacePayload)) ||
+      "summary_surface";
+    var moduleSpec =
+      (adapter &&
+        typeof adapter.resolvePresentationSurfaceModuleSpec === "function" &&
+        adapter.resolvePresentationSurfaceModuleSpec(region, surfacePayload)) ||
+      {};
+
+    if (mode === "registered_surface" && asObject(moduleSpec).moduleId) {
+      renderRegisteredPresentationSurface(ctx, target, region, surfacePayload, moduleSpec);
+      return;
+    }
+    if (mode === "structured_interface_body") {
+      renderCtsGisInspector(ctx, target, region);
+      return;
+    }
+    if (mode === "unsupported_interface_body") {
+      adapter.renderWrappedSurface(
+        target,
+        adapter.resolveSurfaceState({
+          region: region,
+          surfacePayload: surfacePayload,
+          title: region.title || "Tool Interface Panel",
+          unsupported: true,
+          message: "This tool interface is not supported by the current renderer set.",
+        }),
+        ""
       );
+      return;
+    }
+    renderGenericInspectorSurface(target, region, surfacePayload);
+  }
+
+  window.PortalShellInspectorRenderer = {
+    render: function (ctx) {
+      var target = ctx.target;
+      var region = ctx.region || {};
+      var surfacePayload = region.surface_payload || {};
+      var adapter = toolSurfaceAdapter();
+      var family =
+        (adapter && typeof adapter.resolveRegionFamily === "function" && adapter.resolveRegionFamily(region)) ||
+        "";
+      var mode =
+        (adapter &&
+          typeof adapter.resolvePresentationSurfaceMode === "function" &&
+          adapter.resolvePresentationSurfaceMode(region, surfacePayload)) ||
+        "summary_surface";
+      if (!target) return;
+      if (region.visible === false) {
+        target.innerHTML = "";
+        return;
+      }
+      if (family === "presentation_surface" || mode !== "summary_surface") {
+        renderPresentationSurfaceHost(ctx, target, region, surfacePayload);
+        return;
+      }
+      renderGenericInspectorSurface(target, region, surfacePayload);
     },
   };
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {

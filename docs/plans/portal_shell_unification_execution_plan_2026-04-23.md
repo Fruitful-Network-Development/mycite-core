@@ -25,6 +25,14 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
 - public `inspector` alias retirement
 - unrelated CTS-GIS data-fixture hardening except where it blocks the unification stages directly
 
+### Current completion state
+
+- complete: shell authority, posture guardrails, and route/query normalization are already stabilized in contract and tests
+- complete: the boundary-freeze and `SYSTEM` versus `workbench_ui` split checks have already landed
+- complete enough for the current stage: runtime bundle dispatch is registry-backed, `workbench_ui` shell-route query forwarding is restored, and the directive-panel plus reflective-workspace hosts already dispatch by family before compatibility fallbacks
+- active stage: render/payload unification is now centered on the post-migration compatibility-key shrink path, with `presentation_surface` dispatch now family-first alongside the other canonical region families
+- trailing cleanup: root/helper extraction in `portal_shell_runtime.py` and the AWS action envelope helper can follow without reopening shell-contract questions
+
 ## 3. Exact Repo Evidence
 
 - the posture and route guardrails are already stabilized in contract and tests:
@@ -41,8 +49,9 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
   - `python3 -m unittest MyCiteV2.tests.architecture.test_portal_shell_stabilization_matrix`
   - `python3 -m unittest MyCiteV2.tests.unit.test_portal_shell_contract`
   - `python3 -m unittest MyCiteV2.tests.unit.test_workbench_ui_runtime`
-- verified current drift on 2026-04-23:
-  - `run_portal_shell_entry()` still drops `surface_query` for `system.tools.workbench_ui`
+- verified migrated presentation-surface host on 2026-04-23:
+  - `v2_portal_inspector_renderers.js` now dispatches through adapter-managed `presentation_surface` mode/spec resolution
+  - runtime emitters still produce compatibility kinds such as `tool_mediation_panel`, `aws_csm_inspector`, `network_system_log_inspector`, and `cts_gis_interface_body`, but they no longer own the primary inspector path
 
 ## 4. Target State
 
@@ -56,6 +65,10 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
 ## 5. Staged Execution Slices
 
 ### Stage 1: Boundary freeze and missing guard tests
+
+Status:
+
+- complete
 
 - Plans involved:
   - `portal_shell_boundary_map_and_system_workbench_split_2026-04-23.md`
@@ -74,9 +87,14 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
 - Repo should look like after the stage:
   - current behavior still ships, but the missing guard rails are explicit and green
 - Retirement gate:
-  - do not start runtime bundle unification until the boundary freeze tests are merged
+  - keep these tests green; do not weaken them to make later renderer work easier
 
 ### Stage 2: Runtime bundle contract unification
+
+Status:
+
+- mostly complete
+- residual cleanup is no longer the primary blocker for render/payload unification
 
 - Plans involved:
   - `portal_shell_runtime_bundle_unification_2026-04-23.md`
@@ -100,9 +118,13 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
 - Repo should look like after the stage:
   - server-side bundle assembly is unified, but legacy renderer kinds and compatibility fields are still present
 - Retirement gate:
-  - do not begin family-host retirement until direct and shell routes are on the same bundle/envelope path
+  - do not reopen bundle divergence while renderer work is in flight
 
 ### Stage 3: Family metadata and adapter foundation
+
+Status:
+
+- complete
 
 - Plans involved:
   - `portal_shell_region_family_renderer_migration_2026-04-23.md`
@@ -121,9 +143,14 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
 - Repo should look like after the stage:
   - runtime is unified and payloads carry both family metadata and temporary legacy fields
 - Retirement gate:
-  - do not delete legacy host branches until family metadata is asserted in tests
+  - keep family metadata asserted in tests; do not delete legacy host branches until the presentation host is family-first
 
 ### Stage 4: Host migration by family, not by tool
+
+Status:
+
+- active
+- next required slice is compatibility retirement behind the now-family-first `presentation_surface` host, not a new runtime-ownership pass
 
 - Plans involved:
   - `portal_shell_region_family_renderer_migration_2026-04-23.md`
@@ -140,17 +167,18 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
 - What must be done first:
   - migrate the directive-panel host before presentation-surface retirement because CTS-GIS currently spans both
 - What can run in parallel:
-  - after the shared adapter foundation lands, the directive-panel host and reflective-workspace host may run in parallel if:
-    - one slice owns `v2_portal_shell_region_renderers.js`
-    - one slice owns `v2_portal_workbench_renderers.js`
-    - neither slice edits `v2_portal_tool_surface_adapter.js` concurrently
-  - the presentation-surface host remains serial behind the CTS-GIS contract cleanup
+  - directive-panel and reflective-workspace follow-on retirement cleanup may run in parallel only if they do not edit `v2_portal_tool_surface_adapter.js` concurrently
+  - the presentation-surface host remains serial and owns the next architectural change
 - Repo should look like after the stage:
   - shell core is still unchanged, family hosts are primary, and legacy kind branches are fallback-only
 - Retirement gate:
   - do not remove the fallback branches until all three family hosts are green on the canonical route set
 
 ### Stage 5: Compatibility retirement and closeout
+
+Status:
+
+- pending behind Stage 4
 
 - Plans involved:
   - `portal_shell_runtime_bundle_unification_2026-04-23.md`

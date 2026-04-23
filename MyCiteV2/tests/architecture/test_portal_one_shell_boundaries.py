@@ -353,6 +353,29 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("resolveSurfacePayloadKind", tool_adapter)
         self.assertIn("resolveRegionSurfaceId", tool_adapter)
 
+    def test_presentation_surface_host_dispatches_by_family_contract_before_legacy_inspector_kinds(self) -> None:
+        static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
+        inspector_renderers = (static_root / "v2_portal_inspector_renderers.js").read_text(encoding="utf-8")
+        tool_adapter = (static_root / "v2_portal_tool_surface_adapter.js").read_text(encoding="utf-8")
+
+        self.assertIn("resolvePresentationSurfaceMode", inspector_renderers)
+        self.assertIn("resolvePresentationSurfaceModuleSpec", inspector_renderers)
+        self.assertIn('family === "presentation_surface"', inspector_renderers)
+        self.assertIn("renderPresentationSurfaceHost", inspector_renderers)
+        self.assertIn("renderRegisteredPresentationSurface", inspector_renderers)
+        self.assertNotIn('region.kind === "aws_csm_inspector"', inspector_renderers)
+        self.assertNotIn('region.kind === "network_system_log_inspector"', inspector_renderers)
+        self.assertNotIn('region.kind === "tool_mediation_panel"', inspector_renderers)
+        self.assertNotIn('region.interface_body.kind === "cts_gis_interface_body"', inspector_renderers)
+
+        self.assertIn("function resolvePresentationSurfaceMode(region, surfacePayload)", tool_adapter)
+        self.assertIn("function resolvePresentationSurfaceModuleSpec(region, surfacePayload)", tool_adapter)
+        self.assertIn("resolvePresentationSurfaceMode: resolvePresentationSurfaceMode", tool_adapter)
+        self.assertIn("resolvePresentationSurfaceModuleSpec: resolvePresentationSurfaceModuleSpec", tool_adapter)
+        self.assertIn("resolveRegionCompatibilityKind", tool_adapter)
+        self.assertIn("resolveRegionInterfaceBodyKind", tool_adapter)
+        self.assertIn("family_contract", tool_adapter)
+
     def test_shell_static_sources_expose_workbench_toggle_and_interface_panel_aliases(self) -> None:
         template_source = (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "templates" / "portal.html"

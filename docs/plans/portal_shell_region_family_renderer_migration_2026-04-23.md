@@ -33,21 +33,31 @@ This plan exists separately because the repo already has a shell-shaped host. Th
 - feature expansion inside the tools
 - removing the public `inspector` compatibility alias in this sequence
 
+### Current completion state
+
+- complete: runtime emitters now attach `family_contract` markers for the canonical region families
+- complete: the directive-panel host now dispatches by family-plus-mode, with CTS-GIS preserved through the shrinking `state_directive_compact` compatibility path
+- complete enough for the current stage: the reflective-workspace host now dispatches by family-plus-mode, with payload-kind and surface-id fallback tables concentrated in `v2_portal_tool_surface_adapter.js`
+- complete enough for the current stage: the presentation-surface host now dispatches by family-plus-mode, with registered inspector lookup and structured interface-body fallback concentrated in `v2_portal_tool_surface_adapter.js`
+- trailing cleanup: runtime emitters still produce legacy compatibility kinds and interface-body markers, but the inspector host consumes them only through adapter-managed fallback resolution during cutover
+
 ## 3. Exact Repo Evidence
 
 - `docs/contracts/tool_operating_contract.md`
   - already requires the three canonical region families and explicitly says tools should not add new shell-level renderer kinds
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js`
-  - top-level control-panel renderer still branches on CTS-GIS via `region.surface_label === "CTS-GIS"` and `region.state_directive_compact`
+  - top-level control-panel renderer now dispatches through `resolveDirectivePanelMode()`
+  - remaining CTS-GIS specialization is confined to the `state_directive_compact` compatibility path
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js`
-  - top-level workbench renderer still branches on `surfacePayload.kind === "aws_csm_workspace"`, `system_workspace`, `network_system_log_workspace`, `workbench_ui_surface`, and `tool_secondary_evidence`
-  - CTS-GIS workbench evidence still branches on `surfacePayload.tool_id === "cts_gis"`
+  - top-level workbench renderer now dispatches through `resolveReflectiveWorkspaceMode()` and `resolveReflectiveWorkspaceModuleSpec()`
+  - remaining compatibility is concentrated in adapter-managed `surface_payload_kind` and `surface_id` fallback tables, including `tool_secondary_evidence`
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js`
-  - top-level interface-panel renderer still branches on `region.kind === "aws_csm_inspector"`, `network_system_log_inspector`, and `tool_mediation_panel`
-  - CTS-GIS still enters through `region.interface_body.kind === "cts_gis_interface_body"`
-  - the file is currently 1542 lines, which is already a signal that the host still owns too much specialized content
+  - top-level interface-panel renderer now dispatches through `resolvePresentationSurfaceMode()` and `resolvePresentationSurfaceModuleSpec()`
+  - AWS and NETWORK registered inspector modules now resolve by canonical family/surface metadata first, with legacy inspector kinds accepted only as fallback inputs in the adapter
+  - CTS-GIS now enters through structured interface-body descriptors (`layout`, `navigation_canvas`, `garland_split_projection`) with `interface_body.kind` retained only as fallback
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_tool_surface_adapter.js`
-  - already centralizes readiness/warning resolution and wrapper states; this is the right compatibility seam for the migration
+  - already centralizes readiness/warning resolution and wrapper states
+  - now also centralizes family-first directive/workbench/presentation mode resolution plus shrinking compatibility fallback logic
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_core.js`
   - already behaves like a proper shell host: it routes each region to its family renderer without inspecting tool identity
 - runtime emitters still send legacy branch keys that drive the hosts:
@@ -57,7 +67,7 @@ This plan exists separately because the repo already has a shell-shaped host. Th
   - `portal_workbench_ui_runtime.py` emits `workbench_ui_surface`
   - `portal_cts_gis_runtime.py` emits `tool_mediation_panel`, `tool_secondary_evidence`, and `cts_gis_interface_body`
 - `MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py`
-  - currently proves the module registry and still asserts CTS-GIS-specific renderer tokens
+  - now proves the module registry plus family-first `presentation_surface` dispatch without top-level legacy inspector-kind branches
 - `MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py`
   - currently asserts `cts_gis_interface_body`, current inspector/workbench kinds, and posture behavior
 
@@ -80,6 +90,10 @@ This plan exists separately because the repo already has a shell-shaped host. Th
 
 ### Stage 1: Add family-normalized payload markers without retiring current branches
 
+Status:
+
+- complete
+
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/runtime/portal_system_workspace_runtime.py`
   - `MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py`
@@ -96,9 +110,14 @@ This plan exists separately because the repo already has a shell-shaped host. Th
 - Compatibility adapters or temporary aliases required:
   - all existing top-level host branches remain during this stage
 - Retirement gate:
-  - every canonical route emits enough family-scoped metadata that host migration can begin without discovering payload semantics later
+  - keep these route-level family markers green in tests; later host work should not rediscover payload semantics
 
 ### Stage 2: Migrate the directive-panel host first
+
+Status:
+
+- complete enough for the current stage
+- remaining work is compatibility retirement, not top-level host dispatch
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js`
@@ -112,9 +131,14 @@ This plan exists separately because the repo already has a shell-shaped host. Th
 - Compatibility adapters or temporary aliases required:
   - `state_directive_compact` may remain temporarily as the CTS-GIS compatibility input
 - Retirement gate:
-  - no primary-path branch in `v2_portal_shell_region_renderers.js` depends on tool label or tool identity
+  - no primary-path branch in `v2_portal_shell_region_renderers.js` may regress back to tool label or tool identity
 
 ### Stage 3: Migrate the reflective-workspace host
+
+Status:
+
+- complete enough for the current stage
+- remaining work is adapter fallback retirement after the inspector host is family-first
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js`
@@ -139,6 +163,11 @@ This plan exists separately because the repo already has a shell-shaped host. Th
 
 ### Stage 4: Migrate the presentation-surface host and shrink CTS-GIS specialization
 
+Status:
+
+- active
+- this is the next unfinished unification slice
+
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js`
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_tool_surface_adapter.js`
@@ -161,6 +190,10 @@ This plan exists separately because the repo already has a shell-shaped host. Th
   - the top-level interface-panel host no longer requires tool-identity or legacy body-kind branching in its primary path
 
 ### Stage 5: Retire compatibility branches without touching public alias retirement
+
+Status:
+
+- pending behind Stage 4
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js`
