@@ -74,6 +74,20 @@
     return asText(resolveRegionFamilyContract(region).family);
   }
 
+  function resolveSurfacePayloadKind(region, surfacePayload) {
+    var familyContract = resolveRegionFamilyContract(region);
+    return asText(familyContract.surface_payload_kind) || asText(surfacePayload && surfacePayload.kind);
+  }
+
+  function resolveRegionSurfaceId(region, surfacePayload) {
+    var familyContract = resolveRegionFamilyContract(region);
+    return (
+      asText(familyContract.surface_id) ||
+      asText(surfacePayload && surfacePayload.surface_id) ||
+      asText(region && region.surface_id)
+    );
+  }
+
   function resolveDirectivePanelMode(region) {
     var family = resolveRegionFamily(region);
     var kind = asText(region && region.kind);
@@ -88,6 +102,54 @@
     if (hasCompactStateDirective) return "state_directive_compact";
     if (kind === "focus_selection_panel") return "focus_selection_panel";
     return "sections_panel";
+  }
+
+  function resolveReflectiveWorkspaceModuleSpec(region, surfacePayload) {
+    var family = resolveRegionFamily(region);
+    var surfaceId = resolveRegionSurfaceId(region, surfacePayload);
+    var payloadKind = resolveSurfacePayloadKind(region, surfacePayload);
+    var moduleSpecs = {
+      "system.root": {
+        moduleId: "system_workspace",
+        globalName: "PortalSystemWorkspaceRenderer",
+        label: "system workspace",
+      },
+      "network.root": {
+        moduleId: "network_workspace",
+        globalName: "PortalNetworkWorkspaceRenderer",
+        label: "NETWORK workspace",
+      },
+      "system.tools.aws_csm": {
+        moduleId: "aws_workspace",
+        globalName: "PortalAwsCsmWorkspaceRenderer",
+        label: "AWS-CSM workspace",
+      },
+    };
+
+    if (family === "reflective_workspace" && moduleSpecs[surfaceId]) {
+      return moduleSpecs[surfaceId];
+    }
+    if (payloadKind === "system_workspace") return moduleSpecs["system.root"];
+    if (payloadKind === "network_system_log_workspace") return moduleSpecs["network.root"];
+    if (payloadKind === "aws_csm_workspace") return moduleSpecs["system.tools.aws_csm"];
+    return {};
+  }
+
+  function resolveReflectiveWorkspaceMode(region, surfacePayload) {
+    var family = resolveRegionFamily(region);
+    var payloadKind = resolveSurfacePayloadKind(region, surfacePayload);
+    var moduleSpec = resolveReflectiveWorkspaceModuleSpec(region, surfacePayload);
+
+    if (family === "reflective_workspace") {
+      if (moduleSpec.moduleId) return "registered_workspace";
+      if (payloadKind === "workbench_ui_surface") return "workbench_ui_surface";
+      if (payloadKind === "tool_secondary_evidence") return "secondary_evidence";
+      return "generic_surface";
+    }
+    if (moduleSpec.moduleId) return "registered_workspace";
+    if (payloadKind === "workbench_ui_surface") return "workbench_ui_surface";
+    if (payloadKind === "tool_secondary_evidence") return "secondary_evidence";
+    return "generic_surface";
   }
 
   function hasGenericContent(surfacePayload) {
@@ -270,8 +332,12 @@
     collectWarnings: collectWarnings,
     hasGenericContent: hasGenericContent,
     resolveDirectivePanelMode: resolveDirectivePanelMode,
+    resolveReflectiveWorkspaceMode: resolveReflectiveWorkspaceMode,
+    resolveReflectiveWorkspaceModuleSpec: resolveReflectiveWorkspaceModuleSpec,
     resolveRegionFamily: resolveRegionFamily,
     resolveRegionFamilyContract: resolveRegionFamilyContract,
+    resolveRegionSurfaceId: resolveRegionSurfaceId,
+    resolveSurfacePayloadKind: resolveSurfacePayloadKind,
     renderStateHtml: renderStateHtml,
     renderWrappedSurface: renderWrappedSurface,
     resolveReadiness: resolveReadiness,
