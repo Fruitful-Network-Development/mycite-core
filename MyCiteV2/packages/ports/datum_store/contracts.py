@@ -721,6 +721,26 @@ class AuthoritativeDatumDocumentPort(Protocol):
 
 
 @runtime_checkable
+class AuthoritativeDatumDocumentMutationPort(AuthoritativeDatumDocumentPort, Protocol):
+    def read_document_version_identity(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+    ) -> dict[str, JsonValue] | None:
+        """Read one authoritative document version identity without mutating the catalog."""
+
+    def replace_authoritative_document(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+        updated_document: AuthoritativeDatumDocument,
+    ) -> AuthoritativeDatumDocumentCatalogResult:
+        """Persist one fully materialized authoritative document replacement transactionally."""
+
+
+@runtime_checkable
 class PublicationTenantSummaryPort(Protocol):
     def read_publication_tenant_summary(
         self,

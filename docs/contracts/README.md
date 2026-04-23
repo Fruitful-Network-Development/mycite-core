@@ -30,3 +30,10 @@ CTS-GIS canonical storage contract in v2.5.3.x is:
 - `data/sandbox/cts-gis/sources/<corpus>.msn-administrative.json` for node-title overlays
 
 v2.5.4 phase-B is canonical-only. Legacy CTS-GIS aliases are not part of active contracts.
+
+CTS-GIS staged inserts are now contract-backed:
+
+- canonical action route: `POST /portal/api/v2/system/tools/cts-gis/actions`
+- canonical request schema: `mycite.v2.portal.system.tools.cts_gis.action.request.v1`
+- canonical staged payload schema: `mycite.v2.cts_gis.stage_insert.v1`
+- canonical staged state schema: `mycite.v2.cts_gis.staged_insert.state.v1`

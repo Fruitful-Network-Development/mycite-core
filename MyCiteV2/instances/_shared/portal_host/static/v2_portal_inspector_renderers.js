@@ -905,6 +905,21 @@
         },
         body.garland_split_projection.profile_projection || {}
       );
+      body.staging_widget = Object.assign(
+        {
+          title: "Staged Insert",
+          summary: "",
+          draft_text: "",
+          draft_format: "yaml",
+          placeholder_title_requested: false,
+          validation: {},
+          preview: {},
+          action_result: {},
+          actions: {},
+          ready: false,
+        },
+        body.staging_widget || {}
+      );
       return body;
     }
     var garland = body.garland || {};
@@ -923,6 +938,18 @@
         dropdowns: [],
         active_path: [],
         active_node_id: "",
+      },
+      staging_widget: {
+        title: "Staged Insert",
+        summary: "",
+        draft_text: "",
+        draft_format: "yaml",
+        placeholder_title_requested: false,
+        validation: {},
+        preview: {},
+        action_result: {},
+        actions: {},
+        ready: false,
       },
       garland_split_projection: {
         kind: "garland_split_projection",
@@ -980,6 +1007,96 @@
         },
       },
     };
+  }
+
+  function renderCtsGisStagingWidget(widget) {
+    var validation = widget.validation || {};
+    var preview = widget.preview || {};
+    var actionResult = widget.action_result || {};
+    var proposedRows = preview.proposed_inserted_rows || [];
+    var warnings = []
+      .concat(validation.warnings || [])
+      .concat(preview.warnings || [])
+      .concat(actionResult.warnings || []);
+    return (
+      '<section class="cts-gis-stageWidget">' +
+      '<header class="cts-gis-stageWidget__header"><h4>' +
+      escapeHtml(widget.title || "Staged Insert") +
+      "</h4><p>" +
+      escapeHtml(widget.summary || "") +
+      "</p></header>" +
+      '<div class="cts-gis-stageWidget__meta">' +
+      '<span class="cts-gis-stageWidget__metaItem">document: ' +
+      escapeHtml(widget.document_name || widget.document_id || "—") +
+      "</span>" +
+      '<span class="cts-gis-stageWidget__metaItem">node: ' +
+      escapeHtml(widget.selected_node_id || "—") +
+      "</span>" +
+      "</div>" +
+      '<label class="cts-gis-stageWidget__label" for="cts-gis-stage-textarea">Stage YAML</label>' +
+      '<textarea id="cts-gis-stage-textarea" class="cts-gis-stageWidget__textarea" data-cts-gis-stage-input="yaml">' +
+      escapeHtml(widget.draft_text || "") +
+      "</textarea>" +
+      '<label class="cts-gis-stageWidget__toggle">' +
+      '<input type="checkbox" data-cts-gis-stage-placeholder' +
+      (widget.placeholder_title_requested ? " checked" : "") +
+      " />" +
+      "<span>Allow placeholder title warnings</span>" +
+      "</label>" +
+      '<div class="cts-gis-stageWidget__actions">' +
+      '<button type="button" class="cts-gis-entryButton" data-cts-gis-stage-action="stage_insert_yaml">Stage</button>' +
+      '<button type="button" class="cts-gis-entryButton" data-cts-gis-stage-action="validate_stage"' +
+      (widget.ready ? "" : " disabled") +
+      ">Validate</button>" +
+      '<button type="button" class="cts-gis-entryButton" data-cts-gis-stage-action="preview_apply"' +
+      (widget.ready ? "" : " disabled") +
+      ">Preview</button>" +
+      '<button type="button" class="cts-gis-entryButton" data-cts-gis-stage-action="apply_stage"' +
+      (proposedRows.length ? "" : " disabled") +
+      ">Apply</button>" +
+      '<button type="button" class="cts-gis-entryButton" data-cts-gis-stage-action="discard_stage"' +
+      ((widget.draft_text || widget.document_id) ? "" : " disabled") +
+      ">Discard</button>" +
+      "</div>" +
+      ((actionResult.message || "")
+        ? '<p class="cts-gis-stageWidget__status"><strong>' +
+          escapeHtml(actionResult.status || "pending") +
+          ":</strong> " +
+          escapeHtml(actionResult.message || "") +
+          "</p>"
+        : "") +
+      ((validation.expected_document_version_hash || "")
+        ? '<p class="cts-gis-stageWidget__status">validation hash: ' +
+          escapeHtml(String(validation.expected_document_version_hash || "").slice(0, 12)) +
+          "</p>"
+        : "") +
+      (proposedRows.length
+        ? '<p class="cts-gis-stageWidget__status">preview rows: ' +
+          escapeHtml(String(proposedRows.length)) +
+          "</p>"
+        : "") +
+      renderWarningList(warnings) +
+      "</section>"
+    );
+  }
+
+  function bindCtsGisStagingWidget(target, ctx, widget) {
+    var actions = widget.actions || {};
+    var textarea = target.querySelector("[data-cts-gis-stage-input='yaml']");
+    var placeholderToggle = target.querySelector("[data-cts-gis-stage-placeholder]");
+    Array.prototype.forEach.call(target.querySelectorAll("[data-cts-gis-stage-action]"), function (node) {
+      node.addEventListener("click", function () {
+        if (node.hasAttribute("disabled") || typeof ctx.dispatchToolAction !== "function") return;
+        var kind = node.getAttribute("data-cts-gis-stage-action") || "";
+        var action = actions[kind] || {};
+        var extraPayload = {};
+        if (kind === "stage_insert_yaml") {
+          extraPayload.stage_text = textarea ? textarea.value : "";
+          extraPayload.placeholder_title_requested = !!(placeholderToggle && placeholderToggle.checked);
+        }
+        ctx.dispatchToolAction(action, { action_payload: extraPayload });
+      });
+    });
   }
 
   function loadCtsGisEntry(ctx, entry) {
@@ -1238,6 +1355,7 @@
   function renderCtsGisInspector(ctx, target, region) {
     var interfaceBody = normalizeCtsGisInterfaceBody(region.interface_body || {});
     var navigationCanvas = interfaceBody.navigation_canvas || {};
+    var stagingWidget = interfaceBody.staging_widget || {};
     var navMode = navigationCanvas.mode || "directory_dropdowns";
     var garlandSplit = interfaceBody.garland_split_projection || {};
     var geospatialProjection = garlandSplit.geospatial_projection || {};
@@ -1404,6 +1522,7 @@
       "</div>" +
       renderNavigationDiagnostics(navigationCanvas.diagnostics || []) +
       "</section>" +
+      renderCtsGisStagingWidget(stagingWidget) +
       "</section>" +
       '<section class="v2-card cts-gis-pane cts-gis-pane--garland">' +
       '<header class="cts-gis-pane__header"><h3>' +
@@ -1428,6 +1547,10 @@
       "</div>";
     bindShellRequestEntries(target, ctx, entriesByKind);
     bindDirectoryDropdowns(target, ctx, navigationCanvas.dropdowns || []);
+    bindNavigationCanvasEnhancement(target, navMode === "directory_dropdowns");
+    bindOrderedHierarchyEnhancement(target);
+    bindStagedDiktataographEnhancement(target);
+    bindCtsGisStagingWidget(target, ctx, stagingWidget);
   }
 
   function renderGenericInspectorSurface(target, region, surfacePayload) {
