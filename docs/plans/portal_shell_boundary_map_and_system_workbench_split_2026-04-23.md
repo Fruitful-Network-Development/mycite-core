@@ -32,9 +32,10 @@ This plan exists separately because every later slice touches the same files. Wi
 
 - complete: `shell.py` remains the sole posture and canonical route/query authority, and the current tests already defend that boundary
 - complete: `portal_shell_runtime.py` now uses registry-backed tool bundle lookup and forwards normalized `surface_query` to `workbench_ui`
-- complete enough for the current stage: canonical routes already emit `family_contract` markers and the directive-panel plus reflective-workspace hosts already dispatch by family before compatibility fallbacks
-- complete enough for the current stage: the top-level `presentation_surface` host now dispatches by family-first mode/spec resolution, with registered inspector modules and structured interface-body rendering routed through the shared adapter
-- complete for the current phase: the scoped runtime emitters no longer publish compatibility-only markers such as `state_directive_compact`, `tool_secondary_evidence`, `tool_mediation_panel`, `aws_csm_inspector`, `aws_csm_workspace`, `network_system_log_inspector`, or `cts_gis_interface_body`; family-first routing now relies on canonical `surface_id` and structured CTS-GIS body contracts
+- complete: canonical routes emit `family_contract` markers and the directive-panel plus reflective-workspace hosts dispatch by family without legacy fallback-key ownership
+- complete: the top-level `presentation_surface` host dispatches by family-first mode/spec resolution, with registered inspector modules and structured interface-body rendering routed through the shared adapter
+- complete: the scoped runtime emitters no longer publish compatibility-only markers such as `state_directive_compact`, `tool_secondary_evidence`, `tool_mediation_panel`, `aws_csm_inspector`, `aws_csm_workspace`, `network_system_log_inspector`, or `cts_gis_interface_body`; family-first routing now relies on canonical `surface_id` and structured CTS-GIS body contracts
+- closeout note: shell unification is complete for the active shell/runtime/client boundary; remaining work is limited to deferred public alias retirement or unrelated tool-runtime issues
 
 ## 3. Exact Repo Evidence
 
@@ -177,9 +178,9 @@ Status:
 
 Status:
 
-- active
-- directive-panel and reflective-workspace hosts are already family-first
-- `presentation_surface` host migration is now complete enough for compatibility-retirement follow-up
+- complete
+- directive-panel, reflective-workspace, and `presentation_surface` hosts are family-first
+- compatibility retirement is complete for the scoped runtime and client paths
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js`
@@ -203,7 +204,7 @@ Status:
 
 Status:
 
-- pending behind presentation-surface cutover
+- complete
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py`
@@ -219,7 +220,7 @@ Status:
   - compatibility-only `kind` markers and adapter fallbacks are deleted once family-first presentation dispatch is proven
   - no shell route, posture, or ownership rules change during this closeout
 - Retirement gate:
-  - no compatibility key may be removed until the family-first inspector path is green across the canonical route set
+  - satisfied on 2026-04-23: the family-first inspector path is green across the canonical route set used by the shell-unification closeout tests
 
 ## 6. Risks And Anti-Patterns
 

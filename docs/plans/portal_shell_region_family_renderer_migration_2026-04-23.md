@@ -16,6 +16,7 @@ Move the client from tool-identity and payload-kind dispatch to the canonical re
 - `presentation_surface`
 
 This plan exists separately because the repo already has a shell-shaped host. The remaining gap is that each family host still carries tool-specific compatibility branches, especially for CTS-GIS.
+That gap is now closed; this document remains as the closeout record for the host migration.
 
 ## 2. In-Scope vs Out-of-Scope
 
@@ -116,8 +117,8 @@ Status:
 
 Status:
 
-- complete enough for the current stage
-- remaining work is compatibility retirement, not top-level host dispatch
+- complete
+- compatibility retirement is now complete for this host
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js`
@@ -137,8 +138,8 @@ Status:
 
 Status:
 
-- complete enough for the current stage
-- remaining work is adapter fallback retirement after the inspector host is family-first
+- complete
+- adapter fallback retirement is now complete for this host
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js`
@@ -165,8 +166,8 @@ Status:
 
 Status:
 
-- active
-- this is the next unfinished unification slice
+- complete
+- the presentation-surface host now dispatches by family-first contracts without the retired runtime fallback keys
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js`
@@ -193,7 +194,7 @@ Status:
 
 Status:
 
-- pending behind Stage 4
+- complete
 
 - Exact files expected to change:
   - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js`
@@ -207,7 +208,7 @@ Status:
 - Compatibility adapters or temporary aliases required:
   - keep `regions.inspector` and `inspector_collapsed` compatibility aliases out of scope for this sequence
 - Retirement gate:
-  - new regressions fail architecture tests if they reintroduce top-level tool branches
+  - satisfied on 2026-04-23: architecture tests now fail if top-level tool branches or retired fallback keys reappear in runtime/client code
 
 ## 6. Risks And Anti-Patterns
 

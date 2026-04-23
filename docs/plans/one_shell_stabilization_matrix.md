@@ -5,7 +5,7 @@ Date: 2026-04-21
 Doc type: `plan`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-21`
+Last reviewed: `2026-04-23`
 
 ## Purpose
 
@@ -17,6 +17,11 @@ Canonical owner contracts:
 - `docs/contracts/route_model.md`
 - `docs/contracts/surface_catalog.md`
 - `docs/contracts/tool_operating_contract.md`
+
+Closeout note:
+
+- legacy fallback runtime/client keys are retired from the active shell path
+- the canonical shell composition path now uses only `directive_panel`, `reflective_workspace`, and `presentation_surface`
 
 ## Matrix Columns
 

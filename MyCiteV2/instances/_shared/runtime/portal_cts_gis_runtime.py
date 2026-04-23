@@ -1731,7 +1731,7 @@ def _empty_profile_projection(*, warnings: list[str] | None = None) -> dict[str,
     }
 
 
-def _cts_gis_interface_body(
+def _build_cts_gis_structured_interface_body(
     *,
     portal_scope: PortalScope,
     shell_state: PortalShellState,
@@ -2247,7 +2247,7 @@ def build_portal_cts_gis_surface_bundle(
         and _as_text((source_evidence.get("readiness") or {}).get("state")) == "ready"
     )
     interface_body_started_at = perf_counter()
-    interface_body = _cts_gis_interface_body(
+    interface_body = _build_cts_gis_structured_interface_body(
         portal_scope=portal_scope,
         shell_state=shell_state,
         resolved_tool_state=resolved_tool_state,

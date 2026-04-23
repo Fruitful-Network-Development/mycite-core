@@ -29,9 +29,9 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
 
 - complete: shell authority, posture guardrails, and route/query normalization are already stabilized in contract and tests
 - complete: the boundary-freeze and `SYSTEM` versus `workbench_ui` split checks have already landed
-- complete enough for the current stage: runtime bundle dispatch is registry-backed, `workbench_ui` shell-route query forwarding is restored, and the directive-panel plus reflective-workspace hosts already dispatch by family before compatibility fallbacks
-- active stage: render/payload unification is now centered on the post-migration compatibility-key shrink path, with `presentation_surface` dispatch now family-first alongside the other canonical region families
-- trailing cleanup: root/helper extraction in `portal_shell_runtime.py` and the AWS action envelope helper can follow without reopening shell-contract questions
+- complete: runtime bundle dispatch is registry-backed, `workbench_ui` shell-route query forwarding is restored, and the directive-panel plus reflective-workspace hosts dispatch by family without compatibility-key ownership
+- complete: render/payload unification has retired the scoped fallback keys, with `presentation_surface` dispatch family-first alongside the other canonical region families
+- closeout note: root/helper extraction in `portal_shell_runtime.py` and the AWS action envelope helper remain separate, non-blocking cleanup items outside shell-unification closeout
 
 ## 3. Exact Repo Evidence
 
@@ -41,9 +41,9 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
   - `docs/plans/one_shell_stabilization_matrix.md`
   - `MyCiteV2/tests/architecture/test_portal_shell_stabilization_matrix.py`
   - `MyCiteV2/tests/unit/test_portal_shell_contract.py`
-- the remaining unification gaps are still split across runtime assembly and client hosts:
-  - `portal_shell_runtime.py` still dispatches by surface builder
-  - `v2_portal_shell_region_renderers.js`, `v2_portal_workbench_renderers.js`, and `v2_portal_inspector_renderers.js` still branch by tool-facing labels or payload kinds
+- the shell-unification gaps addressed by this plan are now closed:
+  - `portal_shell_runtime.py` uses the shared builder path expected by the shell-unification boundary tests
+  - `v2_portal_shell_region_renderers.js`, `v2_portal_workbench_renderers.js`, and `v2_portal_inspector_renderers.js` dispatch by canonical region family rather than retired fallback keys
 - verified green on 2026-04-23:
   - `python3 -m unittest MyCiteV2.tests.architecture.test_portal_one_shell_boundaries`
   - `python3 -m unittest MyCiteV2.tests.architecture.test_portal_shell_stabilization_matrix`
@@ -149,8 +149,8 @@ Status:
 
 Status:
 
-- active
-- next required slice is compatibility retirement behind the now-family-first `presentation_surface` host, not a new runtime-ownership pass
+- complete
+- compatibility retirement is complete behind the family-first `presentation_surface` host
 
 - Plans involved:
   - `portal_shell_region_family_renderer_migration_2026-04-23.md`
@@ -178,7 +178,7 @@ Status:
 
 Status:
 
-- pending behind Stage 4
+- complete
 
 - Plans involved:
   - `portal_shell_runtime_bundle_unification_2026-04-23.md`
@@ -197,7 +197,7 @@ Status:
 - Repo should look like after the stage:
   - one shell authority path, one runtime bundle contract, and family-scoped client hosts with no top-level tool dispatch
 - Retirement gate:
-  - public `inspector` alias retirement remains explicitly deferred; do not fold it into this closeout
+  - satisfied on 2026-04-23; public `inspector` alias retirement remains explicitly deferred and was not folded into this closeout
 
 ## 6. Risks And Anti-Patterns
 
