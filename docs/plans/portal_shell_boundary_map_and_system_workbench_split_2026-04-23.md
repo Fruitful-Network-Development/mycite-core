@@ -34,7 +34,7 @@ This plan exists separately because every later slice touches the same files. Wi
 - complete: `portal_shell_runtime.py` now uses registry-backed tool bundle lookup and forwards normalized `surface_query` to `workbench_ui`
 - complete: canonical routes emit `family_contract` markers and the directive-panel plus reflective-workspace hosts dispatch by family without legacy fallback-key ownership
 - complete: the top-level `presentation_surface` host dispatches by family-first mode/spec resolution, with registered inspector modules and structured interface-body rendering routed through the shared adapter
-- complete: the scoped runtime emitters no longer publish compatibility-only markers such as `state_directive_compact`, `tool_secondary_evidence`, `tool_mediation_panel`, `aws_csm_inspector`, `aws_csm_workspace`, `network_system_log_inspector`, or `cts_gis_interface_body`; family-first routing now relies on canonical `surface_id` and structured CTS-GIS body contracts
+- complete: the scoped runtime emitters no longer publish retired split-surface fallback labels; family-first routing now relies on canonical `surface_id` and structured CTS-GIS body contracts
 - closeout note: shell unification is complete for the active shell/runtime/client boundary; remaining work is limited to deferred public alias retirement or unrelated tool-runtime issues
 
 ## 3. Exact Repo Evidence
@@ -55,19 +55,19 @@ This plan exists separately because every later slice touches the same files. Wi
 - `MyCiteV2/instances/_shared/runtime/portal_workbench_ui_runtime.py`
   - `build_portal_workbench_ui_surface_bundle()` builds the runtime-owned SQL authority inspector with `document`, `row`, grouping, lens, source, and overlay query handling.
 - `MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py`
-  - now emits a canonical AWS surface payload plus a generic `summary_panel`; the retired `aws_csm_workspace` and `aws_csm_inspector` compatibility labels are gone.
+  - now emits a canonical AWS surface payload plus a generic `summary_panel`; the retired AWS split-surface fallback labels are gone.
 - `MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py`
-  - still emits `tool_mediation_surface`, but its control-panel, workbench, and interface-panel payloads no longer carry `state_directive_compact`, `tool_secondary_evidence`, `tool_mediation_panel`, or `cts_gis_interface_body`.
+  - still emits `tool_mediation_surface`, but its control-panel, workbench, and interface-panel payloads no longer carry retired compact/directive/supporting-evidence fallback markers.
 - `MyCiteV2/instances/_shared/runtime/portal_fnd_dcm_runtime.py`
-  - still emits `tool_mediation_surface`, and its inspector now uses the generic summary-panel contract instead of `tool_mediation_panel`.
+  - still emits `tool_mediation_surface`, and its inspector now uses the generic summary-panel contract instead of the retired tool-local panel fallback label.
 - `MyCiteV2/instances/_shared/runtime/portal_fnd_ebi_runtime.py`
   - still emits `tool_mediation_surface`, but its secondary-evidence and inspector regions no longer use the retired compatibility labels.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js`
   - top-level control-panel host now dispatches through family-plus-mode resolution.
-  - CTS-GIS directive rendering now resolves from canonical `surface_id` plus the existing grouped entries rather than `state_directive_compact`.
+  - CTS-GIS directive rendering now resolves from canonical `surface_id` plus the existing grouped entries rather than a retired compact directive key.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js`
   - top-level workbench host now dispatches through family-plus-mode resolution.
-  - secondary-evidence rendering is now selected from canonical runtime structure instead of `tool_secondary_evidence`.
+  - secondary-evidence rendering is now selected from canonical runtime structure instead of retired workbench fallback labels.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js`
   - top-level interface-panel host now dispatches through `resolvePresentationSurfaceMode()` and `resolvePresentationSurfaceModuleSpec()` without legacy inspector-kind or `interface_body.kind` fallbacks.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_tool_surface_adapter.js`
@@ -121,10 +121,10 @@ This plan exists separately because every later slice touches the same files. Wi
 | region-family render hosts | `MyCiteV2/instances/_shared/portal_host/app.py` | shell asset manifest order, shell-module export contracts, endpoint wiring | payload semantics, posture, or query normalization | adding a new tool-only shell module to avoid fixing the family host contract |
 | compatibility adapters to shrink over time | `MyCiteV2/instances/_shared/portal_host/static/v2_portal_tool_surface_adapter.js` | shared loading/error/empty/unsupported wrappers, readiness/warning collection, direct-query request building | surface-specific orchestration or shell-region choice | bypassing the adapter and re-implementing wrappers inside each renderer branch |
 | compatibility adapters to shrink over time | `MyCiteV2/instances/_shared/portal_host/static/portal.js` | layout persistence, legacy `inspector` storage aliases, route-scoped tool lock, splitter behavior | payload content, canonical query, runtime composition | mixing compatibility layout state into runtime payload or using it as first-load authority |
-| specialized tool-local UI logic still awaiting migration | `MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py` | CTS-GIS-local directive and presentation content while migration is incomplete | top-level shell family choice | claiming CTS-GIS is already region-family generic because the file only changed names |
-| specialized tool-local UI logic still awaiting migration | `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js` | temporary CTS-GIS directive-panel compatibility path | permanent directive-panel authority | leaving `renderCtsGisDirectivePanel()` in place after the family contract exists |
-| specialized tool-local UI logic still awaiting migration | `MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js` | CTS-GIS/FND-EBI supporting-evidence presentation selected from canonical payload structure | permanent reflective-workspace authority | reintroducing legacy `tool_secondary_evidence` branches instead of keeping the structural contract |
-| specialized tool-local UI logic still awaiting migration | `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js` | temporary CTS-GIS Diktataograph/Garland host while the presentation-surface contract is being normalized | permanent presentation-surface authority | assuming moving helpers around inside the same 1500-line file counts as unification |
+| specialized tool-local UI logic retained after unification | `MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py` | CTS-GIS-local directive and presentation content while migration is incomplete | top-level shell family choice | claiming CTS-GIS is already region-family generic because the file only changed names |
+| specialized tool-local UI logic retained after unification | `MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js` | temporary CTS-GIS directive-panel compatibility path | permanent directive-panel authority | leaving `renderCtsGisDirectivePanel()` in place after the family contract exists |
+| specialized tool-local UI logic retained after unification | `MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js` | CTS-GIS/FND-EBI supporting-evidence presentation selected from canonical payload structure | permanent reflective-workspace authority | reintroducing retired supporting-evidence fallback branches instead of keeping the structural contract |
+| specialized tool-local UI logic retained after unification | `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js` | temporary CTS-GIS Diktataograph/Garland host while the presentation-surface contract is being normalized | permanent presentation-surface authority | assuming moving helpers around inside the same 1500-line file counts as unification |
 
 ## 5. Staged Execution Slices
 

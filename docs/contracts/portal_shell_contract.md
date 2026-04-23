@@ -148,14 +148,15 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - The control panel is the canonical textual navigation surface for current context and lower-focus selections.
 - Shell static assets are versioned by `portal_build_id` through one embedded shell asset manifest.
 
-### Shell Composition Compatibility
+### Shell Composition Aliases
 
 - `shell_composition.inspector_collapsed` remains valid as the compatibility alias for the public `Interface Panel`.
 - `shell_composition.interface_panel_collapsed` mirrors `inspector_collapsed`.
 - `shell_composition.workbench_collapsed` reports whether the workbench is currently hidden.
-- `shell_composition.regions.inspector` remains valid during the compatibility phase.
+- `shell_composition.regions.inspector` remains valid as the public compatibility alias for `regions.interface_panel`.
 - `shell_composition.regions.interface_panel` mirrors `regions.inspector`.
-- Retired runtime/client fallback keys such as `aws_csm_inspector`, `network_system_log_inspector`, `aws_csm_workspace`, `cts_gis_interface_body`, `tool_secondary_evidence`, `state_directive_compact`, and `tool_mediation_panel` are not part of the active shell composition contract.
+- `shell_composition.regions.control_panel`, `regions.workbench`, and `regions.interface_panel` remain governed by the canonical `directive_panel`, `reflective_workspace`, and `presentation_surface` family contracts.
+- Retired scoped fallback keys are outside the active shell composition contract and must not reappear in runtime emission or client dispatch.
 - Composition building, not upstream region defaults, owns the final root-vs-tool visibility posture for `Workbench` and `Interface Panel`.
 - On the first V2 shell hydration, server composition wins over any stored workbench-open preference; stored layout state only resumes after hydration and user interaction.
 - Client chrome publishes route-scoped tool lock state through `data-tool-panel-lock` on `ide-shell`.
@@ -201,7 +202,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
   - `Overlay: <active overlay visibility>`
 - `CTS-GIS` control-panel context is file-backed and projects:
   - `Sandbox: CTS-GIS`
-  - `File: tool.<msn>.cts-gis.json` when the canonical anchor exists, otherwise the active compatibility anchor file
+  - `File: tool.<msn>.cts-gis.json`
   - `Mediation: spec.json`
 - Tool configuration, enabling, exposure, integration state, vault, peripherals, and control surfaces belong under `UTILITIES`.
 - Tool registry posture fields serialize the shared tool default (`interface_panel_primary`) as compatibility metadata; approved posture exceptions must be named explicitly in the contract.
@@ -250,7 +251,7 @@ Default tool posture is interface-panel-led; `Workbench UI` is the approved work
   - `tool_state.source.attention_document_id`
   - `tool_state.selection.selected_row_address`
   - `tool_state.selection.selected_feature_id`
-- Legacy compatibility inputs remain accepted during the compatibility phase:
+- Legacy request-body field aliases remain confined to request-normalization compatibility and do not widen shell-region contracts:
   - `mediation_state.attention_node_id`
   - `mediation_state.intention_token`
   - top-level `selected_row_address`
@@ -325,7 +326,7 @@ Default tool posture is interface-panel-led; `Workbench UI` is the approved work
   - route/storage slug: `cts-gis`
   - document ids: `sandbox:cts_gis:*`
   - tool anchor pattern: `tool.<msn>.cts-gis.json`
-- Requests that provide legacy CTS-GIS aliases are rejected at `POST /portal/api/v2/system/tools/cts-gis` with:
+- Requests that provide legacy CTS-GIS `maps` identifiers are rejected at `POST /portal/api/v2/system/tools/cts-gis` with:
   - HTTP `400`
   - `error.code=legacy_maps_alias_unsupported`
 - Compiled artifact authority for strict mode is `mycite.v2.portal.system.tools.cts_gis.compiled.v1` at `data/payloads/compiled/cts_gis.<scope_id>.compiled.json`.

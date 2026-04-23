@@ -51,7 +51,7 @@ Define the stability-first merge order for the shell/runtime/renderer unificatio
   - `python3 -m unittest MyCiteV2.tests.unit.test_workbench_ui_runtime`
 - verified migrated presentation-surface host and compatibility-key retirement on 2026-04-23:
   - `v2_portal_inspector_renderers.js` now dispatches through adapter-managed `presentation_surface` mode/spec resolution
-  - scoped runtime emitters no longer produce compatibility kinds such as `tool_mediation_panel`, `aws_csm_inspector`, `network_system_log_inspector`, `aws_csm_workspace`, or `cts_gis_interface_body`
+  - scoped runtime emitters no longer produce the retired split-surface fallback labels from the cutover period
 
 ## 4. Target State
 

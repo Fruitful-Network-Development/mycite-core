@@ -32,6 +32,7 @@ Shell region dispatch is constrained to three canonical payload families:
 - `presentation_surface`
 
 These families are shell-level contracts. Tool-specific semantics must be expressed as content inside these families, not as new shell dispatcher branches.
+Retired scoped fallback keys are outside this operating contract.
 
 ### `reflective_workspace`
 
@@ -71,7 +72,7 @@ Required shape:
 - canonical widget props and action descriptors
 - normalized loading/error/empty wrappers
 
-Tool-local richness is allowed here, but composition rules and fallback behavior must remain uniform.
+Tool-local richness is allowed here, but composition rules and wrapper behavior must remain uniform.
 
 ## Authority Boundaries
 
@@ -151,7 +152,7 @@ Do not add:
 ### Phase 2: Unify region contracts
 
 - adapt current tool payloads into the three canonical region families
-- retire compatibility adapters once the family-first hosts are green and the retired fallback keys no longer appear in runtime or client code
+- retire compatibility adapters once the family-first hosts are green and retired scoped fallback keys no longer appear in runtime or client code
 
 ### Phase 3: Unify normalization
 
