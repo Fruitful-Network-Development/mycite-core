@@ -8,10 +8,10 @@ board:
   manifest_path: "docs/plans/contextual_system_manifest.yaml"
   delegation_state:
     current_focus_stream: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
-    current_focus_task_id: "TASK-AWS-CSM-RECOVERY-002"
+    current_focus_task_id: "TASK-AWS-CSM-RECOVERY-003"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "TASK-AWS-CSM-RECOVERY-001 audit closed with deployment/runtime parity findings; continue with TASK-AWS-CSM-RECOVERY-002 as the next lexicographic p0 task."
+    last_delegation_note: "TASK-AWS-CSM-RECOVERY-002 is now source-and-test evidenced; continue with TASK-AWS-CSM-RECOVERY-003 as the next lexicographic p0 task."
 
 tasks:
   - id: "TASK-CONTEXT-ORG-001"
@@ -227,7 +227,7 @@ tasks:
   - id: "TASK-AWS-CSM-RECOVERY-002"
     stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
     title: "Restore per-domain user onboarding interface panel with personal-email handoff workflow"
-    status: "pending"
+    status: "done"
     priority: "p0"
     owner_role: "aws-csm-runtime-owner"
     acceptance:
@@ -237,8 +237,10 @@ tasks:
     evidence_targets:
       - "docs/plans/aws_csm_operational_recovery_plan_2026-04-24.md"
       - "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
+      - "MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py"
       - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js"
       - "MyCiteV2/packages/adapters/event_transport/aws_csm_onboarding_cloud.py"
+      - "MyCiteV2/tests/integration/test_portal_host_one_shell.py"
 
   - id: "TASK-AWS-CSM-RECOVERY-003"
     stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"

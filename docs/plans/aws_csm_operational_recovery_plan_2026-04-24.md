@@ -74,7 +74,10 @@ more likely deployment/runtime/data-state mismatch than source deletion.
 1. `TASK-AWS-CSM-RECOVERY-001` complete: commit-window audit narrowed drift to
    deployment/runtime/data-state mismatch, with `520c349` and `455f270` identified
    as the main verification windows.
-2. Implement `TASK-AWS-CSM-RECOVERY-002` onboarding panel and personal-email handoff.
+2. `TASK-AWS-CSM-RECOVERY-002` complete: the onboarding panel now keeps the
+   per-domain add-user flow, personal-email handoff destination, and auditable
+   handoff dispatch metadata (`sent_to`, `message_id`, `sent_at`) visible without
+   persisting reusable SMTP secrets in profile JSON.
 3. Implement `TASK-AWS-CSM-RECOVERY-003` onboard-state projection and indicator.
 4. Run `TASK-AWS-CSM-RECOVERY-004` measurement and optimization pass.
 5. Execute `TASK-AWS-CSM-RECOVERY-005` JSON/duplication retirement audit.
