@@ -68,7 +68,7 @@ initiatives:
     canonical_audit_plan: "docs/audits/cts_gis_open_alignment_audit_plan_2026-04-23.md"
     active_report: "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md"
     closure_reports: []
-    open_issue_summary: "Source-hops node 3-2-3-17-77-1-14 blocker remains open; SAMRAS and datum alignment closures are blocked by readiness-gate dependency until resolved or waived."
+    open_issue_summary: "Source-hops blocker task was closed through readiness waiver WAIVER-CTSGIS-2026-04-24-001; SAMRAS and datum alignment closures remain blocked pending publication of their matrix evidence and cross-owner sign-off."
     task_ids:
       - "TASK-CTSGIS-BLOCKER-001"
       - "TASK-CTSGIS-SAMRAS-001"

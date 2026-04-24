@@ -5,7 +5,7 @@ Date: 2026-04-23
 Doc type: `plan`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-23`
+Last reviewed: `2026-04-24`
 
 ## Purpose
 
@@ -43,7 +43,11 @@ the canonical active entrypoint.
 Current status:
 
 - Summit lineage verification is largely complete (`0 flagged / 32 clean`).
-- Remaining blocker is node `3-2-3-17-77-1-14`.
+- Node `3-2-3-17-77-1-14` is dispositioned in the readiness gate via explicit
+  waiver `WAIVER-CTSGIS-2026-04-24-001` in
+  `docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md`.
+- Underlying data gap remains open (no deployed source profile and no vetted
+  reference mapping), and is carried as residual risk rather than hidden debt.
 
 Required closure:
 

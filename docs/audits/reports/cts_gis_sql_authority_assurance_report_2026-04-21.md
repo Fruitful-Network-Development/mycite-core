@@ -5,7 +5,7 @@ Date: 2026-04-21
 Doc type: `audit`
 Normativity: `supporting`
 Lifecycle: `completed`
-Last reviewed: `2026-04-21`
+Last reviewed: `2026-04-24`
 
 ## Purpose
 
@@ -92,12 +92,101 @@ Those checks now cover:
 
 The live SQL authority data needed by CTS-GIS is present and internally consistent: filesystem and SQL match across the full authoritative corpus and across the CTS-GIS subset, and CTS-GIS row semantics in the authority DB are clean. Continued CTS-GIS feature work is still blocked, but now for named provenance/readiness concerns rather than for uncertainty about whether the SQL authority corpus was fully and correctly loaded.
 
-## Contextual planning status update (2026-04-23)
+## Contextual planning status update (2026-04-24)
 
-- `TASK-CTSGIS-BLOCKER-001` remains the primary readiness blocker.
-- Dependent tasks `TASK-CTSGIS-SAMRAS-001` and `TASK-CTSGIS-DATUM-001` are
-  blocked by that gate and cannot be closed independently.
-- Blocking node remains `3-2-3-17-77-1-14` pending deployed source + vetted
-  mapping or explicit waiver.
-- Next unblocked task in the executed priority pass was `TASK-DOC-IA-001`
-  (completed).
+- `TASK-CTSGIS-BLOCKER-001` is now closed via explicit readiness waiver
+  `WAIVER-CTSGIS-2026-04-24-001`.
+- Blocking node `3-2-3-17-77-1-14` remains unresolved at the data level:
+  no deployed source profile and no vetted reference mapping are available.
+- Forcing synthetic source generation without vetted mapping would create a
+  second authority risk and degrade source provenance guarantees, so waiver was
+  selected instead of unverified repair.
+- Remaining active CTS-GIS tasks are now:
+  - `TASK-CTSGIS-DATUM-001` (`blocked`)
+  - `TASK-CTSGIS-SAMRAS-001` (`blocked`)
+
+## Readiness Waiver Record: `WAIVER-CTSGIS-2026-04-24-001`
+
+Decision date: `2026-04-24`
+
+Scope:
+
+- readiness-gate blocker node `3-2-3-17-77-1-14`
+- task closure target: `TASK-CTSGIS-BLOCKER-001`
+
+Rationale:
+
+- source profile for node `3-2-3-17-77-1-14` does not exist in deployed corpus
+- vetted external reference mapping is unavailable in canonical audit artifacts
+- applying an inferred mapping would violate contract-first provenance posture
+
+Controls and residual risk posture:
+
+- keep unresolved node and rationale explicitly recorded in active CTS-GIS docs
+- do not treat this waiver as a resolved data repair event
+- maintain blocked status for SAMRAS/datum closure tasks until their evidence
+  matrices and owner approvals are published
+
+## Validation refresh (2026-04-24)
+
+Executed regression checks for this planning cycle:
+
+- `python3 -m unittest MyCiteV2.tests.unit.test_nimm_phase2_foundations`
+- `python3 -m unittest MyCiteV2.tests.unit.test_portal_aws_route_sync MyCiteV2.tests.unit.test_portal_cts_gis_actions MyCiteV2.tests.unit.test_aws_csm_onboarding_service`
+- `python3 -m unittest MyCiteV2.tests.integration.test_nimm_mutation_contract_flow MyCiteV2.tests.integration.test_portal_host_one_shell`
+- `python3 -m unittest MyCiteV2.tests.contracts.test_contract_docs_alignment`
+- `python3 -m unittest MyCiteV2.tests.architecture.test_portal_one_shell_boundaries`
+- `python3 -m unittest MyCiteV2.tests.architecture.test_state_machine_boundaries`
+
+Result: all executed suites passed; integration run reported `6` skipped tests.
+
+## Blocker mapping refresh (2026-04-24, continuation cycle)
+
+Selected task by priority/lexicographic rule:
+
+- `TASK-CTSGIS-DATUM-001` (`blocked`, `p1`)
+
+Blocker mapping:
+
+- blocker id: `BLOCKER-CTSGIS-DATUM-MATRIX-EVIDENCE-001`
+- blocker detail: publish critical/high datum drift disposition matrix plus
+  deterministic ordering/editing evidence with domain-owner sign-off
+- impacted tasks:
+  - `TASK-CTSGIS-SAMRAS-001`
+
+Disposition:
+
+- no executable non-`done` tasks remain in active streams at this time
+- blocked queue remains explicit and synchronized across contextual and
+  compatibility task boards
+
+## Blocker mapping refresh (2026-04-24, continuation cycle 2)
+
+Selected task by priority/lexicographic rule:
+
+- `TASK-CTSGIS-DATUM-001` (`blocked`, `p1`)
+
+Observed blocker state:
+
+- blocker id `BLOCKER-CTSGIS-DATUM-MATRIX-EVIDENCE-001` remains unresolved in
+  repository evidence artifacts
+- required datum drift matrix + deterministic ordering/editing evidence with
+  domain-owner sign-off is still not published
+
+Impacted task linkage:
+
+- `TASK-CTSGIS-SAMRAS-001` remains impacted by unresolved datum evidence
+
+Disposition:
+
+- selected task remains `blocked`
+- no actionable non-`done` task could be executed in this continuation cycle
+
+Validation rerun for continuation cycle 2:
+
+- `python3 -m unittest MyCiteV2.tests.unit.test_nimm_phase2_foundations` (pass)
+- `python3 -m unittest MyCiteV2.tests.unit.test_portal_aws_route_sync MyCiteV2.tests.unit.test_portal_cts_gis_actions MyCiteV2.tests.unit.test_aws_csm_onboarding_service` (pass)
+- `python3 -m unittest MyCiteV2.tests.integration.test_nimm_mutation_contract_flow MyCiteV2.tests.integration.test_portal_host_one_shell` (pass, `6` skipped)
+- `python3 -m unittest MyCiteV2.tests.contracts.test_contract_docs_alignment` (pass)
+- `python3 -m unittest MyCiteV2.tests.architecture.test_portal_one_shell_boundaries` (pass)
+- `python3 -m unittest MyCiteV2.tests.architecture.test_state_machine_boundaries` (pass)

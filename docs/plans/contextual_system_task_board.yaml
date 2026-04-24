@@ -8,10 +8,10 @@ board:
   manifest_path: "docs/plans/contextual_system_manifest.yaml"
   delegation_state:
     current_focus_stream: "STREAM-CTS-GIS-OPEN"
-    current_focus_task_id: "TASK-CTSGIS-BLOCKER-001"
+    current_focus_task_id: "TASK-CTSGIS-DATUM-001"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "TASK-AWS-CSM-RECOVERY-006 closed the AWS-CSM recovery stream with synchronized contextual and compatibility surfaces; the next remaining item is the blocked CTS-GIS readiness-gate task TASK-CTSGIS-BLOCKER-001."
+    last_delegation_note: "Continuation pass again selected TASK-CTSGIS-DATUM-001 by status/priority/lexicographic rules; blocker BLOCKER-CTSGIS-DATUM-MATRIX-EVIDENCE-001 remains unresolved in-repo, so active non-done tasks remain blocked with explicit blocker metadata."
 
 tasks:
   - id: "TASK-CONTEXT-ORG-001"
@@ -77,6 +77,110 @@ tasks:
       - "docs/audits/reports/contextual_planning_system_alignment_report_2026-04-23.md"
       - "docs/plans/planning_audit_manifest.yaml"
       - "docs/plans/planning_task_board.yaml"
+
+  - id: "TASK-DESKTOP-DM02-001"
+    stream_id: "STREAM-DESKTOP-DM02-DM04"
+    title: "Implement desktop startup deep-link translation"
+    status: "blocked"
+    priority: "p1"
+    owner_role: "runtime-engineer"
+    acceptance:
+      - "Desktop startup routes translate to one canonical shell request."
+      - "Contract/integration parity tests pass."
+    evidence_targets:
+      - "docs/audits/reports/desktop_access_historical_drift_report_2026-04-16.md"
+    blocked_by:
+      - "BLOCKER-DESKTOP-HOST-INTEGRATION-001"
+    blocker_detail: "Desktop startup deep-link translation requires host bootstrap injection contract and parity fixtures that are not yet published in repo-owned harnesses."
+    impacted_task_ids:
+      - "TASK-DESKTOP-DM04-001"
+    next_unblocked_task: "none (all active non-done tasks are currently blocked pending external dependency publication)"
+
+  - id: "TASK-DESKTOP-DM04-001"
+    stream_id: "STREAM-DESKTOP-DM02-DM04"
+    title: "Implement scoped shell-state persistence policy"
+    status: "blocked"
+    priority: "p1"
+    owner_role: "frontend-runtime-engineer"
+    acceptance:
+      - "Scoped persistence isolation and deterministic conflict policy are test-backed."
+      - "Legacy key migration behavior is documented and tested."
+    evidence_targets:
+      - "docs/audits/reports/desktop_access_historical_drift_report_2026-04-16.md"
+    blocked_by:
+      - "BLOCKER-DESKTOP-HOST-INTEGRATION-001"
+    blocker_detail: "Scoped shell-state persistence policy implementation depends on desktop host session/window identity primitives not yet exposed in current integration harness."
+    impacted_task_ids:
+      - "TASK-DESKTOP-DM02-001"
+    next_unblocked_task: "none (all active non-done tasks are currently blocked pending external dependency publication)"
+
+  - id: "TASK-CTSGIS-BLOCKER-001"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Resolve or waive source-hops blocker node 3-2-3-17-77-1-14"
+    status: "done"
+    priority: "p0"
+    owner_role: "cts-gis-domain-owner"
+    acceptance:
+      - "Blocked node is resolved with deployed source + vetted mapping or explicit waiver."
+      - "Readiness gate reflects final blocker disposition."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md"
+    blocker_detail: "Closed via explicit readiness waiver WAIVER-CTSGIS-2026-04-24-001 in docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md; underlying node 3-2-3-17-77-1-14 data gap remains explicitly tracked as residual risk."
+    impacted_task_ids:
+      - "TASK-CTSGIS-SAMRAS-001"
+      - "TASK-CTSGIS-DATUM-001"
+    next_unblocked_task: "TASK-CTSGIS-DATUM-001"
+
+  - id: "TASK-CTSGIS-SAMRAS-001"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Complete SAMRAS structural/mutation/mediation drift matrix"
+    status: "blocked"
+    priority: "p1"
+    owner_role: "cts-gis-domain-owner"
+    acceptance:
+      - "Structural, mutation, and mediation matrices are complete."
+      - "High-severity drifts are closed or explicitly waived."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md"
+    blocked_by:
+      - "BLOCKER-CTSGIS-SAMRAS-MATRIX-EVIDENCE-001"
+    blocker_detail: "SAMRAS closure is blocked pending publication of structural/mutation/mediation drift matrices with severity dispositions and cross-owner sign-off; readiness waiver closure alone is insufficient evidence."
+    impacted_task_ids:
+      - "TASK-CTSGIS-DATUM-001"
+    next_unblocked_task: "none (all active non-done tasks are currently blocked pending evidence publication and sign-off)"
+
+  - id: "TASK-CTSGIS-DATUM-001"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Close datum handling alignment high-severity drifts"
+    status: "blocked"
+    priority: "p1"
+    owner_role: "datum-domain-owner"
+    acceptance:
+      - "Critical/high datum-handling drifts are closed or waived."
+      - "Deterministic ordering/editing behavior is evidence-backed."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md"
+    blocked_by:
+      - "BLOCKER-CTSGIS-DATUM-MATRIX-EVIDENCE-001"
+    blocker_detail: "Datum alignment closure is blocked pending publication of critical/high drift disposition matrix plus deterministic ordering/editing evidence with domain-owner sign-off; readiness waiver closure alone is insufficient evidence."
+    impacted_task_ids:
+      - "TASK-CTSGIS-SAMRAS-001"
+    next_unblocked_task: "none (all active non-done tasks are currently blocked pending evidence publication and sign-off)"
+
+  - id: "TASK-PERF-001"
+    stream_id: "STREAM-PERFORMANCE"
+    title: "Execute measurement phase and rank optimization backlog"
+    status: "blocked"
+    priority: "p2"
+    owner_role: "performance-owner"
+    acceptance:
+      - "Baseline and post-change metrics include median and p95."
+      - "Optimization backlog includes impact/risk ranking and evidence."
+    evidence_targets:
+      - "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
+    blocker_detail: "Performance audit section 'Ready for Code mode' gates are not fully satisfied in-repo (baseline placeholders, CI regression gates, and explicit multi-owner approval acknowledgment remain outstanding)."
+    impacted_task_ids: []
+    next_unblocked_task: "none (all active non-done tasks are currently blocked pending readiness-gate completion)"
 
   - id: "TASK-AWS-CSM-ALIGN-001"
     title: "Publish AWS-CSM operating alignment audit plan and baseline report"
