@@ -1119,6 +1119,12 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                     if action_kind == "send_handoff_email":
                         dispatch = action_payload["surface_payload"]["action_result"]["handoff_dispatch"]
                         self.assertEqual(dispatch["sent_to"], "ops@example.com")
+                        handoff = action_payload["surface_payload"]["workspace"]["selected_profile_onboarding"]["handoff"]
+                        self.assertEqual(handoff["operator_inbox_target"], "ops@example.com")
+                        self.assertEqual(handoff["forward_target"], "ops@example.com")
+                        self.assertEqual(handoff["handoff_email_sent_to"], "ops@example.com")
+                        self.assertEqual(handoff["handoff_email_message_id"], "ses-message-001")
+                        self.assertTrue(handoff["handoff_email_sent_at"])
                     if action_kind == "reveal_smtp_password":
                         secret = action_payload["surface_payload"]["action_result"]["ephemeral_secret"]
                         self.assertEqual(secret["password"], "SMTPPASS")
@@ -1129,6 +1135,9 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 self.assertEqual(stored_profile["verification"]["status"], "verified")
                 self.assertEqual(stored_profile["provider"]["send_as_provider_status"], "verified")
                 self.assertIn(stored_profile["provider"]["gmail_send_as_status"], {"verified", "not_started"})
+                self.assertEqual(stored_profile["workflow"]["handoff_email_sent_to"], "ops@example.com")
+                self.assertEqual(stored_profile["workflow"]["handoff_email_message_id"], "ses-message-001")
+                self.assertTrue(stored_profile["workflow"]["handoff_email_sent_at"])
                 self.assertNotIn("SMTPPASS", created_profile_path.read_text(encoding="utf-8"))
                 self.assertNotIn("SMTPPASS", audit_file.read_text(encoding="utf-8"))
 

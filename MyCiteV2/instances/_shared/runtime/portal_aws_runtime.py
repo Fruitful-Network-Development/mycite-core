@@ -936,6 +936,9 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
             "single_user_email": _as_text(identity.get("single_user_email") or selected_profile.get("user_email")),
             "operator_inbox_target": _as_text(identity.get("operator_inbox_target")),
             "forward_target": _as_text(smtp.get("forward_to_email") or selected_profile.get("forward_target")),
+            "handoff_email_sent_to": _as_text(workflow.get("handoff_email_sent_to")),
+            "handoff_email_message_id": _as_text(workflow.get("handoff_email_message_id")),
+            "handoff_email_sent_at": _as_text(workflow.get("handoff_email_sent_at")),
             "handoff_provider": _as_text(
                 provider.get("handoff_provider")
                 or identity.get("handoff_provider")
@@ -1632,14 +1635,14 @@ def _record_profile_handoff_event(
     store: FilesystemAwsCsmToolProfileStore,
     profile_row: dict[str, Any],
     status: str,
-    field_name: str,
-    field_value: object,
+    fields: Mapping[str, object],
 ) -> dict[str, Any]:
     tenant_scope_id = _tenant_scope_for_profile(profile_row)
     working = deepcopy(_as_dict(profile_row.get("raw")))
     workflow = _as_dict(working.get("workflow"))
     workflow["handoff_status"] = status
-    workflow[field_name] = field_value
+    for field_name, field_value in dict(fields).items():
+        workflow[_as_text(field_name)] = field_value
     working["workflow"] = workflow
     return store.save_profile(
         tenant_scope_id=tenant_scope_id,
@@ -2009,8 +2012,11 @@ def _apply_action(
                 store=store,
                 profile_row=profile_row,
                 status="instruction_sent",
-                field_name="handoff_email_sent_to",
-                field_value=_as_text(dispatch.get("sent_to")),
+                fields={
+                    "handoff_email_sent_to": _as_text(dispatch.get("sent_to")),
+                    "handoff_email_message_id": _as_text(dispatch.get("message_id")),
+                    "handoff_email_sent_at": _utc_now_iso(),
+                },
             )
             details = {
                 "profile_id": _as_text(profile_row.get("profile_id")),
@@ -2040,11 +2046,13 @@ def _apply_action(
                 store=store,
                 profile_row=profile_row,
                 status="secret_revealed",
-                field_name="handoff_secret_revealed_to",
-                field_value=_as_text(
-                    _as_dict(live_profile.get("smtp")).get("forward_to_email")
-                    or _as_dict(live_profile.get("identity")).get("operator_inbox_target")
-                ),
+                fields={
+                    "handoff_secret_revealed_to": _as_text(
+                        _as_dict(live_profile.get("smtp")).get("forward_to_email")
+                        or _as_dict(live_profile.get("identity")).get("operator_inbox_target")
+                    ),
+                    "handoff_secret_revealed_at": _utc_now_iso(),
+                },
             )
             details = {
                 "profile_id": _as_text(profile_row.get("profile_id")),

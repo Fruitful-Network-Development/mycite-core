@@ -93,7 +93,8 @@ Recent commits relevant to behavior drift/reconciliation:
 Status linkage:
 
 - `TASK-AWS-CSM-RECOVERY-001`: `done`
-- `TASK-AWS-CSM-RECOVERY-002` through `TASK-AWS-CSM-RECOVERY-006`: `pending`
+- `TASK-AWS-CSM-RECOVERY-002`: `done`
+- `TASK-AWS-CSM-RECOVERY-003` through `TASK-AWS-CSM-RECOVERY-006`: `pending`
 - `TASK-AWS-CSM-RECOVERY-007`: `pending`
 
 ## Task-Linked Recovery Plan
@@ -105,10 +106,18 @@ contains the AWS-CSM onboarding and handoff surfaces; active risk is narrowed to
 deployment mismatch, runtime dependency baseline, stale promoted assets, or state
 divergence rather than outright source removal.
 
-### `TASK-AWS-CSM-RECOVERY-002` (pending)
+### `TASK-AWS-CSM-RECOVERY-002` (done)
 
-Restore clean Interface Panel onboarding surface for per-domain user creation
-with personal-email destination and SMTP-credential instruction dispatch.
+Source-backed onboarding restoration is now evidenced:
+
+- The AWS-CSM workspace still exposes the per-domain add-user flow with domain
+  association and personal-email destination fields.
+- Runtime handoff state now persists `handoff_email_sent_to`,
+  `handoff_email_message_id`, and `handoff_email_sent_at` in workflow metadata.
+- The onboarding handoff panel surfaces that dispatch metadata back to the
+  operator without storing reusable SMTP passwords in profile JSON.
+- End-to-end test coverage asserts the created profile, handoff dispatch
+  metadata, and password redaction posture.
 
 ### `TASK-AWS-CSM-RECOVERY-003` (pending)
 
@@ -152,6 +161,7 @@ program can distinguish code defects from host promotion/dependency drift.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js`
 - `MyCiteV2/packages/adapters/event_transport/aws_csm_onboarding_cloud.py`
 - `MyCiteV2/packages/adapters/event_transport/aws_csm_inbound_capture_lambda.py`
+- `MyCiteV2/tests/integration/test_portal_host_one_shell.py`
 
 ## Validation Log
 
@@ -159,6 +169,7 @@ Validation commands executed for this planning-system update:
 
 - `python3 -m unittest MyCiteV2.tests.unit.test_portal_aws_route_sync`
 - `python3 -m unittest MyCiteV2.tests.architecture.test_portal_one_shell_boundaries`
+- `python3 -m unittest MyCiteV2.tests.integration.test_portal_host_one_shell`
 - `python3 -m unittest MyCiteV2.tests.contracts.test_contract_docs_alignment`
 - `python3 - <<'PY' import importlib.util; print('boto3', bool(importlib.util.find_spec('boto3'))) PY`
 - `python3 - <<'PY' ... yaml.safe_load(...) ... PY`
@@ -167,6 +178,7 @@ Result summary:
 
 - AWS-CSM route-sync unit suite: pass (`Ran 7 tests`)
 - one-shell architecture suite: pass (`Ran 22 tests`)
+- portal one-shell integration suite: skipped in this environment because `flask` is not installed (`Ran 6 tests`, `skipped=6`)
 - contract-doc alignment suite: pass (`Ran 13 tests`)
 - Local dependency probe: `boto3 False`
 - YAML parse check: pass for contextual and compatibility manifests/task boards
