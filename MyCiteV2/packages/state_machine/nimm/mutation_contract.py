@@ -16,6 +16,38 @@ DEFAULT_MUTATION_ENDPOINTS = {
 
 DEFAULT_MUTATION_ACTIONS = ("stage", "validate", "preview", "apply", "discard")
 
+CTS_GIS_MUTATION_ACTION_ALIASES = {
+    "stage_insert_yaml": "stage",
+    "validate_stage": "validate",
+    "preview_apply": "preview",
+    "apply_stage": "apply",
+    "discard_stage": "discard",
+}
+
+CTS_GIS_CANONICAL_ACTIONS = {
+    "stage": "stage_insert_yaml",
+    "validate": "validate_stage",
+    "preview": "preview_apply",
+    "apply": "apply_stage",
+    "discard": "discard_stage",
+}
+
+AWS_CSM_ACTION_LIFECYCLE = {
+    "create_domain": "apply",
+    "refresh_domain_status": "validate",
+    "ensure_domain_identity": "apply",
+    "sync_domain_dns": "apply",
+    "ensure_domain_receipt_rule": "apply",
+    "create_profile": "apply",
+    "stage_smtp_credentials": "stage",
+    "send_handoff_email": "apply",
+    "reveal_smtp_password": "preview",
+    "refresh_provider_status": "validate",
+    "capture_verification": "apply",
+    "confirm_verified": "apply",
+    "confirm_verified_attested": "apply",
+}
+
 
 def _as_text(value: object) -> str:
     if value is None:
@@ -24,11 +56,27 @@ def _as_text(value: object) -> str:
 
 
 def mutation_action_endpoint(action: object) -> str:
-    action_name = _as_text(action).lower()
+    action_name = normalize_mutation_lifecycle_action(action)
     if action_name not in DEFAULT_MUTATION_ENDPOINTS:
         allowed = ", ".join(sorted(DEFAULT_MUTATION_ENDPOINTS))
         raise ValueError(f"mutation action must be one of: {allowed}")
     return DEFAULT_MUTATION_ENDPOINTS[action_name]
+
+
+def normalize_mutation_lifecycle_action(action: object) -> str:
+    action_name = _as_text(action).lower()
+    return CTS_GIS_MUTATION_ACTION_ALIASES.get(action_name, action_name)
+
+
+def cts_gis_runtime_action_kind(action: object) -> str:
+    action_name = _as_text(action).lower()
+    if action_name in CTS_GIS_MUTATION_ACTION_ALIASES:
+        return action_name
+    return CTS_GIS_CANONICAL_ACTIONS.get(action_name, action_name)
+
+
+def aws_csm_lifecycle_action(action_kind: object) -> str:
+    return AWS_CSM_ACTION_LIFECYCLE.get(_as_text(action_kind).lower(), "apply")
 
 
 @dataclass(frozen=True)

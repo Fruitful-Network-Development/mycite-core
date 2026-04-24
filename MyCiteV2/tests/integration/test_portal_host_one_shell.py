@@ -1079,6 +1079,21 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 self.assertIn("aws-csm.cvccboard.alex.json", collection_payload["member_files"])
 
                 active_query = create_payload["canonical_query"]
+                shared_mutation_response = client.post(
+                    "/portal/api/v2/mutations/validate",
+                    json={
+                        "target_authority": "aws_csm",
+                        "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                        "surface_query": active_query,
+                        "action_kind": "refresh_provider_status",
+                        "action_payload": {"profile_id": "aws-csm.cvccboard.alex"},
+                    },
+                )
+                self.assertEqual(shared_mutation_response.status_code, 200)
+                shared_mutation_result = shared_mutation_response.get_json()["surface_payload"]["action_result"]
+                self.assertEqual(shared_mutation_result["mutation_lifecycle_action"], "validate")
+                self.assertEqual(shared_mutation_result["nimm_envelope"]["directive"]["target_authority"], "aws_csm")
+
                 for action_kind in (
                     "stage_smtp_credentials",
                     "send_handoff_email",

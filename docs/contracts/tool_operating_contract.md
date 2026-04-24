@@ -114,10 +114,10 @@ The active mutation-capable architecture separates responsibilities:
 
 The staging boundary remains explicit: UI edits enter stage storage first, stage values compile to NIMM directives, and only runtime `apply` mutates authoritative state.
 
-### AWS-CSM Onboarding Directive Draft
+### AWS-CSM Onboarding Directive Contract
 
-AWS-CSM onboarding actions use the same three-authority posture with a canonical
-directive draft contract:
+AWS-CSM onboarding actions use the same three-authority posture with a
+canonical directive contract:
 
 - envelope schema: `mycite.v2.nimm.envelope.v1`
 - `directive.target_authority`: `aws_csm`
@@ -138,8 +138,32 @@ directive draft contract:
   - `archetype=aws_csm_onboarding`
   - `scope=portal/system/tools/aws-csm`
 
-This draft keeps action execution in runtime authority while preserving one
+This contract keeps action execution in runtime authority while preserving one
 query/route shell boundary and one mutation envelope grammar across tools.
+
+`AWS-CTS` is not a current code-level tool slug in this repository. When that
+term appears in planning requests for this stream, treat it as an alias that must
+be normalized to the existing AWS-CSM surface or explicitly documented before
+implementation.
+
+Implementation note: `portal_aws_runtime.py` compiles action requests into
+`aws_csm` NIMM manipulation envelopes before runtime execution. Email and secret
+display values are projected through lenses; secret-bearing payload keys are
+redacted in the envelope and remain runtime-owned.
+
+### Cross-Tool Mutation Unification Follow-On
+
+The active follow-on stream is
+`docs/plans/portal_nimm_aitas_unification_plan_2026-04-24.md`.
+
+Implementation work under that stream preserves:
+
+- Control Panel dispatches directives and legal lifecycle actions
+- Workbench holds authoritative rows and preview deltas
+- Interface Panel hosts editing surfaces and local display state
+- lenses encode/decode/validate display values only
+- NIMM/AITAS envelopes carry mutation intent and interpretation context
+- runtime-owned `apply` is the only authoritative mutation step
 
 #### AWS-CSM Secure Handoff Posture
 

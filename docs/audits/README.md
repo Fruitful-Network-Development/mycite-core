@@ -12,11 +12,18 @@ Use this directory as part of the same unified control system used by `docs/plan
   - `docs/plans/planning_task_board.yaml`
 - Report index: `docs/audits/reports/README.md`
 
-## Canonical Active Audit Plans
+## Canonical Audit Plans
 
-- `cts_gis_open_alignment_audit_plan_2026-04-23.md` (canonical CTS-GIS open queue)
-- `aws_csm_operating_alignment_audit_plan_2026-04-23.md` (canonical AWS-CSM alignment stream)
-- `performance_weight_speed_audit_plan_2026-04-16.md`
+- `cts_gis_open_alignment_audit_plan_2026-04-23.md` (active CTS-GIS open queue)
+- `aws_csm_operating_alignment_audit_plan_2026-04-23.md` (completed AWS-CSM alignment stream)
+- `performance_weight_speed_audit_plan_2026-04-16.md` (active)
+
+## Cross-Directory Closure Reports
+
+- `docs/audits/reports/portal_nimm_aitas_unification_audit_report_2026-04-24.md`
+  is the canonical closure report for the cross-tool NIMM/AITAS/lens/stage
+  unification stream. Its plan lives in `docs/plans/` because the work spans
+  planning, runtime refactor, contracts, and tests.
 
 ## Consolidated / Historical Planning Artifacts
 

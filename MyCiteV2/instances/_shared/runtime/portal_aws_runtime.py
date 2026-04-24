@@ -38,6 +38,12 @@ from MyCiteV2.packages.modules.cross_domain.aws_csm_profile_registry import (
 )
 from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
 from MyCiteV2.packages.ports.aws_csm_onboarding import AwsCsmOnboardingPolicyError
+from MyCiteV2.packages.state_machine.lens import EmailAddressLens, SecretReferenceLens
+from MyCiteV2.packages.state_machine.nimm import (
+    NimmDirective,
+    NimmDirectiveEnvelope,
+    aws_csm_lifecycle_action,
+)
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_ENTRYPOINT_ID,
     AWS_CSM_TOOL_ROUTE,
@@ -105,6 +111,7 @@ _SERVICE_ACTION_KINDS = frozenset(
         "confirm_verified_attested",
     }
 )
+_SECRET_PAYLOAD_KEY_MARKERS = ("password", "secret_access_key", "secret_value")
 _DEPENDENCY_GUARDED_ACTION_KINDS = frozenset(
     {
         "create_domain",
@@ -171,6 +178,88 @@ def _href_for_query(query: Mapping[str, str]) -> str:
     return build_canonical_url(surface_id=AWS_CSM_TOOL_SURFACE_ID, query=query)
 
 
+def _redact_secret_payload_values(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, child in value.items():
+            token = _as_text(key).lower()
+            if any(marker in token for marker in _SECRET_PAYLOAD_KEY_MARKERS):
+                redacted[str(key)] = "[redacted]"
+            else:
+                redacted[str(key)] = _redact_secret_payload_values(child)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_secret_payload_values(item) for item in value]
+    return value
+
+
+def _aws_csm_lens_entries(action_payload: Mapping[str, Any]) -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
+    email_lens = EmailAddressLens()
+    secret_lens = SecretReferenceLens()
+    for key in ("single_user_email", "operator_inbox_target", "send_as_email", "forward_to_email"):
+        value = _as_text(action_payload.get(key))
+        if value:
+            entries.append(
+                {
+                    "field": key,
+                    "lens_id": email_lens.lens_id,
+                    "canonical_value": email_lens.encode(value),
+                    "validation_issues": ",".join(email_lens.validate_display(value)),
+                }
+            )
+    for key in ("secret_name", "credentials_secret_name"):
+        value = _as_text(action_payload.get(key))
+        if value:
+            entries.append(
+                {
+                    "field": key,
+                    "lens_id": secret_lens.lens_id,
+                    "canonical_value": secret_lens.encode(value),
+                    "validation_issues": ",".join(secret_lens.validate_display(value)),
+                }
+            )
+    return entries
+
+
+def _build_aws_csm_action_nimm_envelope(
+    *,
+    portal_scope: PortalScope,
+    surface_query: Mapping[str, str],
+    action_kind: str,
+    action_payload: Mapping[str, Any],
+    focus_subject: str = "",
+) -> dict[str, Any]:
+    action = _as_text(action_kind).lower()
+    target_token = (
+        _as_text(action_payload.get("profile_id"))
+        or _as_text(surface_query.get("profile"))
+        or _normalized_domain(action_payload.get("domain") or surface_query.get("domain"))
+        or action
+    )
+    directive = NimmDirective(
+        verb="manipulate",
+        target_authority="aws_csm",
+        document_id=_as_text(surface_query.get("domain")) or "aws-csm",
+        targets=({"object_ref": target_token},),
+        payload={
+            "action_kind": action,
+            "action_payload": _redact_secret_payload_values(dict(action_payload or {})),
+            "mutation_lifecycle_action": aws_csm_lifecycle_action(action),
+            "lens_values": _aws_csm_lens_entries(action_payload),
+        },
+    )
+    aitas = {
+        "intention": "manipulate",
+        "time": action,
+        "archetype": "aws_csm_onboarding",
+        "scope": f"portal/system/tools/aws-csm:{portal_scope.scope_id}",
+    }
+    if _as_text(focus_subject) and "." in _as_text(focus_subject) and _as_text(focus_subject)[0].isdigit():
+        aitas["attention"] = _as_text(focus_subject)
+    return NimmDirectiveEnvelope(directive=directive, aitas=aitas).to_dict()
+
+
 def _normalize_surface_query(raw_query: Mapping[str, Any] | None) -> dict[str, str]:
     return canonical_query_for_runtime_request_payload(
         {"surface_query": raw_query},
@@ -206,12 +295,23 @@ def _normalize_action_request(
     )
     raw_shell_state = normalized_payload.get("shell_state")
     shell_state = dict(raw_shell_state) if isinstance(raw_shell_state, dict) else None
-    action_kind = _as_text(normalized_payload.get("action_kind")).lower()
+    envelope_payload = normalized_payload.get("nimm_envelope")
+    envelope_action_kind = ""
+    envelope_action_payload: dict[str, Any] = {}
+    if isinstance(envelope_payload, dict):
+        envelope = NimmDirectiveEnvelope.from_dict(envelope_payload)
+        directive_payload = dict(envelope.directive.payload or {})
+        if envelope.directive.target_authority != "aws_csm":
+            raise ValueError("nimm_envelope.directive.target_authority must be aws_csm")
+        envelope_action_kind = _as_text(directive_payload.get("action_kind")).lower()
+        raw_envelope_action_payload = directive_payload.get("action_payload")
+        envelope_action_payload = dict(raw_envelope_action_payload) if isinstance(raw_envelope_action_payload, dict) else {}
+    action_kind = _as_text(normalized_payload.get("action_kind") or envelope_action_kind).lower()
     if action_kind not in _ALLOWED_ACTION_KINDS:
         raise ValueError(f"action_kind must be one of {sorted(_ALLOWED_ACTION_KINDS)}")
     action_payload = normalized_payload.get("action_payload")
     if action_payload is None:
-        action_payload = {}
+        action_payload = envelope_action_payload
     if not isinstance(action_payload, dict):
         raise ValueError("action_payload must be a dict when provided")
     return portal_scope, surface_query, shell_state, action_kind, dict(action_payload)
@@ -1129,6 +1229,14 @@ def _surface_payload(
         "action_contract": {
             "route": AWS_CSM_TOOL_ACTION_ROUTE,
             "request_schema": AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA,
+            "canonical_mutation_endpoints": {
+                "stage": "/portal/api/v2/mutations/stage",
+                "validate": "/portal/api/v2/mutations/validate",
+                "preview": "/portal/api/v2/mutations/preview",
+                "apply": "/portal/api/v2/mutations/apply",
+                "discard": "/portal/api/v2/mutations/discard",
+            },
+            "nimm_target_authority": "aws_csm",
         },
         "cards": [
             {"label": "Domains", "value": str(workspace["domain_count"])},
@@ -1286,15 +1394,20 @@ def _action_result(
     ephemeral_secret: dict[str, Any] | None = None,
     created_profile: dict[str, Any] | None = None,
     handoff_dispatch: dict[str, Any] | None = None,
+    nimm_envelope: dict[str, Any] | None = None,
+    mutation_lifecycle_action: str = "",
 ) -> dict[str, Any]:
     payload = {
         "schema": AWS_CSM_ACTION_RESULT_SCHEMA,
         "action_kind": _as_text(action_kind),
+        "mutation_lifecycle_action": _as_text(mutation_lifecycle_action) or aws_csm_lifecycle_action(action_kind),
         "status": _as_text(status) or "accepted",
         "code": _as_text(code),
         "message": _as_text(message),
         "details": dict(details or {}),
     }
+    if isinstance(nimm_envelope, dict) and nimm_envelope:
+        payload["nimm_envelope"] = dict(nimm_envelope)
     if isinstance(ephemeral_secret, dict) and ephemeral_secret:
         payload["ephemeral_secret"] = dict(ephemeral_secret)
     if isinstance(created_profile, dict) and created_profile:
@@ -2022,6 +2135,13 @@ def run_portal_aws_csm_action(
     portal_scope, surface_query, shell_state, action_kind, action_payload = _normalize_action_request(
         request_payload
     )
+    compiled_nimm_envelope = _build_aws_csm_action_nimm_envelope(
+        portal_scope=portal_scope,
+        surface_query=surface_query,
+        action_kind=action_kind,
+        action_payload=action_payload,
+        focus_subject=_audit_focus_subject(private_dir),
+    )
     next_query, action_result = _apply_action(
         portal_scope=portal_scope,
         surface_query=surface_query,
@@ -2030,6 +2150,12 @@ def run_portal_aws_csm_action(
         private_dir=private_dir,
         audit_storage_file=audit_storage_file,
     )
+    if isinstance(action_result, dict):
+        action_result = {
+            **action_result,
+            "nimm_envelope": compiled_nimm_envelope,
+            "mutation_lifecycle_action": aws_csm_lifecycle_action(action_kind),
+        }
     bundle = build_portal_aws_surface_bundle(
         surface_id=AWS_CSM_TOOL_SURFACE_ID,
         portal_scope=portal_scope,

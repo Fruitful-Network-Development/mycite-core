@@ -64,8 +64,14 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     canonicalize_portal_shell_state,
     resolve_portal_tool_registry_entry,
 )
-from MyCiteV2.packages.state_machine.lens import TrimmedStringLens
-from MyCiteV2.packages.state_machine.nimm import StagingArea
+from MyCiteV2.packages.state_machine.lens import SamrasTitleLens
+from MyCiteV2.packages.state_machine.nimm import (
+    CTS_GIS_CANONICAL_ACTIONS,
+    CTS_GIS_MUTATION_ACTION_ALIASES,
+    StagingArea,
+    cts_gis_runtime_action_kind,
+    normalize_mutation_lifecycle_action,
+)
 
 _CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
 _CANONICAL_TOOL_SLUG = "cts-gis"
@@ -78,6 +84,7 @@ CTS_GIS_TOOL_ACTION_ROUTE = "/portal/api/v2/system/tools/cts-gis/actions"
 CTS_GIS_TOOL_ACTION_ENTRYPOINT_ID = "portal.system.tools.cts_gis.actions"
 _ALLOWED_ACTION_KINDS = frozenset(
     {
+        *CTS_GIS_CANONICAL_ACTIONS,
         "stage_insert_yaml",
         "validate_stage",
         "preview_apply",
@@ -212,7 +219,7 @@ def _compile_staged_nimm_envelope(tool_state: dict[str, Any]) -> dict[str, Any]:
                 "datum_address": _as_text(datum_mapping.get("targetNodeAddress")),
                 "object_ref": "",
             },
-            lens=TrimmedStringLens(),
+            lens=SamrasTitleLens(),
             display_value=_as_text(datum_mapping.get("title")),
         )
     envelope = stage.compile_manipulation_envelope(
@@ -431,10 +438,12 @@ def _tool_action(
     *,
     action_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    lifecycle_action = normalize_mutation_lifecycle_action(action_kind)
     return {
         "route": CTS_GIS_TOOL_ACTION_ROUTE,
         "request_schema": CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
         "action_kind": _as_text(action_kind),
+        "mutation_lifecycle_action": lifecycle_action,
         "action_payload": dict(action_payload or {}),
     }
 
@@ -465,6 +474,7 @@ def _cts_gis_action_result(
     payload = {
         "schema": CTS_GIS_ACTION_RESULT_SCHEMA,
         "action_kind": _as_text(action_kind),
+        "mutation_lifecycle_action": normalize_mutation_lifecycle_action(action_kind),
         "status": _as_text(status) or "accepted",
         "message": _as_text(message),
     }
@@ -601,7 +611,7 @@ def _normalize_action_request(
         seed_anchor_file=normalized_payload.get("shell_state") is None,
     )
     tool_state = _normalize_tool_state({"tool_state": normalized_payload.get("tool_state") or {}})
-    action_kind = _as_text(normalized_payload.get("action_kind")).lower()
+    action_kind = cts_gis_runtime_action_kind(normalized_payload.get("action_kind"))
     if action_kind not in _ALLOWED_ACTION_KINDS:
         raise ValueError(f"action_kind must be one of {sorted(_ALLOWED_ACTION_KINDS)}")
     action_payload = normalized_payload.get("action_payload")
@@ -2196,6 +2206,11 @@ def _cts_gis_staging_widget(
         "compound_directives": dict((stage_state.get("compiled_nimm_envelope") or {}).get("compound_directives") or {}),
         "action_result": dict(action_result or {}),
         "actions": {
+            "stage": _tool_action("stage"),
+            "validate": _tool_action("validate"),
+            "preview": _tool_action("preview"),
+            "apply": _tool_action("apply"),
+            "discard": _tool_action("discard"),
             "stage_insert_yaml": _tool_action("stage_insert_yaml"),
             "validate_stage": _tool_action("validate_stage"),
             "preview_apply": _tool_action("preview_apply"),
@@ -2804,6 +2819,8 @@ def build_portal_cts_gis_surface_bundle(
                 "route": CTS_GIS_TOOL_ACTION_ROUTE,
                 "entrypoint_id": CTS_GIS_TOOL_ACTION_ENTRYPOINT_ID,
                 "action_kinds": sorted(_ALLOWED_ACTION_KINDS),
+                "canonical_lifecycle_actions": sorted(CTS_GIS_CANONICAL_ACTIONS),
+                "compatibility_action_aliases": dict(CTS_GIS_MUTATION_ACTION_ALIASES),
             },
         },
         "runtime_mode": runtime_mode,

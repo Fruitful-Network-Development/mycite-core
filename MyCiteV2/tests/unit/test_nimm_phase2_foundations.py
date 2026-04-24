@@ -9,8 +9,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.state_machine.aitas import AitasContext, merge_aitas_context
-from MyCiteV2.packages.state_machine.lens import TrimmedStringLens
+from MyCiteV2.packages.state_machine.lens import EmailAddressLens, SamrasTitleLens, SecretReferenceLens, TrimmedStringLens
 from MyCiteV2.packages.state_machine.nimm import (
+    MINIMAL_NIMM_VERBS,
+    NIMM_DIRECTIVE_GRAMMAR_V1,
     NIMM_DIRECTIVE_SCHEMA_V1,
     NIMM_ENVELOPE_SCHEMA_V1,
     VERB_INVESTIGATE,
@@ -20,8 +22,11 @@ from MyCiteV2.packages.state_machine.nimm import (
     NimmDirectiveEnvelope,
     NimmTargetAddress,
     StagingArea,
+    cts_gis_runtime_action_kind,
     validate_nimm_directive_payload,
     mutation_action_endpoint,
+    normalize_mutation_lifecycle_action,
+    normalize_nimm_verb,
 )
 from MyCiteV2.packages.state_machine.portal_shell import PortalShellState, build_nimm_envelope_for_shell_state
 
@@ -43,6 +48,17 @@ class NimmPhase2FoundationTests(unittest.TestCase):
         self.assertEqual(payload["verb"], VERB_MANIPULATE)
         reparsed = NimmDirective.from_dict(payload)
         self.assertEqual(reparsed.to_dict(), payload)
+
+    def test_minimal_nimm_aliases_normalize_to_canonical_verbs(self) -> None:
+        self.assertEqual(MINIMAL_NIMM_VERBS, ("nav", "inv", "med", "man"))
+        self.assertEqual(NIMM_DIRECTIVE_GRAMMAR_V1["minimal_aliases"]["man"], VERB_MANIPULATE)
+        self.assertEqual(normalize_nimm_verb("nav"), "navigate")
+        directive = NimmDirective(
+            verb="man",
+            target_authority="system",
+            targets=({"file_key": "anthology"},),
+        )
+        self.assertEqual(directive.verb, VERB_MANIPULATE)
 
     def test_aitas_context_merge_applies_overrides_without_mutation(self) -> None:
         defaults = AitasContext(
@@ -87,6 +103,9 @@ class NimmPhase2FoundationTests(unittest.TestCase):
 
     def test_mutation_action_endpoint_validates_allowed_actions(self) -> None:
         self.assertEqual(mutation_action_endpoint("stage"), "/portal/api/v2/mutations/stage")
+        self.assertEqual(mutation_action_endpoint("stage_insert_yaml"), "/portal/api/v2/mutations/stage")
+        self.assertEqual(cts_gis_runtime_action_kind("preview"), "preview_apply")
+        self.assertEqual(normalize_mutation_lifecycle_action("apply_stage"), "apply")
         with self.assertRaisesRegex(ValueError, "mutation action must be one of"):
             mutation_action_endpoint("publish")
 
@@ -160,6 +179,13 @@ class NimmPhase2FoundationTests(unittest.TestCase):
         staged = stage.to_dict()["staged_values"][0]
         self.assertEqual(staged["lens_id"], "trimmed_string")
         self.assertEqual(staged["canonical_value"], "MAIN STREET")
+
+    def test_tool_lenses_validate_and_encode_canonical_values(self) -> None:
+        self.assertEqual(SamrasTitleLens().encode("  Main Street  "), "MAIN STREET")
+        self.assertEqual(SamrasTitleLens().validate_display("Main Street"), ())
+        self.assertEqual(EmailAddressLens().encode("USER@EXAMPLE.COM"), "user@example.com")
+        self.assertEqual(EmailAddressLens().validate_display("not-an-email"), ("email_invalid",))
+        self.assertEqual(SecretReferenceLens().validate_display("smtp/password/value"), ("secret_reference_must_not_contain_secret_value",))
 
 
 if __name__ == "__main__":

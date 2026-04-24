@@ -28,6 +28,35 @@ These actions are defined in `MyCiteV2/packages/state_machine/nimm/mutation_cont
 
 Tool-specific actions may continue to use existing routes during compatibility windows, but they should map semantically to these lifecycle actions.
 
+The portal host exposes the shared route family at
+`/portal/api/v2/mutations/<action>`. Requests are delegated by
+`target_authority` or `nimm_envelope.directive.target_authority` to the
+runtime-owned CTS-GIS or AWS-CSM adapters. Tool-specific action routes remain
+compatibility entrypoints and must not define independent lifecycle semantics.
+
+## Compatibility Adapter Map
+
+Active tool routes may retain historical action names while they migrate to the
+shared lifecycle. Those names must be treated as adapters, not independent
+mutation contracts.
+
+| Tool surface | Compatibility action | Canonical lifecycle action |
+| --- | --- | --- |
+| CTS-GIS | `stage_insert_yaml` | `stage` |
+| CTS-GIS | `validate_stage` | `validate` |
+| CTS-GIS | `preview_apply` | `preview` |
+| CTS-GIS | `apply_stage` | `apply` |
+| CTS-GIS | `discard_stage` | `discard` |
+| AWS-CSM / AWS-CTS alias | onboarding `action_kind` payloads | compile to `stage`/`validate`/`preview`/`apply` as NIMM manipulation envelopes |
+
+Compatibility routes must still preserve the read/mutation split: read surfaces
+can project state and previews, but only runtime-owned `apply` may mutate
+authoritative state.
+
+`AWS-CTS` is a planning/request alias for the repository's AWS-CSM surface. Code
+uses `aws_csm` as the `target_authority`; host adapters accept the alias only at
+the compatibility boundary.
+
 ## Canonical Payload Units
 
 - `NimmDirective` schema: `mycite.v2.nimm.directive.v1`
