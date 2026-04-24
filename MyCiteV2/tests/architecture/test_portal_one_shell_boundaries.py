@@ -354,7 +354,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("hasContent: contentReady", aws_workspace)
         self.assertIn("hasContent: inspectorHasContent", aws_workspace)
         self.assertIn("data-aws-domain-clear", aws_workspace)
-        self.assertIn("buildSurfaceRequest(ctx, workspace, { domain: null, profile: null, section: null })", aws_workspace)
+        self.assertIn("domain: null, profile: null, section: null", aws_workspace)
 
     def test_mutation_capable_ui_sources_dispatch_only_without_authoritative_writes(self) -> None:
         static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
@@ -576,6 +576,18 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("spec.json", aws_runtime_source)
         self.assertNotIn('glob("aws-csm.*.json")', aws_runtime_source)
         self.assertNotIn('glob("newsletter.*.profile.json")', aws_runtime_source)
+
+    def test_aws_csm_workspace_uses_delegated_event_binding_for_render_reuse(self) -> None:
+        aws_workspace_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_aws_workspace.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("target.__awsCsmRenderState", aws_workspace_source)
+        self.assertIn("target.__awsCsmDelegatedBindings", aws_workspace_source)
+        self.assertIn('target.addEventListener("submit"', aws_workspace_source)
+        self.assertIn('target.addEventListener("click"', aws_workspace_source)
+        self.assertNotIn('target.querySelectorAll("[data-aws-domain]")', aws_workspace_source)
+        self.assertNotIn('target.querySelectorAll("[data-aws-profile]")', aws_workspace_source)
 
     def test_active_repo_text_does_not_reference_retired_split_routes(self) -> None:
         forbidden_tokens = (

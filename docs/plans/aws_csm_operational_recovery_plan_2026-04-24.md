@@ -86,9 +86,15 @@ more likely deployment/runtime/data-state mismatch than source deletion.
    adapters instead of bespoke file scans, while `tool.*.aws-csm.json`,
    `spec.json`, `newsletter.*.profile.json`, `newsletter.*.contacts.json`, and
    `private/config.json` remain explicit non-datum/config exceptions.
-5. Execute `TASK-AWS-CSM-RECOVERY-007` deployed parity verification for runtime
-   dependencies, promoted JS assets, and mutation-action host behavior.
-6. Run `TASK-AWS-CSM-RECOVERY-004` measurement and optimization pass.
+5. `TASK-AWS-CSM-RECOVERY-007` complete: the repo now emits canonical AWS-CSM
+   source-surface fingerprints for runtime/JS/cloud surfaces, and deployed FND
+   private state has been exercised against those surfaces to confirm tool
+   exposure, domain/profile projection parity, and fail-closed dependency
+   remediation when guarded actions run without `boto3`.
+6. `TASK-AWS-CSM-RECOVERY-004` complete: local AWS-CSM runtime measurements
+   against promoted FND private state now sit around 10-11 ms median with p95
+   under 23 ms, and the workspace renderer uses delegated root listeners
+   instead of rerender-time per-control rebinding loops.
 7. Publish closure-progress evidence under `TASK-AWS-CSM-RECOVERY-006`.
 
 ## Acceptance-Evidence Anchors
