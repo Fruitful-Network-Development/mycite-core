@@ -356,6 +356,25 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("data-aws-domain-clear", aws_workspace)
         self.assertIn("buildSurfaceRequest(ctx, workspace, { domain: null, profile: null, section: null })", aws_workspace)
 
+    def test_mutation_capable_ui_sources_dispatch_only_without_authoritative_writes(self) -> None:
+        static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
+        aws_workspace = (static_root / "v2_portal_aws_workspace.js").read_text(encoding="utf-8")
+        inspector_renderers = (static_root / "v2_portal_inspector_renderers.js").read_text(encoding="utf-8")
+        forbidden_write_tokens = (
+            "replace_authoritative_document",
+            "save_profile(",
+            "saveDomain(",
+            "read_handoff_secret",
+            "SecretsManager",
+            "sqlite",
+            "fetch(\"/portal/api/v2/mutations/apply\"",
+        )
+        self.assertIn("loadRuntimeView", aws_workspace)
+        self.assertIn("dispatchToolAction", inspector_renderers)
+        for source in (aws_workspace, inspector_renderers):
+            for token in forbidden_write_tokens:
+                self.assertNotIn(token, source)
+
     def test_directive_panel_host_dispatches_by_family_contract(self) -> None:
         static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
         region_renderers = (static_root / "v2_portal_shell_region_renderers.js").read_text(encoding="utf-8")

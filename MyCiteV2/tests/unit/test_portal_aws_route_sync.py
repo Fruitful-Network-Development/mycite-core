@@ -12,7 +12,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_aws_runtime import _apply_action
+from MyCiteV2.instances._shared.runtime.portal_aws_runtime import _apply_action, run_portal_aws_csm_action
+from MyCiteV2.packages.state_machine.nimm import NimmDirective, NimmDirectiveEnvelope
 from MyCiteV2.packages.state_machine.portal_shell import PortalScope
 
 
@@ -358,6 +359,59 @@ class PortalAwsRouteSyncTests(unittest.TestCase):
         self.assertEqual(action_result["status"], "error")
         self.assertEqual(action_result["code"], "action_failed")
         self.assertIn("route sync failed", action_result["message"].lower())
+
+    def test_aws_csm_action_accepts_nimm_envelope_and_projects_lens_metadata(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            action_payload = {
+                "domain": "cvccboard.org",
+                "mailbox_local_part": "alex",
+                "single_user_email": "ALEX@EXAMPLE.COM",
+                "operator_inbox_target": "OPS@EXAMPLE.COM",
+                "password": "SMTPPASS",
+            }
+            envelope = NimmDirectiveEnvelope(
+                directive=NimmDirective(
+                    verb="man",
+                    target_authority="aws_csm",
+                    targets=({"object_ref": "cvccboard.org"},),
+                    payload={"action_kind": "create_profile", "action_payload": action_payload},
+                ),
+                aitas={"intention": "manipulate", "archetype": "aws_csm_onboarding", "scope": "test"},
+            ).to_dict()
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime._onboarding_cloud",
+                return_value=_RouteSyncCloudSuccess(),
+            ):
+                response = run_portal_aws_csm_action(
+                    {
+                        "schema": "mycite.v2.portal.system.tools.aws_csm.action.request.v1",
+                        "portal_scope": {"scope_id": "fnd"},
+                        "surface_query": {"view": "domains", "domain": "cvccboard.org", "section": "users"},
+                        "nimm_envelope": envelope,
+                    },
+                    private_dir=private_dir,
+                )
+            action_result = response["surface_payload"]["action_result"]
+            compiled = action_result["nimm_envelope"]
+            profile_id = action_result["created_profile"]["profile_id"]
+            profile_path = private_dir / "utilities" / "tools" / "aws-csm" / f"{profile_id}.json"
+            profile_text = profile_path.read_text(encoding="utf-8")
+            details_text = json.dumps(action_result["details"], sort_keys=True)
+
+        self.assertEqual(action_result["status"], "accepted")
+        self.assertEqual(action_result["mutation_lifecycle_action"], "apply")
+        self.assertEqual(compiled["directive"]["target_authority"], "aws_csm")
+        self.assertEqual(compiled["directive"]["verb"], "manipulate")
+        self.assertEqual(compiled["directive"]["payload"]["action_payload"]["password"], "[redacted]")
+        self.assertNotIn("SMTPPASS", profile_text)
+        self.assertNotIn("SMTPPASS", details_text)
+        lens_values = compiled["directive"]["payload"]["lens_values"]
+        self.assertIn(
+            {"field": "single_user_email", "lens_id": "email_address", "canonical_value": "alex@example.com", "validation_issues": ""},
+            lens_values,
+        )
 
 
 if __name__ == "__main__":

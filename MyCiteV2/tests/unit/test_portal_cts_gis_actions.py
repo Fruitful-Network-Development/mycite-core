@@ -216,6 +216,28 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
             self.assertIn("portal.cts_gis.apply_stage.accepted", event_types)
             self.assertIn("portal.cts_gis.discard_stage.accepted", event_types)
 
+    def test_canonical_mutation_lifecycle_names_are_accepted_as_cts_gis_aliases(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            db_file = Path(temp_dir) / "authority.sqlite3"
+            self._seed_db(db_file)
+
+            staged = run_portal_cts_gis_action(
+                self._request(None, "stage", {"stage_document": self._stage_document()}),
+                data_dir=None,
+                authority_db_file=db_file,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+            )
+            action_contract = staged["surface_payload"]["request_contract"]["action_contract"]
+            self.assertEqual(staged["surface_payload"]["action_result"]["action_kind"], "stage_insert_yaml")
+            self.assertEqual(staged["surface_payload"]["action_result"]["mutation_lifecycle_action"], "stage")
+            self.assertEqual(action_contract["compatibility_action_aliases"]["stage_insert_yaml"], "stage")
+            self.assertIn("stage", action_contract["canonical_lifecycle_actions"])
+            self.assertIn(
+                "stage",
+                staged["shell_composition"]["regions"]["interface_panel"]["interface_body"]["staging_widget"]["actions"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

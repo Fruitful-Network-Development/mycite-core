@@ -10,6 +10,11 @@ VERB_INVESTIGATE = "investigate"
 VERB_MEDIATE = "mediate"
 VERB_MANIPULATE = "manipulate"
 
+VERB_ALIAS_NAVIGATE = "nav"
+VERB_ALIAS_INVESTIGATE = "inv"
+VERB_ALIAS_MEDIATE = "med"
+VERB_ALIAS_MANIPULATE = "man"
+
 SUPPORTED_NIMM_VERBS = (
     VERB_NAVIGATE,
     VERB_INVESTIGATE,
@@ -17,8 +22,40 @@ SUPPORTED_NIMM_VERBS = (
     VERB_MANIPULATE,
 )
 
+MINIMAL_NIMM_VERBS = (
+    VERB_ALIAS_NAVIGATE,
+    VERB_ALIAS_INVESTIGATE,
+    VERB_ALIAS_MEDIATE,
+    VERB_ALIAS_MANIPULATE,
+)
+
+NIMM_VERB_ALIASES = {
+    VERB_ALIAS_NAVIGATE: VERB_NAVIGATE,
+    VERB_ALIAS_INVESTIGATE: VERB_INVESTIGATE,
+    VERB_ALIAS_MEDIATE: VERB_MEDIATE,
+    VERB_ALIAS_MANIPULATE: VERB_MANIPULATE,
+}
+
+SUPPORTED_NIMM_VERB_TOKENS = (*SUPPORTED_NIMM_VERBS, *MINIMAL_NIMM_VERBS)
+
 DEFAULT_SHELL_VERB = VERB_NAVIGATE
-SUPPORTED_SHELL_VERBS = SUPPORTED_NIMM_VERBS
+SUPPORTED_SHELL_VERBS = SUPPORTED_NIMM_VERB_TOKENS
+
+NIMM_DIRECTIVE_GRAMMAR_V1 = {
+    "schema": NIMM_DIRECTIVE_SCHEMA_V1,
+    "required": ("verb", "targets"),
+    "verbs": SUPPORTED_NIMM_VERB_TOKENS,
+    "canonical_verbs": SUPPORTED_NIMM_VERBS,
+    "minimal_aliases": NIMM_VERB_ALIASES,
+    "fields": {
+        "verb": "One of navigate/investigate/mediate/manipulate or nav/inv/med/man.",
+        "target_authority": "Runtime authority that interprets the directive.",
+        "document_id": "Optional document/file authority when target_authority is implicit.",
+        "aitas_ref": "Named AITAS context reference when envelope context is external.",
+        "targets": "Non-empty list of file_key, datum_address, or object_ref target addresses.",
+        "payload": "Runtime-owned directive payload.",
+    },
+}
 
 
 def _as_text(value: object) -> str:
@@ -32,15 +69,15 @@ def normalize_shell_verb(value: object, *, field_name: str = "shell_verb") -> st
     if token not in SUPPORTED_SHELL_VERBS:
         supported = ", ".join(SUPPORTED_SHELL_VERBS)
         raise ValueError(f"{field_name} must be one of: {supported}")
-    return token
+    return NIMM_VERB_ALIASES.get(token, token)
 
 
 def normalize_nimm_verb(value: object, *, field_name: str = "nimm.verb") -> str:
     token = _as_text(value).lower()
-    if token not in SUPPORTED_NIMM_VERBS:
-        supported = ", ".join(SUPPORTED_NIMM_VERBS)
+    if token not in SUPPORTED_NIMM_VERB_TOKENS:
+        supported = ", ".join(SUPPORTED_NIMM_VERB_TOKENS)
         raise ValueError(f"{field_name} must be one of: {supported}")
-    return token
+    return NIMM_VERB_ALIASES.get(token, token)
 
 
 @dataclass(frozen=True)

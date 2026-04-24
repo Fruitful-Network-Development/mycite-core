@@ -13,16 +13,22 @@ Active shell refactor records preserve the family-only shell closeout posture.
   - `docs/plans/planning_audit_manifest.yaml`
   - `docs/plans/planning_task_board.yaml`
 
-## Canonical Active Plan Set
+## Canonical Plan Set
 
 - `documentation_ia_remediation_backlog.md`
-- `desktop_dm02_dm04_reconciliation_plan_2026-04-20.md`
-- `mos_post_closure_consolidation_plan_2026-04-21.md`
-- `portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md`
+- `desktop_dm02_dm04_reconciliation_plan_2026-04-20.md` (active)
+- `portal_nimm_aitas_unification_plan_2026-04-24.md` (completed)
+- `mos_post_closure_consolidation_plan_2026-04-21.md` (completed)
+- `portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md` (completed)
 - `one_shell_portal_refactor.md`
 - `one_shell_stabilization_matrix.md`
 - `mos_novelty_positioning_follow_on_2026-04-21.md` (positioning/spec context only)
-- `refinement.md`
+- `refinement.md` (completed foundation for NIMM/AITAS/lens/staging)
+
+`portal_nimm_aitas_unification_plan_2026-04-24.md` is the canonical completed
+plan for cross-tool NIMM/AITAS/lens/stage unification across CTS-GIS and
+AWS-CSM. The completed refinement stream remains foundation history, not a
+second plan for this follow-on work.
 
 ## Completed And Historical Support Set
 

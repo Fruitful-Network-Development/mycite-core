@@ -68,6 +68,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     build_portal_tool_registry_entries,
     requires_shell_state_machine,
 )
+from MyCiteV2.packages.state_machine.nimm import NimmDirectiveEnvelope
 
 V2_PORTAL_HEALTH_SCHEMA = "mycite.v2.portal.health.v1"
 V2_PORTAL_ERROR_SCHEMA = "mycite.v2.portal.error.v1"
@@ -482,6 +483,32 @@ def _error_response(code: str, message: str, *, status_code: int = 400) -> tuple
     return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": code, "message": message}}), status_code
 
 
+def _nimm_target_authority(payload: Mapping[str, Any]) -> str:
+    envelope_payload = payload.get("nimm_envelope")
+    if isinstance(envelope_payload, Mapping):
+        envelope = NimmDirectiveEnvelope.from_dict(dict(envelope_payload))
+        return _as_text(envelope.directive.target_authority)
+    return _as_text(payload.get("target_authority"))
+
+
+def _tool_payload_for_mutation(action: str, payload: dict[str, Any], *, request_schema: str) -> dict[str, Any]:
+    envelope_payload = payload.get("nimm_envelope")
+    directive_payload: dict[str, Any] = {}
+    if isinstance(envelope_payload, Mapping):
+        envelope = NimmDirectiveEnvelope.from_dict(dict(envelope_payload))
+        directive_payload = dict(envelope.directive.payload or {})
+    action_kind = _as_text(payload.get("action_kind") or directive_payload.get("action_kind") or action)
+    raw_action_payload = payload.get("action_payload")
+    if raw_action_payload is None:
+        raw_action_payload = directive_payload.get("action_payload")
+    return {
+        **dict(payload),
+        "schema": request_schema,
+        "action_kind": action_kind,
+        "action_payload": dict(raw_action_payload) if isinstance(raw_action_payload, Mapping) else {},
+    }
+
+
 def _render_surface(surface_id: str, host_config: V2PortalHostConfig) -> str:
     shell_asset_manifest = build_shell_asset_manifest(PORTAL_BUILD_ID)
     return render_template(
@@ -699,6 +726,49 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     portal_instance_id=host_config.portal_instance_id,
                     portal_domain=host_config.portal_domain,
                 )
+            )
+        except LegacyMapsAliasUnsupportedError as exc:
+            return _error_response(exc.code, str(exc), status_code=400)
+        except ValueError as exc:
+            return _error_response("invalid_request", str(exc))
+
+    @app.post("/portal/api/v2/mutations/<action>")
+    def portal_mutation_action(action: str) -> tuple[Any, int]:
+        try:
+            payload = _json_payload()
+            target_authority = _nimm_target_authority(payload)
+            if target_authority == "cts_gis":
+                return _runtime_response(
+                    run_portal_cts_gis_action(
+                        _tool_payload_for_mutation(
+                            action,
+                            payload,
+                            request_schema=CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
+                        ),
+                        data_dir=host_config.data_dir,
+                        authority_db_file=host_config.authority_db_file,
+                        private_dir=host_config.private_dir,
+                        tool_exposure_policy=host_config.tool_exposure_policy,
+                        portal_instance_id=host_config.portal_instance_id,
+                        portal_domain=host_config.portal_domain,
+                    )
+                )
+            if target_authority in {"aws_csm", "aws-cts", "aws_cts"}:
+                return _runtime_response(
+                    run_portal_aws_csm_action(
+                        _tool_payload_for_mutation(
+                            action,
+                            payload,
+                            request_schema=AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA,
+                        ),
+                        private_dir=host_config.private_dir,
+                        tool_exposure_policy=host_config.tool_exposure_policy,
+                        audit_storage_file=host_config.portal_audit_storage_file,
+                    )
+                )
+            return _error_response(
+                "unsupported_mutation_target",
+                "Mutation target_authority must be cts_gis or aws_csm.",
             )
         except LegacyMapsAliasUnsupportedError as exc:
             return _error_response(exc.code, str(exc), status_code=400)

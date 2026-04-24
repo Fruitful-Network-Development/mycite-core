@@ -4,7 +4,7 @@ manifest:
   id: "CONTEXTUAL-PLANNING-SYSTEM-2026-04-23"
   title: "Plans/Audits/Reports contextual operating system"
   lifecycle: "active"
-  last_reviewed: "2026-04-23"
+  last_reviewed: "2026-04-24"
   canonical_operating_doc: "docs/plans/planning_audit_operating_system.md"
   canonical_task_board: "docs/plans/contextual_system_task_board.yaml"
   compatibility_surfaces:
@@ -17,6 +17,7 @@ entrypoints:
     - "docs/plans/planning_audit_operating_system.md"
     - "docs/plans/contextual_system_manifest.yaml"
     - "docs/plans/contextual_system_task_board.yaml"
+    - "docs/plans/portal_nimm_aitas_unification_plan_2026-04-24.md"
     - "docs/plans/portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md"
   audits:
     - "docs/audits/README.md"
@@ -26,6 +27,7 @@ entrypoints:
   reports:
     - "docs/audits/reports/README.md"
     - "docs/audits/reports/refinement_phase4_validation_report_2026-04-23.md"
+    - "docs/audits/reports/portal_nimm_aitas_unification_audit_report_2026-04-24.md"
     - "docs/audits/reports/aws_csm_comprehensive_audit_report_2026-04-23.md"
     - "docs/audits/reports/aws_csm_onboarding_operational_realities_report_2026-04-23.md"
     - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
@@ -42,6 +44,11 @@ program_streams:
     canonical_plan: "docs/audits/cts_gis_open_alignment_audit_plan_2026-04-23.md"
     canonical_report: "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md"
     status: "active"
+  - id: "STREAM-PORTAL-NIMM-AITAS-UNIFICATION"
+    title: "Portal NIMM/AITAS/lens/stage unification for AWS-CSM and CTS-GIS"
+    canonical_plan: "docs/plans/portal_nimm_aitas_unification_plan_2026-04-24.md"
+    canonical_report: "docs/audits/reports/portal_nimm_aitas_unification_audit_report_2026-04-24.md"
+    status: "completed"
   - id: "STREAM-DESKTOP-DM02-DM04"
     title: "Desktop route/persistence reconciliation"
     canonical_plan: "docs/plans/desktop_dm02_dm04_reconciliation_plan_2026-04-20.md"
@@ -82,9 +89,10 @@ consolidation:
 test_analysis:
   regression_suites:
     - "python3 -m unittest MyCiteV2.tests.unit.test_nimm_phase2_foundations"
-    - "python3 -m unittest MyCiteV2.tests.unit.test_portal_cts_gis_actions"
-    - "python3 -m unittest MyCiteV2.tests.integration.test_nimm_mutation_contract_flow"
+    - "python3 -m unittest MyCiteV2.tests.unit.test_portal_aws_route_sync MyCiteV2.tests.unit.test_portal_cts_gis_actions MyCiteV2.tests.unit.test_aws_csm_onboarding_service"
+    - "python3 -m unittest MyCiteV2.tests.integration.test_nimm_mutation_contract_flow MyCiteV2.tests.integration.test_portal_host_one_shell"
     - "python3 -m unittest MyCiteV2.tests.contracts.test_contract_docs_alignment"
+    - "python3 -m unittest MyCiteV2.tests.architecture.test_portal_one_shell_boundaries"
     - "python3 -m unittest MyCiteV2.tests.architecture.test_state_machine_boundaries"
   closure_rule:
     - "All contextual_system_task_board tasks are done."

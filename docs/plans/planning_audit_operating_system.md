@@ -5,7 +5,7 @@ Date: 2026-04-23
 Doc type: `system-guide`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-23`
+Last reviewed: `2026-04-24`
 
 ## Purpose
 
@@ -46,6 +46,18 @@ manifest + contextual task board first.
 6. Sync compatibility surfaces (`planning_audit_manifest.yaml`, `planning_task_board.yaml`).
 7. Move initiative lifecycle to `completed` or `historical-superseded`.
 8. Archive superseded planning docs and keep only canonical references active.
+
+## YAML-First Extension Rule
+
+For new cross-directory work, update the contextual manifest and task board
+before publishing markdown plans or reports. Compatibility surfaces must be
+updated in the same change when a new stream, initiative, task ID, canonical
+plan, or canonical report is introduced.
+
+When a completed stream is the foundation for new work, create a new active
+stream instead of reopening the completed stream unless the old closure record
+was materially wrong. Retain the completed plan/report as evidence and link the
+new stream to it.
 
 ## Consolidation Rule
 
