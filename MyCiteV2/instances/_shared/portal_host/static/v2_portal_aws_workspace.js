@@ -253,7 +253,9 @@
             '</span><span class="aws-csm-profileCard__meta">' +
             escapeHtml((row.user_email || "no linked user") + " · " + (row.role || "mailbox")) +
             '</span><span class="aws-csm-profileCard__stats">' +
-            "<span>workflow: " +
+            "<span>onboarding: " +
+            escapeHtml(row.onboarding_state || "—") +
+            "</span><span>workflow: " +
             escapeHtml(row.workflow_state || "—") +
             "</span><span>verification: " +
             escapeHtml(row.verification_state || "—") +
@@ -504,6 +506,8 @@
         renderInfoRows(profileFactRows(selected)) +
         renderInfoRows(
           renderKeyValueRows(onboarding, [
+            "onboarding_state",
+            "onboarding_summary",
             "workflow_state",
             "handoff_status",
             "verification_state",
@@ -534,9 +538,10 @@
             '<article class="aws-csm-domainSection aws-csm-domainSection--compact"><div class="aws-csm-domainSection__header"><span class="aws-csm-domainSection__title">' +
             escapeHtml(row.title || row.profile_id || "") +
             '</span><span class="aws-csm-domainSection__count">' +
-            escapeHtml(row.workflow_state || "unknown") +
+            escapeHtml(row.onboarding_state || "unknown") +
             "</span></div>" +
             renderInfoRows([
+              { label: "Onboarding", value: row.onboarding_summary || row.onboarding_state || "—" },
               { label: "Verification", value: row.verification_state || "—" },
               { label: "Provider", value: row.provider_state || "—" },
               { label: "Inbound", value: row.inbound_state || "—" },

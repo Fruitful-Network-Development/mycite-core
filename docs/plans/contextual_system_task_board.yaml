@@ -8,10 +8,10 @@ board:
   manifest_path: "docs/plans/contextual_system_manifest.yaml"
   delegation_state:
     current_focus_stream: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
-    current_focus_task_id: "TASK-AWS-CSM-RECOVERY-003"
+    current_focus_task_id: "TASK-AWS-CSM-RECOVERY-005"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "TASK-AWS-CSM-RECOVERY-002 is now source-and-test evidenced; continue with TASK-AWS-CSM-RECOVERY-003 as the next lexicographic p0 task."
+    last_delegation_note: "TASK-AWS-CSM-RECOVERY-003 is now source-and-test evidenced; continue with TASK-AWS-CSM-RECOVERY-005 as the next lexicographic p0 task."
 
 tasks:
   - id: "TASK-CONTEXT-ORG-001"
@@ -245,7 +245,7 @@ tasks:
   - id: "TASK-AWS-CSM-RECOVERY-003"
     stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
     title: "Add explicit onboard-state indicator after confirmation-link completion"
-    status: "pending"
+    status: "done"
     priority: "p0"
     owner_role: "frontend-runtime-engineer"
     acceptance:
@@ -255,6 +255,7 @@ tasks:
       - "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
       - "MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py"
       - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js"
+      - "MyCiteV2/tests/unit/test_portal_aws_route_sync.py"
 
   - id: "TASK-AWS-CSM-RECOVERY-004"
     stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"

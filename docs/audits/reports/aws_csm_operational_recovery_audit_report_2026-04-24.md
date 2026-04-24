@@ -94,7 +94,8 @@ Status linkage:
 
 - `TASK-AWS-CSM-RECOVERY-001`: `done`
 - `TASK-AWS-CSM-RECOVERY-002`: `done`
-- `TASK-AWS-CSM-RECOVERY-003` through `TASK-AWS-CSM-RECOVERY-006`: `pending`
+- `TASK-AWS-CSM-RECOVERY-003`: `done`
+- `TASK-AWS-CSM-RECOVERY-004` through `TASK-AWS-CSM-RECOVERY-006`: `pending`
 - `TASK-AWS-CSM-RECOVERY-007`: `pending`
 
 ## Task-Linked Recovery Plan
@@ -119,10 +120,18 @@ Source-backed onboarding restoration is now evidenced:
 - End-to-end test coverage asserts the created profile, handoff dispatch
   metadata, and password redaction posture.
 
-### `TASK-AWS-CSM-RECOVERY-003` (pending)
+### `TASK-AWS-CSM-RECOVERY-003` (done)
 
-Add explicit onboarding state indicator in runtime projections and panel UX:
-`pending`, `forwarded`, `confirmed`, and `onboard`.
+Runtime and panel state projection is now explicit and deterministic:
+
+- Mailbox profile projections now emit one canonical onboarding state plus summary.
+- The AWS-CSM interface panel and compact mailbox cards show that canonical state
+  instead of requiring operators to infer progress from raw workflow/provider/
+  verification fields.
+- Unit coverage now proves the projection can emit `pending`, `forwarded`,
+  `confirmed`, and `onboard`.
+- Surface rebuilds after actions reuse the same projection, which removes the
+  prior manual-refresh ambiguity in the panel’s onboarding readout.
 
 ### `TASK-AWS-CSM-RECOVERY-004` (pending)
 
@@ -162,6 +171,7 @@ program can distinguish code defects from host promotion/dependency drift.
 - `MyCiteV2/packages/adapters/event_transport/aws_csm_onboarding_cloud.py`
 - `MyCiteV2/packages/adapters/event_transport/aws_csm_inbound_capture_lambda.py`
 - `MyCiteV2/tests/integration/test_portal_host_one_shell.py`
+- `MyCiteV2/tests/unit/test_portal_aws_route_sync.py`
 
 ## Validation Log
 
@@ -176,7 +186,7 @@ Validation commands executed for this planning-system update:
 
 Result summary:
 
-- AWS-CSM route-sync unit suite: pass (`Ran 7 tests`)
+- AWS-CSM route-sync unit suite: pass (`Ran 9 tests`)
 - one-shell architecture suite: pass (`Ran 22 tests`)
 - portal one-shell integration suite: skipped in this environment because `flask` is not installed (`Ran 6 tests`, `skipped=6`)
 - contract-doc alignment suite: pass (`Ran 13 tests`)

@@ -12,7 +12,12 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_aws_runtime import _apply_action, run_portal_aws_csm_action
+from MyCiteV2.instances._shared.runtime.portal_aws_runtime import (
+    _apply_action,
+    _profile_onboarding_projection,
+    run_portal_aws_csm,
+    run_portal_aws_csm_action,
+)
 from MyCiteV2.packages.state_machine.nimm import NimmDirective, NimmDirectiveEnvelope
 from MyCiteV2.packages.state_machine.portal_shell import PortalScope
 
@@ -118,6 +123,38 @@ class _RouteSyncCloudFailure:
         raise ValueError("lambda:update_function_configuration access denied")
 
 
+def _onboarding_payload(
+    *,
+    handoff_status: str = "not_started",
+    verification_state: str = "not_started",
+    provider_state: str = "not_started",
+    inbound_state: str = "receive_unconfigured",
+    handoff_sent_at: str = "",
+    email_received_at: str = "",
+    ready_for_user_handoff: bool = False,
+    receive_verified: bool = False,
+    mailbox_operational: bool = False,
+) -> dict[str, object]:
+    return {
+        "workflow": {
+            "handoff_status": handoff_status,
+            "handoff_email_sent_at": handoff_sent_at,
+            "is_ready_for_user_handoff": ready_for_user_handoff,
+            "is_mailbox_operational": mailbox_operational,
+        },
+        "verification": {
+            "portal_state": verification_state,
+            "status": verification_state,
+            "email_received_at": email_received_at,
+        },
+        "provider": {"send_as_provider_status": provider_state},
+        "inbound": {
+            "receive_state": inbound_state,
+            "receive_verified": receive_verified,
+        },
+    }
+
+
 class _DomainConvergenceCloud:
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -172,6 +209,40 @@ class _DomainConvergenceCloud:
 
 
 class PortalAwsRouteSyncTests(unittest.TestCase):
+    def test_profile_onboarding_projection_exposes_pending_forwarded_confirmed_and_onboard(self) -> None:
+        self.assertEqual(_profile_onboarding_projection(_onboarding_payload())["state"], "pending")
+        self.assertEqual(
+            _profile_onboarding_projection(
+                _onboarding_payload(
+                    handoff_status="instruction_sent",
+                    handoff_sent_at="2026-04-24T00:00:00+00:00",
+                    verification_state="capture_requested",
+                )
+            )["state"],
+            "forwarded",
+        )
+        self.assertEqual(
+            _profile_onboarding_projection(
+                _onboarding_payload(
+                    handoff_status="instruction_sent",
+                    provider_state="verified",
+                    verification_state="verified",
+                )
+            )["state"],
+            "confirmed",
+        )
+        self.assertEqual(
+            _profile_onboarding_projection(
+                _onboarding_payload(
+                    handoff_status="send_as_confirmed",
+                    provider_state="verified",
+                    verification_state="verified",
+                    ready_for_user_handoff=True,
+                )
+            )["state"],
+            "onboard",
+        )
+
     def test_actions_fail_closed_when_runtime_dependency_is_missing(self) -> None:
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir)
@@ -411,6 +482,96 @@ class PortalAwsRouteSyncTests(unittest.TestCase):
         self.assertIn(
             {"field": "single_user_email", "lens_id": "email_address", "canonical_value": "alex@example.com", "validation_issues": ""},
             lens_values,
+        )
+
+    def test_runtime_surface_projects_deterministic_onboarding_states(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            profile_path = private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.cvccboard.alex.json"
+            _write_json(
+                profile_path,
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                        "single_user_email": "alex@example.com",
+                    },
+                    "workflow": {
+                        "lifecycle_state": "draft",
+                        "handoff_status": "instruction_sent",
+                        "handoff_email_sent_at": "2026-04-24T00:00:00+00:00",
+                    },
+                    "verification": {
+                        "portal_state": "capture_requested",
+                        "status": "capture_requested",
+                    },
+                    "provider": {"send_as_provider_status": "pending"},
+                    "inbound": {"receive_state": "awaiting_message"},
+                    "smtp": {"forward_to_email": "ops@example.com"},
+                },
+            )
+
+            forwarded_bundle = run_portal_aws_csm(
+                {
+                    "schema": "mycite.v2.portal.system.tools.aws_csm.request.v1",
+                    "portal_scope": {"scope_id": "fnd"},
+                    "surface_query": {"view": "domains", "domain": "cvccboard.org", "profile": "aws-csm.cvccboard.alex"},
+                },
+                private_dir=private_dir,
+            )
+
+            forwarded_workspace = forwarded_bundle["surface_payload"]["workspace"]
+            self.assertEqual(forwarded_workspace["mailbox_rows"][0]["onboarding_state"], "forwarded")
+            self.assertEqual(
+                forwarded_workspace["selected_profile_onboarding"]["onboarding_state"],
+                "forwarded",
+            )
+
+            _write_json(
+                profile_path,
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                        "single_user_email": "alex@example.com",
+                    },
+                    "workflow": {
+                        "lifecycle_state": "draft",
+                        "handoff_status": "send_as_confirmed",
+                        "is_ready_for_user_handoff": True,
+                    },
+                    "verification": {
+                        "portal_state": "verified",
+                        "status": "verified",
+                        "verified_at": "2026-04-24T00:00:00+00:00",
+                    },
+                    "provider": {"send_as_provider_status": "verified"},
+                    "inbound": {"receive_state": "receive_pending"},
+                    "smtp": {"forward_to_email": "ops@example.com"},
+                },
+            )
+
+            onboard_bundle = run_portal_aws_csm(
+                {
+                    "schema": "mycite.v2.portal.system.tools.aws_csm.request.v1",
+                    "portal_scope": {"scope_id": "fnd"},
+                    "surface_query": {"view": "domains", "domain": "cvccboard.org", "profile": "aws-csm.cvccboard.alex"},
+                },
+                private_dir=private_dir,
+            )
+
+        onboard_workspace = onboard_bundle["surface_payload"]["workspace"]
+        self.assertEqual(onboard_workspace["mailbox_rows"][0]["onboarding_state"], "onboard")
+        self.assertEqual(
+            onboard_workspace["selected_profile_onboarding"]["onboarding_state"],
+            "onboard",
         )
 
 

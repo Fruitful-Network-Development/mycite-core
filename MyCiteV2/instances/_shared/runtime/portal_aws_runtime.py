@@ -352,6 +352,59 @@ def _tool_files(tool_root: Path | None) -> tuple[str, str]:
     return collection, mediation
 
 
+def _profile_onboarding_projection(payload: Mapping[str, Any]) -> dict[str, str]:
+    working = _as_dict(payload)
+    workflow = _as_dict(working.get("workflow"))
+    verification = _as_dict(working.get("verification"))
+    provider = _as_dict(working.get("provider"))
+    inbound = _as_dict(working.get("inbound"))
+
+    handoff_status = _as_text(workflow.get("handoff_status")).lower()
+    verification_state = _as_text(verification.get("portal_state") or verification.get("status")).lower()
+    provider_state = _as_text(
+        provider.get("send_as_provider_status")
+        or provider.get("gmail_send_as_status")
+        or provider.get("aws_ses_identity_status")
+    ).lower()
+    inbound_state = _as_text(inbound.get("receive_state")).lower()
+
+    provider_verified = provider_state == "verified" or verification_state == "verified"
+    handoff_confirmed = handoff_status in {"send_as_confirmed", "send_as_confirmed_attested"}
+    receive_operational = _as_bool(inbound.get("receive_verified")) or inbound_state == "receive_operational"
+    mailbox_operational = _as_bool(workflow.get("is_mailbox_operational"))
+    handoff_forwarded = bool(
+        _as_text(workflow.get("handoff_email_sent_at"))
+        or _as_text(workflow.get("handoff_email_sent_to"))
+        or _as_text(workflow.get("handoff_email_message_id"))
+        or _as_text(verification.get("email_received_at"))
+        or _as_text(verification.get("latest_message_reference"))
+        or _as_text(inbound.get("latest_message_captured_at"))
+        or handoff_status == "instruction_sent"
+        or verification_state in {"capture_requested", "capture_received"}
+        or inbound_state in {"awaiting_message", "receive_pending", "receive_configured"}
+    )
+
+    if mailbox_operational or (provider_verified and (handoff_confirmed or receive_operational)):
+        return {
+            "state": "onboard",
+            "summary": "Send-as confirmation is complete and the mailbox is ready for operator use.",
+        }
+    if provider_verified:
+        return {
+            "state": "confirmed",
+            "summary": "Send-as confirmation is complete; finish mailbox readiness steps to reach onboard.",
+        }
+    if handoff_forwarded:
+        return {
+            "state": "forwarded",
+            "summary": "Handoff or confirmation routing is in flight; wait for the verification step to complete.",
+        }
+    return {
+        "state": "pending",
+        "summary": "Mailbox onboarding has not advanced past draft or staging yet.",
+    }
+
+
 def _mailbox_profiles(tool_root: Path | None) -> list[dict[str, Any]]:
     if tool_root is None:
         return []
@@ -373,6 +426,7 @@ def _mailbox_profiles(tool_root: Path | None) -> list[dict[str, Any]]:
         provider = dict(payload.get("provider") or {})
         smtp = dict(payload.get("smtp") or {})
         inbound = dict(payload.get("inbound") or {})
+        onboarding = _profile_onboarding_projection(payload)
         rows.append(
             {
                 "profile_id": profile_id,
@@ -395,6 +449,8 @@ def _mailbox_profiles(tool_root: Path | None) -> list[dict[str, Any]]:
                 )
                 or "unknown",
                 "inbound_state": _as_text(inbound.get("receive_state")) or "unknown",
+                "onboarding_state": onboarding["state"],
+                "onboarding_summary": onboarding["summary"],
                 "forward_target": _as_text(smtp.get("forward_to_email") or identity.get("operator_inbox_target")),
                 "raw": payload,
             }
@@ -866,6 +922,7 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
     handoff_ready = _as_text(smtp.get("credentials_secret_state")).lower() == "configured" or bool(
         smtp.get("handoff_ready")
     )
+    onboarding = _profile_onboarding_projection(raw)
     actions = [
         {
             "kind": "stage_smtp_credentials",
@@ -915,6 +972,8 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
         "tenant_scope_id": tenant_scope_id,
         "workflow_state": _as_text(workflow.get("lifecycle_state")) or _as_text(selected_profile.get("workflow_state")),
         "handoff_status": _as_text(workflow.get("handoff_status")),
+        "onboarding_state": onboarding["state"],
+        "onboarding_summary": onboarding["summary"],
         "verification_state": _as_text(verification.get("portal_state") or verification.get("status"))
         or _as_text(selected_profile.get("verification_state")),
         "email_received_at": _as_text(verification.get("email_received_at") or inbound.get("latest_message_captured_at")),
