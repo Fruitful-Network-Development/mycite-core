@@ -78,9 +78,11 @@ more likely deployment/runtime/data-state mismatch than source deletion.
    per-domain add-user flow, personal-email handoff destination, and auditable
    handoff dispatch metadata (`sent_to`, `message_id`, `sent_at`) visible without
    persisting reusable SMTP secrets in profile JSON.
-3. Implement `TASK-AWS-CSM-RECOVERY-003` onboard-state projection and indicator.
-4. Run `TASK-AWS-CSM-RECOVERY-004` measurement and optimization pass.
-5. Execute `TASK-AWS-CSM-RECOVERY-005` JSON/duplication retirement audit.
+3. `TASK-AWS-CSM-RECOVERY-003` complete: mailbox projections and the interface
+   panel now expose deterministic onboarding states and summaries using one
+   canonical projection: `pending`, `forwarded`, `confirmed`, and `onboard`.
+4. Execute `TASK-AWS-CSM-RECOVERY-005` JSON/duplication retirement audit.
+5. Run `TASK-AWS-CSM-RECOVERY-004` measurement and optimization pass.
 6. Publish closure-progress evidence under `TASK-AWS-CSM-RECOVERY-006`.
 7. Execute `TASK-AWS-CSM-RECOVERY-007` deployed parity verification for runtime
    dependencies, promoted JS assets, and mutation-action host behavior.
@@ -92,6 +94,7 @@ more likely deployment/runtime/data-state mismatch than source deletion.
 - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js`
 - `MyCiteV2/packages/adapters/event_transport/aws_csm_onboarding_cloud.py`
 - `MyCiteV2/packages/adapters/event_transport/aws_csm_inbound_capture_lambda.py`
+- `MyCiteV2/tests/unit/test_portal_aws_route_sync.py`
 - `docs/audits/reports/performance_weight_speed_report_2026-04-16.md`
 
 ## Canonical Contract Links
