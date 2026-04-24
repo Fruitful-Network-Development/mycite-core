@@ -208,6 +208,42 @@ class _DomainConvergenceCloud:
         }
 
 
+class _FakeNewsletterState:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    def list_newsletter_domains(self) -> list[str]:
+        self.calls.append(("list_newsletter_domains", ""))
+        return ["cvccboard.org"]
+
+    def load_profile(self, *, domain: str) -> dict[str, object]:
+        self.calls.append(("load_profile", domain))
+        return {
+            "schema": "mycite.service_tool.aws_csm.newsletter_profile.v1",
+            "domain": domain,
+            "list_address": f"news@{domain}",
+            "sender_address": f"news@{domain}",
+            "selected_author_profile_id": "aws-csm.cvccboard.alex",
+            "selected_author_address": f"alex@{domain}",
+            "delivery_mode": "inbound-mail-workflow",
+            "last_dispatch_id": "dispatch-1",
+            "last_inbound_status": "ok",
+            "last_inbound_subject": "Welcome",
+        }
+
+    def load_contact_log(self, *, domain: str) -> dict[str, object]:
+        self.calls.append(("load_contact_log", domain))
+        return {
+            "schema": "mycite.service_tool.aws_csm.newsletter_contacts.v1",
+            "domain": domain,
+            "contacts": [
+                {"email": "reader1@example.com", "subscribed": True},
+                {"email": "reader2@example.com", "subscribed": False},
+            ],
+            "dispatches": [{"dispatch_id": "dispatch-1"}],
+        }
+
+
 class PortalAwsRouteSyncTests(unittest.TestCase):
     def test_profile_onboarding_projection_exposes_pending_forwarded_confirmed_and_onboard(self) -> None:
         self.assertEqual(_profile_onboarding_projection(_onboarding_payload())["state"], "pending")
@@ -573,6 +609,34 @@ class PortalAwsRouteSyncTests(unittest.TestCase):
             onboard_workspace["selected_profile_onboarding"]["onboarding_state"],
             "onboard",
         )
+
+    def test_runtime_surface_reads_newsletter_metadata_through_adapter_helper(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            fake_state = _FakeNewsletterState()
+
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime._newsletter_state",
+                return_value=fake_state,
+            ):
+                bundle = run_portal_aws_csm(
+                    {
+                        "schema": "mycite.v2.portal.system.tools.aws_csm.request.v1",
+                        "portal_scope": {"scope_id": "fnd"},
+                        "surface_query": {"view": "domains", "domain": "cvccboard.org", "section": "newsletter"},
+                    },
+                    private_dir=private_dir,
+                )
+
+        workspace = bundle["surface_payload"]["workspace"]
+        self.assertEqual(workspace["newsletter_domain_count"], 1)
+        self.assertEqual(workspace["domain_rows"][0]["dispatch_count"], 1)
+        self.assertTrue(workspace["domain_rows"][0]["newsletter_configured"])
+        self.assertEqual(workspace["selected_newsletter"]["list_address"], "news@cvccboard.org")
+        self.assertIn(("list_newsletter_domains", ""), fake_state.calls)
+        self.assertIn(("load_profile", "cvccboard.org"), fake_state.calls)
+        self.assertIn(("load_contact_log", "cvccboard.org"), fake_state.calls)
 
 
 if __name__ == "__main__":

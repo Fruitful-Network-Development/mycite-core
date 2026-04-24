@@ -155,6 +155,13 @@ Retained non-datum JSON artifacts (explicitly out-of-scope for removal):
 These retained JSON assets are operational metadata surfaces; they are not MOS
 datum authority stores and do not replace SQL-backed authoritative datum reads/writes.
 
+2026-04-24 follow-on evidence:
+
+- `TASK-AWS-CSM-RECOVERY-005` retired direct mailbox/newsletter file-scan logic
+  from `MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py` in favor of
+  shared filesystem adapters while preserving the JSON artifacts above as explicit
+  non-datum/config exceptions.
+
 ### `TASK-PORTAL-LEGACY-SQLMOS-005`
 
 Mark superseded legacy docs and indexes with `historical-superseded` lifecycle and

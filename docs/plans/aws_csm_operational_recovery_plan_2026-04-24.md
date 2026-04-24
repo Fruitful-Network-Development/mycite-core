@@ -81,11 +81,15 @@ more likely deployment/runtime/data-state mismatch than source deletion.
 3. `TASK-AWS-CSM-RECOVERY-003` complete: mailbox projections and the interface
    panel now expose deterministic onboarding states and summaries using one
    canonical projection: `pending`, `forwarded`, `confirmed`, and `onboard`.
-4. Execute `TASK-AWS-CSM-RECOVERY-005` JSON/duplication retirement audit.
-5. Run `TASK-AWS-CSM-RECOVERY-004` measurement and optimization pass.
-6. Publish closure-progress evidence under `TASK-AWS-CSM-RECOVERY-006`.
-7. Execute `TASK-AWS-CSM-RECOVERY-007` deployed parity verification for runtime
+4. `TASK-AWS-CSM-RECOVERY-005` complete: active AWS-CSM runtime projections now
+   read mailbox and newsletter operational JSON through shared filesystem
+   adapters instead of bespoke file scans, while `tool.*.aws-csm.json`,
+   `spec.json`, `newsletter.*.profile.json`, `newsletter.*.contacts.json`, and
+   `private/config.json` remain explicit non-datum/config exceptions.
+5. Execute `TASK-AWS-CSM-RECOVERY-007` deployed parity verification for runtime
    dependencies, promoted JS assets, and mutation-action host behavior.
+6. Run `TASK-AWS-CSM-RECOVERY-004` measurement and optimization pass.
+7. Publish closure-progress evidence under `TASK-AWS-CSM-RECOVERY-006`.
 
 ## Acceptance-Evidence Anchors
 

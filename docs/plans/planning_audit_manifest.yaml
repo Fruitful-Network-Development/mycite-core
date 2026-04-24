@@ -118,7 +118,7 @@ initiatives:
     canonical_audit_plan: "docs/plans/aws_csm_operational_recovery_plan_2026-04-24.md"
     active_report: "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
     closure_reports: []
-    open_issue_summary: "Commit-history recovery audit, onboarding-panel restoration, and deterministic onboarding-state projection are complete: current source now exposes explicit mailbox onboarding state in the AWS-CSM panel, while remaining live risk centers on deployed runtime/asset parity, performance, and SQL-only datum authority verification."
+    open_issue_summary: "Commit-history recovery audit, onboarding-panel restoration, deterministic onboarding-state projection, and JSON-pathway retirement are complete: active AWS-CSM runtime now routes mailbox/newsletter operational metadata through shared adapters while remaining live risk centers on deployed runtime/asset parity and performance."
     task_ids:
       - "TASK-AWS-CSM-RECOVERY-001"
       - "TASK-AWS-CSM-RECOVERY-002"

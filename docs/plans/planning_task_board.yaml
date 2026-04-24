@@ -11,10 +11,10 @@ board:
   task_schema_reference: "docs/standards/agent_yaml_schema.md"
   delegation_state:
     current_focus_initiative_id: "INIT-AWS-CSM-OPERATIONAL-RECOVERY"
-    current_focus_task_id: "TASK-AWS-CSM-RECOVERY-005"
+    current_focus_task_id: "TASK-AWS-CSM-RECOVERY-007"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "TASK-AWS-CSM-RECOVERY-003 is now source-and-test evidenced; continue with TASK-AWS-CSM-RECOVERY-005 as the next lexicographic p0 task."
+    last_delegation_note: "TASK-AWS-CSM-RECOVERY-005 is now source-and-test evidenced; continue with TASK-AWS-CSM-RECOVERY-007 as the remaining lexicographic p0 task."
 
 tasks:
   - id: "TASK-DOC-IA-001"
@@ -344,7 +344,7 @@ tasks:
   - id: "TASK-AWS-CSM-RECOVERY-005"
     initiative_id: "INIT-AWS-CSM-OPERATIONAL-RECOVERY"
     title: "Audit and retire residual MOS datum JSON pathways and duplicated legacy code"
-    status: "pending"
+    status: "done"
     priority: "p0"
     owner_role: "datum-domain-owner"
     acceptance:
