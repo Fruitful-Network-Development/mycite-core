@@ -24,6 +24,7 @@ This directory is the closure-evidence surface for the unified planning/audit sy
 - `portal_nimm_aitas_unification_audit_report_2026-04-24.md`
 - `aws_csm_comprehensive_audit_report_2026-04-23.md`
 - `aws_csm_onboarding_operational_realities_report_2026-04-23.md`
+- `aws_csm_operational_recovery_audit_report_2026-04-24.md`
 - `portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md`
 - `cts_gis_sql_authority_assurance_report_2026-04-21.md`
 - `performance_weight_speed_report_2026-04-16.md`

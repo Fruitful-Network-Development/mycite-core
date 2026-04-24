@@ -16,6 +16,7 @@ Use this directory as part of the same unified control system used by `docs/plan
 
 - `cts_gis_open_alignment_audit_plan_2026-04-23.md` (active CTS-GIS open queue)
 - `aws_csm_operating_alignment_audit_plan_2026-04-23.md` (completed AWS-CSM alignment stream)
+- `docs/plans/aws_csm_operational_recovery_plan_2026-04-24.md` (active AWS-CSM recovery stream; cross-directory canonical plan)
 - `performance_weight_speed_audit_plan_2026-04-16.md` (active)
 
 ## Cross-Directory Closure Reports

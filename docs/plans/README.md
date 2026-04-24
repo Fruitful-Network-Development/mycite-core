@@ -17,6 +17,7 @@ Active shell refactor records preserve the family-only shell closeout posture.
 
 - `documentation_ia_remediation_backlog.md`
 - `desktop_dm02_dm04_reconciliation_plan_2026-04-20.md` (active)
+- `aws_csm_operational_recovery_plan_2026-04-24.md` (active)
 - `portal_nimm_aitas_unification_plan_2026-04-24.md` (completed)
 - `mos_post_closure_consolidation_plan_2026-04-21.md` (completed)
 - `portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md` (completed)
@@ -29,6 +30,11 @@ Active shell refactor records preserve the family-only shell closeout posture.
 plan for cross-tool NIMM/AITAS/lens/stage unification across CTS-GIS and
 AWS-CSM. The completed refinement stream remains foundation history, not a
 second plan for this follow-on work.
+
+`aws_csm_operational_recovery_plan_2026-04-24.md` is the canonical active
+recovery plan for deployed-FND AWS-CSM operability (per-domain onboarding,
+personal-email confirmation forwarding, onboard-state visibility, performance,
+and residual JSON-path retirement).
 
 ## Completed And Historical Support Set
 

@@ -75,3 +75,31 @@ has evidence paths in `docs/audits/reports/` or explicitly recorded waivers.
 - Keep manifest/task IDs stable; never reuse closed task IDs for new work.
 - Keep plan/audit/report links resolvable and repo-relative.
 - Keep archive notes explicit when demoting lifecycle state.
+
+## Reusable Delegation Loop
+
+Use one reusable prompt to advance the next actionable item every cycle.
+
+Delegation source of truth:
+
+- `manifest.delegation_protocol` in:
+  - `docs/plans/contextual_system_manifest.yaml`
+  - `docs/plans/planning_audit_manifest.yaml`
+- `board.delegation_state` in:
+  - `docs/plans/contextual_system_task_board.yaml`
+  - `docs/plans/planning_task_board.yaml`
+
+Loop rules:
+
+1. Select exactly one next task from active streams/initiatives using:
+   - status order: `in_progress` -> `pending` -> `blocked`
+   - priority order: `p0` -> `p1` -> `p2` -> `p3`
+   - tiebreaker: lexicographically earliest stable task ID
+2. If selected task is `blocked`, perform unblock taskization and evidence mapping first.
+3. If execution findings require revisit, inject new stable task IDs and add them to both task boards and both manifests in the same change.
+4. Keep one canonical active plan + one canonical active report per active stream.
+5. Report cycle output with:
+   - files changed
+   - task IDs updated/added
+   - lifecycle/consolidation decisions
+   - validations executed
