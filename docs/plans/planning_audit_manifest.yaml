@@ -9,6 +9,21 @@ manifest:
   canonical_context_manifest: "docs/plans/contextual_system_manifest.yaml"
   canonical_context_task_board: "docs/plans/contextual_system_task_board.yaml"
   compatibility_role: "secondary"
+  delegation_protocol:
+    version: "1.0"
+    mirrors_contextual_manifest: true
+    task_status_order:
+      - "in_progress"
+      - "pending"
+      - "blocked"
+    selection_rules:
+      - "Pick exactly one next task from active initiatives using priority order p0 > p1 > p2 > p3."
+      - "When multiple tasks tie on priority, choose earliest stable task id lexicographically."
+      - "If selected task is blocked, execute unblock taskization before feature execution."
+    revisit_injection_rules:
+      - "New findings create new stable task IDs; never reuse completed IDs."
+      - "Injected revisit tasks reference originating initiative and evidence report paths."
+      - "Compatibility and contextual surfaces are synchronized in the same change."
   directories:
     plans: "docs/plans"
     audits: "docs/audits"
@@ -93,6 +108,25 @@ initiatives:
       - "TASK-AWS-CSM-ALIGN-008"
       - "TASK-AWS-CSM-ALIGN-009"
       - "TASK-AWS-CSM-ALIGN-010"
+
+  - id: "INIT-AWS-CSM-OPERATIONAL-RECOVERY"
+    title: "AWS-CSM operational recovery and per-domain onboarding restoration"
+    status: "active"
+    priority: "p0"
+    lifecycle: "active"
+    canonical_plan: "docs/plans/aws_csm_operational_recovery_plan_2026-04-24.md"
+    canonical_audit_plan: "docs/plans/aws_csm_operational_recovery_plan_2026-04-24.md"
+    active_report: "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
+    closure_reports: []
+    open_issue_summary: "Commit-history recovery audit is complete: current source still contains the AWS-CSM onboarding surface, while the highest-risk live drift now points to deployed runtime/asset parity, guarded action-host dependency readiness, onboarding panel restoration, onboarding-state visibility, performance, and SQL-only datum authority verification."
+    task_ids:
+      - "TASK-AWS-CSM-RECOVERY-001"
+      - "TASK-AWS-CSM-RECOVERY-002"
+      - "TASK-AWS-CSM-RECOVERY-003"
+      - "TASK-AWS-CSM-RECOVERY-004"
+      - "TASK-AWS-CSM-RECOVERY-005"
+      - "TASK-AWS-CSM-RECOVERY-006"
+      - "TASK-AWS-CSM-RECOVERY-007"
 
   - id: "INIT-PORTAL-NIMM-AITAS-UNIFICATION"
     title: "Portal NIMM/AITAS/lens/stage unification for AWS-CSM and CTS-GIS"

@@ -6,6 +6,12 @@ board:
   lifecycle: "active"
   last_reviewed: "2026-04-24"
   manifest_path: "docs/plans/contextual_system_manifest.yaml"
+  delegation_state:
+    current_focus_stream: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
+    current_focus_task_id: "TASK-AWS-CSM-RECOVERY-002"
+    next_task_policy: "priority_then_lexicographic"
+    revisit_queue: []
+    last_delegation_note: "TASK-AWS-CSM-RECOVERY-001 audit closed with deployment/runtime parity findings; continue with TASK-AWS-CSM-RECOVERY-002 as the next lexicographic p0 task."
 
 tasks:
   - id: "TASK-CONTEXT-ORG-001"
@@ -203,6 +209,110 @@ tasks:
       - "docs/audits/reports/aws_csm_onboarding_operational_realities_report_2026-04-23.md"
       - "MyCiteV2/tests/integration/test_portal_host_one_shell.py"
       - "MyCiteV2/tests/unit/test_portal_aws_route_sync.py"
+
+  - id: "TASK-AWS-CSM-RECOVERY-001"
+    stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
+    title: "Perform commit-history recovery audit for AWS-CSM drift since alignment closure"
+    status: "done"
+    priority: "p0"
+    owner_role: "architecture-auditor"
+    acceptance:
+      - "Commit-window analysis identifies likely regression windows between alignment completion and current deployed FND portal behavior."
+      - "Recovery report maps suspect commits and code surfaces to concrete verification checks."
+    evidence_targets:
+      - "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
+      - "docs/plans/aws_csm_operational_recovery_plan_2026-04-24.md"
+      - "MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py"
+
+  - id: "TASK-AWS-CSM-RECOVERY-002"
+    stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
+    title: "Restore per-domain user onboarding interface panel with personal-email handoff workflow"
+    status: "pending"
+    priority: "p0"
+    owner_role: "aws-csm-runtime-owner"
+    acceptance:
+      - "Interface panel supports creating users with domain association and personal email destination."
+      - "Onboarding action sends SMTP setup instructions and persists auditable dispatch metadata without storing SMTP secrets in profile JSON."
+      - "Confirmation-forward path targets configured personal inbox and surfaces delivery decision evidence."
+    evidence_targets:
+      - "docs/plans/aws_csm_operational_recovery_plan_2026-04-24.md"
+      - "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
+      - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js"
+      - "MyCiteV2/packages/adapters/event_transport/aws_csm_onboarding_cloud.py"
+
+  - id: "TASK-AWS-CSM-RECOVERY-003"
+    stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
+    title: "Add explicit onboard-state indicator after confirmation-link completion"
+    status: "pending"
+    priority: "p0"
+    owner_role: "frontend-runtime-engineer"
+    acceptance:
+      - "Profile/domain runtime projections expose deterministic onboarding status states including pending, forwarded, confirmed, and onboard."
+      - "Interface panel displays onboard viability state without requiring manual refresh ambiguity."
+    evidence_targets:
+      - "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
+      - "MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py"
+      - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js"
+
+  - id: "TASK-AWS-CSM-RECOVERY-004"
+    stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
+    title: "Re-run portal performance optimization pass for AWS-CSM load latency and fallback bloat"
+    status: "pending"
+    priority: "p1"
+    owner_role: "performance-owner"
+    acceptance:
+      - "Load path baseline captures median and p95 latency for AWS-CSM panel render and route transitions."
+      - "Fallback/safeguard branches are reduced to contract-required paths with test-backed parity."
+      - "Post-change measurements show materially improved latency versus current 10-20 second baseline."
+    evidence_targets:
+      - "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
+      - "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
+      - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js"
+
+  - id: "TASK-AWS-CSM-RECOVERY-005"
+    stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
+    title: "Audit and retire residual MOS datum JSON pathways and duplicated legacy code"
+    status: "pending"
+    priority: "p0"
+    owner_role: "datum-domain-owner"
+    acceptance:
+      - "Residual datum JSON reads/writes in active AWS-CSM and shared portal paths are cataloged and dispositioned."
+      - "Active pathways rely on MOS SQL authority only; retained JSON artifacts are explicitly non-datum/config exceptions."
+      - "Duplication hotspots are documented with consolidation targets and risk notes."
+    evidence_targets:
+      - "docs/plans/aws_csm_operational_recovery_plan_2026-04-24.md"
+      - "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
+      - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
+
+  - id: "TASK-AWS-CSM-RECOVERY-006"
+    stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
+    title: "Publish canonical recovery audit report and synchronize compatibility surfaces"
+    status: "pending"
+    priority: "p1"
+    owner_role: "program-owner"
+    acceptance:
+      - "Recovery report links findings, risks, and remediation status to TASK-AWS-CSM-RECOVERY IDs."
+      - "Contextual and compatibility manifests/task boards remain synchronized with no canonical ambiguity."
+    evidence_targets:
+      - "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
+      - "docs/plans/contextual_system_manifest.yaml"
+      - "docs/plans/planning_audit_manifest.yaml"
+
+  - id: "TASK-AWS-CSM-RECOVERY-007"
+    stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
+    title: "Verify deployed FND runtime and asset parity for AWS-CSM action hosts"
+    status: "pending"
+    priority: "p0"
+    owner_role: "deployment-runtime-owner"
+    acceptance:
+      - "Deployed AWS-CSM JS/runtime assets are reconciled against post-520c349 and post-455f270 source surfaces or the divergence is explicitly waived."
+      - "Execution hosts for guarded AWS-CSM actions report a ready runtime dependency baseline or an explicit fail-closed remediation path is evidenced."
+      - "Recovery report records deployment/runtime parity evidence before stream closure."
+    evidence_targets:
+      - "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
+      - "MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py"
+      - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js"
+      - "MyCiteV2/packages/adapters/event_transport/aws_csm_onboarding_cloud.py"
 
   - id: "TASK-PORTAL-LEGACY-SQLMOS-001"
     title: "Inventory legacy shell/UI/doc boundary artifacts against current one-shell and NIMM/AITAS contracts"
