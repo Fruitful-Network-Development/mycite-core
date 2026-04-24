@@ -7,11 +7,11 @@ board:
   last_reviewed: "2026-04-24"
   manifest_path: "docs/plans/contextual_system_manifest.yaml"
   delegation_state:
-    current_focus_stream: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
-    current_focus_task_id: "TASK-AWS-CSM-RECOVERY-007"
+    current_focus_stream: "STREAM-CTS-GIS-OPEN"
+    current_focus_task_id: "TASK-CTSGIS-BLOCKER-001"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "TASK-AWS-CSM-RECOVERY-005 is now source-and-test evidenced; continue with TASK-AWS-CSM-RECOVERY-007 as the remaining lexicographic p0 task."
+    last_delegation_note: "TASK-AWS-CSM-RECOVERY-006 closed the AWS-CSM recovery stream with synchronized contextual and compatibility surfaces; the next remaining item is the blocked CTS-GIS readiness-gate task TASK-CTSGIS-BLOCKER-001."
 
 tasks:
   - id: "TASK-CONTEXT-ORG-001"
@@ -260,7 +260,7 @@ tasks:
   - id: "TASK-AWS-CSM-RECOVERY-004"
     stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
     title: "Re-run portal performance optimization pass for AWS-CSM load latency and fallback bloat"
-    status: "pending"
+    status: "done"
     priority: "p1"
     owner_role: "performance-owner"
     acceptance:
@@ -290,7 +290,7 @@ tasks:
   - id: "TASK-AWS-CSM-RECOVERY-006"
     stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
     title: "Publish canonical recovery audit report and synchronize compatibility surfaces"
-    status: "pending"
+    status: "done"
     priority: "p1"
     owner_role: "program-owner"
     acceptance:
@@ -304,7 +304,7 @@ tasks:
   - id: "TASK-AWS-CSM-RECOVERY-007"
     stream_id: "STREAM-AWS-CSM-OPERATIONAL-RECOVERY"
     title: "Verify deployed FND runtime and asset parity for AWS-CSM action hosts"
-    status: "pending"
+    status: "done"
     priority: "p0"
     owner_role: "deployment-runtime-owner"
     acceptance:

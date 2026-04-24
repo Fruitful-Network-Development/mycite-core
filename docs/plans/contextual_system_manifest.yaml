@@ -85,7 +85,7 @@ program_streams:
     title: "AWS-CSM operational recovery: per-domain onboarding, performance, and legacy trim"
     canonical_plan: "docs/plans/aws_csm_operational_recovery_plan_2026-04-24.md"
     canonical_report: "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
-    status: "active"
+    status: "completed"
   - id: "STREAM-PORTAL-LEGACY-BOUNDARY-SQL-MOS"
     title: "Portal legacy boundary retirement and SQL MOS datum convergence"
     canonical_plan: "docs/plans/portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md"

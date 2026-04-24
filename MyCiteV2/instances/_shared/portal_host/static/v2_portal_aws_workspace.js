@@ -617,60 +617,105 @@
     return false;
   }
 
-  function bindCreateProfileForm(target, ctx, workspace, surfacePayload) {
-    var form = target.querySelector("[data-aws-create-profile-form]");
-    if (!form) return;
-    form.addEventListener("submit", function (event) {
+  function collectFormPayload(form) {
+    var payload = {};
+    Array.prototype.forEach.call(form.querySelectorAll("input, textarea, select"), function (field) {
+      if (!field.name) return;
+      var value = field.value;
+      if (value == null || value === "") return;
+      payload[field.name] = value;
+    });
+    return payload;
+  }
+
+  function bindDelegatedWorkspaceEvents(target) {
+    if (!target || target.__awsCsmDelegatedBindings) return;
+    target.__awsCsmDelegatedBindings = true;
+    target.addEventListener("submit", function (event) {
+      var form = event.target && event.target.closest
+        ? event.target.closest("[data-aws-create-profile-form], [data-aws-create-domain-form]")
+        : null;
+      var state = target.__awsCsmRenderState || {};
+      if (!form || !target.contains(form) || !state.ctx) return;
       event.preventDefault();
-      var payload = {};
-      Array.prototype.forEach.call(form.querySelectorAll("input, textarea, select"), function (field) {
-        if (!field.name) return;
-        var value = field.value;
-        if (value == null || value === "") return;
-        payload[field.name] = value;
-      });
-      submitAction(ctx, workspace, surfacePayload, "create_profile", payload);
+      if (form.hasAttribute("data-aws-create-profile-form")) {
+        submitAction(
+          state.ctx,
+          state.workspace,
+          state.surfacePayload,
+          "create_profile",
+          collectFormPayload(form)
+        );
+        return;
+      }
+      if (form.hasAttribute("data-aws-create-domain-form")) {
+        submitAction(
+          state.ctx,
+          state.workspace,
+          state.surfacePayload,
+          "create_domain",
+          collectFormPayload(form)
+        );
+      }
     });
-  }
-
-  function bindCreateDomainForm(target, ctx, workspace, surfacePayload) {
-    var form = target.querySelector("[data-aws-create-domain-form]");
-    if (!form) return;
-    form.addEventListener("submit", function (event) {
-      event.preventDefault();
-      var payload = {};
-      Array.prototype.forEach.call(form.querySelectorAll("input, textarea, select"), function (field) {
-        if (!field.name) return;
-        var value = field.value;
-        if (value == null || value === "") return;
-        payload[field.name] = value;
-      });
-      submitAction(ctx, workspace, surfacePayload, "create_domain", payload);
-    });
-  }
-
-  function bindOnboardingActions(target, ctx, workspace, surfacePayload) {
-    Array.prototype.forEach.call(target.querySelectorAll("[data-aws-action-kind]"), function (button) {
-      if (button.disabled) return;
-      button.addEventListener("click", function () {
-        var kind = button.getAttribute("data-aws-action-kind") || "";
-        var selected = asObject(workspace.selected_profile);
-        submitAction(ctx, workspace, surfacePayload, kind, {
-          profile_id: selected.profile_id || "",
+    target.addEventListener("click", function (event) {
+      var button = event.target && event.target.closest
+        ? event.target.closest(
+            "[data-aws-action-kind], [data-aws-domain-action-kind], [data-aws-domain], [data-aws-profile], [data-aws-section], [data-aws-section-clear], [data-aws-domain-clear]"
+          )
+        : null;
+      var state = target.__awsCsmRenderState || {};
+      if (!button || !target.contains(button) || !state.ctx || button.disabled) return;
+      if (button.hasAttribute("data-aws-action-kind")) {
+        submitAction(state.ctx, state.workspace, state.surfacePayload, button.getAttribute("data-aws-action-kind") || "", {
+          profile_id: asObject(state.workspace.selected_profile).profile_id || "",
         });
-      });
-    });
-  }
-
-  function bindDomainActions(target, ctx, workspace, surfacePayload) {
-    Array.prototype.forEach.call(target.querySelectorAll("[data-aws-domain-action-kind]"), function (button) {
-      if (button.disabled) return;
-      button.addEventListener("click", function () {
-        var kind = button.getAttribute("data-aws-domain-action-kind") || "";
-        submitAction(ctx, workspace, surfacePayload, kind, {
-          domain: workspace.selected_domain || "",
-        });
-      });
+        return;
+      }
+      if (button.hasAttribute("data-aws-domain-action-kind")) {
+        submitAction(
+          state.ctx,
+          state.workspace,
+          state.surfacePayload,
+          button.getAttribute("data-aws-domain-action-kind") || "",
+          { domain: state.workspace.selected_domain || "" }
+        );
+        return;
+      }
+      if (button.hasAttribute("data-aws-domain")) {
+        state.ctx.loadShell(
+          buildSurfaceRequest(state.ctx, state.workspace, {
+            domain: button.getAttribute("data-aws-domain") || "",
+            profile: null,
+            section: null,
+          })
+        );
+        return;
+      }
+      if (button.hasAttribute("data-aws-profile")) {
+        state.ctx.loadShell(
+          buildSurfaceRequest(state.ctx, state.workspace, {
+            profile: button.getAttribute("data-aws-profile") || "",
+            section: null,
+          })
+        );
+        return;
+      }
+      if (button.hasAttribute("data-aws-section")) {
+        var label = (button.getAttribute("data-aws-section") || "").toLowerCase();
+        var section = label === "users" || label === "onboarding" || label === "newsletter" ? label : "";
+        state.ctx.loadShell(buildSurfaceRequest(state.ctx, state.workspace, { section: section }));
+        return;
+      }
+      if (button.hasAttribute("data-aws-section-clear")) {
+        state.ctx.loadShell(buildSurfaceRequest(state.ctx, state.workspace, { section: null }));
+        return;
+      }
+      if (button.hasAttribute("data-aws-domain-clear")) {
+        state.ctx.loadShell(
+          buildSurfaceRequest(state.ctx, state.workspace, { domain: null, profile: null, section: null })
+        );
+      }
     });
   }
 
@@ -697,41 +742,12 @@
           renderSelectedDomain(workspace, surfacePayload) +
           renderNotes(surfacePayload.notes || [])
       );
-
-      bindCreateDomainForm(target, ctx, workspace, surfacePayload);
-      bindCreateProfileForm(target, ctx, workspace, surfacePayload);
-      bindOnboardingActions(target, ctx, workspace, surfacePayload);
-      bindDomainActions(target, ctx, workspace, surfacePayload);
-
-      Array.prototype.forEach.call(target.querySelectorAll("[data-aws-domain]"), function (button) {
-        button.addEventListener("click", function () {
-          var domain = button.getAttribute("data-aws-domain") || "";
-          ctx.loadShell(buildSurfaceRequest(ctx, workspace, { domain: domain, profile: null, section: null }));
-        });
-      });
-      Array.prototype.forEach.call(target.querySelectorAll("[data-aws-profile]"), function (button) {
-        button.addEventListener("click", function () {
-          var profile = button.getAttribute("data-aws-profile") || "";
-          ctx.loadShell(buildSurfaceRequest(ctx, workspace, { profile: profile, section: null }));
-        });
-      });
-      Array.prototype.forEach.call(target.querySelectorAll("[data-aws-section]"), function (button) {
-        button.addEventListener("click", function () {
-          var label = (button.getAttribute("data-aws-section") || "").toLowerCase();
-          var section = label === "users" || label === "onboarding" || label === "newsletter" ? label : "";
-          ctx.loadShell(buildSurfaceRequest(ctx, workspace, { section: section }));
-        });
-      });
-      Array.prototype.forEach.call(target.querySelectorAll("[data-aws-section-clear]"), function (button) {
-        button.addEventListener("click", function () {
-          ctx.loadShell(buildSurfaceRequest(ctx, workspace, { section: null }));
-        });
-      });
-      Array.prototype.forEach.call(target.querySelectorAll("[data-aws-domain-clear]"), function (button) {
-        button.addEventListener("click", function () {
-          ctx.loadShell(buildSurfaceRequest(ctx, workspace, { domain: null, profile: null, section: null }));
-        });
-      });
+      target.__awsCsmRenderState = {
+        ctx: ctx,
+        workspace: workspace,
+        surfacePayload: surfacePayload,
+      };
+      bindDelegatedWorkspaceEvents(target);
     },
   };
 

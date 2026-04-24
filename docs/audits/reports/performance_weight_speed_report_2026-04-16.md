@@ -13,6 +13,51 @@ Source plan: `docs/audits/performance_weight_speed_audit_plan_2026-04-16.md`.
 - Low-risk hotspot remediation implemented:
   - `v2_portal_shell_core.js` now prefers `structuredClone` with safe fallback in `cloneRequest(...)`, replacing hot-path JSON clone-only behavior where supported.
 
+## AWS-CSM Recovery Measurement Pass (2026-04-24)
+
+Recovery-linked task: `TASK-AWS-CSM-RECOVERY-004`.
+
+Scope:
+
+- Measure current AWS-CSM panel/runtime projection latency against promoted FND
+  private state.
+- Trim repeat render-path overhead in the AWS-CSM workspace renderer without
+  widening the authoritative write surface.
+
+Observed runtime measurements (25 samples each, `run_portal_aws_csm(...)`
+against `deployed/fnd/private`):
+
+| Journey | Median | p95 | Min | Max |
+|---|---:|---:|---:|---:|
+| Domain gallery render (`view=domains`) | `10.53 ms` | `22.33 ms` | `9.05 ms` | `95.40 ms` |
+| Domain route transition (`domain=cvccboard.org`) | `11.29 ms` | `18.61 ms` | `9.01 ms` | `22.05 ms` |
+| Profile onboarding transition (`profile=aws-csm.cvccboard.nathan`, `section=onboarding`) | `10.89 ms` | `12.35 ms` | `8.98 ms` | `13.26 ms` |
+
+Interpretation:
+
+- These local source/runtime measurements are orders of magnitude below the
+  reported 10-20 second AWS-CSM recovery baseline, which indicates the current
+  repo-hosted render/projection path is not reproducing the historical deployed
+  latency complaint.
+- Remaining latency risk is therefore more consistent with deployment/runtime
+  host conditions, network/browser load, or stale promoted assets than with the
+  current repo-side AWS-CSM projection path itself.
+
+Low-risk remediation completed in this pass:
+
+- `v2_portal_aws_workspace.js` now uses one delegated `submit` listener and one
+  delegated `click` listener on the workspace root instead of re-querying and
+  re-binding per-control listeners on every rerender.
+- Static post-change count:
+  - delegated listeners: `submit=1`, `click=1`
+  - direct `[data-aws-*]` `querySelectorAll(...)` rebinding loops: `0`
+
+Parity/regression evidence:
+
+- `MyCiteV2.tests.architecture.test_portal_one_shell_boundaries`
+  now guards delegated AWS-CSM event binding and forbids regression back to the
+  old repeated per-render listener-query pattern.
+
 ## 1) Static Hotspots (Concrete Targets)
 
 ### A. Asset weight hotspots (JS/static)

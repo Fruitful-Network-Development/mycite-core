@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from functools import lru_cache
+import hashlib
 import importlib.util
 import json
 import os
@@ -127,6 +129,13 @@ _DEPENDENCY_GUARDED_ACTION_KINDS = frozenset(
 )
 
 
+_AWS_CSM_SOURCE_FINGERPRINT_TARGETS = {
+    "runtime_py": "MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py",
+    "workspace_js": "MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js",
+    "onboarding_cloud_py": "MyCiteV2/packages/adapters/event_transport/aws_csm_onboarding_cloud.py",
+}
+
+
 def _as_text(value: object) -> str:
     if value is None:
         return ""
@@ -164,6 +173,22 @@ def _safe_json_object(path: Path | None) -> dict[str, Any]:
     except Exception:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+@lru_cache(maxsize=1)
+def _source_surface_fingerprints() -> dict[str, dict[str, str]]:
+    repo_root = Path(__file__).resolve().parents[4]
+    fingerprints: dict[str, dict[str, str]] = {}
+    for key, relative_path in _AWS_CSM_SOURCE_FINGERPRINT_TARGETS.items():
+        path = repo_root / relative_path
+        sha256 = ""
+        if path.exists() and path.is_file():
+            sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+        fingerprints[key] = {
+            "path": relative_path,
+            "sha256": sha256,
+        }
+    return fingerprints
 
 
 def _shell_request(portal_scope: PortalScope, query: Mapping[str, str]) -> dict[str, Any]:
@@ -1310,6 +1335,7 @@ def _surface_payload(
             },
             "nimm_target_authority": "aws_csm",
         },
+        "source_surface_fingerprints": _source_surface_fingerprints(),
         "cards": [
             {"label": "Domains", "value": str(workspace["domain_count"])},
             {"label": "User Emails", "value": str(workspace["profile_count"])},

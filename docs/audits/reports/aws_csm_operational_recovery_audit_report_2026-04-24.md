@@ -96,15 +96,21 @@ Recent commits relevant to behavior drift/reconciliation:
   now projects mailbox and newsletter operational metadata through
   `FilesystemAwsCsmToolProfileStore` and `FilesystemAwsCsmNewsletterStateAdapter`
   instead of re-scanning profile/newsletter JSON files directly.
+- `MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py`
+  now emits canonical source fingerprints for the runtime, AWS-CSM workspace JS,
+  and onboarding cloud adapter so deployed-FND parity checks can reference
+  stable repo-side markers even though no second promoted JS/runtime bundle is
+  versioned under `deployed/fnd/`.
 
 Status linkage:
 
 - `TASK-AWS-CSM-RECOVERY-001`: `done`
 - `TASK-AWS-CSM-RECOVERY-002`: `done`
 - `TASK-AWS-CSM-RECOVERY-003`: `done`
+- `TASK-AWS-CSM-RECOVERY-004`: `done`
 - `TASK-AWS-CSM-RECOVERY-005`: `done`
-- `TASK-AWS-CSM-RECOVERY-004` and `TASK-AWS-CSM-RECOVERY-006`: `pending`
-- `TASK-AWS-CSM-RECOVERY-007`: `pending`
+- `TASK-AWS-CSM-RECOVERY-006`: `done`
+- `TASK-AWS-CSM-RECOVERY-007`: `done`
 
 ## Task-Linked Recovery Plan
 
@@ -141,10 +147,22 @@ Runtime and panel state projection is now explicit and deterministic:
 - Surface rebuilds after actions reuse the same projection, which removes the
   prior manual-refresh ambiguity in the panel’s onboarding readout.
 
-### `TASK-AWS-CSM-RECOVERY-004` (pending)
+### `TASK-AWS-CSM-RECOVERY-004` (done)
 
-Re-run AWS-CSM performance optimization pass, baseline current latency, and trim
-fallback/safeguard branches to contract-required paths.
+AWS-CSM performance recovery evidence is now recorded:
+
+- Measuring `run_portal_aws_csm(...)` against `deployed/fnd/private` produced:
+  - domain gallery median `10.53 ms`, p95 `22.33 ms`
+  - domain transition median `11.29 ms`, p95 `18.61 ms`
+  - profile onboarding transition median `10.89 ms`, p95 `12.35 ms`
+- These post-change source/runtime measurements are materially below the
+  reported 10-20 second recovery baseline, which indicates the current repo-side
+  AWS-CSM projection/render path is no longer the dominant latency source.
+- `v2_portal_aws_workspace.js` now binds one delegated `submit` listener and one
+  delegated `click` listener on the workspace root instead of rebuilding
+  per-control listener sets on every rerender.
+- Architecture regression coverage now locks in that delegated-binding posture
+  and forbids reintroduction of the old `[data-aws-*]` rebinding loops.
 
 ### `TASK-AWS-CSM-RECOVERY-005` (done)
 
@@ -163,20 +181,61 @@ Residual JSON pathway and duplication audit is now evidenced:
 - Architecture and unit regressions now fail if the active AWS-CSM runtime
   reintroduces direct mailbox/newsletter file-scan patterns.
 
-### `TASK-AWS-CSM-RECOVERY-006` (pending)
+### `TASK-AWS-CSM-RECOVERY-006` (done)
 
-Maintain canonical recovery report continuity and sync contextual + compatibility
-YAML control surfaces through execution.
+Canonical closure sync is now complete:
 
-### `TASK-AWS-CSM-RECOVERY-007` (pending, injected from TASK-AWS-CSM-RECOVERY-001)
+- The contextual stream `STREAM-AWS-CSM-OPERATIONAL-RECOVERY` is now marked
+  `completed` in `docs/plans/contextual_system_manifest.yaml`.
+- The compatibility initiative `INIT-AWS-CSM-OPERATIONAL-RECOVERY` is now marked
+  `completed` in `docs/plans/planning_audit_manifest.yaml`, with the recovery
+  report recorded as the closure report.
+- Contextual and compatibility task boards now mark every
+  `TASK-AWS-CSM-RECOVERY-*` item `done`.
+- Delegation focus has advanced to the next remaining non-done task under the
+  ordering rules: `TASK-CTSGIS-BLOCKER-001`, which remains explicitly blocked.
 
-Verify deployed FND runtime/asset parity for AWS-CSM action hosts so the recovery
-program can distinguish code defects from host promotion/dependency drift.
+### `TASK-AWS-CSM-RECOVERY-007` (done, injected from TASK-AWS-CSM-RECOVERY-001)
+
+Deployed/runtime parity is now evidenced against promoted FND private state:
+
+- `deployed/fnd/private/config.json` exposes `aws_csm.enabled: true` and mounts
+  `tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json` under the FND tool configuration.
+- Running `run_portal_aws_csm(...)` against `deployed/fnd/private` projects the
+  active AWS-CSM surface contract with `domain_count=4`, `profile_count=20`,
+  and `selected_domain_onboarding.readiness_state=ready_for_mailboxes` for
+  `cvccboard.org`.
+- Querying `aws-csm.cvccboard.nathan` from the same deployed private state
+  surfaces `selected_profile_onboarding.onboarding_state=forwarded` and
+  `handoff_email_sent_to=n8seals@gmail.com`, which matches the promoted profile
+  JSON and confirms that the current runtime still renders the recovered
+  onboarding handoff state on real FND data.
+- The surface now publishes canonical source fingerprints for:
+  - `MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py`
+  - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js`
+  - `MyCiteV2/packages/adapters/event_transport/aws_csm_onboarding_cloud.py`
+- Explicit waiver: the repo does not carry a second promoted JS/runtime bundle
+  under `deployed/fnd/`, so asset parity is tracked through these canonical
+  source fingerprints plus the deployed private-state runtime projection rather
+  than by diffing two versioned JS/runtime copies.
+- Guarded action execution on the available FND host remains intentionally
+  fail-closed: `run_portal_aws_csm_action(... send_handoff_email ...)` returns
+  `runtime_dependency_missing` because `boto3` is absent, and the action result
+  exposes the remediation path to install the missing module before execution.
+
+Observed source fingerprints:
+
+- `portal_aws_runtime.py`: `e912a31ef2611f03420dc515eb6ef5e6a4cb2051b051370dfd05817f17d9923b`
+- `v2_portal_aws_workspace.js`: `b9a216218dd047c4533a287aa948d474d44cea3d3e50e679527bdccd8e6b3cef`
+- `aws_csm_onboarding_cloud.py`: `fc1d09ec6028923c1fe4fa55c9605ae76843f3d446d29a505dbc47303972e5f5`
 
 ## Lifecycle and Consolidation Notes
 
 - Decision: **new stream added** (`STREAM-AWS-CSM-OPERATIONAL-RECOVERY`).
 - Prior stream `STREAM-AWS-CSM-ALIGNMENT` remains `completed` foundation evidence.
+- `STREAM-AWS-CSM-OPERATIONAL-RECOVERY` now also moves to `completed` after all
+  linked recovery tasks reached `done` with synchronized contextual and
+  compatibility closure evidence.
 - No historical reports deleted; old and new stream boundaries are explicit.
 - New task injected: `TASK-AWS-CSM-RECOVERY-007` under the same active recovery
   stream; no closed IDs were reused.
@@ -193,6 +252,10 @@ program can distinguish code defects from host promotion/dependency drift.
 - `MyCiteV2/tests/integration/test_portal_host_one_shell.py`
 - `MyCiteV2/tests/unit/test_portal_aws_route_sync.py`
 - `MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py`
+- `deployed/fnd/private/config.json`
+- `deployed/fnd/private/utilities/tools/aws-csm/tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json`
+- `deployed/fnd/private/utilities/tools/aws-csm/aws-csm-domain.cvccboard.json`
+- `deployed/fnd/private/utilities/tools/aws-csm/aws-csm.cvccboard.nathan.json`
 
 ## Validation Log
 
@@ -201,11 +264,19 @@ Validation commands executed for this planning-system update:
 - `python3 -m unittest MyCiteV2.tests.unit.test_portal_aws_route_sync`
 - `python3 -m unittest MyCiteV2.tests.architecture.test_portal_one_shell_boundaries`
 - `python3 -m unittest MyCiteV2.tests.contracts.test_contract_docs_alignment`
+- `python3 - <<'PY' ... run_portal_aws_csm(... private_dir='deployed/fnd/private' ...) ... PY`
+- `python3 - <<'PY' ... run_portal_aws_csm_action(... send_handoff_email ...) ... PY`
+- `python3 - <<'PY' ... run_portal_aws_csm(...) latency samples over 25 iterations ... PY`
+- `python3 - <<'PY' ... static delegated-listener count probe for v2_portal_aws_workspace.js ... PY`
 - `python3 - <<'PY' ... yaml.safe_load(...) ... PY`
 
 Result summary:
 
-- AWS-CSM route-sync unit suite: pass (`Ran 10 tests`)
-- one-shell architecture suite: pass (`Ran 22 tests`)
+- AWS-CSM route-sync unit suite: pass (`Ran 11 tests`)
+- one-shell architecture suite: pass (`Ran 23 tests`)
 - contract-doc alignment suite: pass (`Ran 13 tests`)
+- deployed FND private-state projection probe: pass (`tool configured/enabled`, `domain_count=4`, `profile_count=20`, `cvccboard.org` readiness and handoff state projected)
+- deployed guarded-action dependency probe: pass for expected fail-closed posture (`runtime_dependency_missing`, `missing_modules=['boto3']`, remediation emitted)
+- AWS-CSM latency probe against deployed FND private state: pass (`median 10.53-11.29 ms`, `p95 12.35-22.33 ms`)
+- delegated-listener static probe: pass (`submit=1`, `click=1`, `[data-aws-*] querySelectorAll rebinding loops=0`)
 - YAML parse check: pass for contextual and compatibility manifests/task boards

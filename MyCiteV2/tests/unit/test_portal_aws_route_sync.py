@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import unittest
+import hashlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -637,6 +638,52 @@ class PortalAwsRouteSyncTests(unittest.TestCase):
         self.assertIn(("list_newsletter_domains", ""), fake_state.calls)
         self.assertIn(("load_profile", "cvccboard.org"), fake_state.calls)
         self.assertIn(("load_contact_log", "cvccboard.org"), fake_state.calls)
+
+    def test_deployed_fnd_private_state_projects_current_aws_csm_surface_contract(self) -> None:
+        deployed_private_dir = REPO_ROOT / "deployed" / "fnd" / "private"
+        if not deployed_private_dir.exists():
+            self.skipTest("deployed FND private state is not available in this checkout")
+
+        bundle = run_portal_aws_csm(
+            {
+                "schema": "mycite.v2.portal.system.tools.aws_csm.request.v1",
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["portal.system.tools.aws_csm.view"]},
+                "surface_query": {
+                    "view": "domains",
+                    "domain": "cvccboard.org",
+                    "profile": "aws-csm.cvccboard.nathan",
+                    "section": "onboarding",
+                },
+            },
+            private_dir=deployed_private_dir,
+        )
+
+        surface_payload = bundle["surface_payload"]
+        workspace = surface_payload["workspace"]
+        fingerprints = surface_payload["source_surface_fingerprints"]
+        expected_files = {
+            "runtime_py": REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_aws_runtime.py",
+            "workspace_js": REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_aws_workspace.js",
+            "onboarding_cloud_py": REPO_ROOT / "MyCiteV2" / "packages" / "adapters" / "event_transport" / "aws_csm_onboarding_cloud.py",
+        }
+
+        self.assertTrue(surface_payload["tool"]["configured"])
+        self.assertTrue(surface_payload["tool"]["enabled"])
+        self.assertEqual(surface_payload["action_contract"]["route"], "/portal/api/v2/system/tools/aws-csm/actions")
+        self.assertEqual(surface_payload["runtime_dependency_baseline"]["required_modules"], ["boto3"])
+        self.assertEqual(workspace["selected_domain"], "cvccboard.org")
+        self.assertEqual(workspace["selected_domain_onboarding"]["readiness_state"], "ready_for_mailboxes")
+        self.assertEqual(workspace["selected_profile_onboarding"]["onboarding_state"], "forwarded")
+        self.assertEqual(
+            workspace["selected_profile_onboarding"]["handoff"]["handoff_email_sent_to"],
+            "n8seals@gmail.com",
+        )
+        for key, path in expected_files.items():
+            self.assertEqual(fingerprints[key]["path"], str(path.relative_to(REPO_ROOT)))
+            self.assertEqual(
+                fingerprints[key]["sha256"],
+                hashlib.sha256(path.read_bytes()).hexdigest(),
+            )
 
 
 if __name__ == "__main__":
