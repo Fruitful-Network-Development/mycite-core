@@ -533,7 +533,6 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             raise ValueError("AWS-CSM operator inbox target is not configured for this profile.")
         material = self.read_handoff_secret(profile)
         username = _as_text(material.get("username"))
-        password = _as_text(material.get("password"))
         smtp_host = _as_text(material.get("smtp_host"))
         smtp_port = _as_text(material.get("smtp_port"))
         handoff_provider = self._handoff_provider(profile)
@@ -558,9 +557,13 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                                     f"SMTP host: {smtp_host}",
                                     f"SMTP port: {smtp_port}",
                                     f"SMTP username: {username}",
-                                    f"SMTP password: {password}",
                                     "",
-                                    "If the provider asks again, you can also reveal the SMTP password from the AWS-CSM portal action.",
+                                    "Security posture: reusable SMTP passwords are never sent over handoff email.",
+                                    "Use the AWS-CSM portal action `reveal_smtp_password` for controlled, operator-only retrieval.",
+                                    "If manual disclosure occurred, rotate or revoke credentials immediately:",
+                                    "1) Rotate IAM SMTP material (or stage new credentials) in AWS-CSM.",
+                                    "2) Invalidate old credentials and re-run provider handoff verification.",
+                                    "3) Record incident + rotation timestamp in onboarding workflow notes.",
                                     *instructions,
                                 ]
                             )

@@ -521,6 +521,24 @@ When the mailbox flow is fully per-mailbox and the legacy shared SMTP/service-sp
 - Inline policies are being used for narrow, account-specific IAM purpose.
 - This file is intended as an operational inventory and change log anchor.
 
+## AWS-CSM Runtime Dependency Baseline (Execution Hosts)
+
+Execution hosts that run AWS-CSM onboarding actions must satisfy this minimum
+Python dependency baseline:
+
+- `boto3` importable in the same interpreter used by portal runtime actions
+
+Fail-closed posture:
+
+- AWS-CSM action runtime returns `runtime_dependency_missing` when required
+  modules are absent.
+- Operator remediation is to install missing modules before re-running actions.
+
+Quick host checks:
+
+- `python3 -c "import boto3; print('ok')"`
+- `python3 -m pip show boto3`
+
 ---
 
 ## V2 portal, SES, and sender domains (operational contract)

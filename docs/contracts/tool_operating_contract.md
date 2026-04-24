@@ -114,6 +114,45 @@ The active mutation-capable architecture separates responsibilities:
 
 The staging boundary remains explicit: UI edits enter stage storage first, stage values compile to NIMM directives, and only runtime `apply` mutates authoritative state.
 
+### AWS-CSM Onboarding Directive Draft
+
+AWS-CSM onboarding actions use the same three-authority posture with a canonical
+directive draft contract:
+
+- envelope schema: `mycite.v2.nimm.envelope.v1`
+- `directive.target_authority`: `aws_csm`
+- `directive.verb`: `manipulate`
+- `directive.payload.action_kind`: one of:
+  - `create_profile`
+  - `stage_smtp_credentials`
+  - `send_handoff_email`
+  - `reveal_smtp_password`
+  - `refresh_provider_status`
+  - `capture_verification`
+  - `confirm_verified`
+- `directive.payload.action_payload`: action-specific request body
+- `aitas` minimum context:
+  - `attention` (domain/profile/user focus token)
+  - `intention=manipulate`
+  - `time` (operation window token)
+  - `archetype=aws_csm_onboarding`
+  - `scope=portal/system/tools/aws-csm`
+
+This draft keeps action execution in runtime authority while preserving one
+query/route shell boundary and one mutation envelope grammar across tools.
+
+#### AWS-CSM Secure Handoff Posture
+
+- `send_handoff_email` must not include reusable SMTP passwords in plain text.
+- Operator handoff email may include host/port/username and explicit instructions
+  to retrieve secrets only through controlled portal action flows.
+- Emergency disclosure response must be documented and executable:
+  1) rotate/stage replacement SMTP credentials,
+  2) revoke old credentials in IAM/Secrets Manager,
+  3) re-run provider handoff verification and capture incident timestamp.
+- `reveal_smtp_password` remains the only operator-facing runtime action that can
+  return password material, and should be used for bounded manual recovery only.
+
 ## Posture and Visibility Invariant
 
 `build_shell_composition_payload()` is the sole authority for region posture and first-response visibility.

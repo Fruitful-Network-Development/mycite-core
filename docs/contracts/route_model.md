@@ -67,6 +67,8 @@ AWS-CSM tool query projection keys:
 - `domain`
 - `profile`
 - `section`
+- `user_group`
+- `user`
 
 AWS-CSM canonical query rules:
 
@@ -74,6 +76,10 @@ AWS-CSM canonical query rules:
 - `domain=<domain>` focuses one domain gallery row
 - `profile=<profile_id>` focuses one mailbox profile inside the selected domain
 - `section=<users|onboarding|newsletter>` narrows the selected domain to one section
+- `view=users` switches to cross-domain grouped user mode
+- `user_group=<group_id>` selects one cross-domain grouping bucket (`all`,
+  `unassigned`, `provider:<provider_id>`, or `domain:<domain>`)
+- `user=<user_key>` focuses one grouped user row in `view=users`
 
 AWS-CSM internal action route:
 
@@ -93,6 +99,21 @@ AWS-CSM internal action route:
   - `refresh_provider_status`
   - `capture_verification`
   - `confirm_verified`
+
+AWS-CSM canonical NIMM/AITAS envelope mapping (contract draft):
+
+- optional body field: `nimm_envelope`
+- schema: `mycite.v2.nimm.envelope.v1`
+- canonical `directive.verb`: `manipulate`
+- canonical `directive.target_authority`: `aws_csm`
+- canonical `directive.payload.action_kind`: one of cataloged AWS-CSM action kinds
+- canonical `directive.payload.action_payload`: action input payload
+- canonical `aitas` fields:
+  - `attention`: focused domain/profile/user subject token
+  - `intention`: `manipulate`
+  - `time`: operation window marker (`immediate` default)
+  - `archetype`: `aws_csm_onboarding`
+  - `scope`: `portal/system/tools/aws-csm`
 
 `AWS-CSM` is one `SYSTEM` child service tool surface, not four separate tool pages. The canonical public route is `/portal/system/tools/aws-csm`.
 

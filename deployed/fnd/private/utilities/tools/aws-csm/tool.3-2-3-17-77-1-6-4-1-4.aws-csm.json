@@ -21,6 +21,7 @@
     "aws-csm.cvcc.finance.json",
     "aws-csm.cvcc.board.json",
     "aws-csm.cvcc.admin.json",
-    "aws-csm.cvcc.news.json"
+    "aws-csm.cvcc.news.json",
+    "aws-csm.cvccboard.nathan.json"
   ]
 }

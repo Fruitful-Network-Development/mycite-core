@@ -679,7 +679,7 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
         self.assertTrue(capture["has_verification_link"])
         self.assertIn("https://mail.google.com/mail/u/0/?ui=2&ik=verify", capture["link"])
 
-    def test_send_handoff_email_includes_password_in_message_body(self) -> None:
+    def test_send_handoff_email_does_not_include_password_in_message_body(self) -> None:
         with TemporaryDirectory() as temp_dir:
             sesv2 = _FakeSesV2Client()
             adapter = AwsEc2RoleOnboardingCloudAdapter(private_dir=temp_dir, tenant_id="tff")
@@ -710,7 +710,9 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
         self.assertEqual(result["message_id"], "ses-message-001")
         body = sesv2.sent_messages[0]["content"]["Simple"]["Body"]["Text"]["Data"]
         self.assertIn("SMTP username: SMTPUSER", body)
-        self.assertIn("SMTP password: SMTPPASS", body)
+        self.assertNotIn("SMTP password:", body)
+        self.assertIn("reveal_smtp_password", body)
+        self.assertIn("Rotate IAM SMTP material", body)
 
     def test_sync_domain_dns_refuses_when_nameservers_do_not_match(self) -> None:
         adapter = AwsEc2RoleOnboardingCloudAdapter(tenant_id="cvccboard")

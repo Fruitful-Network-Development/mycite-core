@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -70,6 +71,7 @@ _DEFAULT_DOMAIN_INBOUND_LAMBDA = "newsletter-inbound-capture"
 _DEFAULT_DOMAIN_RECEIPT_BUCKET = "ses-inbound-fnd-mail"
 _ROUTE_SYNC_FAIL_CLOSED_ENV = "AWS_CSM_ROUTE_SYNC_FAIL_CLOSED"
 _ROUTE_SYNC_FALLBACK_SCRIPT = "MyCiteV2/scripts/deploy_aws_csm_pass3_inbound_capture.py"
+_AWS_RUNTIME_REQUIRED_MODULES = ("boto3",)
 _VISIBLE_ACTIVITY_SURFACE_IDS = (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
@@ -101,6 +103,18 @@ _SERVICE_ACTION_KINDS = frozenset(
         "capture_verification",
         "confirm_verified",
         "confirm_verified_attested",
+    }
+)
+_DEPENDENCY_GUARDED_ACTION_KINDS = frozenset(
+    {
+        "create_domain",
+        "refresh_domain_status",
+        "ensure_domain_identity",
+        "sync_domain_dns",
+        "ensure_domain_receipt_rule",
+        "send_handoff_email",
+        "reveal_smtp_password",
+        *_SERVICE_ACTION_KINDS,
     }
 )
 
@@ -1111,6 +1125,7 @@ def _surface_payload(
         "title": "AWS-CSM",
         "subtitle": "Unified domain gallery with mailbox onboarding and newsletter state.",
         "tool": tool_status,
+        "runtime_dependency_baseline": _runtime_dependency_baseline(),
         "action_contract": {
             "route": AWS_CSM_TOOL_ACTION_ROUTE,
             "request_schema": AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA,
@@ -1446,6 +1461,42 @@ def _refresh_domain_record(
     )
 
 
+def _run_domain_readiness_convergence(*, cloud: object, domain_record: dict[str, Any]) -> list[str]:
+    executed: list[str] = []
+    convergence_steps = (
+        "ensure_domain_identity",
+        "sync_domain_dns",
+        "ensure_domain_receipt_rule",
+    )
+    for step in convergence_steps:
+        if not hasattr(cloud, step):
+            raise ValueError(f"AWS-backed domain readiness step {step} is not configured in this runtime.")
+        getattr(cloud, step)(domain_record)
+        executed.append(step)
+    return executed
+
+
+def _enforce_runtime_dependency_baseline(
+    *,
+    action_kind: str,
+    cloud: object,
+) -> dict[str, Any] | None:
+    if action_kind not in _DEPENDENCY_GUARDED_ACTION_KINDS:
+        return None
+    if not isinstance(cloud, (AwsEc2RoleOnboardingCloudAdapter, AwsCsmOnboardingUnconfiguredCloudPort)):
+        return None
+    baseline = _runtime_dependency_baseline()
+    if baseline["ready"]:
+        return None
+    return _action_result(
+        action_kind=action_kind,
+        status="error",
+        code="runtime_dependency_missing",
+        message="AWS-CSM action execution is fail-closed because required runtime dependencies are missing.",
+        details=baseline,
+    )
+
+
 def _onboarding_cloud(*, private_dir: str | Path | None, tenant_id: str) -> object:
     try:
         return AwsEc2RoleOnboardingCloudAdapter(private_dir=private_dir, tenant_id=tenant_id)
@@ -1487,6 +1538,17 @@ def _record_profile_handoff_event(
 def _route_sync_fail_closed() -> bool:
     token = _as_text(os.getenv(_ROUTE_SYNC_FAIL_CLOSED_ENV)).lower()
     return token in {"1", "true", "yes", "on"}
+
+
+def _runtime_dependency_baseline() -> dict[str, Any]:
+    missing = [name for name in _AWS_RUNTIME_REQUIRED_MODULES if importlib.util.find_spec(name) is None]
+    return {
+        "required_modules": list(_AWS_RUNTIME_REQUIRED_MODULES),
+        "missing_modules": missing,
+        "ready": not missing,
+        "fail_closed": True,
+        "remediation": "Install missing Python modules on the execution host before running AWS-CSM onboarding actions.",
+    }
 
 
 def _route_sync_manual_step(private_dir: str | Path | None) -> str:
@@ -1607,13 +1669,16 @@ def _apply_action(
             code="aws_csm_store_unavailable",
             message="AWS-CSM profile storage is unavailable in this portal runtime.",
         )
-
     try:
         if action_kind == "create_domain":
             domain_payload = _domain_seed_payload(action_payload)
             tenant_id = _as_text(_as_dict(domain_payload.get("identity")).get("tenant_id")).lower()
-            created_domain = store.create_domain(tenant_id=tenant_id, payload=domain_payload)
             cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=tenant_id)
+            dependency_failure = _enforce_runtime_dependency_baseline(action_kind=action_kind, cloud=cloud)
+            if dependency_failure:
+                return surface_query, dependency_failure
+            created_domain = store.create_domain(tenant_id=tenant_id, payload=domain_payload)
+            convergence_steps = _run_domain_readiness_convergence(cloud=cloud, domain_record=created_domain)
             refreshed_domain = _refresh_domain_record(store=store, domain_record=created_domain, cloud=cloud)
             readiness = _project_domain_readiness(refreshed_domain)
             domain = _normalized_domain(_as_dict(refreshed_domain.get("identity")).get("domain"))
@@ -1623,6 +1688,7 @@ def _apply_action(
                 "domain": domain,
                 "hosted_zone_id": _as_text(_as_dict(refreshed_domain.get("identity")).get("hosted_zone_id")),
                 "readiness_state": _as_text(readiness.get("state")),
+                "convergence_steps": convergence_steps,
             }
             _append_local_audit(
                 audit_storage_file=audit_storage_file,
@@ -1657,19 +1723,28 @@ def _apply_action(
                 )
             tenant_id = _as_text(domain_row.get("tenant_id"))
             cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=tenant_id)
+            dependency_failure = _enforce_runtime_dependency_baseline(action_kind=action_kind, cloud=cloud)
+            if dependency_failure:
+                return surface_query, dependency_failure
             raw_domain = _as_dict(domain_row.get("raw"))
+            convergence_steps: list[str] = []
             if action_kind == "ensure_domain_identity":
                 if not hasattr(cloud, "ensure_domain_identity"):
                     raise ValueError("AWS-backed domain identity creation is not configured in this runtime.")
                 getattr(cloud, "ensure_domain_identity")(raw_domain)
+                convergence_steps = ["ensure_domain_identity"]
             elif action_kind == "sync_domain_dns":
                 if not hasattr(cloud, "sync_domain_dns"):
                     raise ValueError("AWS-backed domain DNS synchronization is not configured in this runtime.")
                 getattr(cloud, "sync_domain_dns")(raw_domain)
+                convergence_steps = ["sync_domain_dns"]
             elif action_kind == "ensure_domain_receipt_rule":
                 if not hasattr(cloud, "ensure_domain_receipt_rule"):
                     raise ValueError("AWS-backed domain receipt-rule wiring is not configured in this runtime.")
                 getattr(cloud, "ensure_domain_receipt_rule")(raw_domain)
+                convergence_steps = ["ensure_domain_receipt_rule"]
+            elif action_kind == "refresh_domain_status":
+                convergence_steps = _run_domain_readiness_convergence(cloud=cloud, domain_record=raw_domain)
             refreshed_domain = _refresh_domain_record(store=store, domain_record=raw_domain, cloud=cloud)
             readiness = _project_domain_readiness(refreshed_domain)
             domain = _normalized_domain(_as_dict(refreshed_domain.get("identity")).get("domain"))
@@ -1680,6 +1755,7 @@ def _apply_action(
                 "hosted_zone_id": _as_text(_as_dict(refreshed_domain.get("identity")).get("hosted_zone_id")),
                 "readiness_state": _as_text(readiness.get("state")),
                 "updated_sections": ["dns", "ses", "receipt", "observation", "readiness"],
+                "convergence_steps": convergence_steps,
             }
             _append_local_audit(
                 audit_storage_file=audit_storage_file,
@@ -1697,6 +1773,9 @@ def _apply_action(
         if action_kind == "create_profile":
             outcome = AwsCsmProfileRegistryService(store).create_profile(action_payload)
             cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=outcome.tenant_id)
+            dependency_failure = _enforce_runtime_dependency_baseline(action_kind=action_kind, cloud=cloud)
+            if dependency_failure:
+                return surface_query, dependency_failure
             route_sync = _sync_verification_route_map(
                 store=store,
                 cloud=cloud,
@@ -1761,6 +1840,9 @@ def _apply_action(
                     message="private/config.json must provide msn_id before AWS-CSM onboarding writes can run.",
                 )
             cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=tenant_scope_id)
+            dependency_failure = _enforce_runtime_dependency_baseline(action_kind=action_kind, cloud=cloud)
+            if dependency_failure:
+                return surface_query, dependency_failure
             outcome = AwsCsmOnboardingService(profile_store=store, cloud=cloud).apply(
                 {
                     "tenant_scope": {"scope_id": tenant_scope_id},
@@ -1798,6 +1880,9 @@ def _apply_action(
             )
 
         cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=tenant_scope_id)
+        dependency_failure = _enforce_runtime_dependency_baseline(action_kind=action_kind, cloud=cloud)
+        if dependency_failure:
+            return surface_query, dependency_failure
         live_profile = store.load_profile(
             tenant_scope_id=tenant_scope_id,
             profile_id=_as_text(profile_row.get("profile_id")),

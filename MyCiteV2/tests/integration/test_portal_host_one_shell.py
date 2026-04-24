@@ -964,7 +964,11 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             create_result = create_payload["surface_payload"]["action_result"]
             self.assertEqual(create_result["status"], "accepted")
             self.assertEqual(create_result["details"]["domain"], "freshboard.org")
-            self.assertEqual(create_result["details"]["readiness_state"], "identity_missing")
+            self.assertEqual(create_result["details"]["readiness_state"], "ready_for_mailboxes")
+            self.assertEqual(
+                create_result["details"]["convergence_steps"],
+                ["ensure_domain_identity", "sync_domain_dns", "ensure_domain_receipt_rule"],
+            )
             self.assertEqual(
                 create_payload["canonical_query"],
                 {"view": "domains", "domain": "freshboard.org", "section": "onboarding"},
@@ -975,7 +979,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertTrue(created_domain_path.is_file())
             created_domain = json.loads(created_domain_path.read_text(encoding="utf-8"))
             self.assertEqual(created_domain["identity"]["domain"], "freshboard.org")
-            self.assertEqual(created_domain["readiness"]["state"], "identity_missing")
+            self.assertEqual(created_domain["readiness"]["state"], "ready_for_mailboxes")
             collection_payload = json.loads(
                 (
                     private_dir
@@ -1127,6 +1131,51 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
         self.assertIn("routeKeyFromUrl", shell_core)
         self.assertIn("fromShellComposition: true", shell_core)
         self.assertIn("routeKey: routeKey", shell_core)
+
+    def test_aws_csm_action_route_returns_profile_required_for_profile_actions_without_selection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            public_dir = root / "public"
+            private_dir = root / "private"
+            data_dir = root / "data"
+            webapps_root = root / "webapps"
+            audit_file = root / "portal_audit.jsonl"
+            for path in (public_dir, private_dir, data_dir, webapps_root):
+                path.mkdir(parents=True, exist_ok=True)
+            audit_file.write_text("", encoding="utf-8")
+            _write_network_chronology_authority(data_dir)
+            _write_aws_csm_state(private_dir)
+            _write_json(
+                private_dir / "config.json",
+                {"msn_id": "3-2-3-17-77-1-6-4-1-4", "tool_exposure": {"aws_csm": {"enabled": True}}},
+            )
+
+            config = V2PortalHostConfig(
+                portal_instance_id="fnd",
+                public_dir=public_dir,
+                private_dir=private_dir,
+                data_dir=data_dir,
+                portal_domain="fruitfulnetworkdevelopment.com",
+                webapps_root=webapps_root,
+                portal_audit_storage_file=audit_file,
+            )
+            app = create_app(config)
+            client = app.test_client()
+            response = client.post(
+                "/portal/api/v2/system/tools/aws-csm/actions",
+                json={
+                    "schema": "mycite.v2.portal.system.tools.aws_csm.action.request.v1",
+                    "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                    "surface_query": {"view": "domains", "domain": "cvccboard.org", "section": "onboarding"},
+                    "action_kind": "stage_smtp_credentials",
+                    "action_payload": {},
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["surface_payload"]["action_result"]["status"], "error")
+        self.assertEqual(payload["surface_payload"]["action_result"]["code"], "profile_required")
 
 
 if __name__ == "__main__":

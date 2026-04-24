@@ -5,6 +5,7 @@
 - **Closed in code:** the shared `PortalToolSurfaceAdapter`, wrapped loading/error/empty/unsupported surface states, and direct surface-request helper are already implemented in the shell static bundle.
 - **Still active and worth doing now:** none of the original top-three consolidation opportunities remains a foundation blocker in this pass.
 - **Deferred:** renderer specialization, tool posture clarification for FND-EBI, and broader telemetry/drift coverage remain follow-up design work rather than immediate platform hardening.
+- **2026-04-23 AWS parity refresh:** AWS workspace/inspector now use adapter-resolved empty-state posture and architecture regressions guard canonical query-clear construction.
 
 ## Executive summary
 
