@@ -571,8 +571,11 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertNotIn("FilesystemSystemDatumStoreAdapter", workbench_ui_source)
 
         # Non-datum JSON config/tool artifacts remain allowed for operational metadata.
+        self.assertIn("FilesystemAwsCsmNewsletterStateAdapter", aws_runtime_source)
         self.assertIn("tool.*.aws-csm.json", aws_runtime_source)
         self.assertIn("spec.json", aws_runtime_source)
+        self.assertNotIn('glob("aws-csm.*.json")', aws_runtime_source)
+        self.assertNotIn('glob("newsletter.*.profile.json")', aws_runtime_source)
 
     def test_active_repo_text_does_not_reference_retired_split_routes(self) -> None:
         forbidden_tokens = (

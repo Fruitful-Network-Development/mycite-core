@@ -37,9 +37,12 @@ parity, onboarding operability, performance hardening, and SQL MOS authority.
    - Runtime/UI should expose a deterministic status state after confirmation.
 4. **Portal load latency remains materially high (10-20s)**
    - Additional optimization pass is required, focused on fallback/safeguard bloat.
-5. **Residual JSON datum presence indicates legacy duplication risk**
-   - Active path should remain SQL MOS authority only; residual JSON paths must be
-     cataloged and either retired or explicitly scoped as non-datum exceptions.
+5. **Residual JSON duplication risk is now narrowed to explicit non-datum operational metadata**
+   - Active AWS-CSM runtime mailbox and newsletter projections now read through
+     shared filesystem adapters instead of bespoke file scans.
+   - Retained JSON artifacts are cataloged as non-datum/config exceptions:
+     `tool.*.aws-csm.json`, `spec.json`, `newsletter.*.profile.json`,
+     `newsletter.*.contacts.json`, and `private/config.json`.
 6. **Current source does not show removal of the AWS-CSM onboarding surface**
    - The present runtime/UI still exposes domain gallery, add-user flow, onboarding
      actions, and handoff cards in source, so missing deployed behavior is more
@@ -89,13 +92,18 @@ Recent commits relevant to behavior drift/reconciliation:
 - `MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py`
   still assembles the AWS-CSM workspace and action route, but now fail-closes
   guarded actions when required runtime modules are missing.
+- `MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py`
+  now projects mailbox and newsletter operational metadata through
+  `FilesystemAwsCsmToolProfileStore` and `FilesystemAwsCsmNewsletterStateAdapter`
+  instead of re-scanning profile/newsletter JSON files directly.
 
 Status linkage:
 
 - `TASK-AWS-CSM-RECOVERY-001`: `done`
 - `TASK-AWS-CSM-RECOVERY-002`: `done`
 - `TASK-AWS-CSM-RECOVERY-003`: `done`
-- `TASK-AWS-CSM-RECOVERY-004` through `TASK-AWS-CSM-RECOVERY-006`: `pending`
+- `TASK-AWS-CSM-RECOVERY-005`: `done`
+- `TASK-AWS-CSM-RECOVERY-004` and `TASK-AWS-CSM-RECOVERY-006`: `pending`
 - `TASK-AWS-CSM-RECOVERY-007`: `pending`
 
 ## Task-Linked Recovery Plan
@@ -138,10 +146,22 @@ Runtime and panel state projection is now explicit and deterministic:
 Re-run AWS-CSM performance optimization pass, baseline current latency, and trim
 fallback/safeguard branches to contract-required paths.
 
-### `TASK-AWS-CSM-RECOVERY-005` (pending)
+### `TASK-AWS-CSM-RECOVERY-005` (done)
 
-Audit and retire residual datum JSON pathways and duplicated legacy code in
-active AWS-CSM/shared portal paths.
+Residual JSON pathway and duplication audit is now evidenced:
+
+- The active AWS-CSM runtime no longer scans mailbox profile files with bespoke
+  `glob("aws-csm.*.json")` logic and instead projects mailbox rows through the
+  shared `FilesystemAwsCsmToolProfileStore`.
+- Newsletter workspace rows now load through
+  `FilesystemAwsCsmNewsletterStateAdapter` instead of direct
+  `newsletter.*.profile.json` scans in the runtime surface.
+- Retained JSON artifacts are now explicitly cataloged as non-datum/config
+  exceptions rather than MOS datum authority: `tool.*.aws-csm.json`, `spec.json`,
+  `newsletter.*.profile.json`, `newsletter.*.contacts.json`, and
+  `private/config.json`.
+- Architecture and unit regressions now fail if the active AWS-CSM runtime
+  reintroduces direct mailbox/newsletter file-scan patterns.
 
 ### `TASK-AWS-CSM-RECOVERY-006` (pending)
 
@@ -172,6 +192,7 @@ program can distinguish code defects from host promotion/dependency drift.
 - `MyCiteV2/packages/adapters/event_transport/aws_csm_inbound_capture_lambda.py`
 - `MyCiteV2/tests/integration/test_portal_host_one_shell.py`
 - `MyCiteV2/tests/unit/test_portal_aws_route_sync.py`
+- `MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py`
 
 ## Validation Log
 
@@ -179,16 +200,12 @@ Validation commands executed for this planning-system update:
 
 - `python3 -m unittest MyCiteV2.tests.unit.test_portal_aws_route_sync`
 - `python3 -m unittest MyCiteV2.tests.architecture.test_portal_one_shell_boundaries`
-- `python3 -m unittest MyCiteV2.tests.integration.test_portal_host_one_shell`
 - `python3 -m unittest MyCiteV2.tests.contracts.test_contract_docs_alignment`
-- `python3 - <<'PY' import importlib.util; print('boto3', bool(importlib.util.find_spec('boto3'))) PY`
 - `python3 - <<'PY' ... yaml.safe_load(...) ... PY`
 
 Result summary:
 
-- AWS-CSM route-sync unit suite: pass (`Ran 9 tests`)
+- AWS-CSM route-sync unit suite: pass (`Ran 10 tests`)
 - one-shell architecture suite: pass (`Ran 22 tests`)
-- portal one-shell integration suite: skipped in this environment because `flask` is not installed (`Ran 6 tests`, `skipped=6`)
 - contract-doc alignment suite: pass (`Ran 13 tests`)
-- Local dependency probe: `boto3 False`
 - YAML parse check: pass for contextual and compatibility manifests/task boards

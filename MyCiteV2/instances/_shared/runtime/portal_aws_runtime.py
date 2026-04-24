@@ -24,6 +24,7 @@ from MyCiteV2.packages.adapters.event_transport.aws_csm_onboarding_cloud import 
 )
 from MyCiteV2.packages.adapters.filesystem import (
     FilesystemAuditLogAdapter,
+    FilesystemAwsCsmNewsletterStateAdapter,
     FilesystemAwsCsmToolProfileStore,
 )
 from MyCiteV2.packages.adapters.filesystem.aws_csm_tool_profile_store import (
@@ -330,6 +331,12 @@ def _tool_store(tool_root: Path | None) -> FilesystemAwsCsmToolProfileStore | No
     return FilesystemAwsCsmToolProfileStore(tool_root)
 
 
+def _newsletter_state(private_dir: str | Path | None) -> FilesystemAwsCsmNewsletterStateAdapter | None:
+    if private_dir is None:
+        return None
+    return FilesystemAwsCsmNewsletterStateAdapter(private_dir)
+
+
 def _private_config(private_dir: str | Path | None) -> dict[str, Any]:
     if private_dir is None:
         return {}
@@ -405,74 +412,76 @@ def _profile_onboarding_projection(payload: Mapping[str, Any]) -> dict[str, str]
     }
 
 
+def _mailbox_profile_row(payload: Mapping[str, Any], *, fallback_profile_id: str = "") -> dict[str, Any] | None:
+    working = _as_dict(payload)
+    identity = _as_dict(working.get("identity"))
+    if not identity:
+        return None
+    profile_id = _as_text(identity.get("profile_id")) or _as_text(fallback_profile_id)
+    domain = _as_text(identity.get("domain")).lower()
+    if not profile_id or not domain:
+        return None
+    send_as_email = _as_text(identity.get("send_as_email")).lower()
+    user_email = _as_text(identity.get("single_user_email")).lower()
+    mailbox_local_part = _as_text(identity.get("mailbox_local_part"))
+    workflow = _as_dict(working.get("workflow"))
+    verification = _as_dict(working.get("verification"))
+    provider = _as_dict(working.get("provider"))
+    smtp = _as_dict(working.get("smtp"))
+    inbound = _as_dict(working.get("inbound"))
+    onboarding = _profile_onboarding_projection(working)
+    return {
+        "profile_id": profile_id,
+        "domain": domain,
+        "title": send_as_email or user_email or profile_id,
+        "mailbox_local_part": (
+            mailbox_local_part or send_as_email.split("@", 1)[0]
+            if "@" in send_as_email
+            else mailbox_local_part
+        ),
+        "send_as_email": send_as_email,
+        "user_email": user_email,
+        "role": _as_text(identity.get("role")) or _as_text(identity.get("profile_kind")) or "mailbox",
+        "workflow_state": _as_text(workflow.get("lifecycle_state")) or "unknown",
+        "verification_state": _as_text(verification.get("portal_state") or verification.get("status")) or "unknown",
+        "provider_state": _as_text(
+            provider.get("send_as_provider_status")
+            or provider.get("gmail_send_as_status")
+            or provider.get("aws_ses_identity_status")
+        )
+        or "unknown",
+        "inbound_state": _as_text(inbound.get("receive_state")) or "unknown",
+        "onboarding_state": onboarding["state"],
+        "onboarding_summary": onboarding["summary"],
+        "forward_target": _as_text(smtp.get("forward_to_email") or identity.get("operator_inbox_target")),
+        "raw": working,
+    }
+
+
 def _mailbox_profiles(tool_root: Path | None) -> list[dict[str, Any]]:
-    if tool_root is None:
+    store = _tool_store(tool_root)
+    if store is None:
         return []
     rows: list[dict[str, Any]] = []
-    for path in sorted(tool_root.glob("aws-csm.*.json")):
-        payload = _safe_json_object(path)
-        identity = dict(payload.get("identity") or {})
-        if not identity:
-            continue
-        profile_id = _as_text(identity.get("profile_id")) or path.stem
-        domain = _as_text(identity.get("domain")).lower()
-        if not domain:
-            continue
-        send_as_email = _as_text(identity.get("send_as_email")).lower()
-        user_email = _as_text(identity.get("single_user_email")).lower()
-        mailbox_local_part = _as_text(identity.get("mailbox_local_part"))
-        workflow = dict(payload.get("workflow") or {})
-        verification = dict(payload.get("verification") or {})
-        provider = dict(payload.get("provider") or {})
-        smtp = dict(payload.get("smtp") or {})
-        inbound = dict(payload.get("inbound") or {})
-        onboarding = _profile_onboarding_projection(payload)
-        rows.append(
-            {
-                "profile_id": profile_id,
-                "domain": domain,
-                "title": send_as_email or user_email or profile_id,
-                "mailbox_local_part": (
-                    mailbox_local_part or send_as_email.split("@", 1)[0]
-                    if "@" in send_as_email
-                    else mailbox_local_part
-                ),
-                "send_as_email": send_as_email,
-                "user_email": user_email,
-                "role": _as_text(identity.get("role")) or _as_text(identity.get("profile_kind")) or "mailbox",
-                "workflow_state": _as_text(workflow.get("lifecycle_state")) or "unknown",
-                "verification_state": _as_text(verification.get("portal_state") or verification.get("status")) or "unknown",
-                "provider_state": _as_text(
-                    provider.get("send_as_provider_status")
-                    or provider.get("gmail_send_as_status")
-                    or provider.get("aws_ses_identity_status")
-                )
-                or "unknown",
-                "inbound_state": _as_text(inbound.get("receive_state")) or "unknown",
-                "onboarding_state": onboarding["state"],
-                "onboarding_summary": onboarding["summary"],
-                "forward_target": _as_text(smtp.get("forward_to_email") or identity.get("operator_inbox_target")),
-                "raw": payload,
-            }
-        )
+    for payload in store.list_profiles():
+        row = _mailbox_profile_row(payload)
+        if row is not None:
+            rows.append(row)
     return rows
 
 
-def _newsletter_domains(tool_root: Path | None) -> list[dict[str, Any]]:
-    if tool_root is None:
-        return []
-    newsletter_root = tool_root / "newsletter"
-    if not newsletter_root.exists():
+def _newsletter_domains(private_dir: str | Path | None) -> list[dict[str, Any]]:
+    state = _newsletter_state(private_dir)
+    if state is None:
         return []
     rows: list[dict[str, Any]] = []
-    for profile_path in sorted(newsletter_root.glob("newsletter.*.profile.json")):
-        profile = _safe_json_object(profile_path)
+    for domain in state.list_newsletter_domains():
+        token = _normalized_domain(domain)
+        profile = _as_dict(state.load_profile(domain=token))
         domain = _as_text(profile.get("domain")).lower()
         if not domain:
             continue
-        contacts_payload = _safe_json_object(
-            newsletter_root / profile_path.name.replace(".profile.json", ".contacts.json")
-        )
+        contacts_payload = _as_dict(state.load_contact_log(domain=domain))
         contacts = [item for item in list(contacts_payload.get("contacts") or []) if isinstance(item, dict)]
         dispatches = [item for item in list(contacts_payload.get("dispatches") or []) if isinstance(item, dict)]
         subscribed_count = sum(1 for item in contacts if item.get("subscribed") is True)
@@ -720,11 +729,12 @@ def _workspace(
     portal_scope: PortalScope,
     query: dict[str, str],
     tool_root: Path | None,
+    private_dir: str | Path | None,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     collection_file, mediation_file = _tool_files(tool_root)
     domain_records = _domain_records(tool_root)
     mailbox_profiles = _mailbox_profiles(tool_root)
-    newsletter_domains = _newsletter_domains(tool_root)
+    newsletter_domains = _newsletter_domains(private_dir)
 
     newsletter_by_domain = {item["domain"]: item for item in newsletter_domains}
     profiles_by_id = {item["profile_id"]: item for item in mailbox_profiles}
@@ -1339,6 +1349,7 @@ def build_portal_aws_surface_bundle(
         portal_scope=portal_scope,
         query=_normalize_surface_query(surface_query),
         tool_root=tool_root,
+        private_dir=private_dir,
     )
     enriched_workspace = dict(workspace)
     enriched_workspace["create_domain_defaults"] = {
