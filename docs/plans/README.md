@@ -18,6 +18,7 @@ Active shell refactor records preserve the family-only shell closeout posture.
 - `documentation_ia_remediation_backlog.md`
 - `desktop_dm02_dm04_reconciliation_plan_2026-04-20.md`
 - `mos_post_closure_consolidation_plan_2026-04-21.md`
+- `portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md`
 - `one_shell_portal_refactor.md`
 - `one_shell_stabilization_matrix.md`
 - `mos_novelty_positioning_follow_on_2026-04-21.md` (positioning/spec context only)
@@ -39,12 +40,25 @@ Active shell refactor records preserve the family-only shell closeout posture.
   - `mos_sg4_standard_closure_policy_2026-04-21.md`
   - `mos_directive_context_design_track_2026-04-21.md`
 - `archive/` retains superseded historical plan artifacts.
+- Legacy index artifact `master_plan_mos.index.yaml` is retained as
+  `historical-superseded` with canonical replacement pointer to
+  `contextual_system_manifest.yaml` + `contextual_system_task_board.yaml`.
 
 ## Contextual System Rule
 
 - Every active stream should have one canonical active plan and one canonical active report.
 - Dated/dispersed adjunct plans should be marked `historical-superseded` with canonical pointers.
 - Cross-directory test analysis closure should reference at least one unit, integration, and contract/architecture suite from `contextual_system_manifest.yaml`.
+
+## MOS Post-Closure Evidence Links
+
+- `docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md`
+- `docs/audits/reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md`
+- `docs/audits/reports/mos_cutover_intent_integrity_report_2026-04-22.md`
+- `docs/audits/reports/mos_premorice_and_modularization_posture_report_2026-04-22.md`
+- `docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md`
+- `docs/plans/mos_novelty_positioning_follow_on_2026-04-21.md`
+- `docs/plans/workbench_ui_hardening_follow_on_2026-04-21.md`
 
 ## Rule
 

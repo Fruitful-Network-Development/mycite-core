@@ -601,6 +601,14 @@
     );
   }
 
+  function hasWorkspaceContent(workspace, surfacePayload) {
+    if (asList(surfacePayload && surfacePayload.cards).length) return true;
+    if (asList(workspace && workspace.domain_rows).length) return true;
+    if (asText(workspace && workspace.selected_domain)) return true;
+    if (asText(asObject(surfacePayload && surfacePayload.action_result).message)) return true;
+    return false;
+  }
+
   function bindCreateProfileForm(target, ctx, workspace, surfacePayload) {
     var form = target.querySelector("[data-aws-create-profile-form]");
     if (!form) return;
@@ -663,13 +671,17 @@
       var workspace = (surfacePayload && surfacePayload.workspace) || {};
       var adapter = toolSurfaceAdapter();
       if (!target) return;
+      var contentReady = hasWorkspaceContent(workspace, surfacePayload);
       adapter.renderWrappedSurface(
         target,
         adapter.resolveSurfaceState({
           region: ctx.region,
           surfacePayload: surfacePayload,
           title: "AWS-CSM",
-          hasContent: true,
+          hasContent: contentReady,
+          message: contentReady
+            ? ""
+            : "No AWS-CSM domains or actions are available in this workspace state yet.",
         }),
         renderCards(surfacePayload.cards || []) +
           renderCreateDomainCard(workspace) +
@@ -725,13 +737,22 @@
       var actionResult = asObject(surfacePayload && surfacePayload.action_result);
       var adapter = toolSurfaceAdapter();
       if (!target) return;
+      var inspectorHasContent = !!(
+        profile ||
+        asText(domainOnboarding.domain) ||
+        newsletter ||
+        asText(actionResult.message)
+      );
       adapter.renderWrappedSurface(
         target,
         adapter.resolveSurfaceState({
           region: ctx.region,
           surfacePayload: surfacePayload,
           title: "AWS-CSM Interface Panel",
-          hasContent: true,
+          hasContent: inspectorHasContent,
+          message: inspectorHasContent
+            ? ""
+            : "Select a domain or mailbox profile to inspect AWS-CSM tool posture.",
         }),
         '<div class="v2-inspector-stack"><section class="v2-card"><h3>Tool Posture</h3>' +
         renderInfoRows([

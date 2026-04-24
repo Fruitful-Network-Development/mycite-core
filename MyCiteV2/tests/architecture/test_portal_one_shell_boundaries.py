@@ -342,6 +342,20 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("readiness: readiness", tool_adapter)
         self.assertIn("resolveToolId: resolveToolId", tool_adapter)
 
+    def test_aws_workspace_renderer_uses_adapter_navigation_and_surface_state_parity(self) -> None:
+        aws_workspace = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_aws_workspace.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("buildDirectSurfaceRequest", aws_workspace)
+        self.assertIn("buildAwsProfileRows", aws_workspace)
+        self.assertIn("buildAwsNewsletterRows", aws_workspace)
+        self.assertIn("hasWorkspaceContent", aws_workspace)
+        self.assertIn("hasContent: contentReady", aws_workspace)
+        self.assertIn("hasContent: inspectorHasContent", aws_workspace)
+        self.assertIn("data-aws-domain-clear", aws_workspace)
+        self.assertIn("buildSurfaceRequest(ctx, workspace, { domain: null, profile: null, section: null })", aws_workspace)
+
     def test_directive_panel_host_dispatches_by_family_contract(self) -> None:
         static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
         region_renderers = (static_root / "v2_portal_shell_region_renderers.js").read_text(encoding="utf-8")
@@ -514,6 +528,32 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertNotIn("staged_diktataograph", runtime_source)
         self.assertNotIn("ordered_hierarchy", runtime_source)
         self.assertNotIn("legacy_branch_canvas", runtime_source)
+
+    def test_sql_authority_runtime_paths_forbid_datum_json_fallback_but_allow_non_datum_json_configs(self) -> None:
+        shell_runtime_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_shell_runtime.py"
+        ).read_text(encoding="utf-8")
+        system_workspace_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_system_workspace_runtime.py"
+        ).read_text(encoding="utf-8")
+        workbench_ui_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_workbench_ui_runtime.py"
+        ).read_text(encoding="utf-8")
+        aws_runtime_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_aws_runtime.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("sql_authority_required", shell_runtime_source)
+        self.assertIn("sql_authority_uninitialized", shell_runtime_source)
+        self.assertIn("SqliteSystemDatumStoreAdapter", system_workspace_source)
+        self.assertNotIn("FilesystemSystemDatumStoreAdapter", system_workspace_source)
+        self.assertIn("sql_authority_required", workbench_ui_source)
+        self.assertIn("SqliteSystemDatumStoreAdapter", workbench_ui_source)
+        self.assertNotIn("FilesystemSystemDatumStoreAdapter", workbench_ui_source)
+
+        # Non-datum JSON config/tool artifacts remain allowed for operational metadata.
+        self.assertIn("tool.*.aws-csm.json", aws_runtime_source)
+        self.assertIn("spec.json", aws_runtime_source)
 
     def test_active_repo_text_does_not_reference_retired_split_routes(self) -> None:
         forbidden_tokens = (

@@ -71,3 +71,226 @@ tasks:
       - "docs/audits/reports/contextual_planning_system_alignment_report_2026-04-23.md"
       - "docs/plans/planning_audit_manifest.yaml"
       - "docs/plans/planning_task_board.yaml"
+
+  - id: "TASK-AWS-CSM-ALIGN-001"
+    title: "Publish AWS-CSM operating alignment audit plan and baseline report"
+    status: "done"
+    priority: "p1"
+    owner_role: "architecture-auditor"
+    acceptance:
+      - "Canonical AWS-CSM stream plan and report are registered in contextual and compatibility manifests."
+      - "Baseline report maps findings and recommendations to initiative/task IDs."
+    evidence_targets:
+      - "docs/audits/aws_csm_operating_alignment_audit_plan_2026-04-23.md"
+      - "docs/audits/reports/aws_csm_comprehensive_audit_report_2026-04-23.md"
+      - "docs/plans/contextual_system_manifest.yaml"
+      - "docs/plans/planning_audit_manifest.yaml"
+
+  - id: "TASK-AWS-CSM-ALIGN-002"
+    title: "Design NIMM/AITAS migration contract for AWS-CSM onboarding actions"
+    status: "done"
+    priority: "p1"
+    owner_role: "state-machine-architect"
+    acceptance:
+      - "A draft contract lists canonical directive verbs, envelope fields, and legal action mappings for AWS-CSM."
+      - "Route and tool-operating contract deltas are identified with validation scope."
+    evidence_targets:
+      - "docs/audits/reports/aws_csm_comprehensive_audit_report_2026-04-23.md"
+      - "docs/contracts/route_model.md"
+      - "docs/contracts/tool_operating_contract.md"
+
+  - id: "TASK-AWS-CSM-ALIGN-003"
+    title: "Define cross-domain user grouping query model and runtime projection shape"
+    status: "done"
+    priority: "p1"
+    owner_role: "runtime-architect"
+    acceptance:
+      - "Canonical query keys and selection semantics for cross-domain user grouping are documented."
+      - "Runtime projection contract specifies user-group rows and read-only navigation posture."
+    evidence_targets:
+      - "docs/audits/aws_csm_operating_alignment_audit_plan_2026-04-23.md"
+      - "docs/audits/reports/aws_csm_comprehensive_audit_report_2026-04-23.md"
+      - "docs/contracts/route_model.md"
+
+  - id: "TASK-AWS-CSM-ALIGN-004"
+    title: "Execute adapter/fallback/navigation parity hardening for AWS-CSM"
+    status: "done"
+    priority: "p2"
+    owner_role: "frontend-runtime-engineer"
+    acceptance:
+      - "AWS-CSM renderer removes duplicate projection helpers in favor of shared adapter-fed rows."
+      - "Loading/error/empty handling and selection request construction align with shared shell utilities."
+      - "Regression tests cover adapter parity and canonical query synchronization."
+    evidence_targets:
+      - "docs/audits/reports/aws_csm_comprehensive_audit_report_2026-04-23.md"
+      - "docs/audits/reports/tools_ui_implementation_mismatch_report_2026-04-16.md"
+      - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js"
+
+  - id: "TASK-AWS-CSM-ALIGN-005"
+    title: "Establish AWS-CSM runtime dependency baseline for onboarding execution hosts"
+    status: "done"
+    priority: "p1"
+    owner_role: "platform-runtime-owner"
+    acceptance:
+      - "Execution hosts used for AWS-CSM actions provide required Python/AWS dependencies and bootstrap checks."
+      - "Runbook documents fail-closed behavior and remediation path when dependency checks fail."
+    evidence_targets:
+      - "docs/audits/reports/aws_csm_onboarding_operational_realities_report_2026-04-23.md"
+      - "docs/personal_notes/ec2_awscms_admin_iam_inventory.md"
+      - "MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py"
+
+  - id: "TASK-AWS-CSM-ALIGN-006"
+    title: "Automate domain readiness convergence for SES identity, DKIM, SPF, DMARC, and receipt rules"
+    status: "done"
+    priority: "p1"
+    owner_role: "aws-operations-owner"
+    acceptance:
+      - "AWS-CSM domain actions converge domain readiness without manual console intervention for standard onboarding cases."
+      - "Domain readiness state reflects Route53, SES, and receipt-rule parity after action execution."
+    evidence_targets:
+      - "docs/audits/reports/aws_csm_onboarding_operational_realities_report_2026-04-23.md"
+      - "deployed/fnd/private/utilities/tools/aws-csm/aws-csm-domain.cvccboard.json"
+      - "MyCiteV2/packages/adapters/event_transport/aws_csm_onboarding_cloud.py"
+
+  - id: "TASK-AWS-CSM-ALIGN-007"
+    title: "Harden automatic verification-forward behavior for send-as confirmation capture"
+    status: "done"
+    priority: "p1"
+    owner_role: "lambda-inbound-owner"
+    acceptance:
+      - "Inbound capture Lambda auto-forwards eligible provider confirmation emails to operator inbox targets."
+      - "Decision logs and runtime responses expose auditable forward/blocked reasons per message."
+    evidence_targets:
+      - "docs/audits/reports/aws_csm_onboarding_operational_realities_report_2026-04-23.md"
+      - "MyCiteV2/packages/adapters/event_transport/aws_csm_inbound_capture_lambda.py"
+      - "deployed/fnd/private/utilities/tools/aws-csm/aws-csm.cvccboard.nathan.json"
+
+  - id: "TASK-AWS-CSM-ALIGN-008"
+    title: "Enforce secure handoff posture for SMTP secrets and operator notifications"
+    status: "done"
+    priority: "p1"
+    owner_role: "security-owner"
+    acceptance:
+      - "Onboarding handoff flow avoids transmitting reusable SMTP secrets over plaintext email."
+      - "Credential rotation and revocation procedure is documented and tested for emergency/manual disclosure events."
+    evidence_targets:
+      - "docs/audits/reports/aws_csm_onboarding_operational_realities_report_2026-04-23.md"
+      - "docs/contracts/tool_operating_contract.md"
+      - "MyCiteV2/packages/adapters/event_transport/aws_csm_onboarding_cloud.py"
+
+  - id: "TASK-AWS-CSM-ALIGN-009"
+    title: "Backfill operational state reconciliation after manual AWS interventions"
+    status: "done"
+    priority: "p2"
+    owner_role: "aws-csm-runtime-owner"
+    acceptance:
+      - "Profile/domain state files are reconciled from authoritative AWS state after manual remediation actions."
+      - "Runtime reports and inspector payloads show no stale or contradictory onboarding status fields."
+    evidence_targets:
+      - "docs/audits/reports/aws_csm_onboarding_operational_realities_report_2026-04-23.md"
+      - "deployed/fnd/private/utilities/tools/aws-csm/aws-csm-domain.cvccboard.json"
+      - "deployed/fnd/private/utilities/tools/aws-csm/aws-csm.cvccboard.nathan.json"
+
+  - id: "TASK-AWS-CSM-ALIGN-010"
+    title: "Add end-to-end AWS-CSM onboarding verification regression coverage"
+    status: "done"
+    priority: "p2"
+    owner_role: "qa-owner"
+    acceptance:
+      - "Integration coverage verifies profile creation, SMTP staging, handoff dispatch, capture, and confirmation-forward behavior."
+      - "Regression suite captures blocking conditions and expected operator-facing error messages."
+    evidence_targets:
+      - "docs/audits/reports/aws_csm_onboarding_operational_realities_report_2026-04-23.md"
+      - "MyCiteV2/tests/integration/test_portal_host_one_shell.py"
+      - "MyCiteV2/tests/unit/test_portal_aws_route_sync.py"
+
+  - id: "TASK-PORTAL-LEGACY-SQLMOS-001"
+    title: "Inventory legacy shell/UI/doc boundary artifacts against current one-shell and NIMM/AITAS contracts"
+    status: "done"
+    priority: "p0"
+    owner_role: "architecture-auditor"
+    acceptance:
+      - "Legacy boundary artifacts are cataloged with keep/remove/supersede disposition."
+      - "Each artifact has a canonical replacement pointer or explicit retention rationale."
+    evidence_targets:
+      - "docs/plans/portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md"
+      - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
+      - "docs/contracts/tool_operating_contract.md"
+
+  - id: "TASK-PORTAL-LEGACY-SQLMOS-002"
+    title: "Retire legacy portal shell and sandbox paths outside canonical UI shell boundaries"
+    status: "done"
+    priority: "p0"
+    owner_role: "shell-runtime-owner"
+    acceptance:
+      - "Legacy shell/sandbox code paths are removed or gated off from active runtime routing."
+      - "Canonical shell composition path remains sole active boundary for region-family rendering."
+    evidence_targets:
+      - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
+      - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
+      - "MyCiteV2/packages/state_machine/portal_shell/shell.py"
+
+  - id: "TASK-PORTAL-LEGACY-SQLMOS-003"
+    title: "Converge legacy NIMM/AITAS/lens/staging variants onto canonical directive pipeline"
+    status: "done"
+    priority: "p0"
+    owner_role: "state-machine-owner"
+    acceptance:
+      - "Non-canonical staging/directive variants are removed or marked historical-superseded with migration notes."
+      - "Mutation path uses canonical NIMM envelope, AITAS context, and lens codec boundaries."
+    evidence_targets:
+      - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
+      - "docs/contracts/mutation_contract.md"
+      - "MyCiteV2/packages/state_machine/nimm/staging.py"
+
+  - id: "TASK-PORTAL-LEGACY-SQLMOS-004"
+    title: "Remove MOS datum JSON fallback runtime paths and enforce SQL-backed datum authority"
+    status: "done"
+    priority: "p0"
+    owner_role: "datum-domain-owner"
+    acceptance:
+      - "Datum fallback reads/writes to JSON artifacts are removed from active MOS datum pathways."
+      - "Non-datum JSON tool/config assets remain explicitly out-of-scope and documented as retained."
+    evidence_targets:
+      - "docs/plans/portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md"
+      - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
+      - "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md"
+
+  - id: "TASK-PORTAL-LEGACY-SQLMOS-005"
+    title: "Mark superseded legacy docs and indexes with lifecycle/archive pointers"
+    status: "done"
+    priority: "p1"
+    owner_role: "doc-curator"
+    acceptance:
+      - "Superseded docs are explicitly labeled historical-superseded and linked to canonical replacements."
+      - "No useful historical context is deleted; archive posture is explicit and navigable."
+    evidence_targets:
+      - "docs/plans/README.md"
+      - "docs/audits/README.md"
+      - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
+
+  - id: "TASK-PORTAL-LEGACY-SQLMOS-006"
+    title: "Add regression tests that fail when legacy boundary or datum fallback paths reappear"
+    status: "done"
+    priority: "p1"
+    owner_role: "qa-owner"
+    acceptance:
+      - "Regression coverage asserts canonical shell boundaries and SQL-only datum authority on active flows."
+      - "Tests distinguish forbidden datum JSON fallbacks from permitted non-datum JSON config artifacts."
+    evidence_targets:
+      - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
+      - "MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py"
+      - "MyCiteV2/tests/architecture/test_state_machine_boundaries.py"
+
+  - id: "TASK-PORTAL-LEGACY-SQLMOS-007"
+    title: "Publish closure-ready legacy-retirement operationalization report"
+    status: "done"
+    priority: "p1"
+    owner_role: "program-owner"
+    acceptance:
+      - "Report maps completed removals, retained exceptions, and remaining blockers to task IDs."
+      - "Compatibility and contextual surfaces remain synchronized with no canonical ambiguity."
+    evidence_targets:
+      - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
+      - "docs/plans/contextual_system_manifest.yaml"
+      - "docs/plans/planning_audit_manifest.yaml"

@@ -61,20 +61,61 @@ initiatives:
 
   - id: "INIT-PERF-WEIGHT-SPEED"
     title: "Performance weight/speed measurement and optimization backlog"
-    status: "in_progress"
+    status: "blocked"
     priority: "p2"
     lifecycle: "active"
     canonical_plan: "docs/audits/performance_weight_speed_audit_plan_2026-04-16.md"
     canonical_audit_plan: "docs/audits/performance_weight_speed_audit_plan_2026-04-16.md"
     active_report: "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
     closure_reports: []
-    open_issue_summary: "Measurement + execution phases still open."
+    open_issue_summary: "Blocked pending completion of performance readiness gates: baseline/post metrics population, CI regression-gate wiring, and explicit multi-owner approval acknowledgment."
     task_ids:
       - "TASK-PERF-001"
 
+  - id: "INIT-AWS-CSM-ALIGNMENT"
+    title: "AWS-CSM operating model and onboarding alignment"
+    status: "completed"
+    priority: "p1"
+    lifecycle: "active"
+    canonical_plan: "docs/audits/aws_csm_operating_alignment_audit_plan_2026-04-23.md"
+    canonical_audit_plan: "docs/audits/aws_csm_operating_alignment_audit_plan_2026-04-23.md"
+    active_report: "docs/audits/reports/aws_csm_comprehensive_audit_report_2026-04-23.md"
+    closure_reports: []
+    open_issue_summary: "AWS-CSM alignment closure complete: contract deltas, renderer parity, runtime dependency fail-closed posture, domain readiness convergence, verification-forward auditing, secure handoff guidance, reconciliation, and end-to-end regressions are evidenced."
+    task_ids:
+      - "TASK-AWS-CSM-ALIGN-001"
+      - "TASK-AWS-CSM-ALIGN-002"
+      - "TASK-AWS-CSM-ALIGN-003"
+      - "TASK-AWS-CSM-ALIGN-004"
+      - "TASK-AWS-CSM-ALIGN-005"
+      - "TASK-AWS-CSM-ALIGN-006"
+      - "TASK-AWS-CSM-ALIGN-007"
+      - "TASK-AWS-CSM-ALIGN-008"
+      - "TASK-AWS-CSM-ALIGN-009"
+      - "TASK-AWS-CSM-ALIGN-010"
+
+  - id: "INIT-PORTAL-LEGACY-BOUNDARY-SQL-MOS"
+    title: "Portal legacy boundary retirement and SQL MOS datum convergence"
+    status: "completed"
+    priority: "p0"
+    lifecycle: "active"
+    canonical_plan: "docs/plans/portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md"
+    canonical_audit_plan: "docs/plans/portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md"
+    active_report: "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
+    closure_reports: []
+    open_issue_summary: "Legacy boundary retirement and SQL MOS datum convergence closure is complete; canonical one-shell and SQL-authority guardrails are now evidence-backed and regression-guarded."
+    task_ids:
+      - "TASK-PORTAL-LEGACY-SQLMOS-001"
+      - "TASK-PORTAL-LEGACY-SQLMOS-002"
+      - "TASK-PORTAL-LEGACY-SQLMOS-003"
+      - "TASK-PORTAL-LEGACY-SQLMOS-004"
+      - "TASK-PORTAL-LEGACY-SQLMOS-005"
+      - "TASK-PORTAL-LEGACY-SQLMOS-006"
+      - "TASK-PORTAL-LEGACY-SQLMOS-007"
+
   - id: "INIT-MOS-POST-CLOSURE"
     title: "MOS post-closure bounded follow-on"
-    status: "in_progress"
+    status: "completed"
     priority: "p2"
     lifecycle: "active"
     canonical_plan: "docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md"
@@ -83,7 +124,7 @@ initiatives:
     closure_reports:
       - "docs/audits/reports/mos_program_closure_report_2026-04-21.md"
       - "docs/audits/reports/mos_runtime_authority_and_access_reality_report_2026-04-21.md"
-    open_issue_summary: "Remain bounded to doc canonicalization, retained exception scope, and optional simple workbench_ui follow-on."
+    open_issue_summary: "Post-closure bounded follow-on is complete: documentation canonicalization and bounded workbench posture are revalidated with passing regression coverage."
     task_ids:
       - "TASK-MOS-DOCS-001"
       - "TASK-MOS-WORKBENCH-001"

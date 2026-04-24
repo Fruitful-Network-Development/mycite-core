@@ -21,6 +21,9 @@ This directory is the closure-evidence surface for the unified planning/audit sy
 
 ## Current High-Value Report Anchors
 
+- `aws_csm_comprehensive_audit_report_2026-04-23.md`
+- `aws_csm_onboarding_operational_realities_report_2026-04-23.md`
+- `portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md`
 - `cts_gis_sql_authority_assurance_report_2026-04-21.md`
 - `performance_weight_speed_report_2026-04-16.md`
 - `desktop_access_historical_drift_report_2026-04-16.md`

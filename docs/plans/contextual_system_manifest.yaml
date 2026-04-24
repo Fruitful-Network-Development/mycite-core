@@ -17,13 +17,18 @@ entrypoints:
     - "docs/plans/planning_audit_operating_system.md"
     - "docs/plans/contextual_system_manifest.yaml"
     - "docs/plans/contextual_system_task_board.yaml"
+    - "docs/plans/portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md"
   audits:
     - "docs/audits/README.md"
     - "docs/audits/cts_gis_open_alignment_audit_plan_2026-04-23.md"
+    - "docs/audits/aws_csm_operating_alignment_audit_plan_2026-04-23.md"
     - "docs/audits/performance_weight_speed_audit_plan_2026-04-16.md"
   reports:
     - "docs/audits/reports/README.md"
     - "docs/audits/reports/refinement_phase4_validation_report_2026-04-23.md"
+    - "docs/audits/reports/aws_csm_comprehensive_audit_report_2026-04-23.md"
+    - "docs/audits/reports/aws_csm_onboarding_operational_realities_report_2026-04-23.md"
+    - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
     - "docs/audits/reports/mos_program_closure_report_2026-04-21.md"
 
 program_streams:
@@ -47,11 +52,21 @@ program_streams:
     canonical_plan: "docs/audits/performance_weight_speed_audit_plan_2026-04-16.md"
     canonical_report: "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
     status: "active"
+  - id: "STREAM-AWS-CSM-ALIGNMENT"
+    title: "AWS-CSM operating model and onboarding alignment"
+    canonical_plan: "docs/audits/aws_csm_operating_alignment_audit_plan_2026-04-23.md"
+    canonical_report: "docs/audits/reports/aws_csm_comprehensive_audit_report_2026-04-23.md"
+    status: "completed"
+  - id: "STREAM-PORTAL-LEGACY-BOUNDARY-SQL-MOS"
+    title: "Portal legacy boundary retirement and SQL MOS datum convergence"
+    canonical_plan: "docs/plans/portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md"
+    canonical_report: "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
+    status: "completed"
   - id: "STREAM-MOS-CLOSURE"
     title: "MOS post-closure bounded follow-on"
     canonical_plan: "docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md"
     canonical_report: "docs/audits/reports/mos_documentation_supersession_audit_2026-04-21.md"
-    status: "active"
+    status: "completed"
 
 consolidation:
   historical_superseded:

@@ -121,6 +121,71 @@ class AwsCsmInboundCaptureLambdaTests(unittest.TestCase):
             {"ToAddresses": ["dylancarsonmontgomery@gmail.com"]},
         )
 
+    def test_handle_verification_record_returns_block_reason_for_untracked_recipient(self) -> None:
+        previous_routes = lam._cached_routes
+        previous_route_json = lam.VERIFICATION_ROUTE_MAP_JSON
+        try:
+            lam.VERIFICATION_ROUTE_MAP_JSON = '{"tracked@example.com":"ops@example.com"}'
+            lam._cached_routes = None
+            result = lam._handle_verification_record(
+                destinations=["unknown@example.com"],
+                mail_source="gmail-noreply@google.com",
+                subject="Gmail Confirmation - Send Mail as unknown@example.com",
+                message_id="msg-001",
+            )
+        finally:
+            lam.VERIFICATION_ROUTE_MAP_JSON = previous_route_json
+            lam._cached_routes = previous_routes
+        self.assertEqual(result["forwarded"], [])
+        self.assertEqual(result["decisions"][0]["classification"], "blocked_recipient")
+        self.assertEqual(result["decisions"][0]["reason"], "recipient_not_tracked")
+
+    def test_lambda_handler_returns_auditable_forward_decision_entries(self) -> None:
+        previous_handle = lam._handle_verification_record
+        try:
+            lam._handle_verification_record = lambda **kwargs: {  # type: ignore[assignment]
+                "forwarded": [{"message_id": "ses-forwarded-1", "sent_to": "ops@example.com"}],
+                "decisions": [
+                    {
+                        "message_id": kwargs.get("message_id"),
+                        "recipient": "admin@example.com",
+                        "classification": "verification_confirmation_gmail",
+                        "reason": "gmail_confirmation",
+                        "should_forward": True,
+                        "s3_uri": "s3://bucket/key",
+                        "handoff_provider": "gmail",
+                        "forward_resolution_status": "resolved_external",
+                        "forwarded_to": "ops@example.com",
+                        "forward_message_id": "ses-forwarded-1",
+                    }
+                ],
+            }
+            payload = lam.lambda_handler(
+                {
+                    "Records": [
+                        {
+                            "ses": {
+                                "mail": {
+                                    "messageId": "msg-xyz",
+                                    "source": "gmail-noreply@google.com",
+                                    "destination": ["admin@example.com"],
+                                    "commonHeaders": {
+                                        "subject": "Gmail Confirmation - Send Mail as admin@example.com"
+                                    },
+                                },
+                                "receipt": {"timestamp": "2026-04-23T00:00:00+00:00"},
+                            }
+                        }
+                    ]
+                },
+                context=None,
+            )
+        finally:
+            lam._handle_verification_record = previous_handle  # type: ignore[assignment]
+        self.assertEqual(payload["processed_records"], 1)
+        self.assertEqual(payload["forwarded"][0]["sent_to"], "ops@example.com")
+        self.assertEqual(payload["verification_decisions"][0]["reason"], "gmail_confirmation")
+
 
 if __name__ == "__main__":
     unittest.main()
