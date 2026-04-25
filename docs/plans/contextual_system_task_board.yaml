@@ -8,10 +8,10 @@ board:
   manifest_path: "docs/plans/contextual_system_manifest.yaml"
   delegation_state:
     current_focus_stream: "STREAM-CODE-BLOAT-REMEDIATION"
-    current_focus_task_id: "TASK-CODE-BLOAT-REMEDIATION-003"
+    current_focus_task_id: "TASK-CODE-BLOAT-REMEDIATION-005"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "Injected and completed TASK-CODE-BLOAT-FINDINGS-002 under STREAM-CODE-BLOAT-FINDINGS-EXECUTION, publishing legacy filesystem/snapshot classification findings that closed TASK-CODE-BLOAT-REMEDIATION-002. SQL-authoritative runtime posture and snapshot retention boundaries are now explicit; next selected task by policy is TASK-CODE-BLOAT-REMEDIATION-003, still blocked on missing Python import/modularity findings."
+    last_delegation_note: "Injected and completed TASK-CODE-BLOAT-FINDINGS-003 under STREAM-CODE-BLOAT-FINDINGS-EXECUTION, publishing Python import/modularity findings and closing TASK-CODE-BLOAT-REMEDIATION-003 through safe lazy-import deferrals across host and shell runtime surfaces. Next selected task by policy is TASK-CODE-BLOAT-REMEDIATION-005, still blocked on missing frontend-bundle findings."
 
 tasks:
   - id: "TASK-CONTEXT-ORG-001"
@@ -401,6 +401,23 @@ tasks:
       - "docs/contracts/tool_operating_contract.md"
       - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
 
+  - id: "TASK-CODE-BLOAT-FINDINGS-003"
+    stream_id: "STREAM-CODE-BLOAT-FINDINGS-EXECUTION"
+    title: "Publish Python import/modularity findings and safe deferral classification"
+    status: "done"
+    priority: "p0"
+    owner_role: "runtime-performance-auditor"
+    acceptance:
+      - "Executed findings include import-time hotspot table and ownership/classification (required eager vs safe defer vs unsafe defer)."
+      - "Findings report links executed deferral recommendations to concrete runtime surfaces and regression gates."
+      - "Downstream remediation task `TASK-CODE-BLOAT-REMEDIATION-003` has explicit closure evidence or re-blocking posture."
+    evidence_targets:
+      - "docs/plans/code_bloat_findings_execution_plan_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_findings_execution_report_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_python_import_modularity_findings_2026-04-25.md"
+      - "MyCiteV2/instances/_shared/portal_host/app.py"
+      - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
+
   - id: "TASK-CODE-BLOAT-REMEDIATION-001"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Retire residual multi-shell and renderer branch pathways"
@@ -420,7 +437,7 @@ tasks:
     blocker_detail: "Closed via TASK-CODE-BLOAT-FINDINGS-001 and docs/audits/reports/code_bloat_shell_topology_findings_2026-04-25.md. Findings proved one live shell boot/runtime path, bounded compatibility aliases, and no unretired alternate shell runtime requiring code deletion."
     impacted_task_ids:
       - "TASK-CODE-BLOAT-REMEDIATION-008"
-    next_unblocked_task: "TASK-CODE-BLOAT-REMEDIATION-003"
+    next_unblocked_task: "TASK-CODE-BLOAT-REMEDIATION-005"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-002"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
@@ -441,12 +458,12 @@ tasks:
     blocker_detail: "Closed via TASK-CODE-BLOAT-FINDINGS-002 and docs/audits/reports/code_bloat_legacy_filesystem_snapshot_findings_2026-04-25.md. Findings classify filesystem and snapshot classes, confirm SQL-authoritative runtime posture for SYSTEM surfaces, and document explicit non-datum/fixture retention boundaries."
     impacted_task_ids:
       - "TASK-CODE-BLOAT-REMEDIATION-008"
-    next_unblocked_task: "TASK-CODE-BLOAT-REMEDIATION-003"
+    next_unblocked_task: "TASK-CODE-BLOAT-REMEDIATION-005"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-003"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Reduce Python import graph bloat and modularize monolith runtime surfaces"
-    status: "blocked"
+    status: "done"
     priority: "p0"
     owner_role: "runtime-performance-owner"
     acceptance:
@@ -458,12 +475,10 @@ tasks:
       - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
       - "MyCiteV2/instances/_shared/portal_host/app.py"
       - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
-    blocked_by:
-      - "BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001"
-    blocker_detail: "Awaiting executed Python import/modularity audit findings; TASK-CODE-BLOAT-AUDIT-003 produced docs/audits/code_bloat_python_import_modularity_audit_plan_2026-04-24.md but no measured import-time profile, ownership map, or lazy-import safety classification exists in repo."
+    blocker_detail: "Closed via TASK-CODE-BLOAT-FINDINGS-003 and docs/audits/reports/code_bloat_python_import_modularity_findings_2026-04-25.md. Findings captured import-time hotspots and applied safe lazy-import deferrals across host and shell-runtime modules while retaining contract-required eager imports."
     impacted_task_ids:
       - "TASK-CODE-BLOAT-REMEDIATION-008"
-    next_unblocked_task: "none (all remediation tasks are blocked pending executed deep-audit findings)"
+    next_unblocked_task: "TASK-CODE-BLOAT-REMEDIATION-005"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-004"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
@@ -571,9 +586,9 @@ tasks:
       - "docs/plans/planning_audit_manifest.yaml"
     blocked_by:
       - "BLOCKER-CODE-BLOAT-REMEDIATION-DEPENDENCIES-001"
-    blocker_detail: "Cannot publish closure-evidence aggregation while upstream TASK-CODE-BLOAT-REMEDIATION-001..007 remain blocked on BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001."
+    blocker_detail: "Cannot publish closure-evidence aggregation while upstream TASK-CODE-BLOAT-REMEDIATION-005/006/007 remain blocked on BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001."
     impacted_task_ids: []
-    next_unblocked_task: "none (depends on TASK-CODE-BLOAT-REMEDIATION-001..007 which are all blocked)"
+    next_unblocked_task: "none (depends on TASK-CODE-BLOAT-REMEDIATION-005/006/007 which are all blocked)"
 
   - id: "TASK-AWS-CSM-ALIGN-001"
     title: "Publish AWS-CSM operating alignment audit plan and baseline report"

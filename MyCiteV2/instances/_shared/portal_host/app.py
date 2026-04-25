@@ -24,25 +24,10 @@ except ModuleNotFoundError as exc:  # pragma: no cover - exercised in dependency
 
     request = _MissingRequest()
 
-from MyCiteV2.instances._shared.runtime.portal_aws_runtime import (
-    run_portal_aws_csm,
-    run_portal_aws_csm_action,
-)
-from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
-    LegacyMapsAliasUnsupportedError,
-    run_portal_cts_gis,
-    run_portal_cts_gis_action,
-)
-from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import run_portal_fnd_dcm
-from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import run_portal_fnd_ebi
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import (
     run_portal_shell_entry,
     run_system_profile_basics_action,
 )
-from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
-    read_system_workbench_projection,
-)
-from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import run_portal_workbench_ui
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA,
     AWS_CSM_TOOL_REQUEST_SCHEMA,
@@ -71,7 +56,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     build_portal_tool_registry_entries,
     requires_shell_state_machine,
 )
-from MyCiteV2.packages.state_machine.nimm import NimmDirectiveEnvelope
 
 V2_PORTAL_HEALTH_SCHEMA = "mycite.v2.portal.health.v1"
 V2_PORTAL_ERROR_SCHEMA = "mycite.v2.portal.error.v1"
@@ -489,6 +473,8 @@ def _error_response(code: str, message: str, *, status_code: int = 400) -> tuple
 def _nimm_target_authority(payload: Mapping[str, Any]) -> str:
     envelope_payload = payload.get("nimm_envelope")
     if isinstance(envelope_payload, Mapping):
+        from MyCiteV2.packages.state_machine.nimm import NimmDirectiveEnvelope
+
         envelope = NimmDirectiveEnvelope.from_dict(dict(envelope_payload))
         return _as_text(envelope.directive.target_authority)
     return _as_text(payload.get("target_authority"))
@@ -498,6 +484,8 @@ def _tool_payload_for_mutation(action: str, payload: dict[str, Any], *, request_
     envelope_payload = payload.get("nimm_envelope")
     directive_payload: dict[str, Any] = {}
     if isinstance(envelope_payload, Mapping):
+        from MyCiteV2.packages.state_machine.nimm import NimmDirectiveEnvelope
+
         envelope = NimmDirectiveEnvelope.from_dict(dict(envelope_payload))
         directive_payload = dict(envelope.directive.payload or {})
     action_kind = _as_text(payload.get("action_kind") or directive_payload.get("action_kind") or action)
@@ -537,6 +525,10 @@ def _warm_system_workbench_projection(config: V2PortalHostConfig) -> None:
     # Warm the heavy system-workbench projection cache so first portal open
     # does not pay full datum-recognition cost on request path.
     try:
+        from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
+            read_system_workbench_projection,
+        )
+
         read_system_workbench_projection(
             portal_scope=PortalScope(scope_id=config.portal_instance_id, capabilities=()),
             data_dir=config.data_dir,
@@ -648,10 +640,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     authority_db_file=host_config.authority_db_file,
                 )
             )
-        except LegacyMapsAliasUnsupportedError as exc:
-            return _error_response(exc.code, str(exc), status_code=400)
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
+        except Exception as exc:
+            legacy_maps_code = _as_text(getattr(exc, "code", ""))
+            if legacy_maps_code == "legacy_maps_alias_unsupported":
+                return _error_response(legacy_maps_code, str(exc), status_code=400)
+            raise
 
     @app.post("/portal/api/v2/system/workspace/profile-basics")
     def portal_profile_basics_action() -> tuple[Any, int]:
@@ -675,6 +670,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/portal/api/v2/system/tools/aws-csm")
     def portal_aws_csm() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_aws_runtime import run_portal_aws_csm
+
         try:
             payload = _json_payload()
             if "schema" not in payload:
@@ -693,6 +690,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/portal/api/v2/system/tools/aws-csm/actions")
     def portal_aws_csm_actions() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_aws_runtime import run_portal_aws_csm_action
+
         try:
             payload = _json_payload()
             if "schema" not in payload:
@@ -710,6 +709,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/portal/api/v2/system/tools/cts-gis")
     def portal_cts_gis() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis
+
         try:
             payload = _json_payload()
             if "schema" not in payload:
@@ -725,13 +726,18 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     portal_domain=host_config.portal_domain,
                 )
             )
-        except LegacyMapsAliasUnsupportedError as exc:
-            return _error_response(exc.code, str(exc), status_code=400)
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
+        except Exception as exc:
+            legacy_maps_code = _as_text(getattr(exc, "code", ""))
+            if legacy_maps_code == "legacy_maps_alias_unsupported":
+                return _error_response(legacy_maps_code, str(exc), status_code=400)
+            raise
 
     @app.post("/portal/api/v2/system/tools/cts-gis/actions")
     def portal_cts_gis_actions() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis_action
+
         try:
             payload = _json_payload()
             if "schema" not in payload:
@@ -747,13 +753,19 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     portal_domain=host_config.portal_domain,
                 )
             )
-        except LegacyMapsAliasUnsupportedError as exc:
-            return _error_response(exc.code, str(exc), status_code=400)
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
+        except Exception as exc:
+            legacy_maps_code = _as_text(getattr(exc, "code", ""))
+            if legacy_maps_code == "legacy_maps_alias_unsupported":
+                return _error_response(legacy_maps_code, str(exc), status_code=400)
+            raise
 
     @app.post("/portal/api/v2/mutations/<action>")
     def portal_mutation_action(action: str) -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_aws_runtime import run_portal_aws_csm_action
+        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis_action
+
         try:
             payload = _json_payload()
             target_authority = _nimm_target_authority(payload)
@@ -790,13 +802,18 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 "unsupported_mutation_target",
                 "Mutation target_authority must be cts_gis or aws_csm.",
             )
-        except LegacyMapsAliasUnsupportedError as exc:
-            return _error_response(exc.code, str(exc), status_code=400)
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
+        except Exception as exc:
+            legacy_maps_code = _as_text(getattr(exc, "code", ""))
+            if legacy_maps_code == "legacy_maps_alias_unsupported":
+                return _error_response(legacy_maps_code, str(exc), status_code=400)
+            raise
 
     @app.post("/portal/api/v2/system/tools/fnd-ebi")
     def portal_fnd_ebi() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import run_portal_fnd_ebi
+
         try:
             payload = _json_payload()
             if "schema" not in payload:
@@ -816,6 +833,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/portal/api/v2/system/tools/fnd-dcm")
     def portal_fnd_dcm() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import run_portal_fnd_dcm
+
         try:
             payload = _json_payload()
             if "schema" not in payload:
@@ -835,6 +854,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/portal/api/v2/system/tools/workbench-ui")
     def portal_workbench_ui() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import run_portal_workbench_ui
+
         try:
             payload = _json_payload()
             if "schema" not in payload:
