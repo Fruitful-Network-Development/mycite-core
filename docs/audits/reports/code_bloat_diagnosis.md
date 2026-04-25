@@ -19,6 +19,12 @@ Last reviewed: `2026-04-24`
   `TASK-CODE-BLOAT-REMEDIATION-008`, tracked in
   `docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md` and
   `docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md`.
+- Remediation lifecycle: as of 2026-04-25, all eight remediation tasks are
+  `blocked` on `BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001`. Acceptance criteria
+  require findings produced by the seven planned (but not yet executed) deep
+  audits. Unblocking requires publishing per-area findings reports that link
+  back to their `TASK-CODE-BLOAT-AUDIT-00x` IDs and the parent stream
+  `STREAM-CODE-BLOAT-DEEP-AUDIT`.
 
 ## Deep Audit Plan Evidence Matrix
 

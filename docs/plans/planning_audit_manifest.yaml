@@ -116,7 +116,7 @@ initiatives:
     canonical_audit_plan: "docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md"
     active_report: "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
     closure_reports: []
-    open_issue_summary: "New corrective execution initiative created from completed code-bloat deep-audit plans; tasks cover shell-path retirement, filesystem/snapshot trim, import modularization, data I/O cache/stream controls, frontend asset decomposition, normalization consolidation, CI guardrails, and closure evidence publication."
+    open_issue_summary: "All eight remediation tasks (TASK-CODE-BLOAT-REMEDIATION-001..008) are blocked on BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001: the upstream deep-audit stream produced audit plans only, not findings reports with measured baselines (shell topology, filesystem snapshots, import profiles, payload sizing, asset weights, helper inventory, fixture overhead). Acceptance criteria require audit-derived evidence that does not yet exist in repo. Closure (TASK-CODE-BLOAT-REMEDIATION-008) is transitively blocked. Unblock requires executing the seven planned audits and publishing findings reports."
     task_ids:
       - "TASK-CODE-BLOAT-REMEDIATION-001"
       - "TASK-CODE-BLOAT-REMEDIATION-002"

@@ -11,7 +11,7 @@ board:
     current_focus_task_id: "TASK-CODE-BLOAT-REMEDIATION-001"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "Injected active remediation stream from completed code-bloat audits; TASK-CODE-BLOAT-REMEDIATION-001 is the earliest pending p0 task and supersedes blocked-only focus."
+    last_delegation_note: "Remediation tasks TASK-CODE-BLOAT-REMEDIATION-001..008 are blocked pending executed deep-audit findings; the upstream STREAM-CODE-BLOAT-DEEP-AUDIT only produced audit plans, not executed audit findings reports. Focus remains TASK-CODE-BLOAT-REMEDIATION-001 as the earliest blocked p0 task; no actionable non-done tasks remain in any active stream."
 
 tasks:
   - id: "TASK-CONTEXT-ORG-001"
@@ -290,7 +290,7 @@ tasks:
   - id: "TASK-CODE-BLOAT-REMEDIATION-001"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Retire residual multi-shell and renderer branch pathways"
-    status: "pending"
+    status: "blocked"
     priority: "p0"
     owner_role: "shell-runtime-owner"
     acceptance:
@@ -303,11 +303,17 @@ tasks:
       - "docs/contracts/portal_shell_contract.md"
       - "MyCiteV2/packages/state_machine/portal_shell/shell.py"
       - "MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py"
+    blocked_by:
+      - "BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001"
+    blocker_detail: "Awaiting executed shell-topology audit findings; TASK-CODE-BLOAT-AUDIT-001 produced docs/audits/code_bloat_shell_topology_audit_plan_2026-04-24.md but no findings report enumerating active versus historical shell entrypoints, renderer families, deletion candidates, or regression-gate posture exists."
+    impacted_task_ids:
+      - "TASK-CODE-BLOAT-REMEDIATION-008"
+    next_unblocked_task: "none (all remediation tasks are blocked pending executed deep-audit findings)"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-002"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Retire legacy filesystem datum/bootstrap paths and snapshot bloat"
-    status: "pending"
+    status: "blocked"
     priority: "p0"
     owner_role: "datum-domain-owner"
     acceptance:
@@ -320,11 +326,17 @@ tasks:
       - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
       - "docs/contracts/tool_operating_contract.md"
       - "deployed/"
+    blocked_by:
+      - "BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001"
+    blocker_detail: "Awaiting executed legacy filesystem/snapshot audit findings; TASK-CODE-BLOAT-AUDIT-002 produced docs/audits/code_bloat_legacy_filesystem_snapshot_audit_plan_2026-04-24.md but no findings report classifying filesystem adapters, JSON bootstrap paths, deployed snapshots, or migration fixtures as active/test-only/archival/removable with authority proof exists."
+    impacted_task_ids:
+      - "TASK-CODE-BLOAT-REMEDIATION-008"
+    next_unblocked_task: "none (all remediation tasks are blocked pending executed deep-audit findings)"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-003"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Reduce Python import graph bloat and modularize monolith runtime surfaces"
-    status: "pending"
+    status: "blocked"
     priority: "p0"
     owner_role: "runtime-performance-owner"
     acceptance:
@@ -336,11 +348,17 @@ tasks:
       - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
       - "MyCiteV2/instances/_shared/portal_host/app.py"
       - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
+    blocked_by:
+      - "BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001"
+    blocker_detail: "Awaiting executed Python import/modularity audit findings; TASK-CODE-BLOAT-AUDIT-003 produced docs/audits/code_bloat_python_import_modularity_audit_plan_2026-04-24.md but no measured import-time profile, ownership map, or lazy-import safety classification exists in repo."
+    impacted_task_ids:
+      - "TASK-CODE-BLOAT-REMEDIATION-008"
+    next_unblocked_task: "none (all remediation tasks are blocked pending executed deep-audit findings)"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-004"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Implement data I/O sizing controls and cache/stream boundaries"
-    status: "pending"
+    status: "blocked"
     priority: "p0"
     owner_role: "runtime-data-owner"
     acceptance:
@@ -353,11 +371,17 @@ tasks:
       - "docs/contracts/portal_shell_contract.md"
       - "docs/contracts/tool_operating_contract.md"
       - "MyCiteV2/instances/_shared/portal_host/app.py"
+    blocked_by:
+      - "BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001"
+    blocker_detail: "Awaiting executed data I/O/caching audit findings; TASK-CODE-BLOAT-AUDIT-004 produced docs/audits/code_bloat_data_io_caching_audit_plan_2026-04-24.md but no payload-size, route-timing, freshness, or invalidation evidence required to define cache/stream boundaries exists in repo."
+    impacted_task_ids:
+      - "TASK-CODE-BLOAT-REMEDIATION-008"
+    next_unblocked_task: "none (all remediation tasks are blocked pending executed deep-audit findings)"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-005"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Decompose frontend bundles and enforce asset budget controls"
-    status: "pending"
+    status: "blocked"
     priority: "p0"
     owner_role: "frontend-performance-owner"
     acceptance:
@@ -369,11 +393,17 @@ tasks:
       - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
       - "MyCiteV2/instances/_shared/portal_host/static/"
       - "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
+    blocked_by:
+      - "BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001"
+    blocker_detail: "Awaiting executed frontend bundle audit findings; TASK-CODE-BLOAT-AUDIT-005 produced docs/audits/code_bloat_frontend_bundle_audit_plan_2026-04-24.md but no measured asset weights, parse/execute cost, or route-level dependency map exists in repo."
+    impacted_task_ids:
+      - "TASK-CODE-BLOAT-REMEDIATION-008"
+    next_unblocked_task: "none (all remediation tasks are blocked pending executed deep-audit findings)"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-006"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Consolidate duplicated normalization helpers under canonical contracts"
-    status: "pending"
+    status: "blocked"
     priority: "p0"
     owner_role: "contract-owner"
     acceptance:
@@ -386,11 +416,17 @@ tasks:
       - "docs/contracts/route_model.md"
       - "docs/contracts/mutation_contract.md"
       - "docs/contracts/tool_operating_contract.md"
+    blocked_by:
+      - "BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001"
+    blocker_detail: "Awaiting executed normalization-drift audit findings; TASK-CODE-BLOAT-AUDIT-006 produced docs/audits/code_bloat_normalization_drift_audit_plan_2026-04-24.md but no contract-linked helper inventory or equivalence fixtures required before consolidation exist in repo."
+    impacted_task_ids:
+      - "TASK-CODE-BLOAT-REMEDIATION-008"
+    next_unblocked_task: "none (all remediation tasks are blocked pending executed deep-audit findings)"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-007"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Add bloat-regression guardrails for tests, linting, and CI budgets"
-    status: "pending"
+    status: "blocked"
     priority: "p1"
     owner_role: "qa-owner"
     acceptance:
@@ -402,11 +438,17 @@ tasks:
       - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
       - "docs/plans/contextual_system_manifest.yaml"
       - "MyCiteV2/tests/"
+    blocked_by:
+      - "BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001"
+    blocker_detail: "Awaiting executed test/tooling overhead audit findings; TASK-CODE-BLOAT-AUDIT-007 produced docs/audits/code_bloat_test_tooling_overhead_audit_plan_2026-04-24.md but no measured test import overhead, fixture duplication evidence, or baseline budgets needed for explicit CI thresholds exist in repo."
+    impacted_task_ids:
+      - "TASK-CODE-BLOAT-REMEDIATION-008"
+    next_unblocked_task: "none (all remediation tasks are blocked pending executed deep-audit findings)"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-008"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Publish remediation execution evidence and close corrective stream"
-    status: "pending"
+    status: "blocked"
     priority: "p1"
     owner_role: "program-owner"
     acceptance:
@@ -417,6 +459,11 @@ tasks:
       - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
       - "docs/plans/contextual_system_manifest.yaml"
       - "docs/plans/planning_audit_manifest.yaml"
+    blocked_by:
+      - "BLOCKER-CODE-BLOAT-REMEDIATION-DEPENDENCIES-001"
+    blocker_detail: "Cannot publish closure-evidence aggregation while upstream TASK-CODE-BLOAT-REMEDIATION-001..007 remain blocked on BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001."
+    impacted_task_ids: []
+    next_unblocked_task: "none (depends on TASK-CODE-BLOAT-REMEDIATION-001..007 which are all blocked)"
 
   - id: "TASK-AWS-CSM-ALIGN-001"
     title: "Publish AWS-CSM operating alignment audit plan and baseline report"
