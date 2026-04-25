@@ -1,0 +1,25 @@
+{
+  "schema": "mycite.benchmarks.portal_shell_latency_hotfix.v1",
+  "generated_at_utc": "2026-04-25T04:45:00Z",
+  "issue": "portal_open_massive_lag",
+  "baseline_before_fix": {
+    "source": "profiling run before projection-cache fix",
+    "samples": 50,
+    "median_ms": 5294.634,
+    "p95_ms": 6967.316,
+    "min_ms": 4928.547,
+    "max_ms": 7200.919,
+    "hotspot": "datum_recognition full-document recognition on every shell request"
+  },
+  "post_fix": {
+    "cold_shell_ms": 5149.76,
+    "prewarmed_shell_ms": 22.246,
+    "warm_samples": 5,
+    "warm_median_ms": 19.77,
+    "warm_p95_ms": 20.217
+  },
+  "notes": [
+    "Cold cost remains when process has empty cache; app startup now prewarms projection to remove first-request lag.",
+    "Cache key includes authority DB path and mtime for deterministic invalidation when data changes."
+  ]
+}

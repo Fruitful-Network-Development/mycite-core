@@ -332,3 +332,22 @@ Default tool posture is interface-panel-led; `Workbench UI` is the approved work
   - HTTP `400`
   - `error.code=legacy_maps_alias_unsupported`
 - Compiled artifact authority for strict mode is `mycite.v2.portal.system.tools.cts_gis.compiled.v1` at `data/payloads/compiled/cts_gis.<scope_id>.compiled.json`.
+
+
+## Runtime Latency Guardrail
+
+`POST /portal/api/v2/shell` must avoid recomputing full datum-recognition
+workbench projections for unchanged authority state on every request.
+
+Canonical runtime guardrail:
+
+- system workbench projection may be cached in-process when keyed by:
+  - portal instance id
+  - authority DB path
+  - authority DB `mtime`
+- cache must be invalidated when authority state mutates (write paths) or when
+  authority DB `mtime` changes
+- host startup may prewarm this projection so the first interactive shell load
+  does not pay full datum-recognition cost
+
+Evidence anchor: `benchmarks/results/portal_shell_latency_hotfix_2026-04-25.json`.

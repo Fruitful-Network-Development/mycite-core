@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 import json
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
@@ -57,6 +59,9 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 )
 
 _DIRECTIVE_CONTEXT_TOOL_ID = "system_workspace"
+_WORKBENCH_PROJECTION_CACHE_LOCK = Lock()
+_WORKBENCH_PROJECTION_CACHE_MAX = 8
+_WORKBENCH_PROJECTION_CACHE: "OrderedDict[tuple[str, str, int], DatumWorkbenchProjection]" = OrderedDict()
 
 
 def _as_text(value: object) -> str:
@@ -70,6 +75,45 @@ def _path_or_none(value: str | Path | None) -> Path | None:
         return None
     return Path(value)
 
+
+
+
+def _workbench_cache_key(*, tenant_id: str, authority_db_file: str | Path | None) -> tuple[str, str, int] | None:
+    authority_path = _path_or_none(authority_db_file)
+    if authority_path is None:
+        return None
+    try:
+        mtime_ns = authority_path.stat().st_mtime_ns
+    except OSError:
+        return None
+    return (tenant_id, str(authority_path.resolve()), int(mtime_ns))
+
+
+def _cache_get_workbench_projection(cache_key: tuple[str, str, int]) -> DatumWorkbenchProjection | None:
+    with _WORKBENCH_PROJECTION_CACHE_LOCK:
+        projection = _WORKBENCH_PROJECTION_CACHE.get(cache_key)
+        if projection is not None:
+            _WORKBENCH_PROJECTION_CACHE.move_to_end(cache_key)
+        return projection
+
+
+def _cache_set_workbench_projection(cache_key: tuple[str, str, int], projection: DatumWorkbenchProjection) -> None:
+    with _WORKBENCH_PROJECTION_CACHE_LOCK:
+        _WORKBENCH_PROJECTION_CACHE[cache_key] = projection
+        _WORKBENCH_PROJECTION_CACHE.move_to_end(cache_key)
+        while len(_WORKBENCH_PROJECTION_CACHE) > _WORKBENCH_PROJECTION_CACHE_MAX:
+            _WORKBENCH_PROJECTION_CACHE.popitem(last=False)
+
+
+def _invalidate_workbench_projection_cache(*, authority_db_file: str | Path | None = None) -> None:
+    authority_path = _path_or_none(authority_db_file)
+    with _WORKBENCH_PROJECTION_CACHE_LOCK:
+        if authority_path is None:
+            _WORKBENCH_PROJECTION_CACHE.clear()
+            return
+        needle = str(authority_path.resolve())
+        for key in [key for key in _WORKBENCH_PROJECTION_CACHE if key[1] == needle]:
+            _WORKBENCH_PROJECTION_CACHE.pop(key, None)
 
 def _normalize_authority_mode(value: object) -> str:
     del value
@@ -195,7 +239,15 @@ def read_system_workbench_projection(
             readiness_status={"authoritative_catalog": "missing", "sql_authority": "uninitialized"},
             warnings=("sql_authority_uninitialized",),
         )
-    return DatumWorkbenchService(store).read_workbench(portal_scope.scope_id)
+    cache_key = _workbench_cache_key(tenant_id=portal_scope.scope_id, authority_db_file=authority_db_file)
+    if cache_key is not None:
+        cached = _cache_get_workbench_projection(cache_key)
+        if cached is not None:
+            return cached
+    projection = DatumWorkbenchService(store).read_workbench(portal_scope.scope_id)
+    if cache_key is not None:
+        _cache_set_workbench_projection(cache_key, projection)
+    return projection
 
 
 def _directive_context_adapter(
@@ -1358,4 +1410,5 @@ __all__ = [
     "build_tool_control_panel",
     "build_workspace_file_entries",
     "read_system_workbench_projection",
+    "_invalidate_workbench_projection_cache",
 ]
