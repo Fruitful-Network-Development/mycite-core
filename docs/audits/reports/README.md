@@ -27,6 +27,9 @@ This directory is the closure-evidence surface for the unified planning/audit sy
 - `aws_csm_operational_recovery_audit_report_2026-04-24.md`
 - `portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md`
 - `code_bloat_diagnosis.md`
+- `code_bloat_findings_execution_report_2026-04-25.md`
+- `code_bloat_shell_topology_findings_2026-04-25.md`
+- `code_bloat_legacy_filesystem_snapshot_findings_2026-04-25.md`
 - `code_bloat_remediation_execution_report_2026-04-25.md`
 - `cts_gis_runtime_readiness_report_2026-04-25.md`
 - `cts_gis_sql_authority_assurance_report_2026-04-21.md`

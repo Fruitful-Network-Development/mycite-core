@@ -27,6 +27,9 @@ the completed planning-only audit stream.
 
 1. `TASK-CODE-BLOAT-FINDINGS-001` - publish shell-topology and renderer-family
    findings needed to unblock `TASK-CODE-BLOAT-REMEDIATION-001`.
+2. `TASK-CODE-BLOAT-FINDINGS-002` - publish legacy filesystem adapter and
+   deployed snapshot classification findings needed to unblock
+   `TASK-CODE-BLOAT-REMEDIATION-002`.
 
 Additional findings tasks are intentionally injected only when selected by the
 contextual delegation loop. This keeps the task board aligned to the one-next-

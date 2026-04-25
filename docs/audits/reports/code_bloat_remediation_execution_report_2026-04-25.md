@@ -25,18 +25,18 @@ Remediation status is mixed: `TASK-CODE-BLOAT-REMEDIATION-001` and
 | Task ID | Status | Scope | Evidence anchor |
 | --- | --- | --- | --- |
 | `TASK-CODE-BLOAT-REMEDIATION-001` | done | Shell and renderer branch retirement | Closed via `TASK-CODE-BLOAT-FINDINGS-001`: shell-topology findings proved one live shell boot/runtime path, documented `portal.js` as layout-only chrome, restored composition-owned first-load posture for interface-panel-primary tools, and added regression coverage preventing a second shell network path. |
-| `TASK-CODE-BLOAT-REMEDIATION-002` | blocked | Filesystem/bootstrap and snapshot bloat trim | Awaiting executed legacy filesystem/snapshot audit findings (`TASK-CODE-BLOAT-AUDIT-002` produced plan only). |
+| `TASK-CODE-BLOAT-REMEDIATION-002` | done | Filesystem/bootstrap and snapshot bloat trim | Closed via `TASK-CODE-BLOAT-FINDINGS-002`: findings classify filesystem adapters and deployed snapshots by authority/reachability, confirm SQL-authoritative SYSTEM runtime posture, and document bounded non-datum fixture retention policy in `docs/audits/reports/code_bloat_legacy_filesystem_snapshot_findings_2026-04-25.md`. |
 | `TASK-CODE-BLOAT-REMEDIATION-003` | blocked | Python import and modularity improvements | Awaiting executed Python import/modularity audit findings (`TASK-CODE-BLOAT-AUDIT-003` produced plan only). |
 | `TASK-CODE-BLOAT-REMEDIATION-004` | done | Data I/O sizing, caching, and stream boundaries | Runtime cache + prewarm implemented in `portal_system_workspace_runtime.py` / `portal_host/app.py`; latency evidence published in `benchmarks/results/portal_shell_latency_hotfix_2026-04-25.json` and live endpoint timings in `benchmarks/results/portal_shell_live_latency_2026-04-25.json`; cache invalidation regression test added. |
 | `TASK-CODE-BLOAT-REMEDIATION-005` | blocked | Frontend bundle decomposition and budget controls | Awaiting executed frontend bundle audit findings (`TASK-CODE-BLOAT-AUDIT-005` produced plan only). |
 | `TASK-CODE-BLOAT-REMEDIATION-006` | blocked | Normalization helper consolidation | Awaiting executed normalization-drift audit findings (`TASK-CODE-BLOAT-AUDIT-006` produced plan only). |
 | `TASK-CODE-BLOAT-REMEDIATION-007` | blocked | Test/tooling bloat-regression guardrails | Awaiting executed test/tooling overhead audit findings (`TASK-CODE-BLOAT-AUDIT-007` produced plan only). |
-| `TASK-CODE-BLOAT-REMEDIATION-008` | blocked | Stream closure publication and sync | Transitively blocked on unfinished remediation tasks `TASK-CODE-BLOAT-REMEDIATION-002/003/005/006/007`. |
+| `TASK-CODE-BLOAT-REMEDIATION-008` | blocked | Stream closure publication and sync | Transitively blocked on unfinished remediation tasks `TASK-CODE-BLOAT-REMEDIATION-003/005/006/007`. |
 
 ## Blocker Registry
 
 - `BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001`
-  - Scope: blocks `TASK-CODE-BLOAT-REMEDIATION-002/003/005/006/007`.
+  - Scope: blocks `TASK-CODE-BLOAT-REMEDIATION-003/005/006/007`.
   - Cause: the upstream `STREAM-CODE-BLOAT-DEEP-AUDIT` closed with audit *plans*
     (`TASK-CODE-BLOAT-AUDIT-001..007`) but no executed audits and no findings
     reports. Remediation acceptance criteria explicitly require audit-derived
@@ -47,15 +47,15 @@ Remediation status is mixed: `TASK-CODE-BLOAT-REMEDIATION-001` and
   - Unblock condition: execute the remaining matching findings tasks and publish
     findings reports under `docs/audits/reports/` that link back to their
     respective `TASK-CODE-BLOAT-AUDIT-00x` planning IDs plus the parent stream
-    `STREAM-CODE-BLOAT-DEEP-AUDIT`. `TASK-CODE-BLOAT-FINDINGS-001` already
-    satisfied the shell-topology portion of this blocker for
-    `TASK-CODE-BLOAT-REMEDIATION-001`.
+    `STREAM-CODE-BLOAT-DEEP-AUDIT`. `TASK-CODE-BLOAT-FINDINGS-001` and
+    `TASK-CODE-BLOAT-FINDINGS-002` already satisfied shell-topology and legacy
+    filesystem/snapshot portions for `TASK-CODE-BLOAT-REMEDIATION-001/002`.
 - `BLOCKER-CODE-BLOAT-REMEDIATION-DEPENDENCIES-001`
   - Scope: blocks `TASK-CODE-BLOAT-REMEDIATION-008`.
   - Cause: closure aggregation cannot proceed until upstream remediation tasks
     have results to aggregate.
   - Unblock condition: unfinished remediation tasks
-    `TASK-CODE-BLOAT-REMEDIATION-002/003/005/006/007` reach `done`
+    `TASK-CODE-BLOAT-REMEDIATION-003/005/006/007` reach `done`
     state.
 
 
@@ -87,6 +87,13 @@ Remediation status is mixed: `TASK-CODE-BLOAT-REMEDIATION-001` and
 - 2026-04-25: Injected findings stream `STREAM-CODE-BLOAT-FINDINGS-EXECUTION`
   and completed `TASK-CODE-BLOAT-FINDINGS-001`, publishing
   `docs/audits/reports/code_bloat_shell_topology_findings_2026-04-25.md`.
+- 2026-04-25: Completed `TASK-CODE-BLOAT-FINDINGS-002` and published
+  `docs/audits/reports/code_bloat_legacy_filesystem_snapshot_findings_2026-04-25.md`,
+  closing `TASK-CODE-BLOAT-REMEDIATION-002`.
+- 2026-04-25: Validation for remediation-002 closure:
+  - `python3 -m unittest MyCiteV2.tests.unit.test_portal_shell_sql_authority`
+  - `python3 -m unittest MyCiteV2.tests.architecture.test_filesystem_adapter_boundaries MyCiteV2.tests.contracts.test_contract_docs_alignment`
+  - `python3 -m unittest MyCiteV2.tests.integration.test_portal_host_one_shell`
 - 2026-04-25: Closed `TASK-CODE-BLOAT-REMEDIATION-001` after findings proved
   the repo already runs a single live shell boot/runtime path; corrective work
   was contract clarification, a first-load posture fix in
@@ -107,5 +114,5 @@ Remediation status is mixed: `TASK-CODE-BLOAT-REMEDIATION-001` and
   `test_system_workbench_projection_uses_cache_until_authority_mtime_changes` in
   `MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py`.
 - Remaining closure is gated by unresolved deep-audit-dependent tasks
-  (`TASK-CODE-BLOAT-REMEDIATION-002/003/005/006/007`) and transitive closure
+  (`TASK-CODE-BLOAT-REMEDIATION-003/005/006/007`) and transitive closure
   dependency `TASK-CODE-BLOAT-REMEDIATION-008`.

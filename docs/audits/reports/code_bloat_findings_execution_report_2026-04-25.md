@@ -21,6 +21,7 @@ Last reviewed: `2026-04-25`
 | Task ID | Status | Upstream planning task | Scope | Evidence anchor |
 | --- | --- | --- | --- | --- |
 | `TASK-CODE-BLOAT-FINDINGS-001` | done | `TASK-CODE-BLOAT-AUDIT-001` | Shell topology and renderer-family findings for `TASK-CODE-BLOAT-REMEDIATION-001` | `docs/audits/reports/code_bloat_shell_topology_findings_2026-04-25.md` |
+| `TASK-CODE-BLOAT-FINDINGS-002` | done | `TASK-CODE-BLOAT-AUDIT-002` | Legacy filesystem adapter + deployed snapshot classification for `TASK-CODE-BLOAT-REMEDIATION-002` | `docs/audits/reports/code_bloat_legacy_filesystem_snapshot_findings_2026-04-25.md` |
 
 ## Findings Stream Status
 
