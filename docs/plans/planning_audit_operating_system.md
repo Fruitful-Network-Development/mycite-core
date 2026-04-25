@@ -5,7 +5,7 @@ Date: 2026-04-23
 Doc type: `system-guide`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-24`
+Last reviewed: `2026-04-25`
 
 ## Purpose
 
@@ -59,10 +59,10 @@ stream instead of reopening the completed stream unless the old closure record
 was materially wrong. Retain the completed plan/report as evidence and link the
 new stream to it.
 
-Current application: `STREAM-CODE-BLOAT-DEEP-AUDIT` is a new active stream
-seeded by `docs/audits/reports/code_bloat_diagnosis.md`; completed shell,
-SQL-MOS, AWS-CSM, and NIMM/AITAS streams remain closure evidence rather than
-being reopened.
+Current application: completed `STREAM-CODE-BLOAT-DEEP-AUDIT` seeds active
+`STREAM-CODE-BLOAT-REMEDIATION`, preserving diagnosis/planning history while
+tracking corrective execution tasks with one canonical active plan and one
+canonical active report.
 
 ## Consolidation Rule
 

@@ -4,7 +4,7 @@ manifest:
   id: "PLANNING-AUDIT-MANIFEST-2026-04-23"
   title: "Unified plans/audits/reports control manifest"
   lifecycle: "active"
-  last_reviewed: "2026-04-24"
+  last_reviewed: "2026-04-25"
   canonical_operating_doc: "docs/plans/planning_audit_operating_system.md"
   canonical_context_manifest: "docs/plans/contextual_system_manifest.yaml"
   canonical_context_task_board: "docs/plans/contextual_system_task_board.yaml"
@@ -89,14 +89,15 @@ initiatives:
 
   - id: "INIT-CODE-BLOAT-DEEP-AUDIT"
     title: "Code bloat deep audit program"
-    status: "active"
+    status: "completed"
     priority: "p0"
     lifecycle: "active"
     canonical_plan: "docs/plans/code_bloat_deep_audit_program_plan_2026-04-24.md"
     canonical_audit_plan: "docs/plans/code_bloat_deep_audit_program_plan_2026-04-24.md"
     active_report: "docs/audits/reports/code_bloat_diagnosis.md"
-    closure_reports: []
-    open_issue_summary: "Seven deep audit plans are queued to convert the bloat diagnosis into evidence-driven audits for shell topology, legacy filesystem/snapshots, import modularity, data I/O/caching, frontend bundles, normalization drift, and test/tooling overhead."
+    closure_reports:
+      - "docs/audits/reports/code_bloat_diagnosis.md"
+    open_issue_summary: "Code-bloat deep-audit planning is complete: seven task-level audit plans now convert the bloat diagnosis into evidence-driven audit execution paths for shell topology, legacy filesystem/snapshots, import modularity, data I/O/caching, frontend bundles, normalization drift, and test/tooling overhead. The audits themselves remain future execution work and are not marked complete by this initiative."
     task_ids:
       - "TASK-CODE-BLOAT-AUDIT-001"
       - "TASK-CODE-BLOAT-AUDIT-002"
@@ -105,6 +106,26 @@ initiatives:
       - "TASK-CODE-BLOAT-AUDIT-005"
       - "TASK-CODE-BLOAT-AUDIT-006"
       - "TASK-CODE-BLOAT-AUDIT-007"
+
+  - id: "INIT-CODE-BLOAT-REMEDIATION"
+    title: "Code bloat corrective remediation execution"
+    status: "active"
+    priority: "p0"
+    lifecycle: "active"
+    canonical_plan: "docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md"
+    canonical_audit_plan: "docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md"
+    active_report: "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
+    closure_reports: []
+    open_issue_summary: "New corrective execution initiative created from completed code-bloat deep-audit plans; tasks cover shell-path retirement, filesystem/snapshot trim, import modularization, data I/O cache/stream controls, frontend asset decomposition, normalization consolidation, CI guardrails, and closure evidence publication."
+    task_ids:
+      - "TASK-CODE-BLOAT-REMEDIATION-001"
+      - "TASK-CODE-BLOAT-REMEDIATION-002"
+      - "TASK-CODE-BLOAT-REMEDIATION-003"
+      - "TASK-CODE-BLOAT-REMEDIATION-004"
+      - "TASK-CODE-BLOAT-REMEDIATION-005"
+      - "TASK-CODE-BLOAT-REMEDIATION-006"
+      - "TASK-CODE-BLOAT-REMEDIATION-007"
+      - "TASK-CODE-BLOAT-REMEDIATION-008"
 
   - id: "INIT-AWS-CSM-ALIGNMENT"
     title: "AWS-CSM operating model and onboarding alignment"

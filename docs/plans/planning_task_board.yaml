@@ -4,17 +4,17 @@ board:
   id: "TASK-BOARD-2026-04-23"
   title: "Unified planning/audit task board"
   lifecycle: "active"
-  last_reviewed: "2026-04-24"
+  last_reviewed: "2026-04-25"
   manifest_path: "docs/plans/planning_audit_manifest.yaml"
   canonical_context_task_board: "docs/plans/contextual_system_task_board.yaml"
   compatibility_role: "secondary"
   task_schema_reference: "docs/standards/agent_yaml_schema.md"
   delegation_state:
-    current_focus_initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
-    current_focus_task_id: "TASK-CODE-BLOAT-AUDIT-001"
+    current_focus_initiative_id: "INIT-CODE-BLOAT-REMEDIATION"
+    current_focus_task_id: "TASK-CODE-BLOAT-REMEDIATION-001"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "Mirrors contextual board: new pending code-bloat deep-audit work supersedes blocked-only focus by status order; TASK-CODE-BLOAT-AUDIT-001 is the lexicographically earliest pending p0 task."
+    last_delegation_note: "Mirrors contextual board: injected active remediation initiative from completed code-bloat audits; TASK-CODE-BLOAT-REMEDIATION-001 is the earliest pending p0 task and supersedes blocked-only focus."
 
 tasks:
   - id: "TASK-DOC-IA-001"
@@ -149,7 +149,7 @@ tasks:
   - id: "TASK-CODE-BLOAT-AUDIT-001"
     initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
     title: "Plan deep shell topology and renderer-family bloat audit"
-    status: "pending"
+    status: "done"
     priority: "p0"
     owner_role: "architecture-auditor"
     acceptance:
@@ -164,7 +164,7 @@ tasks:
   - id: "TASK-CODE-BLOAT-AUDIT-002"
     initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
     title: "Plan deep legacy filesystem and deployed snapshot bloat audit"
-    status: "pending"
+    status: "done"
     priority: "p0"
     owner_role: "datum-domain-auditor"
     acceptance:
@@ -179,7 +179,7 @@ tasks:
   - id: "TASK-CODE-BLOAT-AUDIT-003"
     initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
     title: "Plan deep Python import graph and module modularity audit"
-    status: "pending"
+    status: "done"
     priority: "p0"
     owner_role: "runtime-performance-auditor"
     acceptance:
@@ -194,7 +194,7 @@ tasks:
   - id: "TASK-CODE-BLOAT-AUDIT-004"
     initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
     title: "Plan deep data I/O, payload sizing, caching, and async boundary audit"
-    status: "pending"
+    status: "done"
     priority: "p0"
     owner_role: "runtime-data-auditor"
     acceptance:
@@ -209,7 +209,7 @@ tasks:
   - id: "TASK-CODE-BLOAT-AUDIT-005"
     initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
     title: "Plan deep frontend bundle and asset loading bloat audit"
-    status: "pending"
+    status: "done"
     priority: "p0"
     owner_role: "frontend-performance-auditor"
     acceptance:
@@ -224,7 +224,7 @@ tasks:
   - id: "TASK-CODE-BLOAT-AUDIT-006"
     initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
     title: "Plan deep normalization drift and duplicated helper audit"
-    status: "pending"
+    status: "done"
     priority: "p0"
     owner_role: "contract-auditor"
     acceptance:
@@ -239,7 +239,7 @@ tasks:
   - id: "TASK-CODE-BLOAT-AUDIT-007"
     initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
     title: "Plan deep test fixture, tooling, and regression economics audit"
-    status: "pending"
+    status: "done"
     priority: "p1"
     owner_role: "qa-auditor"
     acceptance:
@@ -250,6 +250,137 @@ tasks:
       - "docs/audits/code_bloat_test_tooling_overhead_audit_plan_2026-04-24.md"
       - "docs/audits/reports/code_bloat_diagnosis.md"
       - "docs/plans/contextual_system_manifest.yaml"
+
+  - id: "TASK-CODE-BLOAT-REMEDIATION-001"
+    initiative_id: "INIT-CODE-BLOAT-REMEDIATION"
+    title: "Retire residual multi-shell and renderer branch pathways"
+    status: "pending"
+    priority: "p0"
+    owner_role: "shell-runtime-owner"
+    acceptance:
+      - "Non-canonical shell entrypoints and renderer families identified by code-bloat audits are removed, gated, or marked historical-superseded with compatibility notes."
+      - "Canonical shell composition path becomes sole active runtime route for supported tool surfaces."
+      - "Architecture and integration tests confirm no regression in shell composition and tool region dispatch."
+    evidence_targets:
+      - "docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
+      - "docs/contracts/portal_shell_contract.md"
+      - "MyCiteV2/packages/state_machine/portal_shell/shell.py"
+      - "MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py"
+
+  - id: "TASK-CODE-BLOAT-REMEDIATION-002"
+    initiative_id: "INIT-CODE-BLOAT-REMEDIATION"
+    title: "Retire legacy filesystem datum/bootstrap paths and snapshot bloat"
+    status: "pending"
+    priority: "p0"
+    owner_role: "datum-domain-owner"
+    acceptance:
+      - "Filesystem datum/bootstrap pathways not required for active runtime authority are removed or isolated to explicit fixture/archive locations."
+      - "Deployed snapshot retention policy is documented with archived versus active deployment artifact boundaries."
+      - "SQL datum authority and non-datum exception posture remain contract-consistent and test-backed."
+    evidence_targets:
+      - "docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
+      - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
+      - "docs/contracts/tool_operating_contract.md"
+      - "deployed/"
+
+  - id: "TASK-CODE-BLOAT-REMEDIATION-003"
+    initiative_id: "INIT-CODE-BLOAT-REMEDIATION"
+    title: "Reduce Python import graph bloat and modularize monolith runtime surfaces"
+    status: "pending"
+    priority: "p0"
+    owner_role: "runtime-performance-owner"
+    acceptance:
+      - "Top import-time hotspots identified in audit are reduced through safe deferral, module split, or adapter boundary extraction."
+      - "Import-side effects are minimized for heavy runtime modules and initialization is moved to explicit runtime entry functions where appropriate."
+      - "Measured startup/import regression checks are captured in remediation evidence."
+    evidence_targets:
+      - "docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
+      - "MyCiteV2/instances/_shared/portal_host/app.py"
+      - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
+
+  - id: "TASK-CODE-BLOAT-REMEDIATION-004"
+    initiative_id: "INIT-CODE-BLOAT-REMEDIATION"
+    title: "Implement data I/O sizing controls and cache/stream boundaries"
+    status: "pending"
+    priority: "p0"
+    owner_role: "runtime-data-owner"
+    acceptance:
+      - "Large JSON/data payload access paths are classified and remediated with caching, pagination, or streaming boundaries as evidenced by route-level measurements."
+      - "Cacheability and invalidation rules are documented for shell composition and tool surface payloads."
+      - "Failure-mode and confidentiality posture for cached/streamed data is explicitly documented and tested."
+    evidence_targets:
+      - "docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
+      - "docs/contracts/portal_shell_contract.md"
+      - "docs/contracts/tool_operating_contract.md"
+      - "MyCiteV2/instances/_shared/portal_host/app.py"
+
+  - id: "TASK-CODE-BLOAT-REMEDIATION-005"
+    initiative_id: "INIT-CODE-BLOAT-REMEDIATION"
+    title: "Decompose frontend bundles and enforce asset budget controls"
+    status: "pending"
+    priority: "p0"
+    owner_role: "frontend-performance-owner"
+    acceptance:
+      - "Core shell, shared vendor, and tool-specific assets are decomposed or gated by route-level loading requirements."
+      - "Compression/cache-header posture and asset invalidation policy are documented and validated."
+      - "First-load and tool-navigation performance evidence demonstrates reduced asset weight or parse/execute cost."
+    evidence_targets:
+      - "docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
+      - "MyCiteV2/instances/_shared/portal_host/static/"
+      - "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
+
+  - id: "TASK-CODE-BLOAT-REMEDIATION-006"
+    initiative_id: "INIT-CODE-BLOAT-REMEDIATION"
+    title: "Consolidate duplicated normalization helpers under canonical contracts"
+    status: "pending"
+    priority: "p0"
+    owner_role: "contract-owner"
+    acceptance:
+      - "Duplicated request/query/action normalization helpers are consolidated into canonical shared helpers with compatibility aliases only where required."
+      - "Contract-level fixtures prove behavioral equivalence before and after consolidation."
+      - "Security and correctness checks confirm no route widening or authorization drift introduced by helper consolidation."
+    evidence_targets:
+      - "docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
+      - "docs/contracts/route_model.md"
+      - "docs/contracts/mutation_contract.md"
+      - "docs/contracts/tool_operating_contract.md"
+
+  - id: "TASK-CODE-BLOAT-REMEDIATION-007"
+    initiative_id: "INIT-CODE-BLOAT-REMEDIATION"
+    title: "Add bloat-regression guardrails for tests, linting, and CI budgets"
+    status: "pending"
+    priority: "p1"
+    owner_role: "qa-owner"
+    acceptance:
+      - "Test fixture/import overhead hotspots are reduced or isolated, with suite partitioning guidance recorded."
+      - "CI guardrails for import-time budgets, asset-size budgets, and selected maintainability checks are added or staged with explicit thresholds."
+      - "Closure-critical unit/integration/contract/architecture suites remain green after guardrail changes."
+    evidence_targets:
+      - "docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
+      - "docs/plans/contextual_system_manifest.yaml"
+      - "MyCiteV2/tests/"
+
+  - id: "TASK-CODE-BLOAT-REMEDIATION-008"
+    initiative_id: "INIT-CODE-BLOAT-REMEDIATION"
+    title: "Publish remediation execution evidence and close corrective stream"
+    status: "pending"
+    priority: "p1"
+    owner_role: "program-owner"
+    acceptance:
+      - "Remediation report maps each corrective task result, residual risk, and rollback posture to stable task IDs."
+      - "Contextual and compatibility manifests/task boards remain synchronized with no canonical ambiguity."
+      - "Lifecycle state transitions for code-bloat streams are explicit and historically traceable."
+    evidence_targets:
+      - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
+      - "docs/plans/contextual_system_manifest.yaml"
+      - "docs/plans/planning_audit_manifest.yaml"
 
   - id: "TASK-AWS-CSM-ALIGN-001"
     initiative_id: "INIT-AWS-CSM-ALIGNMENT"

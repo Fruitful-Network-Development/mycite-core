@@ -4,7 +4,7 @@ Date: 2026-04-24
 
 Doc type: `program-plan`
 Normativity: `planning`
-Lifecycle: `active`
+Lifecycle: `completed`
 Last reviewed: `2026-04-24`
 
 ## Planning Registry
@@ -12,7 +12,8 @@ Last reviewed: `2026-04-24`
 - Stream ID: `STREAM-CODE-BLOAT-DEEP-AUDIT`
 - Compatibility initiative ID: `INIT-CODE-BLOAT-DEEP-AUDIT`
 - Canonical report seed: `docs/audits/reports/code_bloat_diagnosis.md`
-- Scope posture: create deeper audit plans only; do not execute the audits in this pass.
+- Scope posture: deeper audit plans created; audits themselves are not executed
+  by this planning closure.
 
 ## Purpose
 
@@ -47,6 +48,16 @@ seed report until the deep audits publish a consolidated findings report.
 
 ## Closure Expectations
 
-Each audit plan must produce a future report that links back to its
-`TASK-CODE-BLOAT-AUDIT-*` ID and the parent stream. Tasks stay `pending` until
-their audit is executed, evidence is published, and acceptance criteria are met.
+Each completed planning task provides an audit plan, not an executed audit.
+Future audit execution must produce a findings report that links back to the
+parent stream and either uses new execution task IDs or explicitly updates the
+task board with reopened execution scope.
+
+## Planning Closure
+
+Planning closure is complete for `TASK-CODE-BLOAT-AUDIT-001` through
+`TASK-CODE-BLOAT-AUDIT-007`. The seed report
+`docs/audits/reports/code_bloat_diagnosis.md` now contains a deep-audit plan
+evidence matrix linking every task ID to its audit plan and extended problem
+area. Future audit execution should create new task IDs or reopen only the
+specific execution scope, not this planning closure.
