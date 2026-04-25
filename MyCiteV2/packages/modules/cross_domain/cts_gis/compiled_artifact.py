@@ -108,23 +108,30 @@ def _has_samras_authority(payload: dict[str, Any]) -> bool:
     return False
 
 
+def _node_root(node_id: object) -> str:
+    normalized = as_text(node_id)
+    if not normalized:
+        return ""
+    return normalized.split("-", 1)[0] if "-" in normalized else normalized
+
+
 def _namespace_roots(navigation_model: dict[str, Any]) -> list[str]:
     roots: set[str] = set()
     for entry in list(navigation_model.get("active_path") or []):
-        node_id = as_text((entry or {}).get("node_id"))
-        if node_id and "-" in node_id:
-            roots.add(node_id.split("-", 1)[0])
-        elif node_id:
-            roots.add(node_id)
+        root = _node_root((entry or {}).get("node_id"))
+        if root:
+            roots.add(root)
+    if roots:
+        return sorted(roots)
+
+    active_node_root = _node_root(navigation_model.get("active_node_id"))
+    if active_node_root:
+        roots.add(active_node_root)
+
     for dropdown in list(navigation_model.get("dropdowns") or []):
-        for option in list((dropdown or {}).get("options") or []):
-            node_id = as_text((option or {}).get("node_id"))
-            if not node_id:
-                continue
-            if "-" in node_id:
-                roots.add(node_id.split("-", 1)[0])
-            else:
-                roots.add(node_id)
+        root = _node_root((dropdown or {}).get("selected_node_id"))
+        if root:
+            roots.add(root)
     return sorted(roots)
 
 

@@ -14,7 +14,7 @@ board:
     current_focus_task_id: "TASK-CODE-BLOAT-REMEDIATION-001"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "Mirrors contextual board: completed TASK-CODE-BLOAT-REMEDIATION-004 by implementing portal shell projection caching + startup prewarm with latency evidence. Remaining remediation tasks TASK-CODE-BLOAT-REMEDIATION-001/002/003/005/006/007 are blocked pending deep-audit findings; TASK-CODE-BLOAT-REMEDIATION-008 remains transitively blocked."
+    last_delegation_note: "Mirrors contextual board: completed TASK-CTSGIS-RUNTIME-001/003/004. Strict namespace validation now follows the active lineage root, `production_strict` CTS-GIS is ready, and precinct-overlay gates expose deterministic failures plus a live positive overlay case. No pending executable tasks remain; next selected task by policy is TASK-CODE-BLOAT-REMEDIATION-001, which remains blocked on BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001."
 
 tasks:
   - id: "TASK-DOC-IA-001"
@@ -130,6 +130,69 @@ tasks:
     impacted_task_ids:
       - "TASK-CTSGIS-SAMRAS-001"
     next_unblocked_task: "none (all active non-done tasks are currently blocked pending evidence publication and sign-off)"
+
+  - id: "TASK-CTSGIS-RUNTIME-001"
+    initiative_id: "INIT-CTS-GIS-OPEN-ALIGNMENT"
+    title: "Restore production_strict compiled artifact readiness for CTS-GIS"
+    status: "done"
+    priority: "p0"
+    owner_role: "cts-gis-runtime-owner"
+    acceptance:
+      - "Compiled artifact exists at `data/payloads/compiled/cts_gis.<scope>.compiled.json` and validates with no strict-invariant failures."
+      - "Runtime bundle in `production_strict` mode reports readiness `ready` and no `compiled_cts_gis_state_invalid` warning."
+      - "Evidence captures before/after strict-mode bundle posture and compile command output."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
+      - "deployed/fnd/data/payloads/compiled/cts_gis.fnd.compiled.json"
+      - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
+
+  - id: "TASK-CTSGIS-RUNTIME-002"
+    initiative_id: "INIT-CTS-GIS-OPEN-ALIGNMENT"
+    title: "Verify CTS-GIS source corpus structure and loader parity for anchor/admin/community/precinct sets"
+    status: "done"
+    priority: "p0"
+    owner_role: "cts-gis-data-auditor"
+    acceptance:
+      - "Tool anchor, administrative source, community profile set, and precinct source set are all JSON-valid and structurally loadable by filesystem datum store."
+      - "Community profile count and precinct count are evidenced and linked to runtime/service loading behavior."
+      - "Report explicitly distinguishes data-structure readiness from runtime compiled-artifact readiness."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
+      - "deployed/fnd/data/sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json"
+      - "deployed/fnd/data/sandbox/cts-gis/sources/"
+      - "MyCiteV2/packages/adapters/filesystem/live_system_datum_store.py"
+      - "MyCiteV2/packages/modules/cross_domain/cts_gis/service.py"
+
+  - id: "TASK-CTSGIS-RUNTIME-003"
+    initiative_id: "INIT-CTS-GIS-OPEN-ALIGNMENT"
+    title: "Audit and normalize precinct-overlay activation gates for Garland mediation time-context"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-mediation-owner"
+    acceptance:
+      - "Precinct overlay enablement preconditions (attention lineage, time-context, anchor chronology) are documented and test-backed."
+      - "Runtime warnings for skipped precinct overlays are deterministic and traceable to specific failed gates."
+      - "At least one positive overlay scenario is evidenced where precinct profiles are included when gates are satisfied."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
+      - "MyCiteV2/packages/modules/cross_domain/cts_gis/service.py"
+      - "MyCiteV2/tests/unit/test_cts_gis_read_only.py"
+
+  - id: "TASK-CTSGIS-RUNTIME-004"
+    initiative_id: "INIT-CTS-GIS-OPEN-ALIGNMENT"
+    title: "Resolve strict namespace invariant mismatch for compiled CTS-GIS artifact"
+    status: "done"
+    priority: "p0"
+    owner_role: "cts-gis-contract-owner"
+    acceptance:
+      - "Root-cause analysis explains why compiled artifact fails `strict_one_namespace_failed` after successful compile."
+      - "Namespace policy and data-model decision (single namespace root vs explicit approved multi-namespace posture) is recorded with contract/test updates."
+      - "Compiled artifact validates strict invariants and production_strict runtime no longer fails closed."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
+      - "docs/contracts/cts_gis_hops_profile_sources.md"
+      - "MyCiteV2/packages/modules/cross_domain/cts_gis/compiled_artifact.py"
+      - "MyCiteV2/tests/unit/test_cts_gis_compiled_runtime.py"
 
   - id: "TASK-PERF-001"
     initiative_id: "INIT-PERF-WEIGHT-SPEED"

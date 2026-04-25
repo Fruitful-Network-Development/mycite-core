@@ -278,6 +278,39 @@ def _matching_precinct_profiles(
     return sorted(matches, key=_profile_sort_key)
 
 
+def _precinct_overlay_attention_supported(attention_node_id: str) -> bool:
+    attention_parts = _address_tuple(attention_node_id)
+    return bool(attention_parts) and tuple(attention_parts[:3]) == (3, 2, 3) and len(attention_parts) in {4, 5}
+
+
+def _precinct_overlay_gate_failures(
+    *,
+    overlay_requested: bool,
+    attention_node_id: str,
+    time_context_payload: dict[str, Any],
+    chronological_anchor_present: bool,
+    district_timeframe_match: bool,
+) -> list[str]:
+    if not overlay_requested:
+        return []
+
+    failures: list[str] = []
+    if not attention_node_id:
+        failures.append("attention_node_missing")
+    elif not _precinct_overlay_attention_supported(attention_node_id):
+        failures.append("attention_lineage_unsupported")
+
+    if not bool(time_context_payload.get("active")):
+        failures.append("time_context_inactive")
+        return failures
+
+    if not chronological_anchor_present:
+        failures.append("chronological_anchor_missing")
+    if not district_timeframe_match:
+        failures.append("district_timeframe_mismatch")
+    return failures
+
+
 def _district_timeframe_tokens(document_bundle: dict[str, Any]) -> list[str]:
     tokens: set[str] = set()
     for row in list(document_bundle.get("row_views") or []):
@@ -2035,14 +2068,28 @@ class CtsGisReadOnlyService:
                     break
         if target_document is None and cts_gis_documents:
             target_document = cts_gis_documents[0]
+        scope_attention_node_id = requested_attention_node_id
+        if not scope_attention_node_id and target_document is not None:
+            scope_attention_node_id = _document_node_id(target_document)
+        scope_anchor_context = _anchor_context_metadata(target_document) if target_document is not None else {}
+        scope_time_context = {
+            "active": time_context_active_flag,
+            "value_token": requested_time_token_text,
+        }
         scope_timeframes = _document_district_timeframe_tokens(target_document) if target_document is not None else []
-        precinct_scope_active = bool(
-            precinct_district_overlay_enabled_flag
-            and time_context_active_flag
-            and _time_context_in_timeframe(
+        precinct_scope_gate_failures = _precinct_overlay_gate_failures(
+            overlay_requested=precinct_district_overlay_enabled_flag,
+            attention_node_id=scope_attention_node_id,
+            time_context_payload=scope_time_context,
+            chronological_anchor_present=bool((scope_anchor_context.get("chronological_hops") or {}).get("present")),
+            district_timeframe_match=_time_context_in_timeframe(
                 time_token=requested_time_token_text,
                 timeframe_tokens=scope_timeframes,
-            )
+            ),
+        )
+        precinct_scope_active = bool(
+            precinct_district_overlay_enabled_flag
+            and not precinct_scope_gate_failures
         )
 
         document_catalog = []
@@ -2326,6 +2373,7 @@ class CtsGisReadOnlyService:
                     "projection_state": "no_authoritative_cts_gis_documents",
                     "document_row_count": _as_text((fallback_document_summary or {}).get("row_count")),
                     "time_context_active": bool(time_context_payload.get("active")),
+                    "precinct_district_gate_failures": [],
                 },
                 "lens_state": {
                     "overlay_mode": overlay_mode,
@@ -2345,6 +2393,7 @@ class CtsGisReadOnlyService:
                     "selection_summary": {},
                     "precinct_district_overlay_enabled": precinct_district_overlay_enabled_flag,
                     "precinct_district_overlay_active": False,
+                    "precinct_district_gate_failures": [],
                 },
                 "contextual_references": {
                     "time_context": time_context_payload,
@@ -2355,9 +2404,13 @@ class CtsGisReadOnlyService:
                     "district_precincts": {
                         "enabled": precinct_district_overlay_enabled_flag,
                         "overlay_active": False,
+                        "attention_node_id": "",
+                        "supported_attention_lineage": False,
+                        "chronological_anchor_present": False,
                         "time_token": _as_text(time_context_payload.get("value_token")),
                         "timeframe_tokens": [],
                         "timeframe_match": False,
+                        "gate_failures": [],
                     },
                 },
                 "warnings": warnings,
@@ -2372,9 +2425,8 @@ class CtsGisReadOnlyService:
         row_profile_index = selected_document_bundle.get("row_profile_index") or {}
         feature_profile_index = dict(navigation_bundle.get("feature_profile_index") or {})
         anchor_context = _anchor_context_metadata(selected_document_bundle.get("document"))
-        time_context_without_anchor = bool(time_context_payload.get("active")) and not bool(
-            (anchor_context.get("chronological_hops") or {}).get("present")
-        )
+        chronological_anchor_present = bool((anchor_context.get("chronological_hops") or {}).get("present"))
+        time_context_without_anchor = bool(time_context_payload.get("active")) and not chronological_anchor_present
         time_context_token = _as_text(time_context_payload.get("value_token"))
         district_timeframes = _district_timeframe_tokens(selected_document_bundle)
         district_timeframe_match = _time_context_in_timeframe(
@@ -2382,6 +2434,13 @@ class CtsGisReadOnlyService:
             timeframe_tokens=district_timeframes,
         )
         attention_node_id_text = _as_text(attention_node_id)
+        precinct_gate_failures = _precinct_overlay_gate_failures(
+            overlay_requested=precinct_district_overlay_enabled_flag,
+            attention_node_id=attention_node_id_text,
+            time_context_payload=time_context_payload,
+            chronological_anchor_present=chronological_anchor_present,
+            district_timeframe_match=district_timeframe_match,
+        )
         attention_profile = profile_index.get(attention_node_id_text)
         descendants_token = _descendants_intention_token(attention_node_id_text)
         children_token = _children_intention_token(attention_node_id_text)
@@ -2421,9 +2480,7 @@ class CtsGisReadOnlyService:
         # the active state/county attention lineage.
         precinct_overlay_active = bool(
             precinct_district_overlay_enabled_flag
-            and time_context_payload.get("active")
-            and district_timeframe_match
-            and attention_node_id_text
+            and not precinct_gate_failures
         )
         if precinct_overlay_active:
             overlay_seen = {
@@ -2703,6 +2760,12 @@ class CtsGisReadOnlyService:
             warnings.extend(list(document.warnings))
         if time_context_without_anchor:
             warnings.append("Time context requested but no chronological anchor space was found in supporting anchor rows.")
+        if precinct_district_overlay_enabled_flag and "attention_node_missing" in precinct_gate_failures:
+            warnings.append("Precinct overlays require an active state or county attention node; overlays were skipped.")
+        if precinct_district_overlay_enabled_flag and "attention_lineage_unsupported" in precinct_gate_failures:
+            warnings.append("Precinct overlays require state or county attention lineage under `3-2-3-*`; overlays were skipped.")
+        if precinct_district_overlay_enabled_flag and "time_context_inactive" in precinct_gate_failures:
+            warnings.append("Precinct overlays require an active time context; overlays were skipped.")
         if (
             precinct_district_overlay_enabled_flag
             and bool(time_context_payload.get("active"))
@@ -2811,6 +2874,7 @@ class CtsGisReadOnlyService:
                 "precinct_district_overlay_enabled": precinct_district_overlay_enabled_flag,
                 "precinct_district_overlay_active": precinct_overlay_active,
                 "precinct_district_timeframe_match": district_timeframe_match,
+                "precinct_district_gate_failures": list(precinct_gate_failures),
             },
             "lens_state": {
                 "overlay_mode": overlay_mode,
@@ -2833,6 +2897,7 @@ class CtsGisReadOnlyService:
                 "selection_summary": {},
                 "precinct_district_overlay_enabled": precinct_district_overlay_enabled_flag,
                 "precinct_district_overlay_active": precinct_overlay_active,
+                "precinct_district_gate_failures": list(precinct_gate_failures),
             },
             "contextual_references": {
                 "time_context": time_context_payload,
@@ -2840,9 +2905,13 @@ class CtsGisReadOnlyService:
                 "district_precincts": {
                     "enabled": precinct_district_overlay_enabled_flag,
                     "overlay_active": precinct_overlay_active,
+                    "attention_node_id": attention_node_id_text,
+                    "supported_attention_lineage": _precinct_overlay_attention_supported(attention_node_id_text),
+                    "chronological_anchor_present": chronological_anchor_present,
                     "time_token": time_context_token,
                     "timeframe_tokens": district_timeframes,
                     "timeframe_match": district_timeframe_match,
+                    "gate_failures": list(precinct_gate_failures),
                 },
             },
             "warnings": warnings,
@@ -3032,6 +3101,7 @@ class CtsGisReadOnlyService:
             requested_intention_token
             and requested_intention_token not in {"self", _LEGACY_SELF_INTENTION_TOKEN}
         )
+        precinct_overlay_requested = bool(mediation_state.get("precinct_district_overlay_enabled"))
         projection_bundle = self.read_projection_bundle(
             tenant_id,
             selected_document_id=selected_document_id,
@@ -3041,10 +3111,10 @@ class CtsGisReadOnlyService:
             attention_node_id=mediation_state.get("attention_node_id"),
             overlay_mode=overlay_mode,
             raw_underlay_visible=raw_underlay_visible,
-            project_all_documents=widened_intention_requested,
+            project_all_documents=widened_intention_requested or precinct_overlay_requested,
             requested_intention_token=requested_intention_token,
             time_context_active=bool(requested_time_context.get("active")),
-            precinct_district_overlay_enabled=bool(mediation_state.get("precinct_district_overlay_enabled")),
+            precinct_district_overlay_enabled=precinct_overlay_requested,
             requested_time_token=_as_text(requested_time_context.get("value_token")),
         )
         normalized_request = self.normalize_mediation_request(
@@ -3060,7 +3130,7 @@ class CtsGisReadOnlyService:
             attention_node_id=normalized_request["attention_node_id"],
             intention_token=normalized_request["intention_token"],
             time_context=normalized_request.get("time_context"),
-            precinct_district_overlay_enabled=bool(mediation_state.get("precinct_district_overlay_enabled")),
+            precinct_district_overlay_enabled=precinct_overlay_requested,
         )
         intention_warnings = list(normalized_request.get("intention_warnings") or [])
         if intention_warnings:

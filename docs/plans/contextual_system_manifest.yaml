@@ -60,6 +60,7 @@ entrypoints:
     - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
     - "docs/audits/reports/mos_program_closure_report_2026-04-21.md"
     - "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
+    - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
 
 program_streams:
   - id: "STREAM-REFINEMENT"
@@ -70,7 +71,7 @@ program_streams:
   - id: "STREAM-CTS-GIS-OPEN"
     title: "CTS-GIS remaining open audit queue"
     canonical_plan: "docs/audits/cts_gis_open_alignment_audit_plan_2026-04-23.md"
-    canonical_report: "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md"
+    canonical_report: "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
     status: "active"
   - id: "STREAM-PORTAL-NIMM-AITAS-UNIFICATION"
     title: "Portal NIMM/AITAS/lens/stage unification for AWS-CSM and CTS-GIS"

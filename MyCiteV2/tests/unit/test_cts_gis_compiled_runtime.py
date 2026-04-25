@@ -13,7 +13,11 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import build_portal_cts_gis_surface_bundle
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis_action
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
-from MyCiteV2.packages.modules.cross_domain.cts_gis import compiled_artifact_path, write_compiled_artifact
+from MyCiteV2.packages.modules.cross_domain.cts_gis import (
+    build_compiled_artifact,
+    compiled_artifact_path,
+    write_compiled_artifact,
+)
 from MyCiteV2.packages.modules.cross_domain.cts_gis.compiled_artifact import validate_compiled_artifact
 from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import CTS_GIS_COMPILED_ARTIFACT_SCHEMA
 from MyCiteV2.packages.ports.datum_store import (
@@ -150,6 +154,67 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
         )
         self.assertFalse(valid)
         self.assertIn("strict_one_authority_failed", issues)
+
+    def test_build_compiled_artifact_accepts_multi_root_catalog_with_single_active_lineage(self) -> None:
+        artifact = build_compiled_artifact(
+            portal_scope_id="fnd",
+            source_evidence={
+                "readiness": {"state": "ready"},
+                "administrative_payload_cache": {
+                    "payload": {
+                        "datum_addressing_abstraction_space": {
+                            "1-1-1": [["1-1-1", "0-0-5", "bits"], ["msn-SAMRAS"]],
+                        }
+                    }
+                },
+            },
+            service_surface={
+                "map_projection": {
+                    "projection_state": "projectable",
+                    "projection_source": "hops",
+                    "projection_health": {"state": "ok", "reason_codes": []},
+                    "feature_collection": {"type": "FeatureCollection", "features": []},
+                },
+                "attention_profile": {"node_id": "3-2", "profile_label": "usa"},
+            },
+            navigation_canvas={
+                "decode_state": "ready",
+                "source_authority": "samras_magnitude",
+                "active_node_id": "3-2",
+                "active_path": [
+                    {"node_id": "3", "title": "nwh", "display_label": "3 nwh", "selected": False},
+                    {"node_id": "3-2", "title": "usa", "display_label": "3-2 usa", "selected": True},
+                ],
+                "dropdowns": [
+                    {
+                        "depth": 1,
+                        "parent_node_id": "",
+                        "selected_node_id": "3",
+                        "options": [
+                            {"node_id": "1", "title": "neg", "display_label": "1 neg", "selected": False},
+                            {"node_id": "2", "title": "neh", "display_label": "2 neh", "selected": False},
+                            {"node_id": "3", "title": "nwh", "display_label": "3 nwh", "selected": True},
+                            {"node_id": "4", "title": "nwg", "display_label": "4 nwg", "selected": False},
+                        ],
+                    },
+                    {
+                        "depth": 2,
+                        "parent_node_id": "3",
+                        "selected_node_id": "3-2",
+                        "options": [
+                            {"node_id": "3-1", "title": "uk", "display_label": "3-1 uk", "selected": False},
+                            {"node_id": "3-2", "title": "usa", "display_label": "3-2 usa", "selected": True},
+                        ],
+                    },
+                ],
+            },
+            default_tool_state={
+                "active_path": ["3", "3-2"],
+                "selected_node_id": "3-2",
+            },
+        )
+        self.assertTrue(artifact["strict_invariants"]["valid"])
+        self.assertEqual(artifact["strict_invariants"]["namespace_roots"], ["3"])
 
     def test_apply_stage_rebuilds_compiled_artifact_from_sql_authority(self) -> None:
         def ascii_bits(value: str, width: int = 256) -> str:
@@ -312,6 +377,8 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
             self.assertEqual(compiled_artifact["schema"], CTS_GIS_COMPILED_ARTIFACT_SCHEMA)
             self.assertEqual(compiled_artifact["default_tool_state"]["source"]["attention_document_id"], "sandbox:cts_gis:sc.example.json")
             self.assertEqual(compiled_artifact["navigation_model"]["decode_state"], "ready")
+            self.assertTrue(compiled_artifact["strict_invariants"]["valid"])
+            self.assertNotIn("strict_one_namespace_failed", compiled_artifact["strict_invariants"]["issues"])
             self.assertTrue(compiled_artifact["evidence_model"]["source_evidence"]["tool_anchor"]["exists"])
             self.assertTrue(compiled_artifact["evidence_model"]["source_evidence"]["registrar_payload"]["exists"])
 
