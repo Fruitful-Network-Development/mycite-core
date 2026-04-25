@@ -52,6 +52,7 @@ def main() -> int:
                 "compiled_artifact_path": str(written) if written is not None else "",
                 "schema": artifact.get("schema"),
                 "invariants": artifact.get("invariants"),
+                "strict_invariants": artifact.get("strict_invariants"),
             },
             indent=2,
         )

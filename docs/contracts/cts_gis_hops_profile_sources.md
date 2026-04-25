@@ -62,6 +62,11 @@ Decode-failure semantics:
   precinct cohort profiles from `sources/precincts/` that match the active
   state/county attention lineage (for example `247-<state>-<county>-*` under
   `3-2-3-<state>-<county>` attention).
+- SAMRAS root siblings such as `1..8` are multiple root options inside one
+  decoded namespace, not separate namespaces.
+- Compiled `production_strict` validation therefore checks the active selected
+  lineage root, not the total count of root options present in the dropdown
+  catalog.
 - That widened overlay does not change the active profile: `profile_projection` stays focused on the selected node while `geospatial_projection` collects the projectable features.
 - Non-Garland row/detail views remain anchored to the currently selected document even when Garland overlays widen across multiple projectable sources.
 - Garland lens projection and bounds behavior are defined in `docs/contracts/cts_gis_garland_projection_lens.md`.

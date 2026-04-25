@@ -40,6 +40,14 @@ Strict baseline checks include:
 - exactly one SAMRAS authority source (`one_authority`)
 - exactly one active namespace root in compiled navigation (`one_namespace`)
 
+Namespace note:
+
+- a decoded SAMRAS namespace may legitimately expose multiple root dropdown
+  options (`1..n`) inside one compiled catalog
+- `one_namespace` validates the active selected lineage root carried by
+  `navigation_model.active_path` / `active_node_id`, not the count of available
+  root options in the dropdown catalog
+
 ## Navigation Model
 
 `navigation_model` carries:

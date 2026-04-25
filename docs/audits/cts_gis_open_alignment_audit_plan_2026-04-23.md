@@ -5,7 +5,7 @@ Date: 2026-04-23
 Doc type: `plan`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-24`
+Last reviewed: `2026-04-25`
 
 ## Purpose
 
@@ -83,8 +83,24 @@ Required closure:
 
 ## Primary Evidence Targets
 
-- `docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md`
+- `docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md`
+- `docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md` (historical baseline)
 - follow-on CTS-GIS report updates published under `docs/audits/reports/`
+
+## 2026-04-25 Runtime Readiness Extension
+
+This stream is extended (not replaced) with four runtime-readiness tasks:
+
+- `TASK-CTSGIS-RUNTIME-001`: restore `production_strict` compiled artifact readiness
+- `TASK-CTSGIS-RUNTIME-002`: verify source corpus structure/loadability for tool anchor + admin + community + precinct sets
+- `TASK-CTSGIS-RUNTIME-003`: normalize precinct overlay activation gates and evidence
+- `TASK-CTSGIS-RUNTIME-004`: resolve strict namespace invariant mismatch for compiled artifact validation
+
+Lifecycle decision:
+
+- Keep this file as the canonical active plan for `STREAM-CTS-GIS-OPEN`.
+- Keep `cts_gis_sql_authority_assurance_report_2026-04-21.md` as retained completed history.
+- Use `cts_gis_runtime_readiness_report_2026-04-25.md` as the canonical active report for current runtime posture.
 
 ## Exit Criteria
 

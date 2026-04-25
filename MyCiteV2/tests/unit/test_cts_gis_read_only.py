@@ -55,6 +55,23 @@ def _anchor_rows() -> tuple[AuthoritativeDatumDocumentRow, ...]:
     )
 
 
+def _anchor_rows_with_chronology() -> tuple[AuthoritativeDatumDocumentRow, ...]:
+    return _anchor_rows() + (
+        AuthoritativeDatumDocumentRow(
+            datum_address="1-1-5",
+            raw=[["1-1-5", "~", "10101010"], ["chronological_hops_space"]],
+        ),
+        AuthoritativeDatumDocumentRow(
+            datum_address="2-0-4",
+            raw=[["2-0-4", "~", "1-1-5"], ["chronological_hops_binding"]],
+        ),
+        AuthoritativeDatumDocumentRow(
+            datum_address="3-1-5",
+            raw=[["3-1-5", "2-0-4", "0"], ["chronological_hops_babelette"]],
+        ),
+    )
+
+
 def _ascii_bits(text: str) -> str:
     return "".join(format(value, "08b") for value in text.encode("ascii"))
 
@@ -428,6 +445,51 @@ def _cts_gis_partial_failure_document() -> AuthoritativeDatumDocument:
     )
 
 
+def _simple_polygon_document(
+    *,
+    document_name: str,
+    relative_path: str,
+    node_id: str,
+    title: str,
+    boundary_labels: list[str],
+    anchor_rows: tuple[AuthoritativeDatumDocumentRow, ...] | None = None,
+) -> AuthoritativeDatumDocument:
+    return AuthoritativeDatumDocument(
+        document_id=f"sandbox:cts_gis:{document_name}",
+        source_kind="sandbox_source",
+        document_name=document_name,
+        relative_path=relative_path,
+        tool_id="cts_gis",
+        anchor_document_name="tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        anchor_document_path="sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+        anchor_rows=anchor_rows or _anchor_rows(),
+        rows=(
+            AuthoritativeDatumDocumentRow(
+                datum_address="4-1-1",
+                raw=[
+                    [
+                        "4-1-1",
+                        "rf.3-1-1",
+                        "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73",
+                    ],
+                    ["polygon_1"],
+                ],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="5-0-1",
+                raw=[["5-0-1", "~", "4-1-1"], list(boundary_labels)],
+            ),
+            AuthoritativeDatumDocumentRow(
+                datum_address="7-3-1",
+                raw=[
+                    ["7-3-1", "rf.3-1-2", node_id, "rf.3-1-3", _ascii_bits(title), "5-0-1", "1"],
+                    [title],
+                ],
+            ),
+        ),
+    )
+
+
 class CtsGisReadOnlyUnitTests(unittest.TestCase):
     def setUp(self) -> None:
         CtsGisReadOnlyService._DOCUMENT_PROJECTION_CACHE.clear()
@@ -593,6 +655,105 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         self.assertIn(
             "Time context requested but no chronological anchor space was found",
             " ".join(surface["warnings"]),
+        )
+
+    def test_precinct_overlay_gate_failures_are_traceable_when_prereqs_are_missing(self) -> None:
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(_cts_gis_document(),),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77-1",
+                "intention_token": "self",
+                "time": {"value": "2026-Q1", "family": "samras-time"},
+                "precinct_district_overlay_enabled": True,
+            },
+        )
+
+        district_precincts = surface["contextual_references"]["district_precincts"]
+        self.assertFalse(district_precincts["overlay_active"])
+        self.assertEqual(
+            district_precincts["gate_failures"],
+            [
+                "attention_lineage_unsupported",
+                "chronological_anchor_missing",
+                "district_timeframe_mismatch",
+            ],
+        )
+        self.assertIn(
+            "Precinct overlays require state or county attention lineage under `3-2-3-*`; overlays were skipped.",
+            surface["warnings"],
+        )
+        self.assertIn(
+            "Time context `2026-Q1` is outside district timeframe scope; precinct overlays were skipped.",
+            surface["warnings"],
+        )
+
+    def test_precinct_overlay_activates_when_attention_timeframe_and_anchor_gates_match(self) -> None:
+        county = _simple_polygon_document(
+            document_name="sc.synthetic.3-2-3-17-77.json",
+            relative_path="sandbox/cts-gis/sources/sc.synthetic.3-2-3-17-77.json",
+            node_id="3-2-3-17-77",
+            title="synthetic_county",
+            boundary_labels=["county_boundary", "24_present-district_31"],
+            anchor_rows=_anchor_rows_with_chronology(),
+        )
+        precinct_one = _simple_polygon_document(
+            document_name="sc.synthetic.247-17-77-1.json",
+            relative_path="sandbox/cts-gis/sources/precincts/sc.synthetic.247-17-77-1.json",
+            node_id="247-17-77-1",
+            title="precinct_1",
+            boundary_labels=["precinct_boundary_1"],
+            anchor_rows=_anchor_rows_with_chronology(),
+        )
+        precinct_two = _simple_polygon_document(
+            document_name="sc.synthetic.247-17-77-2.json",
+            relative_path="sandbox/cts-gis/sources/precincts/sc.synthetic.247-17-77-2.json",
+            node_id="247-17-77-2",
+            title="precinct_2",
+            boundary_labels=["precinct_boundary_2"],
+            anchor_rows=_anchor_rows_with_chronology(),
+        )
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(county, precinct_one, precinct_two),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77",
+                "intention_token": "self",
+                "time": {"value": "24_present-district_31", "family": "district-time"},
+                "precinct_district_overlay_enabled": True,
+            },
+        )
+
+        district_precincts = surface["contextual_references"]["district_precincts"]
+        render_nodes = [profile["node_id"] for profile in surface["render_profiles"]]
+
+        self.assertTrue(district_precincts["overlay_active"])
+        self.assertTrue(district_precincts["supported_attention_lineage"])
+        self.assertTrue(district_precincts["chronological_anchor_present"])
+        self.assertTrue(district_precincts["timeframe_match"])
+        self.assertEqual(district_precincts["gate_failures"], [])
+        self.assertIn("247-17-77-1", render_nodes)
+        self.assertIn("247-17-77-2", render_nodes)
+        self.assertEqual(surface["render_set_summary"]["render_profile_count"], 3)
+        self.assertEqual(
+            surface["render_set_summary"]["render_feature_count"],
+            surface["map_projection"]["feature_count"],
         )
 
     def test_reports_no_authoritative_cts_gis_documents_with_fallback_document(self) -> None:

@@ -8,6 +8,7 @@ from MyCiteV2.packages.ports.datum_store import (
     SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA,
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
+    AuthoritativeDatumDocumentRow,
     AuthoritativeDatumDocumentPort,
     AuthoritativeDatumDocumentRequest,
 )
@@ -311,6 +312,7 @@ class DatumRecognitionDocument:
     anchor_document_path: str
     anchor_document_metadata: dict[str, Any] | None
     anchor_resolution: str
+    anchor_rows: tuple[AuthoritativeDatumDocumentRow | dict[str, Any], ...]
     rows: tuple[DatumRecognitionRow | dict[str, Any], ...]
     diagnostic_totals: dict[str, int]
     warnings: tuple[str, ...] = ()
@@ -322,6 +324,11 @@ class DatumRecognitionDocument:
             raise ValueError("datum_recognition_document.document_id is required")
         if source_kind not in {"system_anthology", "sandbox_source"}:
             raise ValueError("datum_recognition_document.source_kind is invalid")
+        anchor_rows: list[AuthoritativeDatumDocumentRow] = []
+        for row in self.anchor_rows:
+            anchor_rows.append(
+                row if isinstance(row, AuthoritativeDatumDocumentRow) else AuthoritativeDatumDocumentRow.from_dict(row)
+            )
         rows: list[DatumRecognitionRow] = []
         for row in self.rows:
             rows.append(row if isinstance(row, DatumRecognitionRow) else DatumRecognitionRow(**row))
@@ -353,6 +360,7 @@ class DatumRecognitionDocument:
             ),
         )
         object.__setattr__(self, "anchor_resolution", _as_lower(self.anchor_resolution))
+        object.__setattr__(self, "anchor_rows", tuple(anchor_rows))
         object.__setattr__(self, "rows", tuple(rows))
         object.__setattr__(self, "diagnostic_totals", diagnostic_totals)
         object.__setattr__(self, "warnings", tuple(_as_text(item) for item in self.warnings if _as_text(item)))
@@ -378,6 +386,7 @@ class DatumRecognitionDocument:
             "anchor_document_path": self.anchor_document_path,
             "anchor_document_metadata": dict(self.anchor_document_metadata or {}),
             "anchor_resolution": self.anchor_resolution,
+            "anchor_row_count": len(self.anchor_rows),
             "row_count": self.row_count,
             "diagnostic_row_count": self.diagnostic_row_count,
             "diagnostic_totals": dict(self.diagnostic_totals),
@@ -605,6 +614,7 @@ def _recognize_document(document: AuthoritativeDatumDocument) -> DatumRecognitio
         anchor_document_path=document.anchor_document_path,
         anchor_document_metadata=document.anchor_document_metadata,
         anchor_resolution=anchor_resolution,
+        anchor_rows=document.anchor_rows,
         rows=tuple(rows),
         diagnostic_totals=_diagnostic_counts(tuple(rows)),
         warnings=document.warnings,
