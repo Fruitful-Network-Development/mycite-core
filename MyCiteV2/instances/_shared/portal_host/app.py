@@ -39,6 +39,9 @@ from MyCiteV2.instances._shared.runtime.portal_shell_runtime import (
     run_portal_shell_entry,
     run_system_profile_basics_action,
 )
+from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
+    read_system_workbench_projection,
+)
 from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import run_portal_workbench_ui
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA,
@@ -530,6 +533,22 @@ def _render_surface(surface_id: str, host_config: V2PortalHostConfig) -> str:
     )
 
 
+def _warm_system_workbench_projection(config: V2PortalHostConfig) -> None:
+    # Warm the heavy system-workbench projection cache so first portal open
+    # does not pay full datum-recognition cost on request path.
+    try:
+        read_system_workbench_projection(
+            portal_scope=PortalScope(scope_id=config.portal_instance_id, capabilities=()),
+            data_dir=config.data_dir,
+            public_dir=config.public_dir,
+            authority_db_file=config.authority_db_file,
+            authority_mode="sql_primary",
+        )
+    except Exception:
+        # Best-effort warmup only; health/error routes remain source of truth.
+        return
+
+
 def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
     static_dir = Path(__file__).resolve().parent / "static"
     shell_asset_manifest = build_shell_asset_manifest(PORTAL_BUILD_ID)
@@ -571,6 +590,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         static_url_path="/portal/static",
     )
     app.config["MYCITE_V2_PORTAL_HOST_CONFIG"] = host_config
+    _warm_system_workbench_projection(host_config)
 
     @app.get("/healthz")
     @app.get("/portal/healthz")

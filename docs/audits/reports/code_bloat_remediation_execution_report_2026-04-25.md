@@ -18,15 +18,16 @@ Last reviewed: `2026-04-25`
 
 ## Task Evidence Ledger
 
-All remediation tasks are currently `blocked`; see Blocker Registry below for
-the dependency chain.
+Remediation status is mixed: `TASK-CODE-BLOAT-REMEDIATION-004` is `done` with
+measured latency evidence, while the remaining tasks stay `blocked` on audit
+findings dependencies.
 
 | Task ID | Status | Scope | Evidence anchor |
 | --- | --- | --- | --- |
 | `TASK-CODE-BLOAT-REMEDIATION-001` | blocked | Shell and renderer branch retirement | Awaiting executed shell-topology audit findings (`TASK-CODE-BLOAT-AUDIT-001` produced plan only). |
 | `TASK-CODE-BLOAT-REMEDIATION-002` | blocked | Filesystem/bootstrap and snapshot bloat trim | Awaiting executed legacy filesystem/snapshot audit findings (`TASK-CODE-BLOAT-AUDIT-002` produced plan only). |
 | `TASK-CODE-BLOAT-REMEDIATION-003` | blocked | Python import and modularity improvements | Awaiting executed Python import/modularity audit findings (`TASK-CODE-BLOAT-AUDIT-003` produced plan only). |
-| `TASK-CODE-BLOAT-REMEDIATION-004` | blocked | Data I/O sizing, caching, and stream boundaries | Awaiting executed data I/O/caching audit findings (`TASK-CODE-BLOAT-AUDIT-004` produced plan only). |
+| `TASK-CODE-BLOAT-REMEDIATION-004` | done | Data I/O sizing, caching, and stream boundaries | Runtime cache + prewarm implemented in `portal_system_workspace_runtime.py` / `portal_host/app.py`; latency evidence published in `benchmarks/results/portal_shell_latency_hotfix_2026-04-25.json` and live endpoint timings in `benchmarks/results/portal_shell_live_latency_2026-04-25.json`; cache invalidation regression test added. |
 | `TASK-CODE-BLOAT-REMEDIATION-005` | blocked | Frontend bundle decomposition and budget controls | Awaiting executed frontend bundle audit findings (`TASK-CODE-BLOAT-AUDIT-005` produced plan only). |
 | `TASK-CODE-BLOAT-REMEDIATION-006` | blocked | Normalization helper consolidation | Awaiting executed normalization-drift audit findings (`TASK-CODE-BLOAT-AUDIT-006` produced plan only). |
 | `TASK-CODE-BLOAT-REMEDIATION-007` | blocked | Test/tooling bloat-regression guardrails | Awaiting executed test/tooling overhead audit findings (`TASK-CODE-BLOAT-AUDIT-007` produced plan only). |
@@ -35,7 +36,7 @@ the dependency chain.
 ## Blocker Registry
 
 - `BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001`
-  - Scope: blocks `TASK-CODE-BLOAT-REMEDIATION-001..007`.
+  - Scope: blocks `TASK-CODE-BLOAT-REMEDIATION-001/002/003/005/006/007`.
   - Cause: the upstream `STREAM-CODE-BLOAT-DEEP-AUDIT` closed with audit *plans*
     (`TASK-CODE-BLOAT-AUDIT-001..007`) but no executed audits and no findings
     reports. Remediation acceptance criteria explicitly require audit-derived
@@ -54,6 +55,11 @@ the dependency chain.
     have results to aggregate.
   - Unblock condition: `TASK-CODE-BLOAT-REMEDIATION-001..007` reach `done`
     state.
+
+
+- 2026-04-25: Code deploy attempted with `deploy_portal_update.sh --instance fnd --code`; service restart exposed operational dependency drift (`ModuleNotFoundError: yaml` in the portal venv).
+- 2026-04-25: Remediated dependency drift by installing `PyYAML` in `/srv/venvs/fnd_portal` and hardening `MyCiteV2/packages/modules/cross_domain/cts_gis/mutation_service.py` so JSON stage input remains available even if YAML dependency is absent; YAML input now fails with explicit `yaml_dependency_missing` mutation error instead of crashing host boot.
+- 2026-04-25: Live endpoint confirmation after deployment: `http://127.0.0.1:6101/portal/api/v2/shell` median ~30ms, p95 ~34ms over 8 requests (`benchmarks/results/portal_shell_live_latency_2026-04-25.json`).
 
 ## Initial Findings-to-Task Mapping
 
@@ -74,11 +80,22 @@ the dependency chain.
 
 ## Validation Log
 
-- 2026-04-25: All eight remediation tasks transitioned `pending` -> `blocked`
-  in the contextual and compatibility task boards. Synchronization checks
-  performed: contextual/compat task-status parity, blocker metadata schema
-  parity with existing blocked tasks (e.g. `TASK-DESKTOP-DM02-001`,
-  `TASK-CTSGIS-DATUM-001`), `git diff --check`, contract docs alignment unit
-  test (`MyCiteV2.tests.contracts.test_contract_docs_alignment`).
-- Closure remains gated until executed deep-audit findings reports exist; no
-  speculative remediation work was performed.
+- 2026-04-25: Remediation triage initially transitioned all eight remediation
+  tasks `pending` -> `blocked` pending executed deep-audit findings.
+- 2026-04-25: User-reported portal-open latency investigated with runtime
+  profiling; root cause identified in repeated system workbench projection and
+  datum-recognition rebuild on each shell request.
+- 2026-04-25: Implemented deterministic workbench-projection cache keyed by
+  authority-db path + mtime in
+  `MyCiteV2/instances/_shared/runtime/portal_system_workspace_runtime.py`, plus
+  startup prewarm in `MyCiteV2/instances/_shared/portal_host/app.py`.
+- 2026-04-25: Published evidence in
+  `benchmarks/results/portal_shell_latency_hotfix_2026-04-25.json`:
+  baseline shell latency median ~5294ms (p95 ~6967ms) before fix; prewarmed
+  shell request ~22ms and warm median ~19.8ms after fix.
+- 2026-04-25: Added cache invalidation regression test
+  `test_system_workbench_projection_uses_cache_until_authority_mtime_changes` in
+  `MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py`.
+- Remaining closure is gated by unresolved deep-audit-dependent tasks
+  (`TASK-CODE-BLOAT-REMEDIATION-001/002/003/005/006/007`) and transitive
+  closure dependency `TASK-CODE-BLOAT-REMEDIATION-008`.

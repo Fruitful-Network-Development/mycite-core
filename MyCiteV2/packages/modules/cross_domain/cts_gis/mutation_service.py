@@ -5,7 +5,10 @@ import json
 import unicodedata
 from typing import Any, Mapping
 
-import yaml
+try:
+    import yaml
+except ModuleNotFoundError:  # pragma: no cover - runtime fallback
+    yaml = None
 
 from MyCiteV2.packages.adapters.sql.datum_semantics import (
     build_document_version_identity,
@@ -188,6 +191,23 @@ class CtsGisMutationService:
     def _parse_stage_text(self, text: str) -> tuple[dict[str, Any], str]:
         if not text.strip():
             raise CtsGisMutationError("stage_text_required", "action_payload.stage_text is required.")
+        stripped = text.lstrip()
+        if stripped.startswith("{"):
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError as exc:
+                raise CtsGisMutationError("stage_text_invalid", f"CTS-GIS stage text could not be parsed: {exc}") from exc
+            if not isinstance(payload, dict):
+                raise CtsGisMutationError(
+                    "stage_document_type_invalid",
+                    "The CTS-GIS stage document must decode to one mapping object.",
+                )
+            return dict(payload), "json"
+        if yaml is None:
+            raise CtsGisMutationError(
+                "yaml_dependency_missing",
+                "CTS-GIS YAML stage parsing requires PyYAML. Install PyYAML or send JSON stage_text.",
+            )
         try:
             payload = yaml.safe_load(text)
         except yaml.YAMLError as exc:
@@ -197,8 +217,7 @@ class CtsGisMutationService:
                 "stage_document_type_invalid",
                 "The CTS-GIS stage document must decode to one mapping object.",
             )
-        format_hint = "json" if text.lstrip().startswith("{") else "yaml"
-        return dict(payload), format_hint
+        return dict(payload), "yaml"
 
     def parse_stage_input(self, action_payload: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         payload = _as_dict(action_payload)

@@ -11,7 +11,7 @@ board:
     current_focus_task_id: "TASK-CODE-BLOAT-REMEDIATION-001"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "Remediation tasks TASK-CODE-BLOAT-REMEDIATION-001..008 are blocked pending executed deep-audit findings; the upstream STREAM-CODE-BLOAT-DEEP-AUDIT only produced audit plans, not executed audit findings reports. Focus remains TASK-CODE-BLOAT-REMEDIATION-001 as the earliest blocked p0 task; no actionable non-done tasks remain in any active stream."
+    last_delegation_note: "Completed TASK-CODE-BLOAT-REMEDIATION-004 by implementing and evidencing portal shell projection caching + startup prewarm to eliminate repeat portal-open lag. Remaining remediation tasks TASK-CODE-BLOAT-REMEDIATION-001/002/003/005/006/007 are blocked pending deep-audit findings; TASK-CODE-BLOAT-REMEDIATION-008 remains transitively blocked."
 
 tasks:
   - id: "TASK-CONTEXT-ORG-001"
@@ -358,7 +358,7 @@ tasks:
   - id: "TASK-CODE-BLOAT-REMEDIATION-004"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Implement data I/O sizing controls and cache/stream boundaries"
-    status: "blocked"
+    status: "done"
     priority: "p0"
     owner_role: "runtime-data-owner"
     acceptance:
@@ -371,12 +371,12 @@ tasks:
       - "docs/contracts/portal_shell_contract.md"
       - "docs/contracts/tool_operating_contract.md"
       - "MyCiteV2/instances/_shared/portal_host/app.py"
-    blocked_by:
-      - "BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001"
-    blocker_detail: "Awaiting executed data I/O/caching audit findings; TASK-CODE-BLOAT-AUDIT-004 produced docs/audits/code_bloat_data_io_caching_audit_plan_2026-04-24.md but no payload-size, route-timing, freshness, or invalidation evidence required to define cache/stream boundaries exists in repo."
-    impacted_task_ids:
-      - "TASK-CODE-BLOAT-REMEDIATION-008"
-    next_unblocked_task: "none (all remediation tasks are blocked pending executed deep-audit findings)"
+      - "MyCiteV2/instances/_shared/runtime/portal_system_workspace_runtime.py"
+      - "benchmarks/results/portal_shell_latency_hotfix_2026-04-25.json"
+      - "benchmarks/results/portal_shell_live_latency_2026-04-25.json"
+      - "MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py"
+      - "MyCiteV2/packages/modules/cross_domain/cts_gis/mutation_service.py"
+      - "MyCiteV2/tests/unit/test_cts_gis_mutation_service.py"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-005"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"

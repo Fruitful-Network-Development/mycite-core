@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -272,6 +274,25 @@ class CtsGisMutationServiceTests(unittest.TestCase):
             service.apply_stage(tenant_id="fnd", tool_state=tool_state)
 
         self.assertEqual(context.exception.code, "stale_preview_version")
+
+
+    def test_json_stage_text_parses_without_yaml_dependency(self) -> None:
+        store = self._store()
+        service = CtsGisMutationService(store)
+        stage_text = json.dumps(self._stage_document())
+        with patch("MyCiteV2.packages.modules.cross_domain.cts_gis.mutation_service.yaml", None):
+            stage_document, metadata = service.parse_stage_input({"stage_text": stage_text})
+        self.assertEqual(stage_document["schema"], CTS_GIS_STAGE_INSERT_SCHEMA)
+        self.assertEqual(metadata["draft_format"], "json")
+
+    def test_yaml_stage_text_requires_yaml_dependency(self) -> None:
+        store = self._store()
+        service = CtsGisMutationService(store)
+        stage_text = "schema: mycite.v2.cts_gis.stage_insert.v1"
+        with patch("MyCiteV2.packages.modules.cross_domain.cts_gis.mutation_service.yaml", None):
+            with self.assertRaises(CtsGisMutationError) as context:
+                service.parse_stage_input({"stage_text": stage_text})
+        self.assertEqual(context.exception.code, "yaml_dependency_missing")
 
 
 if __name__ == "__main__":

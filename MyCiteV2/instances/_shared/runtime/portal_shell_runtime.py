@@ -8,7 +8,10 @@ from MyCiteV2.instances._shared.runtime.portal_aws_runtime import build_portal_a
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import build_portal_cts_gis_surface_bundle
 from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import build_portal_fnd_dcm_surface_bundle
 from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import build_portal_fnd_ebi_surface_bundle
-from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import build_system_workspace_bundle
+from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
+    _invalidate_workbench_projection_cache,
+    build_system_workspace_bundle,
+)
 from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import build_portal_workbench_ui_surface_bundle
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
@@ -1224,6 +1227,8 @@ def run_system_profile_basics_action(
     )
     if outcome is not None:
         workspace_bundle["surface_payload"]["workspace"]["profile_basics"]["confirmed_summary"] = outcome.confirmed_summary.to_dict()
+        # Ensure subsequent shell reads rebuild projection after write-side mutations.
+        _invalidate_workbench_projection_cache(authority_db_file=authority_db_file)
     composition = build_shell_composition_payload(
         active_surface_id=SYSTEM_ROOT_SURFACE_ID,
         portal_instance_id=portal_scope.scope_id,

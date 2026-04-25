@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -2173,6 +2174,68 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             document = bundle["surface_payload"]["workspace"]["document"]
             self.assertNotIn("presentation", document)
             self.assertEqual(document["document_id"], sandbox_document_id)
+
+
+    def test_system_workbench_projection_uses_cache_until_authority_mtime_changes(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            public_dir = root / "public"
+            db_file = root / "authority.sqlite3"
+            (data_dir / "system").mkdir(parents=True, exist_ok=True)
+            public_dir.mkdir(parents=True, exist_ok=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                '{\n  "1-0-1": [["1-0-1", "rf.3-1-1", "0"], ["anchor-root"]]\n}\n',
+                encoding="utf-8",
+            )
+            SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
+            )
+
+            scope = PortalScope(scope_id="fnd", capabilities=("fnd_peripheral_routing",))
+
+            from MyCiteV2.instances._shared.runtime import portal_system_workspace_runtime as workspace_runtime
+
+            workspace_runtime._invalidate_workbench_projection_cache()
+            with patch.object(
+                workspace_runtime.DatumWorkbenchService,
+                "read_workbench",
+                autospec=True,
+                side_effect=workspace_runtime.DatumWorkbenchService.read_workbench,
+            ) as read_workbench:
+                read_system_workbench_projection(
+                    portal_scope=scope,
+                    data_dir=data_dir,
+                    public_dir=public_dir,
+                    authority_db_file=db_file,
+                    authority_mode="sql_primary",
+                )
+                read_system_workbench_projection(
+                    portal_scope=scope,
+                    data_dir=data_dir,
+                    public_dir=public_dir,
+                    authority_db_file=db_file,
+                    authority_mode="sql_primary",
+                )
+                self.assertEqual(read_workbench.call_count, 1)
+
+                stat = db_file.stat()
+                new_ns = stat.st_mtime_ns + 1_000_000
+                import os
+
+                os.utime(db_file, ns=(new_ns, new_ns))
+                read_system_workbench_projection(
+                    portal_scope=scope,
+                    data_dir=data_dir,
+                    public_dir=public_dir,
+                    authority_db_file=db_file,
+                    authority_mode="sql_primary",
+                )
+                self.assertEqual(read_workbench.call_count, 2)
+
+            workspace_runtime._invalidate_workbench_projection_cache()
 
 
 if __name__ == "__main__":
