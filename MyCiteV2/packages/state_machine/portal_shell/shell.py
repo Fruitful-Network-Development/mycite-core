@@ -1620,7 +1620,7 @@ def build_shell_composition_payload(
         # First-load tool posture is composition-owned. Runtime payload visibility
         # hints are treated as content metadata, not posture authority.
         if surface_posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY:
-            workbench_visible = requested_workbench_visible
+            workbench_visible = default_workbench_visible_for_surface(active_surface_id)
             inspector_visible = True
         else:
             workbench_visible = default_workbench_visible_for_surface(active_surface_id)
