@@ -121,10 +121,11 @@ initiatives:
     canonical_audit_plan: "docs/plans/code_bloat_findings_execution_plan_2026-04-25.md"
     active_report: "docs/audits/reports/code_bloat_findings_execution_report_2026-04-25.md"
     closure_reports: []
-    open_issue_summary: "Shell-topology and legacy filesystem/snapshot findings are now executed under TASK-CODE-BLOAT-FINDINGS-001 and TASK-CODE-BLOAT-FINDINGS-002, closing TASK-CODE-BLOAT-REMEDIATION-001 and TASK-CODE-BLOAT-REMEDIATION-002. Additional findings tasks will be injected only when their matching blocked remediation task is selected by policy, preserving the one-next-task loop."
+    open_issue_summary: "Shell-topology, legacy filesystem/snapshot, and Python import/modularity findings are now executed under TASK-CODE-BLOAT-FINDINGS-001/002/003, closing TASK-CODE-BLOAT-REMEDIATION-001/002/003. Additional findings tasks will be injected only when their matching blocked remediation task is selected by policy, preserving the one-next-task loop."
     task_ids:
       - "TASK-CODE-BLOAT-FINDINGS-001"
       - "TASK-CODE-BLOAT-FINDINGS-002"
+      - "TASK-CODE-BLOAT-FINDINGS-003"
 
   - id: "INIT-CODE-BLOAT-REMEDIATION"
     title: "Code bloat corrective remediation execution"
@@ -135,7 +136,7 @@ initiatives:
     canonical_audit_plan: "docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md"
     active_report: "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
     closure_reports: []
-    open_issue_summary: "Portal-open lag root cause was identified and remediated under TASK-CODE-BLOAT-REMEDIATION-004: repeated full datum-recognition workbench projection rebuilt on each shell request. Runtime now uses a deterministic projection cache keyed by authority-db path+mtime and startup prewarm; measured shell request dropped from multi-second cold-path behavior to ~20-30ms warm/live path. Findings execution under TASK-CODE-BLOAT-FINDINGS-001 and TASK-CODE-BLOAT-FINDINGS-002 also closed TASK-CODE-BLOAT-REMEDIATION-001 and TASK-CODE-BLOAT-REMEDIATION-002. Remaining remediation tasks stay blocked where deeper findings are still required (TASK-CODE-BLOAT-REMEDIATION-003/005/006/007), and closure (TASK-CODE-BLOAT-REMEDIATION-008) remains transitively blocked."
+    open_issue_summary: "Portal-open lag root cause was identified and remediated under TASK-CODE-BLOAT-REMEDIATION-004: repeated full datum-recognition workbench projection rebuilt on each shell request. Runtime now uses a deterministic projection cache keyed by authority-db path+mtime and startup prewarm; measured shell request dropped from multi-second cold-path behavior to ~20-30ms warm/live path. Findings execution under TASK-CODE-BLOAT-FINDINGS-001/002/003 also closed TASK-CODE-BLOAT-REMEDIATION-001/002/003. Remaining remediation tasks stay blocked where deeper findings are still required (TASK-CODE-BLOAT-REMEDIATION-005/006/007), and closure (TASK-CODE-BLOAT-REMEDIATION-008) remains transitively blocked."
     task_ids:
       - "TASK-CODE-BLOAT-REMEDIATION-001"
       - "TASK-CODE-BLOAT-REMEDIATION-002"

@@ -30,6 +30,8 @@ the completed planning-only audit stream.
 2. `TASK-CODE-BLOAT-FINDINGS-002` - publish legacy filesystem adapter and
    deployed snapshot classification findings needed to unblock
    `TASK-CODE-BLOAT-REMEDIATION-002`.
+3. `TASK-CODE-BLOAT-FINDINGS-003` - publish Python import/modularity findings
+   needed to unblock `TASK-CODE-BLOAT-REMEDIATION-003`.
 
 Additional findings tasks are intentionally injected only when selected by the
 contextual delegation loop. This keeps the task board aligned to the one-next-

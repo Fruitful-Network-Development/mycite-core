@@ -4,15 +4,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.instances._shared.runtime.portal_aws_runtime import build_portal_aws_surface_bundle
-from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import build_portal_cts_gis_surface_bundle
-from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import build_portal_fnd_dcm_surface_bundle
-from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import build_portal_fnd_ebi_surface_bundle
 from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
     _invalidate_workbench_projection_cache,
     build_system_workspace_bundle,
 )
-from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import build_portal_workbench_ui_surface_bundle
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
     PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
@@ -25,17 +20,11 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     build_portal_runtime_error,
     surface_schema_for_surface,
 )
-from MyCiteV2.packages.adapters.filesystem import (
-    FilesystemNetworkRootReadModelAdapter,
-)
 from MyCiteV2.packages.adapters.sql import (
     SqliteAuditLogAdapter,
     SqlitePortalAuthorityAdapter,
     SqliteSystemDatumStoreAdapter,
 )
-from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
-from MyCiteV2.packages.modules.cross_domain.network_root import NetworkRootReadModelService
-from MyCiteV2.packages.modules.domains.publication import PublicationProfileBasicsService
 from MyCiteV2.packages.ports.portal_authority import PortalAuthorityRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
@@ -438,6 +427,9 @@ def _surface_payload_for_network(
     audit_storage_file: str | Path | None,
     surface_query: dict[str, str] | None,
 ) -> dict[str, Any]:
+    from MyCiteV2.packages.adapters.filesystem import FilesystemNetworkRootReadModelAdapter
+    from MyCiteV2.packages.modules.cross_domain.network_root import NetworkRootReadModelService
+
     service = NetworkRootReadModelService(
         FilesystemNetworkRootReadModelAdapter(
             data_dir=data_dir,
@@ -697,6 +689,8 @@ def _build_aws_tool_bundle(
     tool_exposure_policy: dict[str, Any] | None,
     **_: Any,
 ) -> dict[str, Any]:
+    from MyCiteV2.instances._shared.runtime.portal_aws_runtime import build_portal_aws_surface_bundle
+
     return build_portal_aws_surface_bundle(
         surface_id=surface_id,
         portal_scope=portal_scope,
@@ -719,6 +713,8 @@ def _build_cts_gis_tool_bundle(
     tool_rows: list[dict[str, Any]],
     **_: Any,
 ) -> dict[str, Any]:
+    from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import build_portal_cts_gis_surface_bundle
+
     if shell_state is None:
         raise ValueError("CTS-GIS shell bundle requires reducer-owned shell_state")
     return build_portal_cts_gis_surface_bundle(
@@ -743,6 +739,8 @@ def _build_fnd_dcm_tool_bundle(
     tool_exposure_policy: dict[str, Any] | None,
     **_: Any,
 ) -> dict[str, Any]:
+    from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import build_portal_fnd_dcm_surface_bundle
+
     return build_portal_fnd_dcm_surface_bundle(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -763,6 +761,8 @@ def _build_fnd_ebi_tool_bundle(
     tool_rows: list[dict[str, Any]],
     **_: Any,
 ) -> dict[str, Any]:
+    from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import build_portal_fnd_ebi_surface_bundle
+
     if shell_state is None:
         raise ValueError("FND-EBI shell bundle requires reducer-owned shell_state")
     return build_portal_fnd_ebi_surface_bundle(
@@ -785,6 +785,10 @@ def _build_workbench_ui_tool_bundle(
     surface_query: dict[str, str] | None,
     **_: Any,
 ) -> dict[str, Any]:
+    from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
+        build_portal_workbench_ui_surface_bundle,
+    )
+
     return build_portal_workbench_ui_surface_bundle(
         portal_scope=portal_scope,
         portal_domain=portal_domain,
@@ -1187,6 +1191,8 @@ def run_system_profile_basics_action(
     outcome = None
     if preexisting_error is None and authority_path is not None:
         adapter = SqliteSystemDatumStoreAdapter(authority_path)
+        from MyCiteV2.packages.modules.domains.publication import PublicationProfileBasicsService
+
         outcome = PublicationProfileBasicsService(adapter).apply_write(
             {
                 "tenant_id": portal_instance_id,
@@ -1198,6 +1204,8 @@ def run_system_profile_basics_action(
             }
         )
         try:
+            from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
+
             LocalAuditService(SqliteAuditLogAdapter(authority_path)).append_record(outcome.to_local_audit_payload())
         except Exception:
             pass
