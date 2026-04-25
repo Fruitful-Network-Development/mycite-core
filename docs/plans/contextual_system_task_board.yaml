@@ -8,10 +8,10 @@ board:
   manifest_path: "docs/plans/contextual_system_manifest.yaml"
   delegation_state:
     current_focus_stream: "STREAM-CODE-BLOAT-REMEDIATION"
-    current_focus_task_id: "TASK-CODE-BLOAT-REMEDIATION-001"
+    current_focus_task_id: "TASK-CODE-BLOAT-REMEDIATION-002"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "Completed TASK-CTSGIS-RUNTIME-005 with runtime + test evidence: compiled-directory dropdown traversal now honors deterministic requested hierarchical active paths and Garland profile projection stays anchored to selected Ohio attention context (`3 -> 3-2 -> 3-2-3 -> 3-2-3-17`). Invalid or unresolved compiled-path requests now emit explicit navigation diagnostics. No pending executable tasks remain; next selected task by policy is TASK-CODE-BLOAT-REMEDIATION-001, currently blocked on BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001."
+    last_delegation_note: "Injected and completed TASK-CODE-BLOAT-FINDINGS-001 under STREAM-CODE-BLOAT-FINDINGS-EXECUTION, publishing shell-topology findings that proved the repo already runs one live shell boot/runtime path with explicit compatibility aliases only. Closed TASK-CODE-BLOAT-REMEDIATION-001 with contract + regression evidence; next selected task by policy is TASK-CODE-BLOAT-REMEDIATION-002, still blocked on missing findings execution for legacy filesystem/snapshot classification."
 
 tasks:
   - id: "TASK-CONTEXT-ORG-001"
@@ -367,10 +367,27 @@ tasks:
       - "docs/audits/reports/code_bloat_diagnosis.md"
       - "docs/plans/contextual_system_manifest.yaml"
 
+  - id: "TASK-CODE-BLOAT-FINDINGS-001"
+    stream_id: "STREAM-CODE-BLOAT-FINDINGS-EXECUTION"
+    title: "Publish shell-topology findings and shell asset role evidence"
+    status: "done"
+    priority: "p0"
+    owner_role: "architecture-auditor"
+    acceptance:
+      - "Executed findings classify public shell entrypoints, shell boot assets, renderer-family dispatch, and compatibility aliases with file-backed evidence."
+      - "Findings report names deletion candidates, retained compatibility surfaces, and required regression gates before shell-path retirement."
+      - "Downstream remediation task `TASK-CODE-BLOAT-REMEDIATION-001` has explicit evidence for either closure or re-blocking."
+    evidence_targets:
+      - "docs/plans/code_bloat_findings_execution_plan_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_findings_execution_report_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_shell_topology_findings_2026-04-25.md"
+      - "docs/contracts/portal_shell_contract.md"
+      - "MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py"
+
   - id: "TASK-CODE-BLOAT-REMEDIATION-001"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Retire residual multi-shell and renderer branch pathways"
-    status: "blocked"
+    status: "done"
     priority: "p0"
     owner_role: "shell-runtime-owner"
     acceptance:
@@ -383,12 +400,10 @@ tasks:
       - "docs/contracts/portal_shell_contract.md"
       - "MyCiteV2/packages/state_machine/portal_shell/shell.py"
       - "MyCiteV2/tests/architecture/test_portal_one_shell_boundaries.py"
-    blocked_by:
-      - "BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001"
-    blocker_detail: "Awaiting executed shell-topology audit findings; TASK-CODE-BLOAT-AUDIT-001 produced docs/audits/code_bloat_shell_topology_audit_plan_2026-04-24.md but no findings report enumerating active versus historical shell entrypoints, renderer families, deletion candidates, or regression-gate posture exists."
+    blocker_detail: "Closed via TASK-CODE-BLOAT-FINDINGS-001 and docs/audits/reports/code_bloat_shell_topology_findings_2026-04-25.md. Findings proved one live shell boot/runtime path, bounded compatibility aliases, and no unretired alternate shell runtime requiring code deletion."
     impacted_task_ids:
       - "TASK-CODE-BLOAT-REMEDIATION-008"
-    next_unblocked_task: "none (all remediation tasks are blocked pending executed deep-audit findings)"
+    next_unblocked_task: "TASK-CODE-BLOAT-REMEDIATION-002"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-002"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"

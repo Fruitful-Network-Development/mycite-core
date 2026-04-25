@@ -15,6 +15,7 @@ Last reviewed: `2026-04-25`
   `docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md`
 - Upstream diagnosis seed: `docs/audits/reports/code_bloat_diagnosis.md`
 - Upstream planning stream: `STREAM-CODE-BLOAT-DEEP-AUDIT` (completed)
+- Findings execution stream: `STREAM-CODE-BLOAT-FINDINGS-EXECUTION` (active)
 
 ## Purpose
 

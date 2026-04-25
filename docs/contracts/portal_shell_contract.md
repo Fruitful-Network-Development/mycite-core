@@ -150,6 +150,23 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - The control panel is the canonical textual navigation surface for current context and lower-focus selections.
 - Shell static assets are versioned by `portal_build_id` through one embedded shell asset manifest.
 
+## Active Shell Topology
+
+- `/portal` is only a public redirect and must resolve to `/portal/system`.
+- `/portal/api/v2/shell` is the sole shell-composition runtime endpoint.
+- `portal.html` embeds one shell asset manifest and loads one public shell boot
+  chain.
+- `v2_portal_shell.js` is the sole shell bootstrap loader.
+- `v2_portal_shell_core.js` is the sole client module that may fetch the shell
+  endpoint or own `loadShell()` / `loadRuntimeView()`.
+- `portal.js` is a chrome/layout helper only. It may own theme, splitter, and
+  shell-layout persistence, but it must not become a parallel shell bootstrap or
+  shell-network dispatcher.
+- `portal.css` is the shared shell chrome stylesheet and not a distinct shell
+  pathway.
+- Historical split-shell artifacts and non-canonical public shell routes remain
+  retired; reintroducing them violates the one-shell contract.
+
 ### Shell Composition Aliases
 
 - `shell_composition.inspector_collapsed` remains valid as the compatibility alias for the public `Interface Panel`.

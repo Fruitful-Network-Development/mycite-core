@@ -112,6 +112,19 @@ initiatives:
       - "TASK-CODE-BLOAT-AUDIT-006"
       - "TASK-CODE-BLOAT-AUDIT-007"
 
+  - id: "INIT-CODE-BLOAT-FINDINGS-EXECUTION"
+    title: "Code bloat findings execution"
+    status: "active"
+    priority: "p0"
+    lifecycle: "active"
+    canonical_plan: "docs/plans/code_bloat_findings_execution_plan_2026-04-25.md"
+    canonical_audit_plan: "docs/plans/code_bloat_findings_execution_plan_2026-04-25.md"
+    active_report: "docs/audits/reports/code_bloat_findings_execution_report_2026-04-25.md"
+    closure_reports: []
+    open_issue_summary: "Shell-topology findings are now executed under TASK-CODE-BLOAT-FINDINGS-001 and used to close TASK-CODE-BLOAT-REMEDIATION-001. Additional findings tasks will be injected only when their matching blocked remediation task is selected by policy, preserving the one-next-task loop."
+    task_ids:
+      - "TASK-CODE-BLOAT-FINDINGS-001"
+
   - id: "INIT-CODE-BLOAT-REMEDIATION"
     title: "Code bloat corrective remediation execution"
     status: "active"
@@ -121,7 +134,7 @@ initiatives:
     canonical_audit_plan: "docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md"
     active_report: "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
     closure_reports: []
-    open_issue_summary: "Portal-open lag root cause was identified and remediated under TASK-CODE-BLOAT-REMEDIATION-004: repeated full datum-recognition workbench projection rebuilt on each shell request. Runtime now uses a deterministic projection cache keyed by authority-db path+mtime and startup prewarm; measured shell request dropped from multi-second cold-path behavior to ~20-30ms warm/live path. Deployment hardening also captured a runtime dependency drift (`PyYAML`) and added fail-safe parsing behavior so optional YAML tooling cannot crash portal host boot. Remaining remediation tasks stay blocked where deep-audit findings are still required (TASK-CODE-BLOAT-REMEDIATION-001/002/003/005/006/007), and closure (TASK-CODE-BLOAT-REMEDIATION-008) remains transitively blocked."
+    open_issue_summary: "Portal-open lag root cause was identified and remediated under TASK-CODE-BLOAT-REMEDIATION-004: repeated full datum-recognition workbench projection rebuilt on each shell request. Runtime now uses a deterministic projection cache keyed by authority-db path+mtime and startup prewarm; measured shell request dropped from multi-second cold-path behavior to ~20-30ms warm/live path. Shell-topology findings execution under TASK-CODE-BLOAT-FINDINGS-001 also closed TASK-CODE-BLOAT-REMEDIATION-001 by proving the repo already runs a single live shell path with explicit compatibility boundaries. Remaining remediation tasks stay blocked where deeper findings are still required (TASK-CODE-BLOAT-REMEDIATION-002/003/005/006/007), and closure (TASK-CODE-BLOAT-REMEDIATION-008) remains transitively blocked."
     task_ids:
       - "TASK-CODE-BLOAT-REMEDIATION-001"
       - "TASK-CODE-BLOAT-REMEDIATION-002"

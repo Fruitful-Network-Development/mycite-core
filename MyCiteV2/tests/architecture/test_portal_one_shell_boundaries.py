@@ -530,6 +530,26 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("cts-gis-profileHierarchy__item", portal_css)
         self.assertIn(".cts-gis-interface__body", portal_css)
 
+    def test_shell_boot_roles_keep_single_network_dispatch_path(self) -> None:
+        portal_js = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "portal.js"
+        ).read_text(encoding="utf-8")
+        shell_entry = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_shell.js"
+        ).read_text(encoding="utf-8")
+        shell_core = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_shell_core.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("/portal/api/v2/shell", portal_js)
+        self.assertNotIn("loadShell(", portal_js)
+        self.assertNotIn("loadRuntimeView(", portal_js)
+        self.assertIn("__MYCITE_V2_REGISTER_SHELL_MODULE", shell_entry)
+        self.assertNotIn("/portal/api/v2/shell", shell_entry)
+        self.assertIn("/portal/api/v2/shell", shell_core)
+        self.assertIn("function loadShell(", shell_core)
+        self.assertIn("function loadRuntimeView(", shell_core)
+
     def test_cts_gis_runtime_and_renderer_expose_only_directory_dropdown_navigation_mode(self) -> None:
         runtime_source = (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_cts_gis_runtime.py"
