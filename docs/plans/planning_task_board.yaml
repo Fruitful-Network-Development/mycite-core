@@ -10,11 +10,11 @@ board:
   compatibility_role: "secondary"
   task_schema_reference: "docs/standards/agent_yaml_schema.md"
   delegation_state:
-    current_focus_initiative_id: "INIT-CTS-GIS-OPEN-ALIGNMENT"
-    current_focus_task_id: "TASK-CTSGIS-DATUM-001"
+    current_focus_initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
+    current_focus_task_id: "TASK-CODE-BLOAT-AUDIT-001"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "Continuation pass again selected TASK-CTSGIS-DATUM-001 by status/priority/lexicographic rules; blocker BLOCKER-CTSGIS-DATUM-MATRIX-EVIDENCE-001 remains unresolved in-repo, so active non-done tasks remain blocked with explicit blocker metadata."
+    last_delegation_note: "Mirrors contextual board: new pending code-bloat deep-audit work supersedes blocked-only focus by status order; TASK-CODE-BLOAT-AUDIT-001 is the lexicographically earliest pending p0 task."
 
 tasks:
   - id: "TASK-DOC-IA-001"
@@ -145,6 +145,111 @@ tasks:
     blocker_detail: "Performance audit section 'Ready for Code mode' gates are not fully satisfied in-repo (baseline placeholders, CI regression gates, and explicit multi-owner approval acknowledgment remain outstanding)."
     impacted_task_ids: []
     next_unblocked_task: "none (all active non-done tasks are currently blocked pending readiness-gate completion)"
+
+  - id: "TASK-CODE-BLOAT-AUDIT-001"
+    initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
+    title: "Plan deep shell topology and renderer-family bloat audit"
+    status: "pending"
+    priority: "p0"
+    owner_role: "architecture-auditor"
+    acceptance:
+      - "Audit plan defines how to enumerate active versus historical shell entrypoints, renderer families, route composition paths, and first-load branches."
+      - "Audit plan includes evidence collection for deletion candidates, canonical owner boundaries, and regression guards before any shell-path retirement."
+      - "Plan goes beyond the bloat diagnosis by specifying traceable measurements and owner sign-off gates."
+    evidence_targets:
+      - "docs/audits/code_bloat_shell_topology_audit_plan_2026-04-24.md"
+      - "docs/audits/reports/code_bloat_diagnosis.md"
+      - "docs/plans/one_shell_portal_refactor.md"
+
+  - id: "TASK-CODE-BLOAT-AUDIT-002"
+    initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
+    title: "Plan deep legacy filesystem and deployed snapshot bloat audit"
+    status: "pending"
+    priority: "p0"
+    owner_role: "datum-domain-auditor"
+    acceptance:
+      - "Audit plan defines how to classify filesystem adapters, JSON bootstrap paths, deployed snapshots, and retained migration fixtures as active, test-only, archival, or removable."
+      - "Audit plan requires authority proof for SQL-backed datum paths and explicit non-datum exceptions before recommending retirement."
+      - "Plan includes repository-size, runtime-load, and historical-retention evidence gates."
+    evidence_targets:
+      - "docs/audits/code_bloat_legacy_filesystem_snapshot_audit_plan_2026-04-24.md"
+      - "docs/audits/reports/code_bloat_diagnosis.md"
+      - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
+
+  - id: "TASK-CODE-BLOAT-AUDIT-003"
+    initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
+    title: "Plan deep Python import graph and module modularity audit"
+    status: "pending"
+    priority: "p0"
+    owner_role: "runtime-performance-auditor"
+    acceptance:
+      - "Audit plan defines import-time profiling, import graph ownership mapping, module-size thresholds, and heavy dependency deferral checks."
+      - "Audit plan identifies how to distinguish safe local-import candidates from contract-level imports that must remain eager."
+      - "Plan specifies measurement artifacts required before recommending module splits."
+    evidence_targets:
+      - "docs/audits/code_bloat_python_import_modularity_audit_plan_2026-04-24.md"
+      - "docs/audits/reports/code_bloat_diagnosis.md"
+      - "MyCiteV2/instances/_shared/portal_host/app.py"
+
+  - id: "TASK-CODE-BLOAT-AUDIT-004"
+    initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
+    title: "Plan deep data I/O, payload sizing, caching, and async boundary audit"
+    status: "pending"
+    priority: "p0"
+    owner_role: "runtime-data-auditor"
+    acceptance:
+      - "Audit plan defines how to inventory synchronous file reads, large JSON payload loads, repeated SQL/query fan-out, cacheability, and async/background-job candidates."
+      - "Audit plan includes request-path timing, payload-size, freshness, invalidation, and failure-mode evidence requirements."
+      - "Plan separates audit recommendations from implementation choices such as Redis, HTTP caching, or async framework migration."
+    evidence_targets:
+      - "docs/audits/code_bloat_data_io_caching_audit_plan_2026-04-24.md"
+      - "docs/audits/reports/code_bloat_diagnosis.md"
+      - "docs/contracts/portal_shell_contract.md"
+
+  - id: "TASK-CODE-BLOAT-AUDIT-005"
+    initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
+    title: "Plan deep frontend bundle and asset loading bloat audit"
+    status: "pending"
+    priority: "p0"
+    owner_role: "frontend-performance-auditor"
+    acceptance:
+      - "Audit plan defines how to measure static asset weight, parse/execute cost, renderer dependency ownership, route-level loading, and deploy artifact parity."
+      - "Audit plan includes evidence gates for code-splitting candidates, critical-path scripts, compression/cache headers, and no-regression UI smoke coverage."
+      - "Plan explains how to avoid introducing a second frontend stack while auditing bundle decomposition."
+    evidence_targets:
+      - "docs/audits/code_bloat_frontend_bundle_audit_plan_2026-04-24.md"
+      - "docs/audits/reports/code_bloat_diagnosis.md"
+      - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_core.js"
+
+  - id: "TASK-CODE-BLOAT-AUDIT-006"
+    initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
+    title: "Plan deep normalization drift and duplicated helper audit"
+    status: "pending"
+    priority: "p0"
+    owner_role: "contract-auditor"
+    acceptance:
+      - "Audit plan defines how to inventory duplicated normalization helpers across route, request, renderer, and runtime layers."
+      - "Audit plan requires equivalence fixtures, canonical helper ownership, compatibility aliases, and security/correctness review before consolidation recommendations."
+      - "Plan ties every normalization finding to contracts and task/report evidence IDs."
+    evidence_targets:
+      - "docs/audits/code_bloat_normalization_drift_audit_plan_2026-04-24.md"
+      - "docs/audits/reports/code_bloat_diagnosis.md"
+      - "docs/contracts/route_model.md"
+
+  - id: "TASK-CODE-BLOAT-AUDIT-007"
+    initiative_id: "INIT-CODE-BLOAT-DEEP-AUDIT"
+    title: "Plan deep test fixture, tooling, and regression economics audit"
+    status: "pending"
+    priority: "p1"
+    owner_role: "qa-auditor"
+    acceptance:
+      - "Audit plan defines how to measure test import overhead, fixture duplication, slow setup paths, static-analysis gaps, and missing bloat regression gates."
+      - "Audit plan includes evidence requirements for fixture reuse, suite partitioning, import-time checks, bundle-size checks, and maintainability metrics."
+      - "Plan preserves current closure confidence while identifying where tests and tools are themselves adding avoidable weight."
+    evidence_targets:
+      - "docs/audits/code_bloat_test_tooling_overhead_audit_plan_2026-04-24.md"
+      - "docs/audits/reports/code_bloat_diagnosis.md"
+      - "docs/plans/contextual_system_manifest.yaml"
 
   - id: "TASK-AWS-CSM-ALIGN-001"
     initiative_id: "INIT-AWS-CSM-ALIGNMENT"

@@ -21,6 +21,7 @@ Active shell refactor records preserve the family-only shell closeout posture.
 - `portal_nimm_aitas_unification_plan_2026-04-24.md` (completed)
 - `mos_post_closure_consolidation_plan_2026-04-21.md` (completed)
 - `portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md` (completed)
+- `code_bloat_deep_audit_program_plan_2026-04-24.md` (active)
 - `one_shell_portal_refactor.md`
 - `one_shell_stabilization_matrix.md`
 - `mos_novelty_positioning_follow_on_2026-04-21.md` (positioning/spec context only)
@@ -35,6 +36,10 @@ second plan for this follow-on work.
 recovery plan for deployed-FND AWS-CSM operability (per-domain onboarding,
 personal-email confirmation forwarding, onboard-state visibility, performance,
 and residual JSON-path retirement).
+
+`code_bloat_deep_audit_program_plan_2026-04-24.md` is the canonical active
+program plan for the seven deeper code-bloat audits seeded by
+`docs/audits/reports/code_bloat_diagnosis.md`.
 
 ## Completed And Historical Support Set
 

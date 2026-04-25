@@ -59,6 +59,11 @@ stream instead of reopening the completed stream unless the old closure record
 was materially wrong. Retain the completed plan/report as evidence and link the
 new stream to it.
 
+Current application: `STREAM-CODE-BLOAT-DEEP-AUDIT` is a new active stream
+seeded by `docs/audits/reports/code_bloat_diagnosis.md`; completed shell,
+SQL-MOS, AWS-CSM, and NIMM/AITAS streams remain closure evidence rather than
+being reopened.
+
 ## Consolidation Rule
 
 When multiple active docs describe one workstream, keep one canonical active plan and
