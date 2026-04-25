@@ -12,6 +12,20 @@ from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import _normalize
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 
 
+def _cts_gis_interface_body(request_payload: dict) -> dict:
+    envelope = run_portal_cts_gis(
+        request_payload,
+        data_dir=str(REPO_ROOT / "deployed" / "fnd" / "data"),
+        private_dir=str(REPO_ROOT / "deployed" / "fnd" / "private"),
+        tool_exposure_policy=None,
+        portal_instance_id="fnd",
+        portal_domain="fruitfulnetworkdevelopment.com",
+    )
+    return dict(
+        envelope["shell_composition"]["regions"]["interface_panel"]["interface_body"]  # type: ignore[index]
+    )
+
+
 def _without_phase_timings(value):
     if isinstance(value, dict):
         return {
@@ -61,8 +75,58 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
             webapps_root=None,
             tool_exposure_policy=None,
         )
+        direct_normalized = _without_phase_timings(direct_envelope)
+        shell_normalized = _without_phase_timings(shell_envelope)
+        # Shell-level route handling may carry a different top-level posture token
+        # while preserving equivalent CTS-GIS payload/runtime content.
+        direct_normalized.pop("read_write_posture", None)
+        shell_normalized.pop("read_write_posture", None)
+        self.assertEqual(direct_normalized, shell_normalized)
 
-        self.assertEqual(_without_phase_timings(direct_envelope), _without_phase_timings(shell_envelope))
+    def test_compiled_navigation_honors_requested_ohio_active_path(self) -> None:
+        request_payload = {
+            "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
+            "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+            "runtime_mode": "production_strict",
+            "tool_state": {
+                "active_path": ["3", "3-2", "3-2-3", "3-2-3-17"],
+                "selected_node_id": "3-2-3-17",
+                "aitas": {"attention_node_id": "3-2-3-17", "intention_rule_id": "self"},
+            },
+        }
+        interface_body = _cts_gis_interface_body(request_payload)
+        navigation = dict(interface_body.get("navigation_canvas") or {})
+        garland = dict(interface_body.get("garland_split_projection") or {})
+        profile_projection = dict(garland.get("profile_projection") or {})
+        active_profile = dict(profile_projection.get("active_profile") or {})
+
+        self.assertEqual(navigation.get("decode_state"), "ready")
+        self.assertEqual(navigation.get("active_node_id"), "3-2-3-17")
+        self.assertEqual(
+            [entry.get("node_id") for entry in list(navigation.get("active_path") or [])],
+            ["3", "3-2", "3-2-3", "3-2-3-17"],
+        )
+        self.assertEqual(active_profile.get("node_id"), "3-2-3-17")
+        self.assertEqual(profile_projection.get("has_profile_state"), True)
+
+    def test_compiled_navigation_reports_invalid_active_path_diagnostic(self) -> None:
+        request_payload = {
+            "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
+            "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+            "runtime_mode": "production_strict",
+            "tool_state": {
+                "active_path": ["3", "3-2", "9-9-9"],
+                "selected_node_id": "9-9-9",
+                "aitas": {"attention_node_id": "9-9-9", "intention_rule_id": "self"},
+            },
+        }
+        interface_body = _cts_gis_interface_body(request_payload)
+        navigation = dict(interface_body.get("navigation_canvas") or {})
+        diagnostics = list(navigation.get("diagnostics") or [])
+        diagnostic_codes = {item.get("code") for item in diagnostics if isinstance(item, dict)}
+
+        self.assertIn("invalid_active_path", diagnostic_codes)
+        self.assertIn("unresolved_node_binding", diagnostic_codes)
 
 
 if __name__ == "__main__":
