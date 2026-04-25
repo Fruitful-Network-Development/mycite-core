@@ -96,6 +96,21 @@ This stream is extended (not replaced) with four runtime-readiness tasks:
 - `TASK-CTSGIS-RUNTIME-003`: normalize precinct overlay activation gates and evidence
 - `TASK-CTSGIS-RUNTIME-004`: resolve strict namespace invariant mismatch for compiled artifact validation
 
+Follow-on extension for hierarchical navigation + profile correlation:
+
+- `TASK-CTSGIS-RUNTIME-005`: harden deterministic hierarchical dropdown traversal for attention-path selection (`3` -> `3-2` -> `3-2-3` -> `3-2-3-17`) and ensure Garland projection anchors to the selected Ohio context without frontend-synthesized fallback state.
+
+Initiative linkage:
+
+- Compatibility initiative: `INIT-CTS-GIS-OPEN-ALIGNMENT`
+- Context stream: `STREAM-CTS-GIS-OPEN`
+
+Execution status:
+
+- `TASK-CTSGIS-RUNTIME-005` is completed with evidence in:
+  - `docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md`
+  - `MyCiteV2/tests/unit/test_portal_cts_gis_runtime.py`
+
 Lifecycle decision:
 
 - Keep this file as the canonical active plan for `STREAM-CTS-GIS-OPEN`.

@@ -375,6 +375,12 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
         or mediation_state.get("intention_token")
         or normalized_payload.get("intention_token")
     )
+    requested_active_path_raw = [
+        _as_text(item)
+        for item in list(raw_tool_state.get("active_path") or [])
+        if _as_text(item)
+    ]
+    requested_selected_node_id_raw = _as_text(raw_tool_state.get("selected_node_id"))
     return {
         "nimm_directive": _as_text(raw_tool_state.get("nimm_directive") or normalized_payload.get("nimm_directive"))
         or _DEFAULT_NIMM_DIRECTIVE,
@@ -397,6 +403,8 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
                 or normalized_payload.get("attention_document_id")
             ),
             "precinct_district_overlay_enabled": bool(raw_source.get("precinct_district_overlay_enabled")),
+            "requested_active_path_raw": requested_active_path_raw,
+            "requested_selected_node_id_raw": requested_selected_node_id_raw,
         },
         "selection": {
             "selected_row_address": _as_text(
@@ -2444,15 +2452,69 @@ def _navigation_canvas_from_compiled_artifact(
     nav_model = dict(artifact.get("navigation_model") or {})
     dropdown_models = list(nav_model.get("dropdowns") or [])
     active_path_models = list(nav_model.get("active_path") or [])
-    active_node_id = _as_text(nav_model.get("active_node_id")) or _as_text(resolved_tool_state.get("selected_node_id"))
+    diagnostics = list(nav_model.get("diagnostics") or [])
     title_map: dict[str, str] = {}
+    available_nodes: set[str] = set()
     for dropdown in dropdown_models:
         for option in list((dropdown.get("options") or [])):
             node_id = _as_text(option.get("node_id"))
             if node_id:
                 title_map[node_id] = _as_text(option.get("title"))
+                available_nodes.add(node_id)
+    requested_active_path = _sanitize_active_path(
+        list(resolved_tool_state.get("active_path") or []),
+        sorted(available_nodes, key=_node_sort_key),
+    )
+    requested_selected_node_id = _as_text(resolved_tool_state.get("selected_node_id"))
+    if not requested_active_path and requested_selected_node_id in available_nodes:
+        requested_active_path = _sanitize_active_path(
+            _active_path_from_node_id(requested_selected_node_id),
+            sorted(available_nodes, key=_node_sort_key),
+        )
+    model_active_path = [
+        _as_text(entry.get("node_id"))
+        for entry in active_path_models
+        if _as_text(entry.get("node_id"))
+    ]
+    effective_active_path = requested_active_path or model_active_path
+    active_node_id = (
+        effective_active_path[-1]
+        if effective_active_path
+        else (_as_text(nav_model.get("active_node_id")) or requested_selected_node_id)
+    )
+    requested_active_path_raw = [
+        _as_text(item)
+        for item in list((resolved_tool_state.get("source") or {}).get("requested_active_path_raw") or [])
+        if _as_text(item)
+    ]
+    requested_selected_node_id_raw = _as_text((resolved_tool_state.get("source") or {}).get("requested_selected_node_id_raw"))
+    if requested_selected_node_id_raw and requested_selected_node_id_raw not in available_nodes:
+        diagnostics.append(
+            _navigation_diagnostic(
+                "unresolved_node_binding",
+                "Requested selection could not be resolved in compiled SAMRAS dropdown bindings.",
+                severity="warning",
+                node_ids=[requested_selected_node_id_raw],
+            )
+        )
+    if requested_active_path_raw and requested_active_path != requested_active_path_raw:
+        diagnostics.append(
+            _navigation_diagnostic(
+                "invalid_active_path",
+                "Requested active path did not match compiled hierarchical dropdown lineage and was normalized.",
+                severity="warning",
+                node_ids=requested_active_path_raw,
+            )
+        )
     dropdowns: list[dict[str, Any]] = []
+    effective_selections_by_depth: dict[int, str] = {}
+    for depth, node_id in enumerate(effective_active_path, start=1):
+        effective_selections_by_depth[depth] = node_id
     for index, dropdown in enumerate(dropdown_models):
+        depth = int(dropdown.get("depth") or index + 1)
+        selected_node_id = _as_text(dropdown.get("selected_node_id")) or active_node_id
+        if depth in effective_selections_by_depth:
+            selected_node_id = effective_selections_by_depth[depth]
         dropdown_options = []
         for option in list((dropdown.get("options") or [])):
             node_id = _as_text(option.get("node_id"))
@@ -2465,21 +2527,20 @@ def _navigation_canvas_from_compiled_artifact(
                     resolved_tool_state=resolved_tool_state,
                     node_id=node_id,
                     title_map=title_map,
-                    selected_node_id=_as_text(dropdown.get("selected_node_id")) or active_node_id,
+                    selected_node_id=selected_node_id,
                     base_shell_request=base_shell_request,
                 )
             )
         dropdowns.append(
             {
-                "depth": int(dropdown.get("depth") or index + 1),
+                "depth": depth,
                 "parent_node_id": _as_text(dropdown.get("parent_node_id")),
-                "selected_node_id": _as_text(dropdown.get("selected_node_id")) or active_node_id,
+                "selected_node_id": selected_node_id,
                 "options": dropdown_options,
             }
         )
     active_path = []
-    for entry in active_path_models:
-        node_id = _as_text(entry.get("node_id"))
+    for node_id in effective_active_path:
         if not node_id:
             continue
         active_path.append(
@@ -2500,7 +2561,7 @@ def _navigation_canvas_from_compiled_artifact(
         "mode": _CTS_GIS_NAV_MODE_DIRECTORY,
         "source_authority": _as_text(nav_model.get("source_authority")) or "samras_magnitude",
         "decode_state": _as_text(nav_model.get("decode_state")) or "blocked_invalid_magnitude",
-        "diagnostics": [],
+        "diagnostics": diagnostics,
         "dropdowns": dropdowns,
         "active_path": active_path,
         "active_node_id": active_node_id,
@@ -2574,6 +2635,10 @@ def build_portal_cts_gis_surface_bundle(
                 base_shell_request=tool_shell_request_base,
             ),
         )
+        resolved_tool_state.setdefault("source", {})
+        for key in ("requested_active_path_raw", "requested_selected_node_id_raw"):
+            if key in dict(requested_tool_state.get("source") or {}):
+                resolved_tool_state["source"][key] = requested_tool_state["source"][key]
         source_evidence = dict((compiled_artifact.get("evidence_model") or {}).get("source_evidence") or {})
         source_evidence.setdefault(
             "readiness",

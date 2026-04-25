@@ -68,7 +68,7 @@ initiatives:
     canonical_audit_plan: "docs/audits/cts_gis_open_alignment_audit_plan_2026-04-23.md"
     active_report: "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
     closure_reports: []
-    open_issue_summary: "CTS-GIS runtime readiness tasks are complete: source corpus loadability is evidenced, compiled artifact strict invariants validate, `production_strict` now returns readiness `ready`, and precinct-overlay gates expose deterministic failures plus a live positive state-level overlay case. Remaining open CTS-GIS work is limited to TASK-CTSGIS-SAMRAS-001 and TASK-CTSGIS-DATUM-001, both still blocked pending matrix publication and sign-off."
+    open_issue_summary: "CTS-GIS runtime readiness baseline and hierarchical dropdown/profile follow-on are complete, including TASK-CTSGIS-RUNTIME-005 evidence for deterministic attention-path traversal (`3 -> 3-2 -> 3-2-3 -> 3-2-3-17`), Garland Ohio profile anchoring, and explicit invalid/unresolved compiled-path diagnostics. Remaining CTS-GIS open work is limited to TASK-CTSGIS-SAMRAS-001 and TASK-CTSGIS-DATUM-001, both blocked pending matrix publication and cross-owner sign-off."
     task_ids:
       - "TASK-CTSGIS-BLOCKER-001"
       - "TASK-CTSGIS-SAMRAS-001"
@@ -77,6 +77,7 @@ initiatives:
       - "TASK-CTSGIS-RUNTIME-002"
       - "TASK-CTSGIS-RUNTIME-003"
       - "TASK-CTSGIS-RUNTIME-004"
+      - "TASK-CTSGIS-RUNTIME-005"
 
   - id: "INIT-PERF-WEIGHT-SPEED"
     title: "Performance weight/speed measurement and optimization backlog"

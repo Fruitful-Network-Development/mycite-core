@@ -168,6 +168,34 @@ Task disposition:
 
 - `TASK-CTSGIS-RUNTIME-003`: `done`
 
+### 4) Hierarchical dropdown traversal and Ohio Garland anchoring: hardened
+
+Runtime hardening in compiled-directory navigation:
+
+- Compiled navigation now honors deterministic requested hierarchical active paths
+  when they are valid in the compiled dropdown lineage, including Ohio selection
+  path `3 -> 3-2 -> 3-2-3 -> 3-2-3-17`.
+- Garland profile projection now remains anchored to the selected attention node
+  from that deterministic path instead of drifting to compiled-default deeper
+  descendants.
+- Invalid/unresolved requests now surface deterministic diagnostics in
+  `navigation_canvas.diagnostics`:
+  - `invalid_active_path`
+  - `unresolved_node_binding`
+
+Test evidence:
+
+- Added runtime unit coverage in:
+  - `MyCiteV2/tests/unit/test_portal_cts_gis_runtime.py`
+- Coverage proves:
+  - deterministic compiled-path honoring for Ohio selection;
+  - Garland profile anchoring to selected node;
+  - explicit diagnostics for invalid/unresolved compiled-path requests.
+
+Task disposition:
+
+- `TASK-CTSGIS-RUNTIME-005`: `done`
+
 ## Lifecycle and Consolidation Decision
 
 - Existing stream retained: `STREAM-CTS-GIS-OPEN` (extended, not replaced).
@@ -191,6 +219,7 @@ Commands executed in this cycle:
 - `python3` JSON validation/count scans over `deployed/fnd/data/sandbox/cts-gis/**/*.json`
 - `python3 -m unittest MyCiteV2.tests.unit.test_cts_gis_compiled_runtime`
 - `python3 -m unittest MyCiteV2.tests.unit.test_cts_gis_read_only`
+- `python3 -m unittest MyCiteV2.tests.unit.test_portal_cts_gis_runtime`
 - `PYTHONPATH=. python3 MyCiteV2/scripts/compile_cts_gis_artifact.py --data-dir deployed/fnd/data --private-dir deployed/fnd/private --scope-id fnd`
 - production strict bundle posture check using `build_portal_cts_gis_surface_bundle(...)`
 - live precinct-overlay probes using `CtsGisReadOnlyService.read_surface(...)` for:

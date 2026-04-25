@@ -11,7 +11,7 @@ board:
     current_focus_task_id: "TASK-CODE-BLOAT-REMEDIATION-001"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "Completed TASK-CTSGIS-RUNTIME-001/003/004: strict namespace validation now follows the active lineage root, `production_strict` CTS-GIS is ready, and precinct-overlay gates are normalized with deterministic gate-failure evidence plus a live positive state-level overlay. No pending executable tasks remain; next selected task by policy is TASK-CODE-BLOAT-REMEDIATION-001, which remains blocked on BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001."
+    last_delegation_note: "Completed TASK-CTSGIS-RUNTIME-005 with runtime + test evidence: compiled-directory dropdown traversal now honors deterministic requested hierarchical active paths and Garland profile projection stays anchored to selected Ohio attention context (`3 -> 3-2 -> 3-2-3 -> 3-2-3-17`). Invalid or unresolved compiled-path requests now emit explicit navigation diagnostics. No pending executable tasks remain; next selected task by policy is TASK-CODE-BLOAT-REMEDIATION-001, currently blocked on BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001."
 
 tasks:
   - id: "TASK-CONTEXT-ORG-001"
@@ -229,6 +229,23 @@ tasks:
       - "docs/contracts/cts_gis_hops_profile_sources.md"
       - "MyCiteV2/packages/modules/cross_domain/cts_gis/compiled_artifact.py"
       - "MyCiteV2/tests/unit/test_cts_gis_compiled_runtime.py"
+
+  - id: "TASK-CTSGIS-RUNTIME-005"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Harden hierarchical attention-path dropdown traversal and Garland Ohio profile projection"
+    status: "done"
+    priority: "p0"
+    owner_role: "cts-gis-runtime-owner"
+    acceptance:
+      - "Diktataograph dropdown projection supports deterministic chained traversal from root to selected node (`3` -> `3-2` -> `3-2-3` -> `3-2-3-17`) without requiring frontend-synthesized hierarchy."
+      - "Selected attention path deterministically anchors Garland `profile_projection` and `geospatial_projection` for Ohio context (`3-2-3-17`) in strict runtime posture."
+      - "Runtime diagnostics expose explicit causes when traversal or projection fails (for example: invalid active path, unresolved node binding, compiled-state mismatch) with no silent fallback synthesis."
+    evidence_targets:
+      - "docs/audits/cts_gis_open_alignment_audit_plan_2026-04-23.md"
+      - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
+      - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
+      - "MyCiteV2/packages/modules/cross_domain/cts_gis/service.py"
+      - "MyCiteV2/tests/unit/test_portal_cts_gis_runtime.py"
 
   - id: "TASK-PERF-001"
     stream_id: "STREAM-PERFORMANCE"
