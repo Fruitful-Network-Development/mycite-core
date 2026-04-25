@@ -18,6 +18,20 @@ Use this directory as part of the same unified control system used by `docs/plan
 - `aws_csm_operating_alignment_audit_plan_2026-04-23.md` (completed AWS-CSM alignment stream)
 - `docs/plans/aws_csm_operational_recovery_plan_2026-04-24.md` (active AWS-CSM recovery stream; cross-directory canonical plan)
 - `performance_weight_speed_audit_plan_2026-04-16.md` (active)
+- `docs/plans/code_bloat_deep_audit_program_plan_2026-04-24.md` (active code-bloat deep-audit stream; cross-directory canonical plan)
+
+## Code Bloat Deep Audit Plans
+
+The canonical stream plan is in `docs/plans/`; the following are task-level
+audit plans for `STREAM-CODE-BLOAT-DEEP-AUDIT`:
+
+- `code_bloat_shell_topology_audit_plan_2026-04-24.md`
+- `code_bloat_legacy_filesystem_snapshot_audit_plan_2026-04-24.md`
+- `code_bloat_python_import_modularity_audit_plan_2026-04-24.md`
+- `code_bloat_data_io_caching_audit_plan_2026-04-24.md`
+- `code_bloat_frontend_bundle_audit_plan_2026-04-24.md`
+- `code_bloat_normalization_drift_audit_plan_2026-04-24.md`
+- `code_bloat_test_tooling_overhead_audit_plan_2026-04-24.md`
 
 ## Cross-Directory Closure Reports
 
