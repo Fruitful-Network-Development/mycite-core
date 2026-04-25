@@ -14,6 +14,27 @@ Last reviewed: `2026-04-24`
 - Canonical active plan: `docs/plans/code_bloat_deep_audit_program_plan_2026-04-24.md`
 - Follow-on audit task IDs: `TASK-CODE-BLOAT-AUDIT-001`, `TASK-CODE-BLOAT-AUDIT-002`, `TASK-CODE-BLOAT-AUDIT-003`, `TASK-CODE-BLOAT-AUDIT-004`, `TASK-CODE-BLOAT-AUDIT-005`, `TASK-CODE-BLOAT-AUDIT-006`, `TASK-CODE-BLOAT-AUDIT-007`
 - Lifecycle note: this report remains the diagnosis seed; the seven follow-on audit plans define deeper evidence collection and do not mark the audits complete.
+- Corrective execution follow-on stream: `STREAM-CODE-BLOAT-REMEDIATION`
+  with tasks `TASK-CODE-BLOAT-REMEDIATION-001` through
+  `TASK-CODE-BLOAT-REMEDIATION-008`, tracked in
+  `docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md` and
+  `docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md`.
+
+## Deep Audit Plan Evidence Matrix
+
+The contextual planning loop completed the planning phase for the seven
+follow-on audit tasks. These entries evidence audit-plan readiness only; they
+do not assert that the audits or remediation work have been performed.
+
+| Task ID | Audit plan | Problem area extended | Planning evidence |
+| --- | --- | --- | --- |
+| `TASK-CODE-BLOAT-AUDIT-001` | `docs/audits/code_bloat_shell_topology_audit_plan_2026-04-24.md` | Multi-shell complexity, renderer branching, first-load divergence | Requires route-to-renderer reachability, active/historical shell-path classification, deletion-candidate risk, and regression gates. |
+| `TASK-CODE-BLOAT-AUDIT-002` | `docs/audits/code_bloat_legacy_filesystem_snapshot_audit_plan_2026-04-24.md` | Legacy filesystem code, JSON bootstrap paths, deployed snapshots | Requires authority proof, runtime reachability, repository-footprint accounting, archival disposition, and retained-exception rationale. |
+| `TASK-CODE-BLOAT-AUDIT-003` | `docs/audits/code_bloat_python_import_modularity_audit_plan_2026-04-24.md` | Heavy imports and monolithic Python modules | Requires import-time profiling, import graph ownership, module-size thresholds, side-effect review, and lazy-import safety classification. |
+| `TASK-CODE-BLOAT-AUDIT-004` | `docs/audits/code_bloat_data_io_caching_audit_plan_2026-04-24.md` | Large JSON/data payloads, synchronous I/O, missing cache boundaries | Requires route timing, payload-size accounting, freshness classification, invalidation design, and failure-mode review. |
+| `TASK-CODE-BLOAT-AUDIT-005` | `docs/audits/code_bloat_frontend_bundle_audit_plan_2026-04-24.md` | Monolithic frontend assets and first-load script weight | Requires asset sizing, parse/execute assessment, route-level dependency maps, cache/compression review, and no-second-frontend-stack constraints. |
+| `TASK-CODE-BLOAT-AUDIT-006` | `docs/audits/code_bloat_normalization_drift_audit_plan_2026-04-24.md` | Duplicated normalization helpers and behavioral drift | Requires contract-linked helper inventory, equivalence fixtures, alias review, security/correctness analysis, and canonical ownership decisions. |
+| `TASK-CODE-BLOAT-AUDIT-007` | `docs/audits/code_bloat_test_tooling_overhead_audit_plan_2026-04-24.md` | Test fixture/import overhead and missing bloat-regression tooling | Requires test import timing, fixture duplication review, suite partitioning analysis, maintainability gates, and closure-confidence preservation. |
 
 ## Repository overview
 
