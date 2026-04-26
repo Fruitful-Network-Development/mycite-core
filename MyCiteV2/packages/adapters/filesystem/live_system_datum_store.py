@@ -207,6 +207,8 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
         return self._path_capabilities.get(key, fallback)
 
     def _relative_or_absolute(self, path: Path) -> str:
+        # Keep catalog metadata portable across hosts by preferring DATA_DIR-relative
+        # source paths whenever the source lives beneath the configured data root.
         try:
             return str(path.relative_to(self._data_dir))
         except Exception:
@@ -255,25 +257,26 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
             return name, anchor_path, dict(metadata), tuple(rows), list(warnings)
 
         warnings: list[str] = []
+        anchor_display_path = self._relative_or_absolute(path)
         try:
             rows, metadata = self._cached_read_document_rows_and_metadata(path)
         except FileNotFoundError:
-            warnings.append(f"Supporting sandbox anchor document is missing at {path}.")
-            result = (path.name, str(path), {}, (), warnings)
+            warnings.append(f"Supporting sandbox anchor document is missing at {anchor_display_path}.")
+            result = (path.name, anchor_display_path, {}, (), warnings)
             self._anchor_document_cache[cache_key] = (signature, result)
             return result
         except json.JSONDecodeError:
-            warnings.append(f"Supporting sandbox anchor document is not valid JSON at {path}.")
-            result = (path.name, str(path), {}, (), warnings)
+            warnings.append(f"Supporting sandbox anchor document is not valid JSON at {anchor_display_path}.")
+            result = (path.name, anchor_display_path, {}, (), warnings)
             self._anchor_document_cache[cache_key] = (signature, result)
             return result
         except ValueError:
-            warnings.append(f"Supporting sandbox anchor document must be a JSON object at {path}.")
-            result = (path.name, str(path), {}, (), warnings)
+            warnings.append(f"Supporting sandbox anchor document must be a JSON object at {anchor_display_path}.")
+            result = (path.name, anchor_display_path, {}, (), warnings)
             self._anchor_document_cache[cache_key] = (signature, result)
             return result
 
-        result = (path.name, str(path), dict(metadata), tuple(rows), warnings)
+        result = (path.name, anchor_display_path, dict(metadata), tuple(rows), warnings)
         self._anchor_document_cache[cache_key] = (signature, result)
         return result
 
@@ -353,11 +356,15 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                     except json.JSONDecodeError:
                         rows = ()
                         metadata = {}
-                        source_warnings.append(f"Sandbox source document is not valid JSON at {source_path}.")
+                        source_warnings.append(
+                            f"Sandbox source document is not valid JSON at {self._relative_or_absolute(source_path)}."
+                        )
                     except ValueError:
                         rows = ()
                         metadata = {}
-                        source_warnings.append(f"Sandbox source document must be a JSON object at {source_path}.")
+                        source_warnings.append(
+                            f"Sandbox source document must be a JSON object at {self._relative_or_absolute(source_path)}."
+                        )
                     metadata_with_cache = {
                         **dict(metadata),
                         "__filesystem_cache__": {
@@ -417,10 +424,10 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
             tenant_id=normalized_request.tenant_id,
             documents=tuple(documents),
             source_files={
-                "anthology": str(anthology_file),
-                "sandbox_source_documents": [str(path) for path in sandbox_source_files],
-                "system_sources": [str(path) for path in system_source_files],
-                "payload_cache": [str(path) for path in payload_cache_files],
+                "anthology": self._relative_or_absolute(anthology_file),
+                "sandbox_source_documents": [self._relative_or_absolute(path) for path in sandbox_source_files],
+                "system_sources": [self._relative_or_absolute(path) for path in system_source_files],
+                "payload_cache": [self._relative_or_absolute(path) for path in payload_cache_files],
             },
             readiness_status={
                 "authoritative_catalog": authoritative_catalog,

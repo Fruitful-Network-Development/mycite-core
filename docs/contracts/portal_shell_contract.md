@@ -196,7 +196,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - `Workbench UI` uses runtime-owned query keys: `document`, `document_filter`, `document_sort`, `document_dir`, `filter`, `sort`, `dir`, `group`, `workbench_lens`, `source`, `overlay`, `row`.
 - `CTS-GIS` does not widen shell query. Its tool-local navigation and projection state is body-carried in the tool request/runtime payload.
 - `CTS-GIS` runtime mode is explicit and body-carried (`runtime_mode`):
-  - `production_strict` (compiled artifact only, fail-fast on invalid compiled state)
+  - `production_strict` (compiled navigation/evidence baseline, fail-fast on invalid compiled state)
   - `audit_forensic` (expanded diagnostics and source forensics)
 - `CTS-GIS` production runtime emits compact hot-path models:
   - `navigation_model`
@@ -293,9 +293,20 @@ Default tool posture is interface-panel-led; `Workbench UI` is the approved work
 ### CTS-GIS Interface Body
 
 - The dominant `presentation_surface` region mounts one CTS-GIS-local interface body.
+- The CTS-GIS interface body stays on the shared Interface Panel host and does not create extra shell regions.
+- `tab_host` is `shared_interface_tabs`.
+- `tabs` currently materialize as:
+  - `diktataograph`
+  - `garland`
+- `default_tab_id` is `diktataograph`.
 - The CTS-GIS interface body is magnitude-first and role-shaped.
-- The frame always renders:
-  - `Diktataograph` pane
+- The shared tab host renders:
+  - `Diktataograph` tab
+  - `Garland` tab
+- The `Diktataograph` tab hosts:
+  - `navigation_canvas`
+  - the staged insert widget
+- The `Garland` tab hosts:
   - `Garland` geospatial pane (`geospatial_projection`)
   - `Garland` profile pane (`profile_projection`)
 - `Diktataograph` is emitted through `navigation_canvas`.
@@ -330,7 +341,8 @@ Default tool posture is interface-panel-led; `Workbench UI` is the approved work
 - explicit source-document selection may still pin row/detail evidence, and changing Intention preserves that pin unless the user explicitly switches source documents.
 - when a request supplies `selected_node_id` or tool-local `Attention` without an explicit `Intention`, CTS-GIS normalizes `tool_state.aitas.intention_rule_id` to `self` so Garland reflects the current selected node rather than a descendant render set.
 - when node-focused intention is explicit, CTS-GIS returns the canonical token as one of `self`, `<attention_node_id>-0`, `<attention_node_id>-0-0`, or `branch:<node_id>`.
-- In narrow posture, the same regions may stack vertically while preserving the same contract.
+- Historical `layout` / `narrow_layout` fields remain compatibility metadata for CTS-GIS-local panel composition, but the canonical outer host is the shared tab frame.
+- In narrow posture, the same regions may stack vertically within their active tab while preserving the same contract.
 
 ### CTS-GIS Evidence Precedence
 

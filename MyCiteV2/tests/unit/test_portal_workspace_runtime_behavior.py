@@ -495,6 +495,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertNotIn("kind", interface_body)
         self.assertIn("navigation_canvas", interface_body)
         self.assertIn("garland_split_projection", interface_body)
+        self.assertEqual(interface_body["tab_host"], "shared_interface_tabs")
+        self.assertEqual(interface_body["default_tab_id"], "diktataograph")
+        self.assertEqual(
+            [tab["id"] for tab in interface_body["tabs"]],
+            ["diktataograph", "garland"],
+        )
         self.assertEqual(interface_body["navigation_canvas"]["title"], "Diktataograph")
         self.assertEqual(
             interface_body["garland_split_projection"]["geospatial_projection"]["title"],
@@ -788,6 +794,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertNotIn("kind", bundle["inspector"]["interface_body"])
             self.assertIn("navigation_canvas", bundle["inspector"]["interface_body"])
             self.assertIn("garland_split_projection", bundle["inspector"]["interface_body"])
+            self.assertEqual(bundle["inspector"]["interface_body"]["tab_host"], "shared_interface_tabs")
+            self.assertEqual(bundle["inspector"]["interface_body"]["default_tab_id"], "diktataograph")
+            self.assertEqual(
+                [tab["id"] for tab in bundle["inspector"]["interface_body"]["tabs"]],
+                ["diktataograph", "garland"],
+            )
             self.assertEqual(
                 bundle["inspector"]["interface_body"]["navigation_canvas"]["mode"],
                 "directory_dropdowns",

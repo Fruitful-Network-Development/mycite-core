@@ -18,6 +18,124 @@
     return String(value == null ? "" : value).trim();
   }
 
+  function normalizePresentationTabs(tabs, fallbackTabs, defaultTabId) {
+    var candidates = Array.isArray(tabs) && tabs.length ? tabs : Array.isArray(fallbackTabs) ? fallbackTabs : [];
+    var normalized = candidates
+      .map(function (tab, index) {
+        var source = asObject(tab);
+        var id = asText(source.id) || asText(source.tab_id) || "tab-" + String(index + 1);
+        if (!id) return null;
+        return {
+          id: id,
+          label: asText(source.label) || asText(source.title) || id,
+          summary: asText(source.summary),
+          active: source.active === true,
+        };
+      })
+      .filter(function (tab) {
+        return !!tab;
+      });
+    if (!normalized.length) return [];
+    var requestedDefault = asText(defaultTabId);
+    var activeId = "";
+    normalized.forEach(function (tab) {
+      if (!activeId && tab.active) activeId = tab.id;
+    });
+    if (!activeId) {
+      activeId = normalized.some(function (tab) {
+        return tab.id === requestedDefault;
+      })
+        ? requestedDefault
+        : normalized[0].id;
+    }
+    return normalized.map(function (tab) {
+      return Object.assign({}, tab, { active: tab.id === activeId });
+    });
+  }
+
+  function activePresentationTabId(tabs, fallbackId) {
+    var normalized = Array.isArray(tabs) ? tabs : [];
+    for (var index = 0; index < normalized.length; index += 1) {
+      if (normalized[index] && normalized[index].active) return normalized[index].id;
+    }
+    return normalized.length ? normalized[0].id : asText(fallbackId);
+  }
+
+  function renderPresentationTabs(tabs) {
+    if (!tabs || !tabs.length) return "";
+    return (
+      '<div class="v2-surfaceTabs" role="tablist" aria-label="Interface tabs">' +
+      tabs
+        .map(function (tab) {
+          return (
+            '<button type="button" class="v2-surfaceTabs__tab' +
+            (tab.active ? " is-active" : "") +
+            '" data-interface-tab="' +
+            escapeHtml(tab.id) +
+            '" role="tab" aria-selected="' +
+            (tab.active ? "true" : "false") +
+            '">' +
+            escapeHtml(tab.label || tab.id) +
+            "</button>"
+          );
+        })
+        .join("") +
+      "</div>"
+    );
+  }
+
+  function renderPresentationTabPanel(tabId, activeTabId, contentHtml, className) {
+    var panelClass = "v2-surfaceTabPanel" + (className ? " " + className : "");
+    var active = !asText(tabId) || asText(tabId) === asText(activeTabId);
+    return (
+      '<div class="' +
+      escapeHtml(panelClass + (active ? " is-active" : "")) +
+      '" data-interface-tab-panel="' +
+      escapeHtml(tabId || "") +
+      '" role="tabpanel"' +
+      (active ? "" : ' hidden="hidden"') +
+      ">" +
+      String(contentHtml || "") +
+      "</div>"
+    );
+  }
+
+  function bindPresentationTabs(target) {
+    if (!target) return;
+    var buttons = Array.prototype.slice.call(target.querySelectorAll("[data-interface-tab]"));
+    var panels = Array.prototype.slice.call(target.querySelectorAll("[data-interface-tab-panel]"));
+    if (!buttons.length || !panels.length) return;
+
+    function activate(tabId) {
+      buttons.forEach(function (button) {
+        var active = String(button.getAttribute("data-interface-tab") || "") === tabId;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      panels.forEach(function (panel) {
+        var active = String(panel.getAttribute("data-interface-tab-panel") || "") === tabId;
+        panel.hidden = !active;
+        panel.classList.toggle("is-active", active);
+      });
+    }
+
+    var initialTabId = activePresentationTabId(
+      buttons.map(function (button) {
+        return {
+          id: String(button.getAttribute("data-interface-tab") || ""),
+          active: button.classList.contains("is-active"),
+        };
+      }),
+      String(buttons[0].getAttribute("data-interface-tab") || "")
+    );
+    activate(initialTabId);
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        activate(String(button.getAttribute("data-interface-tab") || ""));
+      });
+    });
+  }
+
   function renderRows(rows) {
     if (!rows || !rows.length) {
       return '<p class="ide-controlpanel__empty">No interface panel details.</p>';
@@ -873,6 +991,10 @@
 
   function normalizeCtsGisInterfaceBody(interfaceBody) {
     var body = interfaceBody || {};
+    var fallbackTabs = [
+      { id: "diktataograph", label: "Diktataograph", active: true },
+      { id: "garland", label: "Garland" },
+    ];
     if (body.navigation_canvas && body.garland_split_projection) {
       var navCanvas = body.navigation_canvas || {};
       body.navigation_canvas = Object.assign({}, navCanvas, {
@@ -920,10 +1042,16 @@
         },
         body.staging_widget || {}
       );
+      body.tabs = normalizePresentationTabs(body.tabs, fallbackTabs, body.default_tab_id || "diktataograph");
+      body.default_tab_id = activePresentationTabId(body.tabs, "diktataograph");
+      body.tab_host = asText(body.tab_host) || "shared_interface_tabs";
       return body;
     }
     var garland = body.garland || {};
     return {
+      tab_host: "shared_interface_tabs",
+      tabs: normalizePresentationTabs(body.tabs, fallbackTabs, body.default_tab_id || "diktataograph"),
+      default_tab_id: asText(body.default_tab_id) || "diktataograph",
       layout: body.layout || "diktataograph_garland_split",
       narrow_layout: body.narrow_layout || "diktataograph_garland_stack",
       feature_flags: body.feature_flags || {},
@@ -1370,6 +1498,15 @@
     var stagingWidget = interfaceBody.staging_widget || {};
     var navMode = navigationCanvas.mode || "directory_dropdowns";
     var garlandSplit = interfaceBody.garland_split_projection || {};
+    var interfaceTabs = normalizePresentationTabs(
+      interfaceBody.tabs,
+      [
+        { id: "diktataograph", label: navigationCanvas.title || "Diktataograph", active: true },
+        { id: "garland", label: garlandSplit.title || "Garland" },
+      ],
+      interfaceBody.default_tab_id || "diktataograph"
+    );
+    var activeTabId = activePresentationTabId(interfaceTabs, "diktataograph");
     var geospatialProjection = garlandSplit.geospatial_projection || {};
     var profileProjection = garlandSplit.profile_projection || {};
     var districtToggle = profileProjection.district_overlay_toggle || {};
@@ -1470,7 +1607,7 @@
         (hasDistrictToggleRequest ? "" : " disabled") +
         ">" +
         '<span class="cts-gis-entryButton__title">' +
-        escapeHtml(districtToggle.enabled ? "Enabled" : "Disabled") +
+        escapeHtml(districtToggle.enabled ? "Hide compiled precincts" : "Load compiled precincts") +
         "</span>" +
         '<span class="cts-gis-entryButton__meta">time: ' +
         escapeHtml(districtToggle.time_token || "inactive") +
@@ -1513,13 +1650,7 @@
           "cts-gis-profileProjection cts-gis-profileProjection--empty"
         );
 
-    target.innerHTML =
-      '<div class="system-tool-interface cts-gis-interface">' +
-      '<div class="system-tool-interface__body cts-gis-interface__body" data-cts-gis-layout="' +
-      escapeHtml(interfaceBody.layout || "diktataograph_garland_split") +
-      '" data-cts-gis-narrow-layout="' +
-      escapeHtml(interfaceBody.narrow_layout || "diktataograph_garland_stack") +
-      '">' +
+    var diktataographPanel =
       '<section class="v2-card cts-gis-pane cts-gis-pane--diktataograph">' +
       '<header class="cts-gis-pane__header"><h3>' +
       escapeHtml(navigationCanvas.title || "Diktataograph") +
@@ -1535,7 +1666,8 @@
       renderNavigationDiagnostics(navigationCanvas.diagnostics || []) +
       "</section>" +
       renderCtsGisStagingWidget(stagingWidget) +
-      "</section>" +
+      "</section>";
+    var garlandPanel =
       '<section class="v2-card cts-gis-pane cts-gis-pane--garland">' +
       '<header class="cts-gis-pane__header"><h3>' +
       escapeHtml(garlandSplit.title || "Garland") +
@@ -1554,9 +1686,20 @@
       profileMarkup +
       "</section>" +
       "</div>" +
-      "</section>" +
+      "</section>";
+    target.innerHTML =
+      '<div class="system-tool-interface cts-gis-interface">' +
+      renderPresentationTabs(interfaceTabs) +
+      '<div class="system-tool-interface__body cts-gis-interface__body" data-cts-gis-layout="' +
+      escapeHtml(interfaceBody.layout || "diktataograph_garland_split") +
+      '" data-cts-gis-narrow-layout="' +
+      escapeHtml(interfaceBody.narrow_layout || "diktataograph_garland_stack") +
+      '">' +
+      renderPresentationTabPanel("diktataograph", activeTabId, diktataographPanel, "cts-gis-interface__tabPanel") +
+      renderPresentationTabPanel("garland", activeTabId, garlandPanel, "cts-gis-interface__tabPanel") +
       "</div>" +
       "</div>";
+    bindPresentationTabs(target);
     bindShellRequestEntries(target, ctx, entriesByKind);
     bindDirectoryDropdowns(target, ctx, navigationCanvas.dropdowns || []);
     bindNavigationCanvasEnhancement(target, navMode === "directory_dropdowns");
@@ -1567,8 +1710,10 @@
 
   function renderGenericInspectorSurface(target, region, surfacePayload) {
     var sections = region.sections || [];
+    var interfaceBody = asObject(region.interface_body);
+    var interfaceTabs = normalizePresentationTabs(interfaceBody.tabs, [], interfaceBody.default_tab_id);
     var adapter = toolSurfaceAdapter();
-    adapter.renderWrappedSurface(
+    var rendered = adapter.renderWrappedSurface(
       target,
       adapter.resolveSurfaceState({
         region: region,
@@ -1577,35 +1722,72 @@
         hasContent: !!region.subject || !!sections.length,
         message: region.summary || "Select an item to load interface panel content.",
       }),
-      '<div class="v2-inspector-stack">' +
-        (region.subject
-          ? '<section class="v2-card"><h3>Subject</h3>' +
-            renderRows([
-              {
-                label: region.subject.level || "level",
-                value: region.subject.id || "—",
-              },
-            ]) +
-            "</section>"
-          : "") +
-        (!region.subject && !sections.length
-          ? '<section class="v2-card"><h3>Interface Panel</h3><p>' +
-            escapeHtml(region.summary || "Select an item to load interface panel content.") +
-            "</p></section>"
-          : "") +
-        sections
-          .map(function (section) {
-            return (
-              '<section class="v2-card" style="margin-top:12px"><h3>' +
-              escapeHtml(section.title || "Section") +
-              "</h3>" +
-              renderRows(section.rows || []) +
+      (function () {
+        function renderSectionCards(sectionList) {
+          return (sectionList || [])
+            .map(function (section) {
+              return (
+                '<section class="v2-card" style="margin-top:12px"><h3>' +
+                escapeHtml(section.title || "Section") +
+                "</h3>" +
+                renderRows(section.rows || []) +
+                "</section>"
+              );
+            })
+            .join("");
+        }
+
+        function renderTabbedSections(tabs, sectionList) {
+          if (!tabs.length) return renderSectionCards(sectionList);
+          var activeTabId = activePresentationTabId(tabs, tabs[0].id);
+          var sectionsByTab = {};
+          tabs.forEach(function (tab) {
+            sectionsByTab[tab.id] = [];
+          });
+          (sectionList || []).forEach(function (section) {
+            var tabId = asText(section && section.tab_id);
+            if (!tabId || !sectionsByTab[tabId]) tabId = tabs[0].id;
+            sectionsByTab[tabId].push(section);
+          });
+          return (
+            renderPresentationTabs(tabs) +
+            tabs
+              .map(function (tab) {
+                var tabSections = sectionsByTab[tab.id] || [];
+                var panelHtml =
+                  renderSectionCards(tabSections) ||
+                  ('<section class="v2-card" style="margin-top:12px"><h3>' +
+                    escapeHtml(tab.label || tab.id) +
+                    "</h3><p>No interface panel details.</p></section>");
+                return renderPresentationTabPanel(tab.id, activeTabId, panelHtml);
+              })
+              .join("")
+          );
+        }
+
+        return (
+          '<div class="v2-inspector-stack">' +
+          (region.subject
+            ? '<section class="v2-card"><h3>Subject</h3>' +
+              renderRows([
+                {
+                  label: region.subject.level || "level",
+                  value: region.subject.id || "—",
+                },
+              ]) +
               "</section>"
-            );
-          })
-          .join("") +
-        "</div>"
+            : "") +
+          (!region.subject && !sections.length
+            ? '<section class="v2-card"><h3>Interface Panel</h3><p>' +
+              escapeHtml(region.summary || "Select an item to load interface panel content.") +
+              "</p></section>"
+            : "") +
+          renderTabbedSections(interfaceTabs, sections) +
+          "</div>"
+        );
+      })()
     );
+    if (rendered && interfaceTabs.length) bindPresentationTabs(target);
   }
 
   function renderRegisteredPresentationSurface(ctx, target, region, surfacePayload, spec) {

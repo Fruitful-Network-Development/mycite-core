@@ -5,7 +5,7 @@ Date: 2026-04-21
 Doc type: `plan`  
 Normativity: `canonical`  
 Lifecycle: `completed`  
-Last reviewed: `2026-04-21`
+Last reviewed: `2026-04-26`
 
 ## Purpose
 
@@ -40,13 +40,15 @@ Out of scope for v1 cutover:
 
 ## Current Status Note — 2026-04-21 Final Cut-Over Completion Pass
 
-- **Completed in execution for Track A:** the FND repo copy was inventoried and migrated into `/srv/repo/mycite-core/deployed/fnd/private/mos_authority.sqlite3` through `MyCiteV2/scripts/migrate_fnd_repo_to_mos_sql.py`, with `409` authoritative documents, `3133` authoritative datum rows, `25215` supporting anchor rows, and a passed SQL coverage gate.
+- **Completed in execution for Track A:** the live FND tenant corpus under `/srv/mycite-state/instances/fnd/data` is now represented by the live authority DB at `/srv/mycite-state/instances/fnd/private/mos_authority.sqlite3`, with `409` authoritative documents, `3133` authoritative datum rows, `25215` supporting anchor rows, and a passed SQL coverage gate.
 - **Completed in execution for Track B:** SQL-backed document version identity, row-level hyphae identity, and deterministic remap semantics remain the canonical semantic layer for the migrated SQL core.
 - **Completed in execution for Track C:** additive directive-context snapshots/events remain implemented and non-blocking, and the final migration imported `0` shared directive snapshots and `0` shared directive events because no explicit directive-context manifest was supplied.
 - **Completed in runtime cut-over:** migrated `SYSTEM` authority surfaces now fail closed without the authority database instead of silently bootstrapping legacy datum/audit authority, and any retained filesystem helpers are explicitly non-authoritative migration or fixture support only.
-- **Completed in UI hardening:** `/portal/system/tools/workbench-ui` now provides a read-only, two-pane SQL-backed spreadsheet with sticky headers, explicit selection markers, query-driven document/row navigation, structural grouping modes, interpreted/raw workbench lenses, source/overlay visibility controls, short semantic-identity badges, additive directive overlay summaries, and no datum-row mutation path.
+- **Completed in UI hardening:** `/portal/system/tools/workbench-ui` now provides a read-only, two-pane SQL-backed spreadsheet with sticky headers, explicit selection markers, query-driven document/row navigation, structural grouping modes, a layer/value-group/iteration matrix view, interpreted/raw workbench lenses, source/overlay visibility controls, short semantic-identity badges, additive directive overlay summaries, and no datum-row mutation path.
+- **Completed in tool-host unification:** shared `presentation_surface` Interface Panel logic now supports reusable tabs, and CTS-GIS materializes `Diktataograph` and `Garland` through that shared host instead of widening the shell with tool-specific multi-section structure.
 - **Completed in closure artifacts:** final ingestion, SQL-only activation, directive non-inference, documentation cleanup, the closure checklist, and the overall program-closure audits are published under `docs/audits/reports/`.
-- **Retained explicitly as non-blocking exception scope:** `NETWORK` remains a derived-materialization/system-log surface, host-bound private/public assets remain outside SQL datum authority until dedicated ports exist, and future NIMM/AITAS widening requires a separate follow-on plan rather than reopening this master plan.
+- **Current boundary clarification:** live `document_id` values remain compatibility keys such as `system:anthology` and `sandbox:<tool>:<filename>`, while canonical semantic identity lives in `version_hash` and `hyphae_hash`; full native MOS document-key unification remains a separate future migration. Family-scoped datum recognition and lens selection are presentation layers on top of that identity seam, not replacements for it.
+- **Retained explicitly as non-blocking exception scope:** `NETWORK` remains a derived-materialization/system-log surface, host-bound private/public assets remain outside SQL datum authority until dedicated ports exist, `hippo` is reference-only and not a runtime authority input, and future NIMM/AITAS widening requires a separate follow-on plan rather than reopening this master plan.
 
 ## Program Authority Rules
 
@@ -211,7 +213,7 @@ Phase exit:
 Required work:
 
 - add one official migration CLI at `MyCiteV2/scripts/migrate_fnd_repo_to_mos_sql.py`
-- inventory every file under `deployed/fnd/data/**` into `authoritative_import`, `supporting_anchor_context`, `derived_materialization`, or `explicit_exception`
+- inventory every file under the tenant data root (live FND path: `/srv/mycite-state/instances/fnd/data/**`) into `authoritative_import`, `supporting_anchor_context`, `derived_materialization`, or `explicit_exception`
 - write through existing SQL ports/adapters rather than duplicating persistence logic
 - compute `version_hash` and `hyphae_hash` only through the Track B semantics path
 - emit JSON and Markdown ingestion reports with counts, coverage status, retained exception scope, and failures
@@ -219,7 +221,7 @@ Required work:
 
 Phase exit:
 
-- the FND repo copy is ingested into the SQL-backed core and every authoritative datum row is accounted for by SQL semantics or an explicit retained-scope declaration
+- the FND tenant corpus is ingested into the SQL-backed core and every authoritative datum row is accounted for by SQL semantics or an explicit retained-scope declaration
 
 ### Phase 7 — SQL-Only Runtime Activation and Legacy Retirement
 

@@ -4,8 +4,8 @@ Date: 2026-04-21
 
 Doc type: `audit`
 Normativity: `supporting`
-Lifecycle: `completed`
-Last reviewed: `2026-04-22`
+Lifecycle: `active`
+Last reviewed: `2026-04-26`
 
 ## Purpose
 
@@ -54,7 +54,8 @@ Renderer path:
 
 Live data:
 
-- `deployed/fnd/private/mos_authority.sqlite3`
+- `/srv/mycite-state/instances/fnd/private/mos_authority.sqlite3`
+- `/srv/mycite-state/instances/fnd/data`
 
 ## Findings
 
@@ -77,6 +78,31 @@ CTS-GIS subset present:
 - `cts_gis_rows = 2233`
 
 Status: `preserved`
+
+### 1a) The live catalog snapshot now reflects `DATA_DIR` reality instead of repo-local path leakage
+
+Observed in the live `authoritative_catalog_snapshots` payload for `tenant_id=fnd`:
+
+- `source_files.anthology = system/anthology.json`
+- sandbox/system/payload entries are stored as `DATA_DIR`-relative paths
+- repo-local `deployed/fnd/...` source-path leakage is no longer present in the live catalog snapshot
+
+Status: `corrected`
+
+### 1b) Compatibility document keys remain active while MOS semantic identity lives in hashes
+
+Observed in live `datum_document_semantics`:
+
+- `408` document ids still use `sandbox:<tool>:<filename>`
+- `1` document id remains `system:anthology`
+- `0` document ids currently use the proposed native `lv.*`, `stl.*`, or `cptr.*` forms
+
+Interpretation:
+
+- current runtime canon is SQL-backed semantic identity through `version_hash` and `hyphae_hash`
+- full native MOS document-key unification remains future work and should not be implied by active docs or tasks
+
+Status: `explicitly bounded`
 
 ### 2) Package-peripheral access is SQL authority mediated, not hard-coded at runtime entry
 
@@ -168,6 +194,8 @@ Closure evidence:
    gates for `SYSTEM`, but still a drift vector for non-`SYSTEM` contexts.
 3. Directive-context tables are empty; if continuity expectations increase, this
    can be misread as data loss rather than current scoped design.
+4. `hippo` mirrors reference JSON and records, but it is not in the live runtime
+   authority chain; treating it as canonical would create silent drift.
 
 ## Recommendation Set
 
@@ -185,7 +213,7 @@ Closure evidence:
 Executed evidence collection:
 
 - static/runtime contract review in listed code paths
-- live SQL authority queries against `deployed/fnd/private/mos_authority.sqlite3`
+- live SQL authority queries against `/srv/mycite-state/instances/fnd/private/mos_authority.sqlite3`
 - renderer fallback path review in shell static modules
 
 ## Result

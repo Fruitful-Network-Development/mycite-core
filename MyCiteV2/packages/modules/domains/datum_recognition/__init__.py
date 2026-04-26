@@ -6,6 +6,7 @@ from .service import (
     DatumRecognitionRow,
     DatumWorkbenchProjection,
     DatumWorkbenchService,
+    recognize_authoritative_document,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "DatumRecognitionRow",
     "DatumWorkbenchProjection",
     "DatumWorkbenchService",
+    "recognize_authoritative_document",
 ]

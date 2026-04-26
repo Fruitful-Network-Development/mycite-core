@@ -4,14 +4,14 @@ board:
   id: "TASK-BOARD-CONTEXTUAL-SYSTEM-2026-04-23"
   title: "Contextual planning/audit/report organization board"
   lifecycle: "active"
-  last_reviewed: "2026-04-25"
+  last_reviewed: "2026-04-26"
   manifest_path: "docs/plans/contextual_system_manifest.yaml"
   delegation_state:
     current_focus_stream: "STREAM-CODE-BLOAT-REMEDIATION"
     current_focus_task_id: "TASK-CODE-BLOAT-REMEDIATION-005"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "Injected and completed TASK-CODE-BLOAT-FINDINGS-003 under STREAM-CODE-BLOAT-FINDINGS-EXECUTION, publishing Python import/modularity findings and closing TASK-CODE-BLOAT-REMEDIATION-003 through safe lazy-import deferrals across host and shell runtime surfaces. Next selected task by policy is TASK-CODE-BLOAT-REMEDIATION-005, still blocked on missing frontend-bundle findings."
+    last_delegation_note: "Direct user instruction temporarily preempted the queued code-bloat loop. Injected and completed TASK-MOS-AUTHORITY-REALITY-001/002/003 plus TASK-MOS-WORKBENCH-002/003 under STREAM-MOS-CLOSURE to normalize live SQL catalog source paths, re-anchor MOS docs/tasks to `/srv/mycite-state/...` runtime reality, materialize layer/value-group/iteration workbench projection with bounded family/value-kind lens resolution over SQL hyphae identity, and pin the historical materialization notes. Background next-task selection still returns TASK-CODE-BLOAT-REMEDIATION-005, which remains blocked on missing frontend-bundle findings."
 
 tasks:
   - id: "TASK-CONTEXT-ORG-001"
@@ -179,7 +179,7 @@ tasks:
       - "Evidence captures before/after strict-mode bundle posture and compile command output."
     evidence_targets:
       - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
-      - "deployed/fnd/data/payloads/compiled/cts_gis.fnd.compiled.json"
+      - "/srv/mycite-state/instances/fnd/data/payloads/compiled/cts_gis.fnd.compiled.json"
       - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
 
   - id: "TASK-CTSGIS-RUNTIME-002"
@@ -194,8 +194,8 @@ tasks:
       - "Report explicitly distinguishes data-structure readiness from runtime compiled-artifact readiness."
     evidence_targets:
       - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
-      - "deployed/fnd/data/sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json"
-      - "deployed/fnd/data/sandbox/cts-gis/sources/"
+      - "/srv/mycite-state/instances/fnd/data/sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json"
+      - "/srv/mycite-state/instances/fnd/data/sandbox/cts-gis/sources/"
       - "MyCiteV2/packages/adapters/filesystem/live_system_datum_store.py"
       - "MyCiteV2/packages/modules/cross_domain/cts_gis/service.py"
 
@@ -246,6 +246,24 @@ tasks:
       - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
       - "MyCiteV2/packages/modules/cross_domain/cts_gis/service.py"
       - "MyCiteV2/tests/unit/test_portal_cts_gis_runtime.py"
+
+  - id: "TASK-CTSGIS-RUNTIME-006"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Unify CTS-GIS Interface Panel tab hosting on the shared presentation-surface base"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-runtime-owner"
+    acceptance:
+      - "Shared Interface Panel renderer supports reusable tabs without introducing extra shell regions or a parallel frontend stack."
+      - "CTS-GIS projects `Diktataograph` and `Garland` as canonical shared-host tabs instead of a bespoke multi-section page."
+      - "Active contracts and tasking describe the shared tab host as canonical and preserve CTS-GIS layout fields only as compatibility metadata."
+    evidence_targets:
+      - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js"
+      - "MyCiteV2/instances/_shared/portal_host/static/portal.css"
+      - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
+      - "docs/contracts/portal_shell_contract.md"
+      - "docs/contracts/route_model.md"
+      - "docs/contracts/surface_catalog.md"
 
   - id: "TASK-PERF-001"
     stream_id: "STREAM-PERFORMANCE"
@@ -919,6 +937,83 @@ tasks:
       - "docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md"
       - "docs/plans/contextual_system_manifest.yaml"
       - "docs/plans/planning_audit_manifest.yaml"
+
+  - id: "TASK-MOS-AUTHORITY-REALITY-001"
+    stream_id: "STREAM-MOS-CLOSURE"
+    title: "Normalize live SQL catalog metadata to DATA_DIR-relative source paths"
+    status: "done"
+    priority: "p0"
+    owner_role: "datum-store-maintainer"
+    acceptance:
+      - "Authoritative catalog snapshots serialize source and anchor paths relative to the configured `DATA_DIR` whenever possible."
+      - "Live FND authority no longer leaks repo-local `deployed/fnd/...` source paths in SQL catalog metadata."
+    evidence_targets:
+      - "MyCiteV2/packages/adapters/filesystem/live_system_datum_store.py"
+      - "MyCiteV2/tests/adapters/test_filesystem_system_datum_store_adapter.py"
+      - "MyCiteV2/tests/unit/test_mos_program_closure.py"
+      - "docs/audits/reports/mos_runtime_authority_and_access_reality_report_2026-04-21.md"
+
+  - id: "TASK-MOS-AUTHORITY-REALITY-002"
+    stream_id: "STREAM-MOS-CLOSURE"
+    title: "Re-anchor active MOS docs and tasking to live state-root authority reality"
+    status: "done"
+    priority: "p0"
+    owner_role: "doc-author"
+    acceptance:
+      - "Active MOS docs describe `/srv/mycite-state/...` as live runtime reality instead of retired repo-local `deployed/fnd/...` paths."
+      - "`hippo` is explicitly documented as reference-only and not a runtime authority input."
+    evidence_targets:
+      - "docs/plans/master_plan_mos.md"
+      - "docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md"
+      - "docs/audits/reports/mos_runtime_authority_and_access_reality_report_2026-04-21.md"
+      - "docs/audits/reports/mos_sql_only_authority_activation_and_legacy_retirement_2026-04-21.md"
+
+  - id: "TASK-MOS-AUTHORITY-REALITY-003"
+    stream_id: "STREAM-MOS-CLOSURE"
+    title: "Pin current live FND MOS authority posture in regression checks"
+    status: "done"
+    priority: "p1"
+    owner_role: "qa-owner"
+    acceptance:
+      - "Closure tests verify live FND authority counts, relative-path catalog metadata, and the current compatibility document-key posture."
+      - "CTS-GIS readiness evidence and ingestion coverage docs no longer imply retired repo-local FND authority paths."
+    evidence_targets:
+      - "MyCiteV2/tests/unit/test_mos_program_closure.py"
+      - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
+      - "docs/audits/reports/mos_fnd_sql_ingestion_coverage_report_2026-04-21.md"
+
+  - id: "TASK-MOS-WORKBENCH-002"
+    stream_id: "STREAM-MOS-CLOSURE"
+    title: "Project SQL datum cells through bounded matrix and lens modularity"
+    status: "done"
+    priority: "p1"
+    owner_role: "workbench-owner"
+    acceptance:
+      - "`workbench_ui` can project selected SQL-authoritative documents as layer/value-group/iteration datum cells without introducing a parallel frontend stack."
+      - "Interpreted presentation resolves through bounded family/value-kind lenses so binary-string magnitudes remain human-readable while raw payload access stays available."
+      - "Hyphae identity remains the canonical row-identity seam and selected-row inspection exposes its local-reference / chain evidence."
+    evidence_targets:
+      - "MyCiteV2/packages/tools/workbench_ui/service.py"
+      - "MyCiteV2/instances/_shared/runtime/portal_workbench_ui_runtime.py"
+      - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js"
+      - "MyCiteV2/tests/unit/test_workbench_ui_runtime.py"
+      - "MyCiteV2/tests/unit/test_state_machine_lens_registry.py"
+
+  - id: "TASK-MOS-WORKBENCH-003"
+    stream_id: "STREAM-MOS-CLOSURE"
+    title: "Document hyphae materialization and remove active legacy workbench assumptions"
+    status: "done"
+    priority: "p1"
+    owner_role: "doc-author"
+    acceptance:
+      - "Active contract and planning docs describe the matrix grouping vocabulary, bounded lens modularity, and SQL hyphae identity boundary accurately."
+      - "Historical materialization references for MSS, datum recognition, lens introduction, and earlier layered workbench posture are recorded in one technical note."
+    evidence_targets:
+      - "docs/contracts/route_model.md"
+      - "docs/contracts/surface_catalog.md"
+      - "docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md"
+      - "docs/plans/master_plan_mos.md"
+      - "/srv/repo/srv-infra/docs/mos_workbench_hyphae_modularity_notes_2026-04-26.md"
 
   - id: "nimm-schema-definition"
     stream_id: "STREAM-PORTAL-NIMM-AITAS-UNIFICATION"

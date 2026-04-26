@@ -14,14 +14,28 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
 
+LIVE_FND_STATE_ROOT = Path("/srv/mycite-state/instances/fnd")
+LIVE_FND_DATA_DIR = LIVE_FND_STATE_ROOT / "data"
+LIVE_FND_DB_FILE = LIVE_FND_STATE_ROOT / "private" / "mos_authority.sqlite3"
+
 
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
 class MosProgramClosureTests(unittest.TestCase):
+    def _require_live_fnd_data_dir(self) -> Path:
+        if not LIVE_FND_DATA_DIR.exists():
+            self.skipTest(f"live FND data dir not present: {LIVE_FND_DATA_DIR}")
+        return LIVE_FND_DATA_DIR
+
+    def _require_live_fnd_db(self) -> Path:
+        if not LIVE_FND_DB_FILE.exists():
+            self.skipTest(f"live FND authority db not present: {LIVE_FND_DB_FILE}")
+        return LIVE_FND_DB_FILE
+
     def test_fnd_authority_db_matches_closure_counts(self) -> None:
-        db_file = REPO_ROOT / "deployed" / "fnd" / "private" / "mos_authority.sqlite3"
+        db_file = self._require_live_fnd_db()
         connection = sqlite3.connect(db_file)
         try:
             connection.row_factory = sqlite3.Row
@@ -48,8 +62,8 @@ class MosProgramClosureTests(unittest.TestCase):
             connection.close()
 
     def test_fnd_authority_db_matches_filesystem_authoritative_corpus(self) -> None:
-        data_dir = REPO_ROOT / "deployed" / "fnd" / "data"
-        db_file = REPO_ROOT / "deployed" / "fnd" / "private" / "mos_authority.sqlite3"
+        data_dir = self._require_live_fnd_data_dir()
+        db_file = self._require_live_fnd_db()
 
         filesystem_catalog = FilesystemSystemDatumStoreAdapter(data_dir).read_authoritative_datum_documents(
             AuthoritativeDatumDocumentRequest(tenant_id="fnd")
@@ -96,7 +110,7 @@ class MosProgramClosureTests(unittest.TestCase):
             connection.close()
 
     def test_cts_gis_row_graph_integrity_is_clean_in_live_authority_db(self) -> None:
-        db_file = REPO_ROOT / "deployed" / "fnd" / "private" / "mos_authority.sqlite3"
+        db_file = self._require_live_fnd_db()
         connection = sqlite3.connect(db_file)
         try:
             connection.row_factory = sqlite3.Row
@@ -133,6 +147,72 @@ class MosProgramClosureTests(unittest.TestCase):
             self.assertEqual(total_rows, 2233)
         finally:
             connection.close()
+
+    def test_fnd_authoritative_catalog_snapshot_uses_data_dir_relative_paths(self) -> None:
+        db_file = self._require_live_fnd_db()
+        connection = sqlite3.connect(db_file)
+        try:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute(
+                """
+                SELECT payload_json
+                FROM authoritative_catalog_snapshots
+                WHERE tenant_id = 'fnd'
+                """
+            ).fetchone()
+            self.assertIsNotNone(row)
+            payload = json.loads(row["payload_json"])
+        finally:
+            connection.close()
+
+        source_files = payload["source_files"]
+        self.assertEqual(source_files["anthology"], "system/anthology.json")
+        for key, value in source_files.items():
+            items = value if isinstance(value, list) else [value]
+            for item in items:
+                self.assertFalse(str(item).startswith("/srv/repo/"), f"{key}: {item}")
+                self.assertFalse(str(item).startswith("/srv/mycite-state/"), f"{key}: {item}")
+
+    def test_fnd_live_authority_explicitly_remains_on_compatibility_document_keys(self) -> None:
+        db_file = self._require_live_fnd_db()
+        connection = sqlite3.connect(db_file)
+        try:
+            connection.row_factory = sqlite3.Row
+            counts = {
+                "sandbox_docs": int(
+                    connection.execute(
+                        "SELECT COUNT(*) AS count FROM datum_document_semantics WHERE tenant_id = 'fnd' AND document_id LIKE 'sandbox:%'"
+                    ).fetchone()["count"]
+                ),
+                "system_docs": int(
+                    connection.execute(
+                        "SELECT COUNT(*) AS count FROM datum_document_semantics WHERE tenant_id = 'fnd' AND document_id = 'system:anthology'"
+                    ).fetchone()["count"]
+                ),
+                "lv_docs": int(
+                    connection.execute(
+                        "SELECT COUNT(*) AS count FROM datum_document_semantics WHERE tenant_id = 'fnd' AND document_id LIKE 'lv.%'"
+                    ).fetchone()["count"]
+                ),
+                "stl_docs": int(
+                    connection.execute(
+                        "SELECT COUNT(*) AS count FROM datum_document_semantics WHERE tenant_id = 'fnd' AND document_id LIKE 'stl.%'"
+                    ).fetchone()["count"]
+                ),
+                "cptr_docs": int(
+                    connection.execute(
+                        "SELECT COUNT(*) AS count FROM datum_document_semantics WHERE tenant_id = 'fnd' AND document_id LIKE 'cptr.%'"
+                    ).fetchone()["count"]
+                ),
+            }
+        finally:
+            connection.close()
+
+        self.assertEqual(counts["sandbox_docs"], 408)
+        self.assertEqual(counts["system_docs"], 1)
+        self.assertEqual(counts["lv_docs"], 0)
+        self.assertEqual(counts["stl_docs"], 0)
+        self.assertEqual(counts["cptr_docs"], 0)
 
     def test_closure_checklist_covers_every_plan_and_report_artifact(self) -> None:
         checklist_path = REPO_ROOT / "docs" / "audits" / "reports" / "mos_program_closure_audit_checklist_2026-04-21.md"
@@ -171,11 +251,21 @@ class MosProgramClosureTests(unittest.TestCase):
         legacy_report = _read_text(
             REPO_ROOT / "docs" / "audits" / "reports" / "mos_sql_only_authority_activation_and_legacy_retirement_2026-04-21.md"
         )
+        runtime_reality_report = _read_text(
+            REPO_ROOT / "docs" / "audits" / "reports" / "mos_runtime_authority_and_access_reality_report_2026-04-21.md"
+        )
+        cts_gis_runtime_report = _read_text(
+            REPO_ROOT / "docs" / "audits" / "reports" / "cts_gis_runtime_readiness_report_2026-04-25.md"
+        )
 
         self.assertNotIn("keep filesystem adapters available as compatibility projections", master_plan)
         self.assertNotIn("filesystem adapters remain available as compatibility projections", master_plan)
         self.assertNotIn("while filesystem projections remain available", index_yaml)
         self.assertNotIn("rollback-safe filesystem projections remain available", index_yaml)
+        self.assertNotIn("/srv/repo/mycite-core/deployed/fnd/private/mos_authority.sqlite3", master_plan)
+        self.assertNotIn("deployed/fnd/private/mos_authority.sqlite3", legacy_report)
+        self.assertNotIn("deployed/fnd/private/mos_authority.sqlite3", runtime_reality_report)
+        self.assertNotIn("deployed/fnd/data/sandbox/cts-gis", cts_gis_runtime_report)
         self.assertIn("non-authoritative", master_plan)
         self.assertIn("non-authoritative", index_yaml)
         self.assertIn("non-authoritative", legacy_report)

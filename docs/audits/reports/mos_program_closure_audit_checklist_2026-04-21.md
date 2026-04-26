@@ -5,7 +5,7 @@ Date: 2026-04-21
 Doc type: `audit`  
 Normativity: `supporting`  
 Lifecycle: `completed`  
-Last reviewed: `2026-04-22`
+Last reviewed: `2026-04-26`
 
 ## Purpose
 
@@ -46,6 +46,11 @@ Record the closure-review baseline plus the current classification of every file
 | `docs/plans/planning_audit_manifest.yaml` | `supporting-current` | reviewed | Compatibility manifest retained for planning/audit consumers. |
 | `docs/plans/planning_task_board.yaml` | `supporting-current` | reviewed | Compatibility task board retained for initiative/task continuity. |
 | `docs/plans/planning_audit_operating_system.md` | `supporting-current` | reviewed | Active operating-system narrative for contextual planning flow. |
+| `docs/plans/aws_csm_operational_recovery_plan_2026-04-24.md` | `supporting-current` | reviewed | Active recovery plan for AWS-CSM operational restoration and bounded filesystem cleanup follow-on. |
+| `docs/plans/portal_nimm_aitas_unification_plan_2026-04-24.md` | `supporting-current` | reviewed | Active NIMM/AITAS/lens/stage unification plan retained as current cross-tool execution guidance. |
+| `docs/plans/code_bloat_deep_audit_program_plan_2026-04-24.md` | `supporting-current` | reviewed | Active code-bloat deep-audit program plan retained as the canonical audit-planning surface for that stream. |
+| `docs/plans/code_bloat_findings_execution_plan_2026-04-25.md` | `supporting-current` | reviewed | Active code-bloat findings execution plan for converting audit findings into explicit remediation evidence. |
+| `docs/plans/code_bloat_remediation_execution_plan_2026-04-25.md` | `supporting-current` | reviewed | Active code-bloat remediation execution plan for tracked corrective work and closure gating. |
 | `docs/plans/portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md` | `supporting-current` | reviewed | Active convergence plan evidence for one-shell + SQL MOS boundary retirement stream. |
 | `docs/plans/refinement.md` | `supporting-current` | reviewed | Active refinement stream plan retained as supporting architecture narrative. |
 | `docs/plans/refinement_phase1_glossary_2026-04-23.md` | `supporting-current` | reviewed | Supporting glossary for refinement stream terminology alignment. |
@@ -65,7 +70,16 @@ Record the closure-review baseline plus the current classification of every file
 | `docs/audits/reports/contextual_planning_system_alignment_report_2026-04-23.md` | `supporting-current` | reviewed | Active contextual planning alignment report and closure evidence. |
 | `docs/audits/reports/aws_csm_comprehensive_audit_report_2026-04-23.md` | `supporting-current` | reviewed | Active AWS-CSM operating alignment stream report. |
 | `docs/audits/reports/aws_csm_onboarding_operational_realities_report_2026-04-23.md` | `supporting-current` | reviewed | Active AWS-CSM onboarding follow-on realities and closure evidence report. |
+| `docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md` | `supporting-current` | reviewed | Active AWS-CSM operational recovery report covering restored onboarding/runtime posture and bounded retained exceptions. |
+| `docs/audits/reports/portal_nimm_aitas_unification_audit_report_2026-04-24.md` | `supporting-current` | reviewed | Active unification report for NIMM/AITAS/lens/stage convergence across AWS-CSM and CTS-GIS. |
 | `docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md` | `supporting-current` | reviewed | Active post-closure CTS-GIS parity/readiness gate: confirms SQL/filesystem corpus parity, clean row-graph integrity, and names blocking provenance/readiness concerns before more CTS-GIS feature work. |
+| `docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md` | `supporting-current` | reviewed | Active CTS-GIS readiness report covering live state-root corpus validation, compiled-artifact readiness, and remaining blocked matrix work. |
+| `docs/audits/reports/code_bloat_diagnosis.md` | `supporting-current` | reviewed | Active diagnosis baseline for the code-bloat audit/remediation streams. |
+| `docs/audits/reports/code_bloat_findings_execution_report_2026-04-25.md` | `supporting-current` | reviewed | Active execution rollup for published code-bloat findings tasks and downstream remediation linkage. |
+| `docs/audits/reports/code_bloat_shell_topology_findings_2026-04-25.md` | `supporting-current` | reviewed | Active shell-topology findings report for the code-bloat execution stream. |
+| `docs/audits/reports/code_bloat_legacy_filesystem_snapshot_findings_2026-04-25.md` | `supporting-current` | reviewed | Active legacy-filesystem findings report, now aligned to live state-root compatibility surfaces and reference-only archival material. |
+| `docs/audits/reports/code_bloat_python_import_modularity_findings_2026-04-25.md` | `supporting-current` | reviewed | Active Python import/modularity findings report for the code-bloat execution stream. |
+| `docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md` | `supporting-current` | reviewed | Active remediation execution report for tracked code-bloat corrective work and validation posture. |
 | `docs/audits/reports/desktop_access_historical_drift_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as historical desktop risk context. |
 | `docs/audits/reports/documentation_ia_audit_report_2026-04-20.md` | `supporting-current` | reviewed | Active documentation IA audit baseline. |
 | `docs/audits/reports/interface_surface_unification_report_2026-04-16.md` | `historical-superseded` | reviewed | Immutable evidence only; retained as pre-closure surface-architecture history. |
@@ -122,7 +136,8 @@ Record the closure-review baseline plus the current classification of every file
   `docs/personal_notes/MOS/mos_novelty_definition.md`
   `docs/personal_notes/MOS/mycelial_ontological_schema.md`
 - Remaining documented exception-scope filesystem surfaces:
-  `deployed/fnd/data/**` as non-authoritative historical/test support
+  live compatibility state under `/srv/mycite-state/instances/fnd/data/**` for non-SQL or fallback surfaces
+  repo-local migrated copies and `hippo` as non-authoritative archival/reference material
   host-bound AWS/private filesystem assets outside MOS datum authority
   CTS/GIS, FND-DCM, FND-EBI, and `NETWORK` read-model support surfaces where the active docs already retain file-bound evidence or materialization scope
 - Verification note:

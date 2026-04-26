@@ -5,7 +5,7 @@ Date: 2026-04-25
 Doc type: `audit`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-25`
+Last reviewed: `2026-04-26`
 
 ## Purpose
 
@@ -36,9 +36,9 @@ Publish current CTS-GIS runtime readiness evidence for deployed behavior, with e
 
 ## Scope and Inputs
 
-Validated corpus under:
+Validated corpus under the live FND state root:
 
-- `deployed/fnd/data/sandbox/cts-gis/`
+- `/srv/mycite-state/instances/fnd/data/sandbox/cts-gis/`
 
 Validated runtime paths:
 
@@ -53,7 +53,7 @@ Validated runtime paths:
 Validated counts and JSON shape:
 
 - tool anchor file: present and JSON-valid
-  - `deployed/fnd/data/sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json`
+  - `/srv/mycite-state/instances/fnd/data/sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json`
 - administrative source profile sets:
   - admin/state: `1` (`*.fnd.3-2-3-17.json`)
   - county: `1` (`*.fnd.3-2-3-17-77.json`)
@@ -94,9 +94,9 @@ Root-cause and contract decision:
 Compiled artifact state:
 
 - expected path:
-  - `deployed/fnd/data/payloads/compiled/cts_gis.fnd.compiled.json`
+  - `/srv/mycite-state/instances/fnd/data/payloads/compiled/cts_gis.fnd.compiled.json`
 - regeneration command:
-  - `PYTHONPATH=. python3 MyCiteV2/scripts/compile_cts_gis_artifact.py --data-dir deployed/fnd/data --private-dir deployed/fnd/private --scope-id fnd`
+  - `PYTHONPATH=. python3 MyCiteV2/scripts/compile_cts_gis_artifact.py --data-dir /srv/mycite-state/instances/fnd/data --private-dir /srv/mycite-state/instances/fnd/private --scope-id fnd`
 - current compile output:
   - `invariants.valid=true`
   - `strict_invariants.one_authority=true`
@@ -216,11 +216,11 @@ Task disposition:
 
 Commands executed in this cycle:
 
-- `python3` JSON validation/count scans over `deployed/fnd/data/sandbox/cts-gis/**/*.json`
+- `python3` JSON validation/count scans over `/srv/mycite-state/instances/fnd/data/sandbox/cts-gis/**/*.json`
 - `python3 -m unittest MyCiteV2.tests.unit.test_cts_gis_compiled_runtime`
 - `python3 -m unittest MyCiteV2.tests.unit.test_cts_gis_read_only`
 - `python3 -m unittest MyCiteV2.tests.unit.test_portal_cts_gis_runtime`
-- `PYTHONPATH=. python3 MyCiteV2/scripts/compile_cts_gis_artifact.py --data-dir deployed/fnd/data --private-dir deployed/fnd/private --scope-id fnd`
+- `PYTHONPATH=. python3 MyCiteV2/scripts/compile_cts_gis_artifact.py --data-dir /srv/mycite-state/instances/fnd/data --private-dir /srv/mycite-state/instances/fnd/private --scope-id fnd`
 - production strict bundle posture check using `build_portal_cts_gis_surface_bundle(...)`
 - live precinct-overlay probes using `CtsGisReadOnlyService.read_surface(...)` for:
   - state attention `3-2-3-17`

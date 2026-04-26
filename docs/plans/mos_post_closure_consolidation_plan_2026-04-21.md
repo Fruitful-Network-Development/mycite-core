@@ -5,7 +5,7 @@ Date: 2026-04-21
 Doc type: `plan`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-22`
+Last reviewed: `2026-04-26`
 
 ## Canonical Contract Links
 
@@ -25,11 +25,13 @@ Define the post-closure consolidation work that follows the completed MOS progra
 - This file is not a new master plan.
 - The MOS cut-over remains complete.
 - Host-bound private/public assets remain documented exception scope unless a separate dedicated port plan is created.
-- `deployed/fnd/data/**` is retained as non-authoritative historical/test support and remains outside MOS datum authority.
+- Live compatibility state under `/srv/mycite-state/instances/fnd/data/**` remains the runtime `DATA_DIR` corpus for non-SQL and fallback surfaces, but it is not itself the canonical semantic authority for migrated MOS SQL surfaces.
+- Repo-local migrated copies and the `hippo` repository are reference/test material only and are not runtime authority inputs.
 - Shared-engine NIMM/AITAS canon is not widened in this pass.
 - `SYSTEM` remains the anthology-centered datum-file workbench at `/portal/system`.
 - `workbench_ui` remains a separate SQL authority inspector under `SYSTEM`.
 - `workbench_ui` remains read-only and additive-only.
+- Tool-local Interface Panel modularity must stay inside the shared `presentation_surface` host; reusable tabs are preferred over bespoke multi-section shell expansions.
 
 ## Bucket 1 - Documentation Canonicalization
 
@@ -60,7 +62,8 @@ Goal:
 Required work:
 
 - maintain a plain inventory of host-bound private/public assets that remain outside SQL datum authority
-- keep `deployed/fnd/data/**` explicitly classified as retained historical/test support rather than active MOS authority
+- keep `/srv/mycite-state/instances/fnd/data/**` explicitly classified as live compatibility state rather than canonical MOS semantic authority
+- keep repo-local migrated copies and `hippo` explicitly classified as non-authoritative archival/reference material
 - separate retained exception scope into:
   - host-bound private/public assets without dedicated ports
   - derived-materialization surfaces such as `NETWORK`
@@ -74,6 +77,7 @@ Required work:
 Exit:
 
 - retained exception scope is described as separate planning work, not unfinished MOS cut-over
+- active docs do not imply that repo-local `deployed/fnd/...` paths or `hippo` are live portal authority inputs
 - any future port effort starts from its own dedicated plan instead of reopening `master_plan_mos.md`
 
 ## Bucket 3 - Datum-File Workbench Hardening
@@ -89,15 +93,19 @@ Required work:
   - `docs/plans/planning_task_board.yaml`
 - keep `SYSTEM` as the canonical anthology workspace and keep `workbench_ui` as the separate shell-attached, script-backed SQL authority inspector under `SYSTEM`
 - preserve the current layered datum table posture, datum row structural coordinates, additive overlay rules, and the deliberate CTS-GIS-first `workbench_ui` landing posture
+- keep SQL `hyphae_hash` identity as the canonical row-identity seam while allowing read-only family/value-kind lens resolution to improve human-readable presentation
 - keep `workbench_ui` scoped to authoritative SQL-backed documents; retained host-bound/private assets and `NETWORK` materializations remain outside that corpus unless separately ported
 - retain the now-deployed minimal hardening baseline:
   - keyboard navigation
   - frozen headers and clearer selection state
   - layer/value-group grouping options
+  - layer/value-group/iteration matrix projection for datum-cell inspection
   - raw versus interpreted workbench lens toggle
+  - family/value-kind-scoped datum lens resolution for binary-safe human-readable display
   - semantic identity badges for `version_hash` and `hyphae_hash`
+  - hyphae-chain / local-reference inspection for the selected row
   - source/overlay visibility controls
-- keep any remaining `workbench_ui` follow-on scope limited to optional saved query bundles or sort/filter persistence only when it stays simple and script-grounded
+- keep any remaining `workbench_ui` follow-on scope limited to optional saved query bundles, additional bounded lens families, or sort/filter persistence only when it stays simple and script-grounded
 
 Exit:
 

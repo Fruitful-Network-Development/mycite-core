@@ -4,7 +4,7 @@
     "requested": false,
     "source": ""
   },
-  "authority_db_file": "/srv/repo/mycite-core/deployed/fnd/private/mos_authority.sqlite3",
+  "authority_db_file": "/srv/mycite-state/instances/fnd/private/mos_authority.sqlite3",
   "coverage_gate": {
     "explicit_exception_count": 5,
     "rule": "Every datum row must be present in SQL semantics or listed in the exception manifest with a reason.",

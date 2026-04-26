@@ -107,7 +107,7 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 - Its document table is keyed by `version_hash`, while its selected-document row grid is keyed by `hyphae_hash`.
 - Fresh entry deliberately prefers the first available CTS-GIS authoritative document in the current document ordering and falls back to the first available authoritative document when no CTS-GIS document is present.
 - Its document and datum panes both carry sticky-header intent and explicit selected-document / selected-datum-row markers.
-- Its datum grid may be grouped as `flat`, `layer`, or `layer_value_group` while preserving canonical structural order inside each group.
+- Its datum grid may be grouped as `flat`, `layer`, `layer_value_group`, or `layer_value_group_iteration`, with the last mode materializing a layer/value-group/iteration cell matrix while preserving canonical structural order.
 - Its source and overlay visibility remain query-driven.
 - Its keyboard navigation stays query-driven through runtime-owned document/row selection actions rather than new canonical navigation keys.
 - It is read-only in v1.
@@ -123,11 +123,16 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 - Its canonical route is `/portal/system/tools/cts-gis`.
 - Its default posture is interface-panel-led.
 - Its workbench is a hidden reflective-workspace supporting-evidence surface and stays hidden by default until secondary evidence is explicitly shown.
-- Its dominant `presentation_surface` Interface Panel mounts one CTS-GIS-local body with:
-  - `Diktataograph`
-  - staged insert widget
-  - `Garland` geospatial pane
-  - `Garland` profile pane
+- Its dominant `presentation_surface` Interface Panel mounts one CTS-GIS-local body on the shared tab host.
+- `tab_host=shared_interface_tabs`.
+- `tabs` currently materialize as `diktataograph` and `garland`.
+- `default_tab_id=diktataograph`.
+- The `Diktataograph` tab hosts:
+  - the CTS-GIS structural navigation canvas
+  - the staged insert widget
+- The `Garland` tab hosts:
+  - the correlated geospatial pane
+  - the correlated profile pane
 - `Diktataograph` is the CTS-GIS structural navigation canvas (`navigation_canvas`).
 - `navigation_canvas.mode` defaults to `directory_dropdowns`.
 - `navigation_canvas.source_authority` is `samras_magnitude`.
@@ -150,7 +155,7 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 - The `Control Panel` holds CTS-GIS-local directive, `AITAS`, source-evidence controls, and staged insert recap/actions.
 - The workbench remains diagnostic or preview/apply evidence rather than a duplicate of Garland.
 - CTS-GIS mode is explicit via `runtime_mode`:
-  - `production_strict` consumes compiled-only state and fails fast when invalid.
+  - `production_strict` consumes a compiled navigation/evidence baseline, hydrates non-default Garland projection contexts from authoritative CTS-GIS projection documents, and fails fast when compiled state is invalid.
   - `audit_forensic` exposes richer evidence and compatibility diagnostics.
 - CTS-GIS runtime also emits compact model partitions for universal shell tooling:
   - `navigation_model`

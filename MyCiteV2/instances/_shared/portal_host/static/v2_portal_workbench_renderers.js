@@ -297,12 +297,14 @@
         "</strong></div>"
       );
     }
+    var primary = row.display_value || row.labels || row.primary_value_token || row.object_ref || "—";
+    var detail = row.display_summary || ((row.relation || "—") + " -> " + (row.object_ref || "—"));
     return (
       '<div class="v2-workbenchUi__primaryCell"><strong>' +
-      escapeHtml(row.labels || "—") +
+      escapeHtml(primary) +
       "</strong>" +
       '<div class="v2-workbenchUi__subvalue">' +
-      escapeHtml((row.relation || "—") + " -> " + (row.object_ref || "—")) +
+      escapeHtml(detail) +
       "</div></div>"
     );
   }
@@ -369,6 +371,18 @@
 
   function flattenDatumRows(workspace) {
     var datumGrid = asObject(workspace.datum_grid);
+    var layers = asList(datumGrid.layers);
+    if (layers.length) {
+      var matrixRows = [];
+      layers.forEach(function (layer) {
+        asList(asObject(layer).value_groups).forEach(function (valueGroup) {
+          asList(asObject(valueGroup).cells).forEach(function (row) {
+            matrixRows.push(row);
+          });
+        });
+      });
+      if (matrixRows.length) return matrixRows;
+    }
     var groups = asList(datumGrid.groups);
     if (groups.length) {
       var rows = [];
@@ -380,6 +394,67 @@
       return rows;
     }
     return asList(datumGrid.rows);
+  }
+
+  function renderDatumMatrixCell(row, globalIndex) {
+    var selection = row.selected ? "Selected · " : "";
+    var diagnostics = asList(row.diagnostic_states).join(", ");
+    var detailBits = [
+      row.display_summary || "",
+      diagnostics,
+      row.hyphae_hash_short ? "ID " + row.hyphae_hash_short : "",
+    ].filter(Boolean);
+    return (
+      '<button class="v2-workbenchUi__navButton" style="text-align:left;min-height:120px" type="button" data-workbench-row-index="' +
+      String(globalIndex) +
+      '">' +
+      '<strong>' +
+      escapeHtml(selection + "I" + String(row.iteration || 0) + " · " + (row.datum_address || "—")) +
+      "</strong>" +
+      '<small>' +
+      escapeHtml(row.display_value || row.labels || row.primary_value_token || "—") +
+      "</small>" +
+      '<small>' +
+      escapeHtml(detailBits.join(" · ") || "—") +
+      "</small></button>"
+    );
+  }
+
+  function renderDatumMatrix(layers) {
+    var offset = 0;
+    return asList(layers)
+      .map(function (layer) {
+        var valueGroupHtml = asList(asObject(layer).value_groups)
+          .map(function (valueGroup) {
+            var cells = asList(asObject(valueGroup).cells);
+            var cards = cells
+              .map(function (row, index) {
+                return renderDatumMatrixCell(row, offset + index);
+              })
+              .join("");
+            offset += cells.length;
+            return (
+              '<section class="v2-card" style="margin-top:12px"><h4>' +
+              escapeHtml(asObject(valueGroup).title || "Value Group") +
+              "</h4>" +
+              '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">' +
+              cards +
+              "</div></section>"
+            );
+          })
+          .join("");
+        return (
+          '<section class="v2-workbenchUi__group">' +
+          '<div class="v2-workbenchUi__groupHeader"><h4>' +
+          escapeHtml(asObject(layer).title || "Layer") +
+          "</h4>" +
+          (asObject(layer).summary ? "<p>" + escapeHtml(asObject(layer).summary) + "</p>" : "") +
+          "</div>" +
+          valueGroupHtml +
+          "</section>"
+        );
+      })
+      .join("");
   }
 
   function renderWorkbenchSummary(workspace) {
@@ -448,6 +523,7 @@
     var documentTable = asObject(workspace.document_table);
     var datumGrid = asObject(workspace.datum_grid);
     var groups = asList(datumGrid.groups);
+    var layers = asList(datumGrid.layers);
     var lens = asText(datumGrid.lens) || "interpreted";
     var sourceVisibility = asText(workspace.source_visibility) || "show";
     var offset = 0;
@@ -458,6 +534,7 @@
         return html;
       })
       .join("");
+    var matrixHtml = renderDatumMatrix(layers);
     var flatRows = asList(datumGrid.rows);
     return (
       renderCards(surfacePayload.cards || []) +
@@ -479,7 +556,9 @@
           : "Spreadsheet-like interpreted rows for the selected authoritative document."
       ) +
       "</p></div>" +
-      (groups.length
+      (asText(datumGrid.group_mode) === "layer_value_group_iteration" && layers.length
+        ? matrixHtml
+        : groups.length
         ? groupHtml
         : '<div class="v2-tableWrap v2-workbenchUi__tableWrap"><table class="v2-table v2-workbenchUiTable"><thead class="v2-workbenchUi__stickyHeader"><tr><th>Datum</th><th>' +
           escapeHtml(lens === "raw" ? "Raw Payload" : "Interpreted Row") +

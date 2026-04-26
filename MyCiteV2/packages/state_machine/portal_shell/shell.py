@@ -1241,7 +1241,7 @@ def canonical_query_for_surface_query(
         if sort_direction in {"asc", "desc"}:
             query["dir"] = sort_direction
         group_mode = _as_text(normalized.get("group")).lower()
-        if group_mode in {"flat", "layer", "layer_value_group"}:
+        if group_mode in {"flat", "layer", "layer_value_group", "layer_value_group_iteration"}:
             query["group"] = group_mode
         workbench_lens = _as_text(normalized.get("workbench_lens")).lower()
         if workbench_lens in {"interpreted", "raw"}:

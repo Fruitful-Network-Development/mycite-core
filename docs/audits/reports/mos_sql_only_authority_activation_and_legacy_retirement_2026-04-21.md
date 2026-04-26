@@ -5,7 +5,7 @@ Date: 2026-04-21
 Doc type: `audit`  
 Normativity: `supporting`  
 Lifecycle: `completed`  
-Last reviewed: `2026-04-21`
+Last reviewed: `2026-04-26`
 
 ## Purpose
 
@@ -26,7 +26,7 @@ Validation scope:
 - SQL-authority runtime tests
 - workspace runtime regression tests
 - direct workbench runtime tests
-- real FND SQL migration smoke checks against `deployed/fnd/private/mos_authority.sqlite3`
+- real FND SQL migration smoke checks against `/srv/mycite-state/instances/fnd/private/mos_authority.sqlite3`
 
 ## Canonical Contract Links
 
@@ -56,6 +56,7 @@ Validation scope:
 5. Retired user-facing legacy modes are no longer part of the migrated posture.
    - Shared runtime no longer advertises or relies on public `filesystem` / `shadow` authority modes for migrated `SYSTEM` execution.
    - `NETWORK` remains an explicit derived-materialization exception outside this SQL datum-authority claim.
+   - `hippo` is not a runtime authority source; it is reference-only archival material.
 
 ## Evidence
 

@@ -38,7 +38,7 @@ class SystemDatumStoreContractTests(unittest.TestCase):
         result = SystemDatumWorkbenchResult(
             tenant_id=request.tenant_id,
             rows=(row,),
-            source_files={"anthology": "/tmp/data/system/anthology.json"},
+            source_files={"anthology": "system/anthology.json"},
             materialization_status={"canonical_source": "loaded"},
         )
 
@@ -98,7 +98,7 @@ class SystemDatumStoreContractTests(unittest.TestCase):
         result = AuthoritativeDatumDocumentCatalogResult(
             tenant_id=request.tenant_id,
             documents=(document,),
-            source_files={"sandbox_source_documents": ["/tmp/data/sandbox/cts-gis/sources/sc.example.json"]},
+            source_files={"sandbox_source_documents": ["sandbox/cts-gis/sources/sc.example.json"]},
             readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
         )
 

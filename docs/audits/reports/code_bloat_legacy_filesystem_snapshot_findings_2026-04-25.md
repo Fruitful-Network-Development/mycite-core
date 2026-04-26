@@ -5,7 +5,7 @@ Date: 2026-04-25
 Doc type: `audit-report`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-25`
+Last reviewed: `2026-04-26`
 
 ## Registry
 
@@ -19,18 +19,18 @@ Last reviewed: `2026-04-25`
 
 ## Scope
 
-Classify legacy filesystem adapters, JSON/bootstrap artifacts, and deployed
-snapshot data by runtime authority role, runtime reachability, and retention
-posture.
+Classify legacy filesystem adapters, live compatibility-state JSON/bootstrap
+artifacts, and retained snapshot/reference material by runtime authority role,
+runtime reachability, and retention posture.
 
 ## Footprint Measurements
 
 - Repository footprint snapshots:
-  - `deployed/`: ~82M
-  - `deployed/fnd/data/sandbox`: ~32M
-  - `deployed/fnd/data/payloads`: ~1.4M
-  - `deployed/fnd/private/utilities`: ~364K
-- JSON artifact counts under `deployed/fnd/data`:
+  - `/srv/mycite-state/instances/fnd/data`: ~34M
+  - `/srv/mycite-state/instances/fnd/data/sandbox`: ~32M
+  - `/srv/mycite-state/instances/fnd/data/payloads`: ~1.4M
+  - `/srv/mycite-state/instances/fnd/private/utilities`: ~360K
+- JSON artifact counts under `/srv/mycite-state/instances/fnd/data`:
   - total: 425
   - sandbox: 411
   - payloads: 9
@@ -65,21 +65,25 @@ Disposition: `active-retain` (canonical authority path).
 
 Disposition: `active-non-datum` (retained as bounded exceptions, not datum authority).
 
-### 3) Deployed snapshots and sandbox payloads (archive-bounded retain)
+### 3) Live compatibility state plus retained snapshot/reference payloads (bounded retain)
 
-- `deployed/fnd/data/sandbox/**` remains the largest retained class and is used
-  for tool evidence, fixture parity, and compiled artifact reproducibility.
+- `/srv/mycite-state/instances/fnd/data/sandbox/**` remains the largest
+  retained compatibility class and is used for runtime fallback/tool evidence,
+  fixture parity, and compiled artifact reproducibility.
 - No evidence in this audit that these payloads can be deleted outright without
   harming parity and regression checks.
+- Repo-local migrated copies and `hippo` remain reference-only and are not live
+  runtime authority inputs.
 - Evidence:
-  - `deployed/fnd/data/sandbox/`
-  - `deployed/fnd/data/payloads/`
+  - `/srv/mycite-state/instances/fnd/data/sandbox/`
+  - `/srv/mycite-state/instances/fnd/data/payloads/`
   - `docs/audits/reports/mos_program_closure_report_2026-04-21.md`
   - `docs/audits/reports/portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md`
 
 Disposition: `retain-archival-bounded` with explicit boundary:
 - runtime authority is SQL for SYSTEM surfaces;
-- retained snapshots are fixture/evidence payloads.
+- live state-tree payloads remain compatibility/runtime support material;
+- repo-local migrated copies and `hippo` remain fixture/evidence/reference material.
 
 ## Removal Candidate Decision
 
@@ -90,13 +94,15 @@ Remediation acceptance is satisfied by:
 
 1. isolating filesystem pathways to explicit non-datum/config and fixture roles,
 2. enforcing SQL-authority runtime posture for authoritative SYSTEM surfaces, and
-3. documenting snapshot retention boundaries as archival/evidence rather than
-   active authority.
+3. documenting compatibility-state and snapshot retention boundaries as
+   non-authoritative support material rather than active semantic authority.
 
 ## Retention Policy (2026-04-25)
 
-- Keep `deployed/fnd/data/sandbox/**` and `deployed/fnd/data/payloads/**` as
-  bounded fixture/evidence classes.
+- Keep `/srv/mycite-state/instances/fnd/data/sandbox/**` and
+  `/srv/mycite-state/instances/fnd/data/payloads/**` as bounded
+  compatibility/evidence classes.
+- Keep repo-local migrated copies and `hippo` as archival/reference material only.
 - Keep filesystem adapters only where they serve non-datum tool/config needs.
 - Do not permit filesystem fallback as authoritative SYSTEM datum path.
 - Future prune actions require per-class rollback notes and explicit parity
@@ -105,6 +111,6 @@ Remediation acceptance is satisfied by:
 ## Remediation Disposition
 
 `TASK-CODE-BLOAT-REMEDIATION-002` can close on evidence: filesystem/bootstrap
-surfaces not required for active authority are isolated to explicit fixture or
-non-datum classes, deployed snapshot boundaries are documented, and SQL
-authority posture remains test-backed.
+surfaces not required for active authority are isolated to explicit
+compatibility, fixture, or non-datum classes, retained snapshot/reference
+boundaries are documented, and SQL authority posture remains test-backed.

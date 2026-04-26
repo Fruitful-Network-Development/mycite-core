@@ -267,6 +267,7 @@ def build_portal_workbench_ui_surface_bundle(
             {"label": "Version", "value": _as_text(model.get("document_version_hash_short")) or "—"},
             {"label": "Selected Row", "value": _as_text((model.get("selected_row") or {}).get("datum_address")) or "—"},
             {"label": "Row Identity", "value": _as_text(model.get("selected_row_hyphae_hash_short")) or "—"},
+            {"label": "Resolved Lens", "value": _as_text((model.get("selected_row") or {}).get("resolved_lens")) or "—"},
             {
                 "label": "Document Sort",
                 "value": (
@@ -369,7 +370,7 @@ def build_portal_workbench_ui_surface_bundle(
                         surface_query=_surface_query(active_query, group=group_mode),
                         active=_as_text(model.get("group_mode")) == group_mode,
                     )
-                    for group_mode in ("flat", "layer", "layer_value_group")
+                    for group_mode in ("flat", "layer", "layer_value_group", "layer_value_group_iteration")
                 ],
             },
             {

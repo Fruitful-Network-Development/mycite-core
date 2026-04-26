@@ -512,6 +512,12 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("garland_split_projection", (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
         ).read_text(encoding="utf-8"))
+        self.assertIn("renderPresentationTabs", (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8"))
+        self.assertIn("data-interface-tab", (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        ).read_text(encoding="utf-8"))
         self.assertIn("renderDirectoryDropdownCanvas", (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
         ).read_text(encoding="utf-8"))

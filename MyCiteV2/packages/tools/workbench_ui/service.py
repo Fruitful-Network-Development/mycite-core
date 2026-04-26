@@ -6,8 +6,10 @@ from typing import Any, Iterable
 
 from MyCiteV2.packages.adapters.sql import SqliteDirectiveContextAdapter, SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.adapters.sql.datum_semantics import datum_address_sort_key, parse_datum_address
+from MyCiteV2.packages.modules.domains.datum_recognition import recognize_authoritative_document
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocument, AuthoritativeDatumDocumentRequest
 from MyCiteV2.packages.ports.directive_context import DirectiveContextEventQuery, DirectiveContextRequest
+from MyCiteV2.packages.state_machine.lens import resolve_datum_lens
 
 WORKBENCH_UI_TOOL_ID = "workbench_ui"
 WORKBENCH_UI_DEFAULT_DOCUMENT_SORT = "version_hash"
@@ -35,7 +37,7 @@ _ROW_SORT_KEYS = {
     "object_ref",
     "hyphae_hash",
 }
-_GROUP_MODES = {"flat", "layer", "layer_value_group"}
+_GROUP_MODES = {"flat", "layer", "layer_value_group", "layer_value_group_iteration"}
 _LENS_MODES = {"interpreted", "raw"}
 _VISIBILITY_MODES = {"show", "hide"}
 
@@ -128,7 +130,18 @@ def _document_sort_value(document: dict[str, Any], *, sort_key: str) -> Any:
 def _row_filter_haystack(row: dict[str, Any]) -> str:
     return " ".join(
         _as_text(row.get(key)).lower()
-        for key in ("datum_address", "labels", "relation", "object_ref", "hyphae_hash", "semantic_hash", "raw_json")
+        for key in (
+            "datum_address",
+            "labels",
+            "relation",
+            "object_ref",
+            "hyphae_hash",
+            "semantic_hash",
+            "raw_json",
+            "display_value",
+            "recognized_family",
+            "resolved_lens",
+        )
     )
 
 
@@ -138,6 +151,80 @@ def _row_sort_value(row: dict[str, Any], *, sort_key: str) -> Any:
     if sort_key in {"layer", "value_group", "iteration"}:
         return int(row.get(sort_key) or 0)
     return _as_text(row.get(sort_key)).lower()
+
+
+def _joined_tokens(values: object) -> str:
+    if not isinstance(values, (list, tuple)):
+        return _as_text(values)
+    return ", ".join(_as_text(item) for item in values if _as_text(item))
+
+
+def _first_non_empty(*values: object) -> str:
+    for value in values:
+        token = _as_text(value)
+        if token:
+            return token
+    return ""
+
+
+def _display_summary(*, relation: str, object_ref: str, recognized_family: str, resolved_lens: str, diagnostics: tuple[str, ...]) -> str:
+    bits = [
+        recognized_family,
+        f"lens:{resolved_lens}" if resolved_lens else "",
+        f"{relation} -> {object_ref}" if relation or object_ref else "",
+        _joined_tokens(diagnostics),
+    ]
+    return " · ".join(bit for bit in bits if bit)
+
+
+def _layer_matrix(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    layers: dict[int, dict[str, Any]] = {}
+    value_groups: dict[tuple[int, int], dict[str, Any]] = {}
+    for row in rows:
+        layer = int(row.get("layer") or 0)
+        value_group = int(row.get("value_group") or 0)
+        layer_entry = layers.setdefault(
+            layer,
+            {
+                "layer": layer,
+                "title": f"Layer {layer}",
+                "summary": f"Iteration cells grouped under layer {layer}.",
+                "value_groups": [],
+                "row_count": 0,
+                "selected": False,
+            },
+        )
+        value_group_entry = value_groups.setdefault(
+            (layer, value_group),
+            {
+                "value_group": value_group,
+                "title": f"Value Group {value_group}",
+                "summary": f"Iteration cells for value group {value_group}.",
+                "cells": [],
+                "row_count": 0,
+                "selected": False,
+            },
+        )
+        if value_group_entry not in layer_entry["value_groups"]:
+            layer_entry["value_groups"].append(value_group_entry)
+        value_group_entry["cells"].append(row)
+        value_group_entry["row_count"] += 1
+        value_group_entry["selected"] = value_group_entry["selected"] or bool(row.get("selected"))
+        layer_entry["row_count"] += 1
+        layer_entry["selected"] = layer_entry["selected"] or bool(row.get("selected"))
+    ordered_layers = [layers[key] for key in sorted(layers)]
+    for layer_entry in ordered_layers:
+        groups = sorted(
+            list(layer_entry["value_groups"]),
+            key=lambda item: int(item.get("value_group") or 0),
+        )
+        for group in groups:
+            group["cells"] = sorted(
+                list(group["cells"]),
+                key=lambda item: datum_address_sort_key(item["datum_address"]),
+            )
+        layer_entry["value_groups"] = groups
+    return ordered_layers
 
 
 def _overlay_summary_rows(overlay: dict[str, Any] | None, *, event_rows: Iterable[dict[str, Any]]) -> list[dict[str, str]]:
@@ -322,6 +409,11 @@ class WorkbenchUiReadService:
         tenant_id: str,
         document: AuthoritativeDatumDocument,
     ) -> list[dict[str, Any]]:
+        recognized_document = recognize_authoritative_document(document)
+        recognized_rows = {
+            row.datum_address: row
+            for row in recognized_document.rows
+        }
         items: list[dict[str, Any]] = []
         for row in sorted(document.rows, key=lambda item: datum_address_sort_key(item.datum_address)):
             layer, value_group, iteration = parse_datum_address(row.datum_address)
@@ -330,9 +422,28 @@ class WorkbenchUiReadService:
                 document_id=document.document_id,
                 datum_address=row.datum_address,
             )
+            recognized = recognized_rows.get(row.datum_address)
             hyphae_hash = _as_text((semantics or {}).get("hyphae_hash"))
             semantic_hash = _as_text((semantics or {}).get("semantic_hash"))
+            recognized_family = _as_text(getattr(recognized, "recognized_family", ""))
+            recognized_anchor = _as_text(getattr(recognized, "recognized_anchor", ""))
+            primary_value_token = _as_text(getattr(recognized, "primary_value_token", ""))
+            render_hints = dict(getattr(recognized, "render_hints", {}) or {})
+            diagnostics = tuple(getattr(recognized, "diagnostic_states", ()) or ())
+            lens_resolution = resolve_datum_lens(
+                recognized_family=recognized_family,
+                primary_value_kind=render_hints.get("primary_value_kind"),
+                overlay_kind=render_hints.get("overlay_kind"),
+            )
+            display_value = _first_non_empty(
+                lens_resolution.lens.decode(primary_value_token) if primary_value_token else "",
+                _joined_labels(row.raw),
+                _object_ref(row.raw, datum_address=row.datum_address),
+            )
             raw_json = _json_text(row.raw)
+            hyphae_chain = dict((semantics or {}).get("hyphae_chain") or {})
+            hyphae_chain_addresses = list(hyphae_chain.get("addresses") or [])
+            local_references = list((semantics or {}).get("local_references") or [])
             items.append(
                 {
                     "datum_address": row.datum_address,
@@ -342,10 +453,31 @@ class WorkbenchUiReadService:
                     "labels": _joined_labels(row.raw),
                     "relation": _relation(row.raw),
                     "object_ref": _object_ref(row.raw, datum_address=row.datum_address),
+                    "recognized_family": recognized_family,
+                    "recognized_anchor": recognized_anchor,
+                    "primary_value_token": primary_value_token,
+                    "primary_value_kind": _as_text(render_hints.get("primary_value_kind")),
+                    "overlay_kind": _as_text(render_hints.get("overlay_kind")),
+                    "diagnostic_states": list(diagnostics),
+                    "resolved_lens": lens_resolution.lens_id,
+                    "resolved_lens_match": lens_resolution.matched_on,
+                    "display_value": display_value,
+                    "display_summary": _display_summary(
+                        relation=_relation(row.raw),
+                        object_ref=_object_ref(row.raw, datum_address=row.datum_address),
+                        recognized_family=recognized_family,
+                        resolved_lens=lens_resolution.lens_id,
+                        diagnostics=diagnostics,
+                    ),
                     "hyphae_hash": hyphae_hash,
                     "hyphae_hash_short": _short_hash(hyphae_hash),
                     "semantic_hash": semantic_hash,
                     "semantic_hash_short": _short_hash(semantic_hash),
+                    "hyphae_policy": _as_text((semantics or {}).get("policy")),
+                    "hyphae_chain_addresses": hyphae_chain_addresses,
+                    "hyphae_chain_length": len(hyphae_chain_addresses),
+                    "local_references": local_references,
+                    "local_reference_count": len(local_references),
                     "warnings": list((semantics or {}).get("warnings") or []),
                     "raw": row.raw,
                     "raw_json": raw_json,
@@ -442,6 +574,7 @@ class WorkbenchUiReadService:
         selected_row = next((row for row in rows if row["datum_address"] == selected_row_id), selected_row)
 
         row_groups = _group_rows(grouped_rows, group_mode=group_mode, workbench_lens=workbench_lens)
+        layer_matrix = _layer_matrix(grouped_rows)
         row_sections = _section_rows_for_groups(row_groups)
         visible_row_items = flat_rows if group_mode == "flat" else []
 
@@ -500,10 +633,25 @@ class WorkbenchUiReadService:
             "labels": _as_text((selected_row or {}).get("labels")),
             "relation": _as_text((selected_row or {}).get("relation")),
             "object_ref": _as_text((selected_row or {}).get("object_ref")),
+            "recognized_family": _as_text((selected_row or {}).get("recognized_family")),
+            "recognized_anchor": _as_text((selected_row or {}).get("recognized_anchor")),
+            "primary_value_token": _as_text((selected_row or {}).get("primary_value_token")),
+            "primary_value_kind": _as_text((selected_row or {}).get("primary_value_kind")),
+            "overlay_kind": _as_text((selected_row or {}).get("overlay_kind")),
+            "resolved_lens": _as_text((selected_row or {}).get("resolved_lens")),
+            "resolved_lens_match": _as_text((selected_row or {}).get("resolved_lens_match")),
+            "display_value": _as_text((selected_row or {}).get("display_value")),
+            "display_summary": _as_text((selected_row or {}).get("display_summary")),
+            "diagnostic_states": list((selected_row or {}).get("diagnostic_states") or []),
             "hyphae_hash": _as_text((selected_row or {}).get("hyphae_hash")),
             "hyphae_hash_short": _as_text((selected_row or {}).get("hyphae_hash_short")),
             "semantic_hash": _as_text((selected_row or {}).get("semantic_hash")),
             "semantic_hash_short": _as_text((selected_row or {}).get("semantic_hash_short")),
+            "hyphae_policy": _as_text((selected_row or {}).get("hyphae_policy")),
+            "hyphae_chain_addresses": list((selected_row or {}).get("hyphae_chain_addresses") or []),
+            "hyphae_chain_length": int((selected_row or {}).get("hyphae_chain_length") or 0),
+            "local_references": list((selected_row or {}).get("local_references") or []),
+            "local_reference_count": int((selected_row or {}).get("local_reference_count") or 0),
             "raw": (selected_row or {}).get("raw"),
             "raw_json": _as_text((selected_row or {}).get("raw_json")),
         }
@@ -524,7 +672,8 @@ class WorkbenchUiReadService:
         notes = [
             "Directive overlays are additive summaries only.",
             "Document filtering indexes version_hash and document identity fields.",
-            "Row filtering indexes hyphae_hash, semantic identity, and row semantic fields.",
+            "Row filtering indexes hyphae_hash, semantic identity, resolved lens, and row semantic fields.",
+            "Hyphae identity comes from SQL semantic persistence; family and lens resolution remain presentation-only.",
             "Grouped datum views preserve canonical structural ordering within each section.",
             "No mutation controls are exposed on this surface.",
         ]
@@ -543,6 +692,30 @@ class WorkbenchUiReadService:
                 ],
             }
         ]
+        inspector_sections.append(
+            {
+                "title": "Lens Resolution",
+                "rows": [
+                    {"label": "display value", "value": selected_row_summary["display_value"] or "—"},
+                    {"label": "display summary", "value": selected_row_summary["display_summary"] or "—"},
+                    {"label": "recognized family", "value": selected_row_summary["recognized_family"] or "—"},
+                    {"label": "recognized anchor", "value": selected_row_summary["recognized_anchor"] or "—"},
+                    {"label": "primary value kind", "value": selected_row_summary["primary_value_kind"] or "—"},
+                    {"label": "resolved lens", "value": selected_row_summary["resolved_lens"] or "—"},
+                ],
+            }
+        )
+        inspector_sections.append(
+            {
+                "title": "Hyphae Identity",
+                "rows": [
+                    {"label": "policy", "value": selected_row_summary["hyphae_policy"] or "—"},
+                    {"label": "chain length", "value": str(selected_row_summary["hyphae_chain_length"])},
+                    {"label": "local references", "value": _joined_tokens(selected_row_summary["local_references"]) or "—"},
+                    {"label": "chain addresses", "value": _joined_tokens(selected_row_summary["hyphae_chain_addresses"]) or "—"},
+                ],
+            }
+        )
         if source_visibility == "show":
             inspector_sections.append(
                 {
@@ -650,6 +823,7 @@ class WorkbenchUiReadService:
                         "columns": _datum_grid_columns(workbench_lens=workbench_lens),
                         "rows": visible_row_items,
                         "groups": row_groups,
+                        "layers": layer_matrix,
                         "group_mode": group_mode,
                         "lens": workbench_lens,
                         "selected_row_id": selected_row_summary["datum_address"],

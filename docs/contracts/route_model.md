@@ -162,7 +162,7 @@ Workbench UI canonical query rules:
 - `filter=<text>` narrows the selected-document row grid, including `hyphae_hash`
 - `sort=<datum_address|layer|value_group|iteration|labels|relation|object_ref|hyphae_hash>` changes flat row-grid ordering
 - `dir=<asc|desc>` changes row-grid order direction
-- `group=<flat|layer|layer_value_group>` switches the datum grid between flat and structural grouping modes while grouped sections preserve canonical structural order
+- `group=<flat|layer|layer_value_group|layer_value_group_iteration>` switches the datum grid between flat, grouped, and layer/value-group/iteration matrix modes while preserving canonical structural order
 - `workbench_lens=<interpreted|raw>` switches the workbench between the interpreted row summary and the raw canonical payload lens
 - `source=<show|hide>` toggles source metadata columns and sections without changing authoritative rows
 - `row=<datum_address>` focuses one selected row in the read-only Interface Panel detail view
@@ -220,16 +220,19 @@ CTS-GIS runtime/body rules:
 
 - CTS-GIS is the `system.tools.cts_gis` tool_mediation_surface under `SYSTEM`
 - its default posture is interface-panel-led
-- the dominant Interface Panel mounts one CTS-GIS-local body with `Diktataograph` and `Garland`
+- the dominant Interface Panel mounts one CTS-GIS-local body on the shared tab host
+- `tab_host=shared_interface_tabs`
+- `tabs` currently materialize as `diktataograph` and `garland`
+- `default_tab_id=diktataograph`
 - tool menubar toggles are single-click exclusive by default (`Workbench` or `Interface Panel`), with a route-scoped double-click lock that allows both
 - `Diktataograph` is projected through `navigation_canvas`
-- the same Interface Panel body hosts the CTS-GIS staging widget; no new shell region is introduced
+- the `Diktataograph` tab also hosts the CTS-GIS staging widget; no new shell region is introduced
 - `navigation_canvas.mode` defaults to `directory_dropdowns`
 - `navigation_canvas.source_authority=samras_magnitude`
 - `navigation_canvas.decode_state` is fail-closed when CTS-GIS cannot recover a valid SAMRAS structure from authority rows or legacy row reconstruction
 - `navigation_canvas.dropdowns` carries one dropdown per resolved structural depth
 - `navigation_canvas.active_path` carries the resolved lineage
-- `Garland` is projected through `garland_split_projection`, where dominant `geospatial_projection` and secondary `profile_projection` update for that navigation root
+- the `Garland` tab is projected through `garland_split_projection`, where dominant `geospatial_projection` and secondary `profile_projection` update for that navigation root
 - staged insert recap and legal mutation verbs stay in the `directive_panel`
 - preview/apply evidence stays in the reflective workbench; renderer code does not write SQL or files directly
 - strict runtime also emits compact canonical models:
@@ -238,6 +241,7 @@ CTS-GIS runtime/body rules:
   - `evidence_model`
 - these are CTS-GIS-local projections of one mediation posture, not two separate shell mediations
 - title fallback is blank-only when ASCII decoding is unavailable
+- historical `layout` / `narrow_layout` fields remain compatibility metadata for CTS-GIS-local panel composition; the canonical outer host is the shared tab frame
 - CTS-GIS supporting evidence precedence is:
   - `private/utilities/tools/cts-gis/spec.json`
   - `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
@@ -246,7 +250,7 @@ CTS-GIS runtime/body rules:
   - GeoJSON lens or equivalent runtime cache for spatial projection
 - v2.5.4 phase-B is canonical-only; CTS-GIS accepts only `cts_gis` / `cts-gis` / `sandbox:cts_gis:*` and `tool.<msn>.cts-gis.json`
 - legacy CTS-GIS `maps` identifiers are rejected at the CTS-GIS tool endpoint with `400 legacy_maps_alias_unsupported`
-- `production_strict` runtime refuses missing/invalid compiled artifacts and returns `compiled_cts_gis_state_invalid` without request-time repair fallback
+- `production_strict` runtime refuses missing/invalid compiled artifacts and returns `compiled_cts_gis_state_invalid` without request-time repair fallback; when compiled state is valid, non-default Garland selection/time/overlay requests may hydrate from authoritative CTS-GIS projection documents
 
 CTS-GIS canonical defaults:
 

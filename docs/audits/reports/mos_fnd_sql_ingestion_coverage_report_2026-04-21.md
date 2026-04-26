@@ -5,7 +5,7 @@ Date: 2026-04-21
 Doc type: `audit`  
 Normativity: `supporting`  
 Lifecycle: `completed`  
-Last reviewed: `2026-04-21`
+Last reviewed: `2026-04-26`
 
 ## Purpose
 
@@ -16,7 +16,7 @@ Record the final applied FND ingestion counts for the MOS SQL authority database
 - `tenant_id`: `fnd`
 - `tenant_domain`: `fruitfulnetworkdevelopment.com`
 - `mode`: `apply`
-- `authority_db_file`: `/srv/repo/mycite-core/deployed/fnd/private/mos_authority.sqlite3`
+- `authority_db_file`: `/srv/mycite-state/instances/fnd/private/mos_authority.sqlite3`
 - `authoritative_documents`: `409`
 - `authoritative_rows`: `3133`
 - `supporting_anchor_rows`: `25215`
