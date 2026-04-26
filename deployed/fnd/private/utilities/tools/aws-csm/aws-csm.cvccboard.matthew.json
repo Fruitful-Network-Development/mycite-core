@@ -1,33 +1,32 @@
 {
   "schema": "mycite.service_tool.aws_csm.profile.v1",
   "identity": {
-    "profile_id": "aws-csm.cvccboard.danielg",
+    "profile_id": "aws-csm.cvccboard.matthew",
     "tenant_id": "cvccboard",
     "domain": "cvccboard.org",
     "region": "us-east-1",
-    "mailbox_local_part": "danielg",
+    "mailbox_local_part": "matthew",
     "role": "operator",
     "profile_kind": "mailbox",
     "single_user_msn_id": "",
-    "single_user_email": "dgreenfi67@hotmail.com",
-    "operator_inbox_target": "dgreenfi67@hotmail.com",
-    "handoff_provider": "outlook",
-    "send_as_email": "danielg@cvccboard.org"
+    "single_user_email": "mmecurio@fallsccu.com",
+    "operator_inbox_target": "mmecurio@fallsccu.com",
+    "handoff_provider": "generic_manual",
+    "send_as_email": "matthew@cvccboard.org"
   },
   "smtp": {
     "host": "email-smtp.us-east-1.amazonaws.com",
     "port": "587",
-    "username": "AKIAQ6WWUMKC3QD5SRVX",
+    "username": "",
     "credentials_source": "operator_managed",
-    "credentials_secret_name": "aws-cms/smtp/cvccboard.danielg",
-    "credentials_secret_state": "configured",
-    "send_as_email": "danielg@cvccboard.org",
-    "local_part": "danielg",
-    "handoff_provider": "outlook",
-    "forward_to_email": "dgreenfi67@hotmail.com",
+    "credentials_secret_name": "aws-cms/smtp/cvccboard.matthew",
+    "credentials_secret_state": "missing",
+    "send_as_email": "matthew@cvccboard.org",
+    "local_part": "matthew",
+    "handoff_provider": "generic_manual",
+    "forward_to_email": "mmecurio@fallsccu.com",
     "forwarding_status": "not_configured",
-    "handoff_ready": true,
-    "staging_state": "material_ready"
+    "handoff_ready": false
   },
   "verification": {
     "status": "not_started",
@@ -38,25 +37,25 @@
     "portal_state": "not_started"
   },
   "provider": {
-    "handoff_provider": "outlook",
+    "handoff_provider": "generic_manual",
     "send_as_provider_status": "not_started",
     "gmail_send_as_status": "not_started",
     "aws_ses_identity_status": "not_started",
-    "last_checked_at": "2026-04-20T23:24:12+00:00"
+    "last_checked_at": "2026-04-20T23:24:17+00:00"
   },
   "workflow": {
     "schema": "mycite.service_tool.aws_csm.onboarding.v1",
     "flow": "mailbox_send_as",
     "initiated": true,
-    "initiated_at": "2026-04-20T23:13:29+00:00",
+    "initiated_at": "2026-04-20T23:19:48+00:00",
     "lifecycle_state": "draft",
-    "handoff_provider": "outlook",
-    "handoff_status": "ready_for_outlook_handoff",
-    "is_ready_for_user_handoff": true,
-    "smtp_staging_requested_at": "2026-04-20T23:24:12+00:00"
+    "handoff_provider": "generic_manual",
+    "handoff_status": "not_started",
+    "is_ready_for_user_handoff": false,
+    "is_mailbox_operational": false
   },
   "inbound": {
-    "receive_routing_target": "dgreenfi67@hotmail.com",
+    "receive_routing_target": "mmecurio@fallsccu.com",
     "receive_state": "receive_unconfigured",
     "receive_verified": false,
     "portal_native_display_ready": false,

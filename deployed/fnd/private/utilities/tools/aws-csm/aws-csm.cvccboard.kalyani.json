@@ -1,33 +1,32 @@
 {
   "schema": "mycite.service_tool.aws_csm.profile.v1",
   "identity": {
-    "profile_id": "aws-csm.cvccboard.kalyanis",
+    "profile_id": "aws-csm.cvccboard.kalyani",
     "tenant_id": "cvccboard",
     "domain": "cvccboard.org",
     "region": "us-east-1",
-    "mailbox_local_part": "kalyanis",
+    "mailbox_local_part": "kalyani",
     "role": "operator",
     "profile_kind": "mailbox",
     "single_user_msn_id": "",
     "single_user_email": "kalyanisapkal.r@gmail.com",
     "operator_inbox_target": "kalyanisapkal.r@gmail.com",
     "handoff_provider": "gmail",
-    "send_as_email": "kalyanis@cvccboard.org"
+    "send_as_email": "kalyani@cvccboard.org"
   },
   "smtp": {
     "host": "email-smtp.us-east-1.amazonaws.com",
     "port": "587",
-    "username": "AKIAQ6WWUMKC3QD5SRVX",
+    "username": "",
     "credentials_source": "operator_managed",
-    "credentials_secret_name": "aws-cms/smtp/cvccboard.kalyanis",
-    "credentials_secret_state": "configured",
-    "send_as_email": "kalyanis@cvccboard.org",
-    "local_part": "kalyanis",
+    "credentials_secret_name": "aws-cms/smtp/cvccboard.kalyani",
+    "credentials_secret_state": "missing",
+    "send_as_email": "kalyani@cvccboard.org",
+    "local_part": "kalyani",
     "handoff_provider": "gmail",
     "forward_to_email": "kalyanisapkal.r@gmail.com",
     "forwarding_status": "not_configured",
-    "handoff_ready": true,
-    "staging_state": "material_ready"
+    "handoff_ready": false
   },
   "verification": {
     "status": "not_started",
@@ -51,9 +50,9 @@
     "initiated_at": "2026-04-20T23:19:44+00:00",
     "lifecycle_state": "draft",
     "handoff_provider": "gmail",
-    "handoff_status": "ready_for_gmail_handoff",
-    "is_ready_for_user_handoff": true,
-    "smtp_staging_requested_at": "2026-04-20T23:24:16+00:00"
+    "handoff_status": "not_started",
+    "is_ready_for_user_handoff": false,
+    "is_mailbox_operational": false
   },
   "inbound": {
     "receive_routing_target": "kalyanisapkal.r@gmail.com",

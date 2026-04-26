@@ -231,6 +231,107 @@ class FilesystemAwsCsmToolProfileStore(
             raise ValueError("read-after-write failed for AWS-CSM tool profile store")
         return reloaded
 
+    def replace_profile(
+        self,
+        *,
+        tenant_scope_id: str,
+        profile_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise ValueError("profile payload must be a dict")
+        if _as_text(payload.get("schema")) != LIVE_AWS_PROFILE_SCHEMA:
+            raise ValueError("profile schema must remain mycite.service_tool.aws_csm.profile.v1")
+        existing = self.load_profile(tenant_scope_id=tenant_scope_id, profile_id=profile_id)
+        if existing is None:
+            raise ValueError(f"AWS-CSM profile is missing: {profile_id}")
+        identity = _as_dict(payload.get("identity"))
+        next_profile_id = _as_text(identity.get("profile_id"))
+        if not next_profile_id:
+            raise ValueError("profile payload must include identity.profile_id")
+        if not _matches_tenant_scope(payload, tenant_scope_id):
+            raise ValueError("profile tenant_scope_id does not match stored identity")
+
+        source_path = self._tool_root / f"{_as_text(profile_id)}.json"
+        target_path = self._tool_root / f"{next_profile_id}.json"
+        if source_path != target_path and target_path.exists():
+            raise ValueError(f"AWS-CSM profile already exists: {next_profile_id}")
+
+        collection_path = self._collection_path()
+        collection_payload = self._read_collection_payload(collection_path)
+        member_files = [
+            _as_text(item)
+            for item in list(collection_payload.get("member_files") or [])
+            if _as_text(item)
+        ]
+        source_name = source_path.name
+        target_name = target_path.name
+        if source_name not in member_files:
+            raise ValueError(f"AWS-CSM collection does not reference {source_name}")
+        if source_name != target_name and target_name in member_files:
+            raise ValueError(f"AWS-CSM collection already references {target_name}")
+
+        updated_members = [
+            target_name if item == source_name else item
+            for item in member_files
+        ]
+        updated_collection = dict(collection_payload)
+        updated_collection["member_files"] = updated_members
+
+        original_collection = collection_path.read_text(encoding="utf-8")
+        original_profile = source_path.read_text(encoding="utf-8")
+        self._tool_root.mkdir(parents=True, exist_ok=True)
+        try:
+            self._write_json_atomic(target_path, payload)
+            self._write_json_atomic(collection_path, updated_collection)
+            if source_path != target_path and source_path.exists():
+                source_path.unlink()
+        except Exception:
+            if target_path.exists():
+                target_path.unlink()
+            collection_path.write_text(original_collection, encoding="utf-8")
+            source_path.write_text(original_profile, encoding="utf-8")
+            raise
+
+        reloaded = self.load_profile(tenant_scope_id=tenant_scope_id, profile_id=next_profile_id)
+        if reloaded is None:
+            raise ValueError("read-after-write failed for AWS-CSM profile replacement")
+        return reloaded
+
+    def delete_profile(self, *, tenant_scope_id: str, profile_id: str) -> None:
+        existing = self.load_profile(tenant_scope_id=tenant_scope_id, profile_id=profile_id)
+        if existing is None:
+            raise ValueError(f"AWS-CSM profile is missing: {profile_id}")
+
+        profile_path = self._tool_root / f"{_as_text(profile_id)}.json"
+        collection_path = self._collection_path()
+        collection_payload = self._read_collection_payload(collection_path)
+        member_files = [
+            _as_text(item)
+            for item in list(collection_payload.get("member_files") or [])
+            if _as_text(item)
+        ]
+        profile_name = profile_path.name
+        if profile_name not in member_files:
+            raise ValueError(f"AWS-CSM collection does not reference {profile_name}")
+
+        updated_collection = dict(collection_payload)
+        updated_collection["member_files"] = [item for item in member_files if item != profile_name]
+
+        original_collection = collection_path.read_text(encoding="utf-8")
+        original_profile = profile_path.read_text(encoding="utf-8")
+        try:
+            if profile_path.exists():
+                profile_path.unlink()
+            self._write_json_atomic(collection_path, updated_collection)
+        except Exception:
+            if not profile_path.exists():
+                profile_path.write_text(original_profile, encoding="utf-8")
+            collection_path.write_text(original_collection, encoding="utf-8")
+            raise
+        if self.load_profile(tenant_scope_id=tenant_scope_id, profile_id=profile_id) is not None:
+            raise ValueError("read-after-delete failed for AWS-CSM profile deletion")
+
     def save_domain(self, *, domain: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise ValueError("domain payload must be a dict")

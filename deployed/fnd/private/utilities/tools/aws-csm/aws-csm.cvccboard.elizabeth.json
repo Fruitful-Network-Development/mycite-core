@@ -1,33 +1,32 @@
 {
   "schema": "mycite.service_tool.aws_csm.profile.v1",
   "identity": {
-    "profile_id": "aws-csm.cvccboard.saras",
+    "profile_id": "aws-csm.cvccboard.elizabeth",
     "tenant_id": "cvccboard",
     "domain": "cvccboard.org",
     "region": "us-east-1",
-    "mailbox_local_part": "saras",
+    "mailbox_local_part": "elizabeth",
     "role": "operator",
     "profile_kind": "mailbox",
     "single_user_msn_id": "",
-    "single_user_email": "saralizsteele@gmail.com",
-    "operator_inbox_target": "saralizsteele@gmail.com",
+    "single_user_email": "elizabeth.brake@gmail.com",
+    "operator_inbox_target": "elizabeth.brake@gmail.com",
     "handoff_provider": "gmail",
-    "send_as_email": "saras@cvccboard.org"
+    "send_as_email": "elizabeth@cvccboard.org"
   },
   "smtp": {
     "host": "email-smtp.us-east-1.amazonaws.com",
     "port": "587",
-    "username": "AKIAQ6WWUMKC3QD5SRVX",
+    "username": "",
     "credentials_source": "operator_managed",
-    "credentials_secret_name": "aws-cms/smtp/cvccboard.saras",
-    "credentials_secret_state": "configured",
-    "send_as_email": "saras@cvccboard.org",
-    "local_part": "saras",
+    "credentials_secret_name": "aws-cms/smtp/cvccboard.elizabeth",
+    "credentials_secret_state": "missing",
+    "send_as_email": "elizabeth@cvccboard.org",
+    "local_part": "elizabeth",
     "handoff_provider": "gmail",
-    "forward_to_email": "saralizsteele@gmail.com",
+    "forward_to_email": "elizabeth.brake@gmail.com",
     "forwarding_status": "not_configured",
-    "handoff_ready": true,
-    "staging_state": "material_ready"
+    "handoff_ready": false
   },
   "verification": {
     "status": "not_started",
@@ -42,21 +41,21 @@
     "send_as_provider_status": "not_started",
     "gmail_send_as_status": "not_started",
     "aws_ses_identity_status": "not_started",
-    "last_checked_at": "2026-04-20T23:24:19+00:00"
+    "last_checked_at": "2026-04-20T23:24:13+00:00"
   },
   "workflow": {
     "schema": "mycite.service_tool.aws_csm.onboarding.v1",
     "flow": "mailbox_send_as",
     "initiated": true,
-    "initiated_at": "2026-04-20T23:19:46+00:00",
+    "initiated_at": "2026-04-20T23:19:39+00:00",
     "lifecycle_state": "draft",
     "handoff_provider": "gmail",
-    "handoff_status": "ready_for_gmail_handoff",
-    "is_ready_for_user_handoff": true,
-    "smtp_staging_requested_at": "2026-04-20T23:24:19+00:00"
+    "handoff_status": "not_started",
+    "is_ready_for_user_handoff": false,
+    "is_mailbox_operational": false
   },
   "inbound": {
-    "receive_routing_target": "saralizsteele@gmail.com",
+    "receive_routing_target": "elizabeth.brake@gmail.com",
     "receive_state": "receive_unconfigured",
     "receive_verified": false,
     "portal_native_display_ready": false,

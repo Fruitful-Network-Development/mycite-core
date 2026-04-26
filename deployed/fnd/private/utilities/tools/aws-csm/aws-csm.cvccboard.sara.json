@@ -1,33 +1,32 @@
 {
   "schema": "mycite.service_tool.aws_csm.profile.v1",
   "identity": {
-    "profile_id": "aws-csm.cvccboard.susans",
+    "profile_id": "aws-csm.cvccboard.sara",
     "tenant_id": "cvccboard",
     "domain": "cvccboard.org",
     "region": "us-east-1",
-    "mailbox_local_part": "susans",
+    "mailbox_local_part": "sara",
     "role": "operator",
     "profile_kind": "mailbox",
     "single_user_msn_id": "",
-    "single_user_email": "susanschmidt@rocketmail.com",
-    "operator_inbox_target": "susanschmidt@rocketmail.com",
-    "handoff_provider": "yahoo",
-    "send_as_email": "susans@cvccboard.org"
+    "single_user_email": "saralizsteele@gmail.com",
+    "operator_inbox_target": "saralizsteele@gmail.com",
+    "handoff_provider": "gmail",
+    "send_as_email": "sara@cvccboard.org"
   },
   "smtp": {
     "host": "email-smtp.us-east-1.amazonaws.com",
     "port": "587",
-    "username": "AKIAQ6WWUMKC3QD5SRVX",
+    "username": "",
     "credentials_source": "operator_managed",
-    "credentials_secret_name": "aws-cms/smtp/cvccboard.susans",
-    "credentials_secret_state": "configured",
-    "send_as_email": "susans@cvccboard.org",
-    "local_part": "susans",
-    "handoff_provider": "yahoo",
-    "forward_to_email": "susanschmidt@rocketmail.com",
+    "credentials_secret_name": "aws-cms/smtp/cvccboard.sara",
+    "credentials_secret_state": "missing",
+    "send_as_email": "sara@cvccboard.org",
+    "local_part": "sara",
+    "handoff_provider": "gmail",
+    "forward_to_email": "saralizsteele@gmail.com",
     "forwarding_status": "not_configured",
-    "handoff_ready": true,
-    "staging_state": "material_ready"
+    "handoff_ready": false
   },
   "verification": {
     "status": "not_started",
@@ -38,11 +37,11 @@
     "portal_state": "not_started"
   },
   "provider": {
-    "handoff_provider": "yahoo",
+    "handoff_provider": "gmail",
     "send_as_provider_status": "not_started",
     "gmail_send_as_status": "not_started",
     "aws_ses_identity_status": "not_started",
-    "last_checked_at": "2026-04-20T23:24:20+00:00"
+    "last_checked_at": "2026-04-20T23:24:19+00:00"
   },
   "workflow": {
     "schema": "mycite.service_tool.aws_csm.onboarding.v1",
@@ -50,13 +49,13 @@
     "initiated": true,
     "initiated_at": "2026-04-20T23:19:46+00:00",
     "lifecycle_state": "draft",
-    "handoff_provider": "yahoo",
-    "handoff_status": "ready_for_yahoo_handoff",
-    "is_ready_for_user_handoff": true,
-    "smtp_staging_requested_at": "2026-04-20T23:24:20+00:00"
+    "handoff_provider": "gmail",
+    "handoff_status": "not_started",
+    "is_ready_for_user_handoff": false,
+    "is_mailbox_operational": false
   },
   "inbound": {
-    "receive_routing_target": "susanschmidt@rocketmail.com",
+    "receive_routing_target": "saralizsteele@gmail.com",
     "receive_state": "receive_unconfigured",
     "receive_verified": false,
     "portal_native_display_ready": false,

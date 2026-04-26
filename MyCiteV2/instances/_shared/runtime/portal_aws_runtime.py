@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 from typing import Any, Mapping
 
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
@@ -40,6 +41,7 @@ from MyCiteV2.packages.modules.cross_domain.aws_csm_profile_registry import (
     AwsCsmProfileRegistryService,
 )
 from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
+from MyCiteV2.packages.modules.shared import utc_now_iso
 from MyCiteV2.packages.ports.aws_csm_onboarding import AwsCsmOnboardingPolicyError
 from MyCiteV2.packages.state_machine.lens import EmailAddressLens, SecretReferenceLens
 from MyCiteV2.packages.state_machine.nimm import (
@@ -81,6 +83,8 @@ _DEFAULT_DOMAIN_RECEIPT_BUCKET = "ses-inbound-fnd-mail"
 _ROUTE_SYNC_FAIL_CLOSED_ENV = "AWS_CSM_ROUTE_SYNC_FAIL_CLOSED"
 _ROUTE_SYNC_FALLBACK_SCRIPT = "MyCiteV2/scripts/deploy_aws_csm_pass3_inbound_capture.py"
 _AWS_RUNTIME_REQUIRED_MODULES = ("boto3",)
+_MAILBOX_LOCAL_PART_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._+-]{0,62}[a-z0-9])?$")
+_ALLOWED_HANDOFF_PROVIDERS = frozenset({"gmail", "outlook", "yahoo", "proofpoint", "generic_manual"})
 _VISIBLE_ACTIVITY_SURFACE_IDS = (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
@@ -96,6 +100,8 @@ _ALLOWED_ACTION_KINDS = frozenset(
         "sync_domain_dns",
         "ensure_domain_receipt_rule",
         "create_profile",
+        "update_profile",
+        "delete_profile",
         "stage_smtp_credentials",
         "send_handoff_email",
         "reveal_smtp_password",
@@ -163,6 +169,71 @@ def _normalized_domain(value: object) -> str:
 
 def _slugify_domain(value: object) -> str:
     return _normalized_domain(value).replace(".", "-")
+
+
+def _utc_now_iso() -> str:
+    return utc_now_iso(seconds_precision=True)
+
+
+def _normalized_email(value: object, *, field_name: str = "email") -> str:
+    token = _as_text(value).lower()
+    if token.count("@") != 1 or any(ch.isspace() for ch in token):
+        raise ValueError(f"{field_name} must be an email-like value")
+    local_part, domain_part = token.split("@", 1)
+    if not local_part or not domain_part or "." not in domain_part:
+        raise ValueError(f"{field_name} must be an email-like value")
+    return token
+
+
+def _optional_normalized_email(value: object) -> str:
+    token = _as_text(value).lower()
+    if not token:
+        return ""
+    try:
+        return _normalized_email(token)
+    except ValueError:
+        return ""
+
+
+def _normalized_mailbox_local_part(value: object) -> str:
+    token = _as_text(value).lower()
+    if not _MAILBOX_LOCAL_PART_PATTERN.match(token):
+        raise ValueError("mailbox_local_part must use lowercase mailbox characters")
+    return token
+
+
+def _normalized_handoff_provider(value: object, *, allow_empty: bool = False) -> str:
+    token = _as_text(value).lower()
+    if not token and allow_empty:
+        return ""
+    if token not in _ALLOWED_HANDOFF_PROVIDERS:
+        allowed = ", ".join(sorted(_ALLOWED_HANDOFF_PROVIDERS))
+        raise ValueError(f"handoff_provider must be one of: {allowed}")
+    return token
+
+
+def _handoff_provider_from_email(email: str) -> str:
+    domain = _normalized_email(email, field_name="handoff_provider_email").split("@", 1)[1]
+    if domain in {"gmail.com", "googlemail.com"}:
+        return "gmail"
+    if domain in {"outlook.com", "hotmail.com", "live.com", "msn.com"}:
+        return "outlook"
+    if domain in {"yahoo.com", "rocketmail.com", "ymail.com"}:
+        return "yahoo"
+    if domain.endswith("proofpoint.com"):
+        return "proofpoint"
+    return "generic_manual"
+
+
+def _inferred_handoff_provider(*emails: str) -> str:
+    for email in emails:
+        if not _as_text(email):
+            continue
+        try:
+            return _handoff_provider_from_email(email)
+        except ValueError:
+            continue
+    return "generic_manual"
 
 
 def _safe_json_object(path: Path | None) -> dict[str, Any]:
@@ -1585,6 +1656,227 @@ def _selected_domain_record(
     }
 
 
+def _newsletter_profile_references(
+    *,
+    private_dir: str | Path | None,
+    profile_id: str,
+) -> list[str]:
+    state = _newsletter_state(private_dir)
+    if state is None or not _as_text(profile_id):
+        return []
+    references: list[str] = []
+    try:
+        domains = state.list_newsletter_domains()
+    except Exception:
+        return []
+    for domain in domains:
+        try:
+            payload = _as_dict(state.load_profile(domain=domain))
+        except Exception:
+            continue
+        if _as_text(payload.get("selected_author_profile_id")) == _as_text(profile_id):
+            references.append(_normalized_domain(domain))
+            continue
+        if _as_text(payload.get("selected_sender_profile_id")) == _as_text(profile_id):
+            references.append(_normalized_domain(domain))
+    return sorted(token for token in set(references) if token)
+
+
+def _rewrite_newsletter_profile_references(
+    *,
+    private_dir: str | Path | None,
+    old_profile_id: str,
+    new_profile_id: str,
+    old_send_as_email: str,
+    new_send_as_email: str,
+) -> list[str]:
+    state = _newsletter_state(private_dir)
+    if state is None or not _as_text(old_profile_id):
+        return []
+    updated_domains: list[str] = []
+    try:
+        domains = state.list_newsletter_domains()
+    except Exception:
+        return []
+    for domain in domains:
+        token = _normalized_domain(domain)
+        try:
+            payload = _as_dict(state.load_profile(domain=token))
+        except Exception:
+            continue
+        changed = False
+        if _as_text(payload.get("selected_author_profile_id")) == _as_text(old_profile_id):
+            payload["selected_author_profile_id"] = _as_text(new_profile_id)
+            changed = True
+        if _as_text(payload.get("selected_sender_profile_id")) == _as_text(old_profile_id):
+            payload["selected_sender_profile_id"] = _as_text(new_profile_id)
+            changed = True
+        if _optional_normalized_email(payload.get("selected_author_address")) == _optional_normalized_email(old_send_as_email):
+            payload["selected_author_address"] = _optional_normalized_email(new_send_as_email)
+            changed = True
+        if _optional_normalized_email(payload.get("selected_sender_address")) == _optional_normalized_email(old_send_as_email):
+            payload["selected_sender_address"] = _optional_normalized_email(new_send_as_email)
+            changed = True
+        if not changed:
+            continue
+        state.save_profile(domain=token, payload=payload)
+        updated_domains.append(token)
+    return sorted(token for token in set(updated_domains) if token)
+
+
+def _updated_profile_payload(
+    *,
+    existing_profile: dict[str, Any],
+    action_payload: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, str]]:
+    working = deepcopy(existing_profile)
+    identity = _as_dict(working.get("identity"))
+    smtp = _as_dict(working.get("smtp"))
+    verification = _as_dict(working.get("verification"))
+    provider = _as_dict(working.get("provider"))
+    workflow = _as_dict(working.get("workflow"))
+    inbound = _as_dict(working.get("inbound"))
+
+    tenant_id = _as_text(identity.get("tenant_id")).lower()
+    domain = _normalized_domain(identity.get("domain"))
+    if not tenant_id or not domain:
+        raise ValueError("The selected AWS-CSM profile is missing tenant/domain identity metadata.")
+
+    current_profile_id = _as_text(identity.get("profile_id"))
+    current_send_as_email = _optional_normalized_email(identity.get("send_as_email") or smtp.get("send_as_email"))
+    current_single_user_email = _optional_normalized_email(identity.get("single_user_email"))
+    current_operator_inbox_target = _optional_normalized_email(
+        smtp.get("forward_to_email") or identity.get("operator_inbox_target") or identity.get("single_user_email")
+    )
+    current_handoff_provider = _as_text(
+        provider.get("handoff_provider") or identity.get("handoff_provider") or smtp.get("handoff_provider")
+    ).lower() or _inferred_handoff_provider(current_operator_inbox_target, current_single_user_email)
+
+    next_mailbox_local_part = _normalized_mailbox_local_part(
+        action_payload.get("mailbox_local_part")
+        or identity.get("mailbox_local_part")
+        or smtp.get("local_part")
+        or current_send_as_email.split("@", 1)[0]
+    )
+    next_profile_id = f"aws-csm.{tenant_id}.{next_mailbox_local_part}"
+    next_send_as_email = f"{next_mailbox_local_part}@{domain}"
+    next_single_user_email = _normalized_email(
+        action_payload.get("single_user_email") or identity.get("single_user_email"),
+        field_name="single_user_email",
+    )
+    next_operator_inbox_target = _normalized_email(
+        action_payload.get("operator_inbox_target")
+        or smtp.get("forward_to_email")
+        or identity.get("operator_inbox_target")
+        or next_single_user_email,
+        field_name="operator_inbox_target",
+    )
+    next_role = _as_text(action_payload.get("role") or identity.get("role") or "operator").lower() or "operator"
+    next_handoff_provider = (
+        _normalized_handoff_provider(
+            action_payload.get("handoff_provider")
+            or provider.get("handoff_provider")
+            or identity.get("handoff_provider")
+            or smtp.get("handoff_provider"),
+            allow_empty=True,
+        )
+        or _inferred_handoff_provider(next_operator_inbox_target, next_single_user_email)
+    )
+
+    identity["profile_id"] = next_profile_id
+    identity["mailbox_local_part"] = next_mailbox_local_part
+    identity["single_user_email"] = next_single_user_email
+    identity["operator_inbox_target"] = next_operator_inbox_target
+    identity["role"] = next_role
+    identity["handoff_provider"] = next_handoff_provider
+    identity["send_as_email"] = next_send_as_email
+
+    mailbox_identity_changed = any(
+        (
+            next_profile_id != current_profile_id,
+            next_send_as_email != current_send_as_email,
+            next_single_user_email != current_single_user_email,
+            next_operator_inbox_target != current_operator_inbox_target,
+            next_handoff_provider != current_handoff_provider,
+        )
+    )
+    secret_name = _as_text(smtp.get("credentials_secret_name")) or f"aws-cms/smtp/{tenant_id}.{next_mailbox_local_part}"
+    if next_profile_id != current_profile_id:
+        secret_name = f"aws-cms/smtp/{tenant_id}.{next_mailbox_local_part}"
+    smtp["send_as_email"] = next_send_as_email
+    smtp["local_part"] = next_mailbox_local_part
+    smtp["forward_to_email"] = next_operator_inbox_target
+    smtp["handoff_provider"] = next_handoff_provider
+    smtp["credentials_secret_name"] = secret_name
+    if next_profile_id != current_profile_id:
+        smtp["credentials_secret_state"] = "missing"
+        smtp["username"] = ""
+        smtp["handoff_ready"] = False
+        smtp["forwarding_status"] = "not_configured"
+        smtp.pop("staging_state", None)
+
+    provider["handoff_provider"] = next_handoff_provider
+    if mailbox_identity_changed:
+        verification.update(
+            {
+                "status": "not_started",
+                "code": "",
+                "link": "",
+                "email_received_at": "",
+                "verified_at": "",
+                "portal_state": "not_started",
+            }
+        )
+        provider["send_as_provider_status"] = "not_started"
+        provider["gmail_send_as_status"] = "not_started"
+        workflow["lifecycle_state"] = "draft"
+        workflow["handoff_provider"] = next_handoff_provider
+        workflow["handoff_status"] = "not_started"
+        workflow["is_ready_for_user_handoff"] = False
+        workflow["is_mailbox_operational"] = False
+        for key in (
+            "handoff_email_sent_to",
+            "handoff_email_message_id",
+            "handoff_email_sent_at",
+            "handoff_secret_revealed_to",
+            "handoff_secret_revealed_at",
+            "smtp_staging_requested_at",
+        ):
+            workflow.pop(key, None)
+        inbound["receive_routing_target"] = next_operator_inbox_target
+        inbound["receive_state"] = "receive_unconfigured"
+        inbound["receive_verified"] = False
+        inbound["portal_native_display_ready"] = False
+        for key in (
+            "latest_message_sender",
+            "latest_message_subject",
+            "latest_message_captured_at",
+            "latest_message_s3_key",
+            "latest_message_s3_uri",
+        ):
+            inbound[key] = ""
+        inbound.pop("latest_forward_decision", None)
+
+    working["identity"] = identity
+    working["smtp"] = smtp
+    working["verification"] = verification
+    working["provider"] = provider
+    working["workflow"] = workflow
+    working["inbound"] = inbound
+
+    summary = {
+        "previous_profile_id": current_profile_id,
+        "profile_id": next_profile_id,
+        "previous_send_as_email": current_send_as_email,
+        "send_as_email": next_send_as_email,
+        "single_user_email": next_single_user_email,
+        "operator_inbox_target": next_operator_inbox_target,
+        "handoff_provider": next_handoff_provider,
+        "mailbox_identity_changed": "true" if mailbox_identity_changed else "false",
+    }
+    return working, summary
+
+
 def _domain_rule_name(domain: str) -> str:
     return f"portal-capture-{_slugify_domain(domain)}"
 
@@ -2040,6 +2332,158 @@ def _apply_action(
                 status="error",
                 code="tenant_scope_missing",
                 message="The selected AWS-CSM profile is missing tenant scope metadata.",
+            )
+
+        if action_kind == "update_profile":
+            live_profile = store.load_profile(
+                tenant_scope_id=tenant_scope_id,
+                profile_id=_as_text(profile_row.get("profile_id")),
+            )
+            if live_profile is None:
+                raise ValueError("AWS-CSM profile could not be reloaded for the requested update.")
+            updated_profile, details = _updated_profile_payload(
+                existing_profile=live_profile,
+                action_payload=action_payload,
+            )
+            next_profile_id = _as_text(_as_dict(updated_profile.get("identity")).get("profile_id"))
+            next_send_as_email = _optional_normalized_email(
+                _as_dict(updated_profile.get("identity")).get("send_as_email")
+            )
+            for candidate in store.list_profiles():
+                candidate_identity = _as_dict(candidate.get("identity"))
+                candidate_profile_id = _as_text(candidate_identity.get("profile_id"))
+                candidate_send_as_email = _optional_normalized_email(candidate_identity.get("send_as_email"))
+                if candidate_profile_id == _as_text(profile_row.get("profile_id")):
+                    continue
+                if candidate_profile_id == next_profile_id:
+                    return surface_query, _action_result(
+                        action_kind=action_kind,
+                        status="error",
+                        code="profile_conflict",
+                        message=f"AWS-CSM profile_id already exists: {next_profile_id}",
+                    )
+                if candidate_send_as_email and candidate_send_as_email == next_send_as_email:
+                    return surface_query, _action_result(
+                        action_kind=action_kind,
+                        status="error",
+                        code="send_as_conflict",
+                        message=f"AWS-CSM send-as email already exists: {next_send_as_email}",
+                    )
+
+            saved_profile = store.replace_profile(
+                tenant_scope_id=tenant_scope_id,
+                profile_id=_as_text(profile_row.get("profile_id")),
+                payload=updated_profile,
+            )
+            updated_domains = _rewrite_newsletter_profile_references(
+                private_dir=private_dir,
+                old_profile_id=_as_text(profile_row.get("profile_id")),
+                new_profile_id=next_profile_id,
+                old_send_as_email=_optional_normalized_email(profile_row.get("send_as_email")),
+                new_send_as_email=next_send_as_email,
+            )
+            cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=tenant_scope_id)
+            route_sync = _sync_verification_route_map(
+                store=store,
+                cloud=cloud,
+                private_dir=private_dir,
+            )
+            identity = _as_dict(saved_profile.get("identity"))
+            details.update(
+                {
+                    "tenant_scope_id": tenant_scope_id,
+                    "domain": _normalized_domain(identity.get("domain")),
+                    "role": _as_text(identity.get("role")),
+                    "newsletter_reference_updates": ", ".join(updated_domains),
+                }
+            )
+            _merge_route_sync_details(details, route_sync)
+            next_query = {
+                "view": "domains",
+                "domain": _normalized_domain(identity.get("domain")),
+                "profile": next_profile_id,
+                "section": _as_text(surface_query.get("section")) or "users",
+            }
+            message = f"Updated AWS-CSM profile {next_profile_id}."
+            if details.get("mailbox_identity_changed") == "true":
+                message += " Onboarding state was reset so the revised mailbox can be restaged cleanly."
+            if _as_text(route_sync.get("status")) in {"warning", "failure"}:
+                message += " Verification-forward route sync needs operator attention."
+            _append_local_audit(
+                audit_storage_file=audit_storage_file,
+                private_dir=private_dir,
+                action_kind=action_kind,
+                details=details,
+            )
+            return next_query, _action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message=message,
+                details=details,
+                created_profile={
+                    "profile_id": next_profile_id,
+                    "domain": _normalized_domain(identity.get("domain")),
+                    "send_as_email": next_send_as_email,
+                    "single_user_email": _optional_normalized_email(identity.get("single_user_email")),
+                    "operator_inbox_target": _optional_normalized_email(identity.get("operator_inbox_target")),
+                },
+            )
+
+        if action_kind == "delete_profile":
+            newsletter_references = _newsletter_profile_references(
+                private_dir=private_dir,
+                profile_id=_as_text(profile_row.get("profile_id")),
+            )
+            if newsletter_references:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="profile_in_use",
+                    message=(
+                        "This AWS-CSM profile is still referenced by newsletter state for: "
+                        + ", ".join(newsletter_references)
+                    ),
+                    details={"newsletter_references": ", ".join(newsletter_references)},
+                )
+            current_profile_id = _as_text(profile_row.get("profile_id"))
+            current_domain = _normalized_domain(profile_row.get("domain"))
+            current_send_as_email = _optional_normalized_email(profile_row.get("send_as_email"))
+            store.delete_profile(
+                tenant_scope_id=tenant_scope_id,
+                profile_id=current_profile_id,
+            )
+            cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=tenant_scope_id)
+            route_sync = _sync_verification_route_map(
+                store=store,
+                cloud=cloud,
+                private_dir=private_dir,
+            )
+            details = {
+                "profile_id": current_profile_id,
+                "tenant_scope_id": tenant_scope_id,
+                "domain": current_domain,
+                "send_as_email": current_send_as_email,
+            }
+            _merge_route_sync_details(details, route_sync)
+            next_query = {
+                "view": "domains",
+                "domain": current_domain,
+                "section": _as_text(surface_query.get("section")) or "users",
+            }
+            message = f"Deleted AWS-CSM profile {current_profile_id}."
+            if _as_text(route_sync.get("status")) in {"warning", "failure"}:
+                message += " Verification-forward route sync needs operator attention."
+            _append_local_audit(
+                audit_storage_file=audit_storage_file,
+                private_dir=private_dir,
+                action_kind=action_kind,
+                details=details,
+            )
+            return next_query, _action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message=message,
+                details=details,
             )
 
         if action_kind in _SERVICE_ACTION_KINDS:

@@ -221,6 +221,10 @@ Planning/triage order:
 - execute `TOOL-GAP-02` with data-fixture hardening to prevent false green UI states
 - close with `TOOL-GAP-05` as the regression gate
 
+Completion note (2026-04-26):
+
+- `TOOL-GAP-01` is now closed in source control: AWS-CSM Interface Panel content is rendered through the shared tab host pattern, exposes `Domain` and `Onboarding` tabs, and provides contract-backed create/update/delete/onboarding actions for the selected mailbox/domain workflow.
+
 ## Result Target
 
 The portal remains unique in state model (HANUS + interface-surface mediation + NIMM-AITAS) while becoming operationally predictable:
