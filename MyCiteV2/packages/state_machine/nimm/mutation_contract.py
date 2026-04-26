@@ -39,6 +39,8 @@ AWS_CSM_ACTION_LIFECYCLE = {
     "sync_domain_dns": "apply",
     "ensure_domain_receipt_rule": "apply",
     "create_profile": "apply",
+    "update_profile": "apply",
+    "delete_profile": "apply",
     "stage_smtp_credentials": "stage",
     "send_handoff_email": "apply",
     "reveal_smtp_password": "preview",

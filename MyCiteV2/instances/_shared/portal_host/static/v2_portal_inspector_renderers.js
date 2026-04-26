@@ -136,6 +136,14 @@
     });
   }
 
+  window.__MYCITE_V2_INTERFACE_TAB_HOST = {
+    normalizeTabs: normalizePresentationTabs,
+    activeTabId: activePresentationTabId,
+    renderTabs: renderPresentationTabs,
+    renderTabPanel: renderPresentationTabPanel,
+    bindTabs: bindPresentationTabs,
+  };
+
   function renderRows(rows) {
     if (!rows || !rows.length) {
       return '<p class="ide-controlpanel__empty">No interface panel details.</p>';

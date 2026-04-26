@@ -396,6 +396,152 @@ class PortalAwsRouteSyncTests(unittest.TestCase):
         self.assertEqual(details["route_sync_status"], "warning")
         self.assertIn("deploy_aws_csm_pass3_inbound_capture.py", details["route_sync_manual_step"])
 
+    def test_update_profile_rekeys_mailbox_and_resets_onboarding_state(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            tool_root = private_dir / "utilities" / "tools" / "aws-csm"
+            collection_path = tool_root / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"
+            collection = json.loads(collection_path.read_text(encoding="utf-8"))
+            collection["member_files"].append("aws-csm.cvccboard.alexs.json")
+            collection_path.write_text(json.dumps(collection, indent=2) + "\n", encoding="utf-8")
+            profile_path = tool_root / "aws-csm.cvccboard.alexs.json"
+            _write_json(
+                profile_path,
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alexs",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "region": "us-east-1",
+                        "mailbox_local_part": "alexs",
+                        "role": "operator",
+                        "single_user_email": "alex@example.com",
+                        "operator_inbox_target": "ops@example.com",
+                        "handoff_provider": "gmail",
+                        "send_as_email": "alexs@cvccboard.org",
+                    },
+                    "smtp": {
+                        "host": "email-smtp.us-east-1.amazonaws.com",
+                        "port": "587",
+                        "username": "SMTPUSER",
+                        "credentials_secret_name": "aws-cms/smtp/cvccboard.alexs",
+                        "credentials_secret_state": "configured",
+                        "send_as_email": "alexs@cvccboard.org",
+                        "local_part": "alexs",
+                        "handoff_provider": "gmail",
+                        "forward_to_email": "ops@example.com",
+                        "handoff_ready": True,
+                    },
+                    "verification": {
+                        "status": "verified",
+                        "portal_state": "verified",
+                        "verified_at": "2026-04-24T00:00:00+00:00",
+                    },
+                    "provider": {
+                        "handoff_provider": "gmail",
+                        "send_as_provider_status": "verified",
+                        "gmail_send_as_status": "verified",
+                        "aws_ses_identity_status": "verified",
+                    },
+                    "workflow": {
+                        "lifecycle_state": "ready",
+                        "handoff_status": "instruction_sent",
+                        "is_ready_for_user_handoff": True,
+                    },
+                    "inbound": {
+                        "receive_routing_target": "ops@example.com",
+                        "receive_state": "receive_configured",
+                        "receive_verified": True,
+                    },
+                },
+            )
+
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime._onboarding_cloud",
+                return_value=_RouteSyncCloudSuccess(),
+            ):
+                _, action_result = _apply_action(
+                    portal_scope=PortalScope(scope_id="fnd"),
+                    surface_query={"view": "domains", "domain": "cvccboard.org", "profile": "aws-csm.cvccboard.alexs", "section": "users"},
+                    action_kind="update_profile",
+                    action_payload={
+                        "profile_id": "aws-csm.cvccboard.alexs",
+                        "mailbox_local_part": "alex",
+                        "single_user_email": "alex@example.com",
+                        "operator_inbox_target": "ops@example.com",
+                        "role": "operator",
+                        "handoff_provider": "gmail",
+                    },
+                    private_dir=private_dir,
+                    audit_storage_file=None,
+                )
+
+            updated_path = tool_root / "aws-csm.cvccboard.alex.json"
+            updated = json.loads(updated_path.read_text(encoding="utf-8"))
+            old_exists = profile_path.exists()
+            new_exists = updated_path.exists()
+
+        self.assertEqual(action_result["status"], "accepted")
+        self.assertEqual(action_result["details"]["profile_id"], "aws-csm.cvccboard.alex")
+        self.assertEqual(action_result["details"]["mailbox_identity_changed"], "true")
+        self.assertFalse(old_exists)
+        self.assertTrue(new_exists)
+        self.assertEqual(updated["identity"]["send_as_email"], "alex@cvccboard.org")
+        self.assertEqual(updated["smtp"]["credentials_secret_state"], "missing")
+        self.assertEqual(updated["workflow"]["handoff_status"], "not_started")
+        self.assertEqual(updated["verification"]["portal_state"], "not_started")
+
+    def test_delete_profile_removes_file_and_syncs_routes(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            tool_root = private_dir / "utilities" / "tools" / "aws-csm"
+            collection_path = tool_root / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"
+            collection = json.loads(collection_path.read_text(encoding="utf-8"))
+            collection["member_files"].append("aws-csm.cvccboard.alex.json")
+            collection_path.write_text(json.dumps(collection, indent=2) + "\n", encoding="utf-8")
+            profile_path = tool_root / "aws-csm.cvccboard.alex.json"
+            _write_json(
+                profile_path,
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                        "single_user_email": "alex@example.com",
+                    },
+                    "smtp": {"forward_to_email": "ops@example.com"},
+                    "workflow": {"lifecycle_state": "draft"},
+                    "verification": {"portal_state": "not_started"},
+                    "provider": {"send_as_provider_status": "not_started"},
+                    "inbound": {"receive_state": "receive_unconfigured"},
+                },
+            )
+
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime._onboarding_cloud",
+                return_value=_RouteSyncCloudSuccess(),
+            ):
+                _, action_result = _apply_action(
+                    portal_scope=PortalScope(scope_id="fnd"),
+                    surface_query={"view": "domains", "domain": "cvccboard.org", "profile": "aws-csm.cvccboard.alex", "section": "users"},
+                    action_kind="delete_profile",
+                    action_payload={"profile_id": "aws-csm.cvccboard.alex"},
+                    private_dir=private_dir,
+                    audit_storage_file=None,
+                )
+
+            collection = json.loads(collection_path.read_text(encoding="utf-8"))
+            deleted = not profile_path.exists()
+
+        self.assertEqual(action_result["status"], "accepted")
+        self.assertTrue(deleted)
+        self.assertNotIn("aws-csm.cvccboard.alex.json", collection["member_files"])
+
     def test_refresh_domain_status_reconciles_stale_domain_state(self) -> None:
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir)
