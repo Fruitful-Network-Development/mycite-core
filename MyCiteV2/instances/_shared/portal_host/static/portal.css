@@ -6272,6 +6272,16 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 }
 
 .cts-gis-interface {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.cts-gis-interface__tabPanel {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
   min-height: 0;
 }
 
@@ -6326,6 +6336,7 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 }
 
 .cts-gis-interface__body {
+  grid-template-rows: minmax(0, 1fr);
   grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
   align-items: stretch;
   align-content: stretch;
@@ -6341,6 +6352,11 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.cts-gis-pane--garland {
+  width: 100%;
+  height: 100%;
 }
 
 .cts-gis-pane__header {
@@ -7153,9 +7169,11 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 
 .cts-gis-garlandSplit {
   display: grid;
-  grid-template-columns: minmax(0, 1.58fr) minmax(18rem, 0.94fr);
-  gap: 0.6rem;
-  min-height: 0;
+  grid-template-columns: minmax(0, 3fr) minmax(22rem, 2fr);
+  gap: 0.9rem;
+  min-height: clamp(30rem, 72vh, 64rem);
+  height: 100%;
+  align-items: stretch;
 }
 
 .cts-gis-garlandSplit__geospatial,
@@ -7214,8 +7232,10 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 
 .cts-gis-mapStage {
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 0.55rem;
   min-height: 0;
+  height: 100%;
 }
 
 .cts-gis-mapStage--empty {
@@ -7228,9 +7248,8 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 }
 
 .cts-gis-mapStage__frame {
-  min-height: 0;
   height: 100%;
-  min-height: clamp(16rem, 42vh, 34rem);
+  min-height: clamp(24rem, 58vh, 46rem);
   border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
   border-radius: 14px;
   overflow: hidden;
@@ -7251,6 +7270,7 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   fill: rgba(150, 186, 221, 0.5);
   stroke: rgba(70, 95, 122, 0.9);
   stroke-width: 2.1;
+  vector-effect: non-scaling-stroke;
 }
 
 .cts-gis-mapStage__shape.is-selected {
@@ -7294,6 +7314,70 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   color: var(--ink2, #667068);
 }
 
+.cts-gis-collectionCards {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.cts-gis-collectionCard {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.72rem 0.78rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 94%, #fff 6%);
+}
+
+.cts-gis-collectionCard.is-active {
+  border-color: color-mix(in srgb, var(--accent, #0b6b46) 52%, var(--line, #c8cec8) 48%);
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 72%, #fff 28%);
+}
+
+.cts-gis-collectionCard__header {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.cts-gis-collectionCard__meta,
+.cts-gis-collectionCard__detail {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--ink2, #667068);
+  overflow-wrap: anywhere;
+}
+
+.cts-gis-collectionCard__detail--warn {
+  color: color-mix(in srgb, #8a3b2f 72%, var(--ink2, #667068) 28%);
+}
+
+.cts-gis-collectionCard__badges,
+.cts-gis-collectionCard__members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.cts-gis-collectionBadge,
+.cts-gis-collectionMember {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0.18rem 0.42rem;
+  border: 1px solid color-mix(in srgb, var(--line, #c8cec8) 88%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper2, #eef1e8) 46%, #fff 54%);
+  font-size: 0.7rem;
+  color: var(--ink2, #667068);
+}
+
+.cts-gis-collectionMember {
+  color: var(--ink, #243026);
+}
+
+.cts-gis-collectionMember--overflow {
+  color: var(--ink2, #667068);
+}
+
 .cts-gis-profileHierarchy {
   display: grid;
   gap: 0.38rem;
@@ -7322,6 +7406,17 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .cts-gis-profileSummary--active {
   border-color: color-mix(in srgb, var(--accent, #0b6b46) 58%, var(--line, #c8cec8) 42%);
   background: color-mix(in srgb, var(--paper2, #eef1e8) 72%, #fff 28%);
+}
+
+@media (max-width: 1180px) {
+  .cts-gis-garlandSplit {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .cts-gis-mapStage__frame {
+    min-height: clamp(20rem, 48vh, 34rem);
+  }
 }
 
 .cts-gis-profileHierarchy__label {

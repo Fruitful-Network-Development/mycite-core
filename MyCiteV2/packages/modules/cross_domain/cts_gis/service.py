@@ -354,6 +354,126 @@ def _document_district_timeframe_tokens(document: DatumRecognitionDocument) -> l
     return sorted(tokens)
 
 
+def _precinct_overlay_scope_node_id(attention_node_id: str) -> str:
+    attention_parts = _address_tuple(attention_node_id)
+    if len(attention_parts) == 4 and tuple(attention_parts[:3]) == (3, 2, 3):
+        return f"247-{attention_parts[3]}"
+    if len(attention_parts) == 5 and tuple(attention_parts[:3]) == (3, 2, 3):
+        return f"247-{attention_parts[3]}-{attention_parts[4]}"
+    return ""
+
+
+def _district_collection_label(timeframe_token: object) -> str:
+    token = _as_text(timeframe_token).lower().replace("-", "_")
+    if not token:
+        return "District precinct collection"
+
+    parts = [part for part in token.split("_") if part]
+    district_number = ""
+    district_index = -1
+    district_consumed = False
+    for index, part in enumerate(parts):
+        if part == "district" and index + 1 < len(parts) and parts[index + 1].isdigit():
+            district_index = index
+            district_number = parts[index + 1]
+            district_consumed = True
+            break
+        if part.startswith("district") and part[len("district") :].isdigit():
+            district_index = index
+            district_number = part[len("district") :]
+            district_consumed = False
+            break
+
+    timeframe_parts: list[str] = []
+    for index, part in enumerate(parts):
+        if index == district_index:
+            continue
+        if district_consumed and district_index >= 0 and index == district_index + 1:
+            continue
+        if part in {"time", "frame"}:
+            continue
+        timeframe_parts.append(part)
+
+    label_parts: list[str] = []
+    if district_number:
+        label_parts.append(f"District {district_number}")
+    if timeframe_parts:
+        label_parts.append(" ".join(part.capitalize() if not part.isdigit() else part for part in timeframe_parts))
+    return " · ".join(label_parts) or _as_text(timeframe_token)
+
+
+def _district_precinct_collection_summaries(
+    *,
+    attention_node_id: str,
+    time_context_payload: dict[str, Any],
+    timeframe_tokens: list[str],
+    overlay_requested: bool,
+    overlay_active: bool,
+    precinct_profiles: list[dict[str, Any]],
+    gate_failures: list[str],
+    chronological_anchor_present: bool,
+) -> list[dict[str, Any]]:
+    unique_timeframes = sorted({_as_text(token).lower() for token in timeframe_tokens if _as_text(token)})
+    time_token = _as_text(time_context_payload.get("value_token"))
+    scope_node_id = _precinct_overlay_scope_node_id(attention_node_id)
+    supported_attention_lineage = _precinct_overlay_attention_supported(attention_node_id)
+    scope_kind = "state" if len(_address_tuple(attention_node_id)) == 4 else "county" if len(_address_tuple(attention_node_id)) == 5 else ""
+
+    if not unique_timeframes and not time_token:
+        return []
+    if not unique_timeframes and time_token:
+        unique_timeframes = [time_token.lower()]
+
+    member_node_ids = [
+        _as_text(profile.get("node_id"))
+        for profile in precinct_profiles
+        if _as_text(profile.get("node_id"))
+    ]
+    member_labels = [
+        _as_text(profile.get("profile_label")) or _as_text(profile.get("node_id"))
+        for profile in precinct_profiles
+        if _as_text(profile.get("profile_label")) or _as_text(profile.get("node_id"))
+    ]
+    collection_summaries: list[dict[str, Any]] = []
+    for timeframe_token in unique_timeframes:
+        timeframe_match = _time_context_in_timeframe(
+            time_token=time_token,
+            timeframe_tokens=[timeframe_token],
+        )
+        collection_overlay_active = bool(overlay_active and timeframe_match)
+        if collection_overlay_active:
+            summary_state = "loaded"
+        elif overlay_requested and gate_failures:
+            summary_state = "blocked"
+        else:
+            summary_state = "deferred"
+        collection_summaries.append(
+            {
+                "collection_id": timeframe_token or "district_precinct_collection",
+                "label": _district_collection_label(timeframe_token),
+                "timeframe_token": timeframe_token,
+                "time_context_active": bool(time_context_payload.get("active")),
+                "timeframe_match": timeframe_match,
+                "overlay_requested": bool(overlay_requested),
+                "overlay_active": collection_overlay_active,
+                "overlay_toggle_available": bool(
+                    supported_attention_lineage
+                    and chronological_anchor_present
+                    and time_context_payload.get("active")
+                ),
+                "scope_node_id": scope_node_id,
+                "scope_kind": scope_kind,
+                "precinct_count": len(member_node_ids) if collection_overlay_active else 0,
+                "precinct_count_known": bool(collection_overlay_active),
+                "member_node_ids": list(member_node_ids) if collection_overlay_active else [],
+                "member_labels": list(member_labels) if collection_overlay_active else [],
+                "gate_failures": list(gate_failures),
+                "summary_state": summary_state,
+            }
+        )
+    return collection_summaries
+
+
 def _descendants_intention_token(attention_node_id: str) -> str:
     return _contract_descendants_intention_token(attention_node_id)
 
@@ -2410,6 +2530,9 @@ class CtsGisReadOnlyService:
                         "time_token": _as_text(time_context_payload.get("value_token")),
                         "timeframe_tokens": [],
                         "timeframe_match": False,
+                        "scope_node_id": "",
+                        "collection_count": 0,
+                        "collections": [],
                         "gate_failures": [],
                     },
                 },
@@ -2482,19 +2605,29 @@ class CtsGisReadOnlyService:
             precinct_district_overlay_enabled_flag
             and not precinct_gate_failures
         )
+        precinct_overlay_profiles: list[dict[str, Any]] = []
         if precinct_overlay_active:
             overlay_seen = {
                 _as_text(profile.get("node_id"))
                 for profile in overlay_profiles
                 if _as_text(profile.get("node_id"))
             }
-            overlay_profiles.extend(
-                _matching_precinct_profiles(
-                    profile_index=profile_index,
-                    attention_node_id=attention_node_id_text,
-                    exclude_node_ids=overlay_seen,
-                )
+            precinct_overlay_profiles = _matching_precinct_profiles(
+                profile_index=profile_index,
+                attention_node_id=attention_node_id_text,
+                exclude_node_ids=overlay_seen,
             )
+            overlay_profiles.extend(precinct_overlay_profiles)
+        district_collection_summaries = _district_precinct_collection_summaries(
+            attention_node_id=attention_node_id_text,
+            time_context_payload=time_context_payload,
+            timeframe_tokens=district_timeframes,
+            overlay_requested=precinct_district_overlay_enabled_flag,
+            overlay_active=precinct_overlay_active,
+            precinct_profiles=precinct_overlay_profiles,
+            gate_failures=precinct_gate_failures,
+            chronological_anchor_present=chronological_anchor_present,
+        )
         projected_profiles: list[dict[str, Any]] = []
         projected_seen: set[str] = set()
         if attention_profile is not None:
@@ -2911,6 +3044,9 @@ class CtsGisReadOnlyService:
                     "time_token": time_context_token,
                     "timeframe_tokens": district_timeframes,
                     "timeframe_match": district_timeframe_match,
+                    "scope_node_id": _precinct_overlay_scope_node_id(attention_node_id_text),
+                    "collection_count": len(district_collection_summaries),
+                    "collections": district_collection_summaries,
                     "gate_failures": list(precinct_gate_failures),
                 },
             },

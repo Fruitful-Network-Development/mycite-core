@@ -1415,6 +1415,11 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertNotIn("247-17-25-1", timed_feature_ids)
             profile_projection = timed_bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"]
             self.assertTrue(bool((profile_projection.get("district_overlay_toggle") or {}).get("enabled")))
+            collections = list(profile_projection.get("district_precinct_collections") or [])
+            self.assertEqual(len(collections), 1)
+            self.assertEqual(collections[0]["label"], "District 31 · 23 Present")
+            self.assertEqual(collections[0]["summary_state"], "loaded")
+            self.assertIn("247-17-77-1", list(collections[0]["member_node_ids"] or []))
 
     def test_cts_gis_runtime_prefers_reference_geometry_when_projection_parity_warnings_exist(self) -> None:
         with TemporaryDirectory() as tmp:

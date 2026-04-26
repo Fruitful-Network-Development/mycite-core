@@ -696,6 +696,45 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
             surface["warnings"],
         )
 
+    def test_district_collection_summary_stays_deferred_until_overlay_is_enabled(self) -> None:
+        county = _simple_polygon_document(
+            document_name="sc.synthetic.3-2-3-17-77.json",
+            relative_path="sandbox/cts-gis/sources/sc.synthetic.3-2-3-17-77.json",
+            node_id="3-2-3-17-77",
+            title="synthetic_county",
+            boundary_labels=["county_boundary", "24_present-district_31"],
+            anchor_rows=_anchor_rows_with_chronology(),
+        )
+        store = _FakeDatumStore(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(county,),
+                source_files={},
+                readiness_status={"authoritative_catalog": "loaded", "anthology_status": "loaded"},
+            )
+        )
+
+        surface = CtsGisReadOnlyService(store).read_surface(
+            "fnd",
+            mediation_state={
+                "attention_node_id": "3-2-3-17-77",
+                "intention_token": "self",
+                "time": {"value": "24_present-district_31", "family": "district-time"},
+            },
+        )
+
+        district_precincts = surface["contextual_references"]["district_precincts"]
+        collections = list(district_precincts.get("collections") or [])
+
+        self.assertFalse(district_precincts["overlay_active"])
+        self.assertEqual(district_precincts["collection_count"], 1)
+        self.assertEqual(collections[0]["summary_state"], "deferred")
+        self.assertEqual(collections[0]["timeframe_token"], "24_present-district_31")
+        self.assertEqual(collections[0]["label"], "District 31 · 24 Present")
+        self.assertFalse(collections[0]["precinct_count_known"])
+        self.assertEqual(collections[0]["member_node_ids"], [])
+        self.assertEqual(collections[0]["gate_failures"], [])
+
     def test_precinct_overlay_activates_when_attention_timeframe_and_anchor_gates_match(self) -> None:
         county = _simple_polygon_document(
             document_name="sc.synthetic.3-2-3-17-77.json",
@@ -748,6 +787,16 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         self.assertTrue(district_precincts["chronological_anchor_present"])
         self.assertTrue(district_precincts["timeframe_match"])
         self.assertEqual(district_precincts["gate_failures"], [])
+        self.assertEqual(district_precincts["collection_count"], 1)
+        collections = list(district_precincts.get("collections") or [])
+        self.assertEqual(collections[0]["summary_state"], "loaded")
+        self.assertEqual(collections[0]["label"], "District 31 · 24 Present")
+        self.assertEqual(collections[0]["precinct_count"], 2)
+        self.assertTrue(collections[0]["precinct_count_known"])
+        self.assertEqual(
+            collections[0]["member_node_ids"],
+            ["247-17-77-1", "247-17-77-2"],
+        )
         self.assertIn("247-17-77-1", render_nodes)
         self.assertIn("247-17-77-2", render_nodes)
         self.assertEqual(surface["render_set_summary"]["render_profile_count"], 3)

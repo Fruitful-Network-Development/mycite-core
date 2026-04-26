@@ -732,27 +732,44 @@
     ];
   }
 
-  function projectPoint(point, bounds, width, height, pad) {
-    if (!Array.isArray(point) || point.length < 2) return null;
+  function buildProjectionViewport(bounds, width, height, pad) {
     var minX = Number(bounds[0] || 0);
     var minY = Number(bounds[1] || 0);
     var maxX = Number(bounds[2] || minX + 1);
     var maxY = Number(bounds[3] || minY + 1);
     var safeWidth = Math.max(0.0001, maxX - minX);
     var safeHeight = Math.max(0.0001, maxY - minY);
-    var usableWidth = width - pad * 2;
-    var usableHeight = height - pad * 2;
+    var usableWidth = Math.max(1, width - pad * 2);
+    var usableHeight = Math.max(1, height - pad * 2);
+    var scale = Math.min(usableWidth / safeWidth, usableHeight / safeHeight);
+    if (!Number.isFinite(scale) || scale <= 0) {
+      scale = 1;
+    }
+    return {
+      minX: minX,
+      minY: minY,
+      width: width,
+      height: height,
+      scale: scale,
+      offsetX: pad + (usableWidth - safeWidth * scale) / 2,
+      offsetY: pad + (usableHeight - safeHeight * scale) / 2,
+    };
+  }
+
+  function projectPoint(point, viewport) {
+    if (!Array.isArray(point) || point.length < 2) return null;
+    var stage = viewport || {};
     var px = Number(point[0]);
     var py = Number(point[1]);
     if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
-    var x = pad + ((px - minX) / safeWidth) * usableWidth;
-    var y = height - pad - ((py - minY) / safeHeight) * usableHeight;
+    var x = Number(stage.offsetX || 0) + (px - Number(stage.minX || 0)) * Number(stage.scale || 1);
+    var y = Number(stage.height || 0) - Number(stage.offsetY || 0) - (py - Number(stage.minY || 0)) * Number(stage.scale || 1);
     return [x, y];
   }
 
-  function ringPathData(ring, bounds, width, height, pad) {
+  function ringPathData(ring, viewport) {
     var projected = (ring || []).map(function (point) {
-      var xy = projectPoint(point, bounds, width, height, pad);
+      var xy = projectPoint(point, viewport);
       if (!xy) return "";
       return String(xy[0]) + " " + String(xy[1]);
     }).filter(Boolean);
@@ -760,12 +777,12 @@
     return "M " + projected.join(" L ") + " Z";
   }
 
-  function polygonPathData(polygons, bounds, width, height, pad) {
+  function polygonPathData(polygons, viewport) {
     return (polygons || [])
       .map(function (polygon) {
         return (polygon || [])
           .map(function (ring) {
-            return ringPathData(ring, bounds, width, height, pad);
+            return ringPathData(ring, viewport);
           })
           .filter(Boolean)
           .join(" ");
@@ -774,12 +791,12 @@
       .join(" ");
   }
 
-  function renderFeatureShape(feature, bounds, width, height, pad) {
+  function renderFeatureShape(feature, viewport) {
     var geometry = (feature || {}).geometry || {};
     var featureId = escapeHtml(feature.feature_id || feature.id || "");
     var className = "cts-gis-mapStage__shape" + (feature.selected ? " is-selected" : "");
     if (geometry.type === "Point") {
-      var point = projectPoint(geometry.coordinates || [], bounds, width, height, pad);
+      var point = projectPoint(geometry.coordinates || [], viewport);
       if (!point) return "";
       return (
         '<circle class="' +
@@ -798,10 +815,7 @@
     if (geometry.type === "Polygon" || geometry.type === "MultiPolygon") {
       var pathData = polygonPathData(
         geometry.type === "Polygon" ? [geometry.coordinates || []] : geometry.coordinates || [],
-        bounds,
-        width,
-        height,
-        pad
+        viewport
       );
       if (!pathData) return "";
       return (
@@ -828,9 +842,9 @@
         "</p></div>"
       );
     }
-    var width = 560;
-    var height = 360;
-    var pad = 24;
+    var width = 960;
+    var height = 720;
+    var pad = 36;
     var bounds = normalizeFeatureBounds((geospatialProjection || {}).collection_bounds || collection.bounds || [], features);
     var focusBounds = normalizeFeatureBounds((geospatialProjection || {}).focus_bounds || [], []);
     var selectedBounds = normalizeFeatureBounds((geospatialProjection || {}).selected_feature_bounds || [], []);
@@ -853,6 +867,7 @@
     ) {
       bounds = selectedBounds;
     }
+    var viewport = buildProjectionViewport(bounds, width, height, pad);
     var selectedFeatureId = String((geospatialProjection || {}).selected_feature_id || "");
     var selectedFeature = features.find(function (feature) {
       if (selectedFeatureId && String(feature.id || feature.feature_id || "") === selectedFeatureId) return true;
@@ -865,7 +880,7 @@
       String(width) +
       " " +
       String(height) +
-      '" role="img" aria-label="CTS-GIS geospatial projection">' +
+      '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="CTS-GIS geospatial projection">' +
       '<rect class="cts-gis-mapStage__backdrop" x="0" y="0" width="' +
       String(width) +
       '" height="' +
@@ -873,7 +888,7 @@
       '"></rect>' +
       features
         .map(function (feature) {
-          return renderFeatureShape(feature, bounds, width, height, pad);
+          return renderFeatureShape(feature, viewport);
         })
         .join("") +
       "</svg></div>" +
@@ -909,6 +924,81 @@
             '<span class="cts-gis-profileHierarchy__meta">' +
             escapeHtml(entry.node_id || "") +
             "</span></button>"
+          );
+        })
+        .join("") +
+      "</div>"
+    );
+  }
+
+  function renderDistrictPrecinctCollections(collections) {
+    if (!collections || !collections.length) {
+      return '<p class="ide-controlpanel__empty">No district precinct collections are defined for this profile.</p>';
+    }
+    return (
+      '<div class="cts-gis-collectionCards">' +
+      collections
+        .map(function (collection) {
+          var previewSource = (collection.member_labels && collection.member_labels.length)
+            ? collection.member_labels
+            : (collection.member_node_ids || []);
+          var previewItems = previewSource.slice(0, 8);
+          var overflowCount = Math.max(previewSource.length - previewItems.length, 0);
+          var statusText = collection.summary_state || (collection.overlay_active ? "loaded" : "deferred");
+          var countText = collection.precinct_count_known
+            ? String(collection.precinct_count || 0) + " precincts"
+            : "members deferred";
+          return (
+            '<article class="cts-gis-collectionCard' +
+            (collection.overlay_active ? " is-active" : "") +
+            '">' +
+            '<div class="cts-gis-collectionCard__header">' +
+            "<strong>" +
+            escapeHtml(collection.label || collection.timeframe_token || "District precinct collection") +
+            "</strong>" +
+            '<span class="cts-gis-collectionCard__meta">' +
+            escapeHtml(collection.timeframe_token || "") +
+            "</span></div>" +
+            '<div class="cts-gis-collectionCard__badges">' +
+            '<span class="cts-gis-collectionBadge">' +
+            escapeHtml(statusText) +
+            "</span>" +
+            (collection.scope_kind
+              ? '<span class="cts-gis-collectionBadge">' + escapeHtml(collection.scope_kind) + "</span>"
+              : "") +
+            '<span class="cts-gis-collectionBadge">' +
+            escapeHtml(collection.timeframe_match ? "timeframe match" : "timeframe scoped") +
+            "</span>" +
+            '<span class="cts-gis-collectionBadge">' +
+            escapeHtml(countText) +
+            "</span></div>" +
+            '<p class="cts-gis-collectionCard__detail">' +
+            escapeHtml(
+              collection.precinct_count_known
+                ? "Precinct members were loaded from the canonical precinct cohort overlay."
+                : "Compiled precinct members stay deferred until overlay is enabled so Garland keeps the load light."
+            ) +
+            "</p>" +
+            (previewItems.length
+              ? '<div class="cts-gis-collectionCard__members">' +
+                previewItems
+                  .map(function (item) {
+                    return '<span class="cts-gis-collectionMember">' + escapeHtml(item || "") + "</span>";
+                  })
+                  .join("") +
+                (overflowCount > 0
+                  ? '<span class="cts-gis-collectionMember cts-gis-collectionMember--overflow">+' +
+                    escapeHtml(String(overflowCount)) +
+                    " more</span>"
+                  : "") +
+                "</div>"
+              : "") +
+            ((collection.gate_failures || []).length && statusText === "blocked"
+              ? '<p class="cts-gis-collectionCard__detail cts-gis-collectionCard__detail--warn">blocked: ' +
+                escapeHtml((collection.gate_failures || []).join(", ")) +
+                "</p>"
+              : "") +
+            "</article>"
           );
         })
         .join("") +
@@ -1032,6 +1122,7 @@
       body.garland_split_projection.profile_projection = Object.assign(
         {
           has_profile_state: false,
+          district_precinct_collections: [],
         },
         body.garland_split_projection.profile_projection || {}
       );
@@ -1135,6 +1226,7 @@
             child_count: 0,
           },
           hierarchy: [],
+          district_precinct_collections: [],
           summary_rows: garland.summary_rows || [],
           warnings: garland.warnings || [],
           empty_message: "No projected profile is available until the active path resolves real CTS-GIS evidence.",
@@ -1518,6 +1610,7 @@
     var geospatialProjection = garlandSplit.geospatial_projection || {};
     var profileProjection = garlandSplit.profile_projection || {};
     var districtToggle = profileProjection.district_overlay_toggle || {};
+    var districtCollections = profileProjection.district_precinct_collections || [];
     var hasDistrictToggleRequest = !!(
       (districtToggle.shell_request && districtToggle.shell_request.tool_state) ||
       districtToggle.action
@@ -1625,11 +1718,7 @@
         escapeHtml(districtToggle.overlay_active ? "overlay active" : "overlay inactive") +
         "</span>" +
         "</button>" +
-        ((districtToggle.timeframe_tokens || []).length
-          ? '<p class="cts-gis-mapCanvas__meta">timeframes: ' +
-            escapeHtml((districtToggle.timeframe_tokens || []).join(", ")) +
-            "</p>"
-          : "") +
+        renderDistrictPrecinctCollections(districtCollections) +
         "</section>" +
         '<section class="cts-gis-garlandSplit__profileBlock"><h5>Hierarchy</h5>' +
         renderProfileHierarchy(profileProjection.hierarchy || []) +
