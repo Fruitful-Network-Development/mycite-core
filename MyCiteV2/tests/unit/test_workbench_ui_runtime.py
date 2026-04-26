@@ -165,8 +165,8 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
 
             control_panel = envelope["shell_composition"]["regions"]["control_panel"]
             self.assertEqual(
-                [item["label"] for item in control_panel["context_items"][:5]],
-                ["Document", "Version", "Selected Row", "Row Identity", "Document Sort"],
+                [item["label"] for item in control_panel["context_items"][:6]],
+                ["Document", "Version", "Selected Row", "Row Identity", "Resolved Lens", "Document Sort"],
             )
             self.assertEqual(control_panel["surface_label"], "WORKBENCH UI")
 
@@ -666,6 +666,66 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertIn("raw_preview", [column["key"] for column in datum_grid["columns"]])
             self.assertNotIn("labels", [column["key"] for column in datum_grid["columns"]])
             self.assertNotIn("Source Metadata", inspector_titles)
+
+    def test_workbench_ui_supports_iteration_matrix_and_hyphae_identity_projection(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            public_dir = root / "public"
+            db_file = root / "authority.sqlite3"
+            (data_dir / "system").mkdir(parents=True)
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True)
+            public_dir.mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps({"1-1-1": [["1-1-1", "~", "ROOT"], ["root"]]}) + "\n",
+                encoding="utf-8",
+            )
+            source_rows = {row.datum_address: row.raw for row in self._cts_gis_authoritative_document().rows}
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.example.json").write_text(
+                json.dumps({"datum_addressing_abstraction_space": source_rows}) + "\n",
+                encoding="utf-8",
+            )
+            SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
+            )
+
+            bundle = build_portal_workbench_ui_surface_bundle(
+                portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
+                portal_domain="fruitfulnetworkdevelopment.com",
+                shell_state=None,
+                authority_db_file=db_file,
+                surface_query={
+                    "document": "sandbox:cts_gis:sc.example.json",
+                    "group": "layer_value_group_iteration",
+                    "row": "4-2-2",
+                },
+            )
+
+            workspace = bundle["surface_payload"]["workspace"]
+            datum_grid = workspace["datum_grid"]
+            selected_row = workspace["selected_row"]
+            inspector_titles = [section["title"] for section in bundle["inspector"]["sections"]]
+
+            self.assertEqual(datum_grid["group_mode"], "layer_value_group_iteration")
+            self.assertEqual([layer["title"] for layer in datum_grid["layers"]], ["Layer 4"])
+            self.assertEqual(
+                [group["title"] for group in datum_grid["layers"][0]["value_groups"]],
+                ["Value Group 2"],
+            )
+            self.assertEqual(
+                [cell["datum_address"] for cell in datum_grid["layers"][0]["value_groups"][0]["cells"]],
+                ["4-2-1", "4-2-2", "4-2-3"],
+            )
+            self.assertEqual(selected_row["resolved_lens"], "binary_text")
+            self.assertEqual(selected_row["display_value"], "BETA STREET")
+            self.assertEqual(selected_row["hyphae_policy"], "mos.hyphae_chain_v1")
+            self.assertIn("4-2-2", selected_row["hyphae_chain_addresses"])
+            self.assertIn("Lens Resolution", inspector_titles)
+            self.assertIn("Hyphae Identity", inspector_titles)
 
     def test_workbench_ui_runtime_projects_navigation_requests_for_documents_and_rows(self) -> None:
         with TemporaryDirectory() as temp_dir:

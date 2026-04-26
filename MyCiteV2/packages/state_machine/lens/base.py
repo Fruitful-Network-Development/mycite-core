@@ -97,3 +97,49 @@ class SecretReferenceLens(TrimmedStringLens):
         if "password" in value.lower():
             return ("secret_reference_must_not_contain_secret_value",)
         return ()
+
+
+class NumericHyphenLens(TrimmedStringLens):
+    lens_id = "numeric_hyphen"
+
+    def validate_display(self, display_value: Any) -> tuple[str, ...]:
+        value = self.encode(display_value)
+        if not value:
+            return ("numeric_hyphen_required",)
+        parts = value.split("-")
+        if any(not part.isdigit() for part in parts):
+            return ("numeric_hyphen_invalid",)
+        return ()
+
+
+class BinaryTextLens(TrimmedStringLens):
+    lens_id = "binary_text"
+
+    def decode(self, canonical_value: Any) -> str:
+        token = _as_text(canonical_value)
+        if not token:
+            return ""
+        if any(bit not in {"0", "1"} for bit in token):
+            return token
+        groups = [token[index : index + 8] for index in range(0, len(token), 8)]
+        chars: list[str] = []
+        for group in groups:
+            if len(group) < 8:
+                break
+            value = int(group, 2)
+            if value == 0:
+                break
+            if 32 <= value <= 126:
+                chars.append(chr(value))
+                continue
+            return f"{len(token)} bits"
+        decoded = "".join(chars).strip()
+        return decoded or f"{len(token)} bits"
+
+    def validate_display(self, display_value: Any) -> tuple[str, ...]:
+        value = self.encode(display_value)
+        if not value:
+            return ("binary_text_required",)
+        if any(bit not in {"0", "1"} for bit in value):
+            return ("binary_text_invalid",)
+        return ()

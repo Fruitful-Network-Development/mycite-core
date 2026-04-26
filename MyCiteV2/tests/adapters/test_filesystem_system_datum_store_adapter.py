@@ -68,7 +68,7 @@ class FilesystemSystemDatumStoreAdapterTests(unittest.TestCase):
             self.assertFalse(payload["ok"])
             self.assertEqual(payload["row_count"], 0)
             self.assertEqual(payload["materialization_status"]["canonical_source"], "missing")
-            self.assertEqual(payload["source_files"]["anthology"], str(data_dir / "system" / "anthology.json"))
+            self.assertEqual(payload["source_files"]["anthology"], "system/anthology.json")
 
     def test_reads_authoritative_catalog_with_sandbox_source_and_anchor_rows(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -121,8 +121,17 @@ class FilesystemSystemDatumStoreAdapterTests(unittest.TestCase):
             self.assertEqual(payload["document_count"], 2)
             self.assertEqual(sandbox_document["tool_id"], "cts_gis")
             self.assertEqual(sandbox_document["anchor_document_name"], "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json")
+            self.assertEqual(
+                sandbox_document["anchor_document_path"],
+                "sandbox/cts-gis/tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json",
+            )
             self.assertEqual(sandbox_document["anchor_rows"][1]["datum_address"], "3-1-3")
             self.assertEqual(sandbox_document["rows"][0]["raw"][0][4], "HERE")
+            self.assertEqual(payload["source_files"]["anthology"], "system/anthology.json")
+            self.assertEqual(
+                payload["source_files"]["sandbox_source_documents"],
+                ["sandbox/cts-gis/sources/sc.example.json"],
+            )
             self.assertEqual(payload["readiness_status"]["derived_materialization"], "partial")
             self.assertIn(
                 "No derived payload cache JSON files were found under data/payloads/cache.",

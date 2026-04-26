@@ -48,6 +48,45 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
     def _scope(self) -> PortalScope:
         return PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection"))
 
+    def test_production_strict_hydrates_requested_state_overlay_projection_from_authoritative_surface(self) -> None:
+        data_dir = REPO_ROOT / "deployed" / "fnd" / "data"
+        private_dir = REPO_ROOT / "deployed" / "fnd" / "private"
+        compiled_path = compiled_artifact_path(data_dir, portal_scope_id="fnd")
+        if compiled_path is None or not compiled_path.exists():
+            self.skipTest("deployed CTS-GIS compiled artifact is unavailable")
+
+        scope = self._scope()
+        shell_state = initial_portal_shell_state(surface_id=CTS_GIS_TOOL_SURFACE_ID, portal_scope=scope)
+        bundle = build_portal_cts_gis_surface_bundle(
+            portal_scope=scope,
+            shell_state=shell_state,
+            data_dir=data_dir,
+            private_dir=private_dir,
+            request_payload={
+                "runtime_mode": "production_strict",
+                "tool_state": {
+                    "active_path": ["3", "3-2", "3-2-3", "3-2-3-17"],
+                    "selected_node_id": "3-2-3-17",
+                    "aitas": {"time_directive": "23_present-district_31"},
+                    "source": {"precinct_district_overlay_enabled": True},
+                },
+            },
+        )
+
+        garland = bundle["inspector"]["interface_body"]["garland_split_projection"]
+        geo = garland["geospatial_projection"]
+        profile = garland["profile_projection"]
+        toggle = dict(profile.get("district_overlay_toggle") or {})
+
+        self.assertEqual(profile["active_profile"]["node_id"], "3-2-3-17")
+        self.assertTrue(toggle.get("enabled"))
+        self.assertTrue(toggle.get("overlay_active"))
+        self.assertEqual(toggle.get("time_token"), "23_present-district_31")
+        self.assertEqual(geo["projection_state"], "projectable_degraded")
+        feature_ids = [feature["node_id"] for feature in geo["features"]]
+        self.assertIn("3-2-3-17", feature_ids)
+        self.assertIn("247-17-77-1", feature_ids)
+
     def test_production_strict_fails_fast_when_compiled_artifact_missing(self) -> None:
         with TemporaryDirectory() as tmp:
             scope = self._scope()

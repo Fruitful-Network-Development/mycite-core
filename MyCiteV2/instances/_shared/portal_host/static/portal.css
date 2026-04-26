@@ -3071,14 +3071,20 @@ body.is-modal-open {
   color: #96a0a1;
 }
 
-.ide-controlpanel__tabs {
+.ide-controlpanel__tabs,
+.v2-surfaceTabs {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   padding: 10px 10px 0;
 }
 
-.ide-controlpanel__tab {
+.v2-surfaceTabs {
+  padding: 0 0 10px;
+}
+
+.ide-controlpanel__tab,
+.v2-surfaceTabs__tab {
   display: inline-flex;
   align-items: center;
   text-decoration: none;
@@ -3089,17 +3095,25 @@ body.is-modal-open {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.03em;
+  background: transparent;
+  cursor: pointer;
 }
 
-.ide-controlpanel__tab:hover {
+.ide-controlpanel__tab:hover,
+.v2-surfaceTabs__tab:hover {
   border-color: rgba(120, 205, 175, 0.38);
   color: #fff;
 }
 
-.ide-controlpanel__tab.is-active {
+.ide-controlpanel__tab.is-active,
+.v2-surfaceTabs__tab.is-active {
   border-color: rgba(120, 205, 175, 0.56);
   background: rgba(120, 205, 175, 0.14);
   color: #fff;
+}
+
+.v2-surfaceTabPanel[hidden] {
+  display: none !important;
 }
 
 .data-tool__systemContext {

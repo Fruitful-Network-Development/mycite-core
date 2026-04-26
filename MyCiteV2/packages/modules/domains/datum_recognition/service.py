@@ -621,6 +621,12 @@ def _recognize_document(document: AuthoritativeDatumDocument) -> DatumRecognitio
     )
 
 
+def recognize_authoritative_document(document: AuthoritativeDatumDocument) -> DatumRecognitionDocument:
+    """Public seam for presentation/runtime layers that need bounded datum recognition."""
+
+    return _recognize_document(document)
+
+
 def _select_document_id(documents: tuple[DatumRecognitionDocument, ...]) -> str:
     sandbox_with_diagnostics = [
         document

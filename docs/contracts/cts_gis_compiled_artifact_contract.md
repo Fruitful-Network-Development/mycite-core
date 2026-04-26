@@ -73,6 +73,12 @@ Compiled dropdown options are transport-safe and do not require raw authority re
 - `selected_feature`
 - `profile_summary`
 
+`projection_model` is the compiled default Garland snapshot seeded by
+`default_tool_state`. When a valid `production_strict` request selects a
+different node/time/overlay context, runtime may hydrate a request-specific
+projection view from authoritative CTS-GIS projection documents while retaining
+the compiled navigation/evidence baseline.
+
 ## Evidence Model
 
 `evidence_model` carries:

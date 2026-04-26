@@ -12,11 +12,25 @@ from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import _normalize
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 
 
+def _preferred_fnd_paths() -> tuple[Path, Path]:
+    candidates = [
+        Path("/srv/mycite-state/instances/fnd"),
+        REPO_ROOT / "deployed" / "fnd",
+    ]
+    for root in candidates:
+        data_dir = root / "data"
+        private_dir = root / "private"
+        if data_dir.exists():
+            return data_dir, private_dir
+    return candidates[0] / "data", candidates[0] / "private"
+
+
 def _cts_gis_interface_body(request_payload: dict) -> dict:
+    data_dir, private_dir = _preferred_fnd_paths()
     envelope = run_portal_cts_gis(
         request_payload,
-        data_dir=str(REPO_ROOT / "deployed" / "fnd" / "data"),
-        private_dir=str(REPO_ROOT / "deployed" / "fnd" / "private"),
+        data_dir=str(data_dir),
+        private_dir=str(private_dir),
         tool_exposure_policy=None,
         portal_instance_id="fnd",
         portal_domain="fruitfulnetworkdevelopment.com",
@@ -100,6 +114,12 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
         profile_projection = dict(garland.get("profile_projection") or {})
         active_profile = dict(profile_projection.get("active_profile") or {})
 
+        self.assertEqual(interface_body.get("tab_host"), "shared_interface_tabs")
+        self.assertEqual(interface_body.get("default_tab_id"), "diktataograph")
+        self.assertEqual(
+            [tab.get("id") for tab in list(interface_body.get("tabs") or [])],
+            ["diktataograph", "garland"],
+        )
         self.assertEqual(navigation.get("decode_state"), "ready")
         self.assertEqual(navigation.get("active_node_id"), "3-2-3-17")
         self.assertEqual(

@@ -4,7 +4,7 @@ manifest:
   id: "CONTEXTUAL-PLANNING-SYSTEM-2026-04-23"
   title: "Plans/Audits/Reports contextual operating system"
   lifecycle: "active"
-  last_reviewed: "2026-04-25"
+  last_reviewed: "2026-04-26"
   canonical_operating_doc: "docs/plans/planning_audit_operating_system.md"
   canonical_task_board: "docs/plans/contextual_system_task_board.yaml"
   delegation_protocol:
@@ -34,6 +34,7 @@ entrypoints:
     - "docs/plans/contextual_system_task_board.yaml"
     - "docs/plans/portal_nimm_aitas_unification_plan_2026-04-24.md"
     - "docs/plans/portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md"
+    - "docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md"
     - "docs/plans/aws_csm_operational_recovery_plan_2026-04-24.md"
     - "docs/plans/code_bloat_deep_audit_program_plan_2026-04-24.md"
     - "docs/plans/code_bloat_findings_execution_plan_2026-04-25.md"
@@ -66,6 +67,7 @@ entrypoints:
     - "docs/audits/reports/mos_program_closure_report_2026-04-21.md"
     - "docs/audits/reports/aws_csm_operational_recovery_audit_report_2026-04-24.md"
     - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
+    - "docs/audits/reports/mos_runtime_authority_and_access_reality_report_2026-04-21.md"
 
 program_streams:
   - id: "STREAM-REFINEMENT"
@@ -126,8 +128,8 @@ program_streams:
   - id: "STREAM-MOS-CLOSURE"
     title: "MOS post-closure bounded follow-on"
     canonical_plan: "docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md"
-    canonical_report: "docs/audits/reports/mos_documentation_supersession_audit_2026-04-21.md"
-    status: "completed"
+    canonical_report: "docs/audits/reports/mos_runtime_authority_and_access_reality_report_2026-04-21.md"
+    status: "active"
 
 consolidation:
   historical_superseded:

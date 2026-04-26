@@ -9,9 +9,12 @@ CTS-GIS now operates in two explicit runtime modes:
 
 `production_strict` is the default runtime expectation for stable tool operation.
 
-- Runtime input is a compiled artifact only.
+- Runtime requires a valid compiled artifact as the strict navigation/evidence baseline.
 - Runtime does not run raw authority reconstruction or fallback repair.
 - Runtime fails fast when compiled state is missing or invalid.
+- Runtime may hydrate request-time Garland projection state from authoritative
+  CTS-GIS projection documents when the active node/time/overlay context diverges
+  from the compiled artifact's default projection snapshot.
 - Hot-path payload emphasizes:
   - `navigation_model`
   - `projection_model`
