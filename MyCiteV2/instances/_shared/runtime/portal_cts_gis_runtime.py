@@ -2367,6 +2367,7 @@ def _empty_profile_projection(*, warnings: list[str] | None = None) -> dict[str,
             "document_id": "",
         },
         "hierarchy": [],
+        "district_precinct_collections": [],
         "summary_rows": [],
         "warnings": list(warnings or []),
         "district_overlay_toggle": {
@@ -2557,6 +2558,7 @@ def _build_cts_gis_structured_interface_body(
         ),
         "action": _shell_action("toggle_overlay", enabled=not district_overlay_enabled),
     }
+    district_precinct_collections = list(district_precincts.get("collections") or [])
     real_geospatial_projection, garland_swapped = _real_geospatial_projection(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -2602,6 +2604,7 @@ def _build_cts_gis_structured_interface_body(
                 "document_id": _as_text(attention_profile.get("document_id")),
             },
             "hierarchy": active_path_entries,
+            "district_precinct_collections": district_precinct_collections,
             "summary_rows": [
                 {"label": "Supporting document", "value": supporting_document_name},
                 {"label": "Projection document", "value": projection_document_name},
@@ -2627,6 +2630,7 @@ def _build_cts_gis_structured_interface_body(
                 "document_id": "",
             },
             "hierarchy": active_path_entries,
+            "district_precinct_collections": district_precinct_collections,
             "summary_rows": [
                 {"label": "Supporting document", "value": supporting_document_name},
                 {"label": "Projection document", "value": "—"},
@@ -2731,7 +2735,14 @@ def _service_surface_from_compiled_artifact(artifact: dict[str, Any]) -> dict[st
             "available_intentions": [],
             "selection_summary": {},
         },
-        "contextual_references": {"district_precincts": {"enabled": False, "overlay_active": False}},
+        "contextual_references": {
+            "district_precincts": {
+                "enabled": False,
+                "overlay_active": False,
+                "collections": [],
+                "collection_count": 0,
+            }
+        },
         "warnings": list(evidence_model.get("warnings") or []),
     }
 

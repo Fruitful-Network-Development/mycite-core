@@ -14,6 +14,11 @@ They are stored under:
 
 They are not yet the runtime Garland source contract. They exist so the precinct corpus can be materialized in repo-tracked datum form while the runtime integration catches up.
 
+When these files are promoted into runtime CTS-GIS sources, Garland is expected
+to consume them as precinct cohort members for `district_precinct_collections`
+on state/county profiles, grouped by timeframe/district context rather than as a
+replacement singular district-boundary profile.
+
 ## File Shape
 
 The staged files follow this naming pattern:

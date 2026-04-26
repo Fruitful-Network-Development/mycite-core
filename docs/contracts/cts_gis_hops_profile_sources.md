@@ -62,6 +62,14 @@ Decode-failure semantics:
   precinct cohort profiles from `sources/precincts/` that match the active
   state/county attention lineage (for example `247-<state>-<county>-*` under
   `3-2-3-<state>-<county>` attention).
+- Garland `profile_projection` may surface `district_precinct_collections[]`
+  summaries derived from the active state/county profile timeframe labels.
+- Those collection summaries are canonical profile context. They should be
+  renderable before precinct geometry is loaded, so Garland can defer large
+  precinct reads until the overlay is explicitly enabled.
+- When the overlay is enabled and the active timeframe matches, the collection
+  summary may attach loaded precinct member node ids/counts from the canonical
+  precinct cohort profiles.
 - SAMRAS root siblings such as `1..8` are multiple root options inside one
   decoded namespace, not separate namespaces.
 - Compiled `production_strict` validation therefore checks the active selected
