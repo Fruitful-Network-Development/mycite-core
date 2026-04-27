@@ -31,6 +31,9 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_workbench_renderers.js"
         ).read_text(encoding="utf-8")
         inspector_renderers_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_host.js"
+        ).read_text(encoding="utf-8")
+        cts_gis_inspector_source = (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
         ).read_text(encoding="utf-8")
 
@@ -44,6 +47,8 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertNotIn("surfacePayload.kind ===", workbench_renderers_source)
         self.assertNotIn("region.kind ===", inspector_renderers_source)
         self.assertNotIn("region.interface_body.kind ===", inspector_renderers_source)
+        self.assertNotIn("region.kind ===", cts_gis_inspector_source)
+        self.assertNotIn("region.interface_body.kind ===", cts_gis_inspector_source)
 
     def test_retired_split_artifacts_are_absent(self) -> None:
         retired_history_dir = REPO_ROOT / ("MyCite" + "V" + "1")
@@ -249,6 +254,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             "network_workspace",
             "workbench_renderers",
             "inspector_renderers",
+            "cts_gis_surface",
             "shell_core",
             "shell_watchdog",
         ]
@@ -262,14 +268,25 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             [entry["module_id"] for entry in manifest["scripts"]["shell_modules"]],
             expected_module_ids,
         )
+        startup_module_ids = [entry["module_id"] for entry in manifest["scripts"]["shell_modules"] if entry["load_phase"] == "startup_critical"]
+        deferred_module_ids = [entry["module_id"] for entry in manifest["scripts"]["shell_modules"] if entry["load_phase"] == "deferred"]
+        self.assertEqual(startup_module_ids, ["region_renderers", "tool_surface_adapter", "workbench_renderers", "inspector_renderers", "shell_core", "shell_watchdog"])
+        self.assertEqual(deferred_module_ids, ["aws_workspace", "system_workspace", "network_workspace", "cts_gis_surface"])
+        self.assertEqual(manifest["budget_policy"]["startup_module_ids"], startup_module_ids)
+        self.assertEqual(manifest["budget_policy"]["deferred_module_ids"], deferred_module_ids)
+        self.assertEqual(manifest["cache_policy"]["invalidation_mode"], "query_versioned_static_assets")
         system_module = manifest["scripts"]["shell_modules"][3]
         self.assertEqual(system_module["module_id"], "system_workspace")
+        self.assertEqual(system_module["load_phase"], "deferred")
+        self.assertEqual(system_module["loading_scope"], ["system.root"])
+        self.assertEqual(system_module["budget_group"], "deferred_tool_renderers")
         self.assertEqual(
             system_module["exports"],
             [{"global": "PortalSystemWorkspaceRenderer", "required_callables": ["render"]}],
         )
         tool_adapter_module = manifest["scripts"]["shell_modules"][1]
         self.assertEqual(tool_adapter_module["module_id"], "tool_surface_adapter")
+        self.assertEqual(tool_adapter_module["load_phase"], "startup_critical")
         self.assertIn(
             "resolveToolId",
             tool_adapter_module["exports"][0]["required_callables"],
@@ -280,7 +297,10 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("window.__MYCITE_V2_SHELL_MODULE_REGISTRY = buildModuleRegistry", loader_source)
         self.assertIn("window.__MYCITE_V2_REGISTER_SHELL_MODULE = registerShellModule", loader_source)
         self.assertIn("window.__MYCITE_V2_GET_SHELL_MODULE_DIAGNOSTICS = buildModuleDiagnostics", loader_source)
+        self.assertIn("window.__MYCITE_V2_LOAD_SHELL_MODULE = loadShellModule", loader_source)
         self.assertIn("window.__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT = resolveShellModuleExport", loader_source)
+        self.assertIn("startupScripts", loader_source)
+        self.assertIn("load_phase: asText(contract.load_phase)", loader_source)
         self.assertIn("invalid_registrations", loader_source)
         self.assertIn("script_load_order", loader_source)
         self.assertIn("v2_portal_tool_surface_adapter.js", PORTAL_SHELL_MODULE_FILES)
@@ -296,7 +316,8 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             "v2_portal_system_workspace.js": "system_workspace",
             "v2_portal_network_workspace.js": "network_workspace",
             "v2_portal_workbench_renderers.js": "workbench_renderers",
-            "v2_portal_inspector_renderers.js": "inspector_renderers",
+            "v2_portal_inspector_host.js": "inspector_renderers",
+            "v2_portal_inspector_renderers.js": "cts_gis_surface",
             "v2_portal_shell_core.js": "shell_core",
             "v2_portal_shell_watchdog.js": "shell_watchdog",
         }
@@ -305,14 +326,16 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             self.assertIn(f'__MYCITE_V2_REGISTER_SHELL_MODULE("{module_id}")', source, filename)
 
         workbench_source = (static_root / "v2_portal_workbench_renderers.js").read_text(encoding="utf-8")
-        inspector_source = (static_root / "v2_portal_inspector_renderers.js").read_text(encoding="utf-8")
+        inspector_source = (static_root / "v2_portal_inspector_host.js").read_text(encoding="utf-8")
         core_source = (static_root / "v2_portal_shell_core.js").read_text(encoding="utf-8")
 
         self.assertIn("resolveReflectiveWorkspaceModuleSpec", workbench_source)
         self.assertIn("resolveRegisteredModuleExport(spec.moduleId, spec.globalName)", workbench_source)
         self.assertIn("__MYCITE_V2_GET_SHELL_MODULE_DIAGNOSTICS", workbench_source)
+        self.assertIn("__MYCITE_V2_LOAD_SHELL_MODULE", workbench_source)
         self.assertNotIn("window.PortalSystemWorkspaceRenderer &&", workbench_source)
         self.assertIn("__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT", inspector_source)
+        self.assertIn("__MYCITE_V2_LOAD_SHELL_MODULE", inspector_source)
         self.assertIn("module_registration_missing", core_source)
         self.assertIn('resolveRegisteredModuleExport("region_renderers", "PortalShellRegionRenderers")', core_source)
 
@@ -413,7 +436,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
 
     def test_presentation_surface_host_dispatches_by_family_contract_without_top_level_kind_branching(self) -> None:
         static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
-        inspector_renderers = (static_root / "v2_portal_inspector_renderers.js").read_text(encoding="utf-8")
+        inspector_renderers = (static_root / "v2_portal_inspector_host.js").read_text(encoding="utf-8")
         tool_adapter = (static_root / "v2_portal_tool_surface_adapter.js").read_text(encoding="utf-8")
 
         self.assertIn("resolvePresentationSurfaceMode", inspector_renderers)

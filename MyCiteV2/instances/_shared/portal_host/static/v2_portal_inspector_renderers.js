@@ -1896,6 +1896,62 @@
       renderer.render(ctx, target, surfacePayload);
       return;
     }
+    if (typeof window.__MYCITE_V2_LOAD_SHELL_MODULE === "function" && asText(moduleSpec.moduleId)) {
+      adapter.renderWrappedSurface(
+        target,
+        {
+          state: "loading",
+          title: asText(moduleSpec.label) || region.title || "Interface Panel",
+          message: "Loading deferred interface renderer module…",
+          warnings: [],
+          readiness: {},
+          toolId: asText(moduleSpec.moduleId),
+        },
+        ""
+      );
+      window.__MYCITE_V2_LOAD_SHELL_MODULE(moduleSpec.moduleId, {
+        reason: "presentation_surface:" + (asText(moduleSpec.label) || asText(moduleSpec.moduleId) || "unknown"),
+      })
+        .then(function () {
+          var resolved = resolveRegisteredModuleExport(moduleSpec.moduleId, moduleSpec.globalName);
+          if (resolved && typeof resolved.render === "function") {
+            resolved.render(ctx, target, surfacePayload);
+            return;
+          }
+          adapter.renderWrappedSurface(
+            target,
+            adapter.resolveSurfaceState({
+              region: region,
+              surfacePayload: surfacePayload,
+              title: asText(moduleSpec.label) || region.title || "Interface Panel",
+              unsupported: true,
+              message:
+                "The " +
+                (asText(moduleSpec.label) || "interface panel") +
+                " renderer is unavailable.",
+            }),
+            ""
+          );
+        })
+        .catch(function (error) {
+          adapter.renderWrappedSurface(
+            target,
+            adapter.resolveSurfaceState({
+              region: region,
+              surfacePayload: surfacePayload,
+              title: asText(moduleSpec.label) || region.title || "Interface Panel",
+              unsupported: true,
+              message:
+                "The " +
+                (asText(moduleSpec.label) || "interface panel") +
+                " renderer is unavailable. " +
+                asText(error && error.message),
+            }),
+            ""
+          );
+        });
+      return;
+    }
     adapter.renderWrappedSurface(
       target,
       adapter.resolveSurfaceState({
@@ -1950,33 +2006,19 @@
     renderGenericInspectorSurface(target, region, surfacePayload);
   }
 
-  window.PortalShellInspectorRenderer = {
+  window.PortalCtsGisInspectorRenderer = {
     render: function (ctx) {
       var target = ctx.target;
       var region = ctx.region || {};
-      var surfacePayload = region.surface_payload || {};
-      var adapter = toolSurfaceAdapter();
-      var family =
-        (adapter && typeof adapter.resolveRegionFamily === "function" && adapter.resolveRegionFamily(region)) ||
-        "";
-      var mode =
-        (adapter &&
-          typeof adapter.resolvePresentationSurfaceMode === "function" &&
-          adapter.resolvePresentationSurfaceMode(region, surfacePayload)) ||
-        "summary_surface";
       if (!target) return;
       if (region.visible === false) {
         target.innerHTML = "";
         return;
       }
-      if (family === "presentation_surface" || mode !== "summary_surface") {
-        renderPresentationSurfaceHost(ctx, target, region, surfacePayload);
-        return;
-      }
-      renderGenericInspectorSurface(target, region, surfacePayload);
+      renderCtsGisInspector(ctx, target, region);
     },
   };
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
-    window.__MYCITE_V2_REGISTER_SHELL_MODULE("inspector_renderers");
+    window.__MYCITE_V2_REGISTER_SHELL_MODULE("cts_gis_surface");
   }
 })();

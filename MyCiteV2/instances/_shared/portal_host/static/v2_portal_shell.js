@@ -106,6 +106,13 @@
           module_id: moduleId,
           file: file,
           url: asText(moduleEntry.url),
+          load_phase: asText(moduleEntry.load_phase) || "startup_critical",
+          loading_scope: asList(moduleEntry.loading_scope)
+            .map(function (scope) {
+              return asText(scope);
+            })
+            .filter(Boolean),
+          budget_group: asText(moduleEntry.budget_group) || "initial_shell",
           exports: asList(moduleEntry.exports).map(function (exportContract) {
             var contract = asObject(exportContract);
             return {
@@ -134,9 +141,25 @@
       }),
       expected_module_map: expectedModuleMap,
       script_load_order: [],
+      module_load_requests: [],
       registrations: [],
       invalid_registrations: [],
       modules: {},
+      load_promises: {},
+      startup_module_ids: expectedModules
+        .filter(function (entry) {
+          return asText(entry.load_phase) !== "deferred";
+        })
+        .map(function (entry) {
+          return entry.module_id;
+        }),
+      deferred_module_ids: expectedModules
+        .filter(function (entry) {
+          return asText(entry.load_phase) === "deferred";
+        })
+        .map(function (entry) {
+          return entry.module_id;
+        }),
     };
   }
 
@@ -255,12 +278,57 @@
     return resolveWindowPath(asText(globalName) || diagnostics.expected_global);
   }
 
+  function loadShellModule(moduleId, options) {
+    var token = asText(moduleId);
+    var registry = currentRegistry();
+    var opts = asObject(options);
+    if (!registry || !token) {
+      return Promise.reject(new Error("Shell module registry is unavailable."));
+    }
+    var contract = registry.expected_module_map ? registry.expected_module_map[token] : null;
+    if (!contract) {
+      return Promise.reject(new Error("Unknown shell module: " + (token || "(missing)")));
+    }
+    if (registry.modules && registry.modules[token]) {
+      return Promise.resolve(registry.modules[token]);
+    }
+    if (registry.load_promises && registry.load_promises[token]) {
+      return registry.load_promises[token];
+    }
+    registry.module_load_requests.push({
+      module_id: token,
+      reason: asText(opts.reason) || "runtime_demand",
+      requested_at_stage: asText(registry.boot_stage) || "template",
+      load_phase: asText(contract.load_phase) || "startup_critical",
+      loading_scope: asList(contract.loading_scope),
+    });
+    registry.load_promises[token] = loadScript(contract)
+      .then(function () {
+        var diagnostics = buildModuleDiagnostics(token);
+        if (diagnostics.failures.length) {
+          throw new Error(diagnostics.failures.join("; "));
+        }
+        return registry.modules[token] || null;
+      })
+      .finally(function () {
+        if (registry.load_promises) {
+          delete registry.load_promises[token];
+        }
+      });
+    return registry.load_promises[token];
+  }
+
   function loadScript(moduleEntry) {
     var src = asText(moduleEntry && moduleEntry.url);
     return new Promise(function (resolve, reject) {
+      if (!src) {
+        reject(new Error("Shell module URL is missing."));
+        return;
+      }
       var script = document.createElement("script");
       script.src = src;
       script.async = false;
+      script.setAttribute("data-shell-module-id", asText(moduleEntry && moduleEntry.module_id));
       script.onload = function () {
         var registry = currentRegistry();
         if (registry) {
@@ -290,6 +358,7 @@
   window.__MYCITE_V2_REGISTER_SHELL_MODULE = registerShellModule;
   window.__MYCITE_V2_GET_SHELL_MODULE_DIAGNOSTICS = buildModuleDiagnostics;
   window.__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT = resolveShellModuleExport;
+  window.__MYCITE_V2_LOAD_SHELL_MODULE = loadShellModule;
   var scripts = assetManifest && assetManifest.scripts ? assetManifest.scripts : {};
   var internalScripts = Array.isArray(scripts.shell_modules)
     ? scripts.shell_modules
@@ -299,13 +368,16 @@
         })
         .filter(Boolean)
     : [];
-  if (!assetManifest || !internalScripts.length) {
+  var startupScripts = internalScripts.filter(function (entry) {
+    return asText(entry.load_phase) !== "deferred";
+  });
+  if (!assetManifest || !startupScripts.length) {
     patchFatalState("The portal shell asset manifest was not embedded into the page.", "asset_manifest_missing");
     return;
   }
   window.__MYCITE_V2_SHELL_ASSET_MANIFEST = assetManifest;
 
-  internalScripts
+  startupScripts
     .reduce(function (chain, moduleEntry) {
       return chain.then(function () {
         setRegistryBootStage("module_loading");

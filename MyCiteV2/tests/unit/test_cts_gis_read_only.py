@@ -19,15 +19,15 @@ from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocumentRow,
 )
 
-SUMMIT_SOURCES_ROOT = (
-    REPO_ROOT
-    / "deployed"
-    / "fnd"
-    / "data"
-    / "sandbox"
-    / "cts-gis"
-    / "sources"
+_SUMMIT_DATA_ROOT_CANDIDATES = (
+    REPO_ROOT / "deployed" / "fnd" / "data",
+    Path("/srv/mycite-state/instances/fnd/data"),
 )
+SUMMIT_DATA_ROOT = next(
+    (candidate for candidate in _SUMMIT_DATA_ROOT_CANDIDATES if candidate.exists() and candidate.is_dir()),
+    _SUMMIT_DATA_ROOT_CANDIDATES[0],
+)
+SUMMIT_SOURCES_ROOT = SUMMIT_DATA_ROOT / "sandbox" / "cts-gis" / "sources"
 
 
 class _FakeDatumStore:
@@ -995,7 +995,7 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
                 self.assertEqual(projection["decode_summary"]["failed_token_count"], 0)
 
     def test_live_summit_projection_bundle_reports_projectable_documents_after_anchor_repair(self) -> None:
-        store = FilesystemSystemDatumStoreAdapter(REPO_ROOT / "deployed" / "fnd" / "data")
+        store = FilesystemSystemDatumStoreAdapter(SUMMIT_DATA_ROOT)
         projection_bundle = CtsGisReadOnlyService(store).read_projection_bundle("fnd")
         projected_by_name = {
             str((document.get("document_summary") or {}).get("document_name") or ""): dict(
@@ -1013,7 +1013,7 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
         self.assertGreater(int(community_summary["profile_count"] or 0), 0)
 
     def test_live_summit_descendants_scope_overlays_county_and_projectable_descendants(self) -> None:
-        store = FilesystemSystemDatumStoreAdapter(REPO_ROOT / "deployed" / "fnd" / "data")
+        store = FilesystemSystemDatumStoreAdapter(SUMMIT_DATA_ROOT)
 
         surface = CtsGisReadOnlyService(store).read_surface(
             "fnd",

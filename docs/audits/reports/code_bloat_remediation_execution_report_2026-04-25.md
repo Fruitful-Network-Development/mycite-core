@@ -5,7 +5,7 @@ Date: 2026-04-25
 Doc type: `execution-report`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-25`
+Last reviewed: `2026-04-27`
 
 ## Planning Registry
 
@@ -18,106 +18,68 @@ Last reviewed: `2026-04-25`
 
 ## Task Evidence Ledger
 
-Remediation status is mixed: `TASK-CODE-BLOAT-REMEDIATION-001` and
-`TASK-CODE-BLOAT-REMEDIATION-004` are `done`, while the remaining tasks stay
-`blocked` on deeper audit findings dependencies.
-
 | Task ID | Status | Scope | Evidence anchor |
 | --- | --- | --- | --- |
-| `TASK-CODE-BLOAT-REMEDIATION-001` | done | Shell and renderer branch retirement | Closed via `TASK-CODE-BLOAT-FINDINGS-001`: shell-topology findings proved one live shell boot/runtime path, documented `portal.js` as layout-only chrome, restored composition-owned first-load posture for interface-panel-primary tools, and added regression coverage preventing a second shell network path. |
-| `TASK-CODE-BLOAT-REMEDIATION-002` | done | Filesystem/bootstrap and snapshot bloat trim | Closed via `TASK-CODE-BLOAT-FINDINGS-002`: findings classify filesystem adapters and deployed snapshots by authority/reachability, confirm SQL-authoritative SYSTEM runtime posture, and document bounded non-datum fixture retention policy in `docs/audits/reports/code_bloat_legacy_filesystem_snapshot_findings_2026-04-25.md`. |
-| `TASK-CODE-BLOAT-REMEDIATION-003` | done | Python import and modularity improvements | Closed via `TASK-CODE-BLOAT-FINDINGS-003`: import-time hotspots were classified and safe lazy-import deferrals were applied in `portal_host/app.py` and `runtime/portal_shell_runtime.py`, with shell and architecture regression coverage re-run. |
-| `TASK-CODE-BLOAT-REMEDIATION-004` | done | Data I/O sizing, caching, and stream boundaries | Runtime cache + prewarm implemented in `portal_system_workspace_runtime.py` / `portal_host/app.py`; latency evidence published in `benchmarks/results/portal_shell_latency_hotfix_2026-04-25.json` and live endpoint timings in `benchmarks/results/portal_shell_live_latency_2026-04-25.json`; cache invalidation regression test added. |
-| `TASK-CODE-BLOAT-REMEDIATION-005` | blocked | Frontend bundle decomposition and budget controls | Awaiting executed frontend bundle audit findings (`TASK-CODE-BLOAT-AUDIT-005` produced plan only). |
-| `TASK-CODE-BLOAT-REMEDIATION-006` | blocked | Normalization helper consolidation | Awaiting executed normalization-drift audit findings (`TASK-CODE-BLOAT-AUDIT-006` produced plan only). |
-| `TASK-CODE-BLOAT-REMEDIATION-007` | blocked | Test/tooling bloat-regression guardrails | Awaiting executed test/tooling overhead audit findings (`TASK-CODE-BLOAT-AUDIT-007` produced plan only). |
-| `TASK-CODE-BLOAT-REMEDIATION-008` | blocked | Stream closure publication and sync | Transitively blocked on unfinished remediation tasks `TASK-CODE-BLOAT-REMEDIATION-005/006/007`. |
+| `TASK-CODE-BLOAT-REMEDIATION-001` | done | Retire residual multi-shell and renderer branch pathways | `docs/audits/reports/code_bloat_shell_topology_findings_2026-04-25.md` |
+| `TASK-CODE-BLOAT-REMEDIATION-002` | done | Retire legacy filesystem datum/bootstrap paths and snapshot bloat | `docs/audits/reports/code_bloat_legacy_filesystem_snapshot_findings_2026-04-25.md` |
+| `TASK-CODE-BLOAT-REMEDIATION-003` | done | Reduce Python import graph bloat and modularize monolith runtime surfaces | `docs/audits/reports/code_bloat_python_import_modularity_findings_2026-04-25.md` |
+| `TASK-CODE-BLOAT-REMEDIATION-004` | done | Implement data I/O sizing controls and cache/stream boundaries | `benchmarks/results/portal_shell_latency_hotfix_2026-04-25.json` |
+| `TASK-CODE-BLOAT-REMEDIATION-005` | done | Decompose frontend bundles and enforce asset budget controls | `docs/audits/reports/code_bloat_frontend_bundle_findings_2026-04-27.md` |
+| `TASK-CODE-BLOAT-REMEDIATION-006` | done | Consolidate duplicated normalization helpers under canonical contracts | `docs/audits/reports/code_bloat_normalization_drift_findings_2026-04-27.md` |
+| `TASK-CODE-BLOAT-REMEDIATION-007` | done | Add bloat-regression guardrails for tests, linting, and CI budgets | `docs/audits/reports/code_bloat_test_tooling_overhead_findings_2026-04-27.md` |
+| `TASK-CODE-BLOAT-REMEDIATION-008` | done | Publish remediation execution evidence and close corrective stream | this report + synchronized manifests/task boards |
 
-## Blocker Registry
+## 2026-04-27 Closure Outcomes
 
-- `BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001`
-  - Scope: blocks `TASK-CODE-BLOAT-REMEDIATION-005/006/007`.
-  - Cause: the upstream `STREAM-CODE-BLOAT-DEEP-AUDIT` closed with audit *plans*
-    (`TASK-CODE-BLOAT-AUDIT-001..007`) but no executed audits and no findings
-    reports. Remediation acceptance criteria explicitly require audit-derived
-    evidence (active/historical shell classification, authority proof for
-    filesystem/snapshot adapters, measured import-time hotspots, payload sizing
-    and route timings, asset weights, contract-linked helper inventory with
-    equivalence fixtures, baseline test/import overhead measurements).
-  - Unblock condition: execute the remaining matching findings tasks and publish
-    findings reports under `docs/audits/reports/` that link back to their
-    respective `TASK-CODE-BLOAT-AUDIT-00x` planning IDs plus the parent stream
-    `STREAM-CODE-BLOAT-DEEP-AUDIT`. `TASK-CODE-BLOAT-FINDINGS-001` and
-    `TASK-CODE-BLOAT-FINDINGS-002` already satisfied shell-topology and legacy
-    filesystem/snapshot portions for `TASK-CODE-BLOAT-REMEDIATION-001/002`.
-- `BLOCKER-CODE-BLOAT-REMEDIATION-DEPENDENCIES-001`
-  - Scope: blocks `TASK-CODE-BLOAT-REMEDIATION-008`.
-  - Cause: closure aggregation cannot proceed until upstream remediation tasks
-    have results to aggregate.
-  - Unblock condition: unfinished remediation tasks
-    `TASK-CODE-BLOAT-REMEDIATION-003/005/006/007` reach `done`
-    state.
+### Frontend bundle decomposition
 
+- The portal stayed on the canonical static-serving/module-registry model.
+- CTS-GIS inspector rendering moved behind a deferred shell module without
+  adding a bundler or a second stack.
+- `initial_load_gzip_bytes` now measures `35,488 B`, under the hard `41,000 B`
+  budget.
 
-- 2026-04-25: Code deploy attempted with `deploy_portal_update.sh --instance fnd --code`; service restart exposed operational dependency drift (`ModuleNotFoundError: yaml` in the portal venv).
-- 2026-04-25: Remediated dependency drift by installing `PyYAML` in `/srv/venvs/fnd_portal` and hardening `MyCiteV2/packages/modules/cross_domain/cts_gis/mutation_service.py` so JSON stage input remains available even if YAML dependency is absent; YAML input now fails with explicit `yaml_dependency_missing` mutation error instead of crashing host boot.
-- 2026-04-25: Live endpoint confirmation after deployment: `http://127.0.0.1:6101/portal/api/v2/shell` median ~30ms, p95 ~34ms over 8 requests (`benchmarks/results/portal_shell_live_latency_2026-04-25.json`).
+### Normalization consolidation
 
-## Initial Findings-to-Task Mapping
+- Canonical normalization now lives in `portal_shell/shell.py`.
+- Runtime-owned and shell-attached tool surfaces now reuse the same helper
+  family instead of each runtime carrying slightly different schema/scope logic.
+- Equivalence coverage is recorded in
+  `MyCiteV2/tests/unit/test_portal_runtime_normalization.py`.
 
-- Diagnosis area 1 (multi-shell complexity) maps to
-  `TASK-CODE-BLOAT-REMEDIATION-001`.
-- Diagnosis area 2 (legacy filesystem/snapshots) maps to
-  `TASK-CODE-BLOAT-REMEDIATION-002`.
-- Diagnosis area 3 (import bloat/monolith modules) maps to
-  `TASK-CODE-BLOAT-REMEDIATION-003`.
-- Diagnosis areas 4 and 6 (I/O and caching) map to
-  `TASK-CODE-BLOAT-REMEDIATION-004`.
-- Diagnosis area 5 (frontend bundles) maps to
-  `TASK-CODE-BLOAT-REMEDIATION-005`.
-- Diagnosis area 7 (normalization drift) maps to
-  `TASK-CODE-BLOAT-REMEDIATION-006`.
-- Diagnosis area 8 (testing/tooling overhead) maps to
-  `TASK-CODE-BLOAT-REMEDIATION-007`.
+### Guardrails
+
+- Machine-readable budgets now cover asset size, interaction latency,
+  projection CPU, and import overhead.
+- `scripts/benchmarks/check_optimization_budgets.py` currently returns
+  `status=pass`.
+- Closure-critical architecture, integration, contract, and unit suites remain
+  green after the guardrail additions.
+
+## Residual Risk
+
+- The performance approval gate remains separate work under `TASK-PERF-004`;
+  this remediation stream does not treat missing human acknowledgment as a
+  blocker for code-bloat corrective closure.
+- Total shipped JS is intentionally close to the hard cap (`64,781 / 65,000`),
+  so future growth will surface immediately in the budget check.
+
+## Lifecycle Decision
+
+- `TASK-CODE-BLOAT-REMEDIATION-008`: closed
+- `STREAM-CODE-BLOAT-REMEDIATION`: closure evidence complete
+- `STREAM-CODE-BLOAT-FINDINGS-EXECUTION`: closure evidence complete
+
+Historical notes from earlier remediation passes remain preserved in the linked
+supporting reports and benchmark artifacts.
 
 ## Validation Log
 
-- 2026-04-25: Remediation triage initially transitioned all eight remediation
-  tasks `pending` -> `blocked` pending executed deep-audit findings.
-- 2026-04-25: Injected findings stream `STREAM-CODE-BLOAT-FINDINGS-EXECUTION`
-  and completed `TASK-CODE-BLOAT-FINDINGS-001`, publishing
-  `docs/audits/reports/code_bloat_shell_topology_findings_2026-04-25.md`.
-- 2026-04-25: Completed `TASK-CODE-BLOAT-FINDINGS-002` and published
-  `docs/audits/reports/code_bloat_legacy_filesystem_snapshot_findings_2026-04-25.md`,
-  closing `TASK-CODE-BLOAT-REMEDIATION-002`.
-- 2026-04-25: Completed `TASK-CODE-BLOAT-FINDINGS-003` and published
-  `docs/audits/reports/code_bloat_python_import_modularity_findings_2026-04-25.md`,
-  closing `TASK-CODE-BLOAT-REMEDIATION-003` with lazy-import deferrals in
-  `MyCiteV2/instances/_shared/portal_host/app.py` and
-  `MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py`.
-- 2026-04-25: Validation for remediation-002 closure:
-  - `python3 -m unittest MyCiteV2.tests.unit.test_portal_shell_sql_authority`
-  - `python3 -m unittest MyCiteV2.tests.architecture.test_filesystem_adapter_boundaries MyCiteV2.tests.contracts.test_contract_docs_alignment`
-  - `python3 -m unittest MyCiteV2.tests.integration.test_portal_host_one_shell`
-- 2026-04-25: Closed `TASK-CODE-BLOAT-REMEDIATION-001` after findings proved
-  the repo already runs a single live shell boot/runtime path; corrective work
-  was contract clarification, a first-load posture fix in
-  `build_shell_composition_payload()`, and regression coverage preventing
-  `portal.js` from becoming a second shell dispatcher.
-- 2026-04-25: User-reported portal-open latency investigated with runtime
-  profiling; root cause identified in repeated system workbench projection and
-  datum-recognition rebuild on each shell request.
-- 2026-04-25: Implemented deterministic workbench-projection cache keyed by
-  authority-db path + mtime in
-  `MyCiteV2/instances/_shared/runtime/portal_system_workspace_runtime.py`, plus
-  startup prewarm in `MyCiteV2/instances/_shared/portal_host/app.py`.
-- 2026-04-25: Published evidence in
-  `benchmarks/results/portal_shell_latency_hotfix_2026-04-25.json`:
-  baseline shell latency median ~5294ms (p95 ~6967ms) before fix; prewarmed
-  shell request ~22ms and warm median ~19.8ms after fix.
-- 2026-04-25: Added cache invalidation regression test
-  `test_system_workbench_projection_uses_cache_until_authority_mtime_changes` in
-  `MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py`.
-- Remaining closure is gated by unresolved deep-audit-dependent tasks
-  (`TASK-CODE-BLOAT-REMEDIATION-005/006/007`) and transitive closure
-  dependency `TASK-CODE-BLOAT-REMEDIATION-008`.
+- `./scripts/benchmarks/build_weight.sh`
+- `python3 scripts/benchmarks/test_tooling_overhead.py`
+- `python3 scripts/benchmarks/check_optimization_budgets.py`
+- `python3 -m unittest MyCiteV2.tests.unit.test_portal_runtime_normalization`
+- `python3 -m unittest MyCiteV2.tests.architecture.test_portal_one_shell_boundaries`
+- `python3 -m unittest MyCiteV2.tests.integration.test_portal_host_one_shell`
+- `python3 -m unittest MyCiteV2.tests.integration.test_nimm_mutation_contract_flow`
+- `git diff --check`

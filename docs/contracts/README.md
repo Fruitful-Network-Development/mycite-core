@@ -28,6 +28,8 @@ CTS-GIS canonical storage contract in v2.5.3.x is:
 - `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
 - `data/payloads/cache/<corpus>.msn-administrative.json` for first-pass `msn-SAMRAS` authority candidates
 - `data/sandbox/cts-gis/sources/<corpus>.msn-administrative.json` for node-title overlays
+- `data/sandbox/cts-gis/sources/precincts/*.json` for precinct-profile source modularization
+- `data/payloads/compiled/cts_gis.<scope_id>.compiled.json` for the strict compiled artifact
 
 v2.5.4 phase-B is canonical-only. Legacy CTS-GIS aliases are not part of active contracts.
 
@@ -37,3 +39,9 @@ CTS-GIS staged inserts are now contract-backed:
 - canonical request schema: `mycite.v2.portal.system.tools.cts_gis.action.request.v1`
 - canonical staged payload schema: `mycite.v2.cts_gis.stage_insert.v1`
 - canonical staged state schema: `mycite.v2.cts_gis.staged_insert.state.v1`
+
+CTS-GIS validation / deploy entrypoints:
+
+- `MyCiteV2/scripts/compile_cts_gis_artifact.py`
+- `MyCiteV2/scripts/validate_cts_gis_sources.py`
+- `MyCiteV2/scripts/deploy_portal_update.sh` compile-before-restart posture for FND

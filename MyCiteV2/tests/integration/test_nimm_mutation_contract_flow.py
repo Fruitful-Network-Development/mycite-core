@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -83,6 +84,7 @@ class NimmMutationContractIntegrationTests(unittest.TestCase):
         return {
             "schema": "mycite.v2.portal.system.tools.cts_gis.action.request.v1",
             "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+            "runtime_mode": "audit_forensic",
             "tool_state": tool_state
             or {
                 "selected_node_id": "3-2-3-17-77-1",
@@ -92,14 +94,30 @@ class NimmMutationContractIntegrationTests(unittest.TestCase):
             "action_payload": action_payload,
         }
 
+    def _seed_data_dir(self, data_dir: Path) -> None:
+        (data_dir / "sandbox" / "cts-gis" / "sources" / "precincts").mkdir(parents=True, exist_ok=True)
+        payload = {
+            "datum_addressing_abstraction_space": {
+                "4-2-1": _row("4-2-1", "3-2-3-17-77-1", "ALPHA STREET").raw,
+                "4-2-2": _row("4-2-2", "3-2-3-17-77-2", "BETA STREET").raw,
+                "4-2-3": _row("4-2-3", "3-2-3-17-77-2", "GAMMA STREET").raw,
+            }
+        }
+        (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.example.json").write_text(
+            json.dumps(payload) + "\n",
+            encoding="utf-8",
+        )
+
     def test_stage_preview_apply_clears_stage_and_updates_authoritative_rows(self) -> None:
         with TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir) / "data"
             db_file = Path(temp_dir) / "authority.sqlite3"
             self._seed_db(db_file)
+            self._seed_data_dir(data_dir)
 
             staged = run_portal_cts_gis_action(
                 self._action_request(None, "stage_insert_yaml", {"stage_document": self._stage_document()}),
-                data_dir=None,
+                data_dir=data_dir,
                 authority_db_file=db_file,
             )
             staged_tool_state = staged["surface_payload"]["tool_state"]
@@ -114,7 +132,7 @@ class NimmMutationContractIntegrationTests(unittest.TestCase):
 
             preview = run_portal_cts_gis_action(
                 self._action_request(staged_tool_state, "preview_apply", {}),
-                data_dir=None,
+                data_dir=data_dir,
                 authority_db_file=db_file,
             )
             self.assertTrue(preview["shell_composition"]["regions"]["workbench"]["visible"])
@@ -127,7 +145,7 @@ class NimmMutationContractIntegrationTests(unittest.TestCase):
 
             applied = run_portal_cts_gis_action(
                 self._action_request(preview["surface_payload"]["tool_state"], "apply_stage", {}),
-                data_dir=None,
+                data_dir=data_dir,
                 authority_db_file=db_file,
             )
             self.assertEqual(applied["surface_payload"]["action_result"]["status"], "accepted")

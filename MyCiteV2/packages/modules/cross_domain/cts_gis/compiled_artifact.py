@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -13,10 +14,85 @@ from .contracts import (
 )
 
 _COMPILED_DIR = Path("payloads") / "compiled"
+_SOURCE_ROOT = Path("sandbox") / "cts-gis" / "sources"
+CTS_GIS_SOURCE_LAYOUT_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.source_layout.v1"
 
 
 def _utc_timestamp() -> str:
     return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def cts_gis_source_root(data_dir: str | Path | None) -> Path | None:
+    if data_dir is None:
+        return None
+    return Path(data_dir) / _SOURCE_ROOT
+
+
+def _deduped_paths(paths: list[Path]) -> list[Path]:
+    out: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(path)
+    return out
+
+
+def _iter_cts_gis_source_files(source_root: Path | None) -> tuple[list[Path], list[Path]]:
+    if source_root is None or not source_root.exists() or not source_root.is_dir():
+        return [], []
+    top_level_files = sorted(source_root.glob("*.json"))
+    precinct_root = source_root / "precincts"
+    precinct_files = sorted(precinct_root.glob("*.json")) if precinct_root.exists() and precinct_root.is_dir() else []
+    return _deduped_paths(top_level_files), _deduped_paths(precinct_files)
+
+
+def build_cts_gis_source_layout_summary(data_dir: str | Path | None) -> dict[str, Any]:
+    source_root = cts_gis_source_root(data_dir)
+    precinct_root = None if source_root is None else source_root / "precincts"
+    top_level_files, precinct_files = _iter_cts_gis_source_files(source_root)
+    fingerprint = hashlib.sha256()
+    relative_paths: list[str] = []
+    for path in [*top_level_files, *precinct_files]:
+        if source_root is None:
+            continue
+        try:
+            relative_path = path.relative_to(source_root).as_posix()
+        except Exception:
+            relative_path = path.name
+        stat = path.stat()
+        fingerprint.update(f"{relative_path}|{int(stat.st_mtime_ns)}|{int(stat.st_size)}\n".encode("utf-8"))
+        relative_paths.append(relative_path)
+    return {
+        "schema": CTS_GIS_SOURCE_LAYOUT_SCHEMA,
+        "source_root": "" if source_root is None else str(source_root),
+        "precinct_root": "" if precinct_root is None else str(precinct_root),
+        "root_exists": bool(source_root is not None and source_root.exists() and source_root.is_dir()),
+        "precinct_root_exists": bool(precinct_root is not None and precinct_root.exists() and precinct_root.is_dir()),
+        "top_level_file_count": len(top_level_files),
+        "precinct_file_count": len(precinct_files),
+        "total_file_count": len(top_level_files) + len(precinct_files),
+        "sample_relative_paths": relative_paths[:12],
+        "fingerprint": fingerprint.hexdigest() if relative_paths else "",
+    }
+
+
+def validate_cts_gis_source_layout(layout: dict[str, Any] | None) -> tuple[bool, list[str]]:
+    payload = layout if isinstance(layout, dict) else {}
+    issues: list[str] = []
+    if as_text(payload.get("schema")) != CTS_GIS_SOURCE_LAYOUT_SCHEMA:
+        issues.append("source_layout_invalid_schema")
+    if not bool(payload.get("root_exists")):
+        issues.append("source_root_missing")
+    if not bool(payload.get("precinct_root_exists")):
+        issues.append("precinct_root_missing")
+    if int(payload.get("top_level_file_count") or 0) <= 0:
+        issues.append("source_root_empty")
+    if not as_text(payload.get("fingerprint")):
+        issues.append("source_fingerprint_missing")
+    return (not issues, issues)
 
 
 def _projection_model_from_service(service_surface: dict[str, Any]) -> dict[str, Any]:
@@ -24,6 +100,7 @@ def _projection_model_from_service(service_surface: dict[str, Any]) -> dict[str,
     feature_collection = dict(map_projection.get("feature_collection") or {})
     selected_feature = dict(map_projection.get("selected_feature") or {})
     attention_profile = dict(service_surface.get("attention_profile") or {})
+    contextual_references = dict(service_surface.get("contextual_references") or {})
     return {
         "projection_state": as_text(map_projection.get("projection_state")) or "inspect_only",
         "projection_source": as_text(map_projection.get("projection_source")) or "none",
@@ -43,6 +120,7 @@ def _projection_model_from_service(service_surface: dict[str, Any]) -> dict[str,
             "child_count": int(attention_profile.get("child_count") or 0),
             "document_id": as_text(attention_profile.get("document_id")),
         },
+        "contextual_references": contextual_references,
     }
 
 
@@ -168,6 +246,7 @@ def build_compiled_artifact(
     service_surface: dict[str, Any],
     navigation_canvas: dict[str, Any],
     default_tool_state: dict[str, Any],
+    source_layout: dict[str, Any],
     build_mode: str = CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
 ) -> dict[str, Any]:
     navigation_model = _navigation_model_from_canvas(navigation_canvas)
@@ -182,6 +261,7 @@ def build_compiled_artifact(
         "build_mode": as_text(build_mode) or CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
         "default_runtime_mode": CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT,
         "default_tool_state": dict(default_tool_state or {}),
+        "source_layout": dict(source_layout or {}),
         "navigation_model": navigation_model,
         "projection_model": projection_model,
         "evidence_model": {
@@ -194,11 +274,30 @@ def build_compiled_artifact(
     }
 
 
-def validate_compiled_artifact(artifact: dict[str, Any] | None) -> tuple[bool, list[str]]:
+def validate_compiled_artifact(
+    artifact: dict[str, Any] | None,
+    *,
+    expected_portal_scope_id: object | None = None,
+    expected_source_layout: dict[str, Any] | None = None,
+) -> tuple[bool, list[str]]:
     payload = artifact if isinstance(artifact, dict) else {}
     issues: list[str] = []
     if as_text(payload.get("schema")) != CTS_GIS_COMPILED_ARTIFACT_SCHEMA:
         issues.append("invalid_schema")
+    if expected_portal_scope_id is not None and as_text(payload.get("portal_scope_id")) != (as_text(expected_portal_scope_id) or "fnd"):
+        issues.append("portal_scope_id_mismatch")
+    source_layout = dict(payload.get("source_layout") or {})
+    source_layout_valid, source_layout_issues = validate_cts_gis_source_layout(source_layout)
+    if not source_layout_valid:
+        issues.extend(source_layout_issues)
+    if isinstance(expected_source_layout, dict):
+        expected_layout_valid, expected_layout_issues = validate_cts_gis_source_layout(expected_source_layout)
+        if not expected_layout_valid:
+            issues.extend(f"expected_{issue}" for issue in expected_layout_issues)
+        expected_fingerprint = as_text(expected_source_layout.get("fingerprint"))
+        actual_fingerprint = as_text(source_layout.get("fingerprint"))
+        if expected_fingerprint and actual_fingerprint != expected_fingerprint:
+            issues.append("source_fingerprint_mismatch")
     if not isinstance(payload.get("navigation_model"), dict):
         issues.append("navigation_model_missing")
     if not isinstance(payload.get("projection_model"), dict):
@@ -245,8 +344,11 @@ def write_compiled_artifact(path: Path | None, artifact: dict[str, Any]) -> Path
 
 __all__ = [
     "build_compiled_artifact",
+    "build_cts_gis_source_layout_summary",
     "compiled_artifact_path",
+    "cts_gis_source_root",
     "read_compiled_artifact",
+    "validate_cts_gis_source_layout",
     "validate_compiled_artifact",
     "write_compiled_artifact",
 ]

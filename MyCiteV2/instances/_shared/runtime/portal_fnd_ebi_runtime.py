@@ -22,7 +22,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     PORTAL_SHELL_REQUEST_SCHEMA,
     PortalScope,
     PortalShellState,
-    canonicalize_portal_shell_state,
+    normalize_runtime_shell_surface_request_payload,
     resolve_portal_tool_registry_entry,
 )
 
@@ -34,17 +34,10 @@ def _as_text(value: object) -> str:
 
 
 def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, PortalShellState, dict[str, Any]]:
-    normalized_payload = payload if isinstance(payload, dict) else {}
-    if normalized_payload.get("schema") in {None, ""}:
-        normalized_payload = {"schema": FND_EBI_TOOL_REQUEST_SCHEMA, **normalized_payload}
-    if _as_text(normalized_payload.get("schema")) != FND_EBI_TOOL_REQUEST_SCHEMA:
-        raise ValueError(f"request.schema must be {FND_EBI_TOOL_REQUEST_SCHEMA}")
-    portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
-    shell_state = canonicalize_portal_shell_state(
-        normalized_payload.get("shell_state"),
-        active_surface_id=FND_EBI_TOOL_SURFACE_ID,
-        portal_scope=portal_scope,
-        seed_anchor_file=normalized_payload.get("shell_state") is None,
+    portal_scope, shell_state, normalized_payload = normalize_runtime_shell_surface_request_payload(
+        payload,
+        expected_schema=FND_EBI_TOOL_REQUEST_SCHEMA,
+        surface_id=FND_EBI_TOOL_SURFACE_ID,
     )
     return portal_scope, shell_state, normalized_payload
 

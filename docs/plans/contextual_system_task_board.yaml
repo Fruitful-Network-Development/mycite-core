@@ -4,14 +4,14 @@ board:
   id: "TASK-BOARD-CONTEXTUAL-SYSTEM-2026-04-23"
   title: "Contextual planning/audit/report organization board"
   lifecycle: "active"
-  last_reviewed: "2026-04-26"
+  last_reviewed: "2026-04-27"
   manifest_path: "docs/plans/contextual_system_manifest.yaml"
   delegation_state:
-    current_focus_stream: "STREAM-CODE-BLOAT-REMEDIATION"
-    current_focus_task_id: "TASK-CODE-BLOAT-REMEDIATION-005"
+    current_focus_stream: "STREAM-CTS-GIS-OPEN"
+    current_focus_task_id: "TASK-CTSGIS-DATUM-001"
     next_task_policy: "priority_then_lexicographic"
     revisit_queue: []
-    last_delegation_note: "Direct user instruction temporarily preempted the queued code-bloat loop. Injected and completed TASK-MOS-AUTHORITY-REALITY-001/002/003 plus TASK-MOS-WORKBENCH-002/003 under STREAM-MOS-CLOSURE to normalize live SQL catalog source paths, re-anchor MOS docs/tasks to `/srv/mycite-state/...` runtime reality, materialize layer/value-group/iteration workbench projection with bounded family/value-kind lens resolution over SQL hyphae identity, and pin the historical materialization notes. Background next-task selection still returns TASK-CODE-BLOAT-REMEDIATION-005, which remains blocked on missing frontend-bundle findings."
+    last_delegation_note: "Strategic optimization program execution completed all repo-actionable code-bloat, performance-instrumentation, and CTS-GIS runtime tasks. Remaining open work is now explicitly blocked on named owner acknowledgments: the lexicographically earliest highest-priority blocked item is TASK-CTSGIS-DATUM-001, which now depends on the published matrix report moving from pending sign-off fields to explicit owner approval."
 
 tasks:
   - id: "TASK-CONTEXT-ORG-001"
@@ -143,11 +143,11 @@ tasks:
     evidence_targets:
       - "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md"
     blocked_by:
-      - "BLOCKER-CTSGIS-SAMRAS-MATRIX-EVIDENCE-001"
-    blocker_detail: "SAMRAS closure is blocked pending publication of structural/mutation/mediation drift matrices with severity dispositions and cross-owner sign-off; readiness waiver closure alone is insufficient evidence."
+      - "TASK-CTSGIS-SAMRAS-002"
+    blocker_detail: "Supporting matrix evidence is now published in docs/audits/reports/cts_gis_samras_datum_alignment_matrices_2026-04-27.md, but SAMRAS umbrella closure remains blocked until the pending owner sign-off fields in that report become explicit approvals."
     impacted_task_ids:
       - "TASK-CTSGIS-DATUM-001"
-    next_unblocked_task: "none (all active non-done tasks are currently blocked pending evidence publication and sign-off)"
+    next_unblocked_task: "TASK-CTSGIS-SAMRAS-002"
 
   - id: "TASK-CTSGIS-DATUM-001"
     stream_id: "STREAM-CTS-GIS-OPEN"
@@ -161,11 +161,11 @@ tasks:
     evidence_targets:
       - "docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md"
     blocked_by:
-      - "BLOCKER-CTSGIS-DATUM-MATRIX-EVIDENCE-001"
-    blocker_detail: "Datum alignment closure is blocked pending publication of critical/high drift disposition matrix plus deterministic ordering/editing evidence with domain-owner sign-off; readiness waiver closure alone is insufficient evidence."
+      - "TASK-CTSGIS-DATUM-002"
+    blocker_detail: "Supporting matrix evidence is now published in docs/audits/reports/cts_gis_samras_datum_alignment_matrices_2026-04-27.md, but datum umbrella closure remains blocked until the pending owner sign-off fields in that report become explicit approvals."
     impacted_task_ids:
       - "TASK-CTSGIS-SAMRAS-001"
-    next_unblocked_task: "none (all active non-done tasks are currently blocked pending evidence publication and sign-off)"
+    next_unblocked_task: "TASK-CTSGIS-DATUM-002"
 
   - id: "TASK-CTSGIS-RUNTIME-001"
     stream_id: "STREAM-CTS-GIS-OPEN"
@@ -265,6 +265,170 @@ tasks:
       - "docs/contracts/route_model.md"
       - "docs/contracts/surface_catalog.md"
 
+  - id: "TASK-CTSGIS-RUNTIME-007"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Restore deployed `Load compiled precincts` request parity across shared portal dispatch and CTS-GIS runtime"
+    status: "done"
+    priority: "p0"
+    owner_role: "cts-gis-runtime-owner"
+    acceptance:
+      - "Pressing `Load compiled precincts` in the Garland profile panel issues a deterministic shell/action request that preserves the active CTS-GIS runtime mode and toggles `source.precinct_district_overlay_enabled`."
+      - "Deployed portal evidence distinguishes frontend dispatch, shell-request shaping, and runtime overlay-state transition so the control is never a silent no-op."
+      - "Unit or integration coverage proves both shell-request and direct-action toggle paths enable the overlay when attention/time gates are satisfied."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_deployed_portal_precinct_optimization_follow_on_2026-04-27.md"
+      - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_core.js"
+      - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
+      - "MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py"
+
+  - id: "TASK-CTSGIS-RUNTIME-008"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Carry compiled Garland precinct-context summaries so `production_strict` stays lightweight and toggle-ready"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-contract-owner"
+    acceptance:
+      - "Compiled artifacts preserve transport-safe `projection_model.contextual_references` needed to render deferred district precinct collection state in `production_strict`."
+      - "Garland profile projection surfaces precinct-toggle timeframe and collection summary context before overlay activation without widening live fallback reads by default."
+      - "Contract and compiled-runtime coverage document the lightweight default snapshot and the later overlay activation path."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_deployed_portal_precinct_optimization_follow_on_2026-04-27.md"
+      - "MyCiteV2/packages/modules/cross_domain/cts_gis/compiled_artifact.py"
+      - "docs/contracts/cts_gis_compiled_artifact_contract.md"
+      - "MyCiteV2/tests/unit/test_cts_gis_compiled_runtime.py"
+
+  - id: "TASK-CTSGIS-RUNTIME-009"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Translate CTS-GIS optimization recommendations into a bounded deployed-portal execution backlog"
+    status: "done"
+    priority: "p1"
+    owner_role: "runtime-performance-auditor"
+    acceptance:
+      - "Actionable items from `docs/personal_notes/code_optimization_report.md` are converted into bounded deployed-portal work that separates immediate parity fixes from later complexity-reduction work."
+      - "Optimization scope preserves compiled-artifact-first production posture and explicitly avoids re-introducing heavyweight runtime fallback as the default portal path."
+      - "Follow-on backlog names evidence and validation expectations for source modularization, cache/invalidation, or diagnostic-path retirement work."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_deployed_portal_precinct_optimization_follow_on_2026-04-27.md"
+      - "docs/personal_notes/code_optimization_report.md"
+      - "docs/audits/cts_gis_open_alignment_audit_plan_2026-04-23.md"
+
+  - id: "TASK-CTSGIS-SAMRAS-002"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Publish SAMRAS structural/mutation/mediation drift matrix with severity dispositions"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-domain-owner"
+    acceptance:
+      - "One supporting report records the structural, mutation, and mediation drift matrix with severity, evidence anchors, remediation decision, and owner sign-off fields."
+      - "Matrix distinguishes closed, accepted-risk, and still-open drifts without reopening waived data-authority questions as implicit runtime defects."
+      - "Deterministic SAMRAS-facing validations cited by the matrix are executable from the repo and linked back to TASK-CTSGIS-SAMRAS-001."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_samras_datum_alignment_matrices_2026-04-27.md"
+      - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
+      - "MyCiteV2/tests/unit/test_cts_gis_read_only.py"
+    impacted_task_ids:
+      - "TASK-CTSGIS-SAMRAS-001"
+      - "TASK-CTSGIS-DATUM-001"
+    next_unblocked_task: "TASK-CTSGIS-DATUM-002"
+
+  - id: "TASK-CTSGIS-DATUM-002"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Publish datum identity/source-precedence/order-editing/projection drift matrix"
+    status: "done"
+    priority: "p1"
+    owner_role: "datum-domain-owner"
+    acceptance:
+      - "One supporting report records datum identity, source-precedence, ordering/editing, and projection drift categories with severity, evidence anchors, remediation decision, and owner sign-off fields."
+      - "Matrix cites deterministic ordering/editing tests instead of relying on narrative claims about datum behavior."
+      - "Matrix explicitly links back to TASK-CTSGIS-DATUM-001 and names whether each high-severity drift is closed, tolerated with controls, or still blocked."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_samras_datum_alignment_matrices_2026-04-27.md"
+      - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
+      - "MyCiteV2/tests/unit/test_cts_gis_read_only.py"
+    impacted_task_ids:
+      - "TASK-CTSGIS-DATUM-001"
+      - "TASK-CTSGIS-SAMRAS-001"
+    next_unblocked_task: "TASK-CTSGIS-RUNTIME-010"
+
+  - id: "TASK-CTSGIS-RUNTIME-010"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Codify live CTS-GIS `sources/` plus `sources/precincts/` layout and reconcile fixture/tests"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-runtime-owner"
+    acceptance:
+      - "Repo code validates the live FND CTS-GIS source layout instead of assuming a monolithic source file shape."
+      - "Tests and fixtures reconcile repo/deployed expectations with the live `sources/` plus `sources/precincts/` structure."
+      - "Evidence names the validated file-count/layout posture used by compilation and read-only runtime checks."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_deployed_portal_precinct_optimization_follow_on_2026-04-27.md"
+      - "MyCiteV2/packages/modules/cross_domain/cts_gis/compiled_artifact.py"
+      - "MyCiteV2/tests/unit/test_cts_gis_read_only.py"
+    impacted_task_ids:
+      - "TASK-CTSGIS-RUNTIME-011"
+      - "TASK-CTSGIS-RUNTIME-013"
+    next_unblocked_task: "TASK-CTSGIS-RUNTIME-011"
+
+  - id: "TASK-CTSGIS-RUNTIME-011"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Enforce compiled-artifact freshness and invalidation for `production_strict`"
+    status: "done"
+    priority: "p0"
+    owner_role: "cts-gis-contract-owner"
+    acceptance:
+      - "Compiled artifact schema records a deterministic source-layout fingerprint or freshness block derived from the validated CTS-GIS source corpus."
+      - "`production_strict` rejects stale or mismatched artifacts without silently falling back to raw reconstruction."
+      - "Runtime and compiled-artifact tests cover valid, stale, and mismatched source-fingerprint scenarios."
+    evidence_targets:
+      - "docs/contracts/cts_gis_compiled_artifact_contract.md"
+      - "docs/contracts/cts_gis_operating_contract.md"
+      - "MyCiteV2/packages/modules/cross_domain/cts_gis/compiled_artifact.py"
+      - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
+      - "MyCiteV2/tests/unit/test_cts_gis_compiled_runtime.py"
+    impacted_task_ids:
+      - "TASK-CTSGIS-RUNTIME-012"
+      - "TASK-CTSGIS-RUNTIME-013"
+    next_unblocked_task: "TASK-CTSGIS-RUNTIME-012"
+
+  - id: "TASK-CTSGIS-RUNTIME-012"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Isolate `audit_forensic` rebuild paths and make compiled-only production usage auditable"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-runtime-owner"
+    acceptance:
+      - "`audit_forensic` remains the only mode allowed to rebuild or emit expanded CTS-GIS reconstruction evidence."
+      - "Runtime evidence clearly distinguishes compiled-only production reads from diagnostic rebuild/write events."
+      - "Supporting CTS-GIS runtime reports describe the diagnostic pathway as non-canonical production behavior."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
+      - "docs/audits/reports/cts_gis_deployed_portal_precinct_optimization_follow_on_2026-04-27.md"
+      - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
+      - "MyCiteV2/tests/unit/test_cts_gis_compiled_runtime.py"
+    impacted_task_ids:
+      - "TASK-CTSGIS-RUNTIME-013"
+    next_unblocked_task: "TASK-CTSGIS-RUNTIME-013"
+
+  - id: "TASK-CTSGIS-RUNTIME-013"
+    stream_id: "STREAM-CTS-GIS-OPEN"
+    title: "Add compile-before-deploy CTS-GIS enforcement for FND"
+    status: "done"
+    priority: "p1"
+    owner_role: "runtime-performance-auditor"
+    acceptance:
+      - "Repo scripts or checks can validate the compiled CTS-GIS artifact against the live source layout before deployment or restart."
+      - "Runbook/report evidence names the required compile-before-deploy posture for FND and how failures surface."
+      - "Closure-critical validation includes at least one compile/validate command run against the current FND state directory."
+    evidence_targets:
+      - "docs/audits/reports/cts_gis_deployed_portal_precinct_optimization_follow_on_2026-04-27.md"
+      - "docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md"
+      - "MyCiteV2/scripts/compile_cts_gis_artifact.py"
+      - "scripts/benchmarks/check_optimization_budgets.py"
+    impacted_task_ids:
+      - "TASK-CTSGIS-SAMRAS-001"
+      - "TASK-CTSGIS-DATUM-001"
+    next_unblocked_task: "TASK-CTSGIS-SAMRAS-001"
+
   - id: "TASK-PERF-001"
     stream_id: "STREAM-PERFORMANCE"
     title: "Execute measurement phase and rank optimization backlog"
@@ -276,9 +440,69 @@ tasks:
       - "Optimization backlog includes impact/risk ranking and evidence."
     evidence_targets:
       - "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
-    blocker_detail: "Performance audit section 'Ready for Code mode' gates are not fully satisfied in-repo (baseline placeholders, CI regression gates, and explicit multi-owner approval acknowledgment remain outstanding)."
+    blocked_by:
+      - "TASK-PERF-004"
+    blocker_detail: "Canonical measurement tables and machine-readable budget checks are now complete. Performance closure remains blocked only on TASK-PERF-004 because the approval-gate section still carries pending named acknowledgments."
     impacted_task_ids: []
-    next_unblocked_task: "none (all active non-done tasks are currently blocked pending readiness-gate completion)"
+    next_unblocked_task: "TASK-PERF-004"
+
+  - id: "TASK-PERF-002"
+    stream_id: "STREAM-PERFORMANCE"
+    title: "Populate canonical performance report tables with benchmark and live FND evidence"
+    status: "done"
+    priority: "p2"
+    owner_role: "performance-owner"
+    acceptance:
+      - "Canonical performance report replaces placeholders with measured baseline and post-change values for asset weight, interaction latency, and projection/serialization tables."
+      - "Report cites both benchmark harness output and live FND runtime probes where required by the plan."
+      - "Top backlog ranking reflects measured evidence instead of placeholder assumptions."
+    evidence_targets:
+      - "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
+      - "benchmarks/results/build_weight_baseline.json"
+      - "benchmarks/results/runtime_interactions_baseline.json"
+      - "benchmarks/results/projection_serialization_baseline.json"
+    impacted_task_ids:
+      - "TASK-PERF-001"
+      - "TASK-PERF-003"
+      - "TASK-PERF-004"
+    next_unblocked_task: "TASK-PERF-003"
+
+  - id: "TASK-PERF-003"
+    stream_id: "STREAM-PERFORMANCE"
+    title: "Add machine-readable optimization budgets and regression checks"
+    status: "done"
+    priority: "p2"
+    owner_role: "performance-owner"
+    acceptance:
+      - "Repo includes a scriptable budget check for initial asset weight, interaction latency, projection CPU, and test/import overhead."
+      - "Budget thresholds are documented and tied back to the canonical performance report and code-bloat guardrail work."
+      - "Validation evidence includes at least one successful run of the machine-readable budget check."
+    evidence_targets:
+      - "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
+      - "scripts/benchmarks/check_optimization_budgets.py"
+      - "MyCiteV2/tests/contracts/test_contract_docs_alignment.py"
+    impacted_task_ids:
+      - "TASK-PERF-001"
+      - "TASK-CODE-BLOAT-REMEDIATION-007"
+    next_unblocked_task: "TASK-PERF-004"
+
+  - id: "TASK-PERF-004"
+    stream_id: "STREAM-PERFORMANCE"
+    title: "Record optimization approval gate acknowledgments in-repo"
+    status: "blocked"
+    priority: "p2"
+    owner_role: "program-owner"
+    acceptance:
+      - "Canonical performance report records explicit engineering, runtime/performance, and QA acknowledgments for the optimization program."
+      - "Acknowledgment record names the approved validation scope and any remaining guarded risks."
+      - "Approval gate is linked from TASK-PERF-001 closure evidence."
+    evidence_targets:
+      - "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
+      - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
+    blocker_detail: "Performance report now contains explicit approval-gate fields, but named engineering, runtime/performance, and QA acknowledgments are still pending in repo context."
+    impacted_task_ids:
+      - "TASK-PERF-001"
+    next_unblocked_task: "TASK-PERF-001"
 
   - id: "TASK-CODE-BLOAT-AUDIT-001"
     stream_id: "STREAM-CODE-BLOAT-DEEP-AUDIT"
@@ -436,6 +660,66 @@ tasks:
       - "MyCiteV2/instances/_shared/portal_host/app.py"
       - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
 
+  - id: "TASK-CODE-BLOAT-FINDINGS-004"
+    stream_id: "STREAM-CODE-BLOAT-FINDINGS-EXECUTION"
+    title: "Publish frontend bundle findings for deferred module loading and initial-weight posture"
+    status: "done"
+    priority: "p0"
+    owner_role: "frontend-performance-auditor"
+    acceptance:
+      - "Executed findings classify startup-critical versus deferred shell modules, initial-load asset weight, and route-level workspace dependency ownership."
+      - "Findings report names the canonical lazy-load plan without introducing a second frontend stack or new bundler."
+      - "Downstream remediation task `TASK-CODE-BLOAT-REMEDIATION-005` has explicit asset/budget evidence for closure."
+    evidence_targets:
+      - "docs/plans/code_bloat_findings_execution_plan_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_findings_execution_report_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_frontend_bundle_findings_2026-04-27.md"
+      - "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
+      - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell.js"
+    impacted_task_ids:
+      - "TASK-CODE-BLOAT-REMEDIATION-005"
+    next_unblocked_task: "TASK-CODE-BLOAT-REMEDIATION-005"
+
+  - id: "TASK-CODE-BLOAT-FINDINGS-005"
+    stream_id: "STREAM-CODE-BLOAT-FINDINGS-EXECUTION"
+    title: "Publish normalization drift findings and canonical helper ownership map"
+    status: "done"
+    priority: "p0"
+    owner_role: "contract-auditor"
+    acceptance:
+      - "Executed findings inventory duplicated request/query/action/route normalization helpers and name the canonical shared ownership surface."
+      - "Findings report cites equivalence-fixture coverage required for consolidation."
+      - "Downstream remediation task `TASK-CODE-BLOAT-REMEDIATION-006` has explicit parity evidence for closure."
+    evidence_targets:
+      - "docs/plans/code_bloat_findings_execution_plan_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_findings_execution_report_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_normalization_drift_findings_2026-04-27.md"
+      - "docs/contracts/route_model.md"
+      - "MyCiteV2/packages/state_machine/portal_shell/shell.py"
+    impacted_task_ids:
+      - "TASK-CODE-BLOAT-REMEDIATION-006"
+    next_unblocked_task: "TASK-CODE-BLOAT-REMEDIATION-006"
+
+  - id: "TASK-CODE-BLOAT-FINDINGS-006"
+    stream_id: "STREAM-CODE-BLOAT-FINDINGS-EXECUTION"
+    title: "Publish test and tooling overhead findings for optimization guardrails"
+    status: "done"
+    priority: "p1"
+    owner_role: "qa-auditor"
+    acceptance:
+      - "Executed findings measure representative import/discovery overhead and identify fixture duplication or noisy guardrail candidates."
+      - "Findings report distinguishes hard-threshold-ready budgets from advisory-only metrics."
+      - "Downstream remediation task `TASK-CODE-BLOAT-REMEDIATION-007` has explicit guardrail evidence for closure."
+    evidence_targets:
+      - "docs/plans/code_bloat_findings_execution_plan_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_findings_execution_report_2026-04-25.md"
+      - "docs/audits/reports/code_bloat_test_tooling_overhead_findings_2026-04-27.md"
+      - "scripts/benchmarks/check_optimization_budgets.py"
+      - "MyCiteV2/tests/"
+    impacted_task_ids:
+      - "TASK-CODE-BLOAT-REMEDIATION-007"
+    next_unblocked_task: "TASK-CODE-BLOAT-REMEDIATION-007"
+
   - id: "TASK-CODE-BLOAT-REMEDIATION-001"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Retire residual multi-shell and renderer branch pathways"
@@ -524,7 +808,7 @@ tasks:
   - id: "TASK-CODE-BLOAT-REMEDIATION-005"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Decompose frontend bundles and enforce asset budget controls"
-    status: "blocked"
+    status: "done"
     priority: "p0"
     owner_role: "frontend-performance-owner"
     acceptance:
@@ -536,17 +820,15 @@ tasks:
       - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
       - "MyCiteV2/instances/_shared/portal_host/static/"
       - "docs/audits/reports/performance_weight_speed_report_2026-04-16.md"
-    blocked_by:
-      - "BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001"
-    blocker_detail: "Awaiting executed frontend bundle audit findings; TASK-CODE-BLOAT-AUDIT-005 produced docs/audits/code_bloat_frontend_bundle_audit_plan_2026-04-24.md but no measured asset weights, parse/execute cost, or route-level dependency map exists in repo."
+    blocker_detail: "Closed via TASK-CODE-BLOAT-FINDINGS-004. The shell now classifies startup-critical versus deferred modules in the manifest, CTS-GIS inspector rendering lazy-loads through the registry contract, and initial-load gzip moved to 35,488B under the hard 41,000B budget."
     impacted_task_ids:
       - "TASK-CODE-BLOAT-REMEDIATION-008"
-    next_unblocked_task: "none (all remediation tasks are blocked pending executed deep-audit findings)"
+    next_unblocked_task: "TASK-CODE-BLOAT-REMEDIATION-008"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-006"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Consolidate duplicated normalization helpers under canonical contracts"
-    status: "blocked"
+    status: "done"
     priority: "p0"
     owner_role: "contract-owner"
     acceptance:
@@ -559,17 +841,15 @@ tasks:
       - "docs/contracts/route_model.md"
       - "docs/contracts/mutation_contract.md"
       - "docs/contracts/tool_operating_contract.md"
-    blocked_by:
-      - "BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001"
-    blocker_detail: "Awaiting executed normalization-drift audit findings; TASK-CODE-BLOAT-AUDIT-006 produced docs/audits/code_bloat_normalization_drift_audit_plan_2026-04-24.md but no contract-linked helper inventory or equivalence fixtures required before consolidation exist in repo."
+    blocker_detail: "Closed via TASK-CODE-BLOAT-FINDINGS-005. Canonical runtime normalization now lives in portal_shell/shell.py and parity is covered by MyCiteV2/tests/unit/test_portal_runtime_normalization.py plus contract/integration regression tests."
     impacted_task_ids:
       - "TASK-CODE-BLOAT-REMEDIATION-008"
-    next_unblocked_task: "none (all remediation tasks are blocked pending executed deep-audit findings)"
+    next_unblocked_task: "TASK-CODE-BLOAT-REMEDIATION-008"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-007"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Add bloat-regression guardrails for tests, linting, and CI budgets"
-    status: "blocked"
+    status: "done"
     priority: "p1"
     owner_role: "qa-owner"
     acceptance:
@@ -581,17 +861,15 @@ tasks:
       - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
       - "docs/plans/contextual_system_manifest.yaml"
       - "MyCiteV2/tests/"
-    blocked_by:
-      - "BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001"
-    blocker_detail: "Awaiting executed test/tooling overhead audit findings; TASK-CODE-BLOAT-AUDIT-007 produced docs/audits/code_bloat_test_tooling_overhead_audit_plan_2026-04-24.md but no measured test import overhead, fixture duplication evidence, or baseline budgets needed for explicit CI thresholds exist in repo."
+    blocker_detail: "Closed via TASK-CODE-BLOAT-FINDINGS-006 and TASK-PERF-003. Repo now ships benchmarks/budgets/optimization_budgets.json plus scripts/benchmarks/check_optimization_budgets.py, and the current budget check passes without hard failures."
     impacted_task_ids:
       - "TASK-CODE-BLOAT-REMEDIATION-008"
-    next_unblocked_task: "none (all remediation tasks are blocked pending executed deep-audit findings)"
+    next_unblocked_task: "TASK-CODE-BLOAT-REMEDIATION-008"
 
   - id: "TASK-CODE-BLOAT-REMEDIATION-008"
     stream_id: "STREAM-CODE-BLOAT-REMEDIATION"
     title: "Publish remediation execution evidence and close corrective stream"
-    status: "blocked"
+    status: "done"
     priority: "p1"
     owner_role: "program-owner"
     acceptance:
@@ -602,11 +880,9 @@ tasks:
       - "docs/audits/reports/code_bloat_remediation_execution_report_2026-04-25.md"
       - "docs/plans/contextual_system_manifest.yaml"
       - "docs/plans/planning_audit_manifest.yaml"
-    blocked_by:
-      - "BLOCKER-CODE-BLOAT-REMEDIATION-DEPENDENCIES-001"
-    blocker_detail: "Cannot publish closure-evidence aggregation while upstream TASK-CODE-BLOAT-REMEDIATION-005/006/007 remain blocked on BLOCKER-CODE-BLOAT-AUDIT-FINDINGS-001."
+    blocker_detail: "Closed after TASK-CODE-BLOAT-REMEDIATION-005/006/007 landed with evidence. Remediation execution report, contextual manifest, and compatibility manifest/task-board surfaces are synchronized and explicitly mark the code-bloat streams complete."
     impacted_task_ids: []
-    next_unblocked_task: "none (depends on TASK-CODE-BLOAT-REMEDIATION-005/006/007 which are all blocked)"
+    next_unblocked_task: "TASK-CODE-BLOAT-REMEDIATION-005"
 
   - id: "TASK-AWS-CSM-ALIGN-001"
     title: "Publish AWS-CSM operating alignment audit plan and baseline report"

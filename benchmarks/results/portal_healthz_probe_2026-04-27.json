@@ -1,0 +1,9 @@
+{
+  "schema": "mycite.benchmarks.portal.healthz_probe.v1",
+  "url": "http://127.0.0.1:6101/portal/healthz",
+  "sample_count": 8,
+  "median_ms": 14.339,
+  "max_ms": 885.666,
+  "build_id": "",
+  "has_shell_asset_manifest": true
+}

@@ -15,6 +15,7 @@ from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     build_compiled_artifact,
+    build_cts_gis_source_layout_summary,
     compiled_artifact_path,
     write_compiled_artifact,
 )
@@ -35,6 +36,21 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+
+def _valid_source_layout(*, fingerprint: str = "fixture-fingerprint") -> dict[str, object]:
+    return {
+        "schema": "mycite.v2.portal.system.tools.cts_gis.source_layout.v1",
+        "source_root": "/tmp/sandbox/cts-gis/sources",
+        "precinct_root": "/tmp/sandbox/cts-gis/sources/precincts",
+        "root_exists": True,
+        "precinct_root_exists": True,
+        "top_level_file_count": 1,
+        "precinct_file_count": 1,
+        "total_file_count": 2,
+        "sample_relative_paths": ["sc.example.json", "precincts/sc.example.precinct.json"],
+        "fingerprint": fingerprint,
+    }
 
 
 _LIVE_INVALID_MSN_SAMRAS = (
@@ -106,6 +122,15 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
     def test_production_strict_uses_compiled_artifact_models(self) -> None:
         with TemporaryDirectory() as tmp:
             scope = self._scope()
+            _write_json(
+                Path(tmp) / "sandbox" / "cts-gis" / "sources" / "sc.example.json",
+                {"datum_addressing_abstraction_space": {"1-0-1": [["1-0-1", "~", "0-0-0"], ["root"]]}},
+            )
+            _write_json(
+                Path(tmp) / "sandbox" / "cts-gis" / "sources" / "precincts" / "sc.example.precinct.json",
+                {"datum_addressing_abstraction_space": {"1-0-2": [["1-0-2", "~", "0-0-0"], ["precinct"]]}},
+            )
+            source_layout = build_cts_gis_source_layout_summary(tmp)
             compiled_path = compiled_artifact_path(tmp, portal_scope_id=scope.scope_id)
             self.assertIsNotNone(compiled_path)
             write_compiled_artifact(
@@ -117,6 +142,7 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
                     "portal_scope_id": "fnd",
                     "build_mode": "audit_forensic",
                     "default_runtime_mode": "production_strict",
+                    "source_layout": source_layout,
                     "default_tool_state": {
                         "nimm_directive": "mediate",
                         "active_path": ["3", "3-2"],
@@ -147,6 +173,37 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
                         "feature_collection": {"type": "FeatureCollection", "features": [], "bounds": [-1, -1, 1, 1]},
                         "selected_feature": {},
                         "profile_summary": {"node_id": "3-2", "label": "us", "feature_count": 0, "child_count": 0, "document_id": "sandbox:cts_gis:doc.json"},
+                        "contextual_references": {
+                            "district_precincts": {
+                                "enabled": False,
+                                "overlay_active": False,
+                                "time_token": "23_present-district_31",
+                                "timeframe_tokens": ["23_present-district_31"],
+                                "timeframe_match": True,
+                                "collection_count": 1,
+                                "collections": [
+                                    {
+                                        "collection_id": "23_present-district_31",
+                                        "label": "District 31 · 23 Present",
+                                        "timeframe_token": "23_present-district_31",
+                                        "time_context_active": True,
+                                        "timeframe_match": True,
+                                        "overlay_requested": False,
+                                        "overlay_active": False,
+                                        "overlay_toggle_available": True,
+                                        "scope_node_id": "247-17-77",
+                                        "scope_kind": "district_set_collection",
+                                        "precinct_count": 0,
+                                        "precinct_count_known": False,
+                                        "member_node_ids": [],
+                                        "member_labels": [],
+                                        "gate_failures": [],
+                                        "summary_state": "deferred",
+                                    }
+                                ],
+                                "gate_failures": [],
+                            }
+                        },
                     },
                     "evidence_model": {"source_evidence": {"readiness": {"state": "ready"}}, "diagnostic_summary": {}, "warnings": []},
                     "invariants": {"valid": True, "issues": []},
@@ -170,14 +227,22 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
             )
             payload = bundle["surface_payload"]
             nav = payload["navigation_model"]
+            profile = bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"]
+            toggle = dict(profile.get("district_overlay_toggle") or {})
             self.assertEqual(payload["runtime_mode"], "production_strict")
             self.assertEqual(nav["decode_state"], "ready")
             self.assertTrue(nav["dropdowns"][0]["options"][0]["action"]["kind"] == "select_node")
+            self.assertEqual(toggle.get("time_token"), "23_present-district_31")
+            self.assertEqual(toggle.get("shell_request", {}).get("runtime_mode"), "production_strict")
+            collections = list(profile.get("district_precinct_collections") or [])
+            self.assertEqual(len(collections), 1)
+            self.assertEqual(collections[0]["summary_state"], "deferred")
 
     def test_validate_compiled_artifact_rejects_multi_authority_strict_invariant(self) -> None:
         valid, issues = validate_compiled_artifact(
             {
                 "schema": CTS_GIS_COMPILED_ARTIFACT_SCHEMA,
+                "source_layout": _valid_source_layout(),
                 "navigation_model": {},
                 "projection_model": {},
                 "invariants": {"valid": True, "issues": []},
@@ -251,6 +316,7 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
                 "active_path": ["3", "3-2"],
                 "selected_node_id": "3-2",
             },
+            source_layout=_valid_source_layout(),
         )
         self.assertTrue(artifact["strict_invariants"]["valid"])
         self.assertEqual(artifact["strict_invariants"]["namespace_roots"], ["3"])
@@ -274,6 +340,7 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
             data_dir = root / "data"
             db_file = root / "authority.sqlite3"
             (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "precincts").mkdir(parents=True, exist_ok=True)
             source_rows = {
                 "4-1-1": [["4-1-1", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"], ["polygon_1"]],
                 "4-2-1": row("4-2-1", "3-2-3-17-77-1", "ALPHA STREET").raw,

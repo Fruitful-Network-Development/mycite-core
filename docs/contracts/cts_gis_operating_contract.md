@@ -11,7 +11,8 @@ CTS-GIS now operates in two explicit runtime modes:
 
 - Runtime requires a valid compiled artifact as the strict navigation/evidence baseline.
 - Runtime does not run raw authority reconstruction or fallback repair.
-- Runtime fails fast when compiled state is missing or invalid.
+- Runtime fails fast when compiled state is missing, invalid, or stale against
+  the validated live source-layout fingerprint.
 - Runtime may hydrate request-time Garland projection state from authoritative
   CTS-GIS projection documents when the active node/time/overlay context diverges
   from the compiled artifact's default projection snapshot.
@@ -27,6 +28,8 @@ Fail-fast state is projected as `compiled_cts_gis_state_invalid` and requires a 
 `audit_forensic` is the diagnostic pathway.
 
 - Runtime may inspect raw sources and build reconstruction diagnostics.
+- Runtime may rebuild compiled state only when explicitly invoked through
+  diagnostic posture, never as silent production fallback.
 - Runtime may emit expanded evidence payloads.
 - Runtime may emit compatibility details to support migration and validation.
 
@@ -50,6 +53,23 @@ The artifact records:
 - evidence snapshot
 - invariant validity (`invariants.valid`)
 - strict invariant validity (`strict_invariants.valid`) with one-authority and one-namespace checks
+- validated `source_layout` fingerprint for freshness enforcement
+
+## Compile-Before-Deploy Posture
+
+Canonical validator:
+
+- `MyCiteV2/scripts/validate_cts_gis_sources.py`
+
+Canonical compiler:
+
+- `MyCiteV2/scripts/compile_cts_gis_artifact.py`
+
+FND deployment posture:
+
+- `MyCiteV2/scripts/deploy_portal_update.sh` now validates or regenerates the
+  compiled artifact before portal restart unless the operator explicitly opts
+  out for a diagnostic-only path.
 
 ## Semantic Action Surface
 

@@ -27,6 +27,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     PortalScope,
     build_canonical_url,
     canonical_query_for_runtime_request_payload,
+    normalize_runtime_surface_request_payload,
     resolve_portal_tool_registry_entry,
 )
 _ALLOWED_VIEWS = (
@@ -82,22 +83,18 @@ def _normalize_surface_query(raw_query: Mapping[str, Any] | None) -> dict[str, s
 
 
 def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, dict[str, str]]:
-    normalized_payload = payload if isinstance(payload, dict) else {}
-    schema = _as_text(normalized_payload.get("schema")) or FND_DCM_TOOL_REQUEST_SCHEMA
-    if schema != FND_DCM_TOOL_REQUEST_SCHEMA:
-        raise ValueError(f"request.schema must be {FND_DCM_TOOL_REQUEST_SCHEMA}")
-    raw_scope = normalized_payload.get("portal_scope")
-    portal_scope = PortalScope.from_value(raw_scope)
+    portal_scope, _, surface_query = normalize_runtime_surface_request_payload(
+        payload,
+        expected_schema=FND_DCM_TOOL_REQUEST_SCHEMA,
+        surface_id=FND_DCM_TOOL_SURFACE_ID,
+        legacy_query_keys=("site", "view", "page", "collection"),
+    )
     if not portal_scope.capabilities:
         default_capabilities = ["datum_recognition", "spatial_projection"]
         if _as_text(portal_scope.scope_id).lower() == "fnd":
             default_capabilities.extend(["fnd_peripheral_routing", "hosted_site_manifest_visibility", "hosted_site_visibility"])
         portal_scope = PortalScope(scope_id=portal_scope.scope_id, capabilities=default_capabilities)
-    return portal_scope, canonical_query_for_runtime_request_payload(
-        normalized_payload,
-        surface_id=FND_DCM_TOOL_SURFACE_ID,
-        legacy_query_keys=("site", "view", "page", "collection"),
-    )
+    return portal_scope, surface_query
 
 
 def _tool_status(

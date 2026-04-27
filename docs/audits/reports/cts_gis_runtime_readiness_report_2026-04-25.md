@@ -5,7 +5,7 @@ Date: 2026-04-25
 Doc type: `audit`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-26`
+Last reviewed: `2026-04-27`
 
 ## Purpose
 
@@ -22,6 +22,17 @@ Publish current CTS-GIS runtime readiness evidence for deployed behavior, with e
   - `TASK-CTSGIS-RUNTIME-002` (done)
   - `TASK-CTSGIS-RUNTIME-003` (done)
   - `TASK-CTSGIS-RUNTIME-004` (done)
+  - `TASK-CTSGIS-RUNTIME-005` (done)
+  - `TASK-CTSGIS-RUNTIME-006` (done)
+  - `TASK-CTSGIS-RUNTIME-007` (done)
+  - `TASK-CTSGIS-RUNTIME-008` (done)
+  - `TASK-CTSGIS-RUNTIME-009` (done)
+  - `TASK-CTSGIS-RUNTIME-010` (done)
+  - `TASK-CTSGIS-RUNTIME-011` (done)
+  - `TASK-CTSGIS-RUNTIME-012` (done)
+  - `TASK-CTSGIS-RUNTIME-013` (done)
+  - `TASK-CTSGIS-SAMRAS-002` (supporting evidence published)
+  - `TASK-CTSGIS-DATUM-002` (supporting evidence published)
   - `TASK-CTSGIS-SAMRAS-001` (blocked)
   - `TASK-CTSGIS-DATUM-001` (blocked)
 
@@ -196,21 +207,93 @@ Task disposition:
 
 - `TASK-CTSGIS-RUNTIME-005`: `done`
 
+### 5) 2026-04-27 deployed portal precinct/optimization follow-on: completed
+
+Active follow-on scope:
+
+- user-observed deployed symptom: pressing `Load compiled precincts` has no
+  visible effect
+- optimization/program input:
+  `docs/personal_notes/code_optimization_report.md`
+
+Bounded task injection:
+
+- `TASK-CTSGIS-RUNTIME-007`: restore deployed precinct-toggle request parity
+- `TASK-CTSGIS-RUNTIME-008`: keep `production_strict` Garland precinct context
+  lightweight and toggle-ready via compiled summaries
+- `TASK-CTSGIS-RUNTIME-009`: convert optimization recommendations into bounded
+  deployed-portal execution backlog
+
+Supporting evidence surface:
+
+- `docs/audits/reports/cts_gis_deployed_portal_precinct_optimization_follow_on_2026-04-27.md`
+
+Outcome summary:
+
+- shared portal dispatch now preserves CTS-GIS `runtime_mode` for Garland
+  precinct-toggle action requests
+- compiled artifacts now preserve Garland
+  `projection_model.contextual_references` so `production_strict` remains
+  toggle-ready with deferred precinct summaries
+- optimization recommendations from
+  `docs/personal_notes/code_optimization_report.md` are translated into a
+  bounded supporting backlog without widening the active due-task queue
+
+Task disposition:
+
+- `TASK-CTSGIS-RUNTIME-007`: `done`
+- `TASK-CTSGIS-RUNTIME-008`: `done`
+- `TASK-CTSGIS-RUNTIME-009`: `done`
+
+### 6) Source-layout validation, strict freshness, and compile-before-deploy posture: completed
+
+Outcome summary:
+
+- CTS-GIS source layout is now validated against the live FND
+  `sources/` plus `sources/precincts/` corpus instead of relying on implicit
+  monolithic-file assumptions.
+- Compiled artifacts now carry a deterministic `source_layout.fingerprint`.
+- `production_strict` rejects stale/mismatched artifacts and does not silently
+  rebuild.
+- Compile-before-restart posture is now enforced for FND deployment workflows.
+
+Observed evidence:
+
+- validated live file counts:
+  - top-level source files: `35`
+  - precinct source files: `371`
+  - total source files: `406`
+- validated fingerprint:
+  - `56df73413996d516d774ac05c9729f5ae8b4c74a3feabf00d03ad8dc4bab3c4e`
+- canonical validation command:
+  - `python3 MyCiteV2/scripts/validate_cts_gis_sources.py --data-dir /srv/mycite-state/instances/fnd/data --scope-id fnd --require-compiled-match`
+- canonical compile command:
+  - `PYTHONPATH=. python3 MyCiteV2/scripts/compile_cts_gis_artifact.py --data-dir /srv/mycite-state/instances/fnd/data --private-dir /srv/mycite-state/instances/fnd/private --scope-id fnd`
+
+Task disposition:
+
+- `TASK-CTSGIS-RUNTIME-010`: `done`
+- `TASK-CTSGIS-RUNTIME-011`: `done`
+- `TASK-CTSGIS-RUNTIME-012`: `done`
+- `TASK-CTSGIS-RUNTIME-013`: `done`
+
 ## Lifecycle and Consolidation Decision
 
 - Existing stream retained: `STREAM-CTS-GIS-OPEN` (extended, not replaced).
 - Canonical active report for stream is now this file:
   - `docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md`
+- Supporting follow-on analysis retained under the same stream:
+  - `docs/audits/reports/cts_gis_deployed_portal_precinct_optimization_follow_on_2026-04-27.md`
 - Historical completed SQL assurance baseline retained (not deleted):
   - `docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md`
 
 ## Remaining Open Work
 
 1. Keep `TASK-CTSGIS-SAMRAS-001` blocked until structural/mutation/mediation
-   drift matrices plus owner sign-off are published.
+   drift matrices move from published evidence to explicit owner acknowledgment.
 2. Keep `TASK-CTSGIS-DATUM-001` blocked until critical/high datum drift
-   disposition matrices plus deterministic ordering/editing evidence are
-   published.
+   disposition matrices move from published evidence to explicit owner
+   acknowledgment.
 
 ## Validation Executed
 
@@ -220,8 +303,12 @@ Commands executed in this cycle:
 - `python3 -m unittest MyCiteV2.tests.unit.test_cts_gis_compiled_runtime`
 - `python3 -m unittest MyCiteV2.tests.unit.test_cts_gis_read_only`
 - `python3 -m unittest MyCiteV2.tests.unit.test_portal_cts_gis_runtime`
+- `python3 -m unittest MyCiteV2.tests.unit.test_portal_workspace_runtime_behavior`
+- `python3 -m unittest MyCiteV2.tests.contracts.test_contract_docs_alignment`
+- `python3 -m unittest MyCiteV2.tests.integration.test_portal_host_one_shell`
 - `PYTHONPATH=. python3 MyCiteV2/scripts/compile_cts_gis_artifact.py --data-dir /srv/mycite-state/instances/fnd/data --private-dir /srv/mycite-state/instances/fnd/private --scope-id fnd`
 - production strict bundle posture check using `build_portal_cts_gis_surface_bundle(...)`
+- compiled artifact `contextual_references` probe over `/srv/mycite-state/instances/fnd/data/payloads/compiled/cts_gis.fnd.compiled.json`
 - live precinct-overlay probes using `CtsGisReadOnlyService.read_surface(...)` for:
   - state attention `3-2-3-17`
   - county attention `3-2-3-17-77`

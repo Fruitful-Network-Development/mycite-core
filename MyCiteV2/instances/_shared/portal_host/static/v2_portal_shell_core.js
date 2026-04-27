@@ -443,17 +443,26 @@
       cloneRequest(extra.action_payload || extra.payload || {})
     );
     var toolState = cloneRequest(extra.tool_state || surfacePayload.tool_state || {});
+    var runtimeMode =
+      extra.runtime_mode ||
+      baseAction.runtime_mode ||
+      surfacePayload.runtime_mode ||
+      "";
     if (!route || !requestSchema || !actionKind) {
       return Promise.resolve();
     }
-    return loadRuntimeView(route, {
+    var requestBody = {
       schema: requestSchema,
       portal_scope: cloneRequest(envelope.portal_scope || {}),
       shell_state: cloneRequest(envelope.shell_state || {}),
       tool_state: toolState,
       action_kind: actionKind,
       action_payload: actionPayload,
-    });
+    };
+    if (runtimeMode) {
+      requestBody.runtime_mode = runtimeMode;
+    }
+    return loadRuntimeView(route, requestBody);
   }
 
   function dispatchTransition(transition, requestedSurfaceId) {

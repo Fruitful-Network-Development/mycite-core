@@ -644,6 +644,68 @@
       renderer.render(ctx, target, surfacePayload);
       return;
     }
+    if (typeof window.__MYCITE_V2_LOAD_SHELL_MODULE === "function" && asText(spec.moduleId)) {
+      adapter.renderWrappedSurface(
+        target,
+        {
+          state: "loading",
+          title: region.title || surfacePayload.title || spec.label || "Workbench",
+          message: "Loading deferred renderer module…",
+          warnings: [],
+          readiness: {},
+          toolId: asText(spec.moduleId),
+        },
+        ""
+      );
+      window.__MYCITE_V2_LOAD_SHELL_MODULE(spec.moduleId, {
+        reason: "reflective_workspace:" + (asText(spec.label) || asText(spec.moduleId) || "unknown"),
+      })
+        .then(function () {
+          var resolved = resolveRegisteredModuleExport(spec.moduleId, spec.globalName);
+          if (resolved && typeof resolved.render === "function") {
+            resolved.render(ctx, target, surfacePayload);
+            return;
+          }
+          adapter.renderWrappedSurface(
+            target,
+            adapter.resolveSurfaceState({
+              region: region,
+              surfacePayload: surfacePayload,
+              title: region.title || surfacePayload.title || spec.label || "Workbench",
+              unsupported: true,
+              message: buildModuleRegistrationMessage(
+                spec.label || "workspace",
+                spec.moduleId,
+                spec.globalName,
+                "render"
+              ),
+            }),
+            ""
+          );
+        })
+        .catch(function (error) {
+          adapter.renderWrappedSurface(
+            target,
+            adapter.resolveSurfaceState({
+              region: region,
+              surfacePayload: surfacePayload,
+              title: region.title || surfacePayload.title || spec.label || "Workbench",
+              unsupported: true,
+              message:
+                buildModuleRegistrationMessage(
+                  spec.label || "workspace",
+                  spec.moduleId,
+                  spec.globalName,
+                  "render"
+                ) +
+                " " +
+                asText(error && error.message),
+            }),
+            ""
+          );
+        });
+      return;
+    }
     adapter.renderWrappedSurface(
       target,
       adapter.resolveSurfaceState({

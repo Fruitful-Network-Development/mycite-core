@@ -15,6 +15,7 @@ from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
     _cts_gis_source_path,
     build_portal_cts_gis_surface_bundle,
     run_portal_cts_gis,
+    run_portal_cts_gis_action,
 )
 from MyCiteV2.instances._shared.runtime.portal_aws_runtime import (
     _project_domain_readiness,
@@ -248,6 +249,7 @@ def _write_cts_gis_fixture(
     (data_dir / "system").mkdir(parents=True, exist_ok=True)
     (data_dir / "payloads" / "cache").mkdir(parents=True, exist_ok=True)
     (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True, exist_ok=True)
+    (data_dir / "sandbox" / "cts-gis" / "sources" / "precincts").mkdir(parents=True, exist_ok=True)
     (private_dir / "utilities" / "tools" / "cts-gis").mkdir(parents=True, exist_ok=True)
     _write_json(data_dir / "system" / "anthology.json", {"1-0-1": [["1-0-1", "~", "0-0-0"], ["anchor-root"]]})
     _write_json(
@@ -1421,6 +1423,171 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertEqual(collections[0]["summary_state"], "loaded")
             self.assertIn("247-17-77-1", list(collections[0]["member_node_ids"] or []))
 
+    def test_cts_gis_precinct_toggle_shell_request_preserves_runtime_mode_and_transitions_overlay_state(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(
+                data_dir,
+                private_dir,
+                extra_projection_nodes=(
+                    "3-2-3-17-77-1-1",
+                    "247-17-77-1",
+                    "247-17-25-1",
+                ),
+            )
+            district_source_path = (
+                data_dir
+                / "sandbox"
+                / "cts-gis"
+                / "sources"
+                / "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"
+            )
+            district_payload = json.loads(district_source_path.read_text(encoding="utf-8"))
+            district_space = dict(district_payload.get("datum_addressing_abstraction_space") or {})
+            district_space["5-0-26"] = [["5-0-26", "~", "4-3-1"], ["23_present-district_31"]]
+            district_payload["datum_addressing_abstraction_space"] = district_space
+            district_source_path.write_text(json.dumps(district_payload, indent=2) + "\n", encoding="utf-8")
+
+            scope = PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection"))
+            shell_state = initial_portal_shell_state(
+                surface_id="system.tools.cts_gis",
+                portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+            )
+            base_bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=scope,
+                shell_state=shell_state,
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={
+                    "runtime_mode": "audit_forensic",
+                    "tool_state": {
+                        "selected_node_id": "3-2-3-17-77",
+                        "aitas": {
+                            "attention_node_id": "3-2-3-17-77",
+                            "intention_rule_id": "3-2-3-17-77-0-0",
+                            "time_directive": "23",
+                        },
+                        "source": {"precinct_district_overlay_enabled": False},
+                    }
+                },
+            )
+            base_profile = base_bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"]
+            base_collections = list(base_profile.get("district_precinct_collections") or [])
+            self.assertEqual(base_collections[0]["summary_state"], "deferred")
+            toggle_request = dict(
+                (
+                    (
+                        base_profile.get("district_overlay_toggle")
+                        or {}
+                    ).get("shell_request")
+                    or {}
+                )
+            )
+
+            self.assertEqual(toggle_request.get("runtime_mode"), "audit_forensic")
+            self.assertTrue(
+                bool(
+                    ((toggle_request.get("tool_state") or {}).get("source") or {}).get(
+                        "precinct_district_overlay_enabled"
+                    )
+                )
+            )
+
+            toggled_envelope = run_portal_shell_entry(
+                toggle_request,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+                data_dir=data_dir,
+                public_dir=None,
+                private_dir=private_dir,
+                audit_storage_file=None,
+                webapps_root=None,
+                tool_exposure_policy=None,
+            )
+            toggled_profile = (
+                toggled_envelope["shell_composition"]["regions"]["interface_panel"]["interface_body"][
+                    "garland_split_projection"
+                ]["profile_projection"]
+            )
+
+            self.assertTrue(bool((toggled_profile.get("district_overlay_toggle") or {}).get("enabled")))
+            collections = list(toggled_profile.get("district_precinct_collections") or [])
+            self.assertEqual(len(collections), 1)
+            self.assertNotEqual(collections[0]["summary_state"], "deferred")
+            self.assertTrue(collections[0]["overlay_requested"])
+
+    def test_cts_gis_toggle_overlay_action_updates_tool_state_and_transitions_precinct_state(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(
+                data_dir,
+                private_dir,
+                extra_projection_nodes=(
+                    "3-2-3-17-77-1-1",
+                    "247-17-77-1",
+                    "247-17-25-1",
+                ),
+            )
+            district_source_path = (
+                data_dir
+                / "sandbox"
+                / "cts-gis"
+                / "sources"
+                / "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"
+            )
+            district_payload = json.loads(district_source_path.read_text(encoding="utf-8"))
+            district_space = dict(district_payload.get("datum_addressing_abstraction_space") or {})
+            district_space["5-0-26"] = [["5-0-26", "~", "4-3-1"], ["23_present-district_31"]]
+            district_payload["datum_addressing_abstraction_space"] = district_space
+            district_source_path.write_text(json.dumps(district_payload, indent=2) + "\n", encoding="utf-8")
+
+            action_envelope = run_portal_cts_gis_action(
+                {
+                    "schema": "mycite.v2.portal.system.tools.cts_gis.action.request.v1",
+                    "portal_scope": {
+                        "scope_id": "fnd",
+                        "capabilities": ["datum_recognition", "spatial_projection"],
+                    },
+                    "shell_state": initial_portal_shell_state(
+                        surface_id="system.tools.cts_gis",
+                        portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                    ).to_dict(),
+                    "runtime_mode": "audit_forensic",
+                    "tool_state": {
+                        "selected_node_id": "3-2-3-17-77",
+                        "aitas": {
+                            "attention_node_id": "3-2-3-17-77",
+                            "intention_rule_id": "3-2-3-17-77-0-0",
+                            "time_directive": "23",
+                        },
+                        "source": {"precinct_district_overlay_enabled": False},
+                    },
+                    "action_kind": "toggle_overlay",
+                    "action_payload": {"enabled": True},
+                },
+                data_dir=data_dir,
+                private_dir=private_dir,
+                authority_db_file=None,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+                tool_exposure_policy=None,
+            )
+            profile_projection = (
+                action_envelope["shell_composition"]["regions"]["interface_panel"]["interface_body"][
+                    "garland_split_projection"
+                ]["profile_projection"]
+            )
+
+            self.assertTrue(bool((profile_projection.get("district_overlay_toggle") or {}).get("enabled")))
+            collections = list(profile_projection.get("district_precinct_collections") or [])
+            self.assertEqual(len(collections), 1)
+            self.assertNotEqual(collections[0]["summary_state"], "deferred")
+            self.assertTrue(collections[0]["overlay_requested"])
+
     def test_cts_gis_runtime_prefers_reference_geometry_when_projection_parity_warnings_exist(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2137,6 +2304,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             db_file = root / "authority.sqlite3"
             (data_dir / "system").mkdir(parents=True, exist_ok=True)
             (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True, exist_ok=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "precincts").mkdir(parents=True, exist_ok=True)
             public_dir.mkdir(parents=True, exist_ok=True)
             (data_dir / "system" / "anthology.json").write_text(
                 '{\n  "1-0-1": [["1-0-1", "rf.3-1-1", "0"], ["anchor-root"]]\n}\n',

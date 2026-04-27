@@ -1,0 +1,69 @@
+{
+  "schema": "mycite.benchmarks.optimization_budgets.v1",
+  "last_reviewed": "2026-04-27",
+  "notes": [
+    "Initial-load asset size is the primary frontend gate because deferred shell modules are allowed by contract.",
+    "Total shipped JS remains budgeted to prevent silent module creep, but the CTS-GIS deferred inspector split intentionally prioritizes initial-load savings first.",
+    "Test/tooling duplication counts are advisory until repeated-helper consolidation finishes."
+  ],
+  "budgets": {
+    "asset_size": {
+      "initial_load_gzip_bytes": {
+        "max": 41000,
+        "enforcement": "hard",
+        "evidence": "MyCiteV2.instances._shared.portal_host.app.build_shell_asset_manifest().budget_policy.initial_load_gzip_bytes_max"
+      },
+      "total_gzip_bytes": {
+        "max": 65000,
+        "enforcement": "hard",
+        "evidence": "MyCiteV2.instances._shared.portal_host.app.build_shell_asset_manifest().budget_policy.total_gzip_bytes_max"
+      },
+      "deferred_gzip_bytes": {
+        "max": 30000,
+        "enforcement": "advisory",
+        "evidence": "MyCiteV2.instances._shared.portal_host.app.build_shell_asset_manifest().budget_policy.deferred_gzip_bytes_max"
+      }
+    },
+    "interaction_latency": {
+      "p95_interaction_ms": {
+        "max": 143.0,
+        "enforcement": "hard",
+        "evidence": "performance_weight_speed_report_2026-04-16.md no-regression rule (baseline 136.0ms with +5% headroom)"
+      },
+      "startup_long_task_p95_ms": {
+        "max": 64.1,
+        "enforcement": "hard",
+        "evidence": "runtime_interactions_baseline.json baseline 61.0ms with +5% headroom"
+      }
+    },
+    "projection_cpu": {
+      "p95_iteration_ms": {
+        "max": 0.111,
+        "enforcement": "hard",
+        "evidence": "projection_serialization_baseline.json baseline 0.105ms with +5% headroom"
+      },
+      "average_payload_bytes": {
+        "max": 450,
+        "enforcement": "advisory",
+        "evidence": "projection_serialization_baseline.json baseline 425 bytes"
+      }
+    },
+    "test_tooling": {
+      "aggregate_import_median_ms": {
+        "max": 400.0,
+        "enforcement": "advisory",
+        "evidence": "test_tooling_overhead reruns varied between 345.838ms and 384.0ms; threshold is staged until the import path is less noisy"
+      },
+      "aggregate_import_p95_ms": {
+        "max": 650.0,
+        "enforcement": "advisory",
+        "evidence": "test_tooling_overhead reruns varied between 503.059ms and 632.918ms; threshold is staged until the import path is less noisy"
+      },
+      "repeated_private_helper_name_count": {
+        "max": 14,
+        "enforcement": "advisory",
+        "evidence": "test_tooling_overhead_baseline.json repeated helper census"
+      }
+    }
+  }
+}

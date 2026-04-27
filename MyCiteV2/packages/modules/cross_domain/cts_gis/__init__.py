@@ -2,8 +2,11 @@
 
 from .compiled_artifact import (
     build_compiled_artifact,
+    build_cts_gis_source_layout_summary,
     compiled_artifact_path,
+    cts_gis_source_root,
     read_compiled_artifact,
+    validate_cts_gis_source_layout,
     validate_compiled_artifact,
     write_compiled_artifact,
 )
@@ -22,8 +25,11 @@ __all__ = [
     "CtsGisMutationService",
     "CtsGisReadOnlyService",
     "build_compiled_artifact",
+    "build_cts_gis_source_layout_summary",
     "compiled_artifact_path",
+    "cts_gis_source_root",
     "read_compiled_artifact",
+    "validate_cts_gis_source_layout",
     "validate_compiled_artifact",
     "write_compiled_artifact",
 ]
